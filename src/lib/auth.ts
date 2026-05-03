@@ -105,7 +105,7 @@ export async function authenticate(email: string, password: string) {
     id: user.id,
     email: user.email,
     name: user.name,
-    role: user.role,
+    role: user.role as Role,
   } satisfies SessionUser;
 }
 

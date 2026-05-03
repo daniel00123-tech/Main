@@ -136,7 +136,7 @@ export default async function SupplierDashboard() {
                     <Button variant="secondary">Start job</Button>
                   </form>
                 )}
-                {[JOB_STATUS.ASSIGNED, JOB_STATUS.IN_PROGRESS].includes(job.status) && (
+                {([JOB_STATUS.ASSIGNED, JOB_STATUS.IN_PROGRESS] as string[]).includes(job.status) && (
                   <form action={`/api/jobs/${job.id}/complete`} method="post" className="grid flex-1 gap-2 md:grid-cols-[1fr_1fr_auto]">
                     <textarea name="notes" placeholder="Completion notes" className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-1" required />
                     <input name="photoUrls" placeholder="Photo URLs, comma-separated" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />

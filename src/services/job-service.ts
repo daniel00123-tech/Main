@@ -190,7 +190,7 @@ export class JobService {
 
   async submitCompletion(input: { supplierId: string; jobId: string; notes: string; photoUrls: string[] }) {
     const job = await this.db.job.findUnique({ where: { id: input.jobId }, include: { acceptedOffer: true } });
-    if (!job || job.supplierId !== input.supplierId || ![JOB_STATUS.ASSIGNED, JOB_STATUS.IN_PROGRESS].includes(job.status) || !job.acceptedOffer) {
+    if (!job || job.supplierId !== input.supplierId || !([JOB_STATUS.ASSIGNED, JOB_STATUS.IN_PROGRESS] as string[]).includes(job.status) || !job.acceptedOffer) {
       throw new Error("Job cannot be completed");
     }
 
