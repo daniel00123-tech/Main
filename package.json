@@ -19,7 +19,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@prisma/client": "latest",
+    "@prisma/client": "^6.19.3",
     "bcryptjs": "latest",
     "jose": "latest",
     "next": "latest",
@@ -35,7 +35,7 @@
     "@types/react-dom": "latest",
     "eslint": "latest",
     "eslint-config-next": "latest",
-    "prisma": "latest",
+    "prisma": "^6.19.3",
     "tailwindcss": "latest",
     "tsx": "latest",
     "typescript": "latest",
