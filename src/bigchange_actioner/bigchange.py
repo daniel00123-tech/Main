@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 import requests
@@ -67,17 +68,32 @@ class BigChangeClient:
         return response.json()
 
     def _auth_headers(self) -> dict[str, str]:
-        if not self._access_token:
-            self._access_token = self._fetch_access_token()
-
-        return {
-            "Authorization": f"Bearer {self._access_token}",
-            "customer-id": self._config.customer_id,
+        headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
+        if self._config.customer_id:
+            headers["customer-id"] = self._config.customer_id
+        if self._config.auth_mode == "api_key":
+            if not self._config.username or not self._config.password or not self._config.api_key:
+                raise BigChangeApiError(
+                    "API-key mode requires BIGCHANGE_USERNAME, BIGCHANGE_PASSWORD, and BIGCHANGE_API_KEY"
+                )
+            credentials = f"{self._config.username}:{self._config.password}".encode("utf-8")
+            headers["Authorization"] = f"Basic {base64.b64encode(credentials).decode('ascii')}"
+            headers["key"] = self._config.api_key
+            return headers
+
+        if not self._access_token:
+            self._access_token = self._fetch_access_token()
+
+        headers["Authorization"] = f"Bearer {self._access_token}"
+        return headers
 
     def _fetch_access_token(self) -> str:
+        if not self._config.client_id or not self._config.client_secret:
+            raise BigChangeApiError("OAuth mode requires BIGCHANGE_CLIENT_ID and BIGCHANGE_CLIENT_SECRET")
+
         response = self._session.post(
             self._config.token_url,
             data={

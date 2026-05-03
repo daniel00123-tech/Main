@@ -3,9 +3,10 @@
 This repository contains a dry-run-first bot for finding completed BigChange
 jobs and marking only the jobs that need no further action as actioned.
 
-The bot uses the BigChange REST API shape documented for OAuth client
-credentials. BigChange tenant fields can vary, so the status, further-action,
-and actioned fields are configurable through environment variables.
+The bot supports BigChange OAuth client credentials and the API-key/login
+authentication style described in the BigChange developer documentation.
+BigChange tenant fields can vary, so the status, further-action, and actioned
+fields are configurable through environment variables.
 
 ## Install
 
@@ -17,18 +18,29 @@ pip install -e ".[dev]"
 
 ## Configure
 
-Required:
+Required for the API-key/login mode:
 
 ```bash
+export BIGCHANGE_AUTH_MODE="api_key"
+export BIGCHANGE_BASE_URL="https://webservice.bigchange.com/v01/services.ashx"
+export BIGCHANGE_API_KEY="..."
+export BIGCHANGE_USERNAME="..."
+export BIGCHANGE_PASSWORD="..."
+```
+
+Required for OAuth mode:
+
+```bash
+export BIGCHANGE_AUTH_MODE="oauth"
 export BIGCHANGE_BASE_URL="https://api.bigchange.com/v1"
 export BIGCHANGE_CLIENT_ID="..."
 export BIGCHANGE_CLIENT_SECRET="..."
-export BIGCHANGE_CUSTOMER_ID="..."
 ```
 
 Optional:
 
 ```bash
+export BIGCHANGE_CUSTOMER_ID="..."
 export BIGCHANGE_TOKEN_URL="https://auth.bigchange.com/connect/token"
 export BIGCHANGE_COMPLETED_STATUSES="Completed,Complete"
 export BIGCHANGE_STATUS_FIELD="status"
@@ -38,6 +50,9 @@ export BIGCHANGE_ACTIONED_VALUE="true"
 export BIGCHANGE_PAGE_SIZE="100"
 export BIGCHANGE_TIMEOUT_SECONDS="30"
 ```
+
+Do not commit real BigChange credentials. Set the company API key, login
+username, and password only in the runtime environment or a secret manager.
 
 Before running against production, confirm the tenant-specific field names for:
 

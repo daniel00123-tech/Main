@@ -9,6 +9,10 @@ from bigchange_actioner.config import BotConfig
 def make_config(**overrides: Any) -> BotConfig:
     defaults = {
         "base_url": "https://api.example.test/v1",
+        "auth_mode": "oauth",
+        "api_key": None,
+        "username": None,
+        "password": None,
         "client_id": "client-id",
         "client_secret": "client-secret",
         "customer_id": "customer-id",
