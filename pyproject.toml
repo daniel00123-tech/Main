@@ -1,0 +1,29 @@
+[project]
+name = "bigchange-completed-job-actioner"
+version = "0.1.0"
+description = "Dry-run-first bot for actioning completed BigChange jobs that require no further work."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.2",
+    "responses>=0.25.8",
+]
+
+[project.scripts]
+bigchange-actioner = "bigchange_actioner.cli:main"
+
+[build-system]
+requires = ["setuptools>=80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
