@@ -1,6 +1,10 @@
 export type Role = "ADMIN" | "CUSTOMER" | "SUPPLIER";
 
 export const USER_ROLES = ["ADMIN", "CUSTOMER", "SUPPLIER"] as const;
+
+export function isRole(value: unknown): value is Role {
+  return typeof value === "string" && USER_ROLES.includes(value as Role);
+}
 export const JOB_CATEGORIES = ["plumbing", "electrical", "cleaning", "hvac", "security", "general"] as const;
 export const RATE_TYPES = ["hourly", "fixed"] as const;
 
