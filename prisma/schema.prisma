@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         String
+  name         String
+  phone        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customerProfile CustomerProfile?
+  supplierProfile SupplierProfile?
+  wallet          Wallet?
+  postedJobs      Job[]             @relation("CustomerJobs")
+  assignedJobs    Job[]             @relation("SupplierJobs")
+  offers          Offer[]
+  transactions    Transaction[]
+  notifications   Notification[]
+  walletEntries   WalletTransaction[]
+}
+
+model CustomerProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  companyName String
+  location    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+model SupplierProfile {
+  id           String   @id @default(cuid())
+  userId       String         @unique
+  businessName String
+  contactName  String
+  location     String
+  services     String
+  description  String
+  rateType     String
+  rateAmount   Int
+  availability String
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Job {
+  id                     String   @id @default(cuid())
+  customerId             String
+  supplierId             String?
+  acceptedOfferId        String?   @unique
+  title                  String
+  description            String
+  category               String
+  location               String
+  budget                 Int
+  deadline               DateTime
+  status                 String   @default("OPEN")
+  jobType                String
+  firstSupplierCanAccept Boolean   @default(false)
+  completionNotes        String?
+  completionPhotoUrls    String?
+  completedAt            DateTime?
+  approvalDueAt          DateTime?
+  closedAt               DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  customer      User          @relation("CustomerJobs", fields: [customerId], references: [id])
+  supplier      User?         @relation("SupplierJobs", fields: [supplierId], references: [id])
+  acceptedOffer Offer?        @relation("AcceptedOffer", fields: [acceptedOfferId], references: [id])
+  offers        Offer[]       @relation("JobOffers")
+  transactions  Transaction[]
+
+  @@index([customerId])
+  @@index([supplierId])
+  @@index([status])
+  @@index([jobType])
+  @@index([category, location])
+}
+
+model Offer {
+  id         String   @id @default(cuid())
+  jobId      String
+  supplierId String
+  price      Int
+  message    String
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  job                 Job   @relation("JobOffers", fields: [jobId], references: [id], onDelete: Cascade)
+  supplier            User  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  acceptedForJob      Job?  @relation("AcceptedOffer")
+
+  @@unique([jobId, supplierId])
+}
+
+model Wallet {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  balance         Int      @default(0)
+  pendingBalance  Int      @default(0)
+  reservedBalance Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries WalletTransaction[]
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  jobId       String?
+  type        String
+  status      String   @default("PENDING")
+  amount      Int
+  feeAmount   Int      @default(0)
+  provider    String
+  providerRef String?
+  metadata    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  Job?  @relation(fields: [jobId], references: [id])
+}
+
+model WalletTransaction {
+  id              String   @id @default(cuid())
+  userId          String
+  walletId        String
+  type            String
+  amount          Int
+  balanceAfter    Int
+  pendingAfter    Int
+  reservedAfter   Int
+  description     String
+  relatedJobId    String?
+  relatedOfferId  String?
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  readAt    DateTime?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
