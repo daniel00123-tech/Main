@@ -116,3 +116,25 @@ parent contact main email where available:
 ```bash
 npm run quotes:unsent -- --start="2026-01-01 00:00:00" --end="2026-12-31 23:59:59" --limit=10
 ```
+
+## Send unsent quotation documents
+
+Dry-run unsent quotes for a date range:
+
+```bash
+npm run quotes:send -- --start="2026-04-01 00:00:00" --end="2026-04-30 23:59:59"
+```
+
+Apply the workaround and send the quotes:
+
+```bash
+npm run quotes:send -- --start="2026-04-01 00:00:00" --end="2026-04-30 23:59:59" --execute
+```
+
+For each quote, this command:
+
+- confirms the financial document is an unsent/unaccepted quote
+- copies the parent contact primary email to the site contact if needed
+- sends the quote via `FinancialDocSend`
+- verifies BigChange set the sent marker after the send
+- adds the `Actioned` flag to the linked job when a job exists
