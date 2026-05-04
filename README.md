@@ -66,3 +66,11 @@ npm run action -- Quotations --param Start="2026-01-01 00:00:00" --param End="20
 ```
 
 Use write actions only against a safe test account and known test records.
+
+## List job numbers for access verification
+
+To pull a small set of job identifiers from a date range:
+
+```bash
+npm run jobs -- --start="2026-01-01 00:00:00" --end="2026-12-31 23:59:59" --limit=10
+```

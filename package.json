@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "check": "node checkBigchangeConnection.js",
-    "action": "node runBigchangeAction.js"
+    "action": "node runBigchangeAction.js",
+    "jobs": "node listJobNumbers.js"
   },
   "engines": {
     "node": ">=18"
