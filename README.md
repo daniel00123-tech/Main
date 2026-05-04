@@ -106,3 +106,13 @@ The command only targets jobs where:
 - status is `Completed` or `Completed with issues`
 - job result is exactly `Complete` or `Completed`
 - current flag is not already `Actioned`
+
+## Find unsent quotation documents
+
+List quotation documents where `SentDate`, `AcceptedDate`, `RejectionDate`,
+`CancellationDate`, and `DeletionDate` are all empty, including the resolved
+parent contact main email where available:
+
+```bash
+npm run quotes:unsent -- --start="2026-01-01 00:00:00" --end="2026-12-31 23:59:59" --limit=10
+```

@@ -9,7 +9,8 @@
     "action": "node runBigchangeAction.js",
     "jobs": "node listJobNumbers.js",
     "report:jobs": "node generateJobVerificationReport.js",
-    "mark:actioned": "node markCompletedJobsActioned.js"
+    "mark:actioned": "node markCompletedJobsActioned.js",
+    "quotes:unsent": "node findUnsentQuotations.js"
   },
   "engines": {
     "node": ">=18"
