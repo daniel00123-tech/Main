@@ -84,3 +84,25 @@ npm run report:jobs -- --start="2026-01-01 00:00:00" --end="2026-12-31 23:59:59"
 ```
 
 The report is written to `reports/job-verification.html`.
+
+## Mark plain-completed jobs with the Actioned flag
+
+Dry-run the last 28 days of completed jobs and show which jobs would receive the
+`Actioned` job flag:
+
+```bash
+npm run mark:actioned
+```
+
+Apply the flag after reviewing the dry-run output:
+
+```bash
+npm run mark:actioned -- --execute
+```
+
+The command only targets jobs where:
+
+- built-in `Actioned` is `No`
+- status is `Completed` or `Completed with issues`
+- job result is exactly `Complete` or `Completed`
+- current flag is not already `Actioned`

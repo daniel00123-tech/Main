@@ -8,7 +8,8 @@
     "check": "node checkBigchangeConnection.js",
     "action": "node runBigchangeAction.js",
     "jobs": "node listJobNumbers.js",
-    "report:jobs": "node generateJobVerificationReport.js"
+    "report:jobs": "node generateJobVerificationReport.js",
+    "mark:actioned": "node markCompletedJobsActioned.js"
   },
   "engines": {
     "node": ">=18"
