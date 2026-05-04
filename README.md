@@ -107,6 +107,29 @@ The command only targets jobs where:
 - job result is exactly `Complete` or `Completed`
 - current flag is not already `Actioned`
 
+## Mark jobs Actioned using operational rules
+
+Dry-run a date range using the combined actioning rules:
+
+```bash
+npm run mark:rules -- --start="2026-04-15 00:00:00" --end="2026-04-30 23:59:59"
+```
+
+Apply the `Actioned` job flag:
+
+```bash
+npm run mark:rules -- --start="2026-04-15 00:00:00" --end="2026-04-30 23:59:59" --execute
+```
+
+The command targets completed/completed-with-issues jobs whose completion/status
+date falls in the range and where the current flag is not already `Actioned`.
+It applies the flag when one of these is true:
+
+- job result is exactly `Complete` or `Completed`
+- job result contains quote-required wording and the job has a sent quote
+- job result is no-access/further-time/additional-time and a later job exists in
+  the same group
+
 ## Find unsent quotation documents
 
 List quotation documents where `SentDate`, `AcceptedDate`, `RejectionDate`,

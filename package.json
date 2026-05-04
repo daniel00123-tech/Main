@@ -10,6 +10,7 @@
     "jobs": "node listJobNumbers.js",
     "report:jobs": "node generateJobVerificationReport.js",
     "mark:actioned": "node markCompletedJobsActioned.js",
+    "mark:actioned-rules": "node markActionedByRules.js",
     "quotes:unsent": "node findUnsentQuotations.js",
     "quotes:send": "node sendUnsentQuotations.js"
   },
