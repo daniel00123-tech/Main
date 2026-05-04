@@ -74,3 +74,13 @@ To pull a small set of job identifiers from a date range:
 ```bash
 npm run jobs -- --start="2026-01-01 00:00:00" --end="2026-12-31 23:59:59" --limit=10
 ```
+
+## Generate a visual job verification report
+
+To create an HTML report that can be opened in Cursor:
+
+```bash
+npm run report:jobs -- --start="2026-01-01 00:00:00" --end="2026-12-31 23:59:59" --limit=25 --af-only
+```
+
+The report is written to `reports/job-verification.html`.

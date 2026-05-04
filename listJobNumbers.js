@@ -18,25 +18,34 @@ function parseArgs(argv) {
   for (let index = 2; index < argv.length; index += 1) {
     const token = argv[index];
     const value = argv[index + 1];
+    const [name, inlineValue] = splitOption(token);
 
-    if (token === "--start") {
-      options.start = requireValue(token, value);
-      index += 1;
-    } else if (token === "--end") {
-      options.end = requireValue(token, value);
-      index += 1;
-    } else if (token === "--limit") {
-      options.limit = Number(requireValue(token, value));
+    if (name === "--start") {
+      options.start = inlineValue ?? requireValue(name, value);
+      index += inlineValue === undefined ? 1 : 0;
+    } else if (name === "--end") {
+      options.end = inlineValue ?? requireValue(name, value);
+      index += inlineValue === undefined ? 1 : 0;
+    } else if (name === "--limit") {
+      options.limit = Number(inlineValue ?? requireValue(name, value));
       if (!Number.isInteger(options.limit) || options.limit < 1) {
         throw new Error("--limit must be a positive integer");
       }
-      index += 1;
+      index += inlineValue === undefined ? 1 : 0;
     } else {
       throw new Error(`Unknown argument: ${token}`);
     }
   }
 
   return options;
+}
+
+function splitOption(token) {
+  const separatorIndex = token.indexOf("=");
+  if (separatorIndex === -1) {
+    return [token, undefined];
+  }
+  return [token.slice(0, separatorIndex), token.slice(separatorIndex + 1)];
 }
 
 function requireValue(name, value) {

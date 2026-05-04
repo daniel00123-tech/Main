@@ -7,7 +7,8 @@
   "scripts": {
     "check": "node checkBigchangeConnection.js",
     "action": "node runBigchangeAction.js",
-    "jobs": "node listJobNumbers.js"
+    "jobs": "node listJobNumbers.js",
+    "report:jobs": "node generateJobVerificationReport.js"
   },
   "engines": {
     "node": ">=18"
