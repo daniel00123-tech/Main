@@ -1,7 +1,7 @@
 # BigChange automation prototype
 
-This repository contains a small, dependency-free Python prototype for connecting
-to the BigChange JobWatch web service.
+This repository contains a small, dependency-free Node.js prototype for
+connecting to the BigChange JobWatch web service.
 
 The uploaded JobWatch Web Services PDF documents the legacy endpoint as:
 
@@ -46,7 +46,7 @@ BIGCHANGE_KEY_LOCATION=query
 Run a safe read-only connection test:
 
 ```bash
-python3 check_bigchange_connection.py
+npm run check
 ```
 
 This calls the documented `listmethods` action and prints the response.
@@ -56,13 +56,13 @@ This calls the documented `listmethods` action and prints the response.
 For exploratory read-only calls:
 
 ```bash
-python3 run_bigchange_action.py listparams --param methodName=Quotations --param v2=1
+npm run action -- listparams --param methodName=Quotations --param v2=1
 ```
 
 Example quotation call:
 
 ```bash
-python3 run_bigchange_action.py Quotations --param Start="2026-01-01 00:00:00" --param End="2026-12-31 23:59:59"
+npm run action -- Quotations --param Start="2026-01-01 00:00:00" --param End="2026-12-31 23:59:59"
 ```
 
 Use write actions only against a safe test account and known test records.

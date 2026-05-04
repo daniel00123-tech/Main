@@ -1,0 +1,14 @@
+{
+  "name": "bigchange-automation-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node.js prototype for connecting to the BigChange JobWatch web service.",
+  "type": "commonjs",
+  "scripts": {
+    "check": "node checkBigchangeConnection.js",
+    "action": "node runBigchangeAction.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
