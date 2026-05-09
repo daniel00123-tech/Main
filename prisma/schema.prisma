@@ -1,0 +1,261 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  ADMIN
+  CUSTOMER
+  SUPPLIER
+}
+
+enum SupplierStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RateType {
+  HOURLY
+  FIXED
+}
+
+enum JobType {
+  BIDDING
+  BROADCAST
+}
+
+enum JobStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  AWAITING_APPROVAL
+  CLOSED
+  CANCELLED
+  DISPUTED
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum TransactionType {
+  DEPOSIT
+  JOB_PAYMENT
+  RELEASE
+  REFUND
+  WITHDRAWAL
+  PLATFORM_FEE
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum WalletTransactionType {
+  DEPOSIT
+  RESERVE
+  RELEASE_TO_SUPPLIER
+  PLATFORM_FEE
+  SUPPLIER_FEE
+  WITHDRAWAL
+  REFUND
+}
+
+enum NotificationType {
+  JOB_POSTED
+  JOB_MATCHED
+  OFFER_RECEIVED
+  JOB_ASSIGNED
+  JOB_COMPLETED
+  PAYMENT_RELEASED
+  SUPPLIER_REVIEWED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String?
+  email        String   @unique
+  phone        String?
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  supplierProfile SupplierProfile?
+  customerProfile CustomerProfile?
+  wallet          Wallet?
+  jobsPosted      Job[]            @relation("CustomerJobs")
+  assignedJobs    Job[]            @relation("SupplierJobs")
+  offers          Offer[]
+  notifications   Notification[]
+  payerTransactions  Transaction[] @relation("PayerTransactions")
+  payeeTransactions  Transaction[] @relation("PayeeTransactions")
+
+  @@index([role])
+}
+
+model SupplierProfile {
+  id           String         @id @default(cuid())
+  userId       String         @unique
+  businessName String
+  contactName  String
+  location     String
+  services     Json
+  description  String
+  rate         Decimal
+  rateType     RateType
+  availability String
+  status       SupplierStatus @default(PENDING)
+  reviewedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([location])
+}
+
+model CustomerProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  companyName String
+  location    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([location])
+}
+
+model Job {
+  id                 String    @id @default(cuid())
+  customerId         String
+  assignedSupplierId String?
+  title              String
+  description        String
+  category           String
+  location           String
+  budget             Decimal
+  deadline           DateTime
+  status             JobStatus @default(OPEN)
+  type               JobType
+  autoAssign         Boolean   @default(false)
+  completionNotes    String?
+  completionPhotoUrls Json?
+  completedAt        DateTime?
+  approvalDeadlineAt DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  customer         User          @relation("CustomerJobs", fields: [customerId], references: [id], onDelete: Cascade)
+  assignedSupplier User?         @relation("SupplierJobs", fields: [assignedSupplierId], references: [id], onDelete: SetNull)
+  offers           Offer[]
+  transactions     Transaction[]
+  walletTransactions WalletTransaction[]
+
+  @@index([status])
+  @@index([type])
+  @@index([category])
+  @@index([location])
+}
+
+model Offer {
+  id         String      @id @default(cuid())
+  jobId      String
+  supplierId String
+  price      Decimal
+  message    String
+  status     OfferStatus @default(PENDING)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  job      Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  supplier User @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, supplierId])
+  @@index([status])
+}
+
+model Transaction {
+  id                String            @id @default(cuid())
+  jobId             String?
+  payerId           String?
+  payeeId           String?
+  type              TransactionType
+  status            TransactionStatus @default(PENDING)
+  amount            Decimal
+  platformFee       Decimal           @default(0)
+  supplierFee       Decimal           @default(0)
+  provider          String
+  providerReference String?
+  metadata          Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  job    Job?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  payer  User? @relation("PayerTransactions", fields: [payerId], references: [id], onDelete: SetNull)
+  payee  User? @relation("PayeeTransactions", fields: [payeeId], references: [id], onDelete: SetNull)
+  walletTransactions WalletTransaction[]
+
+  @@index([type])
+  @@index([status])
+}
+
+model Wallet {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  balance         Decimal  @default(0)
+  pendingBalance  Decimal  @default(0)
+  reservedBalance Decimal  @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id            String                @id @default(cuid())
+  walletId      String
+  jobId         String?
+  transactionId String?
+  type          WalletTransactionType
+  amount        Decimal
+  description   String
+  createdAt     DateTime              @default(now())
+
+  wallet      Wallet       @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  job         Job?         @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([type])
+  @@index([readAt])
+}
