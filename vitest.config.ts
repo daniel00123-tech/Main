@@ -7,9 +7,15 @@ export default defineConfig({
     include: ["src/**/*.test.ts"]
   },
   resolve: {
-    alias: {
-      "@": new URL("./src", import.meta.url).pathname,
-      "@/generated": new URL("./generated", import.meta.url).pathname
-    }
+    alias: [
+      {
+        find: /^@\/generated\/(.*)$/,
+        replacement: new URL("./generated/$1", import.meta.url).pathname
+      },
+      {
+        find: "@",
+        replacement: new URL("./src", import.meta.url).pathname
+      }
+    ]
   }
 });

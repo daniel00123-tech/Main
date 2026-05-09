@@ -111,7 +111,7 @@ export async function createAdminUser(input: {
 
 export async function reviewSupplier(input: {
   supplierUserId: string;
-  status: SupplierStatus.APPROVED | SupplierStatus.REJECTED;
+  status: "APPROVED" | "REJECTED";
 }) {
   const profile = await prisma.supplierProfile.update({
     where: { userId: input.supplierUserId },

@@ -262,7 +262,7 @@ export async function markJobComplete(supplierId: string, rawInput: unknown) {
   if (
     !job ||
     job.assignedSupplierId !== supplierId ||
-    ![JobStatus.ASSIGNED, JobStatus.IN_PROGRESS].includes(job.status)
+    !([JobStatus.ASSIGNED, JobStatus.IN_PROGRESS] as JobStatus[]).includes(job.status)
   ) {
     throw new Error("Assigned supplier can only complete assigned or in-progress jobs.");
   }

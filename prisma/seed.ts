@@ -76,7 +76,7 @@ async function main() {
     availability: "Monday to Saturday"
   });
 
-  const supplierThree = await registerUser({
+  await registerUser({
     role: "SUPPLIER",
     businessName: "CleanFlow Services",
     contactName: "Maya Green",
