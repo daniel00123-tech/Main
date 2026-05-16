@@ -93,6 +93,9 @@ def _env_with_dotenv() -> Mapping[str, str]:
     values: dict[str, str] = {}
     for path in (Path(".env"), Path(".env.local")):
         values.update(_read_dotenv(path))
+    env_file = os.environ.get("BIGCHANGE_ENV_FILE")
+    if env_file:
+        values.update(_read_dotenv(Path(env_file)))
     values.update(os.environ)
     return values
 

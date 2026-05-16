@@ -113,3 +113,34 @@ def test_dotenv_values_are_loaded_without_overriding_environment(tmp_path, monke
 
     assert values["BIGCHANGE_API_KEY"] == "environment-key"
     assert values["BIGCHANGE_USERNAME"] == "dotenv-user@example.test"
+
+
+def test_explicit_env_file_is_loaded(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    secret_file = tmp_path / "bigchange.env"
+    secret_file.write_text(
+        "\n".join(
+            [
+                "BIGCHANGE_AUTH_MODE=api_key",
+                "BIGCHANGE_BASE_URL=https://webservice.example.test/v01/services.ashx",
+                "BIGCHANGE_API_KEY=file-key",
+                "BIGCHANGE_USERNAME=file-user@example.test",
+                "BIGCHANGE_PASSWORD=file-password",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    for name in (
+        "BIGCHANGE_AUTH_MODE",
+        "BIGCHANGE_BASE_URL",
+        "BIGCHANGE_API_KEY",
+        "BIGCHANGE_USERNAME",
+        "BIGCHANGE_PASSWORD",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("BIGCHANGE_ENV_FILE", str(secret_file))
+
+    config = BotConfig.from_env()
+
+    assert config.api_key == "file-key"
+    assert config.username == "file-user@example.test"

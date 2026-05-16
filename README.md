@@ -38,6 +38,18 @@ cp .env.example .env.local
 Then edit `.env.local`. The bot loads `.env.local` automatically, and that file
 is ignored by Git so the test credentials are not committed.
 
+For automation, prefer a secret store or a secret file created/mounted by the
+automation runner. If the runner provides a secret file, point the bot at it:
+
+```bash
+export BIGCHANGE_ENV_FILE="/path/to/bigchange.env"
+python3 -m bigchange_actioner.cli --execute
+```
+
+The secret file uses the same `KEY=value` format as `.env.example`. A local
+`.env.local` file from this workspace will not be present in a fresh automation
+checkout unless the automation creates or mounts it.
+
 Required for OAuth mode:
 
 ```bash
