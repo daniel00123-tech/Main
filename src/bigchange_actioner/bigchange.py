@@ -50,10 +50,17 @@ class BigChangeClient:
 
     def mark_job_actioned(self, job_id: str, payload: dict[str, Any]) -> None:
         if self._config.auth_mode == "api_key":
-            raise BigChangeApiError(
-                "Legacy API-key mode can list jobs for dry-run, but actioning jobs requires "
-                "the tenant-specific BigChange update endpoint or custom field mapping."
+            self._request(
+                "GET",
+                self._config.base_url,
+                params={
+                    "action": "JobSaveBackOfficeNote",
+                    "JobId": job_id,
+                    "Actioned": "1" if payload.get(self._config.actioned_field) else "0",
+                    "Notes": payload.get("note", self._config.actioned_note),
+                },
             )
+            return
         self._request("PATCH", f"{self._config.base_url}/jobs/{job_id}", json=payload)
 
     def _iter_legacy_jobs(self, *, limit: int | None = None) -> list[dict[str, Any]]:

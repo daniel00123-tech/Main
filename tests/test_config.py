@@ -23,6 +23,9 @@ def test_api_key_mode_loads_login_credentials_from_environment() -> None:
     assert config.client_id is None
     assert config.client_secret is None
     assert config.lookback_days == 14
+    assert config.completed_statuses == ("Completed", "Completed with issues")
+    assert config.action_result_field == "StatusComment"
+    assert config.action_result_values == ("Complete", "Completed")
 
 
 def test_oauth_mode_requires_client_credentials() -> None:

@@ -64,11 +64,22 @@ class CompletedJobActioner:
         if further_action_required:
             return JobDecision(job_id, "skip", "further action is required", job)
 
+        result = self._normalise(self._field(job, self._config.action_result_field))
+        action_results = {item.lower() for item in self._config.action_result_values}
+        if result not in action_results:
+            return JobDecision(
+                job_id,
+                "skip",
+                f"result is {result!r}, not an actionable completion result",
+                job,
+            )
+
         return JobDecision(job_id, "action", "completed with no further action required", job)
 
     def _actioned_payload(self, job: Mapping[str, Any]) -> dict[str, Any]:
         return {
             self._config.actioned_field: self._coerce_actioned_value(),
+            "note": self._config.actioned_note,
         }
 
     def _job_id(self, job: Mapping[str, Any]) -> str:

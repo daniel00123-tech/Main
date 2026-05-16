@@ -42,11 +42,14 @@ Optional:
 ```bash
 export BIGCHANGE_CUSTOMER_ID="..."
 export BIGCHANGE_TOKEN_URL="https://auth.bigchange.com/connect/token"
-export BIGCHANGE_COMPLETED_STATUSES="Completed,Complete"
+export BIGCHANGE_COMPLETED_STATUSES="Completed,Completed with issues"
 export BIGCHANGE_STATUS_FIELD="status"
 export BIGCHANGE_FURTHER_ACTION_FIELD="furtherActionRequired"
 export BIGCHANGE_ACTIONED_FIELD="actioned"
 export BIGCHANGE_ACTIONED_VALUE="true"
+export BIGCHANGE_ACTIONED_NOTE="Marked actioned by automation: completed job result requires no further action."
+export BIGCHANGE_ACTION_RESULT_FIELD="StatusComment"
+export BIGCHANGE_ACTION_RESULT_VALUES="Complete,Completed"
 export BIGCHANGE_PAGE_SIZE="100"
 export BIGCHANGE_TIMEOUT_SECONDS="30"
 export BIGCHANGE_LOOKBACK_DAYS="14"
@@ -58,16 +61,15 @@ username, and password only in the runtime environment or a secret manager.
 For API-key/login mode the bot uses the legacy `JobsList` action with `Start`,
 `End`, `Page`, `PageSize`, `IncludeCustomFields=true`, and `Unactioned=1`.
 `BIGCHANGE_LOOKBACK_DAYS` controls the `Start` date.
+When applying updates in this mode it uses the documented
+`JobSaveBackOfficeNote` action with `Actioned=1`.
 
 Before running against production, confirm the tenant-specific field names for:
 
 - the job completion status
 - whether further action is required
 - the field BigChange expects when marking a job as actioned
-
-Legacy API-key mode currently supports listing and dry-run decisions. Do not run
-`--execute` in legacy mode until the correct BigChange endpoint or custom field
-for marking a job actioned has been confirmed.
+- the result field and values that mean no further action is required
 
 ## Run
 

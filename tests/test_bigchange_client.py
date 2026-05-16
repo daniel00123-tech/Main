@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs, urlparse
 
-import pytest
 import responses
 
-from bigchange_actioner.bigchange import BigChangeApiError, BigChangeClient
+from bigchange_actioner.bigchange import BigChangeClient
 from bigchange_actioner.config import BotConfig
 
 
@@ -25,6 +24,9 @@ def make_legacy_config(**overrides: object) -> BotConfig:
         "further_action_field": "furtherActionRequired",
         "actioned_field": "actioned",
         "actioned_value": "true",
+        "actioned_note": "Marked actioned by automation.",
+        "action_result_field": "StatusComment",
+        "action_result_values": ("Complete", "Completed"),
         "page_size": 2,
         "timeout_seconds": 30.0,
         "lookback_days": 14,
@@ -59,6 +61,22 @@ def test_api_key_mode_uses_legacy_jobslist_request() -> None:
     assert query["Unactioned"] == ["1"]
 
 
-def test_api_key_mode_does_not_execute_without_confirmed_legacy_update_endpoint() -> None:
-    with pytest.raises(BigChangeApiError, match="Legacy API-key mode can list jobs"):
-        BigChangeClient(make_legacy_config()).mark_job_actioned("1", {"Actioned": True})
+@responses.activate
+def test_api_key_mode_marks_job_actioned_with_back_office_note() -> None:
+    responses.add(
+        responses.GET,
+        "https://webservice.example.test/v01/services.ashx",
+        json={"Code": 0},
+    )
+
+    BigChangeClient(make_legacy_config()).mark_job_actioned(
+        "1",
+        {"actioned": True, "note": "Actioned by test."},
+    )
+
+    request = responses.calls[0].request
+    query = parse_qs(urlparse(request.url).query)
+    assert query["action"] == ["JobSaveBackOfficeNote"]
+    assert query["JobId"] == ["1"]
+    assert query["Actioned"] == ["1"]
+    assert query["Notes"] == ["Actioned by test."]

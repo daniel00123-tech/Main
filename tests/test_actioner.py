@@ -22,6 +22,9 @@ def make_config(**overrides: Any) -> BotConfig:
         "further_action_field": "furtherActionRequired",
         "actioned_field": "actioned",
         "actioned_value": "true",
+        "actioned_note": "Marked actioned by automation.",
+        "action_result_field": "StatusComment",
+        "action_result_values": ("Complete", "Completed"),
         "page_size": 100,
         "timeout_seconds": 30.0,
         "lookback_days": 14,
@@ -45,10 +48,34 @@ class FakeClient:
 def test_dry_run_identifies_completed_jobs_without_marking_them() -> None:
     client = FakeClient(
         [
-            {"id": "1", "status": "Completed", "furtherActionRequired": False, "actioned": False},
-            {"id": "2", "status": "Completed", "furtherActionRequired": True, "actioned": False},
-            {"id": "3", "status": "In progress", "furtherActionRequired": False, "actioned": False},
-            {"id": "4", "status": "Completed", "furtherActionRequired": False, "actioned": True},
+            {
+                "id": "1",
+                "status": "Completed",
+                "StatusComment": "Completed",
+                "furtherActionRequired": False,
+                "actioned": False,
+            },
+            {
+                "id": "2",
+                "status": "Completed",
+                "StatusComment": "Completed",
+                "furtherActionRequired": True,
+                "actioned": False,
+            },
+            {
+                "id": "3",
+                "status": "In progress",
+                "StatusComment": "Completed",
+                "furtherActionRequired": False,
+                "actioned": False,
+            },
+            {
+                "id": "4",
+                "status": "Completed",
+                "StatusComment": "Completed",
+                "furtherActionRequired": False,
+                "actioned": True,
+            },
         ]
     )
     actioner = CompletedJobActioner(client=client, config=make_config())
@@ -65,9 +92,27 @@ def test_dry_run_identifies_completed_jobs_without_marking_them() -> None:
 def test_execute_marks_only_completed_jobs_with_no_further_action_required() -> None:
     client = FakeClient(
         [
-            {"jobId": 10, "status": "complete", "furtherActionRequired": "no", "actioned": "false"},
-            {"jobId": 11, "status": "complete", "furtherActionRequired": "yes", "actioned": "false"},
-            {"jobId": 12, "status": "complete", "furtherActionRequired": "no", "actioned": "true"},
+            {
+                "jobId": 10,
+                "status": "Completed",
+                "StatusComment": "Complete",
+                "furtherActionRequired": "no",
+                "actioned": "false",
+            },
+            {
+                "jobId": 11,
+                "status": "Completed",
+                "StatusComment": "Quote Required",
+                "furtherActionRequired": "no",
+                "actioned": "false",
+            },
+            {
+                "jobId": 12,
+                "status": "Completed with issues",
+                "StatusComment": "Further Time Needed",
+                "furtherActionRequired": "no",
+                "actioned": "false",
+            },
         ]
     )
     actioner = CompletedJobActioner(client=client, config=make_config())
@@ -75,7 +120,7 @@ def test_execute_marks_only_completed_jobs_with_no_further_action_required() -> 
     summary = actioner.run(dry_run=False)
 
     assert summary.actioned == 1
-    assert client.marked == [("10", {"actioned": True})]
+    assert client.marked == [("10", {"actioned": True, "note": "Marked actioned by automation."})]
 
 
 def test_custom_field_shapes_are_supported() -> None:
@@ -87,6 +132,7 @@ def test_custom_field_shapes_are_supported() -> None:
                     "jobStatus": "Completed",
                     "needsFollowUp": "false",
                     "bcActioned": "false",
+                    "result": "Completed",
                 },
             }
         ]
@@ -98,10 +144,11 @@ def test_custom_field_shapes_are_supported() -> None:
             further_action_field="needsFollowUp",
             actioned_field="bcActioned",
             actioned_value="Actioned",
+            action_result_field="result",
         ),
     )
 
     summary = actioner.run(dry_run=False)
 
     assert summary.actioned == 1
-    assert client.marked == [("custom-1", {"bcActioned": "Actioned"})]
+    assert client.marked == [("custom-1", {"bcActioned": "Actioned", "note": "Marked actioned by automation."})]

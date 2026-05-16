@@ -26,6 +26,9 @@ class BotConfig:
     further_action_field: str
     actioned_field: str
     actioned_value: str
+    actioned_note: str
+    action_result_field: str
+    action_result_values: tuple[str, ...]
     page_size: int
     timeout_seconds: float
     lookback_days: int
@@ -50,7 +53,7 @@ class BotConfig:
             username=_required_for_mode(source, "BIGCHANGE_USERNAME", auth_mode, "api_key"),
             password=_required_for_mode(source, "BIGCHANGE_PASSWORD", auth_mode, "api_key"),
             token_url=source.get("BIGCHANGE_TOKEN_URL", "https://auth.bigchange.com/connect/token"),
-            completed_statuses=_csv(source.get("BIGCHANGE_COMPLETED_STATUSES", "Completed,Complete")),
+            completed_statuses=_csv(source.get("BIGCHANGE_COMPLETED_STATUSES", "Completed,Completed with issues")),
             status_field=source.get("BIGCHANGE_STATUS_FIELD", "status"),
             further_action_field=source.get(
                 "BIGCHANGE_FURTHER_ACTION_FIELD",
@@ -58,6 +61,12 @@ class BotConfig:
             ),
             actioned_field=source.get("BIGCHANGE_ACTIONED_FIELD", "actioned"),
             actioned_value=source.get("BIGCHANGE_ACTIONED_VALUE", "true"),
+            actioned_note=source.get(
+                "BIGCHANGE_ACTIONED_NOTE",
+                "Marked actioned by automation: completed job result requires no further action.",
+            ),
+            action_result_field=source.get("BIGCHANGE_ACTION_RESULT_FIELD", "StatusComment"),
+            action_result_values=_csv(source.get("BIGCHANGE_ACTION_RESULT_VALUES", "Complete,Completed")),
             page_size=_positive_int(source.get("BIGCHANGE_PAGE_SIZE", "100"), "BIGCHANGE_PAGE_SIZE"),
             timeout_seconds=float(source.get("BIGCHANGE_TIMEOUT_SECONDS", "30")),
             lookback_days=_positive_int(source.get("BIGCHANGE_LOOKBACK_DAYS", "14"), "BIGCHANGE_LOOKBACK_DAYS"),
