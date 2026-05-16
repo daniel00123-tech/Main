@@ -26,6 +26,9 @@ class BigChangeClient:
         self._access_token: str | None = None
 
     def iter_completed_jobs(self, *, limit: int | None = None) -> list[dict[str, Any]]:
+        if self._config.auth_mode == "api_key":
+            return self._iter_legacy_jobs(limit=limit)
+
         params = {
             "status": ",".join(self._config.completed_statuses),
             "limit": self._config.page_size,
@@ -46,7 +49,44 @@ class BigChangeClient:
         return jobs
 
     def mark_job_actioned(self, job_id: str, payload: dict[str, Any]) -> None:
+        if self._config.auth_mode == "api_key":
+            raise BigChangeApiError(
+                "Legacy API-key mode can list jobs for dry-run, but actioning jobs requires "
+                "the tenant-specific BigChange update endpoint or custom field mapping."
+            )
         self._request("PATCH", f"{self._config.base_url}/jobs/{job_id}", json=payload)
+
+    def _iter_legacy_jobs(self, *, limit: int | None = None) -> list[dict[str, Any]]:
+        jobs: list[dict[str, Any]] = []
+        page = 0
+
+        while True:
+            page_size = self._config.page_size
+            if limit is not None:
+                page_size = min(page_size, max(limit - len(jobs), 1))
+
+            payload = self._request(
+                "GET",
+                self._config.base_url,
+                params={
+                    "action": "JobsList",
+                    "Start": self._config.legacy_start_date,
+                    "End": self._config.legacy_end_date,
+                    "Page": page,
+                    "PageSize": page_size,
+                    "IncludeCustomFields": "true",
+                    "Unactioned": "1",
+                },
+            )
+            items = self._extract_items(payload)
+            jobs.extend(items)
+
+            if limit is not None and len(jobs) >= limit:
+                return jobs[:limit]
+            if len(items) < page_size:
+                return jobs
+
+            page += 1
 
     def _request(self, method: str, url: str, **kwargs: Any) -> Any:
         headers = kwargs.pop("headers", {})
@@ -117,6 +157,12 @@ class BigChangeClient:
         if isinstance(payload, list):
             return payload
         if isinstance(payload, dict):
+            code = payload.get("Code")
+            result = payload.get("Result")
+            if code == 0 and isinstance(result, list):
+                return result
+            if code not in (None, 0):
+                raise BigChangeApiError(f"BigChange API returned Code={code}: {result}")
             for key in ("items", "data", "jobs", "results"):
                 value = payload.get(key)
                 if isinstance(value, list):

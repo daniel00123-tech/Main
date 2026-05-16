@@ -22,6 +22,7 @@ def test_api_key_mode_loads_login_credentials_from_environment() -> None:
     assert config.password == "password"
     assert config.client_id is None
     assert config.client_secret is None
+    assert config.lookback_days == 14
 
 
 def test_oauth_mode_requires_client_credentials() -> None:

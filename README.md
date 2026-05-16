@@ -49,16 +49,25 @@ export BIGCHANGE_ACTIONED_FIELD="actioned"
 export BIGCHANGE_ACTIONED_VALUE="true"
 export BIGCHANGE_PAGE_SIZE="100"
 export BIGCHANGE_TIMEOUT_SECONDS="30"
+export BIGCHANGE_LOOKBACK_DAYS="14"
 ```
 
 Do not commit real BigChange credentials. Set the company API key, login
 username, and password only in the runtime environment or a secret manager.
+
+For API-key/login mode the bot uses the legacy `JobsList` action with `Start`,
+`End`, `Page`, `PageSize`, `IncludeCustomFields=true`, and `Unactioned=1`.
+`BIGCHANGE_LOOKBACK_DAYS` controls the `Start` date.
 
 Before running against production, confirm the tenant-specific field names for:
 
 - the job completion status
 - whether further action is required
 - the field BigChange expects when marking a job as actioned
+
+Legacy API-key mode currently supports listing and dry-run decisions. Do not run
+`--execute` in legacy mode until the correct BigChange endpoint or custom field
+for marking a job actioned has been confirmed.
 
 ## Run
 

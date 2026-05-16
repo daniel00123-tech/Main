@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Mapping
 
 
@@ -27,6 +28,7 @@ class BotConfig:
     actioned_value: str
     page_size: int
     timeout_seconds: float
+    lookback_days: int
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "BotConfig":
@@ -58,7 +60,16 @@ class BotConfig:
             actioned_value=source.get("BIGCHANGE_ACTIONED_VALUE", "true"),
             page_size=_positive_int(source.get("BIGCHANGE_PAGE_SIZE", "100"), "BIGCHANGE_PAGE_SIZE"),
             timeout_seconds=float(source.get("BIGCHANGE_TIMEOUT_SECONDS", "30")),
+            lookback_days=_positive_int(source.get("BIGCHANGE_LOOKBACK_DAYS", "14"), "BIGCHANGE_LOOKBACK_DAYS"),
         )
+
+    @property
+    def legacy_start_date(self) -> str:
+        return (datetime.now(UTC) - timedelta(days=self.lookback_days)).strftime("%Y-%m-%d")
+
+    @property
+    def legacy_end_date(self) -> str:
+        return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 def _required(env: Mapping[str, str], name: str) -> str:

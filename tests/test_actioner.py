@@ -24,6 +24,7 @@ def make_config(**overrides: Any) -> BotConfig:
         "actioned_value": "true",
         "page_size": 100,
         "timeout_seconds": 30.0,
+        "lookback_days": 14,
     }
     defaults.update(overrides)
     return BotConfig(**defaults)

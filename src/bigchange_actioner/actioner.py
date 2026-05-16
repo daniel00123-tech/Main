@@ -81,10 +81,17 @@ class CompletedJobActioner:
     def _field(self, job: Mapping[str, Any], field_name: str) -> Any:
         if field_name in job:
             return job[field_name]
+        for key, value in job.items():
+            if key.lower() == field_name.lower():
+                return value
 
         custom_fields = job.get("customFields") or job.get("custom_fields")
         if isinstance(custom_fields, Mapping) and field_name in custom_fields:
             return custom_fields[field_name]
+        if isinstance(custom_fields, Mapping):
+            for key, value in custom_fields.items():
+                if str(key).lower() == field_name.lower():
+                    return value
 
         fields = job.get("fields")
         if isinstance(fields, list):
