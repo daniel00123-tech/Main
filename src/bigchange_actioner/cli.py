@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = actioner.run(dry_run=not args.execute, limit=args.limit)
     logging.info(
-        "Scanned %s completed jobs; actioned=%s; skipped=%s; dry_run=%s",
+        "Scanned %s jobs; actioned=%s; skipped=%s; dry_run=%s",
         summary.scanned,
         summary.actioned,
         summary.skipped,
