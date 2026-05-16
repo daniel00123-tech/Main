@@ -516,8 +516,25 @@ def as_list(value: Any) -> list[Any]:
             only = next(iter(value.values()))
             if isinstance(only, list):
                 return only
+            if isinstance(only, dict) and looks_like_numbered_container(value):
+                return [only]
+        if looks_like_numbered_container(value):
+            return [line for _, line in sorted_numbered_items(value)]
         return [value]
     return [value]
+
+
+def looks_like_numbered_container(value: dict[str, Any]) -> bool:
+    return bool(value) and all(key.rsplit(" ", 1)[-1].isdigit() for key in value)
+
+
+def sorted_numbered_items(value: dict[str, Any]) -> list[tuple[str, Any]]:
+    def sort_key(item: tuple[str, Any]) -> tuple[str, int]:
+        key, _ = item
+        prefix, _, suffix = key.rpartition(" ")
+        return (prefix, int(suffix) if suffix.isdigit() else 0)
+
+    return sorted(value.items(), key=sort_key)
 
 
 def get_first(data: dict[str, Any], *keys: str) -> Any:
