@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import bigchange_actioner.config as config_module
 from bigchange_actioner.bigchange import BigChangeClient
 from bigchange_actioner.config import BotConfig, ConfigurationError
 
@@ -82,3 +83,33 @@ def test_api_key_mode_builds_basic_auth_and_key_headers() -> None:
     assert headers["Authorization"] == "Basic dXNlckBleGFtcGxlLnRlc3Q6cGFzc3dvcmQ="
     assert headers["key"] == "company-api-key"
     assert "customer-id" not in headers
+
+
+def test_dotenv_values_are_loaded_without_overriding_environment(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    for name in (
+        "BIGCHANGE_AUTH_MODE",
+        "BIGCHANGE_BASE_URL",
+        "BIGCHANGE_API_KEY",
+        "BIGCHANGE_USERNAME",
+        "BIGCHANGE_PASSWORD",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "BIGCHANGE_AUTH_MODE=api_key",
+                "BIGCHANGE_BASE_URL=https://webservice.example.test/v01/services.ashx",
+                "BIGCHANGE_API_KEY=dotenv-key",
+                "BIGCHANGE_USERNAME=dotenv-user@example.test",
+                "BIGCHANGE_PASSWORD=dotenv-password",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BIGCHANGE_API_KEY", "environment-key")
+
+    values = config_module._env_with_dotenv()
+
+    assert values["BIGCHANGE_API_KEY"] == "environment-key"
+    assert values["BIGCHANGE_USERNAME"] == "dotenv-user@example.test"

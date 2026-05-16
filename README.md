@@ -28,6 +28,16 @@ export BIGCHANGE_USERNAME="..."
 export BIGCHANGE_PASSWORD="..."
 ```
 
+For a test environment you can also copy `.env.example` to `.env.local` and
+put the test credentials there:
+
+```bash
+cp .env.example .env.local
+```
+
+Then edit `.env.local`. The bot loads `.env.local` automatically, and that file
+is ignored by Git so the test credentials are not committed.
+
 Required for OAuth mode:
 
 ```bash

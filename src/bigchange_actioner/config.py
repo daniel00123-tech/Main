@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Mapping
 
 
@@ -35,7 +36,7 @@ class BotConfig:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "BotConfig":
-        source = env if env is not None else os.environ
+        source = env if env is not None else _env_with_dotenv()
         auth_mode = source.get("BIGCHANGE_AUTH_MODE") or (
             "api_key" if source.get("BIGCHANGE_API_KEY") else "oauth"
         )
@@ -86,6 +87,41 @@ def _required(env: Mapping[str, str], name: str) -> str:
     if not value:
         raise ConfigurationError(f"{name} is required")
     return value
+
+
+def _env_with_dotenv() -> Mapping[str, str]:
+    values: dict[str, str] = {}
+    for path in (Path(".env"), Path(".env.local")):
+        values.update(_read_dotenv(path))
+    values.update(os.environ)
+    return values
+
+
+def _read_dotenv(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+
+    values: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if (value.startswith('"') and value.endswith('"')) or (
+            value.startswith("'") and value.endswith("'")
+        ):
+            value = value[1:-1]
+        values[key] = value
+    return values
 
 
 def _required_for_mode(
