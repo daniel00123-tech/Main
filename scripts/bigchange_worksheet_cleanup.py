@@ -215,7 +215,7 @@ class BigChangeClient:
         transports = [
             item.strip()
             for item in os.environ.get(
-                "BIGCHANGE_SAVE_TRANSPORTS", "post_json,post_query,get_query"
+                "BIGCHANGE_SAVE_TRANSPORTS", "post_query,get_query"
             ).split(",")
             if item.strip()
         ]
