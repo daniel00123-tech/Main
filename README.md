@@ -1,8 +1,20 @@
 # Main
 
+## Cursor Agent quick start
+
+For the recurring BigChange TEMP invoice VAT correction, do **not** rediscover
+the API or build a one-off client. Run the checked-in entrypoint:
+
+```bash
+./run_bigchange_temp_vat_fix.sh
+```
+
+If the shell does not already have the BigChange variables set, pass them in
+from the automation trigger context without printing them.
+
 ## Daily BigChange TEMP invoice VAT correction
 
-Use the committed runner instead of rediscovering the BigChange API details:
+The entrypoint above calls the committed runner:
 
 ```bash
 python3 scripts/bigchange_temp_vat_fix.py
