@@ -597,6 +597,41 @@ def answers_match(actual: str, expected: str) -> bool:
     return clean_text(actual) == clean_text(expected)
 
 
+def save_question_answer_and_verify(
+    client: BigChangeClient,
+    job_ref_value: str,
+    question: WorksheetQuestion,
+    new_answer: str,
+    target_question_text: str,
+    *,
+    allow_create: bool = False,
+) -> WorksheetQuestion:
+    if not question.question_id:
+        raise BigChangeError("question ID missing")
+
+    answer_ids = [question.answer_id] if question.answer_id else []
+    if allow_create and not answer_ids:
+        answer_ids = ["0", ""]
+    if not answer_ids:
+        raise BigChangeError("answer ID missing")
+
+    errors: list[str] = []
+    for answer_id in answer_ids:
+        try:
+            client.save_answer(job_ref_value, question.question_id, answer_id, new_answer)
+            refreshed = extract_questions(client.get("JobWorksheetQuestions", JobRef=job_ref_value))
+            refreshed_question = find_question(refreshed, target_question_text)
+            if refreshed_question is None:
+                raise BigChangeError("verification question missing after save")
+            if not answers_match(refreshed_question.answer, new_answer):
+                raise BigChangeError("answer verification failed")
+            return refreshed_question
+        except Exception as exc:  # noqa: BLE001 - try all candidate answer IDs.
+            errors.append(f"AnswerId={answer_id!r}: {exc}")
+
+    raise BigChangeError("; ".join(errors))
+
+
 def save_and_verify(
     client: BigChangeClient,
     job_ref_value: str,
@@ -607,29 +642,34 @@ def save_and_verify(
     previous_internal: str,
 ) -> None:
     assert public_question.question_id and public_question.answer_id
-    assert internal_question.question_id and internal_question.answer_id
+    assert internal_question.question_id
 
-    client.save_answer(
+    saved_internal_question = save_question_answer_and_verify(
+        client,
         job_ref_value,
-        internal_question.question_id,
-        internal_question.answer_id,
+        internal_question,
         new_internal,
+        INTERNAL_QUESTION,
+        allow_create=True,
     )
 
     try:
-        client.save_answer(
+        save_question_answer_and_verify(
+            client,
             job_ref_value,
-            public_question.question_id,
-            public_question.answer_id,
+            public_question,
             new_public,
+            PUBLIC_QUESTION,
         )
     except Exception:
         try:
-            client.save_answer(
+            save_question_answer_and_verify(
+                client,
                 job_ref_value,
-                internal_question.question_id,
-                internal_question.answer_id,
+                saved_internal_question,
                 previous_internal,
+                INTERNAL_QUESTION,
+                allow_create=True,
             )
         finally:
             raise
@@ -678,7 +718,6 @@ def run(dry_run: bool = False) -> Summary:
                     public_question.question_id,
                     public_question.answer_id,
                     internal_question.question_id,
-                    internal_question.answer_id,
                 )
             ):
                 summary.jobs_skipped += 1
