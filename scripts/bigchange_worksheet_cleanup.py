@@ -644,14 +644,19 @@ def save_and_verify(
     assert public_question.question_id and public_question.answer_id
     assert internal_question.question_id
 
-    saved_internal_question = save_question_answer_and_verify(
-        client,
-        job_ref_value,
-        internal_question,
-        new_internal,
-        INTERNAL_QUESTION,
-        allow_create=True,
-    )
+    saved_internal_question: WorksheetQuestion | None = None
+    try:
+        saved_internal_question = save_question_answer_and_verify(
+            client,
+            job_ref_value,
+            internal_question,
+            new_internal,
+            INTERNAL_QUESTION,
+            allow_create=True,
+        )
+    except Exception:
+        if compact(previous_internal):
+            raise
 
     try:
         save_question_answer_and_verify(
@@ -662,17 +667,19 @@ def save_and_verify(
             PUBLIC_QUESTION,
         )
     except Exception:
-        try:
-            save_question_answer_and_verify(
-                client,
-                job_ref_value,
-                saved_internal_question,
-                previous_internal,
-                INTERNAL_QUESTION,
-                allow_create=True,
-            )
-        finally:
-            raise
+        if saved_internal_question is not None:
+            try:
+                save_question_answer_and_verify(
+                    client,
+                    job_ref_value,
+                    saved_internal_question,
+                    previous_internal,
+                    INTERNAL_QUESTION,
+                    allow_create=True,
+                )
+            finally:
+                raise
+        raise
 
     refreshed = extract_questions(client.get("JobWorksheetQuestions", JobRef=job_ref_value))
     refreshed_public = find_question(refreshed, PUBLIC_QUESTION)
@@ -681,7 +688,7 @@ def save_and_verify(
         raise BigChangeError("verification questions missing after save")
     if not answers_match(refreshed_public.answer, new_public):
         raise BigChangeError("public answer verification failed")
-    if not answers_match(refreshed_internal.answer, new_internal):
+    if saved_internal_question is not None and not answers_match(refreshed_internal.answer, new_internal):
         raise BigChangeError("internal answer verification failed")
 
 
