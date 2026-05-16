@@ -258,6 +258,7 @@ def process_invoice(
 
     line_item_ids: list[str] = []
     replacement_count = 0
+    job_lines = load_job_financial_lines(client, job_id)
     for line in lines:
         if line.tax_code in ACCEPTED_TAX_CODES:
             if not line.line_item_id:
@@ -265,8 +266,11 @@ def process_invoice(
             line_item_ids.append(line.line_item_id)
             continue
 
-        predefined_id = create_predefined_item(client, reference, line)
-        new_line_id = add_job_financial_line(client, job_id, predefined_id, line)
+        replacement_reference = predefined_reference(reference, line)
+        new_line_id = find_existing_replacement_line(job_lines, replacement_reference, line)
+        if not new_line_id:
+            predefined_id = create_predefined_item(client, replacement_reference, line)
+            new_line_id = add_job_financial_line(client, job_id, predefined_id, line)
         if not new_line_id:
             raise BigChangeError(f"replacement line {line.line_no} cannot be created")
         line_item_ids.append(new_line_id)
@@ -303,9 +307,50 @@ def read_financial_doc(client: BigChangeClient, doc_id: str) -> dict[str, Any]:
     return doc
 
 
-def create_predefined_item(client: BigChangeClient, reference: str, line: FinancialLine) -> str:
+def load_job_financial_lines(client: BigChangeClient, job_id: str) -> list[FinancialLine]:
+    response = client.call("JobFinancialLines", {"JobId": job_id})
+    job_lines = []
+    for idx, raw_line in enumerate(as_list(response), start=1):
+        try:
+            job_lines.append(normalise_line(raw_line, idx))
+        except BigChangeError:
+            continue
+    return job_lines
+
+
+def predefined_reference(invoice_reference: str, line: FinancialLine) -> str:
+    return f"AI-{invoice_reference}-VATFIX-{line.line_no}"
+
+
+def find_existing_replacement_line(
+    job_lines: list[FinancialLine],
+    replacement_reference: str,
+    original_line: FinancialLine,
+) -> str | None:
+    for job_line in job_lines:
+        item_reference = clean_str(get_first(job_line.raw, "ItemReference", "Reference", "InvoiceDefaultReference"))
+        if item_reference != replacement_reference:
+            continue
+        if replacement_line_matches(job_line, original_line):
+            return job_line.line_item_id
+        raise BigChangeError(f"existing replacement line {replacement_reference} does not preserve original values")
+    return None
+
+
+def replacement_line_matches(job_line: FinancialLine, original_line: FinancialLine) -> bool:
+    return (
+        job_line.description == original_line.description
+        and money_decimal(job_line.unit_price) == money_decimal(original_line.unit_price)
+        and quantity_decimal(job_line.quantity) == quantity_decimal(original_line.quantity)
+        and (job_line.nominal_code or None) == (original_line.nominal_code or None)
+        and job_line.tax_code in ACCEPTED_TAX_CODES
+        and bool(job_line.line_item_id)
+    )
+
+
+def create_predefined_item(client: BigChangeClient, replacement_reference: str, line: FinancialLine) -> str:
     params: dict[str, Any] = {
-        "Reference": f"AI-{reference}-VATFIX-{line.line_no}",
+        "Reference": replacement_reference,
         "Description": line.description,
         "UnitPrice": decimal_to_param(line.unit_price),
         "Vat": TARGET_TAX_CODE,
@@ -321,6 +366,7 @@ def create_predefined_item(client: BigChangeClient, reference: str, line: Financ
         response,
         "InvoiceDefaultId",
         "InvoiceDefaultID",
+        "PreDefinedItemId",
         "PredefinedItemId",
         "PredefinedInvItemId",
         "Id",
@@ -346,7 +392,17 @@ def add_job_financial_line(client: BigChangeClient, job_id: str, predefined_id: 
         params["NominalCode"] = line.nominal_code
 
     response = client.call("AddJobFinancialLine", params)
-    return extract_identifier(response, "LineId", "LineID", "FinancialLineId", "FinancialLineID", "Id")
+    return extract_identifier(
+        response,
+        "invoiceItemId",
+        "InvoiceItemId",
+        "InvoiceItemID",
+        "LineId",
+        "LineID",
+        "FinancialLineId",
+        "FinancialLineID",
+        "Id",
+    )
 
 
 def verify_regeneration(
@@ -388,13 +444,16 @@ def normalise_line(raw: Any, line_no: int) -> FinancialLine:
     if not isinstance(raw, dict):
         raise BigChangeError(f"line {line_no} is not an object")
 
-    description = clean_str(get_first(raw, "Description", "description"))
+    description = clean_str(get_first(raw, "Description", "description", "ItemDescription", "itemDescription"))
     currency = clean_str(get_first(raw, "Currency", "currency", "CurrencyCode", "currencyCode")) or "GBP"
     nominal_code = clean_str(get_first(raw, "NominalCode", "nominalCode", "NominalAccountCode", "nominalAccountCode"))
-    tax_code = clean_str(get_first(raw, "TaxCode", "taxCode", "Vat", "VAT"))
+    tax_code = clean_str(get_first(raw, "TaxCode", "taxCode", "InvoiceVatCode", "invoiceVatCode", "Vat", "VAT"))
     line_item_id = clean_str(
         get_first(
             raw,
+            "InvoiceItemId",
+            "InvoiceItemID",
+            "invoiceItemId",
             "LineItemId",
             "LineItemID",
             "FinancialLineId",
@@ -413,8 +472,8 @@ def normalise_line(raw: Any, line_no: int) -> FinancialLine:
         raise BigChangeError(f"line {line_no} is missing Currency")
 
     unit_price = parse_decimal_required(raw, line_no, "UnitPrice", "unitPrice")
-    quantity = parse_decimal_required(raw, line_no, "Quantity", "quantity")
-    item_cost = parse_decimal_optional(raw, "ItemCost", "itemCost", "Cost", "cost")
+    quantity = parse_decimal_required(raw, line_no, "Quantity", "quantity", "LineQuantity", "lineQuantity")
+    item_cost = parse_decimal_optional(raw, "ItemCost", "itemCost", "Cost", "cost", "CostPrice", "costPrice")
 
     return FinancialLine(
         line_no=line_no,
@@ -488,8 +547,10 @@ def unwrap_single_document(response: Any) -> Any:
     return response
 
 
-def extract_identifier(response: Any, *keys: str) -> str:
+def extract_identifier(response: Any, *keys: str, allow_scalar: bool = True) -> str:
     if isinstance(response, (str, int)):
+        if not allow_scalar:
+            return ""
         return clean_str(response)
     if isinstance(response, dict):
         for key in keys:
@@ -499,9 +560,22 @@ def extract_identifier(response: Any, *keys: str) -> str:
         result = get_case_insensitive(response, "Result")
         if result is not None:
             return extract_identifier(result, *keys)
-    values = as_list(response)
-    if len(values) == 1:
-        return extract_identifier(values[0], *keys)
+        if looks_like_numbered_container(response):
+            for _, value in sorted_numbered_items(response):
+                identifier = extract_identifier(value, *keys, allow_scalar=False)
+                if identifier:
+                    return identifier
+        for value in response.values():
+            if isinstance(value, (dict, list)):
+                identifier = extract_identifier(value, *keys, allow_scalar=False)
+                if identifier:
+                    return identifier
+        return ""
+    if isinstance(response, list):
+        for value in response:
+            identifier = extract_identifier(value, *keys, allow_scalar=False)
+            if identifier:
+                return identifier
     return ""
 
 
