@@ -188,7 +188,7 @@ def should_exclude_category(name: str) -> bool:
     norm = normalized_text(name)
     if not norm:
         return True
-    if norm in EXCLUDED_CATEGORY_NAMES:
+    if any(excluded_name in norm for excluded_name in EXCLUDED_CATEGORY_NAMES):
         return True
     if norm in {"uncategorised", "uncategorized"}:
         return True
