@@ -737,7 +737,7 @@ def build_day_row(
         if original_start and deduction_minutes
         else original_start
     )
-    if deduction_minutes == 0 and original_start and first_job:
+    if deduction_minutes == 0 and original_start and (first_started_job or first_planned_job):
         deduction_reason = (
             f"Original start {fmt_time(original_start)}; adjusted start {fmt_time(adjusted_start)}; "
             f"deduction 0 mins; {deduction_reason}"
