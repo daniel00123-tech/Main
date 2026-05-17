@@ -37,7 +37,7 @@ KPI_ORDER = [
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
 
-SALES_ORDER_TYPES = {"invoice", "quote", "purchaseorder", "proforma", "salesorder"}
+SALES_ORDER_TYPES = {"invoice", "quote", "purchaseorder", "proforma", "salesorder", "creditnote"}
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
@@ -342,7 +342,7 @@ def calculate_sales(
         for line in document.get("lines") or []:
             if not isinstance(line, dict):
                 continue
-            # BigChange NetPrice is already the net line value; VatAmount is reported separately.
+            # BigChange creator sales use the line NetPrice and keep credit notes as signed values.
             net += as_decimal(line.get("NetPrice"))
         sales[matched_staff] += net
     return dict(sales)
