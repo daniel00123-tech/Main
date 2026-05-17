@@ -12,6 +12,7 @@ import argparse
 import base64
 import json
 import os
+import signal
 import sys
 import time
 import urllib.error
@@ -35,6 +36,10 @@ class BigChangeError(RuntimeError):
     """Raised when a BigChange web service call fails permanently."""
 
 
+class RequestTimeoutError(TimeoutError):
+    """Raised when a web service request exceeds the hard timeout."""
+
+
 @dataclass(frozen=True)
 class IntendedUpdate:
     job_id: int
@@ -47,14 +52,19 @@ class IntendedUpdate:
 
 
 class BigChangeClient:
-    def __init__(self, base_url: str, api_key: str, username: str, password: str) -> None:
+    def __init__(self, base_url: str, api_key: str, username: str, password: str, *, timeout_seconds: int) -> None:
         self.base_url = base_url
         self.api_key = api_key
+        self.timeout_seconds = timeout_seconds
         auth = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
         self.headers = {
             "Authorization": f"Basic {auth}",
             "User-Agent": "cursor-bigchange-automation/1.0",
         }
+
+    @staticmethod
+    def _timeout_handler(_signum: int, _frame: Any) -> None:
+        raise RequestTimeoutError("request exceeded hard timeout")
 
     def call(
         self,
@@ -72,8 +82,14 @@ class BigChangeClient:
         for attempt in range(max_attempts):
             try:
                 request = urllib.request.Request(url, headers=self.headers)
-                with urllib.request.urlopen(request, timeout=120) as response:
-                    raw = response.read().decode("utf-8", "replace")
+                old_handler = signal.signal(signal.SIGALRM, self._timeout_handler)
+                signal.alarm(self.timeout_seconds + 5)
+                try:
+                    with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                        raw = response.read().decode("utf-8", "replace")
+                finally:
+                    signal.alarm(0)
+                    signal.signal(signal.SIGALRM, old_handler)
                 payload = json.loads(raw)
 
                 if isinstance(payload, dict) and payload.get("Code") == 3:
@@ -110,6 +126,32 @@ def parse_bigchange_datetime(value: Any) -> datetime | None:
         except ValueError:
             continue
     return None
+
+
+def parse_cli_datetime(value: str, *, end_of_day: bool = False) -> datetime:
+    text = value.strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            parsed = datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+            if fmt == "%Y-%m-%d" and end_of_day:
+                parsed = parsed.replace(hour=23, minute=59, second=59)
+            return parsed
+        except ValueError:
+            continue
+    raise SystemExit(f"Invalid date/datetime: {value!r}")
+
+
+def default_window(now: datetime, days: int) -> tuple[datetime, datetime]:
+    yesterday = (now - timedelta(days=1)).date()
+    end = datetime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59, tzinfo=timezone.utc)
+    start_date = yesterday - timedelta(days=days)
+    start = datetime(start_date.year, start_date.month, start_date.day, 0, 0, 0, tzinfo=timezone.utc)
+    return start, end
+
+
+def in_window(job: dict[str, Any], start_dt: datetime, end_dt: datetime) -> bool:
+    created = parse_bigchange_datetime(job.get("Created"))
+    return bool(created and start_dt <= created <= end_dt)
 
 
 def normalise_name(value: Any) -> str:
@@ -196,6 +238,23 @@ def append_log(path: Path, row: dict[str, Any]) -> None:
         handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
 
 
+def existing_apply_keys(path: Path) -> set[tuple[int, str]]:
+    keys: set[tuple[int, str]] = set()
+    if not path.exists():
+        return keys
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("status") == "updated":
+                keys.add((int(row["job_id"]), str(row["update_type"])))
+    return keys
+
+
 def build_summary(
     *,
     run_started: str,
@@ -263,15 +322,18 @@ def build_summary(
 def run(args: argparse.Namespace) -> int:
     run_started_dt = datetime.now(timezone.utc)
     run_started = run_started_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-    since_dt = run_started_dt - timedelta(days=args.days)
-    start = since_dt.strftime("%Y-%m-%d %H:%M:%S")
-    end = run_started_dt.strftime("%Y-%m-%d %H:%M:%S")
+    default_start_dt, default_end_dt = default_window(run_started_dt, args.days)
+    start_dt = parse_cli_datetime(args.start_date) if args.start_date else default_start_dt
+    end_dt = parse_cli_datetime(args.end_date, end_of_day=True) if args.end_date else default_end_dt
+    start = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+    end = end_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     output_dir = Path(args.output_dir or f"runs/bigchange_{run_started_dt.strftime('%Y%m%dT%H%M%SZ')}")
     output_dir.mkdir(parents=True, exist_ok=True)
     review_log_path = output_dir / "review_log.jsonl"
     preview_path = output_dir / "preview_updates.json"
     apply_results_path = output_dir / "apply_results.json"
+    apply_results_jsonl_path = output_dir / "apply_results.jsonl"
     summary_path = output_dir / "summary_report.md"
     for path in (review_log_path,):
         path.write_text("", encoding="utf-8")
@@ -281,6 +343,7 @@ def run(args: argparse.Namespace) -> int:
         require_env("BIGCHANGE_API_KEY"),
         require_env("BIGCHANGE_USERNAME"),
         require_env("BIGCHANGE_PASSWORD"),
+        timeout_seconds=args.timeout_seconds,
     )
 
     categories = result_list(client.call({"action": "JobCategories"}), "JobCategories")
@@ -298,11 +361,13 @@ def run(args: argparse.Namespace) -> int:
     auto_close_tag_id = int(auto_close_tags[0]["Id"])
 
     all_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size)
-    jobs_by_id: dict[int, dict[str, Any]] = {int(job["JobId"]): job for job in all_jobs if job.get("JobId")}
+    jobs_by_id: dict[int, dict[str, Any]] = {
+        int(job["JobId"]): job for job in all_jobs if job.get("JobId") and in_window(job, start_dt, end_dt)
+    }
     flagged_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size, tag_id=auto_close_tag_id)
-    flagged_ids = {int(job["JobId"]) for job in flagged_jobs if job.get("JobId")}
+    flagged_ids = {int(job["JobId"]) for job in flagged_jobs if job.get("JobId") and in_window(job, start_dt, end_dt)}
     for job in flagged_jobs:
-        if job.get("JobId"):
+        if job.get("JobId") and in_window(job, start_dt, end_dt):
             jobs_by_id.setdefault(int(job["JobId"]), job)
 
     intended: list[IntendedUpdate] = []
@@ -416,28 +481,30 @@ def run(args: argparse.Namespace) -> int:
 
     apply_results: list[dict[str, Any]] = []
     if args.apply:
+        completed = existing_apply_keys(apply_results_jsonl_path) if args.resume else set()
         for update in intended:
+            key = (update.job_id, update.update_type)
+            if key in completed:
+                continue
             try:
                 response = client.call(update.params)
-                apply_results.append(
-                    {
-                        "job_id": update.job_id,
-                        "job_ref": update.job_ref,
-                        "update_type": update.update_type,
-                        "status": "updated",
-                        "response": response,
-                    }
-                )
+                result = {
+                    "job_id": update.job_id,
+                    "job_ref": update.job_ref,
+                    "update_type": update.update_type,
+                    "status": "updated",
+                    "response": response,
+                }
             except Exception as exc:  # noqa: BLE001 - keep processing remaining jobs.
-                apply_results.append(
-                    {
-                        "job_id": update.job_id,
-                        "job_ref": update.job_ref,
-                        "update_type": update.update_type,
-                        "status": "failed",
-                        "error": str(exc),
-                    }
-                )
+                result = {
+                    "job_id": update.job_id,
+                    "job_ref": update.job_ref,
+                    "update_type": update.update_type,
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            apply_results.append(result)
+            append_log(apply_results_jsonl_path, result)
     write_json(apply_results_path, apply_results)
 
     run_finished = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -455,6 +522,7 @@ def run(args: argparse.Namespace) -> int:
     print(f"review_log={review_log_path}")
     print(f"preview={preview_path}")
     print(f"apply_results={apply_results_path}")
+    print(f"apply_results_jsonl={apply_results_jsonl_path}")
     print(f"summary={summary_path}")
     print(f"jobs_reviewed={len(jobs_by_id)} intended_updates={len(intended)} applied={len(apply_results)}")
     return 0
@@ -463,8 +531,12 @@ def run(args: argparse.Namespace) -> int:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Apply previewed updates after generating the preview.")
-    parser.add_argument("--days", type=int, default=30, help="Creation-date lookback window.")
+    parser.add_argument("--days", type=int, default=30, help="Look back this many days before yesterday.")
+    parser.add_argument("--start-date", help="Override inclusive creation-date window start (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).")
+    parser.add_argument("--end-date", help="Override inclusive creation-date window end (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).")
     parser.add_argument("--page-size", type=int, default=5000, help="JobsList page size.")
+    parser.add_argument("--resume", action="store_true", help="Skip updates already marked successful in apply_results.jsonl.")
+    parser.add_argument("--timeout-seconds", type=int, default=30, help="Per-request socket timeout.")
     parser.add_argument("--output-dir", help="Directory for preview, logs, and summary artifacts.")
     return parser.parse_args(argv)
 
