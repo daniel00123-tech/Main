@@ -875,7 +875,9 @@ def render_png(html_content: str, html_path: Path, png_path: Path, row_count: in
     png_path.parent.mkdir(parents=True, exist_ok=True)
     html_path.write_text(html_content, encoding="utf-8")
     height = max(780, min(5000, 260 + row_count * 130))
-    chrome = optional_env("CHROME_BIN", "google-chrome")
+    chrome = optional_env("CHROME_BIN")
+    if not chrome:
+        chrome = "/opt/google/chrome/chrome" if Path("/opt/google/chrome/chrome").exists() else "google-chrome"
     with tempfile.TemporaryDirectory(prefix="bigchange-chrome-") as profile_dir:
         cmd = [
             chrome,
@@ -888,7 +890,7 @@ def render_png(html_content: str, html_path: Path, png_path: Path, row_count: in
             f"--screenshot={png_path}",
             html_path.resolve().as_uri(),
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
 
 
 def mailbox_address(email_value: str, display_name: str = "") -> Address:
