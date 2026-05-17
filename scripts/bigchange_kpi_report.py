@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import base64
-import concurrent.futures
 import datetime as dt
 import decimal
 import html
@@ -234,10 +233,10 @@ class BigChangeClient:
             raise RuntimeError("BigChange invoiceswithitemsbyperiod returned an error")
         return self.result_rows(payload)
 
-    def job_customer_activity(self, job_id: str) -> list[dict[str, Any]]:
-        payload = self.get("jobcustomeractivity", {"JobId": job_id}, timeout=10, attempts=1)
+    def web_user_list(self) -> list[dict[str, Any]]:
+        payload = self.get("webuserlist")
         if payload.get("Code") != 0:
-            return []
+            raise RuntimeError("BigChange webuserlist returned an error")
         return self.result_rows(payload)
 
 
@@ -303,6 +302,11 @@ def calculate_sales(
     end: dt.date,
 ) -> dict[str, decimal.Decimal]:
     staff_by_key = {name_key(name): name for name in staff_names if name_key(name)}
+    web_users = {
+        str(user.get("id")): clean_name(user.get("name"))
+        for user in client.web_user_list()
+        if user.get("id") is not None and clean_name(user.get("name"))
+    }
     invoices = client.invoices_with_items_by_period(start, end)
 
     eligible: list[dict[str, Any]] = []
@@ -313,33 +317,9 @@ def calculate_sales(
             continue
         eligible.append(invoice)
 
-    job_ids = sorted({str(inv.get("JobId")) for inv in eligible if inv.get("JobId")})
-    activity_cache: dict[str, list[dict[str, Any]]] = {}
-    if job_ids:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
-            futures = {pool.submit(client.job_customer_activity, job_id): job_id for job_id in job_ids}
-            for future in concurrent.futures.as_completed(futures):
-                job_id = futures[future]
-                try:
-                    activity_cache[job_id] = future.result()
-                except Exception:
-                    activity_cache[job_id] = []
-
     sales: dict[str, decimal.Decimal] = defaultdict(lambda: DECIMAL_ZERO)
     for invoice in eligible:
-        job_id = str(invoice.get("JobId") or "")
-        activities = activity_cache.get(job_id, [])
-        invoice_created_activities = [
-            activity
-            for activity in activities
-            if as_int(activity.get("JobClientStatusID") or activity.get("JobClientStatusId")) == 34
-        ]
-        if not invoice_created_activities:
-            continue
-        invoice_created_activities.sort(
-            key=lambda activity: parse_date(activity.get("JobClientStatusDate")) or dt.datetime.min
-        )
-        creator = clean_name(invoice_created_activities[-1].get("JobClientStatusOwner"))
+        creator = resolve_document_creator(invoice, web_users)
         matched_staff = staff_by_key.get(name_key(creator))
         if not matched_staff:
             continue
@@ -350,6 +330,18 @@ def calculate_sales(
             net += as_decimal(line.get("NetPrice")) - as_decimal(line.get("VatAmount"))
         sales[matched_staff] += net
     return dict(sales)
+
+
+def resolve_document_creator(invoice: dict[str, Any], web_users: dict[str, str]) -> str:
+    creator = clean_name(
+        invoice.get("OrderCreator")
+        or invoice.get("DocumentCreator")
+        or invoice.get("CreatedBy")
+        or invoice.get("Creator")
+    )
+    if creator in web_users:
+        return web_users[creator]
+    return creator
 
 
 def build_report(client: BigChangeClient) -> dict[str, Any]:

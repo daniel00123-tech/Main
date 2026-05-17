@@ -2,7 +2,7 @@
 
 Daily automation that gathers BigChange legacy Web Services KPI data, renders a dark HTML dashboard to PNG, emails the PNG inline, and saves the run baseline to `automation-memory/kpi-baseline.json`.
 
-Job KPIs are limited to jobs from the last 12 months. Current-month sales continue to use financial documents from the first of the current month through the report date.
+Job KPIs are limited to jobs from the last 12 months. Current-month sales continue to use financial documents from the first of the current month through the report date, attributed by the financial document `OrderCreator` web user.
 
 Run with the required BigChange and SMTP configuration supplied as environment variables:
 
