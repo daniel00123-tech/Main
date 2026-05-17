@@ -37,12 +37,38 @@ KPI_ORDER = [
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
 
-SALES_ORDER_TYPES = {"quote", "purchaseorder"}
+INVOICE_ORDER_TYPE = "invoice"
+INVOICE_CREATED_CLIENT_STATUS_ID = 34
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
 OPEN_NOT_STARTED_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
 DECIMAL_ZERO = decimal.Decimal("0")
+EXCLUDED_CATEGORY_NAMES = {
+    "btr compliance",
+    "btr reactive",
+    "john bennett",
+    "ryan barrett",
+}
+ACTIVITY_DATE_FIELDS = (
+    "JobClientStatusDate",
+    "JobClientStatusDateTime",
+    "ClientStatusDate",
+    "StatusDate",
+    "ActivityDate",
+    "CreatedDate",
+    "DateCreated",
+    "Date",
+)
+JOB_ID_FIELDS = ("JobId", "JobID", "Jobid", "Job_Id", "job_id")
+OWNER_FIELDS = (
+    "JobClientStatusOwner",
+    "JobClientStatusOwnerName",
+    "JobClientStatusOwnerID",
+    "Owner",
+    "OwnerName",
+    "CreatedBy",
+)
 
 
 class ConfigError(RuntimeError):
@@ -103,6 +129,13 @@ def as_bool_falsey(value: Any) -> bool:
     return text in {"0", "false", "no", "n", "none", "null"}
 
 
+def has_meaningful_value(value: Any) -> bool:
+    if value in (None, "", False, 0):
+        return False
+    text = str(value).strip().lower()
+    return text not in {"", "0", "false", "no", "n", "none", "null", "0001-01-01", "0001-01-01 00:00:00"}
+
+
 def as_decimal(value: Any) -> decimal.Decimal:
     if value in (None, ""):
         return DECIMAL_ZERO
@@ -114,6 +147,18 @@ def as_decimal(value: Any) -> decimal.Decimal:
 
 def clean_name(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def first_value(row: dict[str, Any], *names: str) -> Any:
+    for name in names:
+        if name in row:
+            return row[name]
+    lower_lookup = {str(key).lower(): value for key, value in row.items()}
+    for name in names:
+        lowered = name.lower()
+        if lowered in lower_lookup:
+            return lower_lookup[lowered]
+    return None
 
 
 def normalized_text(value: str) -> str:
@@ -142,6 +187,8 @@ def match_staff_name(creator_name: str, staff_by_key: dict[str, str]) -> str | N
 def should_exclude_category(name: str) -> bool:
     norm = normalized_text(name)
     if not norm:
+        return True
+    if norm in EXCLUDED_CATEGORY_NAMES:
         return True
     if norm in {"uncategorised", "uncategorized"}:
         return True
@@ -240,11 +287,17 @@ class BigChangeClient:
 
     def invoices_with_items_by_period(self, start: dt.date, end: dt.date) -> list[dict[str, Any]]:
         payload = self.get(
-            "invoiceswithitemsbyperiod",
+            "InvoicesWithItemsByPeriod",
             {"Start": start.isoformat(), "End": end.isoformat()},
         )
         if payload.get("Code") != 0:
             raise RuntimeError("BigChange invoiceswithitemsbyperiod returned an error")
+        return self.result_rows(payload)
+
+    def job_customer_activity(self, job_id: int | str) -> list[dict[str, Any]]:
+        payload = self.get("JobCustomerActivity", {"JobId": job_id})
+        if payload.get("Code") != 0:
+            raise RuntimeError(f"BigChange jobcustomeractivity returned code {payload.get('Code')}")
         return self.result_rows(payload)
 
     def web_user_list(self) -> list[dict[str, Any]]:
@@ -316,51 +369,111 @@ def calculate_sales(
     end: dt.date,
 ) -> dict[str, decimal.Decimal]:
     staff_by_key = {name_key(name): name for name in staff_names if name_key(name)}
-    web_users = {
-        str(user.get("id")): clean_name(user.get("name"))
-        for user in client.web_user_list()
-        if user.get("id") is not None and clean_name(user.get("name"))
-    }
+    web_users = build_web_user_lookup(client.web_user_list())
     financial_documents = client.invoices_with_items_by_period(start, end)
 
     eligible: list[dict[str, Any]] = []
     for document in financial_documents:
-        order_type = re.sub(r"[^a-z]", "", clean_name(document.get("OrderType")).lower())
-        if order_type not in SALES_ORDER_TYPES:
+        order_type = re.sub(r"[^a-z]", "", clean_name(first_value(document, "OrderType")).lower())
+        if order_type != INVOICE_ORDER_TYPE:
             continue
-        if document.get("CancellationDate") or document.get("DeletionDate") or document.get("RejectionDate"):
+        if is_cancelled_deleted_or_rejected(document):
             continue
         eligible.append(document)
 
     sales: dict[str, decimal.Decimal] = defaultdict(lambda: DECIMAL_ZERO)
+    activity_cache: dict[str, list[dict[str, Any]]] = {}
     for document in eligible:
-        order_type = re.sub(r"[^a-z]", "", clean_name(document.get("OrderType")).lower())
-        creator = resolve_document_creator(document, web_users)
+        creator = resolve_invoice_creator(client, document, web_users, activity_cache)
         matched_staff = match_staff_name(creator, staff_by_key)
         if not matched_staff:
             continue
         net = DECIMAL_ZERO
-        for line in document.get("lines") or []:
-            if not isinstance(line, dict):
-                continue
-            line_net = as_decimal(line.get("NetPrice"))
-            if order_type == "purchaseorder":
-                line_net -= as_decimal(line.get("VatAmount"))
+        for line in invoice_lines(document):
+            line_net = as_decimal(first_value(line, "NetPrice")) - as_decimal(first_value(line, "VatAmount"))
             net += line_net
         sales[matched_staff] += net
     return dict(sales)
 
 
-def resolve_document_creator(invoice: dict[str, Any], web_users: dict[str, str]) -> str:
-    creator = clean_name(
-        invoice.get("OrderCreator")
-        or invoice.get("DocumentCreator")
-        or invoice.get("CreatedBy")
-        or invoice.get("Creator")
+def build_web_user_lookup(users: list[dict[str, Any]]) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    for user in users:
+        user_id = first_value(user, "id", "Id", "ID", "WebUserId", "WebUserID")
+        name = clean_name(first_value(user, "name", "Name", "FullName", "DisplayName"))
+        if user_id is not None and name:
+            lookup[str(user_id)] = name
+            int_id = as_int(user_id)
+            if int_id is not None:
+                lookup[str(int_id)] = name
+    return lookup
+
+
+def is_cancelled_deleted_or_rejected(document: dict[str, Any]) -> bool:
+    return any(
+        has_meaningful_value(first_value(document, *field_names))
+        for field_names in (
+            ("CancellationDate", "CancelledDate", "DateCancelled", "DateCanceled"),
+            ("Cancelled", "Canceled", "IsCancelled", "IsCanceled"),
+            ("DeletionDate", "DeletedDate", "DateDeleted"),
+            ("Deleted", "IsDeleted"),
+            ("RejectionDate", "RejectedDate", "DateRejected"),
+            ("Rejected", "IsRejected"),
+        )
     )
-    if creator in web_users:
-        return web_users[creator]
-    return creator
+
+
+def invoice_lines(document: dict[str, Any]) -> list[dict[str, Any]]:
+    lines = first_value(document, "lines", "Lines", "items", "Items", "InvoiceItems", "OrderItems")
+    if isinstance(lines, list):
+        return [line for line in lines if isinstance(line, dict)]
+    return [document]
+
+
+def document_job_id(document: dict[str, Any]) -> str:
+    for row in [document, *invoice_lines(document)]:
+        job_id = first_value(row, *JOB_ID_FIELDS)
+        if has_meaningful_value(job_id):
+            return clean_name(job_id)
+    return ""
+
+
+def resolve_invoice_creator(
+    client: BigChangeClient,
+    invoice: dict[str, Any],
+    web_users: dict[str, str],
+    activity_cache: dict[str, list[dict[str, Any]]],
+) -> str:
+    job_id = document_job_id(invoice)
+    if not job_id:
+        return ""
+    if job_id not in activity_cache:
+        activity_cache[job_id] = client.job_customer_activity(job_id)
+
+    invoice_created_activities: list[tuple[int, dt.datetime | None, dict[str, Any]]] = []
+    for index, activity in enumerate(activity_cache[job_id]):
+        status_id = as_int(first_value(activity, "JobClientStatusID", "JobClientStatusId", "ClientStatusId"))
+        status_name = normalized_text(clean_name(first_value(activity, "JobClientStatusName", "ClientStatusName")))
+        if status_id == INVOICE_CREATED_CLIENT_STATUS_ID or status_name == "invoice created":
+            activity_date = None
+            for field in ACTIVITY_DATE_FIELDS:
+                activity_date = parse_date(first_value(activity, field))
+                if activity_date:
+                    break
+            invoice_created_activities.append((index, activity_date, activity))
+
+    if not invoice_created_activities:
+        return ""
+
+    _index, _activity_date, latest_activity = max(
+        invoice_created_activities,
+        key=lambda item: (item[1] or dt.datetime.min, item[0]),
+    )
+    owner = clean_name(first_value(latest_activity, *OWNER_FIELDS))
+    int_owner = as_int(owner)
+    if int_owner is not None and str(int_owner) in web_users:
+        return web_users[str(int_owner)]
+    return web_users.get(owner, owner)
 
 
 def build_report(client: BigChangeClient) -> dict[str, Any]:
@@ -541,9 +654,9 @@ def render_html(report: dict[str, Any]) -> str:
             f'<div class="person"><strong>{staff}</strong><span>Staff owner</span></div>'
             "</td>",
         ]
-        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         for metric_key, _label in KPI_ORDER:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
+        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         rows_html.append(f"<tr>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
@@ -697,7 +810,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     th:nth-child(1), td:nth-child(1) {{ width: 72px; }}
     th:nth-child(2), td:nth-child(2) {{ width: 292px; }}
-    th:nth-child(3), td:nth-child(3) {{ width: 170px; }}
+    th:nth-child(7), td:nth-child(7) {{ width: 170px; }}
     td {{
       padding: 14px 10px;
       border-bottom: 1px solid var(--line);
@@ -842,11 +955,11 @@ def render_html(report: dict[str, Any]) -> str:
         <tr>
           <th>Rank</th>
           <th>Staff member</th>
-          <th>{month_name} sales</th>
           <th>Unallocated Jobs</th>
           <th>Historic Jobs</th>
           <th>Uninvoiced Jobs</th>
           <th>Unactioned Jobs</th>
+          <th>{month_name} sales</th>
         </tr>
       </thead>
       <tbody>
