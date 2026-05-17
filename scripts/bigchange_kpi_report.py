@@ -21,9 +21,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
-from email import encoders
 from email.headerregistry import Address
-from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -38,12 +36,18 @@ KPI_ORDER = [
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
 
-SALES_ORDER_TYPES = {"invoice", "creditnote"}
+SALES_ORDER_TYPES = {"invoice"}
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
 OPEN_NOT_STARTED_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
 DECIMAL_ZERO = decimal.Decimal("0")
+EXCLUDED_CATEGORY_NAMES = {
+    "btr compliance",
+    "btr reactive",
+    "john bennett",
+    "ryan barrett",
+}
 
 
 class ConfigError(RuntimeError):
@@ -143,6 +147,8 @@ def match_staff_name(creator_name: str, staff_by_key: dict[str, str]) -> str | N
 def should_exclude_category(name: str) -> bool:
     norm = normalized_text(name)
     if not norm:
+        return True
+    if norm in EXCLUDED_CATEGORY_NAMES:
         return True
     if norm in {"uncategorised", "uncategorized"}:
         return True
@@ -365,17 +371,16 @@ def invoice_created_owner(document: dict[str, Any], activity_cache: dict[str, li
     job_id = str(document.get("JobId") or "")
     if not job_id:
         return ""
-    document_date = parse_date(document.get("DocumentDate")) or dt.datetime.min
-    candidates: list[tuple[float, dict[str, Any]]] = []
+    candidates: list[tuple[dt.datetime, dict[str, Any]]] = []
     for activity in activity_cache.get(job_id, []):
         status_id = as_int(activity.get("JobClientStatusID") or activity.get("JobClientStatusId"))
         if status_id != 34:
             continue
         activity_date = parse_date(activity.get("JobClientStatusDate")) or dt.datetime.min
-        candidates.append((abs((activity_date - document_date).total_seconds()), activity))
+        candidates.append((activity_date, activity))
     if not candidates:
         return ""
-    candidates.sort(key=lambda item: item[0])
+    candidates.sort(key=lambda item: item[0], reverse=True)
     return clean_name(candidates[0][1].get("JobClientStatusOwner"))
 
 
@@ -396,7 +401,7 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     today = dt.date.today()
     tomorrow = today + dt.timedelta(days=1)
     month_start = today.replace(day=1)
-    month_end = today.replace(day=days_in_month(today.year, today.month))
+    month_end = today
     lookback_start = months_ago(today, 12)
 
     staff_names: set[str] = set()
@@ -458,7 +463,10 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
         }
     )
     uninvoiced_rows = [
-        row for row in uninvoiced_rows if as_int(row.get("StatusId")) in COMPLETED_STATUS_IDS
+        row
+        for row in uninvoiced_rows
+        if as_int(row.get("StatusId")) in COMPLETED_STATUS_IDS
+        and as_int(row.get("ClientStatusId") or row.get("ClientStatusID")) == -34
     ]
     add_items(grouped, staff_names, uninvoiced_rows, "uninvoiced_jobs", "StatusDate", today)
 
@@ -570,9 +578,9 @@ def render_html(report: dict[str, Any]) -> str:
             f'<div class="person"><strong>{staff}</strong><span>Staff owner</span></div>'
             "</td>",
         ]
-        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         for metric_key, _label in KPI_ORDER:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
+        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         rows_html.append(f"<tr>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
@@ -726,7 +734,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     th:nth-child(1), td:nth-child(1) {{ width: 72px; }}
     th:nth-child(2), td:nth-child(2) {{ width: 292px; }}
-    th:nth-child(3), td:nth-child(3) {{ width: 170px; }}
+    th:nth-child(7), td:nth-child(7) {{ width: 170px; }}
     td {{
       padding: 14px 10px;
       border-bottom: 1px solid var(--line);
@@ -871,11 +879,11 @@ def render_html(report: dict[str, Any]) -> str:
         <tr>
           <th>Rank</th>
           <th>Staff member</th>
-          <th>{month_name} sales</th>
           <th>Unallocated Jobs</th>
           <th>Historic Jobs</th>
           <th>Uninvoiced Jobs</th>
           <th>Unactioned Jobs</th>
+          <th>{month_name} sales</th>
         </tr>
       </thead>
       <tbody>
@@ -943,20 +951,21 @@ def send_email(png_path: Path) -> None:
     smtp_port = int(required_env("SMTP_PORT"))
     smtp_username = required_env("SMTP_USERNAME")
     smtp_password = required_env("SMTP_PASSWORD")
-    from_email = required_env("SMTP_FROM_EMAIL")
+    from_email = required_env("SMTP_FROM_EMAIL").strip()
     from_name = optional_env("SMTP_FROM_NAME")
-    to_email = required_env("SMTP_TO_EMAIL")
+    to_email = required_env("SMTP_TO_EMAIL").strip()
     cc_email = optional_env("SMTP_CC_EMAIL")
+    to_recipients = [addr.strip() for addr in to_email.split(",") if addr.strip()]
+    cc_recipients = [addr.strip() for addr in cc_email.split(",") if addr.strip()]
 
     subject = f"BigChange KPI Overview - {dt.date.today().isoformat()}"
     root = MIMEMultipart("related")
     root["Subject"] = subject
     root["From"] = str(mailbox_address(from_email, from_name))
-    root["To"] = to_email
-    recipients = [to_email]
-    if cc_email:
-        root["Cc"] = cc_email
-        recipients.extend([addr.strip() for addr in cc_email.split(",") if addr.strip()])
+    root["To"] = ", ".join(to_recipients)
+    recipients = [*to_recipients, *cc_recipients]
+    if cc_recipients:
+        root["Cc"] = ", ".join(cc_recipients)
 
     alt = MIMEMultipart("alternative")
     root.attach(alt)
@@ -979,25 +988,35 @@ Daniel Dwyer
     alt.attach(MIMEText(html_body, "html", "utf-8"))
 
     image_data = png_path.read_bytes()
-    image = MIMEImage(image_data, _subtype="png")
-    image.add_header("Content-ID", "<kpi-dashboard>")
-    image.add_header("Content-Disposition", "inline", filename=png_path.name)
-    root.attach(image)
+    dashboard_image = MIMEImage(image_data, _subtype="png")
+    dashboard_image.add_header("Content-ID", "<kpi-dashboard>")
+    dashboard_image.add_header("Content-Disposition", "inline", filename=png_path.name)
+    root.attach(dashboard_image)
 
-    attachment = MIMEBase("image", "png")
-    attachment.set_payload(image_data)
-    encoders.encode_base64(attachment)
-    attachment.add_header("Content-Disposition", "attachment", filename=png_path.name)
-    root.attach(attachment)
-
-    # The only attachment is the dashboard PNG; JSON and HTML stay on disk only.
+    # The only non-body MIME part is the dashboard PNG; JSON and HTML stay on disk only.
     with smtplib.SMTP(smtp_host, smtp_port, timeout=120) as smtp:
         smtp.starttls()
         smtp.login(smtp_username, smtp_password)
         smtp.sendmail(from_email, recipients, root.as_string())
 
 
+def print_status(report: dict[str, Any] | None, email_status: str, stream: Any = sys.stdout) -> None:
+    print(
+        json.dumps(
+            {
+                "staff_rows_included": len(report["staff_rows"]) if report else 0,
+                "total_red_kpis": report["total_red_kpis"] if report else 0,
+                "total_amber_kpis": report["total_amber_kpis"] if report else 0,
+                "email": email_status,
+            },
+            sort_keys=True,
+        ),
+        file=stream,
+    )
+
+
 def main() -> int:
+    report: dict[str, Any] | None = None
     try:
         client = BigChangeClient()
         report = build_report(client)
@@ -1009,32 +1028,10 @@ def main() -> int:
         render_png(html_content, html_path, png_path, len(report["staff_rows"]))
         save_baseline(report, baseline_path)
         send_email(png_path)
-        print(
-            json.dumps(
-                {
-                    "staff_rows_included": len(report["staff_rows"]),
-                    "total_red_kpis": report["total_red_kpis"],
-                    "total_amber_kpis": report["total_amber_kpis"],
-                    "email": "sent",
-                },
-                sort_keys=True,
-            )
-        )
+        print_status(report, "sent")
         return 0
-    except Exception as exc:
-        print(
-            json.dumps(
-                {
-                    "staff_rows_included": 0,
-                    "total_red_kpis": 0,
-                    "total_amber_kpis": 0,
-                    "email": "failed",
-                    "error": type(exc).__name__,
-                },
-                sort_keys=True,
-            ),
-            file=sys.stderr,
-        )
+    except Exception:
+        print_status(report, "failed", stream=sys.stderr)
         return 1
 
 
