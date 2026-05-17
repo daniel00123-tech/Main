@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import datetime as dt
 import decimal
+import difflib
 import html
 import json
 import os
@@ -36,6 +37,7 @@ KPI_ORDER = [
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
 
+SALES_ORDER_TYPES = {"invoice", "quote", "purchaseorder", "proforma", "salesorder"}
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
@@ -123,6 +125,18 @@ def name_key(value: str) -> str:
     if len(tokens) >= 2:
         return f"{tokens[0]} {tokens[-1]}"
     return " ".join(tokens)
+
+
+def match_staff_name(creator_name: str, staff_by_key: dict[str, str]) -> str | None:
+    key = name_key(creator_name)
+    if not key:
+        return None
+    if key in staff_by_key:
+        return staff_by_key[key]
+    match = difflib.get_close_matches(key, staff_by_key.keys(), n=1, cutoff=0.88)
+    if match:
+        return staff_by_key[match[0]]
+    return None
 
 
 def should_exclude_category(name: str) -> bool:
@@ -307,27 +321,29 @@ def calculate_sales(
         for user in client.web_user_list()
         if user.get("id") is not None and clean_name(user.get("name"))
     }
-    invoices = client.invoices_with_items_by_period(start, end)
+    financial_documents = client.invoices_with_items_by_period(start, end)
 
     eligible: list[dict[str, Any]] = []
-    for invoice in invoices:
-        if clean_name(invoice.get("OrderType")).lower() != "invoice":
+    for document in financial_documents:
+        order_type = re.sub(r"[^a-z]", "", clean_name(document.get("OrderType")).lower())
+        if order_type not in SALES_ORDER_TYPES:
             continue
-        if invoice.get("CancellationDate") or invoice.get("DeletionDate") or invoice.get("RejectionDate"):
+        if document.get("CancellationDate") or document.get("DeletionDate") or document.get("RejectionDate"):
             continue
-        eligible.append(invoice)
+        eligible.append(document)
 
     sales: dict[str, decimal.Decimal] = defaultdict(lambda: DECIMAL_ZERO)
-    for invoice in eligible:
-        creator = resolve_document_creator(invoice, web_users)
-        matched_staff = staff_by_key.get(name_key(creator))
+    for document in eligible:
+        creator = resolve_document_creator(document, web_users)
+        matched_staff = match_staff_name(creator, staff_by_key)
         if not matched_staff:
             continue
         net = DECIMAL_ZERO
-        for line in invoice.get("lines") or []:
+        for line in document.get("lines") or []:
             if not isinstance(line, dict):
                 continue
-            net += as_decimal(line.get("NetPrice")) - as_decimal(line.get("VatAmount"))
+            # BigChange NetPrice is already the net line value; VatAmount is reported separately.
+            net += as_decimal(line.get("NetPrice"))
         sales[matched_staff] += net
     return dict(sales)
 
