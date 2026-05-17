@@ -1076,10 +1076,10 @@ def send_email(png_path: Path) -> None:
     smtp_port = int(required_env("SMTP_PORT"))
     smtp_username = required_env("SMTP_USERNAME")
     smtp_password = required_env("SMTP_PASSWORD")
-    from_email = required_env("SMTP_FROM_EMAIL")
-    from_name = optional_env("SMTP_FROM_NAME")
-    to_email = required_env("SMTP_TO_EMAIL")
-    cc_email = optional_env("SMTP_CC_EMAIL")
+    from_email = required_env("SMTP_FROM_EMAIL").strip()
+    from_name = optional_env("SMTP_FROM_NAME").strip()
+    to_email = required_env("SMTP_TO_EMAIL").strip()
+    cc_email = optional_env("SMTP_CC_EMAIL").strip()
 
     subject = f"BigChange KPI Overview - {dt.date.today().isoformat()}"
     root = MIMEMultipart("related")
