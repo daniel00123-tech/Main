@@ -37,7 +37,7 @@ KPI_ORDER = [
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
 
-SALES_ORDER_TYPES = {"quote", "purchaseorder"}
+SALES_ORDER_TYPES = {"invoice", "creditnote"}
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
@@ -343,10 +343,7 @@ def calculate_sales(
         for line in document.get("lines") or []:
             if not isinstance(line, dict):
                 continue
-            line_net = as_decimal(line.get("NetPrice"))
-            if order_type == "purchaseorder":
-                line_net -= as_decimal(line.get("VatAmount"))
-            net += line_net
+            net += as_decimal(line.get("NetPrice")) - as_decimal(line.get("VatAmount"))
         sales[matched_staff] += net
     return dict(sales)
 
@@ -368,6 +365,7 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     today = dt.date.today()
     tomorrow = today + dt.timedelta(days=1)
     month_start = today.replace(day=1)
+    month_end = today.replace(day=days_in_month(today.year, today.month))
     lookback_start = months_ago(today, 12)
 
     staff_names: set[str] = set()
@@ -449,7 +447,7 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     ]
     add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", "StatusDate", today)
 
-    sales = calculate_sales(client, staff_names, month_start, today)
+    sales = calculate_sales(client, staff_names, month_start, month_end)
 
     staff_rows: list[dict[str, Any]] = []
     for staff in sorted(staff_names):
