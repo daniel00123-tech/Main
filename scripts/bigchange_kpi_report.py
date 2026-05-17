@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import concurrent.futures
 import datetime as dt
 import decimal
 import difflib
@@ -253,6 +254,12 @@ class BigChangeClient:
             raise RuntimeError("BigChange webuserlist returned an error")
         return self.result_rows(payload)
 
+    def job_customer_activity(self, job_id: str) -> list[dict[str, Any]]:
+        payload = self.get("jobcustomeractivity", {"JobId": job_id}, timeout=30, attempts=2)
+        if payload.get("Code") != 0:
+            return []
+        return self.result_rows(payload)
+
 
 def item_age_days(item_date: dt.datetime | None, today: dt.date) -> int:
     if item_date is None:
@@ -316,11 +323,6 @@ def calculate_sales(
     end: dt.date,
 ) -> dict[str, decimal.Decimal]:
     staff_by_key = {name_key(name): name for name in staff_names if name_key(name)}
-    web_users = {
-        str(user.get("id")): clean_name(user.get("name"))
-        for user in client.web_user_list()
-        if user.get("id") is not None and clean_name(user.get("name"))
-    }
     financial_documents = client.invoices_with_items_by_period(start, end)
 
     eligible: list[dict[str, Any]] = []
@@ -332,10 +334,21 @@ def calculate_sales(
             continue
         eligible.append(document)
 
+    job_ids = sorted({str(document.get("JobId")) for document in eligible if document.get("JobId")})
+    activity_cache: dict[str, list[dict[str, Any]]] = {}
+    if job_ids:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            futures = {pool.submit(client.job_customer_activity, job_id): job_id for job_id in job_ids}
+            for future in concurrent.futures.as_completed(futures):
+                job_id = futures[future]
+                try:
+                    activity_cache[job_id] = future.result()
+                except Exception:
+                    activity_cache[job_id] = []
+
     sales: dict[str, decimal.Decimal] = defaultdict(lambda: DECIMAL_ZERO)
     for document in eligible:
-        order_type = re.sub(r"[^a-z]", "", clean_name(document.get("OrderType")).lower())
-        creator = resolve_document_creator(document, web_users)
+        creator = invoice_created_owner(document, activity_cache)
         matched_staff = match_staff_name(creator, staff_by_key)
         if not matched_staff:
             continue
@@ -346,6 +359,24 @@ def calculate_sales(
             net += as_decimal(line.get("NetPrice")) - as_decimal(line.get("VatAmount"))
         sales[matched_staff] += net
     return dict(sales)
+
+
+def invoice_created_owner(document: dict[str, Any], activity_cache: dict[str, list[dict[str, Any]]]) -> str:
+    job_id = str(document.get("JobId") or "")
+    if not job_id:
+        return ""
+    document_date = parse_date(document.get("DocumentDate")) or dt.datetime.min
+    candidates: list[tuple[float, dict[str, Any]]] = []
+    for activity in activity_cache.get(job_id, []):
+        status_id = as_int(activity.get("JobClientStatusID") or activity.get("JobClientStatusId"))
+        if status_id != 34:
+            continue
+        activity_date = parse_date(activity.get("JobClientStatusDate")) or dt.datetime.min
+        candidates.append((abs((activity_date - document_date).total_seconds()), activity))
+    if not candidates:
+        return ""
+    candidates.sort(key=lambda item: item[0])
+    return clean_name(candidates[0][1].get("JobClientStatusOwner"))
 
 
 def resolve_document_creator(invoice: dict[str, Any], web_users: dict[str, str]) -> str:
