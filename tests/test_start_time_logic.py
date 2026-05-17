@@ -39,8 +39,10 @@ class StartTimeLogicTest(unittest.TestCase):
         )
 
         self.assertEqual(row["Start"], "")
+        self.assertEqual(row["Finish"], "")
         self.assertEqual(row["Original Start"], "")
         self.assertEqual(row["Start Source"], "No actual start/travel found")
+        self.assertEqual(row["Finish Source"], "No actual finish found")
         self.assertEqual(row["Adjusted Hrs"], 0.0)
         self.assertEqual(
             row["Original Time / Deduction Reason"],
@@ -68,7 +70,25 @@ class StartTimeLogicTest(unittest.TestCase):
         self.assertEqual(row["Original Start"], "12:03")
         self.assertEqual(row["Start Source"], "First job started")
 
-    def test_travel_start_is_ignored_without_actual_job_start(self):
+    def test_travel_start_before_planned_start_is_used_as_actual_start(self):
+        row = build_day_row(
+            None,
+            {"id": 1, "CleanName": "Saud Amjad"},
+            self.day,
+            [job(10, "AF29959", "2026-05-15 08:00:00", "2026-05-15 16:00:00")],
+            [],
+            {"address": "80 Stanhope Road, Greenford, UB6 9EA, United Kingdom"},
+            {10: [status(8, "2026-05-15 06:50:56")]},
+        )
+
+        self.assertEqual(row["Start"], "06:50")
+        self.assertEqual(row["Original Start"], "06:50")
+        self.assertEqual(row["Finish"], "16:00")
+        self.assertEqual(row["Start Source"], "Start travel pressed")
+        self.assertEqual(row["Finish Source"], "Planned finish only")
+        self.assertIn("first actual job start is unavailable", row["Original Time / Deduction Reason"])
+
+    def test_late_travel_start_is_ignored_without_actual_job_start(self):
         row = build_day_row(
             None,
             self.resource,

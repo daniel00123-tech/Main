@@ -523,16 +523,26 @@ def first_actual_job_start(
 
 
 def first_travel_start(
-    histories: dict[int, list[dict[str, Any]]], day: dt.date, before: dt.datetime | None
+    jobs: list[dict[str, Any]],
+    histories: dict[int, list[dict[str, Any]]],
+    day: dt.date,
+    before_actual_start: dt.datetime | None,
 ) -> dt.datetime | None:
-    if not before:
-        return None
-
     starts: list[dt.datetime] = []
-    for history in histories.values():
-        started = find_first_status(history, START_TRAVEL_STATUS_ID, day, before=before)
-        if started:
-            starts.append(started)
+    for job in jobs:
+        job_id = job.get("JobId")
+        history = histories.get(int(job_id), []) if job_id else []
+        planned_start = parse_datetime(job.get("PlannedStart"))
+        for row in history:
+            when = status_time(row)
+            if status_id(row) != START_TRAVEL_STATUS_ID or not same_day(when, day):
+                continue
+            if before_actual_start:
+                if when < before_actual_start:
+                    starts.append(when)
+            elif planned_start and same_day(planned_start, day) and when <= planned_start:
+                # Without an actual job-start anchor, only accept travel that fits the schedule.
+                starts.append(when)
     return min(starts) if starts else None
 
 
@@ -699,7 +709,7 @@ def build_day_row(
         original_start = min(journey_starts)
         start_source = "Tracking journey"
     else:
-        travel_start = first_travel_start(histories, day, before=first_started)
+        travel_start = first_travel_start(jobs, histories, day, before_actual_start=first_started)
         if travel_start:
             original_start = travel_start
             start_source = "Start travel pressed"
@@ -713,9 +723,12 @@ def build_day_row(
     if completion:
         original_finish = completion
         finish_source = "Last completion"
-    else:
+    elif original_start:
         original_finish = parse_datetime(jobs[-1].get("PlannedEnd"))
         finish_source = "Planned finish only"
+    else:
+        original_finish = None
+        finish_source = "No actual finish found"
 
     deduction_minutes, deduction_reason, distance = calculate_deduction(
         original_start, first_job, first_started, home
