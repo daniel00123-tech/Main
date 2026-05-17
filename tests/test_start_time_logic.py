@@ -42,7 +42,10 @@ class StartTimeLogicTest(unittest.TestCase):
         self.assertEqual(row["Original Start"], "")
         self.assertEqual(row["Start Source"], "No actual start/travel found")
         self.assertEqual(row["Adjusted Hrs"], 0.0)
-        self.assertIn("no actual start/travel time found", row["Original Time / Deduction Reason"])
+        self.assertEqual(
+            row["Original Time / Deduction Reason"],
+            "No valid travel gap: no actual start/travel time found",
+        )
 
     def test_start_uses_first_actual_started_status_across_day_jobs(self):
         row = build_day_row(

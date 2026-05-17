@@ -542,8 +542,10 @@ def calculate_deduction(
     first_started: dt.datetime | None,
     home: dict[str, Any],
 ) -> tuple[int, str, float | None]:
-    if not original_start or not first_job:
-        return 0, "No valid travel gap: no jobs allocated or no actual start/travel time found", None
+    if not first_job:
+        return 0, "No valid travel gap: no jobs allocated", None
+    if not original_start:
+        return 0, "No valid travel gap: no actual start/travel time found", None
 
     if not first_started or first_started <= original_start:
         return 0, "No valid travel gap: first actual job start is unavailable or before start", None
