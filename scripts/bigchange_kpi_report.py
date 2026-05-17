@@ -158,16 +158,22 @@ class BigChangeClient:
             "Content-Type": "application/json",
         }
 
-    def get(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def get(
+        self,
+        action: str,
+        params: dict[str, Any] | None = None,
+        timeout: int = 60,
+        attempts: int = 3,
+    ) -> dict[str, Any]:
         query = {"action": action}
         if params:
             query.update({k: v for k, v in params.items() if v is not None and v != ""})
         url = f"{self.base_url}?{urllib.parse.urlencode(query)}"
         req = urllib.request.Request(url, headers=self.headers)
         last_error: Exception | None = None
-        for attempt in range(4):
+        for attempt in range(attempts):
             try:
-                with urllib.request.urlopen(req, timeout=120) as response:
+                with urllib.request.urlopen(req, timeout=timeout) as response:
                     raw = response.read()
                 payload = json.loads(raw.decode("utf-8-sig"))
                 if not isinstance(payload, dict):
@@ -175,7 +181,7 @@ class BigChangeClient:
                 return payload
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
                 last_error = exc
-                if attempt == 3:
+                if attempt == attempts - 1:
                     break
                 time.sleep(2**attempt)
         raise RuntimeError(f"BigChange request failed for {action}: {type(last_error).__name__}")
@@ -229,7 +235,7 @@ class BigChangeClient:
         return self.result_rows(payload)
 
     def job_customer_activity(self, job_id: str) -> list[dict[str, Any]]:
-        payload = self.get("jobcustomeractivity", {"JobId": job_id})
+        payload = self.get("jobcustomeractivity", {"JobId": job_id}, timeout=10, attempts=1)
         if payload.get("Code") != 0:
             return []
         return self.result_rows(payload)
