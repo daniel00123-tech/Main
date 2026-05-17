@@ -154,6 +154,15 @@ def in_window(job: dict[str, Any], start_dt: datetime, end_dt: datetime) -> bool
     return bool(created and start_dt <= created <= end_dt)
 
 
+def future_date_fields(job: dict[str, Any], cutoff_dt: datetime) -> list[str]:
+    fields = []
+    for field in ("PlannedStart", "PlannedEnd", "DueDate"):
+        value = parse_bigchange_datetime(job.get(field))
+        if value and value > cutoff_dt:
+            fields.append(field)
+    return fields
+
+
 def normalise_name(value: Any) -> str:
     return " ".join(str(value or "").strip().split()).casefold()
 
@@ -361,13 +370,23 @@ def run(args: argparse.Namespace) -> int:
     auto_close_tag_id = int(auto_close_tags[0]["Id"])
 
     all_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size)
-    jobs_by_id: dict[int, dict[str, Any]] = {
-        int(job["JobId"]): job for job in all_jobs if job.get("JobId") and in_window(job, start_dt, end_dt)
-    }
+    excluded_future_jobs: dict[int, list[str]] = {}
+
+    def in_scope(job: dict[str, Any]) -> bool:
+        if not job.get("JobId") or not in_window(job, start_dt, end_dt):
+            return False
+        if args.exclude_future_dated:
+            fields = future_date_fields(job, end_dt)
+            if fields:
+                excluded_future_jobs[int(job["JobId"])] = fields
+                return False
+        return True
+
+    jobs_by_id: dict[int, dict[str, Any]] = {int(job["JobId"]): job for job in all_jobs if in_scope(job)}
     flagged_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size, tag_id=auto_close_tag_id)
-    flagged_ids = {int(job["JobId"]) for job in flagged_jobs if job.get("JobId") and in_window(job, start_dt, end_dt)}
+    flagged_ids = {int(job["JobId"]) for job in flagged_jobs if in_scope(job)}
     for job in flagged_jobs:
-        if job.get("JobId") and in_window(job, start_dt, end_dt):
+        if in_scope(job):
             jobs_by_id.setdefault(int(job["JobId"]), job)
 
     intended: list[IntendedUpdate] = []
@@ -459,11 +478,19 @@ def run(args: argparse.Namespace) -> int:
 
     preview_payload = {
         "run_started": run_started,
-        "window": {"days": args.days, "start": start, "end": end, "dateOptionId": 2},
+        "window": {
+            "days": args.days,
+            "start": start,
+            "end": end,
+            "dateOptionId": 2,
+            "excludeFutureDated": args.exclude_future_dated,
+            "futureDateFields": ["PlannedStart", "PlannedEnd", "DueDate"] if args.exclude_future_dated else [],
+        },
         "confirmed_references": {
             "autoCloseDownTagId": auto_close_tag_id,
             "invoiceCreatedClientStatusId": INVOICE_CREATED_STATUS_ID,
         },
+        "jobs_excluded_as_future_dated": len(excluded_future_jobs),
         "total_jobs_reviewed": len(jobs_by_id),
         "updates": [
             {
@@ -524,6 +551,7 @@ def run(args: argparse.Namespace) -> int:
     print(f"apply_results={apply_results_path}")
     print(f"apply_results_jsonl={apply_results_jsonl_path}")
     print(f"summary={summary_path}")
+    print(f"jobs_excluded_as_future_dated={len(excluded_future_jobs)}")
     print(f"jobs_reviewed={len(jobs_by_id)} intended_updates={len(intended)} applied={len(apply_results)}")
     return 0
 
@@ -535,6 +563,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--start-date", help="Override inclusive creation-date window start (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).")
     parser.add_argument("--end-date", help="Override inclusive creation-date window end (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).")
     parser.add_argument("--page-size", type=int, default=5000, help="JobsList page size.")
+    parser.add_argument(
+        "--exclude-future-dated",
+        action="store_true",
+        help="Exclude jobs with PlannedStart, PlannedEnd, or DueDate after the window end.",
+    )
     parser.add_argument("--resume", action="store_true", help="Skip updates already marked successful in apply_results.jsonl.")
     parser.add_argument("--timeout-seconds", type=int, default=30, help="Per-request socket timeout.")
     parser.add_argument("--output-dir", help="Directory for preview, logs, and summary artifacts.")
