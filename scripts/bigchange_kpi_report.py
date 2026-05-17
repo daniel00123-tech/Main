@@ -732,17 +732,19 @@ def render_png(html_content: str, html_path: Path, png_path: Path, row_count: in
     html_path.write_text(html_content, encoding="utf-8")
     height = max(780, min(5000, 260 + row_count * 130))
     chrome = optional_env("CHROME_BIN", "google-chrome")
-    cmd = [
-        chrome,
-        "--headless=new",
-        "--no-sandbox",
-        "--disable-gpu",
-        "--hide-scrollbars",
-        f"--window-size=1540,{height}",
-        f"--screenshot={png_path}",
-        html_path.resolve().as_uri(),
-    ]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    with tempfile.TemporaryDirectory(prefix="bigchange-chrome-") as profile_dir:
+        cmd = [
+            chrome,
+            "--headless=new",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--hide-scrollbars",
+            f"--user-data-dir={profile_dir}",
+            f"--window-size=1540,{height}",
+            f"--screenshot={png_path}",
+            html_path.resolve().as_uri(),
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def mailbox_address(email_value: str, display_name: str = "") -> Address:
