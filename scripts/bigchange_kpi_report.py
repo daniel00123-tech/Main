@@ -42,7 +42,7 @@ COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
 OPEN_NOT_STARTED_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
 DECIMAL_ZERO = decimal.Decimal("0")
-EXCLUDED_CATEGORY_NAMES = {
+EXCLUDED_CATEGORY_PHRASES = {
     "btr compliance",
     "btr reactive",
     "john bennett",
@@ -148,7 +148,7 @@ def should_exclude_category(name: str) -> bool:
     norm = normalized_text(name)
     if not norm:
         return True
-    if norm in EXCLUDED_CATEGORY_NAMES:
+    if any(phrase in norm for phrase in EXCLUDED_CATEGORY_PHRASES):
         return True
     if norm in {"uncategorised", "uncategorized"}:
         return True
