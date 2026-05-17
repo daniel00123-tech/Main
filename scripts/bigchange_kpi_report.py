@@ -483,25 +483,50 @@ def render_metric(metric: dict[str, Any]) -> str:
 
 def render_sales(value: str) -> str:
     return (
-        '<div class="metric sales green">'
-        f'<div class="circle"><span>{html.escape(value)}</span></div>'
-        '<div class="age">current month</div>'
+        '<div class="sales-value">'
+        f'<strong>{html.escape(value)}</strong>'
+        '<span>net sales</span>'
         "</div>"
     )
 
 
+def initials(name: str) -> str:
+    parts = normalized_text(name).split()
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return f"{parts[0][0]}{parts[-1][0]}".upper()
+
+
+def avatar_class(name: str) -> str:
+    return f"avatar-{sum(ord(ch) for ch in name) % 8}"
+
+
 def render_html(report: dict[str, Any]) -> str:
     rows_html = []
-    for row in report["staff_rows"]:
-        cells = [f'<td class="staff">{html.escape(row["staff_name"])}</td>']
+    for idx, row in enumerate(report["staff_rows"], start=1):
+        staff = html.escape(row["staff_name"])
+        cells = [
+            f'<td class="rank">#{idx}</td>',
+            '<td class="staff">'
+            f'<div class="avatar {avatar_class(row["staff_name"])}">{html.escape(initials(row["staff_name"]))}</div>'
+            f'<div class="person"><strong>{staff}</strong><span>Staff owner</span></div>'
+            "</td>",
+        ]
+        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         for metric_key, _label in KPI_ORDER:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
-        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         rows_html.append(f"<tr>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
     report_date = html.escape(report["report_date"])
     month_name = html.escape(report["month_name"])
+    total_workload = sum(row["total_open_workload"] for row in report["staff_rows"])
+    totals = {
+        metric_key: sum(row["metrics"][metric_key]["count"] for row in report["staff_rows"])
+        for metric_key, _label in KPI_ORDER
+    }
     return f"""<!doctype html>
 <html>
 <head>
@@ -531,48 +556,63 @@ def render_html(report: dict[str, Any]) -> str:
       padding: 34px;
     }}
     .dashboard {{
-      width: 1460px;
+      width: 1480px;
       margin: 0 auto;
-      background: linear-gradient(180deg, rgba(16, 28, 46, 0.96), rgba(9, 18, 32, 0.96));
+      background: linear-gradient(180deg, rgba(11, 22, 38, 0.98), rgba(8, 18, 32, 0.98));
       border: 1px solid var(--line);
-      border-radius: 28px;
+      border-radius: 24px;
       overflow: hidden;
       box-shadow: 0 26px 70px rgba(0, 0, 0, 0.42);
     }}
     header {{
-      padding: 30px 34px 24px;
+      padding: 24px 28px 20px;
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
+      align-items: center;
       border-bottom: 1px solid var(--line);
-      background: linear-gradient(90deg, rgba(38, 208, 124, 0.10), rgba(244, 182, 63, 0.06), rgba(239, 77, 93, 0.10));
+      background:
+        linear-gradient(90deg, rgba(20, 94, 177, 0.18), rgba(38, 208, 124, 0.08), rgba(239, 77, 93, 0.10)),
+        rgba(10, 21, 38, 0.84);
+    }}
+    .brand {{
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }}
+    .brand-mark {{
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #1495ff, #26d07c);
+      box-shadow: 0 0 24px rgba(20, 149, 255, 0.35);
     }}
     h1 {{
       margin: 0;
-      font-size: 36px;
-      letter-spacing: -0.04em;
+      font-size: 24px;
+      letter-spacing: -0.03em;
       line-height: 1.1;
+      text-transform: uppercase;
     }}
     .sub {{
       margin-top: 8px;
       color: var(--muted);
-      font-size: 15px;
+      font-size: 13px;
     }}
     .summary {{
       display: flex;
       gap: 12px;
     }}
     .badge {{
-      min-width: 112px;
-      padding: 14px 16px;
-      border-radius: 18px;
-      background: rgba(255, 255, 255, 0.06);
+      min-width: 122px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.055);
       border: 1px solid var(--line);
       text-align: center;
     }}
     .badge strong {{
       display: block;
-      font-size: 30px;
+      font-size: 28px;
       line-height: 1;
     }}
     .badge span {{
@@ -585,6 +625,33 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .badge.red strong {{ color: var(--red); }}
     .badge.amber strong {{ color: var(--amber); }}
+    .total-cards {{
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.018);
+    }}
+    .total-card {{
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px 16px;
+      background: linear-gradient(180deg, rgba(20, 36, 58, 0.74), rgba(13, 26, 45, 0.74));
+    }}
+    .total-card span {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+    }}
+    .total-card strong {{
+      display: block;
+      margin-top: 8px;
+      font-size: 30px;
+      letter-spacing: -0.04em;
+    }}
     table {{
       width: 100%;
       border-collapse: collapse;
@@ -596,75 +663,124 @@ def render_html(report: dict[str, Any]) -> str:
       text-transform: uppercase;
       letter-spacing: 0.12em;
       font-weight: 700;
-      padding: 20px 12px;
+      padding: 16px 10px;
       border-bottom: 1px solid var(--line);
       background: rgba(20, 36, 58, 0.74);
     }}
-    th:first-child, td:first-child {{ width: 250px; }}
+    th:nth-child(1), td:nth-child(1) {{ width: 72px; }}
+    th:nth-child(2), td:nth-child(2) {{ width: 292px; }}
+    th:nth-child(3), td:nth-child(3) {{ width: 170px; }}
     td {{
-      padding: 18px 12px;
+      padding: 14px 10px;
       border-bottom: 1px solid var(--line);
       text-align: center;
       vertical-align: middle;
     }}
     tr:nth-child(even) td {{ background: rgba(255, 255, 255, 0.025); }}
     tr:last-child td {{ border-bottom: none; }}
+    .rank {{
+      color: #e2e8f0;
+      font-weight: 900;
+      font-size: 18px;
+    }}
     .staff {{
       text-align: left;
-      font-size: 20px;
-      font-weight: 800;
+      padding-left: 12px;
+    }}
+    .staff, .person {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }}
+    .person {{
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 2px;
+    }}
+    .person strong {{
+      font-size: 18px;
       letter-spacing: -0.02em;
-      padding-left: 28px;
+    }}
+    .person span {{
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .avatar {{
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 900;
+      box-shadow: 0 0 18px rgba(255, 255, 255, 0.12);
+    }}
+    .avatar-0 {{ background: #7c3aed; }}
+    .avatar-1 {{ background: #2563eb; }}
+    .avatar-2 {{ background: #16a34a; }}
+    .avatar-3 {{ background: #f97316; }}
+    .avatar-4 {{ background: #db2777; }}
+    .avatar-5 {{ background: #0891b2; }}
+    .avatar-6 {{ background: #84cc16; }}
+    .avatar-7 {{ background: #ef4444; }}
+    .sales-value {{
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }}
+    .sales-value strong {{
+      color: #f8fafc;
+      font-size: 20px;
+      letter-spacing: -0.04em;
+    }}
+    .sales-value span {{
+      color: var(--muted);
+      font-size: 12px;
     }}
     .metric {{
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }}
     .circle {{
-      width: 84px;
-      height: 84px;
+      width: 66px;
+      height: 66px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       background: rgba(255, 255, 255, 0.045);
-      box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.05);
+      box-shadow: inset 0 0 22px rgba(255, 255, 255, 0.05), 0 0 18px rgba(0, 0, 0, 0.18);
     }}
     .circle span {{
-      font-size: 30px;
+      font-size: 24px;
       line-height: 1;
       font-weight: 900;
       letter-spacing: -0.05em;
     }}
     .green .circle {{
-      border: 4px dotted var(--green);
+      border: 3px dotted var(--green);
       color: var(--green);
     }}
     .amber .circle {{
-      border: 4px solid var(--amber);
+      border: 3px solid var(--amber);
       color: var(--amber);
     }}
     .red .circle {{
-      border: 4px solid var(--red);
+      border: 3px solid var(--red);
       color: var(--red);
-    }}
-    .sales .circle {{
-      width: 128px;
-      border-radius: 42px;
-    }}
-    .sales .circle span {{
-      font-size: 18px;
-      letter-spacing: -0.03em;
     }}
     .age {{
       color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
       white-space: nowrap;
     }}
     footer {{
-      padding: 18px 34px 24px;
+      padding: 16px 28px 22px;
       color: var(--muted);
       font-size: 12px;
       border-top: 1px solid var(--line);
@@ -674,25 +790,35 @@ def render_html(report: dict[str, Any]) -> str:
 <body>
   <main class="dashboard">
     <header>
-      <div>
-        <h1>BigChange KPI Overview</h1>
-        <div class="sub">Daily staff-owned KPI report for {report_date} - {month_name} sales shown excluding VAT.</div>
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <div>
+          <h1>BigChange KPI Overview</h1>
+          <div class="sub">Generated {report_date} - grouped by job category staff owner</div>
+        </div>
       </div>
       <div class="summary">
         <div class="badge red"><strong>{int(report["total_red_kpis"])}</strong><span>Red KPIs</span></div>
         <div class="badge amber"><strong>{int(report["total_amber_kpis"])}</strong><span>Amber KPIs</span></div>
-        <div class="badge"><strong>{len(report["staff_rows"])}</strong><span>Staff rows</span></div>
+        <div class="badge"><strong>{total_workload}</strong><span>Open items</span></div>
       </div>
     </header>
+    <section class="total-cards">
+      <div class="total-card"><span>Unallocated jobs</span><strong>{totals["unallocated_jobs"]}</strong></div>
+      <div class="total-card"><span>Historic jobs</span><strong>{totals["historic_jobs"]}</strong></div>
+      <div class="total-card"><span>Uninvoiced jobs</span><strong>{totals["uninvoiced_jobs"]}</strong></div>
+      <div class="total-card"><span>Unactioned jobs</span><strong>{totals["unactioned_jobs"]}</strong></div>
+    </section>
     <table>
       <thead>
         <tr>
+          <th>Rank</th>
           <th>Staff member</th>
+          <th>{month_name} sales</th>
           <th>Unallocated Jobs</th>
           <th>Historic Jobs</th>
           <th>Uninvoiced Jobs</th>
           <th>Unactioned Jobs</th>
-          <th>{month_name} sales</th>
         </tr>
       </thead>
       <tbody>
@@ -798,7 +924,13 @@ Daniel Dwyer
     image.add_header("Content-Disposition", "inline", filename=png_path.name)
     root.attach(image)
 
-    # Some clients only expose inline CID images as body assets. Add no JSON or HTML attachments.
+    attachment = MIMEBase("image", "png")
+    attachment.set_payload(image_data)
+    encoders.encode_base64(attachment)
+    attachment.add_header("Content-Disposition", "attachment", filename=png_path.name)
+    root.attach(attachment)
+
+    # The only attachment is the dashboard PNG; JSON and HTML stay on disk only.
     with smtplib.SMTP(smtp_host, smtp_port, timeout=120) as smtp:
         smtp.starttls()
         smtp.login(smtp_username, smtp_password)
