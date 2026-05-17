@@ -7,6 +7,8 @@ The script:
 
 - reads BigChange legacy Web Services credentials from environment variables;
 - collects resources, groups, contacts, jobs, status history, and journeys;
+- includes only engineers/subcontractors with active allocated jobs in the last
+  30 days;
 - creates an XLSX workbook with weekly, summary, and attention tabs;
 - applies capped distance-based start-time deductions;
 - highlights late completions that need checking; and

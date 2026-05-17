@@ -255,38 +255,41 @@ def job_sort_key(job: dict[str, Any]) -> dt.datetime:
     )
 
 
-def fetch_jobs_for_day(client: BigChangeClient, config: Config, day: dt.date) -> list[dict[str, Any]]:
-    def fetch(date_option_id: int) -> list[dict[str, Any]]:
-        jobs: list[dict[str, Any]] = []
-        page = 0
-        page_size = 500
-        while page < 50:
-            result = client.call(
-                "JobsList",
-                Start=f"{fmt_date(day)} 00:00:00",
-                End=f"{fmt_date(day)} 23:59:59",
-                IncludeTime="true",
-                DateOptionId=date_option_id,
-                Allocated=1,
-                Unallocated=0,
-                ExcludeNullPlannedDates="true",
-                Page=page,
-                PageSize=page_size,
-                IncludeAssistants="true",
-            )
-            rows = as_list(result)
-            jobs.extend(rows)
-            if len(rows) < page_size:
-                break
-            page += 1
-        return jobs
+def fetch_jobs_with_date_option(
+    client: BigChangeClient, day: dt.date, date_option_id: int
+) -> list[dict[str, Any]]:
+    jobs: list[dict[str, Any]] = []
+    page = 0
+    page_size = 500
+    while page < 50:
+        result = client.call(
+            "JobsList",
+            Start=f"{fmt_date(day)} 00:00:00",
+            End=f"{fmt_date(day)} 23:59:59",
+            IncludeTime="true",
+            DateOptionId=date_option_id,
+            Allocated=1,
+            Unallocated=0,
+            ExcludeNullPlannedDates="true",
+            Page=page,
+            PageSize=page_size,
+            IncludeAssistants="true",
+        )
+        rows = as_list(result)
+        jobs.extend(rows)
+        if len(rows) < page_size:
+            break
+        page += 1
+    return jobs
 
-    requested_jobs = fetch(0)
+
+def fetch_jobs_for_day(client: BigChangeClient, config: Config, day: dt.date) -> list[dict[str, Any]]:
+    requested_jobs = fetch_jobs_with_date_option(client, day, 0)
     if requested_jobs or config.jobs_fallback_date_option_id is None:
         return requested_jobs
 
     # The legacy API can return no rows for DateOptionId=0 even when planned allocations exist.
-    return fetch(config.jobs_fallback_date_option_id)
+    return fetch_jobs_with_date_option(client, day, config.jobs_fallback_date_option_id)
 
 
 def fetch_journeys_for_day(client: BigChangeClient, day: dt.date) -> list[dict[str, Any]]:
@@ -307,6 +310,32 @@ def group_by_resource_name(rows: Iterable[dict[str, Any]], field: str = "Resourc
             continue
         grouped.setdefault(name, []).append(row)
     return grouped
+
+
+def is_active_job(job: dict[str, Any]) -> bool:
+    resource = str(job.get("Resource") or "").strip()
+    if not resource:
+        return False
+    status = str(job.get("Status") or "").strip().lower()
+    return "cancel" not in status
+
+
+def fetch_active_resource_names(
+    client: BigChangeClient,
+    config: Config,
+    active_start: dt.date,
+    active_end: dt.date,
+) -> set[str]:
+    active_names: set[str] = set()
+    date_option_id = config.jobs_fallback_date_option_id or 0
+    for day in date_range(active_start, active_end):
+        for job in fetch_jobs_with_date_option(client, day, date_option_id):
+            if not is_active_job(job):
+                continue
+            resource_name = str(job.get("Resource") or "").strip()
+            active_names.add(normalize_name(resource_name))
+            active_names.add(normalize_name(clean_resource_name(resource_name)))
+    return {name for name in active_names if name}
 
 
 def best_contact_match(clean_name: str, candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -865,8 +894,24 @@ def send_email(
         smtp.send_message(message)
 
 
-def build_report(client: BigChangeClient, config: Config, week_start: dt.date, week_end: dt.date) -> list[dict[str, Any]]:
+def build_report(
+    client: BigChangeClient,
+    config: Config,
+    week_start: dt.date,
+    week_end: dt.date,
+    active_window_end: dt.date,
+) -> list[dict[str, Any]]:
     resources = get_resources(client)
+    active_window_start = active_window_end - dt.timedelta(days=29)
+    active_resource_names = fetch_active_resource_names(
+        client, config, active_window_start, active_window_end
+    )
+    resources = [
+        resource
+        for resource in resources
+        if normalize_name(str(resource.get("label") or "")) in active_resource_names
+        or normalize_name(str(resource.get("CleanName") or "")) in active_resource_names
+    ]
     homes = {int(resource["id"]): lookup_home(client, resource) for resource in resources}
     rows: list[dict[str, Any]] = []
     status_cache: dict[int, list[dict[str, Any]]] = {}
@@ -897,7 +942,7 @@ def main() -> int:
     week_start, week_end = previous_monday_to_friday(today)
     client = BigChangeClient(config)
 
-    rows = build_report(client, config, week_start, week_end)
+    rows = build_report(client, config, week_start, week_end, today)
     output_path = write_workbook(rows, week_start, week_end, Path(args.output_dir))
     attention_count = sum(1 for row in rows if row.get("_attention"))
     engineers = sorted({row["Engineer"] for row in rows}, key=normalize_name)
