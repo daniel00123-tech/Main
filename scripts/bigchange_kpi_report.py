@@ -239,6 +239,12 @@ class BigChangeClient:
             raise RuntimeError("BigChange webuserlist returned an error")
         return self.result_rows(payload)
 
+    def job_customer_activity(self, job_id: Any) -> list[dict[str, Any]]:
+        payload = self.get("JobCustomerActivity", {"JobId": job_id})
+        if payload.get("Code") != 0:
+            raise RuntimeError(f"BigChange JobCustomerActivity returned code {payload.get('Code')}")
+        return self.result_rows(payload)
+
 
 def item_age_days(item_date: dt.datetime | None, today: dt.date) -> int:
     if item_date is None:
@@ -295,6 +301,117 @@ def resource_assigned(row: dict[str, Any]) -> bool:
     return not is_blank(resource)
 
 
+def field_value(row: dict[str, Any], *names: str) -> Any:
+    for name in names:
+        if name in row and row[name] not in (None, ""):
+            return row[name]
+    lower_map = {str(key).lower(): value for key, value in row.items()}
+    for name in names:
+        value = lower_map.get(name.lower())
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def is_true_or_present(value: Any) -> bool:
+    if value in (None, ""):
+        return False
+    text = str(value).strip().lower()
+    return text not in {"0", "false", "no", "n", "none", "null", "0001-01-01 00:00:00"}
+
+
+def invoice_document_key(row: dict[str, Any], index: int) -> str:
+    identifier = field_value(
+        row,
+        "DocumentId",
+        "DocumentID",
+        "FinancialDocumentId",
+        "FinancialDocumentID",
+        "InvoiceId",
+        "InvoiceID",
+        "OrderId",
+        "OrderID",
+        "Id",
+        "ID",
+        "InvoiceNumber",
+        "DocumentNumber",
+        "OrderNumber",
+    )
+    return str(identifier if identifier not in (None, "") else f"row-{index}")
+
+
+def invoice_line_rows(row: dict[str, Any]) -> list[dict[str, Any]]:
+    lines = field_value(row, "lines", "Lines", "items", "Items", "InvoiceLines", "InvoiceItems")
+    if isinstance(lines, list):
+        return [line for line in lines if isinstance(line, dict)]
+    return [row]
+
+
+def group_invoice_documents(invoices: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for index, invoice in enumerate(invoices):
+        grouped[invoice_document_key(invoice, index)].append(invoice)
+    return list(grouped.values())
+
+
+def document_order_type(rows: list[dict[str, Any]]) -> str:
+    for row in rows:
+        order_type = clean_name(field_value(row, "OrderType", "OrderTypeName", "DocumentType", "Type"))
+        if order_type:
+            return order_type
+    return ""
+
+
+def document_has_terminal_flag(rows: list[dict[str, Any]]) -> bool:
+    terminal_fields = (
+        "CancellationDate",
+        "CancelledDate",
+        "DateCancelled",
+        "IsCancelled",
+        "Cancelled",
+        "DeletionDate",
+        "DeletedDate",
+        "DateDeleted",
+        "IsDeleted",
+        "Deleted",
+        "RejectionDate",
+        "RejectedDate",
+        "DateRejected",
+        "IsRejected",
+        "Rejected",
+    )
+    return any(is_true_or_present(field_value(row, field)) for row in rows for field in terminal_fields)
+
+
+def linked_job_id(rows: list[dict[str, Any]]) -> Any:
+    job_fields = (
+        "JobId",
+        "JobID",
+        "LinkedJobId",
+        "LinkedJobID",
+        "ReferenceJobId",
+        "ReferenceJobID",
+    )
+    for row in rows:
+        job_id = field_value(row, *job_fields)
+        if job_id not in (None, ""):
+            return job_id
+        for line in invoice_line_rows(row):
+            job_id = field_value(line, *job_fields)
+            if job_id not in (None, ""):
+                return job_id
+    return None
+
+
+def invoice_net_amount(rows: list[dict[str, Any]]) -> decimal.Decimal:
+    total = DECIMAL_ZERO
+    for row in rows:
+        for line in invoice_line_rows(row):
+            total += as_decimal(field_value(line, "NetPrice", "NetAmount", "LineNet", "Net"))
+            total -= as_decimal(field_value(line, "VatAmount", "VATAmount", "TaxAmount", "Vat"))
+    return total
+
+
 def calculate_sales(
     client: BigChangeClient,
     staff_names: set[str],
@@ -303,41 +420,105 @@ def calculate_sales(
 ) -> dict[str, decimal.Decimal]:
     staff_by_key = {name_key(name): name for name in staff_names if name_key(name)}
     web_users = {
-        str(user.get("id")): clean_name(user.get("name"))
+        str(field_value(user, "id", "Id", "ID", "WebUserId", "WebUserID")): clean_name(
+            field_value(user, "name", "Name", "FullName", "DisplayName")
+        )
         for user in client.web_user_list()
-        if user.get("id") is not None and clean_name(user.get("name"))
+        if field_value(user, "id", "Id", "ID", "WebUserId", "WebUserID") is not None
+        and clean_name(field_value(user, "name", "Name", "FullName", "DisplayName"))
     }
-    invoices = client.invoices_with_items_by_period(start, end)
-
-    eligible: list[dict[str, Any]] = []
-    for invoice in invoices:
-        if clean_name(invoice.get("OrderType")).lower() != "invoice":
-            continue
-        if invoice.get("CancellationDate") or invoice.get("DeletionDate") or invoice.get("RejectionDate"):
-            continue
-        eligible.append(invoice)
-
+    invoice_documents = group_invoice_documents(client.invoices_with_items_by_period(start, end))
+    creator_cache: dict[str, str] = {}
     sales: dict[str, decimal.Decimal] = defaultdict(lambda: DECIMAL_ZERO)
-    for invoice in eligible:
-        creator = resolve_document_creator(invoice, web_users)
+    for invoice_rows in invoice_documents:
+        if document_order_type(invoice_rows).lower() != "invoice":
+            continue
+        if document_has_terminal_flag(invoice_rows):
+            continue
+
+        job_id = linked_job_id(invoice_rows)
+        creator = ""
+        if job_id not in (None, ""):
+            cache_key = str(job_id)
+            if cache_key not in creator_cache:
+                creator_cache[cache_key] = resolve_invoice_creator_from_activity(client, job_id, web_users)
+            creator = creator_cache[cache_key]
+        if not creator:
+            creator = resolve_document_creator(invoice_rows[0], web_users)
+
         matched_staff = staff_by_key.get(name_key(creator))
         if not matched_staff:
             continue
-        net = DECIMAL_ZERO
-        for line in invoice.get("lines") or []:
-            if not isinstance(line, dict):
-                continue
-            net += as_decimal(line.get("NetPrice")) - as_decimal(line.get("VatAmount"))
-        sales[matched_staff] += net
+        sales[matched_staff] += invoice_net_amount(invoice_rows)
     return dict(sales)
+
+
+def resolve_invoice_creator_from_activity(
+    client: BigChangeClient,
+    job_id: Any,
+    web_users: dict[str, str],
+) -> str:
+    matches: list[tuple[dt.datetime, int, dict[str, Any]]] = []
+    for index, activity in enumerate(client.job_customer_activity(job_id)):
+        status_id = as_int(
+            field_value(
+                activity,
+                "JobClientStatusID",
+                "JobClientStatusId",
+                "JobClientStatus",
+                "ClientStatusId",
+                "ClientStatusID",
+            )
+        )
+        if status_id != 34:
+            continue
+        activity_date = first_activity_date(activity) or dt.datetime.min
+        matches.append((activity_date, index, activity))
+    if not matches:
+        return ""
+
+    _activity_date, _index, latest = max(matches, key=lambda item: (item[0], item[1]))
+    owner = clean_name(
+        field_value(
+            latest,
+            "JobClientStatusOwner",
+            "JobClientStatusOwnerName",
+            "Owner",
+            "OwnerName",
+            "CreatedBy",
+        )
+    )
+    if owner in web_users:
+        return web_users[owner]
+    return owner
+
+
+def first_activity_date(activity: dict[str, Any]) -> dt.datetime | None:
+    for field in (
+        "ActivityDate",
+        "Date",
+        "CreatedDate",
+        "DateCreated",
+        "JobClientStatusDate",
+        "StatusDate",
+        "Timestamp",
+    ):
+        parsed = parse_date(field_value(activity, field))
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def resolve_document_creator(invoice: dict[str, Any], web_users: dict[str, str]) -> str:
     creator = clean_name(
-        invoice.get("OrderCreator")
-        or invoice.get("DocumentCreator")
-        or invoice.get("CreatedBy")
-        or invoice.get("Creator")
+        field_value(
+            invoice,
+            "OrderCreator",
+            "DocumentCreator",
+            "CreatedBy",
+            "Creator",
+            "CreatedByName",
+        )
     )
     if creator in web_users:
         return web_users[creator]
@@ -951,6 +1132,7 @@ Daniel Dwyer
 
 def main() -> int:
     try:
+        report: dict[str, Any] | None = None
         client = BigChangeClient()
         report = build_report(client)
         html_content = render_html(report)
@@ -973,15 +1155,14 @@ def main() -> int:
             )
         )
         return 0
-    except Exception as exc:
+    except Exception:
         print(
             json.dumps(
                 {
-                    "staff_rows_included": 0,
-                    "total_red_kpis": 0,
-                    "total_amber_kpis": 0,
+                    "staff_rows_included": len(report["staff_rows"]) if report else 0,
+                    "total_red_kpis": report["total_red_kpis"] if report else 0,
+                    "total_amber_kpis": report["total_amber_kpis"] if report else 0,
                     "email": "failed",
-                    "error": type(exc).__name__,
                 },
                 sort_keys=True,
             ),
