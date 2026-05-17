@@ -303,7 +303,11 @@ def calculate_sales(
         with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
             futures = {pool.submit(client.job_customer_activity, job_id): job_id for job_id in job_ids}
             for future in concurrent.futures.as_completed(futures):
-                activity_cache[futures[future]] = future.result()
+                job_id = futures[future]
+                try:
+                    activity_cache[job_id] = future.result()
+                except Exception:
+                    activity_cache[job_id] = []
 
     sales: dict[str, decimal.Decimal] = defaultdict(lambda: DECIMAL_ZERO)
     for invoice in eligible:
