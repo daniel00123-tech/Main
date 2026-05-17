@@ -1,0 +1,4973 @@
+[
+  {
+    "job_id": 185780327,
+    "job_ref": "JOB259246",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 185830481,
+    "job_ref": "JOB259332",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 185891527,
+    "job_ref": "JOB259487",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 185938490,
+    "job_ref": "DL260918",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 185939168,
+    "job_ref": "DL261179",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 185939828,
+    "job_ref": "DL261434",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 185939839,
+    "job_ref": "DL261438",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 185939847,
+    "job_ref": "DL261440",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186088885,
+    "job_ref": "JOB262375",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186120898,
+    "job_ref": "DL262435",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120898 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120899,
+    "job_ref": "DL262436",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120899 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120900,
+    "job_ref": "DL262437",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120900 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120901,
+    "job_ref": "DL262438",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120901 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120902,
+    "job_ref": "DL262439",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120902 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120905,
+    "job_ref": "DL262442",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120905 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120907,
+    "job_ref": "DL262443",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120907 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120909,
+    "job_ref": "DL262444",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120909 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120911,
+    "job_ref": "DL262445",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120911 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120914,
+    "job_ref": "DL262446",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120914 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120916,
+    "job_ref": "DL262447",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120916 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120917,
+    "job_ref": "DL262448",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120917 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186120920,
+    "job_ref": "DL262449",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186120920 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186124705,
+    "job_ref": "PPM262698",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186124705 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186124705,
+    "job_ref": "PPM262698",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186194038,
+    "job_ref": "DLFF264147",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186291104,
+    "job_ref": "JOB264450",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186293266,
+    "job_ref": "JOB264451",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186331728,
+    "job_ref": "DLFF265011",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186338743,
+    "job_ref": "GRANQ265019",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186338743 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186338744,
+    "job_ref": "GRANQ265020",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186338744 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186338745,
+    "job_ref": "GRANQ265021",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186338745 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186359246,
+    "job_ref": "EOT265083",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186359784,
+    "job_ref": "DLFF265085",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186360733,
+    "job_ref": "DLFF265086",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186361112,
+    "job_ref": "DLFF265087",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186368455,
+    "job_ref": "DLFF265091",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186374099,
+    "job_ref": "DLFF265092",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186381936,
+    "job_ref": "DLFF265099",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186422260,
+    "job_ref": "DLFF255418~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186424594,
+    "job_ref": "JOB265116",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186446007,
+    "job_ref": "DLFF265135",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186446518,
+    "job_ref": "JOB265139",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186474236,
+    "job_ref": "JOB265204",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186512853,
+    "job_ref": "JOB265243",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186513236,
+    "job_ref": "JOB265244",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186534293,
+    "job_ref": "JOB265268",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186546279,
+    "job_ref": "JOB265273",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186556914,
+    "job_ref": "JOB265282",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186574839,
+    "job_ref": "DLFF265292",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186575035,
+    "job_ref": "DLFF253422~2",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186575053,
+    "job_ref": "JOB265293",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186584532,
+    "job_ref": "DLFF265299",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186584623,
+    "job_ref": "DLFF265300",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186588930,
+    "job_ref": "DLFF265307",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186589853,
+    "job_ref": "DLFF265308",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186590049,
+    "job_ref": "JOB265310",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186614353,
+    "job_ref": "JOB265015~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186625263,
+    "job_ref": "JOB265877",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186625263 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186629437,
+    "job_ref": "DLFF265916",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186649823,
+    "job_ref": "DLFF265925",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186649829,
+    "job_ref": "DLFF265926",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186649836,
+    "job_ref": "DLFF265927",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186652500,
+    "job_ref": "DLFF265929",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186652503,
+    "job_ref": "DLFF265930",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186659027,
+    "job_ref": "PPE265942",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186659449,
+    "job_ref": "PPE265954",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186659633,
+    "job_ref": "PPE265967",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186660764,
+    "job_ref": "PPE265992",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186667936,
+    "job_ref": "PPE266009",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186674905,
+    "job_ref": "DLFF266036",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186674910,
+    "job_ref": "DLFF266037",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186674912,
+    "job_ref": "DLFF266038",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186680609,
+    "job_ref": "DLFF266041",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186680614,
+    "job_ref": "DLFF266042",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186680621,
+    "job_ref": "DLFF266043",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186702107,
+    "job_ref": "JOB265874~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186702631,
+    "job_ref": "DLFF266059",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186702771,
+    "job_ref": "JOB266060",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186702932,
+    "job_ref": "DLFF266061",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186702949,
+    "job_ref": "DLFF266063",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186734623,
+    "job_ref": "JOB266112",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186734694,
+    "job_ref": "JOB266113",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186738810,
+    "job_ref": "JOB266116",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186752854,
+    "job_ref": "JOB266136",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186763836,
+    "job_ref": "DL266149",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186763838,
+    "job_ref": "DL266150",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186763839,
+    "job_ref": "DL266151",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186763841,
+    "job_ref": "DL266152",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186763842,
+    "job_ref": "DL266153",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186763844,
+    "job_ref": "DL266154",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186763845,
+    "job_ref": "DL266155",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186763846,
+    "job_ref": "DL266156",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186763847,
+    "job_ref": "DL266157",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186764355,
+    "job_ref": "JOB266407",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186764355 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186764355,
+    "job_ref": "JOB266407",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186786763,
+    "job_ref": "DLFF266410",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186792031,
+    "job_ref": "JOB266414",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186792031 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186792031,
+    "job_ref": "JOB266414",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186795841,
+    "job_ref": "JOB266417",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186795841 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186795841,
+    "job_ref": "JOB266417",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186805668,
+    "job_ref": "JOB266424",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186805818,
+    "job_ref": "JOB266426",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186805938,
+    "job_ref": "JOB266427",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186806521,
+    "job_ref": "JOB266429",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186819229,
+    "job_ref": "DLFF266448",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186819770,
+    "job_ref": "DLFF259266~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186820824,
+    "job_ref": "DLFF249820~2",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186829343,
+    "job_ref": "JOB266457",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186829577,
+    "job_ref": "JOB266458",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186829624,
+    "job_ref": "DLFF266459",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186831810,
+    "job_ref": "DLFF266462",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186851788,
+    "job_ref": "JOB265017~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186864562,
+    "job_ref": "JOB266566",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186869100,
+    "job_ref": "JOB266568",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186871620,
+    "job_ref": "JOB266571",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186881617,
+    "job_ref": "JOB266573",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186889220,
+    "job_ref": "266574",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186902519,
+    "job_ref": "DLFF266581",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186906855,
+    "job_ref": "JOB266584",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186914519,
+    "job_ref": "JOB266585",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186919958,
+    "job_ref": "DLFF266592",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186919968,
+    "job_ref": "DLFF266594",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186920483,
+    "job_ref": "DLFF266595",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186922304,
+    "job_ref": "DLFF266597",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186922812,
+    "job_ref": "DLFF266598",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186934473,
+    "job_ref": "JOB266600",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186941931,
+    "job_ref": "DLFF252219~2",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186960093,
+    "job_ref": "DLFF266607",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186963321,
+    "job_ref": "JOB266610",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186963321 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186963321,
+    "job_ref": "JOB266610",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186963332,
+    "job_ref": "JOB266611",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "186963332 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 186963332,
+    "job_ref": "JOB266611",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186963356,
+    "job_ref": "JOB266612",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186963360,
+    "job_ref": "DLFF266613",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186963363,
+    "job_ref": "DLFF266614",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186963368,
+    "job_ref": "DLFF266615",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186963375,
+    "job_ref": "DLFF266617",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186965292,
+    "job_ref": "JOB266624",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186965985,
+    "job_ref": "JOB266625",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186966700,
+    "job_ref": "JOB266626",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 186966814,
+    "job_ref": "DLFF266627",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187009823,
+    "job_ref": "JOB266645",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187018682,
+    "job_ref": "JOB266648",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187019293,
+    "job_ref": "JOB266650",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187037933,
+    "job_ref": "DLFF267025",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187038044,
+    "job_ref": "DLFF267026",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187054194,
+    "job_ref": "JOB267040",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187066702,
+    "job_ref": "JOB267043",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187069116,
+    "job_ref": "JOB267044",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187077565,
+    "job_ref": "JOB267045",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187078048,
+    "job_ref": "JOB259342~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187084413,
+    "job_ref": "JOB267046",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187091792,
+    "job_ref": "DLFF267047",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187106443,
+    "job_ref": "JOB267054",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187111714,
+    "job_ref": "DLFF267058",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187112207,
+    "job_ref": "DLFF267059",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187113746,
+    "job_ref": "DLFF267061",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187117261,
+    "job_ref": "JOB267063",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187119147,
+    "job_ref": "JOB267064",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187120198,
+    "job_ref": "DLFF267065",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187120293,
+    "job_ref": "JOB267066",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187122630,
+    "job_ref": "JOB267067",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187122702,
+    "job_ref": "JOB267068",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187122834,
+    "job_ref": "JOB267069",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187135581,
+    "job_ref": "DLFF267075",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187135593,
+    "job_ref": "JOB267076",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187135632,
+    "job_ref": "DLFF267077",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187135796,
+    "job_ref": "DLFF267078",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187135957,
+    "job_ref": "DLFF267079",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187136033,
+    "job_ref": "DLFF267080",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187136181,
+    "job_ref": "JOB267081",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187136389,
+    "job_ref": "JOB267082",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187138044,
+    "job_ref": "JOB267084",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187138196,
+    "job_ref": "JOB267085",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187138209,
+    "job_ref": "JOB267086",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187139133,
+    "job_ref": "DLFF267089",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187139493,
+    "job_ref": "JOB267090",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187163708,
+    "job_ref": "JOB267146",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187164581,
+    "job_ref": "JOB267151",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187164820,
+    "job_ref": "JOB267153",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187165633,
+    "job_ref": "DLFF267154",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187166209,
+    "job_ref": "DLFF267155",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187167760,
+    "job_ref": "DLFF267158",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187167860,
+    "job_ref": "JOB267159",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187179001,
+    "job_ref": "JOB267187",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187179723,
+    "job_ref": "267189",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187179782,
+    "job_ref": "JOB267191",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187180477,
+    "job_ref": "JOB267193",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187180692,
+    "job_ref": "JOB267195",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187180702,
+    "job_ref": "JOB267196",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187180786,
+    "job_ref": "JOB267197",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187180832,
+    "job_ref": "267198",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187180849,
+    "job_ref": "JOB267199",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187180882,
+    "job_ref": "DLFF267200",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187180961,
+    "job_ref": "JOB267202",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187181661,
+    "job_ref": "DLFF266618~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187181943,
+    "job_ref": "JOB267204",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187182988,
+    "job_ref": "DLFF267205",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187183080,
+    "job_ref": "JOB267206",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187183132,
+    "job_ref": "DLFF267207",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187183540,
+    "job_ref": "DLFF267208",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187183618,
+    "job_ref": "DLFF267209",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187183667,
+    "job_ref": "DLFF267210",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187183668,
+    "job_ref": "JOB267211",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187183747,
+    "job_ref": "DLFF267212",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187184174,
+    "job_ref": "DLFF267213",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187184311,
+    "job_ref": "DLFF267214",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187184449,
+    "job_ref": "JOB267215",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187185666,
+    "job_ref": "JOB267217",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187186752,
+    "job_ref": "EOT267218",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187187084,
+    "job_ref": "JOB258728~3",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187187894,
+    "job_ref": "JOB267220",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187188890,
+    "job_ref": "DLFF267221",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187190083,
+    "job_ref": "JOB246335~2",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187190373,
+    "job_ref": "JOB267223",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187190377,
+    "job_ref": "EOT267225",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187190383,
+    "job_ref": "DLFF267226",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187190546,
+    "job_ref": "JOB267227",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187190632,
+    "job_ref": "DLFF267231",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187190637,
+    "job_ref": "JOB267232",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187190641,
+    "job_ref": "JOB267233",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187191620,
+    "job_ref": "JOB267235",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187194948,
+    "job_ref": "DLFF267236",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187194951,
+    "job_ref": "JOB267237",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187195138,
+    "job_ref": "JOB267238",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187210757,
+    "job_ref": "JOB267336",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187214463,
+    "job_ref": "JOB267337",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187220608,
+    "job_ref": "DLFF267341",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187220742,
+    "job_ref": "DLFF267342",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187221536,
+    "job_ref": "JOB267344",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187221789,
+    "job_ref": "JOB267345",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187222324,
+    "job_ref": "JOB267346",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187223377,
+    "job_ref": "JOB267347",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187229142,
+    "job_ref": "JOB267348",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187229370,
+    "job_ref": "JOB267349",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187230764,
+    "job_ref": "DLFF267352",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187230839,
+    "job_ref": "DLFF267353",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187233608,
+    "job_ref": "JOB267354",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187233696,
+    "job_ref": "DLM267355",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187238354,
+    "job_ref": "DLFF267435",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187238420,
+    "job_ref": "DLFF267436",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187238567,
+    "job_ref": "DLFF267437",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187238892,
+    "job_ref": "DLFF267438",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187239635,
+    "job_ref": "DLFF267441",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187240110,
+    "job_ref": "DLFF267442",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187240194,
+    "job_ref": "DLFF267443",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187240220,
+    "job_ref": "DLFF267444",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187240271,
+    "job_ref": "DLFF267445",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187240296,
+    "job_ref": "JOB267446",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187240326,
+    "job_ref": "DLFF267447",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187241004,
+    "job_ref": "EOT267448",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187241389,
+    "job_ref": "DLFF267449",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187241468,
+    "job_ref": "DLFF267450",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187241505,
+    "job_ref": "DLFF267451",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187241529,
+    "job_ref": "DLFF267452",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187241576,
+    "job_ref": "DLFF267454",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187244711,
+    "job_ref": "INT267455",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187245279,
+    "job_ref": "DLFF258571~3",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187246003,
+    "job_ref": "JOB262717~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187249980,
+    "job_ref": "JOB267458",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187256287,
+    "job_ref": "JOB267461",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187256837,
+    "job_ref": "JOB267462",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187257339,
+    "job_ref": "JOB267463",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187257581,
+    "job_ref": "JOB267465",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187257819,
+    "job_ref": "JOB267466",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187260184,
+    "job_ref": "JOB267469",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187260547,
+    "job_ref": "JOB267470",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187261397,
+    "job_ref": "DLFF267472",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187261884,
+    "job_ref": "JOB265015~2",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187263211,
+    "job_ref": "JOB267473",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187263498,
+    "job_ref": "JOB267474",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187263954,
+    "job_ref": "JOB267475",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187264094,
+    "job_ref": "JOB267477",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187264388,
+    "job_ref": "JOB267478",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187265607,
+    "job_ref": "JOB267480",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187270133,
+    "job_ref": "DLFF267482",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187270415,
+    "job_ref": "DLFF267483",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187271882,
+    "job_ref": "DLFF267484",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187272557,
+    "job_ref": "DLFF267486",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187272560,
+    "job_ref": "DLFF267487",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187273501,
+    "job_ref": "JOB267491",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187273876,
+    "job_ref": "DLFF267492",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187273934,
+    "job_ref": "DLFF267493",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187274218,
+    "job_ref": "DLFF267494",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187274225,
+    "job_ref": "DLFF267495",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187274429,
+    "job_ref": "DLFF267498",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187274462,
+    "job_ref": "DLFF267499",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187274506,
+    "job_ref": "DLFF267500",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187275549,
+    "job_ref": "DLFF266036~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187276741,
+    "job_ref": "JOB267462~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187276928,
+    "job_ref": "EOT267501",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187276975,
+    "job_ref": "EOT267502~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187280444,
+    "job_ref": "DLFF267504",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187283467,
+    "job_ref": "DLFF267506",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187284405,
+    "job_ref": "DLFF267509",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187285680,
+    "job_ref": "JOB267512",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187288735,
+    "job_ref": "JOB267514",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187300565,
+    "job_ref": "DLFF267516",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187300569,
+    "job_ref": "DLFF267517",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187307703,
+    "job_ref": "DLFF266459~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187311146,
+    "job_ref": "JOB267526",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187315317,
+    "job_ref": "JOB267528",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187318346,
+    "job_ref": "JOB267530",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187318363,
+    "job_ref": "DLFF267531",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187318581,
+    "job_ref": "JOB267532",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187335192,
+    "job_ref": "EOT267567~2",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187340197,
+    "job_ref": "JOB267569",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187340453,
+    "job_ref": "JOB267570",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187341680,
+    "job_ref": "JOB207703~3",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187347591,
+    "job_ref": "JOB267571",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187348309,
+    "job_ref": "DLFF267572",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187352800,
+    "job_ref": "JOB267578",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187352972,
+    "job_ref": "DLM267579",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187363296,
+    "job_ref": "JOB267582",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187366735,
+    "job_ref": "JOB267584",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187370336,
+    "job_ref": "DLFF267589",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187370565,
+    "job_ref": "DLFF267591",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187373603,
+    "job_ref": "JOB267601",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187373752,
+    "job_ref": "DLFF267603",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187382262,
+    "job_ref": "JOB267612",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187382595,
+    "job_ref": "JOB267614",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187392236,
+    "job_ref": "JOB267622",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187401982,
+    "job_ref": "DLFF267624",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187405657,
+    "job_ref": "JOB267626",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187408089,
+    "job_ref": "JOB267627",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187408506,
+    "job_ref": "JOB267628",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187408906,
+    "job_ref": "JOB267629",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187409824,
+    "job_ref": "JOB267631",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187415240,
+    "job_ref": "EOT267632",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187417743,
+    "job_ref": "JOB267634",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187417857,
+    "job_ref": "EOT267635",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187417884,
+    "job_ref": "EOT267635~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187421860,
+    "job_ref": "JOB267637",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187421936,
+    "job_ref": "DLFF267638",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187424212,
+    "job_ref": "JOB267658",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187428755,
+    "job_ref": "JOB267660",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187428770,
+    "job_ref": "JOB267661",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187428852,
+    "job_ref": "JOB267662",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187429285,
+    "job_ref": "JOB267663",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187429359,
+    "job_ref": "EOT267664~2",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187429424,
+    "job_ref": "JOB267665",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187461046,
+    "job_ref": "JOB267759",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187465426,
+    "job_ref": "EOT267864",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187482274,
+    "job_ref": "JOB267865",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187491623,
+    "job_ref": "JOB267868",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187510798,
+    "job_ref": "DLFF267870",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187513997,
+    "job_ref": "JOB267872",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187514276,
+    "job_ref": "JOB267873",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187520369,
+    "job_ref": "DLFF267875",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187520397,
+    "job_ref": "JOB267876",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187526491,
+    "job_ref": "JOB267877",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187526608,
+    "job_ref": "DLFF267878",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187529666,
+    "job_ref": "JOB267880",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187531819,
+    "job_ref": "DLFF267495~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187532153,
+    "job_ref": "DLFF267881",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187532207,
+    "job_ref": "DLFF267882",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187539249,
+    "job_ref": "JOB267901",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187540144,
+    "job_ref": "DLFF251140~2",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187543790,
+    "job_ref": "JOB267903",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187556272,
+    "job_ref": "DLFF267911",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187556293,
+    "job_ref": "DLFF267912",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187558825,
+    "job_ref": "DLFF253422~3",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187559204,
+    "job_ref": "JOB267914",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187559786,
+    "job_ref": "JOB267915",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187560306,
+    "job_ref": "INT267918",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187561013,
+    "job_ref": "JOB267919",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187562063,
+    "job_ref": "DLFF267025~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187562205,
+    "job_ref": "JOB267921",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187563595,
+    "job_ref": "JOB267925",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187564723,
+    "job_ref": "JOB267927",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187565454,
+    "job_ref": "DLFF267928",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187565708,
+    "job_ref": "JOB267929",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187580447,
+    "job_ref": "JOB267937",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187587069,
+    "job_ref": "EOT267943",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187591900,
+    "job_ref": "JOB267946",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187591942,
+    "job_ref": "DLFF266595~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187593136,
+    "job_ref": "JOB267947",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187599875,
+    "job_ref": "DLM267948",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187603779,
+    "job_ref": "JOB265874~2",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187607834,
+    "job_ref": "JOB267963",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187618290,
+    "job_ref": "JOB267969",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187623892,
+    "job_ref": "DLFF267972",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187625504,
+    "job_ref": "JOB267983",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187625868,
+    "job_ref": "JOB267986",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "187625868 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 187625868,
+    "job_ref": "JOB267986",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187628281,
+    "job_ref": "267991",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187631486,
+    "job_ref": "JOB268000",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187631673,
+    "job_ref": "JOB268001",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187632519,
+    "job_ref": "JOB268004",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187634909,
+    "job_ref": "LS268005",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187636187,
+    "job_ref": "JOB268057",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187639192,
+    "job_ref": "JOB268058",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187642775,
+    "job_ref": "DLFF258532~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187643985,
+    "job_ref": "DLFF265308~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187652466,
+    "job_ref": "PPM268079",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187653421,
+    "job_ref": "JOB268104",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187653852,
+    "job_ref": "JOB268117",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187655586,
+    "job_ref": "GRANQ268118",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187655965,
+    "job_ref": "GRANQ268171",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187656908,
+    "job_ref": "DLFF268223",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187661504,
+    "job_ref": "JOB267336~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187665600,
+    "job_ref": "DLFF268226",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187692632,
+    "job_ref": "JOB268321",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187707691,
+    "job_ref": "JOB268330",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187711253,
+    "job_ref": "DLFF268334",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187712248,
+    "job_ref": "JOB268335",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187731810,
+    "job_ref": "DLFF268397",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187732032,
+    "job_ref": "JOB268400",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187732056,
+    "job_ref": "JOB268401",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187732109,
+    "job_ref": "JOB268402",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187732475,
+    "job_ref": "JOB268404",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187737556,
+    "job_ref": "JOB268409",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187765628,
+    "job_ref": "DLFF268439",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187766755,
+    "job_ref": "DLFF268441",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187768837,
+    "job_ref": "DLFF268443",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187770147,
+    "job_ref": "268445",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187772987,
+    "job_ref": "JOB268447",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187777451,
+    "job_ref": "JOB268450",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187777810,
+    "job_ref": "JOB268451",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187777828,
+    "job_ref": "DLM268452",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187778320,
+    "job_ref": "DLFF268454",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187780740,
+    "job_ref": "DLFF268455",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187790630,
+    "job_ref": "DLFF268457",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187794934,
+    "job_ref": "JOB258503~2",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187797867,
+    "job_ref": "DLFF268462",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187798003,
+    "job_ref": "DLFF268463",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187837049,
+    "job_ref": "JOB268451~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187837580,
+    "job_ref": "JOB268484",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187848292,
+    "job_ref": "JOB268490",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187848311,
+    "job_ref": "JOB268491",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187848332,
+    "job_ref": "JOB268492",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187872992,
+    "job_ref": "DLFF248708~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187877429,
+    "job_ref": "JOB268595",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187877519,
+    "job_ref": "DLFF268596",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187877538,
+    "job_ref": "DLFF268597",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187877584,
+    "job_ref": "DLFF268598",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187878352,
+    "job_ref": "TE92253738",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187878366,
+    "job_ref": "DLFF268600",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187879670,
+    "job_ref": "DLFF268603",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187882130,
+    "job_ref": "JOB268608",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187882212,
+    "job_ref": "JOB268609",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187882451,
+    "job_ref": "JOB268610",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187882985,
+    "job_ref": "TE32683061",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187883822,
+    "job_ref": "TE96726434",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187888246,
+    "job_ref": "JOB268619",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187889824,
+    "job_ref": "JOB268621",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187891310,
+    "job_ref": "JOB268623",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187891881,
+    "job_ref": "DLFF268624",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187892513,
+    "job_ref": "JOB268626",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187893102,
+    "job_ref": "JOB268627",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187893740,
+    "job_ref": "JOB268629",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187894241,
+    "job_ref": "JOB268630",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187894999,
+    "job_ref": "JOB268634",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187895300,
+    "job_ref": "JOB268635",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187899696,
+    "job_ref": "DLFF268639",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187903293,
+    "job_ref": "DLFF268643",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187919679,
+    "job_ref": "INT268687",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187941511,
+    "job_ref": "INT268695",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187943233,
+    "job_ref": "JOB268696",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187951943,
+    "job_ref": "DLFF268703",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187952062,
+    "job_ref": "JOB268491~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187960733,
+    "job_ref": "JOB268716",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187962861,
+    "job_ref": "JOB268721",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187963296,
+    "job_ref": "JOB268722",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187963329,
+    "job_ref": "JOB268723",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187981518,
+    "job_ref": "JOB268761",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187988511,
+    "job_ref": "DLFF268767",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187988663,
+    "job_ref": "JOB268770",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187988745,
+    "job_ref": "JOB268773",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 187989673,
+    "job_ref": "JOB268777",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188000804,
+    "job_ref": "JOB268783",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188002876,
+    "job_ref": "DLFF268785",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188006259,
+    "job_ref": "EOT268787",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188017044,
+    "job_ref": "JOB268793",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188020764,
+    "job_ref": "JOB268797",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188031641,
+    "job_ref": "DLFF268811",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188038814,
+    "job_ref": "JOB268818",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188053596,
+    "job_ref": "JOB268852",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067605,
+    "job_ref": "268874",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067606,
+    "job_ref": "268875",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067607,
+    "job_ref": "268876",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067608,
+    "job_ref": "268877",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067609,
+    "job_ref": "268878",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067610,
+    "job_ref": "268879",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067611,
+    "job_ref": "268880",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067612,
+    "job_ref": "268881",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067613,
+    "job_ref": "268882",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067614,
+    "job_ref": "268883",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067615,
+    "job_ref": "268884",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067616,
+    "job_ref": "268885",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067617,
+    "job_ref": "268886",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067619,
+    "job_ref": "268887",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067620,
+    "job_ref": "268888",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067622,
+    "job_ref": "268889",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067623,
+    "job_ref": "268890",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067625,
+    "job_ref": "268891",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188067626,
+    "job_ref": "268892",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188068322,
+    "job_ref": "DLFF252577~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188070943,
+    "job_ref": "JOB268898",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188071412,
+    "job_ref": "JOB268901",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188091242,
+    "job_ref": "INT268991",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188114761,
+    "job_ref": "TE41486711",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188122904,
+    "job_ref": "JOB269007",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188123377,
+    "job_ref": "JOB269008",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188126653,
+    "job_ref": "JOB269012",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188127471,
+    "job_ref": "JOB269013",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188130319,
+    "job_ref": "DLFF269014",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188131170,
+    "job_ref": "DLFF269015",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188131190,
+    "job_ref": "DLFF269016",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132484,
+    "job_ref": "269018",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132489,
+    "job_ref": "269019",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132495,
+    "job_ref": "269020",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132499,
+    "job_ref": "269021",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132502,
+    "job_ref": "269022",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132509,
+    "job_ref": "269023",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132511,
+    "job_ref": "269024",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132513,
+    "job_ref": "269025",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132516,
+    "job_ref": "269026",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132518,
+    "job_ref": "269027",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132521,
+    "job_ref": "269028",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132523,
+    "job_ref": "269029",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132526,
+    "job_ref": "269030",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132530,
+    "job_ref": "269031",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132532,
+    "job_ref": "269032",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132533,
+    "job_ref": "269033",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132536,
+    "job_ref": "269034",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132538,
+    "job_ref": "269035",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188132542,
+    "job_ref": "269036",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188154590,
+    "job_ref": "JOB269043",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188155448,
+    "job_ref": "JOB269044",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188156375,
+    "job_ref": "JOB269045",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188186891,
+    "job_ref": "DLFF269058",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188188595,
+    "job_ref": "DL269684",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188189046,
+    "job_ref": "DL269685",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "188189046 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 188200324,
+    "job_ref": "DLFF269896",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188204427,
+    "job_ref": "DLFF269899",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188219242,
+    "job_ref": "JOB269912",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188240224,
+    "job_ref": "JOB269924",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188240976,
+    "job_ref": "DLFF258571~4",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188256288,
+    "job_ref": "JOB264451~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188257842,
+    "job_ref": "JOB270074",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188261031,
+    "job_ref": "JOB269007~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188278669,
+    "job_ref": "JOB270091",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 188318374,
+    "job_ref": "SS270139",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  }
+]
