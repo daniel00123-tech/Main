@@ -498,29 +498,57 @@ def haversine_miles(lat1: Any, lon1: Any, lat2: Any, lon2: Any) -> float | None:
     return 2 * radius_miles * math.asin(math.sqrt(a))
 
 
-def first_job_anchor(first_job: dict[str, Any], first_history: list[dict[str, Any]], day: dt.date) -> dt.datetime | None:
-    return (
-        find_first_status(first_history, STARTED_STATUS_ID, day)
-        or parse_datetime(first_job.get("RealStart"))
-        or parse_datetime(first_job.get("PlannedStart"))
-    )
+def actual_job_start(
+    job: dict[str, Any], history: list[dict[str, Any]], day: dt.date
+) -> dt.datetime | None:
+    started = find_first_status(history, STARTED_STATUS_ID, day)
+    if started:
+        return started
+
+    real_start = parse_datetime(job.get("RealStart"))
+    return real_start if same_day(real_start, day) else None
+
+
+def first_actual_job_start(
+    jobs: list[dict[str, Any]], histories: dict[int, list[dict[str, Any]]], day: dt.date
+) -> dt.datetime | None:
+    starts: list[dt.datetime] = []
+    for job in jobs:
+        job_id = job.get("JobId")
+        history = histories.get(int(job_id), []) if job_id else []
+        started = actual_job_start(job, history, day)
+        if started:
+            starts.append(started)
+    return min(starts) if starts else None
+
+
+def first_travel_start(
+    histories: dict[int, list[dict[str, Any]]], day: dt.date, before: dt.datetime | None
+) -> dt.datetime | None:
+    if not before:
+        return None
+
+    starts: list[dt.datetime] = []
+    for history in histories.values():
+        started = find_first_status(history, START_TRAVEL_STATUS_ID, day, before=before)
+        if started:
+            starts.append(started)
+    return min(starts) if starts else None
 
 
 def calculate_deduction(
     original_start: dt.datetime | None,
     first_job: dict[str, Any] | None,
-    first_history: list[dict[str, Any]],
+    first_started: dt.datetime | None,
     home: dict[str, Any],
-    day: dt.date,
 ) -> tuple[int, str, float | None]:
     if not original_start or not first_job:
-        return 0, "No valid travel gap: no jobs allocated or no start time found", None
+        return 0, "No valid travel gap: no jobs allocated or no actual start/travel time found", None
 
-    anchor = first_job_anchor(first_job, first_history, day)
-    if not anchor or anchor <= original_start:
-        return 0, "No valid travel gap: first job start/planned time is unavailable or before start", None
+    if not first_started or first_started <= original_start:
+        return 0, "No valid travel gap: first actual job start is unavailable or before start", None
 
-    actual_gap = int((anchor - original_start).total_seconds() // 60)
+    actual_gap = int((first_started - original_start).total_seconds() // 60)
     if actual_gap <= 0:
         return 0, "Journey looks tight: no positive travel/pre-start gap", None
 
@@ -654,9 +682,7 @@ def build_day_row(
         histories[job_id_int] = status_cache[job_id_int]
 
     first_job = jobs[0]
-    first_job_id = int(first_job.get("JobId")) if first_job.get("JobId") else None
-    first_history = histories.get(first_job_id, []) if first_job_id else []
-    first_anchor = first_job_anchor(first_job, first_history, day)
+    first_started = first_actual_job_start(jobs, histories, day)
 
     journey_starts = [
         parse_datetime(row.get("Start"))
@@ -671,23 +697,15 @@ def build_day_row(
         original_start = min(journey_starts)
         start_source = "Tracking journey"
     else:
-        travel_start = find_first_status(
-            first_history,
-            START_TRAVEL_STATUS_ID,
-            day,
-            before=first_anchor,
-        )
+        travel_start = first_travel_start(histories, day, before=first_started)
         if travel_start:
             original_start = travel_start
             start_source = "Start travel pressed"
+        elif first_started:
+            original_start = first_started
+            start_source = "First job started"
         else:
-            started = find_first_status(first_history, STARTED_STATUS_ID, day)
-            if started:
-                original_start = started
-                start_source = "First job started"
-            else:
-                original_start = parse_datetime(first_job.get("PlannedStart"))
-                start_source = "Planned start only"
+            start_source = "No actual start/travel found"
 
     completion = find_latest_completion_same_day(histories, day)
     if completion:
@@ -698,7 +716,7 @@ def build_day_row(
         finish_source = "Planned finish only"
 
     deduction_minutes, deduction_reason, distance = calculate_deduction(
-        original_start, first_job, first_history, home, day
+        original_start, first_job, first_started, home
     )
     adjusted_start = (
         original_start + dt.timedelta(minutes=deduction_minutes)
