@@ -1,0 +1,838 @@
+#!/usr/bin/env python3
+"""Generate and email the daily BigChange KPI dashboard."""
+
+from __future__ import annotations
+
+import base64
+import concurrent.futures
+import datetime as dt
+import decimal
+import html
+import json
+import os
+import re
+import smtplib
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections import defaultdict
+from email import encoders
+from email.headerregistry import Address
+from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from pathlib import Path
+from typing import Any
+
+
+KPI_ORDER = [
+    ("unallocated_jobs", "Unallocated Jobs"),
+    ("historic_jobs", "Historic Jobs"),
+    ("uninvoiced_jobs", "Uninvoiced Jobs"),
+    ("unactioned_jobs", "Unactioned Jobs"),
+]
+
+EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
+COMPLETED_STATUS_IDS = {12, 13}
+UNALLOCATED_STATUS_IDS = {1, 3}
+OPEN_NOT_STARTED_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
+DECIMAL_ZERO = decimal.Decimal("0")
+
+
+class ConfigError(RuntimeError):
+    pass
+
+
+def required_env(name: str) -> str:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        raise ConfigError(f"Missing required environment variable: {name}")
+    return value
+
+
+def optional_env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default)
+
+
+def parse_date(value: Any) -> dt.datetime | None:
+    if value in (None, "", "0001-01-01 00:00:00"):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+
+    formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y",
+    ]
+    for fmt in formats:
+        try:
+            return dt.datetime.strptime(text[: len(dt.datetime.now().strftime(fmt))], fmt)
+        except ValueError:
+            continue
+    try:
+        return dt.datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def as_int(value: Any, default: int | None = None) -> int | None:
+    if value in (None, ""):
+        return default
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def as_bool_falsey(value: Any) -> bool:
+    if value in (None, ""):
+        return True
+    text = str(value).strip().lower()
+    return text in {"0", "false", "no", "n", "none", "null"}
+
+
+def as_decimal(value: Any) -> decimal.Decimal:
+    if value in (None, ""):
+        return DECIMAL_ZERO
+    try:
+        return decimal.Decimal(str(value).replace(",", ""))
+    except decimal.InvalidOperation:
+        return DECIMAL_ZERO
+
+
+def clean_name(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def normalized_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+def name_key(value: str) -> str:
+    tokens = normalized_text(value).split()
+    if len(tokens) >= 2:
+        return f"{tokens[0]} {tokens[-1]}"
+    return " ".join(tokens)
+
+
+def should_exclude_category(name: str) -> bool:
+    norm = normalized_text(name)
+    if not norm:
+        return True
+    if norm in {"uncategorised", "uncategorized"}:
+        return True
+    if "nirvana ppm" in norm:
+        return True
+    tokens = set(norm.split())
+    if "ooh" in tokens or "out of hours" in norm:
+        return True
+    return False
+
+
+def is_blank(value: Any) -> bool:
+    return clean_name(value) == ""
+
+
+class BigChangeClient:
+    def __init__(self) -> None:
+        self.base_url = required_env("BIGCHANGE_BASE_URL")
+        username = required_env("BIGCHANGE_USERNAME")
+        password = required_env("BIGCHANGE_PASSWORD")
+        api_key = required_env("BIGCHANGE_API_KEY")
+        token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+        self.headers = {
+            "Authorization": f"Basic {token}",
+            "key": api_key,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+    def get(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        query = {"action": action}
+        if params:
+            query.update({k: v for k, v in params.items() if v is not None and v != ""})
+        url = f"{self.base_url}?{urllib.parse.urlencode(query)}"
+        req = urllib.request.Request(url, headers=self.headers)
+        last_error: Exception | None = None
+        for attempt in range(4):
+            try:
+                with urllib.request.urlopen(req, timeout=120) as response:
+                    raw = response.read()
+                payload = json.loads(raw.decode("utf-8-sig"))
+                if not isinstance(payload, dict):
+                    raise RuntimeError(f"Unexpected response for {action}")
+                return payload
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+                last_error = exc
+                if attempt == 3:
+                    break
+                time.sleep(2**attempt)
+        raise RuntimeError(f"BigChange request failed for {action}: {type(last_error).__name__}")
+
+    @staticmethod
+    def result_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        result = payload.get("Result")
+        if isinstance(result, list):
+            return [row for row in result if isinstance(row, dict)]
+        if isinstance(result, dict):
+            for value in result.values():
+                if isinstance(value, list):
+                    return [row for row in value if isinstance(row, dict)]
+        return []
+
+    def categories(self) -> list[dict[str, Any]]:
+        payload = self.get("jobcategories")
+        if payload.get("Code") != 0:
+            raise RuntimeError("BigChange jobcategories returned an error")
+        return self.result_rows(payload)
+
+    def jobslist(self, params: dict[str, Any], page_size: int = 500) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        page = 0
+        while True:
+            payload = self.get(
+                "jobslist",
+                {
+                    **params,
+                    "Page": page,
+                    "PageSize": page_size,
+                },
+            )
+            if payload.get("Code") != 0:
+                raise RuntimeError(f"BigChange jobslist returned code {payload.get('Code')}")
+            batch = self.result_rows(payload)
+            rows.extend(batch)
+            if len(batch) < page_size:
+                return rows
+            page += 1
+            if page > 200:
+                raise RuntimeError("BigChange jobslist pagination exceeded safety limit")
+
+    def invoices_with_items_by_period(self, start: dt.date, end: dt.date) -> list[dict[str, Any]]:
+        payload = self.get(
+            "invoiceswithitemsbyperiod",
+            {"Start": start.isoformat(), "End": end.isoformat()},
+        )
+        if payload.get("Code") != 0:
+            raise RuntimeError("BigChange invoiceswithitemsbyperiod returned an error")
+        return self.result_rows(payload)
+
+    def job_customer_activity(self, job_id: str) -> list[dict[str, Any]]:
+        payload = self.get("jobcustomeractivity", {"JobId": job_id})
+        if payload.get("Code") != 0:
+            return []
+        return self.result_rows(payload)
+
+
+def item_age_days(item_date: dt.datetime | None, today: dt.date) -> int:
+    if item_date is None:
+        return 0
+    return max((today - item_date.date()).days, 0)
+
+
+def severity_for(count: int, oldest_age_days: int) -> str:
+    if count == 0:
+        return "green"
+    if oldest_age_days < 10:
+        return "green"
+    if oldest_age_days <= 30:
+        return "amber"
+    return "red"
+
+
+def add_items(
+    grouped: dict[str, dict[str, list[dt.datetime | None]]],
+    staff_names: set[str],
+    rows: list[dict[str, Any]],
+    metric: str,
+    date_field: str,
+    today: dt.date,
+) -> None:
+    for row in rows:
+        category = clean_name(row.get("Category"))
+        if should_exclude_category(category):
+            continue
+        staff_names.add(category)
+        grouped[category][metric].append(parse_date(row.get(date_field)))
+
+
+def resource_assigned(row: dict[str, Any]) -> bool:
+    resource = row.get("Resource")
+    if isinstance(resource, list):
+        return len(resource) > 0
+    return not is_blank(resource)
+
+
+def calculate_sales(
+    client: BigChangeClient,
+    staff_names: set[str],
+    start: dt.date,
+    end: dt.date,
+) -> dict[str, decimal.Decimal]:
+    staff_by_key = {name_key(name): name for name in staff_names if name_key(name)}
+    invoices = client.invoices_with_items_by_period(start, end)
+
+    eligible: list[dict[str, Any]] = []
+    for invoice in invoices:
+        if clean_name(invoice.get("OrderType")).lower() != "invoice":
+            continue
+        if invoice.get("CancellationDate") or invoice.get("DeletionDate") or invoice.get("RejectionDate"):
+            continue
+        eligible.append(invoice)
+
+    job_ids = sorted({str(inv.get("JobId")) for inv in eligible if inv.get("JobId")})
+    activity_cache: dict[str, list[dict[str, Any]]] = {}
+    if job_ids:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            futures = {pool.submit(client.job_customer_activity, job_id): job_id for job_id in job_ids}
+            for future in concurrent.futures.as_completed(futures):
+                activity_cache[futures[future]] = future.result()
+
+    sales: dict[str, decimal.Decimal] = defaultdict(lambda: DECIMAL_ZERO)
+    for invoice in eligible:
+        job_id = str(invoice.get("JobId") or "")
+        activities = activity_cache.get(job_id, [])
+        invoice_created_activities = [
+            activity
+            for activity in activities
+            if as_int(activity.get("JobClientStatusID") or activity.get("JobClientStatusId")) == 34
+        ]
+        if not invoice_created_activities:
+            continue
+        invoice_created_activities.sort(
+            key=lambda activity: parse_date(activity.get("JobClientStatusDate")) or dt.datetime.min
+        )
+        creator = clean_name(invoice_created_activities[-1].get("JobClientStatusOwner"))
+        matched_staff = staff_by_key.get(name_key(creator))
+        if not matched_staff:
+            continue
+        net = DECIMAL_ZERO
+        for line in invoice.get("lines") or []:
+            if not isinstance(line, dict):
+                continue
+            net += as_decimal(line.get("NetPrice")) - as_decimal(line.get("VatAmount"))
+        sales[matched_staff] += net
+    return dict(sales)
+
+
+def build_report(client: BigChangeClient) -> dict[str, Any]:
+    now = dt.datetime.now(dt.timezone.utc)
+    today = dt.date.today()
+    tomorrow = today + dt.timedelta(days=1)
+    month_start = today.replace(day=1)
+    lookback_days = int(optional_env("BIGCHANGE_KPI_LOOKBACK_DAYS", "1460"))
+    lookback_start = today - dt.timedelta(days=lookback_days)
+
+    staff_names: set[str] = set()
+    for category in client.categories():
+        name = clean_name(category.get("label") or category.get("JobCategoryName"))
+        if not should_exclude_category(name):
+            staff_names.add(name)
+
+    grouped: dict[str, dict[str, list[dt.datetime | None]]] = defaultdict(lambda: defaultdict(list))
+
+    unallocated_rows = client.jobslist(
+        {
+            "Start": lookback_start.isoformat(),
+            "End": tomorrow.isoformat(),
+            "DateOptionId": 2,
+            "Unallocated": 1,
+            "StatusId": "1|3",
+        }
+    )
+    unallocated_rows = [
+        row
+        for row in unallocated_rows
+        if as_int(row.get("StatusId")) in UNALLOCATED_STATUS_IDS
+        and not resource_assigned(row)
+        and parse_date(row.get("PlannedStart")) is None
+    ]
+    add_items(grouped, staff_names, unallocated_rows, "unallocated_jobs", "Created", today)
+
+    historic_end = today - dt.timedelta(days=1)
+    historic_rows: list[dict[str, Any]] = []
+    if lookback_start <= historic_end:
+        historic_rows = client.jobslist(
+            {
+                "Start": lookback_start.isoformat(),
+                "End": historic_end.isoformat(),
+                "DateOptionId": 0,
+                "Allocated": 1,
+                "ExcludeNullPlannedDates": 1,
+                "StatusId": "|".join(str(status) for status in sorted(OPEN_NOT_STARTED_STATUS_IDS)),
+            }
+        )
+    historic_rows = [
+        row
+        for row in historic_rows
+        if as_int(row.get("StatusId")) not in EXCLUDED_STATUS_IDS
+        and resource_assigned(row)
+        and (parse_date(row.get("PlannedStart")) or dt.datetime.max).date() < today
+    ]
+    add_items(grouped, staff_names, historic_rows, "historic_jobs", "PlannedStart", today)
+
+    completed_statuses = "|".join(str(status) for status in sorted(COMPLETED_STATUS_IDS))
+    uninvoiced_rows = client.jobslist(
+        {
+            "Start": lookback_start.isoformat(),
+            "End": tomorrow.isoformat(),
+            "DateOptionId": 4,
+            "StatusId": completed_statuses,
+            "ClientStatusId": -34,
+        }
+    )
+    uninvoiced_rows = [
+        row for row in uninvoiced_rows if as_int(row.get("StatusId")) in COMPLETED_STATUS_IDS
+    ]
+    add_items(grouped, staff_names, uninvoiced_rows, "uninvoiced_jobs", "StatusDate", today)
+
+    unactioned_rows = client.jobslist(
+        {
+            "Start": lookback_start.isoformat(),
+            "End": tomorrow.isoformat(),
+            "DateOptionId": 4,
+            "StatusId": completed_statuses,
+            "Unactioned": 1,
+        }
+    )
+    unactioned_rows = [
+        row
+        for row in unactioned_rows
+        if as_int(row.get("StatusId")) in COMPLETED_STATUS_IDS and as_bool_falsey(row.get("Actioned"))
+    ]
+    add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", "StatusDate", today)
+
+    sales = calculate_sales(client, staff_names, month_start, today)
+
+    staff_rows: list[dict[str, Any]] = []
+    for staff in sorted(staff_names):
+        metrics: dict[str, dict[str, Any]] = {}
+        for metric_key, _label in KPI_ORDER:
+            dates = grouped[staff].get(metric_key, [])
+            count = len(dates)
+            oldest_date = min((date for date in dates if date is not None), default=None)
+            age_days = item_age_days(oldest_date, today) if oldest_date else 0
+            metrics[metric_key] = {
+                "count": count,
+                "oldest_age_days": age_days,
+                "status": severity_for(count, age_days),
+            }
+        red_count = sum(1 for metric in metrics.values() if metric["status"] == "red")
+        amber_count = sum(1 for metric in metrics.values() if metric["status"] == "amber")
+        total_open_workload = sum(metric["count"] for metric in metrics.values())
+        staff_rows.append(
+            {
+                "staff_name": staff,
+                "metrics": metrics,
+                "current_month_sales": float(sales.get(staff, DECIMAL_ZERO)),
+                "current_month_sales_display": format_currency(sales.get(staff, DECIMAL_ZERO)),
+                "red_kpis": red_count,
+                "amber_kpis": amber_count,
+                "total_open_workload": total_open_workload,
+            }
+        )
+
+    staff_rows.sort(key=lambda row: (row["red_kpis"], row["amber_kpis"], row["total_open_workload"], row["staff_name"]))
+    return {
+        "run_timestamp": now.isoformat(),
+        "report_date": today.isoformat(),
+        "month_name": today.strftime("%B"),
+        "staff_rows": staff_rows,
+        "total_red_kpis": sum(row["red_kpis"] for row in staff_rows),
+        "total_amber_kpis": sum(row["amber_kpis"] for row in staff_rows),
+    }
+
+
+def format_currency(value: decimal.Decimal) -> str:
+    rounded = value.quantize(decimal.Decimal("0.01"), rounding=decimal.ROUND_HALF_UP)
+    return f"GBP {rounded:,.2f}"
+
+
+def render_metric(metric: dict[str, Any]) -> str:
+    status = html.escape(metric["status"])
+    count = int(metric["count"])
+    age = int(metric["oldest_age_days"])
+    return (
+        f'<div class="metric {status}">'
+        f'<div class="circle"><span>{count}</span></div>'
+        f'<div class="age">{age} days old</div>'
+        f"</div>"
+    )
+
+
+def render_sales(value: str) -> str:
+    return (
+        '<div class="metric sales green">'
+        f'<div class="circle"><span>{html.escape(value)}</span></div>'
+        '<div class="age">current month</div>'
+        "</div>"
+    )
+
+
+def render_html(report: dict[str, Any]) -> str:
+    rows_html = []
+    for row in report["staff_rows"]:
+        cells = [f'<td class="staff">{html.escape(row["staff_name"])}</td>']
+        for metric_key, _label in KPI_ORDER:
+            cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
+        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
+        rows_html.append(f"<tr>{''.join(cells)}</tr>")
+
+    generated = html.escape(report["run_timestamp"])
+    report_date = html.escape(report["report_date"])
+    month_name = html.escape(report["month_name"])
+    return f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>BigChange KPI Overview</title>
+  <style>
+    :root {{
+      --bg: #07111f;
+      --panel: #101c2e;
+      --panel-2: #14243a;
+      --text: #f3f7fb;
+      --muted: #94a3b8;
+      --green: #26d07c;
+      --amber: #f4b63f;
+      --red: #ef4d5d;
+      --line: rgba(148, 163, 184, 0.22);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(38, 208, 124, 0.12), transparent 26rem),
+        radial-gradient(circle at 90% 5%, rgba(239, 77, 93, 0.12), transparent 28rem),
+        var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      padding: 34px;
+    }}
+    .dashboard {{
+      width: 1460px;
+      margin: 0 auto;
+      background: linear-gradient(180deg, rgba(16, 28, 46, 0.96), rgba(9, 18, 32, 0.96));
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      overflow: hidden;
+      box-shadow: 0 26px 70px rgba(0, 0, 0, 0.42);
+    }}
+    header {{
+      padding: 30px 34px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(90deg, rgba(38, 208, 124, 0.10), rgba(244, 182, 63, 0.06), rgba(239, 77, 93, 0.10));
+    }}
+    h1 {{
+      margin: 0;
+      font-size: 36px;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+    }}
+    .sub {{
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 15px;
+    }}
+    .summary {{
+      display: flex;
+      gap: 12px;
+    }}
+    .badge {{
+      min-width: 112px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--line);
+      text-align: center;
+    }}
+    .badge strong {{
+      display: block;
+      font-size: 30px;
+      line-height: 1;
+    }}
+    .badge span {{
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+    }}
+    .badge.red strong {{ color: var(--red); }}
+    .badge.amber strong {{ color: var(--amber); }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }}
+    th {{
+      color: #cbd5e1;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 700;
+      padding: 20px 12px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(20, 36, 58, 0.74);
+    }}
+    th:first-child, td:first-child {{ width: 250px; }}
+    td {{
+      padding: 18px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: center;
+      vertical-align: middle;
+    }}
+    tr:nth-child(even) td {{ background: rgba(255, 255, 255, 0.025); }}
+    tr:last-child td {{ border-bottom: none; }}
+    .staff {{
+      text-align: left;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      padding-left: 28px;
+    }}
+    .metric {{
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }}
+    .circle {{
+      width: 84px;
+      height: 84px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.045);
+      box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.05);
+    }}
+    .circle span {{
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: -0.05em;
+    }}
+    .green .circle {{
+      border: 4px dotted var(--green);
+      color: var(--green);
+    }}
+    .amber .circle {{
+      border: 4px solid var(--amber);
+      color: var(--amber);
+    }}
+    .red .circle {{
+      border: 4px solid var(--red);
+      color: var(--red);
+    }}
+    .sales .circle {{
+      width: 128px;
+      border-radius: 42px;
+    }}
+    .sales .circle span {{
+      font-size: 18px;
+      letter-spacing: -0.03em;
+    }}
+    .age {{
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }}
+    footer {{
+      padding: 18px 34px 24px;
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px solid var(--line);
+    }}
+  </style>
+</head>
+<body>
+  <main class="dashboard">
+    <header>
+      <div>
+        <h1>BigChange KPI Overview</h1>
+        <div class="sub">Daily staff-owned KPI report for {report_date} - {month_name} sales shown excluding VAT.</div>
+      </div>
+      <div class="summary">
+        <div class="badge red"><strong>{int(report["total_red_kpis"])}</strong><span>Red KPIs</span></div>
+        <div class="badge amber"><strong>{int(report["total_amber_kpis"])}</strong><span>Amber KPIs</span></div>
+        <div class="badge"><strong>{len(report["staff_rows"])}</strong><span>Staff rows</span></div>
+      </div>
+    </header>
+    <table>
+      <thead>
+        <tr>
+          <th>Staff member</th>
+          <th>Unallocated Jobs</th>
+          <th>Historic Jobs</th>
+          <th>Uninvoiced Jobs</th>
+          <th>Unactioned Jobs</th>
+          <th>{month_name} sales</th>
+        </tr>
+      </thead>
+      <tbody>
+        {''.join(rows_html)}
+      </tbody>
+    </table>
+    <footer>Generated {generated}. Green dotted circles are clear or under 10 days old; amber is 10-30 days; red is over 30 days.</footer>
+  </main>
+</body>
+</html>
+"""
+
+
+def save_baseline(report: dict[str, Any], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    baseline_rows = []
+    for row in report["staff_rows"]:
+        baseline_rows.append(
+            {
+                "staff_name": row["staff_name"],
+                "counts": {metric_key: row["metrics"][metric_key]["count"] for metric_key, _ in KPI_ORDER},
+                "statuses": {metric_key: row["metrics"][metric_key]["status"] for metric_key, _ in KPI_ORDER},
+                "current_month_sales": row["current_month_sales"],
+            }
+        )
+    baseline = {
+        "run_timestamp": report["run_timestamp"],
+        "report_date": report["report_date"],
+        "staff": baseline_rows,
+    }
+    path.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def render_png(html_content: str, html_path: Path, png_path: Path, row_count: int) -> None:
+    html_path.parent.mkdir(parents=True, exist_ok=True)
+    png_path.parent.mkdir(parents=True, exist_ok=True)
+    html_path.write_text(html_content, encoding="utf-8")
+    height = max(780, min(5000, 260 + row_count * 130))
+    chrome = optional_env("CHROME_BIN", "google-chrome")
+    cmd = [
+        chrome,
+        "--headless=new",
+        "--no-sandbox",
+        "--disable-gpu",
+        "--hide-scrollbars",
+        f"--window-size=1540,{height}",
+        f"--screenshot={png_path}",
+        html_path.resolve().as_uri(),
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def mailbox_address(email_value: str, display_name: str = "") -> Address:
+    username, domain = email_value.split("@", 1)
+    return Address(display_name=display_name, username=username, domain=domain)
+
+
+def send_email(png_path: Path) -> None:
+    smtp_host = required_env("SMTP_HOST")
+    smtp_port = int(required_env("SMTP_PORT"))
+    smtp_username = required_env("SMTP_USERNAME")
+    smtp_password = required_env("SMTP_PASSWORD")
+    from_email = required_env("SMTP_FROM_EMAIL")
+    from_name = optional_env("SMTP_FROM_NAME")
+    to_email = required_env("SMTP_TO_EMAIL")
+    cc_email = optional_env("SMTP_CC_EMAIL")
+
+    subject = f"BigChange KPI Overview - {dt.date.today().isoformat()}"
+    root = MIMEMultipart("related")
+    root["Subject"] = subject
+    root["From"] = str(mailbox_address(from_email, from_name))
+    root["To"] = to_email
+    recipients = [to_email]
+    if cc_email:
+        root["Cc"] = cc_email
+        recipients.extend([addr.strip() for addr in cc_email.split(",") if addr.strip()])
+
+    alt = MIMEMultipart("alternative")
+    root.attach(alt)
+
+    text_body = """Dear Team,
+
+Please see attached KPIs for today to work on. Reds and yellows need to be cleared down as soon as possible. Please let me know if you need any support.
+
+Thank you.
+
+Kind regards,
+Daniel Dwyer
+"""
+    html_body = """<p>Dear Team,</p>
+<p>Please see attached KPIs for today to work on. Reds and yellows need to be cleared down as soon as possible. Please let me know if you need any support.</p>
+<p><img src="cid:kpi-dashboard" alt="BigChange KPI dashboard" style="max-width: 100%; height: auto;"></p>
+<p>Thank you.</p>
+<p>Kind regards,<br>Daniel Dwyer</p>"""
+    alt.attach(MIMEText(text_body, "plain", "utf-8"))
+    alt.attach(MIMEText(html_body, "html", "utf-8"))
+
+    image_data = png_path.read_bytes()
+    image = MIMEImage(image_data, _subtype="png")
+    image.add_header("Content-ID", "<kpi-dashboard>")
+    image.add_header("Content-Disposition", "inline", filename=png_path.name)
+    root.attach(image)
+
+    # Some clients only expose inline CID images as body assets. Add no JSON or HTML attachments.
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=120) as smtp:
+        smtp.starttls()
+        smtp.login(smtp_username, smtp_password)
+        smtp.sendmail(from_email, recipients, root.as_string())
+
+
+def main() -> int:
+    try:
+        client = BigChangeClient()
+        report = build_report(client)
+        html_content = render_html(report)
+        reports_dir = Path("reports")
+        html_path = reports_dir / "bigchange-kpi-dashboard.html"
+        png_path = reports_dir / "bigchange-kpi-dashboard.png"
+        baseline_path = Path("automation-memory") / "kpi-baseline.json"
+        render_png(html_content, html_path, png_path, len(report["staff_rows"]))
+        save_baseline(report, baseline_path)
+        send_email(png_path)
+        print(
+            json.dumps(
+                {
+                    "staff_rows_included": len(report["staff_rows"]),
+                    "total_red_kpis": report["total_red_kpis"],
+                    "total_amber_kpis": report["total_amber_kpis"],
+                    "email": "sent",
+                },
+                sort_keys=True,
+            )
+        )
+        return 0
+    except Exception as exc:
+        print(
+            json.dumps(
+                {
+                    "staff_rows_included": 0,
+                    "total_red_kpis": 0,
+                    "total_amber_kpis": 0,
+                    "email": "failed",
+                    "error": type(exc).__name__,
+                },
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
