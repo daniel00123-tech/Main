@@ -150,9 +150,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def previous_monday_to_friday(today: dt.date) -> tuple[dt.date, dt.date]:
-    this_week_monday = today - dt.timedelta(days=today.weekday())
-    start = this_week_monday - dt.timedelta(days=7)
-    end = start + dt.timedelta(days=4)
+    days_since_friday = (today.weekday() - 4) % 7
+    if days_since_friday == 0:
+        days_since_friday = 7
+    end = today - dt.timedelta(days=days_since_friday)
+    start = end - dt.timedelta(days=4)
     return start, end
 
 
