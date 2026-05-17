@@ -1,7 +1,7 @@
 {
   "job_lookback_start": "2025-05-17",
   "report_date": "2026-05-17",
-  "run_timestamp": "2026-05-17T14:41:50.233410+00:00",
+  "run_timestamp": "2026-05-17T14:53:37.976086+00:00",
   "staff": [
     {
       "counts": {
@@ -10,7 +10,7 @@
         "unallocated_jobs": 0,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 2238.92,
+      "current_month_sales": 2212.92,
       "staff_name": "Leah Hearn",
       "statuses": {
         "historic_jobs": "green",
@@ -26,7 +26,7 @@
         "unallocated_jobs": 0,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 53381.85,
+      "current_month_sales": 2477.0,
       "staff_name": "Lucy Feeney",
       "statuses": {
         "historic_jobs": "green",
@@ -42,7 +42,7 @@
         "unallocated_jobs": 9,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 26013.84,
+      "current_month_sales": 23443.87,
       "staff_name": "Laura Menegon",
       "statuses": {
         "historic_jobs": "green",
@@ -58,7 +58,7 @@
         "unallocated_jobs": 2,
         "uninvoiced_jobs": 2
       },
-      "current_month_sales": 8169.0,
+      "current_month_sales": 6375.0,
       "staff_name": "Nailah Toyer",
       "statuses": {
         "historic_jobs": "green",
@@ -74,7 +74,7 @@
         "unallocated_jobs": 3,
         "uninvoiced_jobs": 1
       },
-      "current_month_sales": 30944.69,
+      "current_month_sales": 30159.58,
       "staff_name": "Amy Bradley",
       "statuses": {
         "historic_jobs": "green",
@@ -90,7 +90,7 @@
         "unallocated_jobs": 17,
         "uninvoiced_jobs": 10
       },
-      "current_month_sales": 20452.83,
+      "current_month_sales": 18598.22,
       "staff_name": "Sharon Mannion",
       "statuses": {
         "historic_jobs": "green",
@@ -106,7 +106,7 @@
         "unallocated_jobs": 5,
         "uninvoiced_jobs": 3
       },
-      "current_month_sales": 19721.18,
+      "current_month_sales": 18118.61,
       "staff_name": "Isabel Strong",
       "statuses": {
         "historic_jobs": "red",
