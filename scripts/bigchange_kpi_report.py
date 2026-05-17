@@ -38,12 +38,12 @@ KPI_ORDER = [
 ]
 
 SALES_ORDER_TYPES = {"invoice"}
-EXCLUDED_CATEGORY_NAMES = {
+EXCLUDED_CATEGORY_PHRASES = (
     "btr compliance",
     "btr reactive",
     "john bennett",
     "ryan barrett",
-}
+)
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
@@ -160,7 +160,7 @@ def should_exclude_category(name: str) -> bool:
     norm = normalized_text(name)
     if not norm:
         return True
-    if norm in EXCLUDED_CATEGORY_NAMES:
+    if any(phrase in norm for phrase in EXCLUDED_CATEGORY_PHRASES):
         return True
     if norm in {"uncategorised", "uncategorized"}:
         return True
