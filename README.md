@@ -37,3 +37,6 @@ The report period is the previous Monday to previous Friday relative to the run
 date. Use `--today YYYY-MM-DD` to test a specific run date.
 
 Generated workbooks are written to `reports/` and are ignored by git.
+
+For future agents and scheduled runs, read `AGENTS.md` first and use
+`AUTOMATION_RUNBOOK.md` for the short operational checklist.
