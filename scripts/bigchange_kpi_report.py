@@ -247,6 +247,22 @@ def item_age_days(item_date: dt.datetime | None, today: dt.date) -> int:
     return max((today - item_date.date()).days, 0)
 
 
+def months_ago(value: dt.date, months: int) -> dt.date:
+    month_index = value.month - 1 - months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, days_in_month(year, month))
+    return dt.date(year, month, day)
+
+
+def days_in_month(year: int, month: int) -> int:
+    if month == 12:
+        next_month = dt.date(year + 1, 1, 1)
+    else:
+        next_month = dt.date(year, month + 1, 1)
+    return (next_month - dt.timedelta(days=1)).day
+
+
 def severity_for(count: int, oldest_age_days: int) -> str:
     if count == 0:
         return "green"
@@ -341,8 +357,7 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     today = dt.date.today()
     tomorrow = today + dt.timedelta(days=1)
     month_start = today.replace(day=1)
-    lookback_days = int(optional_env("BIGCHANGE_KPI_LOOKBACK_DAYS", "1460"))
-    lookback_start = today - dt.timedelta(days=lookback_days)
+    lookback_start = months_ago(today, 12)
 
     staff_names: set[str] = set()
     for category in client.categories():
@@ -457,6 +472,7 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     return {
         "run_timestamp": now.isoformat(),
         "report_date": today.isoformat(),
+        "job_lookback_start": lookback_start.isoformat(),
         "month_name": today.strftime("%B"),
         "staff_rows": staff_rows,
         "total_red_kpis": sum(row["red_kpis"] for row in staff_rows),
@@ -521,6 +537,7 @@ def render_html(report: dict[str, Any]) -> str:
 
     generated = html.escape(report["run_timestamp"])
     report_date = html.escape(report["report_date"])
+    job_lookback_start = html.escape(report["job_lookback_start"])
     month_name = html.escape(report["month_name"])
     total_workload = sum(row["total_open_workload"] for row in report["staff_rows"])
     totals = {
@@ -794,7 +811,7 @@ def render_html(report: dict[str, Any]) -> str:
         <div class="brand-mark"></div>
         <div>
           <h1>BigChange KPI Overview</h1>
-          <div class="sub">Generated {report_date} - grouped by job category staff owner</div>
+          <div class="sub">Generated {report_date} - jobs from {job_lookback_start} onwards, grouped by job category staff owner</div>
         </div>
       </div>
       <div class="summary">
@@ -847,6 +864,7 @@ def save_baseline(report: dict[str, Any], path: Path) -> None:
     baseline = {
         "run_timestamp": report["run_timestamp"],
         "report_date": report["report_date"],
+        "job_lookback_start": report["job_lookback_start"],
         "staff": baseline_rows,
     }
     path.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n", encoding="utf-8")
