@@ -25,6 +25,7 @@ from openpyxl.utils import get_column_letter
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 INCLUDED_GROUP_NAMES = {"1. engineer", "2. subcontractor"}
 PHANTOM_NAME_PARTS = {"cameron north", "kieran", "tom", "winston"}
+EXCLUDED_NAME_TOKENS = {"tech", "hk"}
 COMPLETION_STATUS_IDS = {12, 13}
 START_TRAVEL_STATUS_ID = 8
 STARTED_STATUS_ID = 10
@@ -204,6 +205,9 @@ def normalize_name(value: str) -> str:
 def should_ignore_resource(label: str) -> bool:
     low = (label or "").lower().strip()
     if low.startswith("z."):
+        return True
+    tokens = set(normalize_name(label).split())
+    if tokens & EXCLUDED_NAME_TOKENS:
         return True
     return any(part in low for part in PHANTOM_NAME_PARTS)
 
@@ -525,43 +529,52 @@ def travel_start_for_job(
     job: dict[str, Any] | None,
     history: list[dict[str, Any]],
     day: dt.date,
-    actual_start: dt.datetime | None,
+    reference_start: dt.datetime | None,
 ) -> dt.datetime | None:
-    if not job or not actual_start:
+    if not job or not reference_start:
         return None
 
     starts: list[dt.datetime] = []
     for row in history:
         when = status_time(row)
-        if status_id(row) == START_TRAVEL_STATUS_ID and same_day(when, day) and when < actual_start:
+        if status_id(row) == START_TRAVEL_STATUS_ID and same_day(when, day) and when < reference_start:
             starts.append(when)
     return min(starts) if starts else None
 
 
-def calculate_deduction(
-    original_start: dt.datetime | None,
-    first_job: dict[str, Any] | None,
-    first_started: dt.datetime | None,
-    home: dict[str, Any],
-) -> tuple[int, str, float | None]:
+def distance_to_job(home: dict[str, Any], first_job: dict[str, Any] | None) -> float | None:
     if not first_job:
-        return 0, "No valid travel gap: no jobs allocated", None
-    if not original_start:
-        return 0, "No valid travel gap: no actual start/travel time found", None
-
-    if not first_started or first_started <= original_start:
-        return 0, "No valid travel gap: first actual job start is unavailable or before start", None
-
-    actual_gap = int((first_started - original_start).total_seconds() // 60)
-    if actual_gap <= 0:
-        return 0, "Journey looks tight: no positive travel/pre-start gap", None
-
-    distance = haversine_miles(
+        return None
+    return haversine_miles(
         home.get("lat"),
         home.get("lng"),
         first_job.get("JobContactLatitude"),
         first_job.get("JobContactLongitude"),
     )
+
+
+def calculate_deduction(
+    original_start: dt.datetime | None,
+    first_job: dict[str, Any] | None,
+    gap_target: dt.datetime | None,
+    home: dict[str, Any],
+    has_pre_start_evidence: bool,
+) -> tuple[int, str, float | None]:
+    distance = distance_to_job(home, first_job)
+    if not first_job:
+        return 0, "No valid travel gap: no jobs allocated", None
+    if not original_start:
+        return 0, "No valid travel gap: no actual start/travel time found", distance
+    if not has_pre_start_evidence:
+        return 0, "No valid travel gap: no tracking journey or start travel evidence", distance
+
+    if not gap_target or gap_target <= original_start:
+        return 0, "No valid travel gap: first job start/planned time is unavailable or before start", distance
+
+    actual_gap = int((gap_target - original_start).total_seconds() // 60)
+    if actual_gap <= 0:
+        return 0, "Journey looks tight: no positive travel/pre-start gap", distance
+
     if distance is None:
         return (
             0,
@@ -686,7 +699,13 @@ def build_day_row(
         histories[job_id_int] = status_cache[job_id_int]
 
     first_planned_job = jobs[0]
-    first_started_job, first_started = first_actual_job(jobs, histories, day)
+    first_job_id = first_planned_job.get("JobId")
+    first_job_history = histories.get(int(first_job_id), []) if first_job_id else []
+    first_started = actual_job_start(first_planned_job, first_job_history, day)
+    first_planned_start = parse_datetime(first_planned_job.get("PlannedStart"))
+    if not same_day(first_planned_start, day):
+        first_planned_start = None
+    first_start_reference = first_started or first_planned_start
 
     journey_starts = [
         parse_datetime(row.get("Start"))
@@ -694,7 +713,9 @@ def build_day_row(
         if same_day(parse_datetime(row.get("Start")), day)
     ]
     journey_starts = [value for value in journey_starts if value]
-    journey_starts = [value for value in journey_starts if first_started and value < first_started]
+    journey_starts = [
+        value for value in journey_starts if first_start_reference and value < first_start_reference
+    ]
 
     original_start: dt.datetime | None = None
     start_source = ""
@@ -702,12 +723,8 @@ def build_day_row(
         original_start = min(journey_starts)
         start_source = "Tracking journey"
     else:
-        first_started_job_id = first_started_job.get("JobId") if first_started_job else None
-        first_started_history = (
-            histories.get(int(first_started_job_id), []) if first_started_job_id else []
-        )
         travel_start = travel_start_for_job(
-            first_started_job, first_started_history, day, first_started
+            first_planned_job, first_job_history, day, first_start_reference
         )
         if travel_start:
             original_start = travel_start
@@ -715,6 +732,9 @@ def build_day_row(
         elif first_started:
             original_start = first_started
             start_source = "First job started"
+        elif first_planned_start:
+            original_start = first_planned_start
+            start_source = "Planned start only"
         else:
             start_source = "No actual start/travel found"
 
@@ -722,15 +742,16 @@ def build_day_row(
     if completion:
         original_finish = completion
         finish_source = "Last completion"
-    elif original_start:
-        original_finish = parse_datetime(jobs[-1].get("PlannedEnd"))
-        finish_source = "Planned finish only"
     else:
-        original_finish = None
-        finish_source = "No actual finish found"
+        original_finish = parse_datetime(jobs[-1].get("PlannedEnd"))
+        finish_source = "Planned finish only" if original_finish else "No actual finish found"
 
     deduction_minutes, deduction_reason, distance = calculate_deduction(
-        original_start, first_started_job or first_planned_job, first_started, home
+        original_start,
+        first_planned_job,
+        first_start_reference,
+        home,
+        start_source in {"Tracking journey", "Start travel pressed"},
     )
     adjusted_start = (
         original_start + dt.timedelta(minutes=deduction_minutes)
@@ -748,7 +769,7 @@ def build_day_row(
         adjusted_hours = round((original_finish - adjusted_start).total_seconds() / 3600, 2)
 
     attention, attention_details = attention_for_jobs(jobs, histories)
-    first_postcode = str((first_started_job or first_planned_job).get("Postcode") or "").strip()
+    first_postcode = str(first_planned_job.get("Postcode") or "").strip()
     return {
         "Engineer": clean_name,
         "Date": fmt_date(day),
@@ -909,7 +930,7 @@ def send_email(
     message["From"] = f"{config.smtp_from_name} <{config.smtp_from_email}>"
     message["To"] = config.smtp_to_email
     message["Subject"] = (
-        f"Weekly door-to-door timesheets report - {fmt_date(week_start)} to {fmt_date(week_end)}"
+        f"Nirvana Weekly door-to-door timesheets report - {fmt_date(week_start)} to {fmt_date(week_end)}"
     )
     message.set_content(email_body(rows, week_start, week_end))
     data = workbook_path.read_bytes()
