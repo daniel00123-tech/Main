@@ -42,6 +42,19 @@ COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
 OPEN_NOT_STARTED_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
 DECIMAL_ZERO = decimal.Decimal("0")
+LINE_ITEM_FIELDS = (
+    "lines",
+    "Lines",
+    "items",
+    "Items",
+    "InvoiceItems",
+    "FinancialItems",
+    "FinancialLineItems",
+    "FinancialDocumentItems",
+)
+CANCELLED_FIELDS = ("CancellationDate", "Cancelled", "IsCancelled")
+DELETED_FIELDS = ("DeletionDate", "Deleted", "IsDeleted")
+REJECTED_FIELDS = ("RejectionDate", "Rejected", "IsRejected")
 
 
 class ConfigError(RuntimeError):
@@ -109,6 +122,17 @@ def as_decimal(value: Any) -> decimal.Decimal:
         return decimal.Decimal(str(value).replace(",", ""))
     except decimal.InvalidOperation:
         return DECIMAL_ZERO
+
+
+def marker_is_set(value: Any) -> bool:
+    if value in (None, "", "0001-01-01 00:00:00"):
+        return False
+    text = str(value).strip().lower()
+    if text.startswith("0001-01-01"):
+        return False
+    if text in {"0", "false", "no", "n", "none", "null"}:
+        return False
+    return True
 
 
 def clean_name(value: Any) -> str:
@@ -296,6 +320,24 @@ def resource_assigned(row: dict[str, Any]) -> bool:
     return not is_blank(resource)
 
 
+def has_any_marker(row: dict[str, Any], fields: tuple[str, ...]) -> bool:
+    return any(marker_is_set(row.get(field)) for field in fields)
+
+
+def invoice_line_items(invoice: dict[str, Any]) -> list[dict[str, Any]]:
+    for field in LINE_ITEM_FIELDS:
+        value = invoice.get(field)
+        if isinstance(value, list):
+            return [line for line in value if isinstance(line, dict)]
+    if "NetPrice" in invoice or "VatAmount" in invoice:
+        return [invoice]
+    return []
+
+
+def invoice_job_id(invoice: dict[str, Any]) -> str:
+    return str(invoice.get("JobId") or invoice.get("JobID") or "").strip()
+
+
 def calculate_sales(
     client: BigChangeClient,
     staff_names: set[str],
@@ -309,11 +351,15 @@ def calculate_sales(
     for invoice in invoices:
         if clean_name(invoice.get("OrderType")).lower() != "invoice":
             continue
-        if invoice.get("CancellationDate") or invoice.get("DeletionDate") or invoice.get("RejectionDate"):
+        if (
+            has_any_marker(invoice, CANCELLED_FIELDS)
+            or has_any_marker(invoice, DELETED_FIELDS)
+            or has_any_marker(invoice, REJECTED_FIELDS)
+        ):
             continue
         eligible.append(invoice)
 
-    job_ids = sorted({str(inv.get("JobId")) for inv in eligible if inv.get("JobId")})
+    job_ids = sorted({invoice_job_id(inv) for inv in eligible if invoice_job_id(inv)})
     activity_cache: dict[str, list[dict[str, Any]]] = {}
     if job_ids:
         with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
@@ -327,7 +373,7 @@ def calculate_sales(
 
     sales: dict[str, decimal.Decimal] = defaultdict(lambda: DECIMAL_ZERO)
     for invoice in eligible:
-        job_id = str(invoice.get("JobId") or "")
+        job_id = invoice_job_id(invoice)
         activities = activity_cache.get(job_id, [])
         invoice_created_activities = [
             activity
@@ -344,9 +390,7 @@ def calculate_sales(
         if not matched_staff:
             continue
         net = DECIMAL_ZERO
-        for line in invoice.get("lines") or []:
-            if not isinstance(line, dict):
-                continue
+        for line in invoice_line_items(invoice):
             net += as_decimal(line.get("NetPrice")) - as_decimal(line.get("VatAmount"))
         sales[matched_staff] += net
     return dict(sales)
@@ -957,45 +1001,46 @@ Daniel Dwyer
         smtp.sendmail(from_email, recipients, root.as_string())
 
 
+def result_summary(report: dict[str, Any] | None, email_status: str) -> dict[str, Any]:
+    if report is None:
+        return {
+            "staff_rows_included": 0,
+            "total_red_kpis": 0,
+            "total_amber_kpis": 0,
+            "email": email_status,
+        }
+    return {
+        "staff_rows_included": len(report["staff_rows"]),
+        "total_red_kpis": report["total_red_kpis"],
+        "total_amber_kpis": report["total_amber_kpis"],
+        "email": email_status,
+    }
+
+
 def main() -> int:
+    report: dict[str, Any] | None = None
+    email_status = "failed"
+    exit_code = 1
     try:
         client = BigChangeClient()
         report = build_report(client)
+        baseline_path = Path("automation-memory") / "kpi-baseline.json"
+        save_baseline(report, baseline_path)
         html_content = render_html(report)
         reports_dir = Path("reports")
         html_path = reports_dir / "bigchange-kpi-dashboard.html"
         png_path = reports_dir / "bigchange-kpi-dashboard.png"
-        baseline_path = Path("automation-memory") / "kpi-baseline.json"
         render_png(html_content, html_path, png_path, len(report["staff_rows"]))
-        save_baseline(report, baseline_path)
         send_email(png_path)
-        print(
-            json.dumps(
-                {
-                    "staff_rows_included": len(report["staff_rows"]),
-                    "total_red_kpis": report["total_red_kpis"],
-                    "total_amber_kpis": report["total_amber_kpis"],
-                    "email": "sent",
-                },
-                sort_keys=True,
-            )
-        )
-        return 0
-    except Exception as exc:
-        print(
-            json.dumps(
-                {
-                    "staff_rows_included": 0,
-                    "total_red_kpis": 0,
-                    "total_amber_kpis": 0,
-                    "email": "failed",
-                    "error": type(exc).__name__,
-                },
-                sort_keys=True,
-            ),
-            file=sys.stderr,
-        )
-        return 1
+        email_status = "sent"
+        exit_code = 0
+    except Exception:
+        pass
+    print(
+        json.dumps(result_summary(report, email_status), sort_keys=True),
+        file=sys.stdout if exit_code == 0 else sys.stderr,
+    )
+    return exit_code
 
 
 if __name__ == "__main__":
