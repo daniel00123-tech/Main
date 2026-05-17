@@ -509,40 +509,32 @@ def actual_job_start(
     return real_start if same_day(real_start, day) else None
 
 
-def first_actual_job_start(
+def first_actual_job(
     jobs: list[dict[str, Any]], histories: dict[int, list[dict[str, Any]]], day: dt.date
-) -> dt.datetime | None:
-    starts: list[dt.datetime] = []
+) -> tuple[dict[str, Any] | None, dt.datetime | None]:
     for job in jobs:
         job_id = job.get("JobId")
         history = histories.get(int(job_id), []) if job_id else []
         started = actual_job_start(job, history, day)
         if started:
-            starts.append(started)
-    return min(starts) if starts else None
+            return job, started
+    return None, None
 
 
-def first_travel_start(
-    jobs: list[dict[str, Any]],
-    histories: dict[int, list[dict[str, Any]]],
+def travel_start_for_job(
+    job: dict[str, Any] | None,
+    history: list[dict[str, Any]],
     day: dt.date,
-    before_actual_start: dt.datetime | None,
+    actual_start: dt.datetime | None,
 ) -> dt.datetime | None:
+    if not job or not actual_start:
+        return None
+
     starts: list[dt.datetime] = []
-    for job in jobs:
-        job_id = job.get("JobId")
-        history = histories.get(int(job_id), []) if job_id else []
-        planned_start = parse_datetime(job.get("PlannedStart"))
-        for row in history:
-            when = status_time(row)
-            if status_id(row) != START_TRAVEL_STATUS_ID or not same_day(when, day):
-                continue
-            if before_actual_start:
-                if when < before_actual_start:
-                    starts.append(when)
-            elif planned_start and same_day(planned_start, day) and when <= planned_start:
-                # Without an actual job-start anchor, only accept travel that fits the schedule.
-                starts.append(when)
+    for row in history:
+        when = status_time(row)
+        if status_id(row) == START_TRAVEL_STATUS_ID and same_day(when, day) and when < actual_start:
+            starts.append(when)
     return min(starts) if starts else None
 
 
@@ -693,8 +685,8 @@ def build_day_row(
             status_cache[job_id_int] = fetch_status_history(client, job)
         histories[job_id_int] = status_cache[job_id_int]
 
-    first_job = jobs[0]
-    first_started = first_actual_job_start(jobs, histories, day)
+    first_planned_job = jobs[0]
+    first_started_job, first_started = first_actual_job(jobs, histories, day)
 
     journey_starts = [
         parse_datetime(row.get("Start"))
@@ -702,6 +694,7 @@ def build_day_row(
         if same_day(parse_datetime(row.get("Start")), day)
     ]
     journey_starts = [value for value in journey_starts if value]
+    journey_starts = [value for value in journey_starts if first_started and value < first_started]
 
     original_start: dt.datetime | None = None
     start_source = ""
@@ -709,7 +702,13 @@ def build_day_row(
         original_start = min(journey_starts)
         start_source = "Tracking journey"
     else:
-        travel_start = first_travel_start(jobs, histories, day, before_actual_start=first_started)
+        first_started_job_id = first_started_job.get("JobId") if first_started_job else None
+        first_started_history = (
+            histories.get(int(first_started_job_id), []) if first_started_job_id else []
+        )
+        travel_start = travel_start_for_job(
+            first_started_job, first_started_history, day, first_started
+        )
         if travel_start:
             original_start = travel_start
             start_source = "Start travel pressed"
@@ -731,7 +730,7 @@ def build_day_row(
         finish_source = "No actual finish found"
 
     deduction_minutes, deduction_reason, distance = calculate_deduction(
-        original_start, first_job, first_started, home
+        original_start, first_started_job or first_planned_job, first_started, home
     )
     adjusted_start = (
         original_start + dt.timedelta(minutes=deduction_minutes)
@@ -749,7 +748,7 @@ def build_day_row(
         adjusted_hours = round((original_finish - adjusted_start).total_seconds() / 3600, 2)
 
     attention, attention_details = attention_for_jobs(jobs, histories)
-    first_postcode = str(first_job.get("Postcode") or "").strip()
+    first_postcode = str((first_started_job or first_planned_job).get("Postcode") or "").strip()
     return {
         "Engineer": clean_name,
         "Date": fmt_date(day),
