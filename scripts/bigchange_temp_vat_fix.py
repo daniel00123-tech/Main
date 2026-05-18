@@ -33,6 +33,8 @@ ACCEPTED_TAX_CODES = {
 
 TARGET_TAX_CODE = "20% (VAT on Income)"
 DEFAULT_BASE_URL = "https://webservice.bigchange.com/v01/services.ashx"
+DEFAULT_AUTH_MODE = "api_key_basic"
+SUPPORTED_AUTH_MODES = {"api_key", "basic", "api_key_basic"}
 
 
 class BigChangeError(Exception):
@@ -78,6 +80,7 @@ class BigChangeClient:
         api_key: str | None,
         username: str | None,
         password: str | None,
+        auth_mode: str,
         timeout: float,
         dry_run: bool = False,
     ) -> None:
@@ -85,6 +88,7 @@ class BigChangeClient:
         self.api_key = api_key
         self.username = username
         self.password = password
+        self.auth_mode = normalise_auth_mode(auth_mode)
         self.timeout = timeout
         self.dry_run = dry_run
 
@@ -119,10 +123,10 @@ class BigChangeClient:
 
     def _headers(self) -> dict[str, str]:
         headers = {"Accept": "application/json"}
-        if self.api_key:
+        if auth_mode_uses_api_key(self.auth_mode) and self.api_key:
             # BigChange calls this the company "key" in the web service docs.
             headers["key"] = self.api_key
-        if self.username and self.password:
+        if auth_mode_uses_basic(self.auth_mode) and self.username and self.password:
             token = base64.b64encode(f"{self.username}:{self.password}".encode("utf-8")).decode("ascii")
             headers["Authorization"] = f"Basic {token}"
         return headers
@@ -135,11 +139,12 @@ def main(argv: list[str]) -> int:
         api_key=os.environ.get("BIGCHANGE_API_KEY"),
         username=os.environ.get("BIGCHANGE_USERNAME"),
         password=os.environ.get("BIGCHANGE_PASSWORD"),
+        auth_mode=os.environ.get("BIGCHANGE_AUTH_MODE", DEFAULT_AUTH_MODE),
         timeout=args.timeout,
         dry_run=args.dry_run,
     )
 
-    missing = required_env_missing()
+    missing = required_env_missing(os.environ)
     if missing:
         print_report(Report(failures=[f"configuration: missing {', '.join(missing)}"]))
         return 2
@@ -157,12 +162,39 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def required_env_missing() -> list[str]:
+def required_env_missing(environ: dict[str, str] | os._Environ[str] | None = None) -> list[str]:
+    environ = environ if environ is not None else os.environ
+    mode = normalise_auth_mode(environ.get("BIGCHANGE_AUTH_MODE", DEFAULT_AUTH_MODE))
     missing = []
-    for name in ("BIGCHANGE_API_KEY", "BIGCHANGE_USERNAME", "BIGCHANGE_PASSWORD"):
-        if not os.environ.get(name):
+    if mode not in SUPPORTED_AUTH_MODES:
+        missing.append("BIGCHANGE_AUTH_MODE")
+        return missing
+    required = []
+    if auth_mode_uses_api_key(mode):
+        required.append("BIGCHANGE_API_KEY")
+    if auth_mode_uses_basic(mode):
+        required.extend(("BIGCHANGE_USERNAME", "BIGCHANGE_PASSWORD"))
+    for name in required:
+        if not environ.get(name):
             missing.append(name)
     return missing
+
+
+def normalise_auth_mode(value: str | None) -> str:
+    mode = (value or DEFAULT_AUTH_MODE).strip().lower().replace("-", "_").replace("+", "_")
+    if mode in {"apikey", "key"}:
+        return "api_key"
+    if mode in {"both", "api_key_and_basic", "api_key_basic_auth", "key_basic"}:
+        return "api_key_basic"
+    return mode
+
+
+def auth_mode_uses_api_key(mode: str) -> bool:
+    return mode in {"api_key", "api_key_basic"}
+
+
+def auth_mode_uses_basic(mode: str) -> bool:
+    return mode in {"basic", "api_key_basic"}
 
 
 def run_correction(client: BigChangeClient, pause_seconds: float) -> Report:
