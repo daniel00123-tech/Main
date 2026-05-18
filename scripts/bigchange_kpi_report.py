@@ -38,7 +38,7 @@ KPI_ORDER = [
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
 
-SALES_ORDER_TYPES = {"invoice", "creditnote"}
+SALES_ORDER_TYPES = {"invoice"}
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
@@ -143,6 +143,8 @@ def match_staff_name(creator_name: str, staff_by_key: dict[str, str]) -> str | N
 def should_exclude_category(name: str) -> bool:
     norm = normalized_text(name)
     if not norm:
+        return True
+    if norm in {"btr compliance", "btr reactive", "john bennett", "ryan barrett"}:
         return True
     if norm in {"uncategorised", "uncategorized"}:
         return True
@@ -396,7 +398,7 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     today = dt.date.today()
     tomorrow = today + dt.timedelta(days=1)
     month_start = today.replace(day=1)
-    month_end = today.replace(day=days_in_month(today.year, today.month))
+    month_end = today
     lookback_start = months_ago(today, 12)
 
     staff_names: set[str] = set()
@@ -570,9 +572,9 @@ def render_html(report: dict[str, Any]) -> str:
             f'<div class="person"><strong>{staff}</strong><span>Staff owner</span></div>'
             "</td>",
         ]
-        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         for metric_key, _label in KPI_ORDER:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
+        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         rows_html.append(f"<tr>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
@@ -726,7 +728,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     th:nth-child(1), td:nth-child(1) {{ width: 72px; }}
     th:nth-child(2), td:nth-child(2) {{ width: 292px; }}
-    th:nth-child(3), td:nth-child(3) {{ width: 170px; }}
+    th:nth-child(7), td:nth-child(7) {{ width: 170px; }}
     td {{
       padding: 14px 10px;
       border-bottom: 1px solid var(--line);
@@ -871,11 +873,11 @@ def render_html(report: dict[str, Any]) -> str:
         <tr>
           <th>Rank</th>
           <th>Staff member</th>
-          <th>{month_name} sales</th>
           <th>Unallocated Jobs</th>
           <th>Historic Jobs</th>
           <th>Uninvoiced Jobs</th>
           <th>Unactioned Jobs</th>
+          <th>{month_name} sales</th>
         </tr>
       </thead>
       <tbody>
