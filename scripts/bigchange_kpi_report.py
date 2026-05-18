@@ -996,9 +996,18 @@ Daniel Dwyer
 
 
 def main() -> int:
+    summary = {
+        "staff_rows_included": 0,
+        "total_red_kpis": 0,
+        "total_amber_kpis": 0,
+        "email": "failed",
+    }
     try:
         client = BigChangeClient()
         report = build_report(client)
+        summary["staff_rows_included"] = len(report["staff_rows"])
+        summary["total_red_kpis"] = report["total_red_kpis"]
+        summary["total_amber_kpis"] = report["total_amber_kpis"]
         html_content = render_html(report)
         reports_dir = Path("reports")
         html_path = reports_dir / "bigchange-kpi-dashboard.html"
@@ -1007,31 +1016,11 @@ def main() -> int:
         render_png(html_content, html_path, png_path, len(report["staff_rows"]))
         save_baseline(report, baseline_path)
         send_email(png_path)
-        print(
-            json.dumps(
-                {
-                    "staff_rows_included": len(report["staff_rows"]),
-                    "total_red_kpis": report["total_red_kpis"],
-                    "total_amber_kpis": report["total_amber_kpis"],
-                    "email": "sent",
-                },
-                sort_keys=True,
-            )
-        )
+        summary["email"] = "sent"
+        print(json.dumps(summary, sort_keys=True))
         return 0
-    except Exception as exc:
-        print(
-            json.dumps(
-                {
-                    "staff_rows_included": 0,
-                    "total_red_kpis": 0,
-                    "total_amber_kpis": 0,
-                    "email": "failed",
-                },
-                sort_keys=True,
-            ),
-            file=sys.stderr,
-        )
+    except Exception:
+        print(json.dumps(summary, sort_keys=True), file=sys.stderr)
         return 1
 
 
