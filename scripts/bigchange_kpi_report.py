@@ -38,7 +38,7 @@ KPI_ORDER = [
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
 
-SALES_ORDER_TYPES = {"invoice", "creditnote"}
+SALES_ORDER_TYPES = {"invoice"}
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
@@ -365,17 +365,16 @@ def invoice_created_owner(document: dict[str, Any], activity_cache: dict[str, li
     job_id = str(document.get("JobId") or "")
     if not job_id:
         return ""
-    document_date = parse_date(document.get("DocumentDate")) or dt.datetime.min
-    candidates: list[tuple[float, dict[str, Any]]] = []
+    candidates: list[tuple[dt.datetime, dict[str, Any]]] = []
     for activity in activity_cache.get(job_id, []):
         status_id = as_int(activity.get("JobClientStatusID") or activity.get("JobClientStatusId"))
         if status_id != 34:
             continue
         activity_date = parse_date(activity.get("JobClientStatusDate")) or dt.datetime.min
-        candidates.append((abs((activity_date - document_date).total_seconds()), activity))
+        candidates.append((activity_date, activity))
     if not candidates:
         return ""
-    candidates.sort(key=lambda item: item[0])
+    candidates.sort(key=lambda item: item[0], reverse=True)
     return clean_name(candidates[0][1].get("JobClientStatusOwner"))
 
 
@@ -396,7 +395,7 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     today = dt.date.today()
     tomorrow = today + dt.timedelta(days=1)
     month_start = today.replace(day=1)
-    month_end = today.replace(day=days_in_month(today.year, today.month))
+    month_end = today
     lookback_start = months_ago(today, 12)
 
     staff_names: set[str] = set()
