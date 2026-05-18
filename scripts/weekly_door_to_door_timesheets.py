@@ -24,6 +24,13 @@ from openpyxl.utils import get_column_letter
 
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 INCLUDED_GROUP_NAMES = {"1. engineer", "2. subcontractor"}
+INCLUDED_GROUP_ALIASES = {
+    "core team - caretaker",
+    "core team - electrical",
+    "core team - general maintenance",
+    "core team - mechanical",
+    "subcontractor",
+}
 PHANTOM_NAME_PARTS = {"cameron north", "kieran", "tom", "winston"}
 EXCLUDED_NAME_PARTS = {"tech", "hk"}
 COMPLETION_STATUS_IDS = {12, 13}
@@ -219,13 +226,14 @@ def as_list(result: Any) -> list[dict[str, Any]]:
 
 def get_resources(client: BigChangeClient) -> list[dict[str, Any]]:
     groups = as_list(client.call("ResourceGroups"))
+    included_group_names = INCLUDED_GROUP_NAMES | INCLUDED_GROUP_ALIASES
     included_group_ids = {
         row.get("id")
         for row in groups
-        if str(row.get("label", "")).strip().lower() in INCLUDED_GROUP_NAMES
+        if str(row.get("label", "")).strip().lower() in included_group_names
     }
     if not included_group_ids:
-        raise ReportError("Could not find BigChange resource groups: 1. Engineer / 2. Subcontractor")
+        raise ReportError("Could not find BigChange engineer/subcontractor resource groups")
 
     resources = []
     for row in as_list(client.call("Resources")):
