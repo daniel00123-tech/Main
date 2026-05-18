@@ -38,7 +38,13 @@ KPI_ORDER = [
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
 
-SALES_ORDER_TYPES = {"invoice", "creditnote"}
+SALES_ORDER_TYPES = {"invoice"}
+EXCLUDED_CATEGORY_NAMES = {
+    "btr compliance",
+    "btr reactive",
+    "john bennett",
+    "ryan barrett",
+}
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
@@ -104,6 +110,13 @@ def as_bool_falsey(value: Any) -> bool:
     return text in {"0", "false", "no", "n", "none", "null"}
 
 
+def as_bool_truthy(value: Any) -> bool:
+    if value in (None, ""):
+        return False
+    text = str(value).strip().lower()
+    return text in {"1", "true", "yes", "y"}
+
+
 def as_decimal(value: Any) -> decimal.Decimal:
     if value in (None, ""):
         return DECIMAL_ZERO
@@ -143,6 +156,8 @@ def match_staff_name(creator_name: str, staff_by_key: dict[str, str]) -> str | N
 def should_exclude_category(name: str) -> bool:
     norm = normalized_text(name)
     if not norm:
+        return True
+    if norm in EXCLUDED_CATEGORY_NAMES:
         return True
     if norm in {"uncategorised", "uncategorized"}:
         return True
@@ -330,7 +345,7 @@ def calculate_sales(
         order_type = re.sub(r"[^a-z]", "", clean_name(document.get("OrderType")).lower())
         if order_type not in SALES_ORDER_TYPES:
             continue
-        if document.get("CancellationDate") or document.get("DeletionDate") or document.get("RejectionDate"):
+        if financial_document_is_void(document):
             continue
         eligible.append(document)
 
@@ -353,7 +368,7 @@ def calculate_sales(
         if not matched_staff:
             continue
         net = DECIMAL_ZERO
-        for line in document.get("lines") or []:
+        for line in financial_document_lines(document):
             if not isinstance(line, dict):
                 continue
             net += as_decimal(line.get("NetPrice")) - as_decimal(line.get("VatAmount"))
@@ -361,21 +376,52 @@ def calculate_sales(
     return dict(sales)
 
 
+def financial_document_is_void(document: dict[str, Any]) -> bool:
+    date_fields = (
+        "CancellationDate",
+        "CancelledDate",
+        "DeletionDate",
+        "DeletedDate",
+        "RejectionDate",
+        "RejectedDate",
+    )
+    if any(document.get(field) for field in date_fields):
+        return True
+    flag_fields = (
+        "Cancelled",
+        "IsCancelled",
+        "Deleted",
+        "IsDeleted",
+        "Rejected",
+        "IsRejected",
+    )
+    return any(as_bool_truthy(document.get(field)) for field in flag_fields)
+
+
+def financial_document_lines(document: dict[str, Any]) -> list[dict[str, Any]]:
+    for field in ("lines", "Lines", "items", "Items"):
+        lines = document.get(field)
+        if isinstance(lines, list):
+            return [line for line in lines if isinstance(line, dict)]
+    if "NetPrice" in document or "VatAmount" in document:
+        return [document]
+    return []
+
+
 def invoice_created_owner(document: dict[str, Any], activity_cache: dict[str, list[dict[str, Any]]]) -> str:
     job_id = str(document.get("JobId") or "")
     if not job_id:
         return ""
-    document_date = parse_date(document.get("DocumentDate")) or dt.datetime.min
-    candidates: list[tuple[float, dict[str, Any]]] = []
+    candidates: list[tuple[dt.datetime, dict[str, Any]]] = []
     for activity in activity_cache.get(job_id, []):
         status_id = as_int(activity.get("JobClientStatusID") or activity.get("JobClientStatusId"))
         if status_id != 34:
             continue
         activity_date = parse_date(activity.get("JobClientStatusDate")) or dt.datetime.min
-        candidates.append((abs((activity_date - document_date).total_seconds()), activity))
+        candidates.append((activity_date, activity))
     if not candidates:
         return ""
-    candidates.sort(key=lambda item: item[0])
+    candidates.sort(key=lambda item: item[0], reverse=True)
     return clean_name(candidates[0][1].get("JobClientStatusOwner"))
 
 
@@ -396,7 +442,7 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     today = dt.date.today()
     tomorrow = today + dt.timedelta(days=1)
     month_start = today.replace(day=1)
-    month_end = today.replace(day=days_in_month(today.year, today.month))
+    month_end = today
     lookback_start = months_ago(today, 12)
 
     staff_names: set[str] = set()
