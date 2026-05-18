@@ -159,6 +159,8 @@ def should_exclude_category(name: str) -> bool:
         return True
     if norm in EXCLUDED_CATEGORY_NAMES:
         return True
+    if any(excluded in norm for excluded in EXCLUDED_CATEGORY_NAMES):
+        return True
     if norm in {"uncategorised", "uncategorized"}:
         return True
     if "nirvana ppm" in norm:
