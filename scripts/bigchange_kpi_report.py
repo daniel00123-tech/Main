@@ -985,14 +985,14 @@ def mailbox_address(email_value: str, display_name: str = "") -> Address:
 
 
 def send_email(png_path: Path) -> None:
-    smtp_host = required_env("SMTP_HOST")
-    smtp_port = int(required_env("SMTP_PORT"))
-    smtp_username = required_env("SMTP_USERNAME")
+    smtp_host = required_env("SMTP_HOST").strip()
+    smtp_port = int(required_env("SMTP_PORT").strip())
+    smtp_username = required_env("SMTP_USERNAME").strip()
     smtp_password = required_env("SMTP_PASSWORD")
-    from_email = required_env("SMTP_FROM_EMAIL")
-    from_name = optional_env("SMTP_FROM_NAME")
-    to_email = required_env("SMTP_TO_EMAIL")
-    cc_email = optional_env("SMTP_CC_EMAIL")
+    from_email = required_env("SMTP_FROM_EMAIL").strip()
+    from_name = optional_env("SMTP_FROM_NAME").strip()
+    to_email = required_env("SMTP_TO_EMAIL").strip()
+    cc_email = optional_env("SMTP_CC_EMAIL").strip()
 
     subject = f"BigChange KPI Overview - {dt.date.today().isoformat()}"
     root = MIMEMultipart("related")
@@ -1027,7 +1027,7 @@ Daniel Dwyer
     image_data = png_path.read_bytes()
     image = MIMEImage(image_data, _subtype="png")
     image.add_header("Content-ID", "<kpi-dashboard>")
-    image.add_header("Content-Disposition", "inline", filename=png_path.name)
+    image.add_header("Content-Disposition", "inline")
     root.attach(image)
 
     attachment = MIMEBase("image", "png")
