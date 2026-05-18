@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import sys
 import unittest
 
 
@@ -7,6 +8,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "bigchange_temp_
 SPEC = importlib.util.spec_from_file_location("bigchange_temp_vat_fix", MODULE_PATH)
 fix = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
+sys.modules[SPEC.name] = fix
 SPEC.loader.exec_module(fix)
 
 
