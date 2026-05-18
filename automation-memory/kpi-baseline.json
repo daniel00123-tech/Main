@@ -1,7 +1,7 @@
 {
-  "job_lookback_start": "2025-05-17",
-  "report_date": "2026-05-17",
-  "run_timestamp": "2026-05-17T15:56:47.382504+00:00",
+  "job_lookback_start": "2025-05-18",
+  "report_date": "2026-05-18",
+  "run_timestamp": "2026-05-18T07:04:04.715773+00:00",
   "staff": [
     {
       "counts": {
@@ -21,12 +21,12 @@
     },
     {
       "counts": {
-        "historic_jobs": 9,
-        "unactioned_jobs": 1,
+        "historic_jobs": 7,
+        "unactioned_jobs": 2,
         "unallocated_jobs": 0,
-        "uninvoiced_jobs": 0
+        "uninvoiced_jobs": 1
       },
-      "current_month_sales": 2590.0,
+      "current_month_sales": 2920.0,
       "staff_name": "Lucy Feeney",
       "statuses": {
         "historic_jobs": "green",
@@ -58,7 +58,7 @@
         "unallocated_jobs": 2,
         "uninvoiced_jobs": 2
       },
-      "current_month_sales": 7335.0,
+      "current_month_sales": 7250.0,
       "staff_name": "Nailah Toyer",
       "statuses": {
         "historic_jobs": "green",
@@ -74,7 +74,7 @@
         "unallocated_jobs": 3,
         "uninvoiced_jobs": 1
       },
-      "current_month_sales": 26403.7,
+      "current_month_sales": 28562.5,
       "staff_name": "Amy Bradley",
       "statuses": {
         "historic_jobs": "green",
@@ -85,18 +85,18 @@
     },
     {
       "counts": {
-        "historic_jobs": 2,
+        "historic_jobs": 7,
         "unactioned_jobs": 17,
         "unallocated_jobs": 17,
         "uninvoiced_jobs": 10
       },
-      "current_month_sales": 19016.94,
+      "current_month_sales": 19366.94,
       "staff_name": "Sharon Mannion",
       "statuses": {
         "historic_jobs": "green",
         "unactioned_jobs": "red",
         "unallocated_jobs": "red",
-        "uninvoiced_jobs": "amber"
+        "uninvoiced_jobs": "red"
       }
     },
     {
