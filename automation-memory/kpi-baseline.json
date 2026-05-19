@@ -1,7 +1,7 @@
 {
   "job_lookback_start": "2025-05-19",
   "report_date": "2026-05-19",
-  "run_timestamp": "2026-05-19T06:30:34.572602+00:00",
+  "run_timestamp": "2026-05-19T06:41:53.525096+00:00",
   "staff": [
     {
       "counts": {
@@ -44,22 +44,6 @@
       },
       "current_month_sales": 0.0,
       "staff_name": "Megan Fox",
-      "statuses": {
-        "historic_jobs": "green",
-        "unactioned_jobs": "green",
-        "unallocated_jobs": "green",
-        "uninvoiced_jobs": "green"
-      }
-    },
-    {
-      "counts": {
-        "historic_jobs": 0,
-        "unactioned_jobs": 0,
-        "unallocated_jobs": 7,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 0.0,
-      "staff_name": "Jodie Thompson",
       "statuses": {
         "historic_jobs": "green",
         "unactioned_jobs": "green",
@@ -215,7 +199,7 @@
       "counts": {
         "historic_jobs": 3,
         "unactioned_jobs": 4,
-        "unallocated_jobs": 29,
+        "unallocated_jobs": 30,
         "uninvoiced_jobs": 3
       },
       "current_month_sales": 11727.5,
