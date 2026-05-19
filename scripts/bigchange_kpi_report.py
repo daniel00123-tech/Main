@@ -145,7 +145,7 @@ def should_exclude_category(name: str) -> bool:
     norm = normalized_text(name)
     if not norm:
         return True
-    if any(norm == excluded or norm.endswith(f" {excluded}") for excluded in EXCLUDED_CATEGORY_NAMES):
+    if is_excluded_named_category(norm):
         return True
     if norm in {"uncategorised", "uncategorized"}:
         return True
@@ -155,6 +155,23 @@ def should_exclude_category(name: str) -> bool:
     if "ooh" in tokens or "out of hours" in norm:
         return True
     return False
+
+
+def is_excluded_named_category(normalized_name: str) -> bool:
+    return any(
+        normalized_name == excluded or normalized_name.endswith(f" {excluded}")
+        for excluded in EXCLUDED_CATEGORY_NAMES
+    )
+
+
+def validate_report(report: dict[str, Any]) -> None:
+    excluded_rows = [
+        clean_name(row.get("staff_name"))
+        for row in report.get("staff_rows", [])
+        if is_excluded_named_category(normalized_text(clean_name(row.get("staff_name"))))
+    ]
+    if excluded_rows:
+        raise RuntimeError(f"Report contains excluded non-staff categories: {', '.join(excluded_rows)}")
 
 
 def is_blank(value: Any) -> bool:
@@ -1003,6 +1020,7 @@ def main() -> int:
     try:
         client = BigChangeClient()
         report = build_report(client)
+        validate_report(report)
         html_content = render_html(report)
         reports_dir = Path("reports")
         html_path = reports_dir / "bigchange-kpi-dashboard.html"
