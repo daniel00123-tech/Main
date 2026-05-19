@@ -6,6 +6,7 @@ from scripts.bigchange_temp_invoice_nominals import (
     classify_nominal_code,
     document_is_processable,
     is_target_invoice_row,
+    result_job,
 )
 
 
@@ -101,6 +102,17 @@ class SafetyFilterTest(unittest.TestCase):
                 processable, reason = document_is_processable({"DocumentType": "Invoice", field: "2026-05-19"})
                 self.assertFalse(processable)
                 self.assertIn(field, reason)
+
+    def test_rejects_alternate_cancelled_deleted_or_rejected_fields(self) -> None:
+        for field, reported in (
+            ("CancelledDate", "CancellationDate"),
+            ("DeletedDate", "DeletionDate"),
+            ("RejectedDate", "RejectionDate"),
+        ):
+            with self.subTest(field=field):
+                processable, reason = document_is_processable({"DocumentType": "Invoice", field: "2026-05-19"})
+                self.assertFalse(processable)
+                self.assertIn(reported, reason)
 
     def test_rejects_non_invoice_document_types(self) -> None:
         processable, reason = document_is_processable({"DocumentType": "Credit Note"})
@@ -235,6 +247,24 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
 
         self.assertEqual(report.invoices_skipped, 1)
         self.assertEqual(client.generated_docs, [])
+
+
+class BigChangeResponseParsingTest(unittest.TestCase):
+    def test_unwraps_nested_job_result(self) -> None:
+        job = result_job(
+            {
+                "Code": 0,
+                "Result": {
+                    "Job": {
+                        "JobId": "J1",
+                        "Type": "Fire Alarm",
+                        "Description": "PPM service",
+                    }
+                },
+            }
+        )
+
+        self.assertEqual(job, {"JobId": "J1", "Type": "Fire Alarm", "Description": "PPM service"})
 
 
 if __name__ == "__main__":

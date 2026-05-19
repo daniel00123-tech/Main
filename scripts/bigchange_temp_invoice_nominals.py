@@ -225,6 +225,31 @@ def result_document(payload: dict[str, Any]) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def result_job(payload: dict[str, Any]) -> dict[str, Any] | None:
+    result = payload.get("Result")
+    if isinstance(result, dict):
+        for key in ("Job", "JobDetails", "JobDetail"):
+            nested = result.get(key)
+            if isinstance(nested, dict):
+                return nested
+        if looks_like_job(result):
+            return result
+        for nested in result.values():
+            if isinstance(nested, dict) and looks_like_job(nested):
+                return nested
+    elif isinstance(result, list):
+        for row in result:
+            if isinstance(row, dict) and looks_like_job(row):
+                return row
+    if looks_like_job(payload):
+        return payload
+    rows = result_rows(payload)
+    for row in rows:
+        if looks_like_job(row):
+            return row
+    return rows[0] if rows else None
+
+
 def looks_like_financial_doc(row: dict[str, Any]) -> bool:
     return any(
         first_present(row, names) not in (None, "")
@@ -232,6 +257,17 @@ def looks_like_financial_doc(row: dict[str, Any]) -> bool:
             ("DocId", "FinancialDocId", "InvoiceId"),
             ("DocumentType", "DocType"),
             ("FinancialLines", "FinancialLine", "InvoiceLines", "Lines", "LineItems"),
+        )
+    )
+
+
+def looks_like_job(row: dict[str, Any]) -> bool:
+    return any(
+        first_present(row, names) not in (None, "")
+        for names in (
+            ("JobId", "JobID", "JobReference", "JobRef", "JobNumber"),
+            ("Type", "JobType", "JobTypeName"),
+            ("Description", "JobDescription", "Details", "Notes"),
         )
     )
 
@@ -354,8 +390,7 @@ class BigChangeClient:
         payload = self.get("Job", params)
         if not code_is_success(payload):
             return None
-        rows = result_rows(payload)
-        return rows[0] if rows else result_document(payload)
+        return result_job(payload)
 
     def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
         for action in ("JobGroup", "JobGroupJobs"):
@@ -463,9 +498,14 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
         norm_doc_type = normalized_text(doc_type)
         if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
             return False, f"document type is {doc_type}"
-    for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
-        if is_populated(first_present(doc, (field_name,))):
-            return False, f"{field_name} is populated"
+    blocked_status_fields = (
+        ("CancellationDate", "CancelledDate", "CanceledDate", "DateCancelled", "DateCanceled"),
+        ("DeletionDate", "DeletedDate", "DateDeleted"),
+        ("RejectionDate", "RejectedDate", "DateRejected"),
+    )
+    for field_names in blocked_status_fields:
+        if is_populated(first_present(doc, field_names)):
+            return False, f"{field_names[0]} is populated"
     return True, ""
 
 
