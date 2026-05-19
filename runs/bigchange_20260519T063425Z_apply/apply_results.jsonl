@@ -1,0 +1,476 @@
+{"job_id": 185780327, "job_ref": "", "response": {"Code": 0, "Result": {"jobid": "185780327 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 185780327, "job_ref": "", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 185830481, "job_ref": "JOB259332", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 185849293, "job_ref": "PPM259427", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 185891527, "job_ref": "JOB259487", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 185897299, "job_ref": "DL259503", "response": {"Code": 0, "Result": {"jobid": "185897299 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897300, "job_ref": "DL259504", "response": {"Code": 0, "Result": {"jobid": "185897300 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897305, "job_ref": "PPM259509", "response": {"Code": 0, "Result": {"jobid": "185897305 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897306, "job_ref": "PPM259510", "response": {"Code": 0, "Result": {"jobid": "185897306 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897307, "job_ref": "PPM259511", "response": {"Code": 0, "Result": {"jobid": "185897307 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897308, "job_ref": "PPM259512", "response": {"Code": 0, "Result": {"jobid": "185897308 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897309, "job_ref": "PPM259513", "response": {"Code": 0, "Result": {"jobid": "185897309 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897310, "job_ref": "PPM259514", "response": {"Code": 0, "Result": {"jobid": "185897310 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897311, "job_ref": "PPM259515", "response": {"Code": 0, "Result": {"jobid": "185897311 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897312, "job_ref": "PPM259516", "response": {"Code": 0, "Result": {"jobid": "185897312 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897313, "job_ref": "PPM259517", "response": {"Code": 0, "Result": {"jobid": "185897313 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897314, "job_ref": "PPM259518", "response": {"Code": 0, "Result": {"jobid": "185897314 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897315, "job_ref": "PPM 259519", "response": {"Code": 0, "Result": {"jobid": "185897315 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897316, "job_ref": "PPM 259520", "response": {"Code": 0, "Result": {"jobid": "185897316 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897317, "job_ref": "PPM259521", "response": {"Code": 0, "Result": {"jobid": "185897317 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897318, "job_ref": "PPM259522", "response": {"Code": 0, "Result": {"jobid": "185897318 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897319, "job_ref": "PPM259523", "response": {"Code": 0, "Result": {"jobid": "185897319 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897320, "job_ref": "PPM259524", "response": {"Code": 0, "Result": {"jobid": "185897320 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897321, "job_ref": "PPM259525", "response": {"Code": 0, "Result": {"jobid": "185897321 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897322, "job_ref": "PPM259526", "response": {"Code": 0, "Result": {"jobid": "185897322 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897323, "job_ref": "PPM259527", "response": {"Code": 0, "Result": {"jobid": "185897323 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185897324, "job_ref": "PPM259528", "response": {"Code": 0, "Result": {"jobid": "185897324 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 185938490, "job_ref": "DL260918", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 185938491, "job_ref": "DL260919", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 185939168, "job_ref": "DL261179", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 185939828, "job_ref": "DL261434", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 185939839, "job_ref": "DL261438", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 185939847, "job_ref": "DL261440", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 185988965, "job_ref": "COVER262261", "response": {"Code": 0, "Result": {"jobid": "185988965 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185994952, "job_ref": "262263", "response": {"Code": 0, "Result": {"jobid": "185994952 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 185995802, "job_ref": "262264", "response": {"Code": 0, "Result": {"jobid": "185995802 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186018049, "job_ref": "SS262288", "response": {"Code": 0, "Result": {"jobid": "186018049 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186028827, "job_ref": "JOB262290", "response": {"Code": 0, "Result": {"jobid": "186028827 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186028828, "job_ref": "PPM262291", "response": {"Code": 0, "Result": {"jobid": "186028828 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186028830, "job_ref": "DL262293", "response": {"Code": 0, "Result": {"jobid": "186028830 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186028831, "job_ref": "DL262294", "response": {"Code": 0, "Result": {"jobid": "186028831 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186028832, "job_ref": "PPM262295", "response": {"Code": 0, "Result": {"jobid": "186028832 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186028835, "job_ref": "PPM262298", "response": {"Code": 0, "Result": {"jobid": "186028835 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186028836, "job_ref": "PPM262299", "response": {"Code": 0, "Result": {"jobid": "186028836 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186028837, "job_ref": "PPM262300", "response": {"Code": 0, "Result": {"jobid": "186028837 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186028838, "job_ref": "PPM262301", "response": {"Code": 0, "Result": {"jobid": "186028838 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186028839, "job_ref": "PPM262302", "response": {"Code": 0, "Result": {"jobid": "186028839 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186028859, "job_ref": "GRANQ262322", "response": {"Code": 0, "Result": {"jobid": "186028859 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186054121, "job_ref": "DLM262331", "response": {"Code": 0, "Result": {"jobid": "186054121 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186088885, "job_ref": "JOB262375", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186124705, "job_ref": "PPM262698", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 186142467, "job_ref": "PPM262733", "response": {"Code": 0, "Result": {"jobid": "186142467 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142468, "job_ref": "PPM262734", "response": {"Code": 0, "Result": {"jobid": "186142468 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142469, "job_ref": "PPM262735", "response": {"Code": 0, "Result": {"jobid": "186142469 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142470, "job_ref": "PPM262736", "response": {"Code": 0, "Result": {"jobid": "186142470 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142471, "job_ref": "PPM262737", "response": {"Code": 0, "Result": {"jobid": "186142471 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142472, "job_ref": "PPM262738", "response": {"Code": 0, "Result": {"jobid": "186142472 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142473, "job_ref": "PPM262739", "response": {"Code": 0, "Result": {"jobid": "186142473 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142474, "job_ref": "PPM262740", "response": {"Code": 0, "Result": {"jobid": "186142474 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142475, "job_ref": "PPM 262741", "response": {"Code": 0, "Result": {"jobid": "186142475 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142476, "job_ref": "PPM 262742", "response": {"Code": 0, "Result": {"jobid": "186142476 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142477, "job_ref": "PPM262743", "response": {"Code": 0, "Result": {"jobid": "186142477 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142478, "job_ref": "PPM262744", "response": {"Code": 0, "Result": {"jobid": "186142478 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142479, "job_ref": "PPM262745", "response": {"Code": 0, "Result": {"jobid": "186142479 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142480, "job_ref": "PPM262746", "response": {"Code": 0, "Result": {"jobid": "186142480 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142481, "job_ref": "PPM262747", "response": {"Code": 0, "Result": {"jobid": "186142481 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142482, "job_ref": "PPM262748", "response": {"Code": 0, "Result": {"jobid": "186142482 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142483, "job_ref": "PPM262749", "response": {"Code": 0, "Result": {"jobid": "186142483 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142484, "job_ref": "PPM262750", "response": {"Code": 0, "Result": {"jobid": "186142484 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142485, "job_ref": "PPM262751", "response": {"Code": 0, "Result": {"jobid": "186142485 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142486, "job_ref": "PPM262752", "response": {"Code": 0, "Result": {"jobid": "186142486 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142487, "job_ref": "DL262753", "response": {"Code": 0, "Result": {"jobid": "186142487 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186142488, "job_ref": "DL262754", "response": {"Code": 0, "Result": {"jobid": "186142488 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186194038, "job_ref": "DLFF264147", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 186255204, "job_ref": "INT264431", "response": {"Code": 0, "Result": {"jobid": "186255204 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186255748, "job_ref": "DLM264432", "response": {"Code": 0, "Result": {"jobid": "186255748 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186269770, "job_ref": "GRANQ245491~1", "response": {"Code": 0, "Result": {"jobid": "186269770 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186291104, "job_ref": "JOB264450", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186293266, "job_ref": "JOB264451", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186331728, "job_ref": "DLFF265011", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 186341329, "job_ref": "DLM265073", "response": {"Code": 0, "Result": {"jobid": "186341329 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186368455, "job_ref": "DLFF265091", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186374099, "job_ref": "DLFF265092", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 186381651, "job_ref": "JOB265097", "response": {"Code": 0, "Result": {"jobid": "186381651 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186446007, "job_ref": "DLFF265135", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 186454003, "job_ref": "GRANQ265151", "response": {"Code": 0, "Result": {"jobid": "186454003 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454004, "job_ref": "PPM265152", "response": {"Code": 0, "Result": {"jobid": "186454004 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454005, "job_ref": "PPM265153", "response": {"Code": 0, "Result": {"jobid": "186454005 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454006, "job_ref": "PPM265154", "response": {"Code": 0, "Result": {"jobid": "186454006 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454007, "job_ref": "PPM265155", "response": {"Code": 0, "Result": {"jobid": "186454007 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454008, "job_ref": "PPM265156", "response": {"Code": 0, "Result": {"jobid": "186454008 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454009, "job_ref": "DL265157", "response": {"Code": 0, "Result": {"jobid": "186454009 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454010, "job_ref": "PPM265158", "response": {"Code": 0, "Result": {"jobid": "186454010 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454011, "job_ref": "PPM265159", "response": {"Code": 0, "Result": {"jobid": "186454011 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454012, "job_ref": "PPM265160", "response": {"Code": 0, "Result": {"jobid": "186454012 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454013, "job_ref": "PPM265161", "response": {"Code": 0, "Result": {"jobid": "186454013 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454014, "job_ref": "PPM265162", "response": {"Code": 0, "Result": {"jobid": "186454014 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454015, "job_ref": "PPM 265163", "response": {"Code": 0, "Result": {"jobid": "186454015 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454016, "job_ref": "PPM265164", "response": {"Code": 0, "Result": {"jobid": "186454016 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186575035, "job_ref": "DLFF253422~2", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186589853, "job_ref": "DLFF265308", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 186515178, "job_ref": "DLM265246", "response": {"Code": 0, "Result": {"jobid": "186515178 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186480876, "job_ref": "PPM265209", "response": {"Code": 0, "Result": {"jobid": "186480876 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186454046, "job_ref": "GRANQ265194", "response": {"Code": 0, "Result": {"jobid": "186454046 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594925, "job_ref": "PPM265323", "response": {"Code": 0, "Result": {"jobid": "186594925 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594926, "job_ref": "PPM265324", "response": {"Code": 0, "Result": {"jobid": "186594926 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594927, "job_ref": "PPM265325", "response": {"Code": 0, "Result": {"jobid": "186594927 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594928, "job_ref": "PPM265326", "response": {"Code": 0, "Result": {"jobid": "186594928 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594931, "job_ref": "DL265329", "response": {"Code": 0, "Result": {"jobid": "186594931 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594932, "job_ref": "DL265330", "response": {"Code": 0, "Result": {"jobid": "186594932 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594923, "job_ref": "PPM265321", "response": {"Code": 0, "Result": {"jobid": "186594923 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594924, "job_ref": "PPM265322", "response": {"Code": 0, "Result": {"jobid": "186594924 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594934, "job_ref": "PPM265332", "response": {"Code": 0, "Result": {"jobid": "186594934 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594933, "job_ref": "PPM265331", "response": {"Code": 0, "Result": {"jobid": "186594933 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594935, "job_ref": "PPM265333", "response": {"Code": 0, "Result": {"jobid": "186594935 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594937, "job_ref": "PPM265335", "response": {"Code": 0, "Result": {"jobid": "186594937 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594938, "job_ref": "PPM265336", "response": {"Code": 0, "Result": {"jobid": "186594938 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594936, "job_ref": "PPM265334", "response": {"Code": 0, "Result": {"jobid": "186594936 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594939, "job_ref": "PPM265337", "response": {"Code": 0, "Result": {"jobid": "186594939 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594941, "job_ref": "PPM 265339", "response": {"Code": 0, "Result": {"jobid": "186594941 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594942, "job_ref": "PPM 265340", "response": {"Code": 0, "Result": {"jobid": "186594942 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594940, "job_ref": "PPM265338", "response": {"Code": 0, "Result": {"jobid": "186594940 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594943, "job_ref": "PPM265341", "response": {"Code": 0, "Result": {"jobid": "186594943 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594944, "job_ref": "PPM265342", "response": {"Code": 0, "Result": {"jobid": "186594944 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186614353, "job_ref": "JOB265015~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186649829, "job_ref": "DLFF265926", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 186658790, "job_ref": "COVER265941", "response": {"Code": 0, "Result": {"jobid": "186658790 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186674905, "job_ref": "DLFF266036", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186702107, "job_ref": "JOB265874~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 186595011, "job_ref": "JOB265408", "response": {"Code": 0, "Result": {"jobid": "186595011 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594945, "job_ref": "PPM265343", "response": {"Code": 0, "Result": {"jobid": "186594945 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186594947, "job_ref": "PPM265344", "response": {"Code": 0, "Result": {"jobid": "186594947 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186710763, "job_ref": "PPM266070", "response": {"Code": 0, "Result": {"jobid": "186710763 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186710764, "job_ref": "JOB266071", "response": {"Code": 0, "Result": {"jobid": "186710764 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186710768, "job_ref": "DL266075", "response": {"Code": 0, "Result": {"jobid": "186710768 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186710769, "job_ref": "DL266076", "response": {"Code": 0, "Result": {"jobid": "186710769 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186710770, "job_ref": "PPM266077", "response": {"Code": 0, "Result": {"jobid": "186710770 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186710777, "job_ref": "PPM266084", "response": {"Code": 0, "Result": {"jobid": "186710777 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186710778, "job_ref": "PPM266085", "response": {"Code": 0, "Result": {"jobid": "186710778 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186710779, "job_ref": "PPM266086", "response": {"Code": 0, "Result": {"jobid": "186710779 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186738810, "job_ref": "JOB266116", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186752854, "job_ref": "JOB266136", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186805668, "job_ref": "JOB266424", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186829343, "job_ref": "JOB266457", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186829624, "job_ref": "DLFF266459", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 186710780, "job_ref": "PPM266087", "response": {"Code": 0, "Result": {"jobid": "186710780 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186710781, "job_ref": "PPM266088", "response": {"Code": 0, "Result": {"jobid": "186710781 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186710799, "job_ref": "GRANQ266106", "response": {"Code": 0, "Result": {"jobid": "186710799 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837542, "job_ref": "DL266473", "response": {"Code": 0, "Result": {"jobid": "186837542 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837545, "job_ref": "PPM266476", "response": {"Code": 0, "Result": {"jobid": "186837545 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837544, "job_ref": "PPM266475", "response": {"Code": 0, "Result": {"jobid": "186837544 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837543, "job_ref": "DL266474", "response": {"Code": 0, "Result": {"jobid": "186837543 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837547, "job_ref": "PPM266478", "response": {"Code": 0, "Result": {"jobid": "186837547 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837546, "job_ref": "PPM266477", "response": {"Code": 0, "Result": {"jobid": "186837546 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837548, "job_ref": "PPM 266479", "response": {"Code": 0, "Result": {"jobid": "186837548 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837549, "job_ref": "PPM 266480", "response": {"Code": 0, "Result": {"jobid": "186837549 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837551, "job_ref": "PPM266482", "response": {"Code": 0, "Result": {"jobid": "186837551 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837550, "job_ref": "PPM266481", "response": {"Code": 0, "Result": {"jobid": "186837550 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837552, "job_ref": "PPM266483", "response": {"Code": 0, "Result": {"jobid": "186837552 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837553, "job_ref": "PPM266484", "response": {"Code": 0, "Result": {"jobid": "186837553 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837555, "job_ref": "PPM266486", "response": {"Code": 0, "Result": {"jobid": "186837555 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837554, "job_ref": "PPM266485", "response": {"Code": 0, "Result": {"jobid": "186837554 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837556, "job_ref": "PPM266487", "response": {"Code": 0, "Result": {"jobid": "186837556 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837560, "job_ref": "PPM266491", "response": {"Code": 0, "Result": {"jobid": "186837560 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837561, "job_ref": "PPM266492", "response": {"Code": 0, "Result": {"jobid": "186837561 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837557, "job_ref": "PPM266488", "response": {"Code": 0, "Result": {"jobid": "186837557 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837562, "job_ref": "PPM266493", "response": {"Code": 0, "Result": {"jobid": "186837562 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186851788, "job_ref": "JOB265017~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186871620, "job_ref": "JOB266571", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186906855, "job_ref": "JOB266584", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186920483, "job_ref": "DLFF266595", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186941931, "job_ref": "DLFF252219~2", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186963360, "job_ref": "DLFF266613", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 186963363, "job_ref": "DLFF266614", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 186974395, "job_ref": "JOB266630", "response": {"Code": 0, "Result": {"jobid": "186974395 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187025384, "job_ref": "PPM266685", "response": {"Code": 0, "Result": {"jobid": "187025384 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187037933, "job_ref": "DLFF267025", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 186837563, "job_ref": "PPM266494", "response": {"Code": 0, "Result": {"jobid": "186837563 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187117261, "job_ref": "JOB267063", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187122630, "job_ref": "JOB267067", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187122702, "job_ref": "JOB267068", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187109901, "job_ref": "COVER267055", "response": {"Code": 0, "Result": {"jobid": "187109901 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837558, "job_ref": "PPM266489", "response": {"Code": 0, "Result": {"jobid": "186837558 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 186837559, "job_ref": "PPM266490", "response": {"Code": 0, "Result": {"jobid": "186837559 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147298, "job_ref": "PPM267096", "response": {"Code": 0, "Result": {"jobid": "187147298 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147297, "job_ref": "PPM267095", "response": {"Code": 0, "Result": {"jobid": "187147297 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147299, "job_ref": "PPM267097", "response": {"Code": 0, "Result": {"jobid": "187147299 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147300, "job_ref": "PPM267098", "response": {"Code": 0, "Result": {"jobid": "187147300 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147302, "job_ref": "PPM267100", "response": {"Code": 0, "Result": {"jobid": "187147302 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147301, "job_ref": "PPM 267099", "response": {"Code": 0, "Result": {"jobid": "187147301 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147306, "job_ref": "PPM267104", "response": {"Code": 0, "Result": {"jobid": "187147306 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147307, "job_ref": "PPM267105", "response": {"Code": 0, "Result": {"jobid": "187147307 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147303, "job_ref": "PPM267101", "response": {"Code": 0, "Result": {"jobid": "187147303 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147308, "job_ref": "PPM267106", "response": {"Code": 0, "Result": {"jobid": "187147308 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147309, "job_ref": "PPM267107", "response": {"Code": 0, "Result": {"jobid": "187147309 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147304, "job_ref": "DL267102", "response": {"Code": 0, "Result": {"jobid": "187147304 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187165633, "job_ref": "DLFF267154", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187167760, "job_ref": "DLFF267158", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187179782, "job_ref": "JOB267191", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187180477, "job_ref": "JOB267193", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187180786, "job_ref": "JOB267197", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187180849, "job_ref": "JOB267199", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187181661, "job_ref": "DLFF266618~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187181943, "job_ref": "JOB267204", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187183080, "job_ref": "JOB267206", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187183667, "job_ref": "DLFF267210", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187184311, "job_ref": "DLFF267214", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187186752, "job_ref": "EOT267218", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187190383, "job_ref": "DLFF267226", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187190641, "job_ref": "JOB267233", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187147310, "job_ref": "GRANQ267108", "response": {"Code": 0, "Result": {"jobid": "187147310 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147347, "job_ref": "GRANQ267145", "response": {"Code": 0, "Result": {"jobid": "187147347 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187147305, "job_ref": "PPM267103", "response": {"Code": 0, "Result": {"jobid": "187147305 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198520, "job_ref": "PPM267252", "response": {"Code": 0, "Result": {"jobid": "187198520 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198521, "job_ref": "PPM267253", "response": {"Code": 0, "Result": {"jobid": "187198521 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198522, "job_ref": "PPM267254", "response": {"Code": 0, "Result": {"jobid": "187198522 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198523, "job_ref": "PPM267255", "response": {"Code": 0, "Result": {"jobid": "187198523 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198524, "job_ref": "PPM267256", "response": {"Code": 0, "Result": {"jobid": "187198524 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198526, "job_ref": "PPM267258", "response": {"Code": 0, "Result": {"jobid": "187198526 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198525, "job_ref": "PPM267257", "response": {"Code": 0, "Result": {"jobid": "187198525 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198527, "job_ref": "PPM267259", "response": {"Code": 0, "Result": {"jobid": "187198527 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198528, "job_ref": "PPM267260", "response": {"Code": 0, "Result": {"jobid": "187198528 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198529, "job_ref": "PPM267261", "response": {"Code": 0, "Result": {"jobid": "187198529 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198530, "job_ref": "PPM 267262", "response": {"Code": 0, "Result": {"jobid": "187198530 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198531, "job_ref": "PPM 267263", "response": {"Code": 0, "Result": {"jobid": "187198531 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198533, "job_ref": "PPM267265", "response": {"Code": 0, "Result": {"jobid": "187198533 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198532, "job_ref": "PPM267264", "response": {"Code": 0, "Result": {"jobid": "187198532 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198537, "job_ref": "PPM267269", "response": {"Code": 0, "Result": {"jobid": "187198537 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198536, "job_ref": "PPM267268", "response": {"Code": 0, "Result": {"jobid": "187198536 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198538, "job_ref": "PPM267270", "response": {"Code": 0, "Result": {"jobid": "187198538 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198539, "job_ref": "PPM267271", "response": {"Code": 0, "Result": {"jobid": "187198539 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198534, "job_ref": "PPM267266", "response": {"Code": 0, "Result": {"jobid": "187198534 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187210757, "job_ref": "JOB267336", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187216951, "job_ref": "INT267340", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187233696, "job_ref": "DLM267355", "response": {"Code": 0, "Result": {"jobid": "187233696 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187238420, "job_ref": "DLFF267436", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187240326, "job_ref": "DLFF267447", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187241468, "job_ref": "DLFF267450", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187244711, "job_ref": "INT267455", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187245279, "job_ref": "DLFF258571~3", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187246003, "job_ref": "JOB262717~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187256837, "job_ref": "JOB267462", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187261884, "job_ref": "JOB265015~2", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187264094, "job_ref": "JOB267477", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187265607, "job_ref": "JOB267480", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187271882, "job_ref": "DLFF267484", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187273934, "job_ref": "DLFF267493", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187274225, "job_ref": "DLFF267495", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187283467, "job_ref": "DLFF267506", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187198535, "job_ref": "PPM267267", "response": {"Code": 0, "Result": {"jobid": "187198535 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187322889, "job_ref": "PPM267533", "response": {"Code": 0, "Result": {"jobid": "187322889 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187322893, "job_ref": "DL267537", "response": {"Code": 0, "Result": {"jobid": "187322893 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187322890, "job_ref": "JOB267534", "response": {"Code": 0, "Result": {"jobid": "187322890 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187322894, "job_ref": "DL267538", "response": {"Code": 0, "Result": {"jobid": "187322894 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187322895, "job_ref": "PPM267539", "response": {"Code": 0, "Result": {"jobid": "187322895 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198540, "job_ref": "DL267272", "response": {"Code": 0, "Result": {"jobid": "187198540 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187198541, "job_ref": "DL267273", "response": {"Code": 0, "Result": {"jobid": "187198541 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187322896, "job_ref": "PPM267540", "response": {"Code": 0, "Result": {"jobid": "187322896 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187322897, "job_ref": "PPM267541", "response": {"Code": 0, "Result": {"jobid": "187322897 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187322899, "job_ref": "PPM267543", "response": {"Code": 0, "Result": {"jobid": "187322899 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187352800, "job_ref": "JOB267578", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187322898, "job_ref": "PPM267542", "response": {"Code": 0, "Result": {"jobid": "187322898 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187365362, "job_ref": "JOB242483~3", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187370336, "job_ref": "DLFF267589", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187408506, "job_ref": "JOB267628", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187417743, "job_ref": "JOB267634", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187352972, "job_ref": "DLM267579", "response": {"Code": 0, "Result": {"jobid": "187352972 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187322900, "job_ref": "PPM267544", "response": {"Code": 0, "Result": {"jobid": "187322900 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187322921, "job_ref": "GRANQ267565", "response": {"Code": 0, "Result": {"jobid": "187322921 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432060, "job_ref": "PPM267674", "response": {"Code": 0, "Result": {"jobid": "187432060 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432061, "job_ref": "PPM267675", "response": {"Code": 0, "Result": {"jobid": "187432061 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432062, "job_ref": "PPM267676", "response": {"Code": 0, "Result": {"jobid": "187432062 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432063, "job_ref": "PPM267677", "response": {"Code": 0, "Result": {"jobid": "187432063 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432059, "job_ref": "PPM267673", "response": {"Code": 0, "Result": {"jobid": "187432059 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432058, "job_ref": "PPM267672", "response": {"Code": 0, "Result": {"jobid": "187432058 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432067, "job_ref": "DL267681", "response": {"Code": 0, "Result": {"jobid": "187432067 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432068, "job_ref": "DL267682", "response": {"Code": 0, "Result": {"jobid": "187432068 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432069, "job_ref": "PPM267683", "response": {"Code": 0, "Result": {"jobid": "187432069 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432070, "job_ref": "PPM267684", "response": {"Code": 0, "Result": {"jobid": "187432070 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432071, "job_ref": "PPM267685", "response": {"Code": 0, "Result": {"jobid": "187432071 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432072, "job_ref": "PPM267686", "response": {"Code": 0, "Result": {"jobid": "187432072 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432074, "job_ref": "PPM267688", "response": {"Code": 0, "Result": {"jobid": "187432074 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432073, "job_ref": "PPM267687", "response": {"Code": 0, "Result": {"jobid": "187432073 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432075, "job_ref": "PPM267689", "response": {"Code": 0, "Result": {"jobid": "187432075 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432076, "job_ref": "PPM267690", "response": {"Code": 0, "Result": {"jobid": "187432076 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432077, "job_ref": "PPM267691", "response": {"Code": 0, "Result": {"jobid": "187432077 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432078, "job_ref": "PPM267692", "response": {"Code": 0, "Result": {"jobid": "187432078 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432082, "job_ref": "PPM267696", "response": {"Code": 0, "Result": {"jobid": "187432082 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187462113, "job_ref": "PPM267797", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187520369, "job_ref": "DLFF267875", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187520397, "job_ref": "JOB267876", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187432081, "job_ref": "PPM267695", "response": {"Code": 0, "Result": {"jobid": "187432081 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187540144, "job_ref": "DLFF251140~2", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187559204, "job_ref": "JOB267914", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187559786, "job_ref": "JOB267915", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187561013, "job_ref": "JOB267919", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187562063, "job_ref": "DLFF267025~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187562205, "job_ref": "JOB267921", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187580447, "job_ref": "JOB267937", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187587069, "job_ref": "EOT267943", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187591942, "job_ref": "DLFF266595~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187599875, "job_ref": "DLM267948", "response": {"Code": 0, "Result": {"jobid": "187599875 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187539693, "job_ref": "EST267902", "response": {"Code": 0, "Result": {"jobid": "187539693 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187608636, "job_ref": "EST267964", "response": {"Code": 0, "Result": {"jobid": "187608636 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187618031, "job_ref": "JOB267968", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187622803, "job_ref": "JOB267971", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187625504, "job_ref": "JOB267983", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187625868, "job_ref": "JOB267986", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187632127, "job_ref": "JOB268003", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187652466, "job_ref": "PPM268079", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187655965, "job_ref": "GRANQ268171", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187612371, "job_ref": "EST267966", "response": {"Code": 0, "Result": {"jobid": "187612371 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187694126, "job_ref": "PPM268322", "response": {"Code": 0, "Result": {"jobid": "187694126 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187694127, "job_ref": "PPM268323", "response": {"Code": 0, "Result": {"jobid": "187694127 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187694128, "job_ref": "JOB268324", "response": {"Code": 0, "Result": {"jobid": "187694128 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719031, "job_ref": "JOB268342", "response": {"Code": 0, "Result": {"jobid": "187719031 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432079, "job_ref": "PPM 267693", "response": {"Code": 0, "Result": {"jobid": "187432079 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719042, "job_ref": "PPM268352", "response": {"Code": 0, "Result": {"jobid": "187719042 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187432080, "job_ref": "PPM 267694", "response": {"Code": 0, "Result": {"jobid": "187432080 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719043, "job_ref": "PPM268353", "response": {"Code": 0, "Result": {"jobid": "187719043 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719045, "job_ref": "PPM268355", "response": {"Code": 0, "Result": {"jobid": "187719045 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719044, "job_ref": "PPM268354", "response": {"Code": 0, "Result": {"jobid": "187719044 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719047, "job_ref": "GRANQ268357", "response": {"Code": 0, "Result": {"jobid": "187719047 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719041, "job_ref": "PPM268351", "response": {"Code": 0, "Result": {"jobid": "187719041 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719046, "job_ref": "DL268356", "response": {"Code": 0, "Result": {"jobid": "187719046 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719048, "job_ref": "PPM268358", "response": {"Code": 0, "Result": {"jobid": "187719048 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719049, "job_ref": "PPM268359", "response": {"Code": 0, "Result": {"jobid": "187719049 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719050, "job_ref": "PPM268360", "response": {"Code": 0, "Result": {"jobid": "187719050 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719051, "job_ref": "PPM 268361", "response": {"Code": 0, "Result": {"jobid": "187719051 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719053, "job_ref": "PPM268363", "response": {"Code": 0, "Result": {"jobid": "187719053 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719085, "job_ref": "GRANQ268395", "response": {"Code": 0, "Result": {"jobid": "187719085 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187766755, "job_ref": "DLFF268441", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187768837, "job_ref": "DLFF268443", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187777810, "job_ref": "JOB268451", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187777828, "job_ref": "DLM268452", "response": {"Code": 0, "Result": {"jobid": "187777828 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187778106, "job_ref": "EST268453", "response": {"Code": 0, "Result": {"jobid": "187778106 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187790630, "job_ref": "DLFF268457", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187797867, "job_ref": "DLFF268462", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187848311, "job_ref": "JOB268491", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187743072, "job_ref": "PPM268427", "response": {"Code": 0, "Result": {"jobid": "187743072 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719052, "job_ref": "PPM268362", "response": {"Code": 0, "Result": {"jobid": "187719052 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187719054, "job_ref": "PPM268364", "response": {"Code": 0, "Result": {"jobid": "187719054 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854866, "job_ref": "PPM268507", "response": {"Code": 0, "Result": {"jobid": "187854866 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854867, "job_ref": "PPM268508", "response": {"Code": 0, "Result": {"jobid": "187854867 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854868, "job_ref": "PPM268509", "response": {"Code": 0, "Result": {"jobid": "187854868 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854869, "job_ref": "PPM268510", "response": {"Code": 0, "Result": {"jobid": "187854869 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854870, "job_ref": "PPM 268511", "response": {"Code": 0, "Result": {"jobid": "187854870 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854871, "job_ref": "PPM 268512", "response": {"Code": 0, "Result": {"jobid": "187854871 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854872, "job_ref": "PPM268513", "response": {"Code": 0, "Result": {"jobid": "187854872 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854873, "job_ref": "PPM268514", "response": {"Code": 0, "Result": {"jobid": "187854873 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854874, "job_ref": "PPM268515", "response": {"Code": 0, "Result": {"jobid": "187854874 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854875, "job_ref": "PPM268516", "response": {"Code": 0, "Result": {"jobid": "187854875 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854876, "job_ref": "PPM268517", "response": {"Code": 0, "Result": {"jobid": "187854876 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854877, "job_ref": "PPM268518", "response": {"Code": 0, "Result": {"jobid": "187854877 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854879, "job_ref": "PPM268520", "response": {"Code": 0, "Result": {"jobid": "187854879 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854880, "job_ref": "DL268521", "response": {"Code": 0, "Result": {"jobid": "187854880 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854878, "job_ref": "PPM268519", "response": {"Code": 0, "Result": {"jobid": "187854878 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854886, "job_ref": "PPM268527", "response": {"Code": 0, "Result": {"jobid": "187854886 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854881, "job_ref": "DL268522", "response": {"Code": 0, "Result": {"jobid": "187854881 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854887, "job_ref": "PPM268528", "response": {"Code": 0, "Result": {"jobid": "187854887 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854888, "job_ref": "PPM268529", "response": {"Code": 0, "Result": {"jobid": "187854888 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187878352, "job_ref": "TE92253738", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187888246, "job_ref": "JOB268619", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187899699, "job_ref": "DLFF268640", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187909263, "job_ref": "COVER268679", "response": {"Code": 0, "Result": {"jobid": "187909263 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187916544, "job_ref": "DLFF265135~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187917380, "job_ref": "JOB268686", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187961026, "job_ref": "EST268718", "response": {"Code": 0, "Result": {"jobid": "187961026 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854889, "job_ref": "PPM268530", "response": {"Code": 0, "Result": {"jobid": "187854889 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187966752, "job_ref": "DL268724", "response": {"Code": 0, "Result": {"jobid": "187966752 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187966753, "job_ref": "DL268725", "response": {"Code": 0, "Result": {"jobid": "187966753 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187966754, "job_ref": "PPM268726", "response": {"Code": 0, "Result": {"jobid": "187966754 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854885, "job_ref": "PPM268526", "response": {"Code": 0, "Result": {"jobid": "187854885 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187966755, "job_ref": "PPM268727", "response": {"Code": 0, "Result": {"jobid": "187966755 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187966756, "job_ref": "JOB268728", "response": {"Code": 0, "Result": {"jobid": "187966756 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187966763, "job_ref": "PPM268735", "response": {"Code": 0, "Result": {"jobid": "187966763 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187966764, "job_ref": "PPM268736", "response": {"Code": 0, "Result": {"jobid": "187966764 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187854884, "job_ref": "PPM268525", "response": {"Code": 0, "Result": {"jobid": "187854884 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187966766, "job_ref": "PPM268738", "response": {"Code": 0, "Result": {"jobid": "187966766 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 187984512, "job_ref": "JOB268763", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188020764, "job_ref": "JOB268797", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188031641, "job_ref": "DLFF268811", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188031642, "job_ref": "DLFF268812", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188040110, "job_ref": "DLFF268820", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188052886, "job_ref": "INT221606", "response": {"Code": 0, "Result": {"jobid": "188052886 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188070943, "job_ref": "JOB268898", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187966765, "job_ref": "PPM268737", "response": {"Code": 0, "Result": {"jobid": "187966765 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187966767, "job_ref": "PPM268739", "response": {"Code": 0, "Result": {"jobid": "187966767 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 187966787, "job_ref": "GRANQ268759", "response": {"Code": 0, "Result": {"jobid": "187966787 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075231, "job_ref": "DL268911", "response": {"Code": 0, "Result": {"jobid": "188075231 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075232, "job_ref": "DL268912", "response": {"Code": 0, "Result": {"jobid": "188075232 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075235, "job_ref": "PPM268915", "response": {"Code": 0, "Result": {"jobid": "188075235 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075236, "job_ref": "PPM268916", "response": {"Code": 0, "Result": {"jobid": "188075236 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075237, "job_ref": "PPM268917", "response": {"Code": 0, "Result": {"jobid": "188075237 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075234, "job_ref": "PPM268914", "response": {"Code": 0, "Result": {"jobid": "188075234 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075233, "job_ref": "PPM268913", "response": {"Code": 0, "Result": {"jobid": "188075233 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075238, "job_ref": "PPM268918", "response": {"Code": 0, "Result": {"jobid": "188075238 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075239, "job_ref": "PPM268919", "response": {"Code": 0, "Result": {"jobid": "188075239 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075240, "job_ref": "PPM268920", "response": {"Code": 0, "Result": {"jobid": "188075240 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075241, "job_ref": "PPM268921", "response": {"Code": 0, "Result": {"jobid": "188075241 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075242, "job_ref": "PPM268922", "response": {"Code": 0, "Result": {"jobid": "188075242 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075246, "job_ref": "PPM268926", "response": {"Code": 0, "Result": {"jobid": "188075246 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075244, "job_ref": "PPM268924", "response": {"Code": 0, "Result": {"jobid": "188075244 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075243, "job_ref": "PPM268923", "response": {"Code": 0, "Result": {"jobid": "188075243 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075245, "job_ref": "PPM268925", "response": {"Code": 0, "Result": {"jobid": "188075245 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075247, "job_ref": "PPM 268927", "response": {"Code": 0, "Result": {"jobid": "188075247 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075248, "job_ref": "PPM 268928", "response": {"Code": 0, "Result": {"jobid": "188075248 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075249, "job_ref": "PPM268929", "response": {"Code": 0, "Result": {"jobid": "188075249 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188114761, "job_ref": "TE41486711", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188122904, "job_ref": "JOB269007", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188154590, "job_ref": "JOB269043", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188156375, "job_ref": "JOB269045", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188221835, "job_ref": "JOB269913", "response": {"Code": 0, "Result": {"jobid": "188221835 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075250, "job_ref": "PPM268930", "response": {"Code": 0, "Result": {"jobid": "188075250 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188240976, "job_ref": "DLFF258571~4", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188257842, "job_ref": "JOB270074", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188261031, "job_ref": "JOB269007~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188292459, "job_ref": "EST270097", "response": {"Code": 0, "Result": {"jobid": "188292459 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188314219, "job_ref": "JOB270132", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188318374, "job_ref": "SS270139", "response": {"Code": 0, "Result": {"jobid": "188318374 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188318374, "job_ref": "SS270139", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188318458, "job_ref": "JOB268898~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188344275, "job_ref": "DLFF270168", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188345878, "job_ref": "JOB270169", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188346511, "job_ref": "JOB270175", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188221837, "job_ref": "JOB269915", "response": {"Code": 0, "Result": {"jobid": "188221837 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075251, "job_ref": "PPM268931", "response": {"Code": 0, "Result": {"jobid": "188075251 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352229, "job_ref": "PPM270182", "response": {"Code": 0, "Result": {"jobid": "188352229 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188075252, "job_ref": "PPM268932", "response": {"Code": 0, "Result": {"jobid": "188075252 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352228, "job_ref": "PPM270181", "response": {"Code": 0, "Result": {"jobid": "188352228 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352230, "job_ref": "PPM270183", "response": {"Code": 0, "Result": {"jobid": "188352230 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352231, "job_ref": "PPM270184", "response": {"Code": 0, "Result": {"jobid": "188352231 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352232, "job_ref": "PPM270185", "response": {"Code": 0, "Result": {"jobid": "188352232 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352233, "job_ref": "PPM 270186", "response": {"Code": 0, "Result": {"jobid": "188352233 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352236, "job_ref": "PPM270189", "response": {"Code": 0, "Result": {"jobid": "188352236 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352237, "job_ref": "PPM270190", "response": {"Code": 0, "Result": {"jobid": "188352237 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352238, "job_ref": "PPM270191", "response": {"Code": 0, "Result": {"jobid": "188352238 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352239, "job_ref": "PPM270192", "response": {"Code": 0, "Result": {"jobid": "188352239 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352234, "job_ref": "PPM270187", "response": {"Code": 0, "Result": {"jobid": "188352234 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352241, "job_ref": "GRANQ270194", "response": {"Code": 0, "Result": {"jobid": "188352241 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188366745, "job_ref": "JOB270236", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188366979, "job_ref": "JOB270237", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188432353, "job_ref": "COVER270298", "response": {"Code": 0, "Result": {"jobid": "188432353 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188452503, "job_ref": "INT270327", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188455521, "job_ref": "JOB270328", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188486988, "job_ref": "DLM270350", "response": {"Code": 0, "Result": {"jobid": "188486988 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188486988, "job_ref": "DLM270350", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188492492, "job_ref": "EOT270354", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188493656, "job_ref": "DLM270361", "response": {"Code": 0, "Result": {"jobid": "188493656 "}}, "status": "updated", "update_type": "job_category"}
+{"error": "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} with isActioned=true; supplied web-services API credentials cannot authenticate to the REST API", "job_id": 188493656, "job_ref": "DLM270361", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188494570, "job_ref": "SS270364", "response": {"Code": 0, "Result": {"jobid": "188494570 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352277, "job_ref": "GRANQ270230", "response": {"Code": 0, "Result": {"jobid": "188352277 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352235, "job_ref": "PPM270188", "response": {"Code": 0, "Result": {"jobid": "188352235 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188352240, "job_ref": "DL270193", "response": {"Code": 0, "Result": {"jobid": "188352240 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499513, "job_ref": "PPM270379", "response": {"Code": 0, "Result": {"jobid": "188499513 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499514, "job_ref": "PPM270380", "response": {"Code": 0, "Result": {"jobid": "188499514 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499515, "job_ref": "PPM270381", "response": {"Code": 0, "Result": {"jobid": "188499515 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499516, "job_ref": "PPM270382", "response": {"Code": 0, "Result": {"jobid": "188499516 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499518, "job_ref": "PPM 270384", "response": {"Code": 0, "Result": {"jobid": "188499518 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499517, "job_ref": "PPM 270383", "response": {"Code": 0, "Result": {"jobid": "188499517 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499519, "job_ref": "PPM270385", "response": {"Code": 0, "Result": {"jobid": "188499519 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499520, "job_ref": "PPM270386", "response": {"Code": 0, "Result": {"jobid": "188499520 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499523, "job_ref": "PPM270389", "response": {"Code": 0, "Result": {"jobid": "188499523 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499522, "job_ref": "PPM270388", "response": {"Code": 0, "Result": {"jobid": "188499522 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499521, "job_ref": "PPM270387", "response": {"Code": 0, "Result": {"jobid": "188499521 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499524, "job_ref": "PPM270390", "response": {"Code": 0, "Result": {"jobid": "188499524 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499525, "job_ref": "PPM270391", "response": {"Code": 0, "Result": {"jobid": "188499525 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499526, "job_ref": "PPM270392", "response": {"Code": 0, "Result": {"jobid": "188499526 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499529, "job_ref": "PPM270395", "response": {"Code": 0, "Result": {"jobid": "188499529 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499530, "job_ref": "PPM270396", "response": {"Code": 0, "Result": {"jobid": "188499530 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499531, "job_ref": "PPM270397", "response": {"Code": 0, "Result": {"jobid": "188499531 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499527, "job_ref": "PPM270393", "response": {"Code": 0, "Result": {"jobid": "188499527 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499532, "job_ref": "PPM270398", "response": {"Code": 0, "Result": {"jobid": "188499532 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499528, "job_ref": "PPM270394", "response": {"Code": 0, "Result": {"jobid": "188499528 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499535, "job_ref": "DL270401", "response": {"Code": 0, "Result": {"jobid": "188499535 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188499536, "job_ref": "DL270402", "response": {"Code": 0, "Result": {"jobid": "188499536 "}}, "status": "updated", "update_type": "job_category"}

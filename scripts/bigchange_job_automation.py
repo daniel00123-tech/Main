@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import argparse
 import base64
+import concurrent.futures
 import json
 import os
 import signal
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -82,14 +84,17 @@ class BigChangeClient:
         for attempt in range(max_attempts):
             try:
                 request = urllib.request.Request(url, headers=self.headers)
-                old_handler = signal.signal(signal.SIGALRM, self._timeout_handler)
-                signal.alarm(self.timeout_seconds + 5)
+                use_alarm = threading.current_thread() is threading.main_thread()
+                old_handler = signal.signal(signal.SIGALRM, self._timeout_handler) if use_alarm else None
+                if use_alarm:
+                    signal.alarm(self.timeout_seconds + 5)
                 try:
                     with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                         raw = response.read().decode("utf-8", "replace")
                 finally:
-                    signal.alarm(0)
-                    signal.signal(signal.SIGALRM, old_handler)
+                    if use_alarm:
+                        signal.alarm(0)
+                        signal.signal(signal.SIGALRM, old_handler)
                 payload = json.loads(raw)
 
                 if isinstance(payload, dict) and payload.get("Code") == 3:
@@ -247,10 +252,10 @@ def append_log(path: Path, row: dict[str, Any]) -> None:
         handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
 
 
-def existing_apply_keys(path: Path) -> set[tuple[int, str]]:
-    keys: set[tuple[int, str]] = set()
+def existing_apply_results(path: Path) -> list[dict[str, Any]]:
+    results_by_key: dict[tuple[int, str], dict[str, Any]] = {}
     if not path.exists():
-        return keys
+        return []
     with path.open(encoding="utf-8") as handle:
         for line in handle:
             if not line.strip():
@@ -259,9 +264,17 @@ def existing_apply_keys(path: Path) -> set[tuple[int, str]]:
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if row.get("status") == "updated":
-                keys.add((int(row["job_id"]), str(row["update_type"])))
-    return keys
+            if row.get("status") in {"updated", "failed"}:
+                results_by_key[(int(row["job_id"]), str(row["update_type"]))] = row
+    return list(results_by_key.values())
+
+
+def existing_successful_apply_keys(path: Path) -> set[tuple[int, str]]:
+    return {
+        (int(row["job_id"]), str(row["update_type"]))
+        for row in existing_apply_results(path)
+        if row.get("status") == "updated"
+    }
 
 
 def build_summary(
@@ -278,6 +291,7 @@ def build_summary(
     jobs_with_intended = {u.job_id for u in intended_updates}
     jobs_with_success = {r["job_id"] for r in apply_results if r.get("status") == "updated"}
     jobs_with_failure = {r["job_id"] for r in apply_results if r.get("status") == "failed"}
+    jobs_with_apply_result = jobs_with_success | jobs_with_failure
     skip_reasons: Counter[str] = Counter()
     failure_reasons: Counter[str] = Counter()
 
@@ -297,7 +311,7 @@ def build_summary(
         f"- Total jobs reviewed: {total_jobs}",
         f"- Total jobs with intended updates in preview: {len(jobs_with_intended)}",
         f"- Total updated: {len(jobs_with_success) if not dry_run else 0}",
-        f"- Total skipped: {max(total_jobs - len(jobs_with_success) - len(jobs_with_failure), 0) if not dry_run else total_jobs - len(jobs_with_intended)}",
+        f"- Total skipped: {max(total_jobs - len(jobs_with_apply_result), 0) if not dry_run else total_jobs - len(jobs_with_intended)}",
         f"- Total failed: {len(jobs_with_failure) if not dry_run else 0}",
         "",
         "## Intended update operations",
@@ -329,6 +343,9 @@ def build_summary(
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.apply_workers < 1:
+        raise SystemExit("--apply-workers must be at least 1")
+
     run_started_dt = datetime.now(timezone.utc)
     run_started = run_started_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     default_start_dt, default_end_dt = default_window(run_started_dt, args.days)
@@ -357,6 +374,7 @@ def run(args: argparse.Namespace) -> int:
 
     categories = result_list(client.call({"action": "JobCategories"}), "JobCategories")
     category_by_name = {normalise_name(row.get("label")): row for row in categories if row.get("label")}
+    fallback_category = category_by_name.get(normalise_name(args.fallback_category))
 
     tags = result_list(client.call({"action": "Tags"}), "Tags")
     auto_close_tags = [
@@ -403,26 +421,44 @@ def run(args: argparse.Namespace) -> int:
                 history = result_list(client.call({"action": "JobStatusHistory", "jobId": job_id}), "JobStatusHistory")
                 creator, source = first_creator_from_history(history)
                 matching_category = category_by_name.get(normalise_name(creator)) if creator else None
-                if creator and matching_category:
+                target_category = matching_category or (fallback_category if creator else None)
+                if creator and target_category:
+                    if matching_category:
+                        reason = f"uncategorised job; creator from {source} matches an existing category"
+                    else:
+                        reason = (
+                            f"uncategorised job; creator from {source} has no matching category; "
+                            f"using existing fallback category {target_category['label']}"
+                        )
                     intended.append(
                         IntendedUpdate(
                             job_id=job_id,
                             job_ref=ref,
                             update_type="job_category",
-                            reason=f"uncategorised job; creator from {source} matches an existing category",
+                            reason=reason,
                             params={
                                 "action": "JobSave",
                                 "JobId": job_id,
-                                "JobCategory": matching_category["label"],
+                                "JobCategory": target_category["label"],
                                 "PreserveSchedule": 1,
                             },
                             before={"Category": job.get("Category"), "JobCategoryId": job.get("JobCategoryId")},
-                            target={"Category": matching_category["label"], "JobCategoryId": matching_category.get("id"), "creator": creator},
+                            target={
+                                "Category": target_category["label"],
+                                "JobCategoryId": target_category.get("id"),
+                                "creator": creator,
+                                "fallback_used": not bool(matching_category),
+                            },
                         )
                     )
                     intended_types.append("job_category")
                 else:
-                    skip_reasons.append(f"uncategorised but no matching category for creator: {creator or source}")
+                    if creator:
+                        skip_reasons.append(
+                            f"uncategorised but no matching category for creator and fallback category missing: {creator}"
+                        )
+                    else:
+                        skip_reasons.append(f"uncategorised but no matching category for creator: {source}")
             except Exception as exc:  # noqa: BLE001 - keep processing remaining jobs.
                 skip_reasons.append(f"failed to inspect creator history: {exc}")
         else:
@@ -432,31 +468,56 @@ def run(args: argparse.Namespace) -> int:
             try:
                 activity = result_list(client.call({"action": "JobCustomerActivity", "jobId": job_id}), "JobCustomerActivity")
                 invoice_created = has_invoice_created(activity)
-                if is_actioned(job) and invoice_created:
+                actioned = is_actioned(job)
+                if actioned and invoice_created:
                     skip_reasons.append("Auto Close Down already actioned with InvoiceCreated status")
                 else:
-                    reasons = []
-                    if not is_actioned(job):
-                        reasons.append("mark actioned")
                     if not invoice_created:
-                        reasons.append("set invoice status InvoiceCreated")
-                    intended.append(
-                        IntendedUpdate(
-                            job_id=job_id,
-                            job_ref=ref,
-                            update_type="auto_close_invoice_created",
-                            reason="Auto Close Down flag confirmed; " + " and ".join(reasons),
-                            params={
-                                "action": "JobClientStatus",
-                                "JobId": job_id,
-                                "JobClientStatus": INVOICE_CREATED_STATUS_ID,
-                                "Comment": "Automated Auto Close Down invoice status update",
-                            },
-                            before={"Actioned": job.get("Actioned"), "InvoiceCreated": invoice_created, "CurrentFlag": job.get("CurrentFlag")},
-                            target={"Actioned": "Yes", "JobClientStatus": INVOICE_CREATED, "JobClientStatusID": INVOICE_CREATED_STATUS_ID},
+                        intended.append(
+                            IntendedUpdate(
+                                job_id=job_id,
+                                job_ref=ref,
+                                update_type="auto_close_invoice_created",
+                                reason="Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+                                params={
+                                    "action": "JobClientStatus",
+                                    "JobId": job_id,
+                                    "JobClientStatus": INVOICE_CREATED_STATUS_ID,
+                                    "Comment": "Automated Auto Close Down invoice status update",
+                                },
+                                before={
+                                    "Actioned": job.get("Actioned"),
+                                    "InvoiceCreated": invoice_created,
+                                    "CurrentFlag": job.get("CurrentFlag"),
+                                },
+                                target={"JobClientStatus": INVOICE_CREATED, "JobClientStatusID": INVOICE_CREATED_STATUS_ID},
+                            )
                         )
-                    )
-                    intended_types.append("auto_close_invoice_created")
+                        intended_types.append("auto_close_invoice_created")
+                    if not actioned:
+                        intended.append(
+                            IntendedUpdate(
+                                job_id=job_id,
+                                job_ref=ref,
+                                update_type="auto_close_actioned",
+                                reason="Auto Close Down flag confirmed; mark actioned",
+                                params={
+                                    "action": "__unsupported__",
+                                    "message": (
+                                        "Marking Actioned requires BigChange REST PATCH /v1/jobs/{jobId} "
+                                        "with isActioned=true; supplied web-services API credentials cannot "
+                                        "authenticate to the REST API"
+                                    ),
+                                },
+                                before={
+                                    "Actioned": job.get("Actioned"),
+                                    "InvoiceCreated": invoice_created,
+                                    "CurrentFlag": job.get("CurrentFlag"),
+                                },
+                                target={"Actioned": "Yes"},
+                            )
+                        )
+                        intended_types.append("auto_close_actioned")
             except Exception as exc:  # noqa: BLE001 - keep processing remaining jobs.
                 skip_reasons.append(f"failed to inspect customer activity: {exc}")
         else:
@@ -489,6 +550,12 @@ def run(args: argparse.Namespace) -> int:
         "confirmed_references": {
             "autoCloseDownTagId": auto_close_tag_id,
             "invoiceCreatedClientStatusId": INVOICE_CREATED_STATUS_ID,
+            "fallbackCategory": {
+                "requestedLabel": args.fallback_category,
+                "confirmed": bool(fallback_category),
+                "id": fallback_category.get("id") if fallback_category else None,
+                "label": fallback_category.get("label") if fallback_category else None,
+            },
         },
         "jobs_excluded_as_future_dated": len(excluded_future_jobs),
         "total_jobs_reviewed": len(jobs_by_id),
@@ -506,16 +573,16 @@ def run(args: argparse.Namespace) -> int:
     }
     write_json(preview_path, preview_payload)
 
-    apply_results: list[dict[str, Any]] = []
+    apply_results: list[dict[str, Any]] = existing_apply_results(apply_results_jsonl_path) if args.resume else []
     if args.apply:
-        completed = existing_apply_keys(apply_results_jsonl_path) if args.resume else set()
-        for update in intended:
-            key = (update.job_id, update.update_type)
-            if key in completed:
-                continue
+        completed = existing_successful_apply_keys(apply_results_jsonl_path) if args.resume else set()
+
+        def apply_update(update: IntendedUpdate) -> dict[str, Any]:
             try:
+                if update.params.get("action") == "__unsupported__":
+                    raise BigChangeError(str(update.params["message"]))
                 response = client.call(update.params)
-                result = {
+                return {
                     "job_id": update.job_id,
                     "job_ref": update.job_ref,
                     "update_type": update.update_type,
@@ -523,15 +590,27 @@ def run(args: argparse.Namespace) -> int:
                     "response": response,
                 }
             except Exception as exc:  # noqa: BLE001 - keep processing remaining jobs.
-                result = {
+                return {
                     "job_id": update.job_id,
                     "job_ref": update.job_ref,
                     "update_type": update.update_type,
                     "status": "failed",
                     "error": str(exc),
                 }
-            apply_results.append(result)
-            append_log(apply_results_jsonl_path, result)
+
+        pending_updates = [update for update in intended if (update.job_id, update.update_type) not in completed]
+        if args.apply_workers == 1:
+            for update in pending_updates:
+                result = apply_update(update)
+                apply_results.append(result)
+                append_log(apply_results_jsonl_path, result)
+        else:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=args.apply_workers) as executor:
+                futures = [executor.submit(apply_update, update) for update in pending_updates]
+                for future in concurrent.futures.as_completed(futures):
+                    result = future.result()
+                    apply_results.append(result)
+                    append_log(apply_results_jsonl_path, result)
     write_json(apply_results_path, apply_results)
 
     run_finished = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -569,8 +648,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Exclude jobs with PlannedStart, PlannedEnd, or DueDate after the window end.",
     )
     parser.add_argument("--resume", action="store_true", help="Skip updates already marked successful in apply_results.jsonl.")
+    parser.add_argument("--apply-workers", type=int, default=1, help="Number of parallel workers to use when applying updates.")
     parser.add_argument("--timeout-seconds", type=int, default=30, help="Per-request socket timeout.")
     parser.add_argument("--output-dir", help="Directory for preview, logs, and summary artifacts.")
+    parser.add_argument(
+        "--fallback-category",
+        default="Hayley Longford",
+        help="Existing job category to use when an uncategorised job creator no longer has a category.",
+    )
     return parser.parse_args(argv)
 
 
