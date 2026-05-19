@@ -9,3 +9,13 @@ Run with the required BigChange and SMTP configuration supplied as environment v
 ```sh
 python3 scripts/bigchange_kpi_report.py
 ```
+
+## BigChange TEMP Invoice Nominal Correction
+
+Hourly automation entry point for correcting unsynchronised TEMP sales invoice line nominal codes:
+
+```sh
+python3 scripts/bigchange_temp_invoice_nominals.py
+```
+
+It reads `InvoicesWithoutSync`, processes only `SI` references beginning with `TEMP`, skips cancelled/deleted/rejected or non-invoice documents, updates the existing financial document by `DocId`, and prints only the scan/update/failure summary.
