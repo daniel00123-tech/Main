@@ -38,7 +38,8 @@ KPI_ORDER = [
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
 
-SALES_ORDER_TYPES = {"invoice", "creditnote"}
+SALES_ORDER_TYPES = {"invoice"}
+EXCLUDED_CATEGORY_NAMES = {"btr compliance", "btr reactive", "john bennett", "ryan barrett"}
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
@@ -144,6 +145,8 @@ def should_exclude_category(name: str) -> bool:
     norm = normalized_text(name)
     if not norm:
         return True
+    if is_excluded_named_category(norm):
+        return True
     if norm in {"uncategorised", "uncategorized"}:
         return True
     if "nirvana ppm" in norm:
@@ -152,6 +155,23 @@ def should_exclude_category(name: str) -> bool:
     if "ooh" in tokens or "out of hours" in norm:
         return True
     return False
+
+
+def is_excluded_named_category(normalized_name: str) -> bool:
+    return any(
+        normalized_name == excluded or normalized_name.endswith(f" {excluded}")
+        for excluded in EXCLUDED_CATEGORY_NAMES
+    )
+
+
+def validate_report(report: dict[str, Any]) -> None:
+    excluded_rows = [
+        clean_name(row.get("staff_name"))
+        for row in report.get("staff_rows", [])
+        if is_excluded_named_category(normalized_text(clean_name(row.get("staff_name"))))
+    ]
+    if excluded_rows:
+        raise RuntimeError(f"Report contains excluded non-staff categories: {', '.join(excluded_rows)}")
 
 
 def is_blank(value: Any) -> bool:
@@ -365,17 +385,16 @@ def invoice_created_owner(document: dict[str, Any], activity_cache: dict[str, li
     job_id = str(document.get("JobId") or "")
     if not job_id:
         return ""
-    document_date = parse_date(document.get("DocumentDate")) or dt.datetime.min
-    candidates: list[tuple[float, dict[str, Any]]] = []
+    candidates: list[tuple[dt.datetime, dict[str, Any]]] = []
     for activity in activity_cache.get(job_id, []):
         status_id = as_int(activity.get("JobClientStatusID") or activity.get("JobClientStatusId"))
         if status_id != 34:
             continue
         activity_date = parse_date(activity.get("JobClientStatusDate")) or dt.datetime.min
-        candidates.append((abs((activity_date - document_date).total_seconds()), activity))
+        candidates.append((activity_date, activity))
     if not candidates:
         return ""
-    candidates.sort(key=lambda item: item[0])
+    candidates.sort(key=lambda item: item[0], reverse=True)
     return clean_name(candidates[0][1].get("JobClientStatusOwner"))
 
 
@@ -396,7 +415,7 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     today = dt.date.today()
     tomorrow = today + dt.timedelta(days=1)
     month_start = today.replace(day=1)
-    month_end = today.replace(day=days_in_month(today.year, today.month))
+    month_end = today
     lookback_start = months_ago(today, 12)
 
     staff_names: set[str] = set()
@@ -943,10 +962,10 @@ def send_email(png_path: Path) -> None:
     smtp_port = int(required_env("SMTP_PORT"))
     smtp_username = required_env("SMTP_USERNAME")
     smtp_password = required_env("SMTP_PASSWORD")
-    from_email = required_env("SMTP_FROM_EMAIL")
+    from_email = required_env("SMTP_FROM_EMAIL").strip()
     from_name = optional_env("SMTP_FROM_NAME")
-    to_email = required_env("SMTP_TO_EMAIL")
-    cc_email = optional_env("SMTP_CC_EMAIL")
+    to_email = required_env("SMTP_TO_EMAIL").strip()
+    cc_email = optional_env("SMTP_CC_EMAIL").strip()
 
     subject = f"BigChange KPI Overview - {dt.date.today().isoformat()}"
     root = MIMEMultipart("related")
@@ -1001,6 +1020,7 @@ def main() -> int:
     try:
         client = BigChangeClient()
         report = build_report(client)
+        validate_report(report)
         html_content = render_html(report)
         reports_dir = Path("reports")
         html_path = reports_dir / "bigchange-kpi-dashboard.html"
