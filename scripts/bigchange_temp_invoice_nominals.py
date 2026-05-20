@@ -20,6 +20,21 @@ from typing import Any, Protocol
 DEFAULT_CURRENCY = "GBP"
 FALLBACK_NOMINAL_CODE = "2205"
 
+ALLOWED_DOCUMENT_TYPES = {
+    "invoice",
+    "sales invoice",
+    "salesinvoice",
+    "si",
+}
+REJECTED_DOCUMENT_TYPE_TERMS = (
+    "credit",
+    "purchase",
+    "order",
+    "quote",
+    "pro forma",
+    "proforma",
+)
+
 DISCIPLINE_CODES = {
     ("mechanical", "reactive"): "2001",
     ("fire", "reactive"): "2002",
@@ -459,10 +474,13 @@ def classify_from_keywords(text: str, groups: dict[str, tuple[str, ...]]) -> str
 
 def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
-    if doc_type:
-        norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
-            return False, f"document type is {doc_type}"
+    if not doc_type:
+        return False, "document type is missing"
+    norm_doc_type = normalized_text(doc_type)
+    if any(term in norm_doc_type for term in REJECTED_DOCUMENT_TYPE_TERMS):
+        return False, f"document type is {doc_type}"
+    if norm_doc_type not in ALLOWED_DOCUMENT_TYPES:
+        return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
             return False, f"{field_name} is populated"
@@ -502,13 +520,14 @@ class TempInvoiceNominalCorrector:
     def run(self) -> RunReport:
         report = RunReport()
         rows = self.client.invoices_without_sync()
-        unique_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        unique_rows: dict[str, dict[str, Any]] = {}
         for row in rows:
             if not is_target_invoice_row(row):
                 continue
             ref = invoice_reference(row)
-            inv_id = invoice_id(row)
-            unique_rows[(ref, inv_id)] = row
+            key = ref.upper()
+            if key not in unique_rows or (not invoice_id(unique_rows[key]) and invoice_id(row)):
+                unique_rows[key] = row
 
         report.temp_invoices_scanned = len(unique_rows)
         for row in unique_rows.values():
@@ -580,14 +599,31 @@ class TempInvoiceNominalCorrector:
     def identify_job(self, doc: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
         job_id = clean_text(first_present(doc, ("JobId", "JobID", "LinkedJobId")))
         job_ref = clean_text(first_present(doc, ("JobReference", "JobRef", "JobNumber")))
+        job, resolved_job_id = self.resolve_job(job_id=job_id, job_ref=job_ref)
+        if job and resolved_job_id:
+            return job, resolved_job_id
+
+        group_job = self.first_group_job(doc)
+        if group_job is None:
+            return job, resolved_job_id
+
+        group_job_id = clean_text(first_present(group_job, ("JobId", "JobID", "Id", "ID")))
+        group_job_ref = clean_text(first_present(group_job, ("JobReference", "JobRef", "JobNumber")))
+        resolved_group_job, resolved_group_job_id = self.resolve_job(job_id=group_job_id, job_ref=group_job_ref)
+        if resolved_group_job and resolved_group_job_id:
+            return resolved_group_job, resolved_group_job_id
+        if group_job_id:
+            return group_job, group_job_id
+        return job, resolved_job_id
+
+    def resolve_job(self, *, job_id: str | None = None, job_ref: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
         job = self.client.job(job_id=job_id) if job_id else None
         if job is None and job_ref:
             job = self.client.job(job_ref=job_ref)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
         if job is None:
-            job = self.first_group_job(doc)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
-        return job, job_id or None
+            return None, job_id or None
+        resolved_job_id = clean_text(first_present(job, ("JobId", "JobID", "Id", "ID"))) or job_id
+        return job, resolved_job_id or None
 
     def first_group_job(self, doc: dict[str, Any]) -> dict[str, Any] | None:
         embedded = self.first_embedded_group_job(doc)
