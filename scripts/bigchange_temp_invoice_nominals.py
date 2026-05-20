@@ -490,6 +490,18 @@ def line_has_nominal(line: InvoiceLine, expected_nominal: str) -> bool:
     return clean_text(line.nominal_code) == expected_nominal
 
 
+def tax_code_accepted(original: InvoiceLine, verified: InvoiceLine) -> bool:
+    original_code = clean_text(original.tax_code)
+    verified_code = clean_text(verified.tax_code)
+    if not original_code or original_code == verified_code:
+        return True
+    return (
+        clean_text(original.tax_rate) != ""
+        and clean_text(verified.tax_rate) != ""
+        and decimal_equal(original.tax_rate, verified.tax_rate)
+    )
+
+
 def line_reference(temp_ref: str, nominal_code: str, line_number: int) -> str:
     safe_ref = re.sub(r"[^A-Za-z0-9_-]+", "-", temp_ref).strip("-")
     return f"AI-{safe_ref}-NOMINAL-{nominal_code}-{line_number}"
@@ -580,14 +592,26 @@ class TempInvoiceNominalCorrector:
     def identify_job(self, doc: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
         job_id = clean_text(first_present(doc, ("JobId", "JobID", "LinkedJobId")))
         job_ref = clean_text(first_present(doc, ("JobReference", "JobRef", "JobNumber")))
-        job = self.client.job(job_id=job_id) if job_id else None
-        if job is None and job_ref:
-            job = self.client.job(job_ref=job_ref)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
+        job = self.resolve_job(job_id=job_id, job_ref=job_ref)
+        if job is not None:
+            job_id = clean_text(first_present(job, ("JobId", "JobID", "Id", "ID"))) or job_id
         if job is None:
-            job = self.first_group_job(doc)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
+            group_job = self.first_group_job(doc)
+            if group_job is not None:
+                group_job_id = clean_text(first_present(group_job, ("JobId", "JobID", "Id", "ID")))
+                group_job_ref = clean_text(first_present(group_job, ("JobReference", "JobRef", "JobNumber")))
+                job = self.resolve_job(job_id=group_job_id, job_ref=group_job_ref) or group_job
+                job_id = clean_text(first_present(job, ("JobId", "JobID", "Id", "ID"))) or group_job_id or job_id
         return job, job_id or None
+
+    def resolve_job(self, *, job_id: str | None = None, job_ref: str | None = None) -> dict[str, Any] | None:
+        if job_id:
+            job = self.client.job(job_id=job_id)
+            if job is not None:
+                return job
+        if job_ref:
+            return self.client.job(job_ref=job_ref)
+        return None
 
     def first_group_job(self, doc: dict[str, Any]) -> dict[str, Any] | None:
         embedded = self.first_embedded_group_job(doc)
@@ -670,7 +694,7 @@ class TempInvoiceNominalCorrector:
                 raise RuntimeError(f"line {original.line_number} UnitPrice changed")
             if not decimal_equal(original.quantity, verified.quantity):
                 raise RuntimeError(f"line {original.line_number} Quantity changed")
-            if clean_text(original.tax_code) and clean_text(original.tax_code) != clean_text(verified.tax_code):
+            if not tax_code_accepted(original, verified):
                 raise RuntimeError(f"line {original.line_number} TaxCode changed")
             if clean_text(original.tax_rate) and not decimal_equal(original.tax_rate, verified.tax_rate):
                 raise RuntimeError(f"line {original.line_number} TaxRate changed")
