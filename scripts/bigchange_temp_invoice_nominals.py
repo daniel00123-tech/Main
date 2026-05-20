@@ -434,6 +434,13 @@ def invoice_id(row: dict[str, Any]) -> str:
     return clean_text(first_present(row, ("InvoiceId", "DocId", "FinancialDocId", "Id", "ID")))
 
 
+def invoice_unique_key(row: dict[str, Any]) -> str:
+    ref = invoice_reference(row)
+    if ref:
+        return f"ref:{ref.upper()}"
+    return f"id:{invoice_id(row)}"
+
+
 def is_target_invoice_row(row: dict[str, Any]) -> bool:
     invoice_type = clean_text(first_present(row, ("InvoiceType", "Type", "DocumentType"))).upper()
     return invoice_type == "SI" and invoice_reference(row).upper().startswith("TEMP")
@@ -502,13 +509,11 @@ class TempInvoiceNominalCorrector:
     def run(self) -> RunReport:
         report = RunReport()
         rows = self.client.invoices_without_sync()
-        unique_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        unique_rows: dict[str, dict[str, Any]] = {}
         for row in rows:
             if not is_target_invoice_row(row):
                 continue
-            ref = invoice_reference(row)
-            inv_id = invoice_id(row)
-            unique_rows[(ref, inv_id)] = row
+            unique_rows[invoice_unique_key(row)] = row
 
         report.temp_invoices_scanned = len(unique_rows)
         for row in unique_rows.values():

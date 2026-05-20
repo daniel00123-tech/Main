@@ -216,6 +216,40 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
         self.assertEqual(client.added_lines, [])
         self.assertEqual(client.generated_docs, [])
 
+    def test_deduplicates_unsynchronised_rows_by_temp_reference(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [
+                {
+                    "Description": "Electrical PPM",
+                    "UnitPrice": "100",
+                    "Quantity": "1",
+                    "TaxCode": "T1",
+                    "TaxRate": "20",
+                    "NominalCode": "2101",
+                }
+            ],
+        }
+        client = FakeBigChangeClient(
+            rows=[
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"},
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "LINE-1"},
+            ],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Electrical", "Description": "PPM service"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.temp_invoices_scanned, 1)
+        self.assertEqual(report.invoices_skipped, 1)
+        self.assertEqual(report.invoices_updated, 0)
+        self.assertEqual(client.generated_docs, [])
+
     def test_skips_if_full_document_reference_is_not_temp(self) -> None:
         doc = {
             "DocId": "D1",
