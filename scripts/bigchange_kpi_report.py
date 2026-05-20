@@ -166,8 +166,14 @@ def match_staff_name(creator_name: str, staff_by_key: dict[str, str]) -> str | N
     return None
 
 
+def staff_display_name(category_name: str) -> str:
+    name = clean_name(category_name)
+    # Some BigChange category labels are prefixed for ordering, e.g. "B- Jenna Hyde".
+    return clean_name(re.sub(r"^[A-Za-z]\s*[-.]\s*", "", name))
+
+
 def should_exclude_category(name: str) -> bool:
-    norm = normalized_text(name)
+    norm = normalized_text(staff_display_name(name))
     if not norm:
         return True
     if is_excluded_named_category(norm):
@@ -175,6 +181,8 @@ def should_exclude_category(name: str) -> bool:
     if norm in {"uncategorised", "uncategorized"}:
         return True
     if "nirvana ppm" in norm:
+        return True
+    if "sub contractor" in norm or "subcontractor" in norm or "contractor tracking" in norm:
         return True
     tokens = set(norm.split())
     if "ooh" in tokens or "out of hours" in norm:
@@ -193,7 +201,7 @@ def validate_report(report: dict[str, Any]) -> None:
     excluded_rows = [
         clean_name(row.get("staff_name"))
         for row in report.get("staff_rows", [])
-        if is_excluded_named_category(normalized_text(clean_name(row.get("staff_name"))))
+        if should_exclude_category(clean_name(row.get("staff_name")))
     ]
     if excluded_rows:
         raise RuntimeError(f"Report contains excluded non-staff categories: {', '.join(excluded_rows)}")
@@ -204,16 +212,18 @@ def is_blank(value: Any) -> bool:
 
 
 def job_category_name(row: dict[str, Any]) -> str:
-    return clean_name(
-        first_present(
-            row,
-            (
-                "Category",
-                "CategoryName",
-                "JobCategory",
-                "JobCategoryName",
-                "JobCategoryLabel",
-            ),
+    return staff_display_name(
+        clean_name(
+            first_present(
+                row,
+                (
+                    "Category",
+                    "CategoryName",
+                    "JobCategory",
+                    "JobCategoryName",
+                    "JobCategoryLabel",
+                ),
+            )
         )
     )
 
@@ -485,7 +495,7 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
 
     staff_names: set[str] = set()
     for category in client.categories():
-        name = clean_name(category.get("label") or category.get("JobCategoryName"))
+        name = staff_display_name(clean_name(category.get("label") or category.get("JobCategoryName")))
         if not should_exclude_category(name):
             staff_names.add(name)
 

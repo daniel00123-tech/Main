@@ -10,6 +10,7 @@ from scripts.bigchange_kpi_report import (
     render_html,
     send_email,
     should_exclude_category,
+    staff_display_name,
     validate_report,
 )
 
@@ -32,6 +33,11 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+    def test_normalises_ordering_prefixes_and_excludes_tracking_categories(self) -> None:
+        self.assertEqual(staff_display_name("B- Jenna Hyde"), "Jenna Hyde")
+        self.assertEqual(staff_display_name("C. Grace Elver"), "Grace Elver")
+        self.assertTrue(should_exclude_category("Z - Sub Contractor Tracking"))
 
 
 class InvoiceLineExtractionTest(unittest.TestCase):
