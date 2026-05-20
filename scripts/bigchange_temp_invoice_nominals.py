@@ -495,6 +495,14 @@ def line_reference(temp_ref: str, nominal_code: str, line_number: int) -> str:
     return f"AI-{safe_ref}-NOMINAL-{nominal_code}-{line_number}"
 
 
+def tax_code_still_accepted(original: InvoiceLine, verified: InvoiceLine) -> bool:
+    original_code = clean_text(original.tax_code)
+    verified_code = clean_text(verified.tax_code)
+    if not original_code or original_code == verified_code:
+        return True
+    return bool(verified_code) and clean_text(original.tax_rate) and decimal_equal(original.tax_rate, verified.tax_rate)
+
+
 class TempInvoiceNominalCorrector:
     def __init__(self, client: BigChangeApi) -> None:
         self.client = client
@@ -685,7 +693,7 @@ class TempInvoiceNominalCorrector:
                 raise RuntimeError(f"line {original.line_number} UnitPrice changed")
             if not decimal_equal(original.quantity, verified.quantity):
                 raise RuntimeError(f"line {original.line_number} Quantity changed")
-            if clean_text(original.tax_code) and clean_text(original.tax_code) != clean_text(verified.tax_code):
+            if not tax_code_still_accepted(original, verified):
                 raise RuntimeError(f"line {original.line_number} TaxCode changed")
             if clean_text(original.tax_rate) and not decimal_equal(original.tax_rate, verified.tax_rate):
                 raise RuntimeError(f"line {original.line_number} TaxRate changed")

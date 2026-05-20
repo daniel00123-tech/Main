@@ -5,6 +5,7 @@ from scripts.bigchange_temp_invoice_nominals import (
     TempInvoiceNominalCorrector,
     classify_nominal_code,
     document_is_processable,
+    extract_invoice_line,
     is_target_invoice_row,
 )
 
@@ -307,6 +308,32 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
         self.assertEqual(report.failures, [])
         self.assertEqual(client.created_items[0]["NominalCode"], "2002")
         self.assertEqual(client.added_lines[0]["JobId"], "J2")
+
+    def test_verification_accepts_tax_code_normalization_when_rate_is_preserved(self) -> None:
+        original_line = {
+            "Description": "Fire call out",
+            "UnitPrice": "100",
+            "Quantity": "1",
+            "TaxCode": "T1",
+            "TaxRate": "20",
+            "NominalCode": "9999",
+        }
+        verified_doc = {
+            "FinancialLines": [
+                {
+                    **original_line,
+                    "TaxCode": "VAT20",
+                    "NominalCode": "2002",
+                }
+            ]
+        }
+        client = FakeBigChangeClient([], {}, {}, {})
+
+        TempInvoiceNominalCorrector(client).verify_document(
+            verified_doc,
+            [extract_invoice_line(original_line, 1)],
+            "2002",
+        )
 
 
 if __name__ == "__main__":
