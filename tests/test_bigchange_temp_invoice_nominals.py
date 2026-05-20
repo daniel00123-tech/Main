@@ -6,6 +6,7 @@ from scripts.bigchange_temp_invoice_nominals import (
     classify_nominal_code,
     document_is_processable,
     extract_lines,
+    find_identifier,
     is_target_invoice_row,
 )
 
@@ -132,6 +133,15 @@ class FinancialLineExtractionTest(unittest.TestCase):
         lines = extract_lines(doc)
 
         self.assertEqual([line["Description"] for line in lines], ["Fire call out", "Parts"])
+
+
+class IdentifierExtractionTest(unittest.TestCase):
+    def test_reads_scalar_result_identifier_without_returning_status_code(self) -> None:
+        payload = {"Code": 0, "Result": 12345}
+
+        identifier = find_identifier(payload, ("JobFinancialLineId", "LineItemId", "LineId", "Id", "ID"))
+
+        self.assertEqual(identifier, "12345")
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):

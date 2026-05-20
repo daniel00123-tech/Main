@@ -183,10 +183,14 @@ def find_identifier(value: Any, candidates: tuple[str, ...]) -> str | None:
         direct = first_present(value, candidates)
         if direct not in (None, ""):
             return clean_text(direct)
+        result = value.get("Result")
+        if result not in (None, "") and not isinstance(result, (dict, list)):
+            return clean_text(result)
         for nested in value.values():
-            found = find_identifier(nested, candidates)
-            if found:
-                return found
+            if isinstance(nested, (dict, list)):
+                found = find_identifier(nested, candidates)
+                if found:
+                    return found
     elif isinstance(value, list):
         for item in value:
             found = find_identifier(item, candidates)
