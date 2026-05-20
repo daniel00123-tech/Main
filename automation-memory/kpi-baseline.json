@@ -1,7 +1,7 @@
 {
   "job_lookback_start": "2025-05-20",
   "report_date": "2026-05-20",
-  "run_timestamp": "2026-05-20T19:55:07.276900+00:00",
+  "run_timestamp": "2026-05-20T20:19:29.567264+00:00",
   "staff": [
     {
       "counts": {
@@ -10,7 +10,7 @@
         "unallocated_jobs": 21,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 0.0,
+      "current_month_sales": 37036.88,
       "staff_name": "B- Jenna Hyde",
       "statuses": {
         "historic_jobs": "green",
@@ -26,7 +26,7 @@
         "unallocated_jobs": 16,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 0.0,
+      "current_month_sales": 7275.0,
       "staff_name": "A- Jodie",
       "statuses": {
         "historic_jobs": "green",
@@ -42,7 +42,7 @@
         "unallocated_jobs": 3,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 0.0,
+      "current_month_sales": 5154.35,
       "staff_name": "C- Grace Elver",
       "statuses": {
         "historic_jobs": "green",
