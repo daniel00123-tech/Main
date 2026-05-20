@@ -128,6 +128,8 @@ def compact_key(value: str) -> str:
 
 def name_key(value: str) -> str:
     tokens = normalized_text(value).split()
+    if len(tokens) >= 2 and len(tokens[0]) == 1:
+        tokens = tokens[1:]
     if len(tokens) >= 2:
         return f"{tokens[0]} {tokens[-1]}"
     return " ".join(tokens)
@@ -142,6 +144,14 @@ def match_staff_name(creator_name: str, staff_by_key: dict[str, str]) -> str | N
     match = difflib.get_close_matches(key, staff_by_key.keys(), n=1, cutoff=0.88)
     if match:
         return staff_by_key[match[0]]
+    creator_tokens = key.split()
+    first_name_matches = [
+        staff_name
+        for staff_key, staff_name in staff_by_key.items()
+        if len(staff_key.split()) == 1 and creator_tokens and staff_key == creator_tokens[0]
+    ]
+    if len(first_name_matches) == 1:
+        return first_name_matches[0]
     return None
 
 

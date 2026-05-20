@@ -1,7 +1,7 @@
-import unittest
 import datetime as dt
+import unittest
 
-from scripts.bigchange_kpi_report import calculate_sales, should_exclude_category, validate_report
+from scripts.bigchange_kpi_report import calculate_sales, match_staff_name, name_key, should_exclude_category, validate_report
 
 
 class CategoryExclusionTest(unittest.TestCase):
@@ -28,6 +28,17 @@ class CategoryExclusionTest(unittest.TestCase):
 
 
 class SalesAttributionTest(unittest.TestCase):
+    def test_matches_invoice_creators_to_prefixed_job_categories(self) -> None:
+        staff_by_key = {
+            name_key(name): name
+            for name in ("A- Jodie", "B- Jenna Hyde", "C- Grace Elver")
+            if name_key(name)
+        }
+
+        self.assertEqual(match_staff_name("Jodie Rock", staff_by_key), "A- Jodie")
+        self.assertEqual(match_staff_name("Jenna Hyde", staff_by_key), "B- Jenna Hyde")
+        self.assertEqual(match_staff_name("Grace Elver", staff_by_key), "C- Grace Elver")
+
     def test_calculates_invoice_net_from_common_line_shapes(self) -> None:
         client = FakeBigChangeClient(
             invoices=[
