@@ -67,6 +67,14 @@ class FakeBigChangeClient:
         return {"Code": 0, "Result": {"DocId": doc_id}}
 
 
+class TaxCodeNormalizingFakeBigChangeClient(FakeBigChangeClient):
+    def generate_financial_doc_for_job(self, params: dict[str, Any]) -> dict[str, Any]:
+        result = super().generate_financial_doc_for_job(params)
+        doc_id = str(params["DocId"])
+        self.verified_docs_by_id[doc_id]["FinancialLines"][0]["TaxCode"] = "VAT20"
+        return result
+
+
 class ClassificationTest(unittest.TestCase):
     def test_fire_safety_maps_to_fire_codes_by_work_type(self) -> None:
         cases = (
@@ -182,6 +190,68 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
                 }
             ],
         )
+
+    def test_deduplicates_multiple_without_sync_rows_for_same_temp_reference(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [
+                {
+                    "Description": "Fire alarm call out",
+                    "UnitPrice": "125.00",
+                    "Quantity": "1",
+                    "TaxCode": "T1",
+                    "TaxRate": "20",
+                    "NominalCode": "9999",
+                }
+            ],
+        }
+        client = FakeBigChangeClient(
+            rows=[
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"},
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1-duplicate"},
+            ],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire Alarm", "Description": "Call Out fault"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.temp_invoices_scanned, 1)
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(len(client.generated_docs), 1)
+
+    def test_allows_tax_code_normalization_when_tax_rate_is_preserved(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [
+                {
+                    "Description": "Electrical repair",
+                    "UnitPrice": "125.00",
+                    "Quantity": "1",
+                    "TaxCode": "T1",
+                    "TaxRate": "20",
+                    "NominalCode": "9999",
+                }
+            ],
+        }
+        client = TaxCodeNormalizingFakeBigChangeClient(
+            rows=[{"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"}],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Electrical", "Description": "Repair"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(report.failures, [])
 
     def test_skips_invoice_when_all_lines_already_have_expected_nominal(self) -> None:
         doc = {
