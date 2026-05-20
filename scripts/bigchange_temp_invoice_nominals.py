@@ -459,14 +459,22 @@ def classify_from_keywords(text: str, groups: dict[str, tuple[str, ...]]) -> str
 
 def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
-    if doc_type:
-        norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
-            return False, f"document type is {doc_type}"
+    if doc_type and not document_type_is_sales_invoice(doc_type):
+        return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
             return False, f"{field_name} is populated"
     return True, ""
+
+
+def document_type_is_sales_invoice(doc_type: str) -> bool:
+    norm_doc_type = normalized_text(doc_type)
+    if norm_doc_type in {"invoice", "sales invoice", "si"}:
+        return True
+    rejected_terms = ("credit", "purchase", "order", "quote")
+    if any(contains_keyword(norm_doc_type, term) for term in rejected_terms):
+        return False
+    return contains_keyword(norm_doc_type, "invoice")
 
 
 def extract_invoice_line(line: dict[str, Any], line_number: int) -> InvoiceLine:
@@ -587,7 +595,21 @@ class TempInvoiceNominalCorrector:
         if job is None:
             job = self.first_group_job(doc)
             job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
+            job_ref = clean_text(first_present(job or {}, ("JobReference", "JobRef", "JobNumber"))) or job_ref
+            resolved_job = self.resolve_job(job_id=job_id, job_ref=job_ref)
+            if resolved_job is not None:
+                job = resolved_job
+                job_id = clean_text(first_present(job, ("JobId", "JobID", "Id", "ID"))) or job_id
         return job, job_id or None
+
+    def resolve_job(self, *, job_id: str | None = None, job_ref: str | None = None) -> dict[str, Any] | None:
+        if job_id:
+            job = self.client.job(job_id=job_id)
+            if job is not None:
+                return job
+        if job_ref:
+            return self.client.job(job_ref=job_ref)
+        return None
 
     def first_group_job(self, doc: dict[str, Any]) -> dict[str, Any] | None:
         embedded = self.first_embedded_group_job(doc)
