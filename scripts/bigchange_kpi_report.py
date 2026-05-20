@@ -589,9 +589,9 @@ def render_html(report: dict[str, Any]) -> str:
             f'<div class="person"><strong>{staff}</strong><span>Staff owner</span></div>'
             "</td>",
         ]
-        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         for metric_key, _label in KPI_ORDER:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
+        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         rows_html.append(f"<tr>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
@@ -745,7 +745,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     th:nth-child(1), td:nth-child(1) {{ width: 72px; }}
     th:nth-child(2), td:nth-child(2) {{ width: 292px; }}
-    th:nth-child(3), td:nth-child(3) {{ width: 170px; }}
+    th:nth-child(7), td:nth-child(7) {{ width: 170px; }}
     td {{
       padding: 14px 10px;
       border-bottom: 1px solid var(--line);
@@ -890,11 +890,11 @@ def render_html(report: dict[str, Any]) -> str:
         <tr>
           <th>Rank</th>
           <th>Staff member</th>
-          <th>{month_name} sales</th>
           <th>Unallocated Jobs</th>
           <th>Historic Jobs</th>
           <th>Uninvoiced Jobs</th>
           <th>Unactioned Jobs</th>
+          <th>{month_name} sales</th>
         </tr>
       </thead>
       <tbody>

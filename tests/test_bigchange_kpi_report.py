@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.bigchange_kpi_report import should_exclude_category, validate_report
+from scripts.bigchange_kpi_report import KPI_ORDER, render_html, should_exclude_category, validate_report
 
 
 class CategoryExclusionTest(unittest.TestCase):
@@ -21,6 +21,48 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+
+class DashboardRenderingTest(unittest.TestCase):
+    def test_sales_column_is_rendered_after_operational_kpis(self) -> None:
+        report = {
+            "run_timestamp": "2026-05-20T07:00:00+00:00",
+            "report_date": "2026-05-20",
+            "job_lookback_start": "2025-05-20",
+            "month_name": "May",
+            "total_red_kpis": 0,
+            "total_amber_kpis": 0,
+            "staff_rows": [
+                {
+                    "staff_name": "Sharon Mannion",
+                    "metrics": {
+                        metric_key: {
+                            "count": 0,
+                            "oldest_age_days": 0,
+                            "status": "green",
+                        }
+                        for metric_key, _label in KPI_ORDER
+                    },
+                    "current_month_sales": 0.0,
+                    "current_month_sales_display": "GBP 0.00",
+                    "red_kpis": 0,
+                    "amber_kpis": 0,
+                    "total_open_workload": 0,
+                }
+            ],
+        }
+
+        html = render_html(report)
+
+        expected_headers = [
+            "<th>Unallocated Jobs</th>",
+            "<th>Historic Jobs</th>",
+            "<th>Uninvoiced Jobs</th>",
+            "<th>Unactioned Jobs</th>",
+            "<th>May sales</th>",
+        ]
+        indexes = [html.index(header) for header in expected_headers]
+        self.assertEqual(indexes, sorted(indexes))
 
 
 if __name__ == "__main__":
