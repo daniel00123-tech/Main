@@ -5,6 +5,7 @@ from scripts.bigchange_temp_invoice_nominals import (
     TempInvoiceNominalCorrector,
     classify_nominal_code,
     document_is_processable,
+    extract_lines,
     is_target_invoice_row,
 )
 
@@ -107,6 +108,30 @@ class SafetyFilterTest(unittest.TestCase):
 
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
+
+
+class FinancialLineExtractionTest(unittest.TestCase):
+    def test_unwraps_numbered_bigchange_financial_line_dictionary(self) -> None:
+        doc = {
+            "FinancialLines": {
+                "FinancialLine 1": {
+                    "Description": "Fire call out",
+                    "UnitPrice": "125.00",
+                    "Quantity": "1",
+                    "NominalCode": "9999",
+                },
+                "FinancialLine 2": {
+                    "Description": "Parts",
+                    "UnitPrice": "25.00",
+                    "Quantity": "2",
+                    "NominalCode": "9999",
+                },
+            }
+        }
+
+        lines = extract_lines(doc)
+
+        self.assertEqual([line["Description"] for line in lines], ["Fire call out", "Parts"])
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):

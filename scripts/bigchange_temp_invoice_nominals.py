@@ -236,6 +236,36 @@ def looks_like_financial_doc(row: dict[str, Any]) -> bool:
     )
 
 
+def looks_like_financial_line(row: dict[str, Any]) -> bool:
+    return any(
+        first_present(row, names) not in (None, "")
+        for names in (
+            ("LineId", "FinancialLineId", "LineItemId"),
+            ("UnitPrice", "Price", "NetPrice", "UnitNetPrice"),
+            ("Quantity", "Qty"),
+            ("NominalCode", "JWNominalCode"),
+            ("Description", "ItemDescription", "Name"),
+        )
+    )
+
+
+def line_rows(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, dict)]
+    if isinstance(value, dict):
+        if looks_like_financial_line(value):
+            return [value]
+        rows: list[dict[str, Any]] = []
+        for nested in value.values():
+            if isinstance(nested, list):
+                rows.extend(row for row in nested if isinstance(row, dict))
+            elif isinstance(nested, dict):
+                rows.extend(line_rows(nested))
+        if rows:
+            return rows
+    return []
+
+
 def extract_lines(doc: dict[str, Any]) -> list[dict[str, Any]]:
     line_keys = {
         "financiallines",
@@ -250,7 +280,7 @@ def extract_lines(doc: dict[str, Any]) -> list[dict[str, Any]]:
     }
     for key, value in doc.items():
         if compact_key(key) in line_keys:
-            rows = nested_rows(value)
+            rows = line_rows(value)
             if rows:
                 return rows
     for value in doc.values():
