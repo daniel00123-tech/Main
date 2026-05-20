@@ -143,7 +143,10 @@ def is_populated(value: Any) -> bool:
     text = clean_text(value)
     if not text:
         return False
-    return text.lower() not in {"none", "null", "0", "0001-01-01", "0001-01-01 00:00:00"}
+    normalized = text.lower()
+    if normalized in {"none", "null", "0"}:
+        return False
+    return not normalized.startswith("0001-01-01")
 
 
 def as_decimal(value: Any, default: str = "0") -> Decimal:
@@ -434,6 +437,13 @@ def invoice_id(row: dict[str, Any]) -> str:
     return clean_text(first_present(row, ("InvoiceId", "DocId", "FinancialDocId", "Id", "ID")))
 
 
+def invoice_unique_key(row: dict[str, Any]) -> tuple[str, str]:
+    ref = invoice_reference(row)
+    if ref:
+        return ("ref", ref.upper())
+    return ("id", invoice_id(row))
+
+
 def is_target_invoice_row(row: dict[str, Any]) -> bool:
     invoice_type = clean_text(first_present(row, ("InvoiceType", "Type", "DocumentType"))).upper()
     return invoice_type == "SI" and invoice_reference(row).upper().startswith("TEMP")
@@ -461,11 +471,16 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
     if doc_type:
         norm_doc_type = normalized_text(doc_type)
+        if any(blocked in norm_doc_type for blocked in ("credit", "purchase order", "purchase")):
+            return False, f"document type is {doc_type}"
         if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
             return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
             return False, f"{field_name} is populated"
+    status = clean_text(first_present(doc, ("Status", "DocumentStatus", "FinancialDocStatus", "ApprovalStatus")))
+    if status and any(blocked in normalized_text(status) for blocked in ("cancelled", "canceled", "deleted", "rejected")):
+        return False, f"document status is {status}"
     return True, ""
 
 
@@ -506,9 +521,10 @@ class TempInvoiceNominalCorrector:
         for row in rows:
             if not is_target_invoice_row(row):
                 continue
-            ref = invoice_reference(row)
-            inv_id = invoice_id(row)
-            unique_rows[(ref, inv_id)] = row
+            key = invoice_unique_key(row)
+            existing = unique_rows.get(key)
+            if existing is None or (not invoice_id(existing) and invoice_id(row)):
+                unique_rows[key] = row
 
         report.temp_invoices_scanned = len(unique_rows)
         for row in unique_rows.values():
@@ -585,8 +601,16 @@ class TempInvoiceNominalCorrector:
             job = self.client.job(job_ref=job_ref)
             job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
         if job is None:
-            job = self.first_group_job(doc)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
+            group_job = self.first_group_job(doc)
+            if group_job:
+                group_job_id = clean_text(first_present(group_job, ("JobId", "JobID", "Id", "ID")))
+                group_job_ref = clean_text(first_present(group_job, ("JobReference", "JobRef", "JobNumber")))
+                job = self.client.job(job_id=group_job_id) if group_job_id else None
+                if job is None and group_job_ref:
+                    job = self.client.job(job_ref=group_job_ref)
+                if job is None:
+                    job = group_job
+                job_id = clean_text(first_present(job or group_job, ("JobId", "JobID", "Id", "ID"))) or group_job_id or job_id
         return job, job_id or None
 
     def first_group_job(self, doc: dict[str, Any]) -> dict[str, Any] | None:
