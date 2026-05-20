@@ -502,13 +502,14 @@ class TempInvoiceNominalCorrector:
     def run(self) -> RunReport:
         report = RunReport()
         rows = self.client.invoices_without_sync()
-        unique_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        unique_rows: dict[str, dict[str, Any]] = {}
         for row in rows:
             if not is_target_invoice_row(row):
                 continue
             ref = invoice_reference(row)
-            inv_id = invoice_id(row)
-            unique_rows[(ref, inv_id)] = row
+            key = ref.upper()
+            if key not in unique_rows or not invoice_id(unique_rows[key]):
+                unique_rows[key] = row
 
         report.temp_invoices_scanned = len(unique_rows)
         for row in unique_rows.values():
@@ -585,9 +586,23 @@ class TempInvoiceNominalCorrector:
             job = self.client.job(job_ref=job_ref)
             job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
         if job is None:
-            job = self.first_group_job(doc)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
+            group_job = self.first_group_job(doc)
+            job, group_job_id = self.resolve_full_job(group_job)
+            job_id = group_job_id or job_id
         return job, job_id or None
+
+    def resolve_full_job(self, job_row: dict[str, Any] | None) -> tuple[dict[str, Any] | None, str | None]:
+        if not job_row:
+            return None, None
+        job_id = clean_text(first_present(job_row, ("JobId", "JobID", "Id", "ID")))
+        job_ref = clean_text(first_present(job_row, ("JobReference", "JobRef", "JobNumber")))
+        full_job = self.client.job(job_id=job_id) if job_id else None
+        if full_job is None and job_ref:
+            full_job = self.client.job(job_ref=job_ref)
+        if full_job is not None:
+            full_job_id = clean_text(first_present(full_job, ("JobId", "JobID", "Id", "ID")))
+            return full_job, full_job_id or job_id or None
+        return job_row, job_id or None
 
     def first_group_job(self, doc: dict[str, Any]) -> dict[str, Any] | None:
         embedded = self.first_embedded_group_job(doc)
