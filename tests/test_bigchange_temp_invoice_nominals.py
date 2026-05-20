@@ -5,6 +5,7 @@ from scripts.bigchange_temp_invoice_nominals import (
     TempInvoiceNominalCorrector,
     classify_nominal_code,
     document_is_processable,
+    extract_invoice_line,
     is_target_invoice_row,
 )
 
@@ -107,6 +108,20 @@ class SafetyFilterTest(unittest.TestCase):
 
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
+
+    def test_rejects_non_sales_invoice_document_types(self) -> None:
+        for doc_type in ("Purchase Invoice", "Proforma Invoice", "Purchase Order"):
+            with self.subTest(doc_type=doc_type):
+                processable, reason = document_is_processable({"DocumentType": doc_type})
+
+                self.assertFalse(processable)
+                self.assertIn(doc_type, reason)
+
+    def test_rejects_missing_document_type(self) -> None:
+        processable, reason = document_is_processable({})
+
+        self.assertFalse(processable)
+        self.assertIn("missing", reason)
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
@@ -235,6 +250,58 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
 
         self.assertEqual(report.invoices_skipped, 1)
         self.assertEqual(client.generated_docs, [])
+
+    def test_deduplicates_temp_rows_by_reference(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [{"UnitPrice": "1", "Quantity": "1", "NominalCode": "2002"}],
+        }
+        client = FakeBigChangeClient(
+            rows=[
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": ""},
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"},
+            ],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire", "Description": "Call Out"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.temp_invoices_scanned, 1)
+        self.assertEqual(report.invoices_skipped, 1)
+        self.assertEqual(client.generated_docs, [])
+
+    def test_verification_accepts_tax_code_normalisation_when_rate_matches(self) -> None:
+        original_line = extract_invoice_line(
+            {
+                "Description": "Fire alarm call out",
+                "UnitPrice": "125.00",
+                "Quantity": "2",
+                "TaxCode": "T1",
+                "TaxRate": "20",
+                "NominalCode": "9999",
+            },
+            1,
+        )
+        verified_doc = {
+            "FinancialLines": [
+                {
+                    "Description": "Fire alarm call out",
+                    "UnitPrice": "125",
+                    "Quantity": "2.0",
+                    "TaxCode": "VAT20",
+                    "TaxRate": "20.00",
+                    "NominalCode": "2002",
+                }
+            ]
+        }
+        client = FakeBigChangeClient([], {}, {}, {})
+
+        TempInvoiceNominalCorrector(client).verify_document(verified_doc, [original_line], "2002")
 
 
 if __name__ == "__main__":
