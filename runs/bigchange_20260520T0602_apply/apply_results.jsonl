@@ -1,0 +1,32 @@
+{"job_id": 185934448, "job_ref": "DL260134", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185935409, "job_ref": "DL260396", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185937890, "job_ref": "DL260659", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185938492, "job_ref": "DL260920", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185939171, "job_ref": "DL261181", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185939852, "job_ref": "DL261442", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186161293, "job_ref": "PPM262832", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186162990, "job_ref": "PPM263094", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186163630, "job_ref": "PPM263356", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186208181, "job_ref": "JOB264154", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186316801, "job_ref": "PPM264479", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186317067, "job_ref": "PPM264739", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186614353, "job_ref": "JOB265015~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186763852, "job_ref": "DL266159", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186799951, "job_ref": "JOB258707~2", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186906855, "job_ref": "JOB266584", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186941931, "job_ref": "DLFF252219~2", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187244711, "job_ref": "INT267455", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187655965, "job_ref": "GRANQ268171", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187688979, "job_ref": "JOB268319", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187829074, "job_ref": "DLFF266614~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187843996, "job_ref": "JOB268486", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187885556, "job_ref": "INT268612", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187899704, "job_ref": "DLFF268641", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188325053, "job_ref": "DLFF268811~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188432130, "job_ref": "JOB270296", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188438505, "job_ref": "JOB270303", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188526260, "job_ref": "JOB270471", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188543196, "job_ref": "JOB270493", "response": {"Code": 0, "Result": {"jobid": "188543196 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188584438, "job_ref": "EST270534", "response": {"Code": 0, "Result": {"jobid": "188584438 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188607824, "job_ref": "SS270565", "response": {"Code": 0, "Result": {"jobid": "188607824 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188614551, "job_ref": "DL270595", "response": {"Code": 0, "Result": {"jobid": "188614551 "}}, "status": "updated", "update_type": "job_category"}

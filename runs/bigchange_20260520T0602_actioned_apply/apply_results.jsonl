@@ -1,0 +1,12 @@
+{"job_id": 185939171, "job_ref": "DL261181", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 186208181, "job_ref": "JOB264154", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 186614353, "job_ref": "JOB265015~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 186906855, "job_ref": "JOB266584", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 186941931, "job_ref": "DLFF252219~2", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 187244711, "job_ref": "INT267455", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 187655965, "job_ref": "GRANQ268171", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 187829074, "job_ref": "DLFF266614~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187899704, "job_ref": "DLFF268641", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 188325053, "job_ref": "DLFF268811~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 188438505, "job_ref": "JOB270303", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188526260, "job_ref": "JOB270471", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
