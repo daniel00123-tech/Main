@@ -108,6 +108,13 @@ class SafetyFilterTest(unittest.TestCase):
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
 
+    def test_rejects_unsafe_invoice_like_document_types(self) -> None:
+        for doc_type in ("Credit Invoice", "Purchase Invoice", "Purchase Order", "Quote Invoice"):
+            with self.subTest(doc_type=doc_type):
+                processable, reason = document_is_processable({"DocumentType": doc_type})
+                self.assertFalse(processable)
+                self.assertIn(doc_type, reason)
+
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
     def test_rebuilds_existing_invoice_with_replacement_nominal_lines(self) -> None:
@@ -235,6 +242,39 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
 
         self.assertEqual(report.invoices_skipped, 1)
         self.assertEqual(client.generated_docs, [])
+
+    def test_de_duplicates_temp_invoice_rows_by_reference(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [
+                {
+                    "Description": "Fire alarm call out",
+                    "UnitPrice": "125.00",
+                    "Quantity": "1",
+                    "TaxCode": "T1",
+                    "TaxRate": "20",
+                    "NominalCode": "9999",
+                }
+            ],
+        }
+        client = FakeBigChangeClient(
+            rows=[
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "Id": "line-row-1"},
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "Id": "line-row-2"},
+            ],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire", "Description": "Call Out"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.temp_invoices_scanned, 1)
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(len(client.generated_docs), 1)
 
 
 if __name__ == "__main__":
