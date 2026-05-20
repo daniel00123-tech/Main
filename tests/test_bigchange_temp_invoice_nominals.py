@@ -18,12 +18,14 @@ class FakeBigChangeClient:
         docs_by_ref: dict[str, dict[str, Any] | None],
         docs_by_id: dict[str, dict[str, Any]],
         jobs_by_id: dict[str, dict[str, Any]],
+        job_lines_by_job_id: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
         self.rows = rows
         self.docs_by_ref = docs_by_ref
         self.docs_by_id = docs_by_id
         self.verified_docs_by_id: dict[str, dict[str, Any]] = {}
         self.jobs_by_id = jobs_by_id
+        self.job_lines_by_job_id = job_lines_by_job_id or {}
         self.created_items: list[dict[str, Any]] = []
         self.added_lines: list[dict[str, Any]] = []
         self.generated_docs: list[dict[str, Any]] = []
@@ -46,6 +48,9 @@ class FakeBigChangeClient:
     def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
         return []
 
+    def job_financial_lines(self, job_id: str) -> list[dict[str, Any]]:
+        return self.job_lines_by_job_id.get(job_id, [])
+
     def create_predefined_inv_item(self, params: dict[str, Any]) -> str:
         self.created_items.append(params)
         return f"item-{len(self.created_items)}"
@@ -58,11 +63,25 @@ class FakeBigChangeClient:
         self.generated_docs.append(params)
         doc_id = str(params["DocId"])
         original = self.docs_by_id[doc_id]
+        line_ids = str(params["lineItemIds"]).split(",")
+        nominal_by_existing_line_id = {
+            str(line.get("InvoiceItemId") or line.get("LineItemId") or line.get("LineId")): line.get("NominalAccountCode")
+            or line.get("NominalCode")
+            for lines in self.job_lines_by_job_id.values()
+            for line in lines
+        }
         self.verified_docs_by_id[doc_id] = {
             **original,
             "Reference": "INV-200",
             "FinancialLines": [
-                {**line, "NominalCode": self.added_lines[index]["NominalCode"]}
+                {
+                    **line,
+                    "NominalCode": (
+                        self.added_lines[index]["NominalCode"]
+                        if index < len(self.added_lines)
+                        else nominal_by_existing_line_id.get(line_ids[index], line.get("NominalCode"))
+                    ),
+                }
                 for index, line in enumerate(original["FinancialLines"])
             ],
         }
@@ -250,6 +269,49 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
         self.assertEqual(client.created_items, [])
         self.assertEqual(client.added_lines, [])
         self.assertEqual(client.generated_docs, [])
+
+    def test_reuses_existing_matching_replacement_job_financial_line(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [
+                {
+                    "Description": "Fire alarm call out",
+                    "UnitPrice": "125.00",
+                    "Quantity": "2",
+                    "TaxCode": "T1",
+                    "TaxRate": "20",
+                    "NominalCode": "9999",
+                }
+            ],
+        }
+        client = FakeBigChangeClient(
+            rows=[{"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"}],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire Alarm", "Description": "Call Out fault"}},
+            job_lines_by_job_id={
+                "J1": [
+                    {
+                        "InvoiceItemId": "existing-line-1",
+                        "ItemReference": "AI-TEMP-100-NOMINAL-2002-1",
+                        "NominalAccountCode": "2002",
+                        "LineQuantity": "2",
+                        "UnitPrice": "125.00",
+                    }
+                ]
+            },
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(report.lines_updated, 1)
+        self.assertEqual(client.created_items, [])
+        self.assertEqual(client.added_lines, [])
+        self.assertEqual(client.generated_docs[0]["lineItemIds"], "existing-line-1")
 
     def test_skips_if_full_document_reference_is_not_temp(self) -> None:
         doc = {

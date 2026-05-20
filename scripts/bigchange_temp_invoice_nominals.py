@@ -308,6 +308,9 @@ class BigChangeApi(Protocol):
     def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
         ...
 
+    def job_financial_lines(self, job_id: str) -> list[dict[str, Any]]:
+        ...
+
     def create_predefined_inv_item(self, params: dict[str, Any]) -> str:
         ...
 
@@ -401,11 +404,33 @@ class BigChangeClient:
                     return jobs
         return []
 
+    def job_financial_lines(self, job_id: str) -> list[dict[str, Any]]:
+        payload = self.get("JobFinancialLines", {"JobId": job_id}, attempts=2)
+        if not code_is_success(payload):
+            return []
+        return result_rows(payload)
+
+    def predefined_inv_item_id_by_ref(self, reference: str) -> str | None:
+        payload = self.get("InvoiceDefaultIdByRef", {"InvItemRef": reference}, attempts=2)
+        if not code_is_success(payload):
+            return None
+        return find_identifier(
+            payload,
+            ("PredefinedItemId", "PredefinedInvItemId", "InvoiceDefaultId", "ItemId", "Id", "ID"),
+        )
+
     def create_predefined_inv_item(self, params: dict[str, Any]) -> str:
         payload = self.get("CreatePredefinedInvItem", params)
-        if not code_is_success(payload):
+        item_id = find_identifier(
+            payload,
+            ("PredefinedItemId", "PredefinedInvItemId", "InvoiceDefaultId", "ItemId", "Id", "ID"),
+        )
+        if not item_id:
+            reference = clean_text(params.get("Reference"))
+            if reference:
+                item_id = self.predefined_inv_item_id_by_ref(reference)
+        if not code_is_success(payload) and not item_id:
             raise RuntimeError("CreatePredefinedInvItem returned an error")
-        item_id = find_identifier(payload, ("PredefinedItemId", "PredefinedInvItemId", "ItemId", "Id", "ID"))
         if not item_id:
             raise RuntimeError("CreatePredefinedInvItem did not return an item id")
         return item_id
@@ -414,7 +439,7 @@ class BigChangeClient:
         payload = self.get("AddJobFinancialLine", params)
         if not code_is_success(payload):
             raise RuntimeError("AddJobFinancialLine returned an error")
-        line_id = find_identifier(payload, ("JobFinancialLineId", "LineItemId", "LineId", "Id", "ID"))
+        line_id = find_identifier(payload, ("JobFinancialLineId", "LineItemId", "InvoiceItemId", "LineId", "Id", "ID"))
         if not line_id:
             raise RuntimeError("AddJobFinancialLine did not return a line id")
         return line_id
@@ -659,10 +684,16 @@ class TempInvoiceNominalCorrector:
         lines: list[InvoiceLine],
     ) -> list[str]:
         replacement_line_ids: list[str] = []
+        existing_job_lines = self.client.job_financial_lines(job_id)
         for line in lines:
+            item_ref = line_reference(ref, target_nominal, line.line_number)
+            existing_line_id = self.matching_job_financial_line_id(existing_job_lines, item_ref, target_nominal, line)
+            if existing_line_id:
+                replacement_line_ids.append(existing_line_id)
+                continue
             predefined_item_id = self.client.create_predefined_inv_item(
                 {
-                    "Reference": line_reference(ref, target_nominal, line.line_number),
+                    "Reference": item_ref,
                     "Description": line.description,
                     "UnitPrice": line.unit_price,
                     "Vat": line.tax_code,
@@ -685,6 +716,29 @@ class TempInvoiceNominalCorrector:
             )
             replacement_line_ids.append(replacement_line_id)
         return replacement_line_ids
+
+    def matching_job_financial_line_id(
+        self,
+        existing_lines: list[dict[str, Any]],
+        item_ref: str,
+        target_nominal: str,
+        line: InvoiceLine,
+    ) -> str | None:
+        for existing in existing_lines:
+            existing_ref = clean_text(
+                first_present(existing, ("ItemReference", "Reference", "PredefinedItemReference", "InvoiceDefaultReference"))
+            )
+            if existing_ref != item_ref:
+                continue
+            existing_nominal = clean_text(first_present(existing, ("NominalCode", "NominalAccountCode", "JWNominalCode")))
+            if existing_nominal != target_nominal:
+                continue
+            existing_quantity = first_present(existing, ("Quantity", "LineQuantity", "Qty"))
+            existing_unit_price = first_present(existing, ("UnitPrice", "Price", "NetPrice", "UnitNetPrice"))
+            if not decimal_equal(existing_quantity, line.quantity) or not decimal_equal(existing_unit_price, line.unit_price):
+                continue
+            return clean_text(first_present(existing, ("JobFinancialLineId", "LineItemId", "InvoiceItemId", "LineId", "Id", "ID")))
+        return None
 
     def verify_document(
         self,
