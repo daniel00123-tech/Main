@@ -103,10 +103,12 @@ class SafetyFilterTest(unittest.TestCase):
                 self.assertIn(field, reason)
 
     def test_rejects_non_invoice_document_types(self) -> None:
-        processable, reason = document_is_processable({"DocumentType": "Credit Note"})
+        for doc_type in ("Credit Note", "Purchase Invoice", "Proforma Invoice", "Purchase Order"):
+            with self.subTest(doc_type=doc_type):
+                processable, reason = document_is_processable({"DocumentType": doc_type})
 
-        self.assertFalse(processable)
-        self.assertIn("Credit Note", reason)
+                self.assertFalse(processable)
+                self.assertIn(doc_type, reason)
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
@@ -215,6 +217,39 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
         self.assertEqual(client.created_items, [])
         self.assertEqual(client.added_lines, [])
         self.assertEqual(client.generated_docs, [])
+
+    def test_processes_duplicate_temp_rows_once_by_reference(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [
+                {
+                    "Description": "Fire alarm call out",
+                    "UnitPrice": "125.00",
+                    "Quantity": "1",
+                    "TaxCode": "T1",
+                    "TaxRate": "20",
+                    "NominalCode": "9999",
+                }
+            ],
+        }
+        client = FakeBigChangeClient(
+            rows=[
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"},
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D2"},
+            ],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire Alarm", "Description": "Call Out fault"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.temp_invoices_scanned, 1)
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(len(client.generated_docs), 1)
 
     def test_skips_if_full_document_reference_is_not_temp(self) -> None:
         doc = {
