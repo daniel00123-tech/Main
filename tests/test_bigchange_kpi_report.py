@@ -1,6 +1,7 @@
 import unittest
+import datetime as dt
 
-from scripts.bigchange_kpi_report import should_exclude_category, validate_report
+from scripts.bigchange_kpi_report import calculate_sales, should_exclude_category, validate_report
 
 
 class CategoryExclusionTest(unittest.TestCase):
@@ -12,6 +13,9 @@ class CategoryExclusionTest(unittest.TestCase):
             "Ryan Barrett",
             "RM. John Bennett",
             "RM. Ryan Barrett",
+            "Z- subcontractor tracking",
+            "OOH reactive",
+            "Uncategorised",
         ):
             with self.subTest(category=category):
                 self.assertTrue(should_exclude_category(category))
@@ -21,6 +25,54 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+
+class SalesAttributionTest(unittest.TestCase):
+    def test_calculates_invoice_net_from_common_line_shapes(self) -> None:
+        client = FakeBigChangeClient(
+            invoices=[
+                {
+                    "OrderType": "Invoice",
+                    "JobId": "101",
+                    "Lines": [
+                        {"NetPrice": "120.00", "VatAmount": "20.00"},
+                        {"NetPrice": "60.00", "VatAmount": "10.00"},
+                    ],
+                },
+                {
+                    "OrderType": "Invoice",
+                    "LinkedJobID": "102",
+                    "FinancialLines": {"FinancialLine": [{"NetPrice": "24.00", "VatAmount": "4.00"}]},
+                },
+                {
+                    "OrderType": "Invoice",
+                    "JobId": "103",
+                    "Cancelled": "true",
+                    "Lines": [{"NetPrice": "999.00", "VatAmount": "0.00"}],
+                },
+            ],
+            activities={
+                "101": [{"JobClientStatusID": 34, "JobClientStatusDate": "2026-05-02", "JobClientStatusOwner": "Sharon Mannion"}],
+                "102": [{"JobClientStatusID": 34, "JobClientStatusDate": "2026-05-03", "JobClientStatusOwner": "Sharon Mannion"}],
+                "103": [{"JobClientStatusID": 34, "JobClientStatusDate": "2026-05-04", "JobClientStatusOwner": "Sharon Mannion"}],
+            },
+        )
+
+        sales = calculate_sales(client, {"Sharon Mannion"}, dt.date(2026, 5, 1), dt.date(2026, 5, 20))
+
+        self.assertEqual(sales["Sharon Mannion"], 170)
+
+
+class FakeBigChangeClient:
+    def __init__(self, invoices, activities) -> None:
+        self._invoices = invoices
+        self._activities = activities
+
+    def invoices_with_items_by_period(self, start, end):
+        return self._invoices
+
+    def job_customer_activity(self, job_id):
+        return self._activities.get(job_id, [])
 
 
 if __name__ == "__main__":

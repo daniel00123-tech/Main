@@ -122,6 +122,10 @@ def normalized_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
 
+def compact_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
 def name_key(value: str) -> str:
     tokens = normalized_text(value).split()
     if len(tokens) >= 2:
@@ -151,6 +155,8 @@ def should_exclude_category(name: str) -> bool:
         return True
     if "nirvana ppm" in norm:
         return True
+    if "subcontractor" in norm or "sub contractor" in norm:
+        return True
     tokens = set(norm.split())
     if "ooh" in tokens or "out of hours" in norm:
         return True
@@ -176,6 +182,86 @@ def validate_report(report: dict[str, Any]) -> None:
 
 def is_blank(value: Any) -> bool:
     return clean_name(value) == ""
+
+
+def first_present(row: dict[str, Any], names: tuple[str, ...]) -> Any:
+    compacted = {compact_key(key): value for key, value in row.items()}
+    for name in names:
+        key = compact_key(name)
+        if key in compacted and compacted[key] not in (None, ""):
+            return compacted[key]
+    return None
+
+
+def nested_rows(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, dict)]
+    if isinstance(value, dict):
+        rows: list[dict[str, Any]] = []
+        for nested in value.values():
+            if isinstance(nested, list):
+                rows.extend(row for row in nested if isinstance(row, dict))
+        if rows:
+            return rows
+        return [value]
+    return []
+
+
+def extract_lines(document: dict[str, Any]) -> list[dict[str, Any]]:
+    line_keys = {
+        "financiallines",
+        "financialline",
+        "financialdoclines",
+        "financialdocline",
+        "invoicelines",
+        "invoiceline",
+        "lines",
+        "lineitems",
+        "items",
+    }
+    for key, value in document.items():
+        if compact_key(key) in line_keys:
+            rows = nested_rows(value)
+            if rows:
+                return rows
+    for value in document.values():
+        if isinstance(value, dict):
+            rows = extract_lines(value)
+            if rows:
+                return rows
+    if first_present(document, ("NetPrice", "VatAmount")) not in (None, ""):
+        return [document]
+    return []
+
+
+def is_populated(value: Any) -> bool:
+    text = clean_name(value)
+    if not text:
+        return False
+    return text.lower() not in {"none", "null", "0", "false", "no", "0001-01-01", "0001-01-01 00:00:00"}
+
+
+def job_category_name(row: dict[str, Any]) -> str:
+    return clean_name(
+        first_present(
+            row,
+            (
+                "Category",
+                "CategoryName",
+                "JobCategory",
+                "JobCategoryName",
+                "JobCategoryLabel",
+            ),
+        )
+    )
+
+
+def document_job_id(document: dict[str, Any]) -> str:
+    return clean_name(first_present(document, ("JobId", "JobID", "LinkedJobId", "LinkedJobID")))
+
+
+def client_status_id(row: dict[str, Any]) -> int | None:
+    return as_int(first_present(row, ("ClientStatusId", "ClientStatusID", "JobClientStatusId", "JobClientStatusID")))
 
 
 class BigChangeClient:
@@ -223,13 +309,10 @@ class BigChangeClient:
     @staticmethod
     def result_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
         result = payload.get("Result")
-        if isinstance(result, list):
-            return [row for row in result if isinstance(row, dict)]
-        if isinstance(result, dict):
-            for value in result.values():
-                if isinstance(value, list):
-                    return [row for row in value if isinstance(row, dict)]
-        return []
+        rows = nested_rows(result)
+        if rows:
+            return rows
+        return nested_rows(payload)
 
     def categories(self) -> list[dict[str, Any]]:
         payload = self.get("jobcategories")
@@ -322,7 +405,7 @@ def add_items(
     today: dt.date,
 ) -> None:
     for row in rows:
-        category = clean_name(row.get("Category"))
+        category = job_category_name(row)
         if should_exclude_category(category):
             continue
         staff_names.add(category)
@@ -330,7 +413,17 @@ def add_items(
 
 
 def resource_assigned(row: dict[str, Any]) -> bool:
-    resource = row.get("Resource")
+    resource = first_present(
+        row,
+        (
+            "Resource",
+            "Resources",
+            "ResourceName",
+            "Engineer",
+            "EngineerName",
+            "AssignedResource",
+        ),
+    )
     if isinstance(resource, list):
         return len(resource) > 0
     return not is_blank(resource)
@@ -347,14 +440,25 @@ def calculate_sales(
 
     eligible: list[dict[str, Any]] = []
     for document in financial_documents:
-        order_type = re.sub(r"[^a-z]", "", clean_name(document.get("OrderType")).lower())
+        order_type = re.sub(
+            r"[^a-z]",
+            "",
+            clean_name(first_present(document, ("OrderType", "DocumentType", "DocType"))).lower(),
+        )
         if order_type not in SALES_ORDER_TYPES:
             continue
-        if document.get("CancellationDate") or document.get("DeletionDate") or document.get("RejectionDate"):
+        if any(
+            is_populated(first_present(document, names))
+            for names in (
+                ("CancellationDate", "CancelledDate", "Cancelled"),
+                ("DeletionDate", "DeletedDate", "Deleted"),
+                ("RejectionDate", "RejectedDate", "Rejected"),
+            )
+        ):
             continue
         eligible.append(document)
 
-    job_ids = sorted({str(document.get("JobId")) for document in eligible if document.get("JobId")})
+    job_ids = sorted({document_job_id(document) for document in eligible if document_job_id(document)})
     activity_cache: dict[str, list[dict[str, Any]]] = {}
     if job_ids:
         with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
@@ -373,21 +477,21 @@ def calculate_sales(
         if not matched_staff:
             continue
         net = DECIMAL_ZERO
-        for line in document.get("lines") or []:
-            if not isinstance(line, dict):
-                continue
-            net += as_decimal(line.get("NetPrice")) - as_decimal(line.get("VatAmount"))
+        for line in extract_lines(document):
+            net += as_decimal(first_present(line, ("NetPrice", "Net", "LineNet", "TotalNet"))) - as_decimal(
+                first_present(line, ("VatAmount", "VATAmount", "TaxAmount"))
+            )
         sales[matched_staff] += net
     return dict(sales)
 
 
 def invoice_created_owner(document: dict[str, Any], activity_cache: dict[str, list[dict[str, Any]]]) -> str:
-    job_id = str(document.get("JobId") or "")
+    job_id = document_job_id(document)
     if not job_id:
         return ""
     candidates: list[tuple[dt.datetime, dict[str, Any]]] = []
     for activity in activity_cache.get(job_id, []):
-        status_id = as_int(activity.get("JobClientStatusID") or activity.get("JobClientStatusId"))
+        status_id = client_status_id(activity)
         if status_id != 34:
             continue
         activity_date = parse_date(activity.get("JobClientStatusDate")) or dt.datetime.min
@@ -420,7 +524,7 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
 
     staff_names: set[str] = set()
     for category in client.categories():
-        name = clean_name(category.get("label") or category.get("JobCategoryName"))
+        name = clean_name(first_present(category, ("label", "JobCategoryName", "CategoryName", "Name")))
         if not should_exclude_category(name):
             staff_names.add(name)
 
@@ -477,7 +581,9 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
         }
     )
     uninvoiced_rows = [
-        row for row in uninvoiced_rows if as_int(row.get("StatusId")) in COMPLETED_STATUS_IDS
+        row
+        for row in uninvoiced_rows
+        if as_int(row.get("StatusId")) in COMPLETED_STATUS_IDS and client_status_id(row) == -34
     ]
     add_items(grouped, staff_names, uninvoiced_rows, "uninvoiced_jobs", "StatusDate", today)
 
@@ -589,9 +695,9 @@ def render_html(report: dict[str, Any]) -> str:
             f'<div class="person"><strong>{staff}</strong><span>Staff owner</span></div>'
             "</td>",
         ]
-        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         for metric_key, _label in KPI_ORDER:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
+        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         rows_html.append(f"<tr>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
@@ -745,7 +851,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     th:nth-child(1), td:nth-child(1) {{ width: 72px; }}
     th:nth-child(2), td:nth-child(2) {{ width: 292px; }}
-    th:nth-child(3), td:nth-child(3) {{ width: 170px; }}
+    th:nth-child(7), td:nth-child(7) {{ width: 170px; }}
     td {{
       padding: 14px 10px;
       border-bottom: 1px solid var(--line);
@@ -890,11 +996,11 @@ def render_html(report: dict[str, Any]) -> str:
         <tr>
           <th>Rank</th>
           <th>Staff member</th>
-          <th>{month_name} sales</th>
           <th>Unallocated Jobs</th>
           <th>Historic Jobs</th>
           <th>Uninvoiced Jobs</th>
           <th>Unactioned Jobs</th>
+          <th>{month_name} sales</th>
         </tr>
       </thead>
       <tbody>
@@ -1049,7 +1155,6 @@ def main() -> int:
                     "total_red_kpis": 0,
                     "total_amber_kpis": 0,
                     "email": "failed",
-                    "error": type(exc).__name__,
                 },
                 sort_keys=True,
             ),
