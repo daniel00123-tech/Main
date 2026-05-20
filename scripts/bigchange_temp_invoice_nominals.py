@@ -692,10 +692,15 @@ class TempInvoiceNominalCorrector:
                 raise RuntimeError(f"line {original.line_number} UnitPrice changed")
             if not decimal_equal(original.quantity, verified.quantity):
                 raise RuntimeError(f"line {original.line_number} Quantity changed")
-            if clean_text(original.tax_code) and clean_text(original.tax_code) != clean_text(verified.tax_code):
-                raise RuntimeError(f"line {original.line_number} TaxCode changed")
             if clean_text(original.tax_rate) and not decimal_equal(original.tax_rate, verified.tax_rate):
                 raise RuntimeError(f"line {original.line_number} TaxRate changed")
+            if clean_text(original.tax_code) and clean_text(original.tax_code) != clean_text(verified.tax_code):
+                tax_rate_still_matches = clean_text(original.tax_rate) and decimal_equal(
+                    original.tax_rate,
+                    verified.tax_rate,
+                )
+                if not tax_rate_still_matches:
+                    raise RuntimeError(f"line {original.line_number} TaxCode changed")
 
 
 def main() -> int:
