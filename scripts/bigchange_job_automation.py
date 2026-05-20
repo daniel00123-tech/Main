@@ -31,6 +31,7 @@ UNCATEGORISED = "Uncategorised"
 FALLBACK_CATEGORY = "Hayley Longford"
 INVOICE_CREATED = "InvoiceCreated"
 INVOICE_CREATED_STATUS_ID = 34
+ACTIONED_COMMENT = "Automated Auto Close Down actioned update"
 
 
 class BigChangeError(RuntimeError):
@@ -445,31 +446,50 @@ def run(args: argparse.Namespace) -> int:
             try:
                 activity = result_list(client.call({"action": "JobCustomerActivity", "jobId": job_id}), "JobCustomerActivity")
                 invoice_created = has_invoice_created(activity)
-                if is_actioned(job) and invoice_created:
+                actioned = is_actioned(job)
+                if actioned and invoice_created:
                     skip_reasons.append("Auto Close Down already actioned with InvoiceCreated status")
                 else:
-                    reasons = []
-                    if not is_actioned(job):
-                        reasons.append("mark actioned")
-                    if not invoice_created:
-                        reasons.append("set invoice status InvoiceCreated")
-                    intended.append(
-                        IntendedUpdate(
-                            job_id=job_id,
-                            job_ref=ref,
-                            update_type="auto_close_invoice_created",
-                            reason="Auto Close Down flag confirmed; " + " and ".join(reasons),
-                            params={
-                                "action": "JobClientStatus",
-                                "JobId": job_id,
-                                "JobClientStatus": INVOICE_CREATED_STATUS_ID,
-                                "Comment": "Automated Auto Close Down invoice status update",
-                            },
-                            before={"Actioned": job.get("Actioned"), "InvoiceCreated": invoice_created, "CurrentFlag": job.get("CurrentFlag")},
-                            target={"Actioned": "Yes", "JobClientStatus": INVOICE_CREATED, "JobClientStatusID": INVOICE_CREATED_STATUS_ID},
+                    if not actioned:
+                        intended.append(
+                            IntendedUpdate(
+                                job_id=job_id,
+                                job_ref=ref,
+                                update_type="auto_close_actioned",
+                                reason="Auto Close Down flag confirmed; mark actioned",
+                                params={
+                                    "action": "JobSaveBackOfficeNote",
+                                    "jobId": job_id,
+                                    "actioned": 1,
+                                    "note": ACTIONED_COMMENT,
+                                },
+                                before={"Actioned": job.get("Actioned"), "CurrentFlag": job.get("CurrentFlag")},
+                                target={"Actioned": "Yes"},
+                            )
                         )
-                    )
-                    intended_types.append("auto_close_invoice_created")
+                        intended_types.append("auto_close_actioned")
+                    if not invoice_created:
+                        intended.append(
+                            IntendedUpdate(
+                                job_id=job_id,
+                                job_ref=ref,
+                                update_type="auto_close_invoice_created",
+                                reason="Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+                                params={
+                                    "action": "JobClientStatus",
+                                    "JobId": job_id,
+                                    "JobClientStatus": INVOICE_CREATED_STATUS_ID,
+                                    "Comment": "Automated Auto Close Down invoice status update",
+                                },
+                                before={
+                                    "Actioned": job.get("Actioned"),
+                                    "InvoiceCreated": invoice_created,
+                                    "CurrentFlag": job.get("CurrentFlag"),
+                                },
+                                target={"JobClientStatus": INVOICE_CREATED, "JobClientStatusID": INVOICE_CREATED_STATUS_ID},
+                            )
+                        )
+                        intended_types.append("auto_close_invoice_created")
             except Exception as exc:  # noqa: BLE001 - keep processing remaining jobs.
                 skip_reasons.append(f"failed to inspect customer activity: {exc}")
         else:
@@ -500,6 +520,7 @@ def run(args: argparse.Namespace) -> int:
             "futureDateFields": ["PlannedStart", "PlannedEnd", "DueDate"] if args.exclude_future_dated else [],
         },
         "confirmed_references": {
+            "actionedService": "JobSaveBackOfficeNote",
             "autoCloseDownTagId": auto_close_tag_id,
             "fallbackCategory": FALLBACK_CATEGORY,
             "fallbackCategoryId": fallback_category.get("id"),
