@@ -16,12 +16,14 @@ class FakeBigChangeClient:
         docs_by_ref: dict[str, dict[str, Any] | None],
         docs_by_id: dict[str, dict[str, Any]],
         jobs_by_id: dict[str, dict[str, Any]],
+        tax_code_after_generate: str | None = None,
     ) -> None:
         self.rows = rows
         self.docs_by_ref = docs_by_ref
         self.docs_by_id = docs_by_id
         self.verified_docs_by_id: dict[str, dict[str, Any]] = {}
         self.jobs_by_id = jobs_by_id
+        self.tax_code_after_generate = tax_code_after_generate
         self.created_items: list[dict[str, Any]] = []
         self.added_lines: list[dict[str, Any]] = []
         self.generated_docs: list[dict[str, Any]] = []
@@ -56,13 +58,16 @@ class FakeBigChangeClient:
         self.generated_docs.append(params)
         doc_id = str(params["DocId"])
         original = self.docs_by_id[doc_id]
+        verified_lines = [
+            {**line, "NominalCode": self.added_lines[index]["NominalCode"]}
+            for index, line in enumerate(original["FinancialLines"])
+        ]
+        if self.tax_code_after_generate is not None:
+            verified_lines = [{**line, "TaxCode": self.tax_code_after_generate} for line in verified_lines]
         self.verified_docs_by_id[doc_id] = {
             **original,
             "Reference": "INV-200",
-            "FinancialLines": [
-                {**line, "NominalCode": self.added_lines[index]["NominalCode"]}
-                for index, line in enumerate(original["FinancialLines"])
-            ],
+            "FinancialLines": verified_lines,
         }
         return {"Code": 0, "Result": {"DocId": doc_id}}
 
@@ -108,6 +113,11 @@ class SafetyFilterTest(unittest.TestCase):
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
 
+        processable, reason = document_is_processable({"DocumentType": "Purchase Invoice"})
+
+        self.assertFalse(processable)
+        self.assertIn("Purchase Invoice", reason)
+
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
     def test_rebuilds_existing_invoice_with_replacement_nominal_lines(self) -> None:
@@ -141,6 +151,7 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
         }
         client = FakeBigChangeClient(
             rows=[
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": ""},
                 {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"},
                 {"InvoiceType": "SI", "Reference": "INV-999", "InvoiceId": "D2"},
                 {"InvoiceType": "CN", "Reference": "TEMP-CN", "InvoiceId": "D3"},
@@ -235,6 +246,36 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
 
         self.assertEqual(report.invoices_skipped, 1)
         self.assertEqual(client.generated_docs, [])
+
+    def test_accepts_tax_code_normalization_when_tax_rate_is_preserved(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [
+                {
+                    "Description": "Fire alarm call out",
+                    "UnitPrice": "125.00",
+                    "Quantity": "2",
+                    "TaxCode": "T1",
+                    "TaxRate": "20",
+                    "NominalCode": "9999",
+                }
+            ],
+        }
+        client = FakeBigChangeClient(
+            rows=[{"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"}],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire Alarm", "Description": "Call Out fault"}},
+            tax_code_after_generate="VAT20",
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(report.failures, [])
 
 
 if __name__ == "__main__":

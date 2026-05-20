@@ -461,7 +461,9 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
     if doc_type:
         norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
+        non_invoice_markers = ("credit", "purchase", "order", "quote")
+        is_invoice = norm_doc_type in {"invoice", "sales invoice", "salesinvoice", "si"}
+        if not is_invoice or any(marker in norm_doc_type for marker in non_invoice_markers):
             return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
@@ -502,13 +504,13 @@ class TempInvoiceNominalCorrector:
     def run(self) -> RunReport:
         report = RunReport()
         rows = self.client.invoices_without_sync()
-        unique_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        unique_rows: dict[str, dict[str, Any]] = {}
         for row in rows:
             if not is_target_invoice_row(row):
                 continue
             ref = invoice_reference(row)
-            inv_id = invoice_id(row)
-            unique_rows[(ref, inv_id)] = row
+            if ref not in unique_rows or not invoice_id(unique_rows[ref]):
+                unique_rows[ref] = row
 
         report.temp_invoices_scanned = len(unique_rows)
         for row in unique_rows.values():
@@ -670,10 +672,16 @@ class TempInvoiceNominalCorrector:
                 raise RuntimeError(f"line {original.line_number} UnitPrice changed")
             if not decimal_equal(original.quantity, verified.quantity):
                 raise RuntimeError(f"line {original.line_number} Quantity changed")
-            if clean_text(original.tax_code) and clean_text(original.tax_code) != clean_text(verified.tax_code):
-                raise RuntimeError(f"line {original.line_number} TaxCode changed")
-            if clean_text(original.tax_rate) and not decimal_equal(original.tax_rate, verified.tax_rate):
+            original_tax_rate = clean_text(original.tax_rate)
+            if original_tax_rate and not decimal_equal(original.tax_rate, verified.tax_rate):
                 raise RuntimeError(f"line {original.line_number} TaxRate changed")
+            if (
+                clean_text(original.tax_code)
+                and clean_text(verified.tax_code)
+                and clean_text(original.tax_code) != clean_text(verified.tax_code)
+                and not original_tax_rate
+            ):
+                raise RuntimeError(f"line {original.line_number} TaxCode changed")
 
 
 def main() -> int:
