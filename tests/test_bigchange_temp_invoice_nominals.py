@@ -108,6 +108,12 @@ class SafetyFilterTest(unittest.TestCase):
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
 
+    def test_rejects_missing_document_type(self) -> None:
+        processable, reason = document_is_processable({})
+
+        self.assertFalse(processable)
+        self.assertIn("missing", reason)
+
     def test_rejects_purchase_invoice_document_types(self) -> None:
         for doc_type in ("Purchase Invoice", "Purchase Order"):
             with self.subTest(doc_type=doc_type):
