@@ -21,9 +21,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
-from email import encoders
 from email.headerregistry import Address
-from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -122,6 +120,33 @@ def normalized_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
 
+def compact_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def first_present(row: dict[str, Any], names: tuple[str, ...]) -> Any:
+    compacted = {compact_key(key): value for key, value in row.items()}
+    for name in names:
+        key = compact_key(name)
+        if key in compacted and compacted[key] not in (None, ""):
+            return compacted[key]
+    return None
+
+
+def nested_rows(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, dict)]
+    if isinstance(value, dict):
+        rows: list[dict[str, Any]] = []
+        for nested in value.values():
+            if isinstance(nested, list):
+                rows.extend(row for row in nested if isinstance(row, dict))
+        if rows:
+            return rows
+        return [value]
+    return []
+
+
 def name_key(value: str) -> str:
     tokens = normalized_text(value).split()
     if len(tokens) >= 2:
@@ -176,6 +201,46 @@ def validate_report(report: dict[str, Any]) -> None:
 
 def is_blank(value: Any) -> bool:
     return clean_name(value) == ""
+
+
+def job_category_name(row: dict[str, Any]) -> str:
+    return clean_name(
+        first_present(
+            row,
+            (
+                "Category",
+                "CategoryName",
+                "JobCategory",
+                "JobCategoryName",
+                "JobCategoryLabel",
+            ),
+        )
+    )
+
+
+def extract_invoice_lines(document: dict[str, Any]) -> list[dict[str, Any]]:
+    line_keys = {
+        "financiallines",
+        "financialline",
+        "financialdoclines",
+        "financialdocline",
+        "invoicelines",
+        "invoiceline",
+        "lines",
+        "lineitems",
+        "items",
+    }
+    for key, value in document.items():
+        if compact_key(key) in line_keys:
+            rows = nested_rows(value)
+            if rows:
+                return rows
+    for value in document.values():
+        if isinstance(value, dict):
+            rows = extract_invoice_lines(value)
+            if rows:
+                return rows
+    return []
 
 
 class BigChangeClient:
@@ -322,7 +387,7 @@ def add_items(
     today: dt.date,
 ) -> None:
     for row in rows:
-        category = clean_name(row.get("Category"))
+        category = job_category_name(row)
         if should_exclude_category(category):
             continue
         staff_names.add(category)
@@ -373,10 +438,10 @@ def calculate_sales(
         if not matched_staff:
             continue
         net = DECIMAL_ZERO
-        for line in document.get("lines") or []:
-            if not isinstance(line, dict):
-                continue
-            net += as_decimal(line.get("NetPrice")) - as_decimal(line.get("VatAmount"))
+        for line in extract_invoice_lines(document):
+            net += as_decimal(first_present(line, ("NetPrice",))) - as_decimal(
+                first_present(line, ("VatAmount", "VATAmount"))
+            )
         sales[matched_staff] += net
     return dict(sales)
 
@@ -589,9 +654,9 @@ def render_html(report: dict[str, Any]) -> str:
             f'<div class="person"><strong>{staff}</strong><span>Staff owner</span></div>'
             "</td>",
         ]
-        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         for metric_key, _label in KPI_ORDER:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
+        cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         rows_html.append(f"<tr>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
@@ -745,7 +810,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     th:nth-child(1), td:nth-child(1) {{ width: 72px; }}
     th:nth-child(2), td:nth-child(2) {{ width: 292px; }}
-    th:nth-child(3), td:nth-child(3) {{ width: 170px; }}
+    th:nth-child(7), td:nth-child(7) {{ width: 170px; }}
     td {{
       padding: 14px 10px;
       border-bottom: 1px solid var(--line);
@@ -890,11 +955,11 @@ def render_html(report: dict[str, Any]) -> str:
         <tr>
           <th>Rank</th>
           <th>Staff member</th>
-          <th>{month_name} sales</th>
           <th>Unallocated Jobs</th>
           <th>Historic Jobs</th>
           <th>Uninvoiced Jobs</th>
           <th>Unactioned Jobs</th>
+          <th>{month_name} sales</th>
         </tr>
       </thead>
       <tbody>
@@ -1000,14 +1065,8 @@ Daniel Dwyer
     image_data = png_path.read_bytes()
     image = MIMEImage(image_data, _subtype="png")
     image.add_header("Content-ID", "<kpi-dashboard>")
-    image.add_header("Content-Disposition", "inline", filename=png_path.name)
+    image.add_header("Content-Disposition", "attachment", filename=png_path.name)
     root.attach(image)
-
-    attachment = MIMEBase("image", "png")
-    attachment.set_payload(image_data)
-    encoders.encode_base64(attachment)
-    attachment.add_header("Content-Disposition", "attachment", filename=png_path.name)
-    root.attach(attachment)
 
     # The only attachment is the dashboard PNG; JSON and HTML stay on disk only.
     with smtplib.SMTP(smtp_host, smtp_port, timeout=120) as smtp:
