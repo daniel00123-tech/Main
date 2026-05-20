@@ -439,6 +439,13 @@ def is_target_invoice_row(row: dict[str, Any]) -> bool:
     return invoice_type == "SI" and invoice_reference(row).upper().startswith("TEMP")
 
 
+def invoice_unique_key(row: dict[str, Any]) -> str:
+    ref = invoice_reference(row)
+    if ref:
+        return f"ref:{ref.upper()}"
+    return f"id:{invoice_id(row)}"
+
+
 def classify_nominal_code(job: dict[str, Any]) -> str:
     job_type = clean_text(first_present(job, ("Type", "JobType", "JobTypeName", "Category", "CategoryName")))
     description = clean_text(first_present(job, ("Description", "JobDescription", "Details", "Notes")))
@@ -466,6 +473,9 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
             return False, f"{field_name} is populated"
+    status = clean_text(first_present(doc, ("Status", "DocumentStatus", "FinancialDocStatus", "State")))
+    if normalized_text(status) in {"cancelled", "canceled", "deleted", "rejected"}:
+        return False, f"document status is {status}"
     return True, ""
 
 
@@ -502,13 +512,11 @@ class TempInvoiceNominalCorrector:
     def run(self) -> RunReport:
         report = RunReport()
         rows = self.client.invoices_without_sync()
-        unique_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        unique_rows: dict[str, dict[str, Any]] = {}
         for row in rows:
             if not is_target_invoice_row(row):
                 continue
-            ref = invoice_reference(row)
-            inv_id = invoice_id(row)
-            unique_rows[(ref, inv_id)] = row
+            unique_rows[invoice_unique_key(row)] = row
 
         report.temp_invoices_scanned = len(unique_rows)
         for row in unique_rows.values():

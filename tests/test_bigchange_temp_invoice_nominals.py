@@ -102,6 +102,13 @@ class SafetyFilterTest(unittest.TestCase):
                 self.assertFalse(processable)
                 self.assertIn(field, reason)
 
+    def test_rejects_cancelled_deleted_or_rejected_statuses(self) -> None:
+        for status in ("Cancelled", "Canceled", "Deleted", "Rejected"):
+            with self.subTest(status=status):
+                processable, reason = document_is_processable({"DocumentType": "Invoice", "Status": status})
+                self.assertFalse(processable)
+                self.assertIn(status, reason)
+
     def test_rejects_non_invoice_document_types(self) -> None:
         processable, reason = document_is_processable({"DocumentType": "Credit Note"})
 
@@ -110,6 +117,29 @@ class SafetyFilterTest(unittest.TestCase):
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
+    def test_deduplicates_temp_invoice_rows_by_reference(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [{"UnitPrice": "1", "Quantity": "1", "NominalCode": "2002"}],
+        }
+        client = FakeBigChangeClient(
+            rows=[
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"},
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "line-level-id"},
+            ],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire", "Description": "Call Out"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.temp_invoices_scanned, 1)
+        self.assertEqual(report.invoices_skipped, 1)
+
     def test_rebuilds_existing_invoice_with_replacement_nominal_lines(self) -> None:
         doc = {
             "DocId": "D1",
