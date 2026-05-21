@@ -342,6 +342,8 @@ def replacement_line_matches(job_line: FinancialLine, original_line: FinancialLi
         job_line.description == original_line.description
         and money_decimal(job_line.unit_price) == money_decimal(original_line.unit_price)
         and quantity_decimal(job_line.quantity) == quantity_decimal(original_line.quantity)
+        and job_line.currency == original_line.currency
+        and cost_decimal(job_line) == cost_decimal(original_line)
         and (job_line.nominal_code or None) == (original_line.nominal_code or None)
         and job_line.tax_code in ACCEPTED_TAX_CODES
         and bool(job_line.line_item_id)
@@ -427,7 +429,9 @@ def verify_regeneration(
     original_counts = Counter(line_signature(line) for line in original_lines)
     verified_counts = Counter(line_signature(line) for line in verified_lines)
     if original_counts != verified_counts:
-        raise BigChangeError("verification failed: line description, price, quantity, or nominal was not preserved")
+        raise BigChangeError(
+            "verification failed: line description, price, quantity, currency, item cost, or nominal was not preserved"
+        )
 
     verified_ref = clean_str(get_first(doc, "Reference", "DocRef", "DocumentReference", "InvoiceRef"))
     if verified_ref and verified_ref.startswith("INV"):
@@ -436,8 +440,15 @@ def verify_regeneration(
         raise BigChangeError("verification failed: document reference changed unexpectedly")
 
 
-def line_signature(line: FinancialLine) -> tuple[str, Decimal, Decimal, str | None]:
-    return (line.description, money_decimal(line.unit_price), quantity_decimal(line.quantity), line.nominal_code)
+def line_signature(line: FinancialLine) -> tuple[str, Decimal, Decimal, str, Decimal, str | None]:
+    return (
+        line.description,
+        money_decimal(line.unit_price),
+        quantity_decimal(line.quantity),
+        line.currency,
+        cost_decimal(line),
+        line.nominal_code,
+    )
 
 
 def normalise_line(raw: Any, line_no: int) -> FinancialLine:
@@ -651,6 +662,10 @@ def parse_decimal_optional(raw: dict[str, Any], *keys: str) -> Decimal | None:
 
 def money_decimal(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.0001"))
+
+
+def cost_decimal(line: FinancialLine) -> Decimal:
+    return money_decimal(line.item_cost or Decimal("0"))
 
 
 def quantity_decimal(value: Decimal) -> Decimal:
