@@ -66,6 +66,7 @@ class FakeBigChangeClient:
         self.generated_docs.append(params)
         doc_id = str(params["DocId"])
         original = self.docs_by_id[doc_id]
+        line_ids = [line_id.strip() for line_id in str(params["lineItemIds"]).split(",")]
         self.verified_docs_by_id[doc_id] = {
             **original,
             "DocId": self.verified_doc_id or doc_id,
@@ -73,7 +74,7 @@ class FakeBigChangeClient:
             "FinancialLines": [
                 {
                     **line,
-                    "NominalCode": self.added_lines[index]["NominalCode"],
+                    "NominalCode": self.added_lines[int(line_ids[index].removeprefix("line-")) - 1]["NominalCode"],
                     **({"TaxCode": self.verified_tax_code} if self.verified_tax_code else {}),
                 }
                 for index, line in enumerate(original["FinancialLines"])
