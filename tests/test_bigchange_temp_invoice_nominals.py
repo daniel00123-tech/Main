@@ -108,6 +108,21 @@ class SafetyFilterTest(unittest.TestCase):
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
 
+    def test_requires_recognizable_sales_invoice_document_type(self) -> None:
+        unsafe_types = ("Purchase Invoice", "Sales Order", "Invoice Credit", "Quote", "")
+
+        for doc_type in unsafe_types:
+            with self.subTest(doc_type=doc_type):
+                processable, reason = document_is_processable({"DocumentType": doc_type})
+                self.assertFalse(processable)
+                self.assertIn("document type", reason)
+
+        for doc_type in ("Invoice", "Sales Invoice", "SalesInvoice", "SI"):
+            with self.subTest(doc_type=doc_type):
+                processable, reason = document_is_processable({"DocumentType": doc_type})
+                self.assertTrue(processable)
+                self.assertEqual(reason, "")
+
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
     def test_rebuilds_existing_invoice_with_replacement_nominal_lines(self) -> None:
@@ -235,6 +250,30 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
 
         self.assertEqual(report.invoices_skipped, 1)
         self.assertEqual(client.generated_docs, [])
+
+    def test_scans_each_temp_reference_once(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [{"UnitPrice": "1", "Quantity": "1", "NominalCode": "2002"}],
+        }
+        client = FakeBigChangeClient(
+            rows=[
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"},
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1-duplicate"},
+            ],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc, "D1-duplicate": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire", "Description": "Call Out"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.temp_invoices_scanned, 1)
+        self.assertEqual(report.invoices_skipped, 1)
+        self.assertEqual(report.invoices_updated, 0)
 
 
 if __name__ == "__main__":

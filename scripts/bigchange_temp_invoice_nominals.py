@@ -459,10 +459,16 @@ def classify_from_keywords(text: str, groups: dict[str, tuple[str, ...]]) -> str
 
 def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
-    if doc_type:
-        norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
-            return False, f"document type is {doc_type}"
+    if not doc_type:
+        return False, "document type is missing"
+    norm_doc_type = normalized_text(doc_type)
+    compact_doc_type = compact_key(doc_type)
+    if norm_doc_type not in {"invoice", "sales invoice", "si"} and compact_doc_type not in {
+        "invoice",
+        "salesinvoice",
+        "si",
+    }:
+        return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
             return False, f"{field_name} is populated"
@@ -502,13 +508,13 @@ class TempInvoiceNominalCorrector:
     def run(self) -> RunReport:
         report = RunReport()
         rows = self.client.invoices_without_sync()
-        unique_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        unique_rows: dict[str, dict[str, Any]] = {}
         for row in rows:
             if not is_target_invoice_row(row):
                 continue
             ref = invoice_reference(row)
-            inv_id = invoice_id(row)
-            unique_rows[(ref, inv_id)] = row
+            if ref and ref not in unique_rows:
+                unique_rows[ref] = row
 
         report.temp_invoices_scanned = len(unique_rows)
         for row in unique_rows.values():
