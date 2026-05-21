@@ -461,7 +461,7 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
     if doc_type:
         norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
+        if norm_doc_type not in {"invoice", "sales invoice", "si"}:
             return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
