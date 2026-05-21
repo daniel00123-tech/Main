@@ -21,9 +21,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
-from email import encoders
 from email.headerregistry import Address
-from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -1073,11 +1071,7 @@ def mailbox_address(email_value: str, display_name: str = "") -> Address:
     return Address(display_name=display_name, username=username, domain=domain)
 
 
-def send_email(png_path: Path) -> None:
-    smtp_host = required_env("SMTP_HOST")
-    smtp_port = int(required_env("SMTP_PORT"))
-    smtp_username = required_env("SMTP_USERNAME")
-    smtp_password = required_env("SMTP_PASSWORD")
+def build_email_message(png_path: Path) -> tuple[MIMEMultipart, str, list[str]]:
     from_email = required_env("SMTP_FROM_EMAIL").strip()
     from_name = optional_env("SMTP_FROM_NAME")
     to_email = required_env("SMTP_TO_EMAIL").strip()
@@ -1116,20 +1110,25 @@ Daniel Dwyer
     image_data = png_path.read_bytes()
     image = MIMEImage(image_data, _subtype="png")
     image.add_header("Content-ID", "<kpi-dashboard>")
-    image.add_header("Content-Disposition", "inline", filename=png_path.name)
+    image.add_header("Content-Disposition", "attachment", filename=png_path.name)
+    image.add_header("Content-Location", png_path.name)
     root.attach(image)
 
-    attachment = MIMEBase("image", "png")
-    attachment.set_payload(image_data)
-    encoders.encode_base64(attachment)
-    attachment.add_header("Content-Disposition", "attachment", filename=png_path.name)
-    root.attach(attachment)
+    return root, from_email, recipients
 
-    # The only attachment is the dashboard PNG; JSON and HTML stay on disk only.
+
+def send_email(png_path: Path) -> None:
+    smtp_host = required_env("SMTP_HOST")
+    smtp_port = int(required_env("SMTP_PORT"))
+    smtp_username = required_env("SMTP_USERNAME")
+    smtp_password = required_env("SMTP_PASSWORD")
+    message, from_email, recipients = build_email_message(png_path)
+
+    # The only file part is the dashboard PNG; JSON and HTML stay on disk only.
     with smtplib.SMTP(smtp_host, smtp_port, timeout=120) as smtp:
         smtp.starttls()
         smtp.login(smtp_username, smtp_password)
-        smtp.sendmail(from_email, recipients, root.as_string())
+        smtp.sendmail(from_email, recipients, message.as_string())
 
 
 def main() -> int:

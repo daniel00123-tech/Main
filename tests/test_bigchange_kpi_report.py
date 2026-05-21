@@ -1,7 +1,17 @@
 import datetime as dt
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
-from scripts.bigchange_kpi_report import calculate_sales, match_staff_name, name_key, should_exclude_category, validate_report
+from scripts.bigchange_kpi_report import (
+    build_email_message,
+    calculate_sales,
+    match_staff_name,
+    name_key,
+    should_exclude_category,
+    validate_report,
+)
 
 
 class CategoryExclusionTest(unittest.TestCase):
@@ -72,6 +82,35 @@ class SalesAttributionTest(unittest.TestCase):
         sales = calculate_sales(client, {"Sharon Mannion"}, dt.date(2026, 5, 1), dt.date(2026, 5, 20))
 
         self.assertEqual(sales["Sharon Mannion"], 170)
+
+
+class EmailMessageTest(unittest.TestCase):
+    def test_dashboard_png_is_the_only_file_part(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            png_path = Path(temp_dir) / "dashboard.png"
+            png_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+            with patch.dict(
+                "os.environ",
+                {
+                    "SMTP_FROM_EMAIL": "sender@example.com",
+                    "SMTP_FROM_NAME": "Sender",
+                    "SMTP_TO_EMAIL": "team@example.com",
+                    "SMTP_CC_EMAIL": "manager@example.com",
+                },
+                clear=False,
+            ):
+                message, from_email, recipients = build_email_message(png_path)
+
+        image_parts = [part for part in message.walk() if part.get_content_type() == "image/png"]
+        file_parts = [part for part in message.walk() if part.get_filename()]
+
+        self.assertEqual(from_email, "sender@example.com")
+        self.assertEqual(recipients, ["team@example.com", "manager@example.com"])
+        self.assertEqual(len(image_parts), 1)
+        self.assertEqual(file_parts, image_parts)
+        self.assertEqual(image_parts[0]["Content-ID"], "<kpi-dashboard>")
+        self.assertEqual(image_parts[0].get_content_disposition(), "attachment")
 
 
 class FakeBigChangeClient:
