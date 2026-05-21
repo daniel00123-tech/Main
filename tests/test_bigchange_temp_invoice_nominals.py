@@ -5,7 +5,9 @@ from scripts.bigchange_temp_invoice_nominals import (
     TempInvoiceNominalCorrector,
     classify_nominal_code,
     document_is_processable,
+    extract_lines,
     is_target_invoice_row,
+    result_rows,
 )
 
 
@@ -107,6 +109,47 @@ class SafetyFilterTest(unittest.TestCase):
 
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
+
+    def test_rejects_purchase_invoice_document_type(self) -> None:
+        processable, reason = document_is_processable({"DocumentType": "Purchase Invoice"})
+
+        self.assertFalse(processable)
+        self.assertIn("Purchase Invoice", reason)
+
+    def test_false_cancelled_deleted_rejected_flags_are_not_populated(self) -> None:
+        processable, reason = document_is_processable(
+            {
+                "DocumentType": "Invoice",
+                "Cancelled": False,
+                "Deleted": "false",
+                "Rejected": "0",
+            }
+        )
+
+        self.assertTrue(processable)
+        self.assertEqual(reason, "")
+
+
+class BigChangePayloadParsingTest(unittest.TestCase):
+    def test_unwraps_nested_job_result(self) -> None:
+        rows = result_rows({"Code": 0, "Result": {"Job": {"JobId": "J1", "Type": "Fire"}}})
+
+        self.assertEqual(rows, [{"JobId": "J1", "Type": "Fire"}])
+
+    def test_unwraps_single_nested_financial_line(self) -> None:
+        lines = extract_lines(
+            {
+                "DocId": "D1",
+                "FinancialLines": {
+                    "FinancialLine": {
+                        "Description": "Fire alarm call out",
+                        "UnitPrice": "125.00",
+                    }
+                },
+            }
+        )
+
+        self.assertEqual(lines, [{"Description": "Fire alarm call out", "UnitPrice": "125.00"}])
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):

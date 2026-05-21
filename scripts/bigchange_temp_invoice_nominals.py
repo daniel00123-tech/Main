@@ -143,7 +143,16 @@ def is_populated(value: Any) -> bool:
     text = clean_text(value)
     if not text:
         return False
-    return text.lower() not in {"none", "null", "0", "0001-01-01", "0001-01-01 00:00:00"}
+    return text.lower() not in {
+        "none",
+        "null",
+        "0",
+        "false",
+        "no",
+        "n",
+        "0001-01-01",
+        "0001-01-01 00:00:00",
+    }
 
 
 def as_decimal(value: Any, default: str = "0") -> Decimal:
@@ -172,6 +181,13 @@ def nested_rows(value: Any) -> list[dict[str, Any]]:
         for nested in value.values():
             if isinstance(nested, list):
                 rows.extend(row for row in nested if isinstance(row, dict))
+        if rows:
+            return rows
+        if any(not isinstance(nested, (dict, list)) for nested in value.values()):
+            return [value]
+        for nested in value.values():
+            if isinstance(nested, dict):
+                rows.extend(nested_rows(nested))
         if rows:
             return rows
         return [value]
@@ -461,11 +477,16 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
     if doc_type:
         norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
+        if norm_doc_type not in {"invoice", "sales invoice", "si"}:
             return False, f"document type is {doc_type}"
-    for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
-        if is_populated(first_present(doc, (field_name,))):
-            return False, f"{field_name} is populated"
+    status_fields = (
+        ("CancellationDate", ("CancellationDate", "CancelledDate", "Cancelled")),
+        ("DeletionDate", ("DeletionDate", "DeletedDate", "Deleted")),
+        ("RejectionDate", ("RejectionDate", "RejectedDate", "Rejected")),
+    )
+    for label, field_names in status_fields:
+        if is_populated(first_present(doc, field_names)):
+            return False, f"{label} is populated"
     return True, ""
 
 
