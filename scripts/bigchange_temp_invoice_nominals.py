@@ -290,6 +290,9 @@ class BigChangeClient:
         username = required_env("BIGCHANGE_USERNAME")
         password = required_env("BIGCHANGE_PASSWORD")
         api_key = required_env("BIGCHANGE_API_KEY")
+        auth_mode = os.environ.get("BIGCHANGE_AUTH_MODE", "api_key").strip().lower()
+        if auth_mode != "api_key":
+            raise ConfigError("BIGCHANGE_AUTH_MODE must be api_key")
         token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
         self.headers = {
             "Authorization": f"Basic {token}",
@@ -461,7 +464,13 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
     if doc_type:
         norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
+        tokens = set(norm_doc_type.split())
+        compact_doc_type = compact_key(norm_doc_type)
+        if tokens & {"credit", "purchase", "order"} or any(
+            forbidden in compact_doc_type for forbidden in ("credit", "purchase", "order")
+        ):
+            return False, f"document type is {doc_type}"
+        if compact_doc_type not in {"invoice", "salesinvoice", "si"} and "invoice" not in tokens:
             return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
@@ -502,13 +511,12 @@ class TempInvoiceNominalCorrector:
     def run(self) -> RunReport:
         report = RunReport()
         rows = self.client.invoices_without_sync()
-        unique_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        unique_rows: dict[str, dict[str, Any]] = {}
         for row in rows:
             if not is_target_invoice_row(row):
                 continue
             ref = invoice_reference(row)
-            inv_id = invoice_id(row)
-            unique_rows[(ref, inv_id)] = row
+            unique_rows[ref.upper()] = row
 
         report.temp_invoices_scanned = len(unique_rows)
         for row in unique_rows.values():
@@ -580,20 +588,38 @@ class TempInvoiceNominalCorrector:
     def identify_job(self, doc: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
         job_id = clean_text(first_present(doc, ("JobId", "JobID", "LinkedJobId")))
         job_ref = clean_text(first_present(doc, ("JobReference", "JobRef", "JobNumber")))
+        job, job_id = self.resolve_job(job_id=job_id, job_ref=job_ref)
+        if job is None or not job_id:
+            group_job = self.first_group_job(doc)
+            group_job_id = clean_text(first_present(group_job or {}, ("JobId", "JobID", "Id", "ID")))
+            group_job_ref = clean_text(first_present(group_job or {}, ("JobReference", "JobRef", "JobNumber")))
+            resolved_group_job, resolved_group_job_id = self.resolve_job(
+                job_id=group_job_id,
+                job_ref=group_job_ref,
+            )
+            job = resolved_group_job or group_job
+            job_id = resolved_group_job_id or group_job_id or job_id
+        return job, job_id or None
+
+    def resolve_job(
+        self,
+        *,
+        job_id: str | None = None,
+        job_ref: str | None = None,
+    ) -> tuple[dict[str, Any] | None, str | None]:
         job = self.client.job(job_id=job_id) if job_id else None
         if job is None and job_ref:
             job = self.client.job(job_ref=job_ref)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
-        if job is None:
-            job = self.first_group_job(doc)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
-        return job, job_id or None
+        resolved_job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or clean_text(job_id)
+        return job, resolved_job_id or None
 
     def first_group_job(self, doc: dict[str, Any]) -> dict[str, Any] | None:
         embedded = self.first_embedded_group_job(doc)
         if embedded:
             return embedded
         group_id = clean_text(first_present(doc, ("GroupId", "JobGroupId", "GroupReference", "GroupRef")))
+        if not group_id:
+            group_id = clean_text(find_identifier(doc, ("GroupId", "JobGroupId", "GroupReference", "GroupRef")))
         if not group_id:
             return None
         jobs = self.client.group_jobs(group_id)
