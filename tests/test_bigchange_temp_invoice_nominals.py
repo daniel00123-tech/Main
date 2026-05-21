@@ -108,6 +108,12 @@ class SafetyFilterTest(unittest.TestCase):
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
 
+    def test_rejects_other_invoice_like_document_types(self) -> None:
+        processable, reason = document_is_processable({"DocumentType": "Purchase Invoice"})
+
+        self.assertFalse(processable)
+        self.assertIn("Purchase Invoice", reason)
+
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
     def test_rebuilds_existing_invoice_with_replacement_nominal_lines(self) -> None:
