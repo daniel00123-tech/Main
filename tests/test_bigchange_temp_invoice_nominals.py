@@ -16,12 +16,18 @@ class FakeBigChangeClient:
         docs_by_ref: dict[str, dict[str, Any] | None],
         docs_by_id: dict[str, dict[str, Any]],
         jobs_by_id: dict[str, dict[str, Any]],
+        jobs_by_ref: dict[str, dict[str, Any]] | None = None,
+        verified_tax_code: str | None = None,
+        verified_tax_rate: str | None = None,
     ) -> None:
         self.rows = rows
         self.docs_by_ref = docs_by_ref
         self.docs_by_id = docs_by_id
         self.verified_docs_by_id: dict[str, dict[str, Any]] = {}
         self.jobs_by_id = jobs_by_id
+        self.jobs_by_ref = jobs_by_ref or {}
+        self.verified_tax_code = verified_tax_code
+        self.verified_tax_rate = verified_tax_rate
         self.created_items: list[dict[str, Any]] = []
         self.added_lines: list[dict[str, Any]] = []
         self.generated_docs: list[dict[str, Any]] = []
@@ -39,6 +45,8 @@ class FakeBigChangeClient:
     def job(self, *, job_id: str | None = None, job_ref: str | None = None) -> dict[str, Any] | None:
         if job_id is not None:
             return self.jobs_by_id.get(job_id)
+        if job_ref is not None:
+            return self.jobs_by_ref.get(job_ref)
         return None
 
     def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
@@ -56,13 +64,18 @@ class FakeBigChangeClient:
         self.generated_docs.append(params)
         doc_id = str(params["DocId"])
         original = self.docs_by_id[doc_id]
+        verified_lines = []
+        for index, line in enumerate(original["FinancialLines"]):
+            verified_line = {**line, "NominalCode": self.added_lines[index]["NominalCode"]}
+            if self.verified_tax_code is not None:
+                verified_line["TaxCode"] = self.verified_tax_code
+            if self.verified_tax_rate is not None:
+                verified_line["TaxRate"] = self.verified_tax_rate
+            verified_lines.append(verified_line)
         self.verified_docs_by_id[doc_id] = {
             **original,
             "Reference": "INV-200",
-            "FinancialLines": [
-                {**line, "NominalCode": self.added_lines[index]["NominalCode"]}
-                for index, line in enumerate(original["FinancialLines"])
-            ],
+            "FinancialLines": verified_lines,
         }
         return {"Code": 0, "Result": {"DocId": doc_id}}
 
@@ -107,6 +120,12 @@ class SafetyFilterTest(unittest.TestCase):
 
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
+
+    def test_rejects_missing_or_unsafe_invoice_like_document_types(self) -> None:
+        for doc_type in ("Purchase Invoice", "Order Invoice", "Quote Invoice", ""):
+            with self.subTest(doc_type=doc_type):
+                processable, _reason = document_is_processable({"DocumentType": doc_type})
+                self.assertFalse(processable)
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
@@ -182,6 +201,83 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
                 }
             ],
         )
+
+    def test_deduplicates_temp_invoice_rows_by_reference(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [{"UnitPrice": "1", "Quantity": "1", "TaxRate": "20", "NominalCode": "9999"}],
+        }
+        client = FakeBigChangeClient(
+            rows=[
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": ""},
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"},
+            ],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire", "Description": "Call Out"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.temp_invoices_scanned, 1)
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(len(client.generated_docs), 1)
+
+    def test_resolves_embedded_group_job_reference_before_update(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "Group": {"Jobs": [{"JobRef": "JOB-REF-1"}]},
+            "FinancialLines": [{"UnitPrice": "1", "Quantity": "1", "TaxRate": "20", "NominalCode": "9999"}],
+        }
+        client = FakeBigChangeClient(
+            rows=[{"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"}],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={},
+            jobs_by_ref={"JOB-REF-1": {"JobId": "J7", "Type": "Fire", "Description": "PPM service"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(client.added_lines[0]["JobId"], "J7")
+        self.assertEqual(client.added_lines[0]["NominalCode"], "2102")
+        self.assertEqual(client.generated_docs[0]["JobId"], "J7")
+
+    def test_accepts_tax_code_normalization_when_tax_rate_is_unchanged(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [
+                {
+                    "Description": "Fire alarm call out",
+                    "UnitPrice": "125.00",
+                    "Quantity": "2",
+                    "TaxCode": "T1",
+                    "TaxRate": "20",
+                    "NominalCode": "9999",
+                }
+            ],
+        }
+        client = FakeBigChangeClient(
+            rows=[{"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"}],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire Alarm", "Description": "Call Out fault"}},
+            verified_tax_code="20.0",
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(report.failures, [])
 
     def test_skips_invoice_when_all_lines_already_have_expected_nominal(self) -> None:
         doc = {
