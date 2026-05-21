@@ -1,0 +1,428 @@
+{"job_id": 185931914, "job_ref": "DL259613", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185933261, "job_ref": "DL259874", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185934449, "job_ref": "DL260135", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185935410, "job_ref": "DL260397", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185937891, "job_ref": "DL260660", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185938494, "job_ref": "DL260921", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185939173, "job_ref": "DL261182", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185939853, "job_ref": "DL261443", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 185955253, "job_ref": "261867", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186120924, "job_ref": "DL262452", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186161294, "job_ref": "PPM262833", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186175405, "job_ref": "DL263627", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186176582, "job_ref": "DL263895", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186208181, "job_ref": "JOB264154", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186316802, "job_ref": "PPM264480", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186317068, "job_ref": "PPM264740", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186441591, "job_ref": "DLFF265125", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186614353, "job_ref": "JOB265015~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186624987, "job_ref": "JOB265875", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186763853, "job_ref": "DL266160", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186906855, "job_ref": "JOB266584", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 186941931, "job_ref": "DLFF252219~2", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187167479, "job_ref": "JOB267157", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187196269, "job_ref": "JOB267239", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187244711, "job_ref": "INT267455", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187279921, "job_ref": "DLFF266618~2", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187529371, "job_ref": "JOB267879", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187562098, "job_ref": "INT267920", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187562232, "job_ref": "INT267923", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187566453, "job_ref": "JOB267930", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187634911, "job_ref": "LS268006", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187655965, "job_ref": "GRANQ268171", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187850422, "job_ref": "DLFF268495", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187879747, "job_ref": "DLFF268604", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187879775, "job_ref": "JOB268605", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187879828, "job_ref": "JOB268606", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187879864, "job_ref": "JOB268607", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187961617, "job_ref": "JOB268719", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187962830, "job_ref": "JOB268720", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187988485, "job_ref": "JOB268766", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187994012, "job_ref": "JOB268779", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187995420, "job_ref": "JOB268780", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188029961, "job_ref": "DLFF268803", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188031067, "job_ref": "DLFF268808", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188032913, "job_ref": "INT268815", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188071136, "job_ref": "JOB268900", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188124796, "job_ref": "INT269011", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188189063, "job_ref": "DL269688", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188256431, "job_ref": "INT270073", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188341745, "job_ref": "DLFF270162", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188343651, "job_ref": "DLFF270166", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188438505, "job_ref": "JOB270303", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188441917, "job_ref": "JOB270236~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188468651, "job_ref": "JOB270336", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188481055, "job_ref": "JOB270132~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188489547, "job_ref": "DLFF270352", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188492586, "job_ref": "JOB270355", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188493650, "job_ref": "JOB270360", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188494455, "job_ref": "JOB270363", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188533985, "job_ref": "JOB270479", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188534283, "job_ref": "DLFF270486", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188543947, "job_ref": "DLFF270496", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188544567, "job_ref": "DLFF270500", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188545625, "job_ref": "JOB270502", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188546711, "job_ref": "DLFF270505", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188555351, "job_ref": "JOB270512", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188561001, "job_ref": "JOB270520", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188599087, "job_ref": "JOB270561", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188600564, "job_ref": "JOB270562", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188601355, "job_ref": "JOB270237~2", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188605936, "job_ref": "DLFF266614~2", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188614551, "job_ref": "DL270595", "response": {"Code": 0, "Result": {"jobid": "188614551 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188637257, "job_ref": "COVER270614", "response": {"Code": 0, "Result": {"jobid": "188637257 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188638185, "job_ref": "DLM270615", "response": {"Code": 0, "Result": {"jobid": "188638185 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188638185, "job_ref": "DLM270615", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188643493, "job_ref": "PPM270619", "response": {"Code": 0, "Result": {"jobid": "188643493 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643495, "job_ref": "PPM270620", "response": {"Code": 0, "Result": {"jobid": "188643495 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643496, "job_ref": "PPM270621", "response": {"Code": 0, "Result": {"jobid": "188643496 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643497, "job_ref": "PPM270622", "response": {"Code": 0, "Result": {"jobid": "188643497 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643498, "job_ref": "PPM270623", "response": {"Code": 0, "Result": {"jobid": "188643498 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643499, "job_ref": "PPM270624", "response": {"Code": 0, "Result": {"jobid": "188643499 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643501, "job_ref": "PPM270625", "response": {"Code": 0, "Result": {"jobid": "188643501 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643502, "job_ref": "PPM270626", "response": {"Code": 0, "Result": {"jobid": "188643502 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643503, "job_ref": "PPM270627", "response": {"Code": 0, "Result": {"jobid": "188643503 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643504, "job_ref": "PPM270628", "response": {"Code": 0, "Result": {"jobid": "188643504 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643505, "job_ref": "PPM270629", "response": {"Code": 0, "Result": {"jobid": "188643505 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643508, "job_ref": "PPM270630", "response": {"Code": 0, "Result": {"jobid": "188643508 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643509, "job_ref": "PPM270631", "response": {"Code": 0, "Result": {"jobid": "188643509 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643510, "job_ref": "PPM270632", "response": {"Code": 0, "Result": {"jobid": "188643510 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643511, "job_ref": "PPM270633", "response": {"Code": 0, "Result": {"jobid": "188643511 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643513, "job_ref": "PPM270635", "response": {"Code": 0, "Result": {"jobid": "188643513 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643514, "job_ref": "PPM270636", "response": {"Code": 0, "Result": {"jobid": "188643514 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643516, "job_ref": "PPM270637", "response": {"Code": 0, "Result": {"jobid": "188643516 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643517, "job_ref": "PPM270638", "response": {"Code": 0, "Result": {"jobid": "188643517 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643518, "job_ref": "PPM270639", "response": {"Code": 0, "Result": {"jobid": "188643518 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643519, "job_ref": "PPM270640", "response": {"Code": 0, "Result": {"jobid": "188643519 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643520, "job_ref": "PPM270641", "response": {"Code": 0, "Result": {"jobid": "188643520 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643521, "job_ref": "PPM270642", "response": {"Code": 0, "Result": {"jobid": "188643521 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643523, "job_ref": "PPM270643", "response": {"Code": 0, "Result": {"jobid": "188643523 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643524, "job_ref": "PPM270644", "response": {"Code": 0, "Result": {"jobid": "188643524 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643525, "job_ref": "PPM270645", "response": {"Code": 0, "Result": {"jobid": "188643525 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643526, "job_ref": "PPM270646", "response": {"Code": 0, "Result": {"jobid": "188643526 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643527, "job_ref": "PPM270647", "response": {"Code": 0, "Result": {"jobid": "188643527 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643528, "job_ref": "PPM270648", "response": {"Code": 0, "Result": {"jobid": "188643528 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643529, "job_ref": "PPM270649", "response": {"Code": 0, "Result": {"jobid": "188643529 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643530, "job_ref": "PPM270650", "response": {"Code": 0, "Result": {"jobid": "188643530 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643531, "job_ref": "PPM270651", "response": {"Code": 0, "Result": {"jobid": "188643531 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643532, "job_ref": "PPM270652", "response": {"Code": 0, "Result": {"jobid": "188643532 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643533, "job_ref": "PPM270653", "response": {"Code": 0, "Result": {"jobid": "188643533 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643534, "job_ref": "PPM270654", "response": {"Code": 0, "Result": {"jobid": "188643534 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643535, "job_ref": "PPM270655", "response": {"Code": 0, "Result": {"jobid": "188643535 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643536, "job_ref": "PPM270656", "response": {"Code": 0, "Result": {"jobid": "188643536 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643537, "job_ref": "PPM270657", "response": {"Code": 0, "Result": {"jobid": "188643537 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643538, "job_ref": "PPM270658", "response": {"Code": 0, "Result": {"jobid": "188643538 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643539, "job_ref": "PPM270659", "response": {"Code": 0, "Result": {"jobid": "188643539 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643540, "job_ref": "PPM270660", "response": {"Code": 0, "Result": {"jobid": "188643540 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643541, "job_ref": "PPM270661", "response": {"Code": 0, "Result": {"jobid": "188643541 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643542, "job_ref": "PPM270662", "response": {"Code": 0, "Result": {"jobid": "188643542 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643543, "job_ref": "PPM270663", "response": {"Code": 0, "Result": {"jobid": "188643543 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643544, "job_ref": "PPM270664", "response": {"Code": 0, "Result": {"jobid": "188643544 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643545, "job_ref": "PPM270665", "response": {"Code": 0, "Result": {"jobid": "188643545 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643546, "job_ref": "PPM270666", "response": {"Code": 0, "Result": {"jobid": "188643546 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643547, "job_ref": "PPM270667", "response": {"Code": 0, "Result": {"jobid": "188643547 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643548, "job_ref": "PPM270668", "response": {"Code": 0, "Result": {"jobid": "188643548 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643549, "job_ref": "PPM270669", "response": {"Code": 0, "Result": {"jobid": "188643549 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643550, "job_ref": "PPM270670", "response": {"Code": 0, "Result": {"jobid": "188643550 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643551, "job_ref": "PPM270671", "response": {"Code": 0, "Result": {"jobid": "188643551 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643552, "job_ref": "PPM270672", "response": {"Code": 0, "Result": {"jobid": "188643552 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643553, "job_ref": "PPM270673", "response": {"Code": 0, "Result": {"jobid": "188643553 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643554, "job_ref": "PPM270674", "response": {"Code": 0, "Result": {"jobid": "188643554 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643555, "job_ref": "PPM270675", "response": {"Code": 0, "Result": {"jobid": "188643555 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643557, "job_ref": "PPM270676", "response": {"Code": 0, "Result": {"jobid": "188643557 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643559, "job_ref": "PPM270677", "response": {"Code": 0, "Result": {"jobid": "188643559 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643560, "job_ref": "PPM270678", "response": {"Code": 0, "Result": {"jobid": "188643560 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643561, "job_ref": "PPM270679", "response": {"Code": 0, "Result": {"jobid": "188643561 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643563, "job_ref": "PPM270680", "response": {"Code": 0, "Result": {"jobid": "188643563 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643564, "job_ref": "PPM270681", "response": {"Code": 0, "Result": {"jobid": "188643564 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643565, "job_ref": "PPM270682", "response": {"Code": 0, "Result": {"jobid": "188643565 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643566, "job_ref": "PPM270683", "response": {"Code": 0, "Result": {"jobid": "188643566 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643567, "job_ref": "PPM270684", "response": {"Code": 0, "Result": {"jobid": "188643567 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643569, "job_ref": "PPM270685", "response": {"Code": 0, "Result": {"jobid": "188643569 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643571, "job_ref": "PPM270686", "response": {"Code": 0, "Result": {"jobid": "188643571 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643572, "job_ref": "PPM270687", "response": {"Code": 0, "Result": {"jobid": "188643572 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643573, "job_ref": "PPM270688", "response": {"Code": 0, "Result": {"jobid": "188643573 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643574, "job_ref": "PPM270689", "response": {"Code": 0, "Result": {"jobid": "188643574 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643575, "job_ref": "PPM270690", "response": {"Code": 0, "Result": {"jobid": "188643575 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643576, "job_ref": "PPM270691", "response": {"Code": 0, "Result": {"jobid": "188643576 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643577, "job_ref": "PPM270692", "response": {"Code": 0, "Result": {"jobid": "188643577 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643578, "job_ref": "PPM270693", "response": {"Code": 0, "Result": {"jobid": "188643578 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643579, "job_ref": "PPM270694", "response": {"Code": 0, "Result": {"jobid": "188643579 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643581, "job_ref": "PPM270695", "response": {"Code": 0, "Result": {"jobid": "188643581 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643583, "job_ref": "PPM270696", "response": {"Code": 0, "Result": {"jobid": "188643583 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643586, "job_ref": "PPM270697", "response": {"Code": 0, "Result": {"jobid": "188643586 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643589, "job_ref": "PPM270698", "response": {"Code": 0, "Result": {"jobid": "188643589 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643593, "job_ref": "PPM270700", "response": {"Code": 0, "Result": {"jobid": "188643593 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643595, "job_ref": "PPM270701", "response": {"Code": 0, "Result": {"jobid": "188643595 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643597, "job_ref": "PPM270702", "response": {"Code": 0, "Result": {"jobid": "188643597 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643598, "job_ref": "PPM270703", "response": {"Code": 0, "Result": {"jobid": "188643598 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643600, "job_ref": "PPM270704", "response": {"Code": 0, "Result": {"jobid": "188643600 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643603, "job_ref": "PPM270705", "response": {"Code": 0, "Result": {"jobid": "188643603 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643607, "job_ref": "PPM270706", "response": {"Code": 0, "Result": {"jobid": "188643607 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643610, "job_ref": "PPM270707", "response": {"Code": 0, "Result": {"jobid": "188643610 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643612, "job_ref": "PPM270708", "response": {"Code": 0, "Result": {"jobid": "188643612 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643615, "job_ref": "PPM270709", "response": {"Code": 0, "Result": {"jobid": "188643615 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643617, "job_ref": "PPM270710", "response": {"Code": 0, "Result": {"jobid": "188643617 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643618, "job_ref": "PPM270711", "response": {"Code": 0, "Result": {"jobid": "188643618 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643620, "job_ref": "PPM270712", "response": {"Code": 0, "Result": {"jobid": "188643620 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643621, "job_ref": "PPM270713", "response": {"Code": 0, "Result": {"jobid": "188643621 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643623, "job_ref": "PPM270714", "response": {"Code": 0, "Result": {"jobid": "188643623 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643626, "job_ref": "PPM270715", "response": {"Code": 0, "Result": {"jobid": "188643626 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643628, "job_ref": "PPM270716", "response": {"Code": 0, "Result": {"jobid": "188643628 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643629, "job_ref": "PPM270717", "response": {"Code": 0, "Result": {"jobid": "188643629 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643631, "job_ref": "PPM270718", "response": {"Code": 0, "Result": {"jobid": "188643631 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643632, "job_ref": "PPM270719", "response": {"Code": 0, "Result": {"jobid": "188643632 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643634, "job_ref": "PPM270720", "response": {"Code": 0, "Result": {"jobid": "188643634 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643636, "job_ref": "PPM270721", "response": {"Code": 0, "Result": {"jobid": "188643636 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643637, "job_ref": "PPM270722", "response": {"Code": 0, "Result": {"jobid": "188643637 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643639, "job_ref": "PPM270723", "response": {"Code": 0, "Result": {"jobid": "188643639 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643641, "job_ref": "PPM270724", "response": {"Code": 0, "Result": {"jobid": "188643641 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643642, "job_ref": "PPM270725", "response": {"Code": 0, "Result": {"jobid": "188643642 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643644, "job_ref": "PPM270726", "response": {"Code": 0, "Result": {"jobid": "188643644 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643646, "job_ref": "PPM270727", "response": {"Code": 0, "Result": {"jobid": "188643646 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643648, "job_ref": "PPM270728", "response": {"Code": 0, "Result": {"jobid": "188643648 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643650, "job_ref": "PPM270729", "response": {"Code": 0, "Result": {"jobid": "188643650 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643652, "job_ref": "PPM270730", "response": {"Code": 0, "Result": {"jobid": "188643652 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643654, "job_ref": "PPM270731", "response": {"Code": 0, "Result": {"jobid": "188643654 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643656, "job_ref": "PPM270732", "response": {"Code": 0, "Result": {"jobid": "188643656 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643660, "job_ref": "PPM270733", "response": {"Code": 0, "Result": {"jobid": "188643660 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643662, "job_ref": "PPM270734", "response": {"Code": 0, "Result": {"jobid": "188643662 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643663, "job_ref": "PPM270735", "response": {"Code": 0, "Result": {"jobid": "188643663 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643665, "job_ref": "PPM270736", "response": {"Code": 0, "Result": {"jobid": "188643665 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643667, "job_ref": "PPM270737", "response": {"Code": 0, "Result": {"jobid": "188643667 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643668, "job_ref": "PPM270738", "response": {"Code": 0, "Result": {"jobid": "188643668 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643670, "job_ref": "PPM270739", "response": {"Code": 0, "Result": {"jobid": "188643670 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643671, "job_ref": "PPM270740", "response": {"Code": 0, "Result": {"jobid": "188643671 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643673, "job_ref": "PPM270741", "response": {"Code": 0, "Result": {"jobid": "188643673 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643675, "job_ref": "PPM270742", "response": {"Code": 0, "Result": {"jobid": "188643675 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643677, "job_ref": "PPM270743", "response": {"Code": 0, "Result": {"jobid": "188643677 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643679, "job_ref": "PPM270744", "response": {"Code": 0, "Result": {"jobid": "188643679 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643680, "job_ref": "PPM270745", "response": {"Code": 0, "Result": {"jobid": "188643680 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643681, "job_ref": "PPM270746", "response": {"Code": 0, "Result": {"jobid": "188643681 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643683, "job_ref": "PPM270747", "response": {"Code": 0, "Result": {"jobid": "188643683 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643685, "job_ref": "PPM270748", "response": {"Code": 0, "Result": {"jobid": "188643685 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643687, "job_ref": "PPM270749", "response": {"Code": 0, "Result": {"jobid": "188643687 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643689, "job_ref": "PPM270750", "response": {"Code": 0, "Result": {"jobid": "188643689 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643690, "job_ref": "PPM270751", "response": {"Code": 0, "Result": {"jobid": "188643690 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643691, "job_ref": "PPM270752", "response": {"Code": 0, "Result": {"jobid": "188643691 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643692, "job_ref": "PPM270753", "response": {"Code": 0, "Result": {"jobid": "188643692 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643693, "job_ref": "PPM270754", "response": {"Code": 0, "Result": {"jobid": "188643693 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643694, "job_ref": "PPM270755", "response": {"Code": 0, "Result": {"jobid": "188643694 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643696, "job_ref": "PPM270756", "response": {"Code": 0, "Result": {"jobid": "188643696 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643698, "job_ref": "PPM270757", "response": {"Code": 0, "Result": {"jobid": "188643698 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643699, "job_ref": "PPM270758", "response": {"Code": 0, "Result": {"jobid": "188643699 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643700, "job_ref": "PPM270759", "response": {"Code": 0, "Result": {"jobid": "188643700 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643701, "job_ref": "PPM270760", "response": {"Code": 0, "Result": {"jobid": "188643701 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643703, "job_ref": "PPM270761", "response": {"Code": 0, "Result": {"jobid": "188643703 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643704, "job_ref": "PPM270762", "response": {"Code": 0, "Result": {"jobid": "188643704 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643705, "job_ref": "PPM270763", "response": {"Code": 0, "Result": {"jobid": "188643705 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643707, "job_ref": "PPM270764", "response": {"Code": 0, "Result": {"jobid": "188643707 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643708, "job_ref": "PPM270765", "response": {"Code": 0, "Result": {"jobid": "188643708 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643711, "job_ref": "PPM270767", "response": {"Code": 0, "Result": {"jobid": "188643711 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643713, "job_ref": "PPM270768", "response": {"Code": 0, "Result": {"jobid": "188643713 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643716, "job_ref": "PPM270770", "response": {"Code": 0, "Result": {"jobid": "188643716 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643721, "job_ref": "PPM270773", "response": {"Code": 0, "Result": {"jobid": "188643721 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643727, "job_ref": "PPM270779", "response": {"Code": 0, "Result": {"jobid": "188643727 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643728, "job_ref": "PPM270780", "response": {"Code": 0, "Result": {"jobid": "188643728 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643729, "job_ref": "PPM270781", "response": {"Code": 0, "Result": {"jobid": "188643729 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643731, "job_ref": "PPM270782", "response": {"Code": 0, "Result": {"jobid": "188643731 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643732, "job_ref": "PPM270783", "response": {"Code": 0, "Result": {"jobid": "188643732 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643735, "job_ref": "PPM270784", "response": {"Code": 0, "Result": {"jobid": "188643735 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643737, "job_ref": "PPM270785", "response": {"Code": 0, "Result": {"jobid": "188643737 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643738, "job_ref": "PPM270786", "response": {"Code": 0, "Result": {"jobid": "188643738 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643740, "job_ref": "PPM270787", "response": {"Code": 0, "Result": {"jobid": "188643740 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643741, "job_ref": "PPM270788", "response": {"Code": 0, "Result": {"jobid": "188643741 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643744, "job_ref": "PPM270789", "response": {"Code": 0, "Result": {"jobid": "188643744 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643745, "job_ref": "PPM270790", "response": {"Code": 0, "Result": {"jobid": "188643745 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643746, "job_ref": "PPM270791", "response": {"Code": 0, "Result": {"jobid": "188643746 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643748, "job_ref": "PPM270792", "response": {"Code": 0, "Result": {"jobid": "188643748 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643750, "job_ref": "PPM270793", "response": {"Code": 0, "Result": {"jobid": "188643750 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643751, "job_ref": "PPM270794", "response": {"Code": 0, "Result": {"jobid": "188643751 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643752, "job_ref": "PPM270795", "response": {"Code": 0, "Result": {"jobid": "188643752 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643758, "job_ref": "PPM270796", "response": {"Code": 0, "Result": {"jobid": "188643758 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643759, "job_ref": "PPM270797", "response": {"Code": 0, "Result": {"jobid": "188643759 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643760, "job_ref": "PPM270798", "response": {"Code": 0, "Result": {"jobid": "188643760 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643761, "job_ref": "PPM270799", "response": {"Code": 0, "Result": {"jobid": "188643761 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643762, "job_ref": "PPM270800", "response": {"Code": 0, "Result": {"jobid": "188643762 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643763, "job_ref": "PPM270801", "response": {"Code": 0, "Result": {"jobid": "188643763 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643764, "job_ref": "PPM270802", "response": {"Code": 0, "Result": {"jobid": "188643764 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643765, "job_ref": "PPM270803", "response": {"Code": 0, "Result": {"jobid": "188643765 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643766, "job_ref": "PPM270804", "response": {"Code": 0, "Result": {"jobid": "188643766 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643768, "job_ref": "PPM270805", "response": {"Code": 0, "Result": {"jobid": "188643768 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643770, "job_ref": "PPM270806", "response": {"Code": 0, "Result": {"jobid": "188643770 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643772, "job_ref": "PPM270807", "response": {"Code": 0, "Result": {"jobid": "188643772 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643773, "job_ref": "PPM270808", "response": {"Code": 0, "Result": {"jobid": "188643773 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643775, "job_ref": "PPM270809", "response": {"Code": 0, "Result": {"jobid": "188643775 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643776, "job_ref": "PPM270810", "response": {"Code": 0, "Result": {"jobid": "188643776 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643777, "job_ref": "PPM270811", "response": {"Code": 0, "Result": {"jobid": "188643777 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643778, "job_ref": "PPM270812", "response": {"Code": 0, "Result": {"jobid": "188643778 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643779, "job_ref": "PPM270813", "response": {"Code": 0, "Result": {"jobid": "188643779 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643780, "job_ref": "PPM270814", "response": {"Code": 0, "Result": {"jobid": "188643780 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643781, "job_ref": "PPM270815", "response": {"Code": 0, "Result": {"jobid": "188643781 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643782, "job_ref": "PPM270816", "response": {"Code": 0, "Result": {"jobid": "188643782 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643783, "job_ref": "PPM270817", "response": {"Code": 0, "Result": {"jobid": "188643783 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643784, "job_ref": "PPM270818", "response": {"Code": 0, "Result": {"jobid": "188643784 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643785, "job_ref": "PPM270819", "response": {"Code": 0, "Result": {"jobid": "188643785 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643786, "job_ref": "PPM270820", "response": {"Code": 0, "Result": {"jobid": "188643786 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643787, "job_ref": "PPM270821", "response": {"Code": 0, "Result": {"jobid": "188643787 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643788, "job_ref": "PPM270822", "response": {"Code": 0, "Result": {"jobid": "188643788 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643789, "job_ref": "PPM270823", "response": {"Code": 0, "Result": {"jobid": "188643789 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643791, "job_ref": "PPM270824", "response": {"Code": 0, "Result": {"jobid": "188643791 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643792, "job_ref": "PPM270825", "response": {"Code": 0, "Result": {"jobid": "188643792 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643793, "job_ref": "PPM270826", "response": {"Code": 0, "Result": {"jobid": "188643793 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643795, "job_ref": "PPM270827", "response": {"Code": 0, "Result": {"jobid": "188643795 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643796, "job_ref": "PPM270828", "response": {"Code": 0, "Result": {"jobid": "188643796 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643797, "job_ref": "PPM270829", "response": {"Code": 0, "Result": {"jobid": "188643797 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643798, "job_ref": "PPM270830", "response": {"Code": 0, "Result": {"jobid": "188643798 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643799, "job_ref": "PPM270831", "response": {"Code": 0, "Result": {"jobid": "188643799 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643800, "job_ref": "PPM270832", "response": {"Code": 0, "Result": {"jobid": "188643800 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643801, "job_ref": "PPM270833", "response": {"Code": 0, "Result": {"jobid": "188643801 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643803, "job_ref": "PPM270834", "response": {"Code": 0, "Result": {"jobid": "188643803 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643804, "job_ref": "PPM270835", "response": {"Code": 0, "Result": {"jobid": "188643804 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643807, "job_ref": "PPM270836", "response": {"Code": 0, "Result": {"jobid": "188643807 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643809, "job_ref": "PPM270837", "response": {"Code": 0, "Result": {"jobid": "188643809 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643810, "job_ref": "PPM270838", "response": {"Code": 0, "Result": {"jobid": "188643810 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643812, "job_ref": "PPM270839", "response": {"Code": 0, "Result": {"jobid": "188643812 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643814, "job_ref": "PPM270840", "response": {"Code": 0, "Result": {"jobid": "188643814 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643817, "job_ref": "PPM270841", "response": {"Code": 0, "Result": {"jobid": "188643817 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643819, "job_ref": "PPM270842", "response": {"Code": 0, "Result": {"jobid": "188643819 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643820, "job_ref": "PPM270843", "response": {"Code": 0, "Result": {"jobid": "188643820 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643821, "job_ref": "PPM270844", "response": {"Code": 0, "Result": {"jobid": "188643821 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643822, "job_ref": "PPM270845", "response": {"Code": 0, "Result": {"jobid": "188643822 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643823, "job_ref": "PPM270846", "response": {"Code": 0, "Result": {"jobid": "188643823 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643824, "job_ref": "PPM270847", "response": {"Code": 0, "Result": {"jobid": "188643824 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643825, "job_ref": "PPM270848", "response": {"Code": 0, "Result": {"jobid": "188643825 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643826, "job_ref": "PPM270849", "response": {"Code": 0, "Result": {"jobid": "188643826 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643827, "job_ref": "PPM270850", "response": {"Code": 0, "Result": {"jobid": "188643827 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643828, "job_ref": "PPM270851", "response": {"Code": 0, "Result": {"jobid": "188643828 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643829, "job_ref": "PPM270852", "response": {"Code": 0, "Result": {"jobid": "188643829 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643832, "job_ref": "PPM270853", "response": {"Code": 0, "Result": {"jobid": "188643832 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643833, "job_ref": "PPM270854", "response": {"Code": 0, "Result": {"jobid": "188643833 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643834, "job_ref": "PPM270855", "response": {"Code": 0, "Result": {"jobid": "188643834 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643835, "job_ref": "PPM270856", "response": {"Code": 0, "Result": {"jobid": "188643835 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643836, "job_ref": "PPM270857", "response": {"Code": 0, "Result": {"jobid": "188643836 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643837, "job_ref": "PPM270858", "response": {"Code": 0, "Result": {"jobid": "188643837 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643838, "job_ref": "PPM270859", "response": {"Code": 0, "Result": {"jobid": "188643838 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643840, "job_ref": "PPM270860", "response": {"Code": 0, "Result": {"jobid": "188643840 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643841, "job_ref": "PPM270861", "response": {"Code": 0, "Result": {"jobid": "188643841 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643842, "job_ref": "PPM270862", "response": {"Code": 0, "Result": {"jobid": "188643842 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643843, "job_ref": "PPM270863", "response": {"Code": 0, "Result": {"jobid": "188643843 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643845, "job_ref": "PPM270864", "response": {"Code": 0, "Result": {"jobid": "188643845 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643846, "job_ref": "PPM270865", "response": {"Code": 0, "Result": {"jobid": "188643846 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643848, "job_ref": "PPM270866", "response": {"Code": 0, "Result": {"jobid": "188643848 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643849, "job_ref": "PPM270867", "response": {"Code": 0, "Result": {"jobid": "188643849 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643850, "job_ref": "PPM270868", "response": {"Code": 0, "Result": {"jobid": "188643850 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643851, "job_ref": "PPM270869", "response": {"Code": 0, "Result": {"jobid": "188643851 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643852, "job_ref": "PPM270870", "response": {"Code": 0, "Result": {"jobid": "188643852 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643853, "job_ref": "PPM270871", "response": {"Code": 0, "Result": {"jobid": "188643853 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643855, "job_ref": "PPM270872", "response": {"Code": 0, "Result": {"jobid": "188643855 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643858, "job_ref": "PPM270873", "response": {"Code": 0, "Result": {"jobid": "188643858 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643859, "job_ref": "PPM270874", "response": {"Code": 0, "Result": {"jobid": "188643859 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643860, "job_ref": "PPM270875", "response": {"Code": 0, "Result": {"jobid": "188643860 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643861, "job_ref": "PPM270876", "response": {"Code": 0, "Result": {"jobid": "188643861 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643862, "job_ref": "PPM270877", "response": {"Code": 0, "Result": {"jobid": "188643862 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643863, "job_ref": "PPM270878", "response": {"Code": 0, "Result": {"jobid": "188643863 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643864, "job_ref": "PPM270879", "response": {"Code": 0, "Result": {"jobid": "188643864 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643865, "job_ref": "PPM270880", "response": {"Code": 0, "Result": {"jobid": "188643865 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643866, "job_ref": "PPM270881", "response": {"Code": 0, "Result": {"jobid": "188643866 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643869, "job_ref": "PPM270882", "response": {"Code": 0, "Result": {"jobid": "188643869 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643872, "job_ref": "PPM270883", "response": {"Code": 0, "Result": {"jobid": "188643872 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643873, "job_ref": "PPM270884", "response": {"Code": 0, "Result": {"jobid": "188643873 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643878, "job_ref": "PPM270885", "response": {"Code": 0, "Result": {"jobid": "188643878 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643879, "job_ref": "PPM270886", "response": {"Code": 0, "Result": {"jobid": "188643879 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643881, "job_ref": "PPM270887", "response": {"Code": 0, "Result": {"jobid": "188643881 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643885, "job_ref": "PPM270888", "response": {"Code": 0, "Result": {"jobid": "188643885 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643886, "job_ref": "PPM270889", "response": {"Code": 0, "Result": {"jobid": "188643886 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643888, "job_ref": "PPM270890", "response": {"Code": 0, "Result": {"jobid": "188643888 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643891, "job_ref": "PPM270893", "response": {"Code": 0, "Result": {"jobid": "188643891 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643892, "job_ref": "PPM270894", "response": {"Code": 0, "Result": {"jobid": "188643892 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643897, "job_ref": "PPM270897", "response": {"Code": 0, "Result": {"jobid": "188643897 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643898, "job_ref": "PPM270898", "response": {"Code": 0, "Result": {"jobid": "188643898 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643899, "job_ref": "PPM270899", "response": {"Code": 0, "Result": {"jobid": "188643899 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643900, "job_ref": "PPM270900", "response": {"Code": 0, "Result": {"jobid": "188643900 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643901, "job_ref": "PPM270901", "response": {"Code": 0, "Result": {"jobid": "188643901 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643904, "job_ref": "PPM270902", "response": {"Code": 0, "Result": {"jobid": "188643904 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643905, "job_ref": "PPM270903", "response": {"Code": 0, "Result": {"jobid": "188643905 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643906, "job_ref": "PPM270904", "response": {"Code": 0, "Result": {"jobid": "188643906 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643907, "job_ref": "PPM270905", "response": {"Code": 0, "Result": {"jobid": "188643907 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643909, "job_ref": "PPM270906", "response": {"Code": 0, "Result": {"jobid": "188643909 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643910, "job_ref": "PPM270907", "response": {"Code": 0, "Result": {"jobid": "188643910 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643912, "job_ref": "PPM270908", "response": {"Code": 0, "Result": {"jobid": "188643912 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643913, "job_ref": "PPM270909", "response": {"Code": 0, "Result": {"jobid": "188643913 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643914, "job_ref": "PPM270910", "response": {"Code": 0, "Result": {"jobid": "188643914 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643915, "job_ref": "PPM270911", "response": {"Code": 0, "Result": {"jobid": "188643915 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643916, "job_ref": "PPM270912", "response": {"Code": 0, "Result": {"jobid": "188643916 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643917, "job_ref": "PPM270913", "response": {"Code": 0, "Result": {"jobid": "188643917 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643918, "job_ref": "PPM270914", "response": {"Code": 0, "Result": {"jobid": "188643918 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643920, "job_ref": "PPM270915", "response": {"Code": 0, "Result": {"jobid": "188643920 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643921, "job_ref": "PPM270916", "response": {"Code": 0, "Result": {"jobid": "188643921 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643922, "job_ref": "PPM270917", "response": {"Code": 0, "Result": {"jobid": "188643922 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643923, "job_ref": "PPM270918", "response": {"Code": 0, "Result": {"jobid": "188643923 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643924, "job_ref": "PPM270919", "response": {"Code": 0, "Result": {"jobid": "188643924 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643926, "job_ref": "PPM270920", "response": {"Code": 0, "Result": {"jobid": "188643926 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643927, "job_ref": "PPM270921", "response": {"Code": 0, "Result": {"jobid": "188643927 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643928, "job_ref": "PPM270922", "response": {"Code": 0, "Result": {"jobid": "188643928 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643929, "job_ref": "PPM270923", "response": {"Code": 0, "Result": {"jobid": "188643929 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643930, "job_ref": "PPM270924", "response": {"Code": 0, "Result": {"jobid": "188643930 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643932, "job_ref": "PPM270925", "response": {"Code": 0, "Result": {"jobid": "188643932 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643933, "job_ref": "PPM270926", "response": {"Code": 0, "Result": {"jobid": "188643933 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643934, "job_ref": "PPM270927", "response": {"Code": 0, "Result": {"jobid": "188643934 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643935, "job_ref": "PPM270928", "response": {"Code": 0, "Result": {"jobid": "188643935 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643936, "job_ref": "PPM270929", "response": {"Code": 0, "Result": {"jobid": "188643936 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643937, "job_ref": "PPM270930", "response": {"Code": 0, "Result": {"jobid": "188643937 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643939, "job_ref": "PPM270931", "response": {"Code": 0, "Result": {"jobid": "188643939 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643942, "job_ref": "PPM270932", "response": {"Code": 0, "Result": {"jobid": "188643942 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643944, "job_ref": "PPM270933", "response": {"Code": 0, "Result": {"jobid": "188643944 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643946, "job_ref": "PPM270934", "response": {"Code": 0, "Result": {"jobid": "188643946 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643948, "job_ref": "PPM270935", "response": {"Code": 0, "Result": {"jobid": "188643948 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643951, "job_ref": "PPM270936", "response": {"Code": 0, "Result": {"jobid": "188643951 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643953, "job_ref": "PPM270937", "response": {"Code": 0, "Result": {"jobid": "188643953 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643954, "job_ref": "PPM270938", "response": {"Code": 0, "Result": {"jobid": "188643954 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643955, "job_ref": "PPM270939", "response": {"Code": 0, "Result": {"jobid": "188643955 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643956, "job_ref": "PPM270940", "response": {"Code": 0, "Result": {"jobid": "188643956 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643957, "job_ref": "PPM270941", "response": {"Code": 0, "Result": {"jobid": "188643957 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643958, "job_ref": "PPM270942", "response": {"Code": 0, "Result": {"jobid": "188643958 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643961, "job_ref": "PPM270943", "response": {"Code": 0, "Result": {"jobid": "188643961 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643966, "job_ref": "PPM270944", "response": {"Code": 0, "Result": {"jobid": "188643966 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643969, "job_ref": "PPM270945", "response": {"Code": 0, "Result": {"jobid": "188643969 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643971, "job_ref": "PPM270946", "response": {"Code": 0, "Result": {"jobid": "188643971 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643976, "job_ref": "PPM270947", "response": {"Code": 0, "Result": {"jobid": "188643976 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643979, "job_ref": "PPM270948", "response": {"Code": 0, "Result": {"jobid": "188643979 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643981, "job_ref": "PPM270949", "response": {"Code": 0, "Result": {"jobid": "188643981 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643984, "job_ref": "PPM270950", "response": {"Code": 0, "Result": {"jobid": "188643984 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643986, "job_ref": "PPM270951", "response": {"Code": 0, "Result": {"jobid": "188643986 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643987, "job_ref": "PPM270952", "response": {"Code": 0, "Result": {"jobid": "188643987 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643989, "job_ref": "PPM270953", "response": {"Code": 0, "Result": {"jobid": "188643989 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643990, "job_ref": "PPM270954", "response": {"Code": 0, "Result": {"jobid": "188643990 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643991, "job_ref": "PPM270955", "response": {"Code": 0, "Result": {"jobid": "188643991 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643993, "job_ref": "PPM270956", "response": {"Code": 0, "Result": {"jobid": "188643993 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643994, "job_ref": "PPM270957", "response": {"Code": 0, "Result": {"jobid": "188643994 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643995, "job_ref": "PPM270958", "response": {"Code": 0, "Result": {"jobid": "188643995 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643998, "job_ref": "PPM270959", "response": {"Code": 0, "Result": {"jobid": "188643998 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188643999, "job_ref": "PPM270960", "response": {"Code": 0, "Result": {"jobid": "188643999 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644001, "job_ref": "PPM270961", "response": {"Code": 0, "Result": {"jobid": "188644001 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644003, "job_ref": "PPM270962", "response": {"Code": 0, "Result": {"jobid": "188644003 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644005, "job_ref": "PPM270963", "response": {"Code": 0, "Result": {"jobid": "188644005 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644009, "job_ref": "PPM270964", "response": {"Code": 0, "Result": {"jobid": "188644009 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644014, "job_ref": "PPM270965", "response": {"Code": 0, "Result": {"jobid": "188644014 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644019, "job_ref": "PPM270966", "response": {"Code": 0, "Result": {"jobid": "188644019 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644020, "job_ref": "PPM270967", "response": {"Code": 0, "Result": {"jobid": "188644020 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644025, "job_ref": "PPM270968", "response": {"Code": 0, "Result": {"jobid": "188644025 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644027, "job_ref": "PPM270969", "response": {"Code": 0, "Result": {"jobid": "188644027 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644028, "job_ref": "PPM270970", "response": {"Code": 0, "Result": {"jobid": "188644028 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644029, "job_ref": "PPM270971", "response": {"Code": 0, "Result": {"jobid": "188644029 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644031, "job_ref": "PPM270972", "response": {"Code": 0, "Result": {"jobid": "188644031 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644032, "job_ref": "PPM270973", "response": {"Code": 0, "Result": {"jobid": "188644032 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644034, "job_ref": "PPM270974", "response": {"Code": 0, "Result": {"jobid": "188644034 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644036, "job_ref": "PPM270975", "response": {"Code": 0, "Result": {"jobid": "188644036 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644037, "job_ref": "PPM270976", "response": {"Code": 0, "Result": {"jobid": "188644037 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644040, "job_ref": "PPM270977", "response": {"Code": 0, "Result": {"jobid": "188644040 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644043, "job_ref": "PPM270978", "response": {"Code": 0, "Result": {"jobid": "188644043 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644045, "job_ref": "PPM270979", "response": {"Code": 0, "Result": {"jobid": "188644045 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644048, "job_ref": "PPM270980", "response": {"Code": 0, "Result": {"jobid": "188644048 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188644051, "job_ref": "PPM270981", "response": {"Code": 0, "Result": {"jobid": "188644051 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 188659880, "job_ref": "JOB270986", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188661226, "job_ref": "JOB270987", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188682680, "job_ref": "INT271057", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188689991, "job_ref": "JOB271062", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188712359, "job_ref": "JOB271074", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
