@@ -18,4 +18,4 @@ Hourly automation entry point for correcting unsynchronised TEMP sales invoice l
 python3 scripts/bigchange_temp_invoice_nominals.py
 ```
 
-It reads `InvoicesWithoutSync`, processes only `SI` references beginning with `TEMP`, skips cancelled/deleted/rejected or non-invoice documents, updates the existing financial document by `DocId`, and prints only the scan/update/failure summary.
+It reads `InvoicesWithoutSync`, processes only `SI` references beginning with `TEMP`, skips cancelled/deleted/rejected, synchronised/exported, or non-invoice documents, updates the existing financial document by `DocId`, and prints only the scan/update/failure summary.
