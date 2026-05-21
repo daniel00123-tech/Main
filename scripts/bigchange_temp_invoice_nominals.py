@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 DEFAULT_CURRENCY = "GBP"
 FALLBACK_NOMINAL_CODE = "2205"
+SALES_INVOICE_DOC_TYPES = {"invoice", "sales invoice", "salesinvoice", "si"}
 
 DISCIPLINE_CODES = {
     ("mechanical", "reactive"): "2001",
@@ -144,6 +145,11 @@ def is_populated(value: Any) -> bool:
     if not text:
         return False
     return text.lower() not in {"none", "null", "0", "0001-01-01", "0001-01-01 00:00:00"}
+
+
+def is_truthy_marker(value: Any) -> bool:
+    text = normalized_text(value)
+    return text in {"1", "true", "yes", "y", "synchronised", "synchronized", "synced", "posted", "exported"}
 
 
 def as_decimal(value: Any, default: str = "0") -> Decimal:
@@ -459,13 +465,53 @@ def classify_from_keywords(text: str, groups: dict[str, tuple[str, ...]]) -> str
 
 def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
-    if doc_type:
-        norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
-            return False, f"document type is {doc_type}"
+    if not doc_type:
+        return False, "document type is missing"
+    norm_doc_type = normalized_text(doc_type)
+    if norm_doc_type not in SALES_INVOICE_DOC_TYPES:
+        return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
             return False, f"{field_name} is populated"
+    sync_date_fields = (
+        "SyncDate",
+        "SyncedDate",
+        "SynchronisedDate",
+        "SynchronizedDate",
+        "DateSynchronised",
+        "DateSynchronized",
+        "ExportDate",
+        "ExportedDate",
+        "PostedDate",
+        "AccountsSyncDate",
+        "AccountsPostedDate",
+    )
+    for field_name in sync_date_fields:
+        if is_populated(first_present(doc, (field_name,))):
+            return False, f"{field_name} is populated"
+    sync_flag_fields = (
+        "IsSynchronised",
+        "IsSynchronized",
+        "Synchronised",
+        "Synchronized",
+        "Synced",
+        "Exported",
+        "Posted",
+    )
+    for field_name in sync_flag_fields:
+        if is_truthy_marker(first_present(doc, (field_name,))):
+            return False, f"{field_name} indicates synchronised"
+    sync_status_fields = (
+        "SyncStatus",
+        "SynchronisationStatus",
+        "SynchronizationStatus",
+        "IntegrationStatus",
+        "AccountsStatus",
+    )
+    for field_name in sync_status_fields:
+        status = first_present(doc, (field_name,))
+        if is_truthy_marker(status):
+            return False, f"{field_name} indicates synchronised"
     return True, ""
 
 
@@ -502,13 +548,12 @@ class TempInvoiceNominalCorrector:
     def run(self) -> RunReport:
         report = RunReport()
         rows = self.client.invoices_without_sync()
-        unique_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        unique_rows: dict[str, dict[str, Any]] = {}
         for row in rows:
             if not is_target_invoice_row(row):
                 continue
             ref = invoice_reference(row)
-            inv_id = invoice_id(row)
-            unique_rows[(ref, inv_id)] = row
+            unique_rows.setdefault(ref, row)
 
         report.temp_invoices_scanned = len(unique_rows)
         for row in unique_rows.values():
@@ -570,7 +615,7 @@ class TempInvoiceNominalCorrector:
         verified_doc = self.client.financial_doc(doc_id=doc_id)
         if verified_doc is None:
             raise RuntimeError("FinancialDoc disappeared after regeneration")
-        self.verify_document(verified_doc, lines, target_nominal)
+        self.verify_document(verified_doc, doc_id, lines, target_nominal)
         new_ref = clean_text(first_present(verified_doc, ("Reference", "DocRef", "InvoiceReference", "InvoiceRef")))
         if ref.upper().startswith("TEMP") and new_ref.upper().startswith("INV") and new_ref != ref:
             report.invoices_where_temp_became_inv.append({"from": ref, "to": new_ref})
@@ -580,14 +625,23 @@ class TempInvoiceNominalCorrector:
     def identify_job(self, doc: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
         job_id = clean_text(first_present(doc, ("JobId", "JobID", "LinkedJobId")))
         job_ref = clean_text(first_present(doc, ("JobReference", "JobRef", "JobNumber")))
+        job, resolved_job_id = self.hydrate_job(job_id=job_id, job_ref=job_ref)
+        if job is not None and resolved_job_id:
+            return job, resolved_job_id
+
+        group_job = self.first_group_job(doc)
+        group_job_id = clean_text(first_present(group_job or {}, ("JobId", "JobID", "Id", "ID")))
+        group_job_ref = clean_text(first_present(group_job or {}, ("JobReference", "JobRef", "JobNumber")))
+        return self.hydrate_job(job_id=group_job_id, job_ref=group_job_ref)
+
+    def hydrate_job(self, *, job_id: str | None, job_ref: str | None) -> tuple[dict[str, Any] | None, str | None]:
         job = self.client.job(job_id=job_id) if job_id else None
         if job is None and job_ref:
             job = self.client.job(job_ref=job_ref)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
         if job is None:
-            job = self.first_group_job(doc)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
-        return job, job_id or None
+            return None, None
+        resolved_job_id = clean_text(first_present(job, ("JobId", "JobID", "Id", "ID"))) or clean_text(job_id)
+        return job, resolved_job_id or None
 
     def first_group_job(self, doc: dict[str, Any]) -> dict[str, Any] | None:
         embedded = self.first_embedded_group_job(doc)
@@ -655,9 +709,13 @@ class TempInvoiceNominalCorrector:
     def verify_document(
         self,
         verified_doc: dict[str, Any],
+        expected_doc_id: str,
         original_lines: list[InvoiceLine],
         expected_nominal: str,
     ) -> None:
+        verified_doc_id = clean_text(first_present(verified_doc, ("DocId", "FinancialDocId", "InvoiceId", "Id", "ID")))
+        if verified_doc_id != expected_doc_id:
+            raise RuntimeError("verification returned a different DocId")
         verified_lines = [extract_invoice_line(line, index + 1) for index, line in enumerate(extract_lines(verified_doc))]
         if len(verified_lines) != len(original_lines):
             raise RuntimeError(
@@ -670,7 +728,13 @@ class TempInvoiceNominalCorrector:
                 raise RuntimeError(f"line {original.line_number} UnitPrice changed")
             if not decimal_equal(original.quantity, verified.quantity):
                 raise RuntimeError(f"line {original.line_number} Quantity changed")
-            if clean_text(original.tax_code) and clean_text(original.tax_code) != clean_text(verified.tax_code):
+            original_tax_code = clean_text(original.tax_code)
+            verified_tax_code = clean_text(verified.tax_code)
+            if (
+                original_tax_code
+                and original_tax_code != verified_tax_code
+                and not (clean_text(original.tax_rate) and decimal_equal(original.tax_rate, verified.tax_rate))
+            ):
                 raise RuntimeError(f"line {original.line_number} TaxCode changed")
             if clean_text(original.tax_rate) and not decimal_equal(original.tax_rate, verified.tax_rate):
                 raise RuntimeError(f"line {original.line_number} TaxRate changed")
