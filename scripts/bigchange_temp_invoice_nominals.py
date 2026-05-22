@@ -20,6 +20,56 @@ from typing import Any, Protocol
 DEFAULT_CURRENCY = "GBP"
 FALLBACK_NOMINAL_CODE = "2205"
 SALES_INVOICE_DOC_TYPES = {"invoice", "sales invoice", "salesinvoice", "si"}
+SYNC_DATE_FIELDS = (
+    "SynchronisedDate",
+    "SynchronizedDate",
+    "SyncDate",
+    "DateSynchronised",
+    "DateSynchronized",
+    "ExportedDate",
+    "ExportDate",
+    "ExportedOn",
+    "AccountsSyncDate",
+    "AccountsExportDate",
+)
+SYNC_IDENTIFIER_FIELDS = (
+    "SyncId",
+    "SyncID",
+    "SyncReference",
+    "ExportId",
+    "ExportID",
+    "ExportReference",
+    "SageId",
+    "SageID",
+    "XeroId",
+    "XeroID",
+    "AccountsReference",
+)
+SYNC_FLAG_FIELDS = (
+    "IsSynchronised",
+    "IsSynchronized",
+    "Synchronised",
+    "Synchronized",
+    "IsSynced",
+    "Synced",
+    "Exported",
+    "IsExported",
+)
+SYNC_STATUS_FIELDS = ("SyncStatus", "SynchronisationStatus", "SynchronizationStatus", "ExportStatus")
+SYNC_POSITIVE_VALUES = {
+    "true",
+    "yes",
+    "y",
+    "1",
+    "synced",
+    "synchronised",
+    "synchronized",
+    "exported",
+    "posted",
+    "processed",
+    "complete",
+    "completed",
+}
 
 DISCIPLINE_CODES = {
     ("mechanical", "reactive"): "2001",
@@ -150,8 +200,23 @@ def is_populated(value: Any) -> bool:
 def is_truthy(value: Any) -> bool:
     if isinstance(value, bool):
         return value
-    text = clean_text(value).lower()
-    return text in {"1", "true", "yes", "y"}
+    return normalized_text(value) in SYNC_POSITIVE_VALUES
+
+
+def document_sync_reason(doc: dict[str, Any]) -> str | None:
+    for field_name in SYNC_DATE_FIELDS:
+        if is_populated(first_present(doc, (field_name,))):
+            return f"{field_name} is populated"
+    for field_name in SYNC_IDENTIFIER_FIELDS:
+        if is_populated(first_present(doc, (field_name,))):
+            return f"{field_name} is populated"
+    for field_name in SYNC_FLAG_FIELDS:
+        if is_truthy(first_present(doc, (field_name,))):
+            return f"{field_name} indicates synchronised"
+    for field_name in SYNC_STATUS_FIELDS:
+        if normalized_text(first_present(doc, (field_name,))) in SYNC_POSITIVE_VALUES:
+            return f"{field_name} indicates synchronised"
+    return None
 
 
 def as_decimal(value: Any, default: str = "0") -> Decimal:
@@ -470,19 +535,17 @@ def classify_from_keywords(text: str, groups: dict[str, tuple[str, ...]]) -> str
 
 def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
-    if doc_type:
-        norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in SALES_INVOICE_DOC_TYPES:
-            return False, f"document type is {doc_type}"
+    if not doc_type:
+        return False, "document type is missing"
+    norm_doc_type = normalized_text(doc_type)
+    if norm_doc_type not in SALES_INVOICE_DOC_TYPES and compact_key(doc_type) not in SALES_INVOICE_DOC_TYPES:
+        return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "CancelledDate", "DeletionDate", "DeletedDate", "RejectionDate", "RejectedDate"):
         if is_populated(first_present(doc, (field_name,))):
             return False, f"{field_name} is populated"
-    for field_name in ("SyncDate", "SynchronisedDate", "SynchronizedDate", "ExportDate"):
-        if is_populated(first_present(doc, (field_name,))):
-            return False, f"{field_name} is populated"
-    for field_name in ("IsSynchronised", "IsSynchronized", "Synchronised", "Synchronized", "IsSynced", "Synced"):
-        if is_truthy(first_present(doc, (field_name,))):
-            return False, f"{field_name} is true"
+    sync_reason = document_sync_reason(doc)
+    if sync_reason:
+        return False, sync_reason
     return True, ""
 
 

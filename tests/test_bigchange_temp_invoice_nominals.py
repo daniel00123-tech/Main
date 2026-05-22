@@ -128,11 +128,23 @@ class SafetyFilterTest(unittest.TestCase):
         self.assertFalse(processable)
         self.assertIn("Purchase Invoice", reason)
 
+    def test_requires_sales_invoice_document_type(self) -> None:
+        for doc_type in ("Invoice", "Sales Invoice", "SalesInvoice", "SI"):
+            with self.subTest(doc_type=doc_type):
+                processable, reason = document_is_processable({"DocumentType": doc_type})
+                self.assertTrue(processable, reason)
+
+        processable, reason = document_is_processable({"DocId": "D1"})
+        self.assertFalse(processable)
+        self.assertIn("missing", reason)
+
     def test_rejects_synchronised_documents(self) -> None:
         cases = (
             {"DocumentType": "Invoice", "SyncDate": "2026-05-22"},
+            {"DocumentType": "Invoice", "ExportReference": "XERO-1"},
             {"DocumentType": "Invoice", "IsSynchronised": True},
             {"DocumentType": "Invoice", "Synced": "yes"},
+            {"DocumentType": "Invoice", "SyncStatus": "Posted"},
         )
 
         for doc in cases:
@@ -140,6 +152,16 @@ class SafetyFilterTest(unittest.TestCase):
                 processable, reason = document_is_processable(doc)
                 self.assertFalse(processable)
                 self.assertTrue(reason)
+
+    def test_allows_explicit_unsynchronised_markers(self) -> None:
+        for doc in (
+            {"DocumentType": "Invoice", "IsSynchronised": False},
+            {"DocumentType": "Invoice", "Synced": "no"},
+            {"DocumentType": "Invoice", "SyncStatus": "Pending"},
+        ):
+            with self.subTest(doc=doc):
+                processable, reason = document_is_processable(doc)
+                self.assertTrue(processable, reason)
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
