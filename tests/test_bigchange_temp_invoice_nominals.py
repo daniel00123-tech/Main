@@ -79,6 +79,8 @@ class ClassificationTest(unittest.TestCase):
             ({"Type": "Fire Alarm", "Description": "Call Out fault"}, "2002"),
             ({"Type": "Fire", "Description": "PPM service"}, "2102"),
             ({"Type": "Fire", "Description": "Install works"}, "2202"),
+            ({"Type": "Emergency Lighting", "Description": "PPM service"}, "2102"),
+            ({"Type": "Emergency Lighting", "Description": "Install works"}, "2202"),
         )
 
         for job, expected in cases:
