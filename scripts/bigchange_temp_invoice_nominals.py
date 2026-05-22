@@ -130,6 +130,16 @@ def contains_keyword(text: str, keyword: str) -> bool:
     return phrase in norm
 
 
+def contains_work_type_keyword(text: str, keyword: str) -> bool:
+    norm_keyword = normalized_text(keyword)
+    norm = f" {normalized_text(text)} "
+    if norm_keyword == "emergency":
+        # "Emergency Lighting" is a Fire Safety discipline phrase, not by itself
+        # evidence that the job is reactive/remedial.
+        norm = norm.replace(" emergency lighting ", " ")
+    return f" {norm_keyword} " in norm
+
+
 def first_present(row: dict[str, Any], names: tuple[str, ...]) -> Any:
     compacted = {compact_key(key): value for key, value in row.items()}
     for name in names:
@@ -174,6 +184,21 @@ def nested_rows(value: Any) -> list[dict[str, Any]]:
                 rows.extend(row for row in nested if isinstance(row, dict))
         if rows:
             return rows
+        return [value]
+    return []
+
+
+def line_rows(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, dict)]
+    if isinstance(value, dict):
+        rows = nested_rows(value)
+        if rows and rows != [value]:
+            return rows
+        if len(value) == 1:
+            nested = next(iter(value.values()))
+            if isinstance(nested, dict):
+                return [nested]
         return [value]
     return []
 
@@ -250,7 +275,7 @@ def extract_lines(doc: dict[str, Any]) -> list[dict[str, Any]]:
     }
     for key, value in doc.items():
         if compact_key(key) in line_keys:
-            rows = nested_rows(value)
+            rows = line_rows(value)
             if rows:
                 return rows
     for value in doc.values():
@@ -444,7 +469,7 @@ def classify_nominal_code(job: dict[str, Any]) -> str:
     description = clean_text(first_present(job, ("Description", "JobDescription", "Details", "Notes")))
     haystack = f"{job_type} {description}"
     discipline = classify_from_keywords(haystack, DISCIPLINE_KEYWORDS)
-    work_type = classify_from_keywords(haystack, WORK_TYPE_KEYWORDS)
+    work_type = classify_work_type(haystack)
     if not discipline or not work_type:
         return FALLBACK_NOMINAL_CODE
     return DISCIPLINE_CODES.get((discipline, work_type), FALLBACK_NOMINAL_CODE)
@@ -453,6 +478,13 @@ def classify_nominal_code(job: dict[str, Any]) -> str:
 def classify_from_keywords(text: str, groups: dict[str, tuple[str, ...]]) -> str | None:
     for group, keywords in groups.items():
         if any(contains_keyword(text, keyword) for keyword in keywords):
+            return group
+    return None
+
+
+def classify_work_type(text: str) -> str | None:
+    for group, keywords in WORK_TYPE_KEYWORDS.items():
+        if any(contains_work_type_keyword(text, keyword) for keyword in keywords):
             return group
     return None
 

@@ -5,6 +5,7 @@ from scripts.bigchange_temp_invoice_nominals import (
     TempInvoiceNominalCorrector,
     classify_nominal_code,
     document_is_processable,
+    extract_lines,
     is_target_invoice_row,
 )
 
@@ -73,6 +74,7 @@ class ClassificationTest(unittest.TestCase):
             ({"Type": "Fire Alarm", "Description": "Call Out fault"}, "2002"),
             ({"Type": "Fire", "Description": "PPM service"}, "2102"),
             ({"Type": "Fire", "Description": "Install works"}, "2202"),
+            ({"Type": "Emergency Lighting", "Description": "PPM service"}, "2102"),
         )
 
         for job, expected in cases:
@@ -107,6 +109,25 @@ class SafetyFilterTest(unittest.TestCase):
 
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
+
+
+class LineExtractionTest(unittest.TestCase):
+    def test_extracts_single_nested_financial_line(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "FinancialLines": {
+                "FinancialLine": {
+                    "Description": "Single line",
+                    "UnitPrice": "42.00",
+                    "Quantity": "1",
+                }
+            },
+        }
+
+        self.assertEqual(
+            extract_lines(doc),
+            [{"Description": "Single line", "UnitPrice": "42.00", "Quantity": "1"}],
+        )
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
