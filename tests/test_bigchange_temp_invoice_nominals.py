@@ -25,6 +25,7 @@ class FakeBigChangeClient:
         self.created_items: list[dict[str, Any]] = []
         self.added_lines: list[dict[str, Any]] = []
         self.generated_docs: list[dict[str, Any]] = []
+        self.job_ref_lookups: list[str] = []
 
     def invoices_without_sync(self) -> list[dict[str, Any]]:
         return self.rows
@@ -39,6 +40,9 @@ class FakeBigChangeClient:
     def job(self, *, job_id: str | None = None, job_ref: str | None = None) -> dict[str, Any] | None:
         if job_id is not None:
             return self.jobs_by_id.get(job_id)
+        if job_ref is not None:
+            self.job_ref_lookups.append(job_ref)
+            return self.jobs_by_id.get(job_ref)
         return None
 
     def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
@@ -82,6 +86,9 @@ class ClassificationTest(unittest.TestCase):
     def test_falls_back_to_grounds_project_when_unsure(self) -> None:
         self.assertEqual(classify_nominal_code({"Type": "Unknown", "Description": "Other"}), "2205")
 
+    def test_emergency_lighting_ppm_is_fire_contract_not_reactive(self) -> None:
+        self.assertEqual(classify_nominal_code({"Type": "Emergency Lighting", "Description": "PPM service"}), "2102")
+
     def test_maps_non_fire_disciplines(self) -> None:
         self.assertEqual(classify_nominal_code({"Type": "Gas", "Description": "repair leak"}), "2001")
         self.assertEqual(classify_nominal_code({"Type": "Cleaning", "Description": "Scheduled PPM"}), "2104")
@@ -107,6 +114,24 @@ class SafetyFilterTest(unittest.TestCase):
 
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
+
+    def test_rejects_already_synchronised_or_exported_documents(self) -> None:
+        rejected_cases = (
+            {"DocumentType": "Invoice", "IsSynchronised": True},
+            {"DocumentType": "Invoice", "SyncDate": "2026-05-22"},
+            {"DocumentType": "Invoice", "Exported": "true"},
+            {"DocumentType": "Invoice", "SyncStatus": "Synchronised"},
+        )
+
+        for doc in rejected_cases:
+            with self.subTest(doc=doc):
+                processable, _ = document_is_processable(doc)
+                self.assertFalse(processable)
+
+        processable, _ = document_is_processable(
+            {"DocumentType": "Invoice", "IsSynchronised": False, "Exported": "0"}
+        )
+        self.assertTrue(processable)
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
@@ -183,6 +208,30 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
             ],
         )
 
+    def test_deduplicates_unsynchronised_rows_by_temp_reference(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [{"UnitPrice": "1", "Quantity": "1", "TaxRate": "20", "NominalCode": "9999"}],
+        }
+        client = FakeBigChangeClient(
+            rows=[
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"},
+                {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1-DUP"},
+            ],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire", "Description": "Call Out"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.temp_invoices_scanned, 1)
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(len(client.generated_docs), 1)
+
     def test_skips_invoice_when_all_lines_already_have_expected_nominal(self) -> None:
         doc = {
             "DocId": "D1",
@@ -235,6 +284,69 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
 
         self.assertEqual(report.invoices_skipped, 1)
         self.assertEqual(client.generated_docs, [])
+
+    def test_uses_group_job_ref_when_document_has_no_direct_job_id(self) -> None:
+        class GroupJobClient(FakeBigChangeClient):
+            def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
+                self.group_id = group_id
+                return [{"JobReference": "JOB-100"}]
+
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "GroupId": "G1",
+            "FinancialLines": [{"UnitPrice": "1", "Quantity": "1", "TaxRate": "20", "NominalCode": "9999"}],
+        }
+        client = GroupJobClient(
+            rows=[{"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"}],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"JOB-100": {"JobId": "J1", "Type": "Fire", "Description": "Call Out"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(client.job_ref_lookups, ["JOB-100"])
+        self.assertEqual(client.generated_docs[0]["JobId"], "J1")
+
+    def test_accepts_tax_code_normalisation_when_rate_is_preserved(self) -> None:
+        class NormalisingVatClient(FakeBigChangeClient):
+            def generate_financial_doc_for_job(self, params: dict[str, Any]) -> dict[str, Any]:
+                super().generate_financial_doc_for_job(params)
+                doc_id = str(params["DocId"])
+                self.verified_docs_by_id[doc_id]["FinancialLines"][0]["TaxCode"] = "VAT20"
+                return {"Code": 0, "Result": {"DocId": doc_id}}
+
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": [
+                {
+                    "UnitPrice": "1",
+                    "Quantity": "1",
+                    "ItemCost": "0",
+                    "Currency": "GBP",
+                    "TaxCode": "T1",
+                    "TaxRate": "20",
+                    "NominalCode": "9999",
+                }
+            ],
+        }
+        client = NormalisingVatClient(
+            rows=[{"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"}],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire", "Description": "Call Out"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(report.failures, [])
 
 
 if __name__ == "__main__":
