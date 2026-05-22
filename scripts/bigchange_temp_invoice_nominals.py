@@ -452,7 +452,10 @@ def classify_nominal_code(job: dict[str, Any]) -> str:
     description = clean_text(first_present(job, ("Description", "JobDescription", "Details", "Notes")))
     haystack = f"{job_type} {description}"
     discipline = classify_from_keywords(haystack, DISCIPLINE_KEYWORDS)
-    work_type = classify_from_keywords(haystack, WORK_TYPE_KEYWORDS)
+    work_haystack = haystack
+    if discipline == "fire":
+        work_haystack = re.sub(r"\bemergency\s+lighting\b", " ", work_haystack, flags=re.IGNORECASE)
+    work_type = classify_from_keywords(work_haystack, WORK_TYPE_KEYWORDS)
     if not discipline or not work_type:
         return FALLBACK_NOMINAL_CODE
     return DISCIPLINE_CODES.get((discipline, work_type), FALLBACK_NOMINAL_CODE)
