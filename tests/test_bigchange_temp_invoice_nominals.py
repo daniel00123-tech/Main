@@ -2,6 +2,7 @@ import unittest
 from typing import Any
 
 from scripts.bigchange_temp_invoice_nominals import (
+    BigChangeClient,
     TempInvoiceNominalCorrector,
     classify_nominal_code,
     document_is_processable,
@@ -107,6 +108,68 @@ class SafetyFilterTest(unittest.TestCase):
 
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
+
+
+class BigChangeClientParsingTest(unittest.TestCase):
+    def test_job_unwraps_nested_result_job(self) -> None:
+        client = object.__new__(BigChangeClient)
+
+        def fake_get(action: str, params: dict[str, Any], **_: Any) -> dict[str, Any]:
+            self.assertEqual(action, "Job")
+            self.assertEqual(params, {"JobId": "J1"})
+            return {
+                "Code": 0,
+                "Result": {
+                    "Job": {
+                        "JobId": "J1",
+                        "Type": "Fire Alarm",
+                        "Description": "PPM service",
+                    }
+                },
+            }
+
+        client.get = fake_get  # type: ignore[method-assign]
+
+        self.assertEqual(
+            client.job(job_id="J1"),
+            {"JobId": "J1", "Type": "Fire Alarm", "Description": "PPM service"},
+        )
+
+    def test_group_jobs_unwraps_nested_job_rows(self) -> None:
+        client = object.__new__(BigChangeClient)
+
+        def fake_get(action: str, params: dict[str, Any], **_: Any) -> dict[str, Any]:
+            self.assertEqual(action, "JobGroup")
+            self.assertEqual(params, {"GroupId": "G1"})
+            return {
+                "Code": 0,
+                "Result": {
+                    "Jobs": [
+                        {
+                            "Job": {
+                                "JobId": "J2",
+                                "JobReference": "JOB-2",
+                                "Type": "Electrical",
+                                "Description": "Repair leak",
+                            }
+                        }
+                    ]
+                },
+            }
+
+        client.get = fake_get  # type: ignore[method-assign]
+
+        self.assertEqual(
+            client.group_jobs("G1"),
+            [
+                {
+                    "JobId": "J2",
+                    "JobReference": "JOB-2",
+                    "Type": "Electrical",
+                    "Description": "Repair leak",
+                }
+            ],
+        )
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):

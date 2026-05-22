@@ -236,6 +236,54 @@ def looks_like_financial_doc(row: dict[str, Any]) -> bool:
     )
 
 
+def looks_like_job(row: dict[str, Any]) -> bool:
+    return any(
+        first_present(row, names) not in (None, "")
+        for names in (
+            ("JobId", "JobID", "JobReference", "JobRef", "JobNumber"),
+            ("Type", "JobType", "JobTypeName", "Category", "CategoryName"),
+            ("Description", "JobDescription", "Details", "Notes"),
+        )
+    )
+
+
+def unwrap_job(row: dict[str, Any]) -> dict[str, Any] | None:
+    if looks_like_job(row):
+        return row
+    job_container_keys = {"job", "jobdetail", "jobdetails", "linkedjob"}
+    for key, value in row.items():
+        if compact_key(key) in job_container_keys:
+            for nested in nested_rows(value):
+                candidate = unwrap_job(nested)
+                if candidate:
+                    return candidate
+    for value in row.values():
+        if isinstance(value, dict):
+            candidate = unwrap_job(value)
+            if candidate:
+                return candidate
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    candidate = unwrap_job(item)
+                    if candidate:
+                        return candidate
+    return None
+
+
+def result_job(payload: dict[str, Any]) -> dict[str, Any] | None:
+    for row in result_rows(payload):
+        candidate = unwrap_job(row)
+        if candidate:
+            return candidate
+    result = payload.get("Result")
+    if isinstance(result, dict):
+        return unwrap_job(result)
+    if looks_like_job(payload):
+        return payload
+    return None
+
+
 def extract_lines(doc: dict[str, Any]) -> list[dict[str, Any]]:
     line_keys = {
         "financiallines",
@@ -354,15 +402,17 @@ class BigChangeClient:
         payload = self.get("Job", params)
         if not code_is_success(payload):
             return None
-        rows = result_rows(payload)
-        return rows[0] if rows else result_document(payload)
+        return result_job(payload)
 
     def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
         for action in ("JobGroup", "JobGroupJobs"):
             payload = self.get(action, {"GroupId": group_id}, attempts=2)
             if code_is_success(payload):
-                rows = result_rows(payload)
-                jobs = [row for row in rows if first_present(row, ("JobId", "JobReference", "JobRef"))]
+                jobs = []
+                for row in result_rows(payload):
+                    job = unwrap_job(row)
+                    if job and first_present(job, ("JobId", "JobReference", "JobRef")):
+                        jobs.append(job)
                 if jobs:
                     return jobs
         return []
