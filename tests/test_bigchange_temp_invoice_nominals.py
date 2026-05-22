@@ -115,6 +115,11 @@ class SafetyFilterTest(unittest.TestCase):
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
 
+    def test_accepts_invoice_document_types_with_po_substrings(self) -> None:
+        processable, _ = document_is_processable({"DocumentType": "Deposit Invoice"})
+
+        self.assertTrue(processable)
+
     def test_rejects_already_synchronised_or_exported_documents(self) -> None:
         rejected_cases = (
             {"DocumentType": "Invoice", "IsSynchronised": True},

@@ -479,7 +479,8 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
     if doc_type:
         norm_doc_type = normalized_text(doc_type)
-        if any(term in norm_doc_type for term in ("credit", "purchase", "po", "order")):
+        doc_type_words = set(norm_doc_type.split())
+        if {"credit", "purchase", "po", "order"} & doc_type_words:
             return False, f"document type is {doc_type}"
         if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
             return False, f"document type is {doc_type}"
