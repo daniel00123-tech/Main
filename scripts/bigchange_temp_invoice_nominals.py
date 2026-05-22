@@ -461,7 +461,7 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
     if doc_type:
         norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
+        if norm_doc_type not in {"invoice", "sales invoice", "si"}:
             return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
@@ -587,6 +587,13 @@ class TempInvoiceNominalCorrector:
         if job is None:
             job = self.first_group_job(doc)
             job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
+            job_ref = clean_text(first_present(job or {}, ("JobReference", "JobRef", "JobNumber"))) or job_ref
+            full_job = self.client.job(job_id=job_id) if job_id else None
+            if full_job is None and job_ref:
+                full_job = self.client.job(job_ref=job_ref)
+            if full_job is not None:
+                job = full_job
+                job_id = clean_text(first_present(full_job, ("JobId", "JobID", "Id", "ID"))) or job_id
         return job, job_id or None
 
     def first_group_job(self, doc: dict[str, Any]) -> dict[str, Any] | None:
