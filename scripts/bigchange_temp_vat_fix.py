@@ -40,6 +40,16 @@ class BigChangeError(Exception):
     """Raised when a BigChange request or response is not usable."""
 
 
+class BigChangeResponseError(BigChangeError):
+    """Raised when BigChange returns an application-level error code."""
+
+    def __init__(self, action: str, code: str, result: Any) -> None:
+        self.action = action
+        self.code = code
+        self.result = result
+        super().__init__(f"{action} returned Code {code}: {trim(result)}")
+
+
 @dataclass(frozen=True)
 class FinancialLine:
     line_no: int
@@ -92,6 +102,21 @@ class BigChangeClient:
         self.dry_run = dry_run
 
     def call(self, action: str, params: dict[str, Any] | None = None) -> Any:
+        try:
+            return self._call(action, params)
+        except BigChangeResponseError as exc:
+            if (
+                self.auth_mode == "api_key"
+                and self.username
+                and self.password
+                and exc.action == "InvoicesWithoutSync"
+                and exc.code == "2"
+            ):
+                self.auth_mode = "api_key_basic"
+                return self._call(action, params)
+            raise
+
+    def _call(self, action: str, params: dict[str, Any] | None = None) -> Any:
         payload = {"action": action, "format": "JSON"}
         if params:
             payload.update({k: v for k, v in params.items() if v is not None})
@@ -538,7 +563,7 @@ def parse_response(action: str, body: str) -> Any:
         code = str(data.get("Code"))
         result = data.get("Result")
         if code != "0":
-            raise BigChangeError(f"{action} returned Code {code}: {trim(result)}")
+            raise BigChangeResponseError(action, code, result)
         return result
     return data
 

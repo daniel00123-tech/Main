@@ -14,6 +14,9 @@ environment. Do not print credential values.
 Set `BIGCHANGE_AUTH_MODE=api_key` for key-only authentication, or
 `BIGCHANGE_AUTH_MODE=api_key_basic` when the API requires both the key header
 and Basic authentication.
+When key-only mode receives BigChange's `Missing Parameters` response and
+username/password are present, the runner retries using the combined key+Basic
+headers because this endpoint has required that in prior runs.
 
 Expected report fields:
 
