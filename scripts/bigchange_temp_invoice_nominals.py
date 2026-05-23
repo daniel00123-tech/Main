@@ -434,6 +434,10 @@ def invoice_id(row: dict[str, Any]) -> str:
     return clean_text(first_present(row, ("InvoiceId", "DocId", "FinancialDocId", "Id", "ID")))
 
 
+def invoice_identity(row: dict[str, Any]) -> str:
+    return invoice_reference(row) or invoice_id(row)
+
+
 def is_target_invoice_row(row: dict[str, Any]) -> bool:
     invoice_type = clean_text(first_present(row, ("InvoiceType", "Type", "DocumentType"))).upper()
     return invoice_type == "SI" and invoice_reference(row).upper().startswith("TEMP")
@@ -502,13 +506,11 @@ class TempInvoiceNominalCorrector:
     def run(self) -> RunReport:
         report = RunReport()
         rows = self.client.invoices_without_sync()
-        unique_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        unique_rows: dict[str, dict[str, Any]] = {}
         for row in rows:
             if not is_target_invoice_row(row):
                 continue
-            ref = invoice_reference(row)
-            inv_id = invoice_id(row)
-            unique_rows[(ref, inv_id)] = row
+            unique_rows[invoice_identity(row)] = row
 
         report.temp_invoices_scanned = len(unique_rows)
         for row in unique_rows.values():
@@ -592,12 +594,20 @@ class TempInvoiceNominalCorrector:
     def first_group_job(self, doc: dict[str, Any]) -> dict[str, Any] | None:
         embedded = self.first_embedded_group_job(doc)
         if embedded:
-            return embedded
+            return self.resolve_job_summary(embedded)
         group_id = clean_text(first_present(doc, ("GroupId", "JobGroupId", "GroupReference", "GroupRef")))
         if not group_id:
             return None
         jobs = self.client.group_jobs(group_id)
-        return jobs[0] if jobs else None
+        return self.resolve_job_summary(jobs[0]) if jobs else None
+
+    def resolve_job_summary(self, job: dict[str, Any]) -> dict[str, Any]:
+        job_id = clean_text(first_present(job, ("JobId", "JobID", "Id", "ID")))
+        job_ref = clean_text(first_present(job, ("JobReference", "JobRef", "JobNumber")))
+        full_job = self.client.job(job_id=job_id) if job_id else None
+        if full_job is None and job_ref:
+            full_job = self.client.job(job_ref=job_ref)
+        return full_job or job
 
     def first_embedded_group_job(self, value: Any) -> dict[str, Any] | None:
         if isinstance(value, dict):
