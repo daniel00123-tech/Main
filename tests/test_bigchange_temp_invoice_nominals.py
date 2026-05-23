@@ -6,6 +6,7 @@ from scripts.bigchange_temp_invoice_nominals import (
     classify_nominal_code,
     document_is_processable,
     extract_lines,
+    find_identifier,
     is_target_invoice_row,
 )
 
@@ -163,6 +164,16 @@ class SafetyFilterTest(unittest.TestCase):
             with self.subTest(doc=doc):
                 processable, reason = document_is_processable(doc)
                 self.assertTrue(processable, reason)
+
+
+class ResponseParsingTest(unittest.TestCase):
+    def test_finds_bigchange_invoice_item_id_response(self) -> None:
+        payload = {"Code": 0, "Result": {"invoiceItemId": 164446445}}
+
+        self.assertEqual(
+            find_identifier(payload, ("JobFinancialLineId", "InvoiceItemId", "LineItemId", "LineId", "Id", "ID")),
+            "164446445",
+        )
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
