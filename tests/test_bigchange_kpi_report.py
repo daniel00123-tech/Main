@@ -1,7 +1,14 @@
 import datetime as dt
 import unittest
 
-from scripts.bigchange_kpi_report import calculate_sales, match_staff_name, name_key, should_exclude_category, validate_report
+from scripts.bigchange_kpi_report import (
+    build_report,
+    calculate_sales,
+    match_staff_name,
+    name_key,
+    should_exclude_category,
+    validate_report,
+)
 
 
 class CategoryExclusionTest(unittest.TestCase):
@@ -74,6 +81,22 @@ class SalesAttributionTest(unittest.TestCase):
         self.assertEqual(sales["Sharon Mannion"], 170)
 
 
+class BuildReportFilteringTest(unittest.TestCase):
+    def test_uses_requested_kpi_filters_with_bigchange_field_variants(self) -> None:
+        today = dt.date.today()
+        client = FakeReportClient(today)
+
+        report = build_report(client)
+
+        rows_by_staff = {row["staff_name"]: row for row in report["staff_rows"]}
+        self.assertEqual(set(rows_by_staff), {"Sharon Mannion"})
+        metrics = rows_by_staff["Sharon Mannion"]["metrics"]
+        self.assertEqual(metrics["unallocated_jobs"]["count"], 1)
+        self.assertEqual(metrics["historic_jobs"]["count"], 1)
+        self.assertEqual(metrics["uninvoiced_jobs"]["count"], 1)
+        self.assertEqual(metrics["unactioned_jobs"]["count"], 1)
+
+
 class FakeBigChangeClient:
     def __init__(self, invoices, activities) -> None:
         self._invoices = invoices
@@ -84,6 +107,93 @@ class FakeBigChangeClient:
 
     def job_customer_activity(self, job_id):
         return self._activities.get(job_id, [])
+
+
+class FakeReportClient:
+    def __init__(self, today: dt.date) -> None:
+        self.today = today
+
+    def categories(self):
+        return [
+            {"Name": "Sharon Mannion"},
+            {"Name": "OOH reactive"},
+        ]
+
+    def jobslist(self, params):
+        if params.get("Unallocated"):
+            return [
+                {
+                    "JobCategoryName": "Sharon Mannion",
+                    "StatusID": 5,
+                    "CreatedDate": (self.today - dt.timedelta(days=2)).isoformat(),
+                    "ResourceName": "",
+                    "PlannedStartDateTime": "",
+                },
+                {
+                    "JobCategoryName": "Sharon Mannion",
+                    "CreatedDate": self.today.isoformat(),
+                    "ResourceName": "Assigned Engineer",
+                    "PlannedStartDateTime": "",
+                },
+                {
+                    "JobCategoryName": "OOH reactive",
+                    "CreatedDate": self.today.isoformat(),
+                    "ResourceName": "",
+                    "PlannedStartDateTime": "",
+                },
+            ]
+        if params.get("Allocated"):
+            return [
+                {
+                    "JobCategoryName": "Sharon Mannion",
+                    "StatusID": 16,
+                    "EngineerName": "Assigned Engineer",
+                    "PlannedStartDate": (self.today - dt.timedelta(days=1)).isoformat(),
+                },
+                {
+                    "JobCategoryName": "Sharon Mannion",
+                    "StatusID": 12,
+                    "EngineerName": "Assigned Engineer",
+                    "PlannedStartDate": (self.today - dt.timedelta(days=1)).isoformat(),
+                },
+            ]
+        if params.get("ClientStatusId") == -34:
+            return [
+                {
+                    "JobCategoryName": "Sharon Mannion",
+                    "JobStatusID": 13,
+                    "JobClientStatusID": -34,
+                    "CompletionDate": (self.today - dt.timedelta(days=3)).isoformat(),
+                },
+                {
+                    "JobCategoryName": "Sharon Mannion",
+                    "JobStatusID": 10,
+                    "JobClientStatusID": -34,
+                    "CompletionDate": (self.today - dt.timedelta(days=3)).isoformat(),
+                },
+            ]
+        if params.get("Unactioned"):
+            return [
+                {
+                    "JobCategoryName": "Sharon Mannion",
+                    "JobStatusID": 12,
+                    "IsActioned": "No",
+                    "CompletionDate": (self.today - dt.timedelta(days=4)).isoformat(),
+                },
+                {
+                    "JobCategoryName": "Sharon Mannion",
+                    "JobStatusID": 12,
+                    "IsActioned": "Yes",
+                    "CompletionDate": (self.today - dt.timedelta(days=4)).isoformat(),
+                },
+            ]
+        return []
+
+    def invoices_with_items_by_period(self, start, end):
+        return []
+
+    def job_customer_activity(self, job_id):
+        return []
 
 
 if __name__ == "__main__":

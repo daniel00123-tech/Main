@@ -42,8 +42,6 @@ SALES_ORDER_TYPES = {"invoice"}
 EXCLUDED_CATEGORY_NAMES = {"btr compliance", "btr reactive", "john bennett", "ryan barrett"}
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
-UNALLOCATED_STATUS_IDS = {1, 3}
-OPEN_NOT_STARTED_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
 DECIMAL_ZERO = decimal.Decimal("0")
 
 
@@ -274,6 +272,14 @@ def client_status_id(row: dict[str, Any]) -> int | None:
     return as_int(first_present(row, ("ClientStatusId", "ClientStatusID", "JobClientStatusId", "JobClientStatusID")))
 
 
+def job_status_id(row: dict[str, Any]) -> int | None:
+    return as_int(first_present(row, ("StatusId", "StatusID", "JobStatusId", "JobStatusID")))
+
+
+def row_date(row: dict[str, Any], names: tuple[str, ...]) -> dt.datetime | None:
+    return parse_date(first_present(row, names))
+
+
 class BigChangeClient:
     def __init__(self) -> None:
         self.base_url = required_env("BIGCHANGE_BASE_URL")
@@ -411,7 +417,7 @@ def add_items(
     staff_names: set[str],
     rows: list[dict[str, Any]],
     metric: str,
-    date_field: str,
+    date_fields: tuple[str, ...],
     today: dt.date,
 ) -> None:
     for row in rows:
@@ -419,7 +425,7 @@ def add_items(
         if should_exclude_category(category):
             continue
         staff_names.add(category)
-        grouped[category][metric].append(parse_date(row.get(date_field)))
+        grouped[category][metric].append(row_date(row, date_fields))
 
 
 def resource_assigned(row: dict[str, Any]) -> bool:
@@ -437,6 +443,22 @@ def resource_assigned(row: dict[str, Any]) -> bool:
     if isinstance(resource, list):
         return len(resource) > 0
     return not is_blank(resource)
+
+
+def planned_start(row: dict[str, Any]) -> dt.datetime | None:
+    return row_date(
+        row,
+        (
+            "PlannedStart",
+            "PlannedStartDate",
+            "PlannedStartDateTime",
+            "Planned Start",
+        ),
+    )
+
+
+def actioned_is_falsey(row: dict[str, Any]) -> bool:
+    return as_bool_falsey(first_present(row, ("Actioned", "IsActioned", "JobActioned", "ActionedStatus")))
 
 
 def calculate_sales(
@@ -546,17 +568,14 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
             "End": tomorrow.isoformat(),
             "DateOptionId": 2,
             "Unallocated": 1,
-            "StatusId": "1|3",
         }
     )
     unallocated_rows = [
         row
         for row in unallocated_rows
-        if as_int(row.get("StatusId")) in UNALLOCATED_STATUS_IDS
-        and not resource_assigned(row)
-        and parse_date(row.get("PlannedStart")) is None
+        if not resource_assigned(row) and planned_start(row) is None
     ]
-    add_items(grouped, staff_names, unallocated_rows, "unallocated_jobs", "Created", today)
+    add_items(grouped, staff_names, unallocated_rows, "unallocated_jobs", ("Created", "CreatedDate", "DateCreated"), today)
 
     historic_end = today - dt.timedelta(days=1)
     historic_rows: list[dict[str, Any]] = []
@@ -568,17 +587,23 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
                 "DateOptionId": 0,
                 "Allocated": 1,
                 "ExcludeNullPlannedDates": 1,
-                "StatusId": "|".join(str(status) for status in sorted(OPEN_NOT_STARTED_STATUS_IDS)),
             }
         )
     historic_rows = [
         row
         for row in historic_rows
-        if as_int(row.get("StatusId")) not in EXCLUDED_STATUS_IDS
+        if job_status_id(row) not in EXCLUDED_STATUS_IDS
         and resource_assigned(row)
-        and (parse_date(row.get("PlannedStart")) or dt.datetime.max).date() < today
+        and (planned_start(row) or dt.datetime.max).date() < today
     ]
-    add_items(grouped, staff_names, historic_rows, "historic_jobs", "PlannedStart", today)
+    add_items(
+        grouped,
+        staff_names,
+        historic_rows,
+        "historic_jobs",
+        ("PlannedStart", "PlannedStartDate", "PlannedStartDateTime", "Planned Start"),
+        today,
+    )
 
     completed_statuses = "|".join(str(status) for status in sorted(COMPLETED_STATUS_IDS))
     uninvoiced_rows = client.jobslist(
@@ -593,9 +618,16 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     uninvoiced_rows = [
         row
         for row in uninvoiced_rows
-        if as_int(row.get("StatusId")) in COMPLETED_STATUS_IDS and client_status_id(row) == -34
+        if job_status_id(row) in COMPLETED_STATUS_IDS and client_status_id(row) == -34
     ]
-    add_items(grouped, staff_names, uninvoiced_rows, "uninvoiced_jobs", "StatusDate", today)
+    add_items(
+        grouped,
+        staff_names,
+        uninvoiced_rows,
+        "uninvoiced_jobs",
+        ("StatusDate", "JobStatusDate", "CompletedDate", "CompletionDate", "CompletedOn"),
+        today,
+    )
 
     unactioned_rows = client.jobslist(
         {
@@ -609,9 +641,16 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     unactioned_rows = [
         row
         for row in unactioned_rows
-        if as_int(row.get("StatusId")) in COMPLETED_STATUS_IDS and as_bool_falsey(row.get("Actioned"))
+        if job_status_id(row) in COMPLETED_STATUS_IDS and actioned_is_falsey(row)
     ]
-    add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", "StatusDate", today)
+    add_items(
+        grouped,
+        staff_names,
+        unactioned_rows,
+        "unactioned_jobs",
+        ("StatusDate", "JobStatusDate", "CompletedDate", "CompletionDate", "CompletedOn"),
+        today,
+    )
 
     sales = calculate_sales(client, staff_names, month_start, month_end)
 
@@ -1133,6 +1172,7 @@ Daniel Dwyer
 
 
 def main() -> int:
+    report: dict[str, Any] | None = None
     try:
         client = BigChangeClient()
         report = build_report(client)
@@ -1157,13 +1197,16 @@ def main() -> int:
             )
         )
         return 0
-    except Exception as exc:
+    except Exception:
+        staff_rows_included = len(report["staff_rows"]) if report else 0
+        total_red_kpis = report["total_red_kpis"] if report else 0
+        total_amber_kpis = report["total_amber_kpis"] if report else 0
         print(
             json.dumps(
                 {
-                    "staff_rows_included": 0,
-                    "total_red_kpis": 0,
-                    "total_amber_kpis": 0,
+                    "staff_rows_included": staff_rows_included,
+                    "total_red_kpis": total_red_kpis,
+                    "total_amber_kpis": total_amber_kpis,
                     "email": "failed",
                 },
                 sort_keys=True,
