@@ -178,6 +178,8 @@ def nested_rows(value: Any) -> list[dict[str, Any]]:
         for nested in value.values():
             if isinstance(nested, list):
                 rows.extend(row for row in nested if isinstance(row, dict))
+        if not rows:
+            rows.extend(nested for nested in value.values() if isinstance(nested, dict))
         if rows:
             return rows
         return [value]
