@@ -11,6 +11,9 @@ Do not spend time searching for a missing integration. The implementation is in
 
 The required credentials are provided by the automation trigger context or the
 environment. Do not print credential values.
+Set `BIGCHANGE_AUTH_MODE=api_key` for key-only authentication, or
+`BIGCHANGE_AUTH_MODE=api_key_basic` when the API requires both the key header
+and Basic authentication.
 
 Expected report fields:
 

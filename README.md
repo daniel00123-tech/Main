@@ -23,9 +23,9 @@ python3 scripts/bigchange_temp_vat_fix.py
 Required environment variables:
 
 - `BIGCHANGE_BASE_URL`
+- `BIGCHANGE_AUTH_MODE` (`api_key` or `api_key_basic`; defaults to `api_key_basic`)
 - `BIGCHANGE_API_KEY`
-- `BIGCHANGE_USERNAME`
-- `BIGCHANGE_PASSWORD`
+- `BIGCHANGE_USERNAME` and `BIGCHANGE_PASSWORD` when using `api_key_basic`
 
 The runner:
 

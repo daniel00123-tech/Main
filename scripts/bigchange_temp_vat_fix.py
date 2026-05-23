@@ -33,6 +33,7 @@ ACCEPTED_TAX_CODES = {
 
 TARGET_TAX_CODE = "20% (VAT on Income)"
 DEFAULT_BASE_URL = "https://webservice.bigchange.com/v01/services.ashx"
+SUPPORTED_AUTH_MODES = {"api_key", "api_key_basic"}
 
 
 class BigChangeError(Exception):
@@ -78,6 +79,7 @@ class BigChangeClient:
         api_key: str | None,
         username: str | None,
         password: str | None,
+        auth_mode: str,
         timeout: float,
         dry_run: bool = False,
     ) -> None:
@@ -85,6 +87,7 @@ class BigChangeClient:
         self.api_key = api_key
         self.username = username
         self.password = password
+        self.auth_mode = auth_mode
         self.timeout = timeout
         self.dry_run = dry_run
 
@@ -122,7 +125,7 @@ class BigChangeClient:
         if self.api_key:
             # BigChange calls this the company "key" in the web service docs.
             headers["key"] = self.api_key
-        if self.username and self.password:
+        if self.auth_mode == "api_key_basic" and self.username and self.password:
             token = base64.b64encode(f"{self.username}:{self.password}".encode("utf-8")).decode("ascii")
             headers["Authorization"] = f"Basic {token}"
         return headers
@@ -130,16 +133,22 @@ class BigChangeClient:
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
+    auth_mode = normalise_auth_mode(os.environ.get("BIGCHANGE_AUTH_MODE"))
     client = BigChangeClient(
         base_url=os.environ.get("BIGCHANGE_BASE_URL", DEFAULT_BASE_URL),
         api_key=os.environ.get("BIGCHANGE_API_KEY"),
         username=os.environ.get("BIGCHANGE_USERNAME"),
         password=os.environ.get("BIGCHANGE_PASSWORD"),
+        auth_mode=auth_mode,
         timeout=args.timeout,
         dry_run=args.dry_run,
     )
 
-    missing = required_env_missing()
+    if auth_mode not in SUPPORTED_AUTH_MODES:
+        print_report(Report(failures=[f"configuration: unsupported BIGCHANGE_AUTH_MODE {auth_mode}"]))
+        return 2
+
+    missing = required_env_missing(auth_mode)
     if missing:
         print_report(Report(failures=[f"configuration: missing {', '.join(missing)}"]))
         return 2
@@ -157,9 +166,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def required_env_missing() -> list[str]:
+def normalise_auth_mode(value: str | None) -> str:
+    return clean_str(value or "api_key_basic").lower()
+
+
+def required_env_missing(auth_mode: str) -> list[str]:
     missing = []
-    for name in ("BIGCHANGE_API_KEY", "BIGCHANGE_USERNAME", "BIGCHANGE_PASSWORD"):
+    names = ["BIGCHANGE_API_KEY"]
+    if auth_mode == "api_key_basic":
+        names.extend(["BIGCHANGE_USERNAME", "BIGCHANGE_PASSWORD"])
+    for name in names:
         if not os.environ.get(name):
             missing.append(name)
     return missing
