@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 DEFAULT_CURRENCY = "GBP"
 FALLBACK_NOMINAL_CODE = "2205"
+PROCESSABLE_DOCUMENT_TYPES = {"invoice", "sales invoice", "salesinvoice", "sales invoices", "si"}
 
 DISCIPLINE_CODES = {
     ("mechanical", "reactive"): "2001",
@@ -461,7 +462,7 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
     if doc_type:
         norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
+        if norm_doc_type not in PROCESSABLE_DOCUMENT_TYPES:
             return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
@@ -502,13 +503,15 @@ class TempInvoiceNominalCorrector:
     def run(self) -> RunReport:
         report = RunReport()
         rows = self.client.invoices_without_sync()
-        unique_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        unique_rows: dict[str, dict[str, Any]] = {}
         for row in rows:
             if not is_target_invoice_row(row):
                 continue
             ref = invoice_reference(row)
             inv_id = invoice_id(row)
-            unique_rows[(ref, inv_id)] = row
+            dedupe_key = ref.upper() if ref else inv_id
+            if dedupe_key:
+                unique_rows[dedupe_key] = row
 
         report.temp_invoices_scanned = len(unique_rows)
         for row in unique_rows.values():
@@ -587,6 +590,12 @@ class TempInvoiceNominalCorrector:
         if job is None:
             job = self.first_group_job(doc)
             job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
+            if job is not None and not job_id:
+                group_job_ref = clean_text(first_present(job, ("JobReference", "JobRef", "JobNumber")))
+                full_job = self.client.job(job_ref=group_job_ref) if group_job_ref else None
+                if full_job is not None:
+                    job = full_job
+                    job_id = clean_text(first_present(job, ("JobId", "JobID", "Id", "ID"))) or job_id
         return job, job_id or None
 
     def first_group_job(self, doc: dict[str, Any]) -> dict[str, Any] | None:
