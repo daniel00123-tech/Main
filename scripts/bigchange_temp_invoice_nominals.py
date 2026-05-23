@@ -455,7 +455,7 @@ class BigChangeClient:
         payload = self.get("AddJobFinancialLine", params)
         if not code_is_success(payload):
             raise RuntimeError("AddJobFinancialLine returned an error")
-        line_id = find_identifier(payload, ("JobFinancialLineId", "LineItemId", "LineId", "Id", "ID"))
+        line_id = find_identifier(payload, ("JobFinancialLineId", "InvoiceItemId", "LineItemId", "LineId", "Id", "ID"))
         if not line_id:
             raise RuntimeError("AddJobFinancialLine did not return a line id")
         return line_id
