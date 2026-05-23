@@ -5,6 +5,7 @@ from scripts.bigchange_temp_invoice_nominals import (
     TempInvoiceNominalCorrector,
     classify_nominal_code,
     document_is_processable,
+    extract_lines,
     is_target_invoice_row,
 )
 
@@ -73,7 +74,7 @@ class FakeBigChangeClient:
                     **self.verified_line_overrides.get(index, {}),
                     "NominalCode": self.added_lines[index]["NominalCode"],
                 }
-                for index, line in enumerate(original["FinancialLines"])
+                for index, line in enumerate(extract_lines(original))
             ],
         }
         return {"Code": 0, "Result": {"DocId": doc_id}}
@@ -357,6 +358,39 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
         self.assertEqual(report.invoices_updated, 1)
         self.assertEqual(client.added_lines[0]["JobId"], "J2")
         self.assertEqual(client.added_lines[0]["NominalCode"], "2203")
+
+    def test_rebuilds_invoice_when_financial_lines_are_keyed_by_name(self) -> None:
+        doc = {
+            "DocId": "D1",
+            "Reference": "TEMP-100",
+            "DocumentType": "Invoice",
+            "JobId": "J1",
+            "FinancialLines": {
+                "FinancialLine 1": {
+                    "Description": "Fire alarm call out",
+                    "UnitPrice": "125.00",
+                    "Quantity": "2",
+                    "ItemCost": "40",
+                    "Currency": "GBP",
+                    "TaxCode": "T1",
+                    "TaxRate": "20",
+                    "NominalCode": "9999",
+                }
+            },
+        }
+        client = FakeBigChangeClient(
+            rows=[{"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"}],
+            docs_by_ref={"TEMP-100": doc},
+            docs_by_id={"D1": doc},
+            jobs_by_id={"J1": {"JobId": "J1", "Type": "Fire Alarm", "Description": "Call Out fault"}},
+        )
+
+        report = TempInvoiceNominalCorrector(client).run()
+
+        self.assertEqual(report.invoices_updated, 1)
+        self.assertEqual(report.failures, [])
+        self.assertEqual(client.created_items[0]["Description"], "Fire alarm call out")
+        self.assertEqual(client.added_lines[0]["NominalCode"], "2002")
 
     def test_verification_accepts_tax_code_normalisation_when_rate_is_preserved(self) -> None:
         doc = {
