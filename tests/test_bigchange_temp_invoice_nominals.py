@@ -10,6 +10,7 @@ from scripts.bigchange_temp_invoice_nominals import (
     document_is_processable,
     extract_invoice_line,
     extract_lines,
+    find_identifier,
     is_target_invoice_row,
 )
 
@@ -156,6 +157,16 @@ class ConfigTest(unittest.TestCase):
         with patch.dict("os.environ", {"BIGCHANGE_AUTH_MODE": "oauth"}, clear=True):
             with self.assertRaisesRegex(ConfigError, "BIGCHANGE_AUTH_MODE"):
                 BigChangeClient()
+
+
+class ResponseParsingTest(unittest.TestCase):
+    def test_finds_bigchange_invoice_item_id_response(self) -> None:
+        payload = {"Code": 0, "Result": {"invoiceItemId": 164446445}}
+
+        self.assertEqual(
+            find_identifier(payload, ("JobFinancialLineId", "InvoiceItemId", "LineItemId", "LineId", "Id", "ID")),
+            "164446445",
+        )
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
