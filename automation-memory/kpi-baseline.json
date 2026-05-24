@@ -1,17 +1,97 @@
 {
-  "job_lookback_start": "2025-05-20",
-  "report_date": "2026-05-20",
-  "run_timestamp": "2026-05-20T20:19:29.567264+00:00",
+  "job_lookback_start": "2025-05-24",
+  "report_date": "2026-05-24",
+  "run_timestamp": "2026-05-24T07:03:45.511113+00:00",
   "staff": [
     {
       "counts": {
         "historic_jobs": 0,
-        "unactioned_jobs": 43,
-        "unallocated_jobs": 21,
+        "unactioned_jobs": 0,
+        "unallocated_jobs": 3,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 37036.88,
-      "staff_name": "B- Jenna Hyde",
+      "current_month_sales": 120.0,
+      "staff_name": "Megan",
+      "statuses": {
+        "historic_jobs": "green",
+        "unactioned_jobs": "green",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 1,
+        "unactioned_jobs": 3,
+        "unallocated_jobs": 2,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 0.0,
+      "staff_name": "Leah Hearn",
+      "statuses": {
+        "historic_jobs": "green",
+        "unactioned_jobs": "green",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 11,
+        "unactioned_jobs": 1,
+        "unallocated_jobs": 3,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 34606.24,
+      "staff_name": "Laura Menegon",
+      "statuses": {
+        "historic_jobs": "green",
+        "unactioned_jobs": "green",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 2,
+        "unactioned_jobs": 2,
+        "unallocated_jobs": 0,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 22975.07,
+      "staff_name": "Lucy Feeney",
+      "statuses": {
+        "historic_jobs": "green",
+        "unactioned_jobs": "amber",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 2,
+        "unactioned_jobs": 3,
+        "unallocated_jobs": 0,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 7240.0,
+      "staff_name": "Nailah Toyer",
+      "statuses": {
+        "historic_jobs": "green",
+        "unactioned_jobs": "amber",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 0,
+        "unactioned_jobs": 8,
+        "unallocated_jobs": 6,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 28799.5,
+      "staff_name": "Amy Bradley",
       "statuses": {
         "historic_jobs": "green",
         "unactioned_jobs": "amber",
@@ -21,33 +101,33 @@
     },
     {
       "counts": {
-        "historic_jobs": 2,
-        "unactioned_jobs": 18,
-        "unallocated_jobs": 16,
+        "historic_jobs": 9,
+        "unactioned_jobs": 4,
+        "unallocated_jobs": 20,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 7275.0,
-      "staff_name": "A- Jodie",
+      "current_month_sales": 22476.34,
+      "staff_name": "Sharon Mannion",
       "statuses": {
         "historic_jobs": "green",
-        "unactioned_jobs": "red",
-        "unallocated_jobs": "amber",
+        "unactioned_jobs": "amber",
+        "unallocated_jobs": "red",
         "uninvoiced_jobs": "green"
       }
     },
     {
       "counts": {
-        "historic_jobs": 4,
-        "unactioned_jobs": 14,
-        "unallocated_jobs": 3,
+        "historic_jobs": 16,
+        "unactioned_jobs": 18,
+        "unallocated_jobs": 13,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 5154.35,
-      "staff_name": "C- Grace Elver",
+      "current_month_sales": 16958.83,
+      "staff_name": "Isabel Strong",
       "statuses": {
-        "historic_jobs": "green",
+        "historic_jobs": "red",
         "unactioned_jobs": "red",
-        "unallocated_jobs": "red",
+        "unallocated_jobs": "amber",
         "uninvoiced_jobs": "green"
       }
     }
