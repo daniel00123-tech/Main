@@ -21,9 +21,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
-from email import encoders
 from email.headerregistry import Address
-from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -1116,16 +1114,10 @@ Daniel Dwyer
     image_data = png_path.read_bytes()
     image = MIMEImage(image_data, _subtype="png")
     image.add_header("Content-ID", "<kpi-dashboard>")
-    image.add_header("Content-Disposition", "inline", filename=png_path.name)
+    image.add_header("Content-Disposition", "attachment", filename=png_path.name)
     root.attach(image)
 
-    attachment = MIMEBase("image", "png")
-    attachment.set_payload(image_data)
-    encoders.encode_base64(attachment)
-    attachment.add_header("Content-Disposition", "attachment", filename=png_path.name)
-    root.attach(attachment)
-
-    # The only attachment is the dashboard PNG; JSON and HTML stay on disk only.
+    # The single PNG part is referenced by CID for inline display and is the only attachment.
     with smtplib.SMTP(smtp_host, smtp_port, timeout=120) as smtp:
         smtp.starttls()
         smtp.login(smtp_username, smtp_password)

@@ -1,7 +1,18 @@
 import datetime as dt
+import email
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
-from scripts.bigchange_kpi_report import calculate_sales, match_staff_name, name_key, should_exclude_category, validate_report
+from scripts.bigchange_kpi_report import (
+    calculate_sales,
+    match_staff_name,
+    name_key,
+    send_email,
+    should_exclude_category,
+    validate_report,
+)
 
 
 class CategoryExclusionTest(unittest.TestCase):
@@ -72,6 +83,57 @@ class SalesAttributionTest(unittest.TestCase):
         sales = calculate_sales(client, {"Sharon Mannion"}, dt.date(2026, 5, 1), dt.date(2026, 5, 20))
 
         self.assertEqual(sales["Sharon Mannion"], 170)
+
+
+class EmailPackagingTest(unittest.TestCase):
+    def test_embeds_and_attaches_single_png_only(self) -> None:
+        sent_messages = []
+
+        class FakeSMTP:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback) -> None:
+                pass
+
+            def starttls(self) -> None:
+                pass
+
+            def login(self, username, password) -> None:
+                pass
+
+            def sendmail(self, from_email, recipients, message) -> None:
+                sent_messages.append(message)
+
+        env = {
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_PORT": "587",
+            "SMTP_USERNAME": "user@example.com",
+            "SMTP_PASSWORD": "password",
+            "SMTP_FROM_EMAIL": "from@example.com",
+            "SMTP_FROM_NAME": "Daniel Dwyer",
+            "SMTP_TO_EMAIL": "to@example.com",
+            "SMTP_CC_EMAIL": "cc@example.com",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            png_path = Path(tmpdir) / "dashboard.png"
+            png_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+            with patch.dict("os.environ", env, clear=True), patch("scripts.bigchange_kpi_report.smtplib.SMTP", FakeSMTP):
+                send_email(png_path)
+
+        message = email.message_from_string(sent_messages[0])
+        parts = list(message.walk())
+        png_parts = [part for part in parts if part.get_content_type() == "image/png"]
+        attachments = [part for part in parts if part.get_content_disposition() == "attachment"]
+
+        self.assertEqual(len(png_parts), 1)
+        self.assertEqual(len(attachments), 1)
+        self.assertEqual(attachments[0].get_filename(), "dashboard.png")
+        self.assertEqual(png_parts[0]["Content-ID"], "<kpi-dashboard>")
 
 
 class FakeBigChangeClient:
