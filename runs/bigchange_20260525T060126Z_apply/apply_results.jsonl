@@ -1,0 +1,8 @@
+{"job_id": 188256320, "job_ref": "DLFF270072", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188445073, "job_ref": "DLFF270324", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188556960, "job_ref": "JOB270515", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188573141, "job_ref": "JOB270530", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188819801, "job_ref": "DLFF270292~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188859709, "job_ref": "EOT271295", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188873108, "job_ref": "DLM271315", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188992098, "job_ref": "PPM271460", "response": {"Code": 0, "Result": {"jobid": "188992098 "}}, "status": "updated", "update_type": "job_category"}
