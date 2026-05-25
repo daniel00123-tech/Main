@@ -2,16 +2,21 @@ import datetime as dt
 import json
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    add_items,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
+    code_is_success,
     is_open_freshdesk_ticket,
     match_staff_name,
     name_key,
+    render_unmatched_note,
+    resource_assigned,
     save_baseline,
     should_exclude_category,
     status_ids_from_choices,
@@ -40,6 +45,35 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+
+class BigChangeCompatibilityTest(unittest.TestCase):
+    def test_accepts_legacy_success_code_variants(self) -> None:
+        self.assertTrue(code_is_success({"Code": 0}))
+        self.assertTrue(code_is_success({"Code": "0"}))
+        self.assertTrue(code_is_success({}))
+        self.assertFalse(code_is_success({"Code": 10}))
+
+    def test_resource_assignment_uses_common_id_fields(self) -> None:
+        self.assertTrue(resource_assigned({"EngineerID": "42"}))
+        self.assertTrue(resource_assigned({"ResourceId": "17"}))
+        self.assertFalse(resource_assigned({"EngineerID": ""}))
+
+    def test_add_items_reads_date_aliases(self) -> None:
+        grouped = defaultdict(lambda: defaultdict(list))
+        staff_names: set[str] = set()
+
+        add_items(
+            grouped,
+            staff_names,
+            [{"CategoryName": "Amy Bradley", "CreatedDate": "2026-05-20"}],
+            "unallocated_jobs",
+            ("Created", "CreatedDate"),
+            dt.date(2026, 5, 25),
+        )
+
+        self.assertEqual(staff_names, {"Amy Bradley"})
+        self.assertEqual(grouped["Amy Bradley"]["unallocated_jobs"][0], dt.datetime(2026, 5, 20))
 
 
 class SalesAttributionTest(unittest.TestCase):
@@ -134,6 +168,17 @@ class FreshdeskKpiTest(unittest.TestCase):
         self.assertEqual(len(grouped["Daniel Dwyer"]), 1)
         self.assertEqual(len(unmatched), 1)
         self.assertEqual(len(critical), 1)
+
+    def test_renders_unmatched_ticket_log_without_payloads(self) -> None:
+        note = render_unmatched_note(
+            {
+                "unmatched_freshdesk_ticket_count": 1,
+                "unmatched_freshdesk_tickets": [{"id": 123, "owner": "Unknown Owner", "oldest_age_days": 11}],
+            }
+        )
+
+        self.assertIn("Unmatched Freshdesk ticket log", note)
+        self.assertIn("#123 - Unknown Owner - 11 days old", note)
 
 
 class ScoreAndBaselineTest(unittest.TestCase):
