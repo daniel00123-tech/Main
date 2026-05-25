@@ -10,6 +10,16 @@ Run with the required BigChange and SMTP configuration supplied as environment v
 python3 scripts/bigchange_kpi_report.py
 ```
 
+## BigChange May Completion Report
+
+One-off report for May 2026 completion activity. It renders a dark PNG dashboard and emails the PNG inline/attached:
+
+```sh
+python3 scripts/bigchange_may_completion_report.py --year 2026 --month 5 --to-email daniel.dwyer123@gmail.com
+```
+
+The report counts jobs actioned, active invoice documents/jobs created, jobs moved from unallocated statuses to scheduled, and historic jobs moved to completed. Where BigChange exposes activity/status owners, those users are used; otherwise the job category staff owner is used.
+
 ## BigChange TEMP Invoice Nominal Correction
 
 Hourly automation entry point for correcting unsynchronised TEMP sales invoice line nominal codes:
