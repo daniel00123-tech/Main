@@ -39,7 +39,7 @@ JOB_KPI_ORDER = [
 FRESHDESK_METRIC = ("open_freshdesk_tickets", "Open Freshdesk Tickets")
 KPI_ORDER = JOB_KPI_ORDER + [FRESHDESK_METRIC]
 
-SALES_ORDER_TYPES = {"invoice"}
+SALES_ORDER_TYPES = {"invoice", "salesinvoice", "si"}
 EXCLUDED_CATEGORY_NAMES = {"btr compliance", "btr reactive", "john bennett", "ryan barrett"}
 EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
@@ -51,6 +51,13 @@ LOCAL_NAME_ALIASES = {
     "amy b": "amy bradley",
     "dan dwyer": "daniel dwyer",
 }
+STATUS_ID_FIELDS = ("StatusId", "StatusID", "JobStatusId", "JobStatusID")
+PLANNED_START_FIELDS = ("PlannedStart", "PlannedStartDate", "PlannedDate", "StartDate", "Start")
+CREATED_DATE_FIELDS = ("Created", "CreatedDate", "DateCreated", "LoggedDate", "DateLogged")
+STATUS_DATE_FIELDS = ("StatusDate", "JobStatusDate", "CompletedDate", "CompletionDate", "DateCompleted")
+ACTIONED_FIELDS = ("Actioned", "IsActioned", "JobActioned", "HasBeenActioned")
+ACTIVITY_DATE_FIELDS = ("JobClientStatusDate", "ClientStatusDate", "ActivityDate", "Created", "DateCreated")
+INVOICE_OWNER_FIELDS = ("JobClientStatusOwner", "ClientStatusOwner", "Owner", "CreatedBy", "UserName", "Name")
 DECIMAL_ZERO = decimal.Decimal("0")
 
 
@@ -142,11 +149,27 @@ def name_key(value: str) -> str:
     return " ".join(tokens)
 
 
+def configured_name_aliases() -> dict[str, str]:
+    aliases = dict(LOCAL_NAME_ALIASES)
+    configured = optional_env("STAFF_NAME_ALIASES").strip()
+    if not configured:
+        return aliases
+    for entry in re.split(r"[,;\n]+", configured):
+        if "=" not in entry:
+            continue
+        alias, canonical = entry.split("=", 1)
+        alias_key = name_key(alias)
+        canonical_key = name_key(canonical)
+        if alias_key and canonical_key:
+            aliases[alias_key] = canonical_key
+    return aliases
+
+
 def match_staff_name(creator_name: str, staff_by_key: dict[str, str]) -> str | None:
     key = name_key(creator_name)
     if not key:
         return None
-    alias_key = name_key(LOCAL_NAME_ALIASES.get(key, ""))
+    alias_key = name_key(configured_name_aliases().get(key, ""))
     if alias_key in staff_by_key:
         return staff_by_key[alias_key]
     if key in staff_by_key:
@@ -226,6 +249,14 @@ def first_present(row: dict[str, Any], names: tuple[str, ...]) -> Any:
         if key in compacted and compacted[key] not in (None, ""):
             return compacted[key]
     return None
+
+
+def row_status_id(row: dict[str, Any]) -> int | None:
+    return as_int(first_present(row, STATUS_ID_FIELDS))
+
+
+def row_date(row: dict[str, Any], names: tuple[str, ...]) -> dt.datetime | None:
+    return parse_date(first_present(row, names))
 
 
 def nested_rows(value: Any) -> list[dict[str, Any]]:
@@ -559,7 +590,10 @@ def is_open_freshdesk_ticket(ticket: dict[str, Any], open_status_ids: set[int]) 
     if as_bool_truthy(first_present(ticket, ("spam", "is_spam"))):
         return False
     status_id = as_int(ticket.get("status"))
-    return status_id in open_status_ids
+    if status_id in open_status_ids:
+        return True
+    status_label = normalized_text(clean_name(first_present(ticket, ("status_name", "status_label", "status_text"))))
+    return status_label in OPEN_FRESHDESK_STATUS_NAMES
 
 
 def as_bool_truthy(value: Any) -> bool:
@@ -626,7 +660,7 @@ def add_items(
     staff_names: set[str],
     rows: list[dict[str, Any]],
     metric: str,
-    date_field: str,
+    date_fields: tuple[str, ...],
     today: dt.date,
 ) -> None:
     for row in rows:
@@ -634,7 +668,7 @@ def add_items(
         if should_exclude_category(category):
             continue
         staff_names.add(category)
-        grouped[category][metric].append(parse_date(row.get(date_field)))
+        grouped[category][metric].append(row_date(row, date_fields))
 
 
 def resource_assigned(row: dict[str, Any]) -> bool:
@@ -643,15 +677,22 @@ def resource_assigned(row: dict[str, Any]) -> bool:
         (
             "Resource",
             "Resources",
+            "ResourceId",
+            "ResourceID",
             "ResourceName",
             "Engineer",
+            "EngineerId",
+            "EngineerID",
             "EngineerName",
             "AssignedResource",
+            "AssignedResourceId",
+            "AssignedResourceID",
         ),
     )
     if isinstance(resource, list):
         return len(resource) > 0
-    return not is_blank(resource)
+    text = clean_name(resource).lower()
+    return text not in {"", "none", "null", "0", "false", "no", "unassigned", "unallocated"}
 
 
 def calculate_sales(
@@ -668,7 +709,9 @@ def calculate_sales(
         order_type = re.sub(
             r"[^a-z]",
             "",
-            clean_name(first_present(document, ("OrderType", "DocumentType", "DocType"))).lower(),
+            clean_name(
+                first_present(document, ("OrderType", "DocumentType", "DocType", "InvoiceType", "Type", "FinancialDocType"))
+            ).lower(),
         )
         if order_type not in SALES_ORDER_TYPES:
             continue
@@ -755,15 +798,36 @@ def invoice_created_owner(document: dict[str, Any], activity_cache: dict[str, li
         return ""
     candidates: list[tuple[dt.datetime, dict[str, Any]]] = []
     for activity in activity_cache.get(job_id, []):
-        status_id = client_status_id(activity)
-        if status_id != 34:
+        if not is_invoice_created_activity(activity):
             continue
-        activity_date = parse_date(activity.get("JobClientStatusDate")) or dt.datetime.min
+        activity_date = row_date(activity, ACTIVITY_DATE_FIELDS) or dt.datetime.min
         candidates.append((activity_date, activity))
     if not candidates:
         return ""
     candidates.sort(key=lambda item: item[0], reverse=True)
-    return clean_name(candidates[0][1].get("JobClientStatusOwner"))
+    return clean_name(first_present(candidates[0][1], INVOICE_OWNER_FIELDS))
+
+
+def is_invoice_created_activity(activity: dict[str, Any]) -> bool:
+    if client_status_id(activity) == 34:
+        return True
+    label = clean_name(
+        first_present(
+            activity,
+            (
+                "JobClientStatus",
+                "JobClientStatusName",
+                "ClientStatus",
+                "ClientStatusName",
+                "Status",
+                "StatusName",
+                "Action",
+                "Description",
+            ),
+        )
+    )
+    compacted = compact_key(label)
+    return "invoicecreated" in compacted or ("invoice" in normalized_text(label).split() and "created" in normalized_text(label).split())
 
 
 def resolve_document_creator(invoice: dict[str, Any], web_users: dict[str, str]) -> str:
@@ -806,11 +870,11 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
     unallocated_rows = [
         row
         for row in unallocated_rows
-        if as_int(row.get("StatusId")) in UNALLOCATED_STATUS_IDS
+        if row_status_id(row) in UNALLOCATED_STATUS_IDS
         and not resource_assigned(row)
-        and parse_date(row.get("PlannedStart")) is None
+        and row_date(row, PLANNED_START_FIELDS) is None
     ]
-    add_items(grouped, staff_names, unallocated_rows, "unallocated_jobs", "Created", today)
+    add_items(grouped, staff_names, unallocated_rows, "unallocated_jobs", CREATED_DATE_FIELDS, today)
 
     historic_end = today - dt.timedelta(days=1)
     historic_rows: list[dict[str, Any]] = []
@@ -828,11 +892,11 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
     historic_rows = [
         row
         for row in historic_rows
-        if as_int(row.get("StatusId")) not in EXCLUDED_STATUS_IDS
+        if row_status_id(row) not in EXCLUDED_STATUS_IDS
         and resource_assigned(row)
-        and (parse_date(row.get("PlannedStart")) or dt.datetime.max).date() < today
+        and (row_date(row, PLANNED_START_FIELDS) or dt.datetime.max).date() < today
     ]
-    add_items(grouped, staff_names, historic_rows, "historic_jobs", "PlannedStart", today)
+    add_items(grouped, staff_names, historic_rows, "historic_jobs", PLANNED_START_FIELDS, today)
 
     completed_statuses = "|".join(str(status) for status in sorted(COMPLETED_STATUS_IDS))
     uninvoiced_rows = client.jobslist(
@@ -847,9 +911,9 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
     uninvoiced_rows = [
         row
         for row in uninvoiced_rows
-        if as_int(row.get("StatusId")) in COMPLETED_STATUS_IDS and client_status_id(row) == -34
+        if row_status_id(row) in COMPLETED_STATUS_IDS and client_status_id(row) == -34
     ]
-    add_items(grouped, staff_names, uninvoiced_rows, "uninvoiced_jobs", "StatusDate", today)
+    add_items(grouped, staff_names, uninvoiced_rows, "uninvoiced_jobs", STATUS_DATE_FIELDS, today)
 
     unactioned_rows = client.jobslist(
         {
@@ -863,9 +927,9 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
     unactioned_rows = [
         row
         for row in unactioned_rows
-        if as_int(row.get("StatusId")) in COMPLETED_STATUS_IDS and as_bool_falsey(row.get("Actioned"))
+        if row_status_id(row) in COMPLETED_STATUS_IDS and as_bool_falsey(first_present(row, ACTIONED_FIELDS))
     ]
-    add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", "StatusDate", today)
+    add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", STATUS_DATE_FIELDS, today)
 
     sales = calculate_sales(client, staff_names, month_start, month_end)
     freshdesk_grouped, unmatched_freshdesk_tickets, critical_freshdesk_tickets = calculate_freshdesk_metrics(

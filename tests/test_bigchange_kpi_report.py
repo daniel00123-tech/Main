@@ -1,8 +1,10 @@
 import datetime as dt
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
@@ -60,6 +62,12 @@ class SalesAttributionTest(unittest.TestCase):
         self.assertEqual(match_staff_name("Amy B", staff_by_key), "Amy Bradley")
         self.assertEqual(match_staff_name("Dan Dwyer", staff_by_key), "Daniel Dwyer")
 
+    def test_uses_runtime_aliases_for_staff_name_mismatches(self) -> None:
+        staff_by_key = {name_key("Daniel Dwyer"): "Daniel Dwyer"}
+
+        with patch.dict(os.environ, {"STAFF_NAME_ALIASES": "DD=Daniel Dwyer"}):
+            self.assertEqual(match_staff_name("DD", staff_by_key), "Daniel Dwyer")
+
     def test_calculates_invoice_net_from_common_line_shapes(self) -> None:
         client = FakeBigChangeClient(
             invoices=[
@@ -82,17 +90,24 @@ class SalesAttributionTest(unittest.TestCase):
                     "Cancelled": "true",
                     "Lines": [{"NetPrice": "999.00", "VatAmount": "0.00"}],
                 },
+                {
+                    "DocumentType": "Sales Invoice",
+                    "JobID": "104",
+                    "Lines": [{"NetPrice": "12.00", "VatAmount": "2.00"}],
+                },
             ],
             activities={
                 "101": [{"JobClientStatusID": 34, "JobClientStatusDate": "2026-05-02", "JobClientStatusOwner": "Sharon Mannion"}],
                 "102": [{"JobClientStatusID": 34, "JobClientStatusDate": "2026-05-03", "JobClientStatusOwner": "Sharon Mannion"}],
                 "103": [{"JobClientStatusID": 34, "JobClientStatusDate": "2026-05-04", "JobClientStatusOwner": "Sharon Mannion"}],
+                "104": [{"JobClientStatusName": "InvoiceCreated", "ActivityDate": "2026-05-05", "ClientStatusOwner": "Amy B"}],
             },
         )
 
-        sales = calculate_sales(client, {"Sharon Mannion"}, dt.date(2026, 5, 1), dt.date(2026, 5, 20))
+        sales = calculate_sales(client, {"Sharon Mannion", "Amy Bradley"}, dt.date(2026, 5, 1), dt.date(2026, 5, 20))
 
         self.assertEqual(sales["Sharon Mannion"], 170)
+        self.assertEqual(sales["Amy Bradley"], 10)
 
 
 class FreshdeskKpiTest(unittest.TestCase):
@@ -111,6 +126,7 @@ class FreshdeskKpiTest(unittest.TestCase):
         open_status_ids = {2, 3, 8, 9}
 
         self.assertTrue(is_open_freshdesk_ticket({"status": 8}, open_status_ids))
+        self.assertTrue(is_open_freshdesk_ticket({"status": 99, "status_name": "Waiting on Third Party"}, open_status_ids))
         self.assertFalse(is_open_freshdesk_ticket({"status": 8, "spam": True}, open_status_ids))
         self.assertFalse(is_open_freshdesk_ticket({"status": 8, "deleted": True}, open_status_ids))
         self.assertFalse(is_open_freshdesk_ticket({"status": 5}, open_status_ids))
