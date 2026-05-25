@@ -1031,11 +1031,11 @@ def render_sales(value: str) -> str:
     )
 
 
-def render_score(score: int, status: str) -> str:
+def render_score_status(status: str) -> str:
     return (
-        f'<div class="score {html.escape(status)}">'
-        f'<div class="score-circle"><span>{int(score)}</span></div>'
-        '<div class="age">/ 100</div>'
+        f'<div class="score private-score {html.escape(status)}">'
+        '<div class="score-circle"><span>--</span></div>'
+        '<div class="age">Private score</div>'
         "</div>"
     )
 
@@ -1070,7 +1070,7 @@ def render_html(report: dict[str, Any]) -> str:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
         cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         cells.append(f"<td>{render_metric(row['metrics'][FRESHDESK_METRIC[0]])}</td>")
-        cells.append(f"<td>{render_score(row['overall_score'], row['score_status'])}</td>")
+        cells.append(f"<td>{render_score_status(row['score_status'])}</td>")
         rows_html.append(f"<tr{row_class}>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
@@ -1496,7 +1496,7 @@ def render_html(report: dict[str, Any]) -> str:
           <th>Unactioned Jobs</th>
           <th>{month_name} sales</th>
           <th>Open Freshdesk Tickets</th>
-          <th>Overall Score / 100</th>
+          <th>Overall ranking</th>
         </tr>
       </thead>
       <tbody>

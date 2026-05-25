@@ -1,4 +1,5 @@
 import datetime as dt
+import email
 import json
 import os
 import tempfile
@@ -14,7 +15,9 @@ from scripts.bigchange_kpi_report import (
     is_open_freshdesk_ticket,
     match_staff_name,
     name_key,
+    render_html,
     save_baseline,
+    send_email,
     should_exclude_category,
     status_ids_from_choices,
     validate_report,
@@ -194,6 +197,103 @@ class ScoreAndBaselineTest(unittest.TestCase):
         self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
         self.assertEqual(baseline["staff"][0]["overall_score"], 67)
         self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+
+    def test_dashboard_keeps_overall_score_private(self) -> None:
+        report = {
+            "run_timestamp": "2026-05-25T07:00:00+00:00",
+            "report_date": "2026-05-25",
+            "job_lookback_start": "2025-05-25",
+            "month_name": "May",
+            "total_red_kpis": 0,
+            "total_amber_kpis": 0,
+            "unmatched_freshdesk_ticket_count": 0,
+            "critical_freshdesk_ticket_count": 0,
+            "critical_freshdesk_oldest_age_days": 0,
+            "staff_rows": [
+                {
+                    "staff_name": "Amy Bradley",
+                    "metrics": {
+                        "unallocated_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
+                        "historic_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
+                        "uninvoiced_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
+                        "unactioned_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
+                        FRESHDESK_METRIC[0]: {"count": 0, "status": "green", "oldest_age_days": 0},
+                    },
+                    "current_month_sales": 0,
+                    "current_month_sales_display": "GBP 0.00",
+                    "freshdesk_ticket_count": 0,
+                    "red_kpis": 0,
+                    "amber_kpis": 0,
+                    "total_open_workload": 0,
+                    "overall_score": 67,
+                    "score_status": "amber",
+                    "escalated": False,
+                }
+            ],
+        }
+
+        rendered = render_html(report)
+
+        self.assertNotIn(">67<", rendered)
+        self.assertNotIn("/ 100", rendered)
+        self.assertIn("Private score", rendered)
+
+
+class EmailTest(unittest.TestCase):
+    def test_email_embeds_and_attaches_only_png(self) -> None:
+        sent_messages: list[str] = []
+
+        class FakeSMTP:
+            def __init__(self, *_args, **_kwargs) -> None:
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args) -> None:
+                pass
+
+            def starttls(self) -> None:
+                pass
+
+            def login(self, _username, _password) -> None:
+                pass
+
+            def sendmail(self, _from_email, _recipients, message) -> None:
+                sent_messages.append(message)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            png_path = Path(temp_dir) / "dashboard.png"
+            png_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+            env = {
+                "SMTP_HOST": "smtp.example.com",
+                "SMTP_PORT": "587",
+                "SMTP_USERNAME": "user",
+                "SMTP_PASSWORD": "password",
+                "SMTP_FROM_EMAIL": "from@example.com",
+                "SMTP_FROM_NAME": "Daniel Dwyer",
+                "SMTP_TO_EMAIL": "to@example.com",
+                "SMTP_CC_EMAIL": "cc@example.com",
+            }
+            with patch.dict(os.environ, env, clear=False), patch("scripts.bigchange_kpi_report.smtplib.SMTP", FakeSMTP):
+                send_email(png_path)
+
+        self.assertEqual(len(sent_messages), 1)
+        message = email.message_from_string(sent_messages[0])
+        attachments = [
+            part
+            for part in message.walk()
+            if part.get_content_disposition() == "attachment"
+        ]
+        self.assertEqual(len(attachments), 1)
+        self.assertEqual(attachments[0].get_content_type(), "image/png")
+        self.assertEqual(attachments[0].get_filename(), "dashboard.png")
+        html_parts = [
+            part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8")
+            for part in message.walk()
+            if part.get_content_type() == "text/html"
+        ]
+        self.assertTrue(any("cid:kpi-dashboard" in part for part in html_parts))
 
 
 class FakeBigChangeClient:
