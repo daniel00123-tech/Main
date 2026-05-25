@@ -373,6 +373,12 @@ class BigChangeClient:
             return []
         return self.result_rows(payload)
 
+    def job_status_history(self, job_id: str) -> list[dict[str, Any]]:
+        payload = self.get("jobstatushistory", {"JobId": job_id}, timeout=30, attempts=2)
+        if payload.get("Code") != 0:
+            return []
+        return self.result_rows(payload)
+
 
 def item_age_days(item_date: dt.datetime | None, today: dt.date) -> int:
     if item_date is None:
