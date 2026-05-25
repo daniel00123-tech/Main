@@ -24,19 +24,20 @@ from collections import defaultdict
 from email import encoders
 from email.headerregistry import Address
 from email.mime.base import MIMEBase
-from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Any
 
 
-KPI_ORDER = [
+JOB_KPI_ORDER = [
     ("unallocated_jobs", "Unallocated Jobs"),
     ("historic_jobs", "Historic Jobs"),
     ("uninvoiced_jobs", "Uninvoiced Jobs"),
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
+FRESHDESK_METRIC = ("open_freshdesk_tickets", "Open Freshdesk Tickets")
+KPI_ORDER = JOB_KPI_ORDER + [FRESHDESK_METRIC]
 
 SALES_ORDER_TYPES = {"invoice"}
 EXCLUDED_CATEGORY_NAMES = {"btr compliance", "btr reactive", "john bennett", "ryan barrett"}
@@ -44,6 +45,12 @@ EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
 OPEN_NOT_STARTED_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
+OPEN_FRESHDESK_STATUS_NAMES = {"open", "pending", "waiting on customer", "waiting on third party"}
+DEFAULT_FRESHDESK_OPEN_STATUS_IDS = {2, 3}
+LOCAL_NAME_ALIASES = {
+    "amy b": "amy bradley",
+    "dan dwyer": "daniel dwyer",
+}
 DECIMAL_ZERO = decimal.Decimal("0")
 
 
@@ -139,12 +146,30 @@ def match_staff_name(creator_name: str, staff_by_key: dict[str, str]) -> str | N
     key = name_key(creator_name)
     if not key:
         return None
+    alias_key = name_key(LOCAL_NAME_ALIASES.get(key, ""))
+    if alias_key in staff_by_key:
+        return staff_by_key[alias_key]
     if key in staff_by_key:
         return staff_by_key[key]
+    compacted_staff = {compact_key(staff_key): staff_name for staff_key, staff_name in staff_by_key.items()}
+    compacted_key = compact_key(key)
+    if compacted_key in compacted_staff:
+        return compacted_staff[compacted_key]
+    creator_tokens = key.split()
+    for staff_key, staff_name in staff_by_key.items():
+        staff_tokens = staff_key.split()
+        if len(creator_tokens) >= 2 and len(staff_tokens) >= 2 and creator_tokens[0] == staff_tokens[0]:
+            creator_last = creator_tokens[-1]
+            staff_last = staff_tokens[-1]
+            if creator_last == staff_last or creator_last.startswith(staff_last) or staff_last.startswith(creator_last):
+                return staff_name
+        if len(creator_tokens) == 1 and creator_tokens[0] in staff_tokens:
+            return staff_name
+        if len(staff_tokens) == 1 and staff_tokens[0] in creator_tokens:
+            return staff_name
     match = difflib.get_close_matches(key, staff_by_key.keys(), n=1, cutoff=0.88)
     if match:
         return staff_by_key[match[0]]
-    creator_tokens = key.split()
     first_name_matches = [
         staff_name
         for staff_key, staff_name in staff_by_key.items()
@@ -374,6 +399,196 @@ class BigChangeClient:
         return self.result_rows(payload)
 
 
+class FreshdeskClient:
+    def __init__(self) -> None:
+        subdomain = required_env("FRESHDESK_SUBDOMAIN").strip().rstrip("/")
+        if not subdomain.startswith(("http://", "https://")):
+            subdomain = f"https://{subdomain}"
+        self.base_url = subdomain
+        api_key = required_env("FRESHDESK_API_KEY")
+        token = base64.b64encode(f"{api_key}:X".encode("utf-8")).decode("ascii")
+        self.headers = {
+            "Authorization": f"Basic {token}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        self._agent_cache: dict[int, str] = {}
+        self._contact_cache: dict[int, str] = {}
+
+    def get_json(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        timeout: int = 60,
+        attempts: int = 3,
+    ) -> Any:
+        url = f"{self.base_url}{path}"
+        if params:
+            query = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None and v != ""})
+            if query:
+                url = f"{url}?{query}"
+        req = urllib.request.Request(url, headers=self.headers)
+        last_error: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as response:
+                    return json.loads(response.read().decode("utf-8-sig"))
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                retryable = exc.code == 429 or 500 <= exc.code < 600
+                if not retryable or attempt == attempts - 1:
+                    break
+                retry_after = as_int(exc.headers.get("Retry-After"), default=None)
+                time.sleep(float(retry_after if retry_after is not None else 2**attempt))
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+                last_error = exc
+                if attempt == attempts - 1:
+                    break
+                time.sleep(2**attempt)
+        raise RuntimeError(f"Freshdesk request failed for {path}: {type(last_error).__name__}")
+
+    def open_status_ids(self) -> set[int]:
+        configured = optional_env("FRESHDESK_OPEN_STATUS_IDS").strip()
+        if configured:
+            status_ids = {
+                parsed
+                for parsed in (as_int(part.strip(), default=None) for part in configured.split(","))
+                if parsed is not None
+            }
+            if status_ids:
+                return status_ids
+        try:
+            fields = self.get_json("/api/v2/ticket_fields", timeout=30)
+        except RuntimeError:
+            return set(DEFAULT_FRESHDESK_OPEN_STATUS_IDS)
+        for field in fields if isinstance(fields, list) else []:
+            field_name = normalized_text(clean_name(first_present(field, ("name", "label", "default_label"))))
+            if field_name != "status":
+                continue
+            status_ids = status_ids_from_choices(field.get("choices"))
+            if status_ids:
+                return status_ids
+        return set(DEFAULT_FRESHDESK_OPEN_STATUS_IDS)
+
+    def list_open_tickets(self, page_size: int = 100) -> list[dict[str, Any]]:
+        open_status_ids = self.open_status_ids()
+        tickets: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            batch = self.get_json(
+                "/api/v2/tickets",
+                {"include": "requester", "per_page": page_size, "page": page},
+                timeout=60,
+            )
+            if not isinstance(batch, list):
+                raise RuntimeError("Freshdesk tickets response was not a list")
+            for ticket in batch:
+                if is_open_freshdesk_ticket(ticket, open_status_ids):
+                    tickets.append(ticket)
+            if len(batch) < page_size:
+                return tickets
+            page += 1
+            if page > 300:
+                raise RuntimeError("Freshdesk ticket pagination exceeded safety limit")
+
+    def agent_name(self, agent_id: Any) -> str:
+        parsed = as_int(agent_id)
+        if parsed is None:
+            return ""
+        if parsed not in self._agent_cache:
+            try:
+                payload = self.get_json(f"/api/v2/agents/{parsed}", timeout=30)
+            except RuntimeError:
+                self._agent_cache[parsed] = ""
+            else:
+                contact = payload.get("contact") if isinstance(payload, dict) else None
+                self._agent_cache[parsed] = clean_name(
+                    first_present(payload, ("name", "email")) if isinstance(payload, dict) else ""
+                ) or clean_name(first_present(contact, ("name", "email")) if isinstance(contact, dict) else "")
+        return self._agent_cache[parsed]
+
+    def contact_name(self, contact_id: Any) -> str:
+        parsed = as_int(contact_id)
+        if parsed is None:
+            return ""
+        if parsed not in self._contact_cache:
+            try:
+                payload = self.get_json(f"/api/v2/contacts/{parsed}", timeout=30)
+            except RuntimeError:
+                self._contact_cache[parsed] = ""
+            else:
+                self._contact_cache[parsed] = clean_name(
+                    first_present(payload, ("name", "email")) if isinstance(payload, dict) else ""
+                )
+        return self._contact_cache[parsed]
+
+
+def status_ids_from_choices(choices: Any) -> set[int]:
+    status_ids: set[int] = set()
+    if isinstance(choices, dict):
+        iterable = choices.items()
+    elif isinstance(choices, list):
+        iterable = enumerate(choices)
+    else:
+        return status_ids
+    for key, value in iterable:
+        status_id: int | None = None
+        label = ""
+        if isinstance(value, dict):
+            status_id = as_int(first_present(value, ("id", "value", "key")), default=None)
+            label = clean_name(first_present(value, ("label", "value", "name")))
+        else:
+            key_id = as_int(key, default=None)
+            value_id = as_int(value, default=None)
+            if key_id is not None:
+                status_id = key_id
+                label = clean_name(value)
+            elif value_id is not None:
+                status_id = value_id
+                label = clean_name(key)
+        if status_id is not None and normalized_text(label) in OPEN_FRESHDESK_STATUS_NAMES:
+            status_ids.add(status_id)
+    return status_ids
+
+
+def is_open_freshdesk_ticket(ticket: dict[str, Any], open_status_ids: set[int]) -> bool:
+    if not isinstance(ticket, dict):
+        return False
+    if as_bool_truthy(first_present(ticket, ("deleted", "is_deleted"))):
+        return False
+    if as_bool_truthy(first_present(ticket, ("spam", "is_spam"))):
+        return False
+    status_id = as_int(ticket.get("status"))
+    return status_id in open_status_ids
+
+
+def as_bool_truthy(value: Any) -> bool:
+    if value in (None, ""):
+        return False
+    text = str(value).strip().lower()
+    return text in {"1", "true", "yes", "y"}
+
+
+def freshdesk_ticket_owner(client: FreshdeskClient, ticket: dict[str, Any]) -> str:
+    responder = first_present(ticket, ("responder_id", "agent_id", "assigned_agent_id"))
+    owner = client.agent_name(responder)
+    if owner:
+        return owner
+
+    requester = first_present(ticket, ("requester_id", "contact_id"))
+    owner = client.contact_name(requester)
+    if owner:
+        return owner
+
+    embedded_requester = ticket.get("requester")
+    if isinstance(embedded_requester, dict):
+        owner = clean_name(first_present(embedded_requester, ("name", "email")))
+        if owner:
+            return owner
+
+    return clean_name(first_present(ticket, ("responder_name", "agent_name", "requester_name", "name", "email")))
+
+
 def item_age_days(item_date: dt.datetime | None, today: dt.date) -> int:
     if item_date is None:
         return 0
@@ -495,6 +710,45 @@ def calculate_sales(
     return dict(sales)
 
 
+def calculate_freshdesk_metrics(
+    client: FreshdeskClient,
+    staff_names: set[str],
+    today: dt.date,
+) -> tuple[dict[str, list[dt.datetime | None]], list[dict[str, Any]], list[dict[str, Any]]]:
+    staff_by_key = {name_key(name): name for name in staff_names if name_key(name)}
+    grouped: dict[str, list[dt.datetime | None]] = defaultdict(list)
+    unmatched: list[dict[str, Any]] = []
+    critical: list[dict[str, Any]] = []
+    for ticket in client.list_open_tickets():
+        created_at = parse_date(first_present(ticket, ("created_at", "created", "created_date")))
+        age_days = item_age_days(created_at, today) if created_at else 0
+        owner = freshdesk_ticket_owner(client, ticket)
+        matched_staff = match_staff_name(owner, staff_by_key)
+        if age_days > 30:
+            critical.append({"id": ticket.get("id"), "owner": owner, "oldest_age_days": age_days})
+        if not matched_staff:
+            unmatched.append({"id": ticket.get("id"), "owner": owner, "oldest_age_days": age_days})
+            continue
+        grouped[matched_staff].append(created_at)
+    return dict(grouped), unmatched, critical
+
+
+def calculate_score(metrics: dict[str, dict[str, Any]]) -> int:
+    red_count = sum(1 for metric in metrics.values() if metric["status"] == "red")
+    amber_count = sum(1 for metric in metrics.values() if metric["status"] == "amber")
+    open_workload = sum(int(metric["count"]) for metric in metrics.values())
+    score = 100 - red_count * 20 - amber_count * 10 - open_workload
+    return max(1, min(100, score))
+
+
+def score_status(score: int) -> str:
+    if score >= 70:
+        return "green"
+    if score >= 40:
+        return "amber"
+    return "red"
+
+
 def invoice_created_owner(document: dict[str, Any], activity_cache: dict[str, list[dict[str, Any]]]) -> str:
     job_id = document_job_id(document)
     if not job_id:
@@ -524,7 +778,7 @@ def resolve_document_creator(invoice: dict[str, Any], web_users: dict[str, str])
     return creator
 
 
-def build_report(client: BigChangeClient) -> dict[str, Any]:
+def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> dict[str, Any]:
     now = dt.datetime.now(dt.timezone.utc)
     today = dt.date.today()
     tomorrow = today + dt.timedelta(days=1)
@@ -614,11 +868,14 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
     add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", "StatusDate", today)
 
     sales = calculate_sales(client, staff_names, month_start, month_end)
+    freshdesk_grouped, unmatched_freshdesk_tickets, critical_freshdesk_tickets = calculate_freshdesk_metrics(
+        freshdesk_client, staff_names, today
+    )
 
     staff_rows: list[dict[str, Any]] = []
     for staff in sorted(staff_names):
         metrics: dict[str, dict[str, Any]] = {}
-        for metric_key, _label in KPI_ORDER:
+        for metric_key, _label in JOB_KPI_ORDER:
             dates = grouped[staff].get(metric_key, [])
             count = len(dates)
             oldest_date = min((date for date in dates if date is not None), default=None)
@@ -628,22 +885,44 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
                 "oldest_age_days": age_days,
                 "status": severity_for(count, age_days),
             }
+        freshdesk_dates = freshdesk_grouped.get(staff, [])
+        freshdesk_count = len(freshdesk_dates)
+        oldest_freshdesk_date = min((date for date in freshdesk_dates if date is not None), default=None)
+        freshdesk_age_days = item_age_days(oldest_freshdesk_date, today) if oldest_freshdesk_date else 0
+        metrics[FRESHDESK_METRIC[0]] = {
+            "count": freshdesk_count,
+            "oldest_age_days": freshdesk_age_days,
+            "status": severity_for(freshdesk_count, freshdesk_age_days),
+        }
         red_count = sum(1 for metric in metrics.values() if metric["status"] == "red")
         amber_count = sum(1 for metric in metrics.values() if metric["status"] == "amber")
         total_open_workload = sum(metric["count"] for metric in metrics.values())
+        overall_score = calculate_score(metrics)
         staff_rows.append(
             {
                 "staff_name": staff,
                 "metrics": metrics,
                 "current_month_sales": float(sales.get(staff, DECIMAL_ZERO)),
                 "current_month_sales_display": format_currency(sales.get(staff, DECIMAL_ZERO)),
+                "freshdesk_ticket_count": freshdesk_count,
                 "red_kpis": red_count,
                 "amber_kpis": amber_count,
                 "total_open_workload": total_open_workload,
+                "overall_score": overall_score,
+                "score_status": score_status(overall_score),
+                "escalated": red_count > 5 or overall_score < 40,
             }
         )
 
-    staff_rows.sort(key=lambda row: (row["red_kpis"], row["amber_kpis"], row["total_open_workload"], row["staff_name"]))
+    staff_rows.sort(
+        key=lambda row: (
+            -row["overall_score"],
+            row["red_kpis"],
+            row["amber_kpis"],
+            row["total_open_workload"],
+            row["staff_name"],
+        )
+    )
     return {
         "run_timestamp": now.isoformat(),
         "report_date": today.isoformat(),
@@ -652,6 +931,13 @@ def build_report(client: BigChangeClient) -> dict[str, Any]:
         "staff_rows": staff_rows,
         "total_red_kpis": sum(row["red_kpis"] for row in staff_rows),
         "total_amber_kpis": sum(row["amber_kpis"] for row in staff_rows),
+        "unmatched_freshdesk_ticket_count": len(unmatched_freshdesk_tickets),
+        "unmatched_freshdesk_tickets": unmatched_freshdesk_tickets,
+        "critical_freshdesk_ticket_count": len(critical_freshdesk_tickets),
+        "critical_freshdesk_oldest_age_days": max(
+            (int(ticket["oldest_age_days"]) for ticket in critical_freshdesk_tickets),
+            default=0,
+        ),
     }
 
 
@@ -681,6 +967,15 @@ def render_sales(value: str) -> str:
     )
 
 
+def render_score(score: int, status: str) -> str:
+    return (
+        f'<div class="score {html.escape(status)}">'
+        f'<div class="score-circle"><span>{int(score)}</span></div>'
+        '<div class="age">/ 100</div>'
+        "</div>"
+    )
+
+
 def initials(name: str) -> str:
     parts = normalized_text(name).split()
     if not parts:
@@ -698,17 +993,21 @@ def render_html(report: dict[str, Any]) -> str:
     rows_html = []
     for idx, row in enumerate(report["staff_rows"], start=1):
         staff = html.escape(row["staff_name"])
+        row_class = ' class="escalated"' if row.get("escalated") else ""
+        escalation_icon = '<span class="escalation-icon">!</span>' if row.get("escalated") else ""
         cells = [
             f'<td class="rank">#{idx}</td>',
             '<td class="staff">'
             f'<div class="avatar {avatar_class(row["staff_name"])}">{html.escape(initials(row["staff_name"]))}</div>'
-            f'<div class="person"><strong>{staff}</strong><span>Staff owner</span></div>'
+            f'<div class="person"><strong>{staff}{escalation_icon}</strong><span>Staff owner</span></div>'
             "</td>",
         ]
-        for metric_key, _label in KPI_ORDER:
+        for metric_key, _label in JOB_KPI_ORDER:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
         cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
-        rows_html.append(f"<tr>{''.join(cells)}</tr>")
+        cells.append(f"<td>{render_metric(row['metrics'][FRESHDESK_METRIC[0]])}</td>")
+        cells.append(f"<td>{render_score(row['overall_score'], row['score_status'])}</td>")
+        rows_html.append(f"<tr{row_class}>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
     report_date = html.escape(report["report_date"])
@@ -719,6 +1018,23 @@ def render_html(report: dict[str, Any]) -> str:
         metric_key: sum(row["metrics"][metric_key]["count"] for row in report["staff_rows"])
         for metric_key, _label in KPI_ORDER
     }
+    critical_warning = ""
+    if int(report.get("critical_freshdesk_ticket_count", 0)):
+        critical_warning = (
+            '<section class="critical-warning">'
+            '<div class="warning-icon">!</div>'
+            "<div>"
+            "<strong>Critical Aged Tickets</strong>"
+            f'<span>{int(report["critical_freshdesk_ticket_count"])} open Freshdesk tickets are over 30 days old; '
+            f'oldest is {int(report["critical_freshdesk_oldest_age_days"])} days old.</span>'
+            "</div>"
+            "</section>"
+        )
+    unmatched_note = (
+        '<section class="notes">'
+        f'<span>Unmatched Freshdesk tickets logged: {int(report.get("unmatched_freshdesk_ticket_count", 0))}</span>'
+        "</section>"
+    )
     return f"""<!doctype html>
 <html>
 <head>
@@ -748,7 +1064,7 @@ def render_html(report: dict[str, Any]) -> str:
       padding: 34px;
     }}
     .dashboard {{
-      width: 1480px;
+      width: 1680px;
       margin: 0 auto;
       background: linear-gradient(180deg, rgba(11, 22, 38, 0.98), rgba(8, 18, 32, 0.98));
       border: 1px solid var(--line);
@@ -817,9 +1133,56 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .badge.red strong {{ color: var(--red); }}
     .badge.amber strong {{ color: var(--amber); }}
+    .critical-warning {{
+      margin: 18px 24px 0;
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      border: 1px solid rgba(239, 77, 93, 0.55);
+      border-radius: 18px;
+      background: linear-gradient(90deg, rgba(239, 77, 93, 0.20), rgba(239, 77, 93, 0.06));
+      box-shadow: 0 0 28px rgba(239, 77, 93, 0.16);
+    }}
+    .critical-warning strong,
+    .critical-warning span {{
+      display: block;
+    }}
+    .critical-warning strong {{
+      color: #fff1f2;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }}
+    .critical-warning span {{
+      margin-top: 4px;
+      color: #fecdd3;
+      font-size: 13px;
+    }}
+    .warning-icon,
+    .escalation-icon {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: var(--red);
+      color: #fff;
+      font-weight: 900;
+      box-shadow: 0 0 20px rgba(239, 77, 93, 0.45);
+    }}
+    .warning-icon {{
+      width: 34px;
+      height: 34px;
+    }}
+    .escalation-icon {{
+      width: 20px;
+      height: 20px;
+      margin-left: 8px;
+      font-size: 12px;
+      vertical-align: middle;
+    }}
     .total-cards {{
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 14px;
       padding: 18px 24px;
       border-bottom: 1px solid var(--line);
@@ -849,6 +1212,9 @@ def render_html(report: dict[str, Any]) -> str:
       border-collapse: collapse;
       table-layout: fixed;
     }}
+    .table-wrap {{
+      overflow-x: auto;
+    }}
     th {{
       color: #cbd5e1;
       font-size: 13px;
@@ -861,7 +1227,9 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     th:nth-child(1), td:nth-child(1) {{ width: 72px; }}
     th:nth-child(2), td:nth-child(2) {{ width: 292px; }}
-    th:nth-child(7), td:nth-child(7) {{ width: 170px; }}
+    th:nth-child(7), td:nth-child(7) {{ width: 178px; }}
+    th:nth-child(8), td:nth-child(8) {{ width: 178px; }}
+    th:nth-child(9), td:nth-child(9) {{ width: 150px; }}
     td {{
       padding: 14px 10px;
       border-bottom: 1px solid var(--line);
@@ -870,6 +1238,21 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     tr:nth-child(even) td {{ background: rgba(255, 255, 255, 0.025); }}
     tr:last-child td {{ border-bottom: none; }}
+    tr.escalated td {{
+      border-top: 1px solid rgba(239, 77, 93, 0.62);
+      border-bottom: 1px solid rgba(239, 77, 93, 0.62);
+      animation: pulse-border 1.8s ease-in-out infinite;
+    }}
+    tr.escalated td:first-child {{
+      border-left: 1px solid rgba(239, 77, 93, 0.62);
+    }}
+    tr.escalated td:last-child {{
+      border-right: 1px solid rgba(239, 77, 93, 0.62);
+    }}
+    @keyframes pulse-border {{
+      0%, 100% {{ box-shadow: inset 0 0 0 rgba(239, 77, 93, 0); }}
+      50% {{ box-shadow: inset 0 0 26px rgba(239, 77, 93, 0.18); }}
+    }}
     .rank {{
       color: #e2e8f0;
       font-weight: 900;
@@ -932,13 +1315,15 @@ def render_html(report: dict[str, Any]) -> str:
       color: var(--muted);
       font-size: 12px;
     }}
-    .metric {{
+    .metric,
+    .score {{
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 6px;
     }}
-    .circle {{
+    .circle,
+    .score-circle {{
       width: 66px;
       height: 66px;
       border-radius: 50%;
@@ -948,7 +1333,8 @@ def render_html(report: dict[str, Any]) -> str:
       background: rgba(255, 255, 255, 0.045);
       box-shadow: inset 0 0 22px rgba(255, 255, 255, 0.05), 0 0 18px rgba(0, 0, 0, 0.18);
     }}
-    .circle span {{
+    .circle span,
+    .score-circle span {{
       font-size: 24px;
       line-height: 1;
       font-weight: 900;
@@ -966,6 +1352,22 @@ def render_html(report: dict[str, Any]) -> str:
       border: 3px solid var(--red);
       color: var(--red);
     }}
+    .score-circle {{
+      width: 76px;
+      height: 76px;
+    }}
+    .green .score-circle {{
+      border: 3px dotted var(--green);
+      color: var(--green);
+    }}
+    .amber .score-circle {{
+      border: 3px solid var(--amber);
+      color: var(--amber);
+    }}
+    .red .score-circle {{
+      border: 3px solid var(--red);
+      color: var(--red);
+    }}
     .age {{
       color: var(--muted);
       font-size: 12px;
@@ -977,6 +1379,21 @@ def render_html(report: dict[str, Any]) -> str:
       font-size: 12px;
       border-top: 1px solid var(--line);
     }}
+    .notes {{
+      padding: 14px 24px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.018);
+    }}
+    @media (max-width: 900px) {{
+      body {{ padding: 12px; }}
+      .dashboard {{ width: 100%; border-radius: 18px; }}
+      header {{ align-items: flex-start; flex-direction: column; gap: 18px; }}
+      .summary {{ flex-wrap: wrap; }}
+      .total-cards {{ grid-template-columns: 1fr; }}
+      table {{ min-width: 1480px; }}
+    }}
   </style>
 </head>
 <body>
@@ -985,7 +1402,7 @@ def render_html(report: dict[str, Any]) -> str:
       <div class="brand">
         <div class="brand-mark"></div>
         <div>
-          <h1>BigChange KPI Overview</h1>
+          <h1>Aquilo BigChange KPI Overview</h1>
           <div class="sub">Generated {report_date} - jobs from {job_lookback_start} onwards, grouped by job category staff owner</div>
         </div>
       </div>
@@ -995,12 +1412,15 @@ def render_html(report: dict[str, Any]) -> str:
         <div class="badge"><strong>{total_workload}</strong><span>Open items</span></div>
       </div>
     </header>
+    {critical_warning}
     <section class="total-cards">
       <div class="total-card"><span>Unallocated jobs</span><strong>{totals["unallocated_jobs"]}</strong></div>
       <div class="total-card"><span>Historic jobs</span><strong>{totals["historic_jobs"]}</strong></div>
       <div class="total-card"><span>Uninvoiced jobs</span><strong>{totals["uninvoiced_jobs"]}</strong></div>
       <div class="total-card"><span>Unactioned jobs</span><strong>{totals["unactioned_jobs"]}</strong></div>
+      <div class="total-card"><span>Open Freshdesk tickets</span><strong>{totals["open_freshdesk_tickets"]}</strong></div>
     </section>
+    <section class="table-wrap">
     <table>
       <thead>
         <tr>
@@ -1011,12 +1431,16 @@ def render_html(report: dict[str, Any]) -> str:
           <th>Uninvoiced Jobs</th>
           <th>Unactioned Jobs</th>
           <th>{month_name} sales</th>
+          <th>Open Freshdesk Tickets</th>
+          <th>Overall Score / 100</th>
         </tr>
       </thead>
       <tbody>
         {''.join(rows_html)}
       </tbody>
     </table>
+    </section>
+    {unmatched_note}
     <footer>Generated {generated}. Green dotted circles are clear or under 10 days old; amber is 10-30 days; red is over 30 days.</footer>
   </main>
 </body>
@@ -1033,7 +1457,12 @@ def save_baseline(report: dict[str, Any], path: Path) -> None:
                 "staff_name": row["staff_name"],
                 "counts": {metric_key: row["metrics"][metric_key]["count"] for metric_key, _ in KPI_ORDER},
                 "statuses": {metric_key: row["metrics"][metric_key]["status"] for metric_key, _ in KPI_ORDER},
+                "oldest_age_days": {
+                    metric_key: row["metrics"][metric_key]["oldest_age_days"] for metric_key, _ in KPI_ORDER
+                },
                 "current_month_sales": row["current_month_sales"],
+                "freshdesk_ticket_count": row["freshdesk_ticket_count"],
+                "overall_score": row["overall_score"],
             }
         )
     baseline = {
@@ -1061,7 +1490,7 @@ def render_png(html_content: str, html_path: Path, png_path: Path, row_count: in
             "--disable-gpu",
             "--hide-scrollbars",
             f"--user-data-dir={profile_dir}",
-            f"--window-size=1540,{height}",
+            f"--window-size=1740,{height}",
             f"--screenshot={png_path}",
             html_path.resolve().as_uri(),
         ]
@@ -1083,7 +1512,7 @@ def send_email(png_path: Path) -> None:
     to_email = required_env("SMTP_TO_EMAIL").strip()
     cc_email = optional_env("SMTP_CC_EMAIL").strip()
 
-    subject = f"BigChange KPI Overview - {dt.date.today().isoformat()}"
+    subject = "Daily KPI Overview Report"
     root = MIMEMultipart("related")
     root["Subject"] = subject
     root["From"] = str(mailbox_address(from_email, from_name))
@@ -1114,14 +1543,10 @@ Daniel Dwyer
     alt.attach(MIMEText(html_body, "html", "utf-8"))
 
     image_data = png_path.read_bytes()
-    image = MIMEImage(image_data, _subtype="png")
-    image.add_header("Content-ID", "<kpi-dashboard>")
-    image.add_header("Content-Disposition", "inline", filename=png_path.name)
-    root.attach(image)
-
     attachment = MIMEBase("image", "png")
     attachment.set_payload(image_data)
     encoders.encode_base64(attachment)
+    attachment.add_header("Content-ID", "<kpi-dashboard>")
     attachment.add_header("Content-Disposition", "attachment", filename=png_path.name)
     root.attach(attachment)
 
@@ -1135,7 +1560,8 @@ Daniel Dwyer
 def main() -> int:
     try:
         client = BigChangeClient()
-        report = build_report(client)
+        freshdesk_client = FreshdeskClient()
+        report = build_report(client, freshdesk_client)
         validate_report(report)
         html_content = render_html(report)
         reports_dir = Path("reports")
@@ -1144,19 +1570,26 @@ def main() -> int:
         baseline_path = Path("automation-memory") / "kpi-baseline.json"
         render_png(html_content, html_path, png_path, len(report["staff_rows"]))
         save_baseline(report, baseline_path)
-        send_email(png_path)
+        email_status = "sent"
+        exit_code = 0
+        try:
+            send_email(png_path)
+        except Exception:
+            email_status = "failed"
+            exit_code = 1
         print(
             json.dumps(
                 {
                     "staff_rows_included": len(report["staff_rows"]),
                     "total_red_kpis": report["total_red_kpis"],
                     "total_amber_kpis": report["total_amber_kpis"],
-                    "email": "sent",
+                    "email": email_status,
+                    "unmatched_freshdesk_ticket_count": report["unmatched_freshdesk_ticket_count"],
                 },
                 sort_keys=True,
             )
         )
-        return 0
+        return exit_code
     except Exception as exc:
         print(
             json.dumps(
@@ -1165,6 +1598,7 @@ def main() -> int:
                     "total_red_kpis": 0,
                     "total_amber_kpis": 0,
                     "email": "failed",
+                    "unmatched_freshdesk_ticket_count": 0,
                 },
                 sort_keys=True,
             ),
