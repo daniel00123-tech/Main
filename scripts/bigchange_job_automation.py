@@ -31,6 +31,7 @@ UNCATEGORISED = "Uncategorised"
 DEFAULT_FALLBACK_CATEGORY = "Hayley Longford"
 INVOICE_CREATED = "InvoiceCreated"
 INVOICE_CREATED_STATUS_ID = 34
+UNSUPPORTED_ACTION = "__unsupported__"
 
 
 class BigChangeError(RuntimeError):
@@ -233,6 +234,14 @@ def first_creator_from_history(history: list[dict[str, Any]]) -> tuple[str | Non
 
 def has_invoice_created(activity: list[dict[str, Any]]) -> bool:
     return any(normalise_name(row.get("JobClientStatus")) == normalise_name(INVOICE_CREATED) for row in activity)
+
+
+def validate_update(client: BigChangeClient, update: IntendedUpdate) -> str | None:
+    if update.update_type == "auto_close_invoice_created":
+        activity = result_list(client.call({"action": "JobCustomerActivity", "jobId": update.job_id}), "JobCustomerActivity")
+        if not has_invoice_created(activity):
+            return "InvoiceCreated status was not present after update"
+    return None
 
 
 def write_json(path: Path, payload: Any) -> None:
@@ -452,28 +461,49 @@ def run(args: argparse.Namespace) -> int:
                 if is_actioned(job) and invoice_created:
                     skip_reasons.append("Auto Close Down already actioned with InvoiceCreated status")
                 else:
-                    reasons = []
-                    if not is_actioned(job):
-                        reasons.append("mark actioned")
                     if not invoice_created:
-                        reasons.append("set invoice status InvoiceCreated")
-                    intended.append(
-                        IntendedUpdate(
-                            job_id=job_id,
-                            job_ref=ref,
-                            update_type="auto_close_invoice_created",
-                            reason="Auto Close Down flag confirmed; " + " and ".join(reasons),
-                            params={
-                                "action": "JobClientStatus",
-                                "JobId": job_id,
-                                "JobClientStatus": INVOICE_CREATED_STATUS_ID,
-                                "Comment": "Automated Auto Close Down invoice status update",
-                            },
-                            before={"Actioned": job.get("Actioned"), "InvoiceCreated": invoice_created, "CurrentFlag": job.get("CurrentFlag")},
-                            target={"Actioned": "Yes", "JobClientStatus": INVOICE_CREATED, "JobClientStatusID": INVOICE_CREATED_STATUS_ID},
+                        intended.append(
+                            IntendedUpdate(
+                                job_id=job_id,
+                                job_ref=ref,
+                                update_type="auto_close_invoice_created",
+                                reason="Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+                                params={
+                                    "action": "JobClientStatus",
+                                    "JobId": job_id,
+                                    "JobClientStatus": INVOICE_CREATED_STATUS_ID,
+                                    "Comment": "Automated Auto Close Down invoice status update",
+                                },
+                                before={
+                                    "Actioned": job.get("Actioned"),
+                                    "InvoiceCreated": invoice_created,
+                                    "CurrentFlag": job.get("CurrentFlag"),
+                                },
+                                target={"JobClientStatus": INVOICE_CREATED, "JobClientStatusID": INVOICE_CREATED_STATUS_ID},
+                            )
                         )
-                    )
-                    intended_types.append("auto_close_invoice_created")
+                        intended_types.append("auto_close_invoice_created")
+                    else:
+                        skip_reasons.append("InvoiceCreated status already present")
+                    if not is_actioned(job):
+                        intended.append(
+                            IntendedUpdate(
+                                job_id=job_id,
+                                job_ref=ref,
+                                update_type="auto_close_mark_actioned",
+                                reason=(
+                                    "Auto Close Down flag confirmed; mark actioned "
+                                    "requires a confirmed BigChange actioned endpoint"
+                                ),
+                                params={
+                                    "action": UNSUPPORTED_ACTION,
+                                    "message": "No confirmed BigChange API endpoint for marking a job actioned",
+                                },
+                                before={"Actioned": job.get("Actioned"), "CurrentFlag": job.get("CurrentFlag")},
+                                target={"Actioned": "Yes"},
+                            )
+                        )
+                        intended_types.append("auto_close_mark_actioned")
             except Exception as exc:  # noqa: BLE001 - keep processing remaining jobs.
                 skip_reasons.append(f"failed to inspect customer activity: {exc}")
         else:
@@ -536,14 +566,27 @@ def run(args: argparse.Namespace) -> int:
             if key in completed:
                 continue
             try:
+                if update.params.get("action") == UNSUPPORTED_ACTION:
+                    raise BigChangeError(str(update.params["message"]))
                 response = client.call(update.params)
-                result = {
-                    "job_id": update.job_id,
-                    "job_ref": update.job_ref,
-                    "update_type": update.update_type,
-                    "status": "updated",
-                    "response": response,
-                }
+                validation_error = validate_update(client, update)
+                if validation_error:
+                    result = {
+                        "job_id": update.job_id,
+                        "job_ref": update.job_ref,
+                        "update_type": update.update_type,
+                        "status": "failed",
+                        "error": validation_error,
+                        "response": response,
+                    }
+                else:
+                    result = {
+                        "job_id": update.job_id,
+                        "job_ref": update.job_ref,
+                        "update_type": update.update_type,
+                        "status": "updated",
+                        "response": response,
+                    }
             except Exception as exc:  # noqa: BLE001 - keep processing remaining jobs.
                 result = {
                     "job_id": update.job_id,
