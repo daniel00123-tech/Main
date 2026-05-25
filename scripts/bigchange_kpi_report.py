@@ -12,6 +12,7 @@ import html
 import json
 import os
 import re
+import shutil
 import smtplib
 import subprocess
 import sys
@@ -117,6 +118,11 @@ def as_bool_falsey(value: Any) -> bool:
         return True
     text = str(value).strip().lower()
     return text in {"0", "false", "no", "n", "none", "null"}
+
+
+def code_is_success(payload: dict[str, Any]) -> bool:
+    code = payload.get("Code")
+    return code in (None, "", 0, "0")
 
 
 def as_decimal(value: Any) -> decimal.Decimal:
@@ -304,7 +310,27 @@ def is_populated(value: Any) -> bool:
     text = clean_name(value)
     if not text:
         return False
-    return text.lower() not in {"none", "null", "0", "false", "no", "0001-01-01", "0001-01-01 00:00:00"}
+    return text.lower() not in {
+        "none",
+        "null",
+        "0",
+        "false",
+        "no",
+        "n",
+        "0001-01-01",
+        "0001-01-01 00:00:00",
+    }
+
+
+def document_is_cancelled_deleted_or_rejected(document: dict[str, Any]) -> bool:
+    return any(
+        is_populated(first_present(document, names))
+        for names in (
+            ("CancellationDate", "CancelledDate", "Cancelled", "IsCancelled"),
+            ("DeletionDate", "DeletedDate", "Deleted", "IsDeleted"),
+            ("RejectionDate", "RejectedDate", "Rejected", "IsRejected"),
+        )
+    )
 
 
 def job_category_name(row: dict[str, Any]) -> str:
@@ -332,6 +358,9 @@ def client_status_id(row: dict[str, Any]) -> int | None:
 
 class BigChangeClient:
     def __init__(self) -> None:
+        auth_mode = optional_env("BIGCHANGE_AUTH_MODE", "api_key").strip().lower()
+        if auth_mode and auth_mode != "api_key":
+            raise ConfigError("BIGCHANGE_AUTH_MODE must be api_key")
         self.base_url = required_env("BIGCHANGE_BASE_URL")
         username = required_env("BIGCHANGE_USERNAME")
         password = required_env("BIGCHANGE_PASSWORD")
@@ -381,8 +410,8 @@ class BigChangeClient:
         return nested_rows(payload)
 
     def categories(self) -> list[dict[str, Any]]:
-        payload = self.get("jobcategories")
-        if payload.get("Code") != 0:
+        payload = self.get("JobCategories")
+        if not code_is_success(payload):
             raise RuntimeError("BigChange jobcategories returned an error")
         return self.result_rows(payload)
 
@@ -391,14 +420,14 @@ class BigChangeClient:
         page = 0
         while True:
             payload = self.get(
-                "jobslist",
+                "JobsList",
                 {
                     **params,
                     "Page": page,
                     "PageSize": page_size,
                 },
             )
-            if payload.get("Code") != 0:
+            if not code_is_success(payload):
                 raise RuntimeError(f"BigChange jobslist returned code {payload.get('Code')}")
             batch = self.result_rows(payload)
             rows.extend(batch)
@@ -410,22 +439,22 @@ class BigChangeClient:
 
     def invoices_with_items_by_period(self, start: dt.date, end: dt.date) -> list[dict[str, Any]]:
         payload = self.get(
-            "invoiceswithitemsbyperiod",
+            "InvoicesWithItemsByPeriod",
             {"Start": start.isoformat(), "End": end.isoformat()},
         )
-        if payload.get("Code") != 0:
+        if not code_is_success(payload):
             raise RuntimeError("BigChange invoiceswithitemsbyperiod returned an error")
         return self.result_rows(payload)
 
     def web_user_list(self) -> list[dict[str, Any]]:
-        payload = self.get("webuserlist")
-        if payload.get("Code") != 0:
+        payload = self.get("WebUserList")
+        if not code_is_success(payload):
             raise RuntimeError("BigChange webuserlist returned an error")
         return self.result_rows(payload)
 
     def job_customer_activity(self, job_id: str) -> list[dict[str, Any]]:
-        payload = self.get("jobcustomeractivity", {"JobId": job_id}, timeout=30, attempts=2)
-        if payload.get("Code") != 0:
+        payload = self.get("JobCustomerActivity", {"JobId": job_id}, timeout=30, attempts=2)
+        if not code_is_success(payload):
             return []
         return self.result_rows(payload)
 
@@ -567,19 +596,33 @@ def status_ids_from_choices(choices: Any) -> set[int]:
         label = ""
         if isinstance(value, dict):
             status_id = as_int(first_present(value, ("id", "value", "key")), default=None)
-            label = clean_name(first_present(value, ("label", "value", "name")))
+            label = choice_label(first_present(value, ("label", "name", "value")))
         else:
             key_id = as_int(key, default=None)
             value_id = as_int(value, default=None)
             if key_id is not None:
                 status_id = key_id
-                label = clean_name(value)
+                label = choice_label(value)
             elif value_id is not None:
                 status_id = value_id
-                label = clean_name(key)
+                label = choice_label(key)
         if status_id is not None and normalized_text(label) in OPEN_FRESHDESK_STATUS_NAMES:
             status_ids.add(status_id)
     return status_ids
+
+
+def choice_label(value: Any) -> str:
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            if as_int(item, default=None) is not None:
+                continue
+            label = choice_label(item)
+            if label:
+                return label
+        return ""
+    if isinstance(value, dict):
+        return choice_label(first_present(value, ("label", "name", "value")))
+    return clean_name(value)
 
 
 def is_open_freshdesk_ticket(ticket: dict[str, Any], open_status_ids: set[int]) -> bool:
@@ -715,14 +758,7 @@ def calculate_sales(
         )
         if order_type not in SALES_ORDER_TYPES:
             continue
-        if any(
-            is_populated(first_present(document, names))
-            for names in (
-                ("CancellationDate", "CancelledDate", "Cancelled"),
-                ("DeletionDate", "DeletedDate", "Deleted"),
-                ("RejectionDate", "RejectedDate", "Rejected"),
-            )
-        ):
+        if document_is_cancelled_deleted_or_rejected(document):
             continue
         eligible.append(document)
 
@@ -1040,6 +1076,28 @@ def render_score(score: int, status: str) -> str:
     )
 
 
+def render_unmatched_freshdesk_log(report: dict[str, Any]) -> str:
+    tickets = report.get("unmatched_freshdesk_tickets", [])
+    count = int(report.get("unmatched_freshdesk_ticket_count", 0))
+    if not count:
+        return '<section class="notes"><span>Unmatched Freshdesk tickets logged: 0</span></section>'
+
+    items = []
+    for ticket in tickets[:8]:
+        ticket_id = html.escape(clean_name(ticket.get("id")) or "unknown")
+        owner = html.escape(clean_name(ticket.get("owner")) or "No owner")
+        age = int(ticket.get("oldest_age_days") or 0)
+        items.append(f"<li>#{ticket_id} - {owner} - {age} days old</li>")
+    remaining = count - len(items)
+    more = f"<li>+{remaining} more unmatched tickets</li>" if remaining > 0 else ""
+    return (
+        '<section class="notes unmatched-log">'
+        f"<strong>Unmatched Freshdesk tickets logged: {count}</strong>"
+        f"<ul>{''.join(items)}{more}</ul>"
+        "</section>"
+    )
+
+
 def initials(name: str) -> str:
     parts = normalized_text(name).split()
     if not parts:
@@ -1094,11 +1152,7 @@ def render_html(report: dict[str, Any]) -> str:
             "</div>"
             "</section>"
         )
-    unmatched_note = (
-        '<section class="notes">'
-        f'<span>Unmatched Freshdesk tickets logged: {int(report.get("unmatched_freshdesk_ticket_count", 0))}</span>'
-        "</section>"
-    )
+    unmatched_note = render_unmatched_freshdesk_log(report)
     return f"""<!doctype html>
 <html>
 <head>
@@ -1450,6 +1504,26 @@ def render_html(report: dict[str, Any]) -> str:
       font-size: 12px;
       background: rgba(255, 255, 255, 0.018);
     }}
+    .unmatched-log strong {{
+      display: block;
+      color: #e2e8f0;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }}
+    .unmatched-log ul {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }}
+    .unmatched-log li {{
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.08);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+    }}
     @media (max-width: 900px) {{
       body {{ padding: 12px; }}
       .dashboard {{ width: 100%; border-radius: 18px; }}
@@ -1545,7 +1619,20 @@ def render_png(html_content: str, html_path: Path, png_path: Path, row_count: in
     height = max(780, min(5000, 260 + row_count * 130))
     chrome = optional_env("CHROME_BIN")
     if not chrome:
-        chrome = "/opt/google/chrome/chrome" if Path("/opt/google/chrome/chrome").exists() else "google-chrome"
+        chrome = next(
+            (
+                candidate
+                for candidate in (
+                    "/opt/google/chrome/chrome",
+                    shutil.which("google-chrome"),
+                    shutil.which("google-chrome-stable"),
+                    shutil.which("chromium"),
+                    shutil.which("chromium-browser"),
+                )
+                if candidate and Path(candidate).exists()
+            ),
+            "google-chrome",
+        )
     with tempfile.TemporaryDirectory(prefix="bigchange-chrome-") as profile_dir:
         cmd = [
             chrome,

@@ -11,6 +11,7 @@ from scripts.bigchange_kpi_report import (
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
+    code_is_success,
     is_open_freshdesk_ticket,
     match_staff_name,
     name_key,
@@ -42,6 +43,13 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+
+class BigChangeApiTest(unittest.TestCase):
+    def test_accepts_legacy_success_code_shapes(self) -> None:
+        self.assertTrue(code_is_success({"Code": 0}))
+        self.assertTrue(code_is_success({"Code": "0"}))
+        self.assertFalse(code_is_success({"Code": 1}))
 
 
 class SalesAttributionTest(unittest.TestCase):
@@ -95,18 +103,27 @@ class SalesAttributionTest(unittest.TestCase):
                     "JobID": "104",
                     "Lines": [{"NetPrice": "12.00", "VatAmount": "2.00"}],
                 },
+                {
+                    "OrderType": "Invoice",
+                    "JobId": "105",
+                    "Cancelled": "false",
+                    "Deleted": "No",
+                    "Rejected": "0",
+                    "Lines": [{"NetPrice": "6.00", "VatAmount": "1.00"}],
+                },
             ],
             activities={
                 "101": [{"JobClientStatusID": 34, "JobClientStatusDate": "2026-05-02", "JobClientStatusOwner": "Sharon Mannion"}],
                 "102": [{"JobClientStatusID": 34, "JobClientStatusDate": "2026-05-03", "JobClientStatusOwner": "Sharon Mannion"}],
                 "103": [{"JobClientStatusID": 34, "JobClientStatusDate": "2026-05-04", "JobClientStatusOwner": "Sharon Mannion"}],
                 "104": [{"JobClientStatusName": "InvoiceCreated", "ActivityDate": "2026-05-05", "ClientStatusOwner": "Amy B"}],
+                "105": [{"JobClientStatusID": 34, "JobClientStatusDate": "2026-05-06", "JobClientStatusOwner": "Sharon Mannion"}],
             },
         )
 
         sales = calculate_sales(client, {"Sharon Mannion", "Amy Bradley"}, dt.date(2026, 5, 1), dt.date(2026, 5, 20))
 
-        self.assertEqual(sales["Sharon Mannion"], 170)
+        self.assertEqual(sales["Sharon Mannion"], 175)
         self.assertEqual(sales["Amy Bradley"], 10)
 
 
@@ -121,6 +138,11 @@ class FreshdeskKpiTest(unittest.TestCase):
         ]
 
         self.assertEqual(status_ids_from_choices(choices), {2, 3, 8, 9})
+
+    def test_maps_nested_status_choices_to_open_status_ids(self) -> None:
+        choices = {"2": ["Open", "Open"], "3": ["Pending", "Pending"], "5": ["Closed", "Closed"]}
+
+        self.assertEqual(status_ids_from_choices(choices), {2, 3})
 
     def test_filters_deleted_spam_and_closed_tickets(self) -> None:
         open_status_ids = {2, 3, 8, 9}
