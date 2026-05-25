@@ -167,6 +167,18 @@ class ScoreAndBaselineTest(unittest.TestCase):
 
         self.assertEqual(calculate_score(metrics), 60)
 
+    def test_weighted_score_uses_current_month_sales_contribution(self) -> None:
+        metrics = {
+            "unallocated_jobs": {"count": 0, "status": "green"},
+            "historic_jobs": {"count": 0, "status": "green"},
+            "uninvoiced_jobs": {"count": 0, "status": "green"},
+            "unactioned_jobs": {"count": 0, "status": "green"},
+            FRESHDESK_METRIC[0]: {"count": 0, "status": "green"},
+        }
+
+        self.assertEqual(calculate_score(metrics, current_month_sales=50, highest_current_month_sales=100), 90)
+        self.assertEqual(calculate_score(metrics, current_month_sales=100, highest_current_month_sales=100), 100)
+
     def test_saves_baseline_with_freshdesk_age_and_score_fields(self) -> None:
         report = {
             "run_timestamp": "2026-05-25T07:00:00+00:00",
