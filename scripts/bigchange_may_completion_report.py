@@ -9,6 +9,8 @@ import html
 import json
 import re
 import smtplib
+import subprocess
+import tempfile
 import time
 from collections import Counter
 from email import encoders
@@ -34,7 +36,6 @@ try:
         normalized_text,
         optional_env,
         parse_date,
-        render_png,
         required_env,
         should_exclude_category,
     )
@@ -53,7 +54,6 @@ except ModuleNotFoundError:  # pragma: no cover - used when imported as a packag
         normalized_text,
         optional_env,
         parse_date,
-        render_png,
         required_env,
         should_exclude_category,
     )
@@ -176,6 +176,42 @@ def job_customer_activity(client: BigChangeClient, item_job_id: str, delay_secon
     if payload.get("Code") != 0:
         return []
     return result_rows(payload)
+
+
+def render_dashboard_png(html_content: str, html_path: Path, png_path: Path, row_count: int) -> None:
+    html_path.parent.mkdir(parents=True, exist_ok=True)
+    png_path.parent.mkdir(parents=True, exist_ok=True)
+    html_path.write_text(html_content, encoding="utf-8")
+    height = max(780, min(5000, 260 + row_count * 130))
+    chrome = optional_env("CHROME_BIN")
+    if not chrome:
+        chrome = "/opt/google/chrome/chrome" if Path("/opt/google/chrome/chrome").exists() else "google-chrome"
+    with tempfile.TemporaryDirectory(prefix="bigchange-completion-chrome-") as profile_dir:
+        cmd = [
+            chrome,
+            "--headless=new",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--hide-scrollbars",
+            f"--user-data-dir={profile_dir}",
+            f"--window-size=1540,{height}",
+            f"--screenshot={png_path}",
+            html_path.resolve().as_uri(),
+        ]
+        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            process.wait(timeout=45)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=10)
+            if png_path.exists() and png_path.stat().st_size > 0:
+                return
+            raise
+        if process.returncode != 0:
+            raise subprocess.CalledProcessError(process.returncode, cmd)
+        if not png_path.exists() or png_path.stat().st_size == 0:
+            raise RuntimeError("Chrome did not create the completion report PNG")
 
 
 def active_invoice_documents(client: BigChangeClient, start: dt.date, end: dt.date) -> list[dict[str, Any]]:
@@ -311,16 +347,12 @@ def build_report(client: BigChangeClient, start: dt.date, end: dt.date, end_excl
     actioned_job_ids = [job_id(row) for row in completed_jobs if truthy_yes(first_present(row, ("Actioned", "IsActioned")))]
     actioned_job_ids = [item for item in actioned_job_ids if item]
 
-    # The Actioned flag does not carry its own timestamp in JobsList. Attribute to the JobCardSent
-    # activity owner where available, then fall back to the job category staff owner.
+    # The Actioned flag does not carry its own timestamp in JobsList, so the May scope is the
+    # completed-status date and the owner is the job category staff owner.
     for row in completed_jobs:
         if not truthy_yes(first_present(row, ("Actioned", "IsActioned"))):
             continue
-        owner = ""
-        item_job_id = job_id(row)
-        if item_job_id:
-            owner = latest_job_card_sent_owner(job_customer_activity(client, item_job_id, request_delay), start, end)
-        owner = owner_key_name(owner, staff_by_key) if owner else job_category_name(row)
+        owner = job_category_name(row)
         if owner:
             metrics["jobs_actioned"][owner] += 1
 
@@ -692,7 +724,7 @@ def main() -> int:
         client = BigChangeClient()
         report = build_report(client, start, end, end_exclusive)
         html_content = render_html(report)
-        render_png(html_content, html_path, png_path, len(report["staff_rows"]))
+        render_dashboard_png(html_content, html_path, png_path, len(report["staff_rows"]))
         if args.send_email:
             send_email(png_path, args.to_email, report)
             email_status = "sent"
