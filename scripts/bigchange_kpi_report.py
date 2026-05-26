@@ -39,6 +39,7 @@ JOB_KPI_ORDER = [
 ]
 FRESHDESK_METRIC = ("open_freshdesk_tickets", "Open Freshdesk Tickets")
 KPI_ORDER = JOB_KPI_ORDER + [FRESHDESK_METRIC]
+KPI_CLEANLINESS_METRICS = ("unallocated_jobs", "uninvoiced_jobs", "unactioned_jobs")
 
 SALES_ORDER_TYPES = {"invoice", "salesinvoice", "si"}
 EXCLUDED_CATEGORY_NAMES = {"btr compliance", "btr reactive", "john bennett", "ryan barrett"}
@@ -812,11 +813,44 @@ def calculate_freshdesk_metrics(
     return dict(grouped), unmatched, critical
 
 
-def calculate_score(metrics: dict[str, dict[str, Any]]) -> int:
-    red_count = sum(1 for metric in metrics.values() if metric["status"] == "red")
-    amber_count = sum(1 for metric in metrics.values() if metric["status"] == "amber")
-    open_workload = sum(int(metric["count"]) for metric in metrics.values())
-    score = 100 - red_count * 20 - amber_count * 10 - open_workload
+def penalty_score(metrics: list[dict[str, Any]]) -> int:
+    red_count = sum(1 for metric in metrics if metric["status"] == "red")
+    amber_count = sum(1 for metric in metrics if metric["status"] == "amber")
+    open_workload = sum(int(metric["count"]) for metric in metrics)
+    return max(0, min(100, 100 - red_count * 20 - amber_count * 10 - open_workload))
+
+
+def calculate_score(
+    metrics: dict[str, dict[str, Any]],
+    current_month_sales: decimal.Decimal | float | int | None = None,
+    highest_current_month_sales: decimal.Decimal | float | int | None = None,
+) -> int:
+    if current_month_sales is None or highest_current_month_sales is None:
+        score = penalty_score(list(metrics.values()))
+        return max(1, min(100, score))
+
+    cleanliness_score = penalty_score([metrics[key] for key in KPI_CLEANLINESS_METRICS])
+    freshdesk_score = penalty_score([metrics[FRESHDESK_METRIC[0]]])
+    historic_score = penalty_score([metrics["historic_jobs"]])
+
+    staff_sales = max(as_decimal(current_month_sales), DECIMAL_ZERO)
+    top_sales = max(as_decimal(highest_current_month_sales), DECIMAL_ZERO)
+    if top_sales == DECIMAL_ZERO:
+        sales_score = 100
+    else:
+        sales_score = int(
+            min(decimal.Decimal("100"), (staff_sales / top_sales) * decimal.Decimal("100")).quantize(
+                decimal.Decimal("1"),
+                rounding=decimal.ROUND_HALF_UP,
+            )
+        )
+
+    score = round(
+        cleanliness_score * 0.55
+        + freshdesk_score * 0.15
+        + historic_score * 0.10
+        + sales_score * 0.20
+    )
     return max(1, min(100, score))
 
 
@@ -968,6 +1002,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
     add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", STATUS_DATE_FIELDS, today)
 
     sales = calculate_sales(client, staff_names, month_start, month_end)
+    highest_current_month_sales = max((sales.get(staff, DECIMAL_ZERO) for staff in staff_names), default=DECIMAL_ZERO)
     freshdesk_grouped, unmatched_freshdesk_tickets, critical_freshdesk_tickets = calculate_freshdesk_metrics(
         freshdesk_client, staff_names, today
     )
@@ -997,13 +1032,14 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         red_count = sum(1 for metric in metrics.values() if metric["status"] == "red")
         amber_count = sum(1 for metric in metrics.values() if metric["status"] == "amber")
         total_open_workload = sum(metric["count"] for metric in metrics.values())
-        overall_score = calculate_score(metrics)
+        current_month_sales = sales.get(staff, DECIMAL_ZERO)
+        overall_score = calculate_score(metrics, current_month_sales, highest_current_month_sales)
         staff_rows.append(
             {
                 "staff_name": staff,
                 "metrics": metrics,
-                "current_month_sales": float(sales.get(staff, DECIMAL_ZERO)),
-                "current_month_sales_display": format_currency(sales.get(staff, DECIMAL_ZERO)),
+                "current_month_sales": float(current_month_sales),
+                "current_month_sales_display": format_currency(current_month_sales),
                 "freshdesk_ticket_count": freshdesk_count,
                 "red_kpis": red_count,
                 "amber_kpis": amber_count,
@@ -1067,11 +1103,11 @@ def render_sales(value: str) -> str:
     )
 
 
-def render_score(score: int, status: str) -> str:
+def render_score_status(status: str) -> str:
     return (
-        f'<div class="score {html.escape(status)}">'
-        f'<div class="score-circle"><span>{int(score)}</span></div>'
-        '<div class="age">/ 100</div>'
+        f'<div class="score private-score {html.escape(status)}">'
+        '<div class="score-circle"><span>--</span></div>'
+        '<div class="age">Private score</div>'
         "</div>"
     )
 
@@ -1128,7 +1164,7 @@ def render_html(report: dict[str, Any]) -> str:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
         cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
         cells.append(f"<td>{render_metric(row['metrics'][FRESHDESK_METRIC[0]])}</td>")
-        cells.append(f"<td>{render_score(row['overall_score'], row['score_status'])}</td>")
+        cells.append(f"<td>{render_score_status(row['score_status'])}</td>")
         rows_html.append(f"<tr{row_class}>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
@@ -1570,7 +1606,7 @@ def render_html(report: dict[str, Any]) -> str:
           <th>Unactioned Jobs</th>
           <th>{month_name} sales</th>
           <th>Open Freshdesk Tickets</th>
-          <th>Overall Score / 100</th>
+          <th>Overall ranking</th>
         </tr>
       </thead>
       <tbody>
