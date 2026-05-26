@@ -1,7 +1,7 @@
 {
   "job_lookback_start": "2025-05-26",
   "report_date": "2026-05-26",
-  "run_timestamp": "2026-05-26T07:09:39.799708+00:00",
+  "run_timestamp": "2026-05-26T12:39:03.020219+00:00",
   "staff": [
     {
       "counts": {
@@ -18,28 +18,6 @@
         "uninvoiced_jobs": 0
       },
       "staff_name": "Harry Thripp",
-      "statuses": {
-        "historic_jobs": "green",
-        "unactioned_jobs": "green",
-        "unallocated_jobs": "green",
-        "uninvoiced_jobs": "green"
-      }
-    },
-    {
-      "counts": {
-        "historic_jobs": 1,
-        "unactioned_jobs": 0,
-        "unallocated_jobs": 0,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 0.0,
-      "oldest_age_days": {
-        "historic_jobs": 5,
-        "unactioned_jobs": 0,
-        "unallocated_jobs": 0,
-        "uninvoiced_jobs": 0
-      },
-      "staff_name": "Megan Fox",
       "statuses": {
         "historic_jobs": "green",
         "unactioned_jobs": "green",
@@ -73,14 +51,14 @@
       "counts": {
         "historic_jobs": 1,
         "unactioned_jobs": 0,
-        "unallocated_jobs": 15,
+        "unallocated_jobs": 3,
         "uninvoiced_jobs": 0
       },
       "current_month_sales": 0.0,
       "oldest_age_days": {
         "historic_jobs": 4,
         "unactioned_jobs": 0,
-        "unallocated_jobs": 1,
+        "unallocated_jobs": 0,
         "uninvoiced_jobs": 0
       },
       "staff_name": "Jodie Thompson",
@@ -93,8 +71,30 @@
     },
     {
       "counts": {
+        "historic_jobs": 1,
+        "unactioned_jobs": 0,
+        "unallocated_jobs": 4,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 0.0,
+      "oldest_age_days": {
+        "historic_jobs": 5,
+        "unactioned_jobs": 0,
+        "unallocated_jobs": 0,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Megan Fox",
+      "statuses": {
+        "historic_jobs": "green",
+        "unactioned_jobs": "green",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
         "historic_jobs": 15,
-        "unactioned_jobs": 3,
+        "unactioned_jobs": 8,
         "unallocated_jobs": 0,
         "uninvoiced_jobs": 0
       },
@@ -116,8 +116,8 @@
     {
       "counts": {
         "historic_jobs": 2,
-        "unactioned_jobs": 2,
-        "unallocated_jobs": 1,
+        "unactioned_jobs": 3,
+        "unallocated_jobs": 4,
         "uninvoiced_jobs": 0
       },
       "current_month_sales": 0.0,
@@ -138,8 +138,8 @@
     {
       "counts": {
         "historic_jobs": 0,
-        "unactioned_jobs": 1,
-        "unallocated_jobs": 5,
+        "unactioned_jobs": 23,
+        "unallocated_jobs": 22,
         "uninvoiced_jobs": 0
       },
       "current_month_sales": 0.0,
@@ -160,8 +160,8 @@
     {
       "counts": {
         "historic_jobs": 0,
-        "unactioned_jobs": 1,
-        "unallocated_jobs": 4,
+        "unactioned_jobs": 2,
+        "unallocated_jobs": 2,
         "uninvoiced_jobs": 0
       },
       "current_month_sales": 330.0,
@@ -203,14 +203,14 @@
     },
     {
       "counts": {
-        "historic_jobs": 15,
-        "unactioned_jobs": 2,
+        "historic_jobs": 3,
+        "unactioned_jobs": 15,
         "unallocated_jobs": 27,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 62902.83,
+      "current_month_sales": 62757.83,
       "oldest_age_days": {
-        "historic_jobs": 7,
+        "historic_jobs": 5,
         "unactioned_jobs": 4,
         "unallocated_jobs": 119,
         "uninvoiced_jobs": 0
@@ -225,9 +225,31 @@
     },
     {
       "counts": {
-        "historic_jobs": 5,
+        "historic_jobs": 300,
+        "unactioned_jobs": 9,
+        "unallocated_jobs": 19,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 0.0,
+      "oldest_age_days": {
+        "historic_jobs": 137,
+        "unactioned_jobs": 4,
+        "unallocated_jobs": 6,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Hayley Longford",
+      "statuses": {
+        "historic_jobs": "red",
+        "unactioned_jobs": "green",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 4,
         "unactioned_jobs": 1,
-        "unallocated_jobs": 13,
+        "unallocated_jobs": 12,
         "uninvoiced_jobs": 0
       },
       "current_month_sales": 26888.45,
@@ -247,7 +269,7 @@
     },
     {
       "counts": {
-        "historic_jobs": 8,
+        "historic_jobs": 6,
         "unactioned_jobs": 6,
         "unallocated_jobs": 30,
         "uninvoiced_jobs": 0
@@ -270,7 +292,7 @@
     {
       "counts": {
         "historic_jobs": 3,
-        "unactioned_jobs": 1,
+        "unactioned_jobs": 2,
         "unallocated_jobs": 21,
         "uninvoiced_jobs": 0
       },
@@ -291,12 +313,12 @@
     },
     {
       "counts": {
-        "historic_jobs": 11,
+        "historic_jobs": 6,
         "unactioned_jobs": 4,
-        "unallocated_jobs": 28,
+        "unallocated_jobs": 29,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 11202.55,
+      "current_month_sales": 11267.55,
       "oldest_age_days": {
         "historic_jobs": 15,
         "unactioned_jobs": 13,
@@ -307,28 +329,6 @@
       "statuses": {
         "historic_jobs": "amber",
         "unactioned_jobs": "amber",
-        "unallocated_jobs": "red",
-        "uninvoiced_jobs": "green"
-      }
-    },
-    {
-      "counts": {
-        "historic_jobs": 300,
-        "unactioned_jobs": 2,
-        "unallocated_jobs": 42,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 0.0,
-      "oldest_age_days": {
-        "historic_jobs": 137,
-        "unactioned_jobs": 4,
-        "unallocated_jobs": 82,
-        "uninvoiced_jobs": 0
-      },
-      "staff_name": "Hayley Longford",
-      "statuses": {
-        "historic_jobs": "red",
-        "unactioned_jobs": "green",
         "unallocated_jobs": "red",
         "uninvoiced_jobs": "green"
       }
