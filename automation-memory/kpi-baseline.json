@@ -1,166 +1,48 @@
 {
-  "job_lookback_start": "2025-05-25",
-  "report_date": "2026-05-25",
-  "run_timestamp": "2026-05-25T20:42:15.103188+00:00",
+  "job_lookback_start": "2025-05-27",
+  "report_date": "2026-05-27",
+  "run_timestamp": "2026-05-27T07:08:58.335137+00:00",
   "staff": [
     {
       "counts": {
-        "historic_jobs": 0,
-        "open_freshdesk_tickets": 0,
-        "unactioned_jobs": 0,
+        "historic_jobs": 6,
+        "unactioned_jobs": 21,
         "unallocated_jobs": 3,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 120.0,
-      "freshdesk_ticket_count": 0,
+      "current_month_sales": 7635.35,
       "oldest_age_days": {
-        "historic_jobs": 0,
-        "open_freshdesk_tickets": 0,
-        "unactioned_jobs": 0,
-        "unallocated_jobs": 3,
+        "historic_jobs": 8,
+        "unactioned_jobs": 112,
+        "unallocated_jobs": 9,
         "uninvoiced_jobs": 0
       },
-      "overall_score": 97,
-      "staff_name": "Megan",
+      "staff_name": "C- Grace Elver",
       "statuses": {
         "historic_jobs": "green",
-        "open_freshdesk_tickets": "green",
-        "unactioned_jobs": "green",
+        "unactioned_jobs": "red",
         "unallocated_jobs": "green",
         "uninvoiced_jobs": "green"
       }
     },
     {
       "counts": {
-        "historic_jobs": 2,
-        "open_freshdesk_tickets": 3,
-        "unactioned_jobs": 2,
-        "unallocated_jobs": 0,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 23065.07,
-      "freshdesk_ticket_count": 3,
-      "oldest_age_days": {
         "historic_jobs": 4,
-        "open_freshdesk_tickets": 7,
-        "unactioned_jobs": 11,
-        "unallocated_jobs": 0,
-        "uninvoiced_jobs": 0
-      },
-      "overall_score": 83,
-      "staff_name": "Lucy Feeney",
-      "statuses": {
-        "historic_jobs": "green",
-        "open_freshdesk_tickets": "green",
-        "unactioned_jobs": "amber",
-        "unallocated_jobs": "green",
-        "uninvoiced_jobs": "green"
-      }
-    },
-    {
-      "counts": {
-        "historic_jobs": 2,
-        "open_freshdesk_tickets": 2,
-        "unactioned_jobs": 3,
-        "unallocated_jobs": 0,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 7240.0,
-      "freshdesk_ticket_count": 2,
-      "oldest_age_days": {
-        "historic_jobs": 3,
-        "open_freshdesk_tickets": 4,
-        "unactioned_jobs": 17,
-        "unallocated_jobs": 0,
-        "uninvoiced_jobs": 0
-      },
-      "overall_score": 83,
-      "staff_name": "Nailah Toyer",
-      "statuses": {
-        "historic_jobs": "green",
-        "open_freshdesk_tickets": "green",
-        "unactioned_jobs": "amber",
-        "unallocated_jobs": "green",
-        "uninvoiced_jobs": "green"
-      }
-    },
-    {
-      "counts": {
-        "historic_jobs": 1,
-        "open_freshdesk_tickets": 4,
-        "unactioned_jobs": 3,
-        "unallocated_jobs": 2,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 0.0,
-      "freshdesk_ticket_count": 4,
-      "oldest_age_days": {
-        "historic_jobs": 3,
-        "open_freshdesk_tickets": 5,
-        "unactioned_jobs": 10,
-        "unallocated_jobs": 6,
-        "uninvoiced_jobs": 0
-      },
-      "overall_score": 80,
-      "staff_name": "Leah Hearn",
-      "statuses": {
-        "historic_jobs": "green",
-        "open_freshdesk_tickets": "green",
-        "unactioned_jobs": "amber",
-        "unallocated_jobs": "green",
-        "uninvoiced_jobs": "green"
-      }
-    },
-    {
-      "counts": {
-        "historic_jobs": 12,
-        "open_freshdesk_tickets": 7,
-        "unactioned_jobs": 1,
-        "unallocated_jobs": 3,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 34516.24,
-      "freshdesk_ticket_count": 7,
-      "oldest_age_days": {
-        "historic_jobs": 3,
-        "open_freshdesk_tickets": 11,
-        "unactioned_jobs": 8,
+        "unactioned_jobs": 21,
         "unallocated_jobs": 10,
         "uninvoiced_jobs": 0
       },
-      "overall_score": 57,
-      "staff_name": "Laura Menegon",
-      "statuses": {
-        "historic_jobs": "green",
-        "open_freshdesk_tickets": "amber",
-        "unactioned_jobs": "green",
-        "unallocated_jobs": "amber",
-        "uninvoiced_jobs": "green"
-      }
-    },
-    {
-      "counts": {
-        "historic_jobs": 0,
-        "open_freshdesk_tickets": 6,
-        "unactioned_jobs": 8,
-        "unallocated_jobs": 6,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 28799.5,
-      "freshdesk_ticket_count": 6,
+      "current_month_sales": 51243.07,
       "oldest_age_days": {
-        "historic_jobs": 0,
-        "open_freshdesk_tickets": 19,
-        "unactioned_jobs": 27,
-        "unallocated_jobs": 14,
+        "historic_jobs": 4,
+        "unactioned_jobs": 35,
+        "unallocated_jobs": 20,
         "uninvoiced_jobs": 0
       },
-      "overall_score": 50,
-      "staff_name": "Amy Bradley",
+      "staff_name": "B- Jenna Hyde",
       "statuses": {
         "historic_jobs": "green",
-        "open_freshdesk_tickets": "amber",
-        "unactioned_jobs": "amber",
+        "unactioned_jobs": "red",
         "unallocated_jobs": "amber",
         "uninvoiced_jobs": "green"
       }
@@ -168,52 +50,20 @@
     {
       "counts": {
         "historic_jobs": 9,
-        "open_freshdesk_tickets": 11,
-        "unactioned_jobs": 4,
-        "unallocated_jobs": 20,
+        "unactioned_jobs": 73,
+        "unallocated_jobs": 23,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 22476.34,
-      "freshdesk_ticket_count": 11,
+      "current_month_sales": 9570.0,
       "oldest_age_days": {
-        "historic_jobs": 6,
-        "open_freshdesk_tickets": 20,
-        "unactioned_jobs": 18,
-        "unallocated_jobs": 46,
+        "historic_jobs": 9,
+        "unactioned_jobs": 181,
+        "unallocated_jobs": 19,
         "uninvoiced_jobs": 0
       },
-      "overall_score": 16,
-      "staff_name": "Sharon Mannion",
+      "staff_name": "A- Jodie",
       "statuses": {
         "historic_jobs": "green",
-        "open_freshdesk_tickets": "amber",
-        "unactioned_jobs": "amber",
-        "unallocated_jobs": "red",
-        "uninvoiced_jobs": "green"
-      }
-    },
-    {
-      "counts": {
-        "historic_jobs": 20,
-        "open_freshdesk_tickets": 5,
-        "unactioned_jobs": 18,
-        "unallocated_jobs": 12,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 16958.83,
-      "freshdesk_ticket_count": 5,
-      "oldest_age_days": {
-        "historic_jobs": 361,
-        "open_freshdesk_tickets": 5,
-        "unactioned_jobs": 56,
-        "unallocated_jobs": 24,
-        "uninvoiced_jobs": 0
-      },
-      "overall_score": 1,
-      "staff_name": "Isabel Strong",
-      "statuses": {
-        "historic_jobs": "red",
-        "open_freshdesk_tickets": "green",
         "unactioned_jobs": "red",
         "unallocated_jobs": "amber",
         "uninvoiced_jobs": "green"
