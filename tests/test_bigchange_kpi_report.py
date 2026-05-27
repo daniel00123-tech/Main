@@ -124,7 +124,7 @@ class SalesAttributionTest(unittest.TestCase):
         sales = calculate_sales(client, {"Sharon Mannion", "Amy Bradley"}, dt.date(2026, 5, 1), dt.date(2026, 5, 20))
 
         self.assertEqual(sales["Sharon Mannion"], 175)
-        self.assertEqual(sales["Amy Bradley"], 10)
+        self.assertNotIn("Amy Bradley", sales)
 
 
 class FreshdeskKpiTest(unittest.TestCase):
@@ -186,7 +186,7 @@ class ScoreAndBaselineTest(unittest.TestCase):
 
         self.assertEqual(calculate_score(metrics), 60)
 
-    def test_saves_baseline_with_freshdesk_age_and_score_fields(self) -> None:
+    def test_saves_baseline_with_requested_kpi_fields(self) -> None:
         report = {
             "run_timestamp": "2026-05-25T07:00:00+00:00",
             "report_date": "2026-05-25",
@@ -199,11 +199,8 @@ class ScoreAndBaselineTest(unittest.TestCase):
                         "historic_jobs": {"count": 1, "status": "amber", "oldest_age_days": 12},
                         "uninvoiced_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
                         "unactioned_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
-                        FRESHDESK_METRIC[0]: {"count": 2, "status": "red", "oldest_age_days": 31},
                     },
                     "current_month_sales": 123.45,
-                    "freshdesk_ticket_count": 2,
-                    "overall_score": 67,
                 }
             ],
         }
@@ -213,9 +210,9 @@ class ScoreAndBaselineTest(unittest.TestCase):
 
             baseline = json.loads(path.read_text(encoding="utf-8"))
 
-        self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
-        self.assertEqual(baseline["staff"][0]["overall_score"], 67)
-        self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+        self.assertNotIn("freshdesk_ticket_count", baseline["staff"][0])
+        self.assertNotIn("overall_score", baseline["staff"][0])
+        self.assertEqual(baseline["staff"][0]["oldest_age_days"]["historic_jobs"], 12)
 
 
 class FakeBigChangeClient:
