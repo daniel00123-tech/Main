@@ -1,7 +1,10 @@
 import unittest
 from typing import Any
+from unittest.mock import patch
 
 from scripts.bigchange_temp_invoice_nominals import (
+    BigChangeClient,
+    ConfigError,
     TempInvoiceNominalCorrector,
     classify_nominal_code,
     document_is_processable,
@@ -107,6 +110,20 @@ class SafetyFilterTest(unittest.TestCase):
 
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
+
+    def test_rejects_cancelled_deleted_or_rejected_statuses(self) -> None:
+        for status in ("Cancelled", "Deleted", "Rejected"):
+            with self.subTest(status=status):
+                processable, reason = document_is_processable({"DocumentType": "Invoice", "Status": status})
+                self.assertFalse(processable)
+                self.assertIn(status, reason)
+
+
+class ConfigTest(unittest.TestCase):
+    def test_rejects_non_api_key_auth_mode(self) -> None:
+        with patch.dict("os.environ", {"BIGCHANGE_AUTH_MODE": "oauth"}, clear=True):
+            with self.assertRaisesRegex(ConfigError, "BIGCHANGE_AUTH_MODE must be api_key"):
+                BigChangeClient()
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):

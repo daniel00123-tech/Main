@@ -105,6 +105,10 @@ class ConfigError(RuntimeError):
     pass
 
 
+def optional_env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default)
+
+
 def required_env(name: str) -> str:
     value = os.environ.get(name)
     if value is None or value == "":
@@ -286,6 +290,9 @@ class BigChangeApi(Protocol):
 
 class BigChangeClient:
     def __init__(self) -> None:
+        auth_mode = optional_env("BIGCHANGE_AUTH_MODE", "api_key").strip().lower()
+        if auth_mode and auth_mode != "api_key":
+            raise ConfigError("BIGCHANGE_AUTH_MODE must be api_key")
         self.base_url = required_env("BIGCHANGE_BASE_URL")
         username = required_env("BIGCHANGE_USERNAME")
         password = required_env("BIGCHANGE_PASSWORD")
@@ -463,6 +470,11 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
         norm_doc_type = normalized_text(doc_type)
         if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
             return False, f"document type is {doc_type}"
+    status = clean_text(
+        first_present(doc, ("Status", "DocumentStatus", "FinancialDocStatus", "InvoiceStatus", "State"))
+    )
+    if normalized_text(status) in {"cancelled", "canceled", "deleted", "rejected"}:
+        return False, f"status is {status}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
             return False, f"{field_name} is populated"
