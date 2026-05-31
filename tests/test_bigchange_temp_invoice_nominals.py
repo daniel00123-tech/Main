@@ -5,6 +5,7 @@ from scripts.bigchange_temp_invoice_nominals import (
     TempInvoiceNominalCorrector,
     classify_nominal_code,
     document_is_processable,
+    extract_invoice_line,
     is_target_invoice_row,
 )
 
@@ -107,6 +108,31 @@ class SafetyFilterTest(unittest.TestCase):
 
         self.assertFalse(processable)
         self.assertIn("Credit Note", reason)
+
+    def test_rejects_purchase_invoice_document_types(self) -> None:
+        processable, reason = document_is_processable({"DocumentType": "Purchase Invoice"})
+
+        self.assertFalse(processable)
+        self.assertIn("Purchase Invoice", reason)
+
+    def test_rejects_synchronised_or_exported_documents(self) -> None:
+        cases = (
+            {"DocumentType": "Invoice", "IsSynced": True},
+            {"DocumentType": "Invoice", "SynchronisedDate": "2026-05-31"},
+            {"DocumentType": "Invoice", "ExportStatus": "Completed"},
+        )
+
+        for doc in cases:
+            with self.subTest(doc=doc):
+                processable, reason = document_is_processable(doc)
+                self.assertFalse(processable)
+                self.assertNotEqual(reason, "")
+
+    def test_allows_unsynchronised_status_text(self) -> None:
+        processable, reason = document_is_processable({"DocumentType": "Invoice", "SyncStatus": "Not synced"})
+
+        self.assertTrue(processable)
+        self.assertEqual(reason, "")
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
@@ -235,6 +261,75 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
 
         self.assertEqual(report.invoices_skipped, 1)
         self.assertEqual(client.generated_docs, [])
+
+    def test_verification_accepts_tax_code_normalisation_when_rate_is_preserved(self) -> None:
+        original_line = extract_invoice_line(
+            {
+                "Description": "Fire alarm call out",
+                "UnitPrice": "125.00",
+                "Quantity": "2",
+                "ItemCost": "40",
+                "Currency": "GBP",
+                "TaxCode": "T1",
+                "TaxRate": "20",
+                "NominalCode": "9999",
+            },
+            1,
+        )
+        verified_doc = {
+            "FinancialLines": [
+                {
+                    "Description": "Fire alarm call out",
+                    "UnitPrice": "125.00",
+                    "Quantity": "2",
+                    "ItemCost": "40",
+                    "Currency": "GBP",
+                    "TaxCode": "Standard",
+                    "TaxRate": "20.00",
+                    "NominalCode": "2002",
+                }
+            ]
+        }
+        client = FakeBigChangeClient([], {}, {}, {})
+
+        TempInvoiceNominalCorrector(client).verify_document(verified_doc, [original_line], "2002")
+
+    def test_verification_rejects_item_cost_or_currency_changes(self) -> None:
+        original_line = extract_invoice_line(
+            {
+                "UnitPrice": "125.00",
+                "Quantity": "2",
+                "ItemCost": "40",
+                "Currency": "GBP",
+                "TaxCode": "T1",
+                "TaxRate": "20",
+                "NominalCode": "9999",
+            },
+            1,
+        )
+        base_verified_line = {
+            "UnitPrice": "125.00",
+            "Quantity": "2",
+            "ItemCost": "40",
+            "Currency": "GBP",
+            "TaxCode": "T1",
+            "TaxRate": "20",
+            "NominalCode": "2002",
+        }
+        client = FakeBigChangeClient([], {}, {}, {})
+
+        with self.assertRaisesRegex(RuntimeError, "ItemCost changed"):
+            TempInvoiceNominalCorrector(client).verify_document(
+                {"FinancialLines": [{**base_verified_line, "ItemCost": "41"}]},
+                [original_line],
+                "2002",
+            )
+        with self.assertRaisesRegex(RuntimeError, "Currency changed"):
+            TempInvoiceNominalCorrector(client).verify_document(
+                {"FinancialLines": [{**base_verified_line, "Currency": "EUR"}]},
+                [original_line],
+                "2002",
+            )
 
 
 if __name__ == "__main__":
