@@ -292,6 +292,9 @@ class BigChangeApi(Protocol):
 
 class BigChangeClient:
     def __init__(self) -> None:
+        auth_mode = required_env("BIGCHANGE_AUTH_MODE").lower()
+        if auth_mode != "api_key":
+            raise ConfigError("BIGCHANGE_AUTH_MODE must be api_key")
         self.base_url = required_env("BIGCHANGE_BASE_URL")
         username = required_env("BIGCHANGE_USERNAME")
         password = required_env("BIGCHANGE_PASSWORD")
