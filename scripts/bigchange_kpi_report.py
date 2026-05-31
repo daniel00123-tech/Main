@@ -38,7 +38,7 @@ JOB_KPI_ORDER = [
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
 FRESHDESK_METRIC = ("open_freshdesk_tickets", "Open Freshdesk Tickets")
-KPI_ORDER = JOB_KPI_ORDER + [FRESHDESK_METRIC]
+KPI_ORDER = JOB_KPI_ORDER
 
 SALES_ORDER_TYPES = {"invoice", "salesinvoice", "si"}
 EXCLUDED_CATEGORY_NAMES = {"btr compliance", "btr reactive", "john bennett", "ryan barrett"}
@@ -878,7 +878,7 @@ def resolve_document_creator(invoice: dict[str, Any], web_users: dict[str, str])
     return creator
 
 
-def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> dict[str, Any]:
+def build_report(client: BigChangeClient) -> dict[str, Any]:
     now = dt.datetime.now(dt.timezone.utc)
     today = dt.date.today()
     tomorrow = today + dt.timedelta(days=1)
@@ -968,9 +968,6 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
     add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", STATUS_DATE_FIELDS, today)
 
     sales = calculate_sales(client, staff_names, month_start, month_end)
-    freshdesk_grouped, unmatched_freshdesk_tickets, critical_freshdesk_tickets = calculate_freshdesk_metrics(
-        freshdesk_client, staff_names, today
-    )
 
     staff_rows: list[dict[str, Any]] = []
     for staff in sorted(staff_names):
@@ -985,38 +982,23 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
                 "oldest_age_days": age_days,
                 "status": severity_for(count, age_days),
             }
-        freshdesk_dates = freshdesk_grouped.get(staff, [])
-        freshdesk_count = len(freshdesk_dates)
-        oldest_freshdesk_date = min((date for date in freshdesk_dates if date is not None), default=None)
-        freshdesk_age_days = item_age_days(oldest_freshdesk_date, today) if oldest_freshdesk_date else 0
-        metrics[FRESHDESK_METRIC[0]] = {
-            "count": freshdesk_count,
-            "oldest_age_days": freshdesk_age_days,
-            "status": severity_for(freshdesk_count, freshdesk_age_days),
-        }
         red_count = sum(1 for metric in metrics.values() if metric["status"] == "red")
         amber_count = sum(1 for metric in metrics.values() if metric["status"] == "amber")
         total_open_workload = sum(metric["count"] for metric in metrics.values())
-        overall_score = calculate_score(metrics)
         staff_rows.append(
             {
                 "staff_name": staff,
                 "metrics": metrics,
                 "current_month_sales": float(sales.get(staff, DECIMAL_ZERO)),
                 "current_month_sales_display": format_currency(sales.get(staff, DECIMAL_ZERO)),
-                "freshdesk_ticket_count": freshdesk_count,
                 "red_kpis": red_count,
                 "amber_kpis": amber_count,
                 "total_open_workload": total_open_workload,
-                "overall_score": overall_score,
-                "score_status": score_status(overall_score),
-                "escalated": red_count > 5 or overall_score < 40,
             }
         )
 
     staff_rows.sort(
         key=lambda row: (
-            -row["overall_score"],
             row["red_kpis"],
             row["amber_kpis"],
             row["total_open_workload"],
@@ -1031,13 +1013,6 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         "staff_rows": staff_rows,
         "total_red_kpis": sum(row["red_kpis"] for row in staff_rows),
         "total_amber_kpis": sum(row["amber_kpis"] for row in staff_rows),
-        "unmatched_freshdesk_ticket_count": len(unmatched_freshdesk_tickets),
-        "unmatched_freshdesk_tickets": unmatched_freshdesk_tickets,
-        "critical_freshdesk_ticket_count": len(critical_freshdesk_tickets),
-        "critical_freshdesk_oldest_age_days": max(
-            (int(ticket["oldest_age_days"]) for ticket in critical_freshdesk_tickets),
-            default=0,
-        ),
     }
 
 
@@ -1115,21 +1090,17 @@ def render_html(report: dict[str, Any]) -> str:
     rows_html = []
     for idx, row in enumerate(report["staff_rows"], start=1):
         staff = html.escape(row["staff_name"])
-        row_class = ' class="escalated"' if row.get("escalated") else ""
-        escalation_icon = '<span class="escalation-icon">!</span>' if row.get("escalated") else ""
         cells = [
             f'<td class="rank">#{idx}</td>',
             '<td class="staff">'
             f'<div class="avatar {avatar_class(row["staff_name"])}">{html.escape(initials(row["staff_name"]))}</div>'
-            f'<div class="person"><strong>{staff}{escalation_icon}</strong><span>Staff owner</span></div>'
+            f'<div class="person"><strong>{staff}</strong><span>Staff owner</span></div>'
             "</td>",
         ]
         for metric_key, _label in JOB_KPI_ORDER:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
         cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
-        cells.append(f"<td>{render_metric(row['metrics'][FRESHDESK_METRIC[0]])}</td>")
-        cells.append(f"<td>{render_score(row['overall_score'], row['score_status'])}</td>")
-        rows_html.append(f"<tr{row_class}>{''.join(cells)}</tr>")
+        rows_html.append(f"<tr>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
     report_date = html.escape(report["report_date"])
@@ -1140,19 +1111,6 @@ def render_html(report: dict[str, Any]) -> str:
         metric_key: sum(row["metrics"][metric_key]["count"] for row in report["staff_rows"])
         for metric_key, _label in KPI_ORDER
     }
-    critical_warning = ""
-    if int(report.get("critical_freshdesk_ticket_count", 0)):
-        critical_warning = (
-            '<section class="critical-warning">'
-            '<div class="warning-icon">!</div>'
-            "<div>"
-            "<strong>Critical Aged Tickets</strong>"
-            f'<span>{int(report["critical_freshdesk_ticket_count"])} open Freshdesk tickets are over 30 days old; '
-            f'oldest is {int(report["critical_freshdesk_oldest_age_days"])} days old.</span>'
-            "</div>"
-            "</section>"
-        )
-    unmatched_note = render_unmatched_freshdesk_log(report)
     return f"""<!doctype html>
 <html>
 <head>
@@ -1276,8 +1234,7 @@ def render_html(report: dict[str, Any]) -> str:
       color: #fecdd3;
       font-size: 13px;
     }}
-    .warning-icon,
-    .escalation-icon {{
+    .warning-icon {{
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -1291,16 +1248,9 @@ def render_html(report: dict[str, Any]) -> str:
       width: 34px;
       height: 34px;
     }}
-    .escalation-icon {{
-      width: 20px;
-      height: 20px;
-      margin-left: 8px;
-      font-size: 12px;
-      vertical-align: middle;
-    }}
     .total-cards {{
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 14px;
       padding: 18px 24px;
       border-bottom: 1px solid var(--line);
@@ -1345,9 +1295,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     th:nth-child(1), td:nth-child(1) {{ width: 72px; }}
     th:nth-child(2), td:nth-child(2) {{ width: 292px; }}
-    th:nth-child(7), td:nth-child(7) {{ width: 178px; }}
-    th:nth-child(8), td:nth-child(8) {{ width: 178px; }}
-    th:nth-child(9), td:nth-child(9) {{ width: 150px; }}
+    th:nth-child(7), td:nth-child(7) {{ width: 190px; }}
     td {{
       padding: 14px 10px;
       border-bottom: 1px solid var(--line);
@@ -1530,7 +1478,7 @@ def render_html(report: dict[str, Any]) -> str:
       header {{ align-items: flex-start; flex-direction: column; gap: 18px; }}
       .summary {{ flex-wrap: wrap; }}
       .total-cards {{ grid-template-columns: 1fr; }}
-      table {{ min-width: 1480px; }}
+      table {{ min-width: 1180px; }}
     }}
   </style>
 </head>
@@ -1550,13 +1498,11 @@ def render_html(report: dict[str, Any]) -> str:
         <div class="badge"><strong>{total_workload}</strong><span>Open items</span></div>
       </div>
     </header>
-    {critical_warning}
     <section class="total-cards">
       <div class="total-card"><span>Unallocated jobs</span><strong>{totals["unallocated_jobs"]}</strong></div>
       <div class="total-card"><span>Historic jobs</span><strong>{totals["historic_jobs"]}</strong></div>
       <div class="total-card"><span>Uninvoiced jobs</span><strong>{totals["uninvoiced_jobs"]}</strong></div>
       <div class="total-card"><span>Unactioned jobs</span><strong>{totals["unactioned_jobs"]}</strong></div>
-      <div class="total-card"><span>Open Freshdesk tickets</span><strong>{totals["open_freshdesk_tickets"]}</strong></div>
     </section>
     <section class="table-wrap">
     <table>
@@ -1569,8 +1515,6 @@ def render_html(report: dict[str, Any]) -> str:
           <th>Uninvoiced Jobs</th>
           <th>Unactioned Jobs</th>
           <th>{month_name} sales</th>
-          <th>Open Freshdesk Tickets</th>
-          <th>Overall Score / 100</th>
         </tr>
       </thead>
       <tbody>
@@ -1578,7 +1522,6 @@ def render_html(report: dict[str, Any]) -> str:
       </tbody>
     </table>
     </section>
-    {unmatched_note}
     <footer>Generated {generated}. Green dotted circles are clear or under 10 days old; amber is 10-30 days; red is over 30 days.</footer>
   </main>
 </body>
@@ -1599,8 +1542,6 @@ def save_baseline(report: dict[str, Any], path: Path) -> None:
                     metric_key: row["metrics"][metric_key]["oldest_age_days"] for metric_key, _ in KPI_ORDER
                 },
                 "current_month_sales": row["current_month_sales"],
-                "freshdesk_ticket_count": row["freshdesk_ticket_count"],
-                "overall_score": row["overall_score"],
             }
         )
     baseline = {
@@ -1711,8 +1652,7 @@ Daniel Dwyer
 def main() -> int:
     try:
         client = BigChangeClient()
-        freshdesk_client = FreshdeskClient()
-        report = build_report(client, freshdesk_client)
+        report = build_report(client)
         validate_report(report)
         html_content = render_html(report)
         reports_dir = Path("reports")
@@ -1735,7 +1675,6 @@ def main() -> int:
                     "total_red_kpis": report["total_red_kpis"],
                     "total_amber_kpis": report["total_amber_kpis"],
                     "email": email_status,
-                    "unmatched_freshdesk_ticket_count": report["unmatched_freshdesk_ticket_count"],
                 },
                 sort_keys=True,
             )
@@ -1749,7 +1688,6 @@ def main() -> int:
                     "total_red_kpis": 0,
                     "total_amber_kpis": 0,
                     "email": "failed",
-                    "unmatched_freshdesk_ticket_count": 0,
                 },
                 sort_keys=True,
             ),
