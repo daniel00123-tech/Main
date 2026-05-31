@@ -1,7 +1,10 @@
 import unittest
 from typing import Any
+from unittest.mock import patch
 
 from scripts.bigchange_temp_invoice_nominals import (
+    BigChangeClient,
+    ConfigError,
     TempInvoiceNominalCorrector,
     classify_nominal_code,
     document_is_processable,
@@ -133,6 +136,13 @@ class SafetyFilterTest(unittest.TestCase):
 
         self.assertTrue(processable)
         self.assertEqual(reason, "")
+
+
+class ConfigTest(unittest.TestCase):
+    def test_rejects_unsupported_auth_mode(self) -> None:
+        with patch.dict("os.environ", {"BIGCHANGE_AUTH_MODE": "oauth"}, clear=True):
+            with self.assertRaisesRegex(ConfigError, "BIGCHANGE_AUTH_MODE"):
+                BigChangeClient()
 
 
 class TempInvoiceNominalCorrectorTest(unittest.TestCase):
