@@ -146,6 +146,12 @@ def is_populated(value: Any) -> bool:
     return text.lower() not in {"none", "null", "0", "0001-01-01", "0001-01-01 00:00:00"}
 
 
+def flag_is_true(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return clean_text(value).lower() in {"1", "true", "yes", "y"}
+
+
 def as_decimal(value: Any, default: str = "0") -> Decimal:
     if value in (None, ""):
         return Decimal(default)
@@ -461,11 +467,47 @@ def document_is_processable(doc: dict[str, Any]) -> tuple[bool, str]:
     doc_type = clean_text(first_present(doc, ("DocumentType", "DocType", "financialDocType", "InvoiceType", "Type")))
     if doc_type:
         norm_doc_type = normalized_text(doc_type)
-        if norm_doc_type not in {"invoice", "sales invoice", "si"} and "invoice" not in norm_doc_type:
+        compact_doc_type = compact_key(doc_type)
+        if (
+            "credit" in norm_doc_type
+            or "purchase" in norm_doc_type
+            or norm_doc_type in {"cn", "po", "purchase order", "credit note"}
+        ):
+            return False, f"document type is {doc_type}"
+        if norm_doc_type not in {"invoice", "sales invoice", "si"} and compact_doc_type not in {
+            "invoice",
+            "salesinvoice",
+        }:
             return False, f"document type is {doc_type}"
     for field_name in ("CancellationDate", "DeletionDate", "RejectionDate"):
         if is_populated(first_present(doc, (field_name,))):
             return False, f"{field_name} is populated"
+    for field_name in (
+        "IsSynced",
+        "IsSynchronised",
+        "IsSynchronized",
+        "Synchronised",
+        "Synchronized",
+        "Synced",
+        "IsExported",
+        "Exported",
+    ):
+        if flag_is_true(first_present(doc, (field_name,))):
+            return False, f"{field_name} is populated"
+    for field_name in (
+        "SyncDate",
+        "SynchronisedDate",
+        "SynchronizedDate",
+        "ExportDate",
+        "ExportedDate",
+        "AccountsSyncDate",
+    ):
+        if is_populated(first_present(doc, (field_name,))):
+            return False, f"{field_name} is populated"
+    for field_name in ("SyncStatus", "SynchronisationStatus", "SynchronizationStatus", "ExportStatus"):
+        status = normalized_text(first_present(doc, (field_name,)))
+        if status in {"synced", "synchronised", "synchronized", "exported", "complete", "completed", "success"}:
+            return False, f"{field_name} is {first_present(doc, (field_name,))}"
     return True, ""
 
 
@@ -670,9 +712,18 @@ class TempInvoiceNominalCorrector:
                 raise RuntimeError(f"line {original.line_number} UnitPrice changed")
             if not decimal_equal(original.quantity, verified.quantity):
                 raise RuntimeError(f"line {original.line_number} Quantity changed")
-            if clean_text(original.tax_code) and clean_text(original.tax_code) != clean_text(verified.tax_code):
+            if clean_text(original.item_cost) and not decimal_equal(original.item_cost, verified.item_cost):
+                raise RuntimeError(f"line {original.line_number} ItemCost changed")
+            if clean_text(original.currency) and clean_text(original.currency) != clean_text(verified.currency):
+                raise RuntimeError(f"line {original.line_number} Currency changed")
+            tax_rate_matches = not clean_text(original.tax_rate) or decimal_equal(original.tax_rate, verified.tax_rate)
+            if (
+                clean_text(original.tax_code)
+                and clean_text(original.tax_code) != clean_text(verified.tax_code)
+                and not tax_rate_matches
+            ):
                 raise RuntimeError(f"line {original.line_number} TaxCode changed")
-            if clean_text(original.tax_rate) and not decimal_equal(original.tax_rate, verified.tax_rate):
+            if not tax_rate_matches:
                 raise RuntimeError(f"line {original.line_number} TaxRate changed")
 
 
