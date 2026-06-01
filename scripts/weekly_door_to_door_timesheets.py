@@ -23,8 +23,17 @@ from openpyxl.utils import get_column_letter
 
 
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-INCLUDED_GROUP_NAMES = {"1. engineer", "2. subcontractor"}
+INCLUDED_GROUP_NAMES = {
+    "1. engineer",
+    "2. subcontractor",
+    "core team - caretaker",
+    "core team - electrical",
+    "core team - general maintenance",
+    "core team - mechanical",
+    "subcontractor",
+}
 PHANTOM_NAME_PARTS = {"cameron north", "kieran", "tom", "winston"}
+PHANTOM_NAME_TOKENS = {"hk", "tech"}
 COMPLETION_STATUS_IDS = {12, 13}
 START_TRAVEL_STATUS_ID = 8
 STARTED_STATUS_ID = 10
@@ -205,7 +214,8 @@ def should_ignore_resource(label: str) -> bool:
     low = (label or "").lower().strip()
     if low.startswith("z."):
         return True
-    return any(part in low for part in PHANTOM_NAME_PARTS)
+    tokens = set(normalize_name(label).split())
+    return any(part in low for part in PHANTOM_NAME_PARTS) or bool(tokens & PHANTOM_NAME_TOKENS)
 
 
 def as_list(result: Any) -> list[dict[str, Any]]:
@@ -224,7 +234,7 @@ def get_resources(client: BigChangeClient) -> list[dict[str, Any]]:
         if str(row.get("label", "")).strip().lower() in INCLUDED_GROUP_NAMES
     }
     if not included_group_ids:
-        raise ReportError("Could not find BigChange resource groups: 1. Engineer / 2. Subcontractor")
+        raise ReportError("Could not find BigChange engineer/subcontractor resource groups")
 
     resources = []
     for row in as_list(client.call("Resources")):
