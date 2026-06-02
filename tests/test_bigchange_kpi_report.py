@@ -72,6 +72,11 @@ class BigChangeApiTest(unittest.TestCase):
             "Sharon Mannion",
         )
 
+    def test_does_not_treat_generic_job_fields_as_category_fields(self) -> None:
+        categories_by_id = category_lookup([{"Id": 101, "Name": "Amy Bradley"}])
+
+        self.assertEqual(resolved_job_category_name({"Id": 101, "Name": "Repair leaking tap"}, categories_by_id), "")
+
 
 class SalesAttributionTest(unittest.TestCase):
     def test_matches_invoice_creators_to_prefixed_job_categories(self) -> None:

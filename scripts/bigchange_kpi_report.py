@@ -59,13 +59,17 @@ STATUS_DATE_FIELDS = ("StatusDate", "JobStatusDate", "CompletedDate", "Completio
 ACTIONED_FIELDS = ("Actioned", "IsActioned", "JobActioned", "HasBeenActioned")
 ACTIVITY_DATE_FIELDS = ("JobClientStatusDate", "ClientStatusDate", "ActivityDate", "Created", "DateCreated")
 INVOICE_OWNER_FIELDS = ("JobClientStatusOwner", "ClientStatusOwner", "Owner", "CreatedBy", "UserName", "Name")
-CATEGORY_ID_FIELDS = ("CategoryId", "CategoryID", "JobCategoryId", "JobCategoryID", "Id", "ID")
-CATEGORY_NAME_FIELDS = (
+CATEGORY_SPECIFIC_ID_FIELDS = ("CategoryId", "CategoryID", "JobCategoryId", "JobCategoryID")
+CATEGORY_ID_FIELDS = CATEGORY_SPECIFIC_ID_FIELDS + ("Id", "ID")
+JOB_CATEGORY_NAME_FIELDS = (
     "Category",
     "CategoryName",
     "JobCategory",
     "JobCategoryName",
     "JobCategoryLabel",
+)
+CATEGORY_NAME_FIELDS = (
+    *JOB_CATEGORY_NAME_FIELDS,
     "label",
     "Name",
 )
@@ -343,8 +347,8 @@ def document_is_cancelled_deleted_or_rejected(document: dict[str, Any]) -> bool:
     )
 
 
-def category_identifier(row: dict[str, Any]) -> str:
-    value = first_present(row, CATEGORY_ID_FIELDS)
+def category_identifier(row: dict[str, Any], allow_generic_id: bool = True) -> str:
+    value = first_present(row, CATEGORY_ID_FIELDS if allow_generic_id else CATEGORY_SPECIFIC_ID_FIELDS)
     parsed = as_int(value, default=None)
     if parsed is not None:
         return str(parsed)
@@ -366,14 +370,14 @@ def category_lookup(categories: list[dict[str, Any]]) -> dict[str, str]:
 
 
 def job_category_name(row: dict[str, Any]) -> str:
-    return category_display_name(row)
+    return clean_name(first_present(row, JOB_CATEGORY_NAME_FIELDS))
 
 
 def resolved_job_category_name(row: dict[str, Any], categories_by_id: dict[str, str]) -> str:
     name = job_category_name(row)
     if name:
         return name
-    identifier = category_identifier(row)
+    identifier = category_identifier(row, allow_generic_id=False)
     if not identifier:
         return ""
     return categories_by_id.get(identifier, "")
