@@ -627,14 +627,27 @@ class TempInvoiceNominalCorrector:
     def identify_job(self, doc: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
         job_id = clean_text(first_present(doc, ("JobId", "JobID", "LinkedJobId")))
         job_ref = clean_text(first_present(doc, ("JobReference", "JobRef", "JobNumber")))
+        job, resolved_job_id = self.resolve_job(job_id=job_id, job_ref=job_ref)
+        if job is not None:
+            return job, resolved_job_id
+
+        group_job = self.first_group_job(doc)
+        if group_job is None:
+            return None, None
+        group_job_id = clean_text(first_present(group_job, ("JobId", "JobID", "Id", "ID")))
+        group_job_ref = clean_text(first_present(group_job, ("JobReference", "JobRef", "JobNumber")))
+        job, resolved_job_id = self.resolve_job(job_id=group_job_id, job_ref=group_job_ref)
+        if job is None:
+            job = group_job
+            resolved_job_id = group_job_id or clean_text(first_present(job, ("JobId", "JobID", "Id", "ID")))
+        return job, resolved_job_id or None
+
+    def resolve_job(self, *, job_id: str | None = None, job_ref: str | None = None) -> tuple[dict[str, Any] | None, str | None]:
         job = self.client.job(job_id=job_id) if job_id else None
         if job is None and job_ref:
             job = self.client.job(job_ref=job_ref)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
-        if job is None:
-            job = self.first_group_job(doc)
-            job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or job_id
-        return job, job_id or None
+        resolved_job_id = clean_text(first_present(job or {}, ("JobId", "JobID", "Id", "ID"))) or clean_text(job_id)
+        return job, resolved_job_id or None
 
     def first_group_job(self, doc: dict[str, Any]) -> dict[str, Any] | None:
         embedded = self.first_embedded_group_job(doc)
