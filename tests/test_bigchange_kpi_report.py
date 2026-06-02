@@ -11,10 +11,12 @@ from scripts.bigchange_kpi_report import (
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
+    category_lookup,
     code_is_success,
     is_open_freshdesk_ticket,
     match_staff_name,
     name_key,
+    resolved_job_category_name,
     save_baseline,
     should_exclude_category,
     status_ids_from_choices,
@@ -50,6 +52,25 @@ class BigChangeApiTest(unittest.TestCase):
         self.assertTrue(code_is_success({"Code": 0}))
         self.assertTrue(code_is_success({"Code": "0"}))
         self.assertFalse(code_is_success({"Code": 1}))
+
+    def test_resolves_job_category_name_from_category_id_lookup(self) -> None:
+        categories_by_id = category_lookup(
+            [
+                {"Id": 101, "Name": "Amy Bradley"},
+                {"JobCategoryID": "202", "JobCategoryName": "Daniel Dwyer"},
+            ]
+        )
+
+        self.assertEqual(resolved_job_category_name({"JobCategoryId": "101"}, categories_by_id), "Amy Bradley")
+        self.assertEqual(resolved_job_category_name({"CategoryID": 202}, categories_by_id), "Daniel Dwyer")
+
+    def test_prefers_embedded_job_category_name_over_lookup(self) -> None:
+        categories_by_id = category_lookup([{"Id": 101, "Name": "Amy Bradley"}])
+
+        self.assertEqual(
+            resolved_job_category_name({"JobCategoryId": "101", "JobCategoryName": "Sharon Mannion"}, categories_by_id),
+            "Sharon Mannion",
+        )
 
 
 class SalesAttributionTest(unittest.TestCase):
