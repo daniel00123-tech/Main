@@ -1,0 +1,1490 @@
+{
+  "confirmed_references": {
+    "autoCloseDownTagId": 239829,
+    "fallbackCategory": {
+      "id": 132665,
+      "label": "Hayley Longford"
+    },
+    "invoiceCreatedClientStatusId": 34
+  },
+  "jobs_excluded_as_future_dated": 0,
+  "run_started": "2026-06-02T06:09:55Z",
+  "total_jobs_reviewed": 4774,
+  "updates": [
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 187838238,
+      "job_ref": "JOB268485",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 187988869,
+      "job_ref": "JOB268774",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188152685,
+      "job_ref": "DLFF252219~3",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188189100,
+      "job_ref": "DL269694",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188240210,
+      "job_ref": "INT269923",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188477911,
+      "job_ref": "JOB268898~2",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188534240,
+      "job_ref": "DLFF270484",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188585971,
+      "job_ref": "JOB270540",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188608045,
+      "job_ref": "JOB270570",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188608124,
+      "job_ref": "JOB270572",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188614556,
+      "job_ref": "JOB270600",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188723593,
+      "job_ref": "JOB271079",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188724828,
+      "job_ref": "DLFF271080",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188751418,
+      "job_ref": "DLFF271181",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188751428,
+      "job_ref": "DLFF271182",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188751442,
+      "job_ref": "DLFF271184",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188751447,
+      "job_ref": "JOB271185",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188751464,
+      "job_ref": "JOB271186",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188751480,
+      "job_ref": "JOB271187",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188751510,
+      "job_ref": "JOB271188",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188751555,
+      "job_ref": "DLFF271189",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188757922,
+      "job_ref": "DLFF271208",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188781477,
+      "job_ref": "DLFF271228",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188802769,
+      "job_ref": "JOB268228~1",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188840613,
+      "job_ref": "JOB271274",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188841306,
+      "job_ref": "DLFF271275",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188926391,
+      "job_ref": "DLFF270292~2",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188926391,
+      "job_ref": "DLFF270292~2",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188927492,
+      "job_ref": "LS254044~1",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188927959,
+      "job_ref": "LS258971~1",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188942863,
+      "job_ref": "DLFF270324~1",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188946192,
+      "job_ref": "JOB271359",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188946192,
+      "job_ref": "JOB271359",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188965226,
+      "job_ref": "DLFF271365",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188965841,
+      "job_ref": "DLFF271368",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188966917,
+      "job_ref": "JOB271372",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188969225,
+      "job_ref": "DLFF271375",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188987997,
+      "job_ref": "JOB271440",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188987997,
+      "job_ref": "JOB271440",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188987998,
+      "job_ref": "JOB271441",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188988000,
+      "job_ref": "JOB271442",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188988259,
+      "job_ref": "JOB271443",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189001777,
+      "job_ref": "JOB271475",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189002130,
+      "job_ref": "JOB271476",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189002308,
+      "job_ref": "JOB271477",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189002647,
+      "job_ref": "DLFF271486",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189003478,
+      "job_ref": "DLFF271492",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189003925,
+      "job_ref": "JOB271495",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189004455,
+      "job_ref": "DLFF271497",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189004471,
+      "job_ref": "JOB271498",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189004481,
+      "job_ref": "DLFF271500",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189005029,
+      "job_ref": "JOB271509",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189005047,
+      "job_ref": "JOB271511",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189013122,
+      "job_ref": "DLFF271720",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189035507,
+      "job_ref": "DLFF271834",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189035940,
+      "job_ref": "JOB271837",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189067695,
+      "job_ref": "DLFF271859",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189067695,
+      "job_ref": "DLFF271859",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189097796,
+      "job_ref": "JOB271876",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189130025,
+      "job_ref": "JOB271904",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189212671,
+      "job_ref": "EOT272009",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189232143,
+      "job_ref": "DLFF272022",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189243279,
+      "job_ref": "JOB272037",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189243279,
+      "job_ref": "JOB272037",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189248108,
+      "job_ref": "JOB272075",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189248154,
+      "job_ref": "JOB272121",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189248164,
+      "job_ref": "JOB272131",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189287908,
+      "job_ref": "JOB272150",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189288181,
+      "job_ref": "JOB272151",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189323847,
+      "job_ref": "JOB272176",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189324322,
+      "job_ref": "JOB272177",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189324322,
+      "job_ref": "JOB272177",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189326111,
+      "job_ref": "DLFF272179",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189328606,
+      "job_ref": "JOB272185",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189328967,
+      "job_ref": "DLFF272188",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189328967,
+      "job_ref": "DLFF272188",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189328976,
+      "job_ref": "DLFF272189",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189328976,
+      "job_ref": "DLFF272189",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189342007,
+      "job_ref": "DLFF272197",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189356567,
+      "job_ref": "JOB272204",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189356567,
+      "job_ref": "JOB272204",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189374032,
+      "job_ref": "DLFF272214",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189401534,
+      "job_ref": "JOB272241",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189401535,
+      "job_ref": "JOB272242",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189418397,
+      "job_ref": "JOB272252",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189452914,
+      "job_ref": "JOB272268",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189468441,
+      "job_ref": "DLFF272295",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189546479,
+      "job_ref": "JOB272346",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189547108,
+      "job_ref": "JOB272349",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189547108,
+      "job_ref": "JOB272349",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189548109,
+      "job_ref": "JOB272352",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189567292,
+      "job_ref": "DLFF272433",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189598250,
+      "job_ref": "INT272526",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189614853,
+      "job_ref": "EOT272556",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 189618194,
+      "job_ref": "JOB272560",
+      "reason": "uncategorised job; creator from first New status owner (UDL_Leodis_Caretaker Gary Arundale) has no existing category; using confirmed fallback category Hayley Longford",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "UDL_Leodis_Caretaker Gary Arundale",
+        "fallbackUsed": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189620763,
+      "job_ref": "JOB272561",
+      "reason": "Auto Close Down flag confirmed; mark job actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189620763,
+      "job_ref": "JOB272561",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189629864,
+      "job_ref": "JOB272570",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189630206,
+      "job_ref": "JOB272571",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189630656,
+      "job_ref": "JOB272572",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189631096,
+      "job_ref": "JOB272573",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189631653,
+      "job_ref": "JOB272574",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 189679585,
+      "job_ref": "SS272605",
+      "reason": "uncategorised job; creator from first New status owner (FD - Charles Mabira - RH11) has no existing category; using confirmed fallback category Hayley Longford",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "FD - Charles Mabira - RH11",
+        "fallbackUsed": true
+      },
+      "update_type": "job_category"
+    }
+  ],
+  "window": {
+    "dateOptionId": 2,
+    "days": 30,
+    "end": "2026-06-02 06:09:55",
+    "excludeFutureDated": false,
+    "futureDateFields": [],
+    "start": "2026-05-03 06:09:55"
+  }
+}
