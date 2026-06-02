@@ -91,6 +91,8 @@ class ClassificationTest(unittest.TestCase):
             ({"Type": "Fire Alarm", "Description": "Call Out fault"}, "2002"),
             ({"Type": "Fire", "Description": "PPM service"}, "2102"),
             ({"Type": "Fire", "Description": "Install works"}, "2202"),
+            ({"Type": "Emergency Lighting", "Description": "PPM service"}, "2102"),
+            ({"Type": "Emergency Lighting", "Description": "Install works"}, "2202"),
         )
 
         for job, expected in cases:
@@ -137,6 +139,8 @@ class SafetyFilterTest(unittest.TestCase):
             {"DocumentType": "Invoice", "IsSynced": True},
             {"DocumentType": "Invoice", "SynchronisedDate": "2026-05-31"},
             {"DocumentType": "Invoice", "ExportStatus": "Completed"},
+            {"DocumentType": "Invoice", "ExportReference": "XERO-1"},
+            {"DocumentType": "Invoice", "SyncStatus": "Posted"},
         )
 
         for doc in cases:
@@ -150,6 +154,17 @@ class SafetyFilterTest(unittest.TestCase):
 
         self.assertTrue(processable)
         self.assertEqual(reason, "")
+
+    def test_requires_explicit_sales_invoice_document_type(self) -> None:
+        for doc_type in ("Invoice", "Sales Invoice", "SalesInvoice", "SI"):
+            with self.subTest(doc_type=doc_type):
+                processable, reason = document_is_processable({"DocumentType": doc_type})
+                self.assertTrue(processable, reason)
+
+        processable, reason = document_is_processable({"DocId": "D1"})
+
+        self.assertFalse(processable)
+        self.assertIn("missing", reason)
 
 
 class ConfigTest(unittest.TestCase):
@@ -201,6 +216,7 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
         }
         client = FakeBigChangeClient(
             rows=[
+                {"InvoiceType": "SI", "Reference": "TEMP-100"},
                 {"InvoiceType": "SI", "Reference": "TEMP-100", "InvoiceId": "D1"},
                 {"InvoiceType": "SI", "Reference": "INV-999", "InvoiceId": "D2"},
                 {"InvoiceType": "CN", "Reference": "TEMP-CN", "InvoiceId": "D3"},
@@ -426,6 +442,41 @@ class TempInvoiceNominalCorrectorTest(unittest.TestCase):
         client = FakeBigChangeClient([], {}, {}, {})
 
         TempInvoiceNominalCorrector(client).verify_document(verified_doc, [original_line], "2002")
+
+    def test_verification_rejects_doc_id_changes(self) -> None:
+        original_line = extract_invoice_line(
+            {
+                "UnitPrice": "125.00",
+                "Quantity": "2",
+                "Currency": "GBP",
+                "TaxCode": "T1",
+                "TaxRate": "20",
+                "NominalCode": "9999",
+            },
+            1,
+        )
+        verified_doc = {
+            "DocId": "D2",
+            "FinancialLines": [
+                {
+                    "UnitPrice": "125.00",
+                    "Quantity": "2",
+                    "Currency": "GBP",
+                    "TaxCode": "T1",
+                    "TaxRate": "20",
+                    "NominalCode": "2002",
+                }
+            ],
+        }
+        client = FakeBigChangeClient([], {}, {}, {})
+
+        with self.assertRaisesRegex(RuntimeError, "DocId changed"):
+            TempInvoiceNominalCorrector(client).verify_document(
+                verified_doc,
+                [original_line],
+                "2002",
+                expected_doc_id="D1",
+            )
 
     def test_verification_rejects_item_cost_or_currency_changes(self) -> None:
         original_line = extract_invoice_line(
