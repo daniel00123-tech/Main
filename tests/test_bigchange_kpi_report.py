@@ -1,4 +1,5 @@
 import datetime as dt
+import email
 import json
 import os
 import tempfile
@@ -18,6 +19,7 @@ from scripts.bigchange_kpi_report import (
     name_key,
     resolved_job_category_name,
     save_baseline,
+    send_email,
     should_exclude_category,
     status_ids_from_choices,
     validate_report,
@@ -242,6 +244,38 @@ class ScoreAndBaselineTest(unittest.TestCase):
         self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
         self.assertEqual(baseline["staff"][0]["overall_score"], 67)
         self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+
+
+class EmailDeliveryTest(unittest.TestCase):
+    def test_embeds_png_and_attaches_only_png(self) -> None:
+        env = {
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_PORT": "587",
+            "SMTP_USERNAME": "user@example.com",
+            "SMTP_PASSWORD": "secret",
+            "SMTP_FROM_EMAIL": "sender@example.com",
+            "SMTP_FROM_NAME": "Sender Name",
+            "SMTP_TO_EMAIL": "team@example.com",
+            "SMTP_CC_EMAIL": "manager@example.com",
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            png_path = Path(temp_dir) / "dashboard.png"
+            png_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+            with patch.dict(os.environ, env, clear=False), patch("scripts.bigchange_kpi_report.smtplib.SMTP") as smtp_cls:
+                smtp = smtp_cls.return_value.__enter__.return_value
+                send_email(png_path)
+
+        raw_message = smtp.sendmail.call_args.args[2]
+        message = email.message_from_string(raw_message)
+        attachments = [part for part in message.walk() if part.get_content_disposition() == "attachment"]
+
+        self.assertEqual(len(attachments), 1)
+        self.assertEqual(attachments[0].get_content_type(), "image/png")
+        self.assertEqual(attachments[0].get_filename(), "dashboard.png")
+        self.assertEqual(attachments[0]["Content-ID"], "<kpi-dashboard>")
+        self.assertNotIn("application/json", [part.get_content_type() for part in attachments])
+        self.assertNotIn("text/html", [part.get_content_type() for part in attachments])
 
 
 class FakeBigChangeClient:
