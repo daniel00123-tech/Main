@@ -31,6 +31,8 @@ from pathlib import Path
 from typing import Any
 
 
+AUTOMATION_NAME = "Aquilo BigChange KPI Overview Report"
+
 JOB_KPI_ORDER = [
     ("unallocated_jobs", "Unallocated Jobs"),
     ("historic_jobs", "Historic Jobs"),
@@ -54,6 +56,13 @@ LOCAL_NAME_ALIASES = {
 }
 STATUS_ID_FIELDS = ("StatusId", "StatusID", "JobStatusId", "JobStatusID")
 PLANNED_START_FIELDS = ("PlannedStart", "PlannedStartDate", "PlannedDate", "StartDate", "Start")
+PLANNED_TIME_FIELDS = (
+    "PlannedStartTime",
+    "PlannedTime",
+    "StartTime",
+    "PlannedStartDateTime",
+    "AppointmentTime",
+)
 CREATED_DATE_FIELDS = ("Created", "CreatedDate", "DateCreated", "LoggedDate", "DateLogged")
 STATUS_DATE_FIELDS = ("StatusDate", "JobStatusDate", "CompletedDate", "CompletionDate", "DateCompleted")
 ACTIONED_FIELDS = ("Actioned", "IsActioned", "JobActioned", "HasBeenActioned")
@@ -265,6 +274,12 @@ def row_date(row: dict[str, Any], names: tuple[str, ...]) -> dt.datetime | None:
     return parse_date(first_present(row, names))
 
 
+def has_planned_schedule(row: dict[str, Any]) -> bool:
+    if row_date(row, PLANNED_START_FIELDS):
+        return True
+    return is_populated(first_present(row, PLANNED_TIME_FIELDS))
+
+
 def nested_rows(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, list):
         return [row for row in value if isinstance(row, dict)]
@@ -472,6 +487,10 @@ class FreshdeskClient:
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
+        try:
+            self.page_delay_seconds = max(float(optional_env("FRESHDESK_PAGE_DELAY_SECONDS", "0.2")), 0.0)
+        except ValueError:
+            self.page_delay_seconds = 0.2
         self._agent_cache: dict[int, str] = {}
         self._contact_cache: dict[int, str] = {}
 
@@ -548,6 +567,8 @@ class FreshdeskClient:
             if len(batch) < page_size:
                 return tickets
             page += 1
+            if self.page_delay_seconds:
+                time.sleep(self.page_delay_seconds)
             if page > 300:
                 raise RuntimeError("Freshdesk ticket pagination exceeded safety limit")
 
@@ -908,7 +929,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         for row in unallocated_rows
         if row_status_id(row) in UNALLOCATED_STATUS_IDS
         and not resource_assigned(row)
-        and row_date(row, PLANNED_START_FIELDS) is None
+        and not has_planned_schedule(row)
     ]
     add_items(grouped, staff_names, unallocated_rows, "unallocated_jobs", CREATED_DATE_FIELDS, today)
 
@@ -1157,7 +1178,7 @@ def render_html(report: dict[str, Any]) -> str:
 <html>
 <head>
   <meta charset="utf-8">
-  <title>BigChange KPI Overview</title>
+  <title>{html.escape(AUTOMATION_NAME)}</title>
   <style>
     :root {{
       --bg: #07111f;
@@ -1540,7 +1561,7 @@ def render_html(report: dict[str, Any]) -> str:
       <div class="brand">
         <div class="brand-mark"></div>
         <div>
-          <h1>Aquilo BigChange KPI Overview</h1>
+          <h1>{html.escape(AUTOMATION_NAME)}</h1>
           <div class="sub">Generated {report_date} - jobs from {job_lookback_start} onwards, grouped by job category staff owner</div>
         </div>
       </div>
@@ -1716,8 +1737,8 @@ def main() -> int:
         validate_report(report)
         html_content = render_html(report)
         reports_dir = Path("reports")
-        html_path = reports_dir / "bigchange-kpi-dashboard.html"
-        png_path = reports_dir / "bigchange-kpi-dashboard.png"
+        html_path = reports_dir / "aquilo-bigchange-kpi-overview-report.html"
+        png_path = reports_dir / "aquilo-bigchange-kpi-overview-report.png"
         baseline_path = Path("automation-memory") / "kpi-baseline.json"
         render_png(html_content, html_path, png_path, len(report["staff_rows"]))
         save_baseline(report, baseline_path)

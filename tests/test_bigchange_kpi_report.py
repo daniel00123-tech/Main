@@ -1,4 +1,5 @@
 import datetime as dt
+import email
 import json
 import os
 import tempfile
@@ -8,6 +9,7 @@ from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    build_report,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
@@ -15,7 +17,9 @@ from scripts.bigchange_kpi_report import (
     is_open_freshdesk_ticket,
     match_staff_name,
     name_key,
+    render_html,
     save_baseline,
+    send_email,
     should_exclude_category,
     status_ids_from_choices,
     validate_report,
@@ -174,6 +178,46 @@ class FreshdeskKpiTest(unittest.TestCase):
         self.assertEqual(len(critical), 1)
 
 
+class ReportAssemblyTest(unittest.TestCase):
+    def test_builds_report_from_bigchange_and_freshdesk_inputs(self) -> None:
+        today = dt.date.today()
+        client = FakeReportBigChangeClient(today)
+        freshdesk_client = FakeFreshdeskClient(
+            tickets=[
+                {
+                    "id": 101,
+                    "status": 2,
+                    "responder_id": 10,
+                    "created_at": (today - dt.timedelta(days=5)).isoformat(),
+                },
+                {
+                    "id": 102,
+                    "status": 2,
+                    "requester": {"name": "Unmatched Owner"},
+                    "created_at": (today - dt.timedelta(days=35)).isoformat(),
+                },
+            ],
+            agents={10: "Amy B"},
+            contacts={},
+        )
+
+        report = build_report(client, freshdesk_client)
+        rows = {row["staff_name"]: row for row in report["staff_rows"]}
+
+        self.assertEqual(set(rows), {"Amy Bradley"})
+        amy = rows["Amy Bradley"]
+        self.assertEqual(amy["metrics"]["unallocated_jobs"]["count"], 1)
+        self.assertEqual(amy["metrics"]["historic_jobs"]["count"], 1)
+        self.assertEqual(amy["metrics"]["uninvoiced_jobs"]["count"], 1)
+        self.assertEqual(amy["metrics"]["uninvoiced_jobs"]["status"], "red")
+        self.assertEqual(amy["metrics"]["unactioned_jobs"]["count"], 1)
+        self.assertEqual(amy["metrics"][FRESHDESK_METRIC[0]]["count"], 1)
+        self.assertEqual(amy["current_month_sales"], 100.0)
+        self.assertEqual(report["unmatched_freshdesk_ticket_count"], 1)
+        self.assertEqual(report["critical_freshdesk_ticket_count"], 1)
+        self.assertIn("Aquilo BigChange KPI Overview Report", render_html(report))
+
+
 class ScoreAndBaselineTest(unittest.TestCase):
     def test_calculates_score_from_status_penalties_and_workload(self) -> None:
         metrics = {
@@ -218,6 +262,68 @@ class ScoreAndBaselineTest(unittest.TestCase):
         self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
 
 
+class EmailDeliveryTest(unittest.TestCase):
+    def test_email_embeds_and_attaches_only_dashboard_png(self) -> None:
+        captured: list[tuple[str, list[str], str]] = []
+
+        class FakeSMTP:
+            def __init__(self, host, port, timeout):
+                self.host = host
+                self.port = port
+                self.timeout = timeout
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def starttls(self):
+                return None
+
+            def login(self, username, password):
+                return None
+
+            def sendmail(self, from_email, recipients, message):
+                captured.append((from_email, recipients, message))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            png_path = Path(temp_dir) / "dashboard.png"
+            png_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+            env = {
+                "SMTP_HOST": "smtp.example.com",
+                "SMTP_PORT": "587",
+                "SMTP_USERNAME": "user@example.com",
+                "SMTP_PASSWORD": "secret",
+                "SMTP_FROM_EMAIL": "sender@example.com",
+                "SMTP_FROM_NAME": "Sender",
+                "SMTP_TO_EMAIL": "to@example.com",
+                "SMTP_CC_EMAIL": "cc@example.com",
+            }
+
+            with patch.dict(os.environ, env), patch("scripts.bigchange_kpi_report.smtplib.SMTP", FakeSMTP):
+                send_email(png_path)
+
+        self.assertEqual(captured[0][0], "sender@example.com")
+        self.assertEqual(captured[0][1], ["to@example.com", "cc@example.com"])
+        message = email.message_from_string(captured[0][2])
+        attachment_parts = [
+            part for part in message.walk() if part.get_content_disposition() == "attachment"
+        ]
+        self.assertEqual(len(attachment_parts), 1)
+        self.assertEqual(attachment_parts[0].get_content_type(), "image/png")
+        self.assertEqual(attachment_parts[0].get_filename(), "dashboard.png")
+        self.assertEqual(attachment_parts[0].get("Content-ID"), "<kpi-dashboard>")
+        self.assertFalse(
+            any(
+                part.get_content_disposition() == "attachment" and part.get_content_type() in {"text/html", "application/json"}
+                for part in message.walk()
+            )
+        )
+        html_parts = [part for part in message.walk() if part.get_content_type() == "text/html"]
+        self.assertTrue(any("cid:kpi-dashboard" in part.get_payload(decode=True).decode("utf-8") for part in html_parts))
+
+
 class FakeBigChangeClient:
     def __init__(self, invoices, activities) -> None:
         self._invoices = invoices
@@ -228,6 +334,94 @@ class FakeBigChangeClient:
 
     def job_customer_activity(self, job_id):
         return self._activities.get(job_id, [])
+
+
+class FakeReportBigChangeClient:
+    def __init__(self, today) -> None:
+        self.today = today
+        self._categories = [{"Name": "Amy Bradley"}, {"Name": "Nirvana PPM"}]
+        self._unallocated = [
+            {
+                "StatusId": 1,
+                "JobCategoryName": "Amy Bradley",
+                "CreatedDate": (today - dt.timedelta(days=3)).isoformat(),
+                "Resource": "",
+                "PlannedStart": "",
+                "PlannedTime": "",
+            },
+            {
+                "StatusId": 1,
+                "JobCategoryName": "Amy Bradley",
+                "CreatedDate": (today - dt.timedelta(days=4)).isoformat(),
+                "Resource": "",
+                "PlannedStart": "",
+                "PlannedTime": "09:00",
+            },
+            {
+                "StatusId": 1,
+                "JobCategoryName": "Nirvana PPM",
+                "CreatedDate": (today - dt.timedelta(days=4)).isoformat(),
+                "Resource": "",
+                "PlannedStart": "",
+                "PlannedTime": "",
+            },
+        ]
+        self._historic = [
+            {
+                "StatusId": 4,
+                "JobCategoryName": "Amy Bradley",
+                "PlannedStart": (today - dt.timedelta(days=1)).isoformat(),
+                "EngineerName": "Engineer One",
+            }
+        ]
+        self._uninvoiced = [
+            {
+                "StatusId": 12,
+                "ClientStatusId": -34,
+                "JobCategoryName": "Amy Bradley",
+                "CompletedDate": (today - dt.timedelta(days=31)).isoformat(),
+            }
+        ]
+        self._unactioned = [
+            {
+                "StatusId": 13,
+                "JobCategoryName": "Amy Bradley",
+                "CompletedDate": (today - dt.timedelta(days=12)).isoformat(),
+                "Actioned": "No",
+            }
+        ]
+
+    def categories(self):
+        return self._categories
+
+    def jobslist(self, params, page_size=500):
+        if params.get("Unallocated"):
+            return self._unallocated
+        if params.get("Allocated"):
+            return self._historic
+        if params.get("ClientStatusId") == -34:
+            return self._uninvoiced
+        if params.get("Unactioned"):
+            return self._unactioned
+        return []
+
+    def invoices_with_items_by_period(self, start, end):
+        return [
+            {
+                "OrderType": "Invoice",
+                "JobId": "555",
+                "Lines": [{"NetPrice": "120.00", "VatAmount": "20.00"}],
+            }
+        ]
+
+    def job_customer_activity(self, job_id):
+        return [
+            {
+                "JobClientStatusID": 34,
+                "JobClientStatusDate": self.today.isoformat(),
+                "JobClientStatusOwner": "Amy B",
+            }
+        ]
 
 
 class FakeFreshdeskClient:
