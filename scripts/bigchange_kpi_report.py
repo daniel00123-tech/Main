@@ -810,8 +810,10 @@ def render_html(report: dict[str, Any]) -> str:
         cells = [
             f'<td class="rank">#{idx}</td>',
             '<td class="staff">'
+            '<div class="staff-inner">'
             f'<div class="avatar {avatar_class(row["staff_name"])}">{html.escape(initials(row["staff_name"]))}</div>'
             f'<div class="person"><strong>{staff}</strong><span>Staff owner</span></div>'
+            "</div>"
             "</td>",
         ]
         for metric_key, _label in JOB_KPI_ORDER:
@@ -991,7 +993,8 @@ def render_html(report: dict[str, Any]) -> str:
       text-align: left;
       padding-left: 12px;
     }}
-    .staff, .person {{
+    .staff-inner,
+    .person {{
       display: flex;
       align-items: center;
       gap: 12px;
