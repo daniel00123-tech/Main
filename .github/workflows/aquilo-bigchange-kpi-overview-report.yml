@@ -1,0 +1,88 @@
+name: Aquilo BigChange KPI Overview Report
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  daily-kpi-report:
+    name: Build and email KPI dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      BIGCHANGE_AUTH_MODE: api_key
+      BIGCHANGE_BASE_URL: https://webservice.bigchange.com/v01/services.ashx
+      BIGCHANGE_API_KEY: ${{ secrets.BIGCHANGE_API_KEY }}
+      BIGCHANGE_USERNAME: ${{ secrets.BIGCHANGE_USERNAME }}
+      BIGCHANGE_PASSWORD: ${{ secrets.BIGCHANGE_PASSWORD }}
+      FRESHDESK_SUBDOMAIN: nirvanamaintenance.freshdesk.com
+      FRESHDESK_API_KEY: ${{ secrets.FRESHDESK_API_KEY }}
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: "587"
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      SMTP_FROM_EMAIL: ${{ secrets.SMTP_FROM_EMAIL }}
+      SMTP_FROM_NAME: Daniel Dwyer
+      SMTP_TO_EMAIL: ${{ secrets.SMTP_TO_EMAIL }}
+      SMTP_CC_EMAIL: ${{ secrets.SMTP_CC_EMAIL }}
+      STAFF_NAME_ALIASES: ${{ vars.STAFF_NAME_ALIASES }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Locate Chrome
+        run: |
+          if command -v google-chrome-stable >/dev/null 2>&1; then
+            echo "CHROME_BIN=$(command -v google-chrome-stable)" >> "$GITHUB_ENV"
+          elif command -v google-chrome >/dev/null 2>&1; then
+            echo "CHROME_BIN=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          elif command -v chromium-browser >/dev/null 2>&1; then
+            echo "CHROME_BIN=$(command -v chromium-browser)" >> "$GITHUB_ENV"
+          elif command -v chromium >/dev/null 2>&1; then
+            echo "CHROME_BIN=$(command -v chromium)" >> "$GITHUB_ENV"
+          else
+            sudo apt-get update
+            sudo apt-get install -y chromium-browser
+            echo "CHROME_BIN=$(command -v chromium-browser)" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run KPI report
+        id: report
+        continue-on-error: true
+        run: python3 scripts/bigchange_kpi_report.py
+
+      - name: Upload dashboard PNG
+        if: always() && hashFiles('reports/bigchange-kpi-dashboard.png') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: bigchange-kpi-dashboard-png
+          path: reports/bigchange-kpi-dashboard.png
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Commit baseline snapshot
+        if: always()
+        run: |
+          if git diff --quiet -- automation-memory/kpi-baseline.json; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add automation-memory/kpi-baseline.json
+          git commit -m "Update daily KPI baseline"
+          git push
+
+      - name: Fail if report failed
+        if: steps.report.outcome != 'success'
+        run: exit 1

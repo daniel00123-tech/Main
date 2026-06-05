@@ -3,11 +3,13 @@ import json
 import os
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    add_items,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
@@ -43,6 +45,33 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+    def test_groups_id_only_job_rows_with_category_lookup(self) -> None:
+        grouped = defaultdict(lambda: defaultdict(list))
+        staff_names = {"Amy Bradley"}
+        rows = [{"JobCategoryId": "42", "CreatedDate": "2026-06-01"}]
+
+        add_items(
+            grouped,
+            staff_names,
+            rows,
+            "unallocated_jobs",
+            ("CreatedDate",),
+            dt.date(2026, 6, 5),
+            {"42": "Amy Bradley"},
+        )
+
+        self.assertEqual(len(grouped["Amy Bradley"]["unallocated_jobs"]), 1)
+
+    def test_does_not_treat_numeric_category_values_as_staff_names(self) -> None:
+        grouped = defaultdict(lambda: defaultdict(list))
+        staff_names = set()
+        rows = [{"Category": "42", "CreatedDate": "2026-06-01"}]
+
+        add_items(grouped, staff_names, rows, "unallocated_jobs", ("CreatedDate",), dt.date(2026, 6, 5), {})
+
+        self.assertEqual(dict(grouped), {})
+        self.assertEqual(staff_names, set())
 
 
 class BigChangeApiTest(unittest.TestCase):
