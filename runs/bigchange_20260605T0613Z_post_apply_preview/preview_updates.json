@@ -1,0 +1,180 @@
+{
+  "confirmed_references": {
+    "autoCloseDownTagId": 239829,
+    "fallbackCategory": {
+      "confirmed": true,
+      "id": 132665,
+      "label": "Hayley Longford"
+    },
+    "invoiceCreatedClientStatusId": 34
+  },
+  "jobs_excluded_as_future_dated": 0,
+  "run_started": "2026-06-05T06:12:26Z",
+  "total_jobs_reviewed": 4778,
+  "updates": [
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188152685,
+      "job_ref": "DLFF252219~3",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188240210,
+      "job_ref": "INT269923",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188607889,
+      "job_ref": "JOB270566",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188927492,
+      "job_ref": "LS254044~1",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188927959,
+      "job_ref": "LS258971~1",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189245439,
+      "job_ref": "JOB272042",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189485414,
+      "job_ref": "DLFF272310",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189566925,
+      "job_ref": "JOB272430",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189610474,
+      "job_ref": "JOB272546",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189610857,
+      "job_ref": "DLFF272548",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189612869,
+      "job_ref": "JOB272554",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189830931,
+      "job_ref": "JOB272801",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    }
+  ],
+  "window": {
+    "dateOptionId": 2,
+    "days": 30,
+    "end": "2026-06-05 06:12:26",
+    "excludeFutureDated": false,
+    "futureDateFields": [],
+    "start": "2026-05-06 06:12:26"
+  }
+}
