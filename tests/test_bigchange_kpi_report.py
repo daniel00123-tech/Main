@@ -1,4 +1,5 @@
 import datetime as dt
+import email
 import json
 import os
 import tempfile
@@ -13,6 +14,7 @@ from scripts.bigchange_kpi_report import (
     name_key,
     render_html,
     save_baseline,
+    send_email,
     staff_rank_key,
     should_exclude_category,
     validate_report,
@@ -184,6 +186,37 @@ class DashboardAndBaselineTest(unittest.TestCase):
         self.assertNotIn("overall_score", row)
 
 
+class EmailAssemblyTest(unittest.TestCase):
+    def test_email_embeds_and_attaches_only_dashboard_png(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            png_path = Path(temp_dir) / "dashboard.png"
+            png_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+            env = {
+                "SMTP_HOST": "smtp.example.test",
+                "SMTP_PORT": "587",
+                "SMTP_USERNAME": "user@example.test",
+                "SMTP_PASSWORD": "password",
+                "SMTP_FROM_EMAIL": "from@example.test",
+                "SMTP_FROM_NAME": "Sender",
+                "SMTP_TO_EMAIL": "to@example.test",
+                "SMTP_CC_EMAIL": "cc@example.test",
+            }
+            with patch.dict(os.environ, env), patch("scripts.bigchange_kpi_report.smtplib.SMTP", FakeSMTP):
+                send_email(png_path)
+
+        message = email.message_from_string(FakeSMTP.sent_message)
+        attachments = [
+            part
+            for part in message.walk()
+            if part.get_content_disposition() == "attachment"
+        ]
+
+        self.assertEqual(len(attachments), 1)
+        self.assertEqual(attachments[0].get_content_type(), "image/png")
+        self.assertEqual(attachments[0].get_filename(), "dashboard.png")
+        self.assertEqual(attachments[0]["Content-ID"], "<kpi-dashboard>")
+
+
 class FakeBigChangeClient:
     def __init__(self, invoices, activities) -> None:
         self._invoices = invoices
@@ -194,6 +227,30 @@ class FakeBigChangeClient:
 
     def job_customer_activity(self, job_id):
         return self._activities.get(job_id, [])
+
+
+class FakeSMTP:
+    sent_message = ""
+
+    def __init__(self, host, port, timeout):
+        self.host = host
+        self.port = port
+        self.timeout = timeout
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def starttls(self):
+        return None
+
+    def login(self, username, password):
+        return None
+
+    def sendmail(self, from_email, recipients, message):
+        self.__class__.sent_message = message
 
 
 def sample_report():
