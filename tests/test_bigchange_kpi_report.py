@@ -223,10 +223,16 @@ class BaselineAndEmailTest(unittest.TestCase):
             for part in message.walk()
             if part.get_content_disposition() == "attachment"
         ]
+        html_parts = [
+            part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8")
+            for part in message.walk()
+            if part.get_content_type() == "text/html"
+        ]
         self.assertEqual(len(attachments), 1)
         self.assertEqual(attachments[0].get_content_type(), "image/png")
         self.assertEqual(attachments[0].get_filename(), "dashboard.png")
-        self.assertIn("cid:kpi-dashboard", sent_messages[0])
+        self.assertEqual(len(html_parts), 1)
+        self.assertIn("cid:kpi-dashboard", html_parts[0])
 
 
 class FakeBigChangeClient:
