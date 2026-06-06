@@ -1,0 +1,97 @@
+{"job_id": 187653531, "job_ref": "PPM268105", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 187653531, "job_ref": "PPM268105", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187671805, "job_ref": "GRANQ268255", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 187671805, "job_ref": "GRANQ268255", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187672792, "job_ref": "GRANQ268269", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 187672792, "job_ref": "GRANQ268269", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 187836612, "job_ref": "JOB268482", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 187836612, "job_ref": "JOB268482", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 187892036, "job_ref": "JOB268625", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 187892036, "job_ref": "JOB268625", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 188152685, "job_ref": "DLFF252219~3", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188189109, "job_ref": "DL269697", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 188189109, "job_ref": "DL269697", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 188240210, "job_ref": "INT269923", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 188607889, "job_ref": "JOB270566", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 188797613, "job_ref": "JOB271245", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 188797613, "job_ref": "JOB271245", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 188827070, "job_ref": "DLFF271267", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 188827070, "job_ref": "DLFF271267", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189075603, "job_ref": "JOB271866", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189075603, "job_ref": "JOB271866", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 189096345, "job_ref": "JOB271875", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 189096345, "job_ref": "JOB271875", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 189122679, "job_ref": "DLFF271218~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 189122679, "job_ref": "DLFF271218~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189132103, "job_ref": "JOB271907", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189132103, "job_ref": "JOB271907", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 189221704, "job_ref": "JOB271066~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 189221704, "job_ref": "JOB271066~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 189390615, "job_ref": "JOB271220~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 189390615, "job_ref": "JOB271220~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189487868, "job_ref": "JOB272313", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189487868, "job_ref": "JOB272313", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189609289, "job_ref": "DLFF272543", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189609289, "job_ref": "DLFF272543", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 189636687, "job_ref": "JOB272204~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 189636687, "job_ref": "JOB272204~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189652116, "job_ref": "JOB272586", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189652116, "job_ref": "JOB272586", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189658874, "job_ref": "JOB272590", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189658874, "job_ref": "JOB272590", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189666401, "job_ref": "JOB272594", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189666401, "job_ref": "JOB272594", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189674941, "job_ref": "JOB272600", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189674941, "job_ref": "JOB272600", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189682522, "job_ref": "JOB272607", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189682522, "job_ref": "JOB272607", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189682690, "job_ref": "JOB272608", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189682690, "job_ref": "JOB272608", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 189754199, "job_ref": "JOB272418~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 189754199, "job_ref": "JOB272418~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189797175, "job_ref": "DLFF272771", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189797175, "job_ref": "DLFF272771", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189822712, "job_ref": "DLFF272784", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189822712, "job_ref": "DLFF272784", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189824168, "job_ref": "DLFF272786", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189824168, "job_ref": "DLFF272786", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189825715, "job_ref": "JOB272788", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189825715, "job_ref": "JOB272788", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189827365, "job_ref": "JOB272791", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189827365, "job_ref": "JOB272791", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189866602, "job_ref": "JOB272842", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189866602, "job_ref": "JOB272842", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189883192, "job_ref": "JOB272852", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189883192, "job_ref": "JOB272852", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189915512, "job_ref": "DLFF272875", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189915512, "job_ref": "DLFF272875", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189927487, "job_ref": "JOB272031~2", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189927487, "job_ref": "JOB272031~2", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189930893, "job_ref": "JOB272883", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189930893, "job_ref": "JOB272883", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 189941547, "job_ref": "EOT271352~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 189941547, "job_ref": "EOT271352~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189968828, "job_ref": "DLFF273007", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189968828, "job_ref": "DLFF273007", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 189988930, "job_ref": "DLFF273038", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 189988930, "job_ref": "DLFF273038", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 190012359, "job_ref": "DLFF273071", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 190012359, "job_ref": "DLFF273071", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 190012368, "job_ref": "DLFF273072", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 190012368, "job_ref": "DLFF273072", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 190018587, "job_ref": "DLFF273052~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 190018587, "job_ref": "DLFF273052~1", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 190045686, "job_ref": "DLFF273095", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 190045686, "job_ref": "DLFF273095", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 190045927, "job_ref": "JOB273096", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 190045927, "job_ref": "JOB273096", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 190046161, "job_ref": "SS273097", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 190046161, "job_ref": "SS273097", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 190047687, "job_ref": "DLFF273099", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 190047687, "job_ref": "DLFF273099", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 190052670, "job_ref": "JOB273103", "status": "failed", "update_type": "auto_close_actioned"}
+{"job_id": 190052670, "job_ref": "JOB273103", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 190089788, "job_ref": "JOB273125", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_actioned"}
+{"job_id": 190089788, "job_ref": "JOB273125", "response": {"Code": 0}, "status": "updated", "update_type": "auto_close_invoice_created"}
+{"job_id": 190151063, "job_ref": "EST273183", "response": {"Code": 0, "Result": {"jobid": "190151063 "}}, "status": "updated", "update_type": "job_category"}
+{"job_id": 190154600, "job_ref": "SS273186", "response": {"Code": 0, "Result": {"jobid": "190154600 "}}, "status": "updated", "update_type": "job_category"}
