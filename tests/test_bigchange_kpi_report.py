@@ -1,4 +1,5 @@
 import datetime as dt
+import email
 import json
 import os
 import tempfile
@@ -16,6 +17,7 @@ from scripts.bigchange_kpi_report import (
     match_staff_name,
     name_key,
     save_baseline,
+    send_email,
     should_exclude_category,
     status_ids_from_choices,
     validate_report,
@@ -216,6 +218,80 @@ class ScoreAndBaselineTest(unittest.TestCase):
         self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
         self.assertEqual(baseline["staff"][0]["overall_score"], 67)
         self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+
+
+class EmailOutputTest(unittest.TestCase):
+    def test_email_embeds_and_attaches_only_dashboard_png(self) -> None:
+        sent_messages: list[str] = []
+
+        class FakeSMTP:
+            def __init__(self, host, port, timeout=None) -> None:
+                self.host = host
+                self.port = port
+                self.timeout = timeout
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback) -> None:
+                return None
+
+            def starttls(self) -> None:
+                return None
+
+            def login(self, username, password) -> None:
+                return None
+
+            def sendmail(self, from_email, recipients, message) -> None:
+                self.from_email = from_email
+                self.recipients = recipients
+                sent_messages.append(message)
+
+        env = {
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_PORT": "587",
+            "SMTP_USERNAME": "sender@example.com",
+            "SMTP_PASSWORD": "password",
+            "SMTP_FROM_EMAIL": "sender@example.com",
+            "SMTP_FROM_NAME": "Daniel Dwyer",
+            "SMTP_TO_EMAIL": "team@example.com",
+            "SMTP_CC_EMAIL": "manager@example.com",
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            png_path = Path(temp_dir) / "dashboard.png"
+            png_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+            with patch.dict(os.environ, env, clear=False), patch("scripts.bigchange_kpi_report.smtplib.SMTP", FakeSMTP):
+                send_email(png_path)
+
+        self.assertEqual(len(sent_messages), 1)
+        message = email.message_from_string(sent_messages[0])
+        attachments = [
+            part for part in message.walk() if part.get_content_disposition() == "attachment"
+        ]
+
+        self.assertEqual(len(attachments), 1)
+        self.assertEqual(attachments[0].get_content_type(), "image/png")
+        self.assertEqual(attachments[0].get_filename(), "dashboard.png")
+        self.assertEqual(attachments[0]["Content-ID"], "<kpi-dashboard>")
+        html_parts = [part for part in message.walk() if part.get_content_type() == "text/html"]
+        self.assertEqual(len(html_parts), 1)
+        self.assertIn("cid:kpi-dashboard", html_parts[0].get_payload(decode=True).decode("utf-8"))
+
+
+class WorkflowContractTest(unittest.TestCase):
+    def test_daily_workflow_runs_report_and_uploads_only_png_artifact(self) -> None:
+        workflow = Path(".github/workflows/aquilo-bigchange-kpi-overview-report.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("name: Aquilo BigChange KPI Overview Report", workflow)
+        self.assertIn('cron: "0 7 * * *"', workflow)
+        self.assertIn("python3 scripts/bigchange_kpi_report.py", workflow)
+        self.assertIn("path: reports/bigchange-kpi-dashboard.png", workflow)
+        self.assertNotIn("reports/bigchange-kpi-dashboard.html", workflow)
+        self.assertNotIn("*.json", workflow)
+        self.assertIn("git add automation-memory/kpi-baseline.json", workflow)
 
 
 class FakeBigChangeClient:

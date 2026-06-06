@@ -1,0 +1,69 @@
+name: Aquilo BigChange KPI Overview Report
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aquilo-bigchange-kpi-overview-report
+  cancel-in-progress: false
+
+jobs:
+  generate-report:
+    name: Generate and email KPI dashboard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run report tests
+        run: python3 -m unittest discover -s tests
+
+      - name: Generate and email dashboard
+        env:
+          BIGCHANGE_AUTH_MODE: api_key
+          BIGCHANGE_BASE_URL: https://webservice.bigchange.com/v01/services.ashx
+          BIGCHANGE_API_KEY: ${{ secrets.BIGCHANGE_API_KEY }}
+          BIGCHANGE_USERNAME: ${{ secrets.BIGCHANGE_USERNAME }}
+          BIGCHANGE_PASSWORD: ${{ secrets.BIGCHANGE_PASSWORD }}
+          FRESHDESK_SUBDOMAIN: nirvanamaintenance.freshdesk.com
+          FRESHDESK_API_KEY: ${{ secrets.FRESHDESK_API_KEY }}
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: "587"
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM_EMAIL: ${{ secrets.SMTP_FROM_EMAIL }}
+          SMTP_FROM_NAME: Daniel Dwyer
+          SMTP_TO_EMAIL: ${{ secrets.SMTP_TO_EMAIL }}
+          SMTP_CC_EMAIL: ${{ secrets.SMTP_CC_EMAIL }}
+        run: python3 scripts/bigchange_kpi_report.py
+
+      - name: Upload dashboard PNG
+        uses: actions/upload-artifact@v4
+        with:
+          name: bigchange-kpi-dashboard-png
+          path: reports/bigchange-kpi-dashboard.png
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Commit KPI baseline snapshot
+        run: |
+          if git diff --quiet -- automation-memory/kpi-baseline.json; then
+            echo "No KPI baseline changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add automation-memory/kpi-baseline.json
+          git commit -m "Update daily KPI baseline snapshot"
+          git push
