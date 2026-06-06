@@ -1,4 +1,5 @@
 import datetime as dt
+import email
 import json
 import os
 import tempfile
@@ -6,20 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.bigchange_kpi_report import (
-    FRESHDESK_METRIC,
-    calculate_freshdesk_metrics,
-    calculate_sales,
-    calculate_score,
-    code_is_success,
-    is_open_freshdesk_ticket,
-    match_staff_name,
-    name_key,
-    save_baseline,
-    should_exclude_category,
-    status_ids_from_choices,
-    validate_report,
-)
+from scripts.bigchange_kpi_report import build_report, calculate_sales, code_is_success, match_staff_name, name_key
+from scripts.bigchange_kpi_report import render_html, save_baseline, send_email, should_exclude_category, validate_report
 
 
 class CategoryExclusionTest(unittest.TestCase):
@@ -127,66 +116,39 @@ class SalesAttributionTest(unittest.TestCase):
         self.assertEqual(sales["Amy Bradley"], 10)
 
 
-class FreshdeskKpiTest(unittest.TestCase):
-    def test_maps_status_choices_to_open_status_ids(self) -> None:
-        choices = [
-            {"id": 2, "value": "Open"},
-            {"id": 3, "value": "Pending"},
-            {"id": 4, "value": "Resolved"},
-            {"id": 8, "value": "Waiting on Customer"},
-            {"id": 9, "value": "Waiting on Third Party"},
-        ]
+class ReportBuildTest(unittest.TestCase):
+    def test_builds_bigchange_only_rows_and_sorts_best_to_worst(self) -> None:
+        client = FakeReportBigChangeClient()
 
-        self.assertEqual(status_ids_from_choices(choices), {2, 3, 8, 9})
+        with patch("scripts.bigchange_kpi_report.dt.date", FixedDate):
+            report = build_report(client)
 
-    def test_maps_nested_status_choices_to_open_status_ids(self) -> None:
-        choices = {"2": ["Open", "Open"], "3": ["Pending", "Pending"], "5": ["Closed", "Closed"]}
+        self.assertEqual([row["staff_name"] for row in report["staff_rows"]], ["Amy Bradley", "Leah Hearn", "Sharon Mannion"])
+        amy, leah, sharon = report["staff_rows"]
+        self.assertEqual(amy["red_kpis"], 0)
+        self.assertEqual(amy["amber_kpis"], 0)
+        self.assertEqual(amy["total_open_workload"], 0)
+        self.assertEqual(leah["amber_kpis"], 1)
+        self.assertEqual(sharon["red_kpis"], 1)
+        self.assertEqual(sharon["metrics"]["unallocated_jobs"]["oldest_age_days"], 36)
+        self.assertEqual(sharon["current_month_sales"], 100.0)
 
-        self.assertEqual(status_ids_from_choices(choices), {2, 3})
+    def test_rendered_dashboard_uses_requested_columns_only(self) -> None:
+        report = sample_report()
 
-    def test_filters_deleted_spam_and_closed_tickets(self) -> None:
-        open_status_ids = {2, 3, 8, 9}
+        html = render_html(report)
 
-        self.assertTrue(is_open_freshdesk_ticket({"status": 8}, open_status_ids))
-        self.assertTrue(is_open_freshdesk_ticket({"status": 99, "status_name": "Waiting on Third Party"}, open_status_ids))
-        self.assertFalse(is_open_freshdesk_ticket({"status": 8, "spam": True}, open_status_ids))
-        self.assertFalse(is_open_freshdesk_ticket({"status": 8, "deleted": True}, open_status_ids))
-        self.assertFalse(is_open_freshdesk_ticket({"status": 5}, open_status_ids))
-
-    def test_groups_tickets_by_matched_staff_and_tracks_unmatched_and_critical(self) -> None:
-        client = FakeFreshdeskClient(
-            tickets=[
-                {"id": 1, "status": 2, "responder_id": 10, "created_at": "2026-05-20T08:00:00Z"},
-                {"id": 2, "status": 3, "requester_id": 20, "created_at": "2026-04-10T08:00:00Z"},
-                {"id": 3, "status": 3, "requester": {"name": "Unknown Owner"}, "created_at": "2026-05-01T08:00:00Z"},
-            ],
-            agents={10: "Amy B"},
-            contacts={20: "Dan Dwyer"},
-        )
-
-        grouped, unmatched, critical = calculate_freshdesk_metrics(
-            client, {"Amy Bradley", "Daniel Dwyer"}, dt.date(2026, 5, 25)
-        )
-
-        self.assertEqual(len(grouped["Amy Bradley"]), 1)
-        self.assertEqual(len(grouped["Daniel Dwyer"]), 1)
-        self.assertEqual(len(unmatched), 1)
-        self.assertEqual(len(critical), 1)
+        self.assertIn("Unallocated Jobs", html)
+        self.assertIn("Historic Jobs", html)
+        self.assertIn("Uninvoiced Jobs", html)
+        self.assertIn("Unactioned Jobs", html)
+        self.assertIn("June sales", html)
+        self.assertNotIn("Freshdesk", html)
+        self.assertNotIn("Overall Score", html)
 
 
-class ScoreAndBaselineTest(unittest.TestCase):
-    def test_calculates_score_from_status_penalties_and_workload(self) -> None:
-        metrics = {
-            "unallocated_jobs": {"count": 2, "status": "green"},
-            "historic_jobs": {"count": 4, "status": "amber"},
-            "uninvoiced_jobs": {"count": 1, "status": "red"},
-            "unactioned_jobs": {"count": 0, "status": "green"},
-            FRESHDESK_METRIC[0]: {"count": 3, "status": "green"},
-        }
-
-        self.assertEqual(calculate_score(metrics), 60)
-
-    def test_saves_baseline_with_freshdesk_age_and_score_fields(self) -> None:
+class BaselineAndEmailTest(unittest.TestCase):
+    def test_saves_baseline_with_requested_kpi_fields(self) -> None:
         report = {
             "run_timestamp": "2026-05-25T07:00:00+00:00",
             "report_date": "2026-05-25",
@@ -199,11 +161,8 @@ class ScoreAndBaselineTest(unittest.TestCase):
                         "historic_jobs": {"count": 1, "status": "amber", "oldest_age_days": 12},
                         "uninvoiced_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
                         "unactioned_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
-                        FRESHDESK_METRIC[0]: {"count": 2, "status": "red", "oldest_age_days": 31},
                     },
                     "current_month_sales": 123.45,
-                    "freshdesk_ticket_count": 2,
-                    "overall_score": 67,
                 }
             ],
         }
@@ -213,9 +172,61 @@ class ScoreAndBaselineTest(unittest.TestCase):
 
             baseline = json.loads(path.read_text(encoding="utf-8"))
 
-        self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
-        self.assertEqual(baseline["staff"][0]["overall_score"], 67)
-        self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+        self.assertEqual(set(baseline["staff"][0]["counts"]), {"unallocated_jobs", "historic_jobs", "uninvoiced_jobs", "unactioned_jobs"})
+        self.assertEqual(baseline["staff"][0]["current_month_sales"], 123.45)
+        self.assertNotIn("freshdesk_ticket_count", baseline["staff"][0])
+        self.assertNotIn("overall_score", baseline["staff"][0])
+
+    def test_email_embeds_and_attaches_only_png(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            png_path = Path(temp_dir) / "dashboard.png"
+            png_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+            sent_messages: list[str] = []
+
+            class FakeSMTP:
+                def __init__(self, host, port, timeout):
+                    self.host = host
+                    self.port = port
+                    self.timeout = timeout
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return None
+
+                def starttls(self):
+                    return None
+
+                def login(self, username, password):
+                    return None
+
+                def sendmail(self, from_email, recipients, message):
+                    sent_messages.append(message)
+
+            env = {
+                "SMTP_HOST": "smtp.example.test",
+                "SMTP_PORT": "587",
+                "SMTP_USERNAME": "user",
+                "SMTP_PASSWORD": "pass",
+                "SMTP_FROM_EMAIL": "sender@example.test",
+                "SMTP_FROM_NAME": "Daniel Dwyer",
+                "SMTP_TO_EMAIL": "team@example.test",
+                "SMTP_CC_EMAIL": "cc@example.test",
+            }
+            with patch.dict(os.environ, env), patch("scripts.bigchange_kpi_report.smtplib.SMTP", FakeSMTP):
+                send_email(png_path)
+
+        message = email.message_from_string(sent_messages[0])
+        attachments = [
+            part
+            for part in message.walk()
+            if part.get_content_disposition() == "attachment"
+        ]
+        self.assertEqual(len(attachments), 1)
+        self.assertEqual(attachments[0].get_content_type(), "image/png")
+        self.assertEqual(attachments[0].get_filename(), "dashboard.png")
+        self.assertIn("cid:kpi-dashboard", sent_messages[0])
 
 
 class FakeBigChangeClient:
@@ -230,20 +241,105 @@ class FakeBigChangeClient:
         return self._activities.get(job_id, [])
 
 
-class FakeFreshdeskClient:
-    def __init__(self, tickets, agents, contacts) -> None:
-        self._tickets = tickets
-        self._agents = agents
-        self._contacts = contacts
+class FixedDate(dt.date):
+    @classmethod
+    def today(cls):
+        return cls(2026, 6, 6)
 
-    def list_open_tickets(self):
-        return self._tickets
 
-    def agent_name(self, agent_id):
-        return self._agents.get(agent_id, "")
+class FakeReportBigChangeClient:
+    def categories(self):
+        return [
+            {"Name": "Amy Bradley"},
+            {"Name": "Leah Hearn"},
+            {"Name": "Sharon Mannion"},
+            {"Name": "Nirvana PPM"},
+            {"Name": "OOH reactive"},
+        ]
 
-    def contact_name(self, contact_id):
-        return self._contacts.get(contact_id, "")
+    def jobslist(self, params):
+        if params.get("Unallocated"):
+            return [
+                {"Category": "Sharon Mannion", "StatusId": 1, "Created": "2026-05-01"},
+                {"Category": "Nirvana PPM", "StatusId": 1, "Created": "2026-04-01"},
+                {"Category": "Leah Hearn", "StatusId": 1, "ResourceName": "Engineer", "Created": "2026-05-28"},
+            ]
+        if params.get("Allocated"):
+            return [
+                {
+                    "Category": "Leah Hearn",
+                    "StatusId": 5,
+                    "ResourceName": "Engineer",
+                    "PlannedStart": "2026-05-25 08:00:00",
+                },
+                {
+                    "Category": "Amy Bradley",
+                    "StatusId": 12,
+                    "ResourceName": "Engineer",
+                    "PlannedStart": "2026-05-20 08:00:00",
+                },
+            ]
+        if params.get("ClientStatusId") == -34:
+            return [
+                {
+                    "Category": "Sharon Mannion",
+                    "StatusId": 12,
+                    "ClientStatusId": -34,
+                    "CompletedDate": "2026-06-02",
+                }
+            ]
+        if params.get("Unactioned"):
+            return [
+                {
+                    "Category": "Amy Bradley",
+                    "StatusId": 12,
+                    "Actioned": "yes",
+                    "CompletedDate": "2026-06-02",
+                }
+            ]
+        return []
+
+    def invoices_with_items_by_period(self, start, end):
+        return [
+            {
+                "OrderType": "Invoice",
+                "JobId": "job-1",
+                "Lines": [{"NetPrice": "120.00", "VatAmount": "20.00"}],
+            }
+        ]
+
+    def job_customer_activity(self, job_id):
+        return [
+            {"JobClientStatusID": 34, "JobClientStatusDate": "2026-06-05", "JobClientStatusOwner": "Sharon Mannion"}
+        ]
+
+
+def sample_report():
+    metrics = {
+        "unallocated_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
+        "historic_jobs": {"count": 1, "status": "amber", "oldest_age_days": 12},
+        "uninvoiced_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
+        "unactioned_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
+    }
+    return {
+        "run_timestamp": "2026-06-06T07:00:00+00:00",
+        "report_date": "2026-06-06",
+        "job_lookback_start": "2025-06-06",
+        "month_name": "June",
+        "staff_rows": [
+            {
+                "staff_name": "Amy Bradley",
+                "metrics": metrics,
+                "current_month_sales": 123.45,
+                "current_month_sales_display": "GBP 123.45",
+                "red_kpis": 0,
+                "amber_kpis": 1,
+                "total_open_workload": 1,
+            }
+        ],
+        "total_red_kpis": 0,
+        "total_amber_kpis": 1,
+    }
 
 
 if __name__ == "__main__":
