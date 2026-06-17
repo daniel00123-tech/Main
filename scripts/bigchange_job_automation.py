@@ -143,10 +143,8 @@ def parse_cli_datetime(value: str, *, end_of_day: bool = False) -> datetime:
 
 
 def default_window(now: datetime, days: int) -> tuple[datetime, datetime]:
-    yesterday = (now - timedelta(days=1)).date()
-    end = datetime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59, tzinfo=timezone.utc)
-    start_date = yesterday - timedelta(days=days)
-    start = datetime(start_date.year, start_date.month, start_date.day, 0, 0, 0, tzinfo=timezone.utc)
+    end = now.replace(microsecond=0)
+    start = end - timedelta(days=days)
     return start, end
 
 
@@ -579,7 +577,7 @@ def run(args: argparse.Namespace) -> int:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Apply previewed updates after generating the preview.")
-    parser.add_argument("--days", type=int, default=30, help="Look back this many days before yesterday.")
+    parser.add_argument("--days", type=int, default=30, help="Look back this many days from the current run time.")
     parser.add_argument("--start-date", help="Override inclusive creation-date window start (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).")
     parser.add_argument("--end-date", help="Override inclusive creation-date window end (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).")
     parser.add_argument("--page-size", type=int, default=5000, help="JobsList page size.")
