@@ -7,17 +7,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
-    FRESHDESK_METRIC,
-    calculate_freshdesk_metrics,
+    build_report,
     calculate_sales,
-    calculate_score,
     code_is_success,
-    is_open_freshdesk_ticket,
     match_staff_name,
     name_key,
     save_baseline,
     should_exclude_category,
-    status_ids_from_choices,
     validate_report,
 )
 
@@ -127,66 +123,8 @@ class SalesAttributionTest(unittest.TestCase):
         self.assertEqual(sales["Amy Bradley"], 10)
 
 
-class FreshdeskKpiTest(unittest.TestCase):
-    def test_maps_status_choices_to_open_status_ids(self) -> None:
-        choices = [
-            {"id": 2, "value": "Open"},
-            {"id": 3, "value": "Pending"},
-            {"id": 4, "value": "Resolved"},
-            {"id": 8, "value": "Waiting on Customer"},
-            {"id": 9, "value": "Waiting on Third Party"},
-        ]
-
-        self.assertEqual(status_ids_from_choices(choices), {2, 3, 8, 9})
-
-    def test_maps_nested_status_choices_to_open_status_ids(self) -> None:
-        choices = {"2": ["Open", "Open"], "3": ["Pending", "Pending"], "5": ["Closed", "Closed"]}
-
-        self.assertEqual(status_ids_from_choices(choices), {2, 3})
-
-    def test_filters_deleted_spam_and_closed_tickets(self) -> None:
-        open_status_ids = {2, 3, 8, 9}
-
-        self.assertTrue(is_open_freshdesk_ticket({"status": 8}, open_status_ids))
-        self.assertTrue(is_open_freshdesk_ticket({"status": 99, "status_name": "Waiting on Third Party"}, open_status_ids))
-        self.assertFalse(is_open_freshdesk_ticket({"status": 8, "spam": True}, open_status_ids))
-        self.assertFalse(is_open_freshdesk_ticket({"status": 8, "deleted": True}, open_status_ids))
-        self.assertFalse(is_open_freshdesk_ticket({"status": 5}, open_status_ids))
-
-    def test_groups_tickets_by_matched_staff_and_tracks_unmatched_and_critical(self) -> None:
-        client = FakeFreshdeskClient(
-            tickets=[
-                {"id": 1, "status": 2, "responder_id": 10, "created_at": "2026-05-20T08:00:00Z"},
-                {"id": 2, "status": 3, "requester_id": 20, "created_at": "2026-04-10T08:00:00Z"},
-                {"id": 3, "status": 3, "requester": {"name": "Unknown Owner"}, "created_at": "2026-05-01T08:00:00Z"},
-            ],
-            agents={10: "Amy B"},
-            contacts={20: "Dan Dwyer"},
-        )
-
-        grouped, unmatched, critical = calculate_freshdesk_metrics(
-            client, {"Amy Bradley", "Daniel Dwyer"}, dt.date(2026, 5, 25)
-        )
-
-        self.assertEqual(len(grouped["Amy Bradley"]), 1)
-        self.assertEqual(len(grouped["Daniel Dwyer"]), 1)
-        self.assertEqual(len(unmatched), 1)
-        self.assertEqual(len(critical), 1)
-
-
-class ScoreAndBaselineTest(unittest.TestCase):
-    def test_calculates_score_from_status_penalties_and_workload(self) -> None:
-        metrics = {
-            "unallocated_jobs": {"count": 2, "status": "green"},
-            "historic_jobs": {"count": 4, "status": "amber"},
-            "uninvoiced_jobs": {"count": 1, "status": "red"},
-            "unactioned_jobs": {"count": 0, "status": "green"},
-            FRESHDESK_METRIC[0]: {"count": 3, "status": "green"},
-        }
-
-        self.assertEqual(calculate_score(metrics), 60)
-
-    def test_saves_baseline_with_freshdesk_age_and_score_fields(self) -> None:
+class BaselineTest(unittest.TestCase):
+    def test_saves_bigchange_only_baseline(self) -> None:
         report = {
             "run_timestamp": "2026-05-25T07:00:00+00:00",
             "report_date": "2026-05-25",
@@ -199,11 +137,8 @@ class ScoreAndBaselineTest(unittest.TestCase):
                         "historic_jobs": {"count": 1, "status": "amber", "oldest_age_days": 12},
                         "uninvoiced_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
                         "unactioned_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
-                        FRESHDESK_METRIC[0]: {"count": 2, "status": "red", "oldest_age_days": 31},
                     },
                     "current_month_sales": 123.45,
-                    "freshdesk_ticket_count": 2,
-                    "overall_score": 67,
                 }
             ],
         }
@@ -213,15 +148,47 @@ class ScoreAndBaselineTest(unittest.TestCase):
 
             baseline = json.loads(path.read_text(encoding="utf-8"))
 
-        self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
-        self.assertEqual(baseline["staff"][0]["overall_score"], 67)
-        self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+        self.assertEqual(
+            sorted(baseline["staff"][0]["counts"]),
+            ["historic_jobs", "unactioned_jobs", "unallocated_jobs", "uninvoiced_jobs"],
+        )
+        self.assertEqual(baseline["staff"][0]["current_month_sales"], 123.45)
+
+
+class ReportRankingTest(unittest.TestCase):
+    def test_sorts_staff_by_red_then_amber_then_workload(self) -> None:
+        client = FakeBigChangeClient(
+            categories=[{"Name": "All Green"}, {"Name": "Amber Only"}, {"Name": "Red Owner"}, {"Name": "Busy Amber"}],
+            jobs={
+                "unallocated": [
+                    {"Category": "All Green", "StatusId": 1, "CreatedDate": "2026-05-24"},
+                    {"Category": "Amber Only", "StatusId": 1, "CreatedDate": "2026-05-10"},
+                    {"Category": "Busy Amber", "StatusId": 1, "CreatedDate": "2026-05-10"},
+                    {"Category": "Busy Amber", "StatusId": 1, "CreatedDate": "2026-05-11"},
+                    {"Category": "Red Owner", "StatusId": 1, "CreatedDate": "2026-04-01"},
+                ],
+                "historic": [],
+                "completed": [],
+            },
+            invoices=[],
+            activities={},
+        )
+
+        with patch("scripts.bigchange_kpi_report.dt.date", FixedDate):
+            report = build_report(client)
+
+        self.assertEqual(
+            [row["staff_name"] for row in report["staff_rows"]],
+            ["All Green", "Amber Only", "Busy Amber", "Red Owner"],
+        )
 
 
 class FakeBigChangeClient:
-    def __init__(self, invoices, activities) -> None:
+    def __init__(self, invoices, activities, categories=None, jobs=None) -> None:
         self._invoices = invoices
         self._activities = activities
+        self._categories = categories or []
+        self._jobs = jobs or {}
 
     def invoices_with_items_by_period(self, start, end):
         return self._invoices
@@ -229,21 +196,21 @@ class FakeBigChangeClient:
     def job_customer_activity(self, job_id):
         return self._activities.get(job_id, [])
 
+    def categories(self):
+        return self._categories
 
-class FakeFreshdeskClient:
-    def __init__(self, tickets, agents, contacts) -> None:
-        self._tickets = tickets
-        self._agents = agents
-        self._contacts = contacts
+    def jobslist(self, params):
+        if params.get("Unallocated") == 1:
+            return self._jobs.get("unallocated", [])
+        if params.get("Allocated") == 1:
+            return self._jobs.get("historic", [])
+        return self._jobs.get("completed", [])
 
-    def list_open_tickets(self):
-        return self._tickets
 
-    def agent_name(self, agent_id):
-        return self._agents.get(agent_id, "")
-
-    def contact_name(self, contact_id):
-        return self._contacts.get(contact_id, "")
+class FixedDate(dt.date):
+    @classmethod
+    def today(cls):
+        return cls(2026, 5, 25)
 
 
 if __name__ == "__main__":
