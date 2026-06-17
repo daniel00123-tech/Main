@@ -28,6 +28,7 @@ from typing import Any
 DEFAULT_BASE_URL = "https://webservice.bigchange.com/v01/services.ashx"
 AUTO_CLOSE_DOWN = "Auto Close Down"
 UNCATEGORISED = "Uncategorised"
+FALLBACK_CATEGORY = "Hayley Longford"
 INVOICE_CREATED = "InvoiceCreated"
 INVOICE_CREATED_STATUS_ID = 34
 
@@ -142,10 +143,8 @@ def parse_cli_datetime(value: str, *, end_of_day: bool = False) -> datetime:
 
 
 def default_window(now: datetime, days: int) -> tuple[datetime, datetime]:
-    yesterday = (now - timedelta(days=1)).date()
-    end = datetime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59, tzinfo=timezone.utc)
-    start_date = yesterday - timedelta(days=days)
-    start = datetime(start_date.year, start_date.month, start_date.day, 0, 0, 0, tzinfo=timezone.utc)
+    end = now.replace(microsecond=0)
+    start = end - timedelta(days=days)
     return start, end
 
 
@@ -328,6 +327,78 @@ def build_summary(
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_fatal_failure_report(
+    *,
+    run_started: str,
+    run_finished: str,
+    dry_run: bool,
+    start: str,
+    end: str,
+    error: str,
+    review_log_path: Path,
+    preview_path: Path,
+    apply_results_path: Path,
+    summary_path: Path,
+) -> None:
+    append_log(
+        review_log_path,
+        {
+            "review_status": "failed",
+            "stage": "setup",
+            "error": error,
+        },
+    )
+    write_json(
+        preview_path,
+        {
+            "run_started": run_started,
+            "window": {
+                "start": start,
+                "end": end,
+                "dateOptionId": 2,
+            },
+            "total_jobs_reviewed": 0,
+            "updates": [],
+            "fatal_error": error,
+        },
+    )
+    write_json(
+        apply_results_path,
+        [
+            {
+                "status": "failed",
+                "stage": "setup",
+                "error": error,
+            }
+        ],
+    )
+    lines = [
+        "# BigChange job automation summary",
+        "",
+        f"- Run started: {run_started}",
+        f"- Run finished: {run_finished}",
+        f"- Mode: {'dry-run preview only' if dry_run else 'applied updates'}",
+        "- Total jobs reviewed: 0",
+        "- Total jobs with intended updates in preview: 0",
+        "- Total updated: 0",
+        "- Total skipped: 0",
+        "- Total failed: 1",
+        "",
+        "## Intended update operations",
+        "",
+        "- None",
+        "",
+        "## Skip reasons",
+        "",
+        "- None",
+        "",
+        "## Failure reasons",
+        "",
+        f"- setup failed before job review: {error}: 1",
+    ]
+    summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def run(args: argparse.Namespace) -> int:
     run_started_dt = datetime.now(timezone.utc)
     run_started = run_started_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -355,21 +426,6 @@ def run(args: argparse.Namespace) -> int:
         timeout_seconds=args.timeout_seconds,
     )
 
-    categories = result_list(client.call({"action": "JobCategories"}), "JobCategories")
-    category_by_name = {normalise_name(row.get("label")): row for row in categories if row.get("label")}
-
-    tags = result_list(client.call({"action": "Tags"}), "Tags")
-    auto_close_tags = [
-        row
-        for row in tags
-        if normalise_name(row.get("tagName")) == normalise_name(AUTO_CLOSE_DOWN)
-        and normalise_name(row.get("type")) == "job"
-    ]
-    if not auto_close_tags:
-        raise BigChangeError('Could not confirm a Job tag named "Auto Close Down"')
-    auto_close_tag_id = int(auto_close_tags[0]["Id"])
-
-    all_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size)
     excluded_future_jobs: dict[int, list[str]] = {}
 
     def in_scope(job: dict[str, Any]) -> bool:
@@ -382,12 +438,49 @@ def run(args: argparse.Namespace) -> int:
                 return False
         return True
 
-    jobs_by_id: dict[int, dict[str, Any]] = {int(job["JobId"]): job for job in all_jobs if in_scope(job)}
-    flagged_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size, tag_id=auto_close_tag_id)
-    flagged_ids = {int(job["JobId"]) for job in flagged_jobs if in_scope(job)}
-    for job in flagged_jobs:
-        if in_scope(job):
-            jobs_by_id.setdefault(int(job["JobId"]), job)
+    try:
+        categories = result_list(client.call({"action": "JobCategories"}), "JobCategories")
+        category_by_name = {normalise_name(row.get("label")): row for row in categories if row.get("label")}
+        fallback_category = category_by_name.get(normalise_name(FALLBACK_CATEGORY))
+
+        tags = result_list(client.call({"action": "Tags"}), "Tags")
+        auto_close_tags = [
+            row
+            for row in tags
+            if normalise_name(row.get("tagName")) == normalise_name(AUTO_CLOSE_DOWN)
+            and normalise_name(row.get("type")) == "job"
+        ]
+        if not auto_close_tags:
+            raise BigChangeError('Could not confirm a Job tag named "Auto Close Down"')
+        auto_close_tag_id = int(auto_close_tags[0]["Id"])
+
+        all_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size)
+        jobs_by_id: dict[int, dict[str, Any]] = {int(job["JobId"]): job for job in all_jobs if in_scope(job)}
+        flagged_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size, tag_id=auto_close_tag_id)
+        flagged_ids = {int(job["JobId"]) for job in flagged_jobs if in_scope(job)}
+        for job in flagged_jobs:
+            if in_scope(job):
+                jobs_by_id.setdefault(int(job["JobId"]), job)
+    except Exception as exc:  # noqa: BLE001 - write report artifacts for setup outages.
+        run_finished = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        write_fatal_failure_report(
+            run_started=run_started,
+            run_finished=run_finished,
+            dry_run=not args.apply,
+            start=start,
+            end=end,
+            error=str(exc),
+            review_log_path=review_log_path,
+            preview_path=preview_path,
+            apply_results_path=apply_results_path,
+            summary_path=summary_path,
+        )
+        print(f"review_log={review_log_path}")
+        print(f"preview={preview_path}")
+        print(f"apply_results={apply_results_path}")
+        print(f"summary={summary_path}")
+        print(f"fatal_error={exc}")
+        return 1
 
     intended: list[IntendedUpdate] = []
     reviewed_rows: list[dict[str, Any]] = []
@@ -403,26 +496,44 @@ def run(args: argparse.Namespace) -> int:
                 history = result_list(client.call({"action": "JobStatusHistory", "jobId": job_id}), "JobStatusHistory")
                 creator, source = first_creator_from_history(history)
                 matching_category = category_by_name.get(normalise_name(creator)) if creator else None
-                if creator and matching_category:
+                if creator and (matching_category or fallback_category):
+                    target_category = matching_category or fallback_category
+                    assert target_category is not None
+                    if matching_category:
+                        reason = f"uncategorised job; creator from {source} matches an existing category"
+                    else:
+                        reason = (
+                            f"uncategorised job; creator from {source} has no existing category; "
+                            f"using confirmed fallback category {FALLBACK_CATEGORY}"
+                        )
                     intended.append(
                         IntendedUpdate(
                             job_id=job_id,
                             job_ref=ref,
                             update_type="job_category",
-                            reason=f"uncategorised job; creator from {source} matches an existing category",
+                            reason=reason,
                             params={
                                 "action": "JobSave",
                                 "JobId": job_id,
-                                "JobCategory": matching_category["label"],
+                                "JobCategory": target_category["label"],
                                 "PreserveSchedule": 1,
                             },
                             before={"Category": job.get("Category"), "JobCategoryId": job.get("JobCategoryId")},
-                            target={"Category": matching_category["label"], "JobCategoryId": matching_category.get("id"), "creator": creator},
+                            target={
+                                "Category": target_category["label"],
+                                "JobCategoryId": target_category.get("id"),
+                                "creator": creator,
+                                "fallbackCategoryUsed": not bool(matching_category),
+                            },
                         )
                     )
                     intended_types.append("job_category")
+                elif creator:
+                    skip_reasons.append(
+                        f"uncategorised but neither creator nor fallback category exists: {creator}; fallback: {FALLBACK_CATEGORY}"
+                    )
                 else:
-                    skip_reasons.append(f"uncategorised but no matching category for creator: {creator or source}")
+                    skip_reasons.append(f"uncategorised but no creator identified: {source}")
             except Exception as exc:  # noqa: BLE001 - keep processing remaining jobs.
                 skip_reasons.append(f"failed to inspect creator history: {exc}")
         else:
@@ -559,7 +670,7 @@ def run(args: argparse.Namespace) -> int:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Apply previewed updates after generating the preview.")
-    parser.add_argument("--days", type=int, default=30, help="Look back this many days before yesterday.")
+    parser.add_argument("--days", type=int, default=30, help="Look back this many days from the current run time.")
     parser.add_argument("--start-date", help="Override inclusive creation-date window start (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).")
     parser.add_argument("--end-date", help="Override inclusive creation-date window end (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).")
     parser.add_argument("--page-size", type=int, default=5000, help="JobsList page size.")
