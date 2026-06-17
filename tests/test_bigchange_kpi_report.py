@@ -13,6 +13,7 @@ from scripts.bigchange_kpi_report import (
     calculate_score,
     code_is_success,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -43,6 +44,23 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+    def test_resolves_explicit_job_category_ids_without_using_job_name_fields(self) -> None:
+        category_lookup = {"42": "Amy Bradley"}
+
+        self.assertEqual(
+            job_category_name({"Id": "job-100", "Name": "Boiler repair", "CategoryId": "42"}, category_lookup),
+            "Amy Bradley",
+        )
+        self.assertEqual(job_category_name({"Id": "42", "Name": "Amy Bradley"}, category_lookup), "")
+
+    def test_prefers_explicit_category_names_over_ids(self) -> None:
+        category_lookup = {"42": "Amy Bradley"}
+
+        self.assertEqual(
+            job_category_name({"JobCategoryName": "Daniel Dwyer", "CategoryId": "42"}, category_lookup),
+            "Daniel Dwyer",
+        )
 
 
 class BigChangeApiTest(unittest.TestCase):
@@ -216,6 +234,19 @@ class ScoreAndBaselineTest(unittest.TestCase):
         self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
         self.assertEqual(baseline["staff"][0]["overall_score"], 67)
         self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+
+
+class WorkflowConfigurationTest(unittest.TestCase):
+    def test_daily_workflow_runs_report_and_uploads_png_only(self) -> None:
+        workflow_path = Path(".github/workflows/aquilo-bigchange-kpi-overview-report.yml")
+        workflow = workflow_path.read_text(encoding="utf-8")
+
+        self.assertIn("name: Aquilo BigChange KPI Overview Report", workflow)
+        self.assertIn('cron: "0 7 * * *"', workflow)
+        self.assertIn("python3 scripts/bigchange_kpi_report.py", workflow)
+        self.assertIn("path: reports/bigchange-kpi-dashboard.png", workflow)
+        self.assertNotIn("reports/bigchange-kpi-dashboard.html", workflow)
+        self.assertNotIn("path: automation-memory/kpi-baseline.json", workflow)
 
 
 class FakeBigChangeClient:

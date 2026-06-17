@@ -333,19 +333,65 @@ def document_is_cancelled_deleted_or_rejected(document: dict[str, Any]) -> bool:
     )
 
 
-def job_category_name(row: dict[str, Any]) -> str:
-    return clean_name(
+def category_id_key(value: Any) -> str:
+    if isinstance(value, dict):
+        value = first_present(value, ("CategoryId", "CategoryID", "JobCategoryId", "JobCategoryID", "Id", "ID"))
+    return clean_name(value)
+
+
+def category_name_from_row(row: dict[str, Any]) -> str:
+    return clean_name(first_present(row, ("label", "JobCategoryName", "CategoryName", "Name")))
+
+
+def category_lookup_from_rows(rows: list[dict[str, Any]]) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    for row in rows:
+        name = category_name_from_row(row)
+        category_id = category_id_key(row)
+        if category_id and name:
+            lookup[category_id] = name
+    return lookup
+
+
+def looks_like_category_id(value: str) -> bool:
+    return as_int(value, default=None) is not None
+
+
+def job_category_name(row: dict[str, Any], category_lookup: dict[str, str] | None = None) -> str:
+    category_lookup = category_lookup or {}
+    direct_name = clean_name(
         first_present(
             row,
             (
-                "Category",
                 "CategoryName",
-                "JobCategory",
                 "JobCategoryName",
                 "JobCategoryLabel",
+                "CategoryLabel",
             ),
         )
     )
+    if direct_name:
+        return direct_name
+
+    flexible_category = first_present(row, ("Category", "JobCategory"))
+    if isinstance(flexible_category, dict):
+        nested_name = clean_name(
+            first_present(flexible_category, ("CategoryName", "JobCategoryName", "Name", "Label"))
+        )
+        if nested_name:
+            return nested_name
+    flexible_key = category_id_key(flexible_category)
+    if flexible_key and flexible_key in category_lookup:
+        return category_lookup[flexible_key]
+    if flexible_key and not looks_like_category_id(flexible_key):
+        return flexible_key
+
+    explicit_category_id = category_id_key(
+        first_present(row, ("CategoryId", "CategoryID", "JobCategoryId", "JobCategoryID"))
+    )
+    if explicit_category_id:
+        return category_lookup.get(explicit_category_id, "")
+    return ""
 
 
 def document_job_id(document: dict[str, Any]) -> str:
@@ -705,9 +751,10 @@ def add_items(
     metric: str,
     date_fields: tuple[str, ...],
     today: dt.date,
+    category_lookup: dict[str, str] | None = None,
 ) -> None:
     for row in rows:
-        category = job_category_name(row)
+        category = job_category_name(row, category_lookup)
         if should_exclude_category(category):
             continue
         staff_names.add(category)
@@ -886,9 +933,12 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
     month_end = today
     lookback_start = months_ago(today, 12)
 
+    categories = client.categories()
+    category_lookup = category_lookup_from_rows(categories)
+
     staff_names: set[str] = set()
-    for category in client.categories():
-        name = clean_name(first_present(category, ("label", "JobCategoryName", "CategoryName", "Name")))
+    for category in categories:
+        name = category_name_from_row(category)
         if not should_exclude_category(name):
             staff_names.add(name)
 
@@ -910,7 +960,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         and not resource_assigned(row)
         and row_date(row, PLANNED_START_FIELDS) is None
     ]
-    add_items(grouped, staff_names, unallocated_rows, "unallocated_jobs", CREATED_DATE_FIELDS, today)
+    add_items(grouped, staff_names, unallocated_rows, "unallocated_jobs", CREATED_DATE_FIELDS, today, category_lookup)
 
     historic_end = today - dt.timedelta(days=1)
     historic_rows: list[dict[str, Any]] = []
@@ -932,7 +982,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         and resource_assigned(row)
         and (row_date(row, PLANNED_START_FIELDS) or dt.datetime.max).date() < today
     ]
-    add_items(grouped, staff_names, historic_rows, "historic_jobs", PLANNED_START_FIELDS, today)
+    add_items(grouped, staff_names, historic_rows, "historic_jobs", PLANNED_START_FIELDS, today, category_lookup)
 
     completed_statuses = "|".join(str(status) for status in sorted(COMPLETED_STATUS_IDS))
     uninvoiced_rows = client.jobslist(
@@ -949,7 +999,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         for row in uninvoiced_rows
         if row_status_id(row) in COMPLETED_STATUS_IDS and client_status_id(row) == -34
     ]
-    add_items(grouped, staff_names, uninvoiced_rows, "uninvoiced_jobs", STATUS_DATE_FIELDS, today)
+    add_items(grouped, staff_names, uninvoiced_rows, "uninvoiced_jobs", STATUS_DATE_FIELDS, today, category_lookup)
 
     unactioned_rows = client.jobslist(
         {
@@ -965,7 +1015,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         for row in unactioned_rows
         if row_status_id(row) in COMPLETED_STATUS_IDS and as_bool_falsey(first_present(row, ACTIONED_FIELDS))
     ]
-    add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", STATUS_DATE_FIELDS, today)
+    add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", STATUS_DATE_FIELDS, today, category_lookup)
 
     sales = calculate_sales(client, staff_names, month_start, month_end)
     freshdesk_grouped, unmatched_freshdesk_tickets, critical_freshdesk_tickets = calculate_freshdesk_metrics(
