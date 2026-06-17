@@ -327,6 +327,78 @@ def build_summary(
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_fatal_failure_report(
+    *,
+    run_started: str,
+    run_finished: str,
+    dry_run: bool,
+    start: str,
+    end: str,
+    error: str,
+    review_log_path: Path,
+    preview_path: Path,
+    apply_results_path: Path,
+    summary_path: Path,
+) -> None:
+    append_log(
+        review_log_path,
+        {
+            "review_status": "failed",
+            "stage": "setup",
+            "error": error,
+        },
+    )
+    write_json(
+        preview_path,
+        {
+            "run_started": run_started,
+            "window": {
+                "start": start,
+                "end": end,
+                "dateOptionId": 2,
+            },
+            "total_jobs_reviewed": 0,
+            "updates": [],
+            "fatal_error": error,
+        },
+    )
+    write_json(
+        apply_results_path,
+        [
+            {
+                "status": "failed",
+                "stage": "setup",
+                "error": error,
+            }
+        ],
+    )
+    lines = [
+        "# BigChange job automation summary",
+        "",
+        f"- Run started: {run_started}",
+        f"- Run finished: {run_finished}",
+        f"- Mode: {'dry-run preview only' if dry_run else 'applied updates'}",
+        "- Total jobs reviewed: 0",
+        "- Total jobs with intended updates in preview: 0",
+        "- Total updated: 0",
+        "- Total skipped: 0",
+        "- Total failed: 1",
+        "",
+        "## Intended update operations",
+        "",
+        "- None",
+        "",
+        "## Skip reasons",
+        "",
+        "- None",
+        "",
+        "## Failure reasons",
+        "",
+        f"- setup failed before job review: {error}: 1",
+    ]
+    summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def run(args: argparse.Namespace) -> int:
     run_started_dt = datetime.now(timezone.utc)
     run_started = run_started_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -354,22 +426,6 @@ def run(args: argparse.Namespace) -> int:
         timeout_seconds=args.timeout_seconds,
     )
 
-    categories = result_list(client.call({"action": "JobCategories"}), "JobCategories")
-    category_by_name = {normalise_name(row.get("label")): row for row in categories if row.get("label")}
-    fallback_category = category_by_name.get(normalise_name(FALLBACK_CATEGORY))
-
-    tags = result_list(client.call({"action": "Tags"}), "Tags")
-    auto_close_tags = [
-        row
-        for row in tags
-        if normalise_name(row.get("tagName")) == normalise_name(AUTO_CLOSE_DOWN)
-        and normalise_name(row.get("type")) == "job"
-    ]
-    if not auto_close_tags:
-        raise BigChangeError('Could not confirm a Job tag named "Auto Close Down"')
-    auto_close_tag_id = int(auto_close_tags[0]["Id"])
-
-    all_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size)
     excluded_future_jobs: dict[int, list[str]] = {}
 
     def in_scope(job: dict[str, Any]) -> bool:
@@ -382,12 +438,49 @@ def run(args: argparse.Namespace) -> int:
                 return False
         return True
 
-    jobs_by_id: dict[int, dict[str, Any]] = {int(job["JobId"]): job for job in all_jobs if in_scope(job)}
-    flagged_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size, tag_id=auto_close_tag_id)
-    flagged_ids = {int(job["JobId"]) for job in flagged_jobs if in_scope(job)}
-    for job in flagged_jobs:
-        if in_scope(job):
-            jobs_by_id.setdefault(int(job["JobId"]), job)
+    try:
+        categories = result_list(client.call({"action": "JobCategories"}), "JobCategories")
+        category_by_name = {normalise_name(row.get("label")): row for row in categories if row.get("label")}
+        fallback_category = category_by_name.get(normalise_name(FALLBACK_CATEGORY))
+
+        tags = result_list(client.call({"action": "Tags"}), "Tags")
+        auto_close_tags = [
+            row
+            for row in tags
+            if normalise_name(row.get("tagName")) == normalise_name(AUTO_CLOSE_DOWN)
+            and normalise_name(row.get("type")) == "job"
+        ]
+        if not auto_close_tags:
+            raise BigChangeError('Could not confirm a Job tag named "Auto Close Down"')
+        auto_close_tag_id = int(auto_close_tags[0]["Id"])
+
+        all_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size)
+        jobs_by_id: dict[int, dict[str, Any]] = {int(job["JobId"]): job for job in all_jobs if in_scope(job)}
+        flagged_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size, tag_id=auto_close_tag_id)
+        flagged_ids = {int(job["JobId"]) for job in flagged_jobs if in_scope(job)}
+        for job in flagged_jobs:
+            if in_scope(job):
+                jobs_by_id.setdefault(int(job["JobId"]), job)
+    except Exception as exc:  # noqa: BLE001 - write report artifacts for setup outages.
+        run_finished = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        write_fatal_failure_report(
+            run_started=run_started,
+            run_finished=run_finished,
+            dry_run=not args.apply,
+            start=start,
+            end=end,
+            error=str(exc),
+            review_log_path=review_log_path,
+            preview_path=preview_path,
+            apply_results_path=apply_results_path,
+            summary_path=summary_path,
+        )
+        print(f"review_log={review_log_path}")
+        print(f"preview={preview_path}")
+        print(f"apply_results={apply_results_path}")
+        print(f"summary={summary_path}")
+        print(f"fatal_error={exc}")
+        return 1
 
     intended: list[IntendedUpdate] = []
     reviewed_rows: list[dict[str, Any]] = []
