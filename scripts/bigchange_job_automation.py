@@ -28,6 +28,7 @@ from typing import Any
 DEFAULT_BASE_URL = "https://webservice.bigchange.com/v01/services.ashx"
 AUTO_CLOSE_DOWN = "Auto Close Down"
 UNCATEGORISED = "Uncategorised"
+FALLBACK_CATEGORY = "Hayley Longford"
 INVOICE_CREATED = "InvoiceCreated"
 INVOICE_CREATED_STATUS_ID = 34
 
@@ -357,6 +358,7 @@ def run(args: argparse.Namespace) -> int:
 
     categories = result_list(client.call({"action": "JobCategories"}), "JobCategories")
     category_by_name = {normalise_name(row.get("label")): row for row in categories if row.get("label")}
+    fallback_category = category_by_name.get(normalise_name(FALLBACK_CATEGORY))
 
     tags = result_list(client.call({"action": "Tags"}), "Tags")
     auto_close_tags = [
@@ -403,26 +405,44 @@ def run(args: argparse.Namespace) -> int:
                 history = result_list(client.call({"action": "JobStatusHistory", "jobId": job_id}), "JobStatusHistory")
                 creator, source = first_creator_from_history(history)
                 matching_category = category_by_name.get(normalise_name(creator)) if creator else None
-                if creator and matching_category:
+                if creator and (matching_category or fallback_category):
+                    target_category = matching_category or fallback_category
+                    assert target_category is not None
+                    if matching_category:
+                        reason = f"uncategorised job; creator from {source} matches an existing category"
+                    else:
+                        reason = (
+                            f"uncategorised job; creator from {source} has no existing category; "
+                            f"using confirmed fallback category {FALLBACK_CATEGORY}"
+                        )
                     intended.append(
                         IntendedUpdate(
                             job_id=job_id,
                             job_ref=ref,
                             update_type="job_category",
-                            reason=f"uncategorised job; creator from {source} matches an existing category",
+                            reason=reason,
                             params={
                                 "action": "JobSave",
                                 "JobId": job_id,
-                                "JobCategory": matching_category["label"],
+                                "JobCategory": target_category["label"],
                                 "PreserveSchedule": 1,
                             },
                             before={"Category": job.get("Category"), "JobCategoryId": job.get("JobCategoryId")},
-                            target={"Category": matching_category["label"], "JobCategoryId": matching_category.get("id"), "creator": creator},
+                            target={
+                                "Category": target_category["label"],
+                                "JobCategoryId": target_category.get("id"),
+                                "creator": creator,
+                                "fallbackCategoryUsed": not bool(matching_category),
+                            },
                         )
                     )
                     intended_types.append("job_category")
+                elif creator:
+                    skip_reasons.append(
+                        f"uncategorised but neither creator nor fallback category exists: {creator}; fallback: {FALLBACK_CATEGORY}"
+                    )
                 else:
-                    skip_reasons.append(f"uncategorised but no matching category for creator: {creator or source}")
+                    skip_reasons.append(f"uncategorised but no creator identified: {source}")
             except Exception as exc:  # noqa: BLE001 - keep processing remaining jobs.
                 skip_reasons.append(f"failed to inspect creator history: {exc}")
         else:
