@@ -3,15 +3,19 @@ import json
 import os
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    add_items,
+    build_category_lookup,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
     code_is_success,
+    job_category_name,
     is_open_freshdesk_ticket,
     match_staff_name,
     name_key,
@@ -43,6 +47,52 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+    def test_resolves_job_category_ids_without_using_generic_job_names(self) -> None:
+        category_lookup = build_category_lookup(
+            [
+                {"Id": "101", "Name": "Amy Bradley"},
+                {"Id": "102", "Name": "Nirvana PPM"},
+            ]
+        )
+
+        self.assertEqual(
+            job_category_name({"JobId": "J-1", "Name": "Repair leak", "CategoryId": "101"}, category_lookup),
+            "Amy Bradley",
+        )
+        self.assertEqual(
+            job_category_name({"JobId": "J-2", "Name": "PPM visit", "JobCategoryID": "102"}, category_lookup),
+            "Nirvana PPM",
+        )
+        self.assertEqual(job_category_name({"JobId": "J-3", "Name": "Generic job name"}, category_lookup), "")
+
+    def test_add_items_groups_category_id_only_rows_by_staff_owner(self) -> None:
+        grouped = defaultdict(lambda: defaultdict(list))
+        staff_names: set[str] = set()
+        category_lookup = build_category_lookup(
+            [
+                {"Id": "101", "Name": "Amy Bradley"},
+                {"Id": "102", "Name": "Nirvana PPM"},
+            ]
+        )
+
+        add_items(
+            grouped,
+            staff_names,
+            [
+                {"CategoryId": "101", "CreatedDate": "2026-05-20"},
+                {"CategoryId": "102", "CreatedDate": "2026-05-20"},
+                {"CategoryId": "999", "CreatedDate": "2026-05-20"},
+            ],
+            "unallocated_jobs",
+            ("CreatedDate",),
+            dt.date(2026, 5, 25),
+            category_lookup,
+        )
+
+        self.assertEqual(len(grouped["Amy Bradley"]["unallocated_jobs"]), 1)
+        self.assertNotIn("Nirvana PPM", grouped)
+        self.assertEqual(staff_names, {"Amy Bradley"})
 
 
 class BigChangeApiTest(unittest.TestCase):
