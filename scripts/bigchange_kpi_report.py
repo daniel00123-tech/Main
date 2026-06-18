@@ -1108,7 +1108,7 @@ def render_html(report: dict[str, Any]) -> str:
       <div class="brand">
         <div class="brand-mark"></div>
         <div>
-          <h1>Aquilo BigChange KPI Overview</h1>
+          <h1>BigChange KPI Overview</h1>
           <div class="sub">Generated {report_date} - jobs from {job_lookback_start} onwards, grouped by job category staff owner</div>
         </div>
       </div>
