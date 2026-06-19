@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
-    FRESHDESK_METRIC,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
@@ -15,6 +14,7 @@ from scripts.bigchange_kpi_report import (
     is_open_freshdesk_ticket,
     match_staff_name,
     name_key,
+    render_html,
     save_baseline,
     should_exclude_category,
     status_ids_from_choices,
@@ -181,12 +181,11 @@ class ScoreAndBaselineTest(unittest.TestCase):
             "historic_jobs": {"count": 4, "status": "amber"},
             "uninvoiced_jobs": {"count": 1, "status": "red"},
             "unactioned_jobs": {"count": 0, "status": "green"},
-            FRESHDESK_METRIC[0]: {"count": 3, "status": "green"},
         }
 
-        self.assertEqual(calculate_score(metrics), 60)
+        self.assertEqual(calculate_score(metrics), 63)
 
-    def test_saves_baseline_with_freshdesk_age_and_score_fields(self) -> None:
+    def test_saves_baseline_with_bigchange_kpi_fields(self) -> None:
         report = {
             "run_timestamp": "2026-05-25T07:00:00+00:00",
             "report_date": "2026-05-25",
@@ -199,11 +198,8 @@ class ScoreAndBaselineTest(unittest.TestCase):
                         "historic_jobs": {"count": 1, "status": "amber", "oldest_age_days": 12},
                         "uninvoiced_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
                         "unactioned_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
-                        FRESHDESK_METRIC[0]: {"count": 2, "status": "red", "oldest_age_days": 31},
                     },
                     "current_month_sales": 123.45,
-                    "freshdesk_ticket_count": 2,
-                    "overall_score": 67,
                 }
             ],
         }
@@ -213,9 +209,41 @@ class ScoreAndBaselineTest(unittest.TestCase):
 
             baseline = json.loads(path.read_text(encoding="utf-8"))
 
-        self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
-        self.assertEqual(baseline["staff"][0]["overall_score"], 67)
-        self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+        self.assertEqual(baseline["staff"][0]["counts"]["historic_jobs"], 1)
+        self.assertEqual(baseline["staff"][0]["statuses"]["historic_jobs"], "amber")
+        self.assertEqual(baseline["staff"][0]["oldest_age_days"]["historic_jobs"], 12)
+        self.assertEqual(baseline["staff"][0]["current_month_sales"], 123.45)
+        self.assertNotIn("freshdesk_ticket_count", baseline["staff"][0])
+        self.assertNotIn("overall_score", baseline["staff"][0])
+
+    def test_rendered_dashboard_excludes_freshdesk_and_score_columns(self) -> None:
+        report = {
+            "run_timestamp": "2026-05-25T07:00:00+00:00",
+            "report_date": "2026-05-25",
+            "job_lookback_start": "2025-05-25",
+            "month_name": "May",
+            "total_red_kpis": 0,
+            "total_amber_kpis": 1,
+            "staff_rows": [
+                {
+                    "staff_name": "Amy Bradley",
+                    "metrics": {
+                        "unallocated_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
+                        "historic_jobs": {"count": 1, "status": "amber", "oldest_age_days": 12},
+                        "uninvoiced_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
+                        "unactioned_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
+                    },
+                    "current_month_sales_display": "GBP 123.45",
+                    "total_open_workload": 1,
+                }
+            ],
+        }
+
+        dashboard_html = render_html(report)
+
+        self.assertIn("May sales", dashboard_html)
+        self.assertNotIn("Freshdesk", dashboard_html)
+        self.assertNotIn("Overall Score", dashboard_html)
 
 
 class FakeBigChangeClient:
