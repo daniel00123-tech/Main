@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
-    FRESHDESK_METRIC,
+    build_report,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
@@ -50,6 +50,17 @@ class BigChangeApiTest(unittest.TestCase):
         self.assertTrue(code_is_success({"Code": 0}))
         self.assertTrue(code_is_success({"Code": "0"}))
         self.assertFalse(code_is_success({"Code": 1}))
+
+    @patch("scripts.bigchange_kpi_report.dt.date", wraps=dt.date)
+    @patch("scripts.bigchange_kpi_report.dt.datetime", wraps=dt.datetime)
+    def test_report_sorts_staff_best_to_worst(self, mock_datetime, mock_date) -> None:
+        mock_date.today.return_value = dt.date(2026, 6, 19)
+        mock_datetime.now.return_value = dt.datetime(2026, 6, 19, 7, 0, tzinfo=dt.timezone.utc)
+        client = FakeReportBigChangeClient()
+
+        report = build_report(client)
+
+        self.assertEqual([row["staff_name"] for row in report["staff_rows"]], ["All Green", "Amber Person", "Red Person"])
 
 
 class SalesAttributionTest(unittest.TestCase):
@@ -181,12 +192,11 @@ class ScoreAndBaselineTest(unittest.TestCase):
             "historic_jobs": {"count": 4, "status": "amber"},
             "uninvoiced_jobs": {"count": 1, "status": "red"},
             "unactioned_jobs": {"count": 0, "status": "green"},
-            FRESHDESK_METRIC[0]: {"count": 3, "status": "green"},
         }
 
-        self.assertEqual(calculate_score(metrics), 60)
+        self.assertEqual(calculate_score(metrics), 63)
 
-    def test_saves_baseline_with_freshdesk_age_and_score_fields(self) -> None:
+    def test_saves_baseline_with_bigchange_kpi_fields(self) -> None:
         report = {
             "run_timestamp": "2026-05-25T07:00:00+00:00",
             "report_date": "2026-05-25",
@@ -199,11 +209,8 @@ class ScoreAndBaselineTest(unittest.TestCase):
                         "historic_jobs": {"count": 1, "status": "amber", "oldest_age_days": 12},
                         "uninvoiced_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
                         "unactioned_jobs": {"count": 0, "status": "green", "oldest_age_days": 0},
-                        FRESHDESK_METRIC[0]: {"count": 2, "status": "red", "oldest_age_days": 31},
                     },
                     "current_month_sales": 123.45,
-                    "freshdesk_ticket_count": 2,
-                    "overall_score": 67,
                 }
             ],
         }
@@ -213,9 +220,11 @@ class ScoreAndBaselineTest(unittest.TestCase):
 
             baseline = json.loads(path.read_text(encoding="utf-8"))
 
-        self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
-        self.assertEqual(baseline["staff"][0]["overall_score"], 67)
-        self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+        self.assertEqual(baseline["staff"][0]["counts"]["historic_jobs"], 1)
+        self.assertEqual(baseline["staff"][0]["statuses"]["historic_jobs"], "amber")
+        self.assertEqual(baseline["staff"][0]["oldest_age_days"]["historic_jobs"], 12)
+        self.assertNotIn("freshdesk_ticket_count", baseline["staff"][0])
+        self.assertNotIn("overall_score", baseline["staff"][0])
 
 
 class FakeBigChangeClient:
@@ -228,6 +237,41 @@ class FakeBigChangeClient:
 
     def job_customer_activity(self, job_id):
         return self._activities.get(job_id, [])
+
+
+class FakeReportBigChangeClient:
+    def categories(self):
+        return [{"Name": "Red Person"}, {"Name": "All Green"}, {"Name": "Amber Person"}]
+
+    def jobslist(self, params):
+        client_status_id = params.get("ClientStatusId")
+        if client_status_id == -34:
+            return [
+                {
+                    "Category": "Red Person",
+                    "StatusId": 12,
+                    "ClientStatusId": -34,
+                    "CompletedDate": "2026-05-01",
+                }
+            ]
+        if params.get("Unactioned") == 1:
+            return []
+        if params.get("Allocated") == 1:
+            return [
+                {
+                    "Category": "Amber Person",
+                    "StatusId": 2,
+                    "ResourceId": 12,
+                    "PlannedStart": "2026-06-05",
+                }
+            ]
+        return []
+
+    def invoices_with_items_by_period(self, start, end):
+        return []
+
+    def job_customer_activity(self, job_id):
+        return []
 
 
 class FakeFreshdeskClient:
