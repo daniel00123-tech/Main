@@ -1,0 +1,4396 @@
+{
+  "confirmed_references": {
+    "autoCloseDownTagId": 239829,
+    "fallbackJobCategory": "Hayley Longford",
+    "fallbackJobCategoryId": 132665,
+    "invoiceCreatedClientStatusId": 34
+  },
+  "jobs_excluded_as_future_dated": 0,
+  "run_started": "2026-06-19T06:02:48Z",
+  "total_jobs_reviewed": 5242,
+  "updates": [
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 188751662,
+      "job_ref": "JOB271191",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 188751662,
+      "job_ref": "JOB271191",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189009874,
+      "job_ref": "GRANQ271668",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189111304,
+      "job_ref": "DLFF271882",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189336300,
+      "job_ref": "JOB272193",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189418000,
+      "job_ref": "JOB272251",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189460353,
+      "job_ref": "JOB272285",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189572915,
+      "job_ref": "PPM272463",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189651243,
+      "job_ref": "JOB272561~1",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 189672082,
+      "job_ref": "DLFF272598",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 189944377,
+      "job_ref": "JOB272902",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190002192,
+      "job_ref": "SS273062",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190002192,
+      "job_ref": "SS273062",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190040152,
+      "job_ref": "DLFF273090",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190277192,
+      "job_ref": "JOB273370",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190292622,
+      "job_ref": "INT273388",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190292622,
+      "job_ref": "INT273388",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190349901,
+      "job_ref": "JOB273534",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190351324,
+      "job_ref": "JOB273539",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190366113,
+      "job_ref": "JOB273730",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190429736,
+      "job_ref": "JOB273410~1",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190431005,
+      "job_ref": "DLFF273792",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190434613,
+      "job_ref": "JOB273800",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190434615,
+      "job_ref": "DLFF273801",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190434666,
+      "job_ref": "JOB273802",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190434666,
+      "job_ref": "JOB273802",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190476716,
+      "job_ref": "JOB273970",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190493983,
+      "job_ref": "JOB273983",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190507884,
+      "job_ref": "JOB274002",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190514280,
+      "job_ref": "DLFF274011",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190514683,
+      "job_ref": "JOB274012",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190521316,
+      "job_ref": "DLFF274019",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190539822,
+      "job_ref": "JOB272042~2",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190547514,
+      "job_ref": "DLFF274067",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190592419,
+      "job_ref": "DLFF274174",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190592419,
+      "job_ref": "DLFF274174",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190678094,
+      "job_ref": "DLFF274459",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 190679489,
+      "job_ref": "",
+      "reason": "uncategorised job; creator from first New status owner matches an existing category",
+      "target": {
+        "Category": "Megan Fox",
+        "JobCategoryId": 132244,
+        "creator": "Megan Fox",
+        "fallback": false
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190720903,
+      "job_ref": "JOB274491",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190720903,
+      "job_ref": "JOB274491",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190781573,
+      "job_ref": "DLFF274571",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190815253,
+      "job_ref": "JOB274621",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190815311,
+      "job_ref": "EOT274622~2",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190847262,
+      "job_ref": "JOB274699",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190860499,
+      "job_ref": "DLFF274730",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190860732,
+      "job_ref": "DLFF274737",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190860732,
+      "job_ref": "DLFF274737",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190860764,
+      "job_ref": "DLFF274738",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190860811,
+      "job_ref": "DLFF274740",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190860811,
+      "job_ref": "DLFF274740",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190866597,
+      "job_ref": "JOB274749",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190866597,
+      "job_ref": "JOB274749",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190880515,
+      "job_ref": "DLFF274764",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190880515,
+      "job_ref": "DLFF274764",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190925856,
+      "job_ref": "JOB274844~1",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190925856,
+      "job_ref": "JOB274844~1",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190928114,
+      "job_ref": "JOB274848",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190928153,
+      "job_ref": "JOB274849",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190936741,
+      "job_ref": "EOT274854",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190936761,
+      "job_ref": "EOT274856",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190937383,
+      "job_ref": "DLFF274858",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190937396,
+      "job_ref": "DLFF274859",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190937396,
+      "job_ref": "DLFF274859",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190942324,
+      "job_ref": "JOB274874",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190944046,
+      "job_ref": "JOB274877",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190944046,
+      "job_ref": "JOB274877",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190945656,
+      "job_ref": "DLFF274878",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 190970372,
+      "job_ref": "DLFF274595~1",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 190988785,
+      "job_ref": "JOB273387~1",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 191069007,
+      "job_ref": "JOB275419",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 191069007,
+      "job_ref": "JOB275419",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 191120555,
+      "job_ref": "DLFF275589",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 191129257,
+      "job_ref": "DLFF275599",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 191129257,
+      "job_ref": "DLFF275599",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 191160320,
+      "job_ref": "JOB275625",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 191173458,
+      "job_ref": "INT275630",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 191173458,
+      "job_ref": "INT275630",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 191175898,
+      "job_ref": "DLFF275634",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 191175898,
+      "job_ref": "DLFF275634",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205138,
+      "job_ref": "PPM275782",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205139,
+      "job_ref": "PPM275783",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205140,
+      "job_ref": "PPM275784",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205141,
+      "job_ref": "PPM275785",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205143,
+      "job_ref": "PPM275786",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205144,
+      "job_ref": "PPM275787",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205146,
+      "job_ref": "PPM275788",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205147,
+      "job_ref": "PPM275789",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205148,
+      "job_ref": "PPM275790",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205149,
+      "job_ref": "PPM275791",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205150,
+      "job_ref": "PPM275792",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205151,
+      "job_ref": "PPM275793",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205153,
+      "job_ref": "PPM275794",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205155,
+      "job_ref": "PPM275795",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205156,
+      "job_ref": "PPM275796",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205157,
+      "job_ref": "PPM275797",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205158,
+      "job_ref": "PPM275798",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205160,
+      "job_ref": "PPM275799",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205161,
+      "job_ref": "PPM275800",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205162,
+      "job_ref": "PPM275801",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205163,
+      "job_ref": "PPM275802",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205164,
+      "job_ref": "PPM275803",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205165,
+      "job_ref": "PPM275804",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205166,
+      "job_ref": "PPM275805",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205167,
+      "job_ref": "PPM275806",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205168,
+      "job_ref": "PPM275807",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205169,
+      "job_ref": "PPM275808",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205170,
+      "job_ref": "PPM275809",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205171,
+      "job_ref": "PPM275810",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205172,
+      "job_ref": "PPM275811",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205173,
+      "job_ref": "PPM275812",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205174,
+      "job_ref": "PPM275813",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205175,
+      "job_ref": "PPM275814",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205176,
+      "job_ref": "PPM275815",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205177,
+      "job_ref": "PPM275816",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205178,
+      "job_ref": "PPM275817",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205179,
+      "job_ref": "PPM275818",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205180,
+      "job_ref": "PPM275819",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205181,
+      "job_ref": "PPM275820",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205183,
+      "job_ref": "PPM275821",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205184,
+      "job_ref": "PPM275822",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205186,
+      "job_ref": "PPM275823",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205187,
+      "job_ref": "PPM275824",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205188,
+      "job_ref": "PPM275825",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205190,
+      "job_ref": "PPM275826",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205191,
+      "job_ref": "PPM275827",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205192,
+      "job_ref": "PPM275828",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205194,
+      "job_ref": "PPM275829",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205196,
+      "job_ref": "PPM275830",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205197,
+      "job_ref": "PPM275831",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205198,
+      "job_ref": "PPM275832",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205199,
+      "job_ref": "PPM275833",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205200,
+      "job_ref": "PPM275834",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205201,
+      "job_ref": "PPM275835",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205202,
+      "job_ref": "PPM275836",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205203,
+      "job_ref": "PPM275837",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205204,
+      "job_ref": "PPM275838",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205205,
+      "job_ref": "PPM275839",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205207,
+      "job_ref": "PPM275840",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205208,
+      "job_ref": "PPM275841",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205209,
+      "job_ref": "PPM275842",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205210,
+      "job_ref": "PPM275843",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205211,
+      "job_ref": "PPM275844",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205212,
+      "job_ref": "PPM275845",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205213,
+      "job_ref": "PPM275846",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205214,
+      "job_ref": "PPM275847",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205215,
+      "job_ref": "PPM275848",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205216,
+      "job_ref": "PPM275849",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205217,
+      "job_ref": "PPM275850",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205218,
+      "job_ref": "PPM275851",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205219,
+      "job_ref": "PPM275852",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205220,
+      "job_ref": "PPM275853",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205221,
+      "job_ref": "PPM275854",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205224,
+      "job_ref": "PPM275855",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205225,
+      "job_ref": "PPM275856",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205226,
+      "job_ref": "PPM275857",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205227,
+      "job_ref": "PPM275858",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205228,
+      "job_ref": "PPM275859",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205229,
+      "job_ref": "PPM275860",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205231,
+      "job_ref": "PPM275861",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205232,
+      "job_ref": "PPM275862",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205233,
+      "job_ref": "PPM275863",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205235,
+      "job_ref": "PPM275864",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205236,
+      "job_ref": "PPM275865",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205237,
+      "job_ref": "PPM275866",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205238,
+      "job_ref": "PPM275867",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205239,
+      "job_ref": "PPM275868",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205241,
+      "job_ref": "PPM275869",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205242,
+      "job_ref": "PPM275870",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205243,
+      "job_ref": "PPM275871",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205244,
+      "job_ref": "PPM275872",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205245,
+      "job_ref": "PPM275873",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205246,
+      "job_ref": "PPM275874",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205247,
+      "job_ref": "PPM275875",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205248,
+      "job_ref": "PPM275876",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205249,
+      "job_ref": "PPM275877",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205250,
+      "job_ref": "PPM275878",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205251,
+      "job_ref": "PPM275879",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205253,
+      "job_ref": "PPM275880",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205254,
+      "job_ref": "PPM275881",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205255,
+      "job_ref": "PPM275882",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205260,
+      "job_ref": "PPM275883",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205261,
+      "job_ref": "PPM275884",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205263,
+      "job_ref": "PPM275885",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205264,
+      "job_ref": "PPM275886",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205265,
+      "job_ref": "PPM275887",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205267,
+      "job_ref": "PPM275888",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205268,
+      "job_ref": "PPM275889",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205270,
+      "job_ref": "PPM275890",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205271,
+      "job_ref": "PPM275891",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205272,
+      "job_ref": "PPM275892",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205273,
+      "job_ref": "PPM275893",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205274,
+      "job_ref": "PPM275894",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205275,
+      "job_ref": "PPM275895",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205276,
+      "job_ref": "PPM275896",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205277,
+      "job_ref": "PPM275897",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205278,
+      "job_ref": "PPM275898",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205279,
+      "job_ref": "PPM275899",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205280,
+      "job_ref": "PPM275900",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205281,
+      "job_ref": "PPM275901",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205282,
+      "job_ref": "PPM275902",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205283,
+      "job_ref": "PPM275903",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205284,
+      "job_ref": "PPM275904",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205285,
+      "job_ref": "PPM275905",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205286,
+      "job_ref": "PPM275906",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205287,
+      "job_ref": "PPM275907",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205288,
+      "job_ref": "PPM275908",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205289,
+      "job_ref": "PPM275909",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205290,
+      "job_ref": "PPM275910",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205291,
+      "job_ref": "PPM275911",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205292,
+      "job_ref": "PPM275912",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205293,
+      "job_ref": "PPM275913",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205294,
+      "job_ref": "PPM275914",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205295,
+      "job_ref": "PPM275915",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205297,
+      "job_ref": "PPM275916",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205298,
+      "job_ref": "PPM275917",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205300,
+      "job_ref": "PPM275918",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205301,
+      "job_ref": "PPM275919",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205303,
+      "job_ref": "PPM275920",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205304,
+      "job_ref": "PPM275921",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205305,
+      "job_ref": "PPM275922",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205306,
+      "job_ref": "PPM275923",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205308,
+      "job_ref": "PPM275924",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205309,
+      "job_ref": "PPM275925",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205310,
+      "job_ref": "PPM275926",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205311,
+      "job_ref": "PPM275927",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205312,
+      "job_ref": "PPM275928",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205313,
+      "job_ref": "PPM275929",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205314,
+      "job_ref": "PPM275930",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205315,
+      "job_ref": "PPM275931",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205316,
+      "job_ref": "PPM275932",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205318,
+      "job_ref": "PPM275933",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205320,
+      "job_ref": "PPM275934",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205321,
+      "job_ref": "PPM275935",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205322,
+      "job_ref": "PPM275936",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205325,
+      "job_ref": "PPM275937",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205326,
+      "job_ref": "PPM275938",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205327,
+      "job_ref": "PPM275939",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205329,
+      "job_ref": "PPM275940",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205330,
+      "job_ref": "PPM275941",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205332,
+      "job_ref": "PPM275942",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205333,
+      "job_ref": "PPM275943",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205334,
+      "job_ref": "PPM275944",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205335,
+      "job_ref": "PPM275945",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205336,
+      "job_ref": "PPM275946",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205337,
+      "job_ref": "PPM275947",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205338,
+      "job_ref": "PPM275948",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205342,
+      "job_ref": "PPM275949",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205346,
+      "job_ref": "PPM275950",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205350,
+      "job_ref": "PPM275951",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205352,
+      "job_ref": "PPM275952",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205353,
+      "job_ref": "PPM275953",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205355,
+      "job_ref": "PPM275955",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205356,
+      "job_ref": "PPM275956",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205358,
+      "job_ref": "PPM275957",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205359,
+      "job_ref": "PPM275958",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205361,
+      "job_ref": "PPM275960",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205362,
+      "job_ref": "PPM275961",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205364,
+      "job_ref": "PPM275962",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205365,
+      "job_ref": "PPM275963",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205367,
+      "job_ref": "PPM275964",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205371,
+      "job_ref": "PPM275965",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205372,
+      "job_ref": "PPM275966",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205376,
+      "job_ref": "PPM275967",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205377,
+      "job_ref": "PPM275968",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205378,
+      "job_ref": "PPM275969",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205381,
+      "job_ref": "PPM275970",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205383,
+      "job_ref": "PPM275971",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205384,
+      "job_ref": "PPM275972",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205386,
+      "job_ref": "PPM275974",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205387,
+      "job_ref": "PPM275975",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205388,
+      "job_ref": "PPM275976",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205389,
+      "job_ref": "PPM275977",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205391,
+      "job_ref": "PPM275978",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205393,
+      "job_ref": "PPM275979",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205394,
+      "job_ref": "PPM275980",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191205395,
+      "job_ref": "PPM275981",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "Daniel Dwyer",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 191210620,
+      "job_ref": "EOT275984",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 191210620,
+      "job_ref": "EOT275984",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191255034,
+      "job_ref": "PPM276040",
+      "reason": "uncategorised job; creator from first New status owner matches an existing category",
+      "target": {
+        "Category": "Megan Fox",
+        "JobCategoryId": 132244,
+        "creator": "Megan Fox",
+        "fallback": false
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Actioned": "Yes",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 191291144,
+      "job_ref": "JOB276061",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    },
+    {
+      "before": {
+        "Category": null,
+        "JobCategoryId": null
+      },
+      "job_id": 191303934,
+      "job_ref": "SS276204",
+      "reason": "uncategorised job; creator from first New status owner has no matching category; using confirmed Hayley Longford fallback",
+      "target": {
+        "Category": "Hayley Longford",
+        "JobCategoryId": 132665,
+        "creator": "FD - Lakhwinder Singh - RM13",
+        "fallback": true
+      },
+      "update_type": "job_category"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down"
+      },
+      "job_id": 191325697,
+      "job_ref": "COVER276477",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": false
+      },
+      "job_id": 191325697,
+      "job_ref": "COVER276477",
+      "reason": "Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+      "target": {
+        "JobClientStatus": "InvoiceCreated",
+        "JobClientStatusID": 34
+      },
+      "update_type": "auto_close_invoice_created"
+    }
+  ],
+  "window": {
+    "dateOptionId": 2,
+    "days": 30,
+    "end": "2026-06-19 06:02:48",
+    "excludeFutureDated": false,
+    "futureDateFields": [],
+    "start": "2026-05-20 06:02:48"
+  }
+}
