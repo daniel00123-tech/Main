@@ -13,6 +13,7 @@ from scripts.bigchange_kpi_report import (
     calculate_score,
     code_is_success,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -43,6 +44,17 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+    def test_job_category_name_uses_category_id_lookup_for_job_rows(self) -> None:
+        category_lookup = {"42": "Amy Bradley"}
+
+        self.assertEqual(job_category_name({"JobId": "J1", "CategoryId": "42"}, category_lookup), "Amy Bradley")
+        self.assertEqual(job_category_name({"JobId": "J2", "JobCategoryId": "42"}, category_lookup), "Amy Bradley")
+
+    def test_job_category_name_ignores_generic_job_id_and_name_fields(self) -> None:
+        category_lookup = {"42": "Amy Bradley"}
+
+        self.assertEqual(job_category_name({"Id": "42", "Name": "Incorrect Job Name"}, category_lookup), "")
 
 
 class BigChangeApiTest(unittest.TestCase):
