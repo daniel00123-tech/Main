@@ -45,17 +45,13 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Verify Chrome is available
-        run: |
-          if ! command -v google-chrome >/dev/null 2>&1 && \
-             ! command -v google-chrome-stable >/dev/null 2>&1 && \
-             ! command -v chromium >/dev/null 2>&1 && \
-             ! command -v chromium-browser >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y chromium-browser
-          fi
+      - name: Set up Chrome
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
 
       - name: Generate dashboard and send email
+        env:
+          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: python3 scripts/bigchange_kpi_report.py
 
       - name: Upload dashboard PNG
