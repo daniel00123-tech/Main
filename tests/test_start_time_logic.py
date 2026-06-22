@@ -1,7 +1,13 @@
 import datetime as dt
 import unittest
 
-from scripts.weekly_door_to_door_timesheets import build_day_row
+from scripts.weekly_door_to_door_timesheets import (
+    build_day_row,
+    clean_resource_name,
+    looks_like_legacy_engineer_resource,
+    matching_group_ids,
+    postcode_suffix,
+)
 
 
 def job(job_id, ref, planned_start, planned_end, real_start=None):
@@ -141,6 +147,47 @@ class StartTimeLogicTest(unittest.TestCase):
 
         self.assertEqual(row["Start"], "12:03")
         self.assertEqual(row["Start Source"], "First job started")
+
+
+class ResourceCompatibilityTest(unittest.TestCase):
+    def test_live_core_team_groups_are_used_when_numbered_groups_are_absent(self):
+        groups = [
+            {"id": 1, "label": "Core Team - Office Staff"},
+            {"id": 2, "label": "Core Team - Electrical"},
+            {"id": 3, "label": "Subcontractor"},
+        ]
+
+        self.assertEqual(matching_group_ids(groups), {2, 3})
+
+    def test_numbered_groups_take_precedence_when_present(self):
+        groups = [
+            {"id": 1, "label": "1. Engineer"},
+            {"id": 2, "label": "Core Team - Electrical"},
+            {"id": 3, "label": "2. Subcontractor"},
+        ]
+
+        self.assertEqual(matching_group_ids(groups), {1, 3})
+
+    def test_resource_name_and_postcode_parsing_handles_legacy_labels(self):
+        examples = {
+            "GM. Mohammed Timami - M8": ("Mohammed Timami", "M8"),
+            "E. Michael Glavin - HA2": ("Michael Glavin", "HA2"),
+            "E - Alex Shults": ("Alex Shults", ""),
+            "FD - Charles Mabira - RH11": ("Charles Mabira", "RH11"),
+            "B (GM) -  Matthew Palmer BB12": ("Matthew Palmer", "BB12"),
+            "C.EG - Ana Cano Jimenez - N17": ("Ana Cano Jimenez", "N17"),
+        }
+
+        for label, expected in examples.items():
+            with self.subTest(label=label):
+                self.assertEqual((clean_resource_name(label), postcode_suffix(label)), expected)
+
+    def test_legacy_engineer_fallback_excludes_tech_hk_and_property_labels(self):
+        self.assertTrue(looks_like_legacy_engineer_resource("GM. Mohammed Timami - M8"))
+        self.assertTrue(looks_like_legacy_engineer_resource("B (GM) -  Matthew Palmer BB12"))
+        self.assertFalse(looks_like_legacy_engineer_resource("UDC_Chapel_Tech Aamir Ali"))
+        self.assertFalse(looks_like_legacy_engineer_resource("UDC_Chapel_HK Akua Abankwah"))
+        self.assertFalse(looks_like_legacy_engineer_resource("z. Winston Carter"))
 
 
 if __name__ == "__main__":

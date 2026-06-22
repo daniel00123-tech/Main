@@ -24,6 +24,13 @@ from openpyxl.utils import get_column_letter
 
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 INCLUDED_GROUP_NAMES = {"1. engineer", "2. subcontractor"}
+COMPATIBLE_GROUP_NAMES = {
+    "core team - caretaker",
+    "core team - electrical",
+    "core team - general maintenance",
+    "core team - mechanical",
+    "subcontractor",
+}
 PHANTOM_NAME_PARTS = {"cameron north", "kieran", "tom", "winston"}
 EXCLUDED_NAME_WORDS = {"tech", "hk"}
 COMPLETION_STATUS_IDS = {12, 13}
@@ -186,16 +193,21 @@ def same_day(value: dt.datetime | None, day: dt.date) -> bool:
 
 
 def clean_resource_name(label: str) -> str:
-    name = re.sub(r"\s+-\s+[^-]+$", "", label or "").strip()
+    name = (label or "").strip()
     # BigChange resource labels often include diary/category prefixes such as GM. or E.
-    name = re.sub(r"^[A-Z]{1,3}\.\s+", "", name).strip()
+    name = re.sub(r"^[A-Z]{1,3}\.[A-Z]{1,3}\s*-\s+", "", name, flags=re.I).strip()
+    name = re.sub(r"^[A-Z]\s*\([A-Z]{1,3}\)\s*-\s+", "", name, flags=re.I).strip()
+    name = re.sub(r"^[A-Z]{1,3}\.\s+", "", name, flags=re.I).strip()
+    name = re.sub(r"^[A-Z]{1,3}\s*-\s*", "", name, flags=re.I).strip()
+    name = re.sub(r"\s+-\s+[A-Z]{1,2}\d[A-Z\d]?\s*$", "", name, flags=re.I).strip()
+    name = re.sub(r"\s+[A-Z]{1,2}\d[A-Z\d]?\s*$", "", name, flags=re.I).strip()
     name = re.sub(r"\s+", " ", name)
     return name
 
 
 def postcode_suffix(label: str) -> str:
-    match = re.search(r"\s+-\s+([A-Z]{1,2}\d[A-Z\d]?)\b", label or "", flags=re.I)
-    return match.group(1).upper() if match else ""
+    matches = re.findall(r"(?:\s+-\s+|\s)([A-Z]{1,2}\d[A-Z\d]?)\b", label or "", flags=re.I)
+    return matches[-1].upper() if matches else ""
 
 
 def normalize_name(value: str) -> str:
@@ -211,6 +223,34 @@ def should_ignore_resource(label: str) -> bool:
     return bool(set(normalize_name(label).split()) & EXCLUDED_NAME_WORDS)
 
 
+def matching_group_ids(groups: list[dict[str, Any]]) -> set[Any]:
+    exact_ids = {
+        row.get("id")
+        for row in groups
+        if str(row.get("label", "")).strip().lower() in INCLUDED_GROUP_NAMES
+    }
+    if exact_ids:
+        return exact_ids
+    return {
+        row.get("id")
+        for row in groups
+        if str(row.get("label", "")).strip().lower() in COMPATIBLE_GROUP_NAMES
+    }
+
+
+def looks_like_legacy_engineer_resource(label: str) -> bool:
+    if should_ignore_resource(label):
+        return False
+    text = (label or "").strip()
+    if "_" in text:
+        return False
+    return bool(
+        re.match(r"^[A-Z]{1,3}(?:\.[A-Z]{1,3})?\s*-\s+", text, flags=re.I)
+        or re.match(r"^[A-Z]{1,3}\.\s+", text, flags=re.I)
+        or re.match(r"^[A-Z]\s*\([A-Z]{1,3}\)\s*-\s+", text, flags=re.I)
+    )
+
+
 def as_list(result: Any) -> list[dict[str, Any]]:
     if isinstance(result, list):
         return [row for row in result if isinstance(row, dict)]
@@ -221,13 +261,12 @@ def as_list(result: Any) -> list[dict[str, Any]]:
 
 def get_resources(client: BigChangeClient) -> list[dict[str, Any]]:
     groups = as_list(client.call("ResourceGroups"))
-    included_group_ids = {
-        row.get("id")
-        for row in groups
-        if str(row.get("label", "")).strip().lower() in INCLUDED_GROUP_NAMES
-    }
+    included_group_ids = matching_group_ids(groups)
     if not included_group_ids:
-        raise ReportError("Could not find BigChange resource groups: 1. Engineer / 2. Subcontractor")
+        raise ReportError(
+            "Could not find BigChange resource groups: 1. Engineer / 2. Subcontractor "
+            "or compatible Core Team/Subcontractor groups"
+        )
 
     resources = []
     for row in as_list(client.call("Resources")):
@@ -323,22 +362,39 @@ def is_active_job(job: dict[str, Any]) -> bool:
     return "cancel" not in status
 
 
-def fetch_active_resource_names(
+def fetch_active_resource_labels(
     client: BigChangeClient,
     config: Config,
     active_start: dt.date,
     active_end: dt.date,
 ) -> set[str]:
-    active_names: set[str] = set()
+    active_labels: set[str] = set()
     date_option_id = config.jobs_fallback_date_option_id or 0
     for day in date_range(active_start, active_end):
         for job in fetch_jobs_with_date_option(client, day, date_option_id):
             if not is_active_job(job):
                 continue
             resource_name = str(job.get("Resource") or "").strip()
-            active_names.add(normalize_name(resource_name))
-            active_names.add(normalize_name(clean_resource_name(resource_name)))
-    return {name for name in active_names if name}
+            if resource_name:
+                active_labels.add(resource_name)
+    return active_labels
+
+
+def normalized_resource_names(labels: Iterable[str]) -> set[str]:
+    names: set[str] = set()
+    for label in labels:
+        names.add(normalize_name(label))
+        names.add(normalize_name(clean_resource_name(label)))
+    return {name for name in names if name}
+
+
+def synthetic_resource(label: str, synthetic_id: int) -> dict[str, Any]:
+    return {
+        "id": synthetic_id,
+        "label": label,
+        "CleanName": clean_resource_name(label),
+        "PostcodeSuffix": postcode_suffix(label),
+    }
 
 
 def best_contact_match(clean_name: str, candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -938,15 +994,36 @@ def build_report(
 ) -> list[dict[str, Any]]:
     resources = get_resources(client)
     active_window_start = active_window_end - dt.timedelta(days=29)
-    active_resource_names = fetch_active_resource_names(
+    active_resource_labels = fetch_active_resource_labels(
         client, config, active_window_start, active_window_end
     )
+    active_resource_names = normalized_resource_names(active_resource_labels)
     resources = [
         resource
         for resource in resources
         if normalize_name(str(resource.get("label") or "")) in active_resource_names
         or normalize_name(str(resource.get("CleanName") or "")) in active_resource_names
     ]
+    existing_resource_names = {
+        name
+        for resource in resources
+        for name in (
+            normalize_name(str(resource.get("label") or "")),
+            normalize_name(str(resource.get("CleanName") or "")),
+        )
+        if name
+    }
+    synthetic_id = -1
+    for label in sorted(active_resource_labels, key=normalize_name):
+        label_names = normalized_resource_names([label])
+        if label_names & existing_resource_names:
+            continue
+        if not looks_like_legacy_engineer_resource(label):
+            continue
+        resources.append(synthetic_resource(label, synthetic_id))
+        existing_resource_names.update(label_names)
+        synthetic_id -= 1
+    resources.sort(key=lambda r: normalize_name(str(r.get("CleanName") or r.get("label") or "")))
     homes = {int(resource["id"]): lookup_home(client, resource) for resource in resources}
     rows: list[dict[str, Any]] = []
     status_cache: dict[int, list[dict[str, Any]]] = {}
