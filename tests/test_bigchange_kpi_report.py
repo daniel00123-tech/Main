@@ -3,16 +3,20 @@ import json
 import os
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    add_items,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
     code_is_success,
+    freshdesk_ticket_owner,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -50,6 +54,30 @@ class BigChangeApiTest(unittest.TestCase):
         self.assertTrue(code_is_success({"Code": 0}))
         self.assertTrue(code_is_success({"Code": "0"}))
         self.assertFalse(code_is_success({"Code": 1}))
+
+    def test_resolves_job_category_from_explicit_category_id_fields(self) -> None:
+        category_lookup = {"42": "Amy Bradley"}
+
+        self.assertEqual(job_category_name({"CategoryId": 42}, category_lookup), "Amy Bradley")
+        self.assertEqual(job_category_name({"JobCategoryID": "42"}, category_lookup), "Amy Bradley")
+        self.assertEqual(job_category_name({"Id": 42, "Name": "Generic job name"}, category_lookup), "")
+
+    def test_adds_id_only_job_rows_to_staff_grouping(self) -> None:
+        grouped = defaultdict(lambda: defaultdict(list))
+        staff_names = set()
+
+        add_items(
+            grouped,
+            staff_names,
+            [{"JobCategoryId": 42, "CreatedDate": "2026-06-01"}],
+            "unallocated_jobs",
+            ("CreatedDate",),
+            dt.date(2026, 6, 22),
+            {"42": "Amy Bradley"},
+        )
+
+        self.assertEqual(staff_names, {"Amy Bradley"})
+        self.assertEqual(len(grouped["Amy Bradley"]["unallocated_jobs"]), 1)
 
 
 class SalesAttributionTest(unittest.TestCase):
@@ -172,6 +200,20 @@ class FreshdeskKpiTest(unittest.TestCase):
         self.assertEqual(len(grouped["Daniel Dwyer"]), 1)
         self.assertEqual(len(unmatched), 1)
         self.assertEqual(len(critical), 1)
+
+    def test_prefers_embedded_agent_name_before_requester_fallback(self) -> None:
+        client = FakeFreshdeskClient(tickets=[], agents={}, contacts={20: "Requester Person"})
+
+        owner = freshdesk_ticket_owner(
+            client,
+            {
+                "responder_id": 10,
+                "agent_name": "Amy B",
+                "requester_id": 20,
+            },
+        )
+
+        self.assertEqual(owner, "Amy B")
 
 
 class ScoreAndBaselineTest(unittest.TestCase):
