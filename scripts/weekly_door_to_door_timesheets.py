@@ -25,6 +25,7 @@ from openpyxl.utils import get_column_letter
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 INCLUDED_GROUP_NAMES = {"1. engineer", "2. subcontractor"}
 PHANTOM_NAME_PARTS = {"cameron north", "kieran", "tom", "winston"}
+EXCLUDED_NAME_WORDS = {"tech", "hk"}
 COMPLETION_STATUS_IDS = {12, 13}
 START_TRAVEL_STATUS_ID = 8
 STARTED_STATUS_ID = 10
@@ -205,7 +206,9 @@ def should_ignore_resource(label: str) -> bool:
     low = (label or "").lower().strip()
     if low.startswith("z."):
         return True
-    return any(part in low for part in PHANTOM_NAME_PARTS)
+    if any(part in low for part in PHANTOM_NAME_PARTS):
+        return True
+    return bool(set(normalize_name(label).split()) & EXCLUDED_NAME_WORDS)
 
 
 def as_list(result: Any) -> list[dict[str, Any]]:
