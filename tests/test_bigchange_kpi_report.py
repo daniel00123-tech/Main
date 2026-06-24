@@ -11,8 +11,10 @@ from scripts.bigchange_kpi_report import (
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
+    category_lookup,
     code_is_success,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -43,6 +45,24 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+
+class CategoryResolutionTest(unittest.TestCase):
+    def test_resolves_job_category_names_from_explicit_category_ids(self) -> None:
+        lookup = category_lookup(
+            [
+                {"Id": "42", "Name": "Amy Bradley"},
+                {"JobCategoryID": "99", "JobCategoryName": "Daniel Dwyer"},
+            ]
+        )
+
+        self.assertEqual(job_category_name({"CategoryId": "42", "Id": "1001"}, lookup), "Amy Bradley")
+        self.assertEqual(job_category_name({"JobCategoryId": "99", "Name": "Job 1002"}, lookup), "Daniel Dwyer")
+
+    def test_does_not_treat_generic_job_id_or_name_as_category_fields(self) -> None:
+        lookup = category_lookup([{"Id": "1001", "Name": "Amy Bradley"}])
+
+        self.assertEqual(job_category_name({"Id": "1001", "Name": "Job 1001"}, lookup), "")
 
 
 class BigChangeApiTest(unittest.TestCase):
