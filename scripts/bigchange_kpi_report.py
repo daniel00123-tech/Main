@@ -67,6 +67,7 @@ CATEGORY_NAME_FIELDS = (
     "JobCategoryLabel",
     "Label",
 )
+CATEGORY_RECORD_NAME_FIELDS = CATEGORY_NAME_FIELDS + ("Name",)
 JOB_CATEGORY_ID_FIELDS = ("CategoryId", "CategoryID", "JobCategoryId", "JobCategoryID")
 CATEGORY_RECORD_ID_FIELDS = JOB_CATEGORY_ID_FIELDS + ("Id", "ID")
 DECIMAL_ZERO = decimal.Decimal("0")
@@ -346,7 +347,7 @@ def document_is_cancelled_deleted_or_rejected(document: dict[str, Any]) -> bool:
 def category_lookup(categories: list[dict[str, Any]]) -> dict[str, str]:
     lookup: dict[str, str] = {}
     for category in categories:
-        name = clean_name(first_present(category, CATEGORY_NAME_FIELDS))
+        name = clean_name(first_present(category, CATEGORY_RECORD_NAME_FIELDS))
         category_id = clean_name(first_present(category, CATEGORY_RECORD_ID_FIELDS))
         if name and category_id:
             lookup[category_id] = name
@@ -909,7 +910,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
 
     staff_names: set[str] = set()
     for category in categories:
-        name = clean_name(first_present(category, CATEGORY_NAME_FIELDS))
+        name = clean_name(first_present(category, CATEGORY_RECORD_NAME_FIELDS))
         if not should_exclude_category(name):
             staff_names.add(name)
 
