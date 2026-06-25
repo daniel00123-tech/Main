@@ -820,6 +820,21 @@ def calculate_score(metrics: dict[str, dict[str, Any]]) -> int:
     return max(1, min(100, score))
 
 
+def all_kpis_green(metrics: dict[str, dict[str, Any]]) -> bool:
+    return all(metric["status"] == "green" for metric in metrics.values())
+
+
+def staff_row_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        not bool(row.get("all_kpis_green")),
+        -int(row["overall_score"]),
+        int(row["red_kpis"]),
+        int(row["amber_kpis"]),
+        int(row["total_open_workload"]),
+        clean_name(row["staff_name"]),
+    )
+
+
 def score_status(score: int) -> str:
     if score >= 70:
         return "green"
@@ -998,6 +1013,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         amber_count = sum(1 for metric in metrics.values() if metric["status"] == "amber")
         total_open_workload = sum(metric["count"] for metric in metrics.values())
         overall_score = calculate_score(metrics)
+        green_row = all_kpis_green(metrics)
         staff_rows.append(
             {
                 "staff_name": staff,
@@ -1010,19 +1026,12 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
                 "total_open_workload": total_open_workload,
                 "overall_score": overall_score,
                 "score_status": score_status(overall_score),
+                "all_kpis_green": green_row,
                 "escalated": red_count > 5 or overall_score < 40,
             }
         )
 
-    staff_rows.sort(
-        key=lambda row: (
-            -row["overall_score"],
-            row["red_kpis"],
-            row["amber_kpis"],
-            row["total_open_workload"],
-            row["staff_name"],
-        )
-    )
+    staff_rows.sort(key=staff_row_sort_key)
     return {
         "run_timestamp": now.isoformat(),
         "report_date": today.isoformat(),
