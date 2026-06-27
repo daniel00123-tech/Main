@@ -8,11 +8,13 @@ from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    build_category_lookup,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
     code_is_success,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -43,6 +45,20 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+    def test_resolves_job_category_names_from_explicit_category_ids(self) -> None:
+        lookup = build_category_lookup(
+            [
+                {"Id": 101, "Name": "Amy Bradley"},
+                {"JobCategoryId": 102, "JobCategoryName": "Nirvana PPM"},
+            ]
+        )
+
+        self.assertEqual(job_category_name({"JobCategoryId": "101", "Name": "Job name"}, lookup), "Amy Bradley")
+        self.assertEqual(job_category_name({"CategoryID": 101}, lookup), "Amy Bradley")
+        self.assertEqual(job_category_name({"CategoryName": "Daniel Dwyer", "CategoryID": 101}, lookup), "Daniel Dwyer")
+        self.assertEqual(job_category_name({"Id": 101, "Name": "Generic job row"}, lookup), "")
+        self.assertNotIn("102", lookup)
 
 
 class BigChangeApiTest(unittest.TestCase):
