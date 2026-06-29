@@ -52,6 +52,39 @@ class BigChangeApiTest(unittest.TestCase):
         self.assertFalse(code_is_success({"Code": 1}))
 
 
+class WorkflowTest(unittest.TestCase):
+    def test_daily_workflow_runs_report_and_persists_baseline(self) -> None:
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github"
+            / "workflows"
+            / "aquilo-bigchange-kpi-overview-report.yml"
+        )
+        content = workflow.read_text(encoding="utf-8")
+
+        self.assertIn("name: Aquilo BigChange KPI Overview Report", content)
+        self.assertIn('cron: "0 7 * * *"', content)
+        self.assertIn("python3 scripts/bigchange_kpi_report.py", content)
+        self.assertIn("reports/bigchange-kpi-dashboard.png", content)
+        self.assertIn("automation-memory/kpi-baseline.json", content)
+        self.assertNotIn("reports/bigchange-kpi-dashboard.html", content)
+
+        sensitive_env_names = (
+            "BIGCHANGE_API_KEY",
+            "BIGCHANGE_USERNAME",
+            "BIGCHANGE_PASSWORD",
+            "FRESHDESK_API_KEY",
+            "SMTP_USERNAME",
+            "SMTP_PASSWORD",
+            "SMTP_FROM_EMAIL",
+            "SMTP_TO_EMAIL",
+            "SMTP_CC_EMAIL",
+        )
+        for name in sensitive_env_names:
+            with self.subTest(name=name):
+                self.assertIn(f"{name}: ${{{{ secrets.{name} }}}}", content)
+
+
 class SalesAttributionTest(unittest.TestCase):
     def test_matches_invoice_creators_to_prefixed_job_categories(self) -> None:
         staff_by_key = {
