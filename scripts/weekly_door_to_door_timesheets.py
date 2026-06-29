@@ -11,6 +11,7 @@ import os
 import re
 import smtplib
 import sys
+import time
 from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
@@ -126,8 +127,7 @@ class BigChangeClient:
     def call(self, action: str, **params: Any) -> Any:
         query = {"action": action, "key": self.config.bigchange_api_key}
         query.update({k: v for k, v in params.items() if v is not None})
-        response = self.session.get(self.config.bigchange_base_url, params=query, timeout=60)
-        response.raise_for_status()
+        response = self._get_with_retries(action, query)
         payload = response.json()
         code = payload.get("Code")
         result = payload.get("Result")
@@ -136,6 +136,30 @@ class BigChangeClient:
         if result == "No results" or result is None:
             return []
         return result
+
+    def _get_with_retries(self, action: str, query: dict[str, Any]) -> requests.Response:
+        for attempt in range(6):
+            response = self.session.get(self.config.bigchange_base_url, params=query, timeout=60)
+            if response.status_code != 429:
+                try:
+                    response.raise_for_status()
+                except requests.HTTPError as exc:
+                    raise ReportError(
+                        f"BigChange {action} HTTP {response.status_code} failed"
+                    ) from exc
+                return response
+
+            if attempt == 5:
+                raise ReportError(f"BigChange {action} HTTP 429 rate limit exceeded")
+
+            retry_after = response.headers.get("Retry-After", "").strip()
+            try:
+                wait_seconds = float(retry_after) if retry_after else 2 ** attempt * 5
+            except ValueError:
+                wait_seconds = 2 ** attempt * 5
+            time.sleep(min(wait_seconds, 60))
+
+        raise ReportError(f"BigChange {action} HTTP 429 rate limit exceeded")
 
 
 def parse_args() -> argparse.Namespace:
@@ -277,8 +301,8 @@ def job_sort_key(job: dict[str, Any]) -> dt.datetime:
     )
 
 
-def fetch_jobs_with_date_option(
-    client: BigChangeClient, day: dt.date, date_option_id: int
+def fetch_jobs_with_date_option_range(
+    client: BigChangeClient, start: dt.date, end: dt.date, date_option_id: int
 ) -> list[dict[str, Any]]:
     jobs: list[dict[str, Any]] = []
     page = 0
@@ -286,8 +310,8 @@ def fetch_jobs_with_date_option(
     while page < 50:
         result = client.call(
             "JobsList",
-            Start=f"{fmt_date(day)} 00:00:00",
-            End=f"{fmt_date(day)} 23:59:59",
+            Start=f"{fmt_date(start)} 00:00:00",
+            End=f"{fmt_date(end)} 23:59:59",
             IncludeTime="true",
             DateOptionId=date_option_id,
             Allocated=1,
@@ -303,6 +327,12 @@ def fetch_jobs_with_date_option(
             break
         page += 1
     return jobs
+
+
+def fetch_jobs_with_date_option(
+    client: BigChangeClient, day: dt.date, date_option_id: int
+) -> list[dict[str, Any]]:
+    return fetch_jobs_with_date_option_range(client, day, day, date_option_id)
 
 
 def fetch_jobs_for_day(client: BigChangeClient, config: Config, day: dt.date) -> list[dict[str, Any]]:
@@ -350,13 +380,12 @@ def fetch_active_resource_names(
 ) -> set[str]:
     active_names: set[str] = set()
     date_option_id = config.jobs_fallback_date_option_id or 0
-    for day in date_range(active_start, active_end):
-        for job in fetch_jobs_with_date_option(client, day, date_option_id):
-            if not is_active_job(job):
-                continue
-            resource_name = str(job.get("Resource") or "").strip()
-            active_names.add(normalize_name(resource_name))
-            active_names.add(normalize_name(clean_resource_name(resource_name)))
+    for job in fetch_jobs_with_date_option_range(client, active_start, active_end, date_option_id):
+        if not is_active_job(job):
+            continue
+        resource_name = str(job.get("Resource") or "").strip()
+        active_names.add(normalize_name(resource_name))
+        active_names.add(normalize_name(clean_resource_name(resource_name)))
     return {name for name in active_names if name}
 
 

@@ -1,8 +1,10 @@
 import datetime as dt
 import unittest
+from types import SimpleNamespace
 
 from scripts.weekly_door_to_door_timesheets import (
     build_day_row,
+    fetch_active_resource_names,
     get_resources,
     included_resource_group_ids,
     should_ignore_resource,
@@ -194,6 +196,32 @@ class ResourceFilteringTest(unittest.TestCase):
         labels = [row["label"] for row in get_resources(FakeClient())]
 
         self.assertEqual(labels, ["E. Alice Example - AB1", "S. Bob Example - CD2"])
+
+    def test_active_resource_lookup_uses_one_range_query(self):
+        class FakeClient:
+            def __init__(self):
+                self.calls = []
+
+            def call(self, action, **params):
+                self.calls.append((action, params))
+                return [
+                    {"Resource": "E. Alice Example - AB1", "Status": "Completed"},
+                    {"Resource": "S. Bob Cancelled", "Status": "Cancelled"},
+                ]
+
+        client = FakeClient()
+        active = fetch_active_resource_names(
+            client,
+            SimpleNamespace(jobs_fallback_date_option_id=2),
+            dt.date(2026, 6, 1),
+            dt.date(2026, 6, 30),
+        )
+
+        self.assertEqual(client.calls[0][0], "JobsList")
+        self.assertEqual(client.calls[0][1]["Start"], "2026-06-01 00:00:00")
+        self.assertEqual(client.calls[0][1]["End"], "2026-06-30 23:59:59")
+        self.assertEqual(client.calls[0][1]["DateOptionId"], 2)
+        self.assertEqual(active, {"e alice example ab1", "alice example"})
 
 
 if __name__ == "__main__":
