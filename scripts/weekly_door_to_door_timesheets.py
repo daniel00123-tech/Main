@@ -23,8 +23,16 @@ from openpyxl.utils import get_column_letter
 
 
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-INCLUDED_GROUP_NAMES = {"1. engineer", "2. subcontractor"}
+LEGACY_INCLUDED_GROUP_NAMES = {"1. engineer", "2. subcontractor"}
+CURRENT_INCLUDED_GROUP_NAMES = {
+    "core team - caretaker",
+    "core team - electrical",
+    "core team - general maintenance",
+    "core team - mechanical",
+    "subcontractor",
+}
 PHANTOM_NAME_PARTS = {"cameron north", "kieran", "tom", "winston"}
+PHANTOM_NAME_TOKENS = {"tech", "hk"}
 COMPLETION_STATUS_IDS = {12, 13}
 START_TRAVEL_STATUS_ID = 8
 STARTED_STATUS_ID = 10
@@ -205,7 +213,10 @@ def should_ignore_resource(label: str) -> bool:
     low = (label or "").lower().strip()
     if low.startswith("z."):
         return True
-    return any(part in low for part in PHANTOM_NAME_PARTS)
+    if any(part in low for part in PHANTOM_NAME_PARTS):
+        return True
+    tokens = set(normalize_name(label).split())
+    return bool(tokens & PHANTOM_NAME_TOKENS)
 
 
 def as_list(result: Any) -> list[dict[str, Any]]:
@@ -216,15 +227,26 @@ def as_list(result: Any) -> list[dict[str, Any]]:
     return []
 
 
+def included_resource_group_ids(groups: list[dict[str, Any]]) -> set[Any]:
+    exact_ids: set[Any] = set()
+    current_ids: set[Any] = set()
+    for row in groups:
+        label = str(row.get("label", "")).strip().lower()
+        if label in LEGACY_INCLUDED_GROUP_NAMES:
+            exact_ids.add(row.get("id"))
+        if label in CURRENT_INCLUDED_GROUP_NAMES:
+            current_ids.add(row.get("id"))
+    return exact_ids or current_ids
+
+
 def get_resources(client: BigChangeClient) -> list[dict[str, Any]]:
     groups = as_list(client.call("ResourceGroups"))
-    included_group_ids = {
-        row.get("id")
-        for row in groups
-        if str(row.get("label", "")).strip().lower() in INCLUDED_GROUP_NAMES
-    }
+    included_group_ids = included_resource_group_ids(groups)
     if not included_group_ids:
-        raise ReportError("Could not find BigChange resource groups: 1. Engineer / 2. Subcontractor")
+        raise ReportError(
+            "Could not find BigChange resource groups: 1. Engineer / 2. Subcontractor "
+            "or current Core Team trade / Subcontractor groups"
+        )
 
     resources = []
     for row in as_list(client.call("Resources")):
