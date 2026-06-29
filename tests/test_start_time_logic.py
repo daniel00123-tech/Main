@@ -1,7 +1,14 @@
 import datetime as dt
 import unittest
+from types import SimpleNamespace
 
-from scripts.weekly_door_to_door_timesheets import build_day_row
+from scripts.weekly_door_to_door_timesheets import (
+    build_day_row,
+    fetch_active_resource_names,
+    get_resources,
+    included_resource_group_ids,
+    should_ignore_resource,
+)
 
 
 def job(job_id, ref, planned_start, planned_end, real_start=None):
@@ -141,6 +148,80 @@ class StartTimeLogicTest(unittest.TestCase):
 
         self.assertEqual(row["Start"], "12:03")
         self.assertEqual(row["Start Source"], "First job started")
+
+
+class ResourceFilteringTest(unittest.TestCase):
+    def test_included_group_ids_prefers_legacy_numbered_groups(self):
+        groups = [
+            {"id": 1, "label": "Subcontractor"},
+            {"id": 2, "label": "1. Engineer"},
+            {"id": 3, "label": "2. Subcontractor"},
+        ]
+
+        self.assertEqual(included_resource_group_ids(groups), {2, 3})
+
+    def test_included_group_ids_falls_back_to_current_trade_groups(self):
+        groups = [
+            {"id": 1, "label": "Core Team - Office Staff"},
+            {"id": 2, "label": "Core Team - Electrical"},
+            {"id": 3, "label": "Subcontractor"},
+        ]
+
+        self.assertEqual(included_resource_group_ids(groups), {2, 3})
+
+    def test_should_ignore_resource_filters_current_phantom_tokens(self):
+        self.assertTrue(should_ignore_resource("HK - Standby diary"))
+        self.assertTrue(should_ignore_resource("Mobile Tech"))
+        self.assertTrue(should_ignore_resource("z. Archive"))
+        self.assertFalse(should_ignore_resource("C.M - Mohammed Gulzamir - BD9"))
+
+    def test_get_resources_uses_current_groups_and_excludes_office(self):
+        class FakeClient:
+            def call(self, action):
+                if action == "ResourceGroups":
+                    return [
+                        {"id": 1, "label": "Core Team - Office Staff"},
+                        {"id": 2, "label": "Core Team - Electrical"},
+                        {"id": 3, "label": "Subcontractor"},
+                    ]
+                if action == "Resources":
+                    return [
+                        {"id": 10, "label": "Office User", "ResourceGroupId": 1},
+                        {"id": 11, "label": "E. Alice Example - AB1", "ResourceGroupId": 2},
+                        {"id": 12, "label": "S. Bob Example - CD2", "ResourceGroupId": 3},
+                        {"id": 13, "label": "HK - Phantom", "ResourceGroupId": 3},
+                    ]
+                raise AssertionError(action)
+
+        labels = [row["label"] for row in get_resources(FakeClient())]
+
+        self.assertEqual(labels, ["E. Alice Example - AB1", "S. Bob Example - CD2"])
+
+    def test_active_resource_lookup_uses_one_range_query(self):
+        class FakeClient:
+            def __init__(self):
+                self.calls = []
+
+            def call(self, action, **params):
+                self.calls.append((action, params))
+                return [
+                    {"Resource": "E. Alice Example - AB1", "Status": "Completed"},
+                    {"Resource": "S. Bob Cancelled", "Status": "Cancelled"},
+                ]
+
+        client = FakeClient()
+        active = fetch_active_resource_names(
+            client,
+            SimpleNamespace(jobs_fallback_date_option_id=2),
+            dt.date(2026, 6, 1),
+            dt.date(2026, 6, 30),
+        )
+
+        self.assertEqual(client.calls[0][0], "JobsList")
+        self.assertEqual(client.calls[0][1]["Start"], "2026-06-01 00:00:00")
+        self.assertEqual(client.calls[0][1]["End"], "2026-06-30 23:59:59")
+        self.assertEqual(client.calls[0][1]["DateOptionId"], 2)
+        self.assertEqual(active, {"e alice example ab1", "alice example"})
 
 
 if __name__ == "__main__":
