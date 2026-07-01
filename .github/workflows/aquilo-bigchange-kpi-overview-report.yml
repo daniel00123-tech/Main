@@ -1,0 +1,66 @@
+name: Aquilo BigChange KPI Overview Report
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  daily-kpi-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BIGCHANGE_AUTH_MODE: api_key
+      BIGCHANGE_BASE_URL: ${{ secrets.BIGCHANGE_BASE_URL }}
+      BIGCHANGE_API_KEY: ${{ secrets.BIGCHANGE_API_KEY }}
+      BIGCHANGE_USERNAME: ${{ secrets.BIGCHANGE_USERNAME }}
+      BIGCHANGE_PASSWORD: ${{ secrets.BIGCHANGE_PASSWORD }}
+      FRESHDESK_SUBDOMAIN: ${{ secrets.FRESHDESK_SUBDOMAIN }}
+      FRESHDESK_API_KEY: ${{ secrets.FRESHDESK_API_KEY }}
+      FRESHDESK_OPEN_STATUS_IDS: ${{ secrets.FRESHDESK_OPEN_STATUS_IDS }}
+      STAFF_NAME_ALIASES: ${{ secrets.STAFF_NAME_ALIASES }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      SMTP_FROM_EMAIL: ${{ secrets.SMTP_FROM_EMAIL }}
+      SMTP_FROM_NAME: ${{ secrets.SMTP_FROM_NAME }}
+      SMTP_TO_EMAIL: ${{ secrets.SMTP_TO_EMAIL }}
+      SMTP_CC_EMAIL: ${{ secrets.SMTP_CC_EMAIL }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Run KPI report
+        run: python3 scripts/bigchange_kpi_report.py
+
+      - name: Upload dashboard PNG
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aquilo-bigchange-kpi-dashboard
+          path: reports/bigchange-kpi-dashboard.png
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Commit KPI baseline snapshot
+        if: success()
+        run: |
+          if git diff --quiet -- automation-memory/kpi-baseline.json; then
+            echo "No KPI baseline changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add automation-memory/kpi-baseline.json
+          git commit -m "Update Aquilo KPI baseline"
+          git push

@@ -3,11 +3,15 @@ import json
 import os
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    CREATED_DATE_FIELDS,
+    add_items,
+    build_category_lookup,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
@@ -43,6 +47,37 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+    def test_groups_job_rows_by_category_ids_from_bigchange_lookup(self) -> None:
+        category_lookup = build_category_lookup(
+            [
+                {"Id": 101, "Name": "Amy Bradley"},
+                {"ID": 102, "Name": "Nirvana PPM"},
+                {"CategoryId": 103, "CategoryName": "OOH Reactive"},
+            ]
+        )
+        grouped = defaultdict(lambda: defaultdict(list))
+        staff_names = {"Amy Bradley"}
+
+        add_items(
+            grouped,
+            staff_names,
+            [
+                {"JobCategoryId": 101, "Created": "2026-06-30"},
+                {"JobCategoryID": 102, "Created": "2026-06-30"},
+                {"CategoryId": 103, "Created": "2026-06-30"},
+                {"JobCategoryId": 999, "Created": "2026-06-30"},
+            ],
+            "unallocated_jobs",
+            CREATED_DATE_FIELDS,
+            dt.date(2026, 7, 1),
+            category_lookup,
+        )
+
+        self.assertEqual(len(grouped["Amy Bradley"]["unallocated_jobs"]), 1)
+        self.assertNotIn("Nirvana PPM", grouped)
+        self.assertNotIn("OOH Reactive", grouped)
+        self.assertNotIn("999", staff_names)
 
 
 class BigChangeApiTest(unittest.TestCase):
