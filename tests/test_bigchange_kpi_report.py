@@ -95,7 +95,7 @@ class SalesAttributionTest(unittest.TestCase):
                     "Lines": [{"NetPrice": "999.00", "VatAmount": "0.00"}],
                 },
                 {
-                    "DocumentType": "Sales Invoice",
+                    "OrderType": "Invoice",
                     "JobID": "104",
                     "Lines": [{"NetPrice": "12.00", "VatAmount": "2.00"}],
                 },
