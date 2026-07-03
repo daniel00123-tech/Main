@@ -173,6 +173,10 @@ def is_actioned(job: dict[str, Any]) -> bool:
     return normalise_name(job.get("Actioned")) == "yes"
 
 
+def has_auto_close_flag(job: dict[str, Any]) -> bool:
+    return normalise_name(job.get("CurrentFlag")) == normalise_name(AUTO_CLOSE_DOWN)
+
+
 def result_list(response: Any, action: str) -> list[Any]:
     if not isinstance(response, dict) or response.get("Code") != 0:
         raise BigChangeError(f"{action} did not return a successful service result")
@@ -382,9 +386,9 @@ def run(args: argparse.Namespace) -> int:
 
     jobs_by_id: dict[int, dict[str, Any]] = {int(job["JobId"]): job for job in all_jobs if in_scope(job)}
     flagged_jobs = fetch_paged_jobs(client, start, end, page_size=args.page_size, tag_id=auto_close_tag_id)
-    flagged_ids = {int(job["JobId"]) for job in flagged_jobs if in_scope(job)}
+    flagged_ids = {int(job["JobId"]) for job in flagged_jobs if in_scope(job) and has_auto_close_flag(job)}
     for job in flagged_jobs:
-        if in_scope(job):
+        if in_scope(job) and has_auto_close_flag(job):
             jobs_by_id.setdefault(int(job["JobId"]), job)
 
     intended: list[IntendedUpdate] = []
