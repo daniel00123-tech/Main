@@ -1,0 +1,10 @@
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 190292622, "job_ref": "INT273388", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 190429736, "job_ref": "JOB273410~1", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 190903404, "job_ref": "COVER274778", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 191738554, "job_ref": "JOB277609", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 192073184, "job_ref": "DLFF278017", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 192236607, "job_ref": "PPM278287", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 192332967, "job_ref": "DLFF278601", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 192504018, "job_ref": "JOB278839", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 192592473, "job_ref": "JOB279636", "status": "failed", "update_type": "auto_close_actioned"}
+{"error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs", "job_id": 192628391, "job_ref": "JOB279782", "status": "failed", "update_type": "auto_close_actioned"}
