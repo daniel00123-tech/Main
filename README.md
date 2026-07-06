@@ -6,6 +6,8 @@ Job KPIs are grouped by BigChange job category staff owner and limited to jobs f
 
 Freshdesk open tickets are fetched with pagination, spam/deleted tickets are ignored, owners are matched back to BigChange staff rows, and unmatched tickets are counted without creating orphan dashboard rows.
 
+The GitHub Actions workflow `.github/workflows/aquilo-bigchange-kpi-overview-report.yml` runs the report every day at 07:00 UTC and can also be started manually. Runtime credentials are supplied through repository secrets, the email embeds and attaches only `reports/bigchange-kpi-dashboard.png`, and the workflow artifact upload is limited to that PNG. The HTML render and JSON baseline are kept out of the email and artifact; the baseline is committed back to `automation-memory/kpi-baseline.json` for later follow-up automations.
+
 Run with the required BigChange, Freshdesk, and SMTP configuration supplied as environment variables:
 
 ```sh
