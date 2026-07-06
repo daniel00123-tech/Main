@@ -394,7 +394,14 @@ def run(args: argparse.Namespace) -> int:
     }
     for job in flagged_jobs:
         if in_scope(job):
-            jobs_by_id.setdefault(int(job["JobId"]), job)
+            job_id = int(job["JobId"])
+            if job_id in jobs_by_id:
+                # Preserve the full unfiltered job record, but keep tag-filter evidence.
+                for key, value in job.items():
+                    if value not in (None, ""):
+                        jobs_by_id[job_id][key] = value
+            else:
+                jobs_by_id[job_id] = job
 
     intended: list[IntendedUpdate] = []
     reviewed_rows: list[dict[str, Any]] = []
