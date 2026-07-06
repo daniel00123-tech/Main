@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 from unittest.mock import patch
 
@@ -47,7 +48,7 @@ class CategoryExclusionTest(unittest.TestCase):
             validate_report(report)
 
     def test_resolves_job_category_ids_from_category_lookup(self) -> None:
-        grouped = {"Amy Bradley": {}}
+        grouped = defaultdict(lambda: defaultdict(list))
         staff_names = {"Amy Bradley"}
         rows = [{"CategoryId": "42", "Id": "J-123", "Name": "Do not use generic name", "Created": "2026-05-20"}]
 
