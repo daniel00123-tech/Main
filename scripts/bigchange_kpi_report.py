@@ -47,7 +47,7 @@ COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
 OPEN_NOT_STARTED_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
 OPEN_FRESHDESK_STATUS_NAMES = {"open", "pending", "waiting on customer", "waiting on third party"}
-DEFAULT_FRESHDESK_OPEN_STATUS_IDS = {2, 3}
+DEFAULT_FRESHDESK_OPEN_STATUS_IDS = {2, 3, 8, 9}
 LOCAL_NAME_ALIASES = {
     "amy b": "amy bradley",
     "dan dwyer": "daniel dwyer",
