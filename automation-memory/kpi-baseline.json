@@ -1,89 +1,89 @@
 {
-  "job_lookback_start": "2025-05-25",
-  "report_date": "2026-05-25",
-  "run_timestamp": "2026-05-25T20:42:15.103188+00:00",
+  "job_lookback_start": "2025-07-09",
+  "report_date": "2026-07-09",
+  "run_timestamp": "2026-07-09T07:05:10.850992+00:00",
   "staff": [
     {
       "counts": {
         "historic_jobs": 0,
         "unactioned_jobs": 0,
-        "unallocated_jobs": 3,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 120.0,
-      "oldest_age_days": {
-        "historic_jobs": 0,
-        "unactioned_jobs": 0,
-        "unallocated_jobs": 3,
-        "uninvoiced_jobs": 0
-      },
-      "staff_name": "Megan",
-      "statuses": {
-        "historic_jobs": "green",
-        "unactioned_jobs": "green",
-        "unallocated_jobs": "green",
-        "uninvoiced_jobs": "green"
-      }
-    },
-    {
-      "counts": {
-        "historic_jobs": 2,
-        "unactioned_jobs": 2,
         "unallocated_jobs": 0,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 23065.07,
-      "oldest_age_days": {
-        "historic_jobs": 4,
-        "unactioned_jobs": 11,
-        "unallocated_jobs": 0,
-        "uninvoiced_jobs": 0
-      },
-      "staff_name": "Lucy Feeney",
-      "statuses": {
-        "historic_jobs": "green",
-        "unactioned_jobs": "amber",
-        "unallocated_jobs": "green",
-        "uninvoiced_jobs": "green"
-      }
-    },
-    {
-      "counts": {
-        "historic_jobs": 2,
-        "unactioned_jobs": 3,
-        "unallocated_jobs": 0,
-        "uninvoiced_jobs": 0
-      },
-      "current_month_sales": 7240.0,
-      "oldest_age_days": {
-        "historic_jobs": 3,
-        "unactioned_jobs": 17,
-        "unallocated_jobs": 0,
-        "uninvoiced_jobs": 0
-      },
-      "staff_name": "Nailah Toyer",
-      "statuses": {
-        "historic_jobs": "green",
-        "unactioned_jobs": "amber",
-        "unallocated_jobs": "green",
-        "uninvoiced_jobs": "green"
-      }
-    },
-    {
-      "counts": {
-        "historic_jobs": 1,
-        "unactioned_jobs": 3,
-        "unallocated_jobs": 2,
         "uninvoiced_jobs": 0
       },
       "current_month_sales": 0.0,
       "oldest_age_days": {
-        "historic_jobs": 3,
-        "unactioned_jobs": 10,
-        "unallocated_jobs": 6,
+        "historic_jobs": 0,
+        "unactioned_jobs": 0,
+        "unallocated_jobs": 0,
         "uninvoiced_jobs": 0
       },
-      "staff_name": "Leah Hearn",
+      "staff_name": "Jodie Thompson",
+      "statuses": {
+        "historic_jobs": "green",
+        "unactioned_jobs": "green",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 0,
+        "unactioned_jobs": 0,
+        "unallocated_jobs": 0,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 0.0,
+      "oldest_age_days": {
+        "historic_jobs": 0,
+        "unactioned_jobs": 0,
+        "unallocated_jobs": 0,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Masingita",
+      "statuses": {
+        "historic_jobs": "green",
+        "unactioned_jobs": "green",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 14,
+        "unactioned_jobs": 2,
+        "unallocated_jobs": 19,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 1069.22,
+      "oldest_age_days": {
+        "historic_jobs": 1,
+        "unactioned_jobs": 1,
+        "unallocated_jobs": 8,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Kayla Du Randt",
+      "statuses": {
+        "historic_jobs": "green",
+        "unactioned_jobs": "green",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 5,
+        "unactioned_jobs": 2,
+        "unallocated_jobs": 0,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 0.0,
+      "oldest_age_days": {
+        "historic_jobs": 9,
+        "unactioned_jobs": 23,
+        "unallocated_jobs": 0,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Lulu",
       "statuses": {
         "historic_jobs": "green",
         "unactioned_jobs": "amber",
@@ -93,21 +93,43 @@
     },
     {
       "counts": {
-        "historic_jobs": 12,
+        "historic_jobs": 2,
         "unactioned_jobs": 1,
-        "unallocated_jobs": 3,
+        "unallocated_jobs": 0,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 34516.24,
+      "current_month_sales": 0.0,
       "oldest_age_days": {
-        "historic_jobs": 3,
-        "unactioned_jobs": 8,
-        "unallocated_jobs": 10,
+        "historic_jobs": 16,
+        "unactioned_jobs": 19,
+        "unallocated_jobs": 0,
         "uninvoiced_jobs": 0
       },
-      "staff_name": "Laura Menegon",
+      "staff_name": "Jade Petit",
       "statuses": {
-        "historic_jobs": "green",
+        "historic_jobs": "amber",
+        "unactioned_jobs": "amber",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 2,
+        "unactioned_jobs": 0,
+        "unallocated_jobs": 6,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 1673.0,
+      "oldest_age_days": {
+        "historic_jobs": 21,
+        "unactioned_jobs": 0,
+        "unallocated_jobs": 23,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Harry Thripp",
+      "statuses": {
+        "historic_jobs": "amber",
         "unactioned_jobs": "green",
         "unallocated_jobs": "amber",
         "uninvoiced_jobs": "green"
@@ -115,19 +137,19 @@
     },
     {
       "counts": {
-        "historic_jobs": 0,
-        "unactioned_jobs": 8,
-        "unallocated_jobs": 6,
+        "historic_jobs": 2,
+        "unactioned_jobs": 4,
+        "unallocated_jobs": 3,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 28799.5,
+      "current_month_sales": 0.0,
       "oldest_age_days": {
-        "historic_jobs": 0,
+        "historic_jobs": 6,
         "unactioned_jobs": 27,
         "unallocated_jobs": 14,
         "uninvoiced_jobs": 0
       },
-      "staff_name": "Amy Bradley",
+      "staff_name": "Megan Fox",
       "statuses": {
         "historic_jobs": "green",
         "unactioned_jobs": "amber",
@@ -137,19 +159,19 @@
     },
     {
       "counts": {
-        "historic_jobs": 9,
-        "unactioned_jobs": 4,
-        "unallocated_jobs": 20,
+        "historic_jobs": 4,
+        "unactioned_jobs": 3,
+        "unallocated_jobs": 15,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 22476.34,
+      "current_month_sales": 4725.0,
       "oldest_age_days": {
-        "historic_jobs": 6,
-        "unactioned_jobs": 18,
-        "unallocated_jobs": 46,
+        "historic_jobs": 2,
+        "unactioned_jobs": 15,
+        "unallocated_jobs": 108,
         "uninvoiced_jobs": 0
       },
-      "staff_name": "Sharon Mannion",
+      "staff_name": "Abi Clements",
       "statuses": {
         "historic_jobs": "green",
         "unactioned_jobs": "amber",
@@ -159,23 +181,155 @@
     },
     {
       "counts": {
-        "historic_jobs": 20,
-        "unactioned_jobs": 18,
-        "unallocated_jobs": 12,
+        "historic_jobs": 18,
+        "unactioned_jobs": 8,
+        "unallocated_jobs": 0,
         "uninvoiced_jobs": 0
       },
-      "current_month_sales": 16958.83,
+      "current_month_sales": 0.0,
       "oldest_age_days": {
-        "historic_jobs": 361,
-        "unactioned_jobs": 56,
-        "unallocated_jobs": 24,
+        "historic_jobs": 20,
+        "unactioned_jobs": 31,
+        "unallocated_jobs": 0,
         "uninvoiced_jobs": 0
       },
-      "staff_name": "Isabel Strong",
+      "staff_name": "Ciara O'Grady",
+      "statuses": {
+        "historic_jobs": "amber",
+        "unactioned_jobs": "red",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 14,
+        "unactioned_jobs": 6,
+        "unallocated_jobs": 2,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 0.0,
+      "oldest_age_days": {
+        "historic_jobs": 33,
+        "unactioned_jobs": 24,
+        "unallocated_jobs": 27,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Hayley Longford",
+      "statuses": {
+        "historic_jobs": "red",
+        "unactioned_jobs": "amber",
+        "unallocated_jobs": "amber",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 6,
+        "unactioned_jobs": 8,
+        "unallocated_jobs": 18,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 2110.0,
+      "oldest_age_days": {
+        "historic_jobs": 14,
+        "unactioned_jobs": 56,
+        "unallocated_jobs": 17,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Hazel Davey",
+      "statuses": {
+        "historic_jobs": "amber",
+        "unactioned_jobs": "red",
+        "unallocated_jobs": "amber",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 1,
+        "unactioned_jobs": 23,
+        "unallocated_jobs": 0,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 0.0,
+      "oldest_age_days": {
+        "historic_jobs": 48,
+        "unactioned_jobs": 51,
+        "unallocated_jobs": 0,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Chris McCann",
       "statuses": {
         "historic_jobs": "red",
         "unactioned_jobs": "red",
-        "unallocated_jobs": "amber",
+        "unallocated_jobs": "green",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 7,
+        "unactioned_jobs": 3,
+        "unallocated_jobs": 10,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 0.0,
+      "oldest_age_days": {
+        "historic_jobs": 38,
+        "unactioned_jobs": 17,
+        "unallocated_jobs": 83,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Lucy Fisher",
+      "statuses": {
+        "historic_jobs": "red",
+        "unactioned_jobs": "amber",
+        "unallocated_jobs": "red",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 6,
+        "unactioned_jobs": 6,
+        "unallocated_jobs": 15,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 13508.34,
+      "oldest_age_days": {
+        "historic_jobs": 50,
+        "unactioned_jobs": 24,
+        "unallocated_jobs": 55,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Amy Marshall",
+      "statuses": {
+        "historic_jobs": "red",
+        "unactioned_jobs": "amber",
+        "unallocated_jobs": "red",
+        "uninvoiced_jobs": "green"
+      }
+    },
+    {
+      "counts": {
+        "historic_jobs": 24,
+        "unactioned_jobs": 11,
+        "unallocated_jobs": 20,
+        "uninvoiced_jobs": 0
+      },
+      "current_month_sales": 18025.4,
+      "oldest_age_days": {
+        "historic_jobs": 61,
+        "unactioned_jobs": 24,
+        "unallocated_jobs": 133,
+        "uninvoiced_jobs": 0
+      },
+      "staff_name": "Olivia Blakeway",
+      "statuses": {
+        "historic_jobs": "red",
+        "unactioned_jobs": "amber",
+        "unallocated_jobs": "red",
         "uninvoiced_jobs": "green"
       }
     }
