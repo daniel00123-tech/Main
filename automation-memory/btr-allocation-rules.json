@@ -23,12 +23,20 @@
     "U&A / Unity & Armouries": ["u&a", "u & a", "unity", "armouries", "udap", "udua"]
   },
   "roles": {
-    "Tech": ["tech", "sontech", "techsup", "caretaker"],
+    "Tech": ["tech", "sontech", "techsup"],
     "CT": ["ct", "caretaker"],
     "HK": ["hk", "hks", "hksup"]
   },
+  "role_assignment": {
+    "note": "Housekeepers only receive clear cleaning work, especially cleaning call outs and EOT cleaning. Caretakers receive communal work, communal cleans, bins, and basic PPMs. Techs receive reactive call-outs, Fixflo work, appliances, access/door issues, EOT beautification/paint/repair/assessment jobs, and other non-cleaning maintenance.",
+    "resource_roles": {
+      "HK": ["HK"],
+      "CT": ["CT"],
+      "Tech": ["Tech"]
+    }
+  },
   "cleaning_role": "HK",
-  "maintenance_roles": ["Tech", "CT"],
+  "maintenance_roles": ["Tech"],
   "contractor_exclusions": [
     "sent to aquilo",
     "send to aquilo",
