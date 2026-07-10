@@ -341,7 +341,7 @@ def is_caretaker_job(job: dict[str, Any]) -> bool:
     job_type = normalise(job.get("Type"))
     if is_ppm_job(job) and contains_any(combined, CARETAKER_TERMS):
         return True
-    if contains_any(combined, ("communal clean", "communal cleaning", "communal works", "communal area")):
+    if contains_any(combined, ("clean communal", "communal clean", "communal cleaning", "communal works", "communal area")):
         return True
     if contains_any(combined, ("bins in", "bins out", "black bins", "wheelie bins", "bin store", "litter picking")):
         return True
