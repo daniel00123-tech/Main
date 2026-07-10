@@ -377,6 +377,20 @@ class BigChangeClient:
             }
         )
 
+    def schedule_job(self, job_id: int, resource_id: int, schedule_date: str, duration_mins: int) -> dict[str, Any]:
+        payload = self.get(
+            "JobSchedule",
+            {
+                "jobId": job_id,
+                "resourceId": resource_id,
+                "scheduleDate": schedule_date,
+                "durationMins": duration_mins,
+            },
+        )
+        if payload.get("Code") not in (0, None):
+            raise RuntimeError(f"JobSchedule failed: {payload.get('Result')}")
+        return payload
+
 
 def is_unallocated(job: dict[str, Any]) -> bool:
     status_id = as_int(job.get("StatusId"))
@@ -705,6 +719,7 @@ def main() -> int:
     parser.add_argument("--resource", help="Preferred resource name (partial match)")
     parser.add_argument("--output", default="reports/btr-candidate-allocation-test.md")
     parser.add_argument("--list-candidates", action="store_true", help="List eligible BTR unallocated jobs")
+    parser.add_argument("--apply", action="store_true", help="Apply the allocation to BigChange (requires administrator approval)")
     args = parser.parse_args()
 
     try:
@@ -747,8 +762,39 @@ def main() -> int:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(report, encoding="utf-8")
+
+        applied = False
+        if args.apply:
+            job = next((j for j in jobs if str(j.get("Ref") or "") == selected.job_ref), None)
+            if not job:
+                print(f"Cannot apply: job {selected.job_ref} not found", file=sys.stderr)
+                return 1
+            schedule_dt = f"{selected.proposed_date} {selected.proposed_start}:00"
+            client.schedule_job(int(job["JobId"]), selected.proposed_resource_id, schedule_dt, selected.duration_minutes)
+            applied = True
+            audit_path = Path("automation-memory/btr-allocation-audit.jsonl")
+            audit_path.parent.mkdir(parents=True, exist_ok=True)
+            audit_record = {
+                "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "job_ref": selected.job_ref,
+                "job_id": job["JobId"],
+                "site": selected.site,
+                "resource": selected.proposed_resource,
+                "resource_id": selected.proposed_resource_id,
+                "scheduled_date": selected.proposed_date,
+                "start": selected.proposed_start,
+                "end": selected.proposed_end,
+                "duration_minutes": selected.duration_minutes,
+                "confidence": selected.confidence,
+                "mode": "automatic" if args.apply else "recommendation",
+            }
+            with audit_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(audit_record, sort_keys=True) + "\n")
+
         print(report)
-        print(json.dumps({"output": str(output_path), "job_ref": selected.job_ref, "mode": "recommendation_only"}, indent=2))
+        if applied:
+            print("\nAllocation applied to BigChange successfully.")
+        print(json.dumps({"output": str(output_path), "job_ref": selected.job_ref, "mode": "applied" if applied else "recommendation_only"}, indent=2))
         return 0
     except Exception as exc:
         print(json.dumps({"error": str(exc), "mode": "recommendation_only"}, indent=2), file=sys.stderr)

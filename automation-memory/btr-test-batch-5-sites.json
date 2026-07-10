@@ -1,0 +1,65 @@
+{
+  "prepared_at": "2026-07-10",
+  "mode": "recommendation_only",
+  "recommendations": [
+    {
+      "site": "Aston Place",
+      "job_ref": "JOB278036~3",
+      "job_type": "Plumbing Call Out",
+      "required_role": "Tech",
+      "proposed_resource": "UDAP_Aston_Tech Nikolaj Osokin",
+      "proposed_date": "2026-07-10",
+      "proposed_start": "11:00",
+      "proposed_end": "12:00",
+      "confidence": "Medium"
+    },
+    {
+      "site": "Leodis Square",
+      "job_ref": "EOT284781~1",
+      "job_type": "EOT - Cleaning Post-Tenancy Deep Clean",
+      "required_role": "HK",
+      "proposed_resource": "UDL_Leodis_HKSup Rita Jakubauskiene",
+      "proposed_date": "2026-07-10",
+      "proposed_start": "11:00",
+      "proposed_end": "12:00",
+      "confidence": "High"
+    },
+    {
+      "site": "Granary Quay",
+      "job_ref": "JOB284807",
+      "job_type": "Building Call Out",
+      "required_role": "Tech",
+      "proposed_resource": "UDGQ_Granary_Tech Mark Taylor",
+      "proposed_date": "2026-07-10",
+      "proposed_start": "12:00",
+      "proposed_end": "13:00",
+      "confidence": "High"
+    },
+    {
+      "site": "Forbes Place",
+      "job_ref": "JOB284790",
+      "job_type": "Cleaning Call Out",
+      "required_role": "HK",
+      "proposed_resource": "UDA_Forbes_HK Heather Taylor",
+      "proposed_date": "2026-07-10",
+      "proposed_start": "12:00",
+      "proposed_end": "13:00",
+      "confidence": "Medium"
+    },
+    {
+      "site": "The Point",
+      "job_ref": "DLFF284757",
+      "job_type": "DL - Tech Job from FixFlo",
+      "required_role": "Tech",
+      "proposed_resource": "UDA_Point _Tech - Eric Wilson",
+      "proposed_date": "2026-07-10",
+      "proposed_start": "14:10",
+      "proposed_end": "15:10",
+      "confidence": "Medium"
+    }
+  ],
+  "site_gaps": {
+    "Botanica": "No unallocated BTR jobs currently",
+    "Baltic Yard": "JOB274501 unallocated but no active matching Tech/CT resource found"
+  }
+}
