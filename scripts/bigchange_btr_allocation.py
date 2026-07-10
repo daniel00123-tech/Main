@@ -27,7 +27,7 @@ from typing import Any
 DEFAULT_BASE_URL = "https://webservice.bigchange.com/v01/services.ashx"
 RULES_PATH = Path("automation-memory/btr-allocation-rules.json")
 OPEN_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
-CLOSED_STATUS_IDS = {10, 12, 13, 14}
+CLOSED_STATUS_IDS = {12, 13, 14}
 JOB_TEXT_FIELDS = (
     "Ref",
     "Type",
@@ -390,9 +390,16 @@ def is_unallocated(job: dict[str, Any]) -> bool:
     return True
 
 
+def is_cancelled_diary_job(job: dict[str, Any]) -> bool:
+    return normalise(job.get("Status")) in {"cancelled", "deleted", "rejected"}
+
+
 def diary_blocks(jobs: list[dict[str, Any]], day: dt.date) -> list[tuple[dt.datetime, dt.datetime, str]]:
+    """Build diary blocks from planned start/end times for all non-cancelled jobs."""
     blocks: list[tuple[dt.datetime, dt.datetime, str]] = []
     for job in jobs:
+        if is_cancelled_diary_job(job):
+            continue
         start = parse_datetime(job.get("PlannedStart"))
         end = parse_datetime(job.get("PlannedEnd"))
         if not start or start.date() != day:
@@ -400,17 +407,37 @@ def diary_blocks(jobs: list[dict[str, Any]], day: dt.date) -> list[tuple[dt.date
         if not end:
             duration = parse_duration(job.get("Duration"))
             if not duration:
-                duration = 60
+                continue
             end = start + dt.timedelta(minutes=duration)
         if not end or end <= start:
-            continue
-        status_id = as_int(job.get("StatusId"))
-        if status_id in CLOSED_STATUS_IDS and normalise(job.get("Status")) == "cancelled":
             continue
         label = f"{job.get('Ref')} {start.strftime('%H:%M')}-{end.strftime('%H:%M')} ({job.get('Type')})"
         blocks.append((start, end, label))
     blocks.sort(key=lambda item: item[0])
     return blocks
+
+
+def adjacent_bookings(
+    blocks: list[tuple[dt.datetime, dt.datetime, str]],
+    slot_start: dt.datetime,
+    slot_end: dt.datetime,
+) -> tuple[str, str]:
+    before = "None before slot"
+    after = "None after slot"
+    for block_start, block_end, label in blocks:
+        if block_end <= slot_start:
+            before = label
+        if block_start >= slot_end and after == "None after slot":
+            after = label
+    return before, after
+
+
+def slot_has_overlap(
+    blocks: list[tuple[dt.datetime, dt.datetime, str]],
+    slot_start: dt.datetime,
+    slot_end: dt.datetime,
+) -> bool:
+    return any(overlaps(slot_start, slot_end, block_start, block_end) for block_start, block_end, _ in blocks)
 
 
 def current_local_date() -> dt.date:
@@ -442,19 +469,19 @@ def find_slot(blocks: list[tuple[dt.datetime, dt.datetime, str]], day: dt.date, 
             break
         if cursor + duration <= min(start, day_end):
             slot_end = cursor + duration
-            before = next((block_label for block_start, block_end, block_label in blocks if block_end <= cursor), "None before slot")
+            before, after = adjacent_bookings(blocks, cursor, slot_end)
             return SlotProposal(
                 date=day,
                 start=cursor.time(),
                 end=slot_end.time(),
                 duration_minutes=duration_minutes,
                 booking_before=before,
-                booking_after=label,
+                booking_after=after,
             )
         cursor = max(cursor, end)
 
     if cursor + duration <= day_end:
-        before = blocks[-1][2] if blocks else "None before slot"
+        before, after = adjacent_bookings(blocks, cursor, cursor + duration)
         slot_end = cursor + duration
         return SlotProposal(
             date=day,
@@ -462,7 +489,7 @@ def find_slot(blocks: list[tuple[dt.datetime, dt.datetime, str]], day: dt.date, 
             end=slot_end.time(),
             duration_minutes=duration_minutes,
             booking_before=before,
-            booking_after="None after slot",
+            booking_after=after,
         )
     return None
 
@@ -474,6 +501,7 @@ def choose_resource(
     duration_minutes: int,
     rules: dict[str, Any],
     search_days: int = 14,
+    preferred_resource: str | None = None,
 ) -> tuple[ResourceCandidate | None, SlotProposal | None, list[str]]:
     warnings: list[str] = []
     resources = client.resources()
@@ -495,6 +523,14 @@ def choose_resource(
             continue
         candidates.append(ResourceCandidate(resource_id=int(resource["id"]), name=name, role=role, booked_minutes=0, job_count=0))
 
+    if preferred_resource:
+        preferred_norm = normalise(preferred_resource)
+        pinned = [c for c in candidates if preferred_norm in normalise(c.name)]
+        if pinned:
+            candidates = pinned
+        else:
+            return None, None, [f"Preferred resource '{preferred_resource}' not found among active site-based {required_role} resources"]
+
     if not candidates:
         return None, None, ["No suitable active site-based resource found for required role"]
 
@@ -504,17 +540,23 @@ def choose_resource(
 
     for candidate in candidates:
         diary = client.resource_diary(candidate.resource_id, start_day, end_day)
-        active_jobs = [job for job in diary if as_int(job.get("StatusId")) not in CLOSED_STATUS_IDS or normalise(job.get("Status")) not in {"completed", "cancelled"}]
-        candidate.job_count = len(active_jobs)
-        candidate.booked_minutes = sum(parse_duration(job.get("Duration")) or 60 for job in active_jobs)
+        schedule_jobs = [job for job in diary if not is_cancelled_diary_job(job)]
+        open_jobs = [job for job in diary if as_int(job.get("StatusId")) not in CLOSED_STATUS_IDS]
+        candidate.job_count = len(open_jobs)
+        candidate.booked_minutes = sum(parse_duration(job.get("Duration")) or 60 for job in open_jobs)
         for offset in range(search_days + 1):
             day = start_day + dt.timedelta(days=offset)
             if day.weekday() >= 5:
                 continue
-            blocks = diary_blocks(active_jobs, day)
+            blocks = diary_blocks(schedule_jobs, day)
             slot = find_slot(blocks, day, duration_minutes)
             if not slot:
                 continue
+            slot_start = dt.datetime.combine(day, slot.start)
+            slot_end = dt.datetime.combine(day, slot.end)
+            if slot_has_overlap(blocks, slot_start, slot_end):
+                continue
+            slot.booking_before, slot.booking_after = adjacent_bookings(blocks, slot_start, slot_end)
             if best is None:
                 best = (candidate, slot)
                 continue
@@ -547,7 +589,12 @@ def fetch_unallocated_jobs(client: BigChangeClient, lookback_days: int = 180) ->
     return [job for job in rows if is_unallocated(job)]
 
 
-def build_recommendation(client: BigChangeClient, job: dict[str, Any], rules: dict[str, Any]) -> Recommendation | tuple[str, str]:
+def build_recommendation(
+    client: BigChangeClient,
+    job: dict[str, Any],
+    rules: dict[str, Any],
+    preferred_resource: str | None = None,
+) -> Recommendation | tuple[str, str]:
     excluded, exclusion_reason = contractor_exclusion(job, rules)
     if excluded:
         return job.get("Ref", ""), exclusion_reason
@@ -561,9 +608,21 @@ def build_recommendation(client: BigChangeClient, job: dict[str, Any], rules: di
         return job.get("Ref", ""), role_match.reason
 
     duration, duration_reason, duration_confidence = estimate_duration(job, rules)
-    resource, slot, warnings = choose_resource(client, site_match.site, role_match.role, duration, rules)
+    resource, slot, warnings = choose_resource(
+        client, site_match.site, role_match.role, duration, rules, preferred_resource=preferred_resource
+    )
     if not resource or not slot:
         return job.get("Ref", ""), "; ".join(warnings)
+
+    diary = client.resource_diary(resource.resource_id, slot.date, slot.date)
+    schedule_jobs = [entry for entry in diary if not is_cancelled_diary_job(entry)]
+    blocks = diary_blocks(schedule_jobs, slot.date)
+    slot_start = dt.datetime.combine(slot.date, slot.start)
+    slot_end = dt.datetime.combine(slot.date, slot.end)
+    overlap = slot_has_overlap(blocks, slot_start, slot_end)
+    slot.booking_before, slot.booking_after = adjacent_bookings(blocks, slot_start, slot_end)
+    if overlap:
+        return job.get("Ref", ""), "Proposed slot overlaps an existing planned diary booking"
 
     due = parse_datetime(job.get("DueDate"))
     if due and due.date() < slot.date:
@@ -601,7 +660,7 @@ def build_recommendation(client: BigChangeClient, job: dict[str, Any], rules: di
             f"({resource.job_count} diary jobs, {resource.booked_minutes} booked minutes in search window)"
         ),
         contractor_check="Passed",
-        overlap_check="Passed",
+        overlap_check="Failed" if overlap else "Passed",
         booking_before=slot.booking_before,
         booking_after=slot.booking_after,
         priority=str(job.get("CurrentFlag") or job.get("Status") or "Routine"),
@@ -643,6 +702,7 @@ No changes have been made to BigChange. Administrator approval is required befor
 def main() -> int:
     parser = argparse.ArgumentParser(description="BTR job allocation recommendation (read-only)")
     parser.add_argument("--job-ref", help="Specific job reference to evaluate")
+    parser.add_argument("--resource", help="Preferred resource name (partial match)")
     parser.add_argument("--output", default="reports/btr-candidate-allocation-test.md")
     parser.add_argument("--list-candidates", action="store_true", help="List eligible BTR unallocated jobs")
     args = parser.parse_args()
@@ -658,7 +718,7 @@ def main() -> int:
             site_match = identify_site(job, rules)
             if not site_match:
                 continue
-            result = build_recommendation(client, job, rules)
+            result = build_recommendation(client, job, rules, preferred_resource=args.resource)
             if isinstance(result, tuple):
                 exceptions.append(result)
                 continue
