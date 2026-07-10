@@ -100,6 +100,7 @@ class Recommendation:
     duration_reason: str
     resource_reason: str
     contractor_check: str
+    ppm_check: str
     overlap_check: str
     booking_before: str
     booking_after: str
@@ -190,6 +191,63 @@ def contractor_exclusion(job: dict[str, Any], rules: dict[str, Any]) -> tuple[bo
     if matches:
         return True, f"Excluded wording found: {', '.join(sorted(set(matches)))}"
     return False, "No contractor-exclusion wording found"
+
+
+def is_ppm_job(job: dict[str, Any]) -> bool:
+    ref = normalise(job.get("Ref"))
+    job_type = normalise(job.get("Type"))
+    return ref.startswith("ppm") or job_type.startswith("ppm")
+
+
+def ppm_tech_diary_review(job: dict[str, Any], rules: dict[str, Any]) -> tuple[bool, str]:
+    """Return (allow_tech_allocation, reason).
+
+    PPM jobs need review. Only weekly/monthly/daily inspection-style PPM work
+    should reach a site Tech/CT diary. Heavy mechanical, fire, AOV, sprinkler,
+    and similar specialist PPM work should be flagged unless the job type/ref
+    clearly states a weekly or monthly check/inspection.
+    """
+    if not is_ppm_job(job):
+        return True, "Not a PPM job"
+
+    type_ref_text = normalise(f"{job.get('Type')} {job.get('Ref')}")
+    full_text = job_text(job)
+    ppm_rules = rules.get("ppm_review", {})
+
+    for phrase in ppm_rules.get("tech_diary_allow_phrases", []):
+        if normalise(phrase) in type_ref_text:
+            return True, f"PPM allowed for tech diary: job type/ref includes '{phrase}'"
+
+    frequency_terms = ppm_rules.get("frequency_terms", ["weekly", "monthly", "daily", "6 monthly"])
+    inspection_terms = ppm_rules.get("inspection_terms", ["inspection", "check", "walk", "operational", "visual"])
+    heavy_terms = ppm_rules.get("heavy_specialist_terms", [])
+
+    def has_frequency(text: str) -> bool:
+        return any(term in text for term in frequency_terms)
+
+    def has_inspection(text: str) -> bool:
+        return any(term in text for term in inspection_terms)
+
+    heavy_in_type = [term for term in heavy_terms if term in type_ref_text]
+    if heavy_in_type:
+        if has_frequency(type_ref_text) and has_inspection(type_ref_text):
+            return True, "PPM allowed for tech diary: heavy PPM type includes frequency plus inspection/check wording"
+        return False, (
+            "PPM specialist/heavy mechanical job requires review "
+            f"({', '.join(sorted(set(heavy_in_type)))}) — likely subcontractor unless weekly/monthly check confirmed in job type"
+        )
+
+    if has_frequency(full_text) and has_inspection(full_text):
+        return True, "PPM allowed for tech diary: includes frequency plus inspection/check wording"
+
+    heavy_matches = [term for term in heavy_terms if term in full_text]
+    if heavy_matches:
+        return False, (
+            "PPM specialist/heavy mechanical job requires review "
+            f"({', '.join(sorted(set(heavy_matches)))}) — likely subcontractor unless weekly/monthly check confirmed"
+        )
+
+    return False, "PPM job requires administrator review before tech diary allocation"
 
 
 def is_cleaning_job(job: dict[str, Any]) -> bool:
@@ -692,6 +750,10 @@ def build_recommendation(
     if excluded:
         return job.get("Ref", ""), exclusion_reason
 
+    ppm_allowed, ppm_reason = ppm_tech_diary_review(job, rules)
+    if not ppm_allowed:
+        return job.get("Ref", ""), ppm_reason
+
     site_match = identify_site(job, rules)
     if not site_match:
         return job.get("Ref", ""), "Site could not be identified confidently"
@@ -754,6 +816,7 @@ def build_recommendation(
             f"Working hours from BigChange: {format_working_hours(resource_working_windows(client, resource.resource_id, slot.date, {}, rules))}"
         ),
         contractor_check="Passed",
+        ppm_check=ppm_reason,
         overlap_check="Failed" if overlap else "Passed",
         booking_before=slot.booking_before,
         booking_after=slot.booking_after,
@@ -780,6 +843,7 @@ Estimated duration: {recommendation.duration_minutes} minutes
 Reason for duration: {recommendation.duration_reason}
 Reason for resource selection: {recommendation.resource_reason}
 Contractor exclusion check: {recommendation.contractor_check}
+PPM review check: {recommendation.ppm_check}
 Diary overlap check: {recommendation.overlap_check}
 Existing booking before: {recommendation.booking_before}
 Existing booking after: {recommendation.booking_after}

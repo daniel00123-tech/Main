@@ -67,5 +67,39 @@
     "name": "Resource4Schedule",
     "active_value": 1,
     "note": "Only resources with Resource4Schedule=1 are active for JobWatch scheduling. Value 0 means inactive (e.g. left the business)."
+  },
+  "ppm_review": {
+    "note": "PPM jobs (Type or Ref starting with PPM) require review. Only weekly/monthly/daily inspection-style PPM work should be allocated to site Tech/CT diaries. Heavy mechanical, fire, AOV, and sprinkler PPM work should normally be subcontracted unless clearly a weekly or monthly check.",
+    "tech_diary_allow_phrases": [
+      "daily external inspection",
+      "daily internal inspection",
+      "monthly operational",
+      "6 monthly visual inspection",
+      "weekly check",
+      "monthly inspection",
+      "weekly inspection",
+      "monthly check"
+    ],
+    "frequency_terms": ["weekly", "monthly", "daily", "6 monthly"],
+    "inspection_terms": ["inspection", "check", "walk", "operational", "visual"],
+    "heavy_specialist_terms": [
+      "fire curtain",
+      "sprinkler",
+      "wet riser",
+      "dry riser",
+      "annual pressure",
+      "aov",
+      "em (flick",
+      "flick test",
+      "fa (bell",
+      "bell test",
+      "full duration",
+      "fire alarm",
+      "emergency lighting",
+      "door entry testing",
+      "macerator",
+      "waste pump",
+      "mechanical"
+    ]
   }
 }
