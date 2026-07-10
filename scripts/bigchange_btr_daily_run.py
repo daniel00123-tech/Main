@@ -424,6 +424,13 @@ def process_unallocated(
         if not site_match:
             continue
 
+        current_flag = normalise(job.get("CurrentFlag"))
+        if "cancel" in current_flag:
+            reason = f"Current flag indicates cancellation/manual stop: {job.get('CurrentFlag')}"
+            skipped.append({"ref": ref, "reason": reason})
+            manual.append({"ref": ref, "reason": reason, "site": site_match.site})
+            continue
+
         excluded, exclusion_reason = contractor_exclusion(job, rules)
         if excluded:
             skipped.append({"ref": ref, "reason": exclusion_reason})
