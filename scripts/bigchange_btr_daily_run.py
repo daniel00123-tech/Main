@@ -286,7 +286,7 @@ def build_reschedule_result(
     assigned: BtrResource,
 ) -> tuple[dict[str, Any] | None, str]:
     duration, duration_reason, duration_confidence = duration_for_reschedule(job, rules)
-    required_role = "HK" if assigned.role == "HK" else "Tech"
+    required_role = assigned.role
     resource, slot, warnings = choose_resource(
         client,
         assigned.site,

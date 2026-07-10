@@ -250,41 +250,131 @@ def ppm_tech_diary_review(job: dict[str, Any], rules: dict[str, Any]) -> tuple[b
     return False, "PPM job requires administrator review before tech diary allocation"
 
 
-def is_cleaning_job(job: dict[str, Any]) -> bool:
+def contains_any(text: str, terms: tuple[str, ...]) -> bool:
+    return any(term in text for term in terms)
+
+
+TECHNICAL_TERMS = (
+    "access",
+    "appliance",
+    "boiler",
+    "call out",
+    "callout",
+    "door",
+    "electrical",
+    "fault",
+    "fixflo",
+    "freezer",
+    "fridge",
+    "gas",
+    "intercom",
+    "immersion",
+    "leak",
+    "lock",
+    "maintenance",
+    "plumbing",
+    "reactive",
+    "repair",
+    "washing machine",
+)
+
+HOUSEKEEPING_CLEANING_TERMS = (
+    "cleaning call out",
+    "cleaning callout",
+    "cleaning",
+    "clean apartment",
+    "deep clean",
+    "end of tenancy cleaning",
+    "eot cleaning",
+    "housekeeping",
+    "sparkle clean",
+)
+
+CARETAKER_TERMS = (
+    "basic ppm",
+    "bins",
+    "bulk waste",
+    "communal",
+    "external inspection",
+    "internal inspection",
+    "litter",
+    "refuse",
+    "rotate wheelie",
+    "waste",
+    "wheelie",
+)
+
+EOT_NON_CLEANING_TERMS = (
+    "assessment checkout condition",
+    "beautification",
+    "checkout condition",
+    "paint",
+    "repair works",
+)
+
+
+def is_housekeeping_cleaning_job(job: dict[str, Any]) -> bool:
     description = normalise(job.get("Description"))
     category = normalise(job.get("Category"))
     job_type = normalise(job.get("Type"))
-    cleaning_starts = description.startswith("cleaning") or description.startswith("clean ")
-    cleaning_terms = (
-        "housekeeping",
-        "deep clean",
-        "remove rubbish and clean",
-        "clean communal",
-        "clean apartment",
-        "clean lift",
-        "clean lobby",
-    )
-    if cleaning_starts:
+    combined = f"{job_type} {category} {description}"
+
+    if "end of tenancy cleaning" in combined or "eot cleaning" in combined:
         return True
-    if any(term in description for term in cleaning_terms):
+    if "communal" in combined:
+        return False
+    if "cleaning call out" in combined or "cleaning callout" in combined:
+        return True
+    if contains_any(combined, TECHNICAL_TERMS):
+        return False
+    if job_type.startswith("cleaning") or "cleaning call" in job_type:
         return True
     if "cleaning" in category or "housekeeping" in category:
         return True
-    if "cleaning" in job_type or "housekeeping" in job_type:
+    if description.startswith("cleaning") or description.startswith("clean "):
+        return True
+    return contains_any(combined, HOUSEKEEPING_CLEANING_TERMS)
+
+
+def is_caretaker_job(job: dict[str, Any]) -> bool:
+    combined = job_text(job)
+    job_type = normalise(job.get("Type"))
+    if is_ppm_job(job) and contains_any(combined, CARETAKER_TERMS):
+        return True
+    if contains_any(combined, ("communal clean", "communal cleaning", "communal works", "communal area")):
+        return True
+    if contains_any(combined, ("bins in", "bins out", "black bins", "wheelie bins", "bin store", "litter picking")):
+        return True
+    if "caretaker" in job_type:
         return True
     return False
 
 
 def determine_role(job: dict[str, Any]) -> RoleMatch:
-    if is_cleaning_job(job):
-        return RoleMatch(role="HK", reason="Job description/category indicates cleaning or housekeeping work", confidence="High")
+    if is_housekeeping_cleaning_job(job):
+        return RoleMatch(role="HK", reason="Job clearly indicates housekeeping cleaning or EOT cleaning", confidence="High")
+    if is_caretaker_job(job):
+        return RoleMatch(role="CT", reason="Job is communal, bins, or basic PPM work suited to a caretaker", confidence="High")
     description = normalise(job.get("Description"))
     job_type = normalise(job.get("Type"))
-    if any(token in description or token in job_type for token in ("repair", "fault", "leak", "inspect", "maintenance", "call out", "callout", "appliance", "boiler", "door", "lock", "intercom", "immersion", "freezer", "fridge", "washing machine")):
-        return RoleMatch(role="Tech", reason="Non-cleaning internal maintenance/technical work", confidence="High")
+    combined = f"{job_type} {description}"
+    if job_type.startswith("eot") and contains_any(combined, EOT_NON_CLEANING_TERMS):
+        return RoleMatch(role="Tech", reason="EOT non-cleaning work such as beautification, paint, repair, or assessment", confidence="High")
+    if contains_any(combined, TECHNICAL_TERMS):
+        return RoleMatch(role="Tech", reason="Reactive call-out, Fixflo, appliance, access, or technical maintenance work", confidence="High")
     if description:
-        return RoleMatch(role="Tech", reason="Default to Tech/CT for non-cleaning attendance work", confidence="Medium")
+        return RoleMatch(role="Tech", reason="Default to Tech for non-cleaning attendance work", confidence="Medium")
     return RoleMatch(role="", reason="Insufficient information to determine HK vs Tech/CT", confidence="Low")
+
+
+def allowed_resource_roles(required_role: str, site: str, rules: dict[str, Any]) -> set[str]:
+    role_routes = rules.get("role_assignment", {}).get("resource_roles", {})
+    configured = role_routes.get(required_role)
+    if configured:
+        return set(configured)
+    if required_role in {"Tech", "CT", "HK"}:
+        return {required_role}
+    return set()
 
 
 def resource_role(name: str, rules: dict[str, Any]) -> str | None:
@@ -664,9 +754,7 @@ def choose_resource(
         role = resource_role(name, rules)
         if not role:
             continue
-        if required_role == "HK" and role != "HK":
-            continue
-        if required_role in {"Tech", "CT"} and role not in {"Tech", "CT"}:
+        if role not in allowed_resource_roles(required_role, site, rules):
             continue
         candidates.append(ResourceCandidate(resource_id=int(resource["id"]), name=name, role=role, booked_minutes=0, job_count=0))
 
