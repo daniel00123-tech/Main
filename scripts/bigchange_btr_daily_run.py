@@ -205,12 +205,21 @@ def verify_schedule(
     if not matching:
         return False, "Resource diary verification failed: job not present on intended diary"
 
-    blocks = diary_blocks([entry for entry in diary if not is_cancelled_diary_job(entry)], start.date())
-    for index, first in enumerate(blocks):
-        first_start, first_end, first_label = first
-        for second_start, second_end, second_label in blocks[index + 1 :]:
-            if first_start < second_end and first_end > second_start:
-                return False, f"Diary overlap detected after schedule: {first_label} overlaps {second_label}"
+    for entry in diary:
+        if is_cancelled_diary_job(entry):
+            continue
+        if as_int(entry.get("JobId")) == job_id or str(entry.get("Ref") or "") == job_ref:
+            continue
+        entry_start = parse_datetime(entry.get("PlannedStart"))
+        if not entry_start or entry_start.date() != start.date():
+            continue
+        entry_end = parse_datetime(entry.get("PlannedEnd"))
+        if not entry_end:
+            entry_duration = parse_duration(entry.get("Duration")) or 60
+            entry_end = entry_start + dt.timedelta(minutes=entry_duration)
+        if start < entry_end and end > entry_start:
+            label = f"{entry.get('Ref')} {entry_start.strftime('%H:%M')}-{entry_end.strftime('%H:%M')}"
+            return False, f"Scheduled slot overlaps existing diary booking: {label}"
     return True, "Verified on Job API and resource diary with no overlaps"
 
 
