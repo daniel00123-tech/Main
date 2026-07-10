@@ -245,10 +245,11 @@ def verify_schedule(
     job = fetch_job(client, job_ref=job_ref)
     if not job:
         return False, "Job verification fetch failed"
-    planned_start = str(job.get("PlannedStart") or "")
+    planned_start = parse_datetime(job.get("PlannedStart"))
     resource_value = str(job.get("Resource") or "").strip()
-    if planned_start[:16] != expected_start[:16]:
-        return False, f"PlannedStart verification mismatch: {planned_start or 'blank'}"
+    expected_start_dt = dt.datetime.strptime(expected_start, "%Y-%m-%d %H:%M:%S")
+    if planned_start != expected_start_dt:
+        return False, f"PlannedStart verification mismatch: {job.get('PlannedStart') or 'blank'}"
     if resource_value.lower() in {"", "none", "null", "unassigned", "unallocated"}:
         return False, "Job has PlannedStart but no Resource after scheduling"
 
@@ -258,7 +259,7 @@ def verify_schedule(
         return False, "Job not found on intended resource diary after scheduling"
 
     blocks = diary_blocks([entry for entry in diary if not is_cancelled_diary_job(entry)], planned_day)
-    slot_start = dt.datetime.strptime(expected_start, "%Y-%m-%d %H:%M:%S")
+    slot_start = expected_start_dt
     slot_end = dt.datetime.strptime(expected_end, "%Y-%m-%d %H:%M:%S")
     overlapping = [
         label
