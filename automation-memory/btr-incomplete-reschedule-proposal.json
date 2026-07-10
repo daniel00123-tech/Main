@@ -18,5 +18,7 @@
   "booking_before": "PPM263395 09:00-10:00 (PPM - Daily Internal Check (B))",
   "booking_after": "None after slot",
   "overlap_check": "Passed",
-  "description": "The seal is gone on the bottom of the toilet so I have a towel currently mopping up toilet water that keeps pooling on the floor."
+  "description": "The seal is gone on the bottom of the toilet so I have a towel currently mopping up toilet water that keeps pooling on the floor.",
+  "status": "Scheduled",
+  "applied_at": "2026-07-10"
 }
