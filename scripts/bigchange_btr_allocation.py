@@ -253,6 +253,16 @@ def resource_is_excluded(name: str, rules: dict[str, Any]) -> bool:
     return any(exclusion in norm for exclusion in rules["resource_exclusions"])
 
 
+def resource_is_active_for_jobwatch(resource: dict[str, Any]) -> bool:
+    """Return True when the resource is active for JobWatch scheduling.
+
+    BigChange exposes this via Resource4Schedule on the Resources list:
+      1 = active for JobWatch (can be scheduled)
+      0 = inactive (left the business, temp cover ended, etc.)
+    """
+    return as_int(resource.get("Resource4Schedule"), default=0) == 1
+
+
 def estimate_duration(job: dict[str, Any], rules: dict[str, Any]) -> tuple[int, str, str]:
     description = normalise(job.get("Description"))
     min_duration = rules["duration_minutes"]["min"]
@@ -419,40 +429,33 @@ def earliest_slot_start(day: dt.date, now: dt.datetime | None = None) -> dt.date
 
 
 def find_slot(blocks: list[tuple[dt.datetime, dt.datetime, str]], day: dt.date, duration_minutes: int) -> SlotProposal | None:
-    day_start, day_end = working_window(day)
+    _, day_end = working_window(day)
     cursor = earliest_slot_start(day)
     if cursor >= day_end:
         return None
+    duration = dt.timedelta(minutes=duration_minutes)
+
     for start, end, label in blocks:
-        if end <= day_start:
+        if end <= cursor:
             continue
         if start >= day_end:
             break
-        slot_end = min(cursor + dt.timedelta(minutes=duration_minutes), day_end)
-        if slot_end <= cursor:
-            cursor = max(cursor, end)
-            continue
-        if slot_end - cursor >= dt.timedelta(minutes=duration_minutes) and not overlaps(cursor, slot_end, start, end):
-            before = ""
-            after = label
-            for block_start, block_end, block_label in blocks:
-                if block_end <= cursor:
-                    before = block_label
-                if block_start >= slot_end and not after.startswith(block_label):
-                    after = block_label
-                    break
+        if cursor + duration <= min(start, day_end):
+            slot_end = cursor + duration
+            before = next((block_label for block_start, block_end, block_label in blocks if block_end <= cursor), "None before slot")
             return SlotProposal(
                 date=day,
                 start=cursor.time(),
                 end=slot_end.time(),
                 duration_minutes=duration_minutes,
-                booking_before=before or "None before slot",
-                booking_after=after or "None after slot",
+                booking_before=before,
+                booking_after=label,
             )
         cursor = max(cursor, end)
-    slot_end = min(cursor + dt.timedelta(minutes=duration_minutes), day_end)
-    if slot_end - cursor >= dt.timedelta(minutes=duration_minutes):
+
+    if cursor + duration <= day_end:
         before = blocks[-1][2] if blocks else "None before slot"
+        slot_end = cursor + duration
         return SlotProposal(
             date=day,
             start=cursor.time(),
@@ -477,6 +480,8 @@ def choose_resource(
     candidates: list[ResourceCandidate] = []
     for resource in resources:
         name = str(resource.get("label") or "")
+        if not resource_is_active_for_jobwatch(resource):
+            continue
         if resource_is_excluded(name, rules):
             continue
         if resource_site(name, rules) != site:
@@ -591,9 +596,9 @@ def build_recommendation(client: BigChangeClient, job: dict[str, Any], rules: di
         duration_minutes=slot.duration_minutes,
         duration_reason=duration_reason,
         resource_reason=(
-            f"Selected {resource.name} ({resource.role}) as earliest suitable {site_match.site} "
-            f"resource with lowest current workload ({resource.job_count} diary jobs, "
-            f"{resource.booked_minutes} booked minutes in search window)"
+            f"Selected {resource.name} ({resource.role}) as an active JobWatch resource "
+            f"(Resource4Schedule=1) with earliest suitable {site_match.site} diary capacity "
+            f"({resource.job_count} diary jobs, {resource.booked_minutes} booked minutes in search window)"
         ),
         contractor_check="Passed",
         overlap_check="Passed",

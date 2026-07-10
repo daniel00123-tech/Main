@@ -61,5 +61,10 @@
     "aquilo support",
     "generic tech",
     "ppm"
-  ]
+  ],
+  "active_resource_field": {
+    "name": "Resource4Schedule",
+    "active_value": 1,
+    "note": "Only resources with Resource4Schedule=1 are active for JobWatch scheduling. Value 0 means inactive (e.g. left the business)."
+  }
 }
