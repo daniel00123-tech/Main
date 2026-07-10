@@ -288,10 +288,64 @@ def next_working_day(start: dt.date) -> dt.date:
     return current
 
 
-def working_window(day: dt.date) -> tuple[dt.datetime, dt.datetime]:
-    start = dt.datetime.combine(day, dt.time(8, 0))
-    end = dt.datetime.combine(day, dt.time(17, 0))
+def working_window(day: dt.date, start_time: dt.time | None = None, end_time: dt.time | None = None) -> tuple[dt.datetime, dt.datetime]:
+    start = dt.datetime.combine(day, start_time or dt.time(8, 0))
+    end = dt.datetime.combine(day, end_time or dt.time(17, 0))
     return start, end
+
+
+def minutes_to_time(value: int) -> dt.time:
+    hours, minutes = divmod(int(value), 60)
+    return dt.time(hours, minutes)
+
+
+def resource_working_windows(
+    client: BigChangeClient,
+    resource_id: int,
+    day: dt.date,
+    cache: dict[int, list[dict[str, Any]]],
+    rules: dict[str, Any],
+) -> list[tuple[dt.datetime, dt.datetime]]:
+    if resource_id not in cache:
+        payload = client.get("ResourceDetail", {"ResId": resource_id})
+        detail = payload.get("Result") if payload.get("Code") in (0, None) else {}
+        cache[resource_id] = detail.get("ResourceWorkingHours") if isinstance(detail, dict) else []
+
+    weekday = day.weekday() + 1
+    windows: list[tuple[dt.datetime, dt.datetime]] = []
+    for entry in cache.get(resource_id, []):
+        if as_int(entry.get("WeekDay")) != weekday:
+            continue
+        start_mins = as_int(entry.get("Start"))
+        stop_mins = as_int(entry.get("Stop"))
+        if start_mins is None or stop_mins is None or stop_mins <= start_mins:
+            continue
+        windows.append(
+            (
+                dt.datetime.combine(day, minutes_to_time(start_mins)),
+                dt.datetime.combine(day, minutes_to_time(stop_mins)),
+            )
+        )
+    windows.sort(key=lambda item: item[0])
+    if windows:
+        return windows
+
+    fallback = rules.get("working_hours", {})
+    start_parts = str(fallback.get("start", "08:00")).split(":")
+    end_parts = str(fallback.get("end", "17:00")).split(":")
+    return [
+        working_window(
+            day,
+            dt.time(int(start_parts[0]), int(start_parts[1])),
+            dt.time(int(end_parts[0]), int(end_parts[1])),
+        )
+    ]
+
+
+def format_working_hours(windows: list[tuple[dt.datetime, dt.datetime]]) -> str:
+    if not windows:
+        return "default 08:00-17:00"
+    return ", ".join(f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}" for start, end in windows)
 
 
 def overlaps(start_a: dt.datetime, end_a: dt.datetime, start_b: dt.datetime, end_b: dt.datetime) -> bool:
@@ -458,8 +512,7 @@ def current_local_date() -> dt.date:
     return dt.date.today()
 
 
-def earliest_slot_start(day: dt.date, now: dt.datetime | None = None) -> dt.datetime:
-    day_start, day_end = working_window(day)
+def earliest_slot_start(day: dt.date, day_start: dt.datetime, day_end: dt.datetime, now: dt.datetime | None = None) -> dt.datetime:
     if now is None:
         now = dt.datetime.now()
     if day > now.date():
@@ -469,9 +522,14 @@ def earliest_slot_start(day: dt.date, now: dt.datetime | None = None) -> dt.date
     return max(day_start, now.replace(second=0, microsecond=0) + dt.timedelta(minutes=15 - now.minute % 15))
 
 
-def find_slot(blocks: list[tuple[dt.datetime, dt.datetime, str]], day: dt.date, duration_minutes: int) -> SlotProposal | None:
-    _, day_end = working_window(day)
-    cursor = earliest_slot_start(day)
+def find_slot_in_window(
+    blocks: list[tuple[dt.datetime, dt.datetime, str]],
+    day: dt.date,
+    day_start: dt.datetime,
+    day_end: dt.datetime,
+    duration_minutes: int,
+) -> SlotProposal | None:
+    cursor = earliest_slot_start(day, day_start, day_end)
     if cursor >= day_end:
         return None
     duration = dt.timedelta(minutes=duration_minutes)
@@ -506,6 +564,23 @@ def find_slot(blocks: list[tuple[dt.datetime, dt.datetime, str]], day: dt.date, 
             booking_after=after,
         )
     return None
+
+
+def find_slot(
+    blocks: list[tuple[dt.datetime, dt.datetime, str]],
+    day: dt.date,
+    duration_minutes: int,
+    working_windows: list[tuple[dt.datetime, dt.datetime]] | None = None,
+) -> SlotProposal | None:
+    windows = working_windows or [working_window(day)]
+    best: SlotProposal | None = None
+    for day_start, day_end in windows:
+        slot = find_slot_in_window(blocks, day, day_start, day_end, duration_minutes)
+        if not slot:
+            continue
+        if best is None or dt.datetime.combine(slot.date, slot.start) < dt.datetime.combine(best.date, best.start):
+            best = slot
+    return best
 
 
 def choose_resource(
@@ -551,6 +626,7 @@ def choose_resource(
     start_day = next_working_day(dt.date.today())
     end_day = start_day + dt.timedelta(days=search_days)
     best: tuple[ResourceCandidate, SlotProposal] | None = None
+    working_hours_cache: dict[int, list[dict[str, Any]]] = {}
 
     for candidate in candidates:
         diary = client.resource_diary(candidate.resource_id, start_day, end_day)
@@ -562,8 +638,11 @@ def choose_resource(
             day = start_day + dt.timedelta(days=offset)
             if day.weekday() >= 5:
                 continue
+            windows = resource_working_windows(client, candidate.resource_id, day, working_hours_cache, rules)
+            if not windows:
+                continue
             blocks = diary_blocks(schedule_jobs, day)
-            slot = find_slot(blocks, day, duration_minutes)
+            slot = find_slot(blocks, day, duration_minutes, windows)
             if not slot:
                 continue
             slot_start = dt.datetime.combine(day, slot.start)
@@ -671,7 +750,8 @@ def build_recommendation(
         resource_reason=(
             f"Selected {resource.name} ({resource.role}) as an active JobWatch resource "
             f"(Resource4Schedule=1) with earliest suitable {site_match.site} diary capacity "
-            f"({resource.job_count} diary jobs, {resource.booked_minutes} booked minutes in search window)"
+            f"({resource.job_count} diary jobs, {resource.booked_minutes} booked minutes in search window). "
+            f"Working hours from BigChange: {format_working_hours(resource_working_windows(client, resource.resource_id, slot.date, {}, rules))}"
         ),
         contractor_check="Passed",
         overlap_check="Failed" if overlap else "Passed",

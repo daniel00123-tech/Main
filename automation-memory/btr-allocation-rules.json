@@ -3,7 +3,8 @@
   "working_hours": {
     "start": "08:00",
     "end": "17:00",
-    "days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
+    "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+    "source": "ResourceDetail.ResourceWorkingHours via API (minutes from midnight); fallback to these defaults when not set"
   },
   "duration_minutes": {
     "min": 60,
