@@ -1,0 +1,65 @@
+{
+  "mode": "recommendation_only",
+  "working_hours": {
+    "start": "08:00",
+    "end": "17:00",
+    "days": ["monday", "tuesday", "wednesday", "thursday", "friday"]
+  },
+  "duration_minutes": {
+    "min": 60,
+    "max": 540,
+    "increments": [60, 90, 120, 180, 240, 300, 360, 420, 480, 540]
+  },
+  "sites": {
+    "Aston Place": ["aston"],
+    "Botanica": ["botanica"],
+    "Baltic Yard": ["baltic"],
+    "Chapel Wharf": ["chapel"],
+    "Leodis Square": ["leodis"],
+    "Granary Quay": ["granary"],
+    "Forbes Place": ["forbes"],
+    "The Point": ["point"],
+    "U&A / Unity & Armouries": ["u&a", "u & a", "unity", "armouries", "udap", "udua"]
+  },
+  "roles": {
+    "Tech": ["tech", "sontech", "techsup", "caretaker"],
+    "CT": ["ct", "caretaker"],
+    "HK": ["hk", "hks", "hksup"]
+  },
+  "cleaning_role": "HK",
+  "maintenance_roles": ["Tech", "CT"],
+  "contractor_exclusions": [
+    "sent to aquilo",
+    "send to aquilo",
+    "aquilo",
+    "sent to contractor",
+    "send to contractor",
+    "contractor required",
+    "contractor needed",
+    "subcontractor required",
+    "sub-contractor required",
+    "specialist contractor required",
+    "external contractor",
+    "external supplier",
+    "awaiting contractor",
+    "contractor instructed",
+    "quote required from contractor",
+    "passed to contractor",
+    "escalated to contractor",
+    "btr - contractor required"
+  ],
+  "resource_exclusions": [
+    "left",
+    "do not use",
+    "never started",
+    "garden leave",
+    "temp",
+    "z_dlm",
+    "zz.",
+    "cover",
+    "handyman cover",
+    "aquilo support",
+    "generic tech",
+    "ppm"
+  ]
+}
