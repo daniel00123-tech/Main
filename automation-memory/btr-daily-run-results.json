@@ -1,0 +1,867 @@
+{
+  "executed_at": "2026-07-11T15:04:42.663473+00:00",
+  "mode": "apply",
+  "applied": 6,
+  "failed": 0,
+  "skipped": 28,
+  "summary_path": "automation-memory/btr-daily-run-2026-07-11.md",
+  "applied_records": [
+    {
+      "timestamp": "2026-07-11T15:04:47.475319+00:00",
+      "job_ref": "JOB284977",
+      "job_id": 193412519,
+      "site": "Leodis Square",
+      "resource": "UDL_Leodis_Tech Andrew Parchment ",
+      "resource_id": 454297,
+      "scheduled_date": "2026-07-15",
+      "start": "16:00",
+      "end": "17:00",
+      "duration_minutes": 60,
+      "confidence": "Medium",
+      "mode": "daily_allocate_medium",
+      "overlap_check": "Passed",
+      "verification": "Verified assigned resource, diary placement, and no overlaps"
+    },
+    {
+      "timestamp": "2026-07-11T15:04:48.835301+00:00",
+      "job_ref": "DLFF284978",
+      "job_id": 193412784,
+      "site": "The Point",
+      "resource": "UDA_Point _Tech - Eric Wilson",
+      "resource_id": 454701,
+      "scheduled_date": "2026-07-14",
+      "start": "14:00",
+      "end": "15:00",
+      "duration_minutes": 60,
+      "confidence": "Low",
+      "mode": "daily_allocate_low",
+      "overlap_check": "Passed",
+      "verification": "Verified assigned resource, diary placement, and no overlaps"
+    },
+    {
+      "timestamp": "2026-07-11T15:04:50.902609+00:00",
+      "job_ref": "DLFF284979",
+      "job_id": 193412795,
+      "site": "The Point",
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "scheduled_date": "2026-07-14",
+      "start": "14:00",
+      "end": "15:00",
+      "duration_minutes": 60,
+      "confidence": "Low",
+      "mode": "daily_allocate_low",
+      "overlap_check": "Passed",
+      "verification": "Verified assigned resource, diary placement, and no overlaps"
+    },
+    {
+      "timestamp": "2026-07-11T15:04:52.566651+00:00",
+      "job_ref": "DLFF284981",
+      "job_id": 193412996,
+      "site": "Leodis Square",
+      "resource": "UDL_Leodis_Tech Andrew Parchment ",
+      "resource_id": 454297,
+      "scheduled_date": "2026-07-16",
+      "start": "10:00",
+      "end": "11:00",
+      "duration_minutes": 60,
+      "confidence": "Low",
+      "mode": "daily_allocate_low",
+      "overlap_check": "Passed",
+      "verification": "Verified assigned resource, diary placement, and no overlaps"
+    },
+    {
+      "timestamp": "2026-07-11T15:04:54.038406+00:00",
+      "job_ref": "JOB284982",
+      "job_id": 193413009,
+      "site": "Leodis Square",
+      "resource": "UDL_Leodis_Tech Andrew Parchment ",
+      "resource_id": 454297,
+      "scheduled_date": "2026-07-16",
+      "start": "11:00",
+      "end": "12:00",
+      "duration_minutes": 60,
+      "confidence": "Medium",
+      "mode": "daily_allocate_medium",
+      "overlap_check": "Passed",
+      "verification": "Verified assigned resource, diary placement, and no overlaps"
+    },
+    {
+      "timestamp": "2026-07-11T15:04:55.541843+00:00",
+      "job_ref": "JOB284983",
+      "job_id": 193413039,
+      "site": "Leodis Square",
+      "resource": "UDL_Leodis_Tech Andrew Parchment ",
+      "resource_id": 454297,
+      "scheduled_date": "2026-07-16",
+      "start": "12:00",
+      "end": "13:00",
+      "duration_minutes": 60,
+      "confidence": "Medium",
+      "mode": "daily_allocate_medium",
+      "overlap_check": "Passed",
+      "verification": "Verified assigned resource, diary placement, and no overlaps"
+    }
+  ],
+  "skipped_records": [
+    {
+      "phase": "stale_diary",
+      "ref": "DL126694",
+      "site": "The Point",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL126695",
+      "site": "The Point",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL126696",
+      "site": "The Point",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL223678",
+      "site": "Forbes Place",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL223679",
+      "site": "The Point",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL260694",
+      "site": "Leodis Square",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL262488",
+      "site": "Forbes Place",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL262489",
+      "site": "The Point",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL263662",
+      "site": "Forbes Place",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL263664",
+      "site": "The Point",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL275475",
+      "site": "Chapel Wharf",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL282917",
+      "site": "Chapel Wharf",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "DL283397",
+      "site": "Chapel Wharf",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "GRANQ245450",
+      "site": "The Point",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "GRANQ247258",
+      "site": "The Point",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "JOB213323",
+      "site": "Chapel Wharf",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "JOB267645",
+      "site": "The Point",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "JOB276508",
+      "site": "Chapel Wharf",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "JOB277961",
+      "site": "Chapel Wharf",
+      "reason": "already present in allocation audit; not clearly unallocated"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "JOB284799",
+      "site": "Granary Quay",
+      "reason": "already present in allocation audit; not clearly unallocated"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "LS257663",
+      "site": "Leodis Square",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "PPM205182",
+      "site": "Leodis Square",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "PPM205255",
+      "site": "Leodis Square",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "PPM205256",
+      "site": "Leodis Square",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "stale_diary",
+      "ref": "PPM205308",
+      "site": "Leodis Square",
+      "reason": "stale PPM diary entry requires manual review"
+    },
+    {
+      "phase": "unallocated",
+      "ref": "JOB272421~3",
+      "site": "Leodis Square",
+      "reason": "Excluded wording found: btr - contractor required, contractor required"
+    },
+    {
+      "phase": "unallocated",
+      "ref": "JOB282782",
+      "site": "The Point",
+      "reason": "Excluded wording found: aquilo, sent to aquilo"
+    },
+    {
+      "phase": "unallocated",
+      "ref": "DLFF284980",
+      "site": "The Point",
+      "reason": "No suitable active site-based resource found for required role"
+    }
+  ],
+  "failed_records": [],
+  "workload_warnings": [
+    {
+      "resource": "UDA_Forbes_HK Heather Taylor",
+      "resource_id": 430774,
+      "date": "2026-07-13",
+      "job_count": 5,
+      "refs": "PPM155525, PPM156584, PPM156329, PPM156074, PPM155817"
+    },
+    {
+      "resource": "UDA_Forbes_HK Heather Taylor",
+      "resource_id": 430774,
+      "date": "2026-07-14",
+      "job_count": 6,
+      "refs": "PPM155526, JOB277618, PPM156533, PPM156278, PPM156023, PPM155766"
+    },
+    {
+      "resource": "UDA_Forbes_HK Heather Taylor",
+      "resource_id": 430774,
+      "date": "2026-07-15",
+      "job_count": 5,
+      "refs": "PPM155527, PPM156482, PPM156227, PPM155972, PPM155715"
+    },
+    {
+      "resource": "UDA_Forbes_HK Heather Taylor",
+      "resource_id": 430774,
+      "date": "2026-07-16",
+      "job_count": 5,
+      "refs": "PPM155528, PPM156176, PPM156431, PPM155921, PPM155663"
+    },
+    {
+      "resource": "UDA_Forbes_HK Heather Taylor",
+      "resource_id": 430774,
+      "date": "2026-07-17",
+      "job_count": 5,
+      "refs": "PPM155529, PPM156380, PPM156125, PPM155869, PPM155612"
+    },
+    {
+      "resource": "UDA_Forbes_HK Heather Taylor",
+      "resource_id": 430774,
+      "date": "2026-07-20",
+      "job_count": 5,
+      "refs": "PPM155530, PPM156585, PPM156330, PPM156075, PPM155818"
+    },
+    {
+      "resource": "UDA_Forbes_HK Heather Taylor",
+      "resource_id": 430774,
+      "date": "2026-07-21",
+      "job_count": 5,
+      "refs": "PPM155531, PPM156534, PPM156279, PPM156024, PPM155767"
+    },
+    {
+      "resource": "UDA_Forbes_HK Heather Taylor",
+      "resource_id": 430774,
+      "date": "2026-07-22",
+      "job_count": 6,
+      "refs": "PPM155532, JOB273767, PPM156483, PPM156228, PPM155973, PPM155716"
+    },
+    {
+      "resource": "UDA_Forbes_HK Heather Taylor",
+      "resource_id": 430774,
+      "date": "2026-07-23",
+      "job_count": 7,
+      "refs": "PPM155533, JOB275358, PPM156432, PPM156177, JOB277620, PPM155922, PPM155664"
+    },
+    {
+      "resource": "UDA_Forbes_HK Heather Taylor",
+      "resource_id": 430774,
+      "date": "2026-07-24",
+      "job_count": 5,
+      "refs": "PPM155534, PPM156381, PPM156126, PPM155870, PPM155613"
+    },
+    {
+      "resource": "UDA_Forbes_Tech-Bailey Middleton",
+      "resource_id": 442814,
+      "date": "2026-07-14",
+      "job_count": 10,
+      "refs": "DL223681, DL262491, DL263666, GRANQ274208, JOB274321, GRANQ247443, GRANQ247400, JOB275293, JOB275321, JOB277187"
+    },
+    {
+      "resource": "UDA_Forbes_Tech-Bailey Middleton",
+      "resource_id": 442814,
+      "date": "2026-07-15",
+      "job_count": 6,
+      "refs": "DL223682, DL262492, DL263667, GRANQ247638, GRANQ247153, GRANQ247329"
+    },
+    {
+      "resource": "UDA_Forbes_Tech-Bailey Middleton",
+      "resource_id": 442814,
+      "date": "2026-07-16",
+      "job_count": 9,
+      "refs": "DL223683, DL262493, DL263668, JOB275258, JOB275282, JOB275242, JOB275271, GRANQ247205, GRANQ247639"
+    },
+    {
+      "resource": "UDA_Forbes_Tech-Bailey Middleton",
+      "resource_id": 442814,
+      "date": "2026-07-17",
+      "job_count": 12,
+      "refs": "DL223684, GRANQ245451, DL262494, DL263669, GRANQ274209, JOB274322, DLFF278590, JOB273728~3, JOB273392, JOB282662, JOB283549, GRANQ247259"
+    },
+    {
+      "resource": "UDA_Forbes_Tech-Bailey Middleton",
+      "resource_id": 442814,
+      "date": "2026-07-20",
+      "job_count": 11,
+      "refs": "DL223685, DL262495, JOB279999, JOB280000, JOB282528, DLFF283546, JOB280111, JOB282131, DLFF282646, JOB282647, JOB282648"
+    },
+    {
+      "resource": "UDA_Forbes_Tech-Bailey Middleton",
+      "resource_id": 442814,
+      "date": "2026-07-21",
+      "job_count": 11,
+      "refs": "DL223686, DL262496, DLFF267228, DLFF273984, JOB277873, JOB277473, DLFF282497, JOB277475, JOB278481, JOB275294, JOB277188"
+    },
+    {
+      "resource": "UDA_Forbes_Tech-Bailey Middleton",
+      "resource_id": 442814,
+      "date": "2026-07-22",
+      "job_count": 10,
+      "refs": "DL223687, DL262497, JOB282650, JOB282660, JOB283543, JOB282655, DLFF282664, JOB282541, JOB284830, GRANQ247154"
+    },
+    {
+      "resource": "UDA_Point _Tech - Eric Wilson",
+      "resource_id": 454701,
+      "date": "2026-07-14",
+      "job_count": 5,
+      "refs": "DLFF284757, JOB282913, DLFF283879, JOB274320, DLFF284978"
+    },
+    {
+      "resource": "UDA_Point _Tech - Eric Wilson",
+      "resource_id": 454701,
+      "date": "2026-07-15",
+      "job_count": 4,
+      "refs": "DLFF284800, JOB282658, DLFF284758, DLFF284760"
+    },
+    {
+      "resource": "UDA_Point _Tech - Eric Wilson",
+      "resource_id": 454701,
+      "date": "2026-07-21",
+      "job_count": 5,
+      "refs": "DL263671, GRANQ274210, JOB274323, GRANQ247401, JOB275322"
+    },
+    {
+      "resource": "UDA_Point _Tech - Eric Wilson",
+      "resource_id": 454701,
+      "date": "2026-07-24",
+      "job_count": 4,
+      "refs": "GRANQ245452, DL263674, GRANQ274211, JOB274324"
+    },
+    {
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "date": "2026-07-13",
+      "job_count": 7,
+      "refs": "DL164943, DL96812, DL126698, DLFF282840, DLFF284969, DLFF282841, GRANQ122482"
+    },
+    {
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "date": "2026-07-14",
+      "job_count": 8,
+      "refs": "DL164944, DL96813, DL126699, DLFF282755, JOB126239, JOB284975, DLFF284979, GRANQ284664"
+    },
+    {
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "date": "2026-07-15",
+      "job_count": 6,
+      "refs": "JOB126255, DL164945, DL96814, DL126700, JOB283868, DLFF284797"
+    },
+    {
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "date": "2026-07-16",
+      "job_count": 8,
+      "refs": "DL164946, DL96815, DL126701, GRANQ265030, DLFF284224, GRANQ245503, PPM274990, GRANQ122639"
+    },
+    {
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "date": "2026-07-17",
+      "job_count": 7,
+      "refs": "DL164947, DL103421, DL126702, DLFF284227, DLFF282754, DLFF280116, GRANQ122691"
+    },
+    {
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "date": "2026-07-20",
+      "job_count": 5,
+      "refs": "DL164948, DL106710, DL126703, DLFF284831, GRANQ122483"
+    },
+    {
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "date": "2026-07-21",
+      "job_count": 6,
+      "refs": "DL164949, JOB264141, DL107470, DL126704, JOB126240, GRANQ284665"
+    },
+    {
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "date": "2026-07-23",
+      "job_count": 6,
+      "refs": "DL164951, DL109245, DL126706, GRANQ265031, GRANQ245504, GRANQ122640"
+    },
+    {
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "date": "2026-07-24",
+      "job_count": 4,
+      "refs": "DL164952, DL109246, DL126707, GRANQ122692"
+    },
+    {
+      "resource": "UDAP_Aston_Tech Nikolaj Osokin",
+      "resource_id": 431509,
+      "date": "2026-07-13",
+      "job_count": 4,
+      "refs": "DL99504, DL266198, DLFF282825, JOB284817"
+    },
+    {
+      "resource": "UDAP_Aston_Tech Nikolaj Osokin",
+      "resource_id": 431509,
+      "date": "2026-07-14",
+      "job_count": 4,
+      "refs": "DL99505, DL266199, DLFF282826, JOB278036~3"
+    },
+    {
+      "resource": "UDAP_Aston_Tech Nikolaj Osokin",
+      "resource_id": 431509,
+      "date": "2026-07-15",
+      "job_count": 5,
+      "refs": "DL99506, DL266200, JOB284833, JOB284834, DLFF277087~4"
+    },
+    {
+      "resource": "UDC_Chapel_CT Craig Preece",
+      "resource_id": 401669,
+      "date": "2026-07-13",
+      "job_count": 8,
+      "refs": "PPM264778, PPM163499, PPM241769, DL283960, PPM262871, JOB280388~1, EOT279648, JOB282529~1"
+    },
+    {
+      "resource": "UDC_Chapel_CT Craig Preece",
+      "resource_id": 401669,
+      "date": "2026-07-14",
+      "job_count": 7,
+      "refs": "PPM264779, PPM163500, PPM241770, DL283961, PPM262872, DLFF275603~1, PPM168348"
+    },
+    {
+      "resource": "UDC_Chapel_CT Craig Preece",
+      "resource_id": 401669,
+      "date": "2026-07-15",
+      "job_count": 5,
+      "refs": "PPM264780, PPM163501, PPM241771, DL283962, PPM262873"
+    },
+    {
+      "resource": "UDC_Chapel_CT Craig Preece",
+      "resource_id": 401669,
+      "date": "2026-07-16",
+      "job_count": 5,
+      "refs": "PPM264781, PPM163502, PPM241772, DL283963, PPM262874"
+    },
+    {
+      "resource": "UDC_Chapel_CT Craig Preece",
+      "resource_id": 401669,
+      "date": "2026-07-17",
+      "job_count": 6,
+      "refs": "PPM264782, PPM163503, PPM241773, DL283964, PPM262875, DLFF280001~1"
+    },
+    {
+      "resource": "UDC_Chapel_CT Craig Preece",
+      "resource_id": 401669,
+      "date": "2026-07-20",
+      "job_count": 6,
+      "refs": "PPM264783, PPM163504, PPM241774, DL283965, PPM262876, JOB264167"
+    },
+    {
+      "resource": "UDC_Chapel_CT Craig Preece",
+      "resource_id": 401669,
+      "date": "2026-07-21",
+      "job_count": 6,
+      "refs": "PPM264784, PPM163505, PPM241775, DL283966, PPM262877, PPM168349"
+    },
+    {
+      "resource": "UDC_Chapel_CT Craig Preece",
+      "resource_id": 401669,
+      "date": "2026-07-22",
+      "job_count": 5,
+      "refs": "PPM264785, PPM163506, PPM241776, DL283967, PPM262878"
+    },
+    {
+      "resource": "UDC_Chapel_CT Craig Preece",
+      "resource_id": 401669,
+      "date": "2026-07-23",
+      "job_count": 5,
+      "refs": "PPM264786, PPM163507, PPM241777, DL283968, PPM262879"
+    },
+    {
+      "resource": "UDC_Chapel_CT Craig Preece",
+      "resource_id": 401669,
+      "date": "2026-07-24",
+      "job_count": 5,
+      "refs": "PPM264787, PPM163508, PPM241778, DL283969, PPM262880"
+    },
+    {
+      "resource": "UDC_Chapel_Tech Aamir Ali",
+      "resource_id": 435758,
+      "date": "2026-07-13",
+      "job_count": 4,
+      "refs": "PPM263395, PPM263133, PPM276228, DLFF283938"
+    },
+    {
+      "resource": "UDC_Chapel_Tech Aamir Ali",
+      "resource_id": 435758,
+      "date": "2026-07-17",
+      "job_count": 4,
+      "refs": "PPM263137, PPM276232, JOB273730~1, DLFF278605"
+    },
+    {
+      "resource": "UDC_Chapel_Tech Charlie Lewtas ",
+      "resource_id": 428247,
+      "date": "2026-07-14",
+      "job_count": 13,
+      "refs": "PPM263396, JOB278844, DLFF278845, JOB282522, DLFF279817, DLFF273417~2, DLFF279993, DLFF280076, JOB280080, JOB282442, JOB282443, DLFF282823, DLFF283939"
+    },
+    {
+      "resource": "UDC_Chapel_Tech Charlie Lewtas ",
+      "resource_id": 428247,
+      "date": "2026-07-15",
+      "job_count": 10,
+      "refs": "PPM263397, DLFF284845, DL275538, DLFF279781, DLFF278341, JOB282543, JOB278348, JOB278275, JOB278027, JOB283950"
+    },
+    {
+      "resource": "UDC_Chapel_Tech Charlie Lewtas ",
+      "resource_id": 428247,
+      "date": "2026-07-16",
+      "job_count": 10,
+      "refs": "PPM263398, DLFF279647, DLFF283942, DLFF282820, 282818, JOB284230, JOB278713, JOB279818, JOB284815, DLFF284811"
+    },
+    {
+      "resource": "UDC_Chapel_Tech Charlie Lewtas ",
+      "resource_id": 428247,
+      "date": "2026-07-17",
+      "job_count": 6,
+      "refs": "PPM263399, JOB284812, JOB284820, DLFF278603, DLFF284827, EOT284824"
+    },
+    {
+      "resource": "UDC_Chapel_Tech Charlie Lewtas ",
+      "resource_id": 428247,
+      "date": "2026-07-20",
+      "job_count": 6,
+      "refs": "PPM263400, JOB278566~1, DLFF277704~1, DLFF277975~1, JOB279785, JOB278688"
+    },
+    {
+      "resource": "UDC_Chapel_Tech Charlie Lewtas ",
+      "resource_id": 428247,
+      "date": "2026-07-21",
+      "job_count": 6,
+      "refs": "PPM263401, JOB278174, JOB282501, JOB278609, JOB278533, DLFF284759"
+    },
+    {
+      "resource": "UDC_Chapel_Tech David Camilleri",
+      "resource_id": 460517,
+      "date": "2026-07-14",
+      "job_count": 10,
+      "refs": "PPM276064, PPM276176, JOB279849, DL275477, JOB280081, JOB273361~2, JOB283949, PPM279585, PPM279480, JOB282784"
+    },
+    {
+      "resource": "UDC_Chapel_Tech David Camilleri",
+      "resource_id": 460517,
+      "date": "2026-07-15",
+      "job_count": 4,
+      "refs": "GRANQ277287, GRANQ279254, GRANQ277392, DLFF283941"
+    },
+    {
+      "resource": "UDC_Chapel_Tech David Camilleri",
+      "resource_id": 460517,
+      "date": "2026-07-16",
+      "job_count": 4,
+      "refs": "PPM274996, PPM275002, JOB284753, DLFF278602"
+    },
+    {
+      "resource": "UDC_Chapel_Tech David Camilleri",
+      "resource_id": 460517,
+      "date": "2026-07-20",
+      "job_count": 4,
+      "refs": "EOT284658, JOB278740, JOB278005, JOB282817"
+    },
+    {
+      "resource": "UDC_Chapel_Tech David Camilleri",
+      "resource_id": 460517,
+      "date": "2026-07-21",
+      "job_count": 5,
+      "refs": "PPM276065, PPM276177, DL275478, PPM279586, PPM279481"
+    },
+    {
+      "resource": "UDGQ_Granary_Tech Mark Taylor",
+      "resource_id": 455127,
+      "date": "2026-07-13",
+      "job_count": 4,
+      "refs": "DL263934, DL255799, JOB284837, DLFF284851"
+    },
+    {
+      "resource": "UDGQ_Granary_Tech Mark Taylor",
+      "resource_id": 455127,
+      "date": "2026-07-14",
+      "job_count": 7,
+      "refs": "DL263935, DL255800, JOB284807, JOB284835, JOB284751, JOB276954~1"
+    },
+    {
+      "resource": "UDGQ_Granary_Tech Mark Taylor",
+      "resource_id": 455127,
+      "date": "2026-07-15",
+      "job_count": 6,
+      "refs": "DL263936, DL255801, DLFF284853, DLFF284856, JOB284850, GRANQ279789"
+    },
+    {
+      "resource": "UDGQ_Granary_Tech Mark Taylor",
+      "resource_id": 455127,
+      "date": "2026-07-17",
+      "job_count": 5,
+      "refs": "DL263938, GRANQ275138, DL255803, DLFF284818, GRANQ279853"
+    },
+    {
+      "resource": "UDGQ_Granary_Tech Mark Taylor",
+      "resource_id": 455127,
+      "date": "2026-07-21",
+      "job_count": 4,
+      "refs": "DL263940, DL255805, GRANQ275032"
+    },
+    {
+      "resource": "UDGQ_Granary_Tech Mark Taylor",
+      "resource_id": 455127,
+      "date": "2026-07-24",
+      "job_count": 4,
+      "refs": "DL263943, GRANQ275139, DL255808, GRANQ279905"
+    },
+    {
+      "resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "resource_id": 423690,
+      "date": "2026-07-13",
+      "job_count": 18,
+      "refs": "DL259651, PPM204361, DL259912, LS87865, DL260173, DL278758, DL278935, DL282847, DL283602, LS87866, LS87864, DL260435, PPM204413, PPM204466, DLFF284970, PPM204519, PPM204571, EOT284964"
+    },
+    {
+      "resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "resource_id": 423690,
+      "date": "2026-07-14",
+      "job_count": 15,
+      "refs": "DL259652, DL259913, JOB87959, DL260174, DL278759, DL278936, DL282848, DL283603, DL260436, PPM205439, PPM204625, EOT284964~3, PPM205361, DLFF284962, JOB284963"
+    },
+    {
+      "resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "resource_id": 423690,
+      "date": "2026-07-15",
+      "job_count": 24,
+      "refs": "DL259653, PPM204679, DL259914, LS253850, DL260175, PPM274584, DL278760, DL278937, DL282849, DL283604, PPM253926, PPM253888, DL260437, LS253742, PPM252800, JOB257736, PPM274578, LS268014, PPM204731, PPM252763, DLFF284973, LS257665, LS257613, LS254052"
+    },
+    {
+      "resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "resource_id": 423690,
+      "date": "2026-07-16",
+      "job_count": 13,
+      "refs": "DL259654, PPM204784, DL259915, DL260176, DL278761, DL278938, DL282850, DL283605, DL260438, GRANQ271672, PPM204836, PPM204890, PPM205183"
+    },
+    {
+      "resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "resource_id": 423690,
+      "date": "2026-07-17",
+      "job_count": 12,
+      "refs": "DL259655, PPM204995, DL259916, DL260177, DL278762, DL278939, DL282851, DL283606, DL260439, PPM205048, PPM205101, PPM205184"
+    },
+    {
+      "resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "resource_id": 423690,
+      "date": "2026-07-20",
+      "job_count": 18,
+      "refs": "DL259656, PPM204362, DL259917, LS106767, DL260178, DL278763, DL278940, DL282852, DL283607, LS106769, LS106768, DL260440, PPM204414, PPM204467, JOB278370~1, PPM204520, PPM204572, JOB273410~4"
+    },
+    {
+      "resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "resource_id": 423690,
+      "date": "2026-07-21",
+      "job_count": 14,
+      "refs": "DL259657, DL259918, JOB106888, DL260179, DL278764, DL278941, DL282853, DL283608, DL260441, PPM205440, PPMDD279985, PPM204627, PPM205362, PPM205398"
+    },
+    {
+      "resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "resource_id": 423690,
+      "date": "2026-07-22",
+      "job_count": 25,
+      "refs": "DL259658, PPM204680, DL259919, LS253851, DL260180, DL278765, DL278942, DL282854, DL283609, PPM253927, PPM253889, DL260442, LS253743, PPM252801, JOB257737, LS268015, PPM204732, PPM252764, LS284600, LS279665, JOB257945, LS284718, JOB257972, JOB257964, JOB257707"
+    },
+    {
+      "resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "resource_id": 423690,
+      "date": "2026-07-23",
+      "job_count": 15,
+      "refs": "DL259659, PPM204785, DL259920, DL260181, DL278766, DL278943, DL282855, DL283610, DL260443, JOB223560, GRANQ271673, PPM204837, JOB224069, PPM204891, PPM205185"
+    },
+    {
+      "resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "resource_id": 423690,
+      "date": "2026-07-24",
+      "job_count": 12,
+      "refs": "DL259660, PPM204996, DL259921, DL260182, DL278767, DL278944, DL282856, DL283611, DL260444, PPM205049, PPM205102, PPM205186"
+    },
+    {
+      "resource": "UDL_Leodis_Tech Andrew Parchment ",
+      "resource_id": 454297,
+      "date": "2026-07-14",
+      "job_count": 4,
+      "refs": "EOT282783~2, EOT284964~2, JOB282441, JOB276970"
+    },
+    {
+      "resource": "UDL_Leodis_Tech Andrew Parchment ",
+      "resource_id": 454297,
+      "date": "2026-07-15",
+      "job_count": 5,
+      "refs": "EOT284822~2, JOB284976, DLFF284959, DLFF280121~1, JOB284977"
+    },
+    {
+      "resource": "UDL_Leodis_Tech Andrew Parchment ",
+      "resource_id": 454297,
+      "date": "2026-07-16",
+      "job_count": 4,
+      "refs": "GRANQ258156, DLFF284981, JOB284982, JOB284983"
+    },
+    {
+      "resource": "UDUA_U&A_TechSup Martin Parry",
+      "resource_id": 402167,
+      "date": "2026-07-13",
+      "job_count": 6,
+      "refs": "DL165205, DL98980, JOB282776, JOB284819, JOB284332, DL269718"
+    },
+    {
+      "resource": "UDUA_U&A_TechSup Martin Parry",
+      "resource_id": 402167,
+      "date": "2026-07-14",
+      "job_count": 6,
+      "refs": "DL165206, DL98981, DLFF282750, DLFF284593, GRANQ245345, DL269719"
+    },
+    {
+      "resource": "UDUA_U&A_TechSup Martin Parry",
+      "resource_id": 402167,
+      "date": "2026-07-15",
+      "job_count": 11,
+      "refs": "DL165207, DL98982, JOB90175, JOB90179, JOB90265, JOB99559, PPM99612, GRANQ258216, JOB283878, DL269720, JOB284814"
+    },
+    {
+      "resource": "UDUA_U&A_TechSup Martin Parry",
+      "resource_id": 402167,
+      "date": "2026-07-16",
+      "job_count": 8,
+      "refs": "DL165208, PPM284717, DL99089, JOB96802, PPM99732, DL201805, JOB284590, DL98565"
+    },
+    {
+      "resource": "UDUA_U&A_TechSup Martin Parry",
+      "resource_id": 402167,
+      "date": "2026-07-17",
+      "job_count": 4,
+      "refs": "DL165209, DL102175, GRANQ245399, DL269721"
+    },
+    {
+      "resource": "UDUA_U&A_TechSup Martin Parry",
+      "resource_id": 402167,
+      "date": "2026-07-21",
+      "job_count": 5,
+      "refs": "JOB106900, DL165211, DL107549, GRANQ245346, DL269723"
+    },
+    {
+      "resource": "UDUA_U&A_TechSup Martin Parry",
+      "resource_id": 402167,
+      "date": "2026-07-22",
+      "job_count": 8,
+      "refs": "DL165212, DL107550, JOB107476, PPM107523, JOB107518, PPM107542, GRANQ258217, DL269724"
+    },
+    {
+      "resource": "UDUA_U&A_TechSup Martin Parry",
+      "resource_id": 402167,
+      "date": "2026-07-23",
+      "job_count": 7,
+      "refs": "DL165213, DL108458, JOB108450, PPM108451, PPM108462, DL201806, DL108460"
+    },
+    {
+      "resource": "UDUA_U&A_TechSup Martin Parry",
+      "resource_id": 402167,
+      "date": "2026-07-24",
+      "job_count": 4,
+      "refs": "DL165214, DL109302, GRANQ245400, DL269725"
+    }
+  ]
+}
