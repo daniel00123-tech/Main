@@ -26,6 +26,7 @@ from bigchange_btr_allocation import (  # noqa: E402
     adjacent_bookings,
     as_int,
     build_recommendation,
+    contractor_exclusion,
     diary_blocks,
     fetch_unallocated_jobs,
     find_slot,
@@ -110,6 +111,10 @@ def is_closed_job(job: dict[str, Any]) -> bool:
         return True
     status_id = as_int(job.get("StatusId"))
     return status_id in CLOSED_STATUS_IDS
+
+
+def has_cancel_flag(job: dict[str, Any]) -> bool:
+    return "cancel" in normalise(job.get("CurrentFlag"))
 
 
 def active_btr_resources(resources: list[dict[str, Any]], rules: dict[str, Any]) -> list[dict[str, Any]]:
@@ -310,6 +315,13 @@ def collect_incomplete_candidates(
                 "resource_id": rid,
                 "planned_start": planned_start,
             }
+            excluded, exclusion_reason = contractor_exclusion(job, rules)
+            if excluded:
+                ppm_manual_by_ref.setdefault(ref, {**item, "reason": exclusion_reason})
+                continue
+            if has_cancel_flag(job):
+                ppm_manual_by_ref.setdefault(ref, {**item, "reason": "cancel flag requires manual review"})
+                continue
             if is_ppm_job(job):
                 ppm_manual_by_ref.setdefault(ref, {**item, "reason": "stale PPM diary entry requires manual review"})
                 continue
@@ -429,6 +441,9 @@ def apply_unallocated_jobs(
     for job in sorted(btr_jobs, key=confidence_rank):
         ref = str(job.get("Ref") or "").strip()
         try:
+            if has_cancel_flag(job):
+                skipped.append({"ref": ref, "reason": "cancel flag requires manual review", "mode": "daily_allocate"})
+                continue
             result = build_recommendation(client, job, rules)
             if isinstance(result, tuple):
                 reason = result[1]
@@ -652,7 +667,17 @@ def run(*, dry_run: bool, lookback_days: int) -> int:
         manual_review.extend(
             item
             for item in skipped
-            if any(term in normalise(item.get("reason")) for term in ("ppm", "contractor", "aquilo", "baltic", "low"))
+            if any(term in normalise(item.get("reason")) for term in ("ppm", "contractor", "aquilo", "baltic", "low", "cancel"))
+        )
+        manual_review.extend(
+            {
+                "ref": item.get("job_ref"),
+                "reason": "low confidence allocation applied - human review recommended",
+                "site": item.get("site"),
+                "planned_start": item.get("scheduled_date"),
+            }
+            for item in phase_applied
+            if item.get("confidence") == "Low"
         )
 
         if not dry_run:
