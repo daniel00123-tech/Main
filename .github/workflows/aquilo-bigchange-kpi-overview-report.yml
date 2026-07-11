@@ -1,0 +1,86 @@
+name: Aquilo BigChange KPI Overview Report
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  daily-kpi-report:
+    runs-on: ubuntu-latest
+    env:
+      BIGCHANGE_AUTH_MODE: api_key
+      BIGCHANGE_BASE_URL: ${{ secrets.BIGCHANGE_BASE_URL }}
+      BIGCHANGE_API_KEY: ${{ secrets.BIGCHANGE_API_KEY }}
+      BIGCHANGE_USERNAME: ${{ secrets.BIGCHANGE_USERNAME }}
+      BIGCHANGE_PASSWORD: ${{ secrets.BIGCHANGE_PASSWORD }}
+      FRESHDESK_SUBDOMAIN: ${{ secrets.FRESHDESK_SUBDOMAIN }}
+      FRESHDESK_API_KEY: ${{ secrets.FRESHDESK_API_KEY }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      SMTP_FROM_EMAIL: ${{ secrets.SMTP_FROM_EMAIL }}
+      SMTP_FROM_NAME: ${{ secrets.SMTP_FROM_NAME }}
+      SMTP_TO_EMAIL: ${{ secrets.SMTP_TO_EMAIL }}
+      SMTP_CC_EMAIL: ${{ secrets.SMTP_CC_EMAIL }}
+      STAFF_NAME_ALIASES: ${{ secrets.STAFF_NAME_ALIASES }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Locate headless Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              echo "CHROME_BIN=$(command -v "$candidate")" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium
+          for candidate in chromium-browser chromium; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              echo "CHROME_BIN=$(command -v "$candidate")" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          echo "No Chrome or Chromium binary found" >&2
+          exit 1
+
+      - name: Run KPI overview report
+        run: python3 scripts/bigchange_kpi_report.py
+
+      - name: Upload dashboard PNG
+        if: ${{ always() && hashFiles('reports/bigchange-kpi-dashboard.png') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bigchange-kpi-dashboard-png
+          path: reports/bigchange-kpi-dashboard.png
+          if-no-files-found: error
+
+      - name: Commit KPI baseline
+        if: ${{ hashFiles('automation-memory/kpi-baseline.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add automation-memory/kpi-baseline.json
+          if git diff --cached --quiet; then
+            echo "No KPI baseline changes to commit"
+            exit 0
+          fi
+          git commit -m "Update Aquilo KPI baseline"
+          git push
