@@ -149,8 +149,8 @@ def parse_duration(value: Any) -> int | None:
         hours, minutes, seconds = (int(match.group(i)) for i in range(1, 4))
         total = hours * 60 + minutes + (1 if seconds >= 30 else 0)
         return total if total > 0 else None
-    as_int = as_int(value)
-    return as_int if as_int and as_int > 0 else None
+    parsed = as_int(value)
+    return parsed if parsed and parsed > 0 else None
 
 
 def as_int(value: Any, default: int | None = None) -> int | None:
@@ -413,16 +413,21 @@ def overlaps(start_a: dt.datetime, end_a: dt.datetime, start_b: dt.datetime, end
 class BigChangeClient:
     def __init__(self) -> None:
         self.base_url = os.environ.get("BIGCHANGE_BASE_URL", DEFAULT_BASE_URL)
-        username = required_env("BIGCHANGE_USERNAME")
-        password = required_env("BIGCHANGE_PASSWORD")
+        auth_mode = os.environ.get("BIGCHANGE_AUTH_MODE", "basic").strip().lower()
         api_key = required_env("BIGCHANGE_API_KEY")
-        token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
         self.headers = {
-            "Authorization": f"Basic {token}",
             "key": api_key,
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
+        username = os.environ.get("BIGCHANGE_USERNAME")
+        password = os.environ.get("BIGCHANGE_PASSWORD")
+        if auth_mode != "api_key":
+            username = required_env("BIGCHANGE_USERNAME")
+            password = required_env("BIGCHANGE_PASSWORD")
+        if username and password:
+            token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
+            self.headers["Authorization"] = f"Basic {token}"
 
     def get(self, action: str, params: dict[str, Any] | None = None, attempts: int = 3) -> dict[str, Any]:
         query = {"action": action}
