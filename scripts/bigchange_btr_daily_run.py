@@ -31,6 +31,7 @@ from bigchange_btr_allocation import (  # noqa: E402
     is_ppm_job,
     is_unallocated,
     load_rules,
+    next_working_day,
     normalise,
     parse_datetime,
     parse_duration,
@@ -385,7 +386,7 @@ def run_stale_reschedules(
                     rules,
                     resource,
                     site,
-                    start_day=today,
+                    start_day=next_working_day(today),
                 )
                 note = "kept existing assigned resource"
             else:
