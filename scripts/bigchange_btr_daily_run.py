@@ -435,12 +435,14 @@ def process_stale_jobs(
 
     for job in sorted(stale_jobs, key=job_ref):
         ref = job_ref(job)
+        assigned_resource = resolve_resource(resources, job)
+        site = site_for_job_or_resource(job, rules, resource_label(assigned_resource, job)) or ""
         if ref in audit_refs:
-            skipped.append({"ref": ref, "site": "", "reason": "already present in allocation audit"})
+            skipped.append({"ref": ref, "site": site, "reason": "already present in allocation audit"})
             continue
         result = build_reschedule_plan(client, rules, resources, job)
         if isinstance(result, tuple):
-            skipped.append({"ref": result[0], "site": "", "reason": result[1]})
+            skipped.append({"ref": result[0], "site": site, "reason": result[1]})
             continue
         record, error = apply_plan(client, result, dry_run=dry_run)
         if record:
