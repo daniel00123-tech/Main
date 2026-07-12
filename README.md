@@ -12,6 +12,29 @@ Run with the required BigChange, Freshdesk, and SMTP configuration supplied as e
 python3 scripts/bigchange_kpi_report.py
 ```
 
+## Daily GitHub Actions workflow
+
+`.github/workflows/aquilo-bigchange-kpi-overview-report.yml` runs the dashboard every day at `07:00 UTC` and can also be started manually with `workflow_dispatch`.
+
+Required repository secrets:
+
+- `BIGCHANGE_BASE_URL`
+- `BIGCHANGE_API_KEY`
+- `BIGCHANGE_USERNAME`
+- `BIGCHANGE_PASSWORD`
+- `FRESHDESK_SUBDOMAIN`
+- `FRESHDESK_API_KEY`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_FROM_EMAIL`
+- `SMTP_FROM_NAME`
+- `SMTP_TO_EMAIL`
+- `SMTP_CC_EMAIL`
+
+The workflow renders `reports/bigchange-kpi-dashboard.png`, embeds that PNG in the email body, attaches only the PNG, uploads only the PNG as a workflow artifact, and commits changes to `automation-memory/kpi-baseline.json` for follow-up automations.
+
 ## BigChange TEMP Invoice Nominal Correction
 
 Hourly automation entry point for correcting unsynchronised TEMP sales invoice line nominal codes:

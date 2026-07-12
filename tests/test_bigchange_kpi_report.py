@@ -3,16 +3,21 @@ import json
 import os
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
+    DEFAULT_FRESHDESK_OPEN_STATUS_IDS,
     FRESHDESK_METRIC,
+    add_items,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
+    category_lookup_from_rows,
     code_is_success,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -43,6 +48,41 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+
+class CategoryLookupTest(unittest.TestCase):
+    def test_resolves_job_category_id_to_staff_name(self) -> None:
+        lookup = category_lookup_from_rows(
+            [
+                {"Id": 42, "Name": "Amy Bradley"},
+                {"JobCategoryID": "99", "JobCategoryName": "Nirvana PPM"},
+            ]
+        )
+
+        self.assertEqual(job_category_name({"CategoryId": "42", "Name": "Generic job name"}, lookup), "Amy Bradley")
+
+    def test_does_not_treat_generic_job_id_and_name_as_category(self) -> None:
+        lookup = category_lookup_from_rows([{"Id": 42, "Name": "Amy Bradley"}])
+
+        self.assertEqual(job_category_name({"Id": 42, "Name": "Generic job name"}, lookup), "")
+
+    def test_add_items_groups_rows_using_category_lookup(self) -> None:
+        grouped = defaultdict(lambda: defaultdict(list))
+        staff_names: set[str] = set()
+        lookup = {"42": "Amy Bradley"}
+
+        add_items(
+            grouped,
+            staff_names,
+            [{"CategoryId": 42, "CreatedDate": "2026-05-20"}],
+            "unallocated_jobs",
+            ("CreatedDate",),
+            dt.date(2026, 5, 25),
+            lookup,
+        )
+
+        self.assertEqual(staff_names, {"Amy Bradley"})
+        self.assertEqual(len(grouped["Amy Bradley"]["unallocated_jobs"]), 1)
 
 
 class BigChangeApiTest(unittest.TestCase):
@@ -128,6 +168,9 @@ class SalesAttributionTest(unittest.TestCase):
 
 
 class FreshdeskKpiTest(unittest.TestCase):
+    def test_fallback_open_status_ids_include_waiting_statuses(self) -> None:
+        self.assertEqual(DEFAULT_FRESHDESK_OPEN_STATUS_IDS, {2, 3, 8, 9})
+
     def test_maps_status_choices_to_open_status_ids(self) -> None:
         choices = [
             {"id": 2, "value": "Open"},
