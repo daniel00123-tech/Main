@@ -66,6 +66,14 @@ class RoleMatch:
 
 
 @dataclass
+class EmergencyMatch:
+    is_emergency: bool
+    reason: str
+    confidence: str
+    target_date: dt.date | None = None
+
+
+@dataclass
 class ResourceCandidate:
     resource_id: int
     name: str
@@ -194,6 +202,59 @@ def contractor_exclusion(job: dict[str, Any], rules: dict[str, Any]) -> tuple[bo
     if matches:
         return True, f"Excluded wording found: {', '.join(sorted(set(matches)))}"
     return False, "No contractor-exclusion wording found"
+
+
+def is_cover_job(job: dict[str, Any]) -> bool:
+    ref = normalise(job.get("Ref"))
+    job_type = normalise(job.get("Type"))
+    description = normalise(job.get("Description"))
+    return ref.startswith("cover") or "agency cover" in job_type or "agency cover" in description
+
+
+def emergency_target_date(now: dt.datetime | None = None, rules: dict[str, Any] | None = None) -> dt.date:
+    now = now or dt.datetime.now()
+    emergency_rules = (rules or {}).get("emergency", {})
+    cutoff_text = str(emergency_rules.get("same_day_cutoff", "15:00"))
+    cutoff_hour, cutoff_minute = (int(part) for part in cutoff_text.split(":", 1))
+    target = now.date() if now.time() < dt.time(cutoff_hour, cutoff_minute) else now.date() + dt.timedelta(days=1)
+    return next_working_day(target)
+
+
+def emergency_match(job: dict[str, Any], rules: dict[str, Any], now: dt.datetime | None = None) -> EmergencyMatch:
+    """Classify emergency works from job wording.
+
+    The rules intentionally look across type, flag, notes, and description, but
+    suppress common planned-maintenance false positives such as emergency-light
+    PPM tests.
+    """
+    text = job_text(job)
+    emergency_rules = rules.get("emergency", {})
+    false_positive_terms = [normalise(term) for term in emergency_rules.get("false_positive_terms", [])]
+    high_terms = [normalise(term) for term in emergency_rules.get("high_confidence_terms", [])]
+    medium_terms = [normalise(term) for term in emergency_rules.get("medium_confidence_terms", [])]
+
+    if any(term and term in text for term in false_positive_terms):
+        return EmergencyMatch(False, "Emergency false-positive wording suppressed", "Low")
+
+    high_matches = [term for term in high_terms if term and term in text]
+    if high_matches:
+        return EmergencyMatch(
+            True,
+            f"Emergency wording found: {', '.join(sorted(set(high_matches)))}",
+            "High",
+            emergency_target_date(now, rules),
+        )
+
+    medium_matches = [term for term in medium_terms if term and term in text]
+    if medium_matches:
+        return EmergencyMatch(
+            True,
+            f"Possible emergency wording found: {', '.join(sorted(set(medium_matches)))}",
+            "Medium",
+            emergency_target_date(now, rules),
+        )
+
+    return EmergencyMatch(False, "No emergency wording found", "High")
 
 
 def is_ppm_job(job: dict[str, Any]) -> bool:
@@ -730,6 +791,7 @@ def choose_resource(
     rules: dict[str, Any],
     search_days: int = 14,
     preferred_resource: str | None = None,
+    target_day: dt.date | None = None,
 ) -> tuple[ResourceCandidate | None, SlotProposal | None, list[str]]:
     warnings: list[str] = []
     resources = client.resources()
@@ -762,7 +824,7 @@ def choose_resource(
     if not candidates:
         return None, None, ["No suitable active site-based resource found for required role"]
 
-    start_day = next_working_day(dt.date.today())
+    start_day = next_working_day(target_day or dt.date.today())
     end_day = start_day + dt.timedelta(days=search_days)
     best: tuple[ResourceCandidate, SlotProposal] | None = None
     working_hours_cache: dict[int, list[dict[str, Any]]] = {}
@@ -846,10 +908,24 @@ def build_recommendation(
         return job.get("Ref", ""), role_match.reason
 
     duration, duration_reason, duration_confidence = estimate_duration(job, rules)
+    emergency = emergency_match(job, rules)
+    search_days = 0 if emergency.is_emergency else 14
     resource, slot, warnings = choose_resource(
-        client, site_match.site, role_match.role, duration, rules, preferred_resource=preferred_resource
+        client,
+        site_match.site,
+        role_match.role,
+        duration,
+        rules,
+        search_days=search_days,
+        preferred_resource=preferred_resource,
+        target_day=emergency.target_date,
     )
     if not resource or not slot:
+        if emergency.is_emergency and emergency.target_date:
+            return (
+                job.get("Ref", ""),
+                f"Emergency job requires allocation on {emergency.target_date.isoformat()} but no free non-overlap slot was found; displacement review required",
+            )
         return job.get("Ref", ""), "; ".join(warnings)
 
     diary = client.resource_diary(resource.resource_id, slot.date, slot.date)
@@ -869,6 +945,9 @@ def build_recommendation(
         )
 
     confidence_parts = [site_match.confidence, role_match.confidence, duration_confidence]
+    if emergency.is_emergency:
+        confidence_parts.append(emergency.confidence)
+        warnings.append(f"{emergency.reason}; target diary date {emergency.target_date.isoformat() if emergency.target_date else 'unknown'}")
     if "Medium" in confidence_parts:
         overall = "Medium"
     elif "Low" in confidence_parts:
@@ -897,14 +976,15 @@ def build_recommendation(
             f"(Resource4Schedule=1) with earliest suitable {site_match.site} diary capacity "
             f"({resource.job_count} diary jobs, {resource.booked_minutes} booked minutes in search window). "
             f"Working hours from BigChange: {format_working_hours(resource_working_windows(client, resource.resource_id, slot.date, {}, rules))}"
+            + (f" Emergency target date applied: {emergency.target_date.isoformat()}." if emergency.is_emergency and emergency.target_date else "")
         ),
         contractor_check="Passed",
         ppm_check=ppm_reason,
         overlap_check="Failed" if overlap else "Passed",
         booking_before=slot.booking_before,
         booking_after=slot.booking_after,
-        priority=str(job.get("CurrentFlag") or job.get("Status") or "Routine"),
-        target_date=str(job.get("DueDate") or "Not specified"),
+        priority=f"Emergency - {emergency.reason}" if emergency.is_emergency else str(job.get("CurrentFlag") or job.get("Status") or "Routine"),
+        target_date=emergency.target_date.isoformat() if emergency.is_emergency and emergency.target_date else str(job.get("DueDate") or "Not specified"),
         confidence=overall,
         assumptions=warnings,
     )

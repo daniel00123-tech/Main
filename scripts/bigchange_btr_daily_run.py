@@ -30,10 +30,12 @@ from bigchange_btr_allocation import (  # noqa: E402
     determine_role,
     diary_blocks,
     estimate_duration,
+    emergency_match,
     fetch_unallocated_jobs,
     find_slot,
     identify_site,
     is_cancelled_diary_job,
+    is_cover_job,
     is_ppm_job,
     load_rules,
     lunch_break_preserved,
@@ -57,7 +59,6 @@ LOOKBACK_DAYS = 14
 SEARCH_DAYS = 14
 OPEN_STATUS_LABELS = {"sent", "scheduled", "new", "accepted", "started"}
 CANCELLED_STATUS_LABELS = {"completed", "cancelled", "deleted", "rejected"}
-COVER_JOB_TERMS = ("agency cover",)
 
 
 def utc_now() -> dt.datetime:
@@ -102,13 +103,6 @@ def is_closed_or_cancelled(job: dict[str, Any]) -> bool:
     if status in CANCELLED_STATUS_LABELS:
         return True
     return as_int(job.get("StatusId")) in CLOSED_STATUS_IDS
-
-
-def is_cover_job(job: dict[str, Any]) -> bool:
-    ref = normalise(job.get("Ref"))
-    job_type = normalise(job.get("Type"))
-    description = normalise(job.get("Description"))
-    return ref.startswith("cover") or any(term in job_type or term in description for term in COVER_JOB_TERMS)
 
 
 def resource_label(resource: dict[str, Any]) -> str:
@@ -186,6 +180,154 @@ def find_resource_slot(
     return None
 
 
+def resources_for_site_role(
+    resources: list[dict[str, Any]],
+    rules: dict[str, Any],
+    site: str,
+    required_role: str,
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for resource in resources:
+        name = resource_label(resource)
+        if not is_site_role_resource(resource, rules):
+            continue
+        if resource_site(name, rules) != site:
+            continue
+        role = resource_role(name, rules)
+        if required_role == "HK" and role != "HK":
+            continue
+        if required_role in {"Tech", "CT"} and role not in {"Tech", "CT"}:
+            continue
+        candidates.append(resource)
+    return candidates
+
+
+def is_lower_priority_displacement_job(job: dict[str, Any], rules: dict[str, Any]) -> tuple[bool, str]:
+    status = normalise(job.get("Status"))
+    status_id = as_int(job.get("StatusId"))
+    if status in CANCELLED_STATUS_LABELS or status_id in CLOSED_STATUS_IDS:
+        return False, "closed/cancelled"
+    if status == "started" or status_id == 10:
+        return False, "already started"
+    if is_ppm_job(job):
+        return False, "PPM/manual-review work"
+    if is_cover_job(job):
+        return False, "cover/agency work"
+    excluded, exclusion_reason = contractor_exclusion(job, rules)
+    if excluded:
+        return False, exclusion_reason
+    emergency = emergency_match(job, rules)
+    if emergency.is_emergency:
+        return False, emergency.reason
+    return True, "routine non-emergency work"
+
+
+def build_emergency_displacement_plan(
+    client: BigChangeClient,
+    rules: dict[str, Any],
+    resources: list[dict[str, Any]],
+    job: dict[str, Any],
+    site: str,
+) -> dict[str, Any] | None:
+    emergency = emergency_match(job, rules)
+    if not emergency.is_emergency or not emergency.target_date:
+        return None
+
+    role = determine_role(job)
+    if not role.role:
+        return None
+    duration, duration_reason, duration_confidence = estimate_duration(job, rules)
+    target_day = emergency.target_date
+    working_hours_cache: dict[int, list[dict[str, Any]]] = {}
+    absence_cache: dict[int, list[dict[str, Any]]] = {}
+
+    for resource in resources_for_site_role(resources, rules, site, role.role):
+        rid = resource_id(resource)
+        diary = client.resource_diary(rid, target_day, target_day)
+        schedule_jobs = [entry for entry in diary if not is_cancelled_diary_job(entry)]
+        absence_blocks = resource_absence_blocks(client, rid, target_day, absence_cache)
+        windows = resource_working_windows(client, rid, target_day, working_hours_cache, rules)
+        if not windows:
+            continue
+
+        movable_jobs: list[dict[str, Any]] = []
+        for entry in schedule_jobs:
+            movable, _reason = is_lower_priority_displacement_job(entry, rules)
+            if movable and parse_datetime(entry.get("PlannedStart")):
+                movable_jobs.append(entry)
+        movable_jobs.sort(key=lambda entry: parse_datetime(entry.get("PlannedStart")) or dt.datetime.max, reverse=True)
+
+        for displaced in movable_jobs:
+            remaining_jobs = [entry for entry in schedule_jobs if as_int(entry.get("JobId")) != as_int(displaced.get("JobId"))]
+            target_blocks = diary_blocks(remaining_jobs, target_day) + absence_blocks
+            target_blocks.sort(key=lambda item: item[0])
+            emergency_slot = find_slot(target_blocks, target_day, duration, windows)
+            if not emergency_slot:
+                continue
+
+            displaced_duration = parse_duration(displaced.get("Duration")) or 60
+            displaced_new_slot = find_resource_slot(
+                client,
+                rules,
+                resource,
+                displaced_duration,
+                start_day=next_working_day(target_day + dt.timedelta(days=1)),
+            )
+            if not displaced_new_slot:
+                continue
+
+            new_day, new_start, new_end, _new_before, _new_after = displaced_new_slot
+            before, after = adjacent_bookings(
+                target_blocks,
+                dt.datetime.combine(target_day, emergency_slot.start),
+                dt.datetime.combine(target_day, emergency_slot.end),
+            )
+            recommendation = Recommendation(
+                job_ref=str(job.get("Ref") or ""),
+                job_id=int(job.get("JobId") or 0),
+                site=site,
+                site_identification="Emergency displacement target",
+                description=str(job.get("Description") or "")[:500],
+                status=str(job.get("Status") or ""),
+                flags=str(job.get("CurrentFlag") or "None"),
+                required_role=role.role,
+                proposed_resource=resource_label(resource),
+                proposed_resource_id=rid,
+                proposed_date=target_day.isoformat(),
+                proposed_start=emergency_slot.start.strftime("%H:%M"),
+                proposed_end=emergency_slot.end.strftime("%H:%M"),
+                duration_minutes=duration,
+                duration_reason=duration_reason,
+                resource_reason=(
+                    f"Emergency target date {target_day.isoformat()} required; selected {resource_label(resource)} "
+                    f"by moving lower-priority job {displaced.get('Ref')} to preserve same/next-day emergency capacity"
+                ),
+                contractor_check="Passed",
+                ppm_check="Not a PPM job",
+                overlap_check="Passed",
+                booking_before=before,
+                booking_after=after,
+                priority=f"Emergency - {emergency.reason}",
+                target_date=target_day.isoformat(),
+                confidence="Medium" if duration_confidence == "Medium" or emergency.confidence == "Medium" else "High",
+                assumptions=[
+                    emergency.reason,
+                    f"Displaces routine job {displaced.get('Ref')} from {displaced.get('PlannedStart')} to {new_day.isoformat()} {new_start.strftime('%H:%M')}-{new_end.strftime('%H:%M')}",
+                ],
+            )
+            return {
+                "recommendation": recommendation,
+                "displaced_job": displaced,
+                "displaced_resource": resource,
+                "displaced_new_date": new_day,
+                "displaced_new_start": new_start,
+                "displaced_new_end": new_end,
+                "displaced_duration_minutes": displaced_duration,
+                "reason": "Emergency displacement of routine lower-priority work",
+            }
+    return None
+
+
 def verify_schedule(
     client: BigChangeClient,
     job_id: int,
@@ -249,8 +391,32 @@ def schedule_with_verification(
     return retry_day, retry_start_time, retry_end_time, f"retry after verification failure: {message}"
 
 
+def schedule_exact_with_verification(
+    client: BigChangeClient,
+    *,
+    job_id: int,
+    job_ref: str,
+    resource: dict[str, Any],
+    scheduled_day: dt.date,
+    start: dt.time,
+    end: dt.time,
+    duration_minutes: int,
+) -> str:
+    rid = resource_id(resource)
+    schedule_dt = f"{scheduled_day.isoformat()} {start.strftime('%H:%M')}:00"
+    client.schedule_job(job_id, rid, schedule_dt, duration_minutes)
+    verified, message = verify_schedule(client, job_id, job_ref, rid, scheduled_day)
+    if not verified:
+        raise RuntimeError(f"Schedule verification failed: {message}")
+    return message
+
+
 def confidence_mode(confidence: str) -> str:
     return f"daily_allocate_{confidence.lower()}"
+
+
+def emergency_mode(confidence: str) -> str:
+    return f"daily_emergency_allocate_{confidence.lower()}"
 
 
 def recommendation_record(
@@ -289,6 +455,7 @@ def process_unallocated(
     client: BigChangeClient,
     rules: dict[str, Any],
     audited_refs: set[str],
+    resources: list[dict[str, Any]],
     *,
     apply: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], int]:
@@ -343,8 +510,105 @@ def process_unallocated(
             continue
 
         try:
+            emergency = emergency_match(job, rules)
             result = build_recommendation(client, job, rules)
             if isinstance(result, tuple):
+                if emergency.is_emergency:
+                    displacement_plan = build_emergency_displacement_plan(
+                        client,
+                        rules,
+                        resources,
+                        job,
+                        site_match.site,
+                    )
+                    if displacement_plan:
+                        recommendation = displacement_plan["recommendation"]
+                        displaced_job = displacement_plan["displaced_job"]
+                        displaced_resource = displacement_plan["displaced_resource"]
+                        displaced_new_date = displacement_plan["displaced_new_date"]
+                        displaced_new_start = displacement_plan["displaced_new_start"]
+                        displaced_new_end = displacement_plan["displaced_new_end"]
+                        displaced_duration = displacement_plan["displaced_duration_minutes"]
+                        verification = "dry run"
+                        displaced_verification = "dry run"
+                        if apply:
+                            displaced_verification = schedule_exact_with_verification(
+                                client,
+                                job_id=int(displaced_job["JobId"]),
+                                job_ref=str(displaced_job.get("Ref") or ""),
+                                resource=displaced_resource,
+                                scheduled_day=displaced_new_date,
+                                start=displaced_new_start,
+                                end=displaced_new_end,
+                                duration_minutes=displaced_duration,
+                            )
+                            displaced_record = {
+                                "timestamp": utc_now().isoformat(),
+                                "job_ref": str(displaced_job.get("Ref") or ""),
+                                "job_id": int(displaced_job["JobId"]),
+                                "site": site_match.site,
+                                "resource": resource_label(displaced_resource),
+                                "resource_id": resource_id(displaced_resource),
+                                "scheduled_date": displaced_new_date.isoformat(),
+                                "start": displaced_new_start.strftime("%H:%M"),
+                                "end": displaced_new_end.strftime("%H:%M"),
+                                "duration_minutes": displaced_duration,
+                                "confidence": "Medium",
+                                "mode": "daily_emergency_displaced_lower_priority",
+                                "original_date": str(displaced_job.get("PlannedStart") or ""),
+                                "displaced_for_job_ref": recommendation.job_ref,
+                                "verification": displaced_verification,
+                            }
+                            append_audit(displaced_record)
+                            applied.append(displaced_record)
+                            verification = schedule_exact_with_verification(
+                                client,
+                                job_id=int(job["JobId"]),
+                                job_ref=recommendation.job_ref,
+                                resource={
+                                    "id": recommendation.proposed_resource_id,
+                                    "label": recommendation.proposed_resource,
+                                },
+                                scheduled_day=dt.date.fromisoformat(recommendation.proposed_date),
+                                start=dt.datetime.strptime(recommendation.proposed_start, "%H:%M").time(),
+                                end=dt.datetime.strptime(recommendation.proposed_end, "%H:%M").time(),
+                                duration_minutes=recommendation.duration_minutes,
+                            )
+                            audited_refs.add(str(displaced_job.get("Ref") or ""))
+                        else:
+                            applied.append(
+                                {
+                                    "timestamp": utc_now().isoformat(),
+                                    "job_ref": str(displaced_job.get("Ref") or ""),
+                                    "job_id": int(displaced_job["JobId"]),
+                                    "site": site_match.site,
+                                    "resource": resource_label(displaced_resource),
+                                    "resource_id": resource_id(displaced_resource),
+                                    "scheduled_date": displaced_new_date.isoformat(),
+                                    "start": displaced_new_start.strftime("%H:%M"),
+                                    "end": displaced_new_end.strftime("%H:%M"),
+                                    "duration_minutes": displaced_duration,
+                                    "confidence": "Medium",
+                                    "mode": "daily_emergency_displaced_lower_priority",
+                                    "original_date": str(displaced_job.get("PlannedStart") or ""),
+                                    "displaced_for_job_ref": recommendation.job_ref,
+                                    "verification": displaced_verification,
+                                }
+                            )
+
+                        record = recommendation_record(
+                            recommendation,
+                            job_id=int(job["JobId"]),
+                            mode=emergency_mode(recommendation.confidence),
+                            verification=verification,
+                            previously_audited=job_ref in audited_refs,
+                        )
+                        record["displaced_job_ref"] = str(displaced_job.get("Ref") or "")
+                        if apply:
+                            append_audit(record)
+                            audited_refs.add(job_ref)
+                        applied.append(record)
+                        continue
                 skipped.append(
                     {
                         "ref": job_ref,
@@ -362,24 +626,36 @@ def process_unallocated(
             verification = "dry run"
             if apply:
                 resource = {"id": result.proposed_resource_id, "label": result.proposed_resource}
-                scheduled_day, start, end, verification = schedule_with_verification(
-                    client,
-                    rules,
-                    job_id=int(job["JobId"]),
-                    job_ref=result.job_ref,
-                    resource=resource,
-                    scheduled_day=scheduled_day,
-                    start=start,
-                    end=end,
-                    duration_minutes=result.duration_minutes,
-                )
+                if emergency.is_emergency:
+                    verification = schedule_exact_with_verification(
+                        client,
+                        job_id=int(job["JobId"]),
+                        job_ref=result.job_ref,
+                        resource=resource,
+                        scheduled_day=scheduled_day,
+                        start=start,
+                        end=end,
+                        duration_minutes=result.duration_minutes,
+                    )
+                else:
+                    scheduled_day, start, end, verification = schedule_with_verification(
+                        client,
+                        rules,
+                        job_id=int(job["JobId"]),
+                        job_ref=result.job_ref,
+                        resource=resource,
+                        scheduled_day=scheduled_day,
+                        start=start,
+                        end=end,
+                        duration_minutes=result.duration_minutes,
+                    )
                 result.proposed_date = scheduled_day.isoformat()
                 result.proposed_start = start.strftime("%H:%M")
                 result.proposed_end = end.strftime("%H:%M")
                 record = recommendation_record(
                     result,
                     job_id=int(job["JobId"]),
-                    mode=confidence_mode(result.confidence),
+                    mode=emergency_mode(result.confidence) if emergency.is_emergency else confidence_mode(result.confidence),
                     verification=verification,
                     previously_audited=job_ref in audited_refs,
                 )
@@ -389,7 +665,7 @@ def process_unallocated(
                 record = recommendation_record(
                     result,
                     job_id=int(job["JobId"]),
-                    mode=confidence_mode(result.confidence),
+                    mode=emergency_mode(result.confidence) if emergency.is_emergency else confidence_mode(result.confidence),
                     verification=verification,
                     previously_audited=job_ref in audited_refs,
                 )
@@ -771,6 +1047,7 @@ def main() -> int:
         client,
         rules,
         audited_refs,
+        resources,
         apply=args.apply,
     )
 
