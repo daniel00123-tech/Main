@@ -28,6 +28,9 @@ DEFAULT_BASE_URL = "https://webservice.bigchange.com/v01/services.ashx"
 RULES_PATH = Path("automation-memory/btr-allocation-rules.json")
 OPEN_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
 CLOSED_STATUS_IDS = {12, 13, 14}
+LUNCH_WINDOW_START = dt.time(11, 45)
+LUNCH_WINDOW_END = dt.time(13, 15)
+LUNCH_BREAK_MINUTES = 60
 JOB_TEXT_FIELDS = (
     "Ref",
     "Type",
@@ -602,6 +605,42 @@ def slot_has_overlap(
     return any(overlaps(slot_start, slot_end, block_start, block_end) for block_start, block_end, _ in blocks)
 
 
+def lunch_break_preserved(
+    blocks: list[tuple[dt.datetime, dt.datetime, str]],
+    day: dt.date,
+    slot_start: dt.datetime | None = None,
+    slot_end: dt.datetime | None = None,
+) -> bool:
+    """Return True when a 60-minute lunch gap remains between 11:45 and 13:15.
+
+    Existing bookings, absences, and the candidate slot are treated as blocks.
+    This preserves a real break without requiring the whole 90-minute lunch
+    window to stay empty.
+    """
+    lunch_start = dt.datetime.combine(day, LUNCH_WINDOW_START)
+    lunch_end = dt.datetime.combine(day, LUNCH_WINDOW_END)
+    required = dt.timedelta(minutes=LUNCH_BREAK_MINUTES)
+    lunch_blocks: list[tuple[dt.datetime, dt.datetime]] = []
+
+    for block_start, block_end, _label in blocks:
+        if overlaps(block_start, block_end, lunch_start, lunch_end):
+            lunch_blocks.append((max(block_start, lunch_start), min(block_end, lunch_end)))
+    if slot_start and slot_end and overlaps(slot_start, slot_end, lunch_start, lunch_end):
+        lunch_blocks.append((max(slot_start, lunch_start), min(slot_end, lunch_end)))
+
+    lunch_blocks.sort(key=lambda item: item[0])
+    cursor = lunch_start
+    for block_start, block_end in lunch_blocks:
+        if block_end <= cursor:
+            continue
+        if block_start - cursor >= required:
+            return True
+        cursor = max(cursor, block_end)
+        if cursor >= lunch_end:
+            break
+    return lunch_end - cursor >= required
+
+
 def current_local_date() -> dt.date:
     return dt.date.today()
 
@@ -627,14 +666,32 @@ def find_slot_in_window(
     if cursor >= day_end:
         return None
     duration = dt.timedelta(minutes=duration_minutes)
+    step = dt.timedelta(minutes=15)
 
     for start, end, label in blocks:
         if end <= cursor:
             continue
         if start >= day_end:
             break
-        if cursor + duration <= min(start, day_end):
+        gap_end = min(start, day_end)
+        while cursor + duration <= gap_end:
             slot_end = cursor + duration
+            if lunch_break_preserved(blocks, day, cursor, slot_end):
+                before, after = adjacent_bookings(blocks, cursor, slot_end)
+                return SlotProposal(
+                    date=day,
+                    start=cursor.time(),
+                    end=slot_end.time(),
+                    duration_minutes=duration_minutes,
+                    booking_before=before,
+                    booking_after=after,
+                )
+            cursor += step
+        cursor = max(cursor, end)
+
+    while cursor + duration <= day_end:
+        slot_end = cursor + duration
+        if lunch_break_preserved(blocks, day, cursor, slot_end):
             before, after = adjacent_bookings(blocks, cursor, slot_end)
             return SlotProposal(
                 date=day,
@@ -644,19 +701,7 @@ def find_slot_in_window(
                 booking_before=before,
                 booking_after=after,
             )
-        cursor = max(cursor, end)
-
-    if cursor + duration <= day_end:
-        before, after = adjacent_bookings(blocks, cursor, cursor + duration)
-        slot_end = cursor + duration
-        return SlotProposal(
-            date=day,
-            start=cursor.time(),
-            end=slot_end.time(),
-            duration_minutes=duration_minutes,
-            booking_before=before,
-            booking_after=after,
-        )
+        cursor += step
     return None
 
 

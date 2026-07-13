@@ -36,6 +36,7 @@ from bigchange_btr_allocation import (  # noqa: E402
     is_cancelled_diary_job,
     is_ppm_job,
     load_rules,
+    lunch_break_preserved,
     normalise,
     parse_datetime,
     parse_duration,
@@ -203,6 +204,7 @@ def verify_schedule(
     in_diary = any(as_int(entry.get("JobId")) == job_id for entry in diary)
     if not in_diary:
         return False, f"{job_ref} not found on intended resource diary after scheduling"
+    diary_blocks_for_day = diary_blocks([entry for entry in diary if not is_cancelled_diary_job(entry)], scheduled_day)
     if planned:
         duration = parse_duration(job.get("Duration")) or 60
         planned_end = parse_datetime(job.get("PlannedEnd")) or planned + dt.timedelta(minutes=duration)
@@ -210,6 +212,8 @@ def verify_schedule(
         if slot_has_overlap(absence_blocks, planned, planned_end):
             labels = ", ".join(label for _start, _end, label in absence_blocks)
             return False, f"{job_ref} overlaps resource absence ({labels})"
+        if not lunch_break_preserved(diary_blocks_for_day + absence_blocks, scheduled_day):
+            return False, f"{job_ref} leaves no 60-minute lunch gap between 11:45 and 13:15"
     return True, "verified on job and resource diary"
 
 
