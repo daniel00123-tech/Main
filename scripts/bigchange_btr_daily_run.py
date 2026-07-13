@@ -40,6 +40,7 @@ from bigchange_btr_allocation import (  # noqa: E402
     parse_datetime,
     parse_duration,
     ppm_tech_diary_review,
+    resource_absence_blocks,
     resource_is_active_for_jobwatch,
     resource_is_excluded,
     resource_role,
@@ -55,6 +56,7 @@ LOOKBACK_DAYS = 14
 SEARCH_DAYS = 14
 OPEN_STATUS_LABELS = {"sent", "scheduled", "new", "accepted", "started"}
 CANCELLED_STATUS_LABELS = {"completed", "cancelled", "deleted", "rejected"}
+COVER_JOB_TERMS = ("agency cover",)
 
 
 def utc_now() -> dt.datetime:
@@ -99,6 +101,13 @@ def is_closed_or_cancelled(job: dict[str, Any]) -> bool:
     if status in CANCELLED_STATUS_LABELS:
         return True
     return as_int(job.get("StatusId")) in CLOSED_STATUS_IDS
+
+
+def is_cover_job(job: dict[str, Any]) -> bool:
+    ref = normalise(job.get("Ref"))
+    job_type = normalise(job.get("Type"))
+    description = normalise(job.get("Description"))
+    return ref.startswith("cover") or any(term in job_type or term in description for term in COVER_JOB_TERMS)
 
 
 def resource_label(resource: dict[str, Any]) -> str:
@@ -155,13 +164,15 @@ def find_resource_slot(
     diary = client.resource_diary(rid, start_day, end_day)
     schedule_jobs = [job for job in diary if not is_cancelled_diary_job(job)]
     working_hours_cache: dict[int, list[dict[str, Any]]] = {}
+    absence_cache: dict[int, list[dict[str, Any]]] = {}
 
     for offset in range(search_days + 1):
         day = start_day + dt.timedelta(days=offset)
         if day.weekday() >= 5:
             continue
         windows = resource_working_windows(client, rid, day, working_hours_cache, rules)
-        blocks = diary_blocks(schedule_jobs, day)
+        blocks = diary_blocks(schedule_jobs, day) + resource_absence_blocks(client, rid, day, absence_cache)
+        blocks.sort(key=lambda item: item[0])
         slot = find_slot(blocks, day, duration_minutes, windows)
         if not slot:
             continue
@@ -192,6 +203,13 @@ def verify_schedule(
     in_diary = any(as_int(entry.get("JobId")) == job_id for entry in diary)
     if not in_diary:
         return False, f"{job_ref} not found on intended resource diary after scheduling"
+    if planned:
+        duration = parse_duration(job.get("Duration")) or 60
+        planned_end = parse_datetime(job.get("PlannedEnd")) or planned + dt.timedelta(minutes=duration)
+        absence_blocks = resource_absence_blocks(client, resource_id_value, scheduled_day, {})
+        if slot_has_overlap(absence_blocks, planned, planned_end):
+            labels = ", ".join(label for _start, _end, label in absence_blocks)
+            return False, f"{job_ref} overlaps resource absence ({labels})"
     return True, "verified on job and resource diary"
 
 
@@ -280,6 +298,18 @@ def process_unallocated(
         site_match = identify_site(job, rules)
         if not site_match:
             non_btr_count += 1
+            continue
+
+        if is_cover_job(job):
+            skipped.append(
+                {
+                    "ref": job_ref,
+                    "site": site_match.site,
+                    "reason": "Cover/agency job requires manual rota review; not auto-allocated",
+                    "manual_review": "cover",
+                    "mode": "unallocated",
+                }
+            )
             continue
 
         excluded, exclusion_reason = contractor_exclusion(job, rules)
@@ -434,6 +464,18 @@ def process_stale_diary(
     for item in stale_non_ppm:
         job = item["job"]
         job_ref = str(job.get("Ref") or "")
+        if is_cover_job(job):
+            skipped.append(
+                {
+                    "ref": job_ref,
+                    "site": item["site"],
+                    "reason": "Cover/agency job requires manual rota review; not auto-rescheduled",
+                    "manual_review": "cover",
+                    "mode": "stale_diary",
+                }
+            )
+            continue
+
         if job_ref in audited_refs:
             skipped.append(
                 {
@@ -623,7 +665,7 @@ def write_summary(
     non_btr_stale: int,
 ) -> Path:
     path = SUMMARY_DIR / f"btr-daily-run-{run_timestamp.date().isoformat()}.md"
-    manual = [item for item in skipped if item.get("manual_review") in {"ppm", "ppm_stale", "contractor", "resource", "allocation"}]
+    manual = [item for item in skipped if item.get("manual_review") in {"ppm", "ppm_stale", "contractor", "resource", "allocation", "cover"}]
     low_confidence = [item for item in applied if str(item.get("confidence")) == "Low"]
     if low_confidence:
         for item in low_confidence:

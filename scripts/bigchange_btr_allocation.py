@@ -489,6 +489,12 @@ class BigChangeClient:
             }
         )
 
+    def resource_absences(self, resource_id: int) -> list[dict[str, Any]]:
+        payload = self.get("ResourceAbsences", {"ResourceId": resource_id})
+        if payload.get("Code") not in (0, None):
+            raise RuntimeError(f"ResourceAbsences failed: {payload.get('Result')}")
+        return self.rows(payload)
+
     def schedule_job(self, job_id: int, resource_id: int, schedule_date: str, duration_mins: int) -> dict[str, Any]:
         payload = self.get(
             "JobSchedule",
@@ -539,6 +545,36 @@ def diary_blocks(jobs: list[dict[str, Any]], day: dt.date) -> list[tuple[dt.date
             continue
         label = f"{job.get('Ref')} {start.strftime('%H:%M')}-{end.strftime('%H:%M')} ({job.get('Type')})"
         blocks.append((start, end, label))
+    blocks.sort(key=lambda item: item[0])
+    return blocks
+
+
+def resource_absence_blocks(
+    client: BigChangeClient,
+    resource_id: int,
+    day: dt.date,
+    cache: dict[int, list[dict[str, Any]]],
+) -> list[tuple[dt.datetime, dt.datetime, str]]:
+    """Build diary-style blocks for ResourceAbsences entries on a day.
+
+    The legacy BigChange endpoint returns all absences for a resource rather
+    than reliably applying Start/End request filters, so filtering is done here.
+    """
+    if resource_id not in cache:
+        cache[resource_id] = client.resource_absences(resource_id)
+
+    day_start = dt.datetime.combine(day, dt.time.min)
+    day_end = dt.datetime.combine(day, dt.time.max)
+    blocks: list[tuple[dt.datetime, dt.datetime, str]] = []
+    for absence in cache.get(resource_id, []):
+        start = parse_datetime(absence.get("start") or absence.get("Start"))
+        end = parse_datetime(absence.get("end") or absence.get("End"))
+        if not start or not end or end <= start:
+            continue
+        if not overlaps(start, end, day_start, day_end):
+            continue
+        absence_type = str(absence.get("type") or absence.get("Type") or "Absence")
+        blocks.append((max(start, day_start), min(end, day_end), f"ABSENCE {absence_type}".strip()))
     blocks.sort(key=lambda item: item[0])
     return blocks
 
@@ -685,6 +721,7 @@ def choose_resource(
     end_day = start_day + dt.timedelta(days=search_days)
     best: tuple[ResourceCandidate, SlotProposal] | None = None
     working_hours_cache: dict[int, list[dict[str, Any]]] = {}
+    absence_cache: dict[int, list[dict[str, Any]]] = {}
 
     for candidate in candidates:
         diary = client.resource_diary(candidate.resource_id, start_day, end_day)
@@ -699,7 +736,8 @@ def choose_resource(
             windows = resource_working_windows(client, candidate.resource_id, day, working_hours_cache, rules)
             if not windows:
                 continue
-            blocks = diary_blocks(schedule_jobs, day)
+            blocks = diary_blocks(schedule_jobs, day) + resource_absence_blocks(client, candidate.resource_id, day, absence_cache)
+            blocks.sort(key=lambda item: item[0])
             slot = find_slot(blocks, day, duration_minutes, windows)
             if not slot:
                 continue
@@ -716,7 +754,7 @@ def choose_resource(
                 best = (candidate, slot)
             elif slot.date == best_slot.date and slot.start == best_slot.start and candidate.booked_minutes < best_candidate.booked_minutes:
                 best = (candidate, slot)
-        warnings.append("Absence status could not be independently verified beyond diary availability")
+        warnings.append("Absence status verified via ResourceAbsences and diary availability")
 
     if best is None:
         return None, None, list(dict.fromkeys(warnings)) + ["No suitable diary slot found within search window"]
