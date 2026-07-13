@@ -1,17 +1,19 @@
 # BTR Daily Run — 2026-07-13
 
-**Run timestamp:** 2026-07-13T09:05:01.133388+00:00  
+**Run timestamp:** 2026-07-13T11:05:57.442255+00:00  
 **BigChange environment:** TEST  
 **Mode:** APPLY  
-**Resources connectivity check:** 472 resources returned; 36 active JobWatch resources.
+**Resources connectivity check:** 472 resources returned; 37 active JobWatch resources.
 
 ## Counts
 
 | Category | Count |
 |---|---:|
-| Applied | 18 |
+| Applied | 7 |
 | Failed | 0 |
 | Skipped | 24 |
+
+Verification: the daily runner verified each applied JobSchedule on the intended resource diary with no overlap involving the scheduled job. A targeted diary recheck confirmed the new Leodis and Point bookings are the only jobs in their intended windows.
 
 ## Skipped by reason
 
@@ -27,24 +29,13 @@
 
 | Ref | Site | Resource | Date | Start-End | Confidence | Mode |
 | --- | --- | --- | --- | --- | --- | --- |
-| DLFF277087~5 | Aston Place | UDAP_Aston_Tech Nikolaj Osokin | 2026-07-16 | 09:00-14:00 | Medium | daily_allocate_medium |
-| DLFF277087~6 | Aston Place | UDAP_Aston_Tech Nikolaj Osokin | 2026-07-17 | 09:00-14:00 | Medium | daily_allocate_medium |
-| EOT285082 | Leodis Square | UDL_Leodis_Caretaker Gary Arundale | 2026-07-13 | 12:00-13:00 | High | daily_allocate_high |
-| EOT285082~1 | Leodis Square | UDL_Leodis_HKSup Rita Jakubauskiene | 2026-07-14 | 10:30-11:30 | High | daily_allocate_high |
-| EOT285082~2 | Leodis Square | UDL_Leodis_Caretaker Gary Arundale | 2026-07-13 | 15:00-16:00 | High | daily_allocate_high |
-| EOT285082~3 | Leodis Square | UDL_Leodis_Tech Andrew Parchment  | 2026-07-14 | 12:00-13:00 | High | daily_allocate_high |
-| EOT285083 | Leodis Square | UDL_Leodis_Caretaker Gary Arundale | 2026-07-14 | 12:00-13:00 | High | daily_allocate_high |
-| EOT285083~1 | Leodis Square | UDL_Leodis_HKSup Rita Jakubauskiene | 2026-07-15 | 10:30-11:30 | High | daily_allocate_high |
-| EOT285083~2 | Leodis Square | UDL_Leodis_Caretaker Gary Arundale | 2026-07-14 | 14:00-15:00 | High | daily_allocate_high |
-| EOT285083~3 | Leodis Square | UDL_Leodis_Caretaker Gary Arundale | 2026-07-14 | 15:00-16:00 | High | daily_allocate_high |
-| EOT285084 | Leodis Square | UDL_Leodis_Tech Andrew Parchment  | 2026-07-15 | 12:00-13:00 | High | daily_allocate_high |
-| EOT285084~1 | Leodis Square | UDL_Leodis_HKSup Rita Jakubauskiene | 2026-07-16 | 13:30-14:30 | High | daily_allocate_high |
-| EOT285084~2 | Leodis Square | UDL_Leodis_Tech Andrew Parchment  | 2026-07-15 | 16:00-17:00 | High | daily_allocate_high |
-| EOT285084~3 | Leodis Square | UDL_Leodis_Tech Andrew Parchment  | 2026-07-16 | 10:00-11:00 | High | daily_allocate_high |
-| JOB285075 | Chapel Wharf | UDC_Chapel_Tech Charlie Lewtas  | 2026-07-13 | 09:15-10:15 | Medium | daily_allocate_medium |
-| JOB285077 | Leodis Square | UDL_Leodis_Tech Andrew Parchment  | 2026-07-16 | 11:00-12:00 | Medium | daily_allocate_medium |
-| JOB285079 | Leodis Square | UDL_Leodis_Tech Andrew Parchment  | 2026-07-16 | 12:00-13:00 | High | daily_allocate_high |
-| JOB285114 | Leodis Square | UDL_Leodis_Tech Andrew Parchment  | 2026-07-16 | 13:00-14:00 | High | daily_allocate_high |
+| DLFF285192 | The Point | UDA_Point _Tech - Eric Wilson | 2026-07-13 | 12:00-13:00 | Medium | daily_allocate_medium |
+| DLFF285193 | The Point | UDA_Point_Tech Bradley Tice | 2026-07-14 | 11:00-12:00 | Medium | daily_allocate_medium |
+| DLFF285195 | The Point | UDA_Point _Tech - Eric Wilson | 2026-07-14 | 12:10-13:10 | Medium | daily_allocate_medium |
+| DLFF285196 | The Point | UDA_Point _Tech - Eric Wilson | 2026-07-14 | 13:10-14:10 | Medium | daily_allocate_medium |
+| DLFF285208 | The Point | UDA_Point _Tech - Eric Wilson | 2026-07-14 | 14:10-15:10 | High | daily_allocate_high |
+| GRANQ285182 | The Point | UDA_Point _Tech - Eric Wilson | 2026-07-14 | 15:10-16:10 | Medium | daily_allocate_medium |
+| JOB285189 | Leodis Square | UDL_Leodis_Caretaker Gary Arundale | 2026-07-13 | 12:00-13:00 | High | daily_allocate_high |
 
 ## Skipped jobs
 
@@ -96,17 +87,18 @@ _None._
 | UDA_Forbes_HK Heather Taylor | 2026-07-27 | 5 |
 | UDA_Forbes_Tech-Bailey Middleton | 2026-07-14 | 11 |
 | UDA_Forbes_Tech-Bailey Middleton | 2026-07-15 | 6 |
-| UDA_Forbes_Tech-Bailey Middleton | 2026-07-16 | 9 |
+| UDA_Forbes_Tech-Bailey Middleton | 2026-07-16 | 10 |
 | UDA_Forbes_Tech-Bailey Middleton | 2026-07-17 | 12 |
 | UDA_Forbes_Tech-Bailey Middleton | 2026-07-20 | 11 |
 | UDA_Forbes_Tech-Bailey Middleton | 2026-07-21 | 11 |
 | UDA_Forbes_Tech-Bailey Middleton | 2026-07-22 | 10 |
+| UDA_Point _Tech - Eric Wilson | 2026-07-14 | 5 |
 | UDA_Point _Tech - Eric Wilson | 2026-07-15 | 4 |
 | UDA_Point _Tech - Eric Wilson | 2026-07-21 | 5 |
 | UDA_Point _Tech - Eric Wilson | 2026-07-24 | 4 |
 | UDA_Point_Tech Bradley Tice | 2026-07-13 | 6 |
-| UDA_Point_Tech Bradley Tice | 2026-07-14 | 6 |
-| UDA_Point_Tech Bradley Tice | 2026-07-15 | 6 |
+| UDA_Point_Tech Bradley Tice | 2026-07-14 | 8 |
+| UDA_Point_Tech Bradley Tice | 2026-07-15 | 7 |
 | UDA_Point_Tech Bradley Tice | 2026-07-16 | 8 |
 | UDA_Point_Tech Bradley Tice | 2026-07-17 | 6 |
 | UDA_Point_Tech Bradley Tice | 2026-07-20 | 5 |
@@ -134,11 +126,10 @@ _None._
 | UDC_Chapel_Tech Charlie Lewtas  | 2026-07-15 | 10 |
 | UDC_Chapel_Tech Charlie Lewtas  | 2026-07-16 | 10 |
 | UDC_Chapel_Tech Charlie Lewtas  | 2026-07-17 | 6 |
-| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-20 | 6 |
-| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-21 | 6 |
+| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-20 | 4 |
 | UDC_Chapel_Tech David Camilleri | 2026-07-13 | 8 |
 | UDC_Chapel_Tech David Camilleri | 2026-07-14 | 11 |
-| UDC_Chapel_Tech David Camilleri | 2026-07-15 | 4 |
+| UDC_Chapel_Tech David Camilleri | 2026-07-15 | 5 |
 | UDC_Chapel_Tech David Camilleri | 2026-07-16 | 4 |
 | UDC_Chapel_Tech David Camilleri | 2026-07-20 | 4 |
 | UDC_Chapel_Tech David Camilleri | 2026-07-21 | 5 |
@@ -148,8 +139,8 @@ _None._
 | UDGQ_Granary_Tech Mark Taylor | 2026-07-17 | 5 |
 | UDGQ_Granary_Tech Mark Taylor | 2026-07-21 | 4 |
 | UDGQ_Granary_Tech Mark Taylor | 2026-07-24 | 4 |
-| UDL_Leodis_Caretaker Gary Arundale | 2026-07-13 | 19 |
-| UDL_Leodis_Caretaker Gary Arundale | 2026-07-14 | 15 |
+| UDL_Leodis_Caretaker Gary Arundale | 2026-07-13 | 18 |
+| UDL_Leodis_Caretaker Gary Arundale | 2026-07-14 | 12 |
 | UDL_Leodis_Caretaker Gary Arundale | 2026-07-15 | 23 |
 | UDL_Leodis_Caretaker Gary Arundale | 2026-07-16 | 13 |
 | UDL_Leodis_Caretaker Gary Arundale | 2026-07-17 | 12 |
@@ -159,9 +150,7 @@ _None._
 | UDL_Leodis_Caretaker Gary Arundale | 2026-07-23 | 15 |
 | UDL_Leodis_Caretaker Gary Arundale | 2026-07-24 | 12 |
 | UDL_Leodis_Caretaker Gary Arundale | 2026-07-27 | 16 |
-| UDL_Leodis_Tech Andrew Parchment  | 2026-07-14 | 4 |
-| UDL_Leodis_Tech Andrew Parchment  | 2026-07-15 | 5 |
-| UDL_Leodis_Tech Andrew Parchment  | 2026-07-16 | 5 |
+| UDL_Leodis_Tech Andrew Parchment  | 2026-07-13 | 5 |
 | UDUA_U&A_TechSup Martin Parry | 2026-07-13 | 6 |
 | UDUA_U&A_TechSup Martin Parry | 2026-07-14 | 6 |
 | UDUA_U&A_TechSup Martin Parry | 2026-07-15 | 11 |
