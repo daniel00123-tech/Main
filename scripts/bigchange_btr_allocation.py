@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import calendar
 import datetime as dt
 import json
 import os
@@ -71,6 +72,15 @@ class EmergencyMatch:
     reason: str
     confidence: str
     target_date: dt.date | None = None
+
+
+@dataclass
+class RequestedAppointment:
+    requested: bool
+    reason: str
+    confidence: str
+    date: dt.date | None = None
+    windows: list[tuple[dt.time, dt.time]] = field(default_factory=list)
 
 
 @dataclass
@@ -255,6 +265,147 @@ def emergency_match(job: dict[str, Any], rules: dict[str, Any], now: dt.datetime
         )
 
     return EmergencyMatch(False, "No emergency wording found", "High")
+
+
+MONTH_LOOKUP = {
+    name.lower(): index
+    for index in range(1, 13)
+    for name in (calendar.month_name[index], calendar.month_abbr[index])
+    if name
+}
+
+
+def _coerce_year(two_or_four_digit_year: str | None) -> int:
+    if not two_or_four_digit_year:
+        return dt.date.today().year
+    year = int(two_or_four_digit_year)
+    return 2000 + year if year < 100 else year
+
+
+def _futureish_date(day: int, month: int, year: int, explicit_year: bool) -> dt.date | None:
+    try:
+        parsed = dt.date(year, month, day)
+    except ValueError:
+        return None
+    if not explicit_year and parsed < dt.date.today():
+        try:
+            parsed = dt.date(year + 1, month, day)
+        except ValueError:
+            return None
+    return parsed
+
+
+def _parse_time_parts(hour_text: str, minute_text: str | None, meridiem: str | None) -> dt.time | None:
+    hour = int(hour_text)
+    minute = int(minute_text or 0)
+    if minute > 59:
+        return None
+    marker = normalise(meridiem)
+    if marker in {"am", "a.m"}:
+        if hour == 12:
+            hour = 0
+    elif marker in {"pm", "p.m"}:
+        if hour < 12:
+            hour += 12
+    if hour > 23:
+        return None
+    return dt.time(hour, minute)
+
+
+def _add_minutes_to_time(value: dt.time, minutes: int) -> dt.time:
+    base = dt.datetime.combine(dt.date.today(), value) + dt.timedelta(minutes=minutes)
+    return min(base.time(), dt.time(23, 59))
+
+
+def _parse_requested_date(text: str) -> dt.date | None:
+    numeric = re.search(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b|\b(\d{1,2})-(\d{1,2})-(\d{2,4})\b", text)
+    if numeric:
+        day = int(numeric.group(1) or numeric.group(4))
+        month = int(numeric.group(2) or numeric.group(5))
+        year_text = numeric.group(3) or numeric.group(6)
+        year = _coerce_year(year_text)
+        parsed = _futureish_date(day, month, year, explicit_year=bool(year_text))
+        if parsed:
+            return parsed
+
+    month_names = "|".join(sorted(MONTH_LOOKUP, key=len, reverse=True))
+    worded = re.search(rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({month_names})(?:\s+(\d{{2,4}}))?\b", text)
+    if worded:
+        day = int(worded.group(1))
+        month = MONTH_LOOKUP[worded.group(2)]
+        year = _coerce_year(worded.group(3))
+        parsed = _futureish_date(day, month, year, explicit_year=bool(worded.group(3)))
+        if parsed:
+            return parsed
+    return None
+
+
+def _parse_requested_windows(text: str, duration_minutes: int) -> list[tuple[dt.time, dt.time]]:
+    windows: list[tuple[dt.time, dt.time]] = []
+    range_pattern = re.compile(
+        r"\b(?:between|from)?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:-|to|and|until)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b"
+    )
+    for match in range_pattern.finditer(text):
+        start_marker = match.group(3) or match.group(6)
+        end_marker = match.group(6)
+        start = _parse_time_parts(match.group(1), match.group(2), start_marker)
+        end = _parse_time_parts(match.group(4), match.group(5), end_marker)
+        if not start or not end:
+            continue
+        if end <= start:
+            end_dt = dt.datetime.combine(dt.date.today(), end) + dt.timedelta(hours=12)
+            end = end_dt.time()
+        if end > start:
+            windows.append((start, end))
+
+    hour_range_pattern = re.compile(r"\b(\d{1,2}):(\d{2})\s*(?:-|to|until)\s*(\d{1,2}):(\d{2})\b")
+    for match in hour_range_pattern.finditer(text):
+        start = _parse_time_parts(match.group(1), match.group(2), None)
+        end = _parse_time_parts(match.group(3), match.group(4), None)
+        if start and end and end > start:
+            windows.append((start, end))
+
+    exact_patterns = (
+        re.compile(r"\b(?:at|for|around|arrive(?:\s+at)?|attend(?:\s+at)?)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b"),
+        re.compile(r"\b(\d{1,2}):(\d{2})\b"),
+    )
+    for pattern in exact_patterns:
+        for match in pattern.finditer(text):
+            start = _parse_time_parts(match.group(1), match.group(2), match.group(3) if len(match.groups()) >= 3 else None)
+            if start:
+                end = _add_minutes_to_time(start, duration_minutes)
+                if end > start:
+                    windows.append((start, end))
+    return list(dict.fromkeys(windows))
+
+
+def requested_appointment(job: dict[str, Any], rules: dict[str, Any], duration_minutes: int) -> RequestedAppointment:
+    text = job_text(job)
+    requested_terms = ("requested", "request", "book", "attend", "appointment", "access", "available", "tenant asked", "tenant requested")
+    has_request_context = any(term in text for term in requested_terms)
+    requested_date = _parse_requested_date(text)
+    windows = _parse_requested_windows(text, duration_minutes)
+    if requested_date and windows:
+        return RequestedAppointment(
+            True,
+            f"Requested appointment found for {requested_date.isoformat()} "
+            + ", ".join(f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}" for start, end in windows),
+            "High",
+            requested_date,
+            windows,
+        )
+    if requested_date and has_request_context:
+        return RequestedAppointment(True, f"Requested date found: {requested_date.isoformat()}", "Medium", requested_date)
+    if windows and has_request_context:
+        return RequestedAppointment(
+            True,
+            "Requested time window found without a specific date: "
+            + ", ".join(f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}" for start, end in windows),
+            "Low",
+            None,
+            windows,
+        )
+    return RequestedAppointment(False, "No requested appointment date/time found", "High")
 
 
 def is_ppm_job(job: dict[str, Any]) -> bool:
@@ -702,6 +853,26 @@ def lunch_break_preserved(
     return lunch_end - cursor >= required
 
 
+def intersect_working_windows(
+    working_windows: list[tuple[dt.datetime, dt.datetime]],
+    day: dt.date,
+    requested_windows: list[tuple[dt.time, dt.time]] | None,
+) -> list[tuple[dt.datetime, dt.datetime]]:
+    if not requested_windows:
+        return working_windows
+    intersections: list[tuple[dt.datetime, dt.datetime]] = []
+    for work_start, work_end in working_windows:
+        for requested_start, requested_end in requested_windows:
+            request_start_dt = dt.datetime.combine(day, requested_start)
+            request_end_dt = dt.datetime.combine(day, requested_end)
+            start = max(work_start, request_start_dt)
+            end = min(work_end, request_end_dt)
+            if end > start:
+                intersections.append((start, end))
+    intersections.sort(key=lambda item: item[0])
+    return intersections
+
+
 def current_local_date() -> dt.date:
     return dt.date.today()
 
@@ -792,6 +963,7 @@ def choose_resource(
     search_days: int = 14,
     preferred_resource: str | None = None,
     target_day: dt.date | None = None,
+    requested_windows: list[tuple[dt.time, dt.time]] | None = None,
 ) -> tuple[ResourceCandidate | None, SlotProposal | None, list[str]]:
     warnings: list[str] = []
     resources = client.resources()
@@ -841,6 +1013,8 @@ def choose_resource(
             if day.weekday() >= 5:
                 continue
             windows = resource_working_windows(client, candidate.resource_id, day, working_hours_cache, rules)
+            if requested_windows and target_day and day == target_day:
+                windows = intersect_working_windows(windows, day, requested_windows)
             if not windows:
                 continue
             blocks = diary_blocks(schedule_jobs, day) + resource_absence_blocks(client, candidate.resource_id, day, absence_cache)
@@ -909,7 +1083,10 @@ def build_recommendation(
 
     duration, duration_reason, duration_confidence = estimate_duration(job, rules)
     emergency = emergency_match(job, rules)
-    search_days = 0 if emergency.is_emergency else 14
+    requested = requested_appointment(job, rules, duration)
+    target_day = emergency.target_date if emergency.is_emergency else requested.date
+    requested_windows = None if emergency.is_emergency else requested.windows
+    search_days = 0 if emergency.is_emergency or requested.date else 14
     resource, slot, warnings = choose_resource(
         client,
         site_match.site,
@@ -918,13 +1095,19 @@ def build_recommendation(
         rules,
         search_days=search_days,
         preferred_resource=preferred_resource,
-        target_day=emergency.target_date,
+        target_day=target_day,
+        requested_windows=requested_windows,
     )
     if not resource or not slot:
         if emergency.is_emergency and emergency.target_date:
             return (
                 job.get("Ref", ""),
                 f"Emergency job requires allocation on {emergency.target_date.isoformat()} but no free non-overlap slot was found; displacement review required",
+            )
+        if requested.requested:
+            return (
+                job.get("Ref", ""),
+                f"{requested.reason} could not be accommodated automatically; manual appointment review required",
             )
         return job.get("Ref", ""), "; ".join(warnings)
 
@@ -948,6 +1131,9 @@ def build_recommendation(
     if emergency.is_emergency:
         confidence_parts.append(emergency.confidence)
         warnings.append(f"{emergency.reason}; target diary date {emergency.target_date.isoformat() if emergency.target_date else 'unknown'}")
+    elif requested.requested:
+        confidence_parts.append(requested.confidence)
+        warnings.append(requested.reason)
     if "Medium" in confidence_parts:
         overall = "Medium"
     elif "Low" in confidence_parts:
@@ -977,14 +1163,27 @@ def build_recommendation(
             f"({resource.job_count} diary jobs, {resource.booked_minutes} booked minutes in search window). "
             f"Working hours from BigChange: {format_working_hours(resource_working_windows(client, resource.resource_id, slot.date, {}, rules))}"
             + (f" Emergency target date applied: {emergency.target_date.isoformat()}." if emergency.is_emergency and emergency.target_date else "")
+            + (f" Requested appointment applied: {requested.reason}." if requested.requested and not emergency.is_emergency else "")
         ),
         contractor_check="Passed",
         ppm_check=ppm_reason,
         overlap_check="Failed" if overlap else "Passed",
         booking_before=slot.booking_before,
         booking_after=slot.booking_after,
-        priority=f"Emergency - {emergency.reason}" if emergency.is_emergency else str(job.get("CurrentFlag") or job.get("Status") or "Routine"),
-        target_date=emergency.target_date.isoformat() if emergency.is_emergency and emergency.target_date else str(job.get("DueDate") or "Not specified"),
+        priority=(
+            f"Emergency - {emergency.reason}"
+            if emergency.is_emergency
+            else f"Requested appointment - {requested.reason}"
+            if requested.requested
+            else str(job.get("CurrentFlag") or job.get("Status") or "Routine")
+        ),
+        target_date=(
+            emergency.target_date.isoformat()
+            if emergency.is_emergency and emergency.target_date
+            else requested.date.isoformat()
+            if requested.requested and requested.date
+            else str(job.get("DueDate") or "Not specified")
+        ),
         confidence=overall,
         assumptions=warnings,
     )

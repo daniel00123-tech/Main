@@ -11,8 +11,13 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
+import smtplib
 import sys
 from collections import Counter, defaultdict
+from email.headerregistry import Address
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +64,10 @@ LOOKBACK_DAYS = 14
 SEARCH_DAYS = 14
 OPEN_STATUS_LABELS = {"sent", "scheduled", "new", "accepted", "started"}
 CANCELLED_STATUS_LABELS = {"completed", "cancelled", "deleted", "rejected"}
+DEFAULT_REPORT_RECIPIENTS = [
+    "kayla.du.randt@nirvana-maintenance.co.uk",
+    "daniel.dwyer@nirvana-group.co.uk",
+]
 
 
 def utc_now() -> dt.datetime:
@@ -103,6 +112,70 @@ def is_closed_or_cancelled(job: dict[str, Any]) -> bool:
     if status in CANCELLED_STATUS_LABELS:
         return True
     return as_int(job.get("StatusId")) in CLOSED_STATUS_IDS
+
+
+def optional_env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default)
+
+
+def required_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
+def mailbox_address(email_value: str, display_name: str = "") -> Address:
+    username, domain = email_value.split("@", 1)
+    return Address(display_name=display_name, username=username, domain=domain)
+
+
+def report_recipients() -> list[str]:
+    configured = optional_env("BTR_REPORT_TO")
+    if configured:
+        return [addr.strip() for addr in configured.split(",") if addr.strip()]
+    return DEFAULT_REPORT_RECIPIENTS
+
+
+def short_work_description(job: dict[str, Any], limit: int = 140) -> str:
+    job_type = str(job.get("Type") or "").strip()
+    description = " ".join(str(job.get("Description") or "").split())
+    if description:
+        text = f"{job_type}: {description}" if job_type else description
+    else:
+        text = job_type or "No description supplied"
+    return text[: limit - 3] + "..." if len(text) > limit else text
+
+
+def markdown_to_basic_html(markdown: str) -> str:
+    escaped = (
+        markdown.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+    return f"<html><body><pre style=\"font-family: Arial, sans-serif; white-space: pre-wrap;\">{escaped}</pre></body></html>"
+
+
+def send_report_email(summary_path: Path, recipients: list[str]) -> None:
+    smtp_host = required_env("SMTP_HOST")
+    smtp_port = int(required_env("SMTP_PORT"))
+    smtp_username = required_env("SMTP_USERNAME")
+    smtp_password = required_env("SMTP_PASSWORD")
+    from_email = required_env("SMTP_FROM_EMAIL").strip()
+    from_name = optional_env("SMTP_FROM_NAME", "BTR Allocation Automation")
+
+    root = MIMEMultipart("alternative")
+    root["Subject"] = f"BTR allocation report - {dt.date.today().isoformat()}"
+    root["From"] = str(mailbox_address(from_email, from_name))
+    root["To"] = ", ".join(recipients)
+    body = summary_path.read_text(encoding="utf-8")
+    root.attach(MIMEText(body, "plain", "utf-8"))
+    root.attach(MIMEText(markdown_to_basic_html(body), "html", "utf-8"))
+
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=120) as smtp:
+        smtp.starttls()
+        smtp.login(smtp_username, smtp_password)
+        smtp.sendmail(from_email, recipients, root.as_string())
 
 
 def resource_label(resource: dict[str, Any]) -> str:
@@ -441,6 +514,8 @@ def recommendation_record(
         "duration_minutes": recommendation.duration_minutes,
         "confidence": recommendation.confidence,
         "mode": mode,
+        "action": "Scheduled job" if "allocate" in mode else "Rescheduled job",
+        "works_description": " ".join(recommendation.description.split())[:180],
         "overlap_check": recommendation.overlap_check,
         "verification": verification,
     }
@@ -555,6 +630,8 @@ def process_unallocated(
                                 "duration_minutes": displaced_duration,
                                 "confidence": "Medium",
                                 "mode": "daily_emergency_displaced_lower_priority",
+                                "action": "Moved lower-priority job for emergency",
+                                "works_description": short_work_description(displaced_job),
                                 "original_date": str(displaced_job.get("PlannedStart") or ""),
                                 "displaced_for_job_ref": recommendation.job_ref,
                                 "verification": displaced_verification,
@@ -590,6 +667,8 @@ def process_unallocated(
                                     "duration_minutes": displaced_duration,
                                     "confidence": "Medium",
                                     "mode": "daily_emergency_displaced_lower_priority",
+                                    "action": "Moved lower-priority job for emergency",
+                                    "works_description": short_work_description(displaced_job),
                                     "original_date": str(displaced_job.get("PlannedStart") or ""),
                                     "displaced_for_job_ref": recommendation.job_ref,
                                     "verification": displaced_verification,
@@ -977,16 +1056,17 @@ def write_summary(
         "## Applied jobs",
         "",
         markdown_table(
-            ["Ref", "Site", "Resource", "Date", "Start-End", "Confidence", "Mode"],
+            ["Job number", "Action", "Works", "Site", "Resource", "Scheduled date", "Time", "Confidence"],
             [
                 [
                     item.get("job_ref"),
+                    item.get("action", item.get("mode")),
+                    item.get("works_description", ""),
                     item.get("site"),
                     item.get("resource"),
                     item.get("scheduled_date"),
                     f"{item.get('start')}-{item.get('end')}",
                     item.get("confidence"),
-                    item.get("mode"),
                 ]
                 for item in applied
             ],
@@ -1028,6 +1108,7 @@ def write_summary(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the daily BigChange BTR allocation workflow")
     parser.add_argument("--apply", action="store_true", help="Write eligible schedules to BigChange and append audit rows")
+    parser.add_argument("--email-report", action="store_true", help="Email the generated BTR report using SMTP_* environment variables")
     args = parser.parse_args()
 
     run_timestamp = utc_now()
@@ -1065,6 +1146,14 @@ def main() -> int:
         non_btr_unallocated=non_btr_unallocated,
         non_btr_stale=non_btr_stale,
     )
+    email_status = "not_requested"
+    email_recipients = report_recipients()
+    if args.email_report:
+        try:
+            send_report_email(summary_path, email_recipients)
+            email_status = "sent"
+        except Exception as exc:  # noqa: BLE001 - report generation should still complete
+            email_status = f"failed: {exc}"
     print(
         json.dumps(
             {
@@ -1073,6 +1162,8 @@ def main() -> int:
                 "failed": len(failed),
                 "skipped": len(skipped),
                 "summary": str(summary_path.relative_to(ROOT)),
+                "email": email_status,
+                "email_recipients": email_recipients,
                 "skipped_by_reason": skipped_counts(skipped),
             },
             indent=2,
