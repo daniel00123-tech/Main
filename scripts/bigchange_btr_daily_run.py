@@ -55,6 +55,11 @@ AUDIT_PATH = ROOT / "automation-memory/btr-allocation-audit.jsonl"
 SUMMARY_DIR = ROOT / "automation-memory"
 DEFAULT_LOOKBACK_DAYS = 14
 DEFAULT_SEARCH_DAYS = 14
+REQUIRED_BIGCHANGE_ENV = (
+    "BIGCHANGE_USERNAME",
+    "BIGCHANGE_PASSWORD",
+    "BIGCHANGE_API_KEY",
+)
 
 
 def as_int(value: Any, default: int | None = None) -> int | None:
@@ -79,6 +84,12 @@ def load_dotenv_if_present(path: Path = ROOT / ".env") -> None:
         if not key or key in os.environ:
             continue
         os.environ[key] = value.strip().strip('"').strip("'")
+
+
+def validate_bigchange_env() -> None:
+    missing = [name for name in REQUIRED_BIGCHANGE_ENV if not os.environ.get(name)]
+    if missing:
+        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
 
 
 def fetch_job(client: BigChangeClient, *, job_id: int | None = None, job_ref: str | None = None) -> dict[str, Any] | None:
@@ -556,6 +567,7 @@ def run_daily(*, lookback_days: int, dry_run: bool, run_date: dt.date | None = N
 
     try:
         load_dotenv_if_present()
+        validate_bigchange_env()
         rules = load_rules()
         audit_records = load_audit_records()
         already_audited = audited_refs(audit_records)
