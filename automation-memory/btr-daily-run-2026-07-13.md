@@ -179,3 +179,7 @@ _None._
 | DLFF284980 | No suitable active site-based resource found for required role |
 | JOB272421~3 | Excluded wording found: btr - contractor required, contractor required |
 | JOB282782 | Excluded wording found: aquilo, sent to aquilo |
+
+## 13:01 UTC automation follow-up
+
+At 2026-07-13T13:04:08Z, the required branch imported the successful 2026-07-13 09:05 UTC TEST-environment apply run and attempted an incremental `scripts/bigchange_btr_daily_run.py --apply` pass. The incremental pass stopped before any BigChange API request because the runtime environment did not contain `BIGCHANGE_USERNAME` (and no local `.env`/automation secret file was present). No additional BigChange writes were made by this follow-up attempt.
