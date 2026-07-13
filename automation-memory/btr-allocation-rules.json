@@ -101,6 +101,10 @@
     "CT": ["ct", "caretaker"],
     "HK": ["hk", "hks", "hksup"]
   },
+  "role_exceptions": {
+    "ct_can_take_tech_sites": ["Chapel Wharf"],
+    "note": "CT/Caretaker resources must not receive general Tech work except where explicitly listed here."
+  },
   "cleaning_role": "HK",
   "maintenance_roles": ["Tech", "CT"],
   "contractor_exclusions": [

@@ -508,9 +508,22 @@ def resource_role(name: str, rules: dict[str, Any]) -> str | None:
         return "HK"
     if re.search(r"\bct\b|_ct\b|caretaker", norm):
         return "CT"
-    if re.search(r"\btech\b|_tech\b|techsup|sontech", norm):
+    if re.search(r"\btech\b|_tech(?:\b|_)|techsup|sontech", norm):
         return "Tech"
     return None
+
+
+def resource_can_take_role(site: str, required_role: str, resource_role_value: str, rules: dict[str, Any]) -> bool:
+    if required_role == "HK":
+        return resource_role_value == "HK"
+    if required_role == "CT":
+        return resource_role_value in {"Tech", "CT"}
+    if required_role == "Tech":
+        if resource_role_value == "Tech":
+            return True
+        ct_exception_sites = set(rules.get("role_exceptions", {}).get("ct_can_take_tech_sites", []))
+        return resource_role_value == "CT" and site in ct_exception_sites
+    return False
 
 
 def resource_site(name: str, rules: dict[str, Any]) -> str | None:
@@ -979,9 +992,7 @@ def choose_resource(
         role = resource_role(name, rules)
         if not role:
             continue
-        if required_role == "HK" and role != "HK":
-            continue
-        if required_role in {"Tech", "CT"} and role not in {"Tech", "CT"}:
+        if not resource_can_take_role(site, required_role, role, rules):
             continue
         candidates.append(ResourceCandidate(resource_id=int(resource["id"]), name=name, role=role, booked_minutes=0, job_count=0))
 

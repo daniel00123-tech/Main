@@ -49,6 +49,7 @@ from bigchange_btr_allocation import (  # noqa: E402
     parse_duration,
     ppm_tech_diary_review,
     resource_absence_blocks,
+    resource_can_take_role,
     resource_is_active_for_jobwatch,
     resource_is_excluded,
     resource_role,
@@ -267,9 +268,7 @@ def resources_for_site_role(
         if resource_site(name, rules) != site:
             continue
         role = resource_role(name, rules)
-        if required_role == "HK" and role != "HK":
-            continue
-        if required_role in {"Tech", "CT"} and role not in {"Tech", "CT"}:
+        if not role or not resource_can_take_role(site, required_role, role, rules):
             continue
         candidates.append(resource)
     return candidates
