@@ -1,0 +1,1176 @@
+#!/usr/bin/env python3
+"""Daily BigChange BTR allocation workflow.
+
+Scans the TEST BigChange environment for recent unallocated BTR jobs and stale
+incomplete BTR diary entries, applies eligible schedules when requested, and
+writes the daily audit summary expected by the automation.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import smtplib
+import sys
+from collections import Counter, defaultdict
+from email.headerregistry import Address
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from bigchange_btr_allocation import (  # noqa: E402
+    BigChangeClient,
+    CLOSED_STATUS_IDS,
+    Recommendation,
+    adjacent_bookings,
+    as_int,
+    build_recommendation,
+    contractor_exclusion,
+    determine_role,
+    diary_blocks,
+    estimate_duration,
+    emergency_match,
+    fetch_unallocated_jobs,
+    find_slot,
+    identify_site,
+    is_cancelled_diary_job,
+    is_cover_job,
+    is_ppm_job,
+    load_rules,
+    lunch_break_preserved,
+    normalise,
+    parse_datetime,
+    parse_duration,
+    ppm_tech_diary_review,
+    resource_absence_blocks,
+    resource_can_take_role,
+    resource_is_active_for_jobwatch,
+    resource_is_excluded,
+    resource_role,
+    resource_site,
+    resource_working_windows,
+    slot_has_overlap,
+)
+
+
+AUDIT_PATH = ROOT / "automation-memory/btr-allocation-audit.jsonl"
+SUMMARY_DIR = ROOT / "automation-memory"
+LOOKBACK_DAYS = 14
+SEARCH_DAYS = 14
+OPEN_STATUS_LABELS = {"sent", "scheduled", "new", "accepted", "started"}
+CANCELLED_STATUS_LABELS = {"completed", "cancelled", "deleted", "rejected"}
+DEFAULT_REPORT_RECIPIENTS = [
+    "kayla.du.randt@nirvana-maintenance.co.uk",
+    "daniel.dwyer@nirvana-group.co.uk",
+]
+
+
+def utc_now() -> dt.datetime:
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def load_audited_refs() -> set[str]:
+    refs: set[str] = set()
+    if not AUDIT_PATH.exists():
+        return refs
+    for line in AUDIT_PATH.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        ref = str(record.get("job_ref") or "").strip()
+        if ref:
+            refs.add(ref)
+    return refs
+
+
+def append_audit(record: dict[str, Any]) -> None:
+    AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with AUDIT_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
+
+
+def fetch_job_by_id(client: BigChangeClient, job_id: int) -> dict[str, Any] | None:
+    payload = client.get("Job", {"JobId": job_id})
+    if payload.get("Code") not in (0, None):
+        return None
+    result = payload.get("Result")
+    if isinstance(result, list):
+        return result[0] if result and isinstance(result[0], dict) else None
+    return result if isinstance(result, dict) else None
+
+
+def is_closed_or_cancelled(job: dict[str, Any]) -> bool:
+    status = normalise(job.get("Status"))
+    if status in CANCELLED_STATUS_LABELS:
+        return True
+    return as_int(job.get("StatusId")) in CLOSED_STATUS_IDS
+
+
+def optional_env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default)
+
+
+def required_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+
+def mailbox_address(email_value: str, display_name: str = "") -> Address:
+    username, domain = email_value.split("@", 1)
+    return Address(display_name=display_name, username=username, domain=domain)
+
+
+def report_recipients() -> list[str]:
+    configured = optional_env("BTR_REPORT_TO")
+    if configured:
+        return [addr.strip() for addr in configured.split(",") if addr.strip()]
+    return DEFAULT_REPORT_RECIPIENTS
+
+
+def short_work_description(job: dict[str, Any], limit: int = 140) -> str:
+    job_type = str(job.get("Type") or "").strip()
+    description = " ".join(str(job.get("Description") or "").split())
+    if description:
+        text = f"{job_type}: {description}" if job_type else description
+    else:
+        text = job_type or "No description supplied"
+    return text[: limit - 3] + "..." if len(text) > limit else text
+
+
+def markdown_to_basic_html(markdown: str) -> str:
+    escaped = (
+        markdown.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+    return f"<html><body><pre style=\"font-family: Arial, sans-serif; white-space: pre-wrap;\">{escaped}</pre></body></html>"
+
+
+def send_report_email(summary_path: Path, recipients: list[str]) -> None:
+    smtp_host = required_env("SMTP_HOST")
+    smtp_port = int(required_env("SMTP_PORT"))
+    smtp_username = required_env("SMTP_USERNAME")
+    smtp_password = required_env("SMTP_PASSWORD")
+    from_email = required_env("SMTP_FROM_EMAIL").strip()
+    from_name = optional_env("SMTP_FROM_NAME", "BTR Allocation Automation")
+
+    root = MIMEMultipart("alternative")
+    root["Subject"] = f"BTR allocation report - {dt.date.today().isoformat()}"
+    root["From"] = str(mailbox_address(from_email, from_name))
+    root["To"] = ", ".join(recipients)
+    body = summary_path.read_text(encoding="utf-8")
+    root.attach(MIMEText(body, "plain", "utf-8"))
+    root.attach(MIMEText(markdown_to_basic_html(body), "html", "utf-8"))
+
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=120) as smtp:
+        smtp.starttls()
+        smtp.login(smtp_username, smtp_password)
+        smtp.sendmail(from_email, recipients, root.as_string())
+
+
+def resource_label(resource: dict[str, Any]) -> str:
+    return str(resource.get("label") or "")
+
+
+def resources_by_name(resources: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {normalise(resource_label(resource)): resource for resource in resources}
+
+
+def resource_id(resource: dict[str, Any]) -> int:
+    return int(resource["id"])
+
+
+def is_site_role_resource(resource: dict[str, Any], rules: dict[str, Any]) -> bool:
+    name = resource_label(resource)
+    return (
+        resource_is_active_for_jobwatch(resource)
+        and not resource_is_excluded(name, rules)
+        and resource_site(name, rules) is not None
+        and resource_role(name, rules) in {"Tech", "CT", "HK"}
+    )
+
+
+def site_for_diary_job(job: dict[str, Any], rules: dict[str, Any]) -> tuple[str | None, str]:
+    resource_name = str(job.get("Resource") or "")
+    resource_match = resource_site(resource_name, rules)
+    if resource_match:
+        return resource_match, f"Matched assigned resource '{resource_name}'"
+    site_match = identify_site(job, rules)
+    if site_match:
+        return site_match.site, site_match.method
+    return None, "Site could not be identified confidently"
+
+
+def next_working_day(day: dt.date) -> dt.date:
+    current = day
+    while current.weekday() >= 5:
+        current += dt.timedelta(days=1)
+    return current
+
+
+def find_resource_slot(
+    client: BigChangeClient,
+    rules: dict[str, Any],
+    resource: dict[str, Any],
+    duration_minutes: int,
+    *,
+    start_day: dt.date,
+    search_days: int = SEARCH_DAYS,
+) -> tuple[dt.date, dt.time, dt.time, str, str] | None:
+    rid = resource_id(resource)
+    end_day = start_day + dt.timedelta(days=search_days)
+    diary = client.resource_diary(rid, start_day, end_day)
+    schedule_jobs = [job for job in diary if not is_cancelled_diary_job(job)]
+    working_hours_cache: dict[int, list[dict[str, Any]]] = {}
+    absence_cache: dict[int, list[dict[str, Any]]] = {}
+
+    for offset in range(search_days + 1):
+        day = start_day + dt.timedelta(days=offset)
+        if day.weekday() >= 5:
+            continue
+        windows = resource_working_windows(client, rid, day, working_hours_cache, rules)
+        blocks = diary_blocks(schedule_jobs, day) + resource_absence_blocks(client, rid, day, absence_cache)
+        blocks.sort(key=lambda item: item[0])
+        slot = find_slot(blocks, day, duration_minutes, windows)
+        if not slot:
+            continue
+        slot_start = dt.datetime.combine(day, slot.start)
+        slot_end = dt.datetime.combine(day, slot.end)
+        if slot_has_overlap(blocks, slot_start, slot_end):
+            continue
+        before, after = adjacent_bookings(blocks, slot_start, slot_end)
+        return day, slot.start, slot.end, before, after
+    return None
+
+
+def resources_for_site_role(
+    resources: list[dict[str, Any]],
+    rules: dict[str, Any],
+    site: str,
+    required_role: str,
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for resource in resources:
+        name = resource_label(resource)
+        if not is_site_role_resource(resource, rules):
+            continue
+        if resource_site(name, rules) != site:
+            continue
+        role = resource_role(name, rules)
+        if not role or not resource_can_take_role(site, required_role, role, rules):
+            continue
+        candidates.append(resource)
+    return candidates
+
+
+def is_lower_priority_displacement_job(job: dict[str, Any], rules: dict[str, Any]) -> tuple[bool, str]:
+    status = normalise(job.get("Status"))
+    status_id = as_int(job.get("StatusId"))
+    if status in CANCELLED_STATUS_LABELS or status_id in CLOSED_STATUS_IDS:
+        return False, "closed/cancelled"
+    if status == "started" or status_id == 10:
+        return False, "already started"
+    if is_ppm_job(job):
+        return False, "PPM/manual-review work"
+    if is_cover_job(job):
+        return False, "cover/agency work"
+    excluded, exclusion_reason = contractor_exclusion(job, rules)
+    if excluded:
+        return False, exclusion_reason
+    emergency = emergency_match(job, rules)
+    if emergency.is_emergency:
+        return False, emergency.reason
+    return True, "routine non-emergency work"
+
+
+def build_emergency_displacement_plan(
+    client: BigChangeClient,
+    rules: dict[str, Any],
+    resources: list[dict[str, Any]],
+    job: dict[str, Any],
+    site: str,
+) -> dict[str, Any] | None:
+    emergency = emergency_match(job, rules)
+    if not emergency.is_emergency or not emergency.target_date:
+        return None
+
+    role = determine_role(job)
+    if not role.role:
+        return None
+    duration, duration_reason, duration_confidence = estimate_duration(job, rules)
+    target_day = emergency.target_date
+    working_hours_cache: dict[int, list[dict[str, Any]]] = {}
+    absence_cache: dict[int, list[dict[str, Any]]] = {}
+
+    for resource in resources_for_site_role(resources, rules, site, role.role):
+        rid = resource_id(resource)
+        diary = client.resource_diary(rid, target_day, target_day)
+        schedule_jobs = [entry for entry in diary if not is_cancelled_diary_job(entry)]
+        absence_blocks = resource_absence_blocks(client, rid, target_day, absence_cache)
+        windows = resource_working_windows(client, rid, target_day, working_hours_cache, rules)
+        if not windows:
+            continue
+
+        movable_jobs: list[dict[str, Any]] = []
+        for entry in schedule_jobs:
+            movable, _reason = is_lower_priority_displacement_job(entry, rules)
+            if movable and parse_datetime(entry.get("PlannedStart")):
+                movable_jobs.append(entry)
+        movable_jobs.sort(key=lambda entry: parse_datetime(entry.get("PlannedStart")) or dt.datetime.max, reverse=True)
+
+        for displaced in movable_jobs:
+            remaining_jobs = [entry for entry in schedule_jobs if as_int(entry.get("JobId")) != as_int(displaced.get("JobId"))]
+            target_blocks = diary_blocks(remaining_jobs, target_day) + absence_blocks
+            target_blocks.sort(key=lambda item: item[0])
+            emergency_slot = find_slot(target_blocks, target_day, duration, windows)
+            if not emergency_slot:
+                continue
+
+            displaced_duration = parse_duration(displaced.get("Duration")) or 60
+            displaced_new_slot = find_resource_slot(
+                client,
+                rules,
+                resource,
+                displaced_duration,
+                start_day=next_working_day(target_day + dt.timedelta(days=1)),
+            )
+            if not displaced_new_slot:
+                continue
+
+            new_day, new_start, new_end, _new_before, _new_after = displaced_new_slot
+            before, after = adjacent_bookings(
+                target_blocks,
+                dt.datetime.combine(target_day, emergency_slot.start),
+                dt.datetime.combine(target_day, emergency_slot.end),
+            )
+            recommendation = Recommendation(
+                job_ref=str(job.get("Ref") or ""),
+                job_id=int(job.get("JobId") or 0),
+                site=site,
+                site_identification="Emergency displacement target",
+                description=str(job.get("Description") or "")[:500],
+                status=str(job.get("Status") or ""),
+                flags=str(job.get("CurrentFlag") or "None"),
+                required_role=role.role,
+                proposed_resource=resource_label(resource),
+                proposed_resource_id=rid,
+                proposed_date=target_day.isoformat(),
+                proposed_start=emergency_slot.start.strftime("%H:%M"),
+                proposed_end=emergency_slot.end.strftime("%H:%M"),
+                duration_minutes=duration,
+                duration_reason=duration_reason,
+                resource_reason=(
+                    f"Emergency target date {target_day.isoformat()} required; selected {resource_label(resource)} "
+                    f"by moving lower-priority job {displaced.get('Ref')} to preserve same/next-day emergency capacity"
+                ),
+                contractor_check="Passed",
+                ppm_check="Not a PPM job",
+                overlap_check="Passed",
+                booking_before=before,
+                booking_after=after,
+                priority=f"Emergency - {emergency.reason}",
+                target_date=target_day.isoformat(),
+                confidence="Medium" if duration_confidence == "Medium" or emergency.confidence == "Medium" else "High",
+                assumptions=[
+                    emergency.reason,
+                    f"Displaces routine job {displaced.get('Ref')} from {displaced.get('PlannedStart')} to {new_day.isoformat()} {new_start.strftime('%H:%M')}-{new_end.strftime('%H:%M')}",
+                ],
+            )
+            return {
+                "recommendation": recommendation,
+                "displaced_job": displaced,
+                "displaced_resource": resource,
+                "displaced_new_date": new_day,
+                "displaced_new_start": new_start,
+                "displaced_new_end": new_end,
+                "displaced_duration_minutes": displaced_duration,
+                "reason": "Emergency displacement of routine lower-priority work",
+            }
+    return None
+
+
+def verify_schedule(
+    client: BigChangeClient,
+    job_id: int,
+    job_ref: str,
+    resource_id_value: int,
+    scheduled_day: dt.date,
+) -> tuple[bool, str]:
+    job = fetch_job_by_id(client, job_id)
+    planned = parse_datetime(job.get("PlannedStart")) if job else None
+    resource_name = normalise(job.get("Resource")) if job else ""
+    if not planned:
+        return False, "job has no PlannedStart after scheduling"
+    if not resource_name:
+        return False, "job has no Resource after scheduling"
+    diary = client.resource_diary(resource_id_value, scheduled_day, scheduled_day)
+    in_diary = any(as_int(entry.get("JobId")) == job_id for entry in diary)
+    if not in_diary:
+        return False, f"{job_ref} not found on intended resource diary after scheduling"
+    diary_blocks_for_day = diary_blocks([entry for entry in diary if not is_cancelled_diary_job(entry)], scheduled_day)
+    if planned:
+        duration = parse_duration(job.get("Duration")) or 60
+        planned_end = parse_datetime(job.get("PlannedEnd")) or planned + dt.timedelta(minutes=duration)
+        absence_blocks = resource_absence_blocks(client, resource_id_value, scheduled_day, {})
+        if slot_has_overlap(absence_blocks, planned, planned_end):
+            labels = ", ".join(label for _start, _end, label in absence_blocks)
+            return False, f"{job_ref} overlaps resource absence ({labels})"
+        if not lunch_break_preserved(diary_blocks_for_day + absence_blocks, scheduled_day):
+            return False, f"{job_ref} leaves no 60-minute lunch gap between 11:45 and 13:15"
+    return True, "verified on job and resource diary"
+
+
+def schedule_with_verification(
+    client: BigChangeClient,
+    rules: dict[str, Any],
+    *,
+    job_id: int,
+    job_ref: str,
+    resource: dict[str, Any],
+    scheduled_day: dt.date,
+    start: dt.time,
+    end: dt.time,
+    duration_minutes: int,
+) -> tuple[dt.date, dt.time, dt.time, str]:
+    rid = resource_id(resource)
+    schedule_dt = f"{scheduled_day.isoformat()} {start.strftime('%H:%M')}:00"
+    client.schedule_job(job_id, rid, schedule_dt, duration_minutes)
+    verified, message = verify_schedule(client, job_id, job_ref, rid, scheduled_day)
+    if verified:
+        return scheduled_day, start, end, message
+
+    retry_start = next_working_day(dt.date.today())
+    retry_slot = find_resource_slot(client, rules, resource, duration_minutes, start_day=retry_start)
+    if not retry_slot:
+        raise RuntimeError(f"Scheduled but verification failed ({message}); no retry slot found")
+    retry_day, retry_start_time, retry_end_time, _before, _after = retry_slot
+    retry_dt = f"{retry_day.isoformat()} {retry_start_time.strftime('%H:%M')}:00"
+    client.schedule_job(job_id, rid, retry_dt, duration_minutes)
+    verified, retry_message = verify_schedule(client, job_id, job_ref, rid, retry_day)
+    if not verified:
+        raise RuntimeError(f"Retry schedule verification failed: {retry_message}")
+    return retry_day, retry_start_time, retry_end_time, f"retry after verification failure: {message}"
+
+
+def schedule_exact_with_verification(
+    client: BigChangeClient,
+    *,
+    job_id: int,
+    job_ref: str,
+    resource: dict[str, Any],
+    scheduled_day: dt.date,
+    start: dt.time,
+    end: dt.time,
+    duration_minutes: int,
+) -> str:
+    rid = resource_id(resource)
+    schedule_dt = f"{scheduled_day.isoformat()} {start.strftime('%H:%M')}:00"
+    client.schedule_job(job_id, rid, schedule_dt, duration_minutes)
+    verified, message = verify_schedule(client, job_id, job_ref, rid, scheduled_day)
+    if not verified:
+        raise RuntimeError(f"Schedule verification failed: {message}")
+    return message
+
+
+def confidence_mode(confidence: str) -> str:
+    return f"daily_allocate_{confidence.lower()}"
+
+
+def emergency_mode(confidence: str) -> str:
+    return f"daily_emergency_allocate_{confidence.lower()}"
+
+
+def recommendation_record(
+    recommendation: Recommendation,
+    *,
+    job_id: int,
+    mode: str,
+    verification: str,
+    original_date: str | None = None,
+    previously_audited: bool = False,
+) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "timestamp": utc_now().isoformat(),
+        "job_ref": recommendation.job_ref,
+        "job_id": job_id,
+        "site": recommendation.site,
+        "resource": recommendation.proposed_resource,
+        "resource_id": recommendation.proposed_resource_id,
+        "scheduled_date": recommendation.proposed_date,
+        "start": recommendation.proposed_start,
+        "end": recommendation.proposed_end,
+        "duration_minutes": recommendation.duration_minutes,
+        "confidence": recommendation.confidence,
+        "mode": mode,
+        "action": "Scheduled job" if "allocate" in mode else "Rescheduled job",
+        "works_description": " ".join(recommendation.description.split())[:180],
+        "overlap_check": recommendation.overlap_check,
+        "verification": verification,
+    }
+    if original_date:
+        record["original_date"] = original_date
+    if previously_audited:
+        record["previously_audited_unallocated_again"] = True
+    return record
+
+
+def process_unallocated(
+    client: BigChangeClient,
+    rules: dict[str, Any],
+    audited_refs: set[str],
+    resources: list[dict[str, Any]],
+    *,
+    apply: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], int]:
+    applied: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    non_btr_count = 0
+
+    for job in fetch_unallocated_jobs(client, lookback_days=LOOKBACK_DAYS):
+        job_ref = str(job.get("Ref") or "")
+        site_match = identify_site(job, rules)
+        if not site_match:
+            non_btr_count += 1
+            continue
+
+        if is_cover_job(job):
+            skipped.append(
+                {
+                    "ref": job_ref,
+                    "site": site_match.site,
+                    "reason": "Cover/agency job requires manual rota review; not auto-allocated",
+                    "manual_review": "cover",
+                    "mode": "unallocated",
+                }
+            )
+            continue
+
+        excluded, exclusion_reason = contractor_exclusion(job, rules)
+        if excluded:
+            skipped.append(
+                {
+                    "ref": job_ref,
+                    "site": site_match.site,
+                    "reason": exclusion_reason,
+                    "manual_review": "contractor",
+                    "mode": "unallocated",
+                }
+            )
+            continue
+
+        ppm_allowed, ppm_reason = ppm_tech_diary_review(job, rules)
+        if not ppm_allowed:
+            skipped.append(
+                {
+                    "ref": job_ref,
+                    "site": site_match.site,
+                    "reason": ppm_reason,
+                    "manual_review": "ppm",
+                    "mode": "unallocated",
+                }
+            )
+            continue
+
+        try:
+            emergency = emergency_match(job, rules)
+            result = build_recommendation(client, job, rules)
+            if isinstance(result, tuple):
+                if emergency.is_emergency:
+                    displacement_plan = build_emergency_displacement_plan(
+                        client,
+                        rules,
+                        resources,
+                        job,
+                        site_match.site,
+                    )
+                    if displacement_plan:
+                        recommendation = displacement_plan["recommendation"]
+                        displaced_job = displacement_plan["displaced_job"]
+                        displaced_resource = displacement_plan["displaced_resource"]
+                        displaced_new_date = displacement_plan["displaced_new_date"]
+                        displaced_new_start = displacement_plan["displaced_new_start"]
+                        displaced_new_end = displacement_plan["displaced_new_end"]
+                        displaced_duration = displacement_plan["displaced_duration_minutes"]
+                        verification = "dry run"
+                        displaced_verification = "dry run"
+                        if apply:
+                            displaced_verification = schedule_exact_with_verification(
+                                client,
+                                job_id=int(displaced_job["JobId"]),
+                                job_ref=str(displaced_job.get("Ref") or ""),
+                                resource=displaced_resource,
+                                scheduled_day=displaced_new_date,
+                                start=displaced_new_start,
+                                end=displaced_new_end,
+                                duration_minutes=displaced_duration,
+                            )
+                            displaced_record = {
+                                "timestamp": utc_now().isoformat(),
+                                "job_ref": str(displaced_job.get("Ref") or ""),
+                                "job_id": int(displaced_job["JobId"]),
+                                "site": site_match.site,
+                                "resource": resource_label(displaced_resource),
+                                "resource_id": resource_id(displaced_resource),
+                                "scheduled_date": displaced_new_date.isoformat(),
+                                "start": displaced_new_start.strftime("%H:%M"),
+                                "end": displaced_new_end.strftime("%H:%M"),
+                                "duration_minutes": displaced_duration,
+                                "confidence": "Medium",
+                                "mode": "daily_emergency_displaced_lower_priority",
+                                "action": "Moved lower-priority job for emergency",
+                                "works_description": short_work_description(displaced_job),
+                                "original_date": str(displaced_job.get("PlannedStart") or ""),
+                                "displaced_for_job_ref": recommendation.job_ref,
+                                "verification": displaced_verification,
+                            }
+                            append_audit(displaced_record)
+                            applied.append(displaced_record)
+                            verification = schedule_exact_with_verification(
+                                client,
+                                job_id=int(job["JobId"]),
+                                job_ref=recommendation.job_ref,
+                                resource={
+                                    "id": recommendation.proposed_resource_id,
+                                    "label": recommendation.proposed_resource,
+                                },
+                                scheduled_day=dt.date.fromisoformat(recommendation.proposed_date),
+                                start=dt.datetime.strptime(recommendation.proposed_start, "%H:%M").time(),
+                                end=dt.datetime.strptime(recommendation.proposed_end, "%H:%M").time(),
+                                duration_minutes=recommendation.duration_minutes,
+                            )
+                            audited_refs.add(str(displaced_job.get("Ref") or ""))
+                        else:
+                            applied.append(
+                                {
+                                    "timestamp": utc_now().isoformat(),
+                                    "job_ref": str(displaced_job.get("Ref") or ""),
+                                    "job_id": int(displaced_job["JobId"]),
+                                    "site": site_match.site,
+                                    "resource": resource_label(displaced_resource),
+                                    "resource_id": resource_id(displaced_resource),
+                                    "scheduled_date": displaced_new_date.isoformat(),
+                                    "start": displaced_new_start.strftime("%H:%M"),
+                                    "end": displaced_new_end.strftime("%H:%M"),
+                                    "duration_minutes": displaced_duration,
+                                    "confidence": "Medium",
+                                    "mode": "daily_emergency_displaced_lower_priority",
+                                    "action": "Moved lower-priority job for emergency",
+                                    "works_description": short_work_description(displaced_job),
+                                    "original_date": str(displaced_job.get("PlannedStart") or ""),
+                                    "displaced_for_job_ref": recommendation.job_ref,
+                                    "verification": displaced_verification,
+                                }
+                            )
+
+                        record = recommendation_record(
+                            recommendation,
+                            job_id=int(job["JobId"]),
+                            mode=emergency_mode(recommendation.confidence),
+                            verification=verification,
+                            previously_audited=job_ref in audited_refs,
+                        )
+                        record["displaced_job_ref"] = str(displaced_job.get("Ref") or "")
+                        if apply:
+                            append_audit(record)
+                            audited_refs.add(job_ref)
+                        applied.append(record)
+                        continue
+                skipped.append(
+                    {
+                        "ref": job_ref,
+                        "site": site_match.site,
+                        "reason": result[1],
+                        "manual_review": "allocation",
+                        "mode": "unallocated",
+                    }
+                )
+                continue
+
+            scheduled_day = dt.date.fromisoformat(result.proposed_date)
+            start = dt.datetime.strptime(result.proposed_start, "%H:%M").time()
+            end = dt.datetime.strptime(result.proposed_end, "%H:%M").time()
+            verification = "dry run"
+            if apply:
+                resource = {"id": result.proposed_resource_id, "label": result.proposed_resource}
+                if emergency.is_emergency:
+                    verification = schedule_exact_with_verification(
+                        client,
+                        job_id=int(job["JobId"]),
+                        job_ref=result.job_ref,
+                        resource=resource,
+                        scheduled_day=scheduled_day,
+                        start=start,
+                        end=end,
+                        duration_minutes=result.duration_minutes,
+                    )
+                else:
+                    scheduled_day, start, end, verification = schedule_with_verification(
+                        client,
+                        rules,
+                        job_id=int(job["JobId"]),
+                        job_ref=result.job_ref,
+                        resource=resource,
+                        scheduled_day=scheduled_day,
+                        start=start,
+                        end=end,
+                        duration_minutes=result.duration_minutes,
+                    )
+                result.proposed_date = scheduled_day.isoformat()
+                result.proposed_start = start.strftime("%H:%M")
+                result.proposed_end = end.strftime("%H:%M")
+                record = recommendation_record(
+                    result,
+                    job_id=int(job["JobId"]),
+                    mode=emergency_mode(result.confidence) if emergency.is_emergency else confidence_mode(result.confidence),
+                    verification=verification,
+                    previously_audited=job_ref in audited_refs,
+                )
+                append_audit(record)
+                audited_refs.add(job_ref)
+            else:
+                record = recommendation_record(
+                    result,
+                    job_id=int(job["JobId"]),
+                    mode=emergency_mode(result.confidence) if emergency.is_emergency else confidence_mode(result.confidence),
+                    verification=verification,
+                    previously_audited=job_ref in audited_refs,
+                )
+            applied.append(record)
+        except Exception as exc:  # noqa: BLE001 - continue the daily batch
+            failed.append({"ref": job_ref, "site": site_match.site, "error": str(exc), "mode": "unallocated"})
+
+    return applied, skipped, failed, non_btr_count
+
+
+def diary_stale_candidates(client: BigChangeClient, rules: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    today = dt.date.today()
+    start = today - dt.timedelta(days=LOOKBACK_DAYS)
+    rows = client.jobs_list(
+        {
+            "Start": start.isoformat(),
+            "End": (today - dt.timedelta(days=1)).isoformat(),
+            "DateOptionId": 0,
+            "Allocated": 1,
+            "ExcludeNullPlannedDates": 1,
+            "includeExtra": 1,
+        },
+        page_size=500,
+    )
+
+    stale_non_ppm: list[dict[str, Any]] = []
+    stale_ppm: list[dict[str, Any]] = []
+    non_btr_count = 0
+    for job in rows:
+        planned = parse_datetime(job.get("PlannedStart"))
+        if not planned or planned.date() >= today:
+            continue
+        if is_closed_or_cancelled(job):
+            continue
+        status = normalise(job.get("Status"))
+        if status and status not in OPEN_STATUS_LABELS:
+            continue
+        site, site_reason = site_for_diary_job(job, rules)
+        if not site:
+            non_btr_count += 1
+            continue
+        entry = {"job": job, "site": site, "site_reason": site_reason}
+        if is_ppm_job(job):
+            stale_ppm.append(entry)
+        else:
+            stale_non_ppm.append(entry)
+    return stale_non_ppm, stale_ppm, non_btr_count
+
+
+def process_stale_diary(
+    client: BigChangeClient,
+    rules: dict[str, Any],
+    audited_refs: set[str],
+    resources: list[dict[str, Any]],
+    *,
+    apply: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], int]:
+    applied: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    stale_non_ppm, stale_ppm, non_btr_count = diary_stale_candidates(client, rules)
+    by_name = resources_by_name(resources)
+
+    for item in stale_ppm:
+        job = item["job"]
+        skipped.append(
+            {
+                "ref": str(job.get("Ref") or ""),
+                "site": item["site"],
+                "reason": "Stale PPM diary entry requires manual review; not auto-rescheduled",
+                "manual_review": "ppm_stale",
+                "mode": "stale_diary",
+            }
+        )
+
+    for item in stale_non_ppm:
+        job = item["job"]
+        job_ref = str(job.get("Ref") or "")
+        if is_cover_job(job):
+            skipped.append(
+                {
+                    "ref": job_ref,
+                    "site": item["site"],
+                    "reason": "Cover/agency job requires manual rota review; not auto-rescheduled",
+                    "manual_review": "cover",
+                    "mode": "stale_diary",
+                }
+            )
+            continue
+
+        if job_ref in audited_refs:
+            skipped.append(
+                {
+                    "ref": job_ref,
+                    "site": item["site"],
+                    "reason": "Already present in allocation audit; not re-actioning stale diary entry",
+                    "manual_review": "duplicate_audit",
+                    "mode": "stale_diary",
+                }
+            )
+            continue
+
+        resource_name = str(job.get("Resource") or "")
+        assigned = by_name.get(normalise(resource_name))
+        if not assigned:
+            skipped.append(
+                {
+                    "ref": job_ref,
+                    "site": item["site"],
+                    "reason": f"Assigned resource '{resource_name}' was not found in active resource list",
+                    "manual_review": "resource",
+                    "mode": "stale_diary",
+                }
+            )
+            continue
+
+        if not resource_is_active_for_jobwatch(assigned):
+            skipped.append(
+                {
+                    "ref": job_ref,
+                    "site": item["site"],
+                    "reason": f"Assigned resource '{resource_name}' is inactive (Resource4Schedule=0); manual reassignment required",
+                    "manual_review": "resource",
+                    "mode": "stale_diary",
+                }
+            )
+            continue
+
+        if not is_site_role_resource(assigned, rules):
+            skipped.append(
+                {
+                    "ref": job_ref,
+                    "site": item["site"],
+                    "reason": f"Assigned resource '{resource_name}' is active but is not a site-based Tech/CT/HK resource",
+                    "manual_review": "resource",
+                    "mode": "stale_diary",
+                }
+            )
+            continue
+
+        duration, duration_reason, duration_confidence = estimate_duration(job, rules)
+        slot = find_resource_slot(
+            client,
+            rules,
+            assigned,
+            duration,
+            start_day=next_working_day(dt.date.today()),
+        )
+        if not slot:
+            skipped.append(
+                {
+                    "ref": job_ref,
+                    "site": item["site"],
+                    "reason": f"No suitable diary slot found for assigned resource '{resource_name}' within {SEARCH_DAYS} days",
+                    "manual_review": "capacity",
+                    "mode": "stale_diary",
+                }
+            )
+            continue
+
+        day, start, end, before, after = slot
+        role = resource_role(resource_name, rules) or determine_role(job).role or "Tech"
+        recommendation = Recommendation(
+            job_ref=job_ref,
+            job_id=int(job.get("JobId") or 0),
+            site=item["site"],
+            site_identification=item["site_reason"],
+            description=str(job.get("Description") or "")[:500],
+            status=str(job.get("Status") or ""),
+            flags=str(job.get("CurrentFlag") or "None"),
+            required_role=role,
+            proposed_resource=resource_label(assigned),
+            proposed_resource_id=resource_id(assigned),
+            proposed_date=day.isoformat(),
+            proposed_start=start.strftime("%H:%M"),
+            proposed_end=end.strftime("%H:%M"),
+            duration_minutes=duration,
+            duration_reason=duration_reason,
+            resource_reason=f"Kept existing assigned resource '{resource_name}' for incomplete non-PPM reschedule",
+            contractor_check="Not checked for stale diary reschedule",
+            ppm_check="Not a PPM job",
+            overlap_check="Passed",
+            booking_before=before,
+            booking_after=after,
+            priority=str(job.get("CurrentFlag") or job.get("Status") or "Routine"),
+            target_date=str(job.get("DueDate") or "Not specified"),
+            confidence=duration_confidence,
+        )
+
+        try:
+            verification = "dry run"
+            if apply:
+                scheduled_day, scheduled_start, scheduled_end, verification = schedule_with_verification(
+                    client,
+                    rules,
+                    job_id=int(job["JobId"]),
+                    job_ref=job_ref,
+                    resource=assigned,
+                    scheduled_day=day,
+                    start=start,
+                    end=end,
+                    duration_minutes=duration,
+                )
+                recommendation.proposed_date = scheduled_day.isoformat()
+                recommendation.proposed_start = scheduled_start.strftime("%H:%M")
+                recommendation.proposed_end = scheduled_end.strftime("%H:%M")
+                record = recommendation_record(
+                    recommendation,
+                    job_id=int(job["JobId"]),
+                    mode="daily_incomplete_reschedule",
+                    verification=verification,
+                    original_date=str(job.get("PlannedStart") or ""),
+                )
+                append_audit(record)
+                audited_refs.add(job_ref)
+            else:
+                record = recommendation_record(
+                    recommendation,
+                    job_id=int(job["JobId"]),
+                    mode="daily_incomplete_reschedule",
+                    verification=verification,
+                    original_date=str(job.get("PlannedStart") or ""),
+                )
+            applied.append(record)
+        except Exception as exc:  # noqa: BLE001 - continue the daily batch
+            failed.append({"ref": job_ref, "site": item["site"], "error": str(exc), "mode": "stale_diary"})
+
+    return applied, skipped, failed, non_btr_count
+
+
+def workload_warnings(client: BigChangeClient, rules: dict[str, Any], resources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    start = next_working_day(dt.date.today())
+    end = start + dt.timedelta(days=SEARCH_DAYS)
+    warnings: list[dict[str, Any]] = []
+    for resource in resources:
+        if not is_site_role_resource(resource, rules):
+            continue
+        diary = client.resource_diary(resource_id(resource), start, end)
+        counts: Counter[dt.date] = Counter()
+        for job in diary:
+            if is_cancelled_diary_job(job):
+                continue
+            planned = parse_datetime(job.get("PlannedStart"))
+            if planned:
+                counts[planned.date()] += 1
+        for day, count in sorted(counts.items()):
+            if count >= 4:
+                warnings.append({"resource": resource_label(resource), "date": day.isoformat(), "job_count": count})
+    return warnings
+
+
+def skipped_counts(skipped: list[dict[str, Any]]) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for item in skipped:
+        counts[str(item.get("manual_review") or "other")] += 1
+    return dict(sorted(counts.items()))
+
+
+def markdown_table(headers: list[str], rows: list[list[Any]]) -> str:
+    if not rows:
+        return "_None_\n"
+    header = "| " + " | ".join(headers) + " |"
+    separator = "| " + " | ".join("---" for _ in headers) + " |"
+    body = ["| " + " | ".join(str(cell).replace("\n", " ") for cell in row) + " |" for row in rows]
+    return "\n".join([header, separator, *body]) + "\n"
+
+
+def write_summary(
+    *,
+    run_timestamp: dt.datetime,
+    apply: bool,
+    applied: list[dict[str, Any]],
+    skipped: list[dict[str, Any]],
+    failed: list[dict[str, Any]],
+    warnings: list[dict[str, Any]],
+    non_btr_unallocated: int,
+    non_btr_stale: int,
+) -> Path:
+    path = SUMMARY_DIR / f"btr-daily-run-{run_timestamp.date().isoformat()}.md"
+    manual = [item for item in skipped if item.get("manual_review") in {"ppm", "ppm_stale", "contractor", "resource", "allocation", "cover"}]
+    low_confidence = [item for item in applied if str(item.get("confidence")) == "Low"]
+    if low_confidence:
+        for item in low_confidence:
+            manual.append(
+                {
+                    "ref": item.get("job_ref"),
+                    "site": item.get("site"),
+                    "reason": "Low-confidence allocation was auto-applied; human review recommended",
+                    "manual_review": "low_confidence",
+                    "mode": item.get("mode"),
+                }
+            )
+
+    content = [
+        f"# BTR Daily Run — {run_timestamp.date().isoformat()}",
+        "",
+        f"**Run timestamp:** {run_timestamp.isoformat()}",
+        f"**Mode:** {'apply' if apply else 'dry-run'}",
+        "",
+        "## Counts",
+        "",
+        f"- Applied: {len(applied)}",
+        f"- Failed: {len(failed)}",
+        f"- Skipped: {len(skipped)}",
+        f"- Skipped by reason: `{json.dumps(skipped_counts(skipped), sort_keys=True)}`",
+        f"- Non-BTR unallocated ignored: {non_btr_unallocated}",
+        f"- Non-BTR stale diary ignored: {non_btr_stale}",
+        "",
+        "## Applied jobs",
+        "",
+        markdown_table(
+            ["Job number", "Action", "Works", "Site", "Resource", "Scheduled date", "Time", "Confidence"],
+            [
+                [
+                    item.get("job_ref"),
+                    item.get("action", item.get("mode")),
+                    item.get("works_description", ""),
+                    item.get("site"),
+                    item.get("resource"),
+                    item.get("scheduled_date"),
+                    f"{item.get('start')}-{item.get('end')}",
+                    item.get("confidence"),
+                ]
+                for item in applied
+            ],
+        ),
+        "",
+        "## Skipped jobs",
+        "",
+        markdown_table(
+            ["Ref", "Site", "Reason", "Mode"],
+            [[item.get("ref"), item.get("site"), item.get("reason"), item.get("mode")] for item in skipped],
+        ),
+        "",
+        "## Failed jobs",
+        "",
+        markdown_table(
+            ["Ref", "Site", "Error", "Mode"],
+            [[item.get("ref"), item.get("site"), item.get("error"), item.get("mode")] for item in failed],
+        ),
+        "",
+        "## Workload warnings",
+        "",
+        markdown_table(
+            ["Resource", "Date", "Job count"],
+            [[item.get("resource"), item.get("date"), item.get("job_count")] for item in warnings],
+        ),
+        "",
+        "## Manual review",
+        "",
+        markdown_table(
+            ["Ref", "Site", "Reason", "Category"],
+            [[item.get("ref"), item.get("site"), item.get("reason"), item.get("manual_review")] for item in manual],
+        ),
+        "",
+    ]
+    path.write_text("\n".join(content), encoding="utf-8")
+    return path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run the daily BigChange BTR allocation workflow")
+    parser.add_argument("--apply", action="store_true", help="Write eligible schedules to BigChange and append audit rows")
+    parser.add_argument("--email-report", action="store_true", help="Email the generated BTR report using SMTP_* environment variables")
+    args = parser.parse_args()
+
+    run_timestamp = utc_now()
+    rules = load_rules()
+    client = BigChangeClient()
+    resources = client.resources()
+    audited_refs = load_audited_refs()
+
+    stale_applied, stale_skipped, stale_failed, non_btr_stale = process_stale_diary(
+        client,
+        rules,
+        audited_refs,
+        resources,
+        apply=args.apply,
+    )
+    unallocated_applied, unallocated_skipped, unallocated_failed, non_btr_unallocated = process_unallocated(
+        client,
+        rules,
+        audited_refs,
+        resources,
+        apply=args.apply,
+    )
+
+    applied = [*stale_applied, *unallocated_applied]
+    skipped = [*stale_skipped, *unallocated_skipped]
+    failed = [*stale_failed, *unallocated_failed]
+    warnings = workload_warnings(client, rules, resources)
+    summary_path = write_summary(
+        run_timestamp=run_timestamp,
+        apply=args.apply,
+        applied=applied,
+        skipped=skipped,
+        failed=failed,
+        warnings=warnings,
+        non_btr_unallocated=non_btr_unallocated,
+        non_btr_stale=non_btr_stale,
+    )
+    email_status = "not_requested"
+    email_recipients = report_recipients()
+    if args.email_report:
+        try:
+            send_report_email(summary_path, email_recipients)
+            email_status = "sent"
+        except Exception as exc:  # noqa: BLE001 - report generation should still complete
+            email_status = f"failed: {exc}"
+    print(
+        json.dumps(
+            {
+                "mode": "apply" if args.apply else "dry-run",
+                "applied": len(applied),
+                "failed": len(failed),
+                "skipped": len(skipped),
+                "summary": str(summary_path.relative_to(ROOT)),
+                "email": email_status,
+                "email_recipients": email_recipients,
+                "skipped_by_reason": skipped_counts(skipped),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0 if not failed else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
