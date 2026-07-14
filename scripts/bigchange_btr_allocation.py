@@ -149,8 +149,8 @@ def parse_duration(value: Any) -> int | None:
         hours, minutes, seconds = (int(match.group(i)) for i in range(1, 4))
         total = hours * 60 + minutes + (1 if seconds >= 30 else 0)
         return total if total > 0 else None
-    as_int = as_int(value)
-    return as_int if as_int and as_int > 0 else None
+    duration = as_int(value)
+    return duration if duration and duration > 0 else None
 
 
 def as_int(value: Any, default: int | None = None) -> int | None:
