@@ -12,6 +12,7 @@ import html
 import json
 import os
 import re
+import signal
 import shutil
 import smtplib
 import subprocess
@@ -1643,6 +1644,7 @@ def render_png(html_content: str, html_path: Path, png_path: Path, row_count: in
     html_path.parent.mkdir(parents=True, exist_ok=True)
     png_path.parent.mkdir(parents=True, exist_ok=True)
     html_path.write_text(html_content, encoding="utf-8")
+    png_path.unlink(missing_ok=True)
     height = max(780, min(5000, 260 + row_count * 130))
     chrome = optional_env("CHROME_BIN")
     if not chrome:
@@ -1672,7 +1674,53 @@ def render_png(html_content: str, html_path: Path, png_path: Path, row_count: in
             f"--screenshot={png_path}",
             html_path.resolve().as_uri(),
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        deadline = time.monotonic() + 60
+        previous_size = -1
+        stable_checks = 0
+        try:
+            while time.monotonic() < deadline:
+                if png_path.exists():
+                    size = png_path.stat().st_size
+                    if size > 0 and size == previous_size:
+                        stable_checks += 1
+                    else:
+                        stable_checks = 0
+                    previous_size = size
+                    if stable_checks >= 2:
+                        return
+
+                return_code = process.poll()
+                if return_code is not None:
+                    if png_path.exists() and png_path.stat().st_size > 0:
+                        return
+                    raise subprocess.CalledProcessError(return_code, cmd)
+                time.sleep(0.1)
+            raise subprocess.TimeoutExpired(cmd, 60)
+        finally:
+            stop_process_group(process)
+
+
+def stop_process_group(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        process.wait(timeout=5)
 
 
 def mailbox_address(email_value: str, display_name: str = "") -> Address:
