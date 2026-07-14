@@ -11,6 +11,7 @@ from scripts.bigchange_kpi_report import (
     CREATED_DATE_FIELDS,
     DEFAULT_FRESHDESK_OPEN_STATUS_IDS,
     FRESHDESK_METRIC,
+    FreshdeskClient,
     add_items,
     calculate_freshdesk_metrics,
     calculate_sales,
@@ -171,6 +172,23 @@ class SalesAttributionTest(unittest.TestCase):
 class FreshdeskKpiTest(unittest.TestCase):
     def test_default_open_status_ids_include_waiting_statuses(self) -> None:
         self.assertEqual(DEFAULT_FRESHDESK_OPEN_STATUS_IDS, {2, 3, 8, 9})
+
+    def test_ticket_pagination_requests_full_history(self) -> None:
+        client = FreshdeskClient.__new__(FreshdeskClient)
+        client.open_status_ids = lambda: {2}
+        requests = []
+
+        def get_json(path, params, timeout):
+            requests.append((path, params, timeout))
+            return [{"id": 1, "status": 2}] if params["page"] == 1 else []
+
+        client.get_json = get_json
+
+        tickets = client.list_open_tickets(page_size=1)
+
+        self.assertEqual([ticket["id"] for ticket in tickets], [1])
+        self.assertEqual(requests[0][1]["updated_since"], "1970-01-01T00:00:00Z")
+        self.assertEqual([request[1]["page"] for request in requests], [1, 2])
 
     def test_maps_status_choices_to_open_status_ids(self) -> None:
         choices = [

@@ -48,6 +48,7 @@ UNALLOCATED_STATUS_IDS = {1, 3}
 OPEN_NOT_STARTED_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
 OPEN_FRESHDESK_STATUS_NAMES = {"open", "pending", "waiting on customer", "waiting on third party"}
 DEFAULT_FRESHDESK_OPEN_STATUS_IDS = {2, 3, 8, 9}
+FRESHDESK_ALL_TICKETS_SINCE = "1970-01-01T00:00:00Z"
 LOCAL_NAME_ALIASES = {
     "amy b": "amy bradley",
     "dan dwyer": "daniel dwyer",
@@ -554,7 +555,12 @@ class FreshdeskClient:
         while True:
             batch = self.get_json(
                 "/api/v2/tickets",
-                {"include": "requester", "per_page": page_size, "page": page},
+                {
+                    "include": "requester",
+                    "updated_since": FRESHDESK_ALL_TICKETS_SINCE,
+                    "per_page": page_size,
+                    "page": page,
+                },
                 timeout=60,
             )
             if not isinstance(batch, list):
