@@ -294,7 +294,7 @@ def build_summary(
         f"- Total jobs reviewed: {total_jobs}",
         f"- Total jobs with intended updates in preview: {len(jobs_with_intended)}",
         f"- Total updated: {len(jobs_with_success) if not dry_run else 0}",
-        f"- Total skipped: {max(total_jobs - len(jobs_with_success) - len(jobs_with_failure), 0) if not dry_run else total_jobs - len(jobs_with_intended)}",
+        f"- Total skipped: {max(total_jobs - len(jobs_with_intended), 0)}",
         f"- Total failed: {len(jobs_with_failure) if not dry_run else 0}",
         "",
         "## Intended update operations",
