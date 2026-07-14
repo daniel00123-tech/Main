@@ -494,6 +494,16 @@ def write_summary(
     skipped = phase1_skipped + allocation_skipped
     failed = phase1_failed + allocation_failed
     skipped_counts = Counter(item.get("reason", "Unknown") for item in skipped)
+    manual_items = list(manual_review)
+    manual_refs = {str(item.get("ref") or "") for item in manual_items}
+    for item in skipped:
+        reason = str(item.get("reason") or "")
+        ref = str(item.get("ref") or "")
+        if ref in manual_refs:
+            continue
+        if "manual review" in reason.lower():
+            manual_items.append({"ref": ref, "reason": reason})
+            manual_refs.add(ref)
 
     applied_rows = [
         [
@@ -510,7 +520,7 @@ def write_summary(
     skipped_rows = [[item.get("ref"), item.get("site", ""), item.get("reason")] for item in skipped]
     failed_rows = [[item.get("ref"), item.get("error")] for item in failed]
     workload_rows = [[item["resource"], item["date"], item["jobs"]] for item in workload]
-    manual_rows = [[item.get("ref"), item.get("reason")] for item in manual_review]
+    manual_rows = [[item.get("ref"), item.get("reason")] for item in manual_items]
     skipped_count_rows = [[reason, count] for reason, count in skipped_counts.most_common()]
 
     content = f"""# BTR Daily Run — {today}
