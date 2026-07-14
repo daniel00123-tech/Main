@@ -13,6 +13,8 @@
 | Failed | 0 |
 | Skipped | 25 |
 
+Validation: the daily runner verified each applied JobSchedule on the intended resource diary with no overlap involving the scheduled job. A targeted post-run recheck confirmed DLFF285434 and DLFF285436 remain on their intended resource diaries with no overlap involving the scheduled jobs.
+
 ## Skipped by reason
 
 | Reason | Count |
