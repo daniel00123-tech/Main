@@ -14,6 +14,8 @@ class AquiloKpiWorkflowTest(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("python3 scripts/bigchange_kpi_report.py", workflow)
         self.assertIn("browser-actions/setup-chrome@v1", workflow)
+        self.assertIn('git config user.name "github-actions[bot]"', workflow)
+        self.assertIn("git add automation-memory/kpi-baseline.json", workflow)
 
     def test_workflow_uses_secrets_and_uploads_only_png(self) -> None:
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
