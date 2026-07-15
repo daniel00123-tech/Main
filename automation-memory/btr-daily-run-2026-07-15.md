@@ -54,6 +54,11 @@
 
 _None._
 
+## Validation notes
+
+- All 5 daily allocations were verified on the intended active resource diaries.
+- No daily allocation overlaps its scheduled resource slot. An existing unrelated overlap was observed earlier on 2026-07-15 on UDAP_Aston_Tech Nikolaj Osokin's diary (DLFF277087~4 overlapping DLFF285271 and JOB285409); the new DLFF285520 allocation is 16:00-17:00 and does not overlap those bookings.
+
 ## Workload warnings
 
 | Resource | Date | Job count |
