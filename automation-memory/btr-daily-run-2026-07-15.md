@@ -32,7 +32,7 @@
 | GRANQ247443 | Forbes Place | UDA_Forbes_Tech-Bailey Middleton | 2026-07-17 | 12:00-13:00 | Medium | daily_incomplete_reschedule |
 | GRANQ247400 | Forbes Place | UDA_Forbes_Tech-Bailey Middleton | 2026-07-20 | 12:00-13:00 | Medium | daily_incomplete_reschedule |
 | DLFF283864 | Leodis Square | UDL_Leodis_Tech Andrew Parchment  | 2026-07-20 | 08:00-12:00 | Medium | daily_incomplete_reschedule |
-| JOB276954~2 | Granary Quay | UDGQ_Granary_HKSup Stephanie McQuaid | 2026-07-15 | 14:00-15:00 | Medium | daily_allocate_medium |
+| JOB276954~2 | Granary Quay | UDGQ_Granary_HKSup Stephanie McQuaid | 2026-07-15 | 14:00-15:00 | Medium | daily_allocate_medium + repair |
 | JOB278181~1 | Leodis Square | UDL_Leodis_Caretaker Gary Arundale | 2026-07-17 | 12:00-13:00 | High | daily_allocate_high |
 | JOB285575 | Granary Quay | UDGQ_Granary_Tech Oakley Rogers | 2026-07-15 | 13:30-14:30 | Medium | daily_allocate_medium |
 
@@ -75,6 +75,14 @@
 ## Failed jobs
 
 _None._
+
+## Post-run verification
+
+- Final verification checked 11 daily audit records for 10 unique jobs on the intended active resource diaries, inside working hours, with no overlaps involving the scheduled jobs.
+- JOB276954~2 initially had the intended resource set but did not appear on Stephanie McQuaid's diary; it was re-applied to the same 14:00-15:00 slot and appended to the audit as `daily_allocate_medium_repair`.
+- Remaining eligible unallocated BTR jobs after skips: 0.
+- Remaining unactioned stale non-PPM BTR diary jobs: 0.
+- Stale PPM diary entries remain manual review only: 29.
 
 ## Workload warnings
 
