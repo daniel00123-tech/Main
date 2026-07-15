@@ -1,6 +1,6 @@
 # BTR Daily Run - 2026-07-15
 
-**Run timestamp:** 2026-07-15T13:03:59.028132+00:00  
+**Run timestamp:** 2026-07-15T13:06:14.886368+00:00  
 **Mode:** applied to BigChange TEST  
 **API connectivity:** Resources call succeeded (472 resources, 37 active for JobWatch)
 
@@ -8,11 +8,11 @@
 
 | Category | Count |
 |---|---:|
-| Applied | 12 |
+| Applied | 13 |
 | Failed | 0 |
 | Skipped | 49 |
 | Stale diary candidates reviewed | 43 |
-| Unallocated BTR jobs reviewed | 18 |
+| Unallocated BTR jobs reviewed | 19 |
 
 ## Skipped by reason
 
@@ -38,6 +38,7 @@
 | JOB285618 | Granary Quay | UDGQ_Granary_HKSup Stephanie McQuaid | 2026-07-17 | 08:00-09:00 | Medium | daily_allocate_medium |
 | JOB285625 | Chapel Wharf | UDC_Chapel_Tech Rui Alves | 2026-07-16 | 08:00-09:00 | Medium | daily_allocate_medium |
 | JOB285630 | The Point | UDA_Point_Tech Bradley Tice | 2026-07-17 | 14:00-15:00 | Medium | daily_allocate_medium |
+| DLFF285632 | Aston Place | UDAP_Aston_Tech Nikolaj Osokin | 2026-07-15 | 17:00-18:00 | High | daily_allocate_high |
 
 ## Skipped jobs
 
@@ -99,7 +100,7 @@ _None_
 
 ## Workload warnings
 
-- UDAP_Aston_Tech Nikolaj Osokin has 11 non-cancelled planned jobs on 2026-07-15: DL99506, DL266200, JOB284833, JOB284834, DLFF277087~4, DLFF285271, JOB285272, JOB285409
+- UDAP_Aston_Tech Nikolaj Osokin has 12 non-cancelled planned jobs on 2026-07-15: DL99506, DL266200, JOB284833, JOB284834, DLFF277087~4, DLFF285271, JOB285272, JOB285409
 - UDC_Chapel_CT Craig Preece has 8 non-cancelled planned jobs on 2026-07-15: PPM264780, PPM163501, PPM241771, DL283962, PPM262873, DLFF285416, EOT285448, DLFF285423~3
 - UDA_Point_Tech Bradley Tice has 6 non-cancelled planned jobs on 2026-07-17: DL164947, DLFF284227, DLFF285064, DLFF285584, JOB285630, GRANQ122691
 - UDL_Leodis_Caretaker Gary Arundale has 18 non-cancelled planned jobs on 2026-07-20: DL259656, PPM204362, DL259917, LS106767, DL260178, DL278763, DL278940, DL282852
