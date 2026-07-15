@@ -1,4 +1,4 @@
-# BTR Daily Run — 2026-07-15
+# BTR Daily Run - 2026-07-15
 
 **Run timestamp:** 2026-07-15T15:04:32.467511+00:00
 **Mode:** apply

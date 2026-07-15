@@ -680,7 +680,7 @@ def write_summary(
             )
 
     content = [
-        f"# BTR Daily Run — {run_timestamp.date().isoformat()}",
+        f"# BTR Daily Run - {run_timestamp.date().isoformat()}",
         "",
         f"**Run timestamp:** {run_timestamp.isoformat()}",
         f"**Mode:** {'apply' if apply else 'dry-run'}",
