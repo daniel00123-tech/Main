@@ -367,10 +367,11 @@ def process_stale_diary(
     run_date: dt.date,
     lookback_days: int,
     dry_run: bool,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     applied: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
+    manual_review: list[dict[str, Any]] = []
 
     for job in fetch_incomplete_diary_jobs(client, rules, run_date=run_date, lookback_days=lookback_days):
         ref = str(job.get("Ref") or "")
@@ -380,17 +381,24 @@ def process_stale_diary(
             skipped.append({"ref": ref, "site": job.get("_btr_site"), "reason": "already actioned in allocation audit"})
             continue
         if is_ppm_job(job):
-            skipped.append({"ref": ref, "site": job.get("_btr_site"), "reason": "stale PPM diary entry - manual review only"})
+            item = {"ref": ref, "site": job.get("_btr_site"), "reason": "stale PPM diary entry - manual review only"}
+            skipped.append(item)
+            manual_review.append({**item, "category": "ppm stale diary"})
             continue
         excluded, reason = contractor_exclusion(job, rules)
         if excluded:
-            skipped.append({"ref": ref, "site": job.get("_btr_site"), "reason": reason})
+            item = {"ref": ref, "site": job.get("_btr_site"), "reason": reason}
+            skipped.append(item)
+            manual_review.append({**item, "category": "contractor"})
             continue
 
         try:
             recommendation = build_reschedule_recommendation(client, job, rules, resources)
             if isinstance(recommendation, tuple):
-                skipped.append({"ref": ref, "site": job.get("_btr_site"), "reason": recommendation[1]})
+                item = {"ref": ref, "site": job.get("_btr_site"), "reason": recommendation[1]}
+                skipped.append(item)
+                if job.get("_btr_site") == BALTIC_YARD_SITE or "No suitable active" in recommendation[1]:
+                    manual_review.append({**item, "category": "no suitable resource"})
                 continue
             record = apply_recommendation(
                 client,
@@ -403,7 +411,7 @@ def process_stale_diary(
             audit_refs.add(ref)
         except Exception as exc:  # Continue the batch on single-job failures.
             failed.append({"ref": ref, "site": job.get("_btr_site"), "error": str(exc)})
-    return applied, skipped, failed
+    return applied, skipped, failed, manual_review
 
 
 def process_unallocated(
@@ -610,7 +618,7 @@ def main() -> int:
         resources = client.resources()
         summary["resource_count"] = len(resources)
 
-        applied, skipped, failed = process_stale_diary(
+        applied, skipped, failed, manual_review = process_stale_diary(
             client,
             rules,
             resources,
@@ -622,6 +630,7 @@ def main() -> int:
         summary["applied"].extend(applied)
         summary["skipped"].extend(skipped)
         summary["failed"].extend(failed)
+        summary["manual_review"].extend(manual_review)
 
         applied, skipped, failed, manual_review = process_unallocated(
             client,
