@@ -496,6 +496,11 @@ def write_summary(
     skipped_counts = Counter(item.get("reason", "Unknown") for item in skipped)
     manual_items = list(manual_review)
     manual_refs = {str(item.get("ref") or "") for item in manual_items}
+    for item in applied:
+        ref = str(item.get("job_ref") or "")
+        if str(item.get("confidence") or "").lower() == "low" and ref not in manual_refs:
+            manual_items.append({"ref": ref, "reason": LOW_REVIEW_NOTE})
+            manual_refs.add(ref)
     for item in skipped:
         reason = str(item.get("reason") or "")
         ref = str(item.get("ref") or "")
