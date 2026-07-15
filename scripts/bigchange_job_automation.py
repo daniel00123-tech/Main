@@ -28,6 +28,7 @@ from typing import Any
 DEFAULT_BASE_URL = "https://webservice.bigchange.com/v01/services.ashx"
 AUTO_CLOSE_DOWN = "Auto Close Down"
 UNCATEGORISED = "Uncategorised"
+FALLBACK_CATEGORY = "Hayley Longford"
 INVOICE_CREATED = "InvoiceCreated"
 INVOICE_CREATED_STATUS_ID = 34
 
@@ -142,11 +143,7 @@ def parse_cli_datetime(value: str, *, end_of_day: bool = False) -> datetime:
 
 
 def default_window(now: datetime, days: int) -> tuple[datetime, datetime]:
-    yesterday = (now - timedelta(days=1)).date()
-    end = datetime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59, tzinfo=timezone.utc)
-    start_date = yesterday - timedelta(days=days)
-    start = datetime(start_date.year, start_date.month, start_date.day, 0, 0, 0, tzinfo=timezone.utc)
-    return start, end
+    return now - timedelta(days=days), now
 
 
 def in_window(job: dict[str, Any], start_dt: datetime, end_dt: datetime) -> bool:
@@ -297,7 +294,7 @@ def build_summary(
         f"- Total jobs reviewed: {total_jobs}",
         f"- Total jobs with intended updates in preview: {len(jobs_with_intended)}",
         f"- Total updated: {len(jobs_with_success) if not dry_run else 0}",
-        f"- Total skipped: {max(total_jobs - len(jobs_with_success) - len(jobs_with_failure), 0) if not dry_run else total_jobs - len(jobs_with_intended)}",
+        f"- Total skipped: {max(total_jobs - len(jobs_with_intended), 0)}",
         f"- Total failed: {len(jobs_with_failure) if not dry_run else 0}",
         "",
         "## Intended update operations",
@@ -357,6 +354,7 @@ def run(args: argparse.Namespace) -> int:
 
     categories = result_list(client.call({"action": "JobCategories"}), "JobCategories")
     category_by_name = {normalise_name(row.get("label")): row for row in categories if row.get("label")}
+    fallback_category = category_by_name.get(normalise_name(FALLBACK_CATEGORY))
 
     tags = result_list(client.call({"action": "Tags"}), "Tags")
     auto_close_tags = [
@@ -421,44 +419,101 @@ def run(args: argparse.Namespace) -> int:
                         )
                     )
                     intended_types.append("job_category")
+                elif creator and fallback_category:
+                    intended.append(
+                        IntendedUpdate(
+                            job_id=job_id,
+                            job_ref=ref,
+                            update_type="job_category",
+                            reason=(
+                                f"uncategorised job; creator from {source} has no matching category, "
+                                "using confirmed fallback category"
+                            ),
+                            params={
+                                "action": "JobSave",
+                                "JobId": job_id,
+                                "JobCategory": fallback_category["label"],
+                                "PreserveSchedule": 1,
+                            },
+                            before={"Category": job.get("Category"), "JobCategoryId": job.get("JobCategoryId")},
+                            target={
+                                "Category": fallback_category["label"],
+                                "JobCategoryId": fallback_category.get("id"),
+                                "creator": creator,
+                                "fallbackCategory": fallback_category["label"],
+                            },
+                        )
+                    )
+                    intended_types.append("job_category")
+                elif creator:
+                    skip_reasons.append(
+                        f"uncategorised but no matching category for creator and fallback missing: {creator or source}"
+                    )
                 else:
-                    skip_reasons.append(f"uncategorised but no matching category for creator: {creator or source}")
+                    skip_reasons.append(f"uncategorised but no creator identified: {source}")
             except Exception as exc:  # noqa: BLE001 - keep processing remaining jobs.
                 skip_reasons.append(f"failed to inspect creator history: {exc}")
         else:
             skip_reasons.append("valid existing job category")
 
-        if job_id in flagged_ids:
+        if job_id in flagged_ids and normalise_name(job.get("CurrentFlag")) == normalise_name(AUTO_CLOSE_DOWN):
             try:
                 activity = result_list(client.call({"action": "JobCustomerActivity", "jobId": job_id}), "JobCustomerActivity")
                 invoice_created = has_invoice_created(activity)
                 if is_actioned(job) and invoice_created:
                     skip_reasons.append("Auto Close Down already actioned with InvoiceCreated status")
                 else:
-                    reasons = []
                     if not is_actioned(job):
-                        reasons.append("mark actioned")
-                    if not invoice_created:
-                        reasons.append("set invoice status InvoiceCreated")
-                    intended.append(
-                        IntendedUpdate(
-                            job_id=job_id,
-                            job_ref=ref,
-                            update_type="auto_close_invoice_created",
-                            reason="Auto Close Down flag confirmed; " + " and ".join(reasons),
-                            params={
-                                "action": "JobClientStatus",
-                                "JobId": job_id,
-                                "JobClientStatus": INVOICE_CREATED_STATUS_ID,
-                                "Comment": "Automated Auto Close Down invoice status update",
-                            },
-                            before={"Actioned": job.get("Actioned"), "InvoiceCreated": invoice_created, "CurrentFlag": job.get("CurrentFlag")},
-                            target={"Actioned": "Yes", "JobClientStatus": INVOICE_CREATED, "JobClientStatusID": INVOICE_CREATED_STATUS_ID},
+                        intended.append(
+                            IntendedUpdate(
+                                job_id=job_id,
+                                job_ref=ref,
+                                update_type="auto_close_actioned",
+                                reason="Auto Close Down flag confirmed; mark actioned",
+                                params={
+                                    "action": "JobSaveBackOfficeNote",
+                                    "jobId": job_id,
+                                    "actioned": 1,
+                                    "note": "Automated Auto Close Down actioned update",
+                                },
+                                before={
+                                    "Actioned": job.get("Actioned"),
+                                    "InvoiceCreated": invoice_created,
+                                    "CurrentFlag": job.get("CurrentFlag"),
+                                },
+                                target={"Actioned": "Yes"},
+                            )
                         )
-                    )
-                    intended_types.append("auto_close_invoice_created")
+                        intended_types.append("auto_close_actioned")
+                    if not invoice_created:
+                        intended.append(
+                            IntendedUpdate(
+                                job_id=job_id,
+                                job_ref=ref,
+                                update_type="auto_close_invoice_created",
+                                reason="Auto Close Down flag confirmed; set invoice status InvoiceCreated",
+                                params={
+                                    "action": "JobClientStatus",
+                                    "JobId": job_id,
+                                    "JobClientStatus": INVOICE_CREATED_STATUS_ID,
+                                    "Comment": "Automated Auto Close Down invoice status update",
+                                },
+                                before={
+                                    "Actioned": job.get("Actioned"),
+                                    "InvoiceCreated": invoice_created,
+                                    "CurrentFlag": job.get("CurrentFlag"),
+                                },
+                                target={
+                                    "JobClientStatus": INVOICE_CREATED,
+                                    "JobClientStatusID": INVOICE_CREATED_STATUS_ID,
+                                },
+                            )
+                        )
+                        intended_types.append("auto_close_invoice_created")
             except Exception as exc:  # noqa: BLE001 - keep processing remaining jobs.
                 skip_reasons.append(f"failed to inspect customer activity: {exc}")
+        elif job_id in flagged_ids:
+            skip_reasons.append("Auto Close Down tag lookup matched but current flag is not Auto Close Down")
         else:
             skip_reasons.append("Auto Close Down flag not present")
 
@@ -488,6 +543,8 @@ def run(args: argparse.Namespace) -> int:
         },
         "confirmed_references": {
             "autoCloseDownTagId": auto_close_tag_id,
+            "fallbackCategory": fallback_category.get("label") if fallback_category else None,
+            "fallbackCategoryId": fallback_category.get("id") if fallback_category else None,
             "invoiceCreatedClientStatusId": INVOICE_CREATED_STATUS_ID,
         },
         "jobs_excluded_as_future_dated": len(excluded_future_jobs),
@@ -559,7 +616,7 @@ def run(args: argparse.Namespace) -> int:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Apply previewed updates after generating the preview.")
-    parser.add_argument("--days", type=int, default=30, help="Look back this many days before yesterday.")
+    parser.add_argument("--days", type=int, default=30, help="Look back this many days from the current run time.")
     parser.add_argument("--start-date", help="Override inclusive creation-date window start (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).")
     parser.add_argument("--end-date", help="Override inclusive creation-date window end (YYYY-MM-DD or YYYY-MM-DD HH:MM:SS).")
     parser.add_argument("--page-size", type=int, default=5000, help="JobsList page size.")
