@@ -1,0 +1,826 @@
+[
+  {
+    "job_id": 190975039,
+    "job_ref": "PPM275014",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "190975039 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 190982508,
+    "job_ref": "GRANQ275031",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 191105121,
+    "job_ref": "DL275477",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 191291911,
+    "job_ref": "PPM276064",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 191300367,
+    "job_ref": "PPM276176",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs",
+    "job_id": 191521085,
+    "job_ref": "SS276901",
+    "status": "failed",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 191521085,
+    "job_ref": "SS276901",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 192008523,
+    "job_ref": "DLFF273417~2",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 192501043,
+    "job_ref": "DL278759",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 192514031,
+    "job_ref": "DL278936",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 192792144,
+    "job_ref": "DLFF279993",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 192822013,
+    "job_ref": "JOB280080",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs",
+    "job_id": 192822635,
+    "job_ref": "JOB280081",
+    "status": "failed",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 192822635,
+    "job_ref": "JOB280081",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 192891690,
+    "job_ref": "JOB282442",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 192891690,
+    "job_ref": "JOB282442",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 192891836,
+    "job_ref": "JOB282443",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 192891836,
+    "job_ref": "JOB282443",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 192897570,
+    "job_ref": "DLFF282446",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs",
+    "job_id": 192906687,
+    "job_ref": "JOB280388~1",
+    "status": "failed",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs",
+    "job_id": 192955427,
+    "job_ref": "DLFF282643",
+    "status": "failed",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 192955427,
+    "job_ref": "DLFF282643",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 192970548,
+    "job_ref": "DLFF282750",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 192995378,
+    "job_ref": "JOB282784",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 192995378,
+    "job_ref": "JOB282784",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs",
+    "job_id": 192997579,
+    "job_ref": "JOB282787",
+    "status": "failed",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 192997579,
+    "job_ref": "JOB282787",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193022137,
+    "job_ref": "DLFF282826",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs",
+    "job_id": 193033564,
+    "job_ref": "DLFF282840",
+    "status": "failed",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193035229,
+    "job_ref": "DL282848",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193039478,
+    "job_ref": "DLFF282916",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193052957,
+    "job_ref": "DL283603",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs",
+    "job_id": 193125363,
+    "job_ref": "JOB283949",
+    "status": "failed",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193125363,
+    "job_ref": "JOB283949",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs",
+    "job_id": 193183413,
+    "job_ref": "DLFF277087~4",
+    "status": "failed",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193232564,
+    "job_ref": "DLFF284593",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193243280,
+    "job_ref": "DLFF284598",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193256027,
+    "job_ref": "GRANQ284664",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193276508,
+    "job_ref": "DLFF284757",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193276508,
+    "job_ref": "DLFF284757",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193318120,
+    "job_ref": "JOB273410~4",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193340242,
+    "job_ref": "JOB284815",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193340242,
+    "job_ref": "JOB284815",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs",
+    "job_id": 193410870,
+    "job_ref": "JOB284971",
+    "status": "failed",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193410870,
+    "job_ref": "JOB284971",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193465313,
+    "job_ref": "285177",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193465313,
+    "job_ref": "285177",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193495381,
+    "job_ref": "DLFF285231",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193495381,
+    "job_ref": "DLFF285231",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193498989,
+    "job_ref": "JOB285114~1",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193541468,
+    "job_ref": "JOB285286",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193541515,
+    "job_ref": "JOB285288",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs",
+    "job_id": 193564610,
+    "job_ref": "DLFF285407",
+    "status": "failed",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193564610,
+    "job_ref": "DLFF285407",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "error": "BigChange returned Code=2: Actioned flag can only be set on completed jobs",
+    "job_id": 193570265,
+    "job_ref": "JOB285411",
+    "status": "failed",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193570265,
+    "job_ref": "JOB285411",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193571557,
+    "job_ref": "DLFF285415",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193571557,
+    "job_ref": "DLFF285415",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193571560,
+    "job_ref": "DLFF285416",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193571560,
+    "job_ref": "DLFF285416",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193581465,
+    "job_ref": "INT285426",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193581465 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193597110,
+    "job_ref": "285432",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193612161,
+    "job_ref": "EOT285448",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193612161,
+    "job_ref": "EOT285448",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193630395,
+    "job_ref": "",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193630395,
+    "job_ref": "",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193630396,
+    "job_ref": "",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193630396 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193630398,
+    "job_ref": "",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193630398 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193630400,
+    "job_ref": "",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193630400 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193630401,
+    "job_ref": "",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193630401 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193630405,
+    "job_ref": "",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193630405 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193630565,
+    "job_ref": "PPM285481",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_actioned"
+  },
+  {
+    "job_id": 193630565,
+    "job_ref": "PPM285481",
+    "response": {
+      "Code": 0
+    },
+    "status": "updated",
+    "update_type": "auto_close_invoice_created"
+  },
+  {
+    "job_id": 193636537,
+    "job_ref": "PPM285501",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193636537 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193636540,
+    "job_ref": "PPM285502",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193636540 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193636543,
+    "job_ref": "PPM285503",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193636543 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193636545,
+    "job_ref": "PPM285504",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193636545 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193636546,
+    "job_ref": "PPM285505",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193636546 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193636550,
+    "job_ref": "PPM285506",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193636550 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193636554,
+    "job_ref": "PPM285507",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193636554 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193636556,
+    "job_ref": "PPM285508",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193636556 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193636560,
+    "job_ref": "PPM285509",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193636560 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193636561,
+    "job_ref": "PPM285510",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193636561 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193636563,
+    "job_ref": "PPM285511",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193636563 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193648150,
+    "job_ref": "JOB285515",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193648150 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193648777,
+    "job_ref": "EST285517",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193648777 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  },
+  {
+    "job_id": 193650073,
+    "job_ref": "JOB285521",
+    "response": {
+      "Code": 0,
+      "Result": {
+        "jobid": "193650073 "
+      }
+    },
+    "status": "updated",
+    "update_type": "job_category"
+  }
+]
