@@ -152,11 +152,11 @@
       "result": "already_confirmed_comment"
     },
     {
-      "comment_id": null,
+      "comment_id": 75283333,
       "date": "17/07/2026",
       "issue_id": "IS22066096",
       "recipient": "Agent",
-      "result": "newly_confirmed"
+      "result": "send_recipient_unverified"
     },
     {
       "comment_id": null,
@@ -559,13 +559,18 @@
     "bigchange_jobs_with_is": 103,
     "dandara_fixflo_jobs": 94,
     "eligible_open_fixflo_jobs": 85,
-    "failures": [],
+    "failures": [
+      {
+        "error": "FixFlo comment resolved to an empty recipient because the assigned agent is deleted",
+        "issue_id": "IS22066096"
+      }
+    ],
     "fixflo_not_found_skipped": 7,
-    "newly_confirmed": 63,
+    "newly_confirmed": 62,
     "non_dandara_skipped": 1,
     "non_fixflo_skipped": 75,
     "recipient_split": {
-      "Agent": 49,
+      "Agent": 48,
       "Tenant": 14
     },
     "rescheduled_and_reconfirmed": 0,

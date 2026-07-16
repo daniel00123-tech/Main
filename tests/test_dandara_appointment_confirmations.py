@@ -13,6 +13,8 @@ from scripts.dandara_appointment_confirmations import (
     extract_issue_ids,
     identify_site,
     is_confirmation_for_date,
+    is_delivered_confirmation_for_date,
+    recipient_is_available,
     run,
 )
 
@@ -33,7 +35,11 @@ def issue(
         "Job": {"Id": job_id} if job_id else None,
         "TenantId": tenant_id,
         "TenantPresenceRequested": tenant_presence,
-        "AssignedAgent": {"EmailAddress": agent_email},
+        "AssignedAgent": {
+            "Id": "AG12345678",
+            "EmailAddress": agent_email,
+            "IsDeleted": False,
+        },
         "Address": address,
     }
 
@@ -89,7 +95,14 @@ class FakeFixFlo:
 
     def post_comment(self, issue_id, date_text, recipient):
         self.posts.append((issue_id, date_text, recipient))
-        return {"Id": 1000 + len(self.posts)}
+        comment = {
+            "Id": 1000 + len(self.posts),
+            "Message": MESSAGE_TEMPLATE.format(date=date_text),
+            "CommentSent": "2026-07-16T10:00:00Z",
+            "CommentToEntityType": [recipient],
+        }
+        self.comments.setdefault(issue_id, []).insert(0, comment)
+        return {}
 
 
 class ClassificationTest(unittest.TestCase):
@@ -137,6 +150,24 @@ class ClassificationTest(unittest.TestCase):
         self.assertTrue(is_confirmation_for_date({"Message": message}, "17/07/2026"))
         self.assertFalse(is_confirmation_for_date({"Message": message}, "18/07/2026"))
         self.assertFalse(is_confirmation_for_date({"Message": "Visit 17/07/2026"}, "17/07/2026"))
+        self.assertTrue(
+            is_delivered_confirmation_for_date(
+                {"Message": message, "CommentToEntityType": ["Tenant"]},
+                "17/07/2026",
+            )
+        )
+        self.assertFalse(
+            is_delivered_confirmation_for_date(
+                {"Message": message, "CommentToEntityType": []},
+                "17/07/2026",
+            )
+        )
+
+    def test_agent_recipient_must_be_active(self):
+        active_issue = issue(issue_id="IS1")
+        self.assertTrue(recipient_is_available(active_issue, "Agent"))
+        active_issue["AssignedAgent"]["IsDeleted"] = True
+        self.assertFalse(recipient_is_available(active_issue, "Agent"))
 
 
 class RunTest(unittest.TestCase):
@@ -234,6 +265,7 @@ class RunTest(unittest.TestCase):
                     "Id": 12,
                     "Message": MESSAGE_TEMPLATE.format(date="18/07/2026"),
                     "CommentSent": "2026-07-16T09:00:00Z",
+                    "CommentToEntityType": ["Tenant"],
                 }
             ]
         }
@@ -297,6 +329,22 @@ class RunTest(unittest.TestCase):
         self.assertEqual(candidates, [])
         self.assertEqual(result["summary"]["fixflo_not_found_skipped"], 1)
         self.assertEqual(result["summary"]["failures"], [])
+
+    def test_inactive_agent_is_reported_without_posting(self):
+        rows = [job(job_id=1, planned="2026-07-17", group="Dandara - IS22870001", issue_id="IS22870001")]
+        inactive = issue(issue_id="IS22870001")
+        inactive["AssignedAgent"]["IsDeleted"] = True
+
+        result, posts, candidates, _, saved_state = self.run_in_temp(
+            rows,
+            {"IS22870001": inactive},
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(posts, [])
+        self.assertEqual(result["summary"]["newly_confirmed"], 0)
+        self.assertIn("No active FixFlo Agent recipient", result["summary"]["failures"][0]["error"])
+        self.assertNotIn("IS22870001", saved_state["issues"])
 
 
 if __name__ == "__main__":

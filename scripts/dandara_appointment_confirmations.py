@@ -169,10 +169,30 @@ def choose_recipient(issue: dict[str, Any]) -> str:
     return "Agent"
 
 
+def recipient_is_available(issue: dict[str, Any], recipient: str) -> bool:
+    if recipient == "Tenant":
+        return bool(str(issue.get("TenantId", "") or "").strip())
+    agent = issue.get("AssignedAgent")
+    return (
+        isinstance(agent, dict)
+        and bool(str(agent.get("Id", "") or "").strip())
+        and not truthy(agent.get("IsDeleted"))
+    )
+
+
 def is_confirmation_for_date(comment: dict[str, Any], date_text: str) -> bool:
     message = str(comment.get("Message", ""))
     lowered = message.lower()
     return date_text in message and any(phrase in lowered for phrase in CONFIRMATION_PHRASES)
+
+
+def is_delivered_confirmation_for_date(comment: dict[str, Any], date_text: str) -> bool:
+    recipients = comment.get("CommentToEntityType")
+    return (
+        is_confirmation_for_date(comment, date_text)
+        and isinstance(recipients, list)
+        and bool(recipients)
+    )
 
 
 def normalize_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -486,6 +506,7 @@ def run(
                 "planned_start": planned_date.strftime("%d/%m/%Y"),
                 "planned_date": planned_date,
                 "recipient": recipient,
+                "recipient_available": recipient_is_available(issue, recipient),
             }
         )
 
@@ -526,7 +547,7 @@ def run(
             send_results.append({"issue_id": issue_id, "date": date_text, "result": "failed_deduplication_check"})
             continue
         existing_comment = next(
-            (comment for comment in comments if is_confirmation_for_date(comment, date_text)),
+            (comment for comment in comments if is_delivered_confirmation_for_date(comment, date_text)),
             None,
         )
         if existing_comment is not None:
@@ -540,6 +561,23 @@ def run(
                 site_name=candidate["site"],
             )
             send_results.append({"issue_id": issue_id, "date": date_text, "result": "already_confirmed_comment"})
+            continue
+
+        if not candidate["recipient_available"]:
+            summary["failures"].append(
+                {
+                    "issue_id": issue_id,
+                    "error": f"No active FixFlo {recipient} recipient; confirmation not sent",
+                }
+            )
+            send_results.append(
+                {
+                    "issue_id": issue_id,
+                    "date": date_text,
+                    "recipient": recipient,
+                    "result": "missing_active_recipient",
+                }
+            )
             continue
 
         previous_date = prior_dates_by_issue.get(issue_id, "")
@@ -565,8 +603,47 @@ def run(
             summary["failures"].append({"issue_id": issue_id, "error": f"FixFlo comment send failed: {exc}"})
             send_results.append({"issue_id": issue_id, "date": date_text, "result": "send_failed"})
             continue
-        sent_at = dt.datetime.now(dt.timezone.utc).isoformat()
-        comment_id = response.get("Id", response.get("CommentId"))
+        verified_comment: dict[str, Any] | None = None
+        verification_error = ""
+        for verification_attempt in range(3):
+            if verification_attempt:
+                time.sleep(float(verification_attempt))
+            try:
+                refreshed_comments = fixflo.get_comments(issue_id)
+            except Exception as exc:
+                verification_error = str(exc)
+                continue
+            comments_cache[issue_id] = refreshed_comments
+            verified_comment = next(
+                (
+                    comment
+                    for comment in refreshed_comments
+                    if is_confirmation_for_date(comment, date_text)
+                    and recipient in (comment.get("CommentToEntityType") or [])
+                ),
+                None,
+            )
+            if verified_comment is not None:
+                break
+        if verified_comment is None:
+            detail = f": {verification_error}" if verification_error else ""
+            summary["failures"].append(
+                {
+                    "issue_id": issue_id,
+                    "error": f"FixFlo comment recipient could not be verified{detail}",
+                }
+            )
+            send_results.append(
+                {
+                    "issue_id": issue_id,
+                    "date": date_text,
+                    "recipient": recipient,
+                    "result": "send_recipient_unverified",
+                }
+            )
+            continue
+        sent_at = str(verified_comment.get("CommentSent") or dt.datetime.now(dt.timezone.utc).isoformat())
+        comment_id = verified_comment.get("Id", response.get("Id", response.get("CommentId")))
         state["issues"][issue_id] = state_entry(
             issue_id=issue_id,
             recipient=recipient,
