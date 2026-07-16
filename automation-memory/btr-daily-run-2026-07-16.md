@@ -1,6 +1,6 @@
 # BTR Daily Run — 2026-07-16
 
-**Run timestamp:** 2026-07-16T09:04:48.188066+00:00  
+**Run timestamp:** 2026-07-16T11:05:14.658154+00:00  
 **BigChange environment:** TEST  
 **Mode:** APPLY  
 **Resources connectivity check:** 472 resources returned; 37 active JobWatch resources.
@@ -9,32 +9,25 @@
 
 | Category | Count |
 |---|---:|
-| Applied | 8 |
+| Applied | 2 |
 | Failed | 0 |
-| Skipped | 40 |
+| Skipped | 44 |
 
 ## Skipped by reason
 
 | Reason | Count |
 | --- | --- |
 | Stale PPM diary entry; manual review only | 36 |
+| Excluded wording found: aquilo, sent to aquilo | 6 |
 | Already actioned in allocation audit; still assigned/planned, manual review | 1 |
 | No suitable active site-based resource found for required role | 1 |
-| Excluded wording found: aquilo, sent to aquilo | 1 |
-| PPM job requires administrator review before tech diary allocation | 1 |
 
 ## Applied jobs
 
 | Ref | Site | Resource | Date | Start-End | Confidence | Mode |
 | --- | --- | --- | --- | --- | --- | --- |
-| JOB274321 | Forbes Place | UDA_Forbes_Tech-Bailey Middleton | 2026-07-16 | 09:15-10:15 | Medium | daily_incomplete_reschedule |
-| JOB274320 | Forbes Place | UDA_Forbes_Tech-Bailey Middleton | 2026-07-16 | 10:15-11:15 | Medium | daily_incomplete_reschedule |
-| JOB279849 | Chapel Wharf | UDC_Chapel_Tech David Camilleri | 2026-07-17 | 13:00-14:00 | Low | daily_incomplete_reschedule |
-| COVER285821 | Chapel Wharf | UDC_Chapel_Tech Rui Alves | 2026-07-16 | 09:15-10:15 | Medium | daily_allocate_medium |
-| JOB285813 | The Point | UDA_Point _Tech - Eric Wilson | 2026-07-20 | 12:00-16:00 | Medium | daily_allocate_medium |
-| JOB285817 | Aston Place | UDAP_Aston_Tech Nikolaj Osokin | 2026-07-16 | 14:00-15:00 | Medium | daily_allocate_medium |
-| JOB285819 | Granary Quay | UDGQ_Granary_Tech Oakley Rogers | 2026-07-16 | 13:00-14:00 | High | daily_allocate_high |
-| JOB285820 | Chapel Wharf | UDC_Chapel_Tech Rui Alves | 2026-07-16 | 10:15-11:15 | Medium | daily_allocate_medium |
+| DLFF285858 | Chapel Wharf | UDC_Chapel_Tech Charlie Lewtas  | 2026-07-30 | 11:00-12:00 | High | daily_allocate_high_api_mismatch |
+| DLFF285857 | Chapel Wharf | UDC_Chapel_Tech David Camilleri | 2026-07-29 | 11:30-18:00 | High | daily_allocate_high_api_mismatch |
 
 ## Skipped jobs
 
@@ -79,7 +72,11 @@
 | PPM205257 |  | Stale PPM diary entry; manual review only |
 | COVER285634 | Botanica | No suitable active site-based resource found for required role |
 | JOB282782 | The Point | Excluded wording found: aquilo, sent to aquilo |
-| JOB285818 | Forbes Place | PPM job requires administrator review before tech diary allocation |
+| JOB285826 | Baltic Yard | Excluded wording found: aquilo, sent to aquilo |
+| JOB285827 | Baltic Yard | Excluded wording found: aquilo, sent to aquilo |
+| JOB285828 | Baltic Yard | Excluded wording found: aquilo, sent to aquilo |
+| JOB285829 | Baltic Yard | Excluded wording found: aquilo, sent to aquilo |
+| JOB285830 | Baltic Yard | Excluded wording found: aquilo, sent to aquilo |
 
 ## Failed jobs
 
@@ -122,8 +119,8 @@ _None._
 | UDAP_Aston_Tech Nikolaj Osokin | 2026-07-16 | 4 |
 | UDAP_Aston_Tech Nikolaj Osokin | 2026-07-17 | 5 |
 | UDAP_Aston_Tech Nikolaj Osokin | 2026-07-20 | 6 |
-| UDC_Chapel_CT Craig Preece | 2026-07-16 | 7 |
-| UDC_Chapel_CT Craig Preece | 2026-07-17 | 5 |
+| UDC_Chapel_CT Craig Preece | 2026-07-16 | 9 |
+| UDC_Chapel_CT Craig Preece | 2026-07-17 | 8 |
 | UDC_Chapel_CT Craig Preece | 2026-07-20 | 6 |
 | UDC_Chapel_CT Craig Preece | 2026-07-21 | 6 |
 | UDC_Chapel_CT Craig Preece | 2026-07-22 | 5 |
@@ -133,19 +130,20 @@ _None._
 | UDC_Chapel_CT Craig Preece | 2026-07-28 | 8 |
 | UDC_Chapel_CT Craig Preece | 2026-07-29 | 5 |
 | UDC_Chapel_CT Craig Preece | 2026-07-30 | 5 |
-| UDC_Chapel_Tech Aamir Ali | 2026-07-17 | 4 |
-| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-16 | 10 |
-| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-17 | 10 |
-| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-20 | 8 |
+| UDC_Chapel_Tech Aamir Ali | 2026-07-20 | 4 |
+| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-16 | 11 |
+| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-17 | 11 |
+| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-20 | 9 |
 | UDC_Chapel_Tech Charlie Lewtas  | 2026-07-21 | 10 |
 | UDC_Chapel_Tech Charlie Lewtas  | 2026-07-22 | 11 |
-| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-23 | 9 |
-| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-24 | 9 |
-| UDC_Chapel_Tech David Camilleri | 2026-07-16 | 5 |
-| UDC_Chapel_Tech David Camilleri | 2026-07-17 | 4 |
+| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-23 | 10 |
+| UDC_Chapel_Tech Charlie Lewtas  | 2026-07-24 | 11 |
+| UDC_Chapel_Tech David Camilleri | 2026-07-16 | 4 |
 | UDC_Chapel_Tech David Camilleri | 2026-07-21 | 6 |
+| UDC_Chapel_Tech David Camilleri | 2026-07-22 | 4 |
 | UDC_Chapel_Tech David Camilleri | 2026-07-28 | 5 |
-| UDC_Chapel_Tech Rui Alves | 2026-07-20 | 7 |
+| UDC_Chapel_Tech David Camilleri | 2026-07-29 | 4 |
+| UDC_Chapel_Tech Rui Alves | 2026-07-20 | 6 |
 | UDC_Chapel_Tech Rui Alves | 2026-07-21 | 5 |
 | UDGQ_Granary_HKSup Stephanie McQuaid | 2026-07-16 | 4 |
 | UDGQ_Granary_Tech Mark Taylor | 2026-07-16 | 8 |
@@ -184,8 +182,13 @@ _None._
 | --- | --- |
 | COVER285634 | No suitable active site-based resource found for required role |
 | JOB282782 | Excluded wording found: aquilo, sent to aquilo |
-| JOB285818 | PPM job requires administrator review before tech diary allocation |
-| JOB279849 | Low-confidence allocation applied; review job details and allocated slot |
+| JOB285826 | Excluded wording found: aquilo, sent to aquilo |
+| JOB285827 | Excluded wording found: aquilo, sent to aquilo |
+| JOB285828 | Excluded wording found: aquilo, sent to aquilo |
+| JOB285829 | Excluded wording found: aquilo, sent to aquilo |
+| JOB285830 | Excluded wording found: aquilo, sent to aquilo |
+| DLFF285858 | BigChange scheduled the job on a different active resource/date than proposed; verified actual diary entry with no overlap involving scheduled job |
+| DLFF285857 | BigChange scheduled the job on a different active resource/date than proposed; verified actual diary entry with no overlap involving scheduled job |
 | DL263662 | Stale PPM diary entry; manual review only |
 | DL223678 | Stale PPM diary entry; manual review only |
 | DL262488 | Stale PPM diary entry; manual review only |

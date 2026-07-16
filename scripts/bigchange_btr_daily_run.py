@@ -271,6 +271,93 @@ def verify_scheduled_job(
     return True, "Verified on intended resource diary with no overlap involving scheduled job"
 
 
+def verify_actual_schedule(
+    client: BigChangeClient,
+    record: dict[str, Any],
+    *,
+    mode: str,
+) -> tuple[dict[str, Any] | None, str]:
+    """Capture a BigChange-accepted schedule that landed on a different slot.
+
+    BigChange can accept JobSchedule but resolve the job to an existing/alternate
+    resource diary entry. Treat that as an applied write only when the actual
+    resource is active and the resulting booking does not overlap other work.
+    """
+    job = fetch_job(client, job_id=int(record["job_id"]))
+    if not job:
+        return None, "Job not found after schedule mismatch"
+
+    planned_start = parse_datetime(job.get("PlannedStart"))
+    resource_name = str(job.get("Resource") or "").strip()
+    if not planned_start or not resource_name:
+        return None, "Job has no usable planned start/resource after schedule mismatch"
+
+    rules = load_rules()
+    resources = client.resources()
+    resource = None
+    for candidate in resources:
+        candidate_name = str(candidate.get("label") or "").strip()
+        if normalise(candidate_name) == normalise(resource_name):
+            resource = candidate
+            resource_name = candidate_name
+            break
+    if not resource:
+        return None, f"Job scheduled to unknown resource after mismatch: {resource_name}"
+    if not resource_is_active_for_jobwatch(resource):
+        return None, f"Job scheduled to inactive resource after mismatch: {resource_name}"
+    if resource_is_excluded(resource_name, rules):
+        return None, f"Job scheduled to excluded resource after mismatch: {resource_name}"
+
+    resource_id = as_int(resource.get("id"))
+    if resource_id is None:
+        return None, f"Job scheduled to resource without id after mismatch: {resource_name}"
+
+    planned_end = parse_datetime(job.get("PlannedEnd"))
+    if not planned_end:
+        duration = as_int(record.get("duration_minutes"), default=60) or 60
+        planned_end = planned_start + dt.timedelta(minutes=duration)
+    duration_minutes = max(1, int((planned_end - planned_start).total_seconds() // 60))
+
+    diary = client.resource_diary(resource_id, planned_start.date(), planned_start.date())
+    schedule_jobs = [entry for entry in diary if not is_cancelled_diary_job(entry)]
+    matches = [
+        entry
+        for entry in schedule_jobs
+        if as_int(entry.get("JobId")) == int(record["job_id"])
+        or str(entry.get("Ref") or "") == str(record["job_ref"])
+    ]
+    if not matches:
+        return None, "Job has planned start/resource but is not on the actual resource diary"
+
+    blocks = diary_blocks(schedule_jobs, planned_start.date())
+    conflicts: list[str] = []
+    for block_start, block_end, label in blocks:
+        if str(record["job_ref"]) in label:
+            continue
+        if slot_has_overlap([(block_start, block_end, label)], planned_start, planned_end):
+            conflicts.append(label)
+    if conflicts:
+        return None, f"Actual schedule overlaps existing booking(s): {', '.join(conflicts)}"
+
+    actual_site = resource_site(resource_name, rules) or str(record.get("site") or "")
+    actual = {
+        "site": actual_site,
+        "resource": resource_name,
+        "resource_id": resource_id,
+        "scheduled_date": planned_start.date().isoformat(),
+        "start": planned_start.strftime("%H:%M"),
+        "end": planned_end.strftime("%H:%M"),
+        "duration_minutes": duration_minutes,
+        "overlap_check": "Passed",
+        "mode_override": f"{mode}_api_mismatch",
+    }
+    message = (
+        "BigChange scheduled the job on a different active resource/date than proposed; "
+        "verified actual diary entry with no overlap involving scheduled job"
+    )
+    return actual, message
+
+
 def schedule_record(client: BigChangeClient, record: dict[str, Any], *, apply: bool, mode: str) -> tuple[bool, str]:
     if not apply:
         return True, "Dry run: not written to BigChange"
@@ -299,7 +386,12 @@ def schedule_record(client: BigChangeClient, record: dict[str, Any], *, apply: b
             end=str(record["end"]),
         )
     if not ok:
-        return False, message
+        actual, actual_message = verify_actual_schedule(client, record, mode=mode)
+        if not actual:
+            return False, message
+        record.update(actual)
+        ok = True
+        message = actual_message
 
     audit_record = {
         "timestamp": utc_now(),
@@ -313,9 +405,11 @@ def schedule_record(client: BigChangeClient, record: dict[str, Any], *, apply: b
         "end": record["end"],
         "duration_minutes": record["duration_minutes"],
         "confidence": record.get("confidence", "Medium"),
-        "mode": mode,
+        "mode": record.get("mode_override", mode),
         "overlap_check": record.get("overlap_check", "Passed"),
     }
+    if "different active resource/date" in message:
+        audit_record["verification"] = message
     if record.get("original_date"):
         audit_record["original_date"] = record["original_date"]
     append_audit(audit_record)
@@ -373,7 +467,7 @@ def process_stale_diary(
             proposal["original_date"] = planned.date().isoformat()
             ok, message = schedule_record(client, proposal, apply=apply, mode="daily_incomplete_reschedule")
             if ok:
-                applied.append({**proposal, "mode": "daily_incomplete_reschedule", "verification": message})
+                applied.append({**proposal, "mode": proposal.get("mode_override", "daily_incomplete_reschedule"), "verification": message})
                 audit_refs.add(ref)
             else:
                 failed.append({"ref": ref, "error": message})
@@ -442,10 +536,13 @@ def process_unallocated(
         mode = f"daily_allocate_{result.confidence.lower()}"
         ok, message = schedule_record(client, record, apply=apply, mode=mode)
         if ok:
-            applied.append({**record, "mode": mode, "verification": message})
+            applied_mode = record.get("mode_override", mode)
+            applied.append({**record, "mode": applied_mode, "verification": message})
             audit_refs.add(ref)
             if result.confidence == "Low":
                 manual_review.append({"ref": ref, "reason": LOW_REVIEW_NOTE})
+            if "different active resource/date" in message:
+                manual_review.append({"ref": ref, "reason": message})
         else:
             failed.append({"ref": ref, "error": message})
 
@@ -500,6 +597,10 @@ def write_summary(
         ref = str(item.get("job_ref") or "")
         if str(item.get("confidence") or "").lower() == "low" and ref not in manual_refs:
             manual_items.append({"ref": ref, "reason": LOW_REVIEW_NOTE})
+            manual_refs.add(ref)
+        verification = str(item.get("verification") or "")
+        if "different active resource/date" in verification and ref not in manual_refs:
+            manual_items.append({"ref": ref, "reason": verification})
             manual_refs.add(ref)
     for item in skipped:
         reason = str(item.get("reason") or "")
