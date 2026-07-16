@@ -155,7 +155,8 @@ class RunTest(unittest.TestCase):
                 artifacts_dir=artifacts,
                 dry_run=dry_run,
             )
-            candidates = list(csv.DictReader((artifacts / "dandara-confirmation-candidates.csv").open()))
+            with (artifacts / "dandara-confirmation-candidates.csv").open(encoding="utf-8") as handle:
+                candidates = list(csv.DictReader(handle))
             results_file = json.loads((artifacts / "dandara-confirmation-results.json").read_text())
             saved_state = (
                 json.loads((artifacts / "dandara-confirmation-state.json").read_text())
