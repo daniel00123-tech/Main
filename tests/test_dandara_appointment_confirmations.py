@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from scripts.dandara_appointment_confirmations import (
+    EntityNotFoundError,
     MESSAGE_TEMPLATE,
     choose_recipient,
     classify_dandara,
@@ -285,6 +286,17 @@ class RunTest(unittest.TestCase):
         self.assertEqual(posts, [])
         self.assertEqual(result["summary"]["newly_confirmed"], 0)
         self.assertEqual(result["summary"]["failures"][0]["issue_id"], "IS22870001")
+
+    def test_missing_fixflo_issue_is_skipped_without_failure(self):
+        rows = [job(job_id=1, planned="2026-07-17", group="Dandara - IS22870001", issue_id="IS22870001")]
+        issues = {"IS22870001": EntityNotFoundError("entity not found")}
+
+        result, posts, candidates, _, _ = self.run_in_temp(rows, issues)
+
+        self.assertEqual(posts, [])
+        self.assertEqual(candidates, [])
+        self.assertEqual(result["summary"]["fixflo_not_found_skipped"], 1)
+        self.assertEqual(result["summary"]["failures"], [])
 
 
 if __name__ == "__main__":

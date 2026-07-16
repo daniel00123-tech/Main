@@ -58,6 +58,10 @@ class ConfigError(RuntimeError):
     """Raised when required runtime configuration is absent."""
 
 
+class EntityNotFoundError(RuntimeError):
+    """Raised when an API explicitly reports that an entity does not exist."""
+
+
 def required_env(name: str) -> str:
     value = os.environ.get(name)
     if value in (None, ""):
@@ -205,6 +209,16 @@ class JsonHttpClient:
                 return json.loads(raw.decode("utf-8-sig")) if raw else {}
             except urllib.error.HTTPError as exc:
                 last_error = exc
+                body = exc.read()
+                try:
+                    error_payload = json.loads(body.decode("utf-8-sig"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    error_payload = {}
+                errors = error_payload.get("Errors", []) if isinstance(error_payload, dict) else []
+                if exc.code in {400, 404} and any(
+                    "not found" in str(error).lower() for error in errors
+                ):
+                    raise EntityNotFoundError("entity not found") from exc
                 retryable = exc.code == 429 or 500 <= exc.code < 600
                 if not retryable or attempt == attempts - 1:
                     break
@@ -391,6 +405,7 @@ def run(
         "bigchange_jobs_with_is": 0,
         "dandara_fixflo_jobs": 0,
         "non_fixflo_skipped": 0,
+        "fixflo_not_found_skipped": 0,
         "non_dandara_skipped": 0,
         "eligible_open_fixflo_jobs": 0,
         "already_confirmed_same_date": 0,
@@ -425,6 +440,7 @@ def run(
     issue_cache: dict[str, dict[str, Any]] = {}
     eligible: list[dict[str, Any]] = []
     dandara_candidate_count = 0
+    missing_issues: set[str] = set()
     for (issue_id, planned_date), grouped_rows in sorted(raw_candidates.items()):
         representative = sorted(grouped_rows, key=lambda row: str(row.get("JobId", "")))[-1]
         classification_row = dict(representative)
@@ -432,10 +448,15 @@ def run(
             classification_row[field] = " ".join(
                 str(row.get(field, "")) for row in grouped_rows if row.get(field) not in (None, "")
             )
+        if issue_id in missing_issues:
+            continue
         try:
             if issue_id not in issue_cache:
                 issue_cache[issue_id] = fixflo.get_issue(issue_id)
             issue = issue_cache[issue_id]
+        except EntityNotFoundError:
+            missing_issues.add(issue_id)
+            continue
         except Exception as exc:
             summary["failures"].append({"issue_id": issue_id, "error": f"FixFlo issue read failed: {exc}"})
             continue
@@ -468,6 +489,7 @@ def run(
             }
         )
 
+    summary["fixflo_not_found_skipped"] = len(missing_issues)
     summary["dandara_fixflo_jobs"] = dandara_candidate_count
     summary["eligible_open_fixflo_jobs"] = len(eligible)
     site_counts = Counter(candidate["site"] for candidate in eligible)
