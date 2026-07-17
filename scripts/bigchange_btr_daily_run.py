@@ -37,6 +37,7 @@ from bigchange_btr_allocation import (  # noqa: E402
     is_ppm_job,
     load_rules,
     normalise,
+    overlaps,
     parse_datetime,
     parse_duration,
     ppm_tech_diary_review,
@@ -158,6 +159,7 @@ def find_resource_slot(
     *,
     start_day: dt.date,
     search_days: int = SEARCH_DAYS,
+    extra_blocks: list[tuple[dt.datetime, dt.datetime, str]] | None = None,
 ) -> tuple[dt.date, dt.time, dt.time, str, str] | None:
     rid = resource_id(resource)
     end_day = start_day + dt.timedelta(days=search_days)
@@ -172,6 +174,14 @@ def find_resource_slot(
             continue
         windows = resource_working_windows(client, rid, day, working_hours_cache, rules)
         blocks = diary_blocks(schedule_jobs, day) + resource_absence_blocks(client, rid, day, absence_cache)
+        if extra_blocks:
+            day_start = dt.datetime.combine(day, dt.time.min)
+            day_end = dt.datetime.combine(day, dt.time.max)
+            blocks.extend(
+                (start, end, label)
+                for start, end, label in extra_blocks
+                if start < day_end and end > day_start
+            )
         blocks.sort(key=lambda item: item[0])
         slot = find_slot(blocks, day, duration_minutes, windows)
         if not slot:
@@ -183,6 +193,43 @@ def find_resource_slot(
         before, after = adjacent_bookings(blocks, slot_start, slot_end)
         return day, slot.start, slot.end, before, after
     return None
+
+
+def add_reservation(
+    reservations: dict[int, list[tuple[dt.datetime, dt.datetime, str]]],
+    resource_id_value: int,
+    day: dt.date,
+    start: dt.time,
+    end: dt.time,
+    label: str,
+) -> None:
+    reservations[resource_id_value].append(
+        (dt.datetime.combine(day, start), dt.datetime.combine(day, end), label)
+    )
+
+
+def non_cancelled_overlap_conflicts(
+    diary: list[dict[str, Any]],
+    job_id: int,
+    slot_start: dt.datetime,
+    slot_end: dt.datetime,
+) -> list[str]:
+    conflicts: list[str] = []
+    for entry in diary:
+        if as_int(entry.get("JobId")) == job_id or is_cancelled_diary_job(entry):
+            continue
+        entry_start = parse_datetime(entry.get("PlannedStart"))
+        entry_end = parse_datetime(entry.get("PlannedEnd"))
+        if not entry_start:
+            continue
+        if not entry_end:
+            duration = parse_duration(entry.get("Duration")) or 60
+            entry_end = entry_start + dt.timedelta(minutes=duration)
+        if entry_end and overlaps(slot_start, slot_end, entry_start, entry_end):
+            conflicts.append(
+                f"{entry.get('Ref')} {entry_start.strftime('%H:%M')}-{entry_end.strftime('%H:%M')}"
+            )
+    return conflicts
 
 
 def verify_schedule(
@@ -206,6 +253,9 @@ def verify_schedule(
     if planned:
         duration = parse_duration(job.get("Duration")) or 60
         planned_end = parse_datetime(job.get("PlannedEnd")) or planned + dt.timedelta(minutes=duration)
+        conflicts = non_cancelled_overlap_conflicts(diary, job_id, planned, planned_end)
+        if conflicts:
+            return False, f"{job_ref} overlaps existing diary booking(s): {', '.join(conflicts)}"
         absence_blocks = resource_absence_blocks(client, resource_id_value, scheduled_day, {})
         if slot_has_overlap(absence_blocks, planned, planned_end):
             labels = ", ".join(label for _start, _end, label in absence_blocks)
@@ -224,6 +274,7 @@ def schedule_with_verification(
     start: dt.time,
     end: dt.time,
     duration_minutes: int,
+    extra_blocks: list[tuple[dt.datetime, dt.datetime, str]] | None = None,
 ) -> tuple[dt.date, dt.time, dt.time, str]:
     rid = resource_id(resource)
     schedule_dt = f"{scheduled_day.isoformat()} {start.strftime('%H:%M')}:00"
@@ -233,7 +284,14 @@ def schedule_with_verification(
         return scheduled_day, start, end, message
 
     retry_start = next_working_day(dt.date.today())
-    retry_slot = find_resource_slot(client, rules, resource, duration_minutes, start_day=retry_start)
+    retry_slot = find_resource_slot(
+        client,
+        rules,
+        resource,
+        duration_minutes,
+        start_day=retry_start,
+        extra_blocks=extra_blocks,
+    )
     if not retry_slot:
         raise RuntimeError(f"Scheduled but verification failed ({message}); no retry slot found")
     retry_day, retry_start_time, retry_end_time, _before, _after = retry_slot
@@ -285,6 +343,7 @@ def process_unallocated(
     client: BigChangeClient,
     rules: dict[str, Any],
     audited_refs: set[str],
+    reservations: dict[int, list[tuple[dt.datetime, dt.datetime, str]]],
     *,
     apply: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], int]:
@@ -355,9 +414,41 @@ def process_unallocated(
             scheduled_day = dt.date.fromisoformat(result.proposed_date)
             start = dt.datetime.strptime(result.proposed_start, "%H:%M").time()
             end = dt.datetime.strptime(result.proposed_end, "%H:%M").time()
+            resource = {"id": result.proposed_resource_id, "label": result.proposed_resource}
+            reserved = reservations.get(result.proposed_resource_id, [])
+            if slot_has_overlap(
+                reserved,
+                dt.datetime.combine(scheduled_day, start),
+                dt.datetime.combine(scheduled_day, end),
+            ):
+                replacement = find_resource_slot(
+                    client,
+                    rules,
+                    resource,
+                    result.duration_minutes,
+                    start_day=next_working_day(dt.date.today()),
+                    extra_blocks=reserved,
+                )
+                if not replacement:
+                    skipped.append(
+                        {
+                            "ref": job_ref,
+                            "site": site_match.site,
+                            "reason": "No suitable diary slot found after reserving earlier same-run allocations",
+                            "manual_review": "capacity",
+                            "mode": "unallocated",
+                        }
+                    )
+                    continue
+                scheduled_day, start, end, before, after = replacement
+                result.proposed_date = scheduled_day.isoformat()
+                result.proposed_start = start.strftime("%H:%M")
+                result.proposed_end = end.strftime("%H:%M")
+                result.booking_before = before
+                result.booking_after = after
+
             verification = "dry run"
             if apply:
-                resource = {"id": result.proposed_resource_id, "label": result.proposed_resource}
                 scheduled_day, start, end, verification = schedule_with_verification(
                     client,
                     rules,
@@ -368,6 +459,7 @@ def process_unallocated(
                     start=start,
                     end=end,
                     duration_minutes=result.duration_minutes,
+                    extra_blocks=reservations.get(result.proposed_resource_id, []),
                 )
                 result.proposed_date = scheduled_day.isoformat()
                 result.proposed_start = start.strftime("%H:%M")
@@ -390,6 +482,14 @@ def process_unallocated(
                     previously_audited=job_ref in audited_refs,
                 )
             applied.append(record)
+            add_reservation(
+                reservations,
+                result.proposed_resource_id,
+                scheduled_day,
+                start,
+                end,
+                f"SAME-RUN {result.job_ref}",
+            )
         except Exception as exc:  # noqa: BLE001 - continue the daily batch
             failed.append({"ref": job_ref, "site": site_match.site, "error": str(exc), "mode": "unallocated"})
 
@@ -440,6 +540,7 @@ def process_stale_diary(
     rules: dict[str, Any],
     audited_refs: set[str],
     resources: list[dict[str, Any]],
+    reservations: dict[int, list[tuple[dt.datetime, dt.datetime, str]]],
     *,
     apply: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], int]:
@@ -533,6 +634,7 @@ def process_stale_diary(
             assigned,
             duration,
             start_day=next_working_day(dt.date.today()),
+            extra_blocks=reservations.get(resource_id(assigned), []),
         )
         if not slot:
             skipped.append(
@@ -588,6 +690,7 @@ def process_stale_diary(
                     start=start,
                     end=end,
                     duration_minutes=duration,
+                    extra_blocks=reservations.get(resource_id(assigned), []),
                 )
                 recommendation.proposed_date = scheduled_day.isoformat()
                 recommendation.proposed_start = scheduled_start.strftime("%H:%M")
@@ -610,6 +713,14 @@ def process_stale_diary(
                     original_date=str(job.get("PlannedStart") or ""),
                 )
             applied.append(record)
+            add_reservation(
+                reservations,
+                recommendation.proposed_resource_id,
+                dt.date.fromisoformat(recommendation.proposed_date),
+                dt.datetime.strptime(recommendation.proposed_start, "%H:%M").time(),
+                dt.datetime.strptime(recommendation.proposed_end, "%H:%M").time(),
+                f"SAME-RUN {recommendation.job_ref}",
+            )
         except Exception as exc:  # noqa: BLE001 - continue the daily batch
             failed.append({"ref": job_ref, "site": item["site"], "error": str(exc), "mode": "stale_diary"})
 
@@ -755,18 +866,21 @@ def main() -> int:
     client = BigChangeClient()
     resources = client.resources()
     audited_refs = load_audited_refs()
+    reservations: dict[int, list[tuple[dt.datetime, dt.datetime, str]]] = defaultdict(list)
 
     stale_applied, stale_skipped, stale_failed, non_btr_stale = process_stale_diary(
         client,
         rules,
         audited_refs,
         resources,
+        reservations,
         apply=args.apply,
     )
     unallocated_applied, unallocated_skipped, unallocated_failed, non_btr_unallocated = process_unallocated(
         client,
         rules,
         audited_refs,
+        reservations,
         apply=args.apply,
     )
 
