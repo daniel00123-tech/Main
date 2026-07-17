@@ -1,0 +1,133 @@
+{
+  "confirmed_references": {
+    "autoCloseDownTagId": 239829,
+    "fallbackCategory": null,
+    "fallbackCategoryId": null,
+    "invoiceCreatedClientStatusId": 34
+  },
+  "jobs_excluded_as_future_dated": 0,
+  "run_started": "2026-07-17T06:17:38Z",
+  "total_jobs_reviewed": 8987,
+  "updates": [
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": true
+      },
+      "job_id": 191179304,
+      "job_ref": "JOB273730~1",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": true
+      },
+      "job_id": 192101173,
+      "job_ref": "JOB278056",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": true
+      },
+      "job_id": 192633271,
+      "job_ref": "DLFF273803~2",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": true
+      },
+      "job_id": 192878434,
+      "job_ref": "JOB274516~1",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": true
+      },
+      "job_id": 192892602,
+      "job_ref": "JOB282444",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": true
+      },
+      "job_id": 192906687,
+      "job_ref": "JOB280388~1",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": true
+      },
+      "job_id": 193121863,
+      "job_ref": "DLFF283940",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    },
+    {
+      "before": {
+        "Actioned": "No",
+        "CurrentFlag": "Auto Close Down",
+        "InvoiceCreated": true
+      },
+      "job_id": 193431832,
+      "job_ref": "JOB285072",
+      "reason": "Auto Close Down flag confirmed; mark actioned",
+      "target": {
+        "Actioned": "Yes"
+      },
+      "update_type": "auto_close_actioned"
+    }
+  ],
+  "window": {
+    "dateOptionId": 2,
+    "days": 30,
+    "end": "2026-07-17 06:03:19",
+    "excludeFutureDated": false,
+    "futureDateFields": [],
+    "start": "2026-06-17 06:03:19"
+  }
+}
