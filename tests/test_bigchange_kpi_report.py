@@ -3,16 +3,23 @@ import json
 import os
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
+    CREATED_DATE_FIELDS,
+    DEFAULT_FRESHDESK_OPEN_STATUS_IDS,
     FRESHDESK_METRIC,
+    FreshdeskClient,
+    add_items,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
+    category_lookup_from_rows,
     code_is_success,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -43,6 +50,41 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+
+class JobCategoryResolutionTest(unittest.TestCase):
+    def test_resolves_job_category_ids_from_category_lookup(self) -> None:
+        lookup = category_lookup_from_rows(
+            [
+                {"Id": 101, "Name": "Amy Bradley"},
+                {"JobCategoryId": 202, "JobCategoryName": "Nirvana PPM"},
+            ]
+        )
+
+        self.assertEqual(job_category_name({"JobCategoryId": 101, "Name": "Reactive job"}, lookup), "Amy Bradley")
+        self.assertEqual(job_category_name({"CategoryId": 202}, lookup), "Nirvana PPM")
+
+    def test_generic_job_id_or_name_is_not_treated_as_category(self) -> None:
+        lookup = {"999": "Amy Bradley"}
+
+        self.assertEqual(job_category_name({"Id": 999, "Name": "Reactive job"}, lookup), "")
+
+    def test_add_items_groups_rows_with_category_ids(self) -> None:
+        grouped = defaultdict(lambda: defaultdict(list))
+        staff_names: set[str] = set()
+
+        add_items(
+            grouped,
+            staff_names,
+            [{"CategoryId": 101, "CreatedDate": "2026-05-01"}, {"CategoryId": 202, "CreatedDate": "2026-05-02"}],
+            "unallocated_jobs",
+            CREATED_DATE_FIELDS,
+            dt.date(2026, 5, 10),
+            {"101": "Amy Bradley", "202": "Uncategorised"},
+        )
+
+        self.assertEqual(staff_names, {"Amy Bradley"})
+        self.assertEqual(len(grouped["Amy Bradley"]["unallocated_jobs"]), 1)
 
 
 class BigChangeApiTest(unittest.TestCase):
@@ -128,6 +170,26 @@ class SalesAttributionTest(unittest.TestCase):
 
 
 class FreshdeskKpiTest(unittest.TestCase):
+    def test_default_open_status_ids_include_waiting_statuses(self) -> None:
+        self.assertEqual(DEFAULT_FRESHDESK_OPEN_STATUS_IDS, {2, 3, 8, 9})
+
+    def test_ticket_pagination_requests_full_history(self) -> None:
+        client = FreshdeskClient.__new__(FreshdeskClient)
+        client.open_status_ids = lambda: {2}
+        requests = []
+
+        def get_json(path, params, timeout):
+            requests.append((path, params, timeout))
+            return [{"id": 1, "status": 2}] if params["page"] == 1 else []
+
+        client.get_json = get_json
+
+        tickets = client.list_open_tickets(page_size=1)
+
+        self.assertEqual([ticket["id"] for ticket in tickets], [1])
+        self.assertEqual(requests[0][1]["updated_since"], "1970-01-01T00:00:00Z")
+        self.assertEqual([request[1]["page"] for request in requests], [1, 2])
+
     def test_maps_status_choices_to_open_status_ids(self) -> None:
         choices = [
             {"id": 2, "value": "Open"},
