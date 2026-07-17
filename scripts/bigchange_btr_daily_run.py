@@ -359,10 +359,20 @@ def process_stale_diary(
                 skipped.append({"ref": ref, "reason": "Already actioned in allocation audit; still assigned/planned, manual review"})
                 continue
             if has_cancel_flag(job):
-                skipped.append({"ref": ref, "reason": "CurrentFlag contains cancel wording; manual review"})
+                skipped.append({"ref": ref, "site": resource_site(str(resource.get("label") or ""), rules), "reason": "CurrentFlag contains cancel wording; manual review"})
+                continue
+            excluded, exclusion_reason = contractor_exclusion(job, rules)
+            if excluded:
+                skipped.append(
+                    {
+                        "ref": ref,
+                        "site": resource_site(str(resource.get("label") or ""), rules),
+                        "reason": f"Contractor/Aquilo exclusion: {exclusion_reason}; manual review",
+                    }
+                )
                 continue
             if is_ppm_job(job):
-                skipped.append({"ref": ref, "reason": "Stale PPM diary entry; manual review only"})
+                skipped.append({"ref": ref, "site": resource_site(str(resource.get("label") or ""), rules), "reason": "Stale PPM diary entry; manual review only"})
                 continue
 
             assigned_resource = resource_for_diary_job(job, by_name) or resource
