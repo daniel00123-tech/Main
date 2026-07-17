@@ -17,7 +17,7 @@
 | Ref | Site | Resource | Date | Start-End | Confidence | Mode |
 | --- | --- | --- | --- | --- | --- | --- |
 | JOB286436 | Chapel Wharf | UDC_Chapel_HK Michelle Burns | 2026-07-20 | 10:00-11:00 | Medium | daily_allocate_medium |
-| EOT286437 | Chapel Wharf | UDC_Chapel_HK Brooke Turner | 2026-07-20 | 12:00-16:00 | Medium | daily_allocate_medium |
+| EOT286437 | Chapel Wharf | UDC_Chapel_Tech Aamir Ali | 2026-07-27 | 09:00-10:00 | Medium | daily_allocate_medium |
 
 
 ## Skipped jobs
@@ -43,6 +43,7 @@ _None_
 ## Notes
 
 - JOB286436 final BigChange state verified as UDC_Chapel_HK Michelle Burns on 2026-07-20 10:00-11:00 with no overlaps; a final-state correction row was appended to the audit after the initial schedule row showed Brooke Turner.
+- EOT286437 final BigChange state verified as UDC_Chapel_Tech Aamir Ali on 2026-07-27 09:00-10:00 with no overlaps; a final-state correction row was appended after the initial schedule row showed Brooke Turner.
 
 
 ## Workload warnings
