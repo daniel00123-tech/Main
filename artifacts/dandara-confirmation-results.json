@@ -1,5 +1,10 @@
 {
   "dry_run": false,
+  "supplemental_checked_refs": [
+    "JOB285860",
+    "JOB285871"
+  ],
+  "supplemental_timestamp": "2026-07-17T08:49:42.27Z",
   "results": [
     {
       "comment_id": 75318901,
@@ -49,6 +54,11 @@
       "result": "already_confirmed_state"
     },
     {
+      "date": "17/07/2026",
+      "issue_id": "IS22925958",
+      "result": "already_confirmed_comment"
+    },
+    {
       "comment_id": 75318902,
       "date": "17/07/2026",
       "issue_id": "IS22930058",
@@ -60,6 +70,13 @@
       "date": "17/07/2026",
       "issue_id": "IS22930938",
       "recipient": "Tenant",
+      "result": "newly_confirmed"
+    },
+    {
+      "comment_id": 75326034,
+      "date": "20/07/2026",
+      "issue_id": "IS22924656",
+      "recipient": "Agent",
       "result": "newly_confirmed"
     },
     {
@@ -77,25 +94,25 @@
   ],
   "run_timestamp": "2026-07-17T07:54:08.518882+00:00",
   "summary": {
-    "already_confirmed_same_date": 9,
-    "bigchange_jobs_with_is": 13,
-    "dandara_fixflo_jobs": 14,
-    "eligible_open_fixflo_jobs": 13,
+    "already_confirmed_same_date": 10,
+    "bigchange_jobs_with_is": 15,
+    "dandara_fixflo_jobs": 16,
+    "eligible_open_fixflo_jobs": 15,
     "failures": [],
     "fixflo_not_found_skipped": 0,
-    "newly_confirmed": 4,
+    "newly_confirmed": 5,
     "non_dandara_skipped": 0,
     "non_fixflo_skipped": 27,
     "recipient_split": {
-      "Agent": 3,
+      "Agent": 4,
       "Tenant": 1
     },
     "rescheduled_and_reconfirmed": 1,
     "site_breakdown": {
       "Aston Place, Birmingham": 2,
       "Chapel Wharf, Salford": 3,
-      "Granary Quay, Glasgow": 1,
-      "Leodis Square, Leeds": 7
+      "Granary Quay, Glasgow": 2,
+      "Leodis Square, Leeds": 8
     },
     "window_end": "2026-08-01",
     "window_start": "2026-07-17"

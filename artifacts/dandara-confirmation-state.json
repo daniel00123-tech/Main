@@ -592,6 +592,22 @@
       "sent_at": "2026-07-16T10:25:17.753Z",
       "site_name": "Stoneywood Brae, Aberdeen / Dyce"
     },
+    "IS22924656": {
+      "comment_id": 75326034,
+      "confirmed_date": "20/07/2026",
+      "issue_id": "IS22924656",
+      "recipient": "Agent",
+      "sent_at": "2026-07-17T08:49:42.27Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22925958": {
+      "comment_id": 75306522,
+      "confirmed_date": "17/07/2026",
+      "issue_id": "IS22925958",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-16T14:59:30.403Z",
+      "site_name": "Granary Quay, Glasgow"
+    },
     "IS22929906": {
       "comment_id": 75319196,
       "confirmed_date": "23/07/2026",
