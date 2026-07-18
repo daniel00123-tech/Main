@@ -543,6 +543,7 @@ def write_summary(
         ]
         for item in applied
     ]
+    verification_rows = [[item.get("job_ref"), item.get("verification", "")] for item in applied]
     skipped_rows = [[item.get("ref"), item.get("site", ""), item.get("reason")] for item in skipped]
     failed_rows = [[item.get("ref"), item.get("error")] for item in failed]
     workload_rows = [[item["resource"], item["date"], item["jobs"]] for item in workload]
@@ -571,6 +572,10 @@ def write_summary(
 ## Applied jobs
 
 {table(["Ref", "Site", "Resource", "Date", "Start-End", "Confidence", "Mode"], applied_rows)}
+
+## Post-apply verification
+
+{table(["Ref", "Result"], verification_rows)}
 
 ## Skipped jobs
 

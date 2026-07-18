@@ -31,6 +31,15 @@
 | JOB286462 | Leodis Square | UDL_Leodis_Caretaker Gary Arundale | 2026-07-20 | 12:00-13:00 | Medium | daily_allocate_medium |
 | JOB286464 | Chapel Wharf | UDC_Chapel_Tech Rui Alves | 2026-07-20 | 10:00-11:00 | Medium | daily_allocate_medium |
 
+## Post-apply verification
+
+| Ref | Result |
+| --- | --- |
+| JOB286460 | Verified on intended resource diary with no overlap involving scheduled job |
+| JOB286461 | Verified on intended resource diary with no overlap involving scheduled job |
+| JOB286462 | Verified on intended resource diary with no overlap involving scheduled job |
+| JOB286464 | Verified on intended resource diary with no overlap involving scheduled job |
+
 ## Skipped jobs
 
 | Ref | Site | Reason |
