@@ -35,8 +35,6 @@
 
 | Ref | Site | Reason |
 | --- | --- | --- |
-| DLFF285843 | Chapel Wharf | manual review only: stale diary entry is Started and cannot be auto-rescheduled |
-| JOB285889 | Granary Quay | manual review only: stale diary entry is Started and cannot be auto-rescheduled |
 | PPM205308 | Leodis Square | manual review only: stale PPM diary entry |
 | PPM205256 | Leodis Square | manual review only: stale PPM diary entry |
 | PPM71909 | Chapel Wharf | manual review only: stale PPM diary entry |
@@ -127,6 +125,8 @@
 
 | Ref | Site | Reason |
 | --- | --- | --- |
+| DLFF285843 | Chapel Wharf | manual review only: stale diary entry is Started and cannot be auto-rescheduled |
+| JOB285889 | Granary Quay | manual review only: stale diary entry is Started and cannot be auto-rescheduled |
 | PPM205308 | Leodis Square | manual review only: stale PPM diary entry |
 | PPM205256 | Leodis Square | manual review only: stale PPM diary entry |
 | PPM71909 | Chapel Wharf | manual review only: stale PPM diary entry |
