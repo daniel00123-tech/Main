@@ -275,7 +275,10 @@ def schedule_record(client: BigChangeClient, record: dict[str, Any], *, apply: b
     if not apply:
         return True, "Dry run: not written to BigChange"
     schedule_dt = f"{record['scheduled_date']} {record['start']}:00"
-    client.schedule_job(int(record["job_id"]), int(record["resource_id"]), schedule_dt, int(record["duration_minutes"]))
+    try:
+        client.schedule_job(int(record["job_id"]), int(record["resource_id"]), schedule_dt, int(record["duration_minutes"]))
+    except Exception as exc:
+        return False, str(exc)
     ok, message = verify_scheduled_job(
         client,
         job_id=int(record["job_id"]),
@@ -287,7 +290,10 @@ def schedule_record(client: BigChangeClient, record: dict[str, Any], *, apply: b
         end=str(record["end"]),
     )
     if not ok and "no resource" in message.lower():
-        client.schedule_job(int(record["job_id"]), int(record["resource_id"]), schedule_dt, int(record["duration_minutes"]))
+        try:
+            client.schedule_job(int(record["job_id"]), int(record["resource_id"]), schedule_dt, int(record["duration_minutes"]))
+        except Exception as exc:
+            return False, str(exc)
         ok, message = verify_scheduled_job(
             client,
             job_id=int(record["job_id"]),
