@@ -226,3 +226,5 @@
 | PPM205256 | Stale PPM diary entry; manual review only |
 | PPM205309 | Stale PPM diary entry; manual review only |
 | PPM205257 | Stale PPM diary entry; manual review only |
+| DLFF285843 | Failed during apply: JobSchedule failed: This job - Ref:DLFF285843 cannot be re-scheduled at this stage; manual review |
+| JOB285889 | Failed during apply: JobSchedule failed: This job - Ref:JOB285889 cannot be re-scheduled at this stage; manual review |

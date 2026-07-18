@@ -525,6 +525,11 @@ def write_summary(
         if "manual review" in reason.lower():
             manual_items.append({"ref": ref, "reason": reason})
             manual_refs.add(ref)
+    for item in failed:
+        ref = str(item.get("ref") or "")
+        if ref and ref not in manual_refs:
+            manual_items.append({"ref": ref, "reason": f"Failed during apply: {item.get('error')}; manual review"})
+            manual_refs.add(ref)
 
     applied_rows = [
         [
