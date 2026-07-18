@@ -109,6 +109,10 @@ def is_open_diary_job(job: dict[str, Any]) -> bool:
     return status_id not in CLOSED_STATUS_IDS
 
 
+def is_started_diary_job(job: dict[str, Any]) -> bool:
+    return as_int(job.get("StatusId")) == 10 or normalise(job.get("Status")) == "started"
+
+
 def job_identity(job: dict[str, Any]) -> tuple[int | None, str]:
     return as_int(job.get("JobId")), str(job.get("Ref") or "").strip()
 
@@ -610,6 +614,9 @@ def run(*, lookback_days: int, dry_run: bool) -> int:
             continue
         if is_ppm_job(job):
             skipped.append({"ref": ref, "site": site, "reason": "manual review only: stale PPM diary entry"})
+            continue
+        if is_started_diary_job(job):
+            skipped.append({"ref": ref, "site": site, "reason": "manual review only: stale diary entry is Started and cannot be auto-rescheduled"})
             continue
         try:
             record, extra = choose_slot_for_stale_job(client, job, resources_by_id, rules)
