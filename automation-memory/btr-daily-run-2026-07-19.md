@@ -12,6 +12,7 @@
 - Skipped by reason: `{"contractor": 1, "cover": 1, "ppm_stale": 12, "resource": 2}`
 - Non-BTR unallocated ignored: 53
 - Non-BTR stale diary ignored: 2
+- Post-run read-only classification: 0 remaining eligible stale-diary jobs, 0 remaining eligible unallocated jobs, 0 classification failures; 16 remaining BTR items are explicit manual skips.
 
 ## Applied jobs
 
