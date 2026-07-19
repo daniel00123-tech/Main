@@ -501,7 +501,7 @@ def write_summary(
         for item in skipped
         if any(
             token in normalise(item.get("reason"))
-            for token in ("manual", "ppm", "contractor", "aquilo", "baltic", "no suitable resource")
+            for token in ("manual", "ppm", "contractor", "aquilo", "baltic", "no suitable resource", "no suitable active")
         )
     ] + [
         {
