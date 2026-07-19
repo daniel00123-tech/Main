@@ -1263,6 +1263,46 @@
       "recipient": "Tenant",
       "sent_at": "2026-07-18T16:02:37.093Z",
       "site_name": "The Point, Aberdeen"
+    },
+    "IS22945617": {
+      "comment_id": 75389452,
+      "confirmed_date": "20/07/2026",
+      "issue_id": "IS22945617",
+      "recipient": "Agent",
+      "sent_at": "2026-07-19T16:03:47.077Z",
+      "site_name": "Granary Quay, Glasgow"
+    },
+    "IS22945743": {
+      "comment_id": 75389453,
+      "confirmed_date": "21/07/2026",
+      "issue_id": "IS22945743",
+      "recipient": "Agent",
+      "sent_at": "2026-07-19T16:03:52.507Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22946607": {
+      "comment_id": 75389454,
+      "confirmed_date": "23/07/2026",
+      "issue_id": "IS22946607",
+      "recipient": "Agent",
+      "sent_at": "2026-07-19T16:03:54.143Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22946722": {
+      "comment_id": 75389081,
+      "confirmed_date": "20/07/2026",
+      "issue_id": "IS22946722",
+      "recipient": "Agent",
+      "sent_at": "2026-07-19T16:03:50.577Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22948952": {
+      "comment_id": 75389455,
+      "confirmed_date": "23/07/2026",
+      "issue_id": "IS22948952",
+      "recipient": "Agent",
+      "sent_at": "2026-07-19T16:03:57.71Z",
+      "site_name": "Leodis Square, Leeds"
     }
   },
   "version": 1

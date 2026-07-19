@@ -3,198 +3,154 @@
   "results": [
     {
       "date": "20/07/2026",
-      "issue_id": "IS22868811",
-      "recipient": "Agent",
-      "result": "missing_active_recipient"
-    },
-    {
-      "comment_id": 75385673,
-      "date": "20/07/2026",
-      "issue_id": "IS22879151",
-      "recipient": "Agent",
-      "result": "rescheduled_and_reconfirmed"
-    },
-    {
-      "comment_id": 75385674,
-      "date": "20/07/2026",
-      "issue_id": "IS22921348",
-      "recipient": "Tenant",
-      "result": "rescheduled_and_reconfirmed"
-    },
-    {
-      "date": "20/07/2026",
-      "issue_id": "IS22924658",
-      "recipient": "Agent",
-      "result": "missing_active_recipient"
-    },
-    {
-      "comment_id": 75385967,
-      "date": "20/07/2026",
-      "issue_id": "IS22941530",
-      "recipient": "Agent",
-      "result": "newly_confirmed"
-    },
-    {
-      "date": "20/07/2026",
-      "issue_id": "IS22941837",
-      "recipient": "Agent",
-      "result": "missing_active_recipient"
-    },
-    {
-      "date": "20/07/2026",
-      "issue_id": "IS22944088",
-      "recipient": "Agent",
-      "result": "missing_active_recipient"
-    },
-    {
-      "comment_id": 75385675,
-      "date": "20/07/2026",
-      "issue_id": "IS22944219",
-      "recipient": "Agent",
-      "result": "newly_confirmed"
-    },
-    {
-      "comment_id": 75385676,
-      "date": "20/07/2026",
-      "issue_id": "IS22944230",
-      "recipient": "Tenant",
-      "result": "newly_confirmed"
-    },
-    {
-      "comment_id": 75385677,
-      "date": "20/07/2026",
       "issue_id": "IS22944235",
-      "recipient": "Tenant",
+      "result": "already_confirmed_state"
+    },
+    {
+      "comment_id": 75389452,
+      "date": "20/07/2026",
+      "issue_id": "IS22945617",
+      "recipient": "Agent",
       "result": "newly_confirmed"
     },
     {
       "date": "20/07/2026",
-      "issue_id": "IS22944540",
+      "issue_id": "IS22946437",
       "recipient": "Agent",
       "result": "missing_active_recipient"
     },
     {
-      "comment_id": 75385678,
       "date": "20/07/2026",
-      "issue_id": "IS22945084",
-      "recipient": "Tenant",
-      "result": "newly_confirmed"
-    },
-    {
-      "date": "20/07/2026",
-      "issue_id": "IS22945464",
+      "issue_id": "IS22946439",
       "recipient": "Agent",
       "result": "missing_active_recipient"
     },
     {
-      "comment_id": 75385679,
       "date": "20/07/2026",
-      "issue_id": "IS22945488",
-      "recipient": "Tenant",
+      "issue_id": "IS22946455",
+      "recipient": "Agent",
+      "result": "missing_active_recipient"
+    },
+    {
+      "comment_id": 75389080,
+      "date": "20/07/2026",
+      "issue_id": "IS22946607",
+      "recipient": "Agent",
       "result": "newly_confirmed"
     },
     {
-      "comment_id": 75385680,
-      "date": "21/07/2026",
-      "issue_id": "IS22831776",
+      "comment_id": 75389081,
+      "date": "20/07/2026",
+      "issue_id": "IS22946722",
       "recipient": "Agent",
-      "result": "rescheduled_and_reconfirmed"
-    },
-    {
-      "comment_id": 75385681,
-      "date": "21/07/2026",
-      "issue_id": "IS22926122",
-      "recipient": "Agent",
-      "result": "rescheduled_and_reconfirmed"
-    },
-    {
-      "comment_id": 75385968,
-      "date": "21/07/2026",
-      "issue_id": "IS22945173",
-      "recipient": "Tenant",
       "result": "newly_confirmed"
     },
     {
-      "comment_id": 75385969,
-      "date": "22/07/2026",
-      "issue_id": "IS22879067",
+      "date": "20/07/2026",
+      "issue_id": "IS22949198",
       "recipient": "Agent",
-      "result": "rescheduled_and_reconfirmed"
+      "result": "missing_active_recipient"
     },
     {
-      "comment_id": 75385970,
-      "date": "22/07/2026",
-      "issue_id": "IS22886368",
+      "date": "20/07/2026",
+      "issue_id": "IS22949319",
       "recipient": "Agent",
-      "result": "rescheduled_and_reconfirmed"
+      "result": "missing_active_recipient"
     },
     {
-      "comment_id": 75385971,
-      "date": "22/07/2026",
-      "issue_id": "IS22905888",
+      "comment_id": 75389453,
+      "date": "21/07/2026",
+      "issue_id": "IS22945743",
       "recipient": "Agent",
-      "result": "rescheduled_and_reconfirmed"
+      "result": "newly_confirmed"
     },
     {
+      "comment_id": 75389082,
+      "date": "22/07/2026",
+      "issue_id": "IS22946607",
+      "recipient": "Agent",
+      "result": "newly_confirmed"
+    },
+    {
+      "comment_id": 75389454,
       "date": "23/07/2026",
-      "issue_id": "IS22905970",
+      "issue_id": "IS22946607",
+      "recipient": "Agent",
+      "result": "newly_confirmed"
+    },
+    {
+      "comment_id": 75389455,
+      "date": "23/07/2026",
+      "issue_id": "IS22948952",
+      "recipient": "Agent",
+      "result": "newly_confirmed"
+    },
+    {
+      "date": "24/07/2026",
+      "issue_id": "IS22948134",
+      "recipient": "Agent",
+      "result": "missing_active_recipient"
+    },
+    {
+      "date": "27/07/2026",
+      "issue_id": "IS22948140",
       "recipient": "Agent",
       "result": "missing_active_recipient"
     }
   ],
-  "run_timestamp": "2026-07-18T16:02:45.170893+00:00",
+  "run_timestamp": "2026-07-19T16:03:59.830575+00:00",
   "summary": {
-    "already_confirmed_same_date": 0,
-    "bigchange_jobs_with_is": 23,
-    "dandara_fixflo_jobs": 23,
-    "eligible_open_fixflo_jobs": 21,
+    "already_confirmed_same_date": 1,
+    "bigchange_jobs_with_is": 21,
+    "dandara_fixflo_jobs": 15,
+    "eligible_open_fixflo_jobs": 15,
     "failures": [
       {
         "error": "No active FixFlo Agent recipient; confirmation not sent",
-        "issue_id": "IS22868811"
+        "issue_id": "IS22946437"
       },
       {
         "error": "No active FixFlo Agent recipient; confirmation not sent",
-        "issue_id": "IS22924658"
+        "issue_id": "IS22946439"
       },
       {
         "error": "No active FixFlo Agent recipient; confirmation not sent",
-        "issue_id": "IS22941837"
+        "issue_id": "IS22946455"
       },
       {
         "error": "No active FixFlo Agent recipient; confirmation not sent",
-        "issue_id": "IS22944088"
+        "issue_id": "IS22949198"
       },
       {
         "error": "No active FixFlo Agent recipient; confirmation not sent",
-        "issue_id": "IS22944540"
+        "issue_id": "IS22949319"
       },
       {
         "error": "No active FixFlo Agent recipient; confirmation not sent",
-        "issue_id": "IS22945464"
+        "issue_id": "IS22948134"
       },
       {
         "error": "No active FixFlo Agent recipient; confirmation not sent",
-        "issue_id": "IS22905970"
+        "issue_id": "IS22948140"
       }
     ],
-    "fixflo_not_found_skipped": 0,
-    "newly_confirmed": 14,
-    "non_dandara_skipped": 0,
-    "non_fixflo_skipped": 6,
+    "fixflo_not_found_skipped": 2,
+    "newly_confirmed": 7,
+    "non_dandara_skipped": 1,
+    "non_fixflo_skipped": 45,
     "recipient_split": {
-      "Agent": 8,
-      "Tenant": 6
+      "Agent": 7,
+      "Tenant": 0
     },
-    "rescheduled_and_reconfirmed": 7,
+    "rescheduled_and_reconfirmed": 0,
     "site_breakdown": {
       "Armouries, Birmingham": 1,
-      "Chapel Wharf, Salford": 4,
-      "Granary Quay, Glasgow": 3,
-      "Leodis Square, Leeds": 5,
-      "The Point, Aberdeen": 8
+      "Chapel Wharf, Salford": 3,
+      "Granary Quay, Glasgow": 2,
+      "Leodis Square, Leeds": 7,
+      "Stoneywood Brae, Aberdeen / Dyce": 2
     },
-    "window_end": "2026-08-02",
-    "window_start": "2026-07-18"
+    "window_end": "2026-08-03",
+    "window_start": "2026-07-19"
   }
 }
