@@ -641,8 +641,24 @@ def run_daily(*, dry_run: bool = False) -> dict[str, Any]:
                 applied.append(record)
             else:
                 failed.append({"ref": ref, "error": message})
+                manual_review.append(
+                    {
+                        "ref": ref,
+                        "reason": f"Stale non-PPM reschedule verification failed: {message}",
+                        "site": item["site"],
+                        "resource": item["resource_name"],
+                    }
+                )
         except Exception as exc:  # Keep the daily batch moving.
             failed.append({"ref": ref, "error": str(exc)})
+            manual_review.append(
+                {
+                    "ref": ref,
+                    "reason": f"Stale non-PPM reschedule failed: {exc}",
+                    "site": item["site"],
+                    "resource": item["resource_name"],
+                }
+            )
 
     unallocated_jobs = fetch_unallocated_jobs(client, LOOKBACK_DAYS)
     for job in sorted(unallocated_jobs, key=lambda value: str(value.get("Ref") or "")):
