@@ -17,11 +17,27 @@
       "site_name": "Stoneywood Brae, Aberdeen / Dyce"
     },
     "IS21980171": {
-      "comment_id": 75378131,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75456761,
+      "confirmed_date": "03/08/2026",
       "issue_id": "IS21980171",
       "recipient": "Tenant",
-      "sent_at": "2026-07-17T16:06:20.41Z",
+      "sent_at": "2026-07-20T16:04:49.113Z",
+      "site_name": "Stoneywood Brae, Aberdeen / Dyce"
+    },
+    "IS22104945": {
+      "comment_id": 75458372,
+      "confirmed_date": "23/07/2026",
+      "issue_id": "IS22104945",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:03:55.163Z",
+      "site_name": "Stoneywood Brae, Aberdeen / Dyce"
+    },
+    "IS22281911": {
+      "comment_id": 75458363,
+      "confirmed_date": "21/07/2026",
+      "issue_id": "IS22281911",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-20T16:03:23.653Z",
       "site_name": "Stoneywood Brae, Aberdeen / Dyce"
     },
     "IS22387210": {
@@ -41,11 +57,11 @@
       "site_name": "Chapel Wharf, Salford"
     },
     "IS22463351": {
-      "comment_id": null,
-      "confirmed_date": "17/07/2026",
+      "comment_id": 75458376,
+      "confirmed_date": "24/07/2026",
       "issue_id": "IS22463351",
       "recipient": "Agent",
-      "sent_at": "2026-07-16T11:41:10.516709+00:00",
+      "sent_at": "2026-07-20T16:04:03.913Z",
       "site_name": "Stoneywood Brae, Aberdeen / Dyce"
     },
     "IS22477979": {
@@ -57,11 +73,11 @@
       "site_name": "Chapel Wharf, Salford"
     },
     "IS22522055": {
-      "comment_id": null,
-      "confirmed_date": "17/07/2026",
+      "comment_id": 75456754,
+      "confirmed_date": "24/07/2026",
       "issue_id": "IS22522055",
       "recipient": "Tenant",
-      "sent_at": "2026-07-16T11:41:11.426483+00:00",
+      "sent_at": "2026-07-20T16:04:09.71Z",
       "site_name": "Stoneywood Brae, Aberdeen / Dyce"
     },
     "IS22531055": {
@@ -161,11 +177,11 @@
       "site_name": "Chapel Wharf, Salford"
     },
     "IS22714090": {
-      "comment_id": null,
-      "confirmed_date": "16/07/2026",
+      "comment_id": 75458364,
+      "confirmed_date": "21/07/2026",
       "issue_id": "IS22714090",
       "recipient": "Agent",
-      "sent_at": "2026-07-16T11:40:51.363826+00:00",
+      "sent_at": "2026-07-20T16:03:26.233Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22714469": {
@@ -177,11 +193,11 @@
       "site_name": "Chapel Wharf, Salford"
     },
     "IS22719363": {
-      "comment_id": 75379541,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75458382,
+      "confirmed_date": "27/07/2026",
       "issue_id": "IS22719363",
       "recipient": "Tenant",
-      "sent_at": "2026-07-17T16:06:23.43Z",
+      "sent_at": "2026-07-20T16:04:29.643Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22719800": {
@@ -209,19 +225,43 @@
       "site_name": "Chapel Wharf, Salford"
     },
     "IS22730560": {
-      "comment_id": null,
-      "confirmed_date": "17/07/2026",
+      "comment_id": 75456755,
+      "confirmed_date": "24/07/2026",
       "issue_id": "IS22730560",
       "recipient": "Agent",
-      "sent_at": "2026-07-16T11:41:15.087469+00:00",
+      "sent_at": "2026-07-20T16:04:13.52Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22736525": {
-      "comment_id": 75100930,
-      "confirmed_date": "17/07/2026",
+      "comment_id": 75456756,
+      "confirmed_date": "24/07/2026",
       "issue_id": "IS22736525",
       "recipient": "Agent",
-      "sent_at": "2026-07-13T16:38:19.52Z",
+      "sent_at": "2026-07-20T16:04:14.87Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22737265": {
+      "comment_id": 75456757,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22737265",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-20T16:04:16.193Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22738194": {
+      "comment_id": 75458385,
+      "confirmed_date": "28/07/2026",
+      "issue_id": "IS22738194",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-20T16:04:36.663Z",
+      "site_name": "Granary Quay, Glasgow"
+    },
+    "IS22739156": {
+      "comment_id": 75101192,
+      "confirmed_date": "20/07/2026",
+      "issue_id": "IS22739156",
+      "recipient": "Agent",
+      "sent_at": "2026-07-13T16:38:27.88Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22750747": {
@@ -233,11 +273,11 @@
       "site_name": "Stoneywood Brae, Aberdeen / Dyce"
     },
     "IS22763039": {
-      "comment_id": null,
-      "confirmed_date": "23/07/2026",
+      "comment_id": 75456744,
+      "confirmed_date": "21/07/2026",
       "issue_id": "IS22763039",
       "recipient": "Agent",
-      "sent_at": "2026-07-16T11:41:41.582827+00:00",
+      "sent_at": "2026-07-20T16:03:27.313Z",
       "site_name": "Chapel Wharf, Salford"
     },
     "IS22767150": {
@@ -255,6 +295,22 @@
       "recipient": "Tenant",
       "sent_at": "2026-07-16T11:41:37.777578+00:00",
       "site_name": "Chapel Wharf, Salford"
+    },
+    "IS22790715": {
+      "comment_id": 75101195,
+      "confirmed_date": "21/07/2026",
+      "issue_id": "IS22790715",
+      "recipient": "Agent",
+      "sent_at": "2026-07-13T16:38:30.177Z",
+      "site_name": "The Point, Aberdeen"
+    },
+    "IS22799230": {
+      "comment_id": 75458378,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22799230",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:04:17.483Z",
+      "site_name": "Leodis Square, Leeds"
     },
     "IS22800249": {
       "comment_id": 75379556,
@@ -393,11 +449,11 @@
       "site_name": "The Point, Aberdeen"
     },
     "IS22846158": {
-      "comment_id": 75100933,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75458368,
+      "confirmed_date": "22/07/2026",
       "issue_id": "IS22846158",
       "recipient": "Tenant",
-      "sent_at": "2026-07-13T16:38:22.337Z",
+      "sent_at": "2026-07-20T16:03:44.253Z",
       "site_name": "Granary Quay, Glasgow"
     },
     "IS22846339": {
@@ -408,12 +464,20 @@
       "sent_at": "2026-07-17T16:06:25.463Z",
       "site_name": "The Point, Aberdeen"
     },
+    "IS22848542": {
+      "comment_id": 75458379,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22848542",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:04:20.093Z",
+      "site_name": "Leodis Square, Leeds"
+    },
     "IS22851172": {
-      "comment_id": 75379533,
-      "confirmed_date": "17/07/2026",
+      "comment_id": 75458373,
+      "confirmed_date": "23/07/2026",
       "issue_id": "IS22851172",
       "recipient": "Agent",
-      "sent_at": "2026-07-17T16:06:07.323Z",
+      "sent_at": "2026-07-20T16:03:56.633Z",
       "site_name": "The Point, Aberdeen"
     },
     "IS22853171": {
@@ -505,11 +569,11 @@
       "site_name": "The Point, Aberdeen"
     },
     "IS22874825": {
-      "comment_id": 75379543,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75458365,
+      "confirmed_date": "21/07/2026",
       "issue_id": "IS22874825",
       "recipient": "Agent",
-      "sent_at": "2026-07-17T16:06:27.85Z",
+      "sent_at": "2026-07-20T16:03:30.137Z",
       "site_name": "The Point, Aberdeen"
     },
     "IS22875898": {
@@ -560,6 +624,22 @@
       "sent_at": "2026-07-17T16:06:29.02Z",
       "site_name": "The Point, Aberdeen"
     },
+    "IS22877950": {
+      "comment_id": 75456742,
+      "confirmed_date": "20/07/2026",
+      "issue_id": "IS22877950",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:03:14.583Z",
+      "site_name": "Chapel Wharf, Salford"
+    },
+    "IS22877983": {
+      "comment_id": 75458380,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22877983",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:04:21.503Z",
+      "site_name": "Chapel Wharf, Salford"
+    },
     "IS22878025": {
       "comment_id": 75100924,
       "confirmed_date": "17/07/2026",
@@ -577,11 +657,11 @@
       "site_name": "The Point, Aberdeen"
     },
     "IS22878211": {
-      "comment_id": null,
-      "confirmed_date": "16/07/2026",
+      "comment_id": 75458369,
+      "confirmed_date": "22/07/2026",
       "issue_id": "IS22878211",
       "recipient": "Agent",
-      "sent_at": "2026-07-16T11:41:02.940519+00:00",
+      "sent_at": "2026-07-20T16:03:45.343Z",
       "site_name": "Chapel Wharf, Salford"
     },
     "IS22878607": {
@@ -713,11 +793,11 @@
       "site_name": "Stoneywood Brae, Aberdeen / Dyce"
     },
     "IS22891059": {
-      "comment_id": null,
-      "confirmed_date": "21/07/2026",
+      "comment_id": 75456748,
+      "confirmed_date": "22/07/2026",
       "issue_id": "IS22891059",
       "recipient": "Agent",
-      "sent_at": "2026-07-16T11:41:31.869278+00:00",
+      "sent_at": "2026-07-20T16:03:46.303Z",
       "site_name": "Chapel Wharf, Salford"
     },
     "IS22891770": {
@@ -793,11 +873,11 @@
       "site_name": "Leodis Square, Leeds"
     },
     "IS22905888": {
-      "comment_id": 75385971,
-      "confirmed_date": "22/07/2026",
+      "comment_id": 75456745,
+      "confirmed_date": "21/07/2026",
       "issue_id": "IS22905888",
       "recipient": "Agent",
-      "sent_at": "2026-07-18T16:02:44.29Z",
+      "sent_at": "2026-07-20T16:03:34.8Z",
       "site_name": "The Point, Aberdeen"
     },
     "IS22905970": {
@@ -824,6 +904,30 @@
       "sent_at": "2026-07-15T11:20:24.753Z",
       "site_name": "Leodis Square, Leeds"
     },
+    "IS22910978": {
+      "comment_id": 75458370,
+      "confirmed_date": "22/07/2026",
+      "issue_id": "IS22910978",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:03:47.553Z",
+      "site_name": "The Point, Aberdeen"
+    },
+    "IS22911913": {
+      "comment_id": 75456749,
+      "confirmed_date": "22/07/2026",
+      "issue_id": "IS22911913",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:03:48.78Z",
+      "site_name": "Aston Place, Birmingham"
+    },
+    "IS22914109": {
+      "comment_id": 75456751,
+      "confirmed_date": "23/07/2026",
+      "issue_id": "IS22914109",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-20T16:03:57.95Z",
+      "site_name": "Chapel Wharf, Salford"
+    },
     "IS22914147": {
       "comment_id": 75229751,
       "confirmed_date": "24/07/2026",
@@ -833,11 +937,11 @@
       "site_name": "Chapel Wharf, Salford"
     },
     "IS22914314": {
-      "comment_id": 75229013,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75456759,
+      "confirmed_date": "27/07/2026",
       "issue_id": "IS22914314",
       "recipient": "Agent",
-      "sent_at": "2026-07-15T13:34:18.803Z",
+      "sent_at": "2026-07-20T16:04:31.737Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22914470": {
@@ -849,11 +953,11 @@
       "site_name": "Chapel Wharf, Salford"
     },
     "IS22915075": {
-      "comment_id": null,
-      "confirmed_date": "17/07/2026",
+      "comment_id": 75230778,
+      "confirmed_date": "22/07/2026",
       "issue_id": "IS22915075",
       "recipient": "Tenant",
-      "sent_at": "2026-07-16T11:41:21.405132+00:00",
+      "sent_at": "2026-07-15T13:42:57.923Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22915341": {
@@ -969,11 +1073,11 @@
       "site_name": "Stoneywood Brae, Aberdeen / Dyce"
     },
     "IS22924656": {
-      "comment_id": 75326034,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75458374,
+      "confirmed_date": "23/07/2026",
       "issue_id": "IS22924656",
       "recipient": "Agent",
-      "sent_at": "2026-07-17T08:49:42.27Z",
+      "sent_at": "2026-07-20T16:03:59.39Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22925958": {
@@ -1041,11 +1145,11 @@
       "site_name": "Aston Place, Birmingham"
     },
     "IS22930282": {
-      "comment_id": 75379547,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75456746,
+      "confirmed_date": "21/07/2026",
       "issue_id": "IS22930282",
       "recipient": "Agent",
-      "sent_at": "2026-07-17T16:06:39.357Z",
+      "sent_at": "2026-07-20T16:03:36.41Z",
       "site_name": "Granary Quay, Glasgow"
     },
     "IS22930302": {
@@ -1153,11 +1257,11 @@
       "site_name": "Chapel Wharf, Salford"
     },
     "IS22935900": {
-      "comment_id": 75378142,
-      "confirmed_date": "22/07/2026",
+      "comment_id": 75458375,
+      "confirmed_date": "23/07/2026",
       "issue_id": "IS22935900",
       "recipient": "Agent",
-      "sent_at": "2026-07-17T16:07:14.267Z",
+      "sent_at": "2026-07-20T16:04:00.677Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22936442": {
@@ -1184,6 +1288,14 @@
       "sent_at": "2026-07-17T13:16:51.843Z",
       "site_name": "Leodis Square, Leeds"
     },
+    "IS22939274": {
+      "comment_id": 75458389,
+      "confirmed_date": "31/07/2026",
+      "issue_id": "IS22939274",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:04:47.333Z",
+      "site_name": "Chapel Wharf, Salford"
+    },
     "IS22939846": {
       "comment_id": 75372025,
       "confirmed_date": "22/07/2026",
@@ -1208,20 +1320,52 @@
       "sent_at": "2026-07-17T15:50:32.823Z",
       "site_name": "The Point, Aberdeen"
     },
-    "IS22941530": {
-      "comment_id": 75385967,
-      "confirmed_date": "20/07/2026",
-      "issue_id": "IS22941530",
+    "IS22940954": {
+      "comment_id": 75401894,
+      "confirmed_date": "29/07/2026",
+      "issue_id": "IS22940954",
       "recipient": "Agent",
-      "sent_at": "2026-07-18T16:02:25.8Z",
+      "sent_at": "2026-07-20T08:40:40.457Z",
+      "site_name": "Chapel Wharf, Salford"
+    },
+    "IS22941234": {
+      "comment_id": 75402502,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22941234",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T08:43:42.063Z",
       "site_name": "Leodis Square, Leeds"
     },
+    "IS22941530": {
+      "comment_id": 75430266,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22941530",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T11:35:13.353Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22941837": {
+      "comment_id": 75435659,
+      "confirmed_date": "28/07/2026",
+      "issue_id": "IS22941837",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T12:22:26.313Z",
+      "site_name": "Chapel Wharf, Salford"
+    },
+    "IS22944088": {
+      "comment_id": 75436193,
+      "confirmed_date": "30/07/2026",
+      "issue_id": "IS22944088",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T12:23:12.64Z",
+      "site_name": "Chapel Wharf, Salford"
+    },
     "IS22944219": {
-      "comment_id": 75385675,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75436297,
+      "confirmed_date": "24/07/2026",
       "issue_id": "IS22944219",
       "recipient": "Agent",
-      "sent_at": "2026-07-18T16:02:27.76Z",
+      "sent_at": "2026-07-20T12:25:16.203Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22944230": {
@@ -1233,43 +1377,75 @@
       "site_name": "Granary Quay, Glasgow"
     },
     "IS22944235": {
-      "comment_id": 75385677,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75456760,
+      "confirmed_date": "28/07/2026",
       "issue_id": "IS22944235",
       "recipient": "Tenant",
-      "sent_at": "2026-07-18T16:02:34.01Z",
+      "sent_at": "2026-07-20T16:04:38.74Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22944540": {
+      "comment_id": 75436604,
+      "confirmed_date": "20/07/2026",
+      "issue_id": "IS22944540",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T12:27:49.393Z",
+      "site_name": "Chapel Wharf, Salford"
+    },
+    "IS22944828": {
+      "comment_id": 75425127,
+      "confirmed_date": "21/07/2026",
+      "issue_id": "IS22944828",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-20T10:57:12.457Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22944841": {
+      "comment_id": 75456750,
+      "confirmed_date": "22/07/2026",
+      "issue_id": "IS22944841",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:03:50.98Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22945084": {
-      "comment_id": 75385678,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75435791,
+      "confirmed_date": "24/07/2026",
       "issue_id": "IS22945084",
       "recipient": "Tenant",
-      "sent_at": "2026-07-18T16:02:35.577Z",
+      "sent_at": "2026-07-20T12:19:08.403Z",
       "site_name": "The Point, Aberdeen"
     },
     "IS22945173": {
-      "comment_id": 75385968,
-      "confirmed_date": "21/07/2026",
+      "comment_id": 75430661,
+      "confirmed_date": "20/07/2026",
       "issue_id": "IS22945173",
       "recipient": "Tenant",
-      "sent_at": "2026-07-18T16:02:40.673Z",
+      "sent_at": "2026-07-20T11:36:45.363Z",
       "site_name": "Leodis Square, Leeds"
     },
+    "IS22945464": {
+      "comment_id": 75435263,
+      "confirmed_date": "22/07/2026",
+      "issue_id": "IS22945464",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T12:18:06.717Z",
+      "site_name": "Granary Quay, Glasgow"
+    },
     "IS22945488": {
-      "comment_id": 75385679,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75434949,
+      "confirmed_date": "24/07/2026",
       "issue_id": "IS22945488",
       "recipient": "Tenant",
-      "sent_at": "2026-07-18T16:02:37.093Z",
+      "sent_at": "2026-07-20T12:16:01.147Z",
       "site_name": "The Point, Aberdeen"
     },
     "IS22945617": {
-      "comment_id": 75389452,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75458367,
+      "confirmed_date": "21/07/2026",
       "issue_id": "IS22945617",
       "recipient": "Agent",
-      "sent_at": "2026-07-19T16:03:47.077Z",
+      "sent_at": "2026-07-20T16:03:40.553Z",
       "site_name": "Granary Quay, Glasgow"
     },
     "IS22945743": {
@@ -1280,29 +1456,197 @@
       "sent_at": "2026-07-19T16:03:52.507Z",
       "site_name": "Leodis Square, Leeds"
     },
+    "IS22946455": {
+      "comment_id": 75433959,
+      "confirmed_date": "29/07/2026",
+      "issue_id": "IS22946455",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T12:09:40.81Z",
+      "site_name": "Chapel Wharf, Salford"
+    },
     "IS22946607": {
-      "comment_id": 75389454,
-      "confirmed_date": "23/07/2026",
+      "comment_id": 75389082,
+      "confirmed_date": "22/07/2026",
       "issue_id": "IS22946607",
       "recipient": "Agent",
-      "sent_at": "2026-07-19T16:03:54.143Z",
+      "sent_at": "2026-07-19T16:03:53.363Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22946722": {
-      "comment_id": 75389081,
-      "confirmed_date": "20/07/2026",
+      "comment_id": 75458371,
+      "confirmed_date": "22/07/2026",
       "issue_id": "IS22946722",
       "recipient": "Agent",
-      "sent_at": "2026-07-19T16:03:50.577Z",
+      "sent_at": "2026-07-20T16:03:53.05Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22948140": {
+      "comment_id": 75433725,
+      "confirmed_date": "27/07/2026",
+      "issue_id": "IS22948140",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T12:04:14.093Z",
+      "site_name": "Stoneywood Brae, Aberdeen / Dyce"
+    },
+    "IS22948249": {
+      "comment_id": 75427211,
+      "confirmed_date": "28/07/2026",
+      "issue_id": "IS22948249",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T11:09:56.63Z",
+      "site_name": "Stoneywood Brae, Aberdeen / Dyce"
+    },
+    "IS22948296": {
+      "comment_id": 75426867,
+      "confirmed_date": "29/07/2026",
+      "issue_id": "IS22948296",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-20T11:11:17.48Z",
+      "site_name": "Chapel Wharf, Salford"
+    },
+    "IS22948812": {
+      "comment_id": 75456747,
+      "confirmed_date": "21/07/2026",
+      "issue_id": "IS22948812",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:03:41.823Z",
       "site_name": "Leodis Square, Leeds"
     },
     "IS22948952": {
-      "comment_id": 75389455,
-      "confirmed_date": "23/07/2026",
+      "comment_id": 75433779,
+      "confirmed_date": "21/07/2026",
       "issue_id": "IS22948952",
       "recipient": "Agent",
-      "sent_at": "2026-07-19T16:03:57.71Z",
+      "sent_at": "2026-07-20T12:03:33.623Z",
       "site_name": "Leodis Square, Leeds"
+    },
+    "IS22948979": {
+      "comment_id": 75426984,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22948979",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T11:12:45.963Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22949058": {
+      "comment_id": 75458362,
+      "confirmed_date": "20/07/2026",
+      "issue_id": "IS22949058",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:03:19.18Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22949319": {
+      "comment_id": 75431864,
+      "confirmed_date": "21/07/2026",
+      "issue_id": "IS22949319",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T11:47:10.757Z",
+      "site_name": "Granary Quay, Glasgow"
+    },
+    "IS22950249": {
+      "comment_id": 75427084,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22950249",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T11:14:56.123Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22950328": {
+      "comment_id": 75432597,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22950328",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T11:54:14.553Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22950546": {
+      "comment_id": 75432024,
+      "confirmed_date": "23/07/2026",
+      "issue_id": "IS22950546",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-20T11:51:45.193Z",
+      "site_name": "The Point, Aberdeen"
+    },
+    "IS22951217": {
+      "comment_id": 75456753,
+      "confirmed_date": "23/07/2026",
+      "issue_id": "IS22951217",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:04:02.563Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22951442": {
+      "comment_id": 75432077,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22951442",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T11:49:17.113Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22954836": {
+      "comment_id": 75433838,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22954836",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-20T12:07:48.4Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22955278": {
+      "comment_id": 75436620,
+      "confirmed_date": "27/07/2026",
+      "issue_id": "IS22955278",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T12:28:44.323Z",
+      "site_name": "Stoneywood Brae, Aberdeen / Dyce"
+    },
+    "IS22956262": {
+      "comment_id": 75458386,
+      "confirmed_date": "28/07/2026",
+      "issue_id": "IS22956262",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-20T16:04:40.443Z",
+      "site_name": "Leodis Square, Leeds"
+    },
+    "IS22956424": {
+      "comment_id": 75436529,
+      "confirmed_date": "30/07/2026",
+      "issue_id": "IS22956424",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T12:29:39.067Z",
+      "site_name": "Chapel Wharf, Salford"
+    },
+    "IS22956768": {
+      "comment_id": 75456758,
+      "confirmed_date": "24/07/2026",
+      "issue_id": "IS22956768",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:04:27.92Z",
+      "site_name": "Granary Quay, Glasgow"
+    },
+    "IS22956794": {
+      "comment_id": 75458384,
+      "confirmed_date": "27/07/2026",
+      "issue_id": "IS22956794",
+      "recipient": "Agent",
+      "sent_at": "2026-07-20T16:04:35.39Z",
+      "site_name": "Granary Quay, Glasgow"
+    },
+    "IS22958585": {
+      "comment_id": 75437358,
+      "confirmed_date": "21/07/2026",
+      "issue_id": "IS22958585",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-20T12:37:14.733Z",
+      "site_name": "Dandara (site unspecified)"
+    },
+    "IS22959230": {
+      "comment_id": 75439929,
+      "confirmed_date": "22/07/2026",
+      "issue_id": "IS22959230",
+      "recipient": "Tenant",
+      "sent_at": "2026-07-20T13:04:32.62Z",
+      "site_name": "Dandara (site unspecified)"
     }
   },
   "version": 1
