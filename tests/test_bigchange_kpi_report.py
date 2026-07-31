@@ -7,12 +7,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
+    DEFAULT_FRESHDESK_OPEN_STATUS_IDS,
     FRESHDESK_METRIC,
+    build_report,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
     code_is_success,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -43,6 +46,35 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+    def test_job_rows_use_explicit_category_id_lookup_without_generic_names(self) -> None:
+        row = {"Id": "job-123", "Name": "Generic job name", "CategoryId": "7"}
+
+        self.assertEqual(job_category_name(row, {"7": "Amy Bradley"}), "Amy Bradley")
+        self.assertEqual(job_category_name({"Id": "job-123", "Name": "Generic job name"}, {"job-123": "Wrong"}), "")
+
+    def test_build_report_groups_id_only_jobs_by_category_lookup(self) -> None:
+        client = FakeBigChangeReportClient(
+            categories=[{"Id": "7", "Name": "Amy Bradley"}],
+            unallocated_jobs=[
+                {
+                    "Id": "job-123",
+                    "Name": "Generic job name",
+                    "CategoryId": "7",
+                    "StatusId": 1,
+                    "CreatedDate": "2026-05-24",
+                }
+            ],
+        )
+        freshdesk_client = FakeFreshdeskClient(tickets=[], agents={}, contacts={})
+
+        with patch("scripts.bigchange_kpi_report.dt.date", FixedDate):
+            report = build_report(client, freshdesk_client)
+
+        self.assertEqual(len(report["staff_rows"]), 1)
+        row = report["staff_rows"][0]
+        self.assertEqual(row["staff_name"], "Amy Bradley")
+        self.assertEqual(row["metrics"]["unallocated_jobs"]["count"], 1)
 
 
 class BigChangeApiTest(unittest.TestCase):
@@ -128,6 +160,9 @@ class SalesAttributionTest(unittest.TestCase):
 
 
 class FreshdeskKpiTest(unittest.TestCase):
+    def test_default_open_status_ids_include_waiting_statuses(self) -> None:
+        self.assertEqual(DEFAULT_FRESHDESK_OPEN_STATUS_IDS, {2, 3, 8, 9})
+
     def test_maps_status_choices_to_open_status_ids(self) -> None:
         choices = [
             {"id": 2, "value": "Open"},
@@ -230,6 +265,32 @@ class FakeBigChangeClient:
         return self._activities.get(job_id, [])
 
 
+class FakeBigChangeReportClient:
+    def __init__(self, categories, unallocated_jobs=None, historic_jobs=None, uninvoiced_jobs=None, unactioned_jobs=None):
+        self._categories = categories
+        self._unallocated_jobs = unallocated_jobs or []
+        self._historic_jobs = historic_jobs or []
+        self._uninvoiced_jobs = uninvoiced_jobs or []
+        self._unactioned_jobs = unactioned_jobs or []
+
+    def categories(self):
+        return self._categories
+
+    def jobslist(self, params):
+        if params.get("Unallocated"):
+            return self._unallocated_jobs
+        if params.get("Allocated"):
+            return self._historic_jobs
+        if params.get("ClientStatusId") == -34:
+            return self._uninvoiced_jobs
+        if params.get("Unactioned"):
+            return self._unactioned_jobs
+        return []
+
+    def invoices_with_items_by_period(self, start, end):
+        return []
+
+
 class FakeFreshdeskClient:
     def __init__(self, tickets, agents, contacts) -> None:
         self._tickets = tickets
@@ -244,6 +305,12 @@ class FakeFreshdeskClient:
 
     def contact_name(self, contact_id):
         return self._contacts.get(contact_id, "")
+
+
+class FixedDate(dt.date):
+    @classmethod
+    def today(cls):
+        return cls(2026, 5, 25)
 
 
 if __name__ == "__main__":
