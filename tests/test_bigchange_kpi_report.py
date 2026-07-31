@@ -8,11 +8,13 @@ from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    build_category_lookup,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
     code_is_success,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -50,6 +52,22 @@ class BigChangeApiTest(unittest.TestCase):
         self.assertTrue(code_is_success({"Code": 0}))
         self.assertTrue(code_is_success({"Code": "0"}))
         self.assertFalse(code_is_success({"Code": 1}))
+
+    def test_resolves_explicit_job_category_ids_to_staff_owner_names(self) -> None:
+        lookup = build_category_lookup(
+            [
+                {"Id": "101", "Name": "Amy Bradley"},
+                {"JobCategoryID": "102", "JobCategoryName": "Daniel Dwyer"},
+            ]
+        )
+
+        self.assertEqual(job_category_name({"JobCategoryId": "101"}, lookup), "Amy Bradley")
+        self.assertEqual(job_category_name({"CategoryID": 102}, lookup), "Daniel Dwyer")
+
+    def test_does_not_treat_generic_job_ids_or_names_as_category_fields(self) -> None:
+        lookup = build_category_lookup([{"Id": "101", "Name": "Amy Bradley"}])
+
+        self.assertEqual(job_category_name({"Id": "101", "Name": "Job 101"}, lookup), "")
 
 
 class SalesAttributionTest(unittest.TestCase):
@@ -216,6 +234,19 @@ class ScoreAndBaselineTest(unittest.TestCase):
         self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
         self.assertEqual(baseline["staff"][0]["overall_score"], 67)
         self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+
+
+class WorkflowContractTest(unittest.TestCase):
+    def test_daily_workflow_runs_report_and_uploads_only_png(self) -> None:
+        workflow = Path(".github/workflows/aquilo-bigchange-kpi-overview-report.yml").read_text(encoding="utf-8")
+
+        self.assertIn("name: Aquilo BigChange KPI Overview Report", workflow)
+        self.assertIn('cron: "0 7 * * *"', workflow)
+        self.assertIn("python3 scripts/bigchange_kpi_report.py", workflow)
+        self.assertIn("path: reports/bigchange-kpi-dashboard.png", workflow)
+        self.assertIn("automation-memory/kpi-baseline.json", workflow)
+        self.assertNotIn("reports/bigchange-kpi-dashboard.html", workflow)
+        self.assertNotIn("*.json", workflow)
 
 
 class FakeBigChangeClient:
