@@ -12,6 +12,7 @@ import html
 import json
 import os
 import re
+import signal
 import shutil
 import smtplib
 import subprocess
@@ -47,11 +48,20 @@ COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
 OPEN_NOT_STARTED_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
 OPEN_FRESHDESK_STATUS_NAMES = {"open", "pending", "waiting on customer", "waiting on third party"}
-DEFAULT_FRESHDESK_OPEN_STATUS_IDS = {2, 3}
+DEFAULT_FRESHDESK_OPEN_STATUS_IDS = {2, 3, 8, 9}
+FRESHDESK_ALL_TICKETS_SINCE = "1970-01-01T00:00:00Z"
 LOCAL_NAME_ALIASES = {
     "amy b": "amy bradley",
     "dan dwyer": "daniel dwyer",
 }
+CATEGORY_ID_FIELDS = ("CategoryId", "CategoryID", "JobCategoryId", "JobCategoryID")
+CATEGORY_NAME_FIELDS = (
+    "Category",
+    "CategoryName",
+    "JobCategory",
+    "JobCategoryName",
+    "JobCategoryLabel",
+)
 STATUS_ID_FIELDS = ("StatusId", "StatusID", "JobStatusId", "JobStatusID")
 PLANNED_START_FIELDS = ("PlannedStart", "PlannedStartDate", "PlannedDate", "StartDate", "Start")
 CREATED_DATE_FIELDS = ("Created", "CreatedDate", "DateCreated", "LoggedDate", "DateLogged")
@@ -333,19 +343,28 @@ def document_is_cancelled_deleted_or_rejected(document: dict[str, Any]) -> bool:
     )
 
 
-def job_category_name(row: dict[str, Any]) -> str:
-    return clean_name(
-        first_present(
-            row,
-            (
-                "Category",
-                "CategoryName",
-                "JobCategory",
-                "JobCategoryName",
-                "JobCategoryLabel",
-            ),
+def job_category_name(row: dict[str, Any], category_lookup: dict[str, str] | None = None) -> str:
+    explicit_name = clean_name(first_present(row, CATEGORY_NAME_FIELDS))
+    if explicit_name:
+        return explicit_name
+    if not category_lookup:
+        return ""
+    category_id = clean_name(first_present(row, CATEGORY_ID_FIELDS))
+    if not category_id:
+        return ""
+    return category_lookup.get(category_id, "")
+
+
+def category_lookup_from_rows(rows: list[dict[str, Any]]) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    for row in rows:
+        category_id = clean_name(
+            first_present(row, CATEGORY_ID_FIELDS + ("Id", "ID", "id"))
         )
-    )
+        category_name = clean_name(first_present(row, ("label", "JobCategoryName", "CategoryName", "Name")))
+        if category_id and category_name:
+            lookup[category_id] = category_name
+    return lookup
 
 
 def document_job_id(document: dict[str, Any]) -> str:
@@ -537,7 +556,12 @@ class FreshdeskClient:
         while True:
             batch = self.get_json(
                 "/api/v2/tickets",
-                {"include": "requester", "per_page": page_size, "page": page},
+                {
+                    "include": "requester",
+                    "updated_since": FRESHDESK_ALL_TICKETS_SINCE,
+                    "per_page": page_size,
+                    "page": page,
+                },
                 timeout=60,
             )
             if not isinstance(batch, list):
@@ -705,9 +729,10 @@ def add_items(
     metric: str,
     date_fields: tuple[str, ...],
     today: dt.date,
+    category_lookup: dict[str, str] | None = None,
 ) -> None:
     for row in rows:
-        category = job_category_name(row)
+        category = job_category_name(row, category_lookup)
         if should_exclude_category(category):
             continue
         staff_names.add(category)
@@ -886,8 +911,11 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
     month_end = today
     lookback_start = months_ago(today, 12)
 
+    category_rows = client.categories()
+    category_lookup = category_lookup_from_rows(category_rows)
+
     staff_names: set[str] = set()
-    for category in client.categories():
+    for category in category_rows:
         name = clean_name(first_present(category, ("label", "JobCategoryName", "CategoryName", "Name")))
         if not should_exclude_category(name):
             staff_names.add(name)
@@ -910,7 +938,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         and not resource_assigned(row)
         and row_date(row, PLANNED_START_FIELDS) is None
     ]
-    add_items(grouped, staff_names, unallocated_rows, "unallocated_jobs", CREATED_DATE_FIELDS, today)
+    add_items(grouped, staff_names, unallocated_rows, "unallocated_jobs", CREATED_DATE_FIELDS, today, category_lookup)
 
     historic_end = today - dt.timedelta(days=1)
     historic_rows: list[dict[str, Any]] = []
@@ -932,7 +960,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         and resource_assigned(row)
         and (row_date(row, PLANNED_START_FIELDS) or dt.datetime.max).date() < today
     ]
-    add_items(grouped, staff_names, historic_rows, "historic_jobs", PLANNED_START_FIELDS, today)
+    add_items(grouped, staff_names, historic_rows, "historic_jobs", PLANNED_START_FIELDS, today, category_lookup)
 
     completed_statuses = "|".join(str(status) for status in sorted(COMPLETED_STATUS_IDS))
     uninvoiced_rows = client.jobslist(
@@ -949,7 +977,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         for row in uninvoiced_rows
         if row_status_id(row) in COMPLETED_STATUS_IDS and client_status_id(row) == -34
     ]
-    add_items(grouped, staff_names, uninvoiced_rows, "uninvoiced_jobs", STATUS_DATE_FIELDS, today)
+    add_items(grouped, staff_names, uninvoiced_rows, "uninvoiced_jobs", STATUS_DATE_FIELDS, today, category_lookup)
 
     unactioned_rows = client.jobslist(
         {
@@ -965,7 +993,7 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         for row in unactioned_rows
         if row_status_id(row) in COMPLETED_STATUS_IDS and as_bool_falsey(first_present(row, ACTIONED_FIELDS))
     ]
-    add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", STATUS_DATE_FIELDS, today)
+    add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", STATUS_DATE_FIELDS, today, category_lookup)
 
     sales = calculate_sales(client, staff_names, month_start, month_end)
     freshdesk_grouped, unmatched_freshdesk_tickets, critical_freshdesk_tickets = calculate_freshdesk_metrics(
@@ -1616,6 +1644,7 @@ def render_png(html_content: str, html_path: Path, png_path: Path, row_count: in
     html_path.parent.mkdir(parents=True, exist_ok=True)
     png_path.parent.mkdir(parents=True, exist_ok=True)
     html_path.write_text(html_content, encoding="utf-8")
+    png_path.unlink(missing_ok=True)
     height = max(780, min(5000, 260 + row_count * 130))
     chrome = optional_env("CHROME_BIN")
     if not chrome:
@@ -1645,7 +1674,53 @@ def render_png(html_content: str, html_path: Path, png_path: Path, row_count: in
             f"--screenshot={png_path}",
             html_path.resolve().as_uri(),
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        deadline = time.monotonic() + 60
+        previous_size = -1
+        stable_checks = 0
+        try:
+            while time.monotonic() < deadline:
+                if png_path.exists():
+                    size = png_path.stat().st_size
+                    if size > 0 and size == previous_size:
+                        stable_checks += 1
+                    else:
+                        stable_checks = 0
+                    previous_size = size
+                    if stable_checks >= 2:
+                        return
+
+                return_code = process.poll()
+                if return_code is not None:
+                    if png_path.exists() and png_path.stat().st_size > 0:
+                        return
+                    raise subprocess.CalledProcessError(return_code, cmd)
+                time.sleep(0.1)
+            raise subprocess.TimeoutExpired(cmd, 60)
+        finally:
+            stop_process_group(process)
+
+
+def stop_process_group(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        process.wait(timeout=5)
 
 
 def mailbox_address(email_value: str, display_name: str = "") -> Address:
