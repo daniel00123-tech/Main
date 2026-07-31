@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    build_report,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
@@ -50,6 +51,31 @@ class BigChangeApiTest(unittest.TestCase):
         self.assertTrue(code_is_success({"Code": 0}))
         self.assertTrue(code_is_success({"Code": "0"}))
         self.assertFalse(code_is_success({"Code": 1}))
+
+
+class BuildReportCategoryLookupTest(unittest.TestCase):
+    def test_groups_job_rows_with_explicit_category_ids(self) -> None:
+        client = FakeReportBigChangeClient(
+            categories=[
+                {"Id": "101", "Name": "Amy Bradley"},
+                {"Id": "102", "Name": "Nirvana PPM"},
+            ],
+            job_rows={
+                "unallocated": [
+                    {"JobId": "9001", "CategoryId": "101", "StatusId": 1, "Created": "2026-07-01"},
+                    {"JobId": "9002", "CategoryId": "102", "StatusId": 1, "Created": "2026-07-01"},
+                ],
+                "historic": [],
+                "uninvoiced": [],
+                "unactioned": [],
+            },
+        )
+        report = build_report(client, FakeFreshdeskClient(tickets=[], agents={}, contacts={}))
+
+        rows_by_staff = {row["staff_name"]: row for row in report["staff_rows"]}
+
+        self.assertEqual(rows_by_staff["Amy Bradley"]["metrics"]["unallocated_jobs"]["count"], 1)
+        self.assertNotIn("Nirvana PPM", rows_by_staff)
 
 
 class SalesAttributionTest(unittest.TestCase):
@@ -218,6 +244,18 @@ class ScoreAndBaselineTest(unittest.TestCase):
         self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
 
 
+class WorkflowContractTest(unittest.TestCase):
+    def test_daily_kpi_workflow_runs_report_and_uploads_only_png_artifact(self) -> None:
+        workflow = Path(".github/workflows/aquilo-bigchange-kpi-overview-report.yml").read_text(encoding="utf-8")
+
+        self.assertIn("name: Aquilo BigChange KPI Overview Report", workflow)
+        self.assertIn("cron: \"0 7 * * *\"", workflow)
+        self.assertIn("python3 scripts/bigchange_kpi_report.py", workflow)
+        self.assertIn("path: reports/bigchange-kpi-dashboard.png", workflow)
+        self.assertNotIn("reports/bigchange-kpi-dashboard.html", workflow)
+        self.assertIn("SMTP_CC_EMAIL: ${{ secrets.SMTP_CC_EMAIL }}", workflow)
+
+
 class FakeBigChangeClient:
     def __init__(self, invoices, activities) -> None:
         self._invoices = invoices
@@ -228,6 +266,32 @@ class FakeBigChangeClient:
 
     def job_customer_activity(self, job_id):
         return self._activities.get(job_id, [])
+
+
+class FakeReportBigChangeClient:
+    def __init__(self, categories, job_rows) -> None:
+        self._categories = categories
+        self._job_rows = job_rows
+
+    def categories(self):
+        return self._categories
+
+    def jobslist(self, params):
+        if params.get("Unallocated") == 1:
+            return self._job_rows["unallocated"]
+        if params.get("Allocated") == 1:
+            return self._job_rows["historic"]
+        if params.get("ClientStatusId") == -34:
+            return self._job_rows["uninvoiced"]
+        if params.get("Unactioned") == 1:
+            return self._job_rows["unactioned"]
+        return []
+
+    def invoices_with_items_by_period(self, start, end):
+        return []
+
+    def job_customer_activity(self, job_id):
+        return []
 
 
 class FakeFreshdeskClient:
