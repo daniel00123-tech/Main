@@ -8,13 +8,16 @@ from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    build_report,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
+    category_lookup_from_rows,
     code_is_success,
     is_open_freshdesk_ticket,
     match_staff_name,
     name_key,
+    resolved_job_category_name,
     save_baseline,
     should_exclude_category,
     status_ids_from_choices,
@@ -43,6 +46,31 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+
+class CategoryLookupTest(unittest.TestCase):
+    def test_resolves_job_rows_that_only_have_category_id(self) -> None:
+        lookup = category_lookup_from_rows(
+            [
+                {"Id": "101", "Name": "Amy Bradley"},
+                {"Id": "102", "Name": "Nirvana PPM"},
+            ]
+        )
+
+        self.assertEqual(resolved_job_category_name({"CategoryId": "101", "Name": "Boiler repair"}, lookup), "Amy Bradley")
+        self.assertEqual(resolved_job_category_name({"CategoryId": "102", "Name": "PPM visit"}, lookup), "")
+
+    def test_prefers_explicit_category_names_over_generic_job_names(self) -> None:
+        lookup = category_lookup_from_rows([{"Id": "101", "Name": "Amy Bradley"}])
+
+        self.assertEqual(
+            resolved_job_category_name({"CategoryId": "101", "Name": "This is a job name"}, lookup),
+            "Amy Bradley",
+        )
+        self.assertEqual(
+            resolved_job_category_name({"CategoryName": "Daniel Dwyer", "Name": "This is a job name"}, lookup),
+            "Daniel Dwyer",
+        )
 
 
 class BigChangeApiTest(unittest.TestCase):
@@ -218,6 +246,32 @@ class ScoreAndBaselineTest(unittest.TestCase):
         self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
 
 
+class ReportBuildTest(unittest.TestCase):
+    def test_groups_bigchange_job_rows_by_category_id_lookup(self) -> None:
+        client = FakeReportBigChangeClient()
+        freshdesk_client = FakeFreshdeskClient(tickets=[], agents={}, contacts={})
+
+        report = build_report(client, freshdesk_client)
+
+        rows_by_staff = {row["staff_name"]: row for row in report["staff_rows"]}
+        self.assertEqual(rows_by_staff["Amy Bradley"]["metrics"]["unallocated_jobs"]["count"], 1)
+        self.assertNotIn("Nirvana PPM", rows_by_staff)
+
+
+class WorkflowContractTest(unittest.TestCase):
+    def test_daily_kpi_workflow_runs_report_and_uploads_only_png(self) -> None:
+        workflow_path = Path(".github/workflows/aquilo-bigchange-kpi-overview-report.yml")
+
+        workflow = workflow_path.read_text(encoding="utf-8")
+
+        self.assertIn("Aquilo BigChange KPI Overview Report", workflow)
+        self.assertIn("cron: '0 7 * * *'", workflow)
+        self.assertIn("python3 scripts/bigchange_kpi_report.py", workflow)
+        self.assertIn("reports/bigchange-kpi-dashboard.png", workflow)
+        self.assertNotIn("reports/bigchange-kpi-dashboard.html", workflow)
+        self.assertNotIn("automation-memory/kpi-baseline.json\n          retention-days", workflow)
+
+
 class FakeBigChangeClient:
     def __init__(self, invoices, activities) -> None:
         self._invoices = invoices
@@ -228,6 +282,40 @@ class FakeBigChangeClient:
 
     def job_customer_activity(self, job_id):
         return self._activities.get(job_id, [])
+
+
+class FakeReportBigChangeClient:
+    def categories(self):
+        return [
+            {"Id": "101", "Name": "Amy Bradley"},
+            {"Id": "102", "Name": "Nirvana PPM"},
+        ]
+
+    def jobslist(self, params):
+        if params.get("Unallocated") == 1:
+            return [
+                {
+                    "JobId": "J1",
+                    "CategoryId": "101",
+                    "Name": "Repair visit",
+                    "StatusId": 1,
+                    "CreatedDate": dt.date.today().isoformat(),
+                },
+                {
+                    "JobId": "J2",
+                    "CategoryId": "102",
+                    "Name": "PPM visit",
+                    "StatusId": 1,
+                    "CreatedDate": dt.date.today().isoformat(),
+                },
+            ]
+        return []
+
+    def invoices_with_items_by_period(self, start, end):
+        return []
+
+    def job_customer_activity(self, job_id):
+        return []
 
 
 class FakeFreshdeskClient:
