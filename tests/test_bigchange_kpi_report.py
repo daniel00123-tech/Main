@@ -3,11 +3,14 @@ import json
 import os
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    add_items,
+    build_category_lookup,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
@@ -50,6 +53,29 @@ class BigChangeApiTest(unittest.TestCase):
         self.assertTrue(code_is_success({"Code": 0}))
         self.assertTrue(code_is_success({"Code": "0"}))
         self.assertFalse(code_is_success({"Code": 1}))
+
+    def test_resolves_job_category_id_without_using_job_id_as_category(self) -> None:
+        lookup = build_category_lookup(
+            [
+                {"Id": "7", "Name": "Amy Bradley"},
+                {"JobCategoryID": "8", "JobCategoryName": "Nirvana PPM"},
+            ]
+        )
+        grouped = defaultdict(lambda: defaultdict(list))
+        staff_names = set()
+
+        add_items(
+            grouped,
+            staff_names,
+            [{"Id": "999", "Name": "Job Name", "CategoryId": "7", "CreatedDate": "2026-06-01"}],
+            "unallocated_jobs",
+            ("CreatedDate",),
+            dt.date(2026, 6, 23),
+            lookup,
+        )
+
+        self.assertEqual(len(grouped["Amy Bradley"]["unallocated_jobs"]), 1)
+        self.assertEqual(staff_names, {"Amy Bradley"})
 
 
 class SalesAttributionTest(unittest.TestCase):
@@ -185,6 +211,18 @@ class ScoreAndBaselineTest(unittest.TestCase):
         }
 
         self.assertEqual(calculate_score(metrics), 60)
+
+    def test_applies_relative_sales_contribution_to_score(self) -> None:
+        metrics = {
+            "unallocated_jobs": {"count": 0, "status": "green"},
+            "historic_jobs": {"count": 0, "status": "green"},
+            "uninvoiced_jobs": {"count": 0, "status": "green"},
+            "unactioned_jobs": {"count": 0, "status": "green"},
+            FRESHDESK_METRIC[0]: {"count": 0, "status": "green"},
+        }
+
+        self.assertEqual(calculate_score(metrics, current_month_sales=100, top_current_month_sales=100), 100)
+        self.assertEqual(calculate_score(metrics, current_month_sales=0, top_current_month_sales=100), 80)
 
     def test_saves_baseline_with_freshdesk_age_and_score_fields(self) -> None:
         report = {
