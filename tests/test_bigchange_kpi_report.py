@@ -7,12 +7,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
+    DEFAULT_FRESHDESK_OPEN_STATUS_IDS,
     FRESHDESK_METRIC,
+    build_category_lookup,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
     code_is_success,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -43,6 +46,27 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+
+class CategoryLookupTest(unittest.TestCase):
+    def test_resolves_explicit_category_ids_without_using_job_name_fields(self) -> None:
+        lookup = build_category_lookup(
+            [
+                {"Id": 101, "Name": "Amy Bradley"},
+                {"JobCategoryID": "202", "JobCategoryName": "Sharon Mannion"},
+            ]
+        )
+
+        self.assertEqual(
+            job_category_name({"JobCategoryId": "101", "Id": 999, "Name": "Reactive callout"}, lookup),
+            "Amy Bradley",
+        )
+        self.assertEqual(job_category_name({"CategoryID": 202}, lookup), "Sharon Mannion")
+
+    def test_does_not_treat_generic_job_id_or_name_as_category_fields(self) -> None:
+        lookup = build_category_lookup([{"Id": 101, "Name": "Amy Bradley"}])
+
+        self.assertEqual(job_category_name({"Id": 101, "Name": "Reactive callout"}, lookup), "")
 
 
 class BigChangeApiTest(unittest.TestCase):
@@ -128,6 +152,9 @@ class SalesAttributionTest(unittest.TestCase):
 
 
 class FreshdeskKpiTest(unittest.TestCase):
+    def test_default_open_status_ids_include_waiting_statuses(self) -> None:
+        self.assertEqual(DEFAULT_FRESHDESK_OPEN_STATUS_IDS, {2, 3, 8, 9})
+
     def test_maps_status_choices_to_open_status_ids(self) -> None:
         choices = [
             {"id": 2, "value": "Open"},
