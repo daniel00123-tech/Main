@@ -12,9 +12,11 @@ from scripts.bigchange_kpi_report import (
     calculate_sales,
     calculate_score,
     code_is_success,
+    resolved_job_category_name,
     is_open_freshdesk_ticket,
     match_staff_name,
     name_key,
+    build_category_lookup,
     save_baseline,
     should_exclude_category,
     status_ids_from_choices,
@@ -50,6 +52,18 @@ class BigChangeApiTest(unittest.TestCase):
         self.assertTrue(code_is_success({"Code": 0}))
         self.assertTrue(code_is_success({"Code": "0"}))
         self.assertFalse(code_is_success({"Code": 1}))
+
+    def test_resolves_job_category_from_explicit_category_id_only(self) -> None:
+        lookup = build_category_lookup(
+            [
+                {"Id": 10, "Name": "Amy Bradley"},
+                {"Id": 20, "Name": "Nirvana PPM"},
+            ]
+        )
+
+        self.assertEqual(resolved_job_category_name({"CategoryId": 10, "Name": "Job 123"}, lookup), "Amy Bradley")
+        self.assertEqual(resolved_job_category_name({"CategoryId": 20, "Name": "Job 456"}, lookup), "")
+        self.assertEqual(resolved_job_category_name({"Id": 10, "Name": "Job 789"}, lookup), "")
 
 
 class SalesAttributionTest(unittest.TestCase):
@@ -216,6 +230,19 @@ class ScoreAndBaselineTest(unittest.TestCase):
         self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
         self.assertEqual(baseline["staff"][0]["overall_score"], 67)
         self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+
+
+class WorkflowContractTest(unittest.TestCase):
+    def test_daily_workflow_runs_report_and_uploads_only_png_artifact(self) -> None:
+        workflow = Path(".github/workflows/aquilo-bigchange-kpi-overview-report.yml").read_text(encoding="utf-8")
+
+        self.assertIn("name: Aquilo BigChange KPI Overview Report", workflow)
+        self.assertIn('cron: "0 7 * * *"', workflow)
+        self.assertIn("python3 scripts/bigchange_kpi_report.py", workflow)
+        self.assertIn("path: reports/bigchange-kpi-dashboard.png", workflow)
+        self.assertIn("git add automation-memory/kpi-baseline.json", workflow)
+        self.assertNotIn(".json\n", workflow.replace("automation-memory/kpi-baseline.json\n", ""))
+        self.assertNotIn(".html", workflow)
 
 
 class FakeBigChangeClient:
