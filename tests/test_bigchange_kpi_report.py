@@ -16,6 +16,7 @@ from scripts.bigchange_kpi_report import (
     match_staff_name,
     name_key,
     save_baseline,
+    staff_row_sort_key,
     should_exclude_category,
     status_ids_from_choices,
     validate_report,
@@ -185,6 +186,30 @@ class ScoreAndBaselineTest(unittest.TestCase):
         }
 
         self.assertEqual(calculate_score(metrics), 60)
+
+    def test_staff_sort_keeps_all_green_rows_above_rows_with_red_kpis(self) -> None:
+        rows = [
+            {
+                "staff_name": "Red Row",
+                "overall_score": 79,
+                "red_kpis": 1,
+                "amber_kpis": 0,
+                "total_open_workload": 1,
+                "all_kpis_green": False,
+            },
+            {
+                "staff_name": "Green Row",
+                "overall_score": 40,
+                "red_kpis": 0,
+                "amber_kpis": 0,
+                "total_open_workload": 60,
+                "all_kpis_green": True,
+            },
+        ]
+
+        rows.sort(key=staff_row_sort_key)
+
+        self.assertEqual(rows[0]["staff_name"], "Green Row")
 
     def test_saves_baseline_with_freshdesk_age_and_score_fields(self) -> None:
         report = {
