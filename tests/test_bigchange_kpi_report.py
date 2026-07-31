@@ -8,11 +8,13 @@ from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    build_category_name_lookup,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
     code_is_success,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -43,6 +45,25 @@ class CategoryExclusionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "excluded non-staff"):
             validate_report(report)
+
+
+class CategoryLookupTest(unittest.TestCase):
+    def test_resolves_job_category_ids_to_staff_owner_names(self) -> None:
+        lookup = build_category_name_lookup(
+            [
+                {"Id": 101, "Name": "Amy Bradley"},
+                {"JobCategoryID": "202", "JobCategoryName": "Daniel Dwyer"},
+            ]
+        )
+
+        self.assertEqual(job_category_name({"CategoryId": 101}, lookup), "Amy Bradley")
+        self.assertEqual(job_category_name({"JobCategoryId": "202"}, lookup), "Daniel Dwyer")
+        self.assertEqual(job_category_name({"Category": "101"}, lookup), "Amy Bradley")
+
+    def test_does_not_treat_generic_job_id_or_name_as_category_fields(self) -> None:
+        lookup = build_category_name_lookup([{"Id": 101, "Name": "Amy Bradley"}])
+
+        self.assertEqual(job_category_name({"Id": 101, "Name": "Reactive callout"}, lookup), "")
 
 
 class BigChangeApiTest(unittest.TestCase):
@@ -216,6 +237,20 @@ class ScoreAndBaselineTest(unittest.TestCase):
         self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
         self.assertEqual(baseline["staff"][0]["overall_score"], 67)
         self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+
+
+class WorkflowContractTest(unittest.TestCase):
+    def test_daily_workflow_runs_report_and_uploads_only_png_artifact(self) -> None:
+        workflow = Path(".github/workflows/aquilo-bigchange-kpi-overview-report.yml")
+        content = workflow.read_text(encoding="utf-8")
+
+        self.assertIn("name: Aquilo BigChange KPI Overview Report", content)
+        self.assertIn('cron: "0 7 * * *"', content)
+        self.assertIn("python3 scripts/bigchange_kpi_report.py", content)
+        self.assertIn("reports/bigchange-kpi-dashboard.png", content)
+        self.assertIn("automation-memory/kpi-baseline.json", content)
+        self.assertNotIn("reports/bigchange-kpi-dashboard.html\n", content)
+        self.assertNotIn("*.json", content)
 
 
 class FakeBigChangeClient:
