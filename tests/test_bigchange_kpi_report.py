@@ -13,6 +13,7 @@ from scripts.bigchange_kpi_report import (
     calculate_score,
     code_is_success,
     is_open_freshdesk_ticket,
+    job_category_name,
     match_staff_name,
     name_key,
     save_baseline,
@@ -50,6 +51,17 @@ class BigChangeApiTest(unittest.TestCase):
         self.assertTrue(code_is_success({"Code": 0}))
         self.assertTrue(code_is_success({"Code": "0"}))
         self.assertFalse(code_is_success({"Code": 1}))
+
+    def test_resolves_job_category_from_explicit_category_id_lookup(self) -> None:
+        lookup = {"101": "Amy Bradley", "102": "Daniel Dwyer"}
+
+        self.assertEqual(job_category_name({"CategoryId": "101", "Id": "JOB-1", "Name": "Boiler repair"}, lookup), "Amy Bradley")
+        self.assertEqual(job_category_name({"JobCategoryID": 102}, lookup), "Daniel Dwyer")
+
+    def test_does_not_treat_generic_job_id_or_name_as_category_fields(self) -> None:
+        lookup = {"101": "Amy Bradley"}
+
+        self.assertEqual(job_category_name({"Id": "101", "Name": "Amy Bradley"}, lookup), "")
 
 
 class SalesAttributionTest(unittest.TestCase):
@@ -216,6 +228,28 @@ class ScoreAndBaselineTest(unittest.TestCase):
         self.assertEqual(baseline["staff"][0]["freshdesk_ticket_count"], 2)
         self.assertEqual(baseline["staff"][0]["overall_score"], 67)
         self.assertEqual(baseline["staff"][0]["oldest_age_days"][FRESHDESK_METRIC[0]], 31)
+
+
+class WorkflowContractTest(unittest.TestCase):
+    def test_daily_kpi_workflow_runs_report_and_uploads_only_png_artifact(self) -> None:
+        workflow_path = Path(".github/workflows/aquilo-bigchange-kpi-overview-report.yml")
+        workflow = workflow_path.read_text(encoding="utf-8")
+
+        self.assertIn("name: Aquilo BigChange KPI Overview Report", workflow)
+        self.assertIn('cron: "0 7 * * *"', workflow)
+        self.assertIn("python3 scripts/bigchange_kpi_report.py", workflow)
+        self.assertIn("reports/bigchange-kpi-dashboard.png", workflow)
+        self.assertNotIn("reports/bigchange-kpi-dashboard.html", workflow)
+        for env_name in (
+            "BIGCHANGE_API_KEY",
+            "BIGCHANGE_USERNAME",
+            "BIGCHANGE_PASSWORD",
+            "FRESHDESK_API_KEY",
+            "SMTP_PASSWORD",
+            "SMTP_TO_EMAIL",
+        ):
+            with self.subTest(env_name=env_name):
+                self.assertIn(env_name, workflow)
 
 
 class FakeBigChangeClient:
