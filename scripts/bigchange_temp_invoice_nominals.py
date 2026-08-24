@@ -16,6 +16,19 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
 
+try:
+    from former_company_guard import (
+        FormerCompanyAccessError,
+        reject_former_company_environment,
+        reject_former_company_value,
+    )
+except ImportError:
+    from scripts.former_company_guard import (
+        FormerCompanyAccessError,
+        reject_former_company_environment,
+        reject_former_company_value,
+    )
+
 
 DEFAULT_CURRENCY = "GBP"
 FALLBACK_NOMINAL_CODE = "2205"
@@ -109,6 +122,10 @@ def required_env(name: str) -> str:
     value = os.environ.get(name)
     if value is None or value == "":
         raise ConfigError(f"Missing required environment variable: {name}")
+    try:
+        reject_former_company_value(name, value)
+    except FormerCompanyAccessError as exc:
+        raise ConfigError(str(exc)) from exc
     return value
 
 
@@ -678,6 +695,7 @@ class TempInvoiceNominalCorrector:
 
 def main() -> int:
     try:
+        reject_former_company_environment()
         report = TempInvoiceNominalCorrector(BigChangeClient()).run()
         print(json.dumps(report.as_dict(), indent=2, sort_keys=False))
         return 0 if not report.failures else 1

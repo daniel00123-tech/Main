@@ -30,6 +30,19 @@ from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Any
 
+try:
+    from former_company_guard import (
+        FormerCompanyAccessError,
+        reject_former_company_environment,
+        reject_former_company_value,
+    )
+except ImportError:
+    from scripts.former_company_guard import (
+        FormerCompanyAccessError,
+        reject_former_company_environment,
+        reject_former_company_value,
+    )
+
 
 JOB_KPI_ORDER = [
     ("unallocated_jobs", "Unallocated Jobs"),
@@ -70,11 +83,20 @@ def required_env(name: str) -> str:
     value = os.environ.get(name)
     if value is None or value == "":
         raise ConfigError(f"Missing required environment variable: {name}")
+    try:
+        reject_former_company_value(name, value)
+    except FormerCompanyAccessError as exc:
+        raise ConfigError(str(exc)) from exc
     return value
 
 
 def optional_env(name: str, default: str = "") -> str:
-    return os.environ.get(name, default)
+    value = os.environ.get(name, default)
+    try:
+        reject_former_company_value(name, value)
+    except FormerCompanyAccessError as exc:
+        raise ConfigError(str(exc)) from exc
+    return value
 
 
 def parse_date(value: Any) -> dt.datetime | None:
@@ -1710,6 +1732,7 @@ Daniel Dwyer
 
 def main() -> int:
     try:
+        reject_former_company_environment()
         client = BigChangeClient()
         freshdesk_client = FreshdeskClient()
         report = build_report(client, freshdesk_client)
