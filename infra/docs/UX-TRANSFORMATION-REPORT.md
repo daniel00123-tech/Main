@@ -138,10 +138,13 @@ Added: `lucide-react@^0.468.0`. None removed.
 
 ## 35–36. Deployment / Live URL
 
-Deployed to existing Cloudflare Pages project **`infra-web`**.  
-**https://infra-web.pages.dev**
+Deployed to existing Cloudflare Pages project **`infra-web`** (production branch `main`).
 
-API Worker unchanged unless separately required (not for this UX pass).
+- **Production:** https://infra-web.pages.dev  
+- **This deployment:** https://4a894e30.infra-web.pages.dev  
+- **Preview (feature branch):** https://cursor-infra-platform-v0-1-d.infra-web.pages.dev
+
+API Worker unchanged (frontend-only UX pass).
 
 ## 37. Known UX limitations
 
