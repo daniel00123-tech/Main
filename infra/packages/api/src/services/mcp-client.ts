@@ -101,7 +101,15 @@ export async function mcpRequest(
     headers.Authorization = authorizationHeader;
   }
 
-  const requestInit: RequestInit = {
+  const endpoint = new URL(input.endpointUrl);
+  const fetcher = resolveMcpFetcher(env, input.serviceBindingRef);
+
+  // Service bindings omit Host unless set explicitly; some MCP Workers require it.
+  if (fetcher) {
+    headers.Host = endpoint.host;
+  }
+
+  const request = new Request(input.endpointUrl, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -111,13 +119,10 @@ export async function mcpRequest(
       params: input.params ?? {},
     }),
     signal: AbortSignal.timeout(20000),
-  };
+  });
 
-  const fetcher = resolveMcpFetcher(env, input.serviceBindingRef);
   const started = Date.now();
-  const response = fetcher
-    ? await fetcher.fetch(input.endpointUrl, requestInit)
-    : await fetch(input.endpointUrl, requestInit);
+  const response = fetcher ? await fetcher.fetch(request) : await fetch(request);
 
   const latencyMs = Date.now() - started;
   const text = await response.text();
