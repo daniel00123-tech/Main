@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   enrichMcpToolDescription,
   handleInfraMcpJsonRpc,
+  narrowKnowledgeSearchInputSchema,
+  resolveMcpClientRequestId,
+  sanitizeKnowledgeSearchArguments,
   wantsSse,
 } from "./mcp-gateway";
 import { extractServiceCredential } from "./gateway";
@@ -150,6 +153,70 @@ describe("INFRA MCP tool descriptions", () => {
     const desc = enrichMcpToolDescription("search_company_knowledge", "vague");
     expect(desc.toLowerCase()).toContain("knowledge");
     expect(desc.toLowerCase()).toContain("company");
+    expect(desc.toLowerCase()).toContain("topic");
+  });
+});
+
+describe("ChatGPT search argument + idempotency guards", () => {
+  it("does not treat JSON-RPC message id as an idempotency key", () => {
+    const req = new Request("https://infra.test/mcp", { method: "POST" });
+    expect(
+      resolveMcpClientRequestId(req, {
+        id: 0,
+        params: { name: "search_company_knowledge", arguments: { query: "x" } },
+      }),
+    ).toBeNull();
+  });
+
+  it("honours explicit requestId / header", () => {
+    const req = new Request("https://infra.test/mcp", {
+      method: "POST",
+      headers: { "X-Infra-Request-Id": "hdr-1" },
+    });
+    expect(resolveMcpClientRequestId(req, { id: 0, params: {} })).toBe("hdr-1");
+    expect(
+      resolveMcpClientRequestId(new Request("https://infra.test/mcp"), {
+        id: 0,
+        params: { requestId: "explicit-1" },
+      }),
+    ).toBe("explicit-1");
+  });
+
+  it("strips ChatGPT-invented topic filters that zero Caddington results", () => {
+    const { forwarded, strippedKeys } = sanitizeKnowledgeSearchArguments({
+      query: "vehicle policy",
+      topK: 5,
+      topic: "policy",
+      includeNeighbourContext: true,
+      department: "ops",
+    });
+    expect(forwarded).toEqual({
+      query: "vehicle policy",
+      topK: 5,
+      includeNeighbourContext: true,
+    });
+    expect(strippedKeys.sort()).toEqual(["department", "topic"]);
+  });
+
+  it("narrows search schema so ChatGPT does not see topic filters", () => {
+    const narrowed = narrowKnowledgeSearchInputSchema({
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        topic: { type: "string" },
+        topK: { type: "integer" },
+        department: { type: "string" },
+        title: { type: "string" },
+      },
+      required: ["query"],
+    });
+    const props = narrowed.properties as Record<string, unknown>;
+    expect(props.query).toBeTruthy();
+    expect(props.topK).toBeTruthy();
+    expect(props.title).toBeTruthy();
+    expect(props.topic).toBeUndefined();
+    expect(props.department).toBeUndefined();
+    expect(narrowed.additionalProperties).toBe(false);
   });
 });
 
@@ -218,7 +285,19 @@ describe("INFRA MCP facade tool catalogue consistency", () => {
               id: 2,
               result: {
                 tools: [
-                  { name: "search_company_knowledge", description: "search" },
+                  {
+                    name: "search_company_knowledge",
+                    description: "search",
+                    inputSchema: {
+                      type: "object",
+                      properties: {
+                        query: { type: "string" },
+                        topic: { type: "string" },
+                        topK: { type: "integer" },
+                      },
+                      required: ["query"],
+                    },
+                  },
                   { name: "query_business_data", description: "sql" },
                   { name: "system_health", description: "health" },
                 ],
@@ -262,7 +341,7 @@ describe("INFRA MCP facade tool catalogue consistency", () => {
           tools?: Array<{
             name: string;
             description?: string;
-            inputSchema?: unknown;
+            inputSchema?: { properties?: Record<string, unknown> };
           }>;
         };
       }
@@ -274,6 +353,7 @@ describe("INFRA MCP facade tool catalogue consistency", () => {
     expect(tools?.some((t) => t.name === "query_business_data")).toBe(false);
     const search = tools?.find((t) => t.name === "search_company_knowledge");
     expect(search?.description?.toLowerCase()).toContain("knowledge");
-    expect(search?.inputSchema).toMatchObject({ type: "object" });
+    expect(search?.inputSchema?.properties?.query).toBeTruthy();
+    expect(search?.inputSchema?.properties?.topic).toBeUndefined();
   });
 });

@@ -86,7 +86,7 @@ export function enrichMcpToolDescription(
 ): string {
   const defaults: Record<string, string> = {
     search_company_knowledge:
-      "Search this company's indexed knowledge documents (policies, project docs, spend limits, approvals, etc.). Use when the user asks about company knowledge. Returns matching excerpts with source document titles.",
+      "Search this company's indexed knowledge documents (policies, project docs, spend limits, approvals, etc.). Pass a natural-language query only (for example \"vehicle mileage policy\" or \"Company Van Policy\"). Do NOT set topic/category/department filters unless the user explicitly asks to filter by that metadata — invented filters often return zero results. Returns matching excerpts with source document titles.",
     get_knowledge_document:
       "Read a specific company knowledge document by identifier or title after locating it with search_company_knowledge.",
     database_summary:
@@ -100,6 +100,106 @@ export function enrichMcpToolDescription(
     return upstreamDescription.trim();
   }
   return `Company capability: ${toolName}`;
+}
+
+/**
+ * ChatGPT reuses JSON-RPC message ids (often `0`) across unrelated tool calls.
+ * Never treat that id as an idempotency key — it collapses every search into one
+ * cached (and currently body-less) replay that surfaces as `{}`.
+ */
+export function resolveMcpClientRequestId(
+  request: Request,
+  body: {
+    id?: JsonRpcId;
+    params?: Record<string, unknown>;
+  },
+): string | null {
+  const header =
+    request.headers.get("X-Infra-Request-Id")?.trim() ||
+    request.headers.get("X-Request-Id")?.trim();
+  if (header) return header;
+
+  const params = body.params ?? {};
+  if (typeof params.requestId === "string" && params.requestId.trim()) {
+    return params.requestId.trim();
+  }
+
+  const meta =
+    params._meta && typeof params._meta === "object"
+      ? (params._meta as Record<string, unknown>)
+      : {};
+  if (typeof meta.clientRequestId === "string" && meta.clientRequestId.trim()) {
+    return meta.clientRequestId.trim();
+  }
+  if (typeof meta["progressToken"] === "string" && meta["progressToken"].trim()) {
+    // Not ideal, but unique per ChatGPT tool invocation when present.
+    return `prog_${meta["progressToken"].trim()}`;
+  }
+
+  return null;
+}
+
+/** Arguments ChatGPT may safely forward to Caddington knowledge search. */
+export const KNOWLEDGE_SEARCH_FORWARD_KEYS = [
+  "query",
+  "topK",
+  "includeNeighbourContext",
+  "includeFullContent",
+  "includeDiagnostics",
+  "title",
+  "filename",
+] as const;
+
+/**
+ * Drop metadata filters ChatGPT invents from the upstream schema (topic,
+ * category, department, …). Those filters are valid Caddington fields but
+ * inventing `topic: "policy"` routinely yields resultCount=0 for otherwise
+ * good queries such as "vehicle policy".
+ */
+export function sanitizeKnowledgeSearchArguments(
+  args: Record<string, unknown>,
+): { forwarded: Record<string, unknown>; strippedKeys: string[] } {
+  const forwarded: Record<string, unknown> = {};
+  const strippedKeys: string[] = [];
+  const allow = new Set<string>(KNOWLEDGE_SEARCH_FORWARD_KEYS);
+
+  for (const [key, value] of Object.entries(args)) {
+    if (!allow.has(key)) {
+      strippedKeys.push(key);
+      continue;
+    }
+    if (value == null) continue;
+    if (typeof value === "string" && !value.trim()) continue;
+    forwarded[key] = value;
+  }
+
+  return { forwarded, strippedKeys };
+}
+
+export function narrowKnowledgeSearchInputSchema(
+  upstream: Record<string, unknown>,
+): Record<string, unknown> {
+  const props =
+    upstream.properties && typeof upstream.properties === "object"
+      ? (upstream.properties as Record<string, unknown>)
+      : {};
+  const narrowedProps: Record<string, unknown> = {};
+  for (const key of KNOWLEDGE_SEARCH_FORWARD_KEYS) {
+    if (props[key]) narrowedProps[key] = props[key];
+  }
+  if (!narrowedProps.query) {
+    narrowedProps.query = {
+      type: "string",
+      minLength: 1,
+      description: "Natural language search query.",
+    };
+  }
+  return {
+    type: "object",
+    properties: narrowedProps,
+    required: ["query"],
+    additionalProperties: false,
+  };
 }
 
 async function resolveToolActionForFilter(
@@ -299,13 +399,19 @@ export async function handleInfraMcpJsonRpc(
             ? (tool.inputSchema as Record<string, unknown>)
             : { type: "object", properties: {} };
 
+        const inputSchema =
+          tool.name === "search_company_knowledge"
+            ? narrowKnowledgeSearchInputSchema(rawSchema)
+            : {
+                ...rawSchema,
+                type:
+                  typeof rawSchema.type === "string" ? rawSchema.type : "object",
+              };
+
         tools.push({
           name: tool.name,
           description: enrichMcpToolDescription(tool.name, tool.description),
-          inputSchema: {
-            ...rawSchema,
-            type: typeof rawSchema.type === "string" ? rawSchema.type : "object",
-          },
+          inputSchema,
         });
       }
 
@@ -346,7 +452,7 @@ export async function handleInfraMcpJsonRpc(
 
   if (method === "tools/call") {
     const toolName = String(body.params?.name ?? "");
-    const args = (body.params?.arguments ?? {}) as Record<string, unknown>;
+    let args = (body.params?.arguments ?? {}) as Record<string, unknown>;
     if (!toolName) {
       return {
         payload: jsonRpcError(id, -32602, "tools/call requires params.name"),
@@ -354,18 +460,24 @@ export async function handleInfraMcpJsonRpc(
       };
     }
 
-    const meta =
-      body.params?._meta && typeof body.params._meta === "object"
-        ? (body.params._meta as Record<string, unknown>)
-        : {};
-    const clientRequestId =
-      (typeof body.params?.requestId === "string"
-        ? body.params.requestId
-        : null) ??
-      (typeof meta.clientRequestId === "string"
-        ? meta.clientRequestId
-        : null) ??
-      (id != null ? `mcp_${String(id)}` : null);
+    let strippedKeys: string[] = [];
+    if (toolName === "search_company_knowledge") {
+      const sanitized = sanitizeKnowledgeSearchArguments(args);
+      args = sanitized.forwarded;
+      strippedKeys = sanitized.strippedKeys;
+      if (typeof args.query !== "string" || !String(args.query).trim()) {
+        return {
+          payload: jsonRpcError(
+            id,
+            -32602,
+            "search_company_knowledge requires a non-empty arguments.query string",
+          ),
+          httpStatus: 400,
+        };
+      }
+    }
+
+    const clientRequestId = resolveMcpClientRequestId(request, body);
 
     const result = await executeGatewayRequest(env, {
       actor,
@@ -389,6 +501,9 @@ export async function handleInfraMcpJsonRpc(
           correlationId: result.correlationId,
           requestId: "requestId" in result ? result.requestId : null,
           error: result.error,
+          strippedKeys,
+          queryPreview:
+            typeof args.query === "string" ? args.query.slice(0, 80) : null,
         },
       });
       return {
@@ -400,6 +515,46 @@ export async function handleInfraMcpJsonRpc(
           riskClass: "riskClass" in result ? result.riskClass : undefined,
         }),
         httpStatus: 200, // JSON-RPC errors travel as 200 with error body for MCP clients
+      };
+    }
+
+    // Body-less idempotent replay previously serialized as "{}" and ChatGPT
+    // reported empty knowledge results for every subsequent search.
+    if (
+      "idempotentReplay" in result &&
+      result.idempotentReplay &&
+      result.result === undefined
+    ) {
+      await logFacadeEvent(env.DB, {
+        companyId: resolvedCompanyId,
+        actor: actorLabel,
+        method,
+        toolName,
+        status: "idempotent_replay_no_body",
+        httpStatus: 200,
+        detail: {
+          correlationId: result.correlationId,
+          requestId: result.requestId,
+          strippedKeys,
+        },
+      });
+      return {
+        payload: jsonRpcResult(id, {
+          content: [
+            {
+              type: "text",
+              text: "Idempotent replay: the original tool result body was not retained. Retry without reusing a prior client request id.",
+            },
+          ],
+          isError: true,
+          _infra: {
+            correlationId: result.correlationId,
+            requestId: result.requestId,
+            charge: result.charge,
+            idempotentReplay: true,
+          },
+        }),
+        httpStatus: 200,
       };
     }
 
@@ -443,6 +598,12 @@ export async function handleInfraMcpJsonRpc(
       detail: {
         correlationId: result.correlationId,
         requestId: result.requestId,
+        strippedKeys,
+        queryPreview:
+          typeof args.query === "string" ? args.query.slice(0, 80) : null,
+        idempotentReplay: Boolean(
+          "idempotentReplay" in result && result.idempotentReplay,
+        ),
       },
     });
 

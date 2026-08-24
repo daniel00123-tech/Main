@@ -21,6 +21,7 @@ const MCP_ALLOW_HEADERS = [
   "Api-Key",
   "X-Infra-Client",
   "X-Infra-Request-Id",
+  "X-Request-Id",
   "X-Infra-Company-Id",
   "X-Infra-Service-Token",
 ];
