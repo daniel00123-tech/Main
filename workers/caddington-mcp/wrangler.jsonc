@@ -4,6 +4,9 @@
   "compatibility_date": "2025-08-24",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
   "ai": {
     "binding": "AI"
   },
@@ -25,5 +28,20 @@
       "binding": "CADDINGTON_KNOWLEDGE_INDEX",
       "index_name": "caddington-knowledge-index"
     }
-  ]
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "GOOGLE_DRIVE_SYNC_QUEUE",
+        "queue": "caddington-gdrive-sync"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "caddington-gdrive-sync",
+        "max_batch_size": 1,
+        "max_batch_timeout": 30
+      }
+    ]
+  }
 }

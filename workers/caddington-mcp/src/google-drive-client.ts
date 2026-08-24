@@ -135,6 +135,32 @@ export class GoogleDriveClient {
     return files;
   }
 
+  async getFileMetadata(fileId: string): Promise<GoogleDriveFileMetadata | null> {
+    const token = await this.getAccessToken();
+    const params = new URLSearchParams({
+      fields: "id,name,mimeType,modifiedTime,md5Checksum,size,parents",
+      supportsAllDrives: "true",
+    });
+
+    const response = await fetch(
+      `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?${params.toString()}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Google Drive get failed (${response.status}): ${body}`);
+    }
+
+    return (await response.json()) as GoogleDriveFileMetadata;
+  }
+
   async listFolderChildrenPage(
     folderId: string,
     pageSize = 100,

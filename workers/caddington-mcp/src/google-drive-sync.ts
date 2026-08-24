@@ -1,5 +1,11 @@
 import type { Env } from "./db";
 import {
+  GOOGLE_DRIVE_CRON_EXPRESSION,
+  describeGoogleDriveScheduleHandling,
+  loadGoogleDriveScheduleConfig,
+  type GoogleDriveScheduleConfig,
+} from "./google-drive-schedule";
+import {
   GOOGLE_DRIVE_OAUTH_SCOPES,
   GoogleDriveClient,
   parseGoogleDriveCredentials,
@@ -20,18 +26,54 @@ export interface GoogleDriveSyncOptions {
   dryRun?: boolean;
   maxFiles?: number;
   autoIndex?: boolean;
+  trigger?: "manual" | "scheduled";
 }
 
 export interface GoogleDriveSyncSummary {
   dryRun: boolean;
+  trigger: "manual" | "scheduled";
   listed: number;
   allowed: number;
   skipped: number;
+  queued: number;
   imported: number;
   updated: number;
   failed: number;
   skipReasons: Partial<Record<GoogleDriveSkipReason, number>>;
+  queueReasons: Partial<Record<DriveFileQueueReason, number>>;
   errors: string[];
+}
+
+export type DriveFileQueueReason = "new" | "modified" | "retry_sync" | "retry_index";
+
+export interface DriveFileQueueDecision {
+  action: "queue" | "skip";
+  queueReason?: DriveFileQueueReason;
+  skipReason?: GoogleDriveSkipReason;
+}
+
+export interface GoogleDriveFileQueueMessage {
+  driveFileId: string;
+  name: string;
+  mimeType: string;
+  modifiedTime?: string | null;
+  md5Checksum?: string | null;
+  trigger: "manual" | "scheduled";
+  autoIndex: boolean;
+}
+
+export interface GoogleDriveScanSummary {
+  dryRun: boolean;
+  trigger: "manual" | "scheduled";
+  listed: number;
+  allowed: number;
+  skipped: number;
+  queued: number;
+  unchanged: number;
+  skipReasons: Partial<Record<GoogleDriveSkipReason, number>>;
+  queueReasons: Partial<Record<DriveFileQueueReason, number>>;
+  errors: string[];
+  batchId: number | null;
 }
 
 const CONNECTOR_CODE = "google_drive";
@@ -43,6 +85,15 @@ export interface GoogleDriveConnectorConfig {
   knowledgeFolderName: string;
   knowledgeFolderId: string | null;
   allowList: GoogleDriveAllowListConfig;
+  schedule: GoogleDriveScheduleConfig;
+}
+
+interface DriveFileExistingState {
+  knowledge_document_id: number | null;
+  md5_checksum: string | null;
+  modified_time: string | null;
+  sync_status: string;
+  document_status: string | null;
 }
 
 async function loadConnectorConfigJson(
@@ -86,6 +137,7 @@ export async function loadGoogleDriveConnectorConfig(
         : GOOGLE_DRIVE_KNOWLEDGE_FOLDER_NAME,
     knowledgeFolderId,
     allowList: parseGoogleDriveAllowListConfig(parsed.allowList ?? parsed),
+    schedule: await loadGoogleDriveScheduleConfig(env),
   };
 }
 
@@ -94,6 +146,107 @@ export async function loadGoogleDriveAllowListConfig(
 ): Promise<GoogleDriveAllowListConfig> {
   const config = await loadGoogleDriveConnectorConfig(env);
   return config.allowList;
+}
+
+export function classifyDriveFileForSync(
+  file: GoogleDriveListedFile,
+  existing: DriveFileExistingState | null
+): DriveFileQueueDecision {
+  if (!file.filterDecision.allowed) {
+    return { action: "skip", skipReason: file.filterDecision.reason };
+  }
+
+  if (existing?.sync_status === "failed") {
+    return { action: "queue", queueReason: "retry_sync" };
+  }
+
+  if (
+    existing?.knowledge_document_id &&
+    existing.document_status &&
+    existing.document_status !== "indexed"
+  ) {
+    return { action: "queue", queueReason: "retry_index" };
+  }
+
+  if (!existing?.knowledge_document_id) {
+    return { action: "queue", queueReason: "new" };
+  }
+
+  if (
+    file.md5Checksum &&
+    existing.md5_checksum &&
+    existing.md5_checksum === file.md5Checksum &&
+    existing.document_status === "indexed"
+  ) {
+    return { action: "skip" };
+  }
+
+  if (
+    !file.md5Checksum &&
+    file.modifiedTime &&
+    existing.modified_time === file.modifiedTime &&
+    existing.document_status === "indexed"
+  ) {
+    return { action: "skip" };
+  }
+
+  if (file.md5Checksum && existing.md5_checksum !== file.md5Checksum) {
+    return { action: "queue", queueReason: "modified" };
+  }
+
+  if (file.modifiedTime && existing.modified_time !== file.modifiedTime) {
+    return { action: "queue", queueReason: "modified" };
+  }
+
+  if (existing.knowledge_document_id && existing.document_status === "indexed") {
+    return { action: "skip" };
+  }
+
+  return { action: "queue", queueReason: "new" };
+}
+
+async function loadDriveFileStates(
+  env: Env,
+  driveFileIds: string[]
+): Promise<Map<string, DriveFileExistingState>> {
+  const states = new Map<string, DriveFileExistingState>();
+  if (driveFileIds.length === 0) {
+    return states;
+  }
+
+  const chunkSize = 50;
+  for (let i = 0; i < driveFileIds.length; i += chunkSize) {
+    const chunk = driveFileIds.slice(i, i + chunkSize);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const rows = await env.CADDINGTON_BUSINESS_DATA.prepare(
+      `SELECT gfs.drive_file_id, gfs.knowledge_document_id, gfs.md5_checksum,
+              gfs.modified_time, gfs.sync_status, kd.status AS document_status
+       FROM google_drive_files gfs
+       LEFT JOIN knowledge_documents kd ON kd.id = gfs.knowledge_document_id
+       WHERE gfs.drive_file_id IN (${placeholders})`
+    )
+      .bind(...chunk)
+      .all<{
+        drive_file_id: string;
+        knowledge_document_id: number | null;
+        md5_checksum: string | null;
+        modified_time: string | null;
+        sync_status: string;
+        document_status: string | null;
+      }>();
+
+    for (const row of rows.results) {
+      states.set(row.drive_file_id, {
+        knowledge_document_id: row.knowledge_document_id,
+        md5_checksum: row.md5_checksum,
+        modified_time: row.modified_time,
+        sync_status: row.sync_status,
+        document_status: row.document_status,
+      });
+    }
+  }
+
+  return states;
 }
 
 export async function getGoogleDriveConnectorStatus(env: Env): Promise<{
@@ -108,6 +261,10 @@ export async function getGoogleDriveConnectorStatus(env: Env): Promise<{
   knowledgeFolderName: string;
   knowledgeFolderId: string | null;
   allowList: GoogleDriveAllowListConfig;
+  schedule: GoogleDriveScheduleConfig & {
+    cronExpression: string;
+    scheduleHandling: string;
+  };
   notes: string;
 }> {
   const credentials = parseGoogleDriveCredentials(env.GOOGLE_DRIVE_CREDENTIALS);
@@ -125,8 +282,13 @@ export async function getGoogleDriveConnectorStatus(env: Env): Promise<{
     knowledgeFolderName: connectorConfig.knowledgeFolderName,
     knowledgeFolderId: connectorConfig.knowledgeFolderId,
     allowList: connectorConfig.allowList,
+    schedule: {
+      ...connectorConfig.schedule,
+      cronExpression: GOOGLE_DRIVE_CRON_EXPRESSION,
+      scheduleHandling: describeGoogleDriveScheduleHandling(),
+    },
     notes:
-      "Documents-only sync restricted to the Caddington Knowledge folder and its subfolders. Personal photos, images, videos and audio are excluded via MIME allow-list before download. Google Photos is not connected. Drive OAuth uses full drive scope for future folder writes; sync remains read-only. Image ingestion is manual-upload only.",
+      "Documents-only sync restricted to the Caddington Knowledge folder and its subfolders. Daily metadata scan at 12:00 Europe/London with queue fan-out for per-file import/index. Personal photos, images, videos and audio are excluded via MIME allow-list before download. Google Photos is not connected. Drive OAuth uses full drive scope for future folder writes; sync remains read-only. Image ingestion is manual-upload only.",
   };
 }
 
@@ -215,19 +377,15 @@ export async function previewGoogleDriveKnowledgeFolder(env: Env): Promise<{
   };
 }
 
-export async function syncGoogleDriveDocuments(
+export async function scanAndQueueGoogleDriveChanges(
   env: Env,
   options: GoogleDriveSyncOptions = {}
-): Promise<GoogleDriveSyncSummary> {
+): Promise<GoogleDriveScanSummary> {
   const credentials = parseGoogleDriveCredentials(env.GOOGLE_DRIVE_CREDENTIALS);
   if (!credentials) {
     throw new Error(
       "GOOGLE_DRIVE_CREDENTIALS is not configured. Provide OAuth client_id, client_secret and refresh_token."
     );
-  }
-
-  if (!env.CADDINGTON_KNOWLEDGE) {
-    throw new Error("R2 bucket is not configured on this deployment.");
   }
 
   const connectorConfig = await loadGoogleDriveConnectorConfig(env);
@@ -237,18 +395,22 @@ export async function syncGoogleDriveDocuments(
     );
   }
 
-  const allowList = connectorConfig.allowList;
+  const trigger = options.trigger ?? "manual";
+  const dryRun = options.dryRun ?? false;
+  const autoIndex = options.autoIndex !== false;
   const client = new GoogleDriveClient(credentials);
-  const summary: GoogleDriveSyncSummary = {
-    dryRun: options.dryRun ?? false,
+  const summary: GoogleDriveScanSummary = {
+    dryRun,
+    trigger,
     listed: 0,
     allowed: 0,
     skipped: 0,
-    imported: 0,
-    updated: 0,
-    failed: 0,
+    queued: 0,
+    unchanged: 0,
     skipReasons: {},
+    queueReasons: {},
     errors: [],
+    batchId: null,
   };
 
   const importBatch = await env.CADDINGTON_BUSINESS_DATA.prepare(
@@ -258,16 +420,18 @@ export async function syncGoogleDriveDocuments(
     .bind(
       CONNECTOR_CODE,
       JSON.stringify({
-        dryRun: summary.dryRun,
+        dryRun,
+        trigger,
         maxFiles: options.maxFiles ?? null,
-        autoIndex: options.autoIndex ?? true,
+        autoIndex,
         knowledgeFolderId: connectorConfig.knowledgeFolderId,
         knowledgeFolderName: connectorConfig.knowledgeFolderName,
+        phase: "metadata_scan",
       })
     )
     .run();
 
-  const batchId = importBatch.meta.last_row_id;
+  summary.batchId = Number(importBatch.meta.last_row_id);
 
   try {
     const listed = await client.listAllFilesInFolder(
@@ -275,147 +439,72 @@ export async function syncGoogleDriveDocuments(
     );
     summary.listed = listed.length;
 
-    const classified = client.classifyFiles(listed, allowList);
+    const classified = client.classifyFiles(listed, connectorConfig.allowList);
     const allowedFiles = classified.filter((file) => file.filterDecision.allowed);
     summary.allowed = allowedFiles.length;
     summary.skipped = classified.length - allowedFiles.length;
+
+    const existingStates = await loadDriveFileStates(
+      env,
+      allowedFiles.map((file) => file.id)
+    );
 
     for (const file of classified) {
       if (!file.filterDecision.allowed) {
         const reason = file.filterDecision.reason;
         summary.skipReasons[reason] = (summary.skipReasons[reason] ?? 0) + 1;
-        if (!summary.dryRun) {
+        if (!dryRun) {
           await recordDriveFileState(env, file, "skipped", reason);
         }
+        continue;
+      }
+
+      const decision = classifyDriveFileForSync(
+        file,
+        existingStates.get(file.id) ?? null
+      );
+
+      if (decision.action === "skip") {
+        summary.unchanged++;
+        if (!dryRun) {
+          await recordDriveFileState(env, file, "imported");
+        }
+        continue;
+      }
+
+      const queueReason = decision.queueReason ?? "new";
+      summary.queueReasons[queueReason] = (summary.queueReasons[queueReason] ?? 0) + 1;
+
+      if (dryRun) {
+        summary.queued++;
+        continue;
+      }
+
+      const message: GoogleDriveFileQueueMessage = {
+        driveFileId: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        modifiedTime: file.modifiedTime ?? null,
+        md5Checksum: file.md5Checksum ?? null,
+        trigger,
+        autoIndex,
+      };
+
+      if (env.GOOGLE_DRIVE_SYNC_QUEUE) {
+        await env.GOOGLE_DRIVE_SYNC_QUEUE.send(message);
+        summary.queued++;
+      } else {
+        summary.errors.push(
+          "GOOGLE_DRIVE_SYNC_QUEUE is not configured; inline processing is used only via syncGoogleDriveDocuments."
+        );
       }
     }
 
-    const toProcess = allowedFiles.slice(0, options.maxFiles ?? allowedFiles.length);
-
-    for (const file of toProcess) {
-      try {
-        if (summary.dryRun) {
-          continue;
-        }
-
-        const existing = await env.CADDINGTON_BUSINESS_DATA.prepare(
-          `SELECT gfs.knowledge_document_id, gfs.md5_checksum, kd.status
-           FROM google_drive_files gfs
-           LEFT JOIN knowledge_documents kd ON kd.id = gfs.knowledge_document_id
-           WHERE gfs.drive_file_id = ?`
-        )
-          .bind(file.id)
-          .first<{
-            knowledge_document_id: number | null;
-            md5_checksum: string | null;
-            status: string | null;
-          }>();
-
-        if (
-          existing?.knowledge_document_id &&
-          file.md5Checksum &&
-          existing.md5_checksum === file.md5Checksum
-        ) {
-          await recordDriveFileState(env, file, "imported");
-          continue;
-        }
-
-        const download = await client.downloadAllowedFile(file);
-        const storedName = suggestedStoredFilename(
-          file.name,
-          file.mimeType,
-          download.mimeType
-        );
-        const externalId = `gdrive-${file.id}`;
-        const r2Key = `connectors/google_drive/${externalId}/${storedName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-
-        await env.CADDINGTON_KNOWLEDGE.put(r2Key, download.bytes, {
-          httpMetadata: { contentType: download.mimeType },
-          customMetadata: {
-            external_id: externalId,
-            drive_file_id: file.id,
-            source: "google_drive",
-          },
-        });
-
-        const uploadMetadata = buildUploadMetadata(storedName, {
-          source: "google_drive",
-          category: "document",
-        });
-
-        const metadata = {
-          ...uploadMetadata,
-          connector: CONNECTOR_CODE,
-          driveFileId: file.id,
-          driveMimeType: file.mimeType,
-          driveModifiedTime: file.modifiedTime ?? null,
-          exportRequired: download.exportRequired,
-          syncMode: "documents_only",
-          knowledgeFolderId: connectorConfig.knowledgeFolderId,
-          knowledgeFolderName: connectorConfig.knowledgeFolderName,
-        };
-
-        let documentId = existing?.knowledge_document_id ?? null;
-
-        if (documentId) {
-          await env.CADDINGTON_BUSINESS_DATA.prepare(
-            `UPDATE knowledge_documents
-             SET title = ?, r2_key = ?, mime_type = ?, byte_size = ?, status = 'pending',
-                 metadata = ?, updated_at = datetime('now'), indexed_at = NULL
-             WHERE id = ?`
-          )
-            .bind(
-              file.name,
-              r2Key,
-              download.mimeType,
-              download.bytes.byteLength,
-              JSON.stringify(metadata),
-              documentId
-            )
-            .run();
-          summary.updated++;
-        } else {
-          const insert = await env.CADDINGTON_BUSINESS_DATA.prepare(
-            `INSERT INTO knowledge_documents (external_id, title, r2_key, mime_type, byte_size, status, metadata)
-             VALUES (?, ?, ?, ?, ?, 'pending', ?)`
-          )
-            .bind(
-              externalId,
-              file.name,
-              r2Key,
-              download.mimeType,
-              download.bytes.byteLength,
-              JSON.stringify(metadata)
-            )
-            .run();
-          documentId = Number(insert.meta.last_row_id);
-          summary.imported++;
-        }
-
-        await recordDriveFileState(env, file, "imported", undefined, {
-          knowledgeDocumentId: documentId,
-          md5Checksum: file.md5Checksum ?? null,
-        });
-
-        if (options.autoIndex !== false && documentId) {
-          try {
-            await indexKnowledgeDocument(env, documentId);
-          } catch (indexError) {
-            const message =
-              indexError instanceof Error ? indexError.message : String(indexError);
-            summary.errors.push(`Index failed for ${file.name}: ${message}`);
-          }
-        }
-      } catch (error) {
-        summary.failed++;
-        const message = error instanceof Error ? error.message : String(error);
-        summary.errors.push(`${file.name}: ${message}`);
-        if (!summary.dryRun) {
-          await recordDriveFileState(env, file, "failed", undefined, {
-            errorMessage: message,
-          });
-        }
-      }
+    const maxFiles = options.maxFiles;
+    if (maxFiles !== undefined && summary.queued > maxFiles) {
+      summary.errors.push(
+        `Queued ${summary.queued} files exceeds maxFiles=${maxFiles}; queue messages were still sent for all eligible changes.`
+      );
     }
 
     await env.CADDINGTON_BUSINESS_DATA.prepare(
@@ -424,15 +513,10 @@ export async function syncGoogleDriveDocuments(
            records_processed = ?, records_failed = ?, metadata = ?
        WHERE id = ?`
     )
-      .bind(
-        summary.imported + summary.updated,
-        summary.failed,
-        JSON.stringify(summary),
-        batchId
-      )
+      .bind(summary.queued, summary.errors.length, JSON.stringify(summary), summary.batchId)
       .run();
 
-    log("info", "google_drive_sync_completed", summary);
+    log("info", "google_drive_scan_completed", summary);
     return summary;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -441,10 +525,233 @@ export async function syncGoogleDriveDocuments(
        SET status = 'failed', completed_at = datetime('now'), error_message = ?
        WHERE id = ?`
     )
-      .bind(message, batchId)
+      .bind(message, summary.batchId)
       .run();
     throw error;
   }
+}
+
+export async function processGoogleDriveFileMessage(
+  env: Env,
+  message: GoogleDriveFileQueueMessage
+): Promise<{ action: "imported" | "updated"; documentId: number }> {
+  const credentials = parseGoogleDriveCredentials(env.GOOGLE_DRIVE_CREDENTIALS);
+  if (!credentials) {
+    throw new Error("GOOGLE_DRIVE_CREDENTIALS is not configured.");
+  }
+
+  if (!env.CADDINGTON_KNOWLEDGE) {
+    throw new Error("R2 bucket is not configured on this deployment.");
+  }
+
+  const connectorConfig = await loadGoogleDriveConnectorConfig(env);
+  if (!connectorConfig.knowledgeFolderId) {
+    throw new Error("Google Drive knowledge folder is not configured.");
+  }
+
+  const client = new GoogleDriveClient(credentials);
+  const existingStates = await loadDriveFileStates(env, [message.driveFileId]);
+  const existing = existingStates.get(message.driveFileId) ?? null;
+
+  const metadata = await client.getFileMetadata(message.driveFileId);
+  if (!metadata) {
+    throw new Error(
+      `Drive file ${message.driveFileId} is no longer present in Google Drive.`
+    );
+  }
+
+  const [file] = client.classifyFiles([metadata], connectorConfig.allowList);
+
+  if (!file.filterDecision.allowed) {
+    await recordDriveFileState(env, file, "skipped", file.filterDecision.reason);
+    throw new Error(
+      `Drive file ${file.name} is no longer allow-listed (${file.filterDecision.reason}).`
+    );
+  }
+
+  const decision = classifyDriveFileForSync(file, existing);
+  if (decision.action === "skip") {
+    await recordDriveFileState(env, file, "imported");
+    const documentId = existing?.knowledge_document_id;
+    if (!documentId) {
+      throw new Error(`Drive file ${file.name} was unchanged but has no knowledge document.`);
+    }
+    return { action: "updated", documentId };
+  }
+
+  const download = await client.downloadAllowedFile(file);
+  const storedName = suggestedStoredFilename(
+    file.name,
+    file.mimeType,
+    download.mimeType
+  );
+  const externalId = `gdrive-${file.id}`;
+  const r2Key = `connectors/google_drive/${externalId}/${storedName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+
+  await env.CADDINGTON_KNOWLEDGE.put(r2Key, download.bytes, {
+    httpMetadata: { contentType: download.mimeType },
+    customMetadata: {
+      external_id: externalId,
+      drive_file_id: file.id,
+      source: "google_drive",
+    },
+  });
+
+  const uploadMetadata = buildUploadMetadata(storedName, {
+    source: "google_drive",
+    category: "document",
+  });
+
+  const documentMetadata = {
+    ...uploadMetadata,
+    connector: CONNECTOR_CODE,
+    driveFileId: file.id,
+    driveMimeType: file.mimeType,
+    driveModifiedTime: file.modifiedTime ?? null,
+    exportRequired: download.exportRequired,
+    syncMode: "documents_only",
+    knowledgeFolderId: connectorConfig.knowledgeFolderId,
+    knowledgeFolderName: connectorConfig.knowledgeFolderName,
+  };
+
+  let documentId = existing?.knowledge_document_id ?? null;
+  let action: "imported" | "updated" = "imported";
+
+  if (documentId) {
+    await env.CADDINGTON_BUSINESS_DATA.prepare(
+      `UPDATE knowledge_documents
+       SET title = ?, r2_key = ?, mime_type = ?, byte_size = ?, status = 'pending',
+           metadata = ?, updated_at = datetime('now'), indexed_at = NULL
+       WHERE id = ?`
+    )
+      .bind(
+        file.name,
+        r2Key,
+        download.mimeType,
+        download.bytes.byteLength,
+        JSON.stringify(documentMetadata),
+        documentId
+      )
+      .run();
+    action = "updated";
+  } else {
+    const insert = await env.CADDINGTON_BUSINESS_DATA.prepare(
+      `INSERT INTO knowledge_documents (external_id, title, r2_key, mime_type, byte_size, status, metadata)
+       VALUES (?, ?, ?, ?, ?, 'pending', ?)`
+    )
+      .bind(
+        externalId,
+        file.name,
+        r2Key,
+        download.mimeType,
+        download.bytes.byteLength,
+        JSON.stringify(documentMetadata)
+      )
+      .run();
+    documentId = Number(insert.meta.last_row_id);
+    action = "imported";
+  }
+
+  await recordDriveFileState(env, file, "imported", undefined, {
+    knowledgeDocumentId: documentId,
+    md5Checksum: file.md5Checksum ?? null,
+  });
+
+  if (message.autoIndex && documentId) {
+    await indexKnowledgeDocument(env, documentId);
+  }
+
+  log("info", "google_drive_file_processed", {
+    driveFileId: file.id,
+    documentId,
+    action,
+    trigger: message.trigger,
+  });
+
+  return { action, documentId };
+}
+
+export async function syncGoogleDriveDocuments(
+  env: Env,
+  options: GoogleDriveSyncOptions = {}
+): Promise<GoogleDriveSyncSummary> {
+  const scan = await scanAndQueueGoogleDriveChanges(env, options);
+  const summary: GoogleDriveSyncSummary = {
+    dryRun: scan.dryRun,
+    trigger: scan.trigger,
+    listed: scan.listed,
+    allowed: scan.allowed,
+    skipped: scan.skipped,
+    queued: scan.queued,
+    imported: 0,
+    updated: 0,
+    failed: 0,
+    skipReasons: scan.skipReasons,
+    queueReasons: scan.queueReasons,
+    errors: [...scan.errors],
+  };
+
+  if (scan.dryRun || scan.queued === 0) {
+    return summary;
+  }
+
+  if (env.GOOGLE_DRIVE_SYNC_QUEUE) {
+    return summary;
+  }
+
+  const credentials = parseGoogleDriveCredentials(env.GOOGLE_DRIVE_CREDENTIALS);
+  if (!credentials) {
+    throw new Error("GOOGLE_DRIVE_CREDENTIALS is not configured.");
+  }
+
+  const connectorConfig = await loadGoogleDriveConnectorConfig(env);
+  const client = new GoogleDriveClient(credentials);
+  const files = client.classifyFiles(
+    await client.listAllFilesInFolder(connectorConfig.knowledgeFolderId!),
+    connectorConfig.allowList
+  );
+  const existingStates = await loadDriveFileStates(
+    env,
+    files.map((file) => file.id)
+  );
+
+  const autoIndex = options.autoIndex !== false;
+  const toProcess = files.filter((file) => {
+    const decision = classifyDriveFileForSync(
+      file,
+      existingStates.get(file.id) ?? null
+    );
+    return decision.action === "queue";
+  });
+
+  const maxFiles = options.maxFiles ?? toProcess.length;
+  for (const file of toProcess.slice(0, maxFiles)) {
+    try {
+      const result = await processGoogleDriveFileMessage(env, {
+        driveFileId: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        modifiedTime: file.modifiedTime ?? null,
+        md5Checksum: file.md5Checksum ?? null,
+        trigger: options.trigger ?? "manual",
+        autoIndex,
+      });
+      if (result.action === "imported") {
+        summary.imported++;
+      } else {
+        summary.updated++;
+      }
+    } catch (error) {
+      summary.failed++;
+      const message = error instanceof Error ? error.message : String(error);
+      summary.errors.push(`${file.name}: ${message}`);
+      await recordDriveFileState(env, file, "failed", undefined, {
+        errorMessage: message,
+      });
+    }
+  }
+
+  return summary;
 }
 
 async function recordDriveFileState(
@@ -489,4 +796,12 @@ async function recordDriveFileState(
       })
     )
     .run();
+}
+
+export async function runScheduledGoogleDriveScan(env: Env): Promise<GoogleDriveScanSummary> {
+  return scanAndQueueGoogleDriveChanges(env, {
+    trigger: "scheduled",
+    autoIndex: true,
+    dryRun: false,
+  });
 }

@@ -1,6 +1,15 @@
 import { createMcpHandler } from "agents/mcp/server";
 import { handleAdminRequest } from "./admin";
 import type { Env } from "./db";
+import {
+  recordScheduledGoogleDriveScanDate,
+  shouldRunScheduledGoogleDriveScan,
+} from "./google-drive-schedule";
+import {
+  processGoogleDriveFileMessage,
+  runScheduledGoogleDriveScan,
+  type GoogleDriveFileQueueMessage,
+} from "./google-drive-sync";
 import { log } from "./logger";
 import { createCaddingtonMcpServer } from "./mcp-server";
 
@@ -52,5 +61,63 @@ export default {
     }
 
     return new Response("Not Found", { status: 404 });
+  },
+
+  async scheduled(
+    controller: ScheduledController,
+    env: Env,
+    ctx: ExecutionContext
+  ): Promise<void> {
+    const gate = await shouldRunScheduledGoogleDriveScan(
+      env,
+      controller.scheduledTime
+    );
+
+    if (!gate.run) {
+      log("info", "google_drive_scheduled_scan_skipped", {
+        reason: gate.reason,
+        cron: controller.cron,
+        local: gate.local,
+      });
+      return;
+    }
+
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const summary = await runScheduledGoogleDriveScan(env);
+          await recordScheduledGoogleDriveScanDate(env, gate.local.calendarDate);
+          log("info", "google_drive_scheduled_scan_completed", {
+            cron: controller.cron,
+            local: gate.local,
+            summary,
+          });
+        } catch (error) {
+          log("error", "google_drive_scheduled_scan_failed", {
+            cron: controller.cron,
+            local: gate.local,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })()
+    );
+  },
+
+  async queue(
+    batch: MessageBatch<GoogleDriveFileQueueMessage>,
+    env: Env
+  ): Promise<void> {
+    for (const message of batch.messages) {
+      try {
+        await processGoogleDriveFileMessage(env, message.body);
+        message.ack();
+      } catch (error) {
+        log("error", "google_drive_queue_message_failed", {
+          driveFileId: message.body.driveFileId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        message.retry();
+      }
+    }
   },
 } satisfies ExportedHandler<Env>;

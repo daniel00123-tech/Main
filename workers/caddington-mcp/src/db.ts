@@ -1,4 +1,4 @@
-import type { Ai } from "@cloudflare/workers-types";
+import type { Ai, Queue } from "@cloudflare/workers-types";
 import { MCP_VERSION } from "./constants";
 import { log } from "./logger";
 
@@ -13,6 +13,8 @@ export interface Env {
   GOOGLE_DRIVE_CREDENTIALS?: string;
   /** Google Drive folder ID for the Caddington Knowledge folder tree. */
   GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID?: string;
+  /** Queue for per-file Google Drive import/index fan-out. */
+  GOOGLE_DRIVE_SYNC_QUEUE?: Queue;
 }
 
 export interface DbHealth {
