@@ -214,6 +214,16 @@ export type PlatformRole =
   | "site_administrator"
   | "platform_owner";
 
+/** Field-service company roles (preset permission bundles). */
+export type CompanyRole =
+  | "engineer"
+  | "junior_office"
+  | "office_staff"
+  | "supervisor"
+  | "manager"
+  | "director"
+  | "company_admin";
+
 export type SyncMode =
   | "manual"
   | "scheduled"

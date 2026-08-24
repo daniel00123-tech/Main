@@ -280,15 +280,38 @@ Each capability maps to a default risk class. Permissions grant capabilities per
 
 ### Roles (foundation)
 
+INFRA uses **two role layers**:
+
+1. **Platform roles** — INFRA administration (Platform Owner, etc.)
+2. **Company roles** — preset bundles for field-service staff (Engineer → Director)
+
+Company roles are defined in `packages/shared/src/permissions/role-presets.ts` and enforced **server-side** on every MCP tool call, regardless of channel (ChatGPT, Claude, WhatsApp, Cursor automation).
+
+#### Company role presets
+
+| Role | Read examples | Write examples | Blocked by default |
+| --- | --- | --- | --- |
+| **Engineer** | Own schedule, assigned jobs, knowledge search | Add job notes | Book jobs, POs, invoices |
+| **Junior Office** | Customers, jobs, engineer schedules | Add notes | Book jobs, POs, invoices |
+| **Office Staff** | All jobs, customers, schedules | Book engineer, create job, raise PO | Create invoices |
+| **Supervisor** | Team jobs, customers, financials (read) | Book engineer, create invoice | Delete, batch |
+| **Manager** | Full operational read | Jobs, POs, invoices, send quotes | Delete, batch |
+| **Director** | Full read | Full operational + financial write | Delete (may need approval) |
+| **Company Admin** | All + admin | User/connector management scope | Platform-level actions |
+
+Companies can override presets per role in v0.2+. v0.1 uses these defaults.
+
+#### Platform roles
+
 | Role | Typical permissions |
 | --- | --- |
-| Standard User | search knowledge, read assigned jobs, limited notes |
-| Supervisor | broader read on team data |
-| Administrator | connector config, user management, higher-risk writes |
-| Site Administrator | company-wide admin |
 | Platform Owner | INFRA admin, billing, company setup |
+| Site Administrator | Company-wide admin |
+| Administrator | Connector config, user management |
 
 Permissions enforced **server-side** on MCP tool invocation and connector operations.
+
+See **Section 23** for read/write command flows and worked examples.
 
 ---
 
@@ -757,6 +780,184 @@ Cursor-built automations should **read** definitions from INFRA at runtime, not 
 | Rules drift from Cursor scripts | Automations fetch definitions from INFRA at runtime |
 | Too many definitions → context bloat | Load only relevant definitions per connector/query; glossary keyword match |
 
+| Rules drift from Cursor scripts | Automations fetch definitions from INFRA at runtime |
+| Too many definitions → context bloat | Load only relevant definitions per connector/query; glossary keyword match |
+
+---
+
+## 23. Read/write commands and role-based tool access
+
+INFRA and company MCP environments must support **both read and write** operations invoked via natural language in ChatGPT, Claude, WhatsApp (future), or Cursor. Every action passes through INFRA for **permission check → metering → audit** before the MCP executes against BigChange, Commusoft, Xero, etc.
+
+### 23.1 Read vs write — same path, different gates
+
+```
+User (any channel): natural language request
+        ↓
+AI interprets intent → selects MCP tool
+        ↓
+INFRA gateway:
+    1. Identify user + company + role
+    2. Map tool to action (e.g. bigchange.jobs.book_engineer)
+    3. Check role preset — allowed?
+    4. Check risk class — approval required?
+    5. Check credit balance
+    6. Issue request_id
+        ↓
+Company MCP executes tool against live system
+        ↓
+INFRA: usage event → ledger debit → audit log
+        ↓
+Response to user
+```
+
+**Read and write use the identical pipeline.** Writes add stricter permission and risk checks.
+
+### 23.2 Worked examples
+
+#### Example A — Read (Engineer)
+
+```
+John (Engineer) in ChatGPT:
+"When is engineer number 7 booked in for a job?"
+
+AI tool: bigchange.engineers.schedule.read({ engineerId: 7 })
+
+INFRA check:
+    user: john@el.example
+    role: engineer
+    action: bigchange.engineers.schedule.read
+    risk: LOW_RISK
+    result: ALLOW ✓
+
+MCP → BigChange → returns schedule
+INFRA → meter read (£0.05) → audit
+ChatGPT → "Engineer 7 is booked Tuesday 2pm, Job #4521"
+```
+
+#### Example B — Write denied (Engineer)
+
+```
+John (Engineer):
+"Book engineer 7 into a job tomorrow at 9am"
+
+AI tool: bigchange.jobs.book_engineer({ engineerId: 7, ... })
+
+INFRA check:
+    role: engineer
+    action: bigchange.jobs.book_engineer
+    risk: WRITE
+    result: DENY ✗ (not in engineer preset)
+
+ChatGPT → "You don't have permission to book jobs. Contact office staff."
+Audit → permission.denied logged (no charge)
+```
+
+#### Example C — Write allowed (Office Staff)
+
+```
+Sarah (Office Staff):
+"Book engineer 7 into a job tomorrow at 9am for customer ABC Ltd"
+
+AI tool: bigchange.jobs.book_engineer(...)
+
+INFRA check:
+    role: office_staff
+    action: bigchange.jobs.book_engineer
+    result: ALLOW ✓
+
+MCP → BigChange → job booked
+INFRA → meter write (£0.80) → audit
+ChatGPT → "Done — Job #4522 booked for engineer 7, tomorrow 9am"
+```
+
+#### Example D — Financial write (Manager)
+
+```
+Mike (Manager):
+"Raise an invoice for £100 for job 4522"
+
+AI tool: bigchange.invoices.create({ jobId: 4522, amount: 10000 })
+
+INFRA check:
+    role: manager
+    action: bigchange.invoices.create
+    risk: FINANCIAL_ACTION
+    result: ALLOW ✓
+
+MCP → BigChange → invoice created
+INFRA → meter financial_action (£1.20) → audit (amount, job, user)
+ChatGPT → "Invoice SI-12345 raised for £100.00 ex VAT"
+```
+
+#### Example E — PO creation (Office Staff)
+
+```
+Sarah (Office Staff):
+"Raise a purchase order for £250 materials on job 4522"
+
+AI tool: bigchange.purchase_orders.create(...)
+
+INFRA check:
+    role: office_staff
+    action: bigchange.purchase_orders.create
+    result: ALLOW ✓
+```
+
+### 23.3 MCP tools expose read AND write capabilities
+
+Each connector declares capabilities (`READ`, `CREATE`, `UPDATE`, `DELETE`, `SEND`, etc.). MCP tools map to ** granular actions** enforced by role presets:
+
+| MCP tool | Action key | Capability | Typical roles |
+| --- | --- | --- | --- |
+| `bigchange.engineers.schedule.read` | Read schedule | READ | Engineer+ |
+| `bigchange.jobs.read_assigned` | Read own jobs | READ | Engineer+ |
+| `bigchange.jobs.book_engineer` | Book engineer to job | UPDATE | Office Staff+ |
+| `bigchange.jobs.create` | Create new job | CREATE | Office Staff+ |
+| `bigchange.purchase_orders.create` | Raise PO | CREATE | Office Staff+ |
+| `bigchange.invoices.create` | Raise invoice | CREATE | Supervisor+ |
+| `bigchange.invoices.delete` | Delete invoice | DELETE | Director (approval) |
+| `commusoft.quotes.send` | Send quote to customer | SEND | Manager+ |
+
+Implementation lives in company MCP (customer data plane). INFRA holds role presets and enforces on every call.
+
+### 23.4 Role preset source of truth
+
+```
+packages/shared/src/permissions/role-presets.ts
+    ↓ deployed with INFRA API
+D1: company_user_roles (user_id, company_id, role)
+    ↓ checked at runtime
+INFRA permission service: isActionAllowed(role, action)
+```
+
+Preset roles: `engineer`, `junior_office`, `office_staff`, `supervisor`, `manager`, `director`, `company_admin`.
+
+Charlie (Owner) assigns John as `engineer`, Sarah as `office_staff`, Mike as `manager` in the company portal.
+
+### 23.5 High-risk writes and approval (future)
+
+| Action | Risk | v0.1 | v0.2+ |
+| --- | --- | --- | --- |
+| Read schedule | LOW_RISK | Auto-allow if role permits | Same |
+| Book job | WRITE | Auto-allow if role permits | Same |
+| Raise invoice < £500 | FINANCIAL_ACTION | Auto-allow for Manager+ | Same |
+| Raise invoice > £500 | FINANCIAL_ACTION | Allow + audit flag | Optional approval queue |
+| Delete invoice | DELETE | Deny except Director | Approval required |
+| Batch send 50 quotes | BATCH_WRITE | Deny | Director approval |
+
+Schema supports approval workflow later without changing role presets.
+
+### 23.6 Natural language → tool mapping
+
+The AI model (ChatGPT/Claude/gateway) chooses tools. INFRA does **not** parse natural language — it enforces **which tools each user may invoke**.
+
+Company definitions (Section 22) help the AI interpret terms ("revenue", "parent contact"). Role presets control **what it is allowed to do** once it has interpreted the request.
+
+### 23.7 Automations use the same permission model
+
+Cursor-built automations run as a **service identity** (e.g. `automation:ht-send-quotes`) with its own role/grant — not as a human user. Permissions are granted explicitly when the automation is wired up.
+
 ---
 
 ## Gap analysis: current scaffold vs v0.1 spec
@@ -784,6 +985,7 @@ Cursor-built automations should **read** definitions from INFRA at runtime, not 
 | Simulated billing test | Not started |
 | Visual prototype | Done (admin + EL company portal) |
 | Company definitions engine | Designed — not implemented (Section 22) |
+| Read/write tool permissions + role presets | Presets defined in shared package (Section 23) |
 | Company portal (tenant view) | Prototype only |
 
 ---
