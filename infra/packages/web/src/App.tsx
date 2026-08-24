@@ -11,8 +11,17 @@ import SettingsPage from "./pages/SettingsPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
 import UsagePage from "./pages/UsagePage";
 import UsersPermissionsPage from "./pages/UsersPermissionsPage";
+import PortalShell from "./portal/PortalShell";
+import PortalLoginPage from "./portal/PortalLoginPage";
+import PortalDashboardPage from "./portal/PortalDashboardPage";
+import PortalConnectorsPage from "./portal/PortalConnectorsPage";
+import PortalBillingPage from "./portal/PortalBillingPage";
+import PortalUsagePage from "./portal/PortalUsagePage";
+import PortalAiConnectionsPage from "./portal/PortalAiConnectionsPage";
+import PortalTeamPage from "./portal/PortalTeamPage";
+import PortalSettingsPage from "./portal/PortalSettingsPage";
 
-const NAV_ITEMS = [
+const ADMIN_NAV = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/companies", label: "Companies" },
   { to: "/connectors", label: "Connectors" },
@@ -26,15 +35,15 @@ const NAV_ITEMS = [
   { to: "/settings", label: "Settings" },
 ];
 
-function Shell({ children }: { children: React.ReactNode }) {
+function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">INFRA</div>
-        <div className="brand-sub">Business AI control plane</div>
-        <div className="prototype-badge">Visual prototype</div>
+        <div className="brand-sub">Platform admin · all companies</div>
+        <div className="prototype-badge">Control plane</div>
         <nav>
-          {NAV_ITEMS.map((item) => (
+          {ADMIN_NAV.map((item) => (
             <NavLink
               key={item.to}
               className="nav-link"
@@ -45,6 +54,11 @@ function Shell({ children }: { children: React.ReactNode }) {
             </NavLink>
           ))}
         </nav>
+        <div className="portal-link-box">
+          <NavLink to="/portal/login" className="nav-link">
+            → Company portal (EL demo)
+          </NavLink>
+        </div>
       </aside>
       <main className="main">{children}</main>
     </div>
@@ -53,21 +67,41 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Shell>
-      <Routes>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/companies" element={<CompaniesPage />} />
-        <Route path="/companies/:slug" element={<CompanyDetailPage />} />
-        <Route path="/connectors" element={<CataloguePage />} />
-        <Route path="/mcp-environments" element={<McpEnvironmentsPage />} />
-        <Route path="/ai-clients" element={<AiClientsPage />} />
-        <Route path="/users" element={<UsersPermissionsPage />} />
-        <Route path="/usage" element={<UsagePage />} />
-        <Route path="/billing" element={<BillingPage />} />
-        <Route path="/system-health" element={<SystemHealthPage />} />
-        <Route path="/audit-log" element={<AuditLogPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Routes>
-    </Shell>
+    <Routes>
+      {/* Company tenant portal (EL Business example) */}
+      <Route path="/portal/login" element={<PortalLoginPage />} />
+      <Route path="/portal" element={<PortalShell />}>
+        <Route path="dashboard" element={<PortalDashboardPage />} />
+        <Route path="connectors" element={<PortalConnectorsPage />} />
+        <Route path="ai-connections" element={<PortalAiConnectionsPage />} />
+        <Route path="team" element={<PortalTeamPage />} />
+        <Route path="usage" element={<PortalUsagePage />} />
+        <Route path="billing" element={<PortalBillingPage />} />
+        <Route path="settings" element={<PortalSettingsPage />} />
+      </Route>
+
+      {/* Platform admin control plane */}
+      <Route
+        path="/*"
+        element={
+          <AdminShell>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/companies" element={<CompaniesPage />} />
+              <Route path="/companies/:slug" element={<CompanyDetailPage />} />
+              <Route path="/connectors" element={<CataloguePage />} />
+              <Route path="/mcp-environments" element={<McpEnvironmentsPage />} />
+              <Route path="/ai-clients" element={<AiClientsPage />} />
+              <Route path="/users" element={<UsersPermissionsPage />} />
+              <Route path="/usage" element={<UsagePage />} />
+              <Route path="/billing" element={<BillingPage />} />
+              <Route path="/system-health" element={<SystemHealthPage />} />
+              <Route path="/audit-log" element={<AuditLogPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Routes>
+          </AdminShell>
+        }
+      />
+    </Routes>
   );
 }

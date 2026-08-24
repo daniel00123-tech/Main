@@ -13,7 +13,10 @@
     "test": "npm run test --workspaces --if-present",
     "db:migrate:local": "npm run db:migrate:local --workspace=@infra/api",
     "db:seed:local": "npm run db:seed:local --workspace=@infra/api",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "prototype:screenshots": "node scripts/capture-screenshots.mjs",
+    "prototype:walkthrough": "node scripts/record-walkthrough.mjs",
+    "prototype:portal-screenshots": "node scripts/capture-portal-screenshots.mjs"
   },
   "engines": {
     "node": ">=20"
