@@ -1,5 +1,1 @@
-node_modules/
-.wrangler/
-dist/
-*.log
-.dev.vars
+seed-output/

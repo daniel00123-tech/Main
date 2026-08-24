@@ -10,7 +10,10 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply ht-business-data --local",
-    "db:migrate:remote": "wrangler d1 migrations apply ht-business-data --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply ht-business-data --remote",
+    "seed:generate": "node scripts/seed-phase2.mjs",
+    "seed:remote": "node scripts/seed-phase2.mjs && for f in seed-output/seed-batch-*.sql; do wrangler d1 execute ht-business-data --remote --file=\"$f\"; done",
+    "test:mcp-analytics": "node scripts/phase2-mcp-analytics.mjs"
   },
   "keywords": [],
   "author": "",

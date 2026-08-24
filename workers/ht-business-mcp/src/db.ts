@@ -1,3 +1,7 @@
+import {
+  SUMMARY_TABLES,
+  SUMMARY_TIMESTAMP_COLUMNS,
+} from "./constants";
 import { log } from "./logger";
 
 export interface Env {
@@ -29,25 +33,18 @@ export interface TableSummary {
   latestTimestamp: string | null;
 }
 
-const TABLE_TIMESTAMP_COLUMNS: Record<string, string> = {
-  import_log: "started_at",
-  entity_registry: "updated_at",
-  entity_records: "updated_at",
-};
-
 export async function getDatabaseSummary(db: D1Database): Promise<TableSummary[]> {
-  const tables = ["import_log", "entity_registry", "entity_records"];
   const summaries: TableSummary[] = [];
 
-  for (const name of tables) {
+  for (const name of SUMMARY_TABLES) {
     const countRow = await db
       .prepare(`SELECT COUNT(*) AS count FROM ${name}`)
       .first<{ count: number }>();
     const recordCount = countRow?.count ?? 0;
 
-    const tsColumn = TABLE_TIMESTAMP_COLUMNS[name];
+    const tsColumn = SUMMARY_TIMESTAMP_COLUMNS[name];
     let latestTimestamp: string | null = null;
-    if (tsColumn) {
+    if (tsColumn && tsColumn !== "code") {
       const tsRow = await db
         .prepare(`SELECT MAX(${tsColumn}) AS latest FROM ${name}`)
         .first<{ latest: string | null }>();
