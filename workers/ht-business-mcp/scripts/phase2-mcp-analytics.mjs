@@ -1,10 +1,22 @@
 /**
  * Phase 2 analytics validation through HT Business MCP (query_business_data only).
- * Usage: MCP_URL=https://... node scripts/phase2-mcp-analytics.mjs
+ * Usage: MCP_URL=https://... MCP_AUTH_TOKEN=... node scripts/phase2-mcp-analytics.mjs
  */
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 const baseUrl = process.env.MCP_URL ?? "https://ht-business-mcp.daniel-dwyer123.workers.dev/mcp";
+const mcpToken = process.env.MCP_AUTH_TOKEN;
+
+if (!mcpToken) {
+  console.error("MCP_AUTH_TOKEN is required");
+  process.exit(1);
+}
+
+const transportOptions = {
+  requestInit: {
+    headers: { Authorization: `Bearer ${mcpToken}` },
+  },
+};
 
 async function query(client, sql) {
   const result = await client.callTool({
@@ -16,15 +28,21 @@ async function query(client, sql) {
 }
 
 async function main() {
-  const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
-  const client = new Client({ name: "phase2-analytics", version: "0.1.0" });
+  const transport = new StreamableHTTPClientTransport(
+    new URL(baseUrl),
+    transportOptions
+  );
+  const client = new Client({ name: "phase2-analytics", version: "0.2.1" });
   await client.connect(transport);
 
   const health = await client.callTool({ name: "system_health", arguments: {} });
   console.log("=== system_health ===");
   console.log(health.content?.[0]?.text);
 
-  const summary = await client.callTool({ name: "database_summary", arguments: {} });
+  const summary = await client.callTool({
+    name: "database_summary",
+    arguments: {},
+  });
   console.log("=== database_summary ===");
   console.log(summary.content?.[0]?.text);
 
@@ -86,7 +104,7 @@ async function main() {
   await client.close();
 }
 
-main().catch((e) => {
-  console.error(e);
+main().catch((error) => {
+  console.error(error);
   process.exit(1);
 });

@@ -1,13 +1,24 @@
 /**
  * Local integration smoke test against wrangler dev (default http://127.0.0.1:8787).
+ * Usage: MCP_AUTH_TOKEN=... node scripts/integration-test.mjs
  */
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 const baseUrl = process.env.MCP_URL ?? "http://127.0.0.1:8787/mcp";
+const mcpToken = process.env.MCP_AUTH_TOKEN ?? "dev-local-token";
+
+const transportOptions = {
+  requestInit: {
+    headers: { Authorization: `Bearer ${mcpToken}` },
+  },
+};
 
 async function main() {
-  const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
-  const client = new Client({ name: "ht-business-mcp-test", version: "0.1.0" });
+  const transport = new StreamableHTTPClientTransport(
+    new URL(baseUrl),
+    transportOptions
+  );
+  const client = new Client({ name: "ht-business-mcp-test", version: "0.2.1" });
 
   await client.connect(transport);
 

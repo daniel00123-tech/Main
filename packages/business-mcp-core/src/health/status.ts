@@ -8,11 +8,48 @@ import type {
   OverallHealthStatus,
   QueueHealthSummary,
   StorageHealth,
+  StructuredDataDataStatus,
+  StructuredDataFrameworkStatus,
   StructuredDataHealthSummary,
   VectorizeHealth,
 } from "../types/health";
 import type { DatabaseSummaryTable } from "../types/company-config";
 import { computeOverallHealth } from "./probes";
+
+export function resolveStructuredDataDataStatus(input: {
+  frameworkConfigured: boolean;
+  operationalRecords: number;
+}): StructuredDataDataStatus {
+  if (!input.frameworkConfigured) return "not_connected";
+  if (input.operationalRecords > 0) return "populated";
+  return "empty";
+}
+
+export function buildStructuredDataHealthSummary(input: {
+  frameworkConfigured: boolean;
+  mode: StructuredDataHealthSummary["mode"];
+  tables: number;
+  records: number;
+  operationalRecords: number;
+}): StructuredDataHealthSummary {
+  const frameworkStatus: StructuredDataFrameworkStatus = input.frameworkConfigured
+    ? "configured"
+    : "not_configured";
+  const dataStatus = resolveStructuredDataDataStatus({
+    frameworkConfigured: input.frameworkConfigured,
+    operationalRecords: input.operationalRecords,
+  });
+
+  return {
+    status: frameworkStatus === "configured" ? "healthy" : "not_configured",
+    frameworkStatus,
+    dataStatus,
+    mode: input.mode,
+    tables: input.tables,
+    records: input.records,
+    operationalRecords: input.operationalRecords,
+  };
+}
 
 export interface BuildLivenessHealthOptions {
   identity: CompanyIdentity;
@@ -73,9 +110,12 @@ export function buildExtendedHealthResponse(
     },
     structuredData: {
       status: options.structuredData?.status ?? "not_configured",
+      frameworkStatus: options.structuredData?.frameworkStatus,
+      dataStatus: options.structuredData?.dataStatus,
       mode: options.structuredData?.mode ?? "not_configured",
       tables: options.structuredData?.tables ?? 0,
       records: options.structuredData?.records ?? 0,
+      operationalRecords: options.structuredData?.operationalRecords,
     },
     connectors: options.connectors ?? [],
     queues: options.queues ?? { status: "not_configured" },

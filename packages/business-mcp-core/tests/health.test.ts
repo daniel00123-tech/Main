@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildExtendedHealthResponse,
   buildLivenessHealthResponse,
+  buildStructuredDataHealthSummary,
+  resolveStructuredDataDataStatus,
 } from "../src/health/status";
 import { computeOverallHealth } from "../src/health/probes";
 import { notConfiguredConnector } from "../src/connectors/not-configured";
@@ -28,6 +30,20 @@ describe("health status", () => {
     const response = buildExtendedHealthResponse({ identity, versions });
     expect(response.knowledge.status).toBe("not_configured");
     expect(response.structuredData.status).toBe("not_configured");
+  });
+
+  it("distinguishes framework configured from empty operational data", () => {
+    const structured = buildStructuredDataHealthSummary({
+      frameworkConfigured: true,
+      mode: "warehouse",
+      tables: 6,
+      records: 6,
+      operationalRecords: 0,
+    });
+    expect(structured.frameworkStatus).toBe("configured");
+    expect(structured.dataStatus).toBe("empty");
+    expect(resolveStructuredDataDataStatus({ frameworkConfigured: true, operationalRecords: 0 })).toBe("empty");
+    expect(resolveStructuredDataDataStatus({ frameworkConfigured: true, operationalRecords: 100 })).toBe("populated");
   });
 
   it("computes overall health from components", () => {

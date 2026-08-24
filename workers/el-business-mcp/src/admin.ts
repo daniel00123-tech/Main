@@ -1,6 +1,7 @@
 import {
   adminUnauthorizedResponse,
   buildExtendedHealthResponse,
+  buildStructuredDataHealthSummary,
   checkAdminAuth,
   checkDatabaseHealth,
   createLogger,
@@ -62,6 +63,8 @@ export async function buildPublicStatus(env: Env): Promise<Response> {
     EL_STRUCTURED_DATA_CONFIG.summary
   );
   const totalRecords = tables.reduce((sum, t) => sum + t.recordCount, 0);
+  const operationalRecords =
+    tables.find((t) => t.name === "entity_records")?.recordCount ?? 0;
 
   const payload = buildExtendedHealthResponse({
     identity: EL_IDENTITY,
@@ -74,12 +77,13 @@ export async function buildPublicStatus(env: Env): Promise<Response> {
       indexed: 0,
       lastIndexedAt: null,
     },
-    structuredData: {
-      status: "configured",
+    structuredData: buildStructuredDataHealthSummary({
+      frameworkConfigured: true,
       mode: "warehouse",
       tables: tables.length,
       records: totalRecords,
-    },
+      operationalRecords,
+    }),
     connectors: elConnectorDefinitions().map((c) => ({
       type: c.connectorType,
       status: c.status,

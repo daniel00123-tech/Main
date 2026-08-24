@@ -1,5 +1,6 @@
 import {
   buildExtendedHealthResponse,
+  buildStructuredDataHealthSummary,
   checkDatabaseHealth,
   createLogger,
   getDatabaseSummary,
@@ -15,6 +16,21 @@ import { htConnectorDefinitions, loadConnectorRegistryRows } from "./connectors"
 import { MCP_NAME } from "./constants";
 
 const logger = createLogger(MCP_NAME);
+
+/** Framework-only tables — not operational business data. */
+const FRAMEWORK_ONLY_TABLES = new Set([
+  "system_health_log",
+  "connector_registry",
+  "connector_config",
+]);
+
+function operationalRecordCount(
+  tables: Array<{ name: string; recordCount: number }>
+): number {
+  return tables
+    .filter((t) => !FRAMEWORK_ONLY_TABLES.has(t.name))
+    .reduce((sum, t) => sum + t.recordCount, 0);
+}
 
 export async function buildLivenessHealth(env: Env): Promise<Response> {
   const database = await checkDatabaseHealth(env.HT_BUSINESS_DATA, logger);
@@ -40,6 +56,7 @@ export async function buildPublicStatus(env: Env): Promise<Response> {
     HT_STRUCTURED_DATA_CONFIG.summary
   );
   const totalRecords = tables.reduce((sum, t) => sum + t.recordCount, 0);
+  const operationalRecords = operationalRecordCount(tables);
 
   const payload = buildExtendedHealthResponse({
     identity: HT_IDENTITY,
@@ -52,12 +69,13 @@ export async function buildPublicStatus(env: Env): Promise<Response> {
       indexed: 0,
       lastIndexedAt: null,
     },
-    structuredData: {
-      status: "configured",
+    structuredData: buildStructuredDataHealthSummary({
+      frameworkConfigured: true,
       mode: "warehouse",
       tables: tables.length,
       records: totalRecords,
-    },
+      operationalRecords,
+    }),
     connectors: htConnectorDefinitions().map((c) => ({
       type: c.connectorType,
       status: c.status,

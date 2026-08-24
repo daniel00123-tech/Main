@@ -1,16 +1,11 @@
 #!/usr/bin/env node
 /**
- * EL Business MCP deployment smoke test.
- * Requires: EL_MCP_URL, EL_MCP_AUTH_TOKEN (optional: EL_ADMIN_TOKEN)
+ * HT Business MCP deployment smoke test.
+ * Requires: HT_MCP_URL, HT_MCP_AUTH_TOKEN
  */
-const baseUrl = process.env.EL_MCP_URL?.replace(/\/$/, "");
-const mcpToken = process.env.EL_MCP_AUTH_TOKEN;
-const adminToken = process.env.EL_ADMIN_TOKEN;
-
-if (!baseUrl) {
-  console.error("EL_MCP_URL is required");
-  process.exit(1);
-}
+const baseUrl = process.env.HT_MCP_URL?.replace(/\/$/, "") ??
+  "https://ht-business-mcp.daniel-dwyer123.workers.dev";
+const mcpToken = process.env.HT_MCP_AUTH_TOKEN ?? process.env.MCP_AUTH_TOKEN;
 
 const results = [];
 
@@ -27,7 +22,7 @@ async function check(name, fn) {
 }
 
 async function mcpCall(toolName, args = {}) {
-  if (!mcpToken) throw new Error("EL_MCP_AUTH_TOKEN required for MCP tests");
+  if (!mcpToken) throw new Error("HT_MCP_AUTH_TOKEN required for MCP tests");
   const response = await fetch(`${baseUrl}/mcp`, {
     method: "POST",
     headers: {
@@ -45,28 +40,20 @@ async function mcpCall(toolName, args = {}) {
   if (!response.ok) {
     throw new Error(`${toolName} HTTP ${response.status}`);
   }
-  const text = await response.text();
-  return text;
+  return response.text();
 }
 
-await check("GET /health", async () => {
+await check("GET /health public", async () => {
   const res = await fetch(`${baseUrl}/health`);
   const body = await res.json();
   if (!body.ok) throw new Error("health not ok");
-  if (body.company !== "EL Business") throw new Error(`company=${body.company}`);
-  if (body.coreVersion !== "1.0.0") throw new Error(`coreVersion=${body.coreVersion}`);
-  if (body.mcpVersion !== "1.0.0") throw new Error(`mcpVersion=${body.mcpVersion}`);
+  if (body.company !== "HT Business") throw new Error(`company=${body.company}`);
+  if (body.mcpVersion !== "0.2.1") throw new Error(`mcpVersion=${body.mcpVersion}`);
 });
 
-await check("GET /status", async () => {
+await check("GET /status unauthenticated rejected", async () => {
   const res = await fetch(`${baseUrl}/status`);
-  const body = await res.json();
-  if (body.knowledge?.status !== "not_configured") {
-    throw new Error(`knowledge.status=${body.knowledge?.status}`);
-  }
-  if (body.structuredData?.dataStatus !== "empty") {
-    throw new Error(`structuredData.dataStatus=${body.structuredData?.dataStatus}`);
-  }
+  if (res.status !== 401) throw new Error(`expected 401 got ${res.status}`);
 });
 
 await check("MCP unauthenticated rejected", async () => {
@@ -78,48 +65,56 @@ await check("MCP unauthenticated rejected", async () => {
   if (res.status !== 401) throw new Error(`expected 401 got ${res.status}`);
 });
 
+await check("MCP incorrect token rejected", async () => {
+  const res = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer invalid-token",
+    },
+    body: "{}",
+  });
+  if (res.status !== 401) throw new Error(`expected 401 got ${res.status}`);
+});
+
 if (mcpToken) {
+  await check("GET /status authenticated", async () => {
+    const res = await fetch(`${baseUrl}/status`, {
+      headers: { Authorization: `Bearer ${mcpToken}` },
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    if (body.structuredData?.dataStatus !== "populated") {
+      throw new Error(`dataStatus=${body.structuredData?.dataStatus}`);
+    }
+  });
+
   await check("MCP system_health", async () => {
     const text = await mcpCall("system_health");
-    if (!text.includes("EL Business")) throw new Error("missing company in response");
-    if (!text.includes("1.0.0")) throw new Error("missing version in response");
+    if (!text.includes("HT Business")) throw new Error("missing company");
+    if (!text.includes("0.2.1")) throw new Error("missing version");
   });
 
   await check("MCP database_summary", async () => {
     const text = await mcpCall("database_summary");
-    if (!text.includes("connector_registry")) throw new Error("missing connectors");
+    if (!text.includes("customers")) throw new Error("missing customers table");
   });
 
-  await check("MCP query_business_data empty", async () => {
+  await check("MCP query_business_data analytics", async () => {
     const text = await mcpCall("query_business_data", {
-      sql: "SELECT code, label, status FROM connector_registry",
+      sql: "SELECT COUNT(*) AS completed_jobs FROM jobs WHERE status_code = 'completed' AND source_system = 'phase2_dummy'",
     });
-    if (!text.includes("bigchange")) throw new Error("missing connector rows");
+    if (!text.includes("328")) throw new Error("unexpected completed_jobs count");
   });
 
   await check("MCP search_company_knowledge not_configured", async () => {
-    const text = await mcpCall("search_company_knowledge", {
-      query: "test policy",
-    });
+    const text = await mcpCall("search_company_knowledge", { query: "policy" });
     if (!text.includes("not_configured")) throw new Error("expected not_configured");
   });
 
   await check("MCP get_knowledge_document not_configured", async () => {
     const text = await mcpCall("get_knowledge_document", { document_id: 1 });
     if (!text.includes("not_configured")) throw new Error("expected not_configured");
-  });
-}
-
-if (adminToken) {
-  await check("GET /admin/connectors", async () => {
-    const res = await fetch(`${baseUrl}/admin/connectors`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-    if (!res.ok) throw new Error(`status ${res.status}`);
-    const body = await res.json();
-    if (!Array.isArray(body.registry) || body.registry.length < 6) {
-      throw new Error("connector registry incomplete");
-    }
   });
 }
 

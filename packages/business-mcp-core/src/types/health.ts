@@ -26,18 +26,40 @@ export interface VectorizeHealth {
   error?: string;
 }
 
+/** Knowledge pipeline lifecycle — distinct from generic component health. */
+export type KnowledgePipelineStatus =
+  | "not_configured"
+  | "configured"
+  | "syncing"
+  | "indexed"
+  | "error";
+
+/** Structured-data framework vs live business data connection. */
+export type StructuredDataFrameworkStatus = "configured" | "not_configured";
+export type StructuredDataDataStatus = "not_connected" | "empty" | "populated";
+
 export interface KnowledgeHealthSummary {
-  status: ComponentStatus;
+  /** Pipeline status (not_configured → configured → syncing → indexed | error). */
+  status: KnowledgePipelineStatus;
   documents: number;
   indexed: number;
   lastIndexedAt: string | null;
 }
 
 export interface StructuredDataHealthSummary {
+  /**
+   * Backward-compatible summary status. Mirrors `frameworkStatus` when provided.
+   * Prefer `frameworkStatus` + `dataStatus` for new consumers.
+   */
   status: ComponentStatus;
+  frameworkStatus?: StructuredDataFrameworkStatus;
+  /** Whether real operational business data is connected/populated. */
+  dataStatus?: StructuredDataDataStatus;
   mode: "warehouse" | "live_api" | "not_configured";
   tables: number;
   records: number;
+  /** Operational/business rows excluding framework-only metadata tables. */
+  operationalRecords?: number;
 }
 
 export interface ConnectorHealthSummary {

@@ -1,4 +1,4 @@
-export const MCP_VERSION = "0.2.0";
+export const MCP_VERSION = "0.2.1";
 export const MCP_NAME = "ht-business-mcp";
 
 export const COMPANY_NAME = "HT Business";

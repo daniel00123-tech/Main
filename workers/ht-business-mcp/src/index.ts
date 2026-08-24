@@ -1,5 +1,9 @@
 import { createMcpHandler } from "agents/mcp/server";
-import { createLogger, mcpUnauthorizedResponse } from "@business-mcp/core";
+import {
+  checkMcpAuth,
+  createLogger,
+  mcpUnauthorizedResponse,
+} from "@business-mcp/core";
 import type { Env } from "./db";
 import { createHtBusinessMcpServer } from "./mcp-server";
 import { buildLivenessHealth, buildPublicStatus } from "./status";
@@ -7,24 +11,9 @@ import { MCP_NAME } from "./constants";
 
 const logger = createLogger(MCP_NAME);
 
-function unauthorized(): Response {
-  return mcpUnauthorizedResponse();
-}
-
-/**
- * Preserves existing HT auth behaviour: MCP is open when MCP_AUTH_TOKEN is unset.
- * When set, Bearer token is required. This differs from EL fail-closed production auth.
- */
-function checkAuth(request: Request, env: Env): boolean {
-  const expected = env.MCP_AUTH_TOKEN;
-  if (!expected) {
-    return true;
-  }
-  const header = request.headers.get("Authorization");
-  if (!header?.startsWith("Bearer ")) {
-    return false;
-  }
-  return header.slice("Bearer ".length) === expected;
+/** Production MCP always fails closed when MCP_AUTH_TOKEN is missing. */
+function checkHtMcpAuth(request: Request, env: Env): boolean {
+  return checkMcpAuth(request, env.MCP_AUTH_TOKEN, { requireToken: true });
 }
 
 export default {
@@ -40,13 +29,17 @@ export default {
     }
 
     if (url.pathname === "/status") {
+      if (!checkHtMcpAuth(request, env)) {
+        logger.warn("status_auth_failed", { path: url.pathname });
+        return mcpUnauthorizedResponse();
+      }
       return buildPublicStatus(env);
     }
 
     if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
-      if (!checkAuth(request, env)) {
-        logger.warn("auth_failed", { path: url.pathname });
-        return unauthorized();
+      if (!checkHtMcpAuth(request, env)) {
+        logger.warn("mcp_auth_failed", { path: url.pathname });
+        return mcpUnauthorizedResponse();
       }
 
       const handler = createMcpHandler(
