@@ -9,7 +9,8 @@
     "db:migrate:local": "wrangler d1 migrations apply infra-control-plane --local",
     "db:seed:local": "wrangler d1 execute infra-control-plane --local --file=./src/seed.sql",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate:setup-token": "node scripts/generate-password-setup-token.mjs"
   },
   "dependencies": {
     "@infra/shared": "*",

@@ -1,10 +1,12 @@
 import { FormEvent, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const successMessage = (location.state as { message?: string } | null)?.message;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +40,7 @@ export default function LoginPage() {
           Platform administrators sign in to manage companies, MCP environments,
           connectors, users, and audit information.
         </p>
+        {successMessage ? <p className="info-banner">{successMessage}</p> : null}
         <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
           <label>
             Email

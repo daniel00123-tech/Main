@@ -80,6 +80,19 @@ export const api = {
   logout: () =>
     fetchJson<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   getSession: () => fetchJson<SessionUser>("/api/auth/me"),
+  validatePasswordSetupToken: (token: string) =>
+    fetchJson<{
+      valid: boolean;
+      maskedEmail?: string;
+      expiresAt?: string;
+      purpose?: string;
+      error?: string;
+    }>(`/api/auth/password-setup/validate?token=${encodeURIComponent(token)}`),
+  completePasswordSetup: (token: string, password: string, confirmPassword: string) =>
+    fetchJson<{ ok: boolean }>("/api/auth/password-setup", {
+      method: "POST",
+      body: JSON.stringify({ token, password, confirmPassword }),
+    }),
   getSummary: () => fetchJson<PlatformSummary>("/api/summary"),
   getCompanies: () => fetchJson<Company[]>("/api/companies"),
   getCompany: (slug: string) => fetchJson<Company>(`/api/companies/${slug}`),

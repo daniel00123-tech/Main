@@ -234,6 +234,25 @@ export async function createMembership(
   return rowToMembership(row);
 }
 
+export async function updateUserPassword(
+  db: D1Database,
+  userId: string,
+  password: string,
+): Promise<void> {
+  const salt = generateSalt();
+  const passwordHash = await hashPassword(password, salt);
+  const updatedAt = nowIso();
+
+  await db
+    .prepare(
+      `UPDATE users
+       SET password_hash = ?, password_salt = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(passwordHash, salt, updatedAt, userId)
+    .run();
+}
+
 export async function bootstrapPlatformAdminIfNeeded(
   db: D1Database,
   email: string | undefined,

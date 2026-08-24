@@ -12,9 +12,17 @@ import {
 import {
   bootstrapPlatformAdminIfNeeded,
   getUserByEmail,
+  getUserById,
   listUsers,
   toSessionUser,
+  updateUserPassword,
 } from "./auth/users";
+import {
+  consumeSetupToken,
+  findValidSetupToken,
+  maskEmail,
+  validateNewPassword,
+} from "./auth/password-setup";
 import { createCorsMiddleware } from "./cors";
 import type { Env } from "./env";
 import {
@@ -69,6 +77,87 @@ app.get("/health", (c) =>
     timestamp: new Date().toISOString(),
   }),
 );
+
+app.get("/api/auth/password-setup/validate", async (c) => {
+  const token = c.req.query("token");
+  if (!token) {
+    return c.json({ valid: false, error: "Setup token is required" }, 400);
+  }
+
+  const record = await findValidSetupToken(c.env.DB, token);
+  if (!record) {
+    return c.json({ valid: false, error: "Invalid or expired setup token" }, 400);
+  }
+
+  const user = await getUserById(c.env.DB, record.userId);
+  if (!user || user.status !== "active") {
+    return c.json({ valid: false, error: "Invalid or expired setup token" }, 400);
+  }
+
+  return c.json({
+    valid: true,
+    maskedEmail: maskEmail(user.email),
+    expiresAt: record.expiresAt,
+    purpose: record.purpose,
+  });
+});
+
+app.post("/api/auth/password-setup", async (c) => {
+  const body = await c.req.json<{
+    token?: string;
+    password?: string;
+    confirmPassword?: string;
+  }>();
+
+  if (!body.token || !body.password || !body.confirmPassword) {
+    return c.json({ error: "Token, password, and confirmation are required" }, 400);
+  }
+
+  if (body.password !== body.confirmPassword) {
+    return c.json({ error: "Passwords do not match" }, 400);
+  }
+
+  const passwordError = validateNewPassword(body.password);
+  if (passwordError) {
+    return c.json({ error: passwordError }, 400);
+  }
+
+  const record = await findValidSetupToken(c.env.DB, body.token);
+  if (!record) {
+    await recordAuditEvent(c.env.DB, {
+      eventType: "auth.password_setup_failed",
+      actor: "unknown",
+      detail: { reason: "invalid_or_expired_token" },
+    });
+    return c.json({ error: "Invalid or expired setup token" }, 400);
+  }
+
+  const user = await getUserById(c.env.DB, record.userId);
+  if (!user || user.status !== "active") {
+    await recordAuditEvent(c.env.DB, {
+      eventType: "auth.password_setup_failed",
+      actor: "unknown",
+      detail: { reason: "invalid_user", tokenId: record.id },
+    });
+    return c.json({ error: "Invalid or expired setup token" }, 400);
+  }
+
+  await updateUserPassword(c.env.DB, user.id, body.password);
+  await consumeSetupToken(c.env.DB, record.id);
+
+  await recordAuditEvent(c.env.DB, {
+    eventType: "auth.password_setup_completed",
+    actor: user.email,
+    resourceType: "user",
+    resourceId: user.id,
+    detail: {
+      purpose: record.purpose,
+      tokenId: record.id,
+    },
+  });
+
+  return c.json({ ok: true });
+});
 
 app.post("/api/auth/login", async (c) => {
   const body = await c.req.json<{ email?: string; password?: string }>();

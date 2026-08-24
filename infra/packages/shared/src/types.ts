@@ -28,6 +28,8 @@ export type AuditEventType =
   | "auth.login"
   | "auth.login_failed"
   | "auth.logout"
+  | "auth.password_setup_completed"
+  | "auth.password_setup_failed"
   | "company.accessed"
   | "company.created"
   | "company.updated"
