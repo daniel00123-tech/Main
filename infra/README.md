@@ -114,6 +114,14 @@ Each connector declares capabilities such as `read`, `search`, `write`, `sync`, 
 
 The existing Caddington MCP is registered as an external MCP environment and is not migrated in v0.1. INFRA monitors and registers it only.
 
+## Related documents
+
+| Document | Contents |
+| --- | --- |
+| [`docs/DESIGN.md`](docs/DESIGN.md) | Full architecture, schema, permissions, billing |
+| [`docs/SETUP-GUIDE.md`](docs/SETUP-GUIDE.md) | **Go-live guide** — hosting, domain, Cloudflare, Stripe, phases |
+| [`docs/CURSOR-BRIDGE.md`](docs/CURSOR-BRIDGE.md) | Cursor ↔ INFRA knowledge escalation |
+
 ## Deployment
 
 The API is designed for Cloudflare Workers + D1. Update `packages/api/wrangler.toml` with production D1 database IDs before deploying:
