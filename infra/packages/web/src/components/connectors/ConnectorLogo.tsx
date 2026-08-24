@@ -1,11 +1,15 @@
-/** Brand-styled SVG logos for the connector marketplace (simplified, self-contained). */
+/** Self-contained brand marks — geometric icons + reliable monograms (no external hotlinks). */
 
-const LOGO_CLASS = "connector-logo-svg";
-
-function LogoFrame({ children }: { children: React.ReactNode }) {
+function Tile({
+  bg,
+  children,
+}: {
+  bg: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="connector-logo" aria-hidden="true">
-      <svg viewBox="0 0 48 48" className={LOGO_CLASS} role="img">
+    <div className="connector-logo" style={{ background: bg }} aria-hidden="true">
+      <svg viewBox="0 0 40 40" className="connector-logo-svg" role="img">
         {children}
       </svg>
     </div>
@@ -14,146 +18,202 @@ function LogoFrame({ children }: { children: React.ReactNode }) {
 
 function GoogleDriveLogo() {
   return (
-    <LogoFrame>
-      <path fill="#4285F4" d="M24 8 38 32H10L24 8Z" />
-      <path fill="#0F9D58" d="M10 32 17 44H31L38 32H10Z" />
-      <path fill="#FFBA00" d="M24 8 31 20H17L10 32 24 8Z" opacity="0" />
-      <path fill="#DB4437" d="M24 8 38 32H31L24 20 17 32H10L24 8Z" opacity="0.85" />
-    </LogoFrame>
+    <Tile bg="#fff">
+      {/* Recognisable Drive mark: blue / yellow / green */}
+      <path d="M14.2 24.5 20 8l5.8 16.5H14.2Z" fill="#4285F4" />
+      <path d="M25.8 24.5 32 24.5 23.3 32.5 20 24.5h5.8Z" fill="#F4B400" />
+      <path d="M14.2 24.5 20 24.5 16.7 32.5 8 24.5h6.2Z" fill="#0F9D58" />
+      <path d="M16.7 32.5h6.6L20 24.5 16.7 32.5Z" fill="#0F9D58" opacity="0.85" />
+    </Tile>
   );
 }
 
-function MicrosoftLogo() {
+function SharePointLogo() {
   return (
-    <LogoFrame>
-      <rect x="8" y="8" width="14" height="14" fill="#F25022" rx="1" />
-      <rect x="26" y="8" width="14" height="14" fill="#7FBA00" rx="1" />
-      <rect x="8" y="26" width="14" height="14" fill="#00A4EF" rx="1" />
-      <rect x="26" y="26" width="14" height="14" fill="#FFB900" rx="1" />
-    </LogoFrame>
+    <Tile bg="#fff">
+      <circle cx="24" cy="14" r="7" fill="#038387" />
+      <circle cx="16" cy="22" r="9" fill="#1A9BA1" />
+      <circle cx="25" cy="27" r="6" fill="#37C6D0" />
+      <text
+        x="14"
+        y="26"
+        fill="#fff"
+        fontSize="11"
+        fontFamily="system-ui,sans-serif"
+        fontWeight="700"
+      >
+        S
+      </text>
+    </Tile>
+  );
+}
+
+function OneDriveLogo() {
+  return (
+    <Tile bg="#fff">
+      <path
+        d="M14 24c-3.2 0-5.8-2.4-5.8-5.4 0-2.8 2-5.1 4.7-5.5C14 10.2 16.7 8 20 8c3.6 0 6.6 2.6 7.1 6.1 2.6.4 4.6 2.6 4.6 5.3 0 3-2.4 5.4-5.4 5.4H14Z"
+        fill="#0078D4"
+      />
+    </Tile>
   );
 }
 
 function OutlookLogo() {
   return (
-    <LogoFrame>
-      <rect x="8" y="12" width="22" height="24" rx="3" fill="#0078D4" />
-      <ellipse cx="30" cy="24" rx="10" ry="12" fill="#1490DF" />
-      <rect x="12" y="18" width="14" height="2" fill="#fff" opacity="0.9" />
-      <rect x="12" y="23" width="10" height="2" fill="#fff" opacity="0.7" />
-      <rect x="12" y="28" width="12" height="2" fill="#fff" opacity="0.7" />
-    </LogoFrame>
+    <Tile bg="#fff">
+      <rect x="8" y="10" width="18" height="20" rx="2" fill="#0A66C2" />
+      <path d="M26 14h6v16c0 1.1-.9 2-2 2h-4V14Z" fill="#1490DF" />
+      <path d="M11 16h12v2H11Zm0 4h9v2h-9Zm0 4h10v2H11Z" fill="#fff" />
+      <circle cx="28" cy="24" r="7" fill="#0078D4" />
+      <text
+        x="24.5"
+        y="27.5"
+        fill="#fff"
+        fontSize="10"
+        fontFamily="system-ui,sans-serif"
+        fontWeight="700"
+      >
+        O
+      </text>
+    </Tile>
   );
 }
 
 function BigChangeLogo() {
   return (
-    <LogoFrame>
-      <rect x="8" y="8" width="32" height="32" rx="8" fill="#1B3A57" />
-      <path
-        d="M16 30V18h6c3.3 0 5 1.7 5 4.2 0 2.2-1.4 3.8-3.6 4.1L28 30h-4l-3.2-3.4H20V30h-4Zm4-7.2h2c1.2 0 1.8-.6 1.8-1.5s-.6-1.5-1.8-1.5h-2v3Z"
-        fill="#4FC3F7"
-      />
-    </LogoFrame>
+    <Tile bg="linear-gradient(145deg,#0B2C4A,#1B4F72)">
+      {/* Field-service mark: van / BC */}
+      <rect x="7" y="18" width="18" height="10" rx="1.5" fill="#4FC3F7" />
+      <path d="M25 20h5l3 4v4h-8V20Z" fill="#81D4FA" />
+      <circle cx="13" cy="28" r="2.2" fill="#0B2C4A" />
+      <circle cx="28" cy="28" r="2.2" fill="#0B2C4A" />
+      <text
+        x="10"
+        y="16"
+        fill="#E3F7FF"
+        fontSize="8"
+        fontFamily="system-ui,sans-serif"
+        fontWeight="800"
+        letterSpacing="0.5"
+      >
+        BC
+      </text>
+    </Tile>
   );
 }
 
 function CommusoftLogo() {
   return (
-    <LogoFrame>
-      <rect x="8" y="8" width="32" height="32" rx="8" fill="#0D47A1" />
-      <path
-        d="M16 32V16h8c5.5 0 9 3.2 9 8s-3.5 8-9 8h-8Zm4-4h4c3 0 4.8-1.6 4.8-4s-1.8-4-4.8-4h-4v8Z"
+    <Tile bg="#0B3D91">
+      <circle cx="20" cy="20" r="12" fill="none" stroke="#7EB6FF" strokeWidth="2" />
+      <text
+        x="12"
+        y="24.5"
         fill="#fff"
-      />
-    </LogoFrame>
+        fontSize="12"
+        fontFamily="system-ui,sans-serif"
+        fontWeight="800"
+      >
+        CS
+      </text>
+    </Tile>
   );
 }
 
 function XeroLogo() {
   return (
-    <LogoFrame>
-      <circle cx="24" cy="24" r="16" fill="#13B5EA" />
+    <Tile bg="#13B5EA">
       <path
-        d="M18 28V20h3.2l2.4 5.2L26 20h3.2v8h-2.6v-4.8L24.4 28h-1.8l-2.2-4.8V28H18Z"
+        d="M12 12 20 20 12 28h4.5L22.2 22 28 28H32.5L24.5 20 32.5 12H28L22.2 18 16.5 12H12Z"
         fill="#fff"
       />
-    </LogoFrame>
+    </Tile>
   );
 }
 
 function FreshdeskLogo() {
   return (
-    <LogoFrame>
-      <rect x="8" y="8" width="32" height="32" rx="8" fill="#25C16F" />
+    <Tile bg="#25C16F">
+      {/* Simple headset / support mark */}
       <path
-        d="M18 30c0-4.4 2.7-7 6-7h4v-2.2c0-1.8-1.2-2.8-3-2.8-1.4 0-2.4.5-3.2 1.6l-2.6-2.2c1.2-1.6 3.2-2.6 5.8-2.6 3.8 0 6.2 2.2 6.2 6v8.2H26v-2h-.4c-.8 1.4-2.2 2.2-4.2 2.2-2.6 0-4.4-1.6-4.4-4Z"
-        fill="#fff"
+        d="M12 22v-2c0-4.4 3.6-8 8-8s8 3.6 8 8v2"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="2.2"
+        strokeLinecap="round"
       />
-    </LogoFrame>
+      <rect x="10" y="21" width="5" height="8" rx="2" fill="#fff" />
+      <rect x="25" y="21" width="5" height="8" rx="2" fill="#fff" />
+      <path d="M20 28h4v2h-5a1 1 0 0 1-1-1v-1" fill="#fff" />
+    </Tile>
   );
 }
 
 function ApiLogo() {
   return (
-    <LogoFrame>
-      <rect x="8" y="8" width="32" height="32" rx="8" fill="#2A3348" stroke="#8AB4FF" strokeWidth="1.5" />
+    <Tile bg="#1A2236">
       <path
-        d="M17 30 24 14l7 16M20 24h8"
+        d="M13 27 20 11l7 16M15.5 22h9"
+        fill="none"
         stroke="#8AB4FF"
-        strokeWidth="2"
+        strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
-        fill="none"
       />
-    </LogoFrame>
+    </Tile>
   );
 }
 
 function OpenAiLogo() {
   return (
-    <LogoFrame>
-      <rect x="8" y="8" width="32" height="32" rx="8" fill="#0D0D0D" stroke="#10A37F" strokeWidth="1.5" />
+    <Tile bg="#10A37F">
+      {/* Hexagonal / node mark */}
       <path
-        d="M24 14c-4.2 0-7.2 2.6-7.2 6.2 0 2.4 1.2 4 3.2 5l-1.2 3.6 3.8-1.8c.8.2 1.6.3 2.4.3 4.2 0 7.2-2.6 7.2-6.2S28.2 14 24 14Z"
-        fill="#10A37F"
+        d="M20 8l8 4.5v9L20 26l-8-4.5v-9L20 8Z"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="2"
       />
-    </LogoFrame>
+      <circle cx="20" cy="17" r="3.2" fill="#fff" />
+    </Tile>
   );
 }
 
 function ClaudeLogo() {
   return (
-    <LogoFrame>
-      <rect x="8" y="8" width="32" height="32" rx="8" fill="#1F1A14" />
+    <Tile bg="#D97757">
       <path
-        d="M24 12c6.6 0 12 5.4 12 12s-5.4 12-12 12S12 30.6 12 24 17.4 12 24 12Zm-4.8 8.4 3.6 6.2 3.6-6.2h2.4L24 29.2 17.4 20.4h1.8Z"
-        fill="#D97757"
+        d="M14 26 20 10l6 16M16.5 20h7"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-    </LogoFrame>
+    </Tile>
   );
 }
 
 function WhatsAppLogo() {
   return (
-    <LogoFrame>
-      <circle cx="24" cy="24" r="16" fill="#25D366" />
+    <Tile bg="#25D366">
       <path
-        d="M18.5 29.5 17 33l3.7-1.4c1.1.6 2.3.9 3.6.9 4.2 0 7.6-3.4 7.6-7.6S28.5 17.3 24.3 17.3 16.7 20.7 16.7 24.9c0 1.3.3 2.5.9 3.6Z"
+        d="M20 9c-6 0-11 4.8-11 10.7 0 1.9.5 3.6 1.4 5.2L9 31l5.4-1.7c1.5.8 3.2 1.2 5 1.2 6 0 11-4.8 11-10.7S26 9 20 9Z"
         fill="#fff"
       />
       <path
-        d="M21.8 22.8c-.2-.5-.8-.8-1.3-.8-.3 0-.7 0-1 .1-.4.1-.9.4-1.2 1-.5.8-.2 2 .8 3.1 1 1.1 2.8 2.2 4.5 2.5 1.1.2 2-.1 2.7-.7.4-.4.7-1 .8-1.6l.3-1.5c0-.2-.1-.3-.3-.3l-2-.5c-.2 0-.3.1-.4.3l-.5 1.1c0 .1-.2.2-.3.2-.8-.2-2-.9-2.7-1.7-.1-.1-.1-.3 0-.4l.8-.9c.1-.1.1-.3 0-.4l-1.5-1.3Z"
+        d="M16.2 15.6c-.3-.7-.6-.7-.9-.7h-.7c-.3 0-.7.1-1 .5s-1.1 1.1-1.1 2.6 1.1 3 1.2 3.2c.1.2 2.1 3.3 5.1 4.5 2.5 1 3 .8 3.5.8.5 0 1.7-.7 2-1.4.2-.7.2-1.3.2-1.4 0-.1-.3-.2-.6-.3l-2.2-.9c-.3-.1-.5 0-.7.3l-.9 1.1c-.1.2-.3.2-.6.1-1.1-.4-2.3-1.3-3.1-2.4-.1-.2-.1-.4.1-.5l1-.9c.2-.1.2-.3.2-.5l-.8-2.4c-.1-.3-.3-.4-.5-.4Z"
         fill="#25D366"
       />
-    </LogoFrame>
+    </Tile>
   );
 }
 
 const LOGOS: Record<string, () => React.ReactElement> = {
   "google-drive": GoogleDriveLogo,
-  sharepoint: MicrosoftLogo,
-  onedrive: MicrosoftLogo,
+  sharepoint: SharePointLogo,
+  onedrive: OneDriveLogo,
   "outlook-shared-mailbox": OutlookLogo,
   bigchange: BigChangeLogo,
   commusoft: CommusoftLogo,

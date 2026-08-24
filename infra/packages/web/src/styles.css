@@ -403,35 +403,38 @@ button {
 
 /* Connector marketplace */
 .connector-marketplace-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .connector-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
   background: rgba(16, 22, 40, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 14px 16px;
+  border-radius: 999px;
+  padding: 7px 12px;
 }
 
 .connector-stat-value {
-  display: block;
-  font-size: 1.5rem;
+  font-size: 0.95rem;
   font-weight: 700;
 }
 
 .connector-stat-label {
   color: #9aa8c7;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
 }
 
 .connector-marketplace-controls {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+  padding: 14px 16px;
 }
 
 .connector-search-wrap {
@@ -440,7 +443,7 @@ button {
 
 .connector-search-icon {
   position: absolute;
-  left: 14px;
+  left: 12px;
   top: 50%;
   transform: translateY(-50%);
   color: #9aa8c7;
@@ -451,10 +454,11 @@ button {
   width: 100%;
   background: rgba(8, 12, 24, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  border-radius: 10px;
   color: #e8edf5;
-  padding: 12px 14px 12px 40px;
+  padding: 10px 12px 10px 34px;
   font: inherit;
+  font-size: 0.92rem;
 }
 
 .connector-search-input:focus {
@@ -466,7 +470,7 @@ button {
 .connector-filter-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   justify-content: space-between;
 }
@@ -474,7 +478,7 @@ button {
 .connector-filter-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .connector-filter-chip {
@@ -482,8 +486,8 @@ button {
   background: rgba(255, 255, 255, 0.03);
   color: #c5d0e6;
   border-radius: 999px;
-  padding: 8px 14px;
-  font-size: 0.82rem;
+  padding: 6px 11px;
+  font-size: 0.78rem;
 }
 
 .connector-filter-chip.active,
@@ -498,114 +502,133 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   color: #e8edf5;
-  padding: 8px 12px;
+  padding: 7px 10px;
   font: inherit;
+  font-size: 0.82rem;
 }
 
 .connector-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .connector-card {
   background: rgba(16, 22, 40, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 20px;
+  border-radius: 14px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
+  cursor: pointer;
   transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .connector-card:hover {
-  border-color: rgba(138, 180, 255, 0.22);
+  border-color: rgba(138, 180, 255, 0.28);
   transform: translateY(-1px);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+}
+
+.connector-card:focus-visible {
+  outline: 2px solid rgba(138, 180, 255, 0.55);
+  outline-offset: 2px;
 }
 
 .connector-card-active {
-  border-color: rgba(56, 211, 159, 0.28);
+  border-color: rgba(56, 211, 159, 0.32);
+  background:
+    linear-gradient(180deg, rgba(56, 211, 159, 0.06), transparent 40%),
+    rgba(16, 22, 40, 0.92);
 }
 
-.connector-card-header {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 14px;
-  align-items: start;
+.connector-card-top {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
 }
 
-.connector-card-title-block {
+.connector-card-heading {
+  min-width: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+
+.connector-card-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 8px;
-  min-width: 0;
 }
 
 .connector-card-title {
   margin: 0;
-  font-size: 1.05rem;
-  line-height: 1.3;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  font-weight: 650;
 }
 
 .connector-card-description {
   margin: 0;
-  color: #b7c3da;
-  font-size: 0.92rem;
-}
-
-.connector-card-section-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #8a96b0;
-  margin-bottom: 8px;
+  color: #a9b6cf;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.3em;
 }
 
 .connector-card-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
-.connector-card-chips-muted .sync-chip {
-  background: rgba(255, 255, 255, 0.04);
-  color: #aebcd8;
+.connector-card-meta {
+  color: #8090ad;
+  font-size: 0.72rem;
+  letter-spacing: 0.01em;
 }
 
 .connector-card-footer {
   margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-top: 4px;
+  padding-top: 2px;
 }
 
 .connector-card-button {
-  flex: 1;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 0.84rem;
+  border-radius: 9px;
 }
 
 .connector-card-button-disabled {
-  opacity: 0.72;
+  opacity: 0.7;
 }
 
-.connector-card-link {
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-.connector-logo-wrap,
-.connector-logo {
-  width: 48px;
-  height: 48px;
+.connector-logo-wrap {
   flex-shrink: 0;
 }
 
+.connector-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
 .connector-logo-svg {
-  width: 100%;
-  height: 100%;
+  width: 40px;
+  height: 40px;
   display: block;
 }
 
@@ -616,11 +639,12 @@ button {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  padding: 4px 10px;
+  padding: 3px 8px;
+  white-space: nowrap;
 }
 
 .connector-status-active {
@@ -629,7 +653,7 @@ button {
 }
 
 .connector-status-available {
-  background: rgba(138, 180, 255, 0.15);
+  background: rgba(138, 180, 255, 0.14);
   color: #8ab4ff;
 }
 
@@ -643,9 +667,10 @@ button {
   text-transform: none;
   letter-spacing: 0;
   font-weight: 500;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   background: rgba(255, 255, 255, 0.05);
-  color: #c5d0e6;
+  color: #b7c3da;
+  width: fit-content;
 }
 
 .connector-category-ai,
@@ -658,20 +683,22 @@ button {
   text-transform: none;
   letter-spacing: 0;
   font-weight: 500;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   background: rgba(56, 120, 255, 0.12);
   color: #aecdff;
+  padding: 2px 7px;
 }
 
 .sync-chip {
   text-transform: none;
   letter-spacing: 0;
   font-weight: 500;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
 }
 
 .connector-marketplace-note {
   margin-top: 4px;
+  padding: 12px 14px;
 }
 
 .connector-modal-backdrop {
@@ -786,9 +813,17 @@ button {
   .grid-4,
   .grid-2,
   .grid-3,
-  .connector-grid,
-  .connector-marketplace-stats,
   .connector-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .connector-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .connector-grid {
     grid-template-columns: 1fr;
   }
 }

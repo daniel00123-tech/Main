@@ -64,7 +64,7 @@ export default function CataloguePage() {
     <>
       <PageHeader
         title="Connectors"
-        subtitle="Integration marketplace for business systems and AI channels. Each company receives isolated connector instances with separate credentials."
+        subtitle="Connect business systems into INFRA, and manage the AI channels staff use to reach them."
       />
 
       <div className="connector-marketplace-stats">
