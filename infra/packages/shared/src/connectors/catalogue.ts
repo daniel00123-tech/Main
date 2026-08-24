@@ -10,8 +10,10 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     slug: "google-drive",
     name: "Google Drive / Workspace",
     category: "cloud_storage",
+    integrationType: "business_system",
+    catalogueStatus: "active",
     description:
-      "Indexes shared company Google Drive folders and document libraries for knowledge search.",
+      "Search and index shared company Drive folders and documents for knowledge retrieval.",
     capabilities: ["read", "search", "sync", "index"],
     credentialSchema: {
       type: "object",
@@ -37,8 +39,10 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     slug: "sharepoint",
     name: "Microsoft SharePoint",
     category: "cloud_storage",
+    integrationType: "business_system",
+    catalogueStatus: "available",
     description:
-      "Indexes SharePoint document libraries and team sites for company knowledge.",
+      "Index SharePoint document libraries and team sites for company knowledge search.",
     capabilities: ["read", "search", "sync", "index"],
     credentialSchema: {
       type: "object",
@@ -65,8 +69,10 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     slug: "onedrive",
     name: "Microsoft OneDrive (Shared)",
     category: "cloud_storage",
+    integrationType: "business_system",
+    catalogueStatus: "available",
     description:
-      "Indexes shared OneDrive libraries and company document storage.",
+      "Index shared OneDrive libraries and company document storage.",
     capabilities: ["read", "search", "sync", "index"],
     credentialSchema: {
       type: "object",
@@ -92,8 +98,10 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     slug: "outlook-shared-mailbox",
     name: "Outlook Shared Mailbox",
     category: "email",
+    integrationType: "business_system",
+    catalogueStatus: "available",
     description:
-      "Indexes shared company mailboxes for operational context and support history.",
+      "Index shared company mailboxes for operational context and support history.",
     capabilities: ["read", "search", "sync", "index"],
     credentialSchema: {
       type: "object",
@@ -123,8 +131,10 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     slug: "bigchange",
     name: "BigChange",
     category: "field_service",
+    integrationType: "business_system",
+    catalogueStatus: "available",
     description:
-      "Connects to BigChange for jobs, customers, engineers, invoices, and operational data.",
+      "Connect jobs, customers, engineers, invoices, and operational data from BigChange.",
     capabilities: ["read", "search", "sync", "live_query", "export"],
     credentialSchema: {
       type: "object",
@@ -164,8 +174,10 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     slug: "commusoft",
     name: "Commusoft",
     category: "field_service",
+    integrationType: "business_system",
+    catalogueStatus: "available",
     description:
-      "Connects to Commusoft for customers, jobs, engineers, quotes, and service history.",
+      "Connect customers, jobs, engineers, quotes, and service history from Commusoft.",
     capabilities: ["read", "search", "sync", "live_query", "export"],
     credentialSchema: {
       type: "object",
@@ -195,8 +207,10 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     slug: "xero",
     name: "Xero",
     category: "accounting",
+    integrationType: "business_system",
+    catalogueStatus: "available",
     description:
-      "Connects to Xero for invoices, payments, contacts, and accounting data.",
+      "Connect invoices, payments, contacts, and accounting data from Xero.",
     capabilities: ["read", "search", "sync", "live_query", "export"],
     credentialSchema: {
       type: "object",
@@ -228,8 +242,10 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     slug: "freshdesk",
     name: "Freshdesk",
     category: "helpdesk",
+    integrationType: "business_system",
+    catalogueStatus: "available",
     description:
-      "Connects to Freshdesk for tickets, agents, and support history.",
+      "Connect tickets, agents, and support history from Freshdesk.",
     capabilities: ["read", "search", "sync", "live_query", "webhook"],
     credentialSchema: {
       type: "object",
@@ -256,6 +272,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     slug: "custom-api",
     name: "Custom API",
     category: "api",
+    integrationType: "business_system",
+    catalogueStatus: "draft",
     description:
       "Configurable REST API connector for customer-specific integrations.",
     capabilities: ["read", "search", "live_query", "export"],
@@ -283,6 +301,51 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     supportedSyncModes: ["live_api", "scheduled"],
     isAvailable: false,
   },
+  {
+    id: "conn_chatgpt",
+    slug: "chatgpt",
+    name: "ChatGPT / OpenAI",
+    category: "ai_assistant",
+    integrationType: "ai_channel",
+    catalogueStatus: "coming_soon",
+    description:
+      "Let staff interact with company MCP tools and knowledge through ChatGPT.",
+    capabilities: ["read", "search", "send"],
+    credentialSchema: { type: "object", properties: {} },
+    configSchema: { type: "object", properties: {} },
+    supportedSyncModes: ["live_api"],
+    isAvailable: false,
+  },
+  {
+    id: "conn_claude",
+    slug: "claude",
+    name: "Claude / Anthropic",
+    category: "ai_assistant",
+    integrationType: "ai_channel",
+    catalogueStatus: "coming_soon",
+    description:
+      "Let staff interact with company MCP tools and knowledge through Claude.",
+    capabilities: ["read", "search", "send"],
+    credentialSchema: { type: "object", properties: {} },
+    configSchema: { type: "object", properties: {} },
+    supportedSyncModes: ["live_api"],
+    isAvailable: false,
+  },
+  {
+    id: "conn_whatsapp",
+    slug: "whatsapp",
+    name: "WhatsApp",
+    category: "messaging",
+    integrationType: "ai_channel",
+    catalogueStatus: "coming_soon",
+    description:
+      "Future channel for staff to reach company AI tools and workflows via WhatsApp.",
+    capabilities: ["read", "send"],
+    credentialSchema: { type: "object", properties: {} },
+    configSchema: { type: "object", properties: {} },
+    supportedSyncModes: ["webhook", "live_api"],
+    isAvailable: false,
+  },
 ];
 
 export function getConnectorBySlug(slug: string): ConnectorDefinition | undefined {
@@ -291,4 +354,12 @@ export function getConnectorBySlug(slug: string): ConnectorDefinition | undefine
 
 export function getConnectorById(id: string): ConnectorDefinition | undefined {
   return CONNECTOR_CATALOGUE.find((c) => c.id === id);
+}
+
+export function getBusinessSystemConnectors(): ConnectorDefinition[] {
+  return CONNECTOR_CATALOGUE.filter((c) => c.integrationType === "business_system");
+}
+
+export function getAiChannelConnectors(): ConnectorDefinition[] {
+  return CONNECTOR_CATALOGUE.filter((c) => c.integrationType === "ai_channel");
 }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_CATALOGUE,
+  getAiChannelConnectors,
+  getBusinessSystemConnectors,
   getConnectorBySlug,
 } from "./catalogue";
 
@@ -14,11 +16,36 @@ describe("connector catalogue", () => {
     expect(slugs).toContain("freshdesk");
   });
 
-  it("declares capabilities on each connector", () => {
+  it("includes AI and messaging channel connectors", () => {
+    const slugs = CONNECTOR_CATALOGUE.map((c) => c.slug);
+    expect(slugs).toContain("chatgpt");
+    expect(slugs).toContain("claude");
+    expect(slugs).toContain("whatsapp");
+  });
+
+  it("declares capabilities and marketplace metadata on each connector", () => {
     for (const connector of CONNECTOR_CATALOGUE) {
       expect(connector.capabilities.length).toBeGreaterThan(0);
-      expect(connector.capabilities).toContain("read");
+      expect(connector.integrationType).toMatch(/business_system|ai_channel/);
+      expect(connector.catalogueStatus).toBeTruthy();
     }
+  });
+
+  it("marks Google Drive as the active operational connector", () => {
+    const gdrive = getConnectorBySlug("google-drive");
+    expect(gdrive?.catalogueStatus).toBe("active");
+    expect(gdrive?.integrationType).toBe("business_system");
+  });
+
+  it("marks AI channels as coming soon", () => {
+    for (const connector of getAiChannelConnectors()) {
+      expect(connector.catalogueStatus).toBe("coming_soon");
+    }
+  });
+
+  it("separates business systems from AI channels", () => {
+    expect(getBusinessSystemConnectors().length).toBeGreaterThan(0);
+    expect(getAiChannelConnectors().length).toBe(3);
   });
 
   it("does not include personal connector types", () => {

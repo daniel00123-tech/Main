@@ -129,6 +129,10 @@ export interface ConnectorDefinition {
   slug: string;
   name: string;
   category: ConnectorCategory;
+  /** Business systems ingest data; AI/channels are user interaction surfaces. */
+  integrationType: ConnectorIntegrationType;
+  /** Marketplace display status — independent of per-company instance state. */
+  catalogueStatus: ConnectorCatalogueStatus;
   description: string;
   capabilities: ConnectorCapability[];
   credentialSchema: Record<string, unknown>;
@@ -233,7 +237,17 @@ export type ConnectorCategory =
   | "field_service"
   | "accounting"
   | "helpdesk"
+  | "ai_assistant"
+  | "messaging"
   | "api";
+
+export type ConnectorIntegrationType = "business_system" | "ai_channel";
+
+export type ConnectorCatalogueStatus =
+  | "active"
+  | "available"
+  | "coming_soon"
+  | "draft";
 
 export type ConnectorCapability =
   | "read"
