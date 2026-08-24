@@ -15,6 +15,8 @@ import { api } from "../api";
 import { formatRelativeTime } from "../lib/format";
 import { usePortalCompany } from "./usePortalCompany";
 
+const INFRA_MCP = "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp";
+
 export default function PortalAiConnectionsPage() {
   const { company, loading, error } = usePortalCompany();
   const [connections, setConnections] = useState<
@@ -56,11 +58,13 @@ export default function PortalAiConnectionsPage() {
         clientType,
         token: result.token,
         endpoint: result.gatewayEndpoint,
-        mcpEndpoint:
-          result.mcpEndpoint ??
-          "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp",
+        mcpEndpoint: result.mcpEndpoint ?? INFRA_MCP,
       });
-      toast(`${clientType} connected`);
+      toast(
+        clientType === "chatgpt"
+          ? "ChatGPT token issued — update ChatGPT to the INFRA MCP URL only"
+          : `${clientType} connected`,
+      );
       await refresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Connection failed";
@@ -80,27 +84,44 @@ export default function PortalAiConnectionsPage() {
     <>
       <PageHeader
         title="AI connections"
-        description="Give authorised staff access to company systems through ChatGPT, Claude, and other AI clients."
+        description="AI clients must use the INFRA MCP facade. Direct company MCP access is locked."
       />
+
+      <Notice tone="warning">
+        <strong>Mandatory routing</strong>
+        <p style={{ margin: "8px 0 0" }}>
+          ChatGPT must use only:
+        </p>
+        <code className="mono" style={{ display: "block", wordBreak: "break-all", marginTop: 8 }}>
+          {INFRA_MCP}
+        </code>
+        <p className="muted small" style={{ marginTop: 8 }}>
+          The public company MCP URL now returns <strong>401 Unauthorized</strong> without the
+          INFRA-held secret. Remove any direct <code className="mono">caddington-mcp…</code>{" "}
+          connector from ChatGPT or answers will fail and no INFRA usage will be recorded.
+        </p>
+      </Notice>
 
       {loadError ? <Notice tone="danger">{loadError}</Notice> : null}
 
       {tokenReveal ? (
         <Notice tone="success">
-          <strong>{tokenReveal.clientType} connected</strong>
+          <strong>{tokenReveal.clientType} token ready</strong>
           <p style={{ margin: "8px 0" }}>
-            Copy this access token now — it will not be shown again.
+            Copy this access token now — it will not be shown again. Then in ChatGPT set the MCP
+            server URL to the INFRA endpoint below and remove any direct company MCP URL.
           </p>
+          <div className="muted small">Bearer token</div>
           <code className="mono" style={{ display: "block", wordBreak: "break-all" }}>
             {tokenReveal.token}
           </code>
-          <p style={{ margin: "12px 0 8px" }}>
-            Point ChatGPT at the <strong>INFRA MCP endpoint</strong> (not the company MCP URL):
-          </p>
+          <div className="muted small" style={{ marginTop: 12 }}>
+            INFRA MCP URL (only allowed endpoint)
+          </div>
           <code className="mono" style={{ display: "block", wordBreak: "break-all" }}>
             {tokenReveal.mcpEndpoint}
           </code>
-          <AdvancedDetails label="REST execute endpoint">
+          <AdvancedDetails label="REST execute endpoint (optional)">
             <code className="mono">{tokenReveal.endpoint}</code>
           </AdvancedDetails>
         </Notice>
@@ -124,25 +145,21 @@ export default function PortalAiConnectionsPage() {
               <div className="muted small">
                 {conn.lastUsedAt
                   ? `Last activity ${formatRelativeTime(conn.lastUsedAt)}`
-                  : "No recent activity"}
+                  : "No recent activity through INFRA"}
               </div>
               <div className="connector-card-actions">
                 <Button
                   type="button"
                   variant={conn.status === "connected" ? "secondary" : "primary"}
                   size="sm"
-                  disabled={
-                    conn.status === "coming_soon" ||
-                    conn.status === "connected" ||
-                    busyType === conn.clientType
-                  }
+                  disabled={conn.status === "coming_soon" || busyType === conn.clientType}
                   loading={busyType === conn.clientType}
                   onClick={() => void connect(conn.clientType)}
                 >
                   {conn.status === "coming_soon"
                     ? "Coming soon"
                     : conn.status === "connected"
-                      ? "Connected"
+                      ? "Reconnect / new token"
                       : "Connect"}
                 </Button>
               </div>
@@ -150,21 +167,12 @@ export default function PortalAiConnectionsPage() {
                 <AdvancedDetails label="Connection endpoints">
                   {conn.mcpEndpoint ? (
                     <>
-                      <div className="muted small">INFRA MCP (required for ChatGPT metering)</div>
+                      <div className="muted small">INFRA MCP (required)</div>
                       <code className="mono small">{conn.mcpEndpoint}</code>
                     </>
                   ) : null}
-                  {conn.gatewayEndpoint ? (
-                    <>
-                      <div className="muted small" style={{ marginTop: 8 }}>
-                        REST execute
-                      </div>
-                      <code className="mono small">{conn.gatewayEndpoint}</code>
-                    </>
-                  ) : null}
                   <p className="muted small" style={{ marginTop: 8 }}>
-                    Do not point ChatGPT at the company MCP URL directly — that bypasses INFRA
-                    metering and permissions.
+                    Direct company MCP is locked. Only this INFRA URL will search, meter, and bill.
                   </p>
                 </AdvancedDetails>
               ) : null}

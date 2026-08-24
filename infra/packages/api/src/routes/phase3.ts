@@ -623,6 +623,26 @@ phase3.post(
     }
 
     const mcps = await listMcpEnvironments(c.env.DB, company.id);
+    const mcpEndpoint =
+      "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp";
+    const gatewayEndpoint =
+      "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/execute";
+
+    // Disable any previous identity for this AI connection before issuing a new token.
+    const existing = await c.env.DB.prepare(
+      `SELECT service_identity_id FROM ai_client_connections
+       WHERE company_id = ? AND client_type = ?`,
+    )
+      .bind(company.id, clientType)
+      .first();
+    if (existing?.service_identity_id) {
+      await setServiceIdentityStatus(
+        c.env.DB,
+        String(existing.service_identity_id),
+        "disabled",
+      );
+    }
+
     const created = await createServiceIdentity(c.env.DB, {
       companyId: company.id,
       name: `${company.name} ${clientType === "chatgpt" ? "ChatGPT" : "Claude"}`,
@@ -631,28 +651,55 @@ phase3.post(
       mcpEnvironmentId: mcps[0]?.id ?? null,
     });
 
+    const setupNotes =
+      `REQUIRED: Connect ${clientType === "chatgpt" ? "ChatGPT" : "Claude"} to ${mcpEndpoint} with Authorization: Bearer <token>. ` +
+      `Direct company MCP URLs are blocked (401 Unauthorized) and will not work. ` +
+      `Remove any caddington-mcp / company MCP connector from the AI client.`;
+
     await c.env.DB.prepare(
       `UPDATE ai_client_connections
-       SET status = 'connected', service_identity_id = ?, updated_at = ?
+       SET status = 'connected', service_identity_id = ?, setup_notes = ?,
+           gateway_path = ?, updated_at = ?
        WHERE company_id = ? AND client_type = ?`,
     )
-      .bind(created.identity.id, nowIso(), company.id, clientType)
+      .bind(
+        created.identity.id,
+        setupNotes,
+        "/api/gateway/v1/mcp",
+        nowIso(),
+        company.id,
+        clientType,
+      )
       .run();
+
+    await recordAuditEvent(c.env.DB, {
+      companyId: company.id,
+      eventType: "company.accessed",
+      actor: c.get("user").email,
+      resourceType: "ai_connection",
+      resourceId: clientType,
+      detail: {
+        stage: "ai_connection.token_issued",
+        mcpEndpoint,
+        identityId: created.identity.id,
+        previousIdentityDisabled: Boolean(existing?.service_identity_id),
+      },
+    });
 
     return c.json({
       clientType,
       status: "connected",
       identity: created.identity,
       token: created.token,
-      gatewayEndpoint:
-        "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/execute",
-      mcpEndpoint:
-        "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp",
+      gatewayEndpoint,
+      mcpEndpoint,
       setup: {
-        preferred: "Connect ChatGPT/Claude MCP to mcpEndpoint with Bearer token",
+        preferred: "Connect ChatGPT/Claude MCP ONLY to mcpEndpoint with Bearer token",
         auth: "Authorization: Bearer <token>",
-        mcpUrl:
-          "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp",
+        mcpUrl: mcpEndpoint,
+        removeDirectCompanyMcp: true,
+        blockedDirectExample:
+          "https://caddington-mcp.daniel-dwyer123.workers.dev/mcp",
         restBody: {
           companyId: company.id,
           toolName: "search_company_knowledge",
@@ -660,7 +707,7 @@ phase3.post(
           clientRequestId: "unique-per-logical-request",
         },
         critical:
-          "Do NOT point ChatGPT at the company MCP URL directly — that bypasses INFRA metering and permissions.",
+          "Company MCP public access is locked. ChatGPT MUST use the INFRA MCP facade. Direct company MCP calls return 401.",
       },
       warning: "Store this token securely. It will not be shown again.",
     });
