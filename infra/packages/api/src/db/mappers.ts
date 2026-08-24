@@ -65,6 +65,21 @@ export function rowToMcpEnvironment(row: Record<string, unknown>): McpEnvironmen
       : null,
     lastHealthyAt: row.last_healthy_at ? String(row.last_healthy_at) : null,
     healthMessage: row.health_message ? String(row.health_message) : null,
+    lastSuccessfulRequestAt: row.last_successful_request_at
+      ? String(row.last_successful_request_at)
+      : null,
+    lastError: row.last_error ? String(row.last_error) : null,
+    lastLatencyMs:
+      row.last_latency_ms == null ? null : Number(row.last_latency_ms),
+    knowledgeDocumentCount:
+      row.knowledge_document_count == null
+        ? null
+        : Number(row.knowledge_document_count),
+    knowledgeChunkCount:
+      row.knowledge_chunk_count == null
+        ? null
+        : Number(row.knowledge_chunk_count),
+    lastSyncAt: row.last_sync_at ? String(row.last_sync_at) : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };

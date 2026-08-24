@@ -9,6 +9,13 @@ import {
   rowToMcpEnvironment,
   rowToSyncHistory,
 } from "../db/mappers";
+import {
+  callMcpTool,
+  extractKnowledgeCounts,
+  listMcpTools,
+  resolveMcpAuthHeader,
+} from "./mcp-client";
+import { getUsageSummary, recordUsageEvent } from "./usage";
 
 export async function listCompanies(db: D1Database, companyIds?: string[]) {
   if (companyIds && companyIds.length === 0) {
@@ -131,13 +138,19 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
   const company = await getCompanyById(db, companyId);
   if (!company) return null;
 
-  const [mcpEnvironments, connectorInstances, creditBalance, recentAuditEvents] =
-    await Promise.all([
-      listMcpEnvironments(db, companyId),
-      listConnectorInstances(db, companyId),
-      getCreditBalance(db, companyId),
-      listAuditEvents(db, companyId, 10),
-    ]);
+  const [
+    mcpEnvironments,
+    connectorInstances,
+    creditBalance,
+    recentAuditEvents,
+    usageSummary,
+  ] = await Promise.all([
+    listMcpEnvironments(db, companyId),
+    listConnectorInstances(db, companyId),
+    getCreditBalance(db, companyId),
+    listAuditEvents(db, companyId, 10),
+    getUsageSummary(db, companyId),
+  ]);
 
   return {
     company,
@@ -145,6 +158,7 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     connectorInstances,
     creditBalance,
     recentAuditEvents,
+    usageSummary,
   };
 }
 
@@ -275,6 +289,29 @@ export async function checkMcpHealth(
   }
 }
 
+export async function isToolAllowed(
+  db: D1Database,
+  mcpEnvironmentId: string,
+  toolName: string,
+): Promise<{ allowed: boolean; riskClass: string }> {
+  const row = await db
+    .prepare(
+      `SELECT enabled, risk_class FROM mcp_tool_allowlist
+       WHERE mcp_environment_id = ? AND tool_name = ?`,
+    )
+    .bind(mcpEnvironmentId, toolName)
+    .first();
+
+  if (!row) {
+    return { allowed: false, riskClass: "high_risk" };
+  }
+
+  return {
+    allowed: Boolean(row.enabled),
+    riskClass: String(row.risk_class ?? "low_risk"),
+  };
+}
+
 export async function runMcpHealthCheck(
   env: Env,
   mcpId: string,
@@ -294,52 +331,339 @@ export async function runMcpHealthCheck(
       message: validation.reason ?? "Endpoint validation failed",
       latencyMs: 0,
       checkedAt: nowIso(),
+      authConfigured: false,
     };
   }
 
-  const result = await checkMcpHealth(mcp.endpointUrl, env.ENVIRONMENT);
   const checkedAt = nowIso();
-  const status =
-    result.status === "healthy"
-      ? "healthy"
-      : result.status === "degraded"
-        ? "degraded"
-        : "unreachable";
+  const { authConfigured } = resolveMcpAuthHeader(env, mcp.authSecretRef);
 
-  await env.DB.prepare(
-    `UPDATE mcp_environments
-     SET status = ?, last_health_check_at = ?, last_healthy_at = ?, health_message = ?, updated_at = ?
-     WHERE id = ?`,
-  )
-    .bind(
-      status,
-      checkedAt,
-      result.status === "healthy" ? checkedAt : mcp.lastHealthyAt,
-      result.message,
-      checkedAt,
-      mcpId,
+  try {
+    const tools = await listMcpTools(env, mcp.endpointUrl, mcp.authSecretRef);
+    const health = await callMcpTool(env, {
+      endpointUrl: mcp.endpointUrl,
+      authSecretRef: mcp.authSecretRef,
+      toolName: "system_health",
+      arguments: {},
+    });
+
+    let documentCount: number | null = null;
+    let chunkCount: number | null = null;
+    try {
+      const summary = await callMcpTool(env, {
+        endpointUrl: mcp.endpointUrl,
+        authSecretRef: mcp.authSecretRef,
+        toolName: "database_summary",
+        arguments: {},
+      });
+      const counts = extractKnowledgeCounts(summary.textContent);
+      documentCount = counts.documentCount;
+      chunkCount = counts.chunkCount;
+    } catch {
+      // Optional enrichment — health still succeeds without summary
+    }
+
+    let mcpVersion = mcp.mcpVersion;
+    let healthMessage = "MCP tools reachable";
+    try {
+      if (health.textContent) {
+        const parsed = JSON.parse(health.textContent) as {
+          status?: string;
+          mcp?: { version?: string; name?: string };
+        };
+        if (parsed.mcp?.version) mcpVersion = parsed.mcp.version;
+        healthMessage = `MCP ${parsed.status ?? "healthy"} · ${tools.tools.length} tools`;
+      }
+    } catch {
+      healthMessage = `MCP tools reachable · ${tools.tools.length} tools`;
+    }
+
+    const latencyMs = health.latencyMs;
+    const status = "healthy" as const;
+
+    await env.DB.prepare(
+      `UPDATE mcp_environments
+       SET status = ?, last_health_check_at = ?, last_healthy_at = ?, health_message = ?,
+           mcp_version = ?, capabilities_json = ?, last_successful_request_at = ?,
+           last_error = NULL, last_latency_ms = ?, knowledge_document_count = ?,
+           knowledge_chunk_count = ?, updated_at = ?
+       WHERE id = ?`,
     )
-    .run();
+      .bind(
+        status,
+        checkedAt,
+        checkedAt,
+        healthMessage,
+        mcpVersion,
+        JSON.stringify(tools.tools.map((tool) => tool.name)),
+        checkedAt,
+        latencyMs,
+        documentCount,
+        chunkCount,
+        checkedAt,
+        mcpId,
+      )
+      .run();
 
+    await recordAuditEvent(env.DB, {
+      companyId: mcp.companyId,
+      eventType: "mcp.health_checked",
+      actor,
+      resourceType: "mcp",
+      resourceId: mcpId,
+      detail: {
+        status,
+        latencyMs,
+        message: healthMessage,
+        authConfigured,
+        toolCount: tools.tools.length,
+        knowledgeDocumentCount: documentCount,
+      },
+    });
+
+    return {
+      mcpId,
+      status,
+      message: healthMessage,
+      latencyMs,
+      checkedAt,
+      authConfigured,
+      mcpVersion,
+      tools: tools.tools.map((tool) => tool.name),
+      knowledgeDocumentCount: documentCount,
+      knowledgeChunkCount: chunkCount,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "MCP health check failed";
+
+    await env.DB.prepare(
+      `UPDATE mcp_environments
+       SET status = ?, last_health_check_at = ?, health_message = ?,
+           last_error = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+      .bind("unreachable", checkedAt, message, message, checkedAt, mcpId)
+      .run();
+
+    await recordAuditEvent(env.DB, {
+      companyId: mcp.companyId,
+      eventType: "mcp.health_checked",
+      actor,
+      resourceType: "mcp",
+      resourceId: mcpId,
+      detail: { status: "unreachable", message, authConfigured },
+    });
+
+    return {
+      mcpId,
+      status: "unreachable" as const,
+      message,
+      latencyMs: 0,
+      checkedAt,
+      authConfigured,
+    };
+  }
+}
+
+const READ_ONLY_DEFAULT_TOOLS = [
+  "search_company_knowledge",
+  "system_health",
+  "database_summary",
+  "get_knowledge_document",
+] as const;
+
+export async function executeRegisteredMcpTool(
+  env: Env,
+  input: {
+    mcpId: string;
+    toolName: string;
+    arguments?: Record<string, unknown>;
+    actorUserId: string;
+    actorEmail: string;
+    sourceClient?: string;
+  },
+) {
+  const mcp = await getMcpEnvironment(env.DB, input.mcpId);
+  if (!mcp) return { error: "MCP environment not found", status: 404 as const };
+
+  const validation = validateRegisteredMcpEndpoint(
+    mcp.endpointUrl,
+    env.ENVIRONMENT,
+  );
+  if (!validation.valid) {
+    return {
+      error: validation.reason ?? "Invalid MCP endpoint",
+      status: 400 as const,
+    };
+  }
+
+  await ensureDefaultToolAllowlist(env.DB, mcp.companyId, mcp.id);
+
+  const allow = await isToolAllowed(env.DB, mcp.id, input.toolName);
+  if (!allow.allowed) {
+    await recordAuditEvent(env.DB, {
+      companyId: mcp.companyId,
+      eventType: "permission.denied",
+      actor: input.actorEmail,
+      resourceType: "mcp_tool",
+      resourceId: input.toolName,
+      detail: { mcpId: mcp.id, reason: "tool_not_allowlisted" },
+    });
+    return {
+      error: "Tool is not allowlisted for this MCP environment",
+      status: 403 as const,
+    };
+  }
+
+  const correlationId = newId("corr");
   await recordAuditEvent(env.DB, {
     companyId: mcp.companyId,
-    eventType: "mcp.health_checked",
-    actor,
-    resourceType: "mcp",
-    resourceId: mcpId,
+    eventType: "mcp.execution_requested",
+    actor: input.actorEmail,
+    resourceType: "mcp_tool",
+    resourceId: input.toolName,
     detail: {
-      status,
-      latencyMs: result.latencyMs,
-      message: result.message,
+      mcpId: mcp.id,
+      correlationId,
+      argumentKeys: Object.keys(input.arguments ?? {}),
     },
   });
 
-  return {
-    mcpId,
-    ...result,
-    status,
-    checkedAt,
-  };
+  try {
+    const execution = await callMcpTool(env, {
+      endpointUrl: mcp.endpointUrl,
+      authSecretRef: mcp.authSecretRef,
+      toolName: input.toolName,
+      arguments: input.arguments,
+    });
+
+    const checkedAt = nowIso();
+    await env.DB.prepare(
+      `UPDATE mcp_environments
+       SET last_successful_request_at = ?, last_latency_ms = ?, last_error = NULL, updated_at = ?
+       WHERE id = ?`,
+    )
+      .bind(checkedAt, execution.latencyMs, checkedAt, mcp.id)
+      .run();
+
+    await recordUsageEvent(env.DB, {
+      companyId: mcp.companyId,
+      userId: input.actorUserId,
+      actorEmail: input.actorEmail,
+      resourceType: "mcp_tool",
+      resourceId: input.toolName,
+      mcpEnvironmentId: mcp.id,
+      toolName: input.toolName,
+      action: input.toolName,
+      riskClass: allow.riskClass,
+      success: true,
+      durationMs: execution.latencyMs,
+      sourceClient: input.sourceClient ?? "infra-admin",
+      correlationId,
+      underlyingCostCents: null,
+      customerChargeCents: null,
+      metadata: {
+        authConfigured: execution.authConfigured,
+      },
+    });
+
+    await recordAuditEvent(env.DB, {
+      companyId: mcp.companyId,
+      eventType: "mcp.execution_succeeded",
+      actor: input.actorEmail,
+      resourceType: "mcp_tool",
+      resourceId: input.toolName,
+      detail: {
+        mcpId: mcp.id,
+        correlationId,
+        latencyMs: execution.latencyMs,
+        authConfigured: execution.authConfigured,
+      },
+    });
+
+    let parsedText: unknown = execution.textContent;
+    if (execution.textContent) {
+      try {
+        parsedText = JSON.parse(execution.textContent);
+      } catch {
+        parsedText = execution.textContent;
+      }
+    }
+
+    return {
+      status: 200 as const,
+      data: {
+        correlationId,
+        mcpId: mcp.id,
+        companyId: mcp.companyId,
+        toolName: input.toolName,
+        latencyMs: execution.latencyMs,
+        authConfigured: execution.authConfigured,
+        riskClass: allow.riskClass,
+        result: parsedText,
+      },
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "MCP execution failed";
+    const checkedAt = nowIso();
+
+    await env.DB.prepare(
+      `UPDATE mcp_environments
+       SET last_error = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+      .bind(message, checkedAt, mcp.id)
+      .run();
+
+    await recordUsageEvent(env.DB, {
+      companyId: mcp.companyId,
+      userId: input.actorUserId,
+      actorEmail: input.actorEmail,
+      resourceType: "mcp_tool",
+      resourceId: input.toolName,
+      mcpEnvironmentId: mcp.id,
+      toolName: input.toolName,
+      action: input.toolName,
+      riskClass: allow.riskClass,
+      success: false,
+      durationMs: null,
+      sourceClient: input.sourceClient ?? "infra-admin",
+      correlationId,
+      metadata: { error: message },
+    });
+
+    await recordAuditEvent(env.DB, {
+      companyId: mcp.companyId,
+      eventType: "mcp.execution_failed",
+      actor: input.actorEmail,
+      resourceType: "mcp_tool",
+      resourceId: input.toolName,
+      detail: { mcpId: mcp.id, correlationId, error: message },
+    });
+
+    return { status: 502 as const, error: message, correlationId };
+  }
+}
+
+export async function ensureDefaultToolAllowlist(
+  db: D1Database,
+  companyId: string,
+  mcpEnvironmentId: string,
+) {
+  const now = nowIso();
+  for (const toolName of READ_ONLY_DEFAULT_TOOLS) {
+    const id = newId("allow");
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO mcp_tool_allowlist
+          (id, company_id, mcp_environment_id, tool_name, risk_class, enabled, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'low_risk', 1, ?, ?)`,
+      )
+      .bind(id, companyId, mcpEnvironmentId, toolName, now, now)
+      .run();
+  }
 }
 
 export async function getPlatformSummary(

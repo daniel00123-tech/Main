@@ -8,6 +8,8 @@ import type {
   InfraUser,
   McpEnvironment,
   ToolAction,
+  UsageRecord,
+  UsageSummary,
 } from "@infra/shared";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
@@ -38,6 +40,23 @@ export interface RolePresetResponse {
   description: string;
   allowedActions: ToolAction[];
   deniedByDefault: ToolAction[];
+}
+
+export interface CompanyUsageResponse {
+  companyId: string;
+  summary: UsageSummary;
+  records: UsageRecord[];
+}
+
+export interface McpExecuteResult {
+  correlationId: string;
+  mcpId: string;
+  companyId: string;
+  toolName: string;
+  latencyMs: number;
+  authConfigured: boolean;
+  riskClass: string;
+  result: unknown;
 }
 
 async function fetchJson<T>(
@@ -98,6 +117,10 @@ export const api = {
   getCompany: (slug: string) => fetchJson<Company>(`/api/companies/${slug}`),
   getCompanyOverview: (slug: string) =>
     fetchJson<CompanyOverview>(`/api/companies/${slug}/overview`),
+  getCompanyUsage: (slug: string, limit = 50) =>
+    fetchJson<CompanyUsageResponse>(
+      `/api/companies/${slug}/usage?limit=${encodeURIComponent(String(limit))}`,
+    ),
   getConnectorCatalogue: () =>
     fetchJson<ConnectorDefinition[]>("/api/connectors/catalogue"),
   getMcpEnvironments: (companyId?: string) => {
@@ -121,5 +144,18 @@ export const api = {
   runMcpHealthCheck: (id: string) =>
     fetchJson<Record<string, unknown>>(`/api/mcp-environments/${id}/health-check`, {
       method: "POST",
+    }),
+  getMcpAllowedTools: (id: string) =>
+    fetchJson<Array<{ toolName: string; riskClass: string; enabled: boolean }>>(
+      `/api/mcp-environments/${id}/allowed-tools`,
+    ),
+  executeMcpTool: (
+    id: string,
+    toolName: string,
+    args?: Record<string, unknown>,
+  ) =>
+    fetchJson<McpExecuteResult>(`/api/mcp-environments/${id}/execute`, {
+      method: "POST",
+      body: JSON.stringify({ toolName, arguments: args ?? {} }),
     }),
 };

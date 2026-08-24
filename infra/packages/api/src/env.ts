@@ -6,6 +6,9 @@ export interface Env {
   COOKIE_CROSS_ORIGIN?: string;
   INITIAL_PLATFORM_ADMIN_EMAIL?: string;
   INITIAL_PLATFORM_ADMIN_PASSWORD?: string;
+  /** Optional MCP auth secret referenced by mcp_environments.auth_secret_ref */
+  CADDINGTON_MCP_AUTH_TOKEN?: string;
+  [key: string]: unknown;
 }
 
 export function parseAllowedOrigins(value: string): string[] {

@@ -30,6 +30,11 @@ export type AuditEventType =
   | "auth.logout"
   | "auth.password_setup_completed"
   | "auth.password_setup_failed"
+  | "mcp.execution_requested"
+  | "mcp.execution_succeeded"
+  | "mcp.execution_failed"
+  | "mcp.tools_listed"
+  | "connector.accessed"
   | "company.accessed"
   | "company.created"
   | "company.updated"
@@ -87,6 +92,12 @@ export interface McpEnvironment {
   lastHealthCheckAt: string | null;
   lastHealthyAt: string | null;
   healthMessage: string | null;
+  lastSuccessfulRequestAt: string | null;
+  lastError: string | null;
+  lastLatencyMs: number | null;
+  knowledgeDocumentCount: number | null;
+  knowledgeChunkCount: number | null;
+  lastSyncAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -206,6 +217,26 @@ export interface UsageRecord {
   unit: string;
   recordedAt: string;
   metadata: Record<string, unknown>;
+  userId?: string | null;
+  actorEmail?: string | null;
+  mcpEnvironmentId?: string | null;
+  connectorInstanceId?: string | null;
+  toolName?: string | null;
+  action?: string | null;
+  riskClass?: string | null;
+  success?: boolean;
+  durationMs?: number | null;
+  sourceClient?: string | null;
+  correlationId?: string | null;
+  underlyingCostCents?: number | null;
+  customerChargeCents?: number | null;
+}
+
+export interface UsageSummary {
+  requestsToday: number;
+  requestsThisMonth: number;
+  successfulThisMonth: number;
+  failedThisMonth: number;
 }
 
 export interface AuditEvent {
@@ -308,4 +339,5 @@ export interface CompanyOverview {
   connectorInstances: ConnectorInstance[];
   creditBalance: CreditBalance | null;
   recentAuditEvents: AuditEvent[];
+  usageSummary?: UsageSummary;
 }

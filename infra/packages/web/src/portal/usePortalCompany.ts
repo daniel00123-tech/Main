@@ -11,14 +11,22 @@ export function usePortalCompany() {
   const [error, setError] = useState<string | null>(null);
 
   const membership = useMemo(() => {
-    if (!user || user.isPlatformAdmin) return user?.memberships[0] ?? null;
-    return user.memberships[0] ?? null;
+    if (!user?.memberships?.length) return null;
+    // Prefer Caddington when present (first operational tenant), else first membership
+    const caddington = user.memberships.find(
+      (item) => item.companyId === "co_caddington",
+    );
+    return caddington ?? user.memberships[0];
   }, [user]);
 
   useEffect(() => {
     if (!membership) {
       setLoading(false);
-      setError("No company membership found for this account.");
+      setError(
+        user?.isPlatformAdmin
+          ? "No company membership found. Platform administrators need a company membership to open the company portal."
+          : "No company membership found for this account.",
+      );
       return;
     }
 
@@ -39,7 +47,7 @@ export function usePortalCompany() {
         setLoading(false);
       }
     })();
-  }, [membership]);
+  }, [membership, user?.isPlatformAdmin]);
 
   return {
     user,

@@ -16,5 +16,6 @@ COOKIE_CROSS_ORIGIN = "true"
 
 # Secrets (set via `wrangler secret put` — never commit):
 # SESSION_SECRET
+# CADDINGTON_MCP_AUTH_TOKEN (optional; referenced by mcp_environments.auth_secret_ref)
 # INITIAL_PLATFORM_ADMIN_EMAIL (temporary bootstrap only)
 # INITIAL_PLATFORM_ADMIN_PASSWORD (temporary bootstrap only)

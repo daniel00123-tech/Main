@@ -1,7 +1,15 @@
-import { EL_TENANT } from "./mock-data";
-import { PageHeader, SectionCard } from "../components";
+import { PageHeader, SectionCard, StatusBadge } from "../components";
+import { usePortalCompany } from "./usePortalCompany";
+import { ErrorState, LoadingState } from "../components";
 
 export default function PortalSettingsPage() {
+  const { company, membership, loading, error } = usePortalCompany();
+
+  if (loading) return <LoadingState />;
+  if (error || !company) {
+    return <ErrorState message={error ?? "Settings unavailable"} />;
+  }
+
   return (
     <>
       <PageHeader title="Settings" subtitle="Company profile and preferences." />
@@ -12,23 +20,30 @@ export default function PortalSettingsPage() {
             <tbody>
               <tr>
                 <td>Company name</td>
-                <td>{EL_TENANT.company.name}</td>
+                <td>{company.name}</td>
               </tr>
               <tr>
                 <td>Domain</td>
-                <td>{EL_TENANT.company.domain}</td>
+                <td>{company.primaryDomain ?? "—"}</td>
               </tr>
               <tr>
                 <td>Status</td>
-                <td>{EL_TENANT.company.status}</td>
+                <td>
+                  <StatusBadge value={company.status} />
+                </td>
+              </tr>
+              <tr>
+                <td>Your role</td>
+                <td>{membership?.role?.replace(/_/g, " ") ?? "—"}</td>
               </tr>
             </tbody>
           </table>
         </SectionCard>
 
-        <SectionCard title="White-labelling (future)">
+        <SectionCard title="Advanced (future)">
           <p className="muted">
-            Company logo, brand colours, and custom domain (e.g. ai.el.example) — not in v0.1.
+            White-labelling, custom domains, and advanced MCP configuration will appear here.
+            Technical MCP details remain available to platform administrators.
           </p>
         </SectionCard>
       </div>

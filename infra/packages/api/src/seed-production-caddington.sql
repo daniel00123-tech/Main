@@ -24,7 +24,7 @@ INSERT OR REPLACE INTO mcp_environments (
   NULL,
   NULL,
   '["search","read"]',
-  NULL,
+  'CADDINGTON_MCP_AUTH_TOKEN',
   NULL,
   NULL,
   'Awaiting first authenticated health check',

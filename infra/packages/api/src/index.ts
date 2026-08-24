@@ -4,6 +4,7 @@ import { CONNECTOR_CATALOGUE } from "@infra/shared";
 import {
   clearSessionCookie,
   requireAuth,
+  requirePlatformAdmin,
   setSessionCookie,
 } from "./auth/middleware";
 import {
@@ -31,6 +32,8 @@ import {
   userHasCompanyAccess,
 } from "./permissions/service";
 import {
+  ensureDefaultToolAllowlist,
+  executeRegisteredMcpTool,
   getCompanyById,
   getCompanyBySlug,
   getCompanyOverview,
@@ -46,6 +49,8 @@ import {
   recordAuditEvent,
   runMcpHealthCheck,
 } from "./services/control-plane";
+import { getUsageSummary, listUsageRecords } from "./services/usage";
+import { listMcpTools } from "./services/mcp-client";
 import { verifyPassword } from "./auth/password";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -347,6 +352,159 @@ app.post("/api/mcp-environments/:id/health-check", requireAuth, async (c) => {
   );
   if (!result) return c.json({ error: "MCP environment not found" }, 404);
   return c.json(result);
+});
+
+app.get(
+  "/api/mcp-environments/:id/allowed-tools",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    const environment = await getMcpEnvironment(c.env.DB, c.req.param("id"));
+    if (!environment) return c.json({ error: "MCP environment not found" }, 404);
+
+    await ensureDefaultToolAllowlist(
+      c.env.DB,
+      environment.companyId,
+      environment.id,
+    );
+
+    const rows = await c.env.DB.prepare(
+      `SELECT tool_name, risk_class, enabled FROM mcp_tool_allowlist
+       WHERE mcp_environment_id = ? AND enabled = 1
+       ORDER BY tool_name ASC`,
+    )
+      .bind(environment.id)
+      .all();
+
+    return c.json(
+      (rows.results ?? []).map((row) => ({
+        toolName: String(row.tool_name),
+        riskClass: String(row.risk_class),
+        enabled: Boolean(row.enabled),
+      })),
+    );
+  },
+);
+
+app.post(
+  "/api/mcp-environments/:id/execute",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    const environment = await getMcpEnvironment(c.env.DB, c.req.param("id"));
+    if (!environment) return c.json({ error: "MCP environment not found" }, 404);
+
+    const body = await c.req.json<{
+      toolName?: string;
+      arguments?: Record<string, unknown>;
+    }>();
+
+    if (!body.toolName || typeof body.toolName !== "string") {
+      return c.json({ error: "toolName is required" }, 400);
+    }
+
+    const user = c.get("user");
+    const result = await executeRegisteredMcpTool(c.env, {
+      mcpId: environment.id,
+      toolName: body.toolName,
+      arguments: body.arguments,
+      actorUserId: user.userId,
+      actorEmail: user.email,
+      sourceClient: "infra-admin-test",
+    });
+
+    if (result.status !== 200) {
+      return c.json(
+        {
+          error: result.error,
+          correlationId:
+            "correlationId" in result ? result.correlationId : undefined,
+        },
+        result.status,
+      );
+    }
+
+    return c.json(result.data);
+  },
+);
+
+app.get(
+  "/api/mcp-environments/:id/remote-tools",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    const environment = await getMcpEnvironment(c.env.DB, c.req.param("id"));
+    if (!environment) return c.json({ error: "MCP environment not found" }, 404);
+
+    try {
+      const tools = await listMcpTools(
+        c.env,
+        environment.endpointUrl,
+        environment.authSecretRef,
+      );
+      await recordAuditEvent(c.env.DB, {
+        companyId: environment.companyId,
+        eventType: "mcp.tools_listed",
+        actor: c.get("user").email,
+        resourceType: "mcp",
+        resourceId: environment.id,
+        detail: { toolCount: tools.tools.length },
+      });
+      return c.json({
+        tools: tools.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description ?? null,
+        })),
+        latencyMs: tools.latencyMs,
+        authConfigured: tools.authConfigured,
+      });
+    } catch (error) {
+      return c.json(
+        {
+          error:
+            error instanceof Error ? error.message : "Failed to list MCP tools",
+        },
+        502,
+      );
+    }
+  },
+);
+
+app.get("/api/companies/:slug/usage", requireAuth, async (c) => {
+  const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+
+  if (!userHasCompanyAccess(c.get("user"), company.id)) {
+    await recordAuditEvent(c.env.DB, {
+      companyId: company.id,
+      eventType: "permission.denied",
+      actor: c.get("user").email,
+      resourceType: "usage",
+      resourceId: company.id,
+      detail: { route: "GET /api/companies/:slug/usage" },
+    });
+    return c.json({ error: "Access to this company is denied" }, 403);
+  }
+
+  const limit = Number(c.req.query("limit") ?? "50");
+  const [records, summary] = await Promise.all([
+    listUsageRecords(c.env.DB, company.id, limit),
+    getUsageSummary(c.env.DB, company.id),
+  ]);
+
+  return c.json({ companyId: company.id, summary, records });
+});
+
+app.get("/api/companies/:slug/usage/summary", requireAuth, async (c) => {
+  const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+
+  if (!userHasCompanyAccess(c.get("user"), company.id)) {
+    return c.json({ error: "Access to this company is denied" }, 403);
+  }
+
+  const summary = await getUsageSummary(c.env.DB, company.id);
+  return c.json(summary);
 });
 
 app.get("/api/connector-instances", requireAuth, async (c) => {

@@ -97,9 +97,32 @@ export function AdminAuthShell() {
 }
 
 export function PortalAuthShell() {
-  return (
-    <RequireAuth>
-      <Outlet />
-    </RequireAuth>
-  );
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div className="card muted">Loading session...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/portal/login" replace />;
+  }
+
+  if (!user.memberships.length) {
+    return (
+      <div className="card" style={{ margin: 40, maxWidth: 480 }}>
+        <h2>Company portal</h2>
+        <p className="muted">
+          This account has no company membership. Platform administrators need a company
+          membership to open a company portal.
+        </p>
+        {user.isPlatformAdmin ? (
+          <a className="button button-primary" href="/">
+            Back to platform admin
+          </a>
+        ) : null}
+      </div>
+    );
+  }
+
+  return <Outlet />;
 }
