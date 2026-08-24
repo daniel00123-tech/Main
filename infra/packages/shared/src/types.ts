@@ -181,12 +181,38 @@ export type ConnectorCategory =
 export type ConnectorCapability =
   | "read"
   | "search"
-  | "write"
-  | "sync"
+  | "analyse"
+  | "create"
+  | "update"
+  | "delete"
+  | "send"
+  | "batch"
   | "webhook"
+  | "sync"
   | "index"
   | "export"
   | "live_query";
+
+export type CapabilityRiskClass =
+  | "low_risk"
+  | "write"
+  | "delete"
+  | "batch_write"
+  | "external_send"
+  | "financial_action"
+  | "high_risk";
+
+export interface CapabilityDefinition {
+  capability: ConnectorCapability;
+  riskClass: CapabilityRiskClass;
+}
+
+export type PlatformRole =
+  | "standard_user"
+  | "supervisor"
+  | "administrator"
+  | "site_administrator"
+  | "platform_owner";
 
 export type SyncMode =
   | "manual"

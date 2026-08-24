@@ -1,28 +1,8 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { Company } from "@infra/shared";
-import { api } from "../api";
-import {
-  ErrorState,
-  LoadingState,
-  PageHeader,
-  StatusBadge,
-} from "../components";
+import { MOCK_COMPANIES } from "../mock-data";
+import { PageHeader, StatusBadge, formatCurrency } from "../components";
 
 export default function CompaniesPage() {
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api
-      .getCompanies()
-      .then(setCompanies)
-      .catch((err: Error) => setError(err.message));
-  }, []);
-
-  if (error) return <ErrorState message={error} />;
-  if (!companies.length) return <LoadingState />;
-
   return (
     <>
       <PageHeader
@@ -37,11 +17,13 @@ export default function CompaniesPage() {
               <th>Slug</th>
               <th>Status</th>
               <th>Domain</th>
-              <th>Notes</th>
+              <th>MCP</th>
+              <th>Connectors</th>
+              <th>Credit Balance</th>
             </tr>
           </thead>
           <tbody>
-            {companies.map((company) => (
+            {MOCK_COMPANIES.map((company) => (
               <tr key={company.id}>
                 <td>
                   <Link to={`/companies/${company.slug}`}>{company.name}</Link>
@@ -50,8 +32,14 @@ export default function CompaniesPage() {
                 <td>
                   <StatusBadge value={company.status} />
                 </td>
-                <td>{company.primaryDomain ?? "—"}</td>
-                <td className="muted">{company.notes ?? "—"}</td>
+                <td>{company.primaryDomain}</td>
+                <td>
+                  <StatusBadge value={company.mcpStatus} />
+                </td>
+                <td>
+                  {company.connectorSummary.connected}/{company.connectorSummary.total}
+                </td>
+                <td>{formatCurrency(company.creditBalanceCents)}</td>
               </tr>
             ))}
           </tbody>

@@ -208,6 +208,56 @@ button {
   padding: 14px 16px;
 }
 
+.warning-text {
+  color: #ffc457;
+}
+
+.warning-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.prototype-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #ffc457;
+  background: rgba(255, 196, 87, 0.12);
+  border: 1px solid rgba(255, 196, 87, 0.25);
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-bottom: 20px;
+}
+
+.tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.tab {
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #9aa8c7;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tab.active {
+  color: #e8edf5;
+  background: rgba(138, 180, 255, 0.15);
+  border-color: rgba(138, 180, 255, 0.35);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
 @media (max-width: 1100px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -219,7 +269,8 @@ button {
   }
 
   .grid-4,
-  .grid-2 {
+  .grid-2,
+  .grid-3 {
     grid-template-columns: 1fr;
   }
 }
