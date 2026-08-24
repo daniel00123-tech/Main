@@ -174,24 +174,64 @@ export function createCaddingtonMcpServer(env: Env): McpServer {
     "search_company_knowledge",
     {
       description:
-        "Semantic search across indexed company knowledge in Vectorize.",
+        "Hybrid semantic + lexical search across indexed company knowledge with optional metadata filters.",
       inputSchema: {
         query: z.string().min(1).describe("Natural language search query."),
         topK: z.number().int().min(1).max(20).optional(),
+        company: z.string().optional(),
+        project: z.string().optional(),
+        category: z.string().optional(),
+        document_type: z.string().optional(),
+        document_date: z.string().optional(),
+        source: z.string().optional(),
+        filename: z.string().optional(),
+        title: z.string().optional(),
+        includeNeighbourContext: z.boolean().optional(),
+        includeDiagnostics: z.boolean().optional(),
+        includeFullContent: z.boolean().optional(),
       },
     },
-    async ({ query, topK }) => {
+    async ({
+      query,
+      topK,
+      company,
+      project,
+      category,
+      document_type,
+      document_date,
+      source,
+      filename,
+      title,
+      includeNeighbourContext,
+      includeDiagnostics,
+      includeFullContent,
+    }) => {
       try {
-        const results = await searchCompanyKnowledge(env, query, topK ?? 5);
+        const filters = {
+          company,
+          project,
+          category,
+          document_type,
+          document_date,
+          source,
+          filename,
+          title,
+        };
+        const hasFilters = Object.values(filters).some(
+          (value) => value !== undefined && value !== ""
+        );
+
+        const response = await searchCompanyKnowledge(env, query, topK ?? 5, {
+          filters: hasFilters ? filters : undefined,
+          includeNeighbourContext,
+          includeDiagnostics,
+          includeFullContent,
+        });
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                { query, resultCount: results.length, results },
-                null,
-                2
-              ),
+              text: JSON.stringify(response, null, 2),
             },
           ],
         };

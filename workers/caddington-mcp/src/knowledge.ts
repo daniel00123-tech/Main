@@ -1,4 +1,3 @@
-import { EMBEDDING_MODEL } from "./constants";
 import {
   NoSearchableContentError,
   RequiresManualReviewError,
@@ -11,80 +10,40 @@ import {
   segmentMetadataToJson,
   segmentMetadataToVectorFields,
   type SegmentMetadata,
-  vectorFieldsToSegmentMetadata,
 } from "./document-segments";
+import { embedText } from "./knowledge-embed";
+import {
+  buildChunkSearchRecord,
+  vectorMetadataFromRecord,
+} from "./knowledge-metadata";
+import { deleteDocumentFtsRows, insertChunkFtsRow } from "./knowledge-fts";
+import {
+  searchCompanyKnowledgeHybrid,
+  type KnowledgeSearchOptions,
+  type KnowledgeSearchResponse,
+} from "./knowledge-search";
 import type { Env } from "./db";
 import { log } from "./logger";
 
-export interface KnowledgeSearchResult {
-  documentId: number;
-  externalId: string;
-  title: string;
-  chunkId: number;
-  chunkIndex: number;
-  score: number;
-  snippet: string;
-  metadata?: SegmentMetadata;
-}
-
-export async function embedText(env: Env, text: string): Promise<number[]> {
-  const response = await env.AI.run(EMBEDDING_MODEL, { text });
-  const data = (response as { data?: number[][] }).data;
-  if (!data?.[0]) {
-    throw new Error("Embedding model returned no vectors.");
-  }
-  return data[0];
-}
+export { embedText } from "./knowledge-embed";
+export type {
+  KnowledgeSearchOptions,
+  KnowledgeSearchResponse,
+  KnowledgeSearchResult,
+  KnowledgeSearchDiagnostics,
+  KnowledgeSearchRanking,
+} from "./knowledge-search";
 
 export async function searchCompanyKnowledge(
   env: Env,
   query: string,
-  topK = 5
-): Promise<KnowledgeSearchResult[]> {
-  if (!env.CADDINGTON_KNOWLEDGE_INDEX) {
-    throw new Error(
-      "Vectorize index is not available. Enable Vectorize and redeploy with bindings."
-    );
-  }
-  const vector = await embedText(env, query);
-  const matches = await env.CADDINGTON_KNOWLEDGE_INDEX.query(vector, {
+  topK = 5,
+  options?: Omit<KnowledgeSearchOptions, "topK">
+): Promise<KnowledgeSearchResponse> {
+  return searchCompanyKnowledgeHybrid(env, query, {
+    ...options,
     topK,
-    returnMetadata: "all",
   });
-
-  const results: KnowledgeSearchResult[] = [];
-  for (const match of matches.matches) {
-    const meta = match.metadata ?? {};
-    const documentId = Number(meta.document_id ?? 0);
-    const chunkId = Number(meta.chunk_id ?? 0);
-    const chunkIndex = Number(meta.chunk_index ?? 0);
-    const externalId = String(meta.external_id ?? "");
-    const title = String(meta.title ?? "");
-    const metadata = vectorFieldsToSegmentMetadata(meta);
-
-    let snippet = String(meta.snippet ?? "");
-    if (!snippet && chunkId > 0) {
-      const row = await env.CADDINGTON_BUSINESS_DATA.prepare(
-        "SELECT content FROM knowledge_chunks WHERE id = ?"
-      )
-        .bind(chunkId)
-        .first<{ content: string }>();
-      snippet = row?.content?.slice(0, 280) ?? "";
-    }
-
-    results.push({
-      documentId,
-      externalId,
-      title,
-      chunkId,
-      chunkIndex,
-      score: match.score ?? 0,
-      snippet,
-      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-    });
-  }
-
-  return results;
 }
 
 export async function getKnowledgeDocument(
@@ -182,7 +141,7 @@ export async function indexKnowledgeDocument(
     );
   }
   const doc = await env.CADDINGTON_BUSINESS_DATA.prepare(
-    "SELECT id, external_id, title, r2_key, mime_type, status FROM knowledge_documents WHERE id = ?"
+    "SELECT id, external_id, title, r2_key, mime_type, status, metadata FROM knowledge_documents WHERE id = ?"
   )
     .bind(documentId)
     .first<{
@@ -192,6 +151,7 @@ export async function indexKnowledgeDocument(
       r2_key: string;
       mime_type: string | null;
       status: string;
+      metadata: string | null;
     }>();
 
   if (!doc) throw new Error(`Document ${documentId} not found.`);
@@ -294,7 +254,22 @@ export async function indexKnowledgeDocument(
     )
       .bind(documentId)
       .run();
+    await deleteDocumentFtsRows(env, documentId);
 
+    const refreshedDoc = await env.CADDINGTON_BUSINESS_DATA.prepare(
+      "SELECT id, external_id, title, r2_key, mime_type, metadata FROM knowledge_documents WHERE id = ?"
+    )
+      .bind(documentId)
+      .first<{
+        id: number;
+        external_id: string;
+        title: string;
+        r2_key: string;
+        mime_type: string | null;
+        metadata: string | null;
+      }>();
+
+    const docForIndexing = refreshedDoc ?? doc;
     const vectors: VectorizeVector[] = [];
     let indexed = 0;
 
@@ -323,16 +298,24 @@ export async function indexKnowledgeDocument(
         .run();
 
       const chunkId = insert.meta.last_row_id;
+      const searchRecord = buildChunkSearchRecord(
+        {
+          id: chunkId,
+          document_id: documentId,
+          chunk_index: i,
+          content,
+          metadata: metadataJson === "{}" ? null : metadataJson,
+        },
+        docForIndexing
+      );
+
+      await insertChunkFtsRow(env, searchRecord);
+
       vectors.push({
         id: vectorId,
         values: embedding,
         metadata: {
-          document_id: String(documentId),
-          chunk_id: String(chunkId),
-          chunk_index: String(i),
-          external_id: doc.external_id,
-          title: doc.title,
-          snippet: content.slice(0, 280),
+          ...vectorMetadataFromRecord(searchRecord),
           ...segmentMetadataToVectorFields(chunkMetadata),
         },
       });

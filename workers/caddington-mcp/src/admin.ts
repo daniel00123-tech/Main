@@ -1,5 +1,6 @@
 import type { Env } from "./db";
 import { log } from "./logger";
+import { buildUploadMetadata } from "./knowledge-metadata";
 import { indexKnowledgeDocument } from "./knowledge";
 
 function json(data: unknown, status = 200): Response {
@@ -168,6 +169,13 @@ async function uploadKnowledgeDocument(
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const r2Key = `documents/${externalId}/${safeName}`;
   const bytes = await file.arrayBuffer();
+  const uploadMetadata = buildUploadMetadata(file.name, {
+    company: String(form.get("company") ?? "").trim(),
+    project: String(form.get("project") ?? "").trim(),
+    category: String(form.get("category") ?? "").trim(),
+    source: String(form.get("source") ?? "").trim(),
+    documentDate: String(form.get("document_date") ?? "").trim(),
+  });
 
   await env.CADDINGTON_KNOWLEDGE.put(r2Key, bytes, {
     httpMetadata: { contentType: file.type || "application/octet-stream" },
@@ -185,7 +193,7 @@ async function uploadKnowledgeDocument(
       r2Key,
       file.type || null,
       bytes.byteLength,
-      JSON.stringify({ originalFilename: file.name })
+      JSON.stringify(uploadMetadata)
     )
     .run();
 
