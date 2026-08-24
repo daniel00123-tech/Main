@@ -149,9 +149,16 @@ export async function handleInfraMcpJsonRpc(
       return jsonRpcError(id, -32602, "tools/call requires params.name");
     }
 
+    const meta =
+      body.params?._meta && typeof body.params._meta === "object"
+        ? (body.params._meta as Record<string, unknown>)
+        : {};
     const clientRequestId =
       (typeof body.params?.requestId === "string"
         ? body.params.requestId
+        : null) ??
+      (typeof meta.clientRequestId === "string"
+        ? meta.clientRequestId
         : null) ??
       (id != null ? `mcp_${String(id)}` : null);
 
