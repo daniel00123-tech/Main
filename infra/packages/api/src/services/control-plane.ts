@@ -371,11 +371,32 @@ export async function runMcpHealthCheck(
       documentCount = counts.documentCount;
       chunkCount = counts.chunkCount;
     } catch {
-      // Optional enrichment — health still succeeds without summary
+      // Optional enrichment — transport health can still succeed without summary
+    }
+
+    // Functional probe: authorised harmless search through the real pipeline.
+    // Uses callMcpTool directly (not gateway) so it never bills the customer.
+    let searchStatus: "ok" | "failed" = "failed";
+    let searchError: string | null = null;
+    try {
+      const probe = await callMcpTool(env, {
+        endpointUrl: mcp.endpointUrl,
+        authSecretRef: mcp.authSecretRef,
+        serviceBindingRef: mcp.serviceBindingRef,
+        toolName: "search_company_knowledge",
+        arguments: { query: "Project Falcon", topK: 1 },
+      });
+      if (probe.textContent && probe.textContent.length > 0) {
+        searchStatus = "ok";
+      } else {
+        searchError = "Search returned empty content";
+      }
+    } catch (err) {
+      searchError = err instanceof Error ? err.message : "Search probe failed";
     }
 
     let mcpVersion = mcp.mcpVersion;
-    let healthMessage = "MCP tools reachable";
+    let transportMessage = "Transport reachable";
     try {
       if (health.textContent) {
         const parsed = JSON.parse(health.textContent) as {
@@ -383,14 +404,20 @@ export async function runMcpHealthCheck(
           mcp?: { version?: string; name?: string };
         };
         if (parsed.mcp?.version) mcpVersion = parsed.mcp.version;
-        healthMessage = `MCP ${parsed.status ?? "healthy"} · ${tools.tools.length} tools`;
+        transportMessage = `Transport ${parsed.status ?? "healthy"} · ${tools.tools.length} tools`;
       }
     } catch {
-      healthMessage = `MCP tools reachable · ${tools.tools.length} tools`;
+      transportMessage = `Transport reachable · ${tools.tools.length} tools`;
     }
 
     const latencyMs = health.latencyMs;
-    const status = "healthy" as const;
+    const transportStatus = "healthy" as const;
+    const overallStatus =
+      searchStatus === "ok" ? ("healthy" as const) : ("degraded" as const);
+    const healthMessage =
+      searchStatus === "ok"
+        ? `${transportMessage} · Search ok`
+        : `${transportMessage} · Search failed${searchError ? `: ${searchError}` : ""}`;
 
     await env.DB.prepare(
       `UPDATE mcp_environments
@@ -401,12 +428,17 @@ export async function runMcpHealthCheck(
        WHERE id = ?`,
     )
       .bind(
-        status,
+        overallStatus,
         checkedAt,
-        checkedAt,
+        searchStatus === "ok" ? checkedAt : mcp.lastHealthyAt,
         healthMessage,
         mcpVersion,
-        JSON.stringify(tools.tools.map((tool) => tool.name)),
+        JSON.stringify({
+          tools: tools.tools.map((tool) => tool.name),
+          transport: transportStatus,
+          search: searchStatus,
+          searchError,
+        }),
         checkedAt,
         latencyMs,
         documentCount,
@@ -423,18 +455,25 @@ export async function runMcpHealthCheck(
       resourceType: "mcp",
       resourceId: mcpId,
       detail: {
-        status,
+        status: overallStatus,
+        transport: transportStatus,
+        search: searchStatus,
+        searchError,
         latencyMs,
         message: healthMessage,
         authConfigured,
         toolCount: tools.tools.length,
         knowledgeDocumentCount: documentCount,
+        billed: false,
       },
     });
 
     return {
       mcpId,
-      status,
+      status: overallStatus,
+      transport: transportStatus,
+      search: searchStatus,
+      searchError,
       message: healthMessage,
       latencyMs,
       checkedAt,
