@@ -70,6 +70,19 @@ export default function PortalBillingPage() {
         </p>
       ) : null}
 
+      {company.slug === "caddington" ? (
+        <SectionCard title="Caddington Holdings" description="Test Credit" className="mb-6">
+          <div className="metric" style={{ fontSize: "var(--text-3xl)" }}>
+            {formatCurrency(wallet.wallet.balanceCents, wallet.wallet.currency)}
+          </div>
+          <p className="muted small" style={{ marginTop: 8 }}>
+            Starting credit: {formatCurrency(1000)} · Used:{" "}
+            {formatCurrency(Math.max(0, 1000 - wallet.wallet.balanceCents))} · Remaining:{" "}
+            {formatCurrency(wallet.wallet.balanceCents, wallet.wallet.currency)}
+          </p>
+        </SectionCard>
+      ) : null}
+
       <div className="grid grid-3" style={{ marginBottom: 24 }}>
         <div className="card metric-card">
           <h3>Available credit</h3>

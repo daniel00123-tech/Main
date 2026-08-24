@@ -10,8 +10,10 @@ import {
   Menu,
   Network,
   Plug,
+  Receipt,
   Settings,
   Shield,
+  Tags,
   Users,
   Wallet,
   X,
@@ -37,6 +39,8 @@ import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import PasswordSetupPage from "./pages/PasswordSetupPage";
 import McpEnvironmentsPage from "./pages/McpEnvironmentsPage";
+import PricingRulesPage from "./pages/PricingRulesPage";
+import ProviderCostsPage from "./pages/ProviderCostsPage";
 import SettingsPage from "./pages/SettingsPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
 import UsagePage from "./pages/UsagePage";
@@ -86,6 +90,8 @@ const ADMIN_NAV: NavGroup[] = [
     items: [
       { to: "/usage", label: "Usage", icon: <ChartColumn size={18} /> },
       { to: "/billing", label: "Billing", icon: <Wallet size={18} /> },
+      { to: "/commercial/provider-costs", label: "Provider Costs", icon: <Receipt size={18} /> },
+      { to: "/commercial/pricing-rules", label: "Pricing Rules", icon: <Tags size={18} /> },
     ],
   },
   {
@@ -256,6 +262,8 @@ export default function App() {
                 <Route path="/users" element={<UsersPermissionsPage />} />
                 <Route path="/usage" element={<UsagePage />} />
                 <Route path="/billing" element={<BillingPage />} />
+                <Route path="/commercial/provider-costs" element={<ProviderCostsPage />} />
+                <Route path="/commercial/pricing-rules" element={<PricingRulesPage />} />
                 <Route path="/system-health" element={<SystemHealthPage />} />
                 <Route path="/audit-log" element={<AuditLogPage />} />
                 <Route path="/settings" element={<SettingsPage />} />

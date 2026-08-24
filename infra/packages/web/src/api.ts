@@ -188,6 +188,8 @@ export const api = {
         amountCents: number;
         balanceAfterCents: number;
         description: string | null;
+        referenceType?: string | null;
+        referenceId?: string | null;
         createdAt: string;
       }>;
       stripeConfigured: boolean;
@@ -206,6 +208,7 @@ export const api = {
         displayName: string;
         status: string;
         gatewayEndpoint: string;
+        mcpEndpoint?: string;
         setupNotes: string | null;
         lastUsedAt: string | null;
         serviceIdentityId: string | null;
@@ -215,6 +218,7 @@ export const api = {
     fetchJson<{
       token: string;
       gatewayEndpoint: string;
+      mcpEndpoint?: string;
       setup: Record<string, unknown>;
       warning: string;
       identity: { id: string; name: string; tokenPrefix: string | null };
@@ -269,5 +273,147 @@ export const api = {
         lowBalance: boolean;
       }>
     >("/api/billing/balances"),
+  getCommercialSummary: () =>
+    fetchJson<{
+      usage: {
+        requests: number;
+        successful: number;
+        failed: number;
+        customerChargesCents: number;
+        underlyingCostsCents: number;
+        grossProfitCents: number;
+        grossMarginBps: number | null;
+      };
+      policies: Array<Record<string, unknown>>;
+      rules: Array<Record<string, unknown>>;
+      providerRateCards: Array<Record<string, unknown>>;
+      openIntegrityExceptions: number;
+    }>("/api/commercial/summary"),
+  getCommercialUsage: (params?: {
+    companyId?: string;
+    sourceClient?: string;
+    success?: boolean;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.companyId) q.set("companyId", params.companyId);
+    if (params?.sourceClient) q.set("sourceClient", params.sourceClient);
+    if (params?.success === true) q.set("success", "true");
+    if (params?.success === false) q.set("success", "false");
+    const suffix = q.toString() ? `?${q}` : "";
+    return fetchJson<{
+      summary: {
+        requests: number;
+        successful: number;
+        failed: number;
+        customerChargesCents: number;
+        underlyingCostsCents: number;
+        grossProfitCents: number;
+        grossMarginBps: number | null;
+      };
+      records: UsageRecord[];
+    }>(`/api/commercial/usage${suffix}`);
+  },
+  getProviderCosts: () =>
+    fetchJson<{
+      cards: Array<{
+        card: {
+          id: string;
+          provider: string;
+          versionLabel: string;
+          status: string;
+          currency: string;
+          sourceUrl: string | null;
+          verifiedAt: string | null;
+          effectiveFrom: string | null;
+          updatedAt: string;
+        };
+        items: Array<{
+          id: string;
+          service: string;
+          sku: string | null;
+          billingUnit: string;
+          unitCostMicros: number;
+          includedAllowance: number | null;
+          notes: string | null;
+        }>;
+      }>;
+      nextReviewNote: string;
+    }>("/api/commercial/provider-costs"),
+  getPricingRules: () =>
+    fetchJson<{
+      policies: Array<{
+        id: string;
+        companyId: string | null;
+        targetMarginBps: number;
+        minimumChargeCents: number;
+        currency: string;
+        isTestConfig: boolean;
+        enabled: boolean;
+        label: string | null;
+        effectiveFrom: string;
+        effectiveTo: string | null;
+      }>;
+      rules: Array<{
+        id: string;
+        companyId: string | null;
+        action: string;
+        pricingMode: string;
+        fixedChargeCents: number | null;
+        targetMarginBps: number | null;
+        minimumChargeCents: number | null;
+        chargeOnFailure: boolean;
+        isBillable: boolean;
+        label: string | null;
+        isTestConfig: boolean;
+        enabled: boolean;
+        rateCardId: string | null;
+        versionLabel: string | null;
+        effectiveFrom: string | null;
+        effectiveTo: string | null;
+      }>;
+    }>("/api/commercial/pricing-rules"),
+  requestProviderPricingReview: (
+    provider: string,
+    body?: { sourceUrl?: string; notes?: string },
+  ) =>
+    fetchJson<{ reviewId: string; status: string }>(
+      `/api/commercial/provider-costs/${encodeURIComponent(provider)}/request-review`,
+      { method: "POST", body: JSON.stringify(body ?? {}) },
+    ),
+  getPricingReviews: () =>
+    fetchJson<{
+      reviews: Array<{
+        id: string;
+        provider: string;
+        status: string;
+        sourceUrl: string | null;
+        detectedAt: string;
+        reviewedBy: string | null;
+        reviewNotes: string | null;
+      }>;
+    }>("/api/commercial/pricing-reviews"),
+  runReconciliation: () =>
+    fetchJson<{
+      detectedAt: string;
+      healedLinks?: number;
+      healed?: Array<{ usageId: string; ledgerId: string }>;
+      exceptionsCreated: number;
+      exceptionIds: string[];
+      note?: string;
+    }>("/api/commercial/reconciliation/run", { method: "POST", body: "{}" }),
+  getIntegrityExceptions: (status = "open") =>
+    fetchJson<{
+      exceptions: Array<{
+        id: string;
+        companyId: string | null;
+        exceptionType: string;
+        severity: string;
+        status: string;
+        usageRecordId: string | null;
+        ledgerEntryId: string | null;
+        detail: Record<string, unknown>;
+        detectedAt: string;
+      }>;
+    }>(`/api/commercial/reconciliation/exceptions?status=${encodeURIComponent(status)}`),
 };
 

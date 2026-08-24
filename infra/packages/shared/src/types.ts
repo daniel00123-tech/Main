@@ -236,8 +236,22 @@ export interface UsageRecord {
   durationMs?: number | null;
   sourceClient?: string | null;
   correlationId?: string | null;
+  requestId?: string | null;
   underlyingCostCents?: number | null;
   customerChargeCents?: number | null;
+  costBasis?: "actual" | "estimated" | "unknown" | string | null;
+  underlyingCostMicros?: number | null;
+  estimatedCostMicros?: number | null;
+  pricingRuleId?: string | null;
+  rateCardId?: string | null;
+  rateCardVersion?: string | null;
+  targetMarginBps?: number | null;
+  calculatedSellingCents?: number | null;
+  minimumChargeApplied?: boolean;
+  grossProfitCents?: number | null;
+  actualMarginBps?: number | null;
+  ledgerEntryId?: string | null;
+  settlementStatus?: string | null;
 }
 
 export interface UsageSummary {

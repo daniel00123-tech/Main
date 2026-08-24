@@ -23,13 +23,33 @@ import {
   executeGatewayRequest,
   resolveGatewayActor,
 } from "../services/gateway";
+import { handleInfraMcpHttp } from "../services/mcp-gateway";
 import {
   appendLedgerEntry,
   getWalletBalance,
   listLedgerEntries,
   listPlatformBalances,
 } from "../services/ledger";
-import { listPricingRules } from "../services/pricing";
+import {
+  ensureDefaultPricing,
+  listPricingPolicies,
+  listPricingRules,
+} from "../services/pricing";
+import {
+  createManualPricingReviewProposal,
+  ensureProviderCostCatalogue,
+  getProviderRateCard,
+  listPricingReviews,
+  listProviderRateCards,
+} from "../services/provider-costs";
+import {
+  listFinancialExceptions,
+  runFinancialReconciliation,
+} from "../services/reconciliation";
+import {
+  getUsageCommercialSummary,
+  listPlatformUsage,
+} from "../services/usage";
 import {
   createServiceIdentity,
   listServiceIdentities,
@@ -84,6 +104,8 @@ phase3.post("/api/gateway/v1/execute", async (c) => {
     arguments?: Record<string, unknown>;
     mcpEnvironmentId?: string;
     sourceClient?: string;
+    clientRequestId?: string;
+    requestId?: string;
   }>();
 
   let companyId = body.companyId;
@@ -105,7 +127,13 @@ phase3.post("/api/gateway/v1/execute", async (c) => {
     toolName: body.toolName,
     arguments: body.arguments,
     mcpEnvironmentId: body.mcpEnvironmentId,
-    sourceClient: body.sourceClient ?? c.req.header("X-Infra-Client") ?? "gateway",
+    sourceClient:
+      body.sourceClient ?? c.req.header("X-Infra-Client") ?? "gateway",
+    clientRequestId:
+      body.clientRequestId ??
+      body.requestId ??
+      c.req.header("X-Infra-Request-Id") ??
+      null,
   });
 
   if (result.status !== 200) {
@@ -126,12 +154,22 @@ phase3.post("/api/gateway/v1/execute", async (c) => {
   return c.json(result);
 });
 
+// MCP protocol facade — ChatGPT/Claude should connect here, not to company MCP directly
+phase3.all("/api/gateway/v1/mcp", async (c) => {
+  const token = readSessionCookie(c.req.header("Cookie") ?? null);
+  const sessionUser = token
+    ? await verifySessionToken(token, c.env.SESSION_SECRET)
+    : null;
+  return handleInfraMcpHttp(c.env, c.req.raw, sessionUser);
+});
+
 phase3.get("/api/gateway/v1/health", (c) =>
   c.json({
     status: "ok",
     service: "infra-gateway",
     version: "v1",
     stripeConfigured: isStripeConfigured(c.env),
+    mcpFacade: "/api/gateway/v1/mcp",
   }),
 );
 
@@ -552,6 +590,7 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
         ? String(row.service_identity_id)
         : null,
       gatewayEndpoint: `${origin}/api/gateway/v1/execute`,
+      mcpEndpoint: `${origin}/api/gateway/v1/mcp`,
       gatewayPath: row.gateway_path ? String(row.gateway_path) : null,
       setupNotes: row.setup_notes ? String(row.setup_notes) : null,
       lastUsedAt: row.last_used_at ? String(row.last_used_at) : null,
@@ -603,13 +642,21 @@ phase3.post(
       token: created.token,
       gatewayEndpoint:
         "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/execute",
+      mcpEndpoint:
+        "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp",
       setup: {
+        preferred: "Connect ChatGPT/Claude MCP to mcpEndpoint with Bearer token",
         auth: "Authorization: Bearer <token>",
-        body: {
+        mcpUrl:
+          "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp",
+        restBody: {
           companyId: company.id,
           toolName: "search_company_knowledge",
           arguments: { query: "..." },
+          clientRequestId: "unique-per-logical-request",
         },
+        critical:
+          "Do NOT point ChatGPT at the company MCP URL directly — that bypasses INFRA metering and permissions.",
       },
       warning: "Store this token securely. It will not be shown again.",
     });
@@ -748,5 +795,137 @@ phase3.get("/api/companies/:slug/credentials", requireAuth, async (c) => {
     })),
   );
 });
+
+// ---------- Commercial / pricing admin ----------
+
+phase3.get("/api/commercial/summary", requireAuth, requirePlatformAdmin, async (c) => {
+  await ensureDefaultPricing(c.env.DB);
+  await ensureProviderCostCatalogue(c.env.DB);
+  const [usage, policies, rules, cards, exceptions] = await Promise.all([
+    getUsageCommercialSummary(c.env.DB),
+    listPricingPolicies(c.env.DB),
+    listPricingRules(c.env.DB),
+    listProviderRateCards(c.env.DB),
+    listFinancialExceptions(c.env.DB, "open"),
+  ]);
+  return c.json({
+    usage,
+    policies,
+    rules,
+    providerRateCards: cards,
+    openIntegrityExceptions: exceptions.length,
+  });
+});
+
+phase3.get("/api/commercial/usage", requireAuth, requirePlatformAdmin, async (c) => {
+  const companyId = c.req.query("companyId") || undefined;
+  const sourceClient = c.req.query("sourceClient") || undefined;
+  const successParam = c.req.query("success");
+  const success =
+    successParam === "1" || successParam === "true"
+      ? true
+      : successParam === "0" || successParam === "false"
+        ? false
+        : undefined;
+  const [records, summary] = await Promise.all([
+    listPlatformUsage(c.env.DB, 100, { companyId, sourceClient, success }),
+    getUsageCommercialSummary(c.env.DB, companyId),
+  ]);
+  return c.json({ summary, records });
+});
+
+phase3.get("/api/commercial/provider-costs", requireAuth, requirePlatformAdmin, async (c) => {
+  await ensureProviderCostCatalogue(c.env.DB);
+  const cards = await listProviderRateCards(c.env.DB);
+  const detailed = [];
+  for (const card of cards) {
+    const full = await getProviderRateCard(c.env.DB, card.id);
+    if (full) detailed.push(full);
+  }
+  return c.json({
+    cards: detailed,
+    nextReviewNote:
+      "Schedule approximately monthly. Proposed updates require Platform Admin approval — never auto-apply scraped tariffs.",
+  });
+});
+
+phase3.get(
+  "/api/commercial/provider-costs/:id",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    const full = await getProviderRateCard(c.env.DB, c.req.param("id"));
+    if (!full) return c.json({ error: "Rate card not found" }, 404);
+    return c.json(full);
+  },
+);
+
+phase3.get("/api/commercial/pricing-rules", requireAuth, requirePlatformAdmin, async (c) => {
+  await ensureDefaultPricing(c.env.DB);
+  return c.json({
+    policies: await listPricingPolicies(c.env.DB),
+    rules: await listPricingRules(c.env.DB),
+  });
+});
+
+phase3.post(
+  "/api/commercial/provider-costs/:provider/request-review",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    const body = await c.req.json<{ sourceUrl?: string; notes?: string }>().catch(() => ({}));
+    const id = await createManualPricingReviewProposal(c.env.DB, {
+      provider: c.req.param("provider"),
+      sourceUrl: body.sourceUrl,
+      notes: body.notes,
+      actor: c.get("user").email,
+    });
+    await recordAuditEvent(c.env.DB, {
+      companyId: null,
+      eventType: "company.accessed",
+      actor: c.get("user").email,
+      resourceType: "pricing",
+      resourceId: id,
+      detail: {
+        stage: "pricing.rate_update_detected",
+        provider: c.req.param("provider"),
+        status: "pending_admin_review",
+      },
+    });
+    return c.json({ reviewId: id, status: "pending" });
+  },
+);
+
+phase3.get("/api/commercial/pricing-reviews", requireAuth, requirePlatformAdmin, async (c) => {
+  return c.json({ reviews: await listPricingReviews(c.env.DB) });
+});
+
+phase3.post(
+  "/api/commercial/reconciliation/run",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    const result = await runFinancialReconciliation(c.env.DB);
+    await recordAuditEvent(c.env.DB, {
+      companyId: null,
+      eventType: "company.accessed",
+      actor: c.get("user").email,
+      resourceType: "billing",
+      resourceId: "reconciliation",
+      detail: result,
+    });
+    return c.json(result);
+  },
+);
+
+phase3.get(
+  "/api/commercial/reconciliation/exceptions",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    const status = c.req.query("status") ?? "open";
+    return c.json({ exceptions: await listFinancialExceptions(c.env.DB, status) });
+  },
+);
 
 export default phase3;

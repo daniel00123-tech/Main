@@ -10,8 +10,15 @@ import {
   recordAuditEvent,
 } from "./control-plane";
 import { appendLedgerEntry, getWalletBalance } from "./ledger";
-import { calculateChargeCents, resolvePricingRule } from "./pricing";
-import { recordUsageEvent } from "./usage";
+import {
+  calculateChargeCents,
+  resolvePricingPolicy,
+  resolvePricingRule,
+} from "./pricing";
+import {
+  markUsageSettled,
+  recordUsageEvent,
+} from "./usage";
 import {
   authenticateServiceToken,
   evaluateServiceActionPermission,
@@ -46,7 +53,6 @@ async function resolveToolAction(
     };
   }
 
-  // Safe defaults for known read-only tools
   if (toolName === "search_company_knowledge") {
     return { action: "knowledge.search", riskClass: "low_risk" };
   }
@@ -99,6 +105,21 @@ export async function resolveGatewayActor(
   return { error: "Authentication required", status: 401 };
 }
 
+async function findIdempotentGateway(
+  db: D1Database,
+  companyId: string,
+  clientRequestId: string,
+) {
+  return db
+    .prepare(
+      `SELECT * FROM gateway_requests
+       WHERE company_id = ? AND client_request_id = ?
+       LIMIT 1`,
+    )
+    .bind(companyId, clientRequestId)
+    .first();
+}
+
 export async function executeGatewayRequest(
   env: Env,
   input: {
@@ -109,9 +130,14 @@ export async function executeGatewayRequest(
     mcpEnvironmentId?: string | null;
     sourceClient?: string | null;
     requireCredit?: boolean;
+    clientRequestId?: string | null;
   },
 ) {
   const correlationId = newId("corr");
+  const requestId = input.clientRequestId?.trim()
+    ? `req_${input.clientRequestId.trim()}`
+    : newId("req");
+  const clientRequestId = input.clientRequestId?.trim() || null;
   const started = Date.now();
   const gatewayRequestId = newId("gw");
 
@@ -123,6 +149,63 @@ export async function executeGatewayRequest(
     input.actor.type === "user"
       ? input.actor.user.userId
       : input.actor.identity.id;
+  const sourceClient =
+    input.sourceClient ??
+    (input.actor.type === "service"
+      ? input.actor.identity.identityType
+      : "infra-gateway");
+
+  await recordAuditEvent(env.DB, {
+    companyId: input.companyId,
+    eventType: "company.accessed",
+    actor: actorLabel,
+    resourceType: "gateway",
+    resourceId: input.toolName,
+    detail: {
+      stage: "gateway.request_received",
+      correlationId,
+      requestId,
+      clientRequestId,
+      sourceClient,
+    },
+  });
+
+  // Idempotency: identical client request returns prior settled outcome
+  if (clientRequestId) {
+    const prior = await findIdempotentGateway(
+      env.DB,
+      input.companyId,
+      clientRequestId,
+    );
+    if (prior) {
+      return {
+        status: Number(prior.http_status ?? 200) as 200 | 402 | 403 | 404 | 500,
+        correlationId: String(prior.correlation_id),
+        gatewayRequestId: String(prior.id),
+        requestId: prior.request_id ? String(prior.request_id) : requestId,
+        idempotentReplay: true,
+        companyId: input.companyId,
+        mcpId: prior.mcp_environment_id
+          ? String(prior.mcp_environment_id)
+          : null,
+        toolName: String(prior.tool_name),
+        action: prior.action ? String(prior.action) : undefined,
+        riskClass: prior.risk_class ? String(prior.risk_class) : undefined,
+        latencyMs: prior.latency_ms == null ? undefined : Number(prior.latency_ms),
+        charge: {
+          billable: Boolean(prior.ledger_entry_id),
+          customerChargeCents: null,
+          isTestConfig: true,
+          pricingLabel: "idempotent_replay",
+        },
+        result: undefined,
+        error:
+          prior.status === "succeeded"
+            ? undefined
+            : String(prior.error_message ?? prior.status),
+      };
+    }
+  }
 
   // Tenant isolation
   if (input.actor.type === "user") {
@@ -133,12 +216,13 @@ export async function executeGatewayRequest(
         actor: actorLabel,
         resourceType: "gateway",
         resourceId: input.toolName,
-        detail: { correlationId, reason: "cross_company" },
+        detail: { correlationId, requestId, reason: "cross_company" },
       });
       return {
         status: 403 as const,
         error: "Access to this company is denied",
         correlationId,
+        requestId,
       };
     }
   } else if (input.actor.identity.companyId !== input.companyId) {
@@ -150,6 +234,7 @@ export async function executeGatewayRequest(
       resourceId: input.toolName,
       detail: {
         correlationId,
+        requestId,
         reason: "service_tenant_spoof",
         attemptedCompanyId: input.companyId,
       },
@@ -158,8 +243,18 @@ export async function executeGatewayRequest(
       status: 403 as const,
       error: "Service identity does not belong to this company",
       correlationId,
+      requestId,
     };
   }
+
+  await recordAuditEvent(env.DB, {
+    companyId: input.companyId,
+    eventType: "company.accessed",
+    actor: actorLabel,
+    resourceType: "gateway",
+    resourceId: input.toolName,
+    detail: { stage: "gateway.authenticated", correlationId, requestId },
+  });
 
   const mcp = await pickCompanyMcp(
     env.DB,
@@ -175,6 +270,7 @@ export async function executeGatewayRequest(
       status: 404 as const,
       error: "No enabled MCP environment for this company",
       correlationId,
+      requestId,
     };
   }
 
@@ -185,7 +281,6 @@ export async function executeGatewayRequest(
     input.toolName,
   );
 
-  // Permission check
   let permissionAllowed = false;
   let permissionReason: string | undefined;
 
@@ -217,6 +312,7 @@ export async function executeGatewayRequest(
       resourceId: action,
       detail: {
         correlationId,
+        requestId,
         toolName: input.toolName,
         reason: permissionReason,
         riskClass,
@@ -228,8 +324,9 @@ export async function executeGatewayRequest(
         id, correlation_id, company_id, actor_type, actor_id, actor_label,
         source_client, mcp_environment_id, tool_name, action, risk_class,
         status, permission_allowed, credit_check_passed, http_status, latency_ms,
-        error_code, error_message, metadata_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'denied', 0, NULL, 403, ?, 'permission_denied', ?, '{}', ?)`,
+        error_code, error_message, metadata_json, created_at,
+        client_request_id, request_id, settlement_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'denied', 0, NULL, 403, ?, 'permission_denied', ?, '{}', ?, ?, ?, 'zero_charge')`,
     )
       .bind(
         gatewayRequestId,
@@ -238,7 +335,7 @@ export async function executeGatewayRequest(
         input.actor.type,
         actorId,
         actorLabel,
-        input.sourceClient ?? null,
+        sourceClient,
         mcp.id,
         input.toolName,
         action,
@@ -246,6 +343,8 @@ export async function executeGatewayRequest(
         Date.now() - started,
         permissionReason ?? "denied",
         nowIso(),
+        clientRequestId,
+        requestId,
       )
       .run();
 
@@ -253,22 +352,39 @@ export async function executeGatewayRequest(
       status: 403 as const,
       error: permissionReason ?? "Permission denied",
       correlationId,
+      requestId,
       action,
       riskClass,
     };
   }
 
-  // Credit pre-flight (configurable; skip for non-billable)
+  await recordAuditEvent(env.DB, {
+    companyId: input.companyId,
+    eventType: "company.accessed",
+    actor: actorLabel,
+    resourceType: "gateway",
+    resourceId: action,
+    detail: { stage: "gateway.authorised", correlationId, requestId },
+  });
+
+  const policy = await resolvePricingPolicy(env.DB, input.companyId);
   const pricing = await resolvePricingRule(env.DB, input.companyId, action);
   const estimated = calculateChargeCents(pricing, {
     success: true,
     underlyingCostCents: null,
+    costBasis: "unknown",
+    policy,
   });
   let creditCheckPassed: boolean | null = null;
 
-  if (input.requireCredit !== false && estimated.billable && (estimated.customerChargeCents ?? 0) > 0) {
+  if (
+    input.requireCredit !== false &&
+    estimated.billable &&
+    (estimated.customerChargeCents ?? 0) > 0
+  ) {
     const wallet = await getWalletBalance(env.DB, input.companyId);
-    creditCheckPassed = wallet.balanceCents >= (estimated.customerChargeCents ?? 0);
+    creditCheckPassed =
+      wallet.balanceCents >= (estimated.customerChargeCents ?? 0);
     if (!creditCheckPassed) {
       await recordAuditEvent(env.DB, {
         companyId: input.companyId,
@@ -277,7 +393,9 @@ export async function executeGatewayRequest(
         resourceType: "billing",
         resourceId: input.companyId,
         detail: {
+          stage: "billing.insufficient_credit",
           correlationId,
+          requestId,
           reason: "insufficient_credit",
           balanceCents: wallet.balanceCents,
           requiredCents: estimated.customerChargeCents,
@@ -289,8 +407,9 @@ export async function executeGatewayRequest(
           id, correlation_id, company_id, actor_type, actor_id, actor_label,
           source_client, mcp_environment_id, tool_name, action, risk_class,
           status, permission_allowed, credit_check_passed, http_status, latency_ms,
-          error_code, error_message, metadata_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'insufficient_credit', 1, 0, 402, ?, 'insufficient_credit', ?, '{}', ?)`,
+          error_code, error_message, metadata_json, created_at,
+          client_request_id, request_id, settlement_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'insufficient_credit', 1, 0, 402, ?, 'insufficient_credit', ?, '{}', ?, ?, ?, 'zero_charge')`,
       )
         .bind(
           gatewayRequestId,
@@ -299,7 +418,7 @@ export async function executeGatewayRequest(
           input.actor.type,
           actorId,
           actorLabel,
-          input.sourceClient ?? null,
+          sourceClient,
           mcp.id,
           input.toolName,
           action,
@@ -307,6 +426,8 @@ export async function executeGatewayRequest(
           Date.now() - started,
           "Insufficient company credit",
           nowIso(),
+          clientRequestId,
+          requestId,
         )
         .run();
 
@@ -314,6 +435,7 @@ export async function executeGatewayRequest(
         status: 402 as const,
         error: "Insufficient company credit",
         correlationId,
+        requestId,
         balanceCents: wallet.balanceCents,
         requiredCents: estimated.customerChargeCents,
       };
@@ -322,14 +444,15 @@ export async function executeGatewayRequest(
     creditCheckPassed = true;
   }
 
-  // Execute via registered MCP only
+  const balanceBefore = await getWalletBalance(env.DB, input.companyId);
+
   const execution = await executeRegisteredMcpTool(env, {
     mcpId: mcp.id,
     toolName: input.toolName,
     arguments: input.arguments,
     actorUserId: actorId,
     actorEmail: actorLabel,
-    sourceClient: input.sourceClient ?? "infra-gateway",
+    sourceClient,
     skipUsageRecording: true,
     correlationId,
   });
@@ -337,116 +460,249 @@ export async function executeGatewayRequest(
   const latencyMs = Date.now() - started;
   const success = execution.status === 200;
 
-  // Pricing on actual outcome
+  await recordAuditEvent(env.DB, {
+    companyId: input.companyId,
+    eventType: success ? "mcp.execution_succeeded" : "mcp.execution_failed",
+    actor: actorLabel,
+    resourceType: "gateway",
+    resourceId: input.toolName,
+    detail: {
+      stage: "gateway.tool_executed",
+      correlationId,
+      requestId,
+      success,
+      latencyMs,
+    },
+  });
+
+  // Underlying provider cost unknown until rate items + metering quantities exist
   const charge = calculateChargeCents(pricing, {
     success,
     underlyingCostCents: null,
+    costBasis: "unknown",
+    policy,
+  });
+
+  await recordAuditEvent(env.DB, {
+    companyId: input.companyId,
+    eventType: "company.accessed",
+    actor: actorLabel,
+    resourceType: "pricing",
+    resourceId: action,
+    detail: {
+      stage: "pricing.calculated",
+      correlationId,
+      requestId,
+      billable: charge.billable,
+      customerChargeCents: charge.customerChargeCents,
+      costBasis: charge.costBasis,
+      pricingRuleId: charge.pricingRuleId,
+      isTestConfig: charge.isTestConfig,
+    },
   });
 
   let usageRecordId: string | null = null;
   let ledgerEntryId: string | null = null;
+  let settlementStatus = "zero_charge";
 
-  // executeRegisteredMcpTool already writes usage — for gateway we still debit wallet
-  // when billable. Find latest usage by correlation is hard since execute creates its own.
-  // So we record an additional gateway-scoped usage only for billing linkage when needed,
-  // OR we debit using gateway correlation as reference.
+  const usage = await recordUsageEvent(env.DB, {
+    companyId: input.companyId,
+    userId: input.actor.type === "user" ? actorId : null,
+    actorEmail: actorLabel,
+    resourceType: "gateway",
+    resourceId: input.toolName,
+    mcpEnvironmentId: mcp.id,
+    toolName: input.toolName,
+    action,
+    riskClass,
+    success,
+    durationMs: latencyMs,
+    sourceClient,
+    correlationId,
+    requestId,
+    charge,
+    metadata: {
+      pricingLabel: charge.pricingLabel,
+      isTestConfig: charge.isTestConfig,
+      actorType: input.actor.type,
+      balanceBeforeCents: balanceBefore.balanceCents,
+    },
+    settlementStatus:
+      charge.billable && charge.customerChargeCents && success
+        ? "unsettled"
+        : "zero_charge",
+  });
+  usageRecordId = usage.id;
 
-  if (charge.billable && charge.customerChargeCents && charge.customerChargeCents > 0) {
-    const usage = await recordUsageEvent(env.DB, {
-      companyId: input.companyId,
-      userId: input.actor.type === "user" ? actorId : null,
-      actorEmail: actorLabel,
-      resourceType: "gateway",
-      resourceId: input.toolName,
-      mcpEnvironmentId: mcp.id,
-      toolName: input.toolName,
-      action,
-      riskClass,
-      success,
-      durationMs: latencyMs,
-      sourceClient: input.sourceClient ?? "infra-gateway",
+  await recordAuditEvent(env.DB, {
+    companyId: input.companyId,
+    eventType: "company.accessed",
+    actor: actorLabel,
+    resourceType: "usage",
+    resourceId: usage.id,
+    detail: {
+      stage: "usage.recorded",
       correlationId,
-      underlyingCostCents: charge.underlyingCostCents,
-      customerChargeCents: charge.customerChargeCents,
-      metadata: {
-        pricingLabel: charge.pricingLabel,
-        isTestConfig: charge.isTestConfig,
-        actorType: input.actor.type,
-      },
-    });
-    usageRecordId = usage.id;
+      requestId,
+      alreadyExists: usage.alreadyExists,
+    },
+  });
 
-    if (success) {
+  if (
+    success &&
+    charge.billable &&
+    charge.customerChargeCents &&
+    charge.customerChargeCents > 0
+  ) {
+    try {
       const ledger = await appendLedgerEntry(env.DB, {
         companyId: input.companyId,
         entryType: "usage_debit",
         amountCents: -Math.abs(charge.customerChargeCents),
         referenceType: "usage",
         referenceId: usage.id,
-        description: `Gateway ${action} (${input.toolName})`,
+        description: `${humanSource(sourceClient)} · ${humanAction(action)}`,
         metadata: {
           correlationId,
+          requestId,
           isTestConfig: charge.isTestConfig,
           pricingLabel: charge.pricingLabel,
+          balanceBeforeCents: balanceBefore.balanceCents,
         },
         createdBy: actorLabel,
       });
       ledgerEntryId = ledger.entry.id;
+      settlementStatus = "settled";
+      await markUsageSettled(env.DB, usage.id, ledger.entry.id);
+
+      await recordAuditEvent(env.DB, {
+        companyId: input.companyId,
+        eventType: "billing.credit_adjusted",
+        actor: actorLabel,
+        resourceType: "ledger",
+        resourceId: ledger.entry.id,
+        detail: {
+          stage: "billing.debit_created",
+          correlationId,
+          requestId,
+          amountCents: -Math.abs(charge.customerChargeCents),
+          balanceAfterCents: ledger.entry.balanceAfterCents,
+          alreadyExists: ledger.alreadyExists,
+        },
+      });
+    } catch (err) {
+      settlementStatus = "failed";
+      await recordAuditEvent(env.DB, {
+        companyId: input.companyId,
+        eventType: "permission.denied",
+        actor: actorLabel,
+        resourceType: "billing",
+        resourceId: usage.id,
+        detail: {
+          stage: "billing.debit_failed",
+          correlationId,
+          requestId,
+          error: err instanceof Error ? err.message : "ledger_failed",
+        },
+      });
+      // Do not pretend the request was fully settled
     }
   }
 
   const statusLabel = success ? "succeeded" : "failed";
-  await env.DB.prepare(
-    `INSERT INTO gateway_requests (
-      id, correlation_id, company_id, actor_type, actor_id, actor_label,
-      source_client, mcp_environment_id, tool_name, action, risk_class,
-      status, permission_allowed, credit_check_passed, http_status, latency_ms,
-      usage_record_id, ledger_entry_id, error_code, error_message, metadata_json, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      gatewayRequestId,
-      correlationId,
-      input.companyId,
-      input.actor.type,
-      actorId,
-      actorLabel,
-      input.sourceClient ?? null,
-      mcp.id,
-      input.toolName,
-      action,
-      riskClass,
-      statusLabel,
-      creditCheckPassed ? 1 : 0,
-      execution.status,
-      latencyMs,
-      usageRecordId,
-      ledgerEntryId,
-      success ? null : "mcp_execution_failed",
-      success ? null : ("error" in execution ? execution.error : "failed"),
-      JSON.stringify({
+  try {
+    await env.DB.prepare(
+      `INSERT INTO gateway_requests (
+        id, correlation_id, company_id, actor_type, actor_id, actor_label,
+        source_client, mcp_environment_id, tool_name, action, risk_class,
+        status, permission_allowed, credit_check_passed, http_status, latency_ms,
+        usage_record_id, ledger_entry_id, error_code, error_message, metadata_json, created_at,
+        client_request_id, request_id, settlement_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        gatewayRequestId,
+        correlationId,
+        input.companyId,
+        input.actor.type,
+        actorId,
+        actorLabel,
+        sourceClient,
+        mcp.id,
+        input.toolName,
         action,
         riskClass,
-        isTestConfig: charge.isTestConfig,
-      }),
-      nowIso(),
-    )
-    .run();
+        statusLabel,
+        creditCheckPassed ? 1 : 0,
+        execution.status,
+        latencyMs,
+        usageRecordId,
+        ledgerEntryId,
+        success ? null : "mcp_execution_failed",
+        success ? null : "error" in execution ? execution.error : "failed",
+        JSON.stringify({
+          action,
+          riskClass,
+          isTestConfig: charge.isTestConfig,
+          requestId,
+        }),
+        nowIso(),
+        clientRequestId,
+        requestId,
+        settlementStatus,
+      )
+      .run();
+  } catch {
+    // Unique client_request_id race — treat as idempotent
+    if (clientRequestId) {
+      const prior = await findIdempotentGateway(
+        env.DB,
+        input.companyId,
+        clientRequestId,
+      );
+      if (prior) {
+        return {
+          status: Number(prior.http_status ?? 200) as 200,
+          correlationId: String(prior.correlation_id),
+          gatewayRequestId: String(prior.id),
+          requestId: String(prior.request_id ?? requestId),
+          idempotentReplay: true,
+          companyId: input.companyId,
+          mcpId: mcp.id,
+          toolName: input.toolName,
+          action,
+          riskClass,
+          latencyMs,
+          charge: {
+            billable: charge.billable,
+            customerChargeCents: charge.customerChargeCents,
+            isTestConfig: charge.isTestConfig,
+            pricingLabel: charge.pricingLabel,
+          },
+          result: "data" in execution ? execution.data?.result : undefined,
+        };
+      }
+    }
+  }
 
   if (!success) {
     return {
       status: execution.status,
       error: "error" in execution ? execution.error : "Gateway execution failed",
       correlationId,
+      requestId,
       action,
       riskClass,
     };
   }
 
+  const balanceAfter = await getWalletBalance(env.DB, input.companyId);
+
   return {
     status: 200 as const,
     correlationId,
     gatewayRequestId,
+    requestId,
     companyId: input.companyId,
     mcpId: mcp.id,
     toolName: input.toolName,
@@ -456,9 +712,38 @@ export async function executeGatewayRequest(
     charge: {
       billable: charge.billable,
       customerChargeCents: charge.customerChargeCents,
+      underlyingCostCents: charge.underlyingCostCents,
+      costBasis: charge.costBasis,
+      targetMarginBps: charge.targetMarginBps,
+      actualMarginBps: charge.actualMarginBps,
+      grossProfitCents: charge.grossProfitCents,
       isTestConfig: charge.isTestConfig,
       pricingLabel: charge.pricingLabel,
+      pricingRuleId: charge.pricingRuleId,
+      settlementStatus,
+      balanceBeforeCents: balanceBefore.balanceCents,
+      balanceAfterCents: balanceAfter.balanceCents,
+      ledgerEntryId,
+      usageRecordId,
     },
     result: "data" in execution ? execution.data?.result : undefined,
   };
+}
+
+function humanSource(source: string): string {
+  const map: Record<string, string> = {
+    chatgpt: "ChatGPT",
+    claude: "Claude",
+    whatsapp: "WhatsApp",
+  };
+  return map[source] ?? source;
+}
+
+function humanAction(action: string): string {
+  const map: Record<string, string> = {
+    "knowledge.search": "Knowledge Search",
+    "knowledge.read": "Knowledge Read",
+    "system.health": "System Health",
+  };
+  return map[action] ?? action.replace(/[._]/g, " ");
 }

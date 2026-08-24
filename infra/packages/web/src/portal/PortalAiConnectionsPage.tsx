@@ -26,6 +26,7 @@ export default function PortalAiConnectionsPage() {
     clientType: string;
     token: string;
     endpoint: string;
+    mcpEndpoint: string;
   } | null>(null);
 
   async function refresh() {
@@ -55,6 +56,9 @@ export default function PortalAiConnectionsPage() {
         clientType,
         token: result.token,
         endpoint: result.gatewayEndpoint,
+        mcpEndpoint:
+          result.mcpEndpoint ??
+          "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp",
       });
       toast(`${clientType} connected`);
       await refresh();
@@ -90,7 +94,13 @@ export default function PortalAiConnectionsPage() {
           <code className="mono" style={{ display: "block", wordBreak: "break-all" }}>
             {tokenReveal.token}
           </code>
-          <AdvancedDetails label="Gateway endpoint">
+          <p style={{ margin: "12px 0 8px" }}>
+            Point ChatGPT at the <strong>INFRA MCP endpoint</strong> (not the company MCP URL):
+          </p>
+          <code className="mono" style={{ display: "block", wordBreak: "break-all" }}>
+            {tokenReveal.mcpEndpoint}
+          </code>
+          <AdvancedDetails label="REST execute endpoint">
             <code className="mono">{tokenReveal.endpoint}</code>
           </AdvancedDetails>
         </Notice>
@@ -136,9 +146,26 @@ export default function PortalAiConnectionsPage() {
                       : "Connect"}
                 </Button>
               </div>
-              {conn.gatewayEndpoint ? (
-                <AdvancedDetails>
-                  <code className="mono small">{conn.gatewayEndpoint}</code>
+              {conn.mcpEndpoint || conn.gatewayEndpoint ? (
+                <AdvancedDetails label="Connection endpoints">
+                  {conn.mcpEndpoint ? (
+                    <>
+                      <div className="muted small">INFRA MCP (required for ChatGPT metering)</div>
+                      <code className="mono small">{conn.mcpEndpoint}</code>
+                    </>
+                  ) : null}
+                  {conn.gatewayEndpoint ? (
+                    <>
+                      <div className="muted small" style={{ marginTop: 8 }}>
+                        REST execute
+                      </div>
+                      <code className="mono small">{conn.gatewayEndpoint}</code>
+                    </>
+                  ) : null}
+                  <p className="muted small" style={{ marginTop: 8 }}>
+                    Do not point ChatGPT at the company MCP URL directly — that bypasses INFRA
+                    metering and permissions.
+                  </p>
                 </AdvancedDetails>
               ) : null}
             </article>

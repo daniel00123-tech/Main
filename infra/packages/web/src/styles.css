@@ -1171,3 +1171,20 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* Commercial / usage detail helpers */
+.mt-6 { margin-top: var(--s-6); }
+.mb-6 { margin-bottom: var(--s-6); }
+.audit-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 8px;
+}
+.audit-steps li {
+  line-height: 1.4;
+}
+.kv-stack {
+  display: grid;
+  gap: 4px;
+}
