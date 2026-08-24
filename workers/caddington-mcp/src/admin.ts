@@ -1,4 +1,8 @@
 import type { Env } from "./db";
+import {
+  getGoogleDriveConnectorStatus,
+  syncGoogleDriveDocuments,
+} from "./google-drive-sync";
 import { log } from "./logger";
 import { buildUploadMetadata } from "./knowledge-metadata";
 import { indexKnowledgeDocument } from "./knowledge";
@@ -42,6 +46,33 @@ export async function handleAdminRequest(
 
   if (url.pathname === "/admin/knowledge/upload" && request.method === "POST") {
     return await uploadKnowledgeDocument(request, env);
+  }
+
+  if (url.pathname === "/admin/connectors/google_drive" && request.method === "GET") {
+    return json(await getGoogleDriveConnectorStatus(env));
+  }
+
+  if (
+    url.pathname === "/admin/connectors/google_drive/sync" &&
+    request.method === "POST"
+  ) {
+    const body = await request.json<{
+      dryRun?: boolean;
+      maxFiles?: number;
+      autoIndex?: boolean;
+    }>().catch(() => ({} as { dryRun?: boolean; maxFiles?: number; autoIndex?: boolean }));
+
+    try {
+      const summary = await syncGoogleDriveDocuments(env, {
+        dryRun: body.dryRun ?? false,
+        maxFiles: body.maxFiles,
+        autoIndex: body.autoIndex,
+      });
+      return json({ ok: true, ...summary });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return json({ error: message }, 400);
+    }
   }
 
   const indexMatch = url.pathname.match(

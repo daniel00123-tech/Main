@@ -9,6 +9,8 @@ export interface Env {
   AI: Ai;
   MCP_AUTH_TOKEN?: string;
   CADDINGTON_ADMIN_TOKEN?: string;
+  /** JSON: { client_id, client_secret, refresh_token } — Drive readonly scope only. */
+  GOOGLE_DRIVE_CREDENTIALS?: string;
 }
 
 export interface DbHealth {

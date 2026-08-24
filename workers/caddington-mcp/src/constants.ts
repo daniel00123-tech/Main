@@ -22,6 +22,8 @@ export const QUERYABLE_TABLES = new Set([
   "knowledge_documents",
   "knowledge_chunks",
   "knowledge_import_log",
+  "connector_config",
+  "google_drive_files",
 ]);
 
 export const SUMMARY_TABLES = [
@@ -33,6 +35,8 @@ export const SUMMARY_TABLES = [
   "knowledge_documents",
   "knowledge_chunks",
   "knowledge_import_log",
+  "connector_config",
+  "google_drive_files",
 ] as const;
 
 export const SUMMARY_TIMESTAMP_COLUMNS: Record<string, string> = {
@@ -44,4 +48,6 @@ export const SUMMARY_TIMESTAMP_COLUMNS: Record<string, string> = {
   knowledge_documents: "updated_at",
   knowledge_chunks: "created_at",
   knowledge_import_log: "started_at",
+  connector_config: "updated_at",
+  google_drive_files: "last_synced_at",
 };
