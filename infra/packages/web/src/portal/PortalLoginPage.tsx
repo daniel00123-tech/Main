@@ -11,7 +11,7 @@ export default function PortalLoginPage() {
   const [loading, setLoading] = useState(false);
 
   if (user) {
-    return <Navigate to="/portal/dashboard" replace />;
+    return <Navigate to="/portal" replace />;
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -20,7 +20,7 @@ export default function PortalLoginPage() {
     setError(null);
     try {
       await login(email, password);
-      navigate("/portal/dashboard");
+      navigate("/portal");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
     } finally {

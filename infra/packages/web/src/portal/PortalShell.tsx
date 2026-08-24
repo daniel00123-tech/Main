@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Bot,
   ChartColumn,
@@ -12,6 +12,7 @@ import {
   X,
   ChevronsLeft,
   ChevronsRight,
+  Shield,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -23,53 +24,62 @@ import {
   useSidebarCollapsed,
 } from "../components";
 import { humanRole } from "../lib/format";
-import { usePortalCompany } from "./usePortalCompany";
+import { PortalCompanyProvider, usePortalCompany } from "./usePortalCompany";
 
 type NavItem = {
-  to: string;
+  path: string;
   label: string;
   icon: React.ReactNode;
   roles?: string[];
 };
 
 const ALL_NAV: NavItem[] = [
-  { to: "/portal/dashboard", label: "Home", icon: <LayoutDashboard size={18} /> },
-  { to: "/portal/connectors", label: "Connected systems", icon: <Plug size={18} /> },
-  { to: "/portal/ai-connections", label: "AI connections", icon: <Bot size={18} /> },
+  { path: "dashboard", label: "Overview", icon: <LayoutDashboard size={18} /> },
+  { path: "connectors", label: "Connections", icon: <Plug size={18} /> },
+  { path: "ai-connections", label: "AI connections", icon: <Bot size={18} /> },
   {
-    to: "/portal/team",
+    path: "team",
     label: "Team",
     icon: <Users size={18} />,
     roles: ["company_admin", "director", "manager", "supervisor"],
   },
   {
-    to: "/portal/usage",
+    path: "usage",
     label: "Usage",
     icon: <ChartColumn size={18} />,
     roles: ["company_admin", "director", "manager", "supervisor", "office_staff"],
   },
   {
-    to: "/portal/billing",
+    path: "billing",
     label: "Billing",
     icon: <Wallet size={18} />,
     roles: ["company_admin", "director"],
   },
   {
-    to: "/portal/settings",
+    path: "activity",
+    label: "Activity",
+    icon: <Shield size={18} />,
+    roles: ["company_admin", "director", "manager"],
+  },
+  {
+    path: "settings",
     label: "Settings",
     icon: <Settings size={18} />,
     roles: ["company_admin", "director", "manager"],
   },
 ];
 
-export default function PortalShell() {
+function PortalShellInner() {
   const { user, logout } = useAuth();
-  const { company, membership, loading, error } = usePortalCompany();
+  const { company, membership, loading, error, companies } = usePortalCompany();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useSidebarCollapsed("infra.portal.sidebar.collapsed");
   const isMobile = useMediaQuery("(max-width: 900px)");
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const role = membership?.role ?? "office_staff";
+  const base = company ? `/portal/${company.slug}` : "/portal";
+
   const nav = useMemo(
     () =>
       ALL_NAV.filter((item) => {
@@ -113,7 +123,7 @@ export default function PortalShell() {
           {showLabels ? (
             <div className="brand-text">
               <span className="brand-name">INFRA</span>
-              <span className="brand-context">Company portal · {company.name}</span>
+              <span className="brand-context">Company portal</span>
             </div>
           ) : null}
           {!isMobile ? (
@@ -137,12 +147,45 @@ export default function PortalShell() {
           )}
         </div>
 
+        {showLabels && companies.length > 1 ? (
+          <div style={{ padding: "0 12px 12px" }}>
+            <label className="muted small" htmlFor="portal-company-switch">
+              Company
+            </label>
+            <select
+              id="portal-company-switch"
+              className="input"
+              value={company.slug}
+              onChange={(e) => {
+                navigate(`/portal/${e.target.value}/dashboard`);
+                setMobileOpen(false);
+              }}
+              style={{ width: "100%", marginTop: 4 }}
+            >
+              {companies.map((c) => (
+                <option key={c.id} value={c.slug}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : showLabels ? (
+          <div style={{ padding: "0 16px 12px" }}>
+            <div style={{ fontWeight: 600 }}>{company.name}</div>
+            <div className="muted small">
+              {company.portalSubdomain
+                ? `${company.portalSubdomain}.infra-web.pages.dev`
+                : company.slug}
+            </div>
+          </div>
+        ) : null}
+
         <nav>
           {nav.map((item) => (
             <NavLink
-              key={item.to}
+              key={item.path}
               className="nav-link"
-              to={item.to}
+              to={`${base}/${item.path}`}
               title={!showLabels ? item.label : undefined}
               onClick={() => setMobileOpen(false)}
             >
@@ -185,5 +228,13 @@ export default function PortalShell() {
       </main>
       <ToastHost />
     </div>
+  );
+}
+
+export default function PortalShell() {
+  return (
+    <PortalCompanyProvider>
+      <PortalShellInner />
+    </PortalCompanyProvider>
   );
 }

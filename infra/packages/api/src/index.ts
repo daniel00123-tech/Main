@@ -20,6 +20,12 @@ import {
   updateUserPassword,
 } from "./auth/users";
 import {
+  provisionCompany,
+  setCompanyLifecycleStatus,
+  getCompanyByPortalHostname,
+  getCompanyByPortalSubdomain,
+} from "./services/tenant-provisioning";
+import {
   consumeSetupToken,
   findValidSetupToken,
   maskEmail,
@@ -264,6 +270,78 @@ app.get("/api/companies", requireAuth, async (c) => {
     : user.memberships.map((membership) => membership.companyId);
   const companies = await listCompanies(c.env.DB, companyIds);
   return c.json(companies);
+});
+
+app.post("/api/companies", requireAuth, requirePlatformAdmin, async (c) => {
+  const body = await c.req.json<import("@infra/shared").CreateCompanyInput>();
+  try {
+    const result = await provisionCompany(c.env.DB, body, c.get("user").email, {
+      portalBaseDomain:
+        typeof c.env.PORTAL_BASE_DOMAIN === "string"
+          ? c.env.PORTAL_BASE_DOMAIN
+          : "infra-web.pages.dev",
+    });
+    return c.json(
+      {
+        company: result.company,
+        portalPath: `/portal/${result.company.slug}/dashboard`,
+        portalHostname: result.company.portalHostname,
+        adminInvite: result.adminInvite
+          ? {
+              email: result.adminInvite.email,
+              setupUrl: `https://infra-web.pages.dev/setup-password?token=${encodeURIComponent(result.adminInvite.setupToken)}`,
+              expiresAt: result.adminInvite.expiresAt,
+            }
+          : null,
+      },
+      201,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unable to create company";
+    return c.json({ error: message }, 400);
+  }
+});
+
+app.post(
+  "/api/companies/:slug/status",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    const body = await c.req.json<{ status?: "active" | "suspended" | "closed" }>();
+    if (!body.status || !["active", "suspended", "closed"].includes(body.status)) {
+      return c.json({ error: "status must be active, suspended, or closed" }, 400);
+    }
+    const updated = await setCompanyLifecycleStatus(
+      c.env.DB,
+      company.id,
+      body.status,
+      c.get("user").email,
+    );
+    return c.json(updated);
+  },
+);
+
+app.get("/api/portal/resolve", requireAuth, async (c) => {
+  const host = c.req.query("host")?.trim();
+  const slug = c.req.query("slug")?.trim();
+  const subdomain = c.req.query("subdomain")?.trim();
+  let company = null;
+  if (slug) company = await getCompanyBySlug(c.env.DB, slug);
+  else if (subdomain) company = await getCompanyByPortalSubdomain(c.env.DB, subdomain);
+  else if (host) company = await getCompanyByPortalHostname(c.env.DB, host);
+  else {
+    return c.json({ error: "host, slug, or subdomain is required" }, 400);
+  }
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!userHasCompanyAccess(c.get("user"), company.id)) {
+    return c.json({ error: "Access to this company is denied" }, 403);
+  }
+  return c.json({
+    company,
+    portalPath: `/portal/${company.slug}/dashboard`,
+  });
 });
 
 app.get("/api/companies/:slug", requireAuth, async (c) => {

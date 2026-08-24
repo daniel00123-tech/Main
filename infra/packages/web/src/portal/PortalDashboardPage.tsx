@@ -23,6 +23,7 @@ export default function PortalDashboardPage() {
     return <ErrorState title="Unable to load dashboard" description={error ?? undefined} />;
   }
 
+  const base = `/portal/${company.slug}`;
   const mcp = overview.mcpEnvironments[0];
   const usage = overview.usageSummary;
   const wallet = overview.wallet;
@@ -36,7 +37,7 @@ export default function PortalDashboardPage() {
       id: "mcp",
       title: "AI connection needs attention",
       description: mcp.healthMessage ?? mcp.status,
-      to: "/portal/ai-connections",
+      to: `${base}/ai-connections`,
     });
   }
   if (wallet?.lowBalance) {
@@ -44,7 +45,7 @@ export default function PortalDashboardPage() {
       id: "wallet",
       title: "Credit balance is low",
       description: "Add credit to keep requests flowing",
-      to: "/portal/billing",
+      to: `${base}/billing`,
     });
   }
 
@@ -74,7 +75,7 @@ export default function PortalDashboardPage() {
           Path: <strong>{company.name}</strong> → AI connections → ChatGPT → Generate / Reconnect
           token → INFRA MCP URL
         </p>
-        <Link to="/portal/ai-connections" className="button button-primary">
+        <Link to={`${base}/ai-connections`} className="button button-primary">
           Open AI connections · ChatGPT
         </Link>
       </SectionCard>
@@ -83,13 +84,13 @@ export default function PortalDashboardPage() {
         <SectionCard title="Welcome to INFRA" description="Let's connect your company.">
           <ol className="stack" style={{ margin: 0, paddingLeft: 18, color: "var(--text-secondary)" }}>
             <li>
-              <Link to="/portal/connectors">Connect a business system</Link>
+              <Link to={`${base}/connectors`}>Connect a business system</Link>
             </li>
             <li>
-              <Link to="/portal/ai-connections">Connect AI</Link>
+              <Link to={`${base}/ai-connections`}>Connect AI</Link>
             </li>
             <li>
-              <Link to="/portal/team">Invite your team</Link>
+              <Link to={`${base}/team`}>Invite your team</Link>
             </li>
             <li>Configure permissions</li>
             <li>Start using INFRA</li>
@@ -102,25 +103,25 @@ export default function PortalDashboardPage() {
           label="Connected systems"
           value={String(activeConnectors.length)}
           hint={`${connectors.length} total`}
-          to="/portal/connectors"
+          to={`${base}/connectors`}
         />
         <MetricCard
           label="AI gateway"
           value={mcp ? <StatusBadge status={mcp.status} /> : "—"}
           hint={mcp?.name ?? "Not configured"}
-          to="/portal/ai-connections"
+          to={`${base}/ai-connections`}
         />
         <MetricCard
           label="Usage this month"
           value={String(usage?.requestsThisMonth ?? 0)}
           hint={`${usage?.requestsToday ?? 0} today`}
-          to="/portal/usage"
+          to={`${base}/usage`}
         />
         <MetricCard
           label="Available credit"
           value={wallet ? formatCurrency(wallet.balanceCents, wallet.currency) : "—"}
           hint={wallet?.lowBalance ? "Low balance" : "Wallet"}
-          to="/portal/billing"
+          to={`${base}/billing`}
         />
       </MetricGrid>
 
@@ -131,7 +132,7 @@ export default function PortalDashboardPage() {
               title="Nothing connected yet"
               description="Connect a business system or AI assistant to get started."
               action={
-                <Link to="/portal/connectors" className="button button-primary">
+                <Link to={`${base}/connectors`} className="button button-primary">
                   Connect system
                 </Link>
               }

@@ -247,6 +247,30 @@ export async function executeGatewayRequest(
     };
   }
 
+  const { assertCompanyAcceptsGateway } = await import("./tenant-provisioning");
+  const lifecycle = await assertCompanyAcceptsGateway(env.DB, input.companyId);
+  if (!lifecycle.ok) {
+    await recordAuditEvent(env.DB, {
+      companyId: input.companyId,
+      eventType: "permission.denied",
+      actor: actorLabel,
+      resourceType: "gateway",
+      resourceId: input.toolName,
+      detail: {
+        correlationId,
+        requestId,
+        reason: "company_lifecycle_blocked",
+        error: lifecycle.error,
+      },
+    });
+    return {
+      status: 403 as const,
+      error: lifecycle.error,
+      correlationId,
+      requestId,
+    };
+  }
+
   await recordAuditEvent(env.DB, {
     companyId: input.companyId,
     eventType: "company.accessed",

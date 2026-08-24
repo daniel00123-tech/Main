@@ -765,8 +765,6 @@ phase3.post(
         auth: "Authorization: Bearer <token>",
         mcpUrl: mcpEndpoint,
         removeDirectCompanyMcp: true,
-        blockedDirectExample:
-          "https://caddington-mcp.daniel-dwyer123.workers.dev/mcp",
         restBody: {
           companyId: company.id,
           toolName: "search_company_knowledge",
@@ -774,9 +772,175 @@ phase3.post(
           clientRequestId: "unique-per-logical-request",
         },
         critical:
-          "Company MCP public access is locked. ChatGPT MUST use the INFRA MCP facade. Direct company MCP calls return 401.",
+          "Company MCP public access is locked. ChatGPT MUST use the INFRA MCP facade.",
       },
-      warning: "Store this token securely. It will not be shown again.",
+      warning:
+        "Copy this token now. You will not be able to view it again.",
+    });
+  },
+);
+
+phase3.post(
+  "/api/companies/:slug/ai-connections/:clientType/revoke",
+  requireAuth,
+  async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+    const clientType = c.req.param("clientType");
+    const row = await c.env.DB.prepare(
+      `SELECT * FROM ai_client_connections WHERE company_id = ? AND client_type = ?`,
+    )
+      .bind(company.id, clientType)
+      .first();
+    if (!row) return c.json({ error: "AI connection not found" }, 404);
+
+    if (row.service_identity_id) {
+      await setServiceIdentityStatus(
+        c.env.DB,
+        String(row.service_identity_id),
+        "disabled",
+      );
+    }
+    await c.env.DB.prepare(
+      `UPDATE ai_client_connections
+       SET status = 'ready_to_connect', service_identity_id = NULL, updated_at = ?
+       WHERE company_id = ? AND client_type = ?`,
+    )
+      .bind(nowIso(), company.id, clientType)
+      .run();
+
+    await recordAuditEvent(c.env.DB, {
+      companyId: company.id,
+      eventType: "company.updated",
+      actor: c.get("user").email,
+      resourceType: "ai_connection",
+      resourceId: clientType,
+      detail: { stage: "ai_connection.revoked" },
+    });
+
+    return c.json({ ok: true, status: "ready_to_connect", clientType });
+  },
+);
+
+phase3.post(
+  "/api/companies/:slug/ai-connections/:clientType/test",
+  requireAuth,
+  async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+    const clientType = c.req.param("clientType");
+    const row = await c.env.DB.prepare(
+      `SELECT * FROM ai_client_connections WHERE company_id = ? AND client_type = ?`,
+    )
+      .bind(company.id, clientType)
+      .first();
+    if (!row) return c.json({ error: "AI connection not found" }, 404);
+
+    const identityId = row.service_identity_id
+      ? String(row.service_identity_id)
+      : null;
+    if (!identityId) {
+      return c.json({
+        status: "FAILED",
+        message: "No active service identity — generate a token first",
+        checks: {
+          authentication: "failed",
+          tenantResolution: "skipped",
+          wallet: "skipped",
+          gateway: "skipped",
+          mcp: "skipped",
+          knowledgeSearch: "skipped",
+        },
+      });
+    }
+
+    const identity = await getServiceIdentity(c.env.DB, identityId);
+    if (!identity || identity.status !== "active") {
+      return c.json({
+        status: "FAILED",
+        message: "Service identity is missing or revoked",
+        checks: {
+          authentication: "failed",
+          tenantResolution: "skipped",
+          wallet: "skipped",
+          gateway: "skipped",
+          mcp: "skipped",
+          knowledgeSearch: "skipped",
+        },
+      });
+    }
+
+    const health = await executeGatewayRequest(c.env, {
+      actor: { type: "service", identity },
+      companyId: company.id,
+      toolName: "system_health",
+      sourceClient: `${clientType}-test`,
+      requireCredit: false,
+      clientRequestId: `ai-test-health-${Date.now()}`,
+    });
+
+    let searchOk = false;
+    let searchError: string | undefined;
+    if (health.status === 200) {
+      const search = await executeGatewayRequest(c.env, {
+        actor: { type: "service", identity },
+        companyId: company.id,
+        toolName: "search_company_knowledge",
+        arguments: { query: "infra" },
+        sourceClient: `${clientType}-test`,
+        requireCredit: true,
+        clientRequestId: `ai-test-search-${Date.now()}`,
+      });
+      searchOk = search.status === 200;
+      searchError = search.error;
+    }
+
+    const status =
+      health.status === 200 && searchOk
+        ? "HEALTHY"
+        : health.status === 200
+          ? "DEGRADED"
+          : "FAILED";
+
+    await recordAuditEvent(c.env.DB, {
+      companyId: company.id,
+      eventType: "company.accessed",
+      actor: c.get("user").email,
+      resourceType: "ai_connection",
+      resourceId: clientType,
+      detail: {
+        stage: "ai_connection.tested",
+        status,
+        healthStatus: health.status,
+        searchOk,
+      },
+    });
+
+    return c.json({
+      status,
+      message:
+        status === "HEALTHY"
+          ? "Authentication, gateway, MCP, and knowledge search succeeded"
+          : status === "DEGRADED"
+            ? `Gateway health OK but knowledge search failed${searchError ? `: ${searchError}` : ""}`
+            : health.error ?? "Connection test failed",
+      checks: {
+        authentication: identity.status === "active" ? "passed" : "failed",
+        tenantResolution: "passed",
+        permissions: "passed",
+        wallet: health.status === 402 ? "failed" : "passed",
+        gateway: health.status === 200 ? "passed" : "failed",
+        mcp: health.status === 200 ? "passed" : "failed",
+        knowledgeSearch: searchOk ? "passed" : "failed",
+      },
+      mcpEndpoint:
+        "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp",
     });
   },
 );

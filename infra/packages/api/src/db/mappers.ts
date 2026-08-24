@@ -25,6 +25,22 @@ export function rowToCompany(row: Record<string, unknown>): Company {
     status: row.status as Company["status"],
     primaryDomain: row.primary_domain ? String(row.primary_domain) : null,
     notes: row.notes ? String(row.notes) : null,
+    tradingName: row.trading_name ? String(row.trading_name) : null,
+    companyNumber: row.company_number ? String(row.company_number) : null,
+    country: row.country ? String(row.country) : null,
+    timezone: row.timezone ? String(row.timezone) : null,
+    primaryContactName: row.primary_contact_name
+      ? String(row.primary_contact_name)
+      : null,
+    primaryEmail: row.primary_email ? String(row.primary_email) : null,
+    billingEmail: row.billing_email ? String(row.billing_email) : null,
+    telephone: row.telephone ? String(row.telephone) : null,
+    logoUrl: row.logo_url ? String(row.logo_url) : null,
+    portalSubdomain: row.portal_subdomain ? String(row.portal_subdomain) : null,
+    portalHostname: row.portal_hostname ? String(row.portal_hostname) : null,
+    provisionedAt: row.provisioned_at ? String(row.provisioned_at) : null,
+    suspendedAt: row.suspended_at ? String(row.suspended_at) : null,
+    closedAt: row.closed_at ? String(row.closed_at) : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };

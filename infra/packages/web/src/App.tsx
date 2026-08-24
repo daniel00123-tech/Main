@@ -46,6 +46,7 @@ import SystemHealthPage from "./pages/SystemHealthPage";
 import UsagePage from "./pages/UsagePage";
 import UsersPermissionsPage from "./pages/UsersPermissionsPage";
 import PortalShell from "./portal/PortalShell";
+import PortalEntryRedirect from "./portal/PortalEntryRedirect";
 import PortalLoginPage from "./portal/PortalLoginPage";
 import PortalDashboardPage from "./portal/PortalDashboardPage";
 import PortalConnectorsPage from "./portal/PortalConnectorsPage";
@@ -54,6 +55,7 @@ import PortalUsagePage from "./portal/PortalUsagePage";
 import PortalAiConnectionsPage from "./portal/PortalAiConnectionsPage";
 import PortalTeamPage from "./portal/PortalTeamPage";
 import PortalSettingsPage from "./portal/PortalSettingsPage";
+import PortalActivityPage from "./portal/PortalActivityPage";
 import { useState } from "react";
 
 type NavItem = {
@@ -71,7 +73,7 @@ const ADMIN_NAV: NavGroup[] = [
     items: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard size={18} />, end: true },
       { to: "/companies", label: "Companies", icon: <Building2 size={18} /> },
-      { to: "/portal/dashboard", label: "Company portal", icon: <Building2 size={18} /> },
+      { to: "/portal", label: "Company portal", icon: <Building2 size={18} /> },
     ],
   },
   {
@@ -80,7 +82,6 @@ const ADMIN_NAV: NavGroup[] = [
       { to: "/connectors", label: "Connectors", icon: <Plug size={18} /> },
       { to: "/mcp-environments", label: "AI Gateways", icon: <Network size={18} /> },
       { to: "/ai-clients", label: "AI Clients", icon: <Bot size={18} /> },
-      { to: "/portal/ai-connections", label: "ChatGPT connector", icon: <Bot size={18} /> },
     ],
   },
   {
@@ -205,7 +206,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                 size="sm"
                 onClick={() => {
                   setMobileOpen(false);
-                  navigate("/portal/dashboard");
+                  navigate("/portal");
                 }}
               >
                 Company portal
@@ -238,13 +239,25 @@ export default function App() {
       <Route path="/portal/login" element={<PortalLoginPage />} />
 
       <Route element={<PortalAuthShell />}>
-        <Route path="/portal" element={<PortalShell />}>
+        <Route path="/portal" element={<PortalEntryRedirect />} />
+        {/* Legacy flat portal paths → entry redirect (must precede :companySlug) */}
+        <Route path="/portal/dashboard" element={<PortalEntryRedirect />} />
+        <Route path="/portal/ai-connections" element={<PortalEntryRedirect />} />
+        <Route path="/portal/connectors" element={<PortalEntryRedirect />} />
+        <Route path="/portal/team" element={<PortalEntryRedirect />} />
+        <Route path="/portal/usage" element={<PortalEntryRedirect />} />
+        <Route path="/portal/billing" element={<PortalEntryRedirect />} />
+        <Route path="/portal/settings" element={<PortalEntryRedirect />} />
+        <Route path="/portal/activity" element={<PortalEntryRedirect />} />
+        <Route path="/portal/:companySlug" element={<PortalShell />}>
+          <Route index element={<PortalDashboardPage />} />
           <Route path="dashboard" element={<PortalDashboardPage />} />
           <Route path="connectors" element={<PortalConnectorsPage />} />
           <Route path="ai-connections" element={<PortalAiConnectionsPage />} />
           <Route path="team" element={<PortalTeamPage />} />
           <Route path="usage" element={<PortalUsagePage />} />
           <Route path="billing" element={<PortalBillingPage />} />
+          <Route path="activity" element={<PortalActivityPage />} />
           <Route path="settings" element={<PortalSettingsPage />} />
         </Route>
       </Route>

@@ -87,7 +87,7 @@ export function RequirePlatformAdmin({ children }: { children: React.ReactNode }
   }
 
   if (!user?.isPlatformAdmin) {
-    return <Navigate to="/portal/dashboard" replace />;
+    return <Navigate to="/portal" replace />;
   }
 
   return <>{children}</>;

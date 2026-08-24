@@ -43,6 +43,11 @@ export default function PortalAiConnectionsPage() {
     endpoint: string;
     mcpEndpoint: string;
   } | null>(null);
+  const [testResult, setTestResult] = useState<{
+    clientType: string;
+    status: string;
+    message: string;
+  } | null>(null);
 
   async function refresh() {
     if (!company) return;
@@ -92,6 +97,47 @@ export default function PortalAiConnectionsPage() {
       await refresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Connection failed";
+      setLoadError(message);
+      toast(message, "error");
+    } finally {
+      setBusyType(null);
+    }
+  }
+
+  async function revoke(clientType: string) {
+    if (!company) return;
+    setBusyType(`revoke-${clientType}`);
+    setLoadError(null);
+    try {
+      await api.revokeAiClient(company.slug, clientType);
+      setTokenReveal(null);
+      toast(`${clientType} token revoked`);
+      await refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Revoke failed";
+      setLoadError(message);
+      toast(message, "error");
+    } finally {
+      setBusyType(null);
+    }
+  }
+
+  async function testConnection(clientType: string) {
+    if (!company) return;
+    setBusyType(`test-${clientType}`);
+    setTestResult(null);
+    setLoadError(null);
+    try {
+      const result = await api.testAiClient(company.slug, clientType);
+      const status = String(result.status ?? "FAILED");
+      const message = String(result.message ?? "Test completed");
+      setTestResult({ clientType, status, message });
+      toast(
+        status === "HEALTHY" ? "Connection healthy" : message,
+        status === "HEALTHY" ? "success" : "error",
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Test failed";
       setLoadError(message);
       toast(message, "error");
     } finally {
@@ -213,6 +259,13 @@ export default function PortalAiConnectionsPage() {
         </Notice>
       ) : null}
 
+      {testResult ? (
+        <Notice tone={testResult.status === "HEALTHY" ? "success" : testResult.status === "DEGRADED" ? "warning" : "danger"}>
+          <strong>Test · {testResult.clientType}: {testResult.status}</strong>
+          <p style={{ margin: "8px 0 0" }}>{testResult.message}</p>
+        </Notice>
+      ) : null}
+
       {ordered.length === 0 ? (
         <EmptyState
           icon={<Bot size={28} />}
@@ -260,7 +313,7 @@ export default function PortalAiConnectionsPage() {
                     ? `Last activity ${formatRelativeTime(conn.lastUsedAt)}`
                     : "No recent activity through INFRA"}
                 </div>
-                <div className="connector-card-actions">
+                <div className="connector-card-actions" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   <Button
                     type="button"
                     variant={isChatgpt ? "primary" : conn.status === "connected" ? "secondary" : "primary"}
@@ -271,6 +324,30 @@ export default function PortalAiConnectionsPage() {
                   >
                     {primaryLabel}
                   </Button>
+                  {conn.status === "connected" ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={busyType === `test-${conn.clientType}`}
+                        loading={busyType === `test-${conn.clientType}`}
+                        onClick={() => void testConnection(conn.clientType)}
+                      >
+                        Test connection
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        disabled={busyType === `revoke-${conn.clientType}`}
+                        loading={busyType === `revoke-${conn.clientType}`}
+                        onClick={() => void revoke(conn.clientType)}
+                      >
+                        Revoke
+                      </Button>
+                    </>
+                  ) : null}
                 </div>
                 {conn.mcpEndpoint || conn.gatewayEndpoint ? (
                   <AdvancedDetails label="Connection endpoints">
