@@ -17,9 +17,12 @@ const MCP_ALLOW_HEADERS = [
   "MCP-Protocol-Version",
   "Mcp-Session-Id",
   "Last-Event-ID",
+  "X-Api-Key",
+  "Api-Key",
   "X-Infra-Client",
   "X-Infra-Request-Id",
   "X-Infra-Company-Id",
+  "X-Infra-Service-Token",
 ];
 
 export function createCorsMiddleware() {

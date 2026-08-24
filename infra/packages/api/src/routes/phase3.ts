@@ -1159,7 +1159,9 @@ phase3.post(
   requireAuth,
   requirePlatformAdmin,
   async (c) => {
-    const body = await c.req.json<{ sourceUrl?: string; notes?: string }>().catch(() => ({}));
+    const body = (await c.req
+      .json<{ sourceUrl?: string; notes?: string }>()
+      .catch(() => ({}))) as { sourceUrl?: string; notes?: string };
     const id = await createManualPricingReviewProposal(c.env.DB, {
       provider: c.req.param("provider"),
       sourceUrl: body.sourceUrl,

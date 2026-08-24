@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { handleInfraMcpJsonRpc } from "./mcp-gateway";
+import {
+  enrichMcpToolDescription,
+  handleInfraMcpJsonRpc,
+  wantsSse,
+} from "./mcp-gateway";
+import { extractServiceCredential } from "./gateway";
 import type { Env } from "../env";
 
 type Row = Record<string, unknown>;
@@ -108,6 +113,46 @@ class FakeD1 {
   }
 }
 
+describe("INFRA MCP content negotiation", () => {
+  it("prefers JSON when ChatGPT advertises both JSON and SSE", () => {
+    const req = new Request("https://infra.test/mcp", {
+      headers: { Accept: "application/json, text/event-stream" },
+    });
+    expect(wantsSse(req)).toBe(false);
+  });
+
+  it("uses SSE only when Accept is event-stream exclusive", () => {
+    const req = new Request("https://infra.test/mcp", {
+      headers: { Accept: "text/event-stream" },
+    });
+    expect(wantsSse(req)).toBe(true);
+  });
+});
+
+describe("INFRA MCP credential extraction", () => {
+  it("reads Bearer Authorization", () => {
+    const req = new Request("https://infra.test/mcp", {
+      headers: { Authorization: "Bearer infra_abc" },
+    });
+    expect(extractServiceCredential(req)).toBe("infra_abc");
+  });
+
+  it("reads X-Api-Key without weakening validation", () => {
+    const req = new Request("https://infra.test/mcp", {
+      headers: { "X-Api-Key": "infra_from_api_key" },
+    });
+    expect(extractServiceCredential(req)).toBe("infra_from_api_key");
+  });
+});
+
+describe("INFRA MCP tool descriptions", () => {
+  it("exposes clear knowledge-search guidance for ChatGPT", () => {
+    const desc = enrichMcpToolDescription("search_company_knowledge", "vague");
+    expect(desc.toLowerCase()).toContain("knowledge");
+    expect(desc.toLowerCase()).toContain("company");
+  });
+});
+
 describe("INFRA MCP facade tool catalogue consistency", () => {
   it("tools/list only advertises tools the ChatGPT identity can execute", async () => {
     const db = new FakeD1({
@@ -211,12 +256,24 @@ describe("INFRA MCP facade tool catalogue consistency", () => {
       { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
     );
 
-    const tools = (payload as { result?: { tools?: Array<{ name: string }> } })
-      .result?.tools;
+    const tools = (
+      payload as {
+        result?: {
+          tools?: Array<{
+            name: string;
+            description?: string;
+            inputSchema?: unknown;
+          }>;
+        };
+      }
+    ).result?.tools;
     expect(tools?.map((t) => t.name).sort()).toEqual([
       "search_company_knowledge",
       "system_health",
     ]);
     expect(tools?.some((t) => t.name === "query_business_data")).toBe(false);
+    const search = tools?.find((t) => t.name === "search_company_knowledge");
+    expect(search?.description?.toLowerCase()).toContain("knowledge");
+    expect(search?.inputSchema).toMatchObject({ type: "object" });
   });
 });

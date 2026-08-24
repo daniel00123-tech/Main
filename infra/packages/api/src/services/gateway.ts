@@ -85,9 +85,8 @@ export async function resolveGatewayActor(
   request: Request,
   sessionUser: SessionUser | null,
 ): Promise<GatewayActor | { error: string; status: 401 | 403 }> {
-  const auth = request.headers.get("Authorization");
-  if (auth?.toLowerCase().startsWith("bearer ")) {
-    const token = auth.slice(7).trim();
+  const token = extractServiceCredential(request);
+  if (token) {
     const identity = await authenticateServiceToken(env.DB, token);
     if (!identity) {
       return { error: "Invalid or revoked service token", status: 401 };
@@ -103,6 +102,32 @@ export async function resolveGatewayActor(
   }
 
   return { error: "Authentication required", status: 401 };
+}
+
+/**
+ * ChatGPT "Access token / API key" connectors may send the INFRA token as
+ * Authorization: Bearer <token> OR as an API-key style header. Same credential,
+ * same validation — not an auth bypass.
+ */
+export function extractServiceCredential(request: Request): string | null {
+  const auth = request.headers.get("Authorization");
+  if (auth?.toLowerCase().startsWith("bearer ")) {
+    const token = auth.slice(7).trim();
+    if (token) return token;
+  }
+
+  for (const name of ["X-Api-Key", "Api-Key", "X-Infra-Service-Token"]) {
+    const raw = request.headers.get(name)?.trim();
+    if (!raw) continue;
+    if (raw.toLowerCase().startsWith("bearer ")) {
+      const stripped = raw.slice(7).trim();
+      if (stripped) return stripped;
+      continue;
+    }
+    return raw;
+  }
+
+  return null;
 }
 
 async function findIdempotentGateway(

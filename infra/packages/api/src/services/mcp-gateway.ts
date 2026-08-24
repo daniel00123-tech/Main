@@ -4,8 +4,9 @@
  * ChatGPT / Claude must connect HERE (not to company MCP directly)
  * so every tools/call is authenticated, authorised, metered, and ledgered.
  *
- * Wire format matches production Caddington MCP behaviour that ChatGPT already
- * speaks: Accept application/json + text/event-stream, SSE responses preferred.
+ * Clients send Accept: application/json, text/event-stream. Prefer JSON for
+ * initialize / tools/list / errors — OpenAI ChatGPT clients have been observed
+ * to treat SSE-framed tools/list payloads as an empty tool catalogue.
  */
 
 import type { Env } from "../env";
@@ -42,35 +43,63 @@ function jsonRpcError(
   return { jsonrpc: "2.0", id, error: { code, message, data } };
 }
 
-function wantsSse(request: Request): boolean {
+/** Exported for unit tests — content negotiation for Streamable HTTP. */
+export function wantsSse(request: Request): boolean {
   const accept = (request.headers.get("Accept") ?? "").toLowerCase();
-  // Prefer SSE when client advertises it (ChatGPT / Caddington-compatible clients).
+  // Prefer JSON whenever the client advertises it (ChatGPT sends both).
+  if (accept.includes("application/json")) return false;
   if (accept.includes("text/event-stream")) return true;
-  // Strict event-stream-only Accept
-  if (accept.trim() === "text/event-stream") return true;
   return false;
 }
 
 function mcpResponse(
   request: Request,
   payload: unknown,
-  init?: { status?: number; sessionId?: string | null },
+  init?: { status?: number; sessionId?: string | null; wwwAuthenticate?: string },
 ): Response {
   const status = init?.status ?? 200;
   const headers = new Headers();
   if (init?.sessionId) {
     headers.set("Mcp-Session-Id", init.sessionId);
   }
-
-  if (wantsSse(request)) {
-    headers.set("Content-Type", "text/event-stream");
-    headers.set("Cache-Control", "no-cache");
-    const body = `event: message\ndata: ${JSON.stringify(payload)}\n\n`;
-    return new Response(body, { status, headers });
+  if (init?.wwwAuthenticate) {
+    headers.set("WWW-Authenticate", init.wwwAuthenticate);
   }
 
-  headers.set("Content-Type", "application/json");
-  return Response.json(payload, { status, headers });
+  // Auth failures must be JSON so ChatGPT can surface the challenge rather than
+  // treating an SSE error frame as "no tools".
+  if (status === 401 || status === 403 || !wantsSse(request)) {
+    headers.set("Content-Type", "application/json");
+    return Response.json(payload, { status, headers });
+  }
+
+  headers.set("Content-Type", "text/event-stream");
+  headers.set("Cache-Control", "no-cache");
+  const body = `event: message\ndata: ${JSON.stringify(payload)}\n\n`;
+  return new Response(body, { status, headers });
+}
+
+/** Clear, ChatGPT-oriented descriptions for known company knowledge tools. */
+export function enrichMcpToolDescription(
+  toolName: string,
+  upstreamDescription?: string | null,
+): string {
+  const defaults: Record<string, string> = {
+    search_company_knowledge:
+      "Search this company's indexed knowledge documents (policies, project docs, spend limits, approvals, etc.). Use when the user asks about company knowledge. Returns matching excerpts with source document titles.",
+    get_knowledge_document:
+      "Read a specific company knowledge document by identifier or title after locating it with search_company_knowledge.",
+    database_summary:
+      "Summarise available company business-data collections exposed through the knowledge layer.",
+    system_health:
+      "Non-billable health check for the company MCP connection through INFRA. Does not search documents and does not debit the wallet.",
+  };
+  const enriched = defaults[toolName];
+  if (enriched) return enriched;
+  if (upstreamDescription && upstreamDescription.trim()) {
+    return upstreamDescription.trim();
+  }
+  return `Company capability: ${toolName}`;
 }
 
 async function resolveToolActionForFilter(
@@ -203,7 +232,12 @@ export async function handleInfraMcpJsonRpc(
     };
   }
 
-  if (method === "notifications/initialized" || method === "ping") {
+  if (method === "notifications/initialized") {
+    // Streamable HTTP: notifications get 202 + empty body (no JSON-RPC result).
+    return { payload: null, httpStatus: 202 };
+  }
+
+  if (method === "ping") {
     return { payload: jsonRpcResult(id, {}), httpStatus: 200 };
   }
 
@@ -258,12 +292,19 @@ export async function handleInfraMcpJsonRpc(
           if (!decision.allowed) continue;
         }
 
+        const rawSchema =
+          tool.inputSchema &&
+          typeof tool.inputSchema === "object" &&
+          !Array.isArray(tool.inputSchema)
+            ? (tool.inputSchema as Record<string, unknown>)
+            : { type: "object", properties: {} };
+
         tools.push({
           name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema ?? {
-            type: "object",
-            properties: {},
+          description: enrichMcpToolDescription(tool.name, tool.description),
+          inputSchema: {
+            ...rawSchema,
+            type: typeof rawSchema.type === "string" ? rawSchema.type : "object",
           },
         });
       }
@@ -425,12 +466,44 @@ export async function handleInfraMcpHttp(
   const existingSession = request.headers.get("Mcp-Session-Id");
   const sessionId = existingSession?.trim() || newId("mcpsess");
 
+  const authHeader = request.headers.get("Authorization");
+  const apiKeyHeader =
+    request.headers.get("X-Api-Key") ??
+    request.headers.get("Api-Key") ??
+    request.headers.get("X-Infra-Service-Token");
+  const authPresent = Boolean(
+    (authHeader && authHeader.trim()) || (apiKeyHeader && apiKeyHeader.trim()),
+  );
+  const authScheme = authHeader?.toLowerCase().startsWith("bearer ")
+    ? "bearer"
+    : apiKeyHeader
+      ? "api_key_header"
+      : authHeader
+        ? "authorization_non_bearer"
+        : "none";
+
   const actorResult = await resolveGatewayActor(env, request, sessionUser);
   if ("error" in actorResult) {
     // Always JSON-RPC shaped — ChatGPT clients cannot parse {"error":"..."}.
     const payload = jsonRpcError(null, -32001, actorResult.error, {
       httpStatus: actorResult.status,
+      hint:
+        actorResult.status === 401
+          ? "Send Authorization: Bearer <INFRA service token> from Company Portal → AI Connections."
+          : undefined,
     });
+
+    let rpcMethod: string | null = null;
+    if (request.method === "POST") {
+      try {
+        const clone = request.clone();
+        const peeked = (await clone.json()) as { method?: string };
+        rpcMethod = typeof peeked.method === "string" ? peeked.method : null;
+      } catch {
+        rpcMethod = null;
+      }
+    }
+
     await recordAuditEvent(env.DB, {
       companyId: null,
       eventType: "permission.denied",
@@ -443,11 +516,21 @@ export async function handleInfraMcpHttp(
         message: actorResult.error,
         path: new URL(request.url).pathname,
         method: request.method,
+        rpcMethod,
+        // Never log token values — only presence/scheme.
+        authPresent,
+        authScheme,
+        userAgent: (request.headers.get("User-Agent") ?? "").slice(0, 160),
+        accept: (request.headers.get("Accept") ?? "").slice(0, 120),
       },
     });
     return mcpResponse(request, payload, {
       status: actorResult.status,
       sessionId,
+      wwwAuthenticate:
+        actorResult.status === 401
+          ? 'Bearer realm="infra-mcp", error="invalid_token", error_description="INFRA service token required"'
+          : undefined,
     });
   }
 
@@ -513,6 +596,13 @@ export async function handleInfraMcpHttp(
     body,
   );
 
+  if (httpStatus === 202 && payload == null) {
+    return new Response(null, {
+      status: 202,
+      headers: { "Mcp-Session-Id": sessionId },
+    });
+  }
+
   // MCP JSON-RPC application errors use HTTP 200 with error object so clients
   // that only parse SSE/JSON-RPC bodies still see the structured failure.
   const responseStatus =
@@ -526,7 +616,9 @@ export async function handleInfraMcpHttp(
       ? 200
       : httpStatus === 401 || httpStatus === 403
         ? httpStatus
-        : 200;
+        : httpStatus === 202
+          ? 202
+          : 200;
 
   return mcpResponse(request, payload, {
     status: responseStatus,
