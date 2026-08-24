@@ -1,0 +1,488 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { ChartColumn } from "lucide-react";
+import type { Company, UsageRecord } from "@infra/shared";
+import { api } from "../api";
+import {
+  Drawer,
+  EmptyState,
+  ErrorState,
+  FilterBar,
+  KeyValue,
+  LoadingState,
+  MetricCard,
+  MetricGrid,
+  PageHeader,
+  SearchInput,
+  Select,
+  StatusBadge,
+  formatCurrency,
+  formatDate,
+} from "../components";
+import { formatNumber } from "../lib/format";
+
+type UsageRow = UsageRecord & {
+  companyName: string;
+  companySlug: string;
+};
+
+export default function UsagePage() {
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [rows, setRows] = useState<UsageRow[]>([]);
+  const [summary, setSummary] = useState<{
+    requests: number;
+    successful: number;
+    failed: number;
+    customerChargesCents: number;
+    underlyingCostsCents: number;
+    grossProfitCents: number;
+    grossMarginBps: number | null;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [companyId, setCompanyId] = useState("");
+  const [sourceClient, setSourceClient] = useState("");
+  const [successFilter, setSuccessFilter] = useState("");
+  const [selected, setSelected] = useState<UsageRow | null>(null);
+  const [auditEvents, setAuditEvents] = useState<
+    Awaited<ReturnType<typeof api.getAuditEvents>>
+  >([]);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const companyList = await api.getCompanies();
+      setCompanies(companyList);
+      const usage = await api.getCommercialUsage({
+        companyId: companyId || undefined,
+        sourceClient: sourceClient || undefined,
+        success:
+          successFilter === "success"
+            ? true
+            : successFilter === "failed"
+              ? false
+              : undefined,
+      });
+      const companyById = new Map(companyList.map((c) => [c.id, c]));
+      const mapped: UsageRow[] = usage.records.map((record) => {
+        const company = companyById.get(record.companyId);
+        return {
+          ...record,
+          companyName: company?.name ?? record.companyId,
+          companySlug: company?.slug ?? "",
+        };
+      });
+      setRows(mapped);
+      setSummary(usage.summary);
+    } catch (err) {
+      // Fallback to per-company usage if commercial route unavailable
+      try {
+        const companyList = companies.length ? companies : await api.getCompanies();
+        setCompanies(companyList);
+        const collected: UsageRow[] = [];
+        await Promise.all(
+          companyList.map(async (company) => {
+            try {
+              const usage = await api.getCompanyUsage(company.slug, 50);
+              for (const record of usage.records) {
+                collected.push({
+                  ...record,
+                  companyName: company.name,
+                  companySlug: company.slug,
+                });
+              }
+            } catch {
+              /* skip */
+            }
+          }),
+        );
+        collected.sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+        setRows(collected);
+        setSummary(null);
+      } catch (fallbackErr) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : fallbackErr instanceof Error
+              ? fallbackErr.message
+              : "Unable to load usage",
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, sourceClient, successFilter]);
+
+  useEffect(() => {
+    if (!selected) {
+      setAuditEvents([]);
+      return;
+    }
+    void (async () => {
+      try {
+        const events = await api.getAuditEvents(selected.companyId, 80);
+        const corr = selected.correlationId;
+        const req = selected.requestId;
+        const usageId = selected.id;
+        const ledgerId = selected.ledgerEntryId;
+        setAuditEvents(
+          events.filter((event) => {
+            const detail = event.detail ?? {};
+            const detailText = JSON.stringify(detail);
+            return (
+              (corr && detailText.includes(corr)) ||
+              (req && detailText.includes(req)) ||
+              (usageId && (event.resourceId === usageId || detailText.includes(usageId))) ||
+              (ledgerId && (event.resourceId === ledgerId || detailText.includes(ledgerId)))
+            );
+          }),
+        );
+      } catch {
+        setAuditEvents([]);
+      }
+    })();
+  }, [selected]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.companyName.toLowerCase().includes(q) ||
+        (r.action ?? "").toLowerCase().includes(q) ||
+        (r.toolName ?? "").toLowerCase().includes(q) ||
+        (r.sourceClient ?? "").toLowerCase().includes(q) ||
+        (r.requestId ?? "").toLowerCase().includes(q),
+    );
+  }, [rows, query]);
+
+  const totals = useMemo(() => {
+    if (summary && !query.trim()) return summary;
+    const requests = filtered.length;
+    const successful = filtered.filter((r) => r.success !== false).length;
+    const failed = filtered.filter((r) => r.success === false).length;
+    const customerChargesCents = filtered.reduce(
+      (sum, r) => sum + (r.customerChargeCents ?? 0),
+      0,
+    );
+    const underlyingCostsCents = filtered.reduce(
+      (sum, r) => sum + (r.underlyingCostCents ?? 0),
+      0,
+    );
+    const grossProfitCents = filtered.reduce((sum, r) => {
+      if (r.grossProfitCents != null) return sum + r.grossProfitCents;
+      return sum + (r.customerChargeCents ?? 0) - (r.underlyingCostCents ?? 0);
+    }, 0);
+    return {
+      requests,
+      successful,
+      failed,
+      customerChargesCents,
+      underlyingCostsCents,
+      grossProfitCents,
+      grossMarginBps:
+        customerChargesCents > 0
+          ? Math.round((grossProfitCents * 10_000) / customerChargesCents)
+          : null,
+    };
+  }, [filtered, summary, query]);
+
+  if (loading) return <LoadingState label="Loading usage…" />;
+  if (error) {
+    return <ErrorState title="Unable to load usage" description={error} onRetry={() => void load()} />;
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Usage"
+        description="Customer charges, underlying provider cost, and margin from the same accounting data as Billing."
+      />
+
+      <MetricGrid cols={3}>
+        <MetricCard
+          label="Customer charges"
+          value={
+            totals.customerChargesCents > 0
+              ? formatCurrency(totals.customerChargesCents)
+              : "—"
+          }
+        />
+        <MetricCard
+          label="Underlying provider cost"
+          value={
+            totals.underlyingCostsCents > 0
+              ? formatCurrency(totals.underlyingCostsCents)
+              : "Unavailable / not configured"
+          }
+          hint={
+            totals.underlyingCostsCents > 0
+              ? undefined
+              : "Shown when provider rate cards have measurable unit costs"
+          }
+        />
+        <MetricCard
+          label="Gross profit"
+          value={
+            totals.customerChargesCents > 0
+              ? formatCurrency(totals.grossProfitCents)
+              : "—"
+          }
+        />
+        <MetricCard
+          label="Gross margin"
+          value={
+            totals.grossMarginBps != null
+              ? `${(totals.grossMarginBps / 100).toFixed(1)}%`
+              : "—"
+          }
+        />
+        <MetricCard label="Successful requests" value={formatNumber(totals.successful)} />
+        <MetricCard label="Failed requests" value={formatNumber(totals.failed)} />
+      </MetricGrid>
+
+      <FilterBar>
+        <SearchInput value={query} onChange={setQuery} placeholder="Search usage…" className="grow" />
+        <Select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+          <option value="">All companies</option>
+          {companies.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
+        <Select value={sourceClient} onChange={(e) => setSourceClient(e.target.value)}>
+          <option value="">All AI clients</option>
+          <option value="chatgpt">ChatGPT</option>
+          <option value="claude">Claude</option>
+          <option value="infra-admin-test">Admin test</option>
+        </Select>
+        <Select value={successFilter} onChange={(e) => setSuccessFilter(e.target.value)}>
+          <option value="">Success & failure</option>
+          <option value="success">Successful</option>
+          <option value="failed">Failed</option>
+        </Select>
+      </FilterBar>
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={<ChartColumn size={28} />}
+          title="No usage recorded yet"
+          description="Usage appears after a request passes through the INFRA gateway or MCP facade."
+        />
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Company</th>
+                <th>Client</th>
+                <th>Operation</th>
+                <th className="num">Charge</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((row) => (
+                <tr key={row.id} style={{ cursor: "pointer" }} onClick={() => setSelected(row)}>
+                  <td>{formatDate(row.recordedAt)}</td>
+                  <td>
+                    {row.companySlug ? (
+                      <Link to={`/companies/${row.companySlug}`} onClick={(e) => e.stopPropagation()}>
+                        {row.companyName}
+                      </Link>
+                    ) : (
+                      row.companyName
+                    )}
+                  </td>
+                  <td className="muted">{humanClient(row.sourceClient)}</td>
+                  <td>{humaniseOperation(row.action ?? row.toolName ?? "Request")}</td>
+                  <td className="num">
+                    {row.customerChargeCents != null
+                      ? formatCurrency(row.customerChargeCents)
+                      : "£0.00"}
+                  </td>
+                  <td>
+                    <StatusBadge status={row.success !== false ? "completed" : "failed"} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Drawer open={Boolean(selected)} onClose={() => setSelected(null)} title="Usage details">
+        {selected ? <UsageDetail row={selected} auditEvents={auditEvents} /> : null}
+      </Drawer>
+    </>
+  );
+}
+
+function UsageDetail({
+  row,
+  auditEvents,
+}: {
+  row: UsageRow;
+  auditEvents: Awaited<ReturnType<typeof api.getAuditEvents>>;
+}) {
+  const balanceBefore =
+    typeof row.metadata?.balanceBeforeCents === "number"
+      ? row.metadata.balanceBeforeCents
+      : null;
+  const balanceAfter =
+    balanceBefore != null && row.customerChargeCents != null
+      ? balanceBefore - row.customerChargeCents
+      : null;
+
+  const costLabel = formatUnderlyingCost(row);
+
+  return (
+    <>
+      <h3 className="section-title" style={{ marginTop: 0 }}>
+        Request
+      </h3>
+      <KeyValue label="Client" value={humanClient(row.sourceClient)} />
+      <KeyValue label="Company" value={row.companyName} />
+      <KeyValue
+        label="Operation"
+        value={humaniseOperation(row.action ?? row.toolName ?? "Request")}
+      />
+      <KeyValue label="MCP" value={row.mcpEnvironmentId ?? "—"} mono />
+      <KeyValue
+        label="Status"
+        value={<StatusBadge status={row.success !== false ? "completed" : "failed"} />}
+      />
+      <KeyValue label="Request ID" value={row.requestId ?? "—"} mono />
+      <KeyValue label="Correlation ID" value={row.correlationId ?? "—"} mono />
+
+      <h3 className="section-title">Commercial</h3>
+      <KeyValue label="Underlying cost" value={costLabel} />
+      <KeyValue
+        label="Customer charge"
+        value={
+          row.customerChargeCents != null ? formatCurrency(row.customerChargeCents) : "£0.00"
+        }
+      />
+      <KeyValue
+        label="Gross profit"
+        value={
+          row.grossProfitCents != null
+            ? formatCurrency(row.grossProfitCents)
+            : row.customerChargeCents != null && row.underlyingCostCents != null
+              ? formatCurrency(row.customerChargeCents - row.underlyingCostCents)
+              : "—"
+        }
+      />
+      <KeyValue
+        label="Gross margin"
+        value={
+          row.actualMarginBps != null
+            ? `${(row.actualMarginBps / 100).toFixed(1)}%`
+            : "—"
+        }
+      />
+      <KeyValue
+        label="Target margin"
+        value={
+          row.targetMarginBps != null ? `${(row.targetMarginBps / 100).toFixed(0)}%` : "—"
+        }
+      />
+      <KeyValue
+        label="Rate card"
+        value={row.rateCardVersion ?? row.rateCardId ?? "Test fixed rule"}
+        mono
+      />
+      <KeyValue
+        label="Pricing rule"
+        value={row.pricingRuleId ?? "—"}
+        mono
+      />
+      <KeyValue
+        label="Wallet"
+        value={
+          balanceBefore != null && balanceAfter != null
+            ? `${formatCurrency(balanceBefore)} → ${formatCurrency(balanceAfter)}`
+            : "—"
+        }
+      />
+      <KeyValue label="Ledger" value={row.ledgerEntryId ?? "—"} mono />
+      <KeyValue label="Settlement" value={row.settlementStatus ?? "—"} />
+
+      <h3 className="section-title">Audit</h3>
+      {auditEvents.length === 0 ? (
+        <ol className="audit-steps muted">
+          <li>Received</li>
+          <li>Authenticated</li>
+          <li>Authorised</li>
+          <li>Routed</li>
+          <li>MCP completed</li>
+          <li>Usage recorded</li>
+          <li>Pricing calculated</li>
+          <li>Ledger debited</li>
+          <li>Response returned</li>
+        </ol>
+      ) : (
+        <ol className="audit-steps">
+          {auditEvents
+            .slice()
+            .reverse()
+            .map((event) => (
+              <li key={event.id}>
+                <strong>{String(event.detail?.stage ?? event.eventType)}</strong>
+                <div className="muted small">{formatDate(event.createdAt)}</div>
+              </li>
+            ))}
+        </ol>
+      )}
+
+      <details className="advanced-block">
+        <summary>Technical details</summary>
+        <KeyValue label="Tool" value={row.toolName ?? "—"} mono />
+        <KeyValue
+          label="Latency"
+          value={row.durationMs != null ? `${row.durationMs}ms` : "—"}
+        />
+        <KeyValue label="Usage ID" value={row.id} mono />
+      </details>
+    </>
+  );
+}
+
+function formatUnderlyingCost(row: UsageRow): string {
+  if (row.costBasis === "unknown" || (row.underlyingCostCents == null && row.underlyingCostMicros == null)) {
+    return "Unavailable / not configured";
+  }
+  if (row.underlyingCostMicros != null && row.underlyingCostMicros > 0) {
+    const label = row.costBasis === "estimated" ? "Estimated" : "Actual";
+    return `${label}: £${(row.underlyingCostMicros / 1_000_000).toFixed(6)}`;
+  }
+  if (row.underlyingCostCents != null) {
+    const label = row.costBasis === "estimated" ? "Estimated" : "Actual";
+    return `${label}: ${formatCurrency(row.underlyingCostCents)}`;
+  }
+  return "Unavailable / not configured";
+}
+
+function humaniseOperation(value: string): string {
+  if (value.includes("knowledge.search") || value.includes("search_company_knowledge")) {
+    return "Knowledge Search";
+  }
+  if (value.includes("knowledge.read")) return "Knowledge Read";
+  return value.replace(/[._]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function humanClient(value: string | null | undefined): string {
+  if (!value) return "—";
+  if (value === "chatgpt") return "ChatGPT";
+  if (value === "claude") return "Claude";
+  return value;
+}
