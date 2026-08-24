@@ -128,7 +128,11 @@ phase3.post("/api/gateway/v1/execute", async (c) => {
     arguments: body.arguments,
     mcpEnvironmentId: body.mcpEnvironmentId,
     sourceClient:
-      body.sourceClient ?? c.req.header("X-Infra-Client") ?? "gateway",
+      body.sourceClient ??
+      c.req.header("X-Infra-Client") ??
+      (actorResult.type === "service"
+        ? actorResult.identity.identityType
+        : "gateway"),
     clientRequestId:
       body.clientRequestId ??
       body.requestId ??
