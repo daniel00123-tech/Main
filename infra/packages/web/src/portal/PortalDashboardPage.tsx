@@ -66,6 +66,19 @@ export default function PortalDashboardPage() {
         allClear="Everything is running normally"
       />
 
+      <SectionCard
+        title="ChatGPT connector"
+        description="Generate a Bearer token and point ChatGPT at the INFRA MCP URL — no backend setup required."
+      >
+        <p className="muted" style={{ marginTop: 0 }}>
+          Path: <strong>{company.name}</strong> → AI connections → ChatGPT → Generate / Reconnect
+          token → INFRA MCP URL
+        </p>
+        <Link to="/portal/ai-connections" className="button button-primary">
+          Open AI connections · ChatGPT
+        </Link>
+      </SectionCard>
+
       {isFresh ? (
         <SectionCard title="Welcome to INFRA" description="Let's connect your company.">
           <ol className="stack" style={{ margin: 0, paddingLeft: 18, color: "var(--text-secondary)" }}>
