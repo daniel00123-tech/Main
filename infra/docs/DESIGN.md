@@ -28,6 +28,7 @@ INFRA is intentionally isolated under `infra/` as a greenfield project. No conne
 │                                                                         │
 │  Companies · MCP Registry · Connectors · Permissions · Billing        │
 │  Usage Metering · Audit · Health · AI Client Registry                   │
+│  Company Definitions (rules, glossary, correction workflow)             │
 └───────────────────────────────┬─────────────────────────────────────────┘
                                 │ registers / monitors / bills
         ┌───────────────────────┼───────────────────────┐
@@ -73,6 +74,7 @@ Future packages (post-approval):
 packages/
   billing/                    # Ledger, pricing engine, Stripe handlers
   connectors-runtime/         # Connector worker runtime (per sync job)
+  definitions/                # Company definitions service + MCP injection helpers
 ```
 
 ---
@@ -143,9 +145,17 @@ ALTER mcp_environments ADD health_endpoint_url, auth_secret_ref, version, capabi
 
 -- Errors / health
 system_errors (id, company_id, source_type, source_id, severity, message, created_at)
+
+-- Company definitions (see Section 22)
+company_definitions (...)
+glossary_entries (...)
+definition_correction_proposals (...)
+definition_versions (...)
 ```
 
 Customer documents, vectors, CRM records, and API credentials **never** live in the control-plane D1.
+
+See **Section 22** for the full company definitions schema.
 
 ---
 
@@ -429,6 +439,324 @@ Caddington Holdings is seeded with:
 ### Stage 6 — Real connectors (one at a time)
 - Only after platform shell proven; explicit approval per connection
 
+### Stage 6 — Real connectors (one at a time)
+- Only after platform shell proven; explicit approval per connection
+
+### Stage 7 — Company definitions
+- Definitions store, correction capture, approval workflow, MCP injection
+- Cursor as primary authoring tool in v0.1; company portal approval in v0.2
+
+---
+
+## 22. Company definitions engine
+
+This section describes how INFRA handles company-specific business language, calculation rules, and domain glossary — without building unconstrained AI self-learning or a separate organisational-memory product.
+
+### 22.1 What it is (and is not)
+
+| It **is** | It is **not** |
+| --- | --- |
+| A structured, approved rules store per company | Free-form AI memory that rewrites itself |
+| Injected into MCP/AI context on every request | A separate ML training pipeline |
+| Versioned, auditable, company-isolated | Shared knowledge across EL, HT, Caddington |
+| Populated via corrections + approval | Silent learning from every chat message |
+
+**Example:** EL Business defines `revenue = invoices - credit_notes`. HT Business defines `revenue = invoices + performers - credit_notes`. Same platform, different definitions, never mixed.
+
+### 22.2 The engine — components
+
+There is **no separate AI “learning engine.”** Company definitions are powered by:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  1. DEFINITIONS STORE (INFRA control plane)                     │
+│     Cloudflare D1 — structured rows, company-scoped             │
+│     Tables: company_definitions, glossary_entries, proposals    │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ read approved definitions
+┌────────────────────────────▼────────────────────────────────────┐
+│  2. DEFINITIONS SERVICE (Cloudflare Worker)                     │
+│     packages/definitions — CRUD, approval, versioning, audit    │
+│     API: GET /companies/:id/definitions (for MCP consumption) │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ inject at request time
+┌────────────────────────────▼────────────────────────────────────┐
+│  3. MCP DEFINITION INJECTOR (company MCP layer)                 │
+│     Loads definitions → adds to tool context / system prompt    │
+│     BigChange tools apply revenue rule before returning data    │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+┌────────────────────────────▼────────────────────────────────────┐
+│  4. CORRECTION CAPTURE (INFRA gateway / MCP middleware)         │
+│     User correction → proposal row → approval queue             │
+│     Does NOT auto-promote to production without approval        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Technology stack:** Cloudflare Workers + D1 + Queues (async proposal processing). No vector DB or ML model required for definitions themselves — they are structured data.
+
+**Optional later:** semantic search over glossary via Vectorize for “did someone already define this term?” — not v0.1.
+
+### 22.3 Three tiers of memory
+
+| Tier | What | Storage | Persisted? |
+| --- | --- | --- | --- |
+| **1 — Conversation** | “I meant January, not February” | AI session context only | No |
+| **2 — Company definitions** | “Revenue = invoices − credit notes” | INFRA D1 (`company_definitions`) | Yes, after approval |
+| **3 — Source documents** | SOPs, policies, pricing in SharePoint/Drive | Customer data plane (R2, Vectorize) | Yes, synced from source |
+
+Tier 2 is what this engine implements. Tier 3 is the existing Caddington knowledge approach. Tier 1 must never be silently promoted to Tier 2.
+
+### 22.4 D1 schema (migration 0003 — planned)
+
+```sql
+-- Approved business rules and calculations
+CREATE TABLE company_definitions (
+  id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL REFERENCES companies(id),
+  slug TEXT NOT NULL,                    -- e.g. "revenue", "net_sales"
+  display_name TEXT NOT NULL,            -- e.g. "Revenue"
+  definition_type TEXT NOT NULL,         -- calculation | filter | mapping | behaviour
+  connector_slug TEXT,                   -- e.g. "bigchange", null = global
+  rule_expression TEXT NOT NULL,         -- e.g. "invoices - credit_notes"
+  rule_config_json TEXT NOT NULL DEFAULT '{}',  -- structured rule for code execution
+  description TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'draft',  -- draft | pending | approved | deprecated
+  risk_class TEXT NOT NULL DEFAULT 'low_risk',
+  approved_by TEXT,
+  approved_at TEXT,
+  effective_from TEXT NOT NULL,
+  effective_until TEXT,                  -- null = current
+  source_proposal_id TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(company_id, slug, version)
+);
+
+CREATE INDEX idx_company_definitions_company ON company_definitions(company_id);
+CREATE INDEX idx_company_definitions_active ON company_definitions(company_id, status);
+
+-- Domain glossary (BigChange "parent contact", etc.)
+CREATE TABLE glossary_entries (
+  id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL REFERENCES companies(id),
+  term TEXT NOT NULL,                    -- e.g. "parent contact"
+  normalized_term TEXT NOT NULL,         -- lowercase for lookup
+  system_slug TEXT,                      -- e.g. "bigchange"
+  definition TEXT NOT NULL,
+  api_hint_json TEXT NOT NULL DEFAULT '{}',  -- field names, filters, examples
+  status TEXT NOT NULL DEFAULT 'draft',
+  approved_by TEXT,
+  approved_at TEXT,
+  usage_count INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_glossary_company ON glossary_entries(company_id);
+CREATE INDEX idx_glossary_term ON glossary_entries(company_id, normalized_term);
+
+-- User corrections awaiting approval
+CREATE TABLE definition_correction_proposals (
+  id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL REFERENCES companies(id),
+  proposal_type TEXT NOT NULL,           -- definition | glossary | filter
+  source_channel TEXT NOT NULL,          -- chatgpt | claude | cursor | whatsapp | automation
+  source_request_id TEXT,
+  actor_user_id TEXT,
+  actor_email TEXT,
+  original_query TEXT,
+  user_correction TEXT NOT NULL,
+  proposed_slug TEXT,
+  proposed_rule TEXT,
+  proposed_config_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected | merged
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  resulting_definition_id TEXT,
+  resulting_glossary_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_proposals_company ON definition_correction_proposals(company_id);
+CREATE INDEX idx_proposals_status ON definition_correction_proposals(status);
+
+-- Immutable history when definitions change
+CREATE TABLE definition_versions (
+  id TEXT PRIMARY KEY,
+  definition_id TEXT NOT NULL REFERENCES company_definitions(id),
+  company_id TEXT NOT NULL REFERENCES companies(id),
+  version INTEGER NOT NULL,
+  rule_expression TEXT NOT NULL,
+  rule_config_json TEXT NOT NULL,
+  changed_by TEXT NOT NULL,
+  change_reason TEXT,
+  created_at TEXT NOT NULL
+);
+```
+
+### 22.5 Where Cursor fits
+
+Cursor is **not in the runtime path** for every staff ChatGPT message. Cursor is the **primary authoring and approval tool in v0.1**.
+
+| Entry point | Who | What happens |
+| --- | --- | --- |
+| **Cursor (developer)** | You | Write/update definitions via INFRA API or synced config files; build MCP tools that consume them |
+| **ChatGPT / Claude correction** | Staff | Correction captured → `definition_correction_proposals` → you approve in Cursor or admin UI |
+| **Company portal (v0.2)** | Charlie (Owner) | Review pending proposals; approve glossary and low-risk rules |
+| **Automation** | System | Reads approved definitions only — never writes new ones |
+
+**v0.1 Cursor workflow:**
+
+```
+1. User corrects in ChatGPT: "Revenue means invoices minus credit notes"
+2. INFRA logs proposal (pending)
+3. You see proposal in admin UI or Cursor notification
+4. In Cursor: review → POST /api/companies/el-business/definitions/approve
+5. Definition active immediately for all MCP requests, automations, future WhatsApp
+```
+
+**Alternative v0.1 path (no live correction capture yet):**
+
+```
+You in Cursor: edit infra/definitions/el-business.yaml
+        ↓
+git commit → deploy → INFRA API syncs YAML → D1
+        ↓
+EL MCP loads on next request
+```
+
+Both paths write to the **same D1 store**. Cursor is the editor; INFRA is the engine.
+
+### 22.6 Correction → approval → apply flow
+
+```
+User: "Find January 2026 invoices"
+        ↓
+MCP returns £100,000 (raw invoices — no revenue rule yet)
+        ↓
+User: "No — I meant sales: invoices minus credit notes"
+        ↓
+┌───────────────────────────────────────┐
+│ INFRA: capture proposal               │
+│   type: definition                    │
+│   slug: revenue                       │
+│   rule: invoices - credit_notes       │
+│   status: pending                     │
+│   source: chatgpt                     │
+└───────────────────────────────────────┘
+        ↓
+Approval (v0.1: developer in Cursor / admin)
+        ↓
+┌───────────────────────────────────────┐
+│ company_definitions row created       │
+│   company_id: co_el                     │
+│   slug: revenue                         │
+│   rule: invoices - credit_notes         │
+│   status: approved                      │
+│   version: 1                            │
+└───────────────────────────────────────┘
+        ↓
+Next request: MCP injector loads definition
+        ↓
+BigChange tool applies net calculation → £95,000
+        ↓
+Audit: definition.applied, request_id, result
+```
+
+**Auto-suggest (v0.2+):** After 3 similar corrections on the same term, INFRA suggests: “Create permanent definition for ‘revenue’?” — still requires approval.
+
+**Never auto-approve:** `FINANCIAL_ACTION`, `BATCH_WRITE`, `DELETE`, calculation rules affecting billing/reporting — unless explicitly configured by Platform Owner.
+
+### 22.7 MCP injection — how definitions reach the AI
+
+On every MCP tool call, the company MCP:
+
+1. Fetches approved definitions from INFRA API (cached 60s in MCP Worker)
+2. Fetches glossary entries matching terms in the user query
+3. Injects into tool execution context:
+
+```typescript
+// Pseudocode — MCP tool handler
+const definitions = await infra.getDefinitions(companyId, { connector: 'bigchange' });
+const glossary = await infra.matchGlossary(companyId, userQuery);
+
+const context = {
+  definitions: {
+    revenue: 'invoices - credit_notes',  // from company_definitions
+  },
+  glossary: {
+    'parent contact': 'BigChange ParentContactId — billing account holder',
+  },
+};
+
+// BigChange query tool applies revenue rule before returning
+const result = await bigchange.querySales({ month: '2026-01', apply: context.definitions });
+```
+
+The **AI model** receives correct data because the **MCP tool** applied the rule — not because the AI “remembered” from last week’s chat.
+
+### 22.8 Worked examples
+
+**EL Business — revenue calculation**
+
+| Field | Value |
+| --- | --- |
+| slug | `revenue` |
+| rule | `invoices - credit_notes` |
+| connector | `bigchange` |
+| approved_by | `charlie@el.example` |
+
+**HT Business — different revenue rule**
+
+| Field | Value |
+| --- | --- |
+| slug | `revenue` |
+| rule | `invoices + performers - credit_notes` |
+| connector | `commusoft` |
+
+**EL Business — BigChange glossary**
+
+| term | definition | api_hint |
+| --- | --- | --- |
+| parent contact | Billing account holder in BigChange | `{ "field": "ParentContactId", "contactType": "Parent" }` |
+| TEMP reference | Exclude SI references starting with TEMP | `{ "excludePrefix": "TEMP" }` |
+
+### 22.9 Definitions + automations + WhatsApp
+
+All channels read the **same approved definitions**:
+
+```
+ChatGPT request  ──┐
+Cursor automation ─┼──→ INFRA definitions service ──→ EL MCP ──→ BigChange
+WhatsApp (future) ─┘
+```
+
+An automation that runs at 8am to send Commusoft quotes uses the same glossary and filters as a ChatGPT conversation — no duplicate rules in Cursor scripts.
+
+Cursor-built automations should **read** definitions from INFRA at runtime, not hard-code business rules in script files (except as fallback during early development).
+
+### 22.10 Phasing
+
+| Phase | Capability |
+| --- | --- |
+| **v0.1** | Manual definition authoring via Cursor → INFRA API or YAML; MCP reads definitions; corrections logged to audit only |
+| **v0.2** | Correction proposals UI; owner approval in company portal; glossary management |
+| **v0.3** | Auto-suggest after repeated corrections; definition versioning UI; impact preview (“this changes revenue reporting”) |
+
+### 22.11 Risks
+
+| Risk | Mitigation |
+| --- | --- |
+| Wrong rule approved → bad reporting | Versioning, approval gate, audit trail, deprecate not delete |
+| Cross-tenant rule leak | Strict `company_id` on all definition queries |
+| AI silently “learns” wrong thing | Proposals require approval; no auto-write to Tier 2 |
+| Rules drift from Cursor scripts | Automations fetch definitions from INFRA at runtime |
+| Too many definitions → context bloat | Load only relevant definitions per connector/query; glossary keyword match |
+
 ---
 
 ## Gap analysis: current scaffold vs v0.1 spec
@@ -454,7 +782,9 @@ Caddington Holdings is seeded with:
 | System health dashboard | Not started |
 | Caddington MCP registration | Done |
 | Simulated billing test | Not started |
-| Visual prototype | In progress |
+| Visual prototype | Done (admin + EL company portal) |
+| Company definitions engine | Designed — not implemented (Section 22) |
+| Company portal (tenant view) | Prototype only |
 
 ---
 
