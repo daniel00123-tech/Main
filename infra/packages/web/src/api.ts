@@ -12,7 +12,11 @@ import type {
   UsageSummary,
 } from "@infra/shared";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+const API_BASE =
+  import.meta.env.VITE_API_BASE ??
+  (import.meta.env.PROD
+    ? "https://infra-api.daniel-dwyer123.workers.dev"
+    : "");
 
 export interface SessionUser {
   userId: string;
