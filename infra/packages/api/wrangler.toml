@@ -1,0 +1,13 @@
+name = "infra-api"
+main = "src/index.ts"
+compatibility_date = "2025-02-14"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "infra-control-plane"
+database_id = "local-infra-control-plane"
+migrations_dir = "../../migrations"
+
+[vars]
+ENVIRONMENT = "development"
