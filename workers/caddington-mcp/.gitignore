@@ -4,3 +4,4 @@ dist/
 seed-output/
 *.log
 .dev.vars
+caddington-knowledge-test.txt

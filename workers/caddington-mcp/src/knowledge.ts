@@ -1,4 +1,5 @@
 import { EMBEDDING_MODEL } from "./constants";
+import { extractDocumentText } from "./document-extract";
 import type { Env } from "./db";
 import { log } from "./logger";
 
@@ -36,30 +37,6 @@ export function chunkText(text: string): string[] {
     start = Math.max(end - CHUNK_OVERLAP, start + 1);
   }
   return chunks.filter((c) => c.length > 0);
-}
-
-export function extractTextFromBytes(
-  bytes: ArrayBuffer,
-  mimeType: string,
-  filename: string
-): string {
-  const lowerMime = mimeType.toLowerCase();
-  const lowerName = filename.toLowerCase();
-  const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-
-  if (
-    lowerMime.startsWith("text/") ||
-    lowerName.endsWith(".md") ||
-    lowerName.endsWith(".txt") ||
-    lowerName.endsWith(".csv") ||
-    lowerName.endsWith(".json")
-  ) {
-    return text;
-  }
-
-  throw new Error(
-    `Unsupported document type for text extraction: ${mimeType || filename}. Upload plain text, markdown, CSV, or JSON for v1.`
-  );
 }
 
 export async function searchCompanyKnowledge(
@@ -182,7 +159,8 @@ export async function indexKnowledgeDocument(
     }
 
     const bytes = await object.arrayBuffer();
-    const text = extractTextFromBytes(
+    const text = await extractDocumentText(
+      env,
       bytes,
       doc.mime_type ?? object.httpMetadata?.contentType ?? "text/plain",
       doc.r2_key
