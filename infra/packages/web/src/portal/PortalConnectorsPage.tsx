@@ -1,6 +1,13 @@
 import { CONNECTOR_CATALOGUE } from "@infra/shared";
-import { PageHeader, SectionCard, StatusBadge } from "../components";
-import { ErrorState, LoadingState } from "../components";
+import { Plug } from "lucide-react";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  SectionCard,
+  StatusBadge,
+} from "../components";
 import { usePortalCompany } from "./usePortalCompany";
 
 export default function PortalConnectorsPage() {
@@ -8,69 +15,59 @@ export default function PortalConnectorsPage() {
 
   if (loading) return <LoadingState />;
   if (error || !company || !overview) {
-    return <ErrorState message={error ?? "Connectors unavailable"} />;
+    return <ErrorState title="Unable to load connected systems" description={error ?? undefined} />;
   }
 
   const catalogueById = new Map(CONNECTOR_CATALOGUE.map((item) => [item.id, item]));
+  const instances = overview.connectorInstances;
 
   return (
     <>
       <PageHeader
-        title="Connectors"
-        subtitle={`Business systems registered for ${company.name}. Live connections are not enabled in Phase 1.`}
+        title="Connected systems"
+        description={`Business systems linked to ${company.name}.`}
       />
 
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>System</th>
-              <th>Category</th>
-              <th>Status</th>
-              <th>Health</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {overview.connectorInstances.map((connector) => {
-              const definition = catalogueById.get(connector.connectorDefinitionId);
-              return (
-                <tr key={connector.id}>
-                  <td>{connector.name}</td>
-                  <td>{definition?.category ?? "—"}</td>
-                  <td>
-                    <StatusBadge value={connector.status} />
-                  </td>
-                  <td>
-                    <StatusBadge value={connector.healthStatus} />
-                  </td>
-                  <td>
-                    <span className="prototype-badge">Not connected in Phase 1</span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <SectionCard title="How connections work">
-        <div className="grid grid-2">
-          <div>
-            <h4>Phase 1 — Registry only</h4>
-            <p className="muted">
-              Connector instances are registered in INFRA but not connected to live
-              business systems yet. Status and health reflect configuration state only.
-            </p>
-          </div>
-          <div>
-            <h4>Later — Self-service</h4>
-            <p className="muted">
-              Company admins will connect systems with secure credential storage.
-              Staff permissions are enforced server-side regardless of AI client.
-            </p>
-          </div>
+      {instances.length === 0 ? (
+        <EmptyState
+          icon={<Plug size={28} />}
+          title="No systems connected"
+          description="When integrations are connected for your company, they will appear here."
+        />
+      ) : (
+        <div className="connector-grid">
+          {instances.map((connector) => {
+            const definition = catalogueById.get(connector.connectorDefinitionId);
+            const connected = connector.status !== "draft" && connector.status !== "disabled";
+            return (
+              <article key={connector.id} className="connector-card" style={{ minHeight: 160 }}>
+                <div className="connection-header">
+                  <h3 style={{ margin: 0 }}>{connector.name}</h3>
+                  <StatusBadge
+                    status={connected ? connector.status : "not_configured"}
+                    label={connected ? undefined : "Not connected"}
+                  />
+                </div>
+                <p className="muted small">
+                  {definition?.description ?? "Business system integration"}
+                </p>
+                <div className="muted small">
+                  Health:{" "}
+                  {connector.status === "draft"
+                    ? "Not configured"
+                    : connector.healthStatus}
+                </div>
+              </article>
+            );
+          })}
         </div>
+      )}
+
+      <SectionCard title="About connections" description="How INFRA keeps access safe.">
+        <p className="muted" style={{ margin: 0 }}>
+          Connected systems are reached through INFRA with your role permissions. Staff never need
+          direct credentials for each system. Ask an administrator if you need a new integration.
+        </p>
       </SectionCard>
     </>
   );

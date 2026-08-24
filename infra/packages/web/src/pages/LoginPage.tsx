@@ -33,12 +33,16 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="brand">INFRA</div>
-        <div className="brand-sub">Platform admin</div>
+        <div className="brand-block" style={{ padding: 0 }}>
+          <div className="brand-mark">IN</div>
+          <div className="brand-text">
+            <span className="brand-name">INFRA</span>
+            <span className="brand-context">Control Plane</span>
+          </div>
+        </div>
         <h1>Sign in</h1>
         <p className="muted">
-          Platform administrators sign in to manage companies, MCP environments,
-          connectors, users, and audit information.
+          Access the INFRA control plane to manage companies, integrations, and access.
         </p>
         {successMessage ? <p className="info-banner">{successMessage}</p> : null}
         <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
@@ -48,6 +52,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
               required
             />
           </label>
@@ -57,14 +62,18 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               required
             />
           </label>
           {error ? <p className="error-text">{error}</p> : null}
           <button className="button button-primary" type="submit" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
+        <p className="muted small" style={{ marginTop: 20 }}>
+          Company users: <a href="/portal/login">sign in to your company portal</a>
+        </p>
       </div>
     </div>
   );

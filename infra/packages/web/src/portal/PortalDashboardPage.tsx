@@ -1,146 +1,161 @@
-import { PageHeader, SectionCard, StatusBadge, formatCurrency, formatDate } from "../components";
+import { Link } from "react-router-dom";
+import {
+  ActivityFeed,
+  AttentionBanner,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  MetricCard,
+  MetricGrid,
+  PageHeader,
+  SectionCard,
+  StatusBadge,
+  formatCurrency,
+} from "../components";
+import { formatRelativeTime, greetingForNow, humanEventLabel } from "../lib/format";
 import { usePortalCompany } from "./usePortalCompany";
-import { ErrorState, LoadingState } from "../components";
-
-function connectionLabel(mcpStatus: string | undefined): string {
-  if (mcpStatus === "healthy") return "Connected · Healthy";
-  if (mcpStatus === "degraded") return "Connected · Degraded";
-  if (mcpStatus === "unreachable") return "Unavailable";
-  if (mcpStatus === "registered") return "Registered · awaiting check";
-  return mcpStatus ?? "Unknown";
-}
 
 export default function PortalDashboardPage() {
-  const { company, overview, loading, error, user } = usePortalCompany();
+  const { company, overview, loading, error, user, membership } = usePortalCompany();
 
-  if (loading) return <LoadingState />;
+  if (loading) return <LoadingState label="Loading your company…" />;
   if (error || !company || !overview || !user) {
-    return <ErrorState message={error ?? "Dashboard unavailable"} />;
+    return <ErrorState title="Unable to load dashboard" description={error ?? undefined} />;
   }
 
   const mcp = overview.mcpEnvironments[0];
   const usage = overview.usageSummary;
   const wallet = overview.wallet;
-  const activeConnectors = overview.connectorInstances.filter(
+  const connectors = overview.connectorInstances;
+  const activeConnectors = connectors.filter(
     (item) => item.status !== "disabled" && item.status !== "draft",
-  ).length;
-  const knowledgeAvailable =
-    mcp?.status === "healthy" &&
-    (mcp.knowledgeDocumentCount == null || mcp.knowledgeDocumentCount > 0);
+  );
+  const attention: Array<{ id: string; title: string; description?: string; to?: string }> = [];
+  if (mcp && ["unreachable", "degraded"].includes(mcp.status)) {
+    attention.push({
+      id: "mcp",
+      title: "AI connection needs attention",
+      description: mcp.healthMessage ?? mcp.status,
+      to: "/portal/ai-connections",
+    });
+  }
+  if (wallet?.lowBalance) {
+    attention.push({
+      id: "wallet",
+      title: "Credit balance is low",
+      description: "Add credit to keep requests flowing",
+      to: "/portal/billing",
+    });
+  }
+
+  const isFresh =
+    activeConnectors.length === 0 &&
+    overview.mcpEnvironments.length === 0 &&
+    (usage?.requestsThisMonth ?? 0) === 0;
 
   return (
     <>
       <PageHeader
-        title={company.name}
-        subtitle="Company portal — connections, usage, credit, and recent activity"
+        title={greetingForNow(user.displayName)}
+        description={`${company.name} · ${membership?.role ? membership.role.replace(/_/g, " ") : "member"}`}
+        meta={<StatusBadge status={company.status} />}
       />
 
-      <div className="grid grid-4" style={{ marginBottom: 24 }}>
-        <div className="card metric-card">
-          <h3>Available credit</h3>
-          <div className="metric">
-            {wallet
-              ? formatCurrency(wallet.balanceCents, wallet.currency)
-              : "Not configured"}
-          </div>
-          {wallet?.lowBalance ? (
-            <p className="warning-text">Low balance</p>
-          ) : null}
-        </div>
-        <div className="card metric-card">
-          <h3>Requests this month</h3>
-          <div className="metric">{usage?.requestsThisMonth ?? 0}</div>
-        </div>
-        <div className="card metric-card">
-          <h3>Requests today</h3>
-          <div className="metric">{usage?.requestsToday ?? 0}</div>
-        </div>
-        <div className="card metric-card">
-          <h3>MCP status</h3>
-          <StatusBadge value={mcp?.status ?? "registered"} />
-          <p className="muted small">{connectionLabel(mcp?.status)}</p>
-        </div>
-      </div>
+      <AttentionBanner
+        items={attention}
+        allClear="Everything is running normally"
+      />
 
-      <div className="grid grid-4" style={{ marginBottom: 24 }}>
-        <div className="card metric-card">
-          <h3>Successful</h3>
-          <div className="metric">{usage?.successfulThisMonth ?? 0}</div>
-        </div>
-        <div className="card metric-card">
-          <h3>Failed</h3>
-          <div className="metric">{usage?.failedThisMonth ?? 0}</div>
-        </div>
-        <div className="card metric-card">
-          <h3>Connected systems</h3>
-          <div className="metric">{activeConnectors}</div>
-        </div>
-        <div className="card metric-card">
-          <h3>Knowledge</h3>
-          <div className="metric">
-            {knowledgeAvailable
-              ? mcp?.knowledgeDocumentCount != null
-                ? String(mcp.knowledgeDocumentCount)
-                : "Available"
-              : "—"}
-          </div>
-        </div>
-      </div>
+      {isFresh ? (
+        <SectionCard title="Welcome to INFRA" description="Let's connect your company.">
+          <ol className="stack" style={{ margin: 0, paddingLeft: 18, color: "var(--text-secondary)" }}>
+            <li>
+              <Link to="/portal/connectors">Connect a business system</Link>
+            </li>
+            <li>
+              <Link to="/portal/ai-connections">Connect AI</Link>
+            </li>
+            <li>
+              <Link to="/portal/team">Invite your team</Link>
+            </li>
+            <li>Configure permissions</li>
+            <li>Start using INFRA</li>
+          </ol>
+        </SectionCard>
+      ) : null}
 
-      <div className="grid grid-2">
-        <SectionCard title="Connections">
-          <table className="table compact">
-            <tbody>
-              <tr>
-                <td>Company MCP</td>
-                <td>
-                  <StatusBadge value={mcp?.status ?? "registered"} />{" "}
-                  {connectionLabel(mcp?.status)}
-                </td>
-              </tr>
-              <tr>
-                <td>Documents available</td>
-                <td>
-                  {mcp?.knowledgeDocumentCount != null
-                    ? mcp.knowledgeDocumentCount
-                    : "Not confirmed"}
-                </td>
-              </tr>
-              <tr>
-                <td>Last successful request</td>
-                <td>{formatDate(mcp?.lastSuccessfulRequestAt)}</td>
-              </tr>
-              <tr>
-                <td>AI clients via INFRA</td>
-                <td>See AI Connections</td>
-              </tr>
-            </tbody>
-          </table>
+      <MetricGrid cols={4}>
+        <MetricCard
+          label="Connected systems"
+          value={String(activeConnectors.length)}
+          hint={`${connectors.length} total`}
+          to="/portal/connectors"
+        />
+        <MetricCard
+          label="AI gateway"
+          value={mcp ? <StatusBadge status={mcp.status} /> : "—"}
+          hint={mcp?.name ?? "Not configured"}
+          to="/portal/ai-connections"
+        />
+        <MetricCard
+          label="Usage this month"
+          value={String(usage?.requestsThisMonth ?? 0)}
+          hint={`${usage?.requestsToday ?? 0} today`}
+          to="/portal/usage"
+        />
+        <MetricCard
+          label="Available credit"
+          value={wallet ? formatCurrency(wallet.balanceCents, wallet.currency) : "—"}
+          hint={wallet?.lowBalance ? "Low balance" : "Wallet"}
+          to="/portal/billing"
+        />
+      </MetricGrid>
+
+      <div className="grid grid-2" style={{ marginTop: 24 }}>
+        <SectionCard title="Connected systems">
+          {connectors.length === 0 && !mcp ? (
+            <EmptyState
+              title="Nothing connected yet"
+              description="Connect a business system or AI assistant to get started."
+              action={
+                <Link to="/portal/connectors" className="button button-primary">
+                  Connect system
+                </Link>
+              }
+            />
+          ) : (
+            <div className="stack" style={{ gap: 12 }}>
+              {connectors.map((c) => (
+                <div key={c.id} className="connection-header" style={{ marginBottom: 0 }}>
+                  <strong>{c.name}</strong>
+                  <StatusBadge
+                    status={c.status === "draft" ? "not_configured" : c.status}
+                    label={c.status === "draft" ? "Not connected" : undefined}
+                  />
+                </div>
+              ))}
+              {mcp ? (
+                <div className="connection-header" style={{ marginBottom: 0 }}>
+                  <div>
+                    <strong>AI gateway</strong>
+                    <div className="muted small">{mcp.name}</div>
+                  </div>
+                  <StatusBadge status={mcp.status} />
+                </div>
+              ) : null}
+            </div>
+          )}
         </SectionCard>
 
         <SectionCard title="Recent activity">
-          {overview.recentAuditEvents.length === 0 ? (
-            <p className="muted">No recent activity for this company.</p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Event</th>
-                  <th>Who</th>
-                  <th>When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {overview.recentAuditEvents.map((event) => (
-                  <tr key={event.id}>
-                    <td>{event.eventType.replace(/\./g, " · ")}</td>
-                    <td>{event.actor}</td>
-                    <td>{formatDate(event.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <ActivityFeed
+            items={overview.recentAuditEvents.slice(0, 8).map((event) => ({
+              id: event.id,
+              title: humanEventLabel(event.eventType),
+              description: event.actor,
+              meta: formatRelativeTime(event.createdAt),
+            }))}
+          />
         </SectionCard>
       </div>
     </>

@@ -1,6 +1,18 @@
 import { useEffect, useState } from "react";
-import { PageHeader, SectionCard, StatusBadge, ErrorState, LoadingState } from "../components";
+import { Bot } from "lucide-react";
+import {
+  AdvancedDetails,
+  Button,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  Notice,
+  PageHeader,
+  StatusBadge,
+  toast,
+} from "../components";
 import { api } from "../api";
+import { formatRelativeTime } from "../lib/format";
 import { usePortalCompany } from "./usePortalCompany";
 
 export default function PortalAiConnectionsPage() {
@@ -27,7 +39,7 @@ export default function PortalAiConnectionsPage() {
       try {
         await refresh();
       } catch (err) {
-        setLoadError(err instanceof Error ? err.message : "Failed to load AI connections");
+        setLoadError(err instanceof Error ? err.message : "Unable to load AI connections");
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -44,88 +56,95 @@ export default function PortalAiConnectionsPage() {
         token: result.token,
         endpoint: result.gatewayEndpoint,
       });
+      toast(`${clientType} connected`);
       await refresh();
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Connect failed");
+      const message = err instanceof Error ? err.message : "Connection failed";
+      setLoadError(message);
+      toast(message, "error");
     } finally {
       setBusyType(null);
     }
   }
 
   if (loading) return <LoadingState />;
-  if (error || loadError || !company) {
-    return <ErrorState message={error ?? loadError ?? "AI connections unavailable"} />;
+  if (error || !company) {
+    return <ErrorState title="Unable to load AI connections" description={error ?? undefined} />;
   }
 
   return (
     <>
       <PageHeader
-        title="AI Connections"
-        subtitle="Connect ChatGPT or Claude to INFRA (not directly to your MCP) so requests are permissioned, metered, and audited."
+        title="AI connections"
+        description="Give authorised staff access to company systems through ChatGPT, Claude, and other AI clients."
       />
 
-      <div className="stack">
-        {connections.map((conn) => (
-          <div key={conn.id} className="card connection-card">
-            <div className="connection-header">
-              <h3>{conn.displayName}</h3>
-              <StatusBadge
-                value={
-                  conn.status === "connected"
-                    ? "healthy"
-                    : conn.status === "coming_soon"
-                      ? "draft"
-                      : "registered"
-                }
-              />
-            </div>
-            <p className="muted">{conn.setupNotes}</p>
-            {conn.gatewayEndpoint ? (
-              <p className="mono small muted">{conn.gatewayEndpoint}</p>
-            ) : null}
-            <button
-              className="button button-primary"
-              type="button"
-              disabled={
-                conn.status === "coming_soon" ||
-                conn.status === "connected" ||
-                busyType === conn.clientType
-              }
-              onClick={() => void connect(conn.clientType)}
-            >
-              {conn.status === "coming_soon"
-                ? "Coming soon"
-                : conn.status === "connected"
-                  ? "Connected"
-                  : busyType === conn.clientType
-                    ? "Generating..."
-                    : "Generate INFRA connection"}
-            </button>
-          </div>
-        ))}
-      </div>
+      {loadError ? <Notice tone="danger">{loadError}</Notice> : null}
 
       {tokenReveal ? (
-        <SectionCard title="Save this credential now">
-          <p className="warning-text">
-            This token is shown once. Configure {tokenReveal.clientType} to call the INFRA
-            gateway with Bearer auth — do not point it at your company MCP directly.
+        <Notice tone="success">
+          <strong>{tokenReveal.clientType} connected</strong>
+          <p style={{ margin: "8px 0" }}>
+            Copy this access token now — it will not be shown again.
           </p>
-          <p className="mono" style={{ wordBreak: "break-all" }}>
-            Endpoint: {tokenReveal.endpoint}
-          </p>
-          <p className="mono" style={{ wordBreak: "break-all" }}>
-            Token: {tokenReveal.token}
-          </p>
-        </SectionCard>
+          <code className="mono" style={{ display: "block", wordBreak: "break-all" }}>
+            {tokenReveal.token}
+          </code>
+          <AdvancedDetails label="Gateway endpoint">
+            <code className="mono">{tokenReveal.endpoint}</code>
+          </AdvancedDetails>
+        </Notice>
       ) : null}
 
-      <SectionCard title="How routing works">
-        <p className="muted">
-          AI Client → INFRA Gateway → identity → tenant → permission → credit check → MCP →
-          response → metering → audit.
-        </p>
-      </SectionCard>
+      {connections.length === 0 ? (
+        <EmptyState
+          icon={<Bot size={28} />}
+          title="No AI connections"
+          description="Connect ChatGPT or Claude to give authorised staff access to company systems."
+        />
+      ) : (
+        <div className="connector-grid">
+          {connections.map((conn) => (
+            <article key={conn.id} className="connector-card" style={{ minHeight: 180 }}>
+              <div className="connection-header">
+                <h3 style={{ margin: 0 }}>{conn.displayName}</h3>
+                <StatusBadge status={conn.status} />
+              </div>
+              {conn.setupNotes ? <p className="muted small">{conn.setupNotes}</p> : null}
+              <div className="muted small">
+                {conn.lastUsedAt
+                  ? `Last activity ${formatRelativeTime(conn.lastUsedAt)}`
+                  : "No recent activity"}
+              </div>
+              <div className="connector-card-actions">
+                <Button
+                  type="button"
+                  variant={conn.status === "connected" ? "secondary" : "primary"}
+                  size="sm"
+                  disabled={
+                    conn.status === "coming_soon" ||
+                    conn.status === "connected" ||
+                    busyType === conn.clientType
+                  }
+                  loading={busyType === conn.clientType}
+                  onClick={() => void connect(conn.clientType)}
+                >
+                  {conn.status === "coming_soon"
+                    ? "Coming soon"
+                    : conn.status === "connected"
+                      ? "Connected"
+                      : "Connect"}
+                </Button>
+              </div>
+              {conn.gatewayEndpoint ? (
+                <AdvancedDetails>
+                  <code className="mono small">{conn.gatewayEndpoint}</code>
+                </AdvancedDetails>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      )}
     </>
   );
 }

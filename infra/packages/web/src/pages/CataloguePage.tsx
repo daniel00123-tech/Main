@@ -64,7 +64,7 @@ export default function CataloguePage() {
     <>
       <PageHeader
         title="Connectors"
-        subtitle="Connect business systems into INFRA, and manage the AI channels staff use to reach them."
+        description="Connect your business systems to INFRA — and manage the AI channels staff use to reach them."
       />
 
       <div className="connector-marketplace-stats">
@@ -150,15 +150,10 @@ export default function CataloguePage() {
         </div>
       )}
 
-      <div className="card connector-marketplace-note">
-        <p className="muted">
-          Business-system connectors bring data and actions into company MCP
-          environments. AI and messaging connectors are interfaces through which
-          staff reach those environments — permissions are enforced server-side by
-          INFRA, not by the channel itself.
-        </p>
-        <p className="muted">
-          Personal Gmail, personal Outlook, and personal calendars are out of scope.
+      <div className="card" style={{ marginTop: 16 }}>
+        <p className="muted" style={{ margin: 0 }}>
+          Staff permissions are enforced by INFRA for every AI channel. Personal email and personal
+          calendars are out of scope.
         </p>
       </div>
 

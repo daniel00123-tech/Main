@@ -1,7 +1,18 @@
 import { useEffect, useState } from "react";
-import { PageHeader, SectionCard, StatusBadge, formatDate } from "../components";
+import { ChartColumn } from "lucide-react";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  MetricCard,
+  MetricGrid,
+  PageHeader,
+  SectionCard,
+  StatusBadge,
+  formatCurrency,
+  formatDate,
+} from "../components";
 import { usePortalCompany } from "./usePortalCompany";
-import { ErrorState, LoadingState } from "../components";
 import { api, type CompanyUsageResponse } from "../api";
 
 export default function PortalUsagePage() {
@@ -14,10 +25,9 @@ export default function PortalUsagePage() {
     if (!company) return;
     void (async () => {
       try {
-        const data = await api.getCompanyUsage(company.slug, 50);
-        setUsage(data);
+        setUsage(await api.getCompanyUsage(company.slug, 50));
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load usage");
+        setError(err instanceof Error ? err.message : "Unable to load usage");
       } finally {
         setLoading(false);
       }
@@ -26,7 +36,12 @@ export default function PortalUsagePage() {
 
   if (companyLoading || loading) return <LoadingState />;
   if (companyError || error || !company || !usage) {
-    return <ErrorState message={companyError ?? error ?? "Usage unavailable"} />;
+    return (
+      <ErrorState
+        title="Unable to load usage"
+        description={companyError ?? error ?? undefined}
+      />
+    );
   }
 
   const { summary, records } = usage;
@@ -35,69 +50,66 @@ export default function PortalUsagePage() {
     <>
       <PageHeader
         title="Usage"
-        subtitle="Live request metering for your company. Billing and wallet charges are not configured yet."
+        description="Requests made through INFRA for your company."
       />
 
-      <div className="grid grid-4" style={{ marginBottom: 24 }}>
-        <div className="card metric-card">
-          <h3>Requests today</h3>
-          <div className="metric">{summary.requestsToday}</div>
-        </div>
-        <div className="card metric-card">
-          <h3>Requests this month</h3>
-          <div className="metric">{summary.requestsThisMonth}</div>
-        </div>
-        <div className="card metric-card">
-          <h3>Successful</h3>
-          <div className="metric">{summary.successfulThisMonth}</div>
-        </div>
-        <div className="card metric-card">
-          <h3>Failed</h3>
-          <div className="metric">{summary.failedThisMonth}</div>
-        </div>
-      </div>
+      <MetricGrid cols={4}>
+        <MetricCard label="Requests today" value={summary.requestsToday} />
+        <MetricCard label="This month" value={summary.requestsThisMonth} />
+        <MetricCard label="Successful" value={summary.successfulThisMonth} />
+        <MetricCard label="Failed" value={summary.failedThisMonth} />
+      </MetricGrid>
 
-      <SectionCard title="Usage records">
+      <SectionCard title="Recent requests" description="Newest first.">
         {records.length === 0 ? (
-          <div className="empty-state">
-            <p>No usage recorded yet for {company.name}.</p>
-            <p className="muted">
-              When INFRA routes a request to your MCP, it appears here with tool, result,
-              latency, and correlation ID.
-            </p>
-          </div>
+          <EmptyState
+            icon={<ChartColumn size={28} />}
+            title="No usage recorded yet"
+            description="Usage will appear after the first request passes through INFRA."
+          />
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Action</th>
-                <th>Who</th>
-                <th>Result</th>
-                <th>Duration</th>
-                <th>Cost</th>
-                <th>When</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((record) => (
-                <tr key={record.id}>
-                  <td>{record.toolName ?? record.action ?? record.resourceType}</td>
-                  <td>{record.actorEmail ?? "—"}</td>
-                  <td>
-                    <StatusBadge value={record.success === false ? "error" : "healthy"} />
-                    {record.success === false ? " Failed" : " OK"}
-                  </td>
-                  <td>
-                    {record.durationMs != null ? `${record.durationMs} ms` : "—"}
-                  </td>
-                  <td className="muted">Not configured</td>
-                  <td>{formatDate(record.recordedAt)}</td>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Who</th>
+                  <th>Status</th>
+                  <th>Duration</th>
+                  <th className="num">Charge</th>
+                  <th>When</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {records.map((record) => (
+                  <tr key={record.id}>
+                    <td>
+                      {humanise(record.toolName ?? record.action ?? record.resourceType)}
+                    </td>
+                    <td>{record.actorEmail ?? "—"}</td>
+                    <td>
+                      <StatusBadge status={record.success === false ? "failed" : "completed"} />
+                    </td>
+                    <td>
+                      {record.durationMs != null ? `${record.durationMs} ms` : "—"}
+                    </td>
+                    <td className="num">
+                      {record.customerChargeCents != null
+                        ? formatCurrency(record.customerChargeCents)
+                        : "—"}
+                    </td>
+                    <td>{formatDate(record.recordedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </SectionCard>
     </>
   );
+}
+
+function humanise(value: string): string {
+  return value.replace(/[._]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

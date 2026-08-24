@@ -1,9 +1,32 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
+import {
+  Activity,
+  Bot,
+  Building2,
+  ChartColumn,
+  ChevronsLeft,
+  ChevronsRight,
+  LayoutDashboard,
+  Menu,
+  Network,
+  Plug,
+  Settings,
+  Shield,
+  Users,
+  Wallet,
+  X,
+} from "lucide-react";
 import {
   AdminAuthShell,
   PortalAuthShell,
   useAuth,
 } from "./context/AuthContext";
+import {
+  Button,
+  ToastHost,
+  useMediaQuery,
+  useSidebarCollapsed,
+} from "./components";
 import AiClientsPage from "./pages/AiClientsPage";
 import AuditLogPage from "./pages/AuditLogPage";
 import BillingPage from "./pages/BillingPage";
@@ -27,55 +50,174 @@ import PortalUsagePage from "./portal/PortalUsagePage";
 import PortalAiConnectionsPage from "./portal/PortalAiConnectionsPage";
 import PortalTeamPage from "./portal/PortalTeamPage";
 import PortalSettingsPage from "./portal/PortalSettingsPage";
+import { useState } from "react";
 
-const ADMIN_NAV = [
-  { to: "/", label: "Dashboard", end: true },
-  { to: "/companies", label: "Companies" },
-  { to: "/connectors", label: "Connectors" },
-  { to: "/mcp-environments", label: "MCP Environments" },
-  { to: "/ai-clients", label: "AI Clients" },
-  { to: "/users", label: "Users & Permissions" },
-  { to: "/usage", label: "Usage" },
-  { to: "/billing", label: "Billing" },
-  { to: "/system-health", label: "System Health" },
-  { to: "/audit-log", label: "Audit Log" },
-  { to: "/settings", label: "Settings" },
+type NavItem = {
+  to: string;
+  label: string;
+  icon: React.ReactNode;
+  end?: boolean;
+};
+
+type NavGroup = { label: string; items: NavItem[] };
+
+const ADMIN_NAV: NavGroup[] = [
+  {
+    label: "Overview",
+    items: [
+      { to: "/", label: "Dashboard", icon: <LayoutDashboard size={18} />, end: true },
+      { to: "/companies", label: "Companies", icon: <Building2 size={18} /> },
+    ],
+  },
+  {
+    label: "Integrations",
+    items: [
+      { to: "/connectors", label: "Connectors", icon: <Plug size={18} /> },
+      { to: "/mcp-environments", label: "AI Gateways", icon: <Network size={18} /> },
+      { to: "/ai-clients", label: "AI Clients", icon: <Bot size={18} /> },
+    ],
+  },
+  {
+    label: "Access",
+    items: [{ to: "/users", label: "Users & Roles", icon: <Users size={18} /> }],
+  },
+  {
+    label: "Commercial",
+    items: [
+      { to: "/usage", label: "Usage", icon: <ChartColumn size={18} /> },
+      { to: "/billing", label: "Billing", icon: <Wallet size={18} /> },
+    ],
+  },
+  {
+    label: "Platform",
+    items: [
+      { to: "/system-health", label: "System Health", icon: <Activity size={18} /> },
+      { to: "/audit-log", label: "Audit Log", icon: <Shield size={18} /> },
+      { to: "/settings", label: "Settings", icon: <Settings size={18} /> },
+    ],
+  },
 ];
 
 function AdminShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [collapsed, setCollapsed] = useSidebarCollapsed();
+  const isMobile = useMediaQuery("(max-width: 900px)");
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const shellClass = [
+    "app-shell",
+    !isMobile && collapsed ? "nav-collapsed" : "",
+    isMobile && mobileOpen ? "mobile-nav-open" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const showLabels = isMobile || !collapsed;
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">INFRA</div>
-        <div className="brand-sub">Platform admin · all companies</div>
-        <div className="prototype-badge">Control plane</div>
-        <nav>
-          {ADMIN_NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              className="nav-link"
-              to={item.to}
-              end={item.end}
+    <div className={shellClass}>
+      <div className="mobile-nav-scrim" onClick={() => setMobileOpen(false)} aria-hidden />
+      <div className="mobile-topbar">
+        <Button type="button" variant="ghost" size="sm" aria-label="Open navigation" onClick={() => setMobileOpen(true)}>
+          <Menu size={18} />
+        </Button>
+        <strong style={{ letterSpacing: "0.08em" }}>INFRA</strong>
+        <span className="muted small" style={{ marginLeft: "auto" }}>
+          Control Plane
+        </span>
+      </div>
+
+      <aside className="sidebar" aria-label="Platform navigation">
+        <div className="brand-block">
+          <div className="brand-mark" aria-hidden>
+            IN
+          </div>
+          {showLabels ? (
+            <div className="brand-text">
+              <span className="brand-name">INFRA</span>
+              <span className="brand-context">Control Plane</span>
+            </div>
+          ) : null}
+          {!isMobile ? (
+            <button
+              type="button"
+              className="button button-ghost button-small nav-collapse-btn"
+              aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+              title={collapsed ? "Expand" : "Collapse"}
+              onClick={() => setCollapsed((v) => !v)}
             >
-              {item.label}
-            </NavLink>
+              {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="button button-ghost button-small nav-collapse-btn"
+              aria-label="Close navigation"
+              onClick={() => setMobileOpen(false)}
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        <nav>
+          {ADMIN_NAV.map((group) => (
+            <div key={group.label} className="nav-section">
+              {showLabels ? <div className="nav-section-label">{group.label}</div> : null}
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  className="nav-link"
+                  to={item.to}
+                  end={item.end}
+                  title={!showLabels ? item.label : undefined}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {item.icon}
+                  <span className="label">{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
-        <div className="portal-link-box">
-          <NavLink to="/portal/login" className="nav-link">
-            → Company portal
-          </NavLink>
-        </div>
-        <div className="sidebar-footer">
-          <div className="muted">{user?.displayName}</div>
-          <button className="button button-secondary" type="button" onClick={() => void logout()}>
-            Sign out
-          </button>
-        </div>
+
+        <div className="sidebar-spacer" />
+
+        {showLabels ? (
+          <div className="sidebar-footer">
+            <div className="sidebar-footer-meta">
+              <div style={{ fontWeight: 600 }}>{user?.displayName}</div>
+              <div className="muted small">Platform administrator</div>
+            </div>
+            <div className="sidebar-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setMobileOpen(false);
+                  navigate("/portal/dashboard");
+                }}
+              >
+                Company portal
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => void logout()}>
+                Sign out
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="sidebar-footer">
+            <Button type="button" variant="ghost" size="sm" title="Sign out" onClick={() => void logout()}>
+              <X size={16} />
+            </Button>
+          </div>
+        )}
       </aside>
+
       <main className="main">{children}</main>
+      <ToastHost />
     </div>
   );
 }

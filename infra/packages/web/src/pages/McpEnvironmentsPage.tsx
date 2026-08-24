@@ -1,16 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type McpExecuteResult } from "../api";
+import { Network } from "lucide-react";
 import type { Company, McpEnvironment } from "@infra/shared";
+import { api, type McpExecuteResult } from "../api";
+import { useAuth } from "../context/AuthContext";
 import {
+  AdvancedDetails,
+  Button,
+  EmptyState,
   ErrorState,
+  KeyValue,
   LoadingState,
   PageHeader,
   SectionCard,
   StatusBadge,
+  toast,
   formatDate,
 } from "../components";
-import { useAuth } from "../context/AuthContext";
+import { formatRelativeTime } from "../lib/format";
 
 interface McpRow extends McpEnvironment {
   companyName?: string;
@@ -26,8 +33,7 @@ export default function McpEnvironmentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checkingId, setCheckingId] = useState<string | null>(null);
-
-  const [selectedMcpId, setSelectedMcpId] = useState<string>("");
+  const [selectedMcpId, setSelectedMcpId] = useState("");
   const [toolName, setToolName] = useState(DEFAULT_TEST_TOOL);
   const [query, setQuery] = useState(DEFAULT_TEST_QUERY);
   const [allowedTools, setAllowedTools] = useState<string[]>([]);
@@ -35,30 +41,30 @@ export default function McpEnvironmentsPage() {
   const [executeError, setExecuteError] = useState<string | null>(null);
   const [executeResult, setExecuteResult] = useState<McpExecuteResult | null>(null);
 
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [mcpList, companies] = await Promise.all([
+        api.getMcpEnvironments(),
+        api.getCompanies(),
+      ]);
+      const companyById = new Map(companies.map((c: Company) => [c.id, c]));
+      const mapped = mcpList.map((mcp) => {
+        const company = companyById.get(mcp.companyId);
+        return { ...mcp, companyName: company?.name, companySlug: company?.slug };
+      });
+      setRows(mapped);
+      setSelectedMcpId((current) => current || mapped[0]?.id || "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load AI gateways");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    void (async () => {
-      try {
-        const [mcpList, companies] = await Promise.all([
-          api.getMcpEnvironments(),
-          api.getCompanies(),
-        ]);
-        const companyById = new Map(companies.map((company: Company) => [company.id, company]));
-        const mapped = mcpList.map((mcp) => {
-          const company = companyById.get(mcp.companyId);
-          return {
-            ...mcp,
-            companyName: company?.name,
-            companySlug: company?.slug,
-          };
-        });
-        setRows(mapped);
-        setSelectedMcpId((current) => current || mapped[0]?.id || "");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load MCP environments");
-      } finally {
-        setLoading(false);
-      }
-    })();
+    void load();
   }, []);
 
   useEffect(() => {
@@ -66,11 +72,9 @@ export default function McpEnvironmentsPage() {
     void (async () => {
       try {
         const tools = await api.getMcpAllowedTools(selectedMcpId);
-        const names = tools.map((tool) => tool.toolName);
+        const names = tools.map((t) => t.toolName);
         setAllowedTools(names);
-        setToolName((current) =>
-          names.includes(current) ? current : names[0] ?? DEFAULT_TEST_TOOL,
-        );
+        setToolName((current) => (names.includes(current) ? current : names[0] ?? DEFAULT_TEST_TOOL));
       } catch {
         setAllowedTools([DEFAULT_TEST_TOOL]);
       }
@@ -79,18 +83,12 @@ export default function McpEnvironmentsPage() {
 
   async function runHealthCheck(id: string) {
     setCheckingId(id);
-    setError(null);
     try {
       await api.runMcpHealthCheck(id);
-      const refreshed = await api.getMcpEnvironments();
-      setRows((current) =>
-        current.map((row) => {
-          const next = refreshed.find((item) => item.id === row.id);
-          return next ? { ...row, ...next } : row;
-        }),
-      );
+      toast("Health check completed");
+      await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Health check failed");
+      toast(err instanceof Error ? err.message : "Health check failed", "error");
     } finally {
       setCheckingId(null);
     }
@@ -110,98 +108,123 @@ export default function McpEnvironmentsPage() {
             : {};
       const result = await api.executeMcpTool(selectedMcpId, toolName, args);
       setExecuteResult(result);
-      const refreshed = await api.getMcpEnvironments();
-      setRows((current) =>
-        current.map((row) => {
-          const next = refreshed.find((item) => item.id === row.id);
-          return next ? { ...row, ...next } : row;
-        }),
-      );
+      toast("Test request completed");
+      await load();
     } catch (err) {
-      setExecuteError(err instanceof Error ? err.message : "MCP execution failed");
+      setExecuteError(err instanceof Error ? err.message : "Request failed");
     } finally {
       setExecuting(false);
     }
   }
 
-  if (loading) return <LoadingState />;
-  if (error && rows.length === 0) return <ErrorState message={error} />;
+  if (loading) return <LoadingState label="Loading AI gateways…" />;
+  if (error && rows.length === 0) {
+    return <ErrorState title="Unable to load AI gateways" description={error} onRetry={() => void load()} />;
+  }
 
   return (
     <>
       <PageHeader
-        title="MCP Environments"
-        subtitle="Registered company MCP environments. Health checks and Test MCP require authenticated access."
+        title="AI Gateways"
+        description="Company AI connection environments. Health and diagnostics for platform administrators."
       />
-      {error ? <div className="error-box">{error}</div> : null}
-      <div className="card" style={{ marginBottom: 24 }}>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Company</th>
-              <th>Name</th>
-              <th>Endpoint</th>
-              <th>Version</th>
-              <th>Status</th>
-              <th>Knowledge</th>
-              <th>Last check</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((mcp) => (
-              <tr key={mcp.id}>
-                <td>
-                  {mcp.companySlug ? (
-                    <Link to={`/companies/${mcp.companySlug}`}>{mcp.companyName}</Link>
-                  ) : (
-                    mcp.companyName
-                  )}
-                </td>
-                <td>{mcp.name}</td>
-                <td className="mono">{mcp.endpointUrl}</td>
-                <td>{mcp.mcpVersion ?? "—"}</td>
-                <td>
-                  <StatusBadge value={mcp.status} />
-                </td>
-                <td>
-                  {mcp.knowledgeDocumentCount != null
-                    ? `${mcp.knowledgeDocumentCount} docs`
-                    : "—"}
-                </td>
-                <td>{formatDate(mcp.lastHealthCheckAt)}</td>
-                <td>
-                  <button
-                    className="button button-small"
-                    type="button"
-                    disabled={checkingId === mcp.id}
-                    onClick={() => void runHealthCheck(mcp.id)}
-                  >
-                    {checkingId === mcp.id ? "Checking..." : "Health check"}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={<Network size={28} />}
+          title="No AI gateways registered"
+          description="Gateways appear here once a company MCP environment is registered."
+        />
+      ) : (
+        <div className="grid grid-2" style={{ marginBottom: 24 }}>
+          {rows.map((mcp) => (
+            <article key={mcp.id} className="entity-card">
+              <div className="connection-header">
+                <div>
+                  <h3>{mcp.name}</h3>
+                  <p className="muted small" style={{ margin: "4px 0 0" }}>
+                    {mcp.companySlug ? (
+                      <Link to={`/companies/${mcp.companySlug}`}>{mcp.companyName}</Link>
+                    ) : (
+                      mcp.companyName
+                    )}
+                  </p>
+                </div>
+                <StatusBadge status={mcp.status} />
+              </div>
+
+              <div className="grid grid-3" style={{ margin: "12px 0" }}>
+                <div>
+                  <div className="muted small">Last check</div>
+                  <div>{formatRelativeTime(mcp.lastHealthCheckAt)}</div>
+                </div>
+                <div>
+                  <div className="muted small">Latency</div>
+                  <div>{mcp.lastLatencyMs != null ? `${mcp.lastLatencyMs}ms` : "—"}</div>
+                </div>
+                <div>
+                  <div className="muted small">Knowledge</div>
+                  <div>
+                    {mcp.knowledgeDocumentCount != null
+                      ? `${mcp.knowledgeDocumentCount} docs`
+                      : "—"}
+                  </div>
+                </div>
+              </div>
+
+              {mcp.status === "unreachable" || mcp.status === "degraded" ? (
+                <div className="error-box" style={{ marginBottom: 12 }}>
+                  {mcp.lastError || mcp.healthMessage || "Gateway needs attention"}
+                </div>
+              ) : null}
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  loading={checkingId === mcp.id}
+                  onClick={() => void runHealthCheck(mcp.id)}
+                >
+                  Check health
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedMcpId(mcp.id)}
+                >
+                  Select for test
+                </Button>
+              </div>
+
+              <AdvancedDetails label="Technical details">
+                <KeyValue label="Environment ID" value={mcp.id} mono />
+                <KeyValue label="Endpoint" value={mcp.endpointUrl} mono />
+                <KeyValue label="Version" value={mcp.mcpVersion ?? "—"} />
+                <KeyValue label="Transport" value={mcp.transport} />
+                <KeyValue label="Last check" value={formatDate(mcp.lastHealthCheckAt)} />
+                {mcp.capabilities?.length ? (
+                  <KeyValue label="Capabilities" value={mcp.capabilities.join(", ")} />
+                ) : null}
+              </AdvancedDetails>
+            </article>
+          ))}
+        </div>
+      )}
 
       {user?.isPlatformAdmin ? (
-        <SectionCard title="Test MCP / Test Connection">
-          <p className="muted">
-            Platform admin only. Executes an allowlisted read-only tool on a registered MCP
-            environment — not an open proxy.
-          </p>
-          <div className="stack" style={{ maxWidth: 720, marginTop: 16 }}>
+        <SectionCard
+          title="Platform test"
+          description="Run an allowlisted read-only tool against a selected gateway."
+        >
+          <div className="form-grid" style={{ maxWidth: 560 }}>
             <label>
-              MCP environment
-              <select
-                value={selectedMcpId}
-                onChange={(e) => setSelectedMcpId(e.target.value)}
-              >
-                {rows.map((mcp) => (
-                  <option key={mcp.id} value={mcp.id}>
-                    {mcp.companyName} — {mcp.name}
+              Gateway
+              <select value={selectedMcpId} onChange={(e) => setSelectedMcpId(e.target.value)}>
+                {rows.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
                   </option>
                 ))}
               </select>
@@ -209,49 +232,30 @@ export default function McpEnvironmentsPage() {
             <label>
               Tool
               <select value={toolName} onChange={(e) => setToolName(e.target.value)}>
-                {(allowedTools.length ? allowedTools : [DEFAULT_TEST_TOOL]).map((name) => (
-                  <option key={name} value={name}>
-                    {name}
+                {(allowedTools.length ? allowedTools : [DEFAULT_TEST_TOOL]).map((t) => (
+                  <option key={t} value={t}>
+                    {t}
                   </option>
                 ))}
               </select>
             </label>
-            {toolName === "search_company_knowledge" ||
-            toolName === "get_knowledge_document" ? (
-              <label>
-                {toolName === "search_company_knowledge" ? "Question" : "Document ref"}
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </label>
-            ) : null}
-            <button
-              className="button button-primary"
-              type="button"
-              disabled={executing || !selectedMcpId}
-              onClick={() => void runTestExecute()}
-            >
-              {executing ? "Executing..." : "Run test"}
-            </button>
+            <label>
+              Query / document ref
+              <input value={query} onChange={(e) => setQuery(e.target.value)} />
+            </label>
+            {executeError ? <div className="error-box">{executeError}</div> : null}
+            <Button type="button" variant="primary" loading={executing} onClick={() => void runTestExecute()}>
+              Run test
+            </Button>
           </div>
-
-          {executeError ? <div className="error-box" style={{ marginTop: 16 }}>{executeError}</div> : null}
-
           {executeResult ? (
-            <div style={{ marginTop: 16 }}>
-              <p className="muted small">
-                Correlation: {executeResult.correlationId} · Latency:{" "}
-                {executeResult.latencyMs} ms · Auth configured:{" "}
-                {executeResult.authConfigured ? "yes" : "no (optional)"}
-              </p>
-              <pre className="mono" style={{ whiteSpace: "pre-wrap", maxHeight: 360, overflow: "auto" }}>
-                {typeof executeResult.result === "string"
-                  ? executeResult.result
-                  : JSON.stringify(executeResult.result, null, 2)}
+            <AdvancedDetails label="Result details">
+              <KeyValue label="Correlation ID" value={executeResult.correlationId} mono />
+              <KeyValue label="Latency" value={`${executeResult.latencyMs}ms`} />
+              <pre className="mono" style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0 }}>
+                {JSON.stringify(executeResult.result, null, 2)}
               </pre>
-            </div>
+            </AdvancedDetails>
           ) : null}
         </SectionCard>
       ) : null}

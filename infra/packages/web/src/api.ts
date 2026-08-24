@@ -91,6 +91,15 @@ async function fetchJson<T>(
 }
 
 export const api = {
+  getHealth: () =>
+    fetchJson<{ status: string; environment?: string; timestamp?: string }>("/health"),
+  getGatewayHealth: () =>
+    fetchJson<{
+      status: string;
+      service?: string;
+      version?: string;
+      stripeConfigured?: boolean;
+    }>("/api/gateway/v1/health"),
   login: (email: string, password: string) =>
     fetchJson<SessionUser>("/api/auth/login", {
       method: "POST",

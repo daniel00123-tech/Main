@@ -94,14 +94,14 @@ export default function PortalTeamPage() {
 
   if (loading || teamLoading) return <LoadingState />;
   if (error || teamError || !company || !user) {
-    return <ErrorState message={error ?? teamError ?? "Team unavailable"} />;
+    return <ErrorState title="Unable to load team" description={error ?? teamError ?? undefined} />;
   }
 
   return (
     <>
       <PageHeader
         title="Team"
-        subtitle={`Manage who can access ${company.name} AI tools and what they can do.`}
+        description={`People who can access ${company.name} through INFRA.`}
       />
 
       {canManage ? (

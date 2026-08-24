@@ -53,26 +53,33 @@ export default function PortalBillingPage() {
 
   if (loading || (!wallet && !loadError && !error)) return <LoadingState />;
   if (error || loadError || !company || !wallet) {
-    return <ErrorState message={error ?? loadError ?? "Billing unavailable"} />;
+    return <ErrorState title="Unable to load billing" description={error ?? loadError ?? undefined} />;
   }
 
   return (
     <>
       <PageHeader
-        title="Billing & Credits"
-        subtitle="Prepaid credit wallet with ledger history. Stripe top-ups activate once secrets are configured."
+        title="Billing"
+        description="Your prepaid credit wallet. Top up when balance runs low."
       />
 
+      {!wallet.stripeConfigured ? (
+        <p className="info-banner" style={{ marginBottom: 16 }}>
+          Card top-ups are unavailable until Stripe is configured by your platform administrator.
+          Your current balance remains accurate.
+        </p>
+      ) : null}
+
       <div className="grid grid-3" style={{ marginBottom: 24 }}>
-        <div className="card metric-card highlight-card">
+        <div className="card metric-card">
           <h3>Available credit</h3>
           <div className="metric">
             {formatCurrency(wallet.wallet.balanceCents, wallet.wallet.currency)}
           </div>
           {wallet.wallet.lowBalance ? (
-            <p className="warning-text">Below low-balance threshold</p>
+            <p className="warning-text">Low balance</p>
           ) : (
-            <p className="muted small">Ledger-backed balance</p>
+            <p className="muted small">Ready for usage</p>
           )}
         </div>
         <div className="card metric-card">
@@ -85,19 +92,16 @@ export default function PortalBillingPage() {
           </div>
         </div>
         <div className="card metric-card">
-          <h3>Stripe</h3>
-          <div className="metric muted">
-            {wallet.stripeConfigured ? "Configured" : "Not configured"}
+          <h3>Payments</h3>
+          <div className="metric" style={{ fontSize: "var(--text-lg)" }}>
+            {wallet.stripeConfigured ? "Ready" : "Not configured"}
           </div>
         </div>
       </div>
 
       <div className="grid grid-2">
         <SectionCard title="Add credit">
-          <p className="muted">
-            Prepaid top-ups only — no subscription. Usage pricing is currently{" "}
-            <strong>test configuration</strong> (not commercial rates).
-          </p>
+          <p className="muted">Choose an amount to add to your wallet.</p>
           <div className="topup-grid">
             {wallet.topUpOptionsCents.map((amount) => (
               <button
@@ -114,25 +118,34 @@ export default function PortalBillingPage() {
           {message ? <p className="info-banner" style={{ marginTop: 16 }}>{message}</p> : null}
         </SectionCard>
 
-        <SectionCard title="Recent transactions">
+        <SectionCard title="Transaction history">
           {wallet.ledger.length === 0 ? (
-            <p className="muted">No ledger entries yet.</p>
+            <p className="muted">No transactions yet.</p>
           ) : (
             <table className="table">
               <thead>
                 <tr>
                   <th>Type</th>
-                  <th>Amount</th>
-                  <th>Balance after</th>
+                  <th className="num">Amount</th>
+                  <th className="num">Balance</th>
                   <th>When</th>
                 </tr>
               </thead>
               <tbody>
                 {wallet.ledger.map((entry) => (
                   <tr key={entry.id}>
-                    <td>{entry.entryType.replace(/_/g, " ")}</td>
-                    <td>{formatCurrency(entry.amountCents)}</td>
-                    <td>{formatCurrency(entry.balanceAfterCents)}</td>
+                    <td>
+                      <strong>{humanLedgerType(entry.entryType)}</strong>
+                      {entry.description ? (
+                        <div className="muted small">{entry.description}</div>
+                      ) : null}
+                    </td>
+                    <td className="num">
+                      {formatCurrency(entry.amountCents, wallet.wallet.currency)}
+                    </td>
+                    <td className="num">
+                      {formatCurrency(entry.balanceAfterCents, wallet.wallet.currency)}
+                    </td>
                     <td>{formatDate(entry.createdAt)}</td>
                   </tr>
                 ))}
@@ -143,4 +156,16 @@ export default function PortalBillingPage() {
       </div>
     </>
   );
+}
+
+function humanLedgerType(type: string): string {
+  const map: Record<string, string> = {
+    top_up: "Top up",
+    credit: "Credit",
+    usage: "Usage",
+    debit: "Usage",
+    refund: "Refund",
+    adjustment: "Adjustment",
+  };
+  return map[type] ?? type.replace(/_/g, " ");
 }
