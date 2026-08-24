@@ -121,6 +121,7 @@ The existing Caddington MCP is registered as an external MCP environment and is 
 | [`docs/DESIGN.md`](docs/DESIGN.md) | Full architecture, schema, permissions, billing |
 | [`docs/SETUP-GUIDE.md`](docs/SETUP-GUIDE.md) | **Go-live guide** — hosting, domain, Cloudflare, Stripe, phases |
 | [`docs/CURSOR-BRIDGE.md`](docs/CURSOR-BRIDGE.md) | Cursor ↔ INFRA knowledge escalation |
+| [`deployment-pack/`](deployment-pack/) | **Full deployment pack** (zip-ready docs for ChatGPT) |
 
 ## Deployment
 
