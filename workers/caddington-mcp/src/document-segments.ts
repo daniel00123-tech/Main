@@ -6,6 +6,7 @@ export type BusinessDocumentFormat =
   | "txt"
   | "md"
   | "csv"
+  | "image"
   | "other";
 
 export interface SegmentMetadata {
@@ -14,6 +15,12 @@ export interface SegmentMetadata {
   heading?: string;
   sheet?: string;
   slide?: number;
+  fileType?: string;
+  extractionMethod?: string;
+  visionStatus?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  chunkNumber?: number;
 }
 
 export interface TextSegment {
@@ -199,6 +206,12 @@ export function segmentMetadataToJson(metadata: SegmentMetadata): string {
   if (metadata.heading) payload.heading = metadata.heading;
   if (metadata.sheet) payload.sheet = metadata.sheet;
   if (metadata.slide != null) payload.slide = metadata.slide;
+  if (metadata.fileType) payload.fileType = metadata.fileType;
+  if (metadata.extractionMethod) payload.extractionMethod = metadata.extractionMethod;
+  if (metadata.visionStatus) payload.visionStatus = metadata.visionStatus;
+  if (metadata.imageWidth != null) payload.imageWidth = metadata.imageWidth;
+  if (metadata.imageHeight != null) payload.imageHeight = metadata.imageHeight;
+  if (metadata.chunkNumber != null) payload.chunkNumber = metadata.chunkNumber;
   return JSON.stringify(payload);
 }
 
@@ -214,6 +227,22 @@ export function parseSegmentMetadataJson(
     if (typeof parsed.heading === "string") metadata.heading = parsed.heading;
     if (typeof parsed.sheet === "string") metadata.sheet = parsed.sheet;
     if (typeof parsed.slide === "number") metadata.slide = parsed.slide;
+    if (typeof parsed.fileType === "string") metadata.fileType = parsed.fileType;
+    if (typeof parsed.extractionMethod === "string") {
+      metadata.extractionMethod = parsed.extractionMethod;
+    }
+    if (typeof parsed.visionStatus === "string") {
+      metadata.visionStatus = parsed.visionStatus;
+    }
+    if (typeof parsed.imageWidth === "number") {
+      metadata.imageWidth = parsed.imageWidth;
+    }
+    if (typeof parsed.imageHeight === "number") {
+      metadata.imageHeight = parsed.imageHeight;
+    }
+    if (typeof parsed.chunkNumber === "number") {
+      metadata.chunkNumber = parsed.chunkNumber;
+    }
     return metadata;
   } catch {
     return {};
@@ -229,6 +258,16 @@ export function segmentMetadataToVectorFields(
   if (metadata.heading) out.heading = metadata.heading;
   if (metadata.sheet) out.sheet = metadata.sheet;
   if (metadata.slide != null) out.slide = String(metadata.slide);
+  if (metadata.fileType) out.fileType = metadata.fileType;
+  if (metadata.extractionMethod) out.extractionMethod = metadata.extractionMethod;
+  if (metadata.visionStatus) out.visionStatus = metadata.visionStatus;
+  if (metadata.imageWidth != null) out.imageWidth = String(metadata.imageWidth);
+  if (metadata.imageHeight != null) {
+    out.imageHeight = String(metadata.imageHeight);
+  }
+  if (metadata.chunkNumber != null) {
+    out.chunkNumber = String(metadata.chunkNumber);
+  }
   return out;
 }
 
@@ -252,6 +291,27 @@ export function vectorFieldsToSegmentMetadata(
   if (meta.slide != null && meta.slide !== "") {
     const slide = Number(meta.slide);
     if (!Number.isNaN(slide)) metadata.slide = slide;
+  }
+  if (typeof meta.fileType === "string" && meta.fileType) {
+    metadata.fileType = meta.fileType;
+  }
+  if (typeof meta.extractionMethod === "string" && meta.extractionMethod) {
+    metadata.extractionMethod = meta.extractionMethod;
+  }
+  if (typeof meta.visionStatus === "string" && meta.visionStatus) {
+    metadata.visionStatus = meta.visionStatus;
+  }
+  if (meta.imageWidth != null && meta.imageWidth !== "") {
+    const imageWidth = Number(meta.imageWidth);
+    if (!Number.isNaN(imageWidth)) metadata.imageWidth = imageWidth;
+  }
+  if (meta.imageHeight != null && meta.imageHeight !== "") {
+    const imageHeight = Number(meta.imageHeight);
+    if (!Number.isNaN(imageHeight)) metadata.imageHeight = imageHeight;
+  }
+  if (meta.chunkNumber != null && meta.chunkNumber !== "") {
+    const chunkNumber = Number(meta.chunkNumber);
+    if (!Number.isNaN(chunkNumber)) metadata.chunkNumber = chunkNumber;
   }
   return metadata;
 }

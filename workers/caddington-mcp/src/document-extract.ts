@@ -5,6 +5,11 @@ import {
   plainTextToSegments,
 } from "./document-segments";
 import type { Env } from "./db";
+import {
+  extractImageDocument,
+  isImageDocument,
+  type ImageContentStatus,
+} from "./image-extract";
 
 function basename(path: string): string {
   const parts = path.split("/");
@@ -20,11 +25,36 @@ export class RequiresOcrError extends Error {
   }
 }
 
+export class NoSearchableContentError extends Error {
+  readonly code = "NO_SEARCHABLE_CONTENT";
+
+  constructor(message = "No searchable content could be extracted from image.") {
+    super(message);
+    this.name = "NoSearchableContentError";
+  }
+}
+
+export class RequiresManualReviewError extends Error {
+  readonly code = "REQUIRES_MANUAL_REVIEW";
+
+  constructor(message = "Image requires manual review before indexing.") {
+    super(message);
+    this.name = "RequiresManualReviewError";
+  }
+}
+
 export interface ExtractedDocument {
   format: BusinessDocumentFormat;
   segments: TextSegment[];
   requiresOcr: boolean;
   rawTextLength: number;
+  imageContentStatus?: ImageContentStatus;
+  extractionMethod?: string;
+  visionModel?: string;
+  visionStatus?: string;
+  imageDimensions?: { width: number; height: number };
+  mimeType?: string;
+  fileType?: string;
 }
 
 export function detectDocumentFormat(
@@ -34,6 +64,7 @@ export function detectDocumentFormat(
   const lowerMime = mimeType.toLowerCase();
   const lowerName = filename.toLowerCase();
 
+  if (isImageDocument(mimeType, filename)) return "image";
   if (lowerMime === "application/pdf" || lowerName.endsWith(".pdf")) return "pdf";
   if (
     lowerMime ===
@@ -100,7 +131,7 @@ export function isLegacyWorkersAiConvertible(
 }
 
 function supportedFormatsMessage(): string {
-  return "Supported: PDF, DOCX, XLSX, PPTX, TXT, MD, CSV.";
+  return "Supported: PDF, DOCX, XLSX, PPTX, TXT, MD, CSV, JPG, JPEG, PNG, WEBP.";
 }
 
 export async function extractDocument(
@@ -111,6 +142,23 @@ export async function extractDocument(
 ): Promise<ExtractedDocument> {
   const name = basename(filename);
   const format = detectDocumentFormat(mimeType, name);
+
+  if (format === "image") {
+    const imageResult = await extractImageDocument(env, bytes, mimeType, name);
+    return {
+      format: "image",
+      segments: imageResult.segments,
+      requiresOcr: false,
+      rawTextLength: imageResult.rawTextLength,
+      imageContentStatus: imageResult.contentStatus,
+      extractionMethod: imageResult.extractionMethod,
+      visionModel: imageResult.visionModel,
+      visionStatus: imageResult.visionStatus,
+      imageDimensions: imageResult.dimensions,
+      mimeType: imageResult.mimeType,
+      fileType: imageResult.fileType,
+    };
+  }
 
   if (format === "txt" || format === "md" || format === "csv") {
     const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
@@ -191,6 +239,12 @@ export async function extractDocumentText(
   const extracted = await extractDocument(env, bytes, mimeType, filename);
   if (extracted.requiresOcr) {
     throw new RequiresOcrError();
+  }
+  if (extracted.imageContentStatus === "no_searchable_content") {
+    throw new NoSearchableContentError();
+  }
+  if (extracted.imageContentStatus === "requires_manual_review") {
+    throw new RequiresManualReviewError();
   }
   const text = extracted.segments.map((s) => s.text).join("\n\n").trim();
   if (!text) {

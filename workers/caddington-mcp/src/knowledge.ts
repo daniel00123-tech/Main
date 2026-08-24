@@ -1,5 +1,7 @@
 import { EMBEDDING_MODEL } from "./constants";
 import {
+  NoSearchableContentError,
+  RequiresManualReviewError,
   RequiresOcrError,
   extractDocument,
 } from "./document-extract";
@@ -162,6 +164,14 @@ async function mergeDocumentMetadata(
     .run();
 }
 
+function isTerminalIndexingError(error: unknown): boolean {
+  return (
+    error instanceof RequiresOcrError ||
+    error instanceof NoSearchableContentError ||
+    error instanceof RequiresManualReviewError
+  );
+}
+
 export async function indexKnowledgeDocument(
   env: Env,
   documentId: number
@@ -202,10 +212,24 @@ export async function indexKnowledgeDocument(
       doc.r2_key
     );
 
-    await mergeDocumentMetadata(env, documentId, {
+    const documentMetaPatch: Record<string, unknown> = {
       sourceFormat: extracted.format,
       rawTextLength: extracted.rawTextLength,
-    });
+    };
+
+    if (extracted.format === "image") {
+      documentMetaPatch.extractionMethod = extracted.extractionMethod;
+      documentMetaPatch.visionModel = extracted.visionModel;
+      documentMetaPatch.visionStatus = extracted.visionStatus;
+      documentMetaPatch.fileType = extracted.fileType;
+      documentMetaPatch.mimeType = extracted.mimeType;
+      if (extracted.imageDimensions) {
+        documentMetaPatch.imageWidth = extracted.imageDimensions.width;
+        documentMetaPatch.imageHeight = extracted.imageDimensions.height;
+      }
+    }
+
+    await mergeDocumentMetadata(env, documentId, documentMetaPatch);
 
     if (extracted.requiresOcr) {
       await env.CADDINGTON_BUSINESS_DATA.prepare(
@@ -224,6 +248,42 @@ export async function indexKnowledgeDocument(
       throw new RequiresOcrError(ocrMessage);
     }
 
+    if (extracted.imageContentStatus === "no_searchable_content") {
+      await env.CADDINGTON_BUSINESS_DATA.prepare(
+        `UPDATE knowledge_documents SET status = 'no_searchable_content', updated_at = datetime('now') WHERE id = ?`
+      )
+        .bind(documentId)
+        .run();
+      await mergeDocumentMetadata(env, documentId, {
+        imageReviewReason:
+          "No searchable text or description could be extracted from the image.",
+      });
+      const message =
+        "Image has no searchable content. Document marked as no_searchable_content.";
+      await completeKnowledgeImportLog(env, logId, "failed", 0, message);
+      throw new NoSearchableContentError(message);
+    }
+
+    if (extracted.imageContentStatus === "requires_manual_review") {
+      await env.CADDINGTON_BUSINESS_DATA.prepare(
+        `UPDATE knowledge_documents SET status = 'requires_manual_review', updated_at = datetime('now') WHERE id = ?`
+      )
+        .bind(documentId)
+        .run();
+      await mergeDocumentMetadata(env, documentId, {
+        imageReviewReason:
+          "Insufficient extractable content from image for reliable semantic search.",
+        extractedPreview: extracted.segments
+          .map((s) => s.text)
+          .join("\n")
+          .slice(0, 500),
+      });
+      const message =
+        "Image has insufficient searchable content. Document marked as requires_manual_review.";
+      await completeKnowledgeImportLog(env, logId, "failed", 0, message);
+      throw new RequiresManualReviewError(message);
+    }
+
     const chunks = chunkSegments(extracted.segments);
     if (chunks.length === 0) {
       throw new Error("No extractable text in document.");
@@ -240,9 +300,13 @@ export async function indexKnowledgeDocument(
 
     for (let i = 0; i < chunks.length; i++) {
       const { content, metadata } = chunks[i];
+      const chunkMetadata: SegmentMetadata = {
+        ...metadata,
+        chunkNumber: i,
+      };
       const vectorId = `${doc.external_id}-chunk-${i}`;
       const embedding = await embedText(env, content);
-      const metadataJson = segmentMetadataToJson(metadata);
+      const metadataJson = segmentMetadataToJson(chunkMetadata);
 
       const insert = await env.CADDINGTON_BUSINESS_DATA.prepare(
         `INSERT INTO knowledge_chunks (document_id, chunk_index, content, vector_id, token_estimate, metadata)
@@ -269,7 +333,7 @@ export async function indexKnowledgeDocument(
           external_id: doc.external_id,
           title: doc.title,
           snippet: content.slice(0, 280),
-          ...segmentMetadataToVectorFields(metadata),
+          ...segmentMetadataToVectorFields(chunkMetadata),
         },
       });
       indexed++;
@@ -295,7 +359,7 @@ export async function indexKnowledgeDocument(
     return { chunksIndexed: indexed };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!(error instanceof RequiresOcrError)) {
+    if (!isTerminalIndexingError(error)) {
       await env.CADDINGTON_BUSINESS_DATA.prepare(
         `UPDATE knowledge_documents SET status = 'failed', updated_at = datetime('now') WHERE id = ?`
       )

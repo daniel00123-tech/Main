@@ -4,6 +4,7 @@ import {
   isPlainTextDocument,
   isWorkersAiConvertible,
 } from "../src/document-extract";
+import { isImageDocument } from "../src/image-extract";
 import {
   chunkSegments,
   chunkText,
@@ -60,6 +61,12 @@ describe("document type detection", () => {
   it("does not treat plain text as AI convertible only", () => {
     expect(isWorkersAiConvertible("text/plain", "notes.txt")).toBe(false);
     expect(isPlainTextDocument("text/plain", "notes.txt")).toBe(true);
+  });
+
+  it("detects image formats separately from office documents", () => {
+    expect(detectDocumentFormat("image/jpeg", "photo.jpg")).toBe("image");
+    expect(isImageDocument("image/png", "scan.png")).toBe(true);
+    expect(isWorkersAiConvertible("image/jpeg", "photo.jpg")).toBe(false);
   });
 });
 
