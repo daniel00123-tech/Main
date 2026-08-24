@@ -1,5 +1,5 @@
 import {
-  buildGoogleDriveListQuery,
+  buildGoogleDriveFolderChildrenQuery,
   classifyGoogleDriveFile,
   type GoogleDriveAllowListConfig,
   type GoogleDriveFileMetadata,
@@ -9,10 +9,16 @@ import {
 const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
-/** Drive readonly scope only — Google Photos API is never used. */
+/**
+ * Full Drive scope (read/write). Sync remains read-only today; write access is
+ * reserved for future updates to the Caddington Knowledge folder only.
+ * Google Photos API is never used.
+ */
 export const GOOGLE_DRIVE_OAUTH_SCOPES = [
-  "https://www.googleapis.com/auth/drive.readonly",
+  "https://www.googleapis.com/auth/drive",
 ] as const;
+
+const GOOGLE_DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
 
 export interface GoogleDriveCredentials {
   client_id: string;
@@ -62,26 +68,50 @@ export class GoogleDriveClient {
 
   constructor(private readonly credentials: GoogleDriveCredentials) {}
 
-  async listAllFiles(pageSize = 100): Promise<GoogleDriveFileMetadata[]> {
+  /**
+   * Lists non-folder files under a root folder and all nested subfolders.
+   * Does not traverse or sync anything outside this folder tree.
+   */
+  async listAllFilesInFolder(
+    rootFolderId: string,
+    pageSize = 100
+  ): Promise<GoogleDriveFileMetadata[]> {
     const files: GoogleDriveFileMetadata[] = [];
-    let pageToken: string | undefined;
+    const folderQueue = [rootFolderId];
+    const visitedFolders = new Set<string>();
 
-    do {
-      const page = await this.listFilesPage(pageSize, pageToken);
-      files.push(...page.files);
-      pageToken = page.nextPageToken;
-    } while (pageToken);
+    while (folderQueue.length > 0) {
+      const folderId = folderQueue.shift();
+      if (!folderId || visitedFolders.has(folderId)) {
+        continue;
+      }
+      visitedFolders.add(folderId);
+
+      let pageToken: string | undefined;
+      do {
+        const page = await this.listFolderChildrenPage(folderId, pageSize, pageToken);
+        for (const item of page.files) {
+          if (item.mimeType === GOOGLE_DRIVE_FOLDER_MIME) {
+            folderQueue.push(item.id);
+          } else {
+            files.push(item);
+          }
+        }
+        pageToken = page.nextPageToken;
+      } while (pageToken);
+    }
 
     return files;
   }
 
-  async listFilesPage(
+  async listFolderChildrenPage(
+    folderId: string,
     pageSize = 100,
     pageToken?: string
   ): Promise<GoogleDriveListResult> {
     const token = await this.getAccessToken();
     const params = new URLSearchParams({
-      q: buildGoogleDriveListQuery(),
+      q: buildGoogleDriveFolderChildrenQuery(folderId),
       pageSize: String(pageSize),
       fields:
         "nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size,parents)",

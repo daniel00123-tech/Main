@@ -9,8 +9,10 @@ export interface Env {
   AI: Ai;
   MCP_AUTH_TOKEN?: string;
   CADDINGTON_ADMIN_TOKEN?: string;
-  /** JSON: { client_id, client_secret, refresh_token } — Drive readonly scope only. */
+  /** JSON: { client_id, client_secret, refresh_token } — Drive scope (sync remains read-only). */
   GOOGLE_DRIVE_CREDENTIALS?: string;
+  /** Google Drive folder ID for the Caddington Knowledge folder tree. */
+  GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID?: string;
 }
 
 export interface DbHealth {

@@ -1,11 +1,12 @@
 import type { Env } from "./db";
 import {
+  GOOGLE_DRIVE_OAUTH_SCOPES,
   GoogleDriveClient,
   parseGoogleDriveCredentials,
   type GoogleDriveListedFile,
 } from "./google-drive-client";
 import {
-  DEFAULT_GOOGLE_DRIVE_ALLOWLIST_CONFIG,
+  GOOGLE_DRIVE_KNOWLEDGE_FOLDER_NAME,
   parseGoogleDriveAllowListConfig,
   suggestedStoredFilename,
   type GoogleDriveAllowListConfig,
@@ -35,9 +36,18 @@ export interface GoogleDriveSyncSummary {
 
 const CONNECTOR_CODE = "google_drive";
 
-export async function loadGoogleDriveAllowListConfig(
+export interface GoogleDriveConnectorConfig {
+  syncMode: "documents_only";
+  writeOperationsEnabled: false;
+  googlePhotosConnected: false;
+  knowledgeFolderName: string;
+  knowledgeFolderId: string | null;
+  allowList: GoogleDriveAllowListConfig;
+}
+
+async function loadConnectorConfigJson(
   env: Env
-): Promise<GoogleDriveAllowListConfig> {
+): Promise<Record<string, unknown>> {
   const row = await env.CADDINGTON_BUSINESS_DATA.prepare(
     "SELECT config_json FROM connector_config WHERE connector_code = ?"
   )
@@ -45,38 +55,76 @@ export async function loadGoogleDriveAllowListConfig(
     .first<{ config_json: string | null }>();
 
   if (!row?.config_json) {
-    return { ...DEFAULT_GOOGLE_DRIVE_ALLOWLIST_CONFIG };
+    return {};
   }
 
   try {
-    const parsed = JSON.parse(row.config_json) as { allowList?: unknown };
-    return parseGoogleDriveAllowListConfig(parsed.allowList ?? parsed);
+    return JSON.parse(row.config_json) as Record<string, unknown>;
   } catch {
-    return { ...DEFAULT_GOOGLE_DRIVE_ALLOWLIST_CONFIG };
+    return {};
   }
+}
+
+export async function loadGoogleDriveConnectorConfig(
+  env: Env
+): Promise<GoogleDriveConnectorConfig> {
+  const parsed = await loadConnectorConfigJson(env);
+  const knowledgeFolderId =
+    env.GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID?.trim() ||
+    (typeof parsed.knowledgeFolderId === "string" && parsed.knowledgeFolderId.trim()
+      ? parsed.knowledgeFolderId.trim()
+      : null);
+
+  return {
+    syncMode: "documents_only",
+    writeOperationsEnabled: false,
+    googlePhotosConnected: false,
+    knowledgeFolderName:
+      typeof parsed.knowledgeFolderName === "string" &&
+      parsed.knowledgeFolderName.trim()
+        ? parsed.knowledgeFolderName.trim()
+        : GOOGLE_DRIVE_KNOWLEDGE_FOLDER_NAME,
+    knowledgeFolderId,
+    allowList: parseGoogleDriveAllowListConfig(parsed.allowList ?? parsed),
+  };
+}
+
+export async function loadGoogleDriveAllowListConfig(
+  env: Env
+): Promise<GoogleDriveAllowListConfig> {
+  const config = await loadGoogleDriveConnectorConfig(env);
+  return config.allowList;
 }
 
 export async function getGoogleDriveConnectorStatus(env: Env): Promise<{
   connector: string;
   credentialsConfigured: boolean;
+  knowledgeFolderConfigured: boolean;
   oauthScopes: readonly string[];
   googlePhotosConnected: false;
   syncMode: "documents_only";
+  writeOperationsEnabled: false;
+  knowledgeFolderName: string;
+  knowledgeFolderId: string | null;
   allowList: GoogleDriveAllowListConfig;
   notes: string;
 }> {
   const credentials = parseGoogleDriveCredentials(env.GOOGLE_DRIVE_CREDENTIALS);
-  const allowList = await loadGoogleDriveAllowListConfig(env);
+  const connectorConfig = await loadGoogleDriveConnectorConfig(env);
 
   return {
     connector: CONNECTOR_CODE,
     credentialsConfigured: credentials !== null,
-    oauthScopes: ["https://www.googleapis.com/auth/drive.readonly"],
+    knowledgeFolderConfigured: connectorConfig.knowledgeFolderId !== null,
+    oauthScopes: GOOGLE_DRIVE_OAUTH_SCOPES,
     googlePhotosConnected: false,
     syncMode: "documents_only",
-    allowList,
+    writeOperationsEnabled: false,
+    knowledgeFolderName: connectorConfig.knowledgeFolderName,
+    knowledgeFolderId: connectorConfig.knowledgeFolderId,
+    allowList: connectorConfig.allowList,
     notes:
-      "Documents-only sync. Personal photos, images, videos and audio are excluded via MIME allow-list before download. Google Photos is not connected. Image ingestion is manual-upload only.",
+      "Documents-only sync restricted to the Caddington Knowledge folder and its subfolders. Personal photos, images, videos and audio are excluded via MIME allow-list before download. Google Photos is not connected. Drive OAuth uses full drive scope for future folder writes; sync remains read-only. Image ingestion is manual-upload only.",
   };
 }
 
@@ -95,7 +143,14 @@ export async function syncGoogleDriveDocuments(
     throw new Error("R2 bucket is not configured on this deployment.");
   }
 
-  const allowList = await loadGoogleDriveAllowListConfig(env);
+  const connectorConfig = await loadGoogleDriveConnectorConfig(env);
+  if (!connectorConfig.knowledgeFolderId) {
+    throw new Error(
+      `Google Drive knowledge folder is not configured. Set GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID or connector_config.knowledgeFolderId for "${connectorConfig.knowledgeFolderName}".`
+    );
+  }
+
+  const allowList = connectorConfig.allowList;
   const client = new GoogleDriveClient(credentials);
   const summary: GoogleDriveSyncSummary = {
     dryRun: options.dryRun ?? false,
@@ -119,6 +174,8 @@ export async function syncGoogleDriveDocuments(
         dryRun: summary.dryRun,
         maxFiles: options.maxFiles ?? null,
         autoIndex: options.autoIndex ?? true,
+        knowledgeFolderId: connectorConfig.knowledgeFolderId,
+        knowledgeFolderName: connectorConfig.knowledgeFolderName,
       })
     )
     .run();
@@ -126,7 +183,9 @@ export async function syncGoogleDriveDocuments(
   const batchId = importBatch.meta.last_row_id;
 
   try {
-    const listed = await client.listAllFiles();
+    const listed = await client.listAllFilesInFolder(
+      connectorConfig.knowledgeFolderId
+    );
     summary.listed = listed.length;
 
     const classified = client.classifyFiles(listed, allowList);
@@ -205,6 +264,8 @@ export async function syncGoogleDriveDocuments(
           driveModifiedTime: file.modifiedTime ?? null,
           exportRequired: download.exportRequired,
           syncMode: "documents_only",
+          knowledgeFolderId: connectorConfig.knowledgeFolderId,
+          knowledgeFolderName: connectorConfig.knowledgeFolderName,
         };
 
         let documentId = existing?.knowledge_document_id ?? null;

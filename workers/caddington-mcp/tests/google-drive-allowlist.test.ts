@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildGoogleDriveFolderChildrenQuery,
   buildGoogleDriveListQuery,
   classifyGoogleDriveFile,
   DEFAULT_GOOGLE_DRIVE_ALLOWLIST_CONFIG,
+  GOOGLE_DRIVE_KNOWLEDGE_FOLDER_NAME,
   isGoogleDriveFileAllowed,
   parseGoogleDriveAllowListConfig,
   resolveGoogleDriveDownloadMime,
@@ -106,11 +108,16 @@ describe("Google Drive documents-only allow-list", () => {
     ).toBe("Project Plan.docx");
   });
 
-  it("uses Drive metadata list query without Google Photos scope", () => {
+  it("uses Drive scope without Google Photos and scopes folder listing", () => {
     expect(buildGoogleDriveListQuery()).toContain("trashed = false");
+    expect(buildGoogleDriveFolderChildrenQuery("abc123XYZ")).toBe(
+      "'abc123XYZ' in parents and trashed = false"
+    );
+    expect(GOOGLE_DRIVE_KNOWLEDGE_FOLDER_NAME).toBe("Caddington Knowledge");
     expect(GOOGLE_DRIVE_OAUTH_SCOPES).toEqual([
-      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/drive",
     ]);
     expect(GOOGLE_DRIVE_OAUTH_SCOPES.join(" ")).not.toContain("photoslibrary");
+    expect(GOOGLE_DRIVE_OAUTH_SCOPES.join(" ")).not.toContain("gmail");
   });
 });

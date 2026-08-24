@@ -267,7 +267,16 @@ export function isGoogleDriveFileAllowed(
   return classifyGoogleDriveFile(file, config).allowed;
 }
 
-/** Drive list query — metadata only; never targets Google Photos API. */
+/** Display name for the designated Caddington Knowledge folder in Google Drive. */
+export const GOOGLE_DRIVE_KNOWLEDGE_FOLDER_NAME = "Caddington Knowledge";
+
+/** Drive list query for direct children of a folder — metadata only; never targets Google Photos API. */
+export function buildGoogleDriveFolderChildrenQuery(folderId: string): string {
+  const escapedFolderId = folderId.replace(/'/g, "\\'");
+  return `'${escapedFolderId}' in parents and trashed = false`;
+}
+
+/** @deprecated Use buildGoogleDriveFolderChildrenQuery with a knowledge folder ID. */
 export function buildGoogleDriveListQuery(): string {
   return "trashed = false and mimeType != 'application/vnd.google-apps.folder'";
 }
