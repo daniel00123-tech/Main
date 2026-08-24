@@ -1,4 +1,5 @@
 import type { ParsedQuery } from "./knowledge-query";
+import type { QueryRouting } from "./knowledge-query-routing";
 import { containsPhrase } from "./knowledge-query";
 import type { ChunkSearchRecord } from "./knowledge-metadata";
 
@@ -17,10 +18,14 @@ export interface RankedCandidate {
   semanticRank?: number;
   lexicalBm25?: number;
   lexicalRank?: number;
+  documentStageRank?: number;
   rrfScore: number;
   entityBoost: number;
   contextBoost: number;
   exactMatchBoost: number;
+  routingBoost: number;
+  versionBoost: number;
+  documentStageBoost: number;
   finalScore: number;
   confidence: ResultConfidence;
 }
@@ -31,10 +36,19 @@ export interface RankingSignals {
   semanticRank?: number;
   lexicalRank?: number;
   lexicalBm25?: number;
+  documentStageRank?: number;
   entityBoost: number;
   contextBoost: number;
   exactMatchBoost: number;
+  routingBoost: number;
+  versionBoost: number;
+  documentStageBoost: number;
   rrfScore: number;
+}
+
+export interface ScoreCandidateOptions {
+  routing?: QueryRouting;
+  documentStageRank?: number;
 }
 
 export function candidateKey(chunkId: number): string {
@@ -58,7 +72,8 @@ export function scoreCandidate(
   record: ChunkSearchRecord,
   parsed: ParsedQuery,
   semanticScore?: number,
-  rrfScore: number
+  rrfScore: number,
+  options?: ScoreCandidateOptions
 ): RankedCandidate {
   const searchableBlob = [
     record.content,
@@ -70,6 +85,9 @@ export function scoreCandidate(
     record.project,
     record.company,
     record.category,
+    record.topic,
+    record.department,
+    record.property,
     record.source,
   ]
     .join("\n")
@@ -81,6 +99,10 @@ export function scoreCandidate(
     record.externalId,
     record.project,
     record.company,
+    record.category,
+    record.topic,
+    record.department,
+    record.property,
   ]
     .join(" ")
     .toLowerCase();
@@ -124,19 +146,59 @@ export function scoreCandidate(
   }
   exactMatchBoost = Math.min(exactMatchBoost, 0.55);
 
+  let routingBoost = 0;
+  const routing = options?.routing;
+  if (routing) {
+    for (const term of routing.boostTerms) {
+      if (term.length >= 3 && searchableBlob.includes(term.toLowerCase())) {
+        routingBoost += 0.035;
+      }
+    }
+    for (const topic of routing.topics) {
+      if (
+        containsPhrase(contextBlob, topic) ||
+        containsPhrase(record.category, topic) ||
+        containsPhrase(record.topic, topic)
+      ) {
+        routingBoost += 0.08;
+      }
+    }
+    for (const category of routing.likelyCategories) {
+      if (containsPhrase(record.category, category)) routingBoost += 0.06;
+    }
+  }
+  routingBoost = Math.min(routingBoost, 0.3);
+
+  let versionBoost = 0;
+  if (record.isCurrent) {
+    versionBoost += 0.12;
+  } else if (record.isCurrent === false && !routing?.asksHistorical) {
+    versionBoost -= 0.06;
+  }
+
+  let documentStageBoost = 0;
+  const documentStageRank = options?.documentStageRank;
+  if (documentStageRank) {
+    documentStageBoost = (1 / (RRF_K + documentStageRank)) * 10;
+  }
+
   const normalizedSemantic = semanticScore ?? 0;
   const finalScore =
     rrfScore * 12 +
     normalizedSemantic * 0.35 +
     entityBoost +
     contextBoost +
-    exactMatchBoost;
+    exactMatchBoost +
+    routingBoost +
+    versionBoost +
+    documentStageBoost;
 
   const confidence = classifyChunkConfidence(
     finalScore,
     normalizedSemantic,
     exactMatchBoost,
-    contextBoost
+    contextBoost,
+    routingBoost
   );
 
   return {
@@ -150,6 +212,10 @@ export function scoreCandidate(
     entityBoost,
     contextBoost,
     exactMatchBoost,
+    routingBoost,
+    versionBoost,
+    documentStageBoost,
+    documentStageRank,
     finalScore,
     confidence,
   };
@@ -159,15 +225,20 @@ export function classifyChunkConfidence(
   finalScore: number,
   semanticScore: number,
   exactMatchBoost: number,
-  contextBoost: number
+  contextBoost: number,
+  routingBoost = 0
 ): ResultConfidence {
-  if (finalScore >= 1.2 && (semanticScore >= 0.45 || exactMatchBoost >= 0.15)) {
+  if (
+    finalScore >= 1.2 &&
+    (semanticScore >= 0.45 || exactMatchBoost >= 0.15 || routingBoost >= 0.1)
+  ) {
     return "strong";
   }
   if (
     finalScore >= 0.75 ||
     exactMatchBoost >= 0.15 ||
     contextBoost >= 0.15 ||
+    routingBoost >= 0.1 ||
     semanticScore >= 0.55
   ) {
     return "plausible";
@@ -220,9 +291,13 @@ export function toRankingSignals(candidate: RankedCandidate): RankingSignals {
     semanticRank: candidate.semanticRank,
     lexicalRank: candidate.lexicalRank,
     lexicalBm25: candidate.lexicalBm25,
+    documentStageRank: candidate.documentStageRank,
     entityBoost: candidate.entityBoost,
     contextBoost: candidate.contextBoost,
     exactMatchBoost: candidate.exactMatchBoost,
+    routingBoost: candidate.routingBoost,
+    versionBoost: candidate.versionBoost,
+    documentStageBoost: candidate.documentStageBoost,
     rrfScore: candidate.rrfScore,
   };
 }

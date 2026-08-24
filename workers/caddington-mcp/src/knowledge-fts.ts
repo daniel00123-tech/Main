@@ -1,12 +1,17 @@
 import type { Env } from "./db";
 import type { ChunkSearchRecord } from "./knowledge-metadata";
 import { buildChunkSearchRecord } from "./knowledge-metadata";
-import { buildFtsMatchQuery, parseSearchQuery } from "./knowledge-query";
+import { buildFtsMatchQuery } from "./knowledge-query";
 
 export interface LexicalSearchHit {
   chunkId: number;
   documentId: number;
   chunkIndex: number;
+  bm25: number;
+}
+
+export interface DocumentLexicalHit {
+  documentId: number;
   bm25: number;
 }
 
@@ -19,6 +24,11 @@ export async function deleteDocumentFtsRows(
   )
     .bind(documentId)
     .run();
+  await env.CADDINGTON_BUSINESS_DATA.prepare(
+    "DELETE FROM knowledge_documents_fts WHERE document_id = ?"
+  )
+    .bind(documentId)
+    .run();
 }
 
 export async function insertChunkFtsRow(
@@ -28,8 +38,9 @@ export async function insertChunkFtsRow(
   await env.CADDINGTON_BUSINESS_DATA.prepare(
     `INSERT INTO knowledge_chunks_fts (
       content, title, external_id, filename, heading, section, project, company,
-      category, document_type, source, chunk_id, document_id, chunk_index
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      category, topic, department, property, document_type, source,
+      chunk_id, document_id, chunk_index
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       record.content,
@@ -41,11 +52,45 @@ export async function insertChunkFtsRow(
       record.project,
       record.company,
       record.category,
+      record.topic,
+      record.department,
+      record.property,
       record.documentType,
       record.source,
       record.chunkId,
       record.documentId,
       record.chunkIndex
+    )
+    .run();
+}
+
+export async function insertDocumentFtsRow(
+  env: Env,
+  record: ChunkSearchRecord,
+  summary: string
+): Promise<void> {
+  await env.CADDINGTON_BUSINESS_DATA.prepare(
+    `INSERT INTO knowledge_documents_fts (
+      title, filename, company, project, category, topic, department, property,
+      person, customer, supplier, summary, document_type, source, document_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+    .bind(
+      record.title,
+      record.filename,
+      record.company,
+      record.project,
+      record.category,
+      record.topic,
+      record.department,
+      record.property,
+      record.person,
+      record.customer,
+      record.supplier,
+      summary.slice(0, 600),
+      record.documentType,
+      record.source,
+      record.documentId
     )
     .run();
 }
@@ -96,6 +141,33 @@ export async function lexicalSearchChunks(
       chunkId: Number((row as Record<string, unknown>).chunk_id),
       documentId: Number((row as Record<string, unknown>).document_id),
       chunkIndex: Number((row as Record<string, unknown>).chunk_index),
+      bm25: Number((row as Record<string, unknown>).bm25 ?? 0),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function lexicalSearchDocuments(
+  env: Env,
+  ftsQuery: string,
+  limit: number
+): Promise<DocumentLexicalHit[]> {
+  if (!ftsQuery) return [];
+
+  try {
+    const rows = await env.CADDINGTON_BUSINESS_DATA.prepare(
+      `SELECT document_id, bm25(knowledge_documents_fts) AS bm25
+       FROM knowledge_documents_fts
+       WHERE knowledge_documents_fts MATCH ?
+       ORDER BY bm25
+       LIMIT ?`
+    )
+      .bind(ftsQuery, limit)
+      .all();
+
+    return rows.results.map((row) => ({
+      documentId: Number((row as Record<string, unknown>).document_id),
       bm25: Number((row as Record<string, unknown>).bm25 ?? 0),
     }));
   } catch {

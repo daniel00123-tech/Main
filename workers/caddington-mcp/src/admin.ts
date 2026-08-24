@@ -175,6 +175,17 @@ async function uploadKnowledgeDocument(
     category: String(form.get("category") ?? "").trim(),
     source: String(form.get("source") ?? "").trim(),
     documentDate: String(form.get("document_date") ?? "").trim(),
+    department: String(form.get("department") ?? "").trim(),
+    property: String(form.get("property") ?? "").trim(),
+    person: String(form.get("person") ?? "").trim(),
+    customer: String(form.get("customer") ?? "").trim(),
+    supplier: String(form.get("supplier") ?? "").trim(),
+    topic: String(form.get("topic") ?? "").trim(),
+    version: String(form.get("version") ?? "").trim(),
+    effectiveDate: String(form.get("effective_date") ?? "").trim(),
+    expiryDate: String(form.get("expiry_date") ?? "").trim(),
+    supersedesDocumentId: String(form.get("supersedes_document_id") ?? "").trim(),
+    isCurrent: String(form.get("is_current") ?? "").trim(),
   });
 
   await env.CADDINGTON_KNOWLEDGE.put(r2Key, bytes, {

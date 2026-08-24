@@ -1,21 +1,31 @@
 import {
+  SEARCH_DEFAULT_TOP_K,
+  SEARCH_DOCUMENT_CANDIDATE_MAX,
   SEARCH_LEXICAL_CANDIDATE_MAX,
+  SEARCH_MAX_TOP_K,
   SEARCH_RERANK_POOL_MAX,
   SEARCH_VECTOR_CANDIDATE_MAX,
   SEARCH_VECTOR_CANDIDATE_MIN,
 } from "./constants";
 import type { Env } from "./db";
-import {
-  documentMatchesFilters,
-  type ChunkSearchRecord,
-  type KnowledgeSearchFilters,
-} from "./knowledge-metadata";
+import type { SegmentMetadata } from "./document-segments";
+import { vectorFieldsToSegmentMetadata } from "./document-segments";
+import { embedText } from "./knowledge-embed";
 import {
   lexicalSearchChunks,
+  lexicalSearchDocuments,
   loadChunkSearchRecords,
   loadNeighbourChunkContent,
 } from "./knowledge-fts";
+import {
+  getFilteredDocumentIds,
+  provenanceFromRecord,
+  type ChunkSearchRecord,
+  type KnowledgeSearchFilters,
+  type SearchProvenance,
+} from "./knowledge-metadata";
 import { buildFtsMatchQuery, parseSearchQuery } from "./knowledge-query";
+import { routeSearchQuery } from "./knowledge-query-routing";
 import {
   applyResultDiversity,
   classifyOverallConfidence,
@@ -26,9 +36,12 @@ import {
   type RankedCandidate,
   type ResultConfidence,
 } from "./knowledge-ranking";
-import { embedText } from "./knowledge-embed";
-import type { SegmentMetadata } from "./document-segments";
-import { vectorFieldsToSegmentMetadata } from "./document-segments";
+import {
+  buildSearchCacheKey,
+  getKnowledgeIndexGeneration,
+  readSearchCache,
+  writeSearchCache,
+} from "./knowledge-search-cache";
 
 export interface KnowledgeSearchRanking {
   finalScore: number;
@@ -36,9 +49,13 @@ export interface KnowledgeSearchRanking {
   semanticRank?: number;
   lexicalRank?: number;
   lexicalBm25?: number;
+  documentStageRank?: number;
   entityBoost: number;
   contextBoost: number;
   exactMatchBoost: number;
+  routingBoost: number;
+  versionBoost: number;
+  documentStageBoost: number;
   rrfScore: number;
 }
 
@@ -62,9 +79,13 @@ export interface KnowledgeSearchResult {
   company?: string;
   project?: string;
   category?: string;
+  topic?: string;
+  department?: string;
+  property?: string;
   documentDate?: string;
   source?: string;
   metadata?: SegmentMetadata;
+  provenance?: SearchProvenance;
   confidence?: ResultConfidence;
   ranking?: KnowledgeSearchRanking;
   contextBefore?: string;
@@ -73,11 +94,20 @@ export interface KnowledgeSearchResult {
 
 export interface KnowledgeSearchDiagnostics {
   latencyMs: number;
+  queryProcessingMs: number;
+  embeddingMs: number;
+  vectorSearchMs: number;
+  lexicalSearchMs: number;
+  documentStageMs: number;
+  fusionRerankMs: number;
   vectorCandidates: number;
   lexicalCandidates: number;
+  documentCandidates: number;
   rerankedCandidates: number;
   fusedCandidates: number;
   finalReturned: number;
+  cacheHit: boolean;
+  indexGeneration?: string;
 }
 
 export interface KnowledgeSearchResponse {
@@ -89,6 +119,13 @@ export interface KnowledgeSearchResponse {
     dates: string[];
     referenceNumbers: string[];
     distinctiveTerms: string[];
+  };
+  routing?: {
+    topics: string[];
+    intents: string[];
+    boostTerms: string[];
+    likelyCategories: string[];
+    asksHistorical: boolean;
   };
   confidence: ResultConfidence;
   resultCount: number;
@@ -102,38 +139,7 @@ export interface KnowledgeSearchOptions {
   includeNeighbourContext?: boolean;
   includeDiagnostics?: boolean;
   includeFullContent?: boolean;
-}
-
-async function getFilteredDocumentIds(
-  env: Env,
-  filters?: KnowledgeSearchFilters
-): Promise<number[] | null> {
-  if (!filters || Object.keys(filters).length === 0) return null;
-
-  const rows = await env.CADDINGTON_BUSINESS_DATA.prepare(
-    `SELECT id, title, metadata, mime_type, r2_key
-     FROM knowledge_documents
-     WHERE status = 'indexed'`
-  ).all();
-
-  const ids: number[] = [];
-  for (const row of rows.results) {
-    const record = row as Record<string, unknown>;
-    if (
-      documentMatchesFilters(
-        {
-          title: String(record.title),
-          metadata: record.metadata as string | null,
-          mime_type: record.mime_type as string | null,
-          r2_key: record.r2_key as string,
-        },
-        filters
-      )
-    ) {
-      ids.push(Number(record.id));
-    }
-  }
-  return ids;
+  skipCache?: boolean;
 }
 
 function recordToSearchResult(
@@ -160,8 +166,12 @@ function recordToSearchResult(
     company: record.company || undefined,
     project: record.project || undefined,
     category: record.category || undefined,
+    topic: record.topic || undefined,
+    department: record.department || undefined,
+    property: record.property || undefined,
     documentDate: record.documentDate || undefined,
     source: record.source || undefined,
+    provenance: provenanceFromRecord(record),
     confidence: candidate.confidence,
     ranking: toRankingSignals(candidate),
   };
@@ -179,7 +189,10 @@ export async function searchCompanyKnowledgeHybrid(
   options: KnowledgeSearchOptions = {}
 ): Promise<KnowledgeSearchResponse> {
   const started = Date.now();
-  const topK = options.topK ?? 5;
+  const topK = Math.min(
+    options.topK ?? SEARCH_DEFAULT_TOP_K,
+    SEARCH_MAX_TOP_K
+  );
 
   if (!env.CADDINGTON_KNOWLEDGE_INDEX) {
     throw new Error(
@@ -187,38 +200,93 @@ export async function searchCompanyKnowledgeHybrid(
     );
   }
 
+  const indexGeneration = await getKnowledgeIndexGeneration(env);
+  const cacheKey = buildSearchCacheKey(query, {
+    topK,
+    filters: options.filters,
+    includeNeighbourContext: options.includeNeighbourContext ?? false,
+    includeFullContent: options.includeFullContent ?? false,
+  });
+
+  if (!options.skipCache) {
+    const cached = readSearchCache(cacheKey, indexGeneration);
+    if (cached) {
+      if (options.includeDiagnostics) {
+        cached.diagnostics = {
+          latencyMs: Date.now() - started,
+          queryProcessingMs: 0,
+          embeddingMs: 0,
+          vectorSearchMs: 0,
+          lexicalSearchMs: 0,
+          documentStageMs: 0,
+          fusionRerankMs: 0,
+          vectorCandidates: 0,
+          lexicalCandidates: 0,
+          documentCandidates: 0,
+          rerankedCandidates: 0,
+          fusedCandidates: 0,
+          finalReturned: cached.resultCount,
+          cacheHit: true,
+          indexGeneration,
+        };
+      }
+      return cached;
+    }
+  }
+
+  const parseStarted = Date.now();
   const parsed = parseSearchQuery(query);
+  const routing = routeSearchQuery(parsed);
+  const queryProcessingMs = Date.now() - parseStarted;
+
   const allowedDocumentIds = await getFilteredDocumentIds(env, options.filters);
   if (allowedDocumentIds && allowedDocumentIds.length === 0) {
-    return {
-      query,
-      parsedQuery: summarizeParsedQuery(parsed),
-      confidence: "weak",
-      resultCount: 0,
-      results: [],
-      diagnostics: options.includeDiagnostics
-        ? {
-            latencyMs: Date.now() - started,
-            vectorCandidates: 0,
-            lexicalCandidates: 0,
-            rerankedCandidates: 0,
-            fusedCandidates: 0,
-            finalReturned: 0,
-          }
-        : undefined,
-    };
+    return emptyResponse(query, parsed, routing, started, options, indexGeneration);
   }
 
   const vectorCandidateCount = Math.min(
     SEARCH_VECTOR_CANDIDATE_MAX,
-    Math.max(SEARCH_VECTOR_CANDIDATE_MIN, topK * 6)
+    Math.max(SEARCH_VECTOR_CANDIDATE_MIN, topK * 5)
   );
 
+  const ftsQuery = buildFtsMatchQuery(parsed);
+
+  const embedStarted = Date.now();
   const vector = await embedText(env, parsed.normalized || query);
-  const vectorMatches = await env.CADDINGTON_KNOWLEDGE_INDEX.query(vector, {
+  const embeddingMs = Date.now() - embedStarted;
+
+  const vectorStarted = Date.now();
+  const vectorPromise = env.CADDINGTON_KNOWLEDGE_INDEX.query(vector, {
     topK: vectorCandidateCount,
     returnMetadata: "all",
   });
+
+  const lexicalPromise = ftsQuery
+    ? lexicalSearchChunks(
+        env,
+        ftsQuery,
+        allowedDocumentIds,
+        SEARCH_LEXICAL_CANDIDATE_MAX
+      )
+    : Promise.resolve([]);
+
+  const documentPromise = ftsQuery
+    ? lexicalSearchDocuments(env, ftsQuery, SEARCH_DOCUMENT_CANDIDATE_MAX)
+    : Promise.resolve([]);
+
+  const [vectorMatches, lexicalHits, documentHits] = await Promise.all([
+    vectorPromise,
+    lexicalPromise,
+    documentPromise,
+  ]);
+  const vectorSearchMs = Date.now() - vectorStarted;
+  const lexicalSearchMs = 0;
+  const documentStageMs = 0;
+
+  const documentStageRankById = new Map<number, number>();
+  for (let i = 0; i < documentHits.length; i++) {
+    documentStageRankById.set(documentHits[i].documentId, i + 1);
+  }
 
   const semanticRanked: Array<{ key: string; rank: number; score: number }> = [];
   const semanticByKey = new Map<string, number>();
@@ -240,16 +308,6 @@ export async function searchCompanyKnowledgeHybrid(
     semanticRank++;
   }
 
-  const ftsQuery = buildFtsMatchQuery(parsed);
-  const lexicalHits = ftsQuery
-    ? await lexicalSearchChunks(
-        env,
-        ftsQuery,
-        allowedDocumentIds,
-        SEARCH_LEXICAL_CANDIDATE_MAX
-      )
-    : [];
-
   const lexicalRanked: Array<{ key: string; rank: number; bm25: number }> = [];
   const lexicalByKey = new Map<string, number>();
   for (let i = 0; i < lexicalHits.length; i++) {
@@ -260,6 +318,7 @@ export async function searchCompanyKnowledgeHybrid(
     lexicalRanked.push({ key, rank: i + 1, bm25: hit.bm25 });
   }
 
+  const fusionStarted = Date.now();
   const fusedScores = reciprocalRankFusion([
     semanticRanked.map((item) => ({ key: item.key, rank: item.rank })),
     lexicalRanked.map((item) => ({ key: item.key, rank: item.rank })),
@@ -282,11 +341,14 @@ export async function searchCompanyKnowledgeHybrid(
 
     const semanticRankEntry = semanticRanked.find((item) => item.key === key);
     const lexicalRankEntry = lexicalRanked.find((item) => item.key === key);
+    const documentStageRank = documentStageRankById.get(record.documentId);
+
     const candidate = scoreCandidate(
       record,
       parsed,
       semanticByKey.get(key),
-      rrfScore
+      rrfScore,
+      { routing, documentStageRank }
     );
     candidate.semanticRank = semanticRankEntry?.rank;
     candidate.lexicalRank = lexicalRankEntry?.rank;
@@ -297,15 +359,12 @@ export async function searchCompanyKnowledgeHybrid(
   rankedCandidates.sort((a, b) => b.finalScore - a.finalScore);
   const diversified = applyResultDiversity(rankedCandidates, topK);
   const overallConfidence = classifyOverallConfidence(rankedCandidates, topK);
+  const fusionRerankMs = Date.now() - fusionStarted;
 
   const results: KnowledgeSearchResult[] = [];
   for (const candidate of diversified) {
     if (!candidate.record) continue;
-    const result = recordToSearchResult(
-      candidate.record,
-      candidate,
-      options
-    );
+    const result = recordToSearchResult(candidate.record, candidate, options);
 
     if (options.includeNeighbourContext) {
       const neighbours = await loadNeighbourChunkContent(
@@ -333,24 +392,45 @@ export async function searchCompanyKnowledgeHybrid(
     results.push(result);
   }
 
-  const latencyMs = Date.now() - started;
-  return {
+  const response: KnowledgeSearchResponse = {
     query,
     parsedQuery: summarizeParsedQuery(parsed),
+    routing: {
+      topics: routing.topics,
+      intents: routing.intents,
+      boostTerms: routing.boostTerms.slice(0, 20),
+      likelyCategories: routing.likelyCategories,
+      asksHistorical: routing.asksHistorical,
+    },
     confidence: overallConfidence,
     resultCount: results.length,
     results,
     diagnostics: options.includeDiagnostics
       ? {
-          latencyMs,
+          latencyMs: Date.now() - started,
+          queryProcessingMs,
+          embeddingMs,
+          vectorSearchMs,
+          lexicalSearchMs,
+          documentStageMs,
+          fusionRerankMs,
           vectorCandidates: semanticRanked.length,
           lexicalCandidates: lexicalHits.length,
+          documentCandidates: documentHits.length,
           rerankedCandidates: rankedCandidates.length,
           fusedCandidates: fusedScores.size,
           finalReturned: results.length,
+          cacheHit: false,
+          indexGeneration,
         }
       : undefined,
   };
+
+  if (!options.skipCache) {
+    writeSearchCache(cacheKey, indexGeneration, response);
+  }
+
+  return response;
 }
 
 function summarizeParsedQuery(
@@ -363,5 +443,48 @@ function summarizeParsedQuery(
     dates: parsed.dates,
     referenceNumbers: parsed.referenceNumbers,
     distinctiveTerms: parsed.distinctiveTerms,
+  };
+}
+
+function emptyResponse(
+  query: string,
+  parsed: ReturnType<typeof parseSearchQuery>,
+  routing: ReturnType<typeof routeSearchQuery>,
+  started: number,
+  options: KnowledgeSearchOptions,
+  indexGeneration: string
+): KnowledgeSearchResponse {
+  return {
+    query,
+    parsedQuery: summarizeParsedQuery(parsed),
+    routing: {
+      topics: routing.topics,
+      intents: routing.intents,
+      boostTerms: routing.boostTerms.slice(0, 20),
+      likelyCategories: routing.likelyCategories,
+      asksHistorical: routing.asksHistorical,
+    },
+    confidence: "weak",
+    resultCount: 0,
+    results: [],
+    diagnostics: options.includeDiagnostics
+      ? {
+          latencyMs: Date.now() - started,
+          queryProcessingMs: 0,
+          embeddingMs: 0,
+          vectorSearchMs: 0,
+          lexicalSearchMs: 0,
+          documentStageMs: 0,
+          fusionRerankMs: 0,
+          vectorCandidates: 0,
+          lexicalCandidates: 0,
+          documentCandidates: 0,
+          rerankedCandidates: 0,
+          fusedCandidates: 0,
+          finalReturned: 0,
+          cacheHit: false,
+          indexGeneration,
+        }
+      : undefined,
   };
 }

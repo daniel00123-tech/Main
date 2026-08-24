@@ -34,6 +34,12 @@ describe("hybrid ranking", () => {
     project: "Project Falcon",
     company: "",
     category: "",
+    topic: "",
+    department: "",
+    property: "",
+    person: "",
+    customer: "",
+    supplier: "",
     documentType: "image",
     source: "",
     documentDate: "",
@@ -54,6 +60,12 @@ describe("hybrid ranking", () => {
     project: "",
     company: "",
     category: "",
+    topic: "",
+    department: "",
+    property: "Trout Hollow",
+    person: "",
+    customer: "",
+    supplier: "",
     documentType: "pdf",
     source: "",
     documentDate: "",
@@ -85,11 +97,11 @@ describe("hybrid ranking", () => {
 
   it("limits chunks per document while keeping near-top repeats", () => {
     const ranked = [
-      { documentId: 1, chunkIndex: 0, finalScore: 2.0, confidence: "strong" as const, key: "a", chunkId: 1, rrfScore: 1, entityBoost: 0, contextBoost: 0, exactMatchBoost: 0 },
-      { documentId: 1, chunkIndex: 1, finalScore: 1.9, confidence: "strong" as const, key: "b", chunkId: 2, rrfScore: 1, entityBoost: 0, contextBoost: 0, exactMatchBoost: 0 },
-      { documentId: 1, chunkIndex: 2, finalScore: 1.8, confidence: "plausible" as const, key: "c", chunkId: 3, rrfScore: 1, entityBoost: 0, contextBoost: 0, exactMatchBoost: 0 },
-      { documentId: 1, chunkIndex: 3, finalScore: 1.0, confidence: "weak" as const, key: "d", chunkId: 4, rrfScore: 1, entityBoost: 0, contextBoost: 0, exactMatchBoost: 0 },
-      { documentId: 2, chunkIndex: 0, finalScore: 1.7, confidence: "plausible" as const, key: "e", chunkId: 5, rrfScore: 1, entityBoost: 0, contextBoost: 0, exactMatchBoost: 0 },
+      { documentId: 1, chunkIndex: 0, finalScore: 2.0, confidence: "strong" as const, key: "a", chunkId: 1, rrfScore: 1, entityBoost: 0, contextBoost: 0, exactMatchBoost: 0, routingBoost: 0, versionBoost: 0, documentStageBoost: 0 },
+      { documentId: 1, chunkIndex: 1, finalScore: 1.9, confidence: "strong" as const, key: "b", chunkId: 2, rrfScore: 1, entityBoost: 0, contextBoost: 0, exactMatchBoost: 0, routingBoost: 0, versionBoost: 0, documentStageBoost: 0 },
+      { documentId: 1, chunkIndex: 2, finalScore: 1.8, confidence: "plausible" as const, key: "c", chunkId: 3, rrfScore: 1, entityBoost: 0, contextBoost: 0, exactMatchBoost: 0, routingBoost: 0, versionBoost: 0, documentStageBoost: 0 },
+      { documentId: 1, chunkIndex: 3, finalScore: 1.0, confidence: "weak" as const, key: "d", chunkId: 4, rrfScore: 1, entityBoost: 0, contextBoost: 0, exactMatchBoost: 0, routingBoost: 0, versionBoost: 0, documentStageBoost: 0 },
+      { documentId: 2, chunkIndex: 0, finalScore: 1.7, confidence: "plausible" as const, key: "e", chunkId: 5, rrfScore: 1, entityBoost: 0, contextBoost: 0, exactMatchBoost: 0, routingBoost: 0, versionBoost: 0, documentStageBoost: 0 },
     ];
     const diverse = applyResultDiversity(ranked, 4, 3);
     expect(diverse.filter((d) => d.documentId === 1).length).toBeLessThanOrEqual(3);

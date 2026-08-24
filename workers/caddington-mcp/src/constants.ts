@@ -4,10 +4,13 @@ export const MCP_NAME = "caddington-mcp";
 export const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
 export const EMBEDDING_DIMENSIONS = 768;
 
-export const SEARCH_VECTOR_CANDIDATE_MIN = 40;
-export const SEARCH_VECTOR_CANDIDATE_MAX = 80;
-export const SEARCH_LEXICAL_CANDIDATE_MAX = 40;
-export const SEARCH_RERANK_POOL_MAX = 60;
+export const SEARCH_VECTOR_CANDIDATE_MIN = 30;
+export const SEARCH_VECTOR_CANDIDATE_MAX = 50;
+export const SEARCH_LEXICAL_CANDIDATE_MAX = 50;
+export const SEARCH_DOCUMENT_CANDIDATE_MAX = 30;
+export const SEARCH_RERANK_POOL_MAX = 40;
+export const SEARCH_DEFAULT_TOP_K = 8;
+export const SEARCH_MAX_TOP_K = 12;
 
 /** Read-only tables for query_business_data */
 export const QUERYABLE_TABLES = new Set([

@@ -14,14 +14,16 @@ import {
 import { embedText } from "./knowledge-embed";
 import {
   buildChunkSearchRecord,
+  type ChunkSearchRecord,
   vectorMetadataFromRecord,
 } from "./knowledge-metadata";
-import { deleteDocumentFtsRows, insertChunkFtsRow } from "./knowledge-fts";
+import { deleteDocumentFtsRows, insertChunkFtsRow, insertDocumentFtsRow } from "./knowledge-fts";
 import {
   searchCompanyKnowledgeHybrid,
   type KnowledgeSearchOptions,
   type KnowledgeSearchResponse,
 } from "./knowledge-search";
+import { clearSearchCache } from "./knowledge-search-cache";
 import type { Env } from "./db";
 import { log } from "./logger";
 
@@ -272,6 +274,8 @@ export async function indexKnowledgeDocument(
     const docForIndexing = refreshedDoc ?? doc;
     const vectors: VectorizeVector[] = [];
     let indexed = 0;
+    let documentFtsRecord: ChunkSearchRecord | null = null;
+    let documentSummary = "";
 
     for (let i = 0; i < chunks.length; i++) {
       const { content, metadata } = chunks[i];
@@ -310,6 +314,10 @@ export async function indexKnowledgeDocument(
       );
 
       await insertChunkFtsRow(env, searchRecord);
+      if (i === 0) {
+        documentFtsRecord = searchRecord;
+        documentSummary = content;
+      }
 
       vectors.push({
         id: vectorId,
@@ -322,6 +330,10 @@ export async function indexKnowledgeDocument(
       indexed++;
     }
 
+    if (documentFtsRecord) {
+      await insertDocumentFtsRow(env, documentFtsRecord, documentSummary);
+    }
+
     if (vectors.length > 0) {
       await env.CADDINGTON_KNOWLEDGE_INDEX.upsert(vectors);
     }
@@ -331,6 +343,8 @@ export async function indexKnowledgeDocument(
     )
       .bind(documentId)
       .run();
+
+    clearSearchCache();
 
     await completeKnowledgeImportLog(env, logId, "completed", indexed);
     log("info", "knowledge_document_indexed", {
