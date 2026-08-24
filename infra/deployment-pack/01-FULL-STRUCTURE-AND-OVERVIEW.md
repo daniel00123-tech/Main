@@ -1,5 +1,8 @@
 # INFRA — Full Structure & System Overview
 
+> **Authoritative boundary:** [ADR 001 — Company MCP vs INFRA](../docs/adr/001-company-mcp-vs-infra-boundary.md).  
+> Company MCPs own knowledge/data/capabilities; INFRA owns identity/authz/routing/metering/billing/audit; AI clients connect to INFRA.
+
 ## Two interfaces, one backend
 
 ```
