@@ -4,6 +4,7 @@
 -- Point MCP auth at Worker secret binding name (credential never stored in D1)
 UPDATE mcp_environments
 SET auth_secret_ref = 'CADDINGTON_MCP_AUTH_TOKEN',
+    service_binding_ref = 'CADDINGTON_MCP',
     updated_at = datetime('now')
 WHERE id = 'mcp_caddington_primary';
 
@@ -50,6 +51,6 @@ VALUES (
   'infra-system',
   'mcp',
   'mcp_caddington_primary',
-  '{"phase":2,"authSecretRef":"CADDINGTON_MCP_AUTH_TOKEN","allowlistSeeded":true}',
+  '{"phase":2,"authSecretRef":"CADDINGTON_MCP_AUTH_TOKEN","serviceBindingRef":"CADDINGTON_MCP","allowlistSeeded":true}',
   datetime('now')
 );

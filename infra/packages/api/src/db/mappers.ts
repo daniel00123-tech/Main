@@ -60,6 +60,9 @@ export function rowToMcpEnvironment(row: Record<string, unknown>): McpEnvironmen
       row.capabilities_json ? String(row.capabilities_json) : null,
     ),
     authSecretRef: row.auth_secret_ref ? String(row.auth_secret_ref) : null,
+    serviceBindingRef: row.service_binding_ref
+      ? String(row.service_binding_ref)
+      : null,
     lastHealthCheckAt: row.last_health_check_at
       ? String(row.last_health_check_at)
       : null,

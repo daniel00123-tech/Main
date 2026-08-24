@@ -8,6 +8,8 @@ export interface Env {
   INITIAL_PLATFORM_ADMIN_PASSWORD?: string;
   /** Optional MCP auth secret referenced by mcp_environments.auth_secret_ref */
   CADDINGTON_MCP_AUTH_TOKEN?: string;
+  /** Optional service binding for same-account Caddington MCP Worker */
+  CADDINGTON_MCP?: Fetcher;
   [key: string]: unknown;
 }
 

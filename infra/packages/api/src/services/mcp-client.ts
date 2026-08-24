@@ -53,11 +53,29 @@ export function resolveMcpAuthHeader(
   };
 }
 
+function resolveMcpFetcher(
+  env: Env,
+  serviceBindingRef?: string | null,
+): Fetcher | null {
+  if (!serviceBindingRef) return null;
+  const binding = (env as Record<string, unknown>)[serviceBindingRef];
+  if (
+    binding &&
+    typeof binding === "object" &&
+    "fetch" in binding &&
+    typeof (binding as Fetcher).fetch === "function"
+  ) {
+    return binding as Fetcher;
+  }
+  return null;
+}
+
 export async function mcpRequest(
   env: Env,
   input: {
     endpointUrl: string;
     authSecretRef?: string | null;
+    serviceBindingRef?: string | null;
     method: string;
     params?: Record<string, unknown>;
     id?: number;
@@ -83,8 +101,7 @@ export async function mcpRequest(
     headers.Authorization = authorizationHeader;
   }
 
-  const started = Date.now();
-  const response = await fetch(input.endpointUrl, {
+  const requestInit: RequestInit = {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -94,7 +111,13 @@ export async function mcpRequest(
       params: input.params ?? {},
     }),
     signal: AbortSignal.timeout(20000),
-  });
+  };
+
+  const fetcher = resolveMcpFetcher(env, input.serviceBindingRef);
+  const started = Date.now();
+  const response = fetcher
+    ? await fetcher.fetch(input.endpointUrl, requestInit)
+    : await fetch(input.endpointUrl, requestInit);
 
   const latencyMs = Date.now() - started;
   const text = await response.text();
@@ -117,10 +140,12 @@ export async function listMcpTools(
   env: Env,
   endpointUrl: string,
   authSecretRef?: string | null,
+  serviceBindingRef?: string | null,
 ): Promise<{ tools: McpToolDefinition[]; latencyMs: number; authConfigured: boolean }> {
   const { payload, latencyMs, authConfigured } = await mcpRequest(env, {
     endpointUrl,
     authSecretRef,
+    serviceBindingRef,
     method: "tools/list",
     id: 2,
   });
@@ -138,6 +163,7 @@ export async function callMcpTool(
   input: {
     endpointUrl: string;
     authSecretRef?: string | null;
+    serviceBindingRef?: string | null;
     toolName: string;
     arguments?: Record<string, unknown>;
   },
@@ -150,6 +176,7 @@ export async function callMcpTool(
   const { payload, latencyMs, authConfigured } = await mcpRequest(env, {
     endpointUrl: input.endpointUrl,
     authSecretRef: input.authSecretRef,
+    serviceBindingRef: input.serviceBindingRef,
     method: "tools/call",
     id: 3,
     params: {

@@ -339,10 +339,16 @@ export async function runMcpHealthCheck(
   const { authConfigured } = resolveMcpAuthHeader(env, mcp.authSecretRef);
 
   try {
-    const tools = await listMcpTools(env, mcp.endpointUrl, mcp.authSecretRef);
+    const tools = await listMcpTools(
+      env,
+      mcp.endpointUrl,
+      mcp.authSecretRef,
+      mcp.serviceBindingRef,
+    );
     const health = await callMcpTool(env, {
       endpointUrl: mcp.endpointUrl,
       authSecretRef: mcp.authSecretRef,
+      serviceBindingRef: mcp.serviceBindingRef,
       toolName: "system_health",
       arguments: {},
     });
@@ -353,6 +359,7 @@ export async function runMcpHealthCheck(
       const summary = await callMcpTool(env, {
         endpointUrl: mcp.endpointUrl,
         authSecretRef: mcp.authSecretRef,
+        serviceBindingRef: mcp.serviceBindingRef,
         toolName: "database_summary",
         arguments: {},
       });
@@ -534,6 +541,7 @@ export async function executeRegisteredMcpTool(
     const execution = await callMcpTool(env, {
       endpointUrl: mcp.endpointUrl,
       authSecretRef: mcp.authSecretRef,
+      serviceBindingRef: mcp.serviceBindingRef,
       toolName: input.toolName,
       arguments: input.arguments,
     });

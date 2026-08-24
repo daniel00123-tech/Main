@@ -441,6 +441,7 @@ app.get(
         c.env,
         environment.endpointUrl,
         environment.authSecretRef,
+        environment.serviceBindingRef,
       );
       await recordAuditEvent(c.env.DB, {
         companyId: environment.companyId,

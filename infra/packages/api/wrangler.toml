@@ -19,3 +19,8 @@ COOKIE_CROSS_ORIGIN = "true"
 # CADDINGTON_MCP_AUTH_TOKEN (optional; referenced by mcp_environments.auth_secret_ref)
 # INITIAL_PLATFORM_ADMIN_EMAIL (temporary bootstrap only)
 # INITIAL_PLATFORM_ADMIN_PASSWORD (temporary bootstrap only)
+
+# Same-account Worker MCP access (workers.dev public fetch returns CF 1042)
+[[services]]
+binding = "CADDINGTON_MCP"
+service = "caddington-mcp"

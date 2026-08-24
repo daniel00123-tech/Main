@@ -88,7 +88,13 @@ export interface McpEnvironment {
   mcpVersion: string | null;
   businessMcpCoreVersion: string | null;
   capabilities: string[];
+  /** Optional Worker secret binding name for Authorization header (never plaintext). */
   authSecretRef: string | null;
+  /**
+   * Optional Cloudflare service binding name for same-account Worker MCP endpoints.
+   * Required when the public workers.dev URL cannot be fetched from INFRA (error 1042).
+   */
+  serviceBindingRef: string | null;
   lastHealthCheckAt: string | null;
   lastHealthyAt: string | null;
   healthMessage: string | null;
