@@ -148,15 +148,26 @@ textarea {
 /* ——— Shell ——— */
 .app-shell {
   display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-areas: "sidebar main";
   min-height: 100vh;
   transition: grid-template-columns var(--dur) var(--ease);
 }
 .app-shell.nav-collapsed {
-  grid-template-columns: var(--sidebar-w-collapsed) 1fr;
+  grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr);
+}
+
+/* Mobile-only chrome must not participate in the desktop grid
+   (otherwise the sidebar lands in the 1fr column and main is squashed). */
+.mobile-nav-scrim {
+  display: none;
+}
+.mobile-topbar {
+  display: none;
 }
 
 .sidebar {
+  grid-area: sidebar;
   position: sticky;
   top: 0;
   height: 100vh;
@@ -277,6 +288,7 @@ textarea {
 }
 
 .main {
+  grid-area: main;
   min-width: 0;
   padding: var(--s-6) var(--s-8) var(--s-12);
 }
@@ -1084,6 +1096,18 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
+  /* Prevent ToastHost from occupying a CSS grid cell inside .app-shell */
+  grid-column: 1 / -1;
+  grid-row: 1;
+  width: max-content;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.toast-stack .toast {
+  pointer-events: auto;
 }
 .toast {
   min-width: 240px;
@@ -1115,6 +1139,13 @@ textarea:focus {
   .app-shell,
   .app-shell.nav-collapsed {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "topbar"
+      "main";
+  }
+  .mobile-topbar {
+    grid-area: topbar;
+    display: flex !important;
   }
   .sidebar {
     position: fixed;
@@ -1123,6 +1154,7 @@ textarea:focus {
     z-index: 70;
     transform: translateX(-105%);
     transition: transform var(--dur) var(--ease);
+    grid-area: unset;
   }
   .app-shell.mobile-nav-open .sidebar {
     transform: translateX(0);
@@ -1136,9 +1168,6 @@ textarea:focus {
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
     z-index: 65;
-  }
-  .mobile-topbar {
-    display: flex !important;
   }
   .grid-2,
   .grid-3,

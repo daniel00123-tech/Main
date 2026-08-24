@@ -224,14 +224,24 @@ export const api = {
     fetchJson<
       Array<{
         id: string;
+        companyId?: string;
+        companyName?: string;
         clientType: string;
         displayName: string;
         status: string;
         gatewayEndpoint: string;
         mcpEndpoint?: string;
+        connectionMethod?: string;
         setupNotes: string | null;
         lastUsedAt: string | null;
+        lastSuccessfulRequestAt?: string | null;
         serviceIdentityId: string | null;
+        serviceIdentityName?: string | null;
+        serviceIdentityStatus?: string | null;
+        scopes?: string[];
+        tokenStatus?: string;
+        tokenPrefix?: string | null;
+        requestCount?: number;
       }>
     >(`/api/companies/${slug}/ai-connections`),
   connectAiClient: (slug: string, clientType: string) =>

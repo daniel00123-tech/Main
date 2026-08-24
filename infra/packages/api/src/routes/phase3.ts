@@ -647,25 +647,52 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
     .all();
 
   const origin = "https://infra-api.daniel-dwyer123.workers.dev";
+  const identities = await listServiceIdentities(c.env.DB, company.id);
+  const identityById = new Map(identities.map((item) => [item.id, item]));
 
   return c.json(
-    (rows.results ?? []).map((row) => ({
-      id: String(row.id),
-      companyId: String(row.company_id),
-      clientType: String(row.client_type),
-      displayName: String(row.display_name),
-      status: String(row.status),
-      serviceIdentityId: row.service_identity_id
+    (rows.results ?? []).map((row) => {
+      const identityId = row.service_identity_id
         ? String(row.service_identity_id)
-        : null,
-      gatewayEndpoint: `${origin}/api/gateway/v1/execute`,
-      mcpEndpoint: `${origin}/api/gateway/v1/mcp`,
-      gatewayPath: row.gateway_path ? String(row.gateway_path) : null,
-      setupNotes: row.setup_notes ? String(row.setup_notes) : null,
-      lastUsedAt: row.last_used_at ? String(row.last_used_at) : null,
-      createdAt: String(row.created_at),
-      updatedAt: String(row.updated_at),
-    })),
+        : null;
+      const identity = identityId ? identityById.get(identityId) : null;
+      const status = String(row.status);
+      let tokenStatus = "Not Generated";
+      if (identity?.status === "active" && identity.hasToken) tokenStatus = "Active";
+      else if (identity?.status === "disabled") tokenStatus = "Revoked";
+      else if (status === "connected" && !identity) tokenStatus = "Rotation Required";
+
+      return {
+        id: String(row.id),
+        companyId: String(row.company_id),
+        companyName: company.name,
+        clientType: String(row.client_type),
+        displayName: String(row.display_name),
+        status,
+        serviceIdentityId: identityId,
+        serviceIdentityName: identity?.name ?? null,
+        serviceIdentityStatus: identity?.status ?? null,
+        scopes: identity?.scopes ?? [],
+        tokenStatus,
+        tokenPrefix: identity?.tokenPrefix ?? null,
+        connectionMethod: "INFRA MCP Gateway",
+        gatewayEndpoint: `${origin}/api/gateway/v1/execute`,
+        mcpEndpoint: `${origin}/api/gateway/v1/mcp`,
+        gatewayPath: row.gateway_path ? String(row.gateway_path) : null,
+        setupNotes: row.setup_notes ? String(row.setup_notes) : null,
+        lastUsedAt: identity?.lastUsedAt
+          ? String(identity.lastUsedAt)
+          : row.last_used_at
+            ? String(row.last_used_at)
+            : null,
+        lastSuccessfulRequestAt: identity?.lastUsedAt
+          ? String(identity.lastUsedAt)
+          : null,
+        requestCount: identity?.requestCount ?? 0,
+        createdAt: String(row.created_at),
+        updatedAt: String(row.updated_at),
+      };
+    }),
   );
 });
 
@@ -885,28 +912,8 @@ phase3.post(
       clientRequestId: `ai-test-health-${Date.now()}`,
     });
 
-    let searchOk = false;
-    let searchError: string | undefined;
-    if (health.status === 200) {
-      const search = await executeGatewayRequest(c.env, {
-        actor: { type: "service", identity },
-        companyId: company.id,
-        toolName: "search_company_knowledge",
-        arguments: { query: "infra" },
-        sourceClient: `${clientType}-test`,
-        requireCredit: true,
-        clientRequestId: `ai-test-search-${Date.now()}`,
-      });
-      searchOk = search.status === 200;
-      searchError = search.error;
-    }
-
-    const status =
-      health.status === 200 && searchOk
-        ? "HEALTHY"
-        : health.status === 200
-          ? "DEGRADED"
-          : "FAILED";
+    // Non-billable connectivity check only — do not run chargeable knowledge.search here.
+    const status = health.status === 200 ? "HEALTHY" : "FAILED";
 
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
@@ -918,7 +925,7 @@ phase3.post(
         stage: "ai_connection.tested",
         status,
         healthStatus: health.status,
-        searchOk,
+        billable: false,
       },
     });
 
@@ -926,10 +933,8 @@ phase3.post(
       status,
       message:
         status === "HEALTHY"
-          ? "Authentication, gateway, MCP, and knowledge search succeeded"
-          : status === "DEGRADED"
-            ? `Gateway health OK but knowledge search failed${searchError ? `: ${searchError}` : ""}`
-            : health.error ?? "Connection test failed",
+          ? "Authentication, tenant resolution, gateway, and MCP health succeeded"
+          : health.error ?? "Connection test failed",
       checks: {
         authentication: identity.status === "active" ? "passed" : "failed",
         tenantResolution: "passed",
@@ -937,7 +942,6 @@ phase3.post(
         wallet: health.status === 402 ? "failed" : "passed",
         gateway: health.status === 200 ? "passed" : "failed",
         mcp: health.status === 200 ? "passed" : "failed",
-        knowledgeSearch: searchOk ? "passed" : "failed",
       },
       mcpEndpoint:
         "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp",

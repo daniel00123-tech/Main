@@ -570,7 +570,9 @@ export function ToastHost() {
     };
   }, []);
 
-  if (items.length === 0) return null;
+  if (items.length === 0) {
+    return <div className="toast-stack" aria-live="polite" />;
+  }
   return (
     <div className="toast-stack" aria-live="polite">
       {items.map((t) => (
