@@ -1,84 +1,96 @@
-import { EL_DASHBOARD, EL_TENANT } from "./mock-data";
-import { PageHeader, SectionCard, StatusBadge, formatCurrency } from "../components";
+import { PageHeader, SectionCard, StatusBadge, formatCurrency, formatDate } from "../components";
+import { usePortalCompany } from "./usePortalCompany";
+import { ErrorState, LoadingState } from "../components";
 
 export default function PortalDashboardPage() {
-  const d = EL_DASHBOARD;
+  const { company, overview, loading, error, user } = usePortalCompany();
+
+  if (loading) return <LoadingState />;
+  if (error || !company || !overview || !user) {
+    return <ErrorState message={error ?? "Dashboard unavailable"} />;
+  }
+
+  const activeConnectors = overview.connectorInstances.filter(
+    (connector) => connector.status !== "disabled" && connector.status !== "draft",
+  ).length;
+  const mcpStatus = overview.mcpEnvironments[0]?.status ?? "registered";
 
   return (
     <>
       <PageHeader
-        title={`Welcome, ${EL_TENANT.loggedInUser.name.split(" ")[0]}`}
-        subtitle={`${EL_TENANT.company.name} — your company AI infrastructure`}
+        title={`Welcome, ${user.displayName.split(" ")[0]}`}
+        subtitle={`${company.name} — your company AI infrastructure`}
       />
 
       <div className="grid grid-4" style={{ marginBottom: 24 }}>
         <div className="card metric-card">
           <h3>Credit balance</h3>
-          <div className="metric">{formatCurrency(d.creditBalanceCents)}</div>
-        </div>
-        <div className="card metric-card">
-          <h3>Usage this month</h3>
-          <div className="metric">{formatCurrency(d.usageThisMonthCents)}</div>
+          <div className="metric">
+            {formatCurrency(overview.creditBalance?.balanceCents ?? 0)}
+          </div>
         </div>
         <div className="card metric-card">
           <h3>Connectors</h3>
           <div className="metric">
-            {d.connectorsConnected}/{d.connectorsTotal}
+            {activeConnectors}/{overview.connectorInstances.length}
           </div>
         </div>
         <div className="card metric-card">
           <h3>MCP status</h3>
-          <StatusBadge value={d.mcpStatus} />
+          <StatusBadge value={mcpStatus} />
+        </div>
+        <div className="card metric-card">
+          <h3>Recent audit events</h3>
+          <div className="metric">{overview.recentAuditEvents.length}</div>
         </div>
       </div>
 
       <div className="grid grid-2">
-        <SectionCard title="Setup progress">
-          <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${d.setupProgress}%` }} />
-          </div>
-          <p className="muted">{d.setupProgress}% complete</p>
-          <ul className="checklist">
-            {d.nextSteps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ul>
-        </SectionCard>
-
-        <SectionCard title="Your connections">
+        <SectionCard title="Connectors">
           <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Health</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr>
-                <td>BigChange</td>
-                <td>
-                  <StatusBadge value="draft" /> Not connected
-                </td>
-              </tr>
-              <tr>
-                <td>SharePoint</td>
-                <td>
-                  <StatusBadge value="draft" /> Not connected
-                </td>
-              </tr>
-              <tr>
-                <td>ChatGPT</td>
-                <td>
-                  <StatusBadge value="registered" /> Planned
-                </td>
-              </tr>
-              <tr>
-                <td>Team members</td>
-                <td>{d.teamMembers}</td>
-              </tr>
+              {overview.connectorInstances.map((connector) => (
+                <tr key={connector.id}>
+                  <td>{connector.name}</td>
+                  <td>
+                    <StatusBadge value={connector.status} />
+                  </td>
+                  <td>
+                    <StatusBadge value={connector.healthStatus} />
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </SectionCard>
-      </div>
 
-      <div className="card info-banner" style={{ marginTop: 24 }}>
-        <strong>v0.1:</strong> Charlie (Owner) manages EL here. Developer setup for BigChange
-        happens in the background — this dashboard updates when INFRA registers the connection.
-        Self-service &quot;Connect now&quot; comes in v0.2.
+        <SectionCard title="Recent activity">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Actor</th>
+                <th>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {overview.recentAuditEvents.map((event) => (
+                <tr key={event.id}>
+                  <td>{event.eventType}</td>
+                  <td>{event.actor}</td>
+                  <td>{formatDate(event.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </SectionCard>
       </div>
     </>
   );

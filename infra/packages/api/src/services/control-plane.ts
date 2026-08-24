@@ -10,10 +10,21 @@ import {
   rowToSyncHistory,
 } from "../db/mappers";
 
-export async function listCompanies(db: D1Database) {
-  const result = await db
-    .prepare("SELECT * FROM companies ORDER BY name ASC")
-    .all();
+export async function listCompanies(db: D1Database, companyIds?: string[]) {
+  if (companyIds && companyIds.length === 0) {
+    return [];
+  }
+
+  const query =
+    companyIds && companyIds.length > 0
+      ? db
+          .prepare(
+            `SELECT * FROM companies WHERE id IN (${companyIds.map(() => "?").join(", ")}) ORDER BY name ASC`,
+          )
+          .bind(...companyIds)
+      : db.prepare("SELECT * FROM companies ORDER BY name ASC");
+
+  const result = await query.all();
   return (result.results ?? []).map((row) => rowToCompany(row));
 }
 
@@ -176,9 +187,62 @@ export interface McpHealthResult {
   latencyMs: number;
 }
 
+const BLOCKED_HOSTNAMES = new Set([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "[::1]",
+  "metadata.google.internal",
+]);
+
+export function validateRegisteredMcpEndpoint(
+  endpointUrl: string,
+  environment: string,
+): { valid: boolean; reason?: string } {
+  let parsed: URL;
+  try {
+    parsed = new URL(endpointUrl);
+  } catch {
+    return { valid: false, reason: "Invalid endpoint URL" };
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return { valid: false, reason: "Unsupported URL protocol" };
+  }
+
+  if (environment === "production" && parsed.protocol !== "https:") {
+    return { valid: false, reason: "Production MCP endpoints must use HTTPS" };
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (BLOCKED_HOSTNAMES.has(hostname)) {
+    return { valid: false, reason: "Blocked endpoint host" };
+  }
+
+  if (
+    /^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(
+      hostname,
+    )
+  ) {
+    return { valid: false, reason: "Private network endpoints are not allowed" };
+  }
+
+  return { valid: true };
+}
+
 export async function checkMcpHealth(
   endpointUrl: string,
+  environment = "development",
 ): Promise<McpHealthResult> {
+  const validation = validateRegisteredMcpEndpoint(endpointUrl, environment);
+  if (!validation.valid) {
+    return {
+      status: "unhealthy",
+      message: validation.reason ?? "Endpoint validation failed",
+      latencyMs: 0,
+    };
+  }
+
   const started = Date.now();
   try {
     const response = await fetch(endpointUrl, {
@@ -211,11 +275,29 @@ export async function checkMcpHealth(
   }
 }
 
-export async function runMcpHealthCheck(env: Env, mcpId: string) {
+export async function runMcpHealthCheck(
+  env: Env,
+  mcpId: string,
+  actor: string,
+) {
   const mcp = await getMcpEnvironment(env.DB, mcpId);
   if (!mcp) return null;
 
-  const result = await checkMcpHealth(mcp.endpointUrl);
+  const validation = validateRegisteredMcpEndpoint(
+    mcp.endpointUrl,
+    env.ENVIRONMENT,
+  );
+  if (!validation.valid) {
+    return {
+      mcpId,
+      status: "unreachable" as const,
+      message: validation.reason ?? "Endpoint validation failed",
+      latencyMs: 0,
+      checkedAt: nowIso(),
+    };
+  }
+
+  const result = await checkMcpHealth(mcp.endpointUrl, env.ENVIRONMENT);
   const checkedAt = nowIso();
   const status =
     result.status === "healthy"
@@ -242,7 +324,7 @@ export async function runMcpHealthCheck(env: Env, mcpId: string) {
   await recordAuditEvent(env.DB, {
     companyId: mcp.companyId,
     eventType: "mcp.health_checked",
-    actor: "infra-system",
+    actor,
     resourceType: "mcp",
     resourceId: mcpId,
     detail: {
@@ -260,25 +342,49 @@ export async function runMcpHealthCheck(env: Env, mcpId: string) {
   };
 }
 
-export async function getPlatformSummary(db: D1Database) {
+export async function getPlatformSummary(
+  db: D1Database,
+  companyIds?: string[],
+) {
   const [companies, mcpEnvironments, connectorInstances, auditEvents] =
     await Promise.all([
-      listCompanies(db),
-      listMcpEnvironments(db),
-      listConnectorInstances(db),
-      listAuditEvents(db, undefined, 5),
+      listCompanies(db, companyIds),
+      listMcpEnvironments(
+        db,
+        companyIds?.length === 1 ? companyIds[0] : undefined,
+      ),
+      listConnectorInstances(
+        db,
+        companyIds?.length === 1 ? companyIds[0] : undefined,
+      ),
+      listAuditEvents(
+        db,
+        companyIds?.length === 1 ? companyIds[0] : undefined,
+        5,
+      ),
     ]);
 
-  const healthyMcp = mcpEnvironments.filter((m) => m.status === "healthy").length;
-  const activeConnectors = connectorInstances.filter(
+  const scopedMcp =
+    companyIds && companyIds.length > 1
+      ? mcpEnvironments.filter((item) => companyIds.includes(item.companyId))
+      : mcpEnvironments;
+  const scopedConnectors =
+    companyIds && companyIds.length > 1
+      ? connectorInstances.filter((item) =>
+          companyIds.includes(item.companyId),
+        )
+      : connectorInstances;
+
+  const healthyMcp = scopedMcp.filter((m) => m.status === "healthy").length;
+  const activeConnectors = scopedConnectors.filter(
     (c) => c.status !== "disabled" && c.status !== "draft",
   ).length;
 
   return {
     companies: companies.length,
-    mcpEnvironments: mcpEnvironments.length,
+    mcpEnvironments: scopedMcp.length,
     healthyMcp,
-    connectorInstances: connectorInstances.length,
+    connectorInstances: scopedConnectors.length,
     activeConnectors,
     recentAuditEvents: auditEvents,
   };

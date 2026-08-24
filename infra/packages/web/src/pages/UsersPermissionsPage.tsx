@@ -1,35 +1,44 @@
-import { MOCK_USERS } from "../mock-data";
-import { PageHeader, SectionCard } from "../components";
-
-const ROLES = [
-  {
-    name: "Standard User",
-    permissions: "Search knowledge, read assigned jobs, add limited notes",
-  },
-  {
-    name: "Supervisor",
-    permissions: "Broader read on team data",
-  },
-  {
-    name: "Administrator",
-    permissions: "Connector management, user management, higher-risk actions",
-  },
-  {
-    name: "Site Administrator",
-    permissions: "Company-wide administration",
-  },
-  {
-    name: "Platform Owner",
-    permissions: "INFRA administration, billing, company setup",
-  },
-];
+import { useEffect, useState } from "react";
+import { api } from "../api";
+import type { Company, InfraUser } from "@infra/shared";
+import { ErrorState, LoadingState, PageHeader, SectionCard } from "../components";
 
 export default function UsersPermissionsPage() {
+  const [users, setUsers] = useState<InfraUser[]>([]);
+  const [roles, setRoles] = useState<Awaited<ReturnType<typeof api.getRolePresets>>>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [userList, rolePresets, companyList] = await Promise.all([
+          api.getUsers(),
+          api.getRolePresets(),
+          api.getCompanies(),
+        ]);
+        setUsers(userList);
+        setRoles(rolePresets);
+        setCompanies(companyList);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load users");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState message={error} />;
+
+  const companyById = new Map(companies.map((company) => [company.id, company.name]));
+
   return (
     <>
       <PageHeader
         title="Users & Permissions"
-        subtitle="Permission foundations for MCP tools and connector actions. Enforced server-side."
+        subtitle="Identity, memberships, and role presets resolved into granular permissions server-side."
       />
 
       <div className="grid grid-2">
@@ -39,36 +48,45 @@ export default function UsersPermissionsPage() {
               <tr>
                 <th>Name</th>
                 <th>Email</th>
-                <th>Role</th>
+                <th>Platform admin</th>
                 <th>Companies</th>
               </tr>
             </thead>
             <tbody>
-              {MOCK_USERS.map((user) => (
+              {users.map((user) => (
                 <tr key={user.id}>
-                  <td>{user.name}</td>
+                  <td>{user.displayName}</td>
                   <td>{user.email}</td>
-                  <td>{user.role}</td>
-                  <td>{user.companies.join(", ")}</td>
+                  <td>{user.isPlatformAdmin ? "Yes" : "No"}</td>
+                  <td>
+                    {user.memberships.length
+                      ? user.memberships
+                          .map(
+                            (membership) =>
+                              `${companyById.get(membership.companyId) ?? membership.companyId} (${membership.role})`,
+                          )
+                          .join(", ")
+                      : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </SectionCard>
 
-        <SectionCard title="Role model">
+        <SectionCard title="Company role presets">
           <table className="table">
             <thead>
               <tr>
                 <th>Role</th>
-                <th>Typical permissions</th>
+                <th>Description</th>
               </tr>
             </thead>
             <tbody>
-              {ROLES.map((role) => (
-                <tr key={role.name}>
-                  <td>{role.name}</td>
-                  <td className="muted">{role.permissions}</td>
+              {roles.map((role) => (
+                <tr key={role.role}>
+                  <td>{role.displayName}</td>
+                  <td className="muted">{role.description}</td>
                 </tr>
               ))}
             </tbody>

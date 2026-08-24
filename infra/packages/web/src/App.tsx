@@ -1,4 +1,9 @@
 import { NavLink, Route, Routes } from "react-router-dom";
+import {
+  AdminAuthShell,
+  PortalAuthShell,
+  useAuth,
+} from "./context/AuthContext";
 import AiClientsPage from "./pages/AiClientsPage";
 import AuditLogPage from "./pages/AuditLogPage";
 import BillingPage from "./pages/BillingPage";
@@ -6,6 +11,7 @@ import CataloguePage from "./pages/CataloguePage";
 import CompaniesPage from "./pages/CompaniesPage";
 import CompanyDetailPage from "./pages/CompanyDetailPage";
 import DashboardPage from "./pages/DashboardPage";
+import LoginPage from "./pages/LoginPage";
 import McpEnvironmentsPage from "./pages/McpEnvironmentsPage";
 import SettingsPage from "./pages/SettingsPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
@@ -36,6 +42,8 @@ const ADMIN_NAV = [
 ];
 
 function AdminShell({ children }: { children: React.ReactNode }) {
+  const { user, logout } = useAuth();
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -56,8 +64,14 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         </nav>
         <div className="portal-link-box">
           <NavLink to="/portal/login" className="nav-link">
-            → Company portal (EL demo)
+            → Company portal
           </NavLink>
+        </div>
+        <div className="sidebar-footer">
+          <div className="muted">{user?.displayName}</div>
+          <button className="button button-secondary" type="button" onClick={() => void logout()}>
+            Sign out
+          </button>
         </div>
       </aside>
       <main className="main">{children}</main>
@@ -68,40 +82,44 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Routes>
-      {/* Company tenant portal (EL Business example) */}
+      <Route path="/login" element={<LoginPage />} />
       <Route path="/portal/login" element={<PortalLoginPage />} />
-      <Route path="/portal" element={<PortalShell />}>
-        <Route path="dashboard" element={<PortalDashboardPage />} />
-        <Route path="connectors" element={<PortalConnectorsPage />} />
-        <Route path="ai-connections" element={<PortalAiConnectionsPage />} />
-        <Route path="team" element={<PortalTeamPage />} />
-        <Route path="usage" element={<PortalUsagePage />} />
-        <Route path="billing" element={<PortalBillingPage />} />
-        <Route path="settings" element={<PortalSettingsPage />} />
+
+      <Route element={<PortalAuthShell />}>
+        <Route path="/portal" element={<PortalShell />}>
+          <Route path="dashboard" element={<PortalDashboardPage />} />
+          <Route path="connectors" element={<PortalConnectorsPage />} />
+          <Route path="ai-connections" element={<PortalAiConnectionsPage />} />
+          <Route path="team" element={<PortalTeamPage />} />
+          <Route path="usage" element={<PortalUsagePage />} />
+          <Route path="billing" element={<PortalBillingPage />} />
+          <Route path="settings" element={<PortalSettingsPage />} />
+        </Route>
       </Route>
 
-      {/* Platform admin control plane */}
-      <Route
-        path="/*"
-        element={
-          <AdminShell>
-            <Routes>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/companies" element={<CompaniesPage />} />
-              <Route path="/companies/:slug" element={<CompanyDetailPage />} />
-              <Route path="/connectors" element={<CataloguePage />} />
-              <Route path="/mcp-environments" element={<McpEnvironmentsPage />} />
-              <Route path="/ai-clients" element={<AiClientsPage />} />
-              <Route path="/users" element={<UsersPermissionsPage />} />
-              <Route path="/usage" element={<UsagePage />} />
-              <Route path="/billing" element={<BillingPage />} />
-              <Route path="/system-health" element={<SystemHealthPage />} />
-              <Route path="/audit-log" element={<AuditLogPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Routes>
-          </AdminShell>
-        }
-      />
+      <Route element={<AdminAuthShell />}>
+        <Route
+          path="/*"
+          element={
+            <AdminShell>
+              <Routes>
+                <Route path="/" element={<DashboardPage />} />
+                <Route path="/companies" element={<CompaniesPage />} />
+                <Route path="/companies/:slug" element={<CompanyDetailPage />} />
+                <Route path="/connectors" element={<CataloguePage />} />
+                <Route path="/mcp-environments" element={<McpEnvironmentsPage />} />
+                <Route path="/ai-clients" element={<AiClientsPage />} />
+                <Route path="/users" element={<UsersPermissionsPage />} />
+                <Route path="/usage" element={<UsagePage />} />
+                <Route path="/billing" element={<BillingPage />} />
+                <Route path="/system-health" element={<SystemHealthPage />} />
+                <Route path="/audit-log" element={<AuditLogPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+              </Routes>
+            </AdminShell>
+          }
+        />
+      </Route>
     </Routes>
   );
 }

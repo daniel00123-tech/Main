@@ -30,6 +30,16 @@ export function rowToCompany(row: Record<string, unknown>): Company {
   };
 }
 
+function parseJsonArray(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function rowToMcpEnvironment(row: Record<string, unknown>): McpEnvironment {
   return {
     id: String(row.id),
@@ -39,8 +49,17 @@ export function rowToMcpEnvironment(row: Record<string, unknown>): McpEnvironmen
     endpointUrl: String(row.endpoint_url),
     transport: row.transport as McpEnvironment["transport"],
     status: row.status as McpEnvironment["status"],
+    enabled: row.enabled === undefined ? true : Boolean(row.enabled),
     isExternal: Boolean(row.is_external),
     dataPlaneId: row.data_plane_id ? String(row.data_plane_id) : null,
+    mcpVersion: row.mcp_version ? String(row.mcp_version) : null,
+    businessMcpCoreVersion: row.business_mcp_core_version
+      ? String(row.business_mcp_core_version)
+      : null,
+    capabilities: parseJsonArray(
+      row.capabilities_json ? String(row.capabilities_json) : null,
+    ),
+    authSecretRef: row.auth_secret_ref ? String(row.auth_secret_ref) : null,
     lastHealthCheckAt: row.last_health_check_at
       ? String(row.last_health_check_at)
       : null,

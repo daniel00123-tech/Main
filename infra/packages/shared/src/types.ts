@@ -25,12 +25,23 @@ export type SyncStatus = "idle" | "running" | "completed" | "failed";
 export type CredentialStatus = "pending" | "valid" | "expired" | "revoked";
 
 export type AuditEventType =
+  | "auth.login"
+  | "auth.login_failed"
+  | "auth.logout"
+  | "company.accessed"
   | "company.created"
   | "company.updated"
+  | "user.created"
+  | "user.disabled"
+  | "role.assigned"
+  | "role.changed"
+  | "permission.denied"
   | "mcp.registered"
+  | "mcp.updated"
   | "mcp.health_checked"
   | "connector.instance_created"
   | "connector.instance_updated"
+  | "connector.changed"
   | "connector.sync_started"
   | "connector.sync_completed"
   | "connector.sync_failed"
@@ -38,6 +49,12 @@ export type AuditEventType =
   | "credential.rotated"
   | "permission.updated"
   | "billing.credit_adjusted";
+
+export type UserStatus = "active" | "disabled";
+
+export type MembershipStatus = "active" | "disabled";
+
+export type ServiceIdentityStatus = "active" | "disabled";
 
 export interface Company {
   id: string;
@@ -58,11 +75,49 @@ export interface McpEnvironment {
   endpointUrl: string;
   transport: "sse" | "streamable-http" | "stdio";
   status: McpEnvironmentStatus;
+  enabled: boolean;
   isExternal: boolean;
   dataPlaneId: string | null;
+  mcpVersion: string | null;
+  businessMcpCoreVersion: string | null;
+  capabilities: string[];
+  authSecretRef: string | null;
   lastHealthCheckAt: string | null;
   lastHealthyAt: string | null;
   healthMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InfraUser {
+  id: string;
+  email: string;
+  displayName: string;
+  isPlatformAdmin: boolean;
+  status: UserStatus;
+  memberships: Array<{
+    companyId: string;
+    role: CompanyRole;
+  }>;
+}
+
+export interface CompanyMembership {
+  id: string;
+  userId: string;
+  companyId: string;
+  role: CompanyRole;
+  status: MembershipStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServiceIdentity {
+  id: string;
+  companyId: string;
+  name: string;
+  description: string | null;
+  status: ServiceIdentityStatus;
+  secretRef: string | null;
   createdAt: string;
   updatedAt: string;
 }

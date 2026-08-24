@@ -1,48 +1,50 @@
-import { Link, useParams } from "react-router-dom";
-import { MOCK_COMPANIES, MOCK_COMPANY_DETAIL } from "../mock-data";
+import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
+import { api } from "../api";
+import type { CompanyOverview } from "@infra/shared";
 import {
+  ErrorState,
+  LoadingState,
   PageHeader,
   SectionCard,
   StatusBadge,
   formatCurrency,
+  formatDate,
 } from "../components";
-
-const TABS = [
-  "Overview",
-  "Connectors",
-  "AI Clients",
-  "Knowledge",
-  "Structured Data",
-  "Users & Permissions",
-  "Usage",
-  "Billing",
-  "Health",
-  "Audit Log",
-] as const;
 
 export default function CompanyDetailPage() {
   const { slug = "" } = useParams();
-  const company = MOCK_COMPANIES.find((c) => c.slug === slug);
-  const detail = MOCK_COMPANY_DETAIL[slug];
+  const [overview, setOverview] = useState<CompanyOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!company) {
-    return <div className="error-box">Company not found.</div>;
-  }
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await api.getCompanyOverview(slug);
+        setOverview(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load company");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [slug]);
+
+  if (loading) return <LoadingState />;
+  if (error || !overview) return <ErrorState message={error ?? "Company not found"} />;
+
+  const { company, mcpEnvironments, connectorInstances, creditBalance } = overview;
+  const activeConnectors = connectorInstances.filter(
+    (connector) => connector.status !== "disabled" && connector.status !== "draft",
+  ).length;
 
   return (
     <>
       <PageHeader
         title={company.name}
-        subtitle={`Status: ${company.status} · Domain: ${company.primaryDomain}`}
+        subtitle={`Status: ${company.status} · Domain: ${company.primaryDomain ?? "—"}`}
       />
-
-      <div className="tab-bar">
-        {TABS.map((tab) => (
-          <span key={tab} className={`tab ${tab === "Overview" ? "active" : ""}`}>
-            {tab}
-          </span>
-        ))}
-      </div>
 
       <div className="grid grid-4" style={{ marginBottom: 24 }}>
         <div className="card metric-card">
@@ -50,97 +52,78 @@ export default function CompanyDetailPage() {
           <StatusBadge value={company.status} />
         </div>
         <div className="card metric-card">
-          <h3>MCP</h3>
-          <StatusBadge value={company.mcpStatus} />
+          <h3>MCP environments</h3>
+          <div className="metric">{mcpEnvironments.length}</div>
         </div>
         <div className="card metric-card">
           <h3>Connectors</h3>
           <div className="metric">
-            {company.connectorSummary.connected}/{company.connectorSummary.total}
+            {activeConnectors}/{connectorInstances.length}
           </div>
         </div>
         <div className="card metric-card">
           <h3>Credit Balance</h3>
-          <div className="metric">{formatCurrency(company.creditBalanceCents)}</div>
+          <div className="metric">
+            {formatCurrency(creditBalance?.balanceCents ?? 0, creditBalance?.currency ?? "GBP")}
+          </div>
         </div>
       </div>
 
       <div className="grid grid-2">
-        {detail?.businessSystems.length ? (
-          <SectionCard title="Business Systems">
-            <table className="table">
-              <tbody>
-                {detail.businessSystems.map((s) => (
-                  <tr key={s.name}>
-                    <td>{s.name}</td>
-                    <td className="muted">{s.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </SectionCard>
-        ) : null}
-
-        <SectionCard title="Knowledge">
+        <SectionCard title="MCP environments">
           <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Enabled</th>
+                <th>Last check</th>
+              </tr>
+            </thead>
             <tbody>
-              {detail?.knowledge.map((k) => (
-                <tr key={k.name}>
-                  <td>{k.name}</td>
-                  <td className="muted">{k.status}</td>
+              {mcpEnvironments.map((mcp) => (
+                <tr key={mcp.id}>
+                  <td>{mcp.name}</td>
+                  <td>
+                    <StatusBadge value={mcp.status} />
+                  </td>
+                  <td>{mcp.enabled ? "Yes" : "No"}</td>
+                  <td>{formatDate(mcp.lastHealthCheckAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </SectionCard>
 
-        <SectionCard title="AI Interfaces">
+        <SectionCard title="Connectors">
           <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Health</th>
+              </tr>
+            </thead>
             <tbody>
-              {detail?.aiInterfaces.map((a) => (
-                <tr key={a.name}>
-                  <td>{a.name}</td>
+              {connectorInstances.map((connector) => (
+                <tr key={connector.id}>
+                  <td>{connector.name}</td>
                   <td>
-                    <StatusBadge
-                      value={
-                        a.status === "Connected"
-                          ? "healthy"
-                          : a.status === "Coming later"
-                            ? "draft"
-                            : "registered"
-                      }
-                    />
-                    <span className="muted" style={{ marginLeft: 8 }}>
-                      {a.status}
-                    </span>
+                    <StatusBadge value={connector.status} />
+                  </td>
+                  <td>
+                    <StatusBadge value={connector.healthStatus} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </SectionCard>
-
-        <SectionCard title="Structured Data">
-          <table className="table">
-            <tbody>
-              {detail?.structuredData.map((s) => (
-                <tr key={s.name}>
-                  <td>{s.name}</td>
-                  <td className="muted">{s.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </SectionCard>
       </div>
 
-      {slug === "caddington-holdings" ? (
+      {company.notes ? (
         <div className="card" style={{ marginTop: 24 }}>
-          <p className="muted">
-            Caddington MCP is registered as an external environment. INFRA monitors it
-            but does not modify the existing knowledge stack (R2, D1, Vectorize, FTS).
-          </p>
-          <Link to="/billing">View simulated billing →</Link>
+          <p className="muted">{company.notes}</p>
         </div>
       ) : null}
     </>

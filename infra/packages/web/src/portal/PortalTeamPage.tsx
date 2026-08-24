@@ -1,27 +1,50 @@
-import { EL_TEAM, EL_TENANT } from "./mock-data";
-import { PageHeader, SectionCard, StatusBadge, formatDate } from "../components";
-
-const ROLES = [
-  { name: "Owner", desc: "Full company admin — billing, connectors, team, AI setup" },
-  { name: "Administrator", desc: "Manage connectors and users, higher-risk actions" },
-  { name: "Supervisor", desc: "Broader read access on team data" },
-  { name: "Standard User", desc: "Search knowledge, read assigned jobs, limited notes" },
-];
+import { useEffect, useState } from "react";
+import { api } from "../api";
+import type { InfraUser } from "@infra/shared";
+import { ErrorState, LoadingState, PageHeader, SectionCard, StatusBadge } from "../components";
+import { usePortalCompany } from "./usePortalCompany";
 
 export default function PortalTeamPage() {
+  const { company, membership, user, loading, error } = usePortalCompany();
+  const [team, setTeam] = useState<InfraUser[]>([]);
+  const [roles, setRoles] = useState<Awaited<ReturnType<typeof api.getRolePresets>>>([]);
+  const [teamLoading, setTeamLoading] = useState(true);
+  const [teamError, setTeamError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!company) return;
+    void (async () => {
+      try {
+        const [users, rolePresets] = await Promise.all([
+          api.getUsers(company.id),
+          api.getRolePresets(),
+        ]);
+        setTeam(users);
+        setRoles(rolePresets);
+      } catch (err) {
+        setTeamError(err instanceof Error ? err.message : "Failed to load team");
+      } finally {
+        setTeamLoading(false);
+      }
+    })();
+  }, [company]);
+
+  if (loading || teamLoading) return <LoadingState />;
+  if (error || teamError || !company || !user) {
+    return <ErrorState message={error ?? teamError ?? "Team unavailable"} />;
+  }
+
   return (
     <>
       <PageHeader
         title="Team"
-        subtitle="Manage who can access EL Business AI tools and what they can do."
+        subtitle={`Manage who can access ${company.name} AI tools and what they can do.`}
       />
 
       <div className="card" style={{ marginBottom: 24 }}>
         <div className="card-header-row">
           <h3>Team members</h3>
-          <button className="button button-primary" type="button">
-            + Invite user
-          </button>
+          <span className="prototype-badge">Invite user — coming soon</span>
         </div>
         <table className="table">
           <thead>
@@ -30,33 +53,32 @@ export default function PortalTeamPage() {
               <th>Email</th>
               <th>Role</th>
               <th>Status</th>
-              <th>AI client</th>
-              <th>Last active</th>
             </tr>
           </thead>
           <tbody>
-            {EL_TEAM.map((member) => (
-              <tr key={member.id}>
-                <td>
-                  {member.name}
-                  {member.id === EL_TENANT.loggedInUser.id ? (
-                    <span className="muted"> (you)</span>
-                  ) : null}
-                </td>
-                <td>{member.email}</td>
-                <td>{member.role}</td>
-                <td>
-                  <StatusBadge value={member.status} />
-                </td>
-                <td>{member.aiClients.join(", ")}</td>
-                <td>{formatDate(member.lastActive)}</td>
-              </tr>
-            ))}
+            {team.map((member) => {
+              const memberRole =
+                member.memberships.find((item) => item.companyId === company.id)?.role ??
+                "—";
+              return (
+                <tr key={member.id}>
+                  <td>
+                    {member.displayName}
+                    {member.id === user.userId ? <span className="muted"> (you)</span> : null}
+                  </td>
+                  <td>{member.email}</td>
+                  <td>{memberRole}</td>
+                  <td>
+                    <StatusBadge value={member.status} />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      <SectionCard title="Role permissions">
+      <SectionCard title="Role presets">
         <table className="table">
           <thead>
             <tr>
@@ -65,10 +87,10 @@ export default function PortalTeamPage() {
             </tr>
           </thead>
           <tbody>
-            {ROLES.map((r) => (
-              <tr key={r.name}>
-                <td>{r.name}</td>
-                <td className="muted">{r.desc}</td>
+            {roles.map((role) => (
+              <tr key={role.role}>
+                <td>{role.displayName}</td>
+                <td className="muted">{role.description}</td>
               </tr>
             ))}
           </tbody>
@@ -76,9 +98,8 @@ export default function PortalTeamPage() {
       </SectionCard>
 
       <div className="card info-banner" style={{ marginTop: 24 }}>
-        <strong>Example:</strong> Charlie Smith (Owner) invites John Smith as Standard User.
-        John uses ChatGPT normally — INFRA enforces EL permissions server-side when he
-        accesses company tools or knowledge.
+        Your current role for {company.name} is <strong>{membership?.role}</strong>.
+        Permissions are enforced server-side for MCP and connector actions.
       </div>
     </>
   );

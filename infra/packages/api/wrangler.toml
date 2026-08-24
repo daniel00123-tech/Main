@@ -11,3 +11,10 @@ migrations_dir = "../../migrations"
 
 [vars]
 ENVIRONMENT = "development"
+ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+
+# Set secrets via `wrangler secret put`:
+# SESSION_SECRET
+# COOKIE_CROSS_ORIGIN=true   (required when Pages and Worker use different origins)
+# INITIAL_PLATFORM_ADMIN_EMAIL (optional bootstrap)
+# INITIAL_PLATFORM_ADMIN_PASSWORD (optional bootstrap)

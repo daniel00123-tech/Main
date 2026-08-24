@@ -1,8 +1,8 @@
 import { FormEvent, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-export default function PortalLoginPage() {
+export default function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -10,8 +10,8 @@ export default function PortalLoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  if (user) {
-    return <Navigate to="/portal/dashboard" replace />;
+  if (user?.isPlatformAdmin) {
+    return <Navigate to="/" replace />;
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -20,7 +20,7 @@ export default function PortalLoginPage() {
     setError(null);
     try {
       await login(email, password);
-      navigate("/portal/dashboard");
+      navigate("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
     } finally {
@@ -32,14 +32,12 @@ export default function PortalLoginPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="brand">INFRA</div>
-        <div className="brand-sub">Company portal</div>
-
+        <div className="brand-sub">Platform admin</div>
         <h1>Sign in</h1>
         <p className="muted">
-          Company administrators and staff sign in to manage connectors, team access,
-          and AI connections for their organisation only.
+          Platform administrators sign in to manage companies, MCP environments,
+          connectors, users, and audit information.
         </p>
-
         <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
           <label>
             Email
@@ -64,11 +62,6 @@ export default function PortalLoginPage() {
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
-
-        <p className="login-footer muted">
-          Platform owners use the{" "}
-          <Link to="/login">admin control plane</Link> to manage all companies.
-        </p>
       </div>
     </div>
   );

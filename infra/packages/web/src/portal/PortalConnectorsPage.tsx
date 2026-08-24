@@ -1,12 +1,23 @@
-import { EL_CONNECTORS } from "./mock-data";
+import { CONNECTOR_CATALOGUE } from "@infra/shared";
 import { PageHeader, SectionCard, StatusBadge } from "../components";
+import { ErrorState, LoadingState } from "../components";
+import { usePortalCompany } from "./usePortalCompany";
 
 export default function PortalConnectorsPage() {
+  const { company, overview, loading, error } = usePortalCompany();
+
+  if (loading) return <LoadingState />;
+  if (error || !company || !overview) {
+    return <ErrorState message={error ?? "Connectors unavailable"} />;
+  }
+
+  const catalogueById = new Map(CONNECTOR_CATALOGUE.map((item) => [item.id, item]));
+
   return (
     <>
       <PageHeader
         title="Connectors"
-        subtitle="Business systems connected to your company AI environment. Credentials stay isolated to EL Business."
+        subtitle={`Business systems registered for ${company.name}. Live connections are not enabled in Phase 1.`}
       />
 
       <div className="card">
@@ -16,35 +27,29 @@ export default function PortalConnectorsPage() {
               <th>System</th>
               <th>Category</th>
               <th>Status</th>
-              <th>Capabilities</th>
+              <th>Health</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            {EL_CONNECTORS.map((c) => (
-              <tr key={c.id}>
-                <td>
-                  <div>{c.name}</div>
-                  {c.primary ? (
-                    <span className="muted">Primary connector</span>
-                  ) : null}
-                </td>
-                <td>{c.category}</td>
-                <td>
-                  <StatusBadge value="draft" />
-                  <span className="muted" style={{ marginLeft: 8 }}>
-                    Not connected
-                  </span>
-                </td>
-                <td>{c.capabilities.join(", ")}</td>
-                <td>
-                  <button className="button" type="button" disabled={!c.v2Available}>
-                    {c.v2Action}
-                  </button>
-                  <div className="muted small">{c.v1Note}</div>
-                </td>
-              </tr>
-            ))}
+            {overview.connectorInstances.map((connector) => {
+              const definition = catalogueById.get(connector.connectorDefinitionId);
+              return (
+                <tr key={connector.id}>
+                  <td>{connector.name}</td>
+                  <td>{definition?.category ?? "—"}</td>
+                  <td>
+                    <StatusBadge value={connector.status} />
+                  </td>
+                  <td>
+                    <StatusBadge value={connector.healthStatus} />
+                  </td>
+                  <td>
+                    <span className="prototype-badge">Not connected in Phase 1</span>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -52,19 +57,17 @@ export default function PortalConnectorsPage() {
       <SectionCard title="How connections work">
         <div className="grid grid-2">
           <div>
-            <h4>v0.1 — Developer setup</h4>
+            <h4>Phase 1 — Registry only</h4>
             <p className="muted">
-              Platform team (via Cursor/INFRA admin) configures BigChange, Xero, and
-              knowledge sources in the background. Once connected, this page updates
-              automatically to show status, health, and last sync.
+              Connector instances are registered in INFRA but not connected to live
+              business systems yet. Status and health reflect configuration state only.
             </p>
           </div>
           <div>
-            <h4>v0.2 — Self-service</h4>
+            <h4>Later — Self-service</h4>
             <p className="muted">
-              Owners click &quot;Connect now&quot;, enter credentials securely (never
-              stored in browser), and the connector activates. Staff permissions are
-              enforced server-side regardless of AI client.
+              Company admins will connect systems with secure credential storage.
+              Staff permissions are enforced server-side regardless of AI client.
             </p>
           </div>
         </div>
