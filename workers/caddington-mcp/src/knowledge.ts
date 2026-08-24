@@ -1,10 +1,18 @@
 import { EMBEDDING_MODEL } from "./constants";
-import { extractDocumentText } from "./document-extract";
+import {
+  RequiresOcrError,
+  extractDocument,
+} from "./document-extract";
+import {
+  chunkSegments,
+  parseSegmentMetadataJson,
+  segmentMetadataToJson,
+  segmentMetadataToVectorFields,
+  type SegmentMetadata,
+  vectorFieldsToSegmentMetadata,
+} from "./document-segments";
 import type { Env } from "./db";
 import { log } from "./logger";
-
-const CHUNK_SIZE = 900;
-const CHUNK_OVERLAP = 120;
 
 export interface KnowledgeSearchResult {
   documentId: number;
@@ -14,6 +22,7 @@ export interface KnowledgeSearchResult {
   chunkIndex: number;
   score: number;
   snippet: string;
+  metadata?: SegmentMetadata;
 }
 
 export async function embedText(env: Env, text: string): Promise<number[]> {
@@ -23,20 +32,6 @@ export async function embedText(env: Env, text: string): Promise<number[]> {
     throw new Error("Embedding model returned no vectors.");
   }
   return data[0];
-}
-
-export function chunkText(text: string): string[] {
-  const normalized = text.replace(/\r\n/g, "\n").trim();
-  if (!normalized) return [];
-  const chunks: string[] = [];
-  let start = 0;
-  while (start < normalized.length) {
-    const end = Math.min(start + CHUNK_SIZE, normalized.length);
-    chunks.push(normalized.slice(start, end).trim());
-    if (end >= normalized.length) break;
-    start = Math.max(end - CHUNK_OVERLAP, start + 1);
-  }
-  return chunks.filter((c) => c.length > 0);
 }
 
 export async function searchCompanyKnowledge(
@@ -63,6 +58,7 @@ export async function searchCompanyKnowledge(
     const chunkIndex = Number(meta.chunk_index ?? 0);
     const externalId = String(meta.external_id ?? "");
     const title = String(meta.title ?? "");
+    const metadata = vectorFieldsToSegmentMetadata(meta);
 
     let snippet = String(meta.snippet ?? "");
     if (!snippet && chunkId > 0) {
@@ -82,6 +78,7 @@ export async function searchCompanyKnowledge(
       chunkIndex,
       score: match.score ?? 0,
       snippet,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     });
   }
 
@@ -108,7 +105,7 @@ export async function getKnowledgeDocument(
   if (!doc) return null;
 
   const chunks = await env.CADDINGTON_BUSINESS_DATA.prepare(
-    "SELECT id, chunk_index, content, vector_id, token_estimate FROM knowledge_chunks WHERE document_id = ? ORDER BY chunk_index"
+    "SELECT id, chunk_index, content, vector_id, token_estimate, metadata FROM knowledge_chunks WHERE document_id = ? ORDER BY chunk_index"
   )
     .bind(doc.id)
     .all();
@@ -119,11 +116,50 @@ export async function getKnowledgeDocument(
     .bind(doc.id)
     .all();
 
+  const normalizedChunks = chunks.results.map((row) => {
+    const record = row as Record<string, unknown>;
+    const metadata = parseSegmentMetadataJson(
+      record.metadata as string | null | undefined
+    );
+    return {
+      ...record,
+      metadata: Object.keys(metadata).length > 0 ? metadata : null,
+    };
+  });
+
   return {
     document: doc,
-    chunks: chunks.results,
+    chunks: normalizedChunks,
     importHistory: importHistory.results,
   };
+}
+
+async function mergeDocumentMetadata(
+  env: Env,
+  documentId: number,
+  patch: Record<string, unknown>
+): Promise<void> {
+  const row = await env.CADDINGTON_BUSINESS_DATA.prepare(
+    "SELECT metadata FROM knowledge_documents WHERE id = ?"
+  )
+    .bind(documentId)
+    .first<{ metadata: string | null }>();
+
+  let base: Record<string, unknown> = {};
+  if (row?.metadata) {
+    try {
+      base = JSON.parse(row.metadata) as Record<string, unknown>;
+    } catch {
+      base = {};
+    }
+  }
+
+  const merged = { ...base, ...patch };
+  await env.CADDINGTON_BUSINESS_DATA.prepare(
+    "UPDATE knowledge_documents SET metadata = ?, updated_at = datetime('now') WHERE id = ?"
+  )
+    .bind(JSON.stringify(merged), documentId)
+    .run();
 }
 
 export async function indexKnowledgeDocument(
@@ -159,14 +195,39 @@ export async function indexKnowledgeDocument(
     }
 
     const bytes = await object.arrayBuffer();
-    const text = await extractDocumentText(
+    const extracted = await extractDocument(
       env,
       bytes,
       doc.mime_type ?? object.httpMetadata?.contentType ?? "text/plain",
       doc.r2_key
     );
-    const chunks = chunkText(text);
-    if (chunks.length === 0) throw new Error("No extractable text in document.");
+
+    await mergeDocumentMetadata(env, documentId, {
+      sourceFormat: extracted.format,
+      rawTextLength: extracted.rawTextLength,
+    });
+
+    if (extracted.requiresOcr) {
+      await env.CADDINGTON_BUSINESS_DATA.prepare(
+        `UPDATE knowledge_documents SET status = 'requires_ocr', updated_at = datetime('now') WHERE id = ?`
+      )
+        .bind(documentId)
+        .run();
+      await mergeDocumentMetadata(env, documentId, {
+        requiresOcr: true,
+        requiresOcrReason:
+          "Insufficient extractable text from PDF; OCR is required before indexing.",
+      });
+      const ocrMessage =
+        "PDF has little or no extractable text. Document marked as requires_ocr.";
+      await completeKnowledgeImportLog(env, logId, "failed", 0, ocrMessage);
+      throw new RequiresOcrError(ocrMessage);
+    }
+
+    const chunks = chunkSegments(extracted.segments);
+    if (chunks.length === 0) {
+      throw new Error("No extractable text in document.");
+    }
 
     await env.CADDINGTON_BUSINESS_DATA.prepare(
       "DELETE FROM knowledge_chunks WHERE document_id = ?"
@@ -178,15 +239,23 @@ export async function indexKnowledgeDocument(
     let indexed = 0;
 
     for (let i = 0; i < chunks.length; i++) {
-      const content = chunks[i];
+      const { content, metadata } = chunks[i];
       const vectorId = `${doc.external_id}-chunk-${i}`;
       const embedding = await embedText(env, content);
+      const metadataJson = segmentMetadataToJson(metadata);
 
       const insert = await env.CADDINGTON_BUSINESS_DATA.prepare(
-        `INSERT INTO knowledge_chunks (document_id, chunk_index, content, vector_id, token_estimate)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO knowledge_chunks (document_id, chunk_index, content, vector_id, token_estimate, metadata)
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
-        .bind(documentId, i, content, vectorId, Math.ceil(content.length / 4))
+        .bind(
+          documentId,
+          i,
+          content,
+          vectorId,
+          Math.ceil(content.length / 4),
+          metadataJson === "{}" ? null : metadataJson
+        )
         .run();
 
       const chunkId = insert.meta.last_row_id;
@@ -200,6 +269,7 @@ export async function indexKnowledgeDocument(
           external_id: doc.external_id,
           title: doc.title,
           snippet: content.slice(0, 280),
+          ...segmentMetadataToVectorFields(metadata),
         },
       });
       indexed++;
@@ -218,18 +288,21 @@ export async function indexKnowledgeDocument(
     await completeKnowledgeImportLog(env, logId, "completed", indexed);
     log("info", "knowledge_document_indexed", {
       documentId,
+      format: extracted.format,
       chunks: indexed,
     });
 
     return { chunksIndexed: indexed };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await env.CADDINGTON_BUSINESS_DATA.prepare(
-      `UPDATE knowledge_documents SET status = 'failed', updated_at = datetime('now') WHERE id = ?`
-    )
-      .bind(documentId)
-      .run();
-    await completeKnowledgeImportLog(env, logId, "failed", 0, message);
+    if (!(error instanceof RequiresOcrError)) {
+      await env.CADDINGTON_BUSINESS_DATA.prepare(
+        `UPDATE knowledge_documents SET status = 'failed', updated_at = datetime('now') WHERE id = ?`
+      )
+        .bind(documentId)
+        .run();
+      await completeKnowledgeImportLog(env, logId, "failed", 0, message);
+    }
     throw error;
   }
 }

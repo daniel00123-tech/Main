@@ -1,3 +1,9 @@
+import type { BusinessDocumentFormat, TextSegment } from "./document-segments";
+import {
+  parseMarkdownToSegments,
+  pdfRequiresOcr,
+  plainTextToSegments,
+} from "./document-segments";
 import type { Env } from "./db";
 
 function basename(path: string): string {
@@ -5,27 +11,82 @@ function basename(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
-export function isPlainTextDocument(mimeType: string, filename: string): boolean {
+export class RequiresOcrError extends Error {
+  readonly code = "REQUIRES_OCR";
+
+  constructor(message = "Document requires OCR before indexing.") {
+    super(message);
+    this.name = "RequiresOcrError";
+  }
+}
+
+export interface ExtractedDocument {
+  format: BusinessDocumentFormat;
+  segments: TextSegment[];
+  requiresOcr: boolean;
+  rawTextLength: number;
+}
+
+export function detectDocumentFormat(
+  mimeType: string,
+  filename: string
+): BusinessDocumentFormat {
   const lowerMime = mimeType.toLowerCase();
   const lowerName = filename.toLowerCase();
-  return (
-    lowerMime.startsWith("text/") ||
-    lowerName.endsWith(".md") ||
+
+  if (lowerMime === "application/pdf" || lowerName.endsWith(".pdf")) return "pdf";
+  if (
+    lowerMime ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    lowerName.endsWith(".docx")
+  ) {
+    return "docx";
+  }
+  if (
+    lowerMime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    lowerMime === "application/vnd.ms-excel" ||
+    lowerName.endsWith(".xlsx") ||
+    lowerName.endsWith(".xls")
+  ) {
+    return "xlsx";
+  }
+  if (
+    lowerMime ===
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    lowerName.endsWith(".pptx")
+  ) {
+    return "pptx";
+  }
+  if (lowerName.endsWith(".md") || lowerMime === "text/markdown") return "md";
+  if (lowerName.endsWith(".csv") || lowerMime === "text/csv") return "csv";
+  if (
     lowerName.endsWith(".txt") ||
-    lowerName.endsWith(".csv") ||
-    lowerName.endsWith(".json")
-  );
+    lowerMime.startsWith("text/") ||
+    lowerMime === "application/octet-stream"
+  ) {
+    return "txt";
+  }
+
+  return "other";
+}
+
+export function isPlainTextDocument(mimeType: string, filename: string): boolean {
+  const format = detectDocumentFormat(mimeType, filename);
+  return format === "txt" || format === "md" || format === "csv";
 }
 
 export function isWorkersAiConvertible(mimeType: string, filename: string): boolean {
+  const format = detectDocumentFormat(mimeType, filename);
+  return format === "pdf" || format === "docx" || format === "xlsx" || format === "pptx";
+}
+
+export function isLegacyWorkersAiConvertible(
+  mimeType: string,
+  filename: string
+): boolean {
   const lowerMime = mimeType.toLowerCase();
   const lowerName = filename.toLowerCase();
   return (
-    lowerMime === "application/pdf" ||
-    lowerName.endsWith(".pdf") ||
-    lowerMime ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    lowerName.endsWith(".docx") ||
     lowerMime === "application/msword" ||
     lowerName.endsWith(".doc") ||
     lowerMime === "application/vnd.oasis.opendocument.text" ||
@@ -38,21 +99,40 @@ export function isWorkersAiConvertible(mimeType: string, filename: string): bool
   );
 }
 
-export async function extractDocumentText(
+function supportedFormatsMessage(): string {
+  return "Supported: PDF, DOCX, XLSX, PPTX, TXT, MD, CSV.";
+}
+
+export async function extractDocument(
   env: Env,
   bytes: ArrayBuffer,
   mimeType: string,
   filename: string
-): Promise<string> {
+): Promise<ExtractedDocument> {
   const name = basename(filename);
+  const format = detectDocumentFormat(mimeType, name);
 
-  if (isPlainTextDocument(mimeType, name)) {
-    return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  if (format === "txt" || format === "md" || format === "csv") {
+    const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    const segments = plainTextToSegments(text, format);
+    const rawText = segments.map((s) => s.text).join("\n\n");
+    return {
+      format,
+      segments,
+      requiresOcr: false,
+      rawTextLength: rawText.length,
+    };
   }
 
-  if (!isWorkersAiConvertible(mimeType, name)) {
+  if (
+    format !== "pdf" &&
+    format !== "docx" &&
+    format !== "xlsx" &&
+    format !== "pptx" &&
+    !isLegacyWorkersAiConvertible(mimeType, name)
+  ) {
     throw new Error(
-      `Unsupported document type: ${mimeType || name}. Supported: plain text, PDF, Word (.docx/.doc), RTF, ODT, HTML.`
+      `Unsupported document type: ${mimeType || name}. ${supportedFormatsMessage()}`
     );
   }
 
@@ -64,8 +144,8 @@ export async function extractDocumentText(
     { name, blob },
     {
       conversionOptions: {
-        output: { format: "text" },
-        pdf: { metadata: false, images: { convert: false } },
+        output: { format: "markdown" },
+        pdf: { metadata: true, images: { convert: false } },
         docx: { images: { convert: false } },
       },
     }
@@ -75,10 +155,46 @@ export async function extractDocumentText(
     throw new Error(`Document conversion failed: ${result.error}`);
   }
 
-  const text = result.data.replace(/\r\n/g, "\n").trim();
-  if (!text) {
+  const markdown = result.data.replace(/\r\n/g, "\n").trim();
+  const resolvedFormat =
+    format === "other"
+      ? detectDocumentFormat(result.mimetype ?? mimeType, name)
+      : format;
+
+  const segments = parseMarkdownToSegments(
+    markdown,
+    resolvedFormat === "other" ? "docx" : resolvedFormat
+  );
+  const rawText = segments.map((s) => s.text).join("\n\n");
+  const requiresOcr =
+    resolvedFormat === "pdf" && pdfRequiresOcr(rawText || markdown);
+
+  if (!rawText && !requiresOcr) {
     throw new Error("No extractable text in document after conversion.");
   }
 
+  return {
+    format: resolvedFormat === "other" ? "docx" : resolvedFormat,
+    segments,
+    requiresOcr,
+    rawTextLength: rawText.length,
+  };
+}
+
+/** Flat text extraction for legacy callers; prefer extractDocument for indexing. */
+export async function extractDocumentText(
+  env: Env,
+  bytes: ArrayBuffer,
+  mimeType: string,
+  filename: string
+): Promise<string> {
+  const extracted = await extractDocument(env, bytes, mimeType, filename);
+  if (extracted.requiresOcr) {
+    throw new RequiresOcrError();
+  }
+  const text = extracted.segments.map((s) => s.text).join("\n\n").trim();
+  if (!text) {
+    throw new Error("No extractable text in document.");
+  }
   return text;
 }
