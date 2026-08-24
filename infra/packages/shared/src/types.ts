@@ -1,6 +1,11 @@
 /** Core domain types for the INFRA control plane. */
 
-export type CompanyStatus = "active" | "suspended" | "provisioning";
+export type CompanyStatus =
+  | "draft"
+  | "provisioning"
+  | "active"
+  | "suspended"
+  | "closed";
 
 export type McpEnvironmentStatus =
   | "registered"
@@ -70,8 +75,71 @@ export interface Company {
   status: CompanyStatus;
   primaryDomain: string | null;
   notes: string | null;
+  tradingName: string | null;
+  companyNumber: string | null;
+  country: string | null;
+  timezone: string | null;
+  primaryContactName: string | null;
+  primaryEmail: string | null;
+  billingEmail: string | null;
+  telephone: string | null;
+  logoUrl: string | null;
+  portalSubdomain: string | null;
+  portalHostname: string | null;
+  provisionedAt: string | null;
+  suspendedAt: string | null;
+  closedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CompanyModule {
+  id: string;
+  companyId: string;
+  moduleKey: string;
+  status: string;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompanyCommercialSettings {
+  companyId: string;
+  currency: string;
+  targetGrossMarginPercent: number;
+  minimumChargeCents: number;
+  monthlyPlatformFeeCents: number;
+  includedCreditCents: number;
+  lowBalanceThresholdCents: number;
+  autoTopUpEnabled: boolean;
+  billingStatus: string;
+  pricingPlan: string | null;
+  updatedAt: string;
+}
+
+export interface CreateCompanyInput {
+  legalName: string;
+  tradingName?: string | null;
+  /** Optional explicit slug; otherwise derived from trading/legal name */
+  slug?: string | null;
+  /** Short portal subdomain, e.g. caddington / ht / el */
+  portalSubdomain?: string | null;
+  companyNumber?: string | null;
+  country?: string | null;
+  timezone?: string | null;
+  primaryContactName?: string | null;
+  primaryEmail?: string | null;
+  billingEmail?: string | null;
+  telephone?: string | null;
+  logoUrl?: string | null;
+  primaryDomain?: string | null;
+  notes?: string | null;
+  /** Opening wallet credit in minor units (default 0) */
+  openingCreditCents?: number;
+  currency?: string;
+  modules?: string[];
+  adminEmail?: string | null;
+  adminDisplayName?: string | null;
 }
 
 export interface McpEnvironment {

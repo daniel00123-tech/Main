@@ -5,6 +5,7 @@ import type {
   CompanyRole,
   ConnectorDefinition,
   ConnectorInstance,
+  CreateCompanyInput,
   InfraUser,
   McpEnvironment,
   ToolAction,
@@ -127,6 +128,25 @@ export const api = {
     }),
   getSummary: () => fetchJson<PlatformSummary>("/api/summary"),
   getCompanies: () => fetchJson<Company[]>("/api/companies"),
+  createCompany: (input: CreateCompanyInput) =>
+    fetchJson<{
+      company: Company;
+      portalPath: string;
+      portalHostname: string | null;
+      adminInvite: {
+        email: string;
+        setupUrl: string;
+        expiresAt: string;
+      } | null;
+    }>("/api/companies", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  setCompanyStatus: (slug: string, status: "active" | "suspended" | "closed") =>
+    fetchJson<Company>(`/api/companies/${slug}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    }),
   getCompany: (slug: string) => fetchJson<Company>(`/api/companies/${slug}`),
   getCompanyOverview: (slug: string) =>
     fetchJson<CompanyOverview>(`/api/companies/${slug}/overview`),
@@ -226,6 +246,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  revokeAiClient: (slug: string, clientType: string) =>
+    fetchJson<{ ok: boolean; status: string; clientType: string }>(
+      `/api/companies/${slug}/ai-connections/${clientType}/revoke`,
+      { method: "POST", body: "{}" },
+    ),
+  testAiClient: (slug: string, clientType: string) =>
+    fetchJson<Record<string, unknown>>(
+      `/api/companies/${slug}/ai-connections/${clientType}/test`,
+      { method: "POST", body: "{}" },
+    ),
   inviteUser: (
     slug: string,
     input: { email: string; displayName: string; role: CompanyRole },

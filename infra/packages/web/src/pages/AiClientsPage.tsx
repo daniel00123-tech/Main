@@ -163,10 +163,13 @@ export default function AiClientsPage() {
               </div>
               <div className="connector-card-actions">
                 {row.companySlug ? (
-                  <Link to="/portal/ai-connections" className="button button-primary button-small">
+                  <Link
+                    to={`/portal/${row.companySlug}/ai-connections`}
+                    className="button button-primary button-small"
+                  >
                     {row.clientType === "chatgpt"
                       ? "Reconnect / new token"
-                      : "Open company portal"}
+                      : "Manage"}
                   </Link>
                 ) : (
                   <span className="muted small">Connect from a company portal</span>

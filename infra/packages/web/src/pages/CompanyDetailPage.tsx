@@ -91,10 +91,10 @@ export default function CompanyDetailPage() {
         meta={<StatusBadge status={company.status} />}
         actions={
           <>
-            <Link to="/portal/ai-connections" className="button button-primary">
+            <Link to={`/portal/${company.slug}/ai-connections`} className="button button-primary">
               ChatGPT connector
             </Link>
-            <Link to="/portal/dashboard" className="button button-secondary">
+            <Link to={`/portal/${company.slug}/dashboard`} className="button button-secondary">
               Open company portal
             </Link>
             <ActionMenu
@@ -149,23 +149,28 @@ export default function CompanyDetailPage() {
               point ChatGPT at the INFRA MCP URL only.
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-              <Link to="/portal/ai-connections" className="button button-primary">
+              <Link to={`/portal/${company.slug}/ai-connections`} className="button button-primary">
                 AI connections · ChatGPT
               </Link>
-              <Link to="/portal/dashboard" className="button button-secondary">
+              <Link to={`/portal/${company.slug}/dashboard`} className="button button-secondary">
                 Portal home
               </Link>
-              <Link to="/portal/billing" className="button button-secondary">
+              <Link to={`/portal/${company.slug}/billing`} className="button button-secondary">
                 Billing
               </Link>
-              <Link to="/portal/usage" className="button button-secondary">
+              <Link to={`/portal/${company.slug}/usage`} className="button button-secondary">
                 Usage
               </Link>
             </div>
           </SectionCard>
 
           <MetricGrid cols={4}>
-            <MetricCard label="Users & access" value="Manage in portal" hint="Open company portal" to="/portal/team" />
+            <MetricCard
+              label="Users & access"
+              value="Manage in portal"
+              hint="Open company portal"
+              to={`/portal/${company.slug}/team`}
+            />
             <MetricCard
               label="Connected systems"
               value={`${activeConnectors}/${connectorInstances.length}`}
@@ -326,7 +331,7 @@ export default function CompanyDetailPage() {
             />
           </MetricGrid>
           <div style={{ marginTop: 16 }}>
-            <Link to="/portal/billing" className="button button-primary">
+            <Link to={`/portal/${company.slug}/billing`} className="button button-primary">
               Manage in portal
             </Link>
           </div>
