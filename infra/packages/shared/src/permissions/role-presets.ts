@@ -4,6 +4,8 @@ import type { CapabilityRiskClass, CompanyRole, ConnectorCapability } from "../t
 export type ToolAction =
   // Read (LOW_RISK)
   | "knowledge.search"
+  | "knowledge.read"
+  | "system.health"
   | "bigchange.jobs.read"
   | "bigchange.jobs.read_assigned"
   | "bigchange.engineers.read"
@@ -49,6 +51,8 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "Field staff. Read own schedule and assigned jobs. Add job notes. No financial or booking writes.",
     allowedActions: [
       "knowledge.search",
+      "knowledge.read",
+      "system.health",
       "bigchange.jobs.read_assigned",
       "bigchange.engineers.schedule.read",
       "bigchange.notes.create",
@@ -72,6 +76,8 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "Junior office staff. Search knowledge and read customers/jobs. Limited notes only.",
     allowedActions: [
       "knowledge.search",
+      "knowledge.read",
+      "system.health",
       "bigchange.customers.read",
       "bigchange.jobs.read",
       "bigchange.engineers.schedule.read",
@@ -96,6 +102,8 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "Office staff. Read/write jobs and bookings. Create POs. No invoice creation above threshold.",
     allowedActions: [
       "knowledge.search",
+      "knowledge.read",
+      "system.health",
       "bigchange.customers.read",
       "bigchange.jobs.read",
       "bigchange.jobs.create",
@@ -127,6 +135,8 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "Team supervisor. Broader read access. Book engineers. Create invoices with limits.",
     allowedActions: [
       "knowledge.search",
+      "knowledge.read",
+      "system.health",
       "bigchange.customers.read",
       "bigchange.jobs.read",
       "bigchange.jobs.create",
@@ -158,6 +168,8 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "Department manager. Full operational read/write including invoices and quote sends.",
     allowedActions: [
       "knowledge.search",
+      "knowledge.read",
+      "system.health",
       "bigchange.customers.read",
       "bigchange.jobs.read",
       "bigchange.jobs.create",
@@ -187,6 +199,8 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "Company director. Broad access including financial actions. Batch and delete may require approval.",
     allowedActions: [
       "knowledge.search",
+      "knowledge.read",
+      "system.health",
       "bigchange.customers.read",
       "bigchange.jobs.read",
       "bigchange.jobs.create",
@@ -216,6 +230,8 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "Company administrator (e.g. Charlie). Connector setup, user management, billing. Not platform owner.",
     allowedActions: [
       "knowledge.search",
+      "knowledge.read",
+      "system.health",
       "bigchange.customers.read",
       "bigchange.jobs.read",
       "bigchange.jobs.create",
@@ -246,6 +262,8 @@ export const TOOL_ACTION_RISK: Record<
   { capability: ConnectorCapability; riskClass: CapabilityRiskClass }
 > = {
   "knowledge.search": { capability: "search", riskClass: "low_risk" },
+  "knowledge.read": { capability: "read", riskClass: "low_risk" },
+  "system.health": { capability: "read", riskClass: "low_risk" },
   "bigchange.jobs.read": { capability: "read", riskClass: "low_risk" },
   "bigchange.jobs.read_assigned": { capability: "read", riskClass: "low_risk" },
   "bigchange.engineers.read": { capability: "read", riskClass: "low_risk" },

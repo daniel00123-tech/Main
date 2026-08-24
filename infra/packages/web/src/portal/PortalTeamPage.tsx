@@ -1,7 +1,14 @@
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api";
-import type { InfraUser } from "@infra/shared";
-import { ErrorState, LoadingState, PageHeader, SectionCard, StatusBadge } from "../components";
+import type { CompanyRole, InfraUser } from "@infra/shared";
+import {
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  SectionCard,
+  StatusBadge,
+  formatDate,
+} from "../components";
 import { usePortalCompany } from "./usePortalCompany";
 
 export default function PortalTeamPage() {
@@ -10,24 +17,80 @@ export default function PortalTeamPage() {
   const [roles, setRoles] = useState<Awaited<ReturnType<typeof api.getRolePresets>>>([]);
   const [teamLoading, setTeamLoading] = useState(true);
   const [teamError, setTeamError] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteRole, setInviteRole] = useState<CompanyRole>("office_staff");
+  const [inviteResult, setInviteResult] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const canManage =
+    user?.isPlatformAdmin ||
+    membership?.role === "company_admin" ||
+    membership?.role === "director";
+
+  async function refresh() {
+    if (!company) return;
+    const [users, rolePresets] = await Promise.all([
+      api.getUsers(company.id),
+      api.getRolePresets(),
+    ]);
+    setTeam(users);
+    setRoles(rolePresets);
+  }
 
   useEffect(() => {
     if (!company) return;
     void (async () => {
       try {
-        const [users, rolePresets] = await Promise.all([
-          api.getUsers(company.id),
-          api.getRolePresets(),
-        ]);
-        setTeam(users);
-        setRoles(rolePresets);
+        await refresh();
       } catch (err) {
         setTeamError(err instanceof Error ? err.message : "Failed to load team");
       } finally {
         setTeamLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [company]);
+
+  async function onInvite(event: FormEvent) {
+    event.preventDefault();
+    if (!company) return;
+    setBusy(true);
+    setInviteResult(null);
+    try {
+      const result = await api.inviteUser(company.slug, {
+        email: inviteEmail,
+        displayName: inviteName,
+        role: inviteRole,
+      });
+      setInviteResult(
+        `Invite created. Share this one-time setup link (expires soon): ${result.setupUrl}`,
+      );
+      setInviteEmail("");
+      setInviteName("");
+      await refresh();
+    } catch (err) {
+      setInviteResult(err instanceof Error ? err.message : "Invite failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleStatus(member: InfraUser) {
+    if (!company) return;
+    const next = member.status === "active" ? "disabled" : "active";
+    if (!window.confirm(`${next === "disabled" ? "Disable" : "Reactivate"} ${member.email}?`)) {
+      return;
+    }
+    await api.setUserStatus(company.slug, member.id, next);
+    await refresh();
+  }
+
+  async function changeRole(member: InfraUser, role: CompanyRole) {
+    if (!company) return;
+    await api.setUserRole(company.slug, member.id, role);
+    await refresh();
+  }
 
   if (loading || teamLoading) return <LoadingState />;
   if (error || teamError || !company || !user) {
@@ -41,10 +104,50 @@ export default function PortalTeamPage() {
         subtitle={`Manage who can access ${company.name} AI tools and what they can do.`}
       />
 
-      <div className="card" style={{ marginBottom: 24 }}>
+      {canManage ? (
+        <SectionCard title="Invite user">
+          <form className="login-form" onSubmit={(e) => void onInvite(e)}>
+            <label>
+              Name
+              <input
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Email
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Role
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value as CompanyRole)}
+              >
+                {roles.map((role) => (
+                  <option key={role.role} value={role.role}>
+                    {role.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="button button-primary" type="submit" disabled={busy}>
+              {busy ? "Creating invite..." : "Create invite"}
+            </button>
+          </form>
+          {inviteResult ? <p className="info-banner">{inviteResult}</p> : null}
+        </SectionCard>
+      ) : null}
+
+      <div className="card" style={{ marginTop: 24, marginBottom: 24 }}>
         <div className="card-header-row">
           <h3>Team members</h3>
-          <span className="prototype-badge">Invite user — coming soon</span>
         </div>
         <table className="table">
           <thead>
@@ -52,7 +155,9 @@ export default function PortalTeamPage() {
               <th>Name</th>
               <th>Email</th>
               <th>Role</th>
+              <th>Last login</th>
               <th>Status</th>
+              {canManage ? <th>Actions</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -67,10 +172,47 @@ export default function PortalTeamPage() {
                     {member.id === user.userId ? <span className="muted"> (you)</span> : null}
                   </td>
                   <td>{member.email}</td>
-                  <td>{memberRole}</td>
+                  <td>
+                    {canManage && member.id !== user.userId ? (
+                      <select
+                        value={memberRole}
+                        onChange={(e) =>
+                          void changeRole(member, e.target.value as CompanyRole)
+                        }
+                      >
+                        {roles.map((role) => (
+                          <option key={role.role} value={role.role}>
+                            {role.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      memberRole
+                    )}
+                  </td>
+                  <td>
+                    {"lastLoginAt" in member && member.lastLoginAt
+                      ? formatDate(String(member.lastLoginAt))
+                      : "—"}
+                  </td>
                   <td>
                     <StatusBadge value={member.status} />
                   </td>
+                  {canManage ? (
+                    <td>
+                      {member.id !== user.userId ? (
+                        <button
+                          className="button button-small"
+                          type="button"
+                          onClick={() => void toggleStatus(member)}
+                        >
+                          {member.status === "active" ? "Disable" : "Reactivate"}
+                        </button>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}
@@ -96,11 +238,6 @@ export default function PortalTeamPage() {
           </tbody>
         </table>
       </SectionCard>
-
-      <div className="card info-banner" style={{ marginTop: 24 }}>
-        Your current role for {company.name} is <strong>{membership?.role}</strong>.
-        Permissions are enforced server-side for MCP and connector actions.
-      </div>
     </>
   );
 }

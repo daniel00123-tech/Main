@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import type { CompanyOverview } from "@infra/shared";
 import {
@@ -34,10 +34,13 @@ export default function CompanyDetailPage() {
   if (loading) return <LoadingState />;
   if (error || !overview) return <ErrorState message={error ?? "Company not found"} />;
 
-  const { company, mcpEnvironments, connectorInstances, creditBalance } = overview;
+  const { company, mcpEnvironments, connectorInstances, creditBalance, usageSummary, wallet } =
+    overview;
   const activeConnectors = connectorInstances.filter(
     (connector) => connector.status !== "disabled" && connector.status !== "draft",
   ).length;
+  const balanceCents = wallet?.balanceCents ?? creditBalance?.balanceCents ?? 0;
+  const currency = wallet?.currency ?? creditBalance?.currency ?? "GBP";
 
   return (
     <>
@@ -62,10 +65,27 @@ export default function CompanyDetailPage() {
           </div>
         </div>
         <div className="card metric-card">
-          <h3>Credit Balance</h3>
-          <div className="metric">
-            {formatCurrency(creditBalance?.balanceCents ?? 0, creditBalance?.currency ?? "GBP")}
-          </div>
+          <h3>Wallet balance</h3>
+          <div className="metric">{formatCurrency(balanceCents, currency)}</div>
+        </div>
+      </div>
+
+      <div className="grid grid-4" style={{ marginBottom: 24 }}>
+        <div className="card metric-card">
+          <h3>Requests this month</h3>
+          <div className="metric">{usageSummary?.requestsThisMonth ?? 0}</div>
+        </div>
+        <div className="card metric-card">
+          <h3>Successful</h3>
+          <div className="metric">{usageSummary?.successfulThisMonth ?? 0}</div>
+        </div>
+        <div className="card metric-card">
+          <h3>Failed</h3>
+          <div className="metric">{usageSummary?.failedThisMonth ?? 0}</div>
+        </div>
+        <div className="card metric-card">
+          <h3>Portal</h3>
+          <Link to="/portal/dashboard">Open company portal</Link>
         </div>
       </div>
 

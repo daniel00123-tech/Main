@@ -16,6 +16,7 @@ import {
   resolveMcpAuthHeader,
 } from "./mcp-client";
 import { getUsageSummary, recordUsageEvent } from "./usage";
+import { getWalletBalance } from "./ledger";
 
 export async function listCompanies(db: D1Database, companyIds?: string[]) {
   if (companyIds && companyIds.length === 0) {
@@ -144,12 +145,14 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     creditBalance,
     recentAuditEvents,
     usageSummary,
+    wallet,
   ] = await Promise.all([
     listMcpEnvironments(db, companyId),
     listConnectorInstances(db, companyId),
     getCreditBalance(db, companyId),
     listAuditEvents(db, companyId, 10),
     getUsageSummary(db, companyId),
+    getWalletBalance(db, companyId),
   ]);
 
   return {
@@ -159,6 +162,7 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     creditBalance,
     recentAuditEvents,
     usageSummary,
+    wallet,
   };
 }
 
@@ -489,6 +493,8 @@ export async function executeRegisteredMcpTool(
     actorUserId: string;
     actorEmail: string;
     sourceClient?: string;
+    skipUsageRecording?: boolean;
+    correlationId?: string;
   },
 ) {
   const mcp = await getMcpEnvironment(env.DB, input.mcpId);
@@ -523,7 +529,7 @@ export async function executeRegisteredMcpTool(
     };
   }
 
-  const correlationId = newId("corr");
+  const correlationId = input.correlationId ?? newId("corr");
   await recordAuditEvent(env.DB, {
     companyId: mcp.companyId,
     eventType: "mcp.execution_requested",
@@ -555,26 +561,28 @@ export async function executeRegisteredMcpTool(
       .bind(checkedAt, execution.latencyMs, checkedAt, mcp.id)
       .run();
 
-    await recordUsageEvent(env.DB, {
-      companyId: mcp.companyId,
-      userId: input.actorUserId,
-      actorEmail: input.actorEmail,
-      resourceType: "mcp_tool",
-      resourceId: input.toolName,
-      mcpEnvironmentId: mcp.id,
-      toolName: input.toolName,
-      action: input.toolName,
-      riskClass: allow.riskClass,
-      success: true,
-      durationMs: execution.latencyMs,
-      sourceClient: input.sourceClient ?? "infra-admin",
-      correlationId,
-      underlyingCostCents: null,
-      customerChargeCents: null,
-      metadata: {
-        authConfigured: execution.authConfigured,
-      },
-    });
+    if (!input.skipUsageRecording) {
+      await recordUsageEvent(env.DB, {
+        companyId: mcp.companyId,
+        userId: input.actorUserId,
+        actorEmail: input.actorEmail,
+        resourceType: "mcp_tool",
+        resourceId: input.toolName,
+        mcpEnvironmentId: mcp.id,
+        toolName: input.toolName,
+        action: input.toolName,
+        riskClass: allow.riskClass,
+        success: true,
+        durationMs: execution.latencyMs,
+        sourceClient: input.sourceClient ?? "infra-admin",
+        correlationId,
+        underlyingCostCents: null,
+        customerChargeCents: null,
+        metadata: {
+          authConfigured: execution.authConfigured,
+        },
+      });
+    }
 
     await recordAuditEvent(env.DB, {
       companyId: mcp.companyId,
@@ -625,22 +633,24 @@ export async function executeRegisteredMcpTool(
       .bind(message, checkedAt, mcp.id)
       .run();
 
-    await recordUsageEvent(env.DB, {
-      companyId: mcp.companyId,
-      userId: input.actorUserId,
-      actorEmail: input.actorEmail,
-      resourceType: "mcp_tool",
-      resourceId: input.toolName,
-      mcpEnvironmentId: mcp.id,
-      toolName: input.toolName,
-      action: input.toolName,
-      riskClass: allow.riskClass,
-      success: false,
-      durationMs: null,
-      sourceClient: input.sourceClient ?? "infra-admin",
-      correlationId,
-      metadata: { error: message },
-    });
+    if (!input.skipUsageRecording) {
+      await recordUsageEvent(env.DB, {
+        companyId: mcp.companyId,
+        userId: input.actorUserId,
+        actorEmail: input.actorEmail,
+        resourceType: "mcp_tool",
+        resourceId: input.toolName,
+        mcpEnvironmentId: mcp.id,
+        toolName: input.toolName,
+        action: input.toolName,
+        riskClass: allow.riskClass,
+        success: false,
+        durationMs: null,
+        sourceClient: input.sourceClient ?? "infra-admin",
+        correlationId,
+        metadata: { error: message },
+      });
+    }
 
     await recordAuditEvent(env.DB, {
       companyId: mcp.companyId,

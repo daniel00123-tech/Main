@@ -114,9 +114,11 @@ export interface InfraUser {
   displayName: string;
   isPlatformAdmin: boolean;
   status: UserStatus;
+  lastLoginAt?: string | null;
   memberships: Array<{
     companyId: string;
     role: CompanyRole;
+    status?: MembershipStatus;
   }>;
 }
 
@@ -346,4 +348,13 @@ export interface CompanyOverview {
   creditBalance: CreditBalance | null;
   recentAuditEvents: AuditEvent[];
   usageSummary?: UsageSummary;
+  wallet?: {
+    companyId: string;
+    balanceCents: number;
+    currency: string;
+    lowBalanceThresholdCents: number;
+    lowBalance: boolean;
+    stripeCustomerId: string | null;
+    updatedAt: string;
+  };
 }

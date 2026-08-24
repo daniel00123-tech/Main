@@ -15,6 +15,7 @@ import {
   getUserByEmail,
   getUserById,
   listUsers,
+  recordUserLogin,
   toSessionUser,
   updateUserPassword,
 } from "./auth/users";
@@ -52,10 +53,13 @@ import {
 import { getUsageSummary, listUsageRecords } from "./services/usage";
 import { listMcpTools } from "./services/mcp-client";
 import { verifyPassword } from "./auth/password";
+import phase3Routes from "./routes/phase3";
 
 const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", createCorsMiddleware());
+
+app.route("/", phase3Routes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(
@@ -197,6 +201,7 @@ app.post("/api/auth/login", async (c) => {
   const sessionUser = await toSessionUser(c.env.DB, user);
   const token = await createSessionToken(sessionUser, c.env.SESSION_SECRET);
   setSessionCookie(c, token);
+  await recordUserLogin(c.env.DB, user.id);
 
   await recordAuditEvent(c.env.DB, {
     eventType: "auth.login",
