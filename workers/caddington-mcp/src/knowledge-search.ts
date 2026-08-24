@@ -7,6 +7,7 @@ import {
   SEARCH_VECTOR_CANDIDATE_MAX,
   SEARCH_VECTOR_CANDIDATE_MIN,
 } from "./constants";
+import { buildSearchGuidance } from "./caddington-usage";
 import type { Env } from "./db";
 import type { SegmentMetadata } from "./document-segments";
 import { vectorFieldsToSegmentMetadata } from "./document-segments";
@@ -130,6 +131,7 @@ export interface KnowledgeSearchResponse {
   confidence: ResultConfidence;
   resultCount: number;
   results: KnowledgeSearchResult[];
+  guidance?: string;
   diagnostics?: KnowledgeSearchDiagnostics;
 }
 
@@ -405,6 +407,7 @@ export async function searchCompanyKnowledgeHybrid(
     confidence: overallConfidence,
     resultCount: results.length,
     results,
+    guidance: buildSearchGuidance(overallConfidence, results.length),
     diagnostics: options.includeDiagnostics
       ? {
           latencyMs: Date.now() - started,
@@ -467,6 +470,7 @@ function emptyResponse(
     confidence: "weak",
     resultCount: 0,
     results: [],
+    guidance: buildSearchGuidance("weak", 0),
     diagnostics: options.includeDiagnostics
       ? {
           latencyMs: Date.now() - started,

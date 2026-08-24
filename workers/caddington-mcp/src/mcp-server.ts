@@ -1,5 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import {
+  CADDINGTON_SERVER_INSTRUCTIONS,
+  GET_KNOWLEDGE_DOCUMENT_DESCRIPTION,
+  SEARCH_COMPANY_KNOWLEDGE_DESCRIPTION,
+} from "./caddington-usage";
 import { MCP_NAME, MCP_VERSION } from "./constants";
 import {
   checkDatabaseHealth,
@@ -21,6 +26,7 @@ export function createCaddingtonMcpServer(env: Env): McpServer {
   const server = new McpServer({
     name: MCP_NAME,
     version: MCP_VERSION,
+    instructions: CADDINGTON_SERVER_INSTRUCTIONS,
   });
 
   server.registerTool(
@@ -173,8 +179,7 @@ export function createCaddingtonMcpServer(env: Env): McpServer {
   server.registerTool(
     "search_company_knowledge",
     {
-      description:
-        "Hybrid semantic + lexical search across indexed company knowledge with optional metadata filters.",
+      description: SEARCH_COMPANY_KNOWLEDGE_DESCRIPTION,
       inputSchema: {
         query: z.string().min(1).describe("Natural language search query."),
         topK: z.number().int().min(1).max(20).optional(),
@@ -266,8 +271,7 @@ export function createCaddingtonMcpServer(env: Env): McpServer {
   server.registerTool(
     "get_knowledge_document",
     {
-      description:
-        "Retrieve metadata, chunks and import history for a knowledge document by id or external_id.",
+      description: GET_KNOWLEDGE_DOCUMENT_DESCRIPTION,
       inputSchema: {
         documentRef: z
           .string()
