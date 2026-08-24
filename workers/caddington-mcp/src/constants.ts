@@ -1,0 +1,39 @@
+export const MCP_VERSION = "1.0.0";
+export const MCP_NAME = "caddington-mcp";
+
+export const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
+export const EMBEDDING_DIMENSIONS = 768;
+
+/** Read-only tables for query_business_data */
+export const QUERYABLE_TABLES = new Set([
+  "import_log",
+  "system_health_log",
+  "connector_registry",
+  "entity_registry",
+  "entity_records",
+  "knowledge_documents",
+  "knowledge_chunks",
+  "knowledge_import_log",
+]);
+
+export const SUMMARY_TABLES = [
+  "import_log",
+  "system_health_log",
+  "connector_registry",
+  "entity_registry",
+  "entity_records",
+  "knowledge_documents",
+  "knowledge_chunks",
+  "knowledge_import_log",
+] as const;
+
+export const SUMMARY_TIMESTAMP_COLUMNS: Record<string, string> = {
+  import_log: "started_at",
+  system_health_log: "checked_at",
+  connector_registry: "updated_at",
+  entity_registry: "updated_at",
+  entity_records: "updated_at",
+  knowledge_documents: "updated_at",
+  knowledge_chunks: "created_at",
+  knowledge_import_log: "started_at",
+};

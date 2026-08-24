@@ -3,6 +3,10 @@
     "ht-business": {
       "type": "http",
       "url": "https://ht-business-mcp.daniel-dwyer123.workers.dev/mcp"
+    },
+    "caddington": {
+      "type": "http",
+      "url": "https://caddington-mcp.daniel-dwyer123.workers.dev/mcp"
     }
   }
 }
