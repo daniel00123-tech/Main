@@ -6,6 +6,12 @@ INFRA is the control plane behind staff-facing AI interfaces such as ChatGPT and
 
 Business systems remain the systems of record. Customer data stays isolated per company.
 
+> **Authoritative boundary (ADR 001):**  
+> Company MCPs own company knowledge, business data and business capabilities.  
+> INFRA owns identity, authorisation, routing, metering, billing and audit.  
+> AI clients connect to INFRA — not directly to company MCPs or business systems.  
+> See [`docs/adr/001-company-mcp-vs-infra-boundary.md`](docs/adr/001-company-mcp-vs-infra-boundary.md).
+
 ## What INFRA manages (v0.1)
 
 - Companies and demo tenants
@@ -32,24 +38,26 @@ Business systems remain the systems of record. Customer data stays isolated per 
 ```
 Business systems (BigChange, Commusoft, Xero, Google Drive, etc.)
         ↓
-INFRA connector instance (per company)
+Company Business MCP / data environment
+  (knowledge · warehouse · connectors · read/write tools)
         ↓
-Company data environment (isolated)
+INFRA control plane / AI gateway
+  (identity · authz · routing · metering · billing · audit)
         ↓
-Company MCP environment
-        ↓
-ChatGPT / Claude / future channels
+ChatGPT / Claude / future AI clients
 ```
 
-### Control plane vs customer data plane
+### Control plane vs company Business MCP
 
-| Control plane (INFRA central) | Customer data plane (per company) |
+| INFRA (control plane) | Company Business MCP / data environment |
 | --- | --- |
-| Companies | Documents and vectors |
-| MCP registrations | CRM / job data |
-| Connector definitions & instances | API credentials (secrets store) |
-| Permissions | Operational warehouse data |
-| Health, usage, billing | Indexed knowledge content |
+| Companies, users, roles | Documents and vectors |
+| MCP registrations & routing | CRM / job / operational data |
+| Connector *registry* & status | Live business-system connectors & sync |
+| Permissions & approvals | Indexed knowledge + warehouse |
+| Health metadata, usage, billing, audit | Company-specific business logic & tools |
+
+Do **not** move company operational corpora into INFRA’s control-plane database.
 
 ## Demo tenants
 

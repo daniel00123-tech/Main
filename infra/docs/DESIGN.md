@@ -1,5 +1,12 @@
 # INFRA — Architecture & Design (v0.1)
 
+> **Authoritative update (2026-08-24):**  
+> The locked product boundary is **[ADR 001 — Company MCP vs INFRA boundary](./adr/001-company-mcp-vs-infra-boundary.md)**.  
+> **Company MCPs** own knowledge, business data and capabilities.  
+> **INFRA** owns identity, authorisation, routing, metering, billing and audit.  
+> **AI clients** connect to INFRA.  
+> Where this historical design document disagrees with ADR 001 (especially older diagrams that put INFRA connectors *between* business systems and the company data plane, or that imply INFRA hosts customer R2/Vectorize corpora), **follow ADR 001**.
+
 This document fulfils the design-first requirement before substantial implementation. It describes architecture, data models, security boundaries, and a phased delivery plan. No external systems are connected.
 
 ---
@@ -26,31 +33,32 @@ INFRA is intentionally isolated under `infra/` as a greenfield project. No conne
 │                         INFRA CONTROL PLANE                             │
 │  (Cloudflare Workers API + D1 + Secrets + Stripe webhooks)            │
 │                                                                         │
-│  Companies · MCP Registry · Connectors · Permissions · Billing        │
-│  Usage Metering · Audit · Health · AI Client Registry                   │
-│  Company Definitions (rules, glossary, correction workflow)             │
+│  Companies · Users · Roles · MCP Registry · Permissions · Billing     │
+│  Usage Metering · Audit · Health · AI Client Registry · Routing         │
 └───────────────────────────────┬─────────────────────────────────────────┘
-                                │ registers / monitors / bills
+                                │ AI clients connect HERE
+                                │ INFRA routes + authorises + meters
         ┌───────────────────────┼───────────────────────┐
         ▼                       ▼                       ▼
 ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
 │ Caddington    │     │ HT Business   │     │ EL Business   │
-│ data plane    │     │ data plane    │     │ data plane    │
-│ (external MCP)│     │ (future)      │     │ (future)      │
+│ Business MCP  │     │ Business MCP  │     │ Business MCP  │
+│ (external)    │     │ (future)      │     │ (future)      │
+│ knowledge ·   │     │               │     │               │
+│ warehouse ·   │     │               │     │               │
+│ connectors ·  │     │               │     │               │
+│ read/write    │     │               │     │               │
 └───────┬───────┘     └───────────────┘     └───────────────┘
         │
         ▼
-┌───────────────────────────────────────────────────────────────────────┐
-│  Customer data plane (per company, isolated)                          │
-│  R2 · D1 · Vectorize · connector sync state · warehouse (future)      │
-└───────────────────────────────┬───────────────────────────────────────┘
-                                │
-        ┌───────────────────────┼───────────────────────┐
-        ▼                       ▼                       ▼
-   ChatGPT                  Claude                 WhatsApp (future)
+ Business systems (Drive, BigChange, Commusoft, Xero, …)
+
+ChatGPT / Claude → INFRA → Company Business MCP → Business systems
 ```
 
-**Principle:** Business systems remain systems of record. INFRA orchestrates connectors, permissions, billing, and monitoring — it does not replace staff-facing AI clients.
+*(Historical note: earlier drafts showed ChatGPT talking to company MCPs with INFRA only “registering” them, or INFRA sitting between business systems and the data plane. Live Caddington + ADR 001 lock the AI path through INFRA; company MCPs own data and connector runtimes.)*
+
+**Principle:** Business systems remain systems of record. Company Business MCPs own knowledge, warehouse data, and business capabilities. INFRA owns identity, authorisation, routing, metering, billing, and audit. AI clients connect to INFRA — see [ADR 001](./adr/001-company-mcp-vs-infra-boundary.md).
 
 ---
 

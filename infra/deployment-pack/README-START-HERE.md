@@ -29,6 +29,7 @@ Use it with **ChatGPT** (recommended) or follow manually. All hosting is designe
 
 | # | File | Purpose |
 | --- | --- | --- |
+| **ADR** | [`../docs/adr/001-company-mcp-vs-infra-boundary.md`](../docs/adr/001-company-mcp-vs-infra-boundary.md) | **Authoritative:** Company MCP vs INFRA boundary |
 | 01 | `01-FULL-STRUCTURE-AND-OVERVIEW.md` | What INFRA is, two portals, full system map |
 | 02 | `02-SETUP-GUIDE.md` | **Main go-live guide** — Cloudflare, domain, deploy |
 | 03 | `03-ARCHITECTURE-DESIGN.md` | Detailed architecture, schema, billing, definitions |
