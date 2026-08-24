@@ -30,15 +30,6 @@ export function ConnectorCard({ connector, onOpen }: ConnectorCardProps) {
       className={`connector-card ${
         connector.catalogueStatus === "active" ? "connector-card-active" : ""
       }`}
-      onClick={() => onOpen(connector)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpen(connector);
-        }
-      }}
-      role="button"
-      tabIndex={0}
     >
       <div className="connector-card-top">
         <ConnectorLogo slug={connector.slug} name={connector.name} />

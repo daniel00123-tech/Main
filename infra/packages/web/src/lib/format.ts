@@ -110,6 +110,54 @@ export function humanRole(role: string | null | undefined): string {
     .join(" ");
 }
 
+export function humanLedgerType(type: string): string {
+  const map: Record<string, string> = {
+    top_up: "Credit added",
+    credit: "Credit added",
+    promotional_credit: "Opening / test credit",
+    manual_credit: "Manual credit",
+    usage: "Usage charge",
+    usage_debit: "Usage charge",
+    debit: "Usage charge",
+    refund: "Refund",
+    adjustment: "Adjustment",
+  };
+  return map[type] ?? type.replace(/_/g, " ");
+}
+
+export function humanOperation(action?: string | null, toolName?: string | null): string {
+  const key = action ?? toolName ?? "";
+  const map: Record<string, string> = {
+    "knowledge.search": "Knowledge search",
+    "knowledge.read": "Knowledge read",
+    "system.health": "Connection check",
+    search_company_knowledge: "Knowledge search",
+    get_knowledge_document: "Knowledge read",
+    database_summary: "Business data summary",
+    system_health: "Connection check",
+  };
+  if (map[key]) return map[key];
+  if (!key) return "Request";
+  return key.replace(/[._]/g, " ");
+}
+
+export function humanClient(source?: string | null): string {
+  const map: Record<string, string> = {
+    chatgpt: "ChatGPT",
+    claude: "Claude",
+    whatsapp: "WhatsApp",
+    "infra-mcp": "INFRA",
+    "infra-gateway": "INFRA",
+  };
+  if (!source) return "—";
+  return map[source] ?? source;
+}
+
+export function formatCharge(cents: number | null | undefined, currency = "GBP"): string {
+  if (cents == null) return "—";
+  return formatMoney(cents, currency);
+}
+
 export function greetingForNow(name?: string): string {
   const hour = new Date().getHours();
   const part =
@@ -177,6 +225,7 @@ export function humanStatus(value: string): string {
     draft: "Not set up",
     registered: "Registered",
     configured: "Configured",
+    not_live: "Not live",
     syncing: "Syncing",
     error: "Error",
     unknown: "Unknown",

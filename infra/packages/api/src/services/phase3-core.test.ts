@@ -176,6 +176,34 @@ describe("wallet ledger", () => {
     );
     expect(wallet.balanceCents).toBe(999);
   });
+
+  it("rejects usage debits that would take the ledger below zero", async () => {
+    const db = new MockD1({
+      credit_balances: [],
+      ledger_entries: [],
+    });
+
+    await appendLedgerEntry(db as unknown as D1Database, {
+      companyId: "co_ht",
+      entryType: "promotional_credit",
+      amountCents: 1,
+      referenceType: "seed",
+      referenceId: "tiny",
+    });
+
+    await expect(
+      appendLedgerEntry(db as unknown as D1Database, {
+        companyId: "co_ht",
+        entryType: "usage_debit",
+        amountCents: -2,
+        referenceType: "usage",
+        referenceId: "usage_overdraw",
+      }),
+    ).rejects.toThrow("INSUFFICIENT_CREDIT");
+
+    const wallet = await getWalletBalance(db as unknown as D1Database, "co_ht");
+    expect(wallet.balanceCents).toBe(1);
+  });
 });
 
 describe("pricing", () => {
@@ -199,6 +227,8 @@ describe("pricing", () => {
         versionLabel: null,
         effectiveFrom: null,
         effectiveTo: null,
+        marginBasis: "gross_margin",
+        costCategory: null,
       },
       { success: false },
     );
@@ -226,6 +256,8 @@ describe("pricing", () => {
         versionLabel: null,
         effectiveFrom: null,
         effectiveTo: null,
+        marginBasis: "gross_margin",
+        costCategory: null,
       },
       { success: true },
     );

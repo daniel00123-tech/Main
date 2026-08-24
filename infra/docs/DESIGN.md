@@ -36,7 +36,7 @@ INFRA is intentionally isolated under `infra/` as a greenfield project. No conne
 ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
 │ Caddington    │     │ HT Business   │     │ EL Business   │
 │ data plane    │     │ data plane    │     │ data plane    │
-│ (external MCP)│     │ (future)      │     │ (future)      │
+│ (existing MCP)│     │ (existing MCP)│     │ (existing MCP)│
 └───────┬───────┘     └───────────────┘     └───────────────┘
         │
         ▼

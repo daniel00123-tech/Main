@@ -99,6 +99,36 @@ app.get("/health", (c) =>
   }),
 );
 
+app.get("/ready", async (c) => {
+  try {
+    const row = await c.env.DB.prepare("SELECT 1 AS ok").first();
+    if (!row) {
+      return c.json(
+        {
+          status: "not_ready",
+          checks: { d1: "empty" },
+          timestamp: new Date().toISOString(),
+        },
+        503,
+      );
+    }
+    return c.json({
+      status: "ready",
+      checks: { d1: "ok" },
+      timestamp: new Date().toISOString(),
+    });
+  } catch {
+    return c.json(
+      {
+        status: "not_ready",
+        checks: { d1: "error" },
+        timestamp: new Date().toISOString(),
+      },
+      503,
+    );
+  }
+});
+
 app.get("/api/auth/password-setup/validate", async (c) => {
   const token = c.req.query("token");
   if (!token) {

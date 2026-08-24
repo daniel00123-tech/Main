@@ -155,6 +155,9 @@ export async function appendLedgerEntry(
 
   const current = await getWalletBalance(db, input.companyId);
   const balanceAfter = current.balanceCents + input.amountCents;
+  if (input.entryType === "usage_debit" && balanceAfter < 0) {
+    throw new Error("INSUFFICIENT_CREDIT");
+  }
   const id = newId("ledger");
   const createdAt = nowIso();
 

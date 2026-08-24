@@ -6,6 +6,7 @@ import {
   ChartColumn,
   ChevronsLeft,
   ChevronsRight,
+  Globe,
   LayoutDashboard,
   Menu,
   Network,
@@ -73,7 +74,7 @@ const ADMIN_NAV: NavGroup[] = [
     items: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard size={18} />, end: true },
       { to: "/companies", label: "Companies", icon: <Building2 size={18} /> },
-      { to: "/portal", label: "Company portal", icon: <Building2 size={18} /> },
+      { to: "/portal", label: "Company portal", icon: <Globe size={18} /> },
     ],
   },
   {

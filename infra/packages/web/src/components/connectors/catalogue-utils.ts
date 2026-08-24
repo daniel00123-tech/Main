@@ -48,7 +48,7 @@ export const STATUS_LABELS: Record<ConnectorCatalogueStatus, string> = {
   draft: "Draft",
 };
 
-export type CatalogueFilter = "all" | "connected" | "available" | "coming_soon";
+export type CatalogueFilter = "all" | "product_ready" | "available" | "coming_soon";
 
 export function getConnectorAction(
   status: ConnectorCatalogueStatus,
@@ -63,11 +63,11 @@ export function getConnectorActionLabel(
 ): string {
   switch (getConnectorAction(status)) {
     case "manage":
-      return "Manage";
+      return "Details";
     case "connect":
-      return "Connect Here";
+      return "Requires setup";
     default:
-      return "Coming Soon";
+      return "Coming soon";
   }
 }
 
@@ -81,7 +81,7 @@ export function filterConnectors(
 
   return connectors.filter((connector) => {
     if (statusFilter !== "all") {
-      if (statusFilter === "connected" && connector.catalogueStatus !== "active") {
+      if (statusFilter === "product_ready" && connector.catalogueStatus !== "active") {
         return false;
       }
       if (

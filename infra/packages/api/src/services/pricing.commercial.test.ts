@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   actualMarginBps,
   calculateChargeCents,
+  chargeFromMarkupOnCost,
   chargeFromTargetMargin,
   centsToMicros,
   DEFAULT_MINIMUM_CHARGE_CENTS,
@@ -28,6 +29,8 @@ const baseRule = (overrides: Partial<PricingRule> = {}): PricingRule => ({
   versionLabel: "v1",
   effectiveFrom: null,
   effectiveTo: null,
+  marginBasis: "gross_margin",
+  costCategory: null,
   ...overrides,
 });
 
@@ -74,6 +77,7 @@ describe("commercial pricing engine", () => {
           label: null,
           effectiveFrom: "2026-01-01",
           effectiveTo: null,
+          marginBasis: "gross_margin",
         },
       },
     );
@@ -128,5 +132,28 @@ describe("commercial pricing engine", () => {
     );
     expect(result.underlyingCostCents).toBeNull();
     expect(result.costBasis).toBe("unknown");
+  });
+
+  it("distinguishes 60% gross margin from 60% markup on cost", () => {
+    const cost = centsToMicros(4); // 4p
+    expect(chargeFromTargetMargin(cost, 6000)).toBe(10); // 4 / 0.40
+    expect(chargeFromMarkupOnCost(cost, 6000)).toBe(7); // 4 * 1.60
+  });
+
+  it("uses markup_on_cost only when a rule explicitly selects that basis", () => {
+    const result = calculateChargeCents(
+      baseRule({
+        pricingMode: "target_margin",
+        fixedChargeCents: null,
+        marginBasis: "markup_on_cost",
+        targetMarginBps: 6000,
+      }),
+      {
+        success: true,
+        underlyingCostMicros: centsToMicros(4),
+        costBasis: "actual",
+      },
+    );
+    expect(result.customerChargeCents).toBe(7);
   });
 });

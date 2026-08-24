@@ -20,6 +20,15 @@ export type PricingMode =
 
 export type CostBasis = "actual" | "estimated" | "unknown";
 
+/**
+ * How a percentage rate is interpreted when converting cost → customer charge.
+ * These are NOT interchangeable:
+ *   gross_margin   charge = cost / (1 - rate)     60% GM → cost / 0.40
+ *   markup_on_cost charge = cost * (1 + rate)     60% markup → cost * 1.60
+ * Current TEST 1p rules use pricingMode=fixed and ignore this field.
+ */
+export type MarginBasis = "gross_margin" | "markup_on_cost";
+
 export interface PricingRule {
   id: string;
   companyId: string | null;
@@ -38,6 +47,8 @@ export interface PricingRule {
   versionLabel: string | null;
   effectiveFrom: string | null;
   effectiveTo: string | null;
+  marginBasis: MarginBasis;
+  costCategory: string | null;
 }
 
 export interface PricingPolicy {
@@ -51,6 +62,7 @@ export interface PricingPolicy {
   label: string | null;
   effectiveFrom: string;
   effectiveTo: string | null;
+  marginBasis: MarginBasis;
 }
 
 export interface ChargeResult {
@@ -103,6 +115,8 @@ function rowToPricing(row: Record<string, unknown>): PricingRule {
     versionLabel: row.version_label ? String(row.version_label) : null,
     effectiveFrom: row.effective_from ? String(row.effective_from) : null,
     effectiveTo: row.effective_to ? String(row.effective_to) : null,
+    marginBasis: asMarginBasis(row.margin_basis),
+    costCategory: row.cost_category ? String(row.cost_category) : null,
   };
 }
 
@@ -120,7 +134,12 @@ function rowToPolicy(row: Record<string, unknown>): PricingPolicy {
     label: row.label ? String(row.label) : null,
     effectiveFrom: String(row.effective_from),
     effectiveTo: row.effective_to ? String(row.effective_to) : null,
+    marginBasis: asMarginBasis(row.margin_basis),
   };
+}
+
+function asMarginBasis(value: unknown): MarginBasis {
+  return value === "markup_on_cost" ? "markup_on_cost" : "gross_margin";
 }
 
 export function microsToCentsRoundedUp(micros: number): number {
@@ -136,6 +155,24 @@ export function centsToMicros(cents: number): number {
  * customer_charge = cost / (1 - margin)
  * Uses integer ceil to whole cents for wallet settlement.
  */
+/**
+ * 60% markup on cost: charge = cost × 1.60
+ * Distinct from 60% gross margin (charge = cost / 0.40).
+ */
+export function chargeFromMarkupOnCost(
+  underlyingCostMicros: number,
+  markupBps: number,
+): number {
+  if (underlyingCostMicros <= 0) return 0;
+  if (markupBps < 0) {
+    throw new Error("markup_bps must be >= 0");
+  }
+  const chargeMicros = Math.ceil(
+    (underlyingCostMicros * (10_000 + markupBps)) / 10_000,
+  );
+  return microsToCentsRoundedUp(chargeMicros);
+}
+
 export function chargeFromTargetMargin(
   underlyingCostMicros: number,
   targetMarginBps: number,
@@ -195,6 +232,7 @@ export async function resolvePricingPolicy(
     label: "Default 60% GM / 1p minimum (in-memory)",
     effectiveFrom: nowIso(),
     effectiveTo: null,
+    marginBasis: "gross_margin",
   };
 }
 
@@ -316,7 +354,11 @@ export function calculateChargeCents(
         // No measurable cost → do not invent; fall back to minimum only when fixed test rate absent
         calculated = rule.fixedChargeCents ?? 0;
       } else {
-        calculated = chargeFromTargetMargin(costForMargin, targetMargin);
+        const basis = rule.marginBasis ?? policy?.marginBasis ?? "gross_margin";
+        calculated =
+          basis === "markup_on_cost"
+            ? chargeFromMarkupOnCost(costForMargin, targetMargin)
+            : chargeFromTargetMargin(costForMargin, targetMargin);
       }
       break;
     case "free":

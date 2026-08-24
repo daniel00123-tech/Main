@@ -223,8 +223,11 @@ phase3.post("/api/companies/:slug/wallet/top-up", requireAuth, async (c) => {
     amountCents: body.amountCents,
     createdBy: user.email,
     successUrl:
-      body.successUrl ?? `${origin}/portal/billing?topup=success`,
-    cancelUrl: body.cancelUrl ?? `${origin}/portal/billing?topup=cancelled`,
+      body.successUrl ??
+      `${origin}/portal/${company.slug}/billing?topup=success`,
+    cancelUrl:
+      body.cancelUrl ??
+      `${origin}/portal/${company.slug}/billing?topup=cancelled`,
   });
 
   if (!result.configured && "error" in result) {

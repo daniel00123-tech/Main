@@ -20,7 +20,7 @@ export default function PortalActivityPage() {
     <>
       <PageHeader
         title="Activity"
-        description={`${company.name} · audit trail for this tenant only`}
+        description={`${company.name} · who did what in this company`}
       />
       <SectionCard title="Recent events">
         <ActivityFeed

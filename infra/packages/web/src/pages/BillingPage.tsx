@@ -15,9 +15,7 @@ import {
   formatCurrency,
   formatDate,
 } from "../components";
-import { formatNumber } from "../lib/format";
-
-const OPENING_TEST_CREDIT_CENTS = 1000;
+import { formatNumber, humanLedgerType } from "../lib/format";
 
 type BalanceRow = Awaited<ReturnType<typeof api.getBillingBalances>>[number];
 type WalletDetail = Awaited<ReturnType<typeof api.getWallet>>;
@@ -41,8 +39,7 @@ export default function BillingPage() {
       ]);
       setRows(balances);
       setStripeConfigured(gateway ? Boolean(gateway.stripeConfigured) : null);
-      const preferred =
-        balances.find((b) => b.companySlug === "caddington") ?? balances[0] ?? null;
+      const preferred = balances[0] ?? null;
       if (preferred) {
         setSelectedSlug(preferred.companySlug);
         setWallet(await api.getWallet(preferred.companySlug));
@@ -70,10 +67,12 @@ export default function BillingPage() {
   }, [rows]);
 
   const selectedBalance = rows.find((r) => r.companySlug === selectedSlug) ?? null;
-  const usedCents =
-    wallet && selectedBalance
-      ? Math.max(0, OPENING_TEST_CREDIT_CENTS - selectedBalance.balanceCents)
-      : 0;
+  const ledgerCredits = (wallet?.ledger ?? [])
+    .filter((e) => e.amountCents > 0)
+    .reduce((sum, e) => sum + e.amountCents, 0);
+  const ledgerDebits = (wallet?.ledger ?? [])
+    .filter((e) => e.amountCents < 0)
+    .reduce((sum, e) => sum + Math.abs(e.amountCents), 0);
 
   if (loading) return <LoadingState label="Loading billing…" />;
   if (error) {
@@ -89,8 +88,12 @@ export default function BillingPage() {
 
       {stripeConfigured === false ? (
         <Notice tone="warning">
-          Stripe is not configured on the API. Wallet balances are real; card top-ups are unavailable until
-          secrets are set.
+          Card payments are not live. Wallet balances and usage charges are real; Stripe top-ups stay
+          disabled until the platform owner enables them.
+        </Notice>
+      ) : stripeConfigured ? (
+        <Notice tone="info">
+          Stripe credentials are present. Treat live charging as unapproved until an owner confirms go-live.
         </Notice>
       ) : null}
 
@@ -161,27 +164,19 @@ export default function BillingPage() {
           {selectedBalance && wallet ? (
             <SectionCard
               title={selectedBalance.companyName}
-              description={
-                selectedBalance.companySlug === "caddington"
-                  ? "Test Credit"
-                  : "Prepaid credit"
-              }
+              description="Prepaid credit — ledger is the source of truth"
             >
               <div className="metric" style={{ fontSize: "var(--text-3xl)", marginBottom: 12 }}>
                 {formatCurrency(selectedBalance.balanceCents, selectedBalance.currency)}
               </div>
-              {selectedBalance.companySlug === "caddington" ? (
-                <div className="kv-stack" style={{ marginBottom: 16 }}>
-                  <div className="muted small">
-                    Starting credit: {formatCurrency(OPENING_TEST_CREDIT_CENTS)}
-                  </div>
-                  <div className="muted small">Used: {formatCurrency(usedCents)}</div>
-                  <div className="muted small">
-                    Remaining:{" "}
-                    {formatCurrency(selectedBalance.balanceCents, selectedBalance.currency)}
-                  </div>
+              <div className="kv-stack" style={{ marginBottom: 16 }}>
+                <div className="muted small">Credits added: {formatCurrency(ledgerCredits)}</div>
+                <div className="muted small">Usage charges: {formatCurrency(ledgerDebits)}</div>
+                <div className="muted small">
+                  Current balance:{" "}
+                  {formatCurrency(selectedBalance.balanceCents, selectedBalance.currency)}
                 </div>
-              ) : null}
+              </div>
 
               <h4 className="section-title" style={{ marginTop: 8 }}>
                 Ledger
@@ -244,18 +239,4 @@ export default function BillingPage() {
       )}
     </>
   );
-}
-
-function humanLedgerType(type: string): string {
-  const map: Record<string, string> = {
-    top_up: "Top up",
-    promotional_credit: "Test credit",
-    manual_credit: "Manual credit",
-    usage_debit: "Usage",
-    usage: "Usage",
-    debit: "Usage",
-    refund: "Refund",
-    adjustment: "Adjustment",
-  };
-  return map[type] ?? type.replace(/_/g, " ");
 }

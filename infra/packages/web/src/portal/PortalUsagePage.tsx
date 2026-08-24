@@ -14,6 +14,7 @@ import {
 } from "../components";
 import { usePortalCompany } from "./usePortalCompany";
 import { api, type CompanyUsageResponse } from "../api";
+import { humanClient, humanOperation } from "../lib/format";
 
 export default function PortalUsagePage() {
   const { company, loading: companyLoading, error: companyError } = usePortalCompany();
@@ -50,7 +51,7 @@ export default function PortalUsagePage() {
     <>
       <PageHeader
         title="Usage"
-        description="Requests made through INFRA for your company."
+        description="What happened when someone used AI with your company. Each row is one operation."
       />
 
       <MetricGrid cols={4}>
@@ -72,33 +73,38 @@ export default function PortalUsagePage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Action</th>
-                  <th>Who</th>
+                  <th>Time</th>
+                  <th>AI client</th>
+                  <th>User</th>
+                  <th>Operation</th>
                   <th>Status</th>
-                  <th>Duration</th>
                   <th className="num">Charge</th>
-                  <th>When</th>
+                  <th>Latency</th>
                 </tr>
               </thead>
               <tbody>
                 {records.map((record) => (
                   <tr key={record.id}>
-                    <td>
-                      {humanise(record.toolName ?? record.action ?? record.resourceType)}
-                    </td>
+                    <td>{formatDate(record.recordedAt)}</td>
+                    <td>{humanClient(record.sourceClient)}</td>
                     <td>{record.actorEmail ?? "—"}</td>
                     <td>
-                      <StatusBadge status={record.success === false ? "failed" : "completed"} />
+                      {humanOperation(record.action, record.toolName)}
+                      {record.interactionId ? (
+                        <div className="muted small">Grouped with other steps in this request</div>
+                      ) : null}
                     </td>
                     <td>
-                      {record.durationMs != null ? `${record.durationMs} ms` : "—"}
+                      <StatusBadge status={record.success === false ? "failed" : "completed"} />
                     </td>
                     <td className="num">
                       {record.customerChargeCents != null
                         ? formatCurrency(record.customerChargeCents)
                         : "—"}
                     </td>
-                    <td>{formatDate(record.recordedAt)}</td>
+                    <td>
+                      {record.durationMs != null ? `${record.durationMs} ms` : "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -108,8 +114,4 @@ export default function PortalUsagePage() {
       </SectionCard>
     </>
   );
-}
-
-function humanise(value: string): string {
-  return value.replace(/[._]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

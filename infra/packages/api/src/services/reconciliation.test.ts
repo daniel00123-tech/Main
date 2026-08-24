@@ -380,6 +380,8 @@ describe("failed request billing policy", () => {
         versionLabel: "v1",
         effectiveFrom: null,
         effectiveTo: null,
+        marginBasis: "gross_margin",
+        costCategory: null,
       },
       { success: false, underlyingCostMicros: null, costBasis: "unknown" },
     );

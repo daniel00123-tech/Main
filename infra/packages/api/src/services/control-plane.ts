@@ -15,7 +15,7 @@ import {
   listMcpTools,
   resolveMcpAuthHeader,
 } from "./mcp-client";
-import { getUsageSummary, recordUsageEvent } from "./usage";
+import { getUsageSummary, listPlatformUsage, recordUsageEvent } from "./usage";
 import { getWalletBalance } from "./ledger";
 
 export async function listCompanies(db: D1Database, companyIds?: string[]) {
@@ -163,6 +163,34 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     /warehouse|database_summary|query_business|entity/i.test(name),
   );
 
+  const [lastUsage, identityRow] = await Promise.all([
+    db
+      .prepare(
+        `SELECT MAX(recorded_at) AS last FROM usage_records WHERE company_id = ?`,
+      )
+      .bind(companyId)
+      .first(),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count,
+                SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_count,
+                MAX(last_used_at) AS last_used
+         FROM service_identities WHERE company_id = ?`,
+      )
+      .bind(companyId)
+      .first(),
+  ]);
+
+  const lastUsageAt = lastUsage?.last ? String(lastUsage.last) : null;
+  const lastIdentityUsed = identityRow?.last_used
+    ? String(identityRow.last_used)
+    : null;
+  const lastActivityAt =
+    [lastUsageAt, lastIdentityUsed, recentAuditEvents[0]?.createdAt]
+      .filter(Boolean)
+      .sort()
+      .at(-1) ?? null;
+
   return {
     company,
     mcpEnvironments,
@@ -173,6 +201,10 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     wallet,
     knowledgeStatus: knowledgeConfigured ? "configured" : "not_configured",
     warehouseStatus: warehouseConfigured ? "configured" : "not_configured",
+    lastUsageAt,
+    lastActivityAt,
+    aiIdentityCount: Number(identityRow?.count ?? 0),
+    activeAiIdentityCount: Number(identityRow?.active_count ?? 0),
   };
 }
 
@@ -877,7 +909,8 @@ export async function getPlatformSummary(
   db: D1Database,
   companyIds?: string[],
 ) {
-  const [companies, mcpEnvironments, connectorInstances, auditEvents] =
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const [companies, mcpEnvironments, connectorInstances, auditEvents, recentUsage, denialRow] =
     await Promise.all([
       listCompanies(db, companyIds),
       listMcpEnvironments(
@@ -891,8 +924,18 @@ export async function getPlatformSummary(
       listAuditEvents(
         db,
         companyIds?.length === 1 ? companyIds[0] : undefined,
-        5,
+        8,
       ),
+      listPlatformUsage(db, 8, {
+        companyId: companyIds?.length === 1 ? companyIds[0] : undefined,
+      }),
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM audit_events
+           WHERE event_type = 'permission.denied' AND created_at >= ?`,
+        )
+        .bind(since)
+        .first(),
     ]);
 
   const scopedMcp =
@@ -918,5 +961,13 @@ export async function getPlatformSummary(
     connectorInstances: scopedConnectors.length,
     activeConnectors,
     recentAuditEvents: auditEvents,
+    recentUsage:
+      companyIds && companyIds.length > 1
+        ? recentUsage.filter((row) => companyIds.includes(row.companyId))
+        : recentUsage,
+    permissionDenialsLast24h: Number(denialRow?.count ?? 0),
+    unhealthyMcp: scopedMcp.filter(
+      (m) => m.status === "unreachable" || m.status === "degraded",
+    ).length,
   };
 }

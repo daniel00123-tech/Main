@@ -628,10 +628,24 @@ textarea {
 }
 input:focus,
 select:focus,
-textarea:focus {
+textarea:focus,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   border-color: var(--accent);
-  outline: none;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.input {
+  min-height: var(--control-h);
+  padding: 0 var(--s-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text);
+  width: 100%;
 }
 
 .search-field {

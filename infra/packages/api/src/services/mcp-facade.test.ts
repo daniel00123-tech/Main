@@ -3,6 +3,7 @@ import {
   enrichMcpToolDescription,
   handleInfraMcpJsonRpc,
   narrowKnowledgeSearchInputSchema,
+  pickInteractionHints,
   resolveMcpClientRequestId,
   sanitizeKnowledgeSearchArguments,
   wantsSse,
@@ -180,6 +181,25 @@ describe("ChatGPT search argument + idempotency guards", () => {
         params: { requestId: "explicit-1" },
       }),
     ).toBe("explicit-1");
+  });
+
+  it("reads interaction hints without using JSON-RPC id", () => {
+    const req = new Request("https://infra.test/mcp", {
+      method: "POST",
+      headers: {
+        "X-Infra-Interaction-Id": "int_turn_1",
+        "Mcp-Session-Id": "sess_abc",
+      },
+    });
+    const hints = pickInteractionHints(req, {
+      params: { _meta: { interactionId: "int_other" } },
+    });
+    expect(hints.interactionId).toBe("int_turn_1");
+    expect(hints.mcpSessionId).toBe("sess_abc");
+    const none = pickInteractionHints(new Request("https://infra.test/mcp"), {
+      params: {},
+    });
+    expect(none.interactionId).toBeNull();
   });
 
   it("strips ChatGPT-invented topic filters that zero Caddington results", () => {

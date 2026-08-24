@@ -28,6 +28,7 @@ import {
   evaluateActionPermission,
   userHasCompanyAccess,
 } from "../permissions/service";
+import { resolveInteractionIds } from "./interactions";
 
 export type GatewayActor =
   | { type: "user"; user: SessionUser }
@@ -156,6 +157,9 @@ export async function executeGatewayRequest(
     sourceClient?: string | null;
     requireCredit?: boolean;
     clientRequestId?: string | null;
+    interactionId?: string | null;
+    parentRequestId?: string | null;
+    mcpSessionId?: string | null;
   },
 ) {
   const correlationId = newId("corr");
@@ -163,6 +167,11 @@ export async function executeGatewayRequest(
     ? `req_${input.clientRequestId.trim()}`
     : newId("req");
   const clientRequestId = input.clientRequestId?.trim() || null;
+  const interaction = resolveInteractionIds({
+    headerInteractionId: input.interactionId,
+    parentRequestId: input.parentRequestId,
+    mcpSessionId: input.mcpSessionId,
+  });
   const started = Date.now();
   const gatewayRequestId = newId("gw");
 
@@ -374,8 +383,9 @@ export async function executeGatewayRequest(
         source_client, mcp_environment_id, tool_name, action, risk_class,
         status, permission_allowed, credit_check_passed, http_status, latency_ms,
         error_code, error_message, metadata_json, created_at,
-        client_request_id, request_id, settlement_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'denied', 0, NULL, 403, ?, 'permission_denied', ?, '{}', ?, ?, ?, 'zero_charge')`,
+        client_request_id, request_id, settlement_status,
+        interaction_id, parent_request_id, mcp_session_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'denied', 0, NULL, 403, ?, 'permission_denied', ?, '{}', ?, ?, ?, 'zero_charge', ?, ?, ?)`,
     )
       .bind(
         gatewayRequestId,
@@ -394,6 +404,9 @@ export async function executeGatewayRequest(
         nowIso(),
         clientRequestId,
         requestId,
+        interaction.interactionId,
+        interaction.parentRequestId,
+        interaction.mcpSessionId,
       )
       .run();
 
@@ -457,8 +470,9 @@ export async function executeGatewayRequest(
           source_client, mcp_environment_id, tool_name, action, risk_class,
           status, permission_allowed, credit_check_passed, http_status, latency_ms,
           error_code, error_message, metadata_json, created_at,
-          client_request_id, request_id, settlement_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'insufficient_credit', 1, 0, 402, ?, 'insufficient_credit', ?, '{}', ?, ?, ?, 'zero_charge')`,
+          client_request_id, request_id, settlement_status,
+          interaction_id, parent_request_id, mcp_session_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'insufficient_credit', 1, 0, 402, ?, 'insufficient_credit', ?, '{}', ?, ?, ?, 'zero_charge', ?, ?, ?)`,
       )
         .bind(
           gatewayRequestId,
@@ -477,6 +491,9 @@ export async function executeGatewayRequest(
           nowIso(),
           clientRequestId,
           requestId,
+          interaction.interactionId,
+          interaction.parentRequestId,
+          interaction.mcpSessionId,
         )
         .run();
 
@@ -569,12 +586,17 @@ export async function executeGatewayRequest(
     sourceClient,
     correlationId,
     requestId,
+    interactionId: interaction.interactionId,
+    parentRequestId: interaction.parentRequestId,
+    mcpSessionId: interaction.mcpSessionId,
     charge,
     metadata: {
       pricingLabel: charge.pricingLabel,
       isTestConfig: charge.isTestConfig,
       actorType: input.actor.type,
       balanceBeforeCents: balanceBefore.balanceCents,
+      interactionId: interaction.interactionId,
+      interactionSourcedFrom: interaction.sourcedFrom,
     },
     settlementStatus:
       charge.billable && charge.customerChargeCents && success
@@ -603,43 +625,8 @@ export async function executeGatewayRequest(
     charge.customerChargeCents &&
     charge.customerChargeCents > 0
   ) {
-    try {
-      const ledger = await appendLedgerEntry(env.DB, {
-        companyId: input.companyId,
-        entryType: "usage_debit",
-        amountCents: -Math.abs(charge.customerChargeCents),
-        referenceType: "usage",
-        referenceId: usage.id,
-        description: `${humanSource(sourceClient)} · ${humanAction(action)}`,
-        metadata: {
-          correlationId,
-          requestId,
-          isTestConfig: charge.isTestConfig,
-          pricingLabel: charge.pricingLabel,
-          balanceBeforeCents: balanceBefore.balanceCents,
-        },
-        createdBy: actorLabel,
-      });
-      ledgerEntryId = ledger.entry.id;
-      settlementStatus = "settled";
-      await markUsageSettled(env.DB, usage.id, ledger.entry.id);
-
-      await recordAuditEvent(env.DB, {
-        companyId: input.companyId,
-        eventType: "billing.credit_adjusted",
-        actor: actorLabel,
-        resourceType: "ledger",
-        resourceId: ledger.entry.id,
-        detail: {
-          stage: "billing.debit_created",
-          correlationId,
-          requestId,
-          amountCents: -Math.abs(charge.customerChargeCents),
-          balanceAfterCents: ledger.entry.balanceAfterCents,
-          alreadyExists: ledger.alreadyExists,
-        },
-      });
-    } catch (err) {
+    const latestWallet = await getWalletBalance(env.DB, input.companyId);
+    if (latestWallet.balanceCents < charge.customerChargeCents) {
       settlementStatus = "failed";
       await recordAuditEvent(env.DB, {
         companyId: input.companyId,
@@ -648,13 +635,75 @@ export async function executeGatewayRequest(
         resourceType: "billing",
         resourceId: usage.id,
         detail: {
-          stage: "billing.debit_failed",
+          stage: "billing.debit_skipped_insufficient_credit",
           correlationId,
           requestId,
-          error: err instanceof Error ? err.message : "ledger_failed",
+          interactionId: interaction.interactionId,
+          balanceCents: latestWallet.balanceCents,
+          requiredCents: charge.customerChargeCents,
         },
       });
-      // Do not pretend the request was fully settled
+    } else {
+      try {
+        const ledger = await appendLedgerEntry(env.DB, {
+          companyId: input.companyId,
+          entryType: "usage_debit",
+          amountCents: -Math.abs(charge.customerChargeCents),
+          referenceType: "usage",
+          referenceId: usage.id,
+          description: `${humanSource(sourceClient)} · ${humanAction(action)}`,
+          metadata: {
+            correlationId,
+            requestId,
+            interactionId: interaction.interactionId,
+            isTestConfig: charge.isTestConfig,
+            pricingLabel: charge.pricingLabel,
+            balanceBeforeCents: latestWallet.balanceCents,
+          },
+          createdBy: actorLabel,
+        });
+        ledgerEntryId = ledger.entry.id;
+        settlementStatus = "settled";
+        await markUsageSettled(env.DB, usage.id, ledger.entry.id);
+
+        await recordAuditEvent(env.DB, {
+          companyId: input.companyId,
+          eventType: "billing.credit_adjusted",
+          actor: actorLabel,
+          resourceType: "ledger",
+          resourceId: ledger.entry.id,
+          detail: {
+            stage: "billing.debit_created",
+            correlationId,
+            requestId,
+            interactionId: interaction.interactionId,
+            amountCents: -Math.abs(charge.customerChargeCents),
+            balanceAfterCents: ledger.entry.balanceAfterCents,
+            alreadyExists: ledger.alreadyExists,
+          },
+        });
+      } catch (err) {
+        settlementStatus = "failed";
+        const message = err instanceof Error ? err.message : "ledger_failed";
+        await recordAuditEvent(env.DB, {
+          companyId: input.companyId,
+          eventType: "permission.denied",
+          actor: actorLabel,
+          resourceType: "billing",
+          resourceId: usage.id,
+          detail: {
+            stage:
+              message === "INSUFFICIENT_CREDIT"
+                ? "billing.debit_rejected_insufficient_credit"
+                : "billing.debit_failed",
+            correlationId,
+            requestId,
+            interactionId: interaction.interactionId,
+            error: message,
+          },
+        });
+        // MCP already executed — do not fail the customer response for a race.
+      }
     }
   }
 
@@ -666,8 +715,9 @@ export async function executeGatewayRequest(
         source_client, mcp_environment_id, tool_name, action, risk_class,
         status, permission_allowed, credit_check_passed, http_status, latency_ms,
         usage_record_id, ledger_entry_id, error_code, error_message, metadata_json, created_at,
-        client_request_id, request_id, settlement_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        client_request_id, request_id, settlement_status,
+        interaction_id, parent_request_id, mcp_session_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         gatewayRequestId,
@@ -694,11 +744,15 @@ export async function executeGatewayRequest(
           riskClass,
           isTestConfig: charge.isTestConfig,
           requestId,
+          interactionId: interaction.interactionId,
         }),
         nowIso(),
         clientRequestId,
         requestId,
         settlementStatus,
+        interaction.interactionId,
+        interaction.parentRequestId,
+        interaction.mcpSessionId,
       )
       .run();
   } catch {

@@ -11,7 +11,7 @@ import {
 
 const FILTERS: Array<{ id: CatalogueFilter; label: string }> = [
   { id: "all", label: "All" },
-  { id: "connected", label: "Connected" },
+  { id: "product_ready", label: "In catalogue" },
   { id: "available", label: "Available" },
   { id: "coming_soon", label: "Coming Soon" },
 ];
@@ -82,7 +82,7 @@ export default function CataloguePage() {
         </div>
         <div className="connector-stat">
           <span className="connector-stat-value">{activeCount}</span>
-          <span className="connector-stat-label">Active</span>
+          <span className="connector-stat-label">Product-ready</span>
         </div>
       </div>
 
@@ -110,6 +110,7 @@ export default function CataloguePage() {
                 className={`connector-filter-chip ${
                   statusFilter === filter.id ? "active" : ""
                 }`}
+                aria-pressed={statusFilter === filter.id}
                 onClick={() => setStatusFilter(filter.id)}
               >
                 {filter.label}

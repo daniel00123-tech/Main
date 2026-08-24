@@ -19,8 +19,7 @@ export default function PortalEntryRedirect() {
         const memberIds = new Set(user.memberships.map((m) => m.companyId));
         const preferred =
           companies.find((c) => memberIds.has(c.id)) ??
-          companies.find((c) => c.id === "co_caddington") ??
-          companies[0];
+          (user.isPlatformAdmin ? companies[0] : undefined);
         if (!preferred) {
           if (!cancelled) {
             setFailed(

@@ -13,11 +13,17 @@ import type {
   UsageSummary,
 } from "@infra/shared";
 
-const API_BASE =
+export const API_BASE =
   import.meta.env.VITE_API_BASE ??
   (import.meta.env.PROD
     ? "https://infra-api.daniel-dwyer123.workers.dev"
     : "");
+
+/** ChatGPT / Claude connect here — never to a company MCP. */
+export function infraMcpUrl(): string {
+  const base = API_BASE.replace(/\/$/, "");
+  return `${base}/api/gateway/v1/mcp`;
+}
 
 export interface SessionUser {
   userId: string;
@@ -37,6 +43,9 @@ export interface PlatformSummary {
   connectorInstances: number;
   activeConnectors: number;
   recentAuditEvents: AuditEvent[];
+  recentUsage?: UsageRecord[];
+  permissionDenialsLast24h?: number;
+  unhealthyMcp?: number;
 }
 
 export interface RolePresetResponse {
@@ -98,6 +107,12 @@ async function fetchJson<T>(
 export const api = {
   getHealth: () =>
     fetchJson<{ status: string; environment?: string; timestamp?: string }>("/health"),
+  getReady: () =>
+    fetchJson<{
+      status: string;
+      checks?: Record<string, string>;
+      timestamp?: string;
+    }>("/ready"),
   getGatewayHealth: () =>
     fetchJson<{
       status: string;

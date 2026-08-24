@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function LoginPage() {
@@ -72,7 +72,7 @@ export default function LoginPage() {
           </button>
         </form>
         <p className="muted small" style={{ marginTop: 20 }}>
-          Company users: <a href="/portal/login">sign in to your company portal</a>
+          Company users: <Link to="/portal/login">sign in to your company portal</Link>
         </p>
       </div>
     </div>

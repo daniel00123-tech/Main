@@ -292,7 +292,18 @@ export default function UsagePage() {
             </thead>
             <tbody>
               {filtered.map((row) => (
-                <tr key={row.id} style={{ cursor: "pointer" }} onClick={() => setSelected(row)}>
+                <tr
+                  key={row.id}
+                  style={{ cursor: "pointer" }}
+                  tabIndex={0}
+                  onClick={() => setSelected(row)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelected(row);
+                    }
+                  }}
+                >
                   <td>{formatDate(row.recordedAt)}</td>
                   <td>
                     {row.companySlug ? (
@@ -308,7 +319,7 @@ export default function UsagePage() {
                   <td className="num">
                     {row.customerChargeCents != null
                       ? formatCurrency(row.customerChargeCents)
-                      : "£0.00"}
+                      : "—"}
                   </td>
                   <td>
                     <StatusBadge status={row.success !== false ? "completed" : "failed"} />
@@ -356,20 +367,30 @@ function UsageDetail({
         label="Operation"
         value={humaniseOperation(row.action ?? row.toolName ?? "Request")}
       />
-      <KeyValue label="MCP" value={row.mcpEnvironmentId ?? "—"} mono />
       <KeyValue
         label="Status"
         value={<StatusBadge status={row.success !== false ? "completed" : "failed"} />}
       />
-      <KeyValue label="Request ID" value={row.requestId ?? "—"} mono />
-      <KeyValue label="Correlation ID" value={row.correlationId ?? "—"} mono />
+      <KeyValue
+        label="Customer charge"
+        value={
+          row.customerChargeCents != null ? formatCurrency(row.customerChargeCents) : "Not priced"
+        }
+      />
+      <KeyValue
+        label="Latency"
+        value={row.durationMs != null ? `${row.durationMs} ms` : "—"}
+      />
+      {row.interactionId ? (
+        <KeyValue label="Interaction" value={row.interactionId} mono />
+      ) : null}
 
       <h3 className="section-title">Commercial</h3>
       <KeyValue label="Underlying cost" value={costLabel} />
       <KeyValue
         label="Customer charge"
         value={
-          row.customerChargeCents != null ? formatCurrency(row.customerChargeCents) : "£0.00"
+          row.customerChargeCents != null ? formatCurrency(row.customerChargeCents) : "Not priced"
         }
       />
       <KeyValue
@@ -417,19 +438,9 @@ function UsageDetail({
       <KeyValue label="Ledger" value={row.ledgerEntryId ?? "—"} mono />
       <KeyValue label="Settlement" value={row.settlementStatus ?? "—"} />
 
-      <h3 className="section-title">Audit</h3>
+      <h3 className="section-title">Related activity</h3>
       {auditEvents.length === 0 ? (
-        <ol className="audit-steps muted">
-          <li>Received</li>
-          <li>Authenticated</li>
-          <li>Authorised</li>
-          <li>Routed</li>
-          <li>MCP completed</li>
-          <li>Usage recorded</li>
-          <li>Pricing calculated</li>
-          <li>Ledger debited</li>
-          <li>Response returned</li>
-        </ol>
+        <p className="muted">No correlated audit events for this request.</p>
       ) : (
         <ol className="audit-steps">
           {auditEvents
@@ -447,10 +458,8 @@ function UsageDetail({
       <details className="advanced-block">
         <summary>Technical details</summary>
         <KeyValue label="Tool" value={row.toolName ?? "—"} mono />
-        <KeyValue
-          label="Latency"
-          value={row.durationMs != null ? `${row.durationMs}ms` : "—"}
-        />
+        <KeyValue label="Request ID" value={row.requestId ?? "—"} mono />
+        <KeyValue label="Correlation ID" value={row.correlationId ?? "—"} mono />
         <KeyValue label="Usage ID" value={row.id} mono />
       </details>
     </>

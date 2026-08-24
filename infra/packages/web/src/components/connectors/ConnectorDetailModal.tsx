@@ -5,7 +5,6 @@ import { ConnectorStatus } from "./ConnectorStatus";
 import {
   CAPABILITY_LABELS,
   CATEGORY_LABELS,
-  getConnectorActionLabel,
   getDevelopmentStatusMessage,
   SYNC_MODE_LABELS,
 } from "./catalogue-utils";
@@ -20,8 +19,6 @@ export function ConnectorDetailModal({
   onClose,
 }: ConnectorDetailModalProps) {
   if (!connector) return null;
-
-  const actionLabel = getConnectorActionLabel(connector.catalogueStatus);
 
   return (
     <div className="connector-modal-backdrop" onClick={onClose} role="presentation">
@@ -100,9 +97,9 @@ export function ConnectorDetailModal({
         <div className="connector-modal-footer">
           {connector.catalogueStatus === "active" ? (
             <p className="muted">
-              Manage company connector instances from the company detail view. The
-              existing Caddington Google Drive integration remains operational via
-              the external MCP environment.
+              This card describes a planned or existing business-system type.
+              Company-level connection happens on that company’s Connectors page.
+              Vendor connect flows are not enabled yet.
             </p>
           ) : connector.catalogueStatus === "available" ? (
             <p className="muted">
@@ -116,7 +113,7 @@ export function ConnectorDetailModal({
             </p>
           )}
           <button type="button" className="button button-primary" onClick={onClose}>
-            {actionLabel === "Coming Soon" ? "Close" : actionLabel}
+            Close
           </button>
         </div>
       </div>

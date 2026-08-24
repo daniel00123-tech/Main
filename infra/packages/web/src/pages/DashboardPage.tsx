@@ -6,6 +6,7 @@ import { api } from "../api";
 import {
   ActivityFeed,
   AttentionBanner,
+  EmptyState,
   ErrorState,
   LoadingState,
   MetricCard,
@@ -15,9 +16,11 @@ import {
   StatusBadge,
 } from "../components";
 import {
+  formatCharge,
   formatNumber,
   formatRelativeTime,
   humanEventLabel,
+  humanOperation,
 } from "../lib/format";
 
 export default function DashboardPage() {
@@ -93,7 +96,7 @@ export default function DashboardPage() {
         description="Operational command centre for companies, integrations, and AI gateways."
       />
 
-      <AttentionBanner items={attention} allClear="All systems operational" />
+      <AttentionBanner items={attention} allClear="No gateway or balance alerts" />
 
       <MetricGrid cols={4}>
         <MetricCard
@@ -122,6 +125,7 @@ export default function DashboardPage() {
           value={formatNumber(attention.length)}
           hint={attention.length === 0 ? "Nothing pending" : "Needs review"}
           icon={<ShieldAlert size={16} />}
+          to="/companies"
         />
       </MetricGrid>
 
@@ -136,7 +140,10 @@ export default function DashboardPage() {
           }
         >
           {companies.length === 0 ? (
-            <p className="muted">No companies yet.</p>
+            <EmptyState
+              title="No companies yet"
+              description="Create a company record from the Companies screen."
+            />
           ) : (
             <div className="table-wrap">
               <table className="table compact">
@@ -178,6 +185,65 @@ export default function DashboardPage() {
               };
             })}
           />
+        </SectionCard>
+      </div>
+
+      <div className="grid grid-2" style={{ marginTop: 24 }}>
+        <SectionCard
+          title="Recent usage"
+          description={
+            summary.permissionDenialsLast24h
+              ? `${summary.permissionDenialsLast24h} permission denials in the last 24 hours`
+              : "Latest operations across companies"
+          }
+          actions={
+            <Link to="/usage" className="button button-ghost button-small">
+              View usage
+            </Link>
+          }
+        >
+          {!summary.recentUsage || summary.recentUsage.length === 0 ? (
+            <EmptyState
+              title="No usage yet"
+              description="Usage appears after an AI client calls INFRA."
+            />
+          ) : (
+            <div className="table-wrap">
+              <table className="table compact">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Operation</th>
+                    <th className="num">Charge</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.recentUsage.slice(0, 6).map((row) => (
+                    <tr key={row.id}>
+                      <td>{formatRelativeTime(row.recordedAt)}</td>
+                      <td>{humanOperation(row.action, row.toolName)}</td>
+                      <td className="num">{formatCharge(row.customerChargeCents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SectionCard>
+        <SectionCard title="Wallet alerts" description="Companies below their low-balance threshold.">
+          {balances.filter((b) => b.lowBalance).length === 0 ? (
+            <EmptyState title="No low wallets" description="Every company is above its alert threshold." />
+          ) : (
+            <ul className="stack" style={{ margin: 0, paddingLeft: 18 }}>
+              {balances
+                .filter((b) => b.lowBalance)
+                .map((b) => (
+                  <li key={b.companyId}>
+                    <Link to={`/companies/${b.companySlug}`}>{b.companyName}</Link>
+                  </li>
+                ))}
+            </ul>
+          )}
         </SectionCard>
       </div>
     </>

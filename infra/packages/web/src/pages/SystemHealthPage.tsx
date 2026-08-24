@@ -35,10 +35,14 @@ export default function SystemHealthPage() {
     setLoading(true);
     setError(null);
     try {
-      const [healthResult, gatewayResult, mcpList, connectorList] = await Promise.all([
+      const [healthResult, readyResult, gatewayResult, mcpList, connectorList] = await Promise.all([
         api.getHealth().then(
           (data) => ({ ok: true as const, data }),
           (err) => ({ ok: false as const, error: err instanceof Error ? err.message : "API unreachable" }),
+        ),
+        api.getReady().then(
+          (data) => ({ ok: true as const, data }),
+          () => ({ ok: false as const }),
         ),
         api.getGatewayHealth().then(
           (data) => ({ ok: true as const, data }),
@@ -65,9 +69,17 @@ export default function SystemHealthPage() {
         });
         tiles.push({
           id: "database",
-          name: "Database",
-          status: "unknown",
-          detail: "No dedicated database probe is exposed. Availability inferred only via API success.",
+          name: "D1",
+          status: readyResult.ok && readyResult.data.status === "ready" ? "operational" : "degraded",
+          detail: readyResult.ok
+            ? `Probe: ${readyResult.data.checks?.d1 ?? readyResult.data.status}`
+            : "Ready probe unavailable",
+        });
+        tiles.push({
+          id: "frontend",
+          name: "Frontend",
+          status: "operational",
+          detail: "This console loaded successfully",
         });
       } else {
         tiles.push({
@@ -99,9 +111,9 @@ export default function SystemHealthPage() {
         tiles.push({
           id: "billing",
           name: "Billing",
-          status: configured ? "operational" : "not_configured",
+          status: configured ? "not_configured" : "not_configured",
           detail: configured
-            ? "Stripe credentials configured on the API"
+            ? "Stripe credentials present — live charging not approved"
             : "Stripe is not configured — top-ups unavailable",
         });
         tiles.push({

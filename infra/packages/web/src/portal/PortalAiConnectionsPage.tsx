@@ -13,11 +13,11 @@ import {
   StatusBadge,
   toast,
 } from "../components";
-import { api } from "../api";
+import { api, infraMcpUrl } from "../api";
 import { formatRelativeTime } from "../lib/format";
 import { usePortalCompany } from "./usePortalCompany";
 
-const INFRA_MCP = "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp";
+const DEFAULT_MCP_URL = infraMcpUrl();
 
 type AiConnection = Awaited<ReturnType<typeof api.getAiConnections>>[number];
 
@@ -34,7 +34,7 @@ async function copyText(value: string, label: string) {
 
 function statusLabel(conn: AiConnection): string {
   if (conn.status === "coming_soon") return "Coming soon";
-  if (conn.status === "connected" && conn.tokenStatus === "Active") return "Connected";
+  if (conn.status === "connected" && conn.tokenStatus === "Active") return "Token active";
   if (conn.status === "connected" && conn.tokenStatus === "Revoked") return "Needs reconnection";
   if (conn.status === "ready_to_connect") return "Not connected";
   if (conn.status === "error") return "Error";
@@ -96,7 +96,7 @@ export default function PortalAiConnectionsPage() {
         clientType,
         token: result.token,
         endpoint: result.gatewayEndpoint,
-        mcpEndpoint: result.mcpEndpoint ?? INFRA_MCP,
+        mcpEndpoint: result.mcpEndpoint ?? DEFAULT_MCP_URL,
       });
       toast("Token issued — copy it now; it will not be shown again");
       await refresh();
@@ -174,7 +174,7 @@ export default function PortalAiConnectionsPage() {
 
       {tokenReveal ? (
         <Notice tone="success">
-          <strong>ChatGPT connection ready</strong>
+          <strong>{tokenReveal.clientType === "chatgpt" ? "ChatGPT" : tokenReveal.clientType} connection ready</strong>
           <p style={{ margin: "8px 0" }}>
             Copy this token now. For security, INFRA will not display it again.
           </p>
@@ -258,7 +258,7 @@ export default function PortalAiConnectionsPage() {
                 className="connector-card"
                 style={{
                   minHeight: isChatgpt ? 280 : 160,
-                  outline: isChatgpt ? "2px solid var(--accent, #1a5cff)" : undefined,
+                  outline: isChatgpt ? "2px solid var(--accent)" : undefined,
                 }}
               >
                 <div className="connection-header">
@@ -273,7 +273,7 @@ export default function PortalAiConnectionsPage() {
                     label="MCP endpoint"
                     value={
                       <code className="mono small" style={{ wordBreak: "break-all" }}>
-                        {conn.mcpEndpoint ?? INFRA_MCP}
+                        {conn.mcpEndpoint ?? DEFAULT_MCP_URL}
                       </code>
                     }
                   />
@@ -355,20 +355,19 @@ export default function PortalAiConnectionsPage() {
           </li>
           <li>Copy the Bearer token (shown once) and the INFRA MCP URL</li>
           <li>
-            In ChatGPT Connectors / MCPs, remove any direct{" "}
-            <code className="mono">caddington-mcp…</code> URL
+            In ChatGPT Connectors / MCPs, remove any old direct company MCP URL
           </li>
           <li>
-            Add only this INFRA endpoint with the Bearer token:
+            Add only this INFRA endpoint. Authentication type: <strong>Bearer token</strong>.
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8, alignItems: "center" }}>
               <code className="mono" style={{ wordBreak: "break-all" }}>
-                {INFRA_MCP}
+                {DEFAULT_MCP_URL}
               </code>
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => void handleCopy("mcp-setup", INFRA_MCP, "INFRA MCP URL")}
+                onClick={() => void handleCopy("mcp-setup", DEFAULT_MCP_URL, "INFRA MCP URL")}
               >
                 {copiedKey === "mcp-setup" ? <Check size={14} /> : <Copy size={14} />}
                 Copy URL

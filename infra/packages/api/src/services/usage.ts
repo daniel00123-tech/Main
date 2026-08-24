@@ -19,6 +19,9 @@ export interface UsageEventInput {
   sourceClient?: string | null;
   correlationId?: string | null;
   requestId?: string | null;
+  interactionId?: string | null;
+  parentRequestId?: string | null;
+  mcpSessionId?: string | null;
   underlyingCostCents?: number | null;
   customerChargeCents?: number | null;
   charge?: ChargeResult | null;
@@ -77,8 +80,9 @@ export async function recordUsageEvent(db: D1Database, input: UsageEventInput) {
           request_id, cost_basis, estimated_cost_micros, underlying_cost_micros,
           pricing_rule_id, rate_card_id, rate_card_version, target_margin_bps,
           calculated_selling_cents, minimum_charge_applied, gross_profit_cents,
-          actual_margin_bps, ledger_entry_id, settlement_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          actual_margin_bps, ledger_entry_id, settlement_status,
+          interaction_id, parent_request_id, mcp_session_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -116,6 +120,9 @@ export async function recordUsageEvent(db: D1Database, input: UsageEventInput) {
         charge?.actualMarginBps ?? null,
         input.ledgerEntryId ?? null,
         settlement,
+        input.interactionId ?? null,
+        input.parentRequestId ?? null,
+        input.mcpSessionId ?? null,
       )
       .run();
   } catch (err) {
@@ -224,6 +231,11 @@ function mapUsageRow(row: Record<string, unknown>) {
       row.actual_margin_bps == null ? null : Number(row.actual_margin_bps),
     ledgerEntryId: row.ledger_entry_id ? String(row.ledger_entry_id) : null,
     settlementStatus: String(row.settlement_status ?? "unsettled"),
+    interactionId: row.interaction_id ? String(row.interaction_id) : null,
+    parentRequestId: row.parent_request_id
+      ? String(row.parent_request_id)
+      : null,
+    mcpSessionId: row.mcp_session_id ? String(row.mcp_session_id) : null,
   };
 }
 

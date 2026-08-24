@@ -313,7 +313,7 @@ export default function CompaniesPage() {
             Needs attention
           </FilterChip>
           <FilterChip active={filter === "disabled"} onClick={() => setFilter("disabled")}>
-            Disabled
+            Suspended
           </FilterChip>
         </div>
       </FilterBar>

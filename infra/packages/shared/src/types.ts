@@ -320,6 +320,9 @@ export interface UsageRecord {
   actualMarginBps?: number | null;
   ledgerEntryId?: string | null;
   settlementStatus?: string | null;
+  interactionId?: string | null;
+  parentRequestId?: string | null;
+  mcpSessionId?: string | null;
 }
 
 export interface UsageSummary {
@@ -441,4 +444,8 @@ export interface CompanyOverview {
   };
   knowledgeStatus?: "configured" | "not_configured";
   warehouseStatus?: "configured" | "not_configured";
+  lastUsageAt?: string | null;
+  lastActivityAt?: string | null;
+  aiIdentityCount?: number;
+  activeAiIdentityCount?: number;
 }

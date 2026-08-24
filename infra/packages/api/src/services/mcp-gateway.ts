@@ -27,6 +27,7 @@ import {
   serviceHasActionScope,
 } from "./service-identities";
 import { newId, nowIso } from "../db/mappers";
+import { publicToolErrorMessage } from "./public-errors";
 
 type JsonRpcId = string | number | null;
 
@@ -137,6 +138,42 @@ export function resolveMcpClientRequestId(
   }
 
   return null;
+}
+
+/**
+ * Optional client-supplied grouping. JSON-RPC `id` is never used.
+ * ChatGPT typically sends nothing — INFRA then generates int_… per operation.
+ */
+export function pickInteractionHints(
+  request: Request,
+  body: { params?: Record<string, unknown> },
+): {
+  interactionId: string | null;
+  parentRequestId: string | null;
+  mcpSessionId: string | null;
+} {
+  const params = body.params ?? {};
+  const meta =
+    params._meta && typeof params._meta === "object"
+      ? (params._meta as Record<string, unknown>)
+      : {};
+  const asString = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+
+  return {
+    interactionId:
+      request.headers.get("X-Infra-Interaction-Id")?.trim() ||
+      asString(meta.interactionId) ||
+      asString(params.interactionId),
+    parentRequestId:
+      request.headers.get("X-Infra-Parent-Request-Id")?.trim() ||
+      asString(meta.parentRequestId) ||
+      asString(params.parentRequestId),
+    mcpSessionId:
+      request.headers.get("Mcp-Session-Id")?.trim() ||
+      request.headers.get("X-Infra-Mcp-Session-Id")?.trim() ||
+      null,
+  };
 }
 
 /** Arguments ChatGPT may safely forward to Caddington knowledge search. */
@@ -506,6 +543,7 @@ export async function handleInfraMcpJsonRpc(
     }
 
     const clientRequestId = resolveMcpClientRequestId(request, body);
+    const interactionHints = pickInteractionHints(request, body);
 
     const result = await executeGatewayRequest(env, {
       actor,
@@ -515,6 +553,9 @@ export async function handleInfraMcpJsonRpc(
       sourceClient:
         actor.type === "service" ? actor.identity.identityType : "infra-mcp",
       clientRequestId,
+      interactionId: interactionHints.interactionId,
+      parentRequestId: interactionHints.parentRequestId,
+      mcpSessionId: interactionHints.mcpSessionId,
     });
 
     if (result.status !== 200) {
@@ -534,11 +575,16 @@ export async function handleInfraMcpJsonRpc(
             typeof args.query === "string" ? args.query.slice(0, 80) : null,
         },
       });
+      const publicError = publicToolErrorMessage(
+        result.status,
+        result.error ?? "Tool call failed",
+      );
       return {
-        payload: jsonRpcError(id, -32003, result.error ?? "Tool call failed", {
+        payload: jsonRpcError(id, -32003, publicError.message, {
           correlationId: result.correlationId,
           requestId: "requestId" in result ? result.requestId : undefined,
           httpStatus: result.status,
+          errorCode: publicError.code,
           action: "action" in result ? result.action : undefined,
           riskClass: "riskClass" in result ? result.riskClass : undefined,
         }),

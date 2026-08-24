@@ -2,8 +2,10 @@ import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api";
 import type { CompanyRole, InfraUser } from "@infra/shared";
 import {
+  EmptyState,
   ErrorState,
   LoadingState,
+  Notice,
   PageHeader,
   SectionCard,
   StatusBadge,
@@ -141,6 +143,10 @@ export default function PortalTeamPage() {
               {busy ? "Creating invite..." : "Create invite"}
             </button>
           </form>
+          <Notice tone="info">
+            Invitation email is not sent automatically. Copy the setup link from the result and
+            share it with the new user.
+          </Notice>
           {inviteResult ? <p className="info-banner">{inviteResult}</p> : null}
         </SectionCard>
       ) : null}
@@ -149,6 +155,13 @@ export default function PortalTeamPage() {
         <div className="card-header-row">
           <h3>Team members</h3>
         </div>
+        {team.length === 0 ? (
+          <EmptyState
+            title="No team members yet"
+            description="Invite a colleague when you are ready. Email delivery is not enabled — you will get a setup link to share."
+          />
+        ) : (
+        <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
@@ -218,6 +231,8 @@ export default function PortalTeamPage() {
             })}
           </tbody>
         </table>
+        </div>
+        )}
       </div>
 
       <SectionCard title="Role presets">

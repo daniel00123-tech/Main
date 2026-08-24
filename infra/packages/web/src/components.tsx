@@ -845,7 +845,7 @@ export function ActionMenu({
   useClickOutside(ref, () => setOpen(false));
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <Button type="button" variant="ghost" size="sm" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <Button type="button" variant="ghost" size="sm" aria-label="Actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         •••
       </Button>
       {open ? (

@@ -64,16 +64,15 @@ export default function PortalDashboardPage() {
 
       <AttentionBanner
         items={attention}
-        allClear="Everything is running normally"
+        allClear="No alerts right now"
       />
 
       <SectionCard
-        title="ChatGPT connector"
-        description="Generate a Bearer token and point ChatGPT at the INFRA MCP URL — no backend setup required."
+        title="Connect ChatGPT"
+        description="Create a one-time token and point ChatGPT at INFRA. Company systems stay behind INFRA."
       >
         <p className="muted" style={{ marginTop: 0 }}>
-          Path: <strong>{company.name}</strong> → AI connections → ChatGPT → Generate / Reconnect
-          token → INFRA MCP URL
+          Open AI connections, choose ChatGPT, then follow the setup steps. The token is shown once.
         </p>
         <Link to={`${base}/ai-connections`} className="button button-primary">
           Open AI connections · ChatGPT
@@ -92,7 +91,9 @@ export default function PortalDashboardPage() {
             <li>
               <Link to={`${base}/team`}>Invite your team</Link>
             </li>
-            <li>Configure permissions</li>
+            <li>
+              <Link to={`${base}/team`}>Review roles</Link>
+            </li>
             <li>Start using INFRA</li>
           </ol>
         </SectionCard>
@@ -106,9 +107,9 @@ export default function PortalDashboardPage() {
           to={`${base}/connectors`}
         />
         <MetricCard
-          label="AI gateway"
-          value={mcp ? <StatusBadge status={mcp.status} /> : "—"}
-          hint={mcp?.name ?? "Not configured"}
+          label="Business MCP"
+          value={mcp ? <StatusBadge status={mcp.status} /> : "Not configured"}
+          hint={mcp ? "Company AI environment" : "No company MCP registered"}
           to={`${base}/ai-connections`}
         />
         <MetricCard
