@@ -13,5 +13,17 @@
       "database_name": "caddington-business-data",
       "database_id": "2837bf7d-cf76-4920-84b9-48c4d2fe16db"
     }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "CADDINGTON_KNOWLEDGE",
+      "bucket_name": "caddington-knowledge"
+    }
+  ],
+  "vectorize": [
+    {
+      "binding": "CADDINGTON_KNOWLEDGE_INDEX",
+      "index_name": "caddington-knowledge-index"
+    }
   ]
 }
