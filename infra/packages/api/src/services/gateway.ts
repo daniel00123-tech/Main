@@ -143,12 +143,16 @@ export async function executeGatewayRequest(
     }
   } else if (input.actor.identity.companyId !== input.companyId) {
     await recordAuditEvent(env.DB, {
-      companyId: input.companyId,
+      companyId: input.actor.identity.companyId,
       eventType: "permission.denied",
       actor: actorLabel,
       resourceType: "gateway",
       resourceId: input.toolName,
-      detail: { correlationId, reason: "service_tenant_spoof" },
+      detail: {
+        correlationId,
+        reason: "service_tenant_spoof",
+        attemptedCompanyId: input.companyId,
+      },
     });
     return {
       status: 403 as const,
