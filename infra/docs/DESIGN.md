@@ -995,3 +995,12 @@ Cursor-built automations run as a **service identity** (e.g. `automation:ht-send
 INFRA has **no connection** to legacy Nirvana, Aquilo, or Urban Maintenance. No reuse of live credentials. Historical code may inform connector design only.
 
 Before enabling any external connection, document: company, service, account/tenant, permissions, read/write/delete/batch/send capabilities — and obtain explicit approval.
+
+---
+
+## Related documents
+
+| Document | Contents |
+| --- | --- |
+| `infra/docs/SETUP-GUIDE.md` | Go-live: hosting, domain, Cloudflare, Stripe, phased checklist |
+| `infra/docs/CURSOR-BRIDGE.md` | Cursor ↔ INFRA escalation when AI/MCP is unsure about APIs |
