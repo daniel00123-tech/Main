@@ -150,6 +150,7 @@ export default function CompaniesPage() {
                 <th>Connectors</th>
                 <th>AI Gateway</th>
                 <th>Domain</th>
+                <th>Portal</th>
               </tr>
             </thead>
             <tbody>
@@ -173,6 +174,22 @@ export default function CompaniesPage() {
                     {company.mcpStatus ? <StatusBadge status={company.mcpStatus} /> : <span className="muted">None</span>}
                   </td>
                   <td className="muted">{company.primaryDomain ?? "—"}</td>
+                  <td>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      <Link
+                        to="/portal/dashboard"
+                        className="button button-secondary button-small"
+                      >
+                        Portal
+                      </Link>
+                      <Link
+                        to="/portal/ai-connections"
+                        className="button button-primary button-small"
+                      >
+                        ChatGPT
+                      </Link>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -230,33 +247,46 @@ export default function CompaniesPage() {
 
 function CompanyCard({ company }: { company: CompanyRow }) {
   return (
-    <Link to={`/companies/${company.slug}`} className="entity-card" style={{ display: "block", color: "inherit", textDecoration: "none" }}>
-      <div className="connection-header">
-        <div>
-          <h3>{company.name}</h3>
-          <p className="muted small" style={{ margin: "4px 0 0" }}>
-            {company.primaryDomain ?? company.slug}
-          </p>
+    <div className="entity-card">
+      <Link
+        to={`/companies/${company.slug}`}
+        style={{ display: "block", color: "inherit", textDecoration: "none" }}
+      >
+        <div className="connection-header">
+          <div>
+            <h3>{company.name}</h3>
+            <p className="muted small" style={{ margin: "4px 0 0" }}>
+              {company.primaryDomain ?? company.slug}
+            </p>
+          </div>
+          <StatusBadge status={company.status} />
         </div>
-        <StatusBadge status={company.status} />
-      </div>
-      <div className="grid grid-3" style={{ marginTop: 12 }}>
-        <div>
-          <div className="muted small">Connectors</div>
-          <div style={{ fontWeight: 600 }}>
-            {company.connectedCount}/{company.connectorCount}
+        <div className="grid grid-3" style={{ marginTop: 12 }}>
+          <div>
+            <div className="muted small">Connectors</div>
+            <div style={{ fontWeight: 600 }}>
+              {company.connectedCount}/{company.connectorCount}
+            </div>
+          </div>
+          <div>
+            <div className="muted small">AI Gateway</div>
+            <div>{company.mcpStatus ? <StatusBadge status={company.mcpStatus} /> : "—"}</div>
+          </div>
+          <div>
+            <div className="muted small">Attention</div>
+            <div style={{ fontWeight: 600 }}>{company.needsAttention ? "Yes" : "None"}</div>
           </div>
         </div>
-        <div>
-          <div className="muted small">AI Gateway</div>
-          <div>{company.mcpStatus ? <StatusBadge status={company.mcpStatus} /> : "—"}</div>
-        </div>
-        <div>
-          <div className="muted small">Attention</div>
-          <div style={{ fontWeight: 600 }}>{company.needsAttention ? "Yes" : "None"}</div>
-        </div>
+      </Link>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+        <Link to="/portal/dashboard" className="button button-secondary button-small">
+          Company portal
+        </Link>
+        <Link to="/portal/ai-connections" className="button button-primary button-small">
+          ChatGPT connector
+        </Link>
       </div>
-    </Link>
+    </div>
   );
 }
 

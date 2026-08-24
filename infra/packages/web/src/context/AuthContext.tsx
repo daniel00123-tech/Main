@@ -1,4 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { api, type SessionUser } from "../api";
 
@@ -97,9 +104,21 @@ export function AdminAuthShell() {
 }
 
 export function PortalAuthShell() {
-  const { user, loading } = useAuth();
+  const { user, loading, refresh } = useAuth();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshed, setRefreshed] = useState(false);
 
-  if (loading) {
+  useEffect(() => {
+    if (!user || user.memberships.length > 0 || refreshed || refreshing) return;
+    // Stale sessions may lack memberships added after login — refresh once.
+    setRefreshing(true);
+    void refresh().finally(() => {
+      setRefreshing(false);
+      setRefreshed(true);
+    });
+  }, [user, refreshed, refreshing, refresh]);
+
+  if (loading || refreshing) {
     return <div className="card muted">Loading session...</div>;
   }
 
@@ -107,19 +126,14 @@ export function PortalAuthShell() {
     return <Navigate to="/portal/login" replace />;
   }
 
-  if (!user.memberships.length) {
+  // Platform admins can open any company portal for operations without a membership row.
+  if (!user.memberships.length && !user.isPlatformAdmin) {
     return (
       <div className="card" style={{ margin: 40, maxWidth: 480 }}>
         <h2>Company portal</h2>
         <p className="muted">
-          This account has no company membership. Platform administrators need a company
-          membership to open a company portal.
+          This account has no company membership. Ask a company administrator to invite you.
         </p>
-        {user.isPlatformAdmin ? (
-          <a className="button button-primary" href="/">
-            Back to platform admin
-          </a>
-        ) : null}
       </div>
     );
   }

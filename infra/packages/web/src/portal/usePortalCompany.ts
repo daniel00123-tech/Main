@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api";
-import type { Company, CompanyOverview } from "@infra/shared";
+import type { Company, CompanyOverview, CompanyRole } from "@infra/shared";
+
+const CADDINGTON_COMPANY_ID = "co_caddington";
 
 export function usePortalCompany() {
   const { user } = useAuth();
@@ -9,35 +11,46 @@ export function usePortalCompany() {
   const [overview, setOverview] = useState<CompanyOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [adminRole, setAdminRole] = useState<CompanyRole | null>(null);
 
   const membership = useMemo(() => {
     if (!user?.memberships?.length) return null;
     // Prefer Caddington when present (first operational tenant), else first membership
     const caddington = user.memberships.find(
-      (item) => item.companyId === "co_caddington",
+      (item) => item.companyId === CADDINGTON_COMPANY_ID,
     );
     return caddington ?? user.memberships[0];
   }, [user]);
 
   useEffect(() => {
-    if (!membership) {
-      setLoading(false);
-      setError(
-        user?.isPlatformAdmin
-          ? "No company membership found. Platform administrators need a company membership to open the company portal."
-          : "No company membership found for this account.",
-      );
-      return;
-    }
-
     void (async () => {
+      setLoading(true);
+      setError(null);
       try {
         const companies = await api.getCompanies();
-        const matched = companies.find((item) => item.id === membership.companyId);
+        let matched: Company | undefined;
+
+        if (membership) {
+          matched = companies.find((item) => item.id === membership.companyId);
+        } else if (user?.isPlatformAdmin) {
+          // Platform admins without a membership still need a company portal —
+          // prefer Caddington Holdings (the live operational tenant).
+          matched =
+            companies.find((item) => item.id === CADDINGTON_COMPANY_ID) ??
+            companies.find((item) => item.slug === "caddington-holdings") ??
+            companies[0];
+          setAdminRole("company_admin");
+        }
+
         if (!matched) {
-          setError("Company not found.");
+          setError(
+            user?.isPlatformAdmin
+              ? "No companies found. Create Caddington Holdings first."
+              : "No company membership found for this account.",
+          );
           return;
         }
+
         const companyOverview = await api.getCompanyOverview(matched.slug);
         setCompany(matched);
         setOverview(companyOverview);
@@ -51,7 +64,10 @@ export function usePortalCompany() {
 
   return {
     user,
-    membership,
+    membership: membership ??
+      (adminRole && company
+        ? { companyId: company.id, role: adminRole }
+        : null),
     company,
     overview,
     loading,

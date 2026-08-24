@@ -223,7 +223,20 @@ app.post("/api/auth/logout", requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
-app.get("/api/auth/me", requireAuth, (c) => c.json(c.get("user")));
+app.get("/api/auth/me", requireAuth, async (c) => {
+  // Reload memberships from DB so portal access is not stuck on a stale JWT
+  // (e.g. membership created after the current login).
+  const session = c.get("user");
+  const dbUser = await getUserById(c.env.DB, session.userId);
+  if (!dbUser || dbUser.status !== "active") {
+    clearSessionCookie(c);
+    return c.json({ error: "Invalid or expired session" }, 401);
+  }
+  const fresh = await toSessionUser(c.env.DB, dbUser);
+  const token = await createSessionToken(fresh, c.env.SESSION_SECRET);
+  setSessionCookie(c, token);
+  return c.json(fresh);
+});
 
 app.get("/api/summary", requireAuth, async (c) => {
   const user = c.get("user");

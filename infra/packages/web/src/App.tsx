@@ -71,6 +71,7 @@ const ADMIN_NAV: NavGroup[] = [
     items: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard size={18} />, end: true },
       { to: "/companies", label: "Companies", icon: <Building2 size={18} /> },
+      { to: "/portal/dashboard", label: "Company portal", icon: <Building2 size={18} /> },
     ],
   },
   {
@@ -79,6 +80,7 @@ const ADMIN_NAV: NavGroup[] = [
       { to: "/connectors", label: "Connectors", icon: <Plug size={18} /> },
       { to: "/mcp-environments", label: "AI Gateways", icon: <Network size={18} /> },
       { to: "/ai-clients", label: "AI Clients", icon: <Bot size={18} /> },
+      { to: "/portal/ai-connections", label: "ChatGPT connector", icon: <Bot size={18} /> },
     ],
   },
   {

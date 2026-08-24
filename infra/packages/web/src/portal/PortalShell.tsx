@@ -113,7 +113,7 @@ export default function PortalShell() {
           {showLabels ? (
             <div className="brand-text">
               <span className="brand-name">INFRA</span>
-              <span className="brand-context">{company.name}</span>
+              <span className="brand-context">Company portal · {company.name}</span>
             </div>
           ) : null}
           {!isMobile ? (

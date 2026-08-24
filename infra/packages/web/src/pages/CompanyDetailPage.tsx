@@ -91,8 +91,11 @@ export default function CompanyDetailPage() {
         meta={<StatusBadge status={company.status} />}
         actions={
           <>
-            <Link to="/portal/dashboard" className="button button-primary">
-              Open portal
+            <Link to="/portal/ai-connections" className="button button-primary">
+              ChatGPT connector
+            </Link>
+            <Link to="/portal/dashboard" className="button button-secondary">
+              Open company portal
             </Link>
             <ActionMenu
               items={[
@@ -136,6 +139,30 @@ export default function CompanyDetailPage() {
               </div>
             </div>
           ) : null}
+
+          <SectionCard
+            title="Company portal"
+            description="Company admins manage AI connections, usage, and billing here — including ChatGPT reconnect / new token."
+          >
+            <p className="muted" style={{ marginTop: 0 }}>
+              Open the <strong>{company.name}</strong> portal to issue a ChatGPT Bearer token and
+              point ChatGPT at the INFRA MCP URL only.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+              <Link to="/portal/ai-connections" className="button button-primary">
+                AI connections · ChatGPT
+              </Link>
+              <Link to="/portal/dashboard" className="button button-secondary">
+                Portal home
+              </Link>
+              <Link to="/portal/billing" className="button button-secondary">
+                Billing
+              </Link>
+              <Link to="/portal/usage" className="button button-secondary">
+                Usage
+              </Link>
+            </div>
+          </SectionCard>
 
           <MetricGrid cols={4}>
             <MetricCard label="Users & access" value="Manage in portal" hint="Open company portal" to="/portal/team" />

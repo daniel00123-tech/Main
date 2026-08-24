@@ -568,12 +568,77 @@ phase3.post(
 
 // ---------- AI client connections ----------
 
+async function ensureDefaultAiConnections(
+  db: D1Database,
+  companyId: string,
+): Promise<void> {
+  const now = nowIso();
+  const defaults: Array<{
+    id: string;
+    clientType: string;
+    displayName: string;
+    status: string;
+    notes: string;
+  }> = [
+    {
+      id: `ai_${companyId}_chatgpt`,
+      clientType: "chatgpt",
+      displayName: "ChatGPT",
+      status: "ready_to_connect",
+      notes:
+        "Generate a service identity token, then configure ChatGPT to call the INFRA MCP facade with the Bearer token. Do not point ChatGPT at the company MCP directly.",
+    },
+    {
+      id: `ai_${companyId}_claude`,
+      clientType: "claude",
+      displayName: "Claude",
+      status: "ready_to_connect",
+      notes:
+        "Generate a service identity token, then configure Claude to call the INFRA MCP facade with the Bearer token.",
+    },
+    {
+      id: `ai_${companyId}_whatsapp`,
+      clientType: "whatsapp",
+      displayName: "WhatsApp",
+      status: "coming_soon",
+      notes: "WhatsApp channel gateway is planned for a later phase.",
+    },
+  ];
+
+  for (const item of defaults) {
+    // Prefer stable seed IDs for Caddington; fall back to generated ids for other companies.
+    const preferredId =
+      companyId === "co_caddington"
+        ? `ai_cad_${item.clientType}`
+        : item.id;
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO ai_client_connections
+          (id, company_id, client_type, display_name, status, gateway_path, setup_notes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, '/api/gateway/v1/mcp', ?, ?, ?)`,
+      )
+      .bind(
+        preferredId,
+        companyId,
+        item.clientType,
+        item.displayName,
+        item.status,
+        item.notes,
+        now,
+        now,
+      )
+      .run();
+  }
+}
+
 phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
   const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
   if (!company) return c.json({ error: "Company not found" }, 404);
   if (!userHasCompanyAccess(c.get("user"), company.id)) {
     return c.json({ error: "Access to this company is denied" }, 403);
   }
+
+  await ensureDefaultAiConnections(c.env.DB, company.id);
 
   const rows = await c.env.DB.prepare(
     `SELECT * FROM ai_client_connections WHERE company_id = ? ORDER BY client_type ASC`,
@@ -621,6 +686,8 @@ phase3.post(
     if (clientType !== "chatgpt" && clientType !== "claude") {
       return c.json({ error: "Unsupported AI client" }, 400);
     }
+
+    await ensureDefaultAiConnections(c.env.DB, company.id);
 
     const mcps = await listMcpEnvironments(c.env.DB, company.id);
     const mcpEndpoint =
