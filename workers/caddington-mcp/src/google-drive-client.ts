@@ -41,20 +41,51 @@ export interface GoogleDriveDownloadResult {
   exportRequired: boolean;
 }
 
-export function parseGoogleDriveCredentials(raw: string | undefined): GoogleDriveCredentials | null {
+function readString(
+  source: Record<string, unknown> | undefined,
+  ...keys: string[]
+): string | undefined {
+  if (!source) return undefined;
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function normalizeCredentialsPayload(raw: string): unknown {
+  let parsed: unknown = JSON.parse(raw);
+  if (typeof parsed === "string") {
+    parsed = JSON.parse(parsed);
+  }
+  return parsed;
+}
+
+export function parseGoogleDriveCredentials(
+  raw: string | undefined
+): GoogleDriveCredentials | null {
   if (!raw?.trim()) return null;
   try {
-    const parsed = JSON.parse(raw) as Partial<GoogleDriveCredentials>;
-    if (
-      typeof parsed.client_id === "string" &&
-      typeof parsed.client_secret === "string" &&
-      typeof parsed.refresh_token === "string"
-    ) {
-      return {
-        client_id: parsed.client_id,
-        client_secret: parsed.client_secret,
-        refresh_token: parsed.refresh_token,
-      };
+    const parsed = normalizeCredentialsPayload(raw.trim());
+    if (!parsed || typeof parsed !== "object") return null;
+
+    const root = parsed as Record<string, unknown>;
+    const nested =
+      (root.web as Record<string, unknown> | undefined) ??
+      (root.installed as Record<string, unknown> | undefined);
+
+    const client_id =
+      readString(root, "client_id", "clientId") ??
+      readString(nested, "client_id", "clientId");
+    const client_secret =
+      readString(root, "client_secret", "clientSecret") ??
+      readString(nested, "client_secret", "clientSecret");
+    const refresh_token = readString(root, "refresh_token", "refreshToken");
+
+    if (client_id && client_secret && refresh_token) {
+      return { client_id, client_secret, refresh_token };
     }
     return null;
   } catch {

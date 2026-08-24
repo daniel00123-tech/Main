@@ -1,6 +1,7 @@
 import type { Env } from "./db";
 import {
   getGoogleDriveConnectorStatus,
+  previewGoogleDriveKnowledgeFolder,
   syncGoogleDriveDocuments,
 } from "./google-drive-sync";
 import { log } from "./logger";
@@ -50,6 +51,18 @@ export async function handleAdminRequest(
 
   if (url.pathname === "/admin/connectors/google_drive" && request.method === "GET") {
     return json(await getGoogleDriveConnectorStatus(env));
+  }
+
+  if (
+    url.pathname === "/admin/connectors/google_drive/preview" &&
+    request.method === "GET"
+  ) {
+    try {
+      return json(await previewGoogleDriveKnowledgeFolder(env));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return json({ error: message }, 400);
+    }
   }
 
   if (

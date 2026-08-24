@@ -99,6 +99,7 @@ export async function loadGoogleDriveAllowListConfig(
 export async function getGoogleDriveConnectorStatus(env: Env): Promise<{
   connector: string;
   credentialsConfigured: boolean;
+  credentialsSecretPresent: boolean;
   knowledgeFolderConfigured: boolean;
   oauthScopes: readonly string[];
   googlePhotosConnected: false;
@@ -115,6 +116,7 @@ export async function getGoogleDriveConnectorStatus(env: Env): Promise<{
   return {
     connector: CONNECTOR_CODE,
     credentialsConfigured: credentials !== null,
+    credentialsSecretPresent: Boolean(env.GOOGLE_DRIVE_CREDENTIALS?.trim()),
     knowledgeFolderConfigured: connectorConfig.knowledgeFolderId !== null,
     oauthScopes: GOOGLE_DRIVE_OAUTH_SCOPES,
     googlePhotosConnected: false,
@@ -125,6 +127,91 @@ export async function getGoogleDriveConnectorStatus(env: Env): Promise<{
     allowList: connectorConfig.allowList,
     notes:
       "Documents-only sync restricted to the Caddington Knowledge folder and its subfolders. Personal photos, images, videos and audio are excluded via MIME allow-list before download. Google Photos is not connected. Drive OAuth uses full drive scope for future folder writes; sync remains read-only. Image ingestion is manual-upload only.",
+  };
+}
+
+export async function previewGoogleDriveKnowledgeFolder(env: Env): Promise<{
+  knowledgeFolderId: string;
+  knowledgeFolderName: string;
+  rootChildren: Array<{ id: string; name: string; mimeType: string }>;
+  subfolderInventories: Array<{
+    folderId: string;
+    folderName: string;
+    childCount: number;
+    children: Array<{ id: string; name: string; mimeType: string; allowed: boolean; reason: string }>;
+  }>;
+  recursiveFileCount: number;
+  recursiveAllowedCount: number;
+  recursiveSkippedCount: number;
+  skipReasons: Partial<Record<GoogleDriveSkipReason, number>>;
+}> {
+  const credentials = parseGoogleDriveCredentials(env.GOOGLE_DRIVE_CREDENTIALS);
+  if (!credentials) {
+    throw new Error("GOOGLE_DRIVE_CREDENTIALS is not configured.");
+  }
+
+  const connectorConfig = await loadGoogleDriveConnectorConfig(env);
+  if (!connectorConfig.knowledgeFolderId) {
+    throw new Error("Google Drive knowledge folder is not configured.");
+  }
+
+  const client = new GoogleDriveClient(credentials);
+  const rootPage = await client.listFolderChildrenPage(
+    connectorConfig.knowledgeFolderId
+  );
+  const rootChildren = rootPage.files.map((file) => ({
+    id: file.id,
+    name: file.name,
+    mimeType: file.mimeType,
+  }));
+
+  const subfolders = rootPage.files.filter(
+    (file) => file.mimeType === "application/vnd.google-apps.folder"
+  );
+
+  const subfolderInventories = [];
+  for (const folder of subfolders) {
+    const page = await client.listFolderChildrenPage(folder.id);
+    const children = client.classifyFiles(page.files, connectorConfig.allowList).map(
+      (file) => ({
+        id: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        allowed: file.filterDecision.allowed,
+        reason: file.filterDecision.allowed
+          ? file.filterDecision.reason
+          : file.filterDecision.reason,
+      })
+    );
+    subfolderInventories.push({
+      folderId: folder.id,
+      folderName: folder.name,
+      childCount: page.files.length,
+      children,
+    });
+  }
+
+  const recursive = client.classifyFiles(
+    await client.listAllFilesInFolder(connectorConfig.knowledgeFolderId),
+    connectorConfig.allowList
+  );
+  const skipReasons: Partial<Record<GoogleDriveSkipReason, number>> = {};
+  for (const file of recursive) {
+    if (!file.filterDecision.allowed) {
+      const reason = file.filterDecision.reason;
+      skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+    }
+  }
+
+  return {
+    knowledgeFolderId: connectorConfig.knowledgeFolderId,
+    knowledgeFolderName: connectorConfig.knowledgeFolderName,
+    rootChildren,
+    subfolderInventories,
+    recursiveFileCount: recursive.length,
+    recursiveAllowedCount: recursive.filter((f) => f.filterDecision.allowed).length,
+    recursiveSkippedCount: recursive.filter((f) => !f.filterDecision.allowed).length,
+    skipReasons,
   };
 }
 
