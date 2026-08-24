@@ -12,6 +12,7 @@ import {
 } from "./auth/session";
 import {
   bootstrapPlatformAdminIfNeeded,
+  createMembership,
   getUserByEmail,
   getUserById,
   listUsers,
@@ -25,6 +26,11 @@ import {
   getCompanyByPortalHostname,
   getCompanyByPortalSubdomain,
 } from "./services/tenant-provisioning";
+import {
+  attachExistingCompanyMcp,
+  EXISTING_PRODUCTION_COMPANY_MCPS,
+  registerExistingMcpEnvironment,
+} from "./services/register-existing-mcp";
 import {
   consumeSetupToken,
   findValidSetupToken,
@@ -271,6 +277,88 @@ app.get("/api/companies", requireAuth, async (c) => {
   const companies = await listCompanies(c.env.DB, companyIds);
   return c.json(companies);
 });
+
+app.post("/api/mcp-environments", requireAuth, requirePlatformAdmin, async (c) => {
+  const body = await c.req.json<{
+    companyId?: string;
+    companySlug?: string;
+    name?: string;
+    description?: string;
+    endpointUrl?: string;
+    authSecretRef?: string;
+    serviceBindingRef?: string;
+    dataPlaneId?: string;
+    mcpVersion?: string;
+    coreVersion?: string;
+  }>();
+  const company = body.companyId
+    ? await getCompanyById(c.env.DB, body.companyId)
+    : body.companySlug
+      ? await getCompanyBySlug(c.env.DB, body.companySlug)
+      : null;
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!body.name || !body.endpointUrl || !body.authSecretRef) {
+    return c.json(
+      { error: "name, endpointUrl and authSecretRef are required" },
+      400,
+    );
+  }
+  try {
+    const mcp = await registerExistingMcpEnvironment(c.env.DB, {
+      companyId: company.id,
+      name: body.name,
+      description: body.description,
+      endpointUrl: body.endpointUrl,
+      authSecretRef: body.authSecretRef,
+      serviceBindingRef: body.serviceBindingRef,
+      dataPlaneId: body.dataPlaneId,
+      mcpVersion: body.mcpVersion,
+      coreVersion: body.coreVersion,
+      actor: c.get("user").email,
+      environment: c.env.ENVIRONMENT,
+    });
+    return c.json(mcp, 201);
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Unable to register MCP" },
+      400,
+    );
+  }
+});
+
+app.post(
+  "/api/admin/onboard-existing-company-mcps",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    const actor = c.get("user");
+    const attached = [];
+    for (const spec of EXISTING_PRODUCTION_COMPANY_MCPS) {
+      const result = await attachExistingCompanyMcp(c.env.DB, spec, actor.email);
+      const existingMembership = await c.env.DB
+        .prepare(
+          `SELECT id FROM company_memberships WHERE user_id = ? AND company_id = ?`,
+        )
+        .bind(actor.userId, result.company.id)
+        .first();
+      if (!existingMembership) {
+        await createMembership(c.env.DB, {
+          userId: actor.userId,
+          companyId: result.company.id,
+          role: "company_admin",
+        });
+      }
+      attached.push({
+        companyId: result.company.id,
+        slug: result.company.slug,
+        mcpId: result.mcp.id,
+        endpointUrl: result.mcp.endpointUrl,
+        authSecretRef: result.mcp.authSecretRef,
+      });
+    }
+    return c.json({ attached });
+  },
+);
 
 app.post("/api/companies", requireAuth, requirePlatformAdmin, async (c) => {
   const body = await c.req.json<import("@infra/shared").CreateCompanyInput>();

@@ -277,11 +277,39 @@ export async function handleInfraMcpJsonRpc(
   }
 
   const headerCompany = request.headers.get("X-Infra-Company-Id");
-  const resolvedCompanyId =
-    companyId ??
-    (typeof body.params?.companyId === "string"
+  const requestedCompanyId =
+    typeof body.params?.companyId === "string"
       ? body.params.companyId
-      : headerCompany);
+      : headerCompany;
+  // Service identities are bound to one company. Never honour a prompt/header
+  // company override — tenant routing comes only from the authenticated identity.
+  if (
+    actor.type === "service" &&
+    requestedCompanyId &&
+    requestedCompanyId !== companyId
+  ) {
+    await logFacadeEvent(env.DB, {
+      companyId,
+      actor: actorLabel,
+      method,
+      status: "denied",
+      httpStatus: 403,
+      detail: {
+        reason: "service_tenant_spoof",
+        attemptedCompanyId: requestedCompanyId,
+      },
+    });
+    return {
+      payload: jsonRpcError(
+        id,
+        -32003,
+        "Service identity does not belong to this company",
+      ),
+      httpStatus: 403,
+    };
+  }
+
+  const resolvedCompanyId = companyId ?? requestedCompanyId ?? null;
 
   if (!resolvedCompanyId) {
     return {

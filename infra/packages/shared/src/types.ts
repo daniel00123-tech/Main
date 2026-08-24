@@ -439,4 +439,6 @@ export interface CompanyOverview {
     stripeCustomerId: string | null;
     updatedAt: string;
   };
+  knowledgeStatus?: "configured" | "not_configured";
+  warehouseStatus?: "configured" | "not_configured";
 }

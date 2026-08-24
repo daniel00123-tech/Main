@@ -155,6 +155,14 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     getWalletBalance(db, companyId),
   ]);
 
+  const mcp = mcpEnvironments[0];
+  const knowledgeConfigured =
+    (mcp?.knowledgeDocumentCount ?? 0) > 0 ||
+    (mcp?.capabilities ?? []).includes("search_company_knowledge");
+  const warehouseConfigured = (mcp?.capabilities ?? []).some((name) =>
+    /warehouse|database_summary|query_business|entity/i.test(name),
+  );
+
   return {
     company,
     mcpEnvironments,
@@ -163,6 +171,8 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     recentAuditEvents,
     usageSummary,
     wallet,
+    knowledgeStatus: knowledgeConfigured ? "configured" : "not_configured",
+    warehouseStatus: warehouseConfigured ? "configured" : "not_configured",
   };
 }
 
@@ -374,25 +384,40 @@ export async function runMcpHealthCheck(
       // Optional enrichment — transport health can still succeed without summary
     }
 
-    // Functional probe: authorised harmless search through the real pipeline.
-    // Uses callMcpTool directly (not gateway) so it never bills the customer.
-    let searchStatus: "ok" | "failed" = "failed";
+    await ensureDefaultToolAllowlist(env.DB, mcp.companyId, mcp.id);
+    await syncAllowlistFromRemoteTools(
+      env.DB,
+      mcp.companyId,
+      mcp.id,
+      tools.tools.map((tool) => tool.name),
+    );
+
+    // Functional probe only when the company MCP actually exposes knowledge search.
+    // HT/EL currently have knowledge not_configured — missing search is not unhealthy.
+    const hasKnowledgeSearch = tools.tools.some(
+      (tool) => tool.name === "search_company_knowledge",
+    );
+    let searchStatus: "ok" | "failed" | "not_configured" = "not_configured";
     let searchError: string | null = null;
-    try {
-      const probe = await callMcpTool(env, {
-        endpointUrl: mcp.endpointUrl,
-        authSecretRef: mcp.authSecretRef,
-        serviceBindingRef: mcp.serviceBindingRef,
-        toolName: "search_company_knowledge",
-        arguments: { query: "Project Falcon", topK: 1 },
-      });
-      if (probe.textContent && probe.textContent.length > 0) {
-        searchStatus = "ok";
-      } else {
-        searchError = "Search returned empty content";
+    if (hasKnowledgeSearch) {
+      try {
+        const probe = await callMcpTool(env, {
+          endpointUrl: mcp.endpointUrl,
+          authSecretRef: mcp.authSecretRef,
+          serviceBindingRef: mcp.serviceBindingRef,
+          toolName: "search_company_knowledge",
+          arguments: { query: "Project Falcon", topK: 1 },
+        });
+        if (probe.textContent && probe.textContent.length > 0) {
+          searchStatus = "ok";
+        } else {
+          searchStatus = "failed";
+          searchError = "Search returned empty content";
+        }
+      } catch (err) {
+        searchStatus = "failed";
+        searchError = err instanceof Error ? err.message : "Search probe failed";
       }
-    } catch (err) {
-      searchError = err instanceof Error ? err.message : "Search probe failed";
     }
 
     let mcpVersion = mcp.mcpVersion;
@@ -413,11 +438,13 @@ export async function runMcpHealthCheck(
     const latencyMs = health.latencyMs;
     const transportStatus = "healthy" as const;
     const overallStatus =
-      searchStatus === "ok" ? ("healthy" as const) : ("degraded" as const);
+      searchStatus === "failed" ? ("degraded" as const) : ("healthy" as const);
     const healthMessage =
       searchStatus === "ok"
         ? `${transportMessage} · Search ok`
-        : `${transportMessage} · Search failed${searchError ? `: ${searchError}` : ""}`;
+        : searchStatus === "not_configured"
+          ? `${transportMessage} · Knowledge not configured`
+          : `${transportMessage} · Search failed${searchError ? `: ${searchError}` : ""}`;
 
     await env.DB.prepare(
       `UPDATE mcp_environments
@@ -430,7 +457,7 @@ export async function runMcpHealthCheck(
       .bind(
         overallStatus,
         checkedAt,
-        searchStatus === "ok" ? checkedAt : mcp.lastHealthyAt,
+        overallStatus === "healthy" ? checkedAt : mcp.lastHealthyAt,
         healthMessage,
         mcpVersion,
         JSON.stringify({
@@ -486,6 +513,54 @@ export async function runMcpHealthCheck(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "MCP health check failed";
+
+    const publicHealth = await probePublicCompanyHealth(mcp.endpointUrl);
+    if (publicHealth.ok) {
+      await env.DB.prepare(
+        `UPDATE mcp_environments
+         SET status = ?, last_health_check_at = ?, last_healthy_at = ?, health_message = ?,
+             mcp_version = COALESCE(?, mcp_version),
+             business_mcp_core_version = COALESCE(?, business_mcp_core_version),
+             last_error = ?, last_latency_ms = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+        .bind(
+          "healthy",
+          checkedAt,
+          checkedAt,
+          `Public /health ok · authenticated tools/list pending (${message})`,
+          publicHealth.mcpVersion,
+          publicHealth.coreVersion,
+          message,
+          publicHealth.latencyMs,
+          checkedAt,
+          mcpId,
+        )
+        .run();
+      await recordAuditEvent(env.DB, {
+        companyId: mcp.companyId,
+        eventType: "mcp.health_checked",
+        actor,
+        resourceType: "mcp",
+        resourceId: mcpId,
+        detail: {
+          status: "healthy",
+          source: "public_health",
+          message,
+          authConfigured,
+          billed: false,
+        },
+      });
+      return {
+        mcpId,
+        status: "healthy" as const,
+        message: `Public /health ok · authenticated discovery pending`,
+        latencyMs: publicHealth.latencyMs,
+        checkedAt,
+        authConfigured,
+        mcpVersion: publicHealth.mcpVersion,
+      };
+    }
 
     await env.DB.prepare(
       `UPDATE mcp_environments
@@ -701,6 +776,81 @@ export async function executeRegisteredMcpTool(
     });
 
     return { status: 502 as const, error: message, correlationId };
+  }
+}
+
+async function probePublicCompanyHealth(endpointUrl: string): Promise<{
+  ok: boolean;
+  mcpVersion: string | null;
+  coreVersion: string | null;
+  latencyMs: number;
+}> {
+  try {
+    const healthUrl = new URL(endpointUrl);
+    healthUrl.pathname = "/health";
+    healthUrl.search = "";
+    const started = Date.now();
+    const response = await fetch(healthUrl.toString(), {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(5000),
+    });
+    const latencyMs = Date.now() - started;
+    if (!response.ok) {
+      return { ok: false, mcpVersion: null, coreVersion: null, latencyMs };
+    }
+    const body = (await response.json()) as {
+      ok?: boolean;
+      mcpVersion?: string;
+      coreVersion?: string;
+    };
+    return {
+      ok: body.ok !== false,
+      mcpVersion: body.mcpVersion ?? null,
+      coreVersion: body.coreVersion ?? null,
+      latencyMs,
+    };
+  } catch {
+    return { ok: false, mcpVersion: null, coreVersion: null, latencyMs: 0 };
+  }
+}
+
+const SAFE_READ_TOOL_NAMES = new Set([
+  "system_health",
+  "database_summary",
+  "search_company_knowledge",
+  "get_knowledge_document",
+]);
+
+export async function syncAllowlistFromRemoteTools(
+  db: D1Database,
+  companyId: string,
+  mcpEnvironmentId: string,
+  toolNames: string[],
+) {
+  const now = nowIso();
+  for (const toolName of toolNames) {
+    const riskClass = SAFE_READ_TOOL_NAMES.has(toolName)
+      ? "low_risk"
+      : "high_risk";
+    const enabled = SAFE_READ_TOOL_NAMES.has(toolName) ? 1 : 0;
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO mcp_tool_allowlist
+          (id, company_id, mcp_environment_id, tool_name, risk_class, enabled, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        newId("allow"),
+        companyId,
+        mcpEnvironmentId,
+        toolName,
+        riskClass,
+        enabled,
+        now,
+        now,
+      )
+      .run();
   }
 }
 

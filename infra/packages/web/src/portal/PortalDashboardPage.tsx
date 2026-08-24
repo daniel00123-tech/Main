@@ -125,6 +125,40 @@ export default function PortalDashboardPage() {
         />
       </MetricGrid>
 
+      <div style={{ marginTop: 16 }}>
+        <MetricGrid cols={4}>
+          <MetricCard
+            label="MCP version"
+            value={mcp?.mcpVersion ?? "—"}
+            hint={mcp?.businessMcpCoreVersion ? `Core ${mcp.businessMcpCoreVersion}` : "Core not reported"}
+          />
+          <MetricCard
+            label="Knowledge"
+            value={
+              overview.knowledgeStatus === "configured"
+                ? String(mcp?.knowledgeDocumentCount ?? 0)
+                : "Not configured"
+            }
+            hint={
+              (mcp?.knowledgeChunkCount ?? 0) > 0
+                ? `${mcp?.knowledgeChunkCount} chunks`
+                : "No indexed documents"
+            }
+          />
+          <MetricCard
+            label="Warehouse"
+            value={overview.warehouseStatus === "configured" ? "Available" : "No data yet"}
+            hint="Company MCP structured data"
+          />
+          <MetricCard
+            label="AI connections"
+            value="ChatGPT"
+            hint="Generate token in AI connections"
+            to={`${base}/ai-connections`}
+          />
+        </MetricGrid>
+      </div>
+
       <div className="grid grid-2" style={{ marginTop: 24 }}>
         <SectionCard title="Connected systems">
           {connectors.length === 0 && !mcp ? (

@@ -8,8 +8,12 @@ export interface Env {
   INITIAL_PLATFORM_ADMIN_PASSWORD?: string;
   /** Optional MCP auth secret referenced by mcp_environments.auth_secret_ref */
   CADDINGTON_MCP_AUTH_TOKEN?: string;
-  /** Optional service binding for same-account Caddington MCP Worker */
+  HT_MCP_AUTH_TOKEN?: string;
+  EL_MCP_AUTH_TOKEN?: string;
+  /** Optional service bindings for same-account company MCP Workers */
   CADDINGTON_MCP?: Fetcher;
+  HT_BUSINESS_MCP?: Fetcher;
+  EL_BUSINESS_MCP?: Fetcher;
   /** Stripe secrets — set via wrangler secret put when ready */
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;

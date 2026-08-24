@@ -16,7 +16,9 @@ COOKIE_CROSS_ORIGIN = "true"
 
 # Secrets (set via `wrangler secret put` — never commit):
 # SESSION_SECRET
-# CADDINGTON_MCP_AUTH_TOKEN (optional; referenced by mcp_environments.auth_secret_ref)
+# CADDINGTON_MCP_AUTH_TOKEN (referenced by mcp_environments.auth_secret_ref)
+# HT_MCP_AUTH_TOKEN (downstream auth for existing ht-business-mcp — same value as that Worker's MCP_AUTH_TOKEN)
+# EL_MCP_AUTH_TOKEN (downstream auth for existing el-business-mcp — same value as that Worker's MCP_AUTH_TOKEN)
 # STRIPE_SECRET_KEY (optional — prepaid top-ups)
 # STRIPE_WEBHOOK_SECRET (optional — webhook verification)
 # INITIAL_PLATFORM_ADMIN_EMAIL (temporary bootstrap only)
@@ -26,3 +28,11 @@ COOKIE_CROSS_ORIGIN = "true"
 [[services]]
 binding = "CADDINGTON_MCP"
 service = "caddington-mcp"
+
+[[services]]
+binding = "HT_BUSINESS_MCP"
+service = "ht-business-mcp"
+
+[[services]]
+binding = "EL_BUSINESS_MCP"
+service = "el-business-mcp"

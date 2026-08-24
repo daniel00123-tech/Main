@@ -173,7 +173,13 @@ export async function provisionCompany(
   db: D1Database,
   input: CreateCompanyInput,
   actorEmail: string,
-  options?: { portalBaseDomain?: string },
+  options?: {
+    portalBaseDomain?: string;
+    /** Stable id such as co_ht — used only when unused. */
+    preferredId?: string;
+    openingCreditDescription?: string;
+    openingCreditMetadata?: Record<string, unknown>;
+  },
 ): Promise<{
   company: Company;
   adminInvite?: {
@@ -201,7 +207,15 @@ export async function provisionCompany(
     portalSubdomain,
     options?.portalBaseDomain ?? DEFAULT_PORTAL_BASE_DOMAIN,
   );
-  const companyId = newId("co");
+  let companyId = newId("co");
+  const preferredId = options?.preferredId?.trim();
+  if (preferredId && /^co_[a-z0-9_]+$/.test(preferredId)) {
+    const taken = await db
+      .prepare("SELECT id FROM companies WHERE id = ?")
+      .bind(preferredId)
+      .first();
+    if (!taken) companyId = preferredId;
+  }
   const currency = (input.currency ?? "GBP").toUpperCase();
   const openingCreditCents = Math.max(0, Math.floor(input.openingCreditCents ?? 0));
   const modules = input.modules?.length
@@ -274,9 +288,11 @@ export async function provisionCompany(
       currency,
       referenceType: "provisioning",
       referenceId: `opening_${companyId}`,
-      description: `Opening promotional credit for ${legalName}`,
+      description:
+        options?.openingCreditDescription ??
+        `Opening promotional credit for ${legalName}`,
       createdBy: actorEmail,
-      metadata: { provisioned: true },
+      metadata: { provisioned: true, ...(options?.openingCreditMetadata ?? {}) },
     });
   }
 
