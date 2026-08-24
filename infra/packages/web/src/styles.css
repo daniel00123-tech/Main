@@ -632,6 +632,18 @@ button {
   display: block;
 }
 
+.connector-logo-img {
+  width: 34px;
+  height: 34px;
+  display: block;
+  object-fit: contain;
+}
+
+.connector-logo-img-wide {
+  width: 38px;
+  height: 28px;
+}
+
 .connector-status,
 .connector-category,
 .capability-chip,
