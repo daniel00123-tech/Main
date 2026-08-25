@@ -277,6 +277,16 @@ export const api = {
       `/api/companies/${slug}/connectors/${instanceId}/xero/select-organisation`,
       { method: "POST", body: JSON.stringify({ tenantId }) },
     ),
+  startXeroScopeUpgrade: (slug: string, instanceId: string) =>
+    fetchJson<{
+      authorizationUrl: string;
+      expiresAt: string;
+      instanceId: string;
+      requestedScopes: string[];
+    }>(`/api/companies/${slug}/connectors/${instanceId}/xero/scope-upgrade`, {
+      method: "POST",
+      body: "{}",
+    }),
   saveConnectorCredentials: (
     slug: string,
     instanceId: string,

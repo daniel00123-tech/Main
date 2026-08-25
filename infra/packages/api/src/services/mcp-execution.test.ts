@@ -334,7 +334,7 @@ describe("MCP tool allowlist", () => {
         ...XERO_READ_MCP_TOOLS,
       ]),
     );
-    expect(names).not.toContain("xero_invoices_create_draft");
+    expect(names).not.toContain("xero_create_draft_invoice");
     expect(names).toHaveLength(4 + XERO_READ_MCP_TOOLS.length);
   });
 });

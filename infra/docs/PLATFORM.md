@@ -59,7 +59,13 @@ Definitions live in shared catalogue. Instances are per-company (ADR 018). Auth,
 
 `SecretProvider` is the only storage interface (ADR 019 / 026). Production uses AES-256-GCM ciphertext in D1 and `INFRA_CREDENTIAL_WRAPPING_KEY` as a Worker secret. If that key is missing, Save & Test stays disabled and the UI says storage is not configured. Frontend, API responses, audit, and logs never receive stored plaintext.
 
-Xero OAuth is reusable for every company (ADR 027). Application credentials are Worker secrets `XERO_CLIENT_ID` / `XERO_CLIENT_SECRET`. Per-company tokens are envelope-encrypted. Accounting data stays on Xero and the company Business MCP. Phase one scopes are read-only. MCP Worker auth tokens stay as existing Worker secrets.
+Xero OAuth is reusable for every company (ADR 027, ADR 028). Application credentials are Worker secrets `XERO_CLIENT_ID` / `XERO_CLIENT_SECRET`. Per-company tokens are envelope-encrypted. Accounting data stays on Xero and the company Business MCP.
+
+Initial OAuth uses **granular read scopes** (apps created after March 2026). Write scopes require admin scope upgrade + re-consent. Production financial writes stay disabled (`FINANCIAL_WRITES_ENABLED = false`) until operator approval.
+
+Company MCP resolves Xero credentials via internal bridge `POST /api/internal/mcp/:mcpId/xero/context` (server-to-server only). Reusable execution logic lives in `@infra/xero-core`.
+
+Multi-step financial actions use `execution_plans` (migration 0015) with idempotency keys and per-item results.
 
 `POST /api/mcp-environments/:id/refresh-capabilities` refreshes tools via `tools/list` + `system_health` + optional `database_summary`. It does **not** run knowledge search and is not billable.
 

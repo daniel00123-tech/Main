@@ -45,26 +45,36 @@ export function ConnectorSetupPanel({
   const [storage, setStorage] = useState<{
     enabled: boolean;
     reason: string;
-    xero?: {
-      appConfigured: boolean;
-      storageEnabled: boolean;
-      readyToConnect: boolean;
-      scopes: string[];
-    };
+      xero?: {
+        appConfigured: boolean;
+        storageEnabled: boolean;
+        readyToConnect: boolean;
+        scopes: string[];
+        writeScopes?: string[];
+        writesSupported?: boolean;
+        writesEnabled?: boolean;
+      };
   } | null>(null);
   const [metadata, setMetadata] = useState<{
     stored: boolean;
     lastUpdated: string | null;
     fields: Array<{ name: string; masked: true }>;
-    xero?: {
-      organisationName: string | null;
-      organisationSelected: boolean;
-      pendingOrganisations: Array<{ tenantId: string; name: string }>;
-      authStatus: string | null;
-      connectedAt: string | null;
-      lastCheckedAt: string | null;
-      grantedScopes: string[];
-    };
+      xero?: {
+        organisationName: string | null;
+        organisationSelected: boolean;
+        pendingOrganisations: Array<{ tenantId: string; name: string }>;
+        authStatus: string | null;
+        connectedAt: string | null;
+        lastCheckedAt: string | null;
+        grantedScopes: string[];
+        scopeTier?: string;
+        scopeTierLabel?: string;
+        writeScopesConsented?: boolean;
+        writesSupported?: boolean;
+        writesEnabled?: boolean;
+        writeCapabilityMessage?: string;
+        missingWriteScopes?: string[];
+      };
   } | null>(null);
   const [replacing, setReplacing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -159,6 +169,19 @@ export function ConnectorSetupPanel({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Test failed");
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onScopeUpgrade() {
+    if (!instance?.id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const started = await api.startXeroScopeUpgrade(companySlug, instance.id);
+      window.location.assign(started.authorizationUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start scope upgrade");
       setBusy(false);
     }
   }
@@ -265,10 +288,19 @@ export function ConnectorSetupPanel({
                         : "Not connected"}
           </div>
           {xeroView?.organisationName ? (
-            <div>
+            <div className="connector-xero-org">
               <div className="muted small">Xero organisation</div>
               <div>{xeroView.organisationName}</div>
             </div>
+          ) : null}
+          {xero && instance?.authStatus === "connected" ? (
+            <div className="muted small">
+              Capability: {xeroView?.scopeTierLabel ?? "Read access"}
+              {xeroView?.writesSupported ? " · Write architecture ready" : ""}
+            </div>
+          ) : null}
+          {xeroView?.writeCapabilityMessage ? (
+            <Notice tone="info">{xeroView.writeCapabilityMessage}</Notice>
           ) : null}
           {xeroView?.connectedAt ? (
             <div className="muted small">Connected: {xeroView.connectedAt}</div>
@@ -278,7 +310,7 @@ export function ConnectorSetupPanel({
           ) : null}
           {xeroView?.grantedScopes?.length ? (
             <div className="muted small">
-              Granted capabilities: {xeroView.grantedScopes.join(", ")}
+              OAuth scopes: {xeroView.grantedScopes.length} granted
             </div>
           ) : null}
           {xeroView?.pendingOrganisations?.length ? (
@@ -308,6 +340,18 @@ export function ConnectorSetupPanel({
                 ? "Reconnect Xero"
                 : "Connect Xero"}
             </button>
+            {xero &&
+            instance?.authStatus === "connected" &&
+            xeroView?.writeScopesConsented === false ? (
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={!xeroReady || busy}
+                onClick={() => void onScopeUpgrade()}
+              >
+                Enable write capabilities
+              </button>
+            ) : null}
             <button
               type="button"
               className="button button-secondary"

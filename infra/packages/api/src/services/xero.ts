@@ -6,7 +6,11 @@ import {
   XERO_DEFAULT_REDIRECT_URI,
   XERO_REDIRECT_URI_SECRET,
   XERO_SCOPE_REASONS,
+  XERO_WRITE_ACTIVATION,
   customerConnectorError,
+  missingScopesForTier,
+  scopesForTier,
+  tierFromGrantedScopes,
 } from "@infra/shared";
 import type { Env } from "../env";
 import { newId, nowIso } from "../db/mappers";
@@ -35,6 +39,7 @@ import {
 import { sanitizeCustomerError } from "./secrets";
 
 const REFRESH_SKEW_MS = 2 * 60 * 1000;
+const REFRESH_LOCK_MS = 30 * 1000;
 
 export type XeroOrganisationOption = {
   tenantId: string;
@@ -65,15 +70,21 @@ export function xeroOauthStatus(env: Env): {
   storageEnabled: boolean;
   redirectUri: string;
   scopes: string[];
+  writeScopes: string[];
   readyToConnect: boolean;
+  writesSupported: boolean;
+  writesEnabled: boolean;
 } {
   return {
     appConfigured: xeroAppConfigured(env),
     storageEnabled: wrappingKeyConfigured(env as Record<string, unknown>),
     redirectUri: xeroRedirectUri(env),
     scopes: [...XERO_AUTH.requiredScopes],
+    writeScopes: [...XERO_AUTH.writeScopes],
     readyToConnect:
       xeroAppConfigured(env) && wrappingKeyConfigured(env as Record<string, unknown>),
+    writesSupported: XERO_WRITE_ACTIVATION.writesSupported,
+    writesEnabled: XERO_WRITE_ACTIVATION.writesEnabled,
   };
 }
 
@@ -261,6 +272,100 @@ export async function startXeroOAuth(input: {
     authorizationUrl: url.toString(),
     expiresAt: state.expiresAt,
     instanceId,
+  };
+}
+
+/** Deliberate admin scope upgrade — adds write tier scopes via OAuth re-consent. */
+export async function startXeroScopeUpgrade(input: {
+  env: Env;
+  companyId: string;
+  companySlug: string;
+  userId: string;
+  actor: string;
+  instanceId: string;
+}): Promise<
+  | { ok: true; authorizationUrl: string; expiresAt: string; instanceId: string; requestedScopes: string[] }
+  | { ok: false; status: 403 | 409; body: ReturnType<typeof customerConnectorError> }
+> {
+  if (!wrappingKeyConfigured(input.env as Record<string, unknown>)) {
+    return {
+      ok: false,
+      status: 409,
+      body: customerConnectorError(CONNECTOR_ERROR_CODES.CREDENTIAL_SUBMISSION_DISABLED),
+    };
+  }
+  if (!xeroAppConfigured(input.env)) {
+    return { ok: false, status: 409, body: oauthAppNotConfigured() };
+  }
+
+  const instance = await getConnectorInstance(input.env.DB, input.instanceId);
+  if (!instance || instance.companyId !== input.companyId) {
+    return {
+      ok: false,
+      status: 403,
+      body: customerConnectorError(CONNECTOR_ERROR_CODES.CREDENTIAL_REF_FORBIDDEN),
+    };
+  }
+  if (instance.connectorDefinitionId !== "conn_xero") {
+    return {
+      ok: false,
+      status: 409,
+      body: customerConnectorError(CONNECTOR_ERROR_CODES.CONFIG_INCOMPLETE),
+    };
+  }
+
+  const granted = Array.isArray(instance.capabilitiesEnabled)
+    ? instance.capabilitiesEnabled.map(String)
+    : [];
+  const missing = missingScopesForTier(granted, "write");
+  if (missing.length === 0) {
+    return {
+      ok: false,
+      status: 409,
+      body: customerConnectorError(CONNECTOR_ERROR_CODES.CONFIG_INCOMPLETE),
+    };
+  }
+
+  const redirectUri = xeroRedirectUri(input.env);
+  const scopes = scopesForTier("write");
+  const state = await createOauthAuthorizationState(
+    input.env.DB,
+    {
+      companyId: input.companyId,
+      userId: input.userId,
+      definitionId: "conn_xero",
+      instanceId: input.instanceId,
+      redirectUri,
+      scopes,
+      returnPath: `/portal/${input.companySlug}/connectors`,
+    },
+    input.env as Record<string, unknown>,
+  );
+
+  const url = new URL(XERO_AUTH.authorizationUrl);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", xeroClientId(input.env));
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("scope", scopes.join(" "));
+  url.searchParams.set("state", state.state);
+  url.searchParams.set("code_challenge", state.codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
+
+  await recordAuditEvent(input.env.DB, {
+    companyId: input.companyId,
+    eventType: "connector.scope_upgrade_started",
+    actor: input.actor,
+    resourceType: "connector",
+    resourceId: input.instanceId,
+    detail: { provider: "xero", requestedScopes: missing },
+  });
+
+  return {
+    ok: true,
+    authorizationUrl: url.toString(),
+    expiresAt: state.expiresAt,
+    instanceId: input.instanceId,
+    requestedScopes: missing,
   };
 }
 
@@ -677,15 +782,53 @@ export async function getValidXeroAccessToken(input: {
   const expiresAt = Date.parse(payload.expiresAt);
   const needsRefresh = !Number.isFinite(expiresAt) || expiresAt <= Date.now() + REFRESH_SKEW_MS;
   if (needsRefresh) {
-    const refreshed = await refreshXeroTokens({
-      env: input.env,
-      companyId: input.companyId,
-      instanceId: input.instanceId,
-      actor: input.actor,
-      payload,
-    });
-    if (!refreshed.ok) return refreshed;
-    payload = refreshed.payload;
+    const instance = await getConnectorInstance(input.env.DB, input.instanceId);
+    const config = (instance?.config ?? {}) as Record<string, unknown>;
+    const lockUntil = Date.parse(String(config.refreshLockUntil ?? ""));
+    if (Number.isFinite(lockUntil) && lockUntil > Date.now()) {
+      const retry = await resolveXeroPayload(
+        input.env,
+        input.companyId,
+        input.instanceId,
+        input.actor,
+      );
+      if (retry.ok) {
+        const retryExpires = Date.parse(retry.payload.expiresAt);
+        if (Number.isFinite(retryExpires) && retryExpires > Date.now() + REFRESH_SKEW_MS) {
+          payload = retry.payload;
+        }
+      }
+    }
+    const stillNeeds =
+      !Number.isFinite(Date.parse(payload.expiresAt)) ||
+      Date.parse(payload.expiresAt) <= Date.now() + REFRESH_SKEW_MS;
+    if (stillNeeds) {
+      await input.env.DB.prepare(
+        `UPDATE connector_instances
+         SET config_json = json_set(COALESCE(config_json, '{}'), '$.refreshLockUntil', ?),
+             updated_at = ?
+         WHERE id = ? AND company_id = ?`,
+      )
+        .bind(new Date(Date.now() + REFRESH_LOCK_MS).toISOString(), nowIso(), input.instanceId, input.companyId)
+        .run();
+      const refreshed = await refreshXeroTokens({
+        env: input.env,
+        companyId: input.companyId,
+        instanceId: input.instanceId,
+        actor: input.actor,
+        payload,
+      });
+      await input.env.DB.prepare(
+        `UPDATE connector_instances
+         SET config_json = json_remove(COALESCE(config_json, '{}'), '$.refreshLockUntil'),
+             updated_at = ?
+         WHERE id = ? AND company_id = ?`,
+      )
+        .bind(nowIso(), input.instanceId, input.companyId)
+        .run();
+      if (!refreshed.ok) return refreshed;
+      payload = refreshed.payload;
+    }
   }
   if (!payload.providerTenantId) {
     return {
@@ -958,6 +1101,14 @@ export function publicXeroView(instance: {
   const pending = Array.isArray(instance.config?.pendingOrganisations)
     ? (instance.config?.pendingOrganisations as XeroOrganisationOption[])
     : [];
+  const grantedScopes = Array.isArray(instance.capabilitiesEnabled)
+    ? instance.capabilitiesEnabled
+    : Array.isArray(instance.config?.grantedScopes)
+      ? instance.config?.grantedScopes
+      : [];
+  const scopeTier = tierFromGrantedScopes(grantedScopes.map(String));
+  const missingWriteScopes = missingScopesForTier(grantedScopes.map(String), "write");
+  const activation = XERO_WRITE_ACTIVATION;
   return {
     organisationName: instance.displayAccountName ?? null,
     organisationSelected: Boolean(instance.externalAccountId),
@@ -968,11 +1119,19 @@ export function publicXeroView(instance: {
     authStatus: instance.authStatus ?? null,
     connectedAt: instance.connectedAt ?? null,
     lastCheckedAt: instance.lastHealthAt ?? instance.lastSuccessfulSyncAt ?? null,
-    grantedScopes: Array.isArray(instance.capabilitiesEnabled)
-      ? instance.capabilitiesEnabled
-      : Array.isArray(instance.config?.grantedScopes)
-        ? instance.config?.grantedScopes
-        : [],
+    grantedScopes,
+    scopeTier,
+    scopeTierLabel: scopeTier === "write" ? "Read + Write (OAuth)" : "Read access",
+    writeScopesConsented: missingWriteScopes.length === 0,
+    writesSupported: activation.writesSupported,
+    writesEnabled: activation.writesEnabled,
+    writeCapabilityMessage:
+      missingWriteScopes.length > 0
+        ? "Read access connected — additional approval required to enable financial write capabilities."
+        : activation.writesEnabled
+          ? "Read + Write OAuth scopes consented. INFRA role permissions still control who may execute writes."
+          : "Write OAuth scopes consented — production financial write execution remains disabled pending operator approval.",
+    missingWriteScopes,
   };
 }
 

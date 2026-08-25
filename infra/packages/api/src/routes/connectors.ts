@@ -38,6 +38,7 @@ import {
   publicXeroView,
   selectXeroOrganisation,
   startXeroOAuth,
+  startXeroScopeUpgrade,
   testXeroConnection,
   xeroOauthStatus,
 } from "../services/xero";
@@ -583,6 +584,44 @@ connectors.post(
     });
     if (!selected.ok) return c.json(selected.body, selected.status);
     return c.json({ ok: true, organisationName: selected.organisationName });
+  },
+);
+
+connectors.post(
+  "/api/companies/:slug/connectors/:instanceId/xero/scope-upgrade",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+    if (company.status === "suspended") {
+      return c.json(customerConnectorError(CONNECTOR_ERROR_CODES.SUSPENDED), 403);
+    }
+    const instance = await getConnectorInstance(c.env.DB, c.req.param("instanceId"));
+    if (!instance || instance.companyId !== company.id) {
+      return c.json({ error: "Connector not found" }, 404);
+    }
+    if (instance.connectorDefinitionId !== "conn_xero") {
+      return c.json({ error: "Not a Xero connector" }, 400);
+    }
+    const started = await startXeroScopeUpgrade({
+      env: c.env,
+      companyId: company.id,
+      companySlug: company.slug,
+      userId: c.get("user").userId,
+      actor: c.get("user").email,
+      instanceId: instance.id,
+    });
+    if (!started.ok) return c.json(started.body, started.status);
+    return c.json({
+      authorizationUrl: started.authorizationUrl,
+      expiresAt: started.expiresAt,
+      instanceId: started.instanceId,
+      requestedScopes: started.requestedScopes,
+      pkce: "S256",
+    });
   },
 );
 

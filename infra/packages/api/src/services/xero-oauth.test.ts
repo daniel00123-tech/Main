@@ -369,9 +369,9 @@ describe("Xero OAuth", () => {
     if (!started.ok) return;
     expect(started.authorizationUrl).toContain("login.xero.com");
     expect(started.authorizationUrl).toContain("code_challenge");
-    expect(started.authorizationUrl).toContain("accounting.reports.read");
+    expect(started.authorizationUrl).toContain("accounting.invoices.read");
     expect(started.authorizationUrl).not.toContain("xero-client-secret");
-    expect(started.authorizationUrl).not.toContain("accounting.transactions ");
+    expect(started.authorizationUrl).not.toContain("accounting.transactions");
     expect(JSON.stringify(db.tables.oauth_authorization_states)).not.toContain("xero-client-secret");
   });
 
@@ -474,18 +474,42 @@ describe("Xero OAuth", () => {
     const ready = await prepareXeroMcpExecution({
       env,
       companyId: "co_a",
-      toolName: "xero_invoices_search",
+      toolName: "xero_search_invoices",
     });
     expect(ready.ok).toBe(true);
     const write = await prepareXeroMcpExecution({
       env,
       companyId: "co_a",
-      toolName: "xero_invoices_create_draft",
+      toolName: "xero_create_draft_invoice",
     });
     expect(write.ok).toBe(false);
     if (!write.ok) {
       expect(write.inventsData).toBe(false);
-      expect(write.body.code).toBe("FINANCIAL_WRITES_DISABLED");
+      expect(write.body.code).toBe("OAUTH_SCOPE_UPGRADE_REQUIRED");
+    }
+
+    db.tables.connector_instances[0]!.capabilities_enabled_json = JSON.stringify([
+      "offline_access",
+      "accounting.settings.read",
+      "accounting.contacts.read",
+      "accounting.invoices.read",
+      "accounting.payments.read",
+      "accounting.banktransactions.read",
+      "accounting.reports.profitandloss.read",
+      "accounting.reports.balancesheet.read",
+      "accounting.reports.aged.read",
+      "accounting.invoices",
+      "accounting.payments",
+      "accounting.contacts",
+    ]);
+    const writeBlocked = await prepareXeroMcpExecution({
+      env,
+      companyId: "co_a",
+      toolName: "xero_create_draft_invoice",
+    });
+    expect(writeBlocked.ok).toBe(false);
+    if (!writeBlocked.ok) {
+      expect(writeBlocked.body.code).toBe("FINANCIAL_WRITES_DISABLED");
     }
 
     const tested = await testXeroConnection({
@@ -590,7 +614,7 @@ describe("Xero OAuth", () => {
     const mcp = await prepareXeroMcpExecution({
       env,
       companyId: "co_b",
-      toolName: "xero_invoices_search",
+      toolName: "xero_search_invoices",
     });
     expect(mcp.ok).toBe(false);
     if (!mcp.ok) expect(mcp.inventsData).toBe(false);
