@@ -33,7 +33,11 @@ class FakeStatement {
 }
 
 class FakeD1 {
-  constructor(private tables: { connector_instances: Row[]; service_identities: Row[] }) {}
+  readonly rows: { connector_instances: Row[]; service_identities: Row[] };
+
+  constructor(tables: { connector_instances: Row[]; service_identities: Row[] }) {
+    this.rows = tables;
+  }
 
   prepare(sql: string) {
     return new FakeStatement(this, sql);
@@ -43,7 +47,7 @@ class FakeD1 {
     const q = sql.replace(/\s+/g, " ").trim().toLowerCase();
     if (q.includes("from connector_instances")) {
       return (
-        this.tables.connector_instances.find(
+        this.rows.connector_instances.find(
           (row) =>
             row.company_id === binds[0] &&
             row.connector_definition_id === "conn_xero" &&
@@ -58,7 +62,7 @@ class FakeD1 {
   run(sql: string, binds: unknown[]) {
     const q = sql.replace(/\s+/g, " ").trim().toLowerCase();
     if (q.includes("update service_identities set scopes_json")) {
-      for (const row of this.tables.service_identities) {
+      for (const row of this.rows.service_identities) {
         if (row.company_id === binds[2] && row.status === "active") {
           row.scopes_json = binds[0];
           row.updated_at = binds[1];
@@ -137,9 +141,9 @@ describe("service identity scopes", () => {
       "co_caddington",
     );
     expect(synced.updated).toBe(1);
-    expect(JSON.parse(String(db.tables.service_identities[0].scopes_json))).toEqual(
+    expect(JSON.parse(String(db.rows.service_identities[0].scopes_json))).toEqual(
       serviceIdentityScopesWithXeroRead(),
     );
-    expect(db.tables.service_identities[0].token_hash).toBe("unchanged");
+    expect(db.rows.service_identities[0].token_hash).toBe("unchanged");
   });
 });

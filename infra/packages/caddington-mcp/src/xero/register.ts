@@ -4,6 +4,7 @@ export type CaddingtonMcpEnv = {
   MCP_AUTH_TOKEN?: string;
   INFRA_API_URL?: string;
   INFRA_MCP_ENVIRONMENT_ID?: string;
+  __infraXeroContext?: InfraXeroContext;
 };
 
 export type InfraXeroContext = {
@@ -144,7 +145,9 @@ async function withXeroClient<T>(
   ) => Promise<T>,
   args: Record<string, unknown> = {},
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
-  const injected = injectedContextFromArgs(args);
+  const injected =
+    injectedContextFromArgs(args) ??
+    (env.__infraXeroContext ? env.__infraXeroContext : null);
   const resolved = injected
     ? { ok: true as const, context: injected }
     : await fetchInfraXeroContext(env);

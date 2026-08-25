@@ -84,6 +84,7 @@ export async function mcpRequest(
     method: string;
     params?: Record<string, unknown>;
     id?: number;
+    internalHeaders?: Record<string, string>;
   },
 ): Promise<{
   payload: McpJsonRpcResult;
@@ -104,6 +105,10 @@ export async function mcpRequest(
 
   if (authorizationHeader) {
     headers.Authorization = authorizationHeader;
+  }
+
+  for (const [key, value] of Object.entries(input.internalHeaders ?? {})) {
+    headers[key] = value;
   }
 
   const endpoint = new URL(input.endpointUrl);
@@ -176,6 +181,7 @@ export async function callMcpTool(
     serviceBindingRef?: string | null;
     toolName: string;
     arguments?: Record<string, unknown>;
+    internalHeaders?: Record<string, string>;
   },
 ): Promise<{
   result: unknown;
@@ -193,6 +199,7 @@ export async function callMcpTool(
       name: input.toolName,
       arguments: input.arguments ?? {},
     },
+    internalHeaders: input.internalHeaders,
   });
 
   const result = payload.result as

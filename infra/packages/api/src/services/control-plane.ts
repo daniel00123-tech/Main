@@ -846,6 +846,7 @@ export async function executeRegisteredMcpTool(
 
   try {
     let forwardArgs = input.arguments ?? {};
+    let internalHeaders: Record<string, string> | undefined;
     if (isXeroToolName(input.toolName)) {
       const prepared = await prepareXeroMcpExecution({
         env,
@@ -861,16 +862,17 @@ export async function executeRegisteredMcpTool(
           reason: "mcp_resolve",
         });
         if (token.ok) {
-          forwardArgs = {
-            ...forwardArgs,
-            _infraXeroContext: {
-              tenantId: token.tenantId,
-              apiBaseUrl: XERO_AUTH.apiBaseUrl,
-              accessToken: token.accessToken,
-              instanceId: prepared.instanceId,
-              organisationName: token.payload.organisationName,
-              grantedScopes: token.payload.scopes,
-            },
+          internalHeaders = {
+            "X-Infra-Xero-Context": btoa(
+              JSON.stringify({
+                tenantId: token.tenantId,
+                apiBaseUrl: XERO_AUTH.apiBaseUrl,
+                accessToken: token.accessToken,
+                instanceId: prepared.instanceId,
+                organisationName: token.payload.organisationName,
+                grantedScopes: token.payload.scopes,
+              }),
+            ),
           };
         }
       }
@@ -882,6 +884,7 @@ export async function executeRegisteredMcpTool(
       serviceBindingRef: mcp.serviceBindingRef,
       toolName: companyToolName,
       arguments: forwardArgs,
+      internalHeaders,
     });
 
     const checkedAt = nowIso();

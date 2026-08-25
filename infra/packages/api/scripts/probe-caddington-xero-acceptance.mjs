@@ -80,13 +80,16 @@ async function main() {
     3,
   );
   const salesPayload = parseToolText(sales.body);
+  const salesOk = sales.status === 200 && !sales.body?.error;
   console.log(
     JSON.stringify(
       {
         xero_sales_summary: {
           status: sales.status,
+          ok: salesOk,
           organisationName: salesPayload?.organisationName ?? null,
           summary: salesPayload?.summary ?? salesPayload,
+          error: sales.body?.error?.message ?? null,
         },
       },
       null,
@@ -104,13 +107,16 @@ async function main() {
     4,
   );
   const topPayload = parseToolText(top.body);
+  const topOk = top.status === 200 && !top.body?.error;
   console.log(
     JSON.stringify(
       {
         xero_top_customers: {
           status: top.status,
+          ok: topOk,
           organisationName: topPayload?.organisationName ?? null,
           customers: topPayload?.customers ?? topPayload,
+          error: top.body?.error?.message ?? null,
         },
       },
       null,
@@ -118,7 +124,7 @@ async function main() {
     ),
   );
 
-  if (sales.status !== 200 || top.status !== 200) {
+  if (!salesOk || !topOk) {
     process.exit(3);
   }
 }

@@ -37,12 +37,34 @@ let base = fs.readFileSync(basePath, "utf8");
 
 const injectCall =
   "  registerXeroReadTools(server, env2, external_exports);\n  return server;\n}\n__name(createCaddingtonMcpServer";
+const fetchPatchTarget =
+  "      const handler = createStatelessMcpHandler(\n        () => createCaddingtonMcpServer(env2),\n        { route: \"/mcp\", legacy: \"stateless\" }\n      );\n      return handler(request, env2, ctx);";
+const fetchPatchReplacement = `      const xeroContextHeader = request.headers.get("X-Infra-Xero-Context");
+      if (xeroContextHeader) {
+        try {
+          env2.__infraXeroContext = JSON.parse(atob(xeroContextHeader));
+        } catch {
+          // ignore malformed internal execution context
+        }
+      }
+      const handler = createStatelessMcpHandler(
+        () => createCaddingtonMcpServer(env2),
+        { route: "/mcp", legacy: "stateless" }
+      );
+      return handler(request, env2, ctx);`;
 if (!base.includes("registerXeroReadTools(server, env2")) {
   const target = "  return server;\n}\n__name(createCaddingtonMcpServer";
   if (!base.includes(target)) {
     throw new Error("Unable to locate createCaddingtonMcpServer injection point in base worker");
   }
   base = base.replace(target, injectCall);
+}
+
+if (!base.includes('request.headers.get("X-Infra-Xero-Context")')) {
+  if (!base.includes(fetchPatchTarget)) {
+    throw new Error("Unable to locate MCP fetch handler injection point in base worker");
+  }
+  base = base.replace(fetchPatchTarget, fetchPatchReplacement);
 }
 
 const inlinedXero = xeroBundle

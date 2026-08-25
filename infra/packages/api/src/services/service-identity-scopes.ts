@@ -1,7 +1,6 @@
 import {
   BASE_AI_SERVICE_SCOPES,
-  mergeServiceIdentityScopes,
-  XERO_READ_SERVICE_SCOPES,
+  serviceIdentityScopesWithXeroRead,
 } from "@infra/shared";
 import { nowIso } from "../db/mappers";
 
@@ -27,11 +26,10 @@ export async function resolveServiceIdentityScopesForCompany(
   db: D1Database,
   companyId: string,
 ): Promise<string[]> {
-  const scopes = [...BASE_AI_SERVICE_SCOPES];
   if (await isXeroConnectedForCompany(db, companyId)) {
-    scopes.push(...XERO_READ_SERVICE_SCOPES);
+    return serviceIdentityScopesWithXeroRead();
   }
-  return mergeServiceIdentityScopes(scopes);
+  return [...BASE_AI_SERVICE_SCOPES];
 }
 
 /** Refresh scopes on all active service identities when connector capabilities change. */

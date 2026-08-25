@@ -34,7 +34,7 @@ export class XeroClient {
     return {
       Authorization: `Bearer ${this.config.accessToken}`,
       Accept: "application/json",
-      "Xero-Tenant-Id": this.config.tenantId,
+      "Xero-tenant-id": this.config.tenantId,
     };
   }
 
@@ -44,7 +44,8 @@ export class XeroClient {
     query?: Record<string, string | number | boolean | undefined>,
     body?: unknown,
   ): Promise<T> {
-    const url = new URL(`${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`);
+    const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+    const url = new URL(normalizedPath, `${this.baseUrl.replace(/\/$/, "")}/`);
     if (query) {
       for (const [key, value] of Object.entries(query)) {
         if (value !== undefined && value !== null && value !== "") {
@@ -53,8 +54,6 @@ export class XeroClient {
       }
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const response = await this.fetchImpl(url.toString(), {
         method,
@@ -62,7 +61,6 @@ export class XeroClient {
           ? { ...this.headers(), "Content-Type": "application/json" }
           : this.headers(),
         body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
       });
       const text = await response.text();
       if (!response.ok) {
@@ -95,7 +93,7 @@ export class XeroClient {
         providerUnavailable: true,
       });
     } finally {
-      clearTimeout(timer);
+      /* timeout cleared */
     }
   }
 

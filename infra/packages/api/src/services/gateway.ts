@@ -38,9 +38,11 @@ import {
 import { sanitizeCustomerError } from "./secrets";
 import {
   isXeroToolName,
+  isXeroWriteToolName,
   prepareXeroMcpExecution,
   xeroActionForTool,
 } from "./xero-tools";
+import { executeXeroReadToolOnInfra } from "./xero-read-execution";
 
 export type GatewayActor =
   | { type: "user"; user: SessionUser }
@@ -610,16 +612,45 @@ export async function executeGatewayRequest(
 
   const balanceBefore = await getWalletBalance(env.DB, input.companyId);
 
-  const execution = await executeRegisteredMcpTool(env, {
-    mcpId: mcp.id,
-    toolName: input.toolName,
-    arguments: input.arguments,
-    actorUserId: actorId,
-    actorEmail: actorLabel,
-    sourceClient,
-    skipUsageRecording: true,
-    correlationId,
-  });
+  const execution =
+    isXeroToolName(input.toolName) && !isXeroWriteToolName(input.toolName)
+      ? await (async () => {
+          const xero = await executeXeroReadToolOnInfra(env, {
+            companyId: input.companyId,
+            toolName: input.toolName,
+            arguments: input.arguments,
+            actor: actorLabel,
+          });
+          if (!xero.ok) {
+            return {
+              status: xero.status,
+              error: xero.error,
+            } as const;
+          }
+          return {
+            status: 200 as const,
+            data: {
+              correlationId,
+              mcpId: mcp.id,
+              companyId: input.companyId,
+              toolName: input.toolName,
+              latencyMs: xero.latencyMs,
+              authConfigured: true,
+              riskClass,
+              result: xero.result,
+            },
+          };
+        })()
+      : await executeRegisteredMcpTool(env, {
+          mcpId: mcp.id,
+          toolName: input.toolName,
+          arguments: input.arguments,
+          actorUserId: actorId,
+          actorEmail: actorLabel,
+          sourceClient,
+          skipUsageRecording: true,
+          correlationId,
+        });
 
   const latencyMs = Date.now() - started;
   const success = execution.status === 200;

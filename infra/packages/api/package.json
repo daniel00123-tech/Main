@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@infra/shared": "*",
+    "@infra/xero-core": "*",
     "hono": "^4.7.2",
     "jose": "^6.0.11"
   },
