@@ -376,6 +376,17 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       inputSchema: {
         fromDate: zf.string().optional().describe("ISO date YYYY-MM-DD."),
         toDate: zf.string().optional().describe("ISO date YYYY-MM-DD."),
+        periods: zf
+          .number()
+          .int()
+          .min(1)
+          .max(11)
+          .optional()
+          .describe("Optional comparative periods for Xero report columns."),
+        timeframe: zf
+          .string()
+          .optional()
+          .describe('Comparison size: "MONTH", "QUARTER", or "YEAR".'),
       },
     },
     async (args) =>

@@ -7,9 +7,11 @@ import {
   aggregateSales,
   aggregateTopCustomers,
   classifySalesDocuments,
+  customerSafeXeroErrorMessage,
   dateRangeWhere,
   mapCreditNoteRow,
   mapInvoiceRow,
+  profitAndLossWithFetch,
 } from "@infra/xero-core";
 import type { Env } from "../env";
 import { getValidXeroAccessToken } from "./xero";
@@ -224,6 +226,44 @@ export async function executeXeroReadToolOnInfra(
       };
     }
 
+    if (input.toolName === "xero_profit_and_loss") {
+      const args = input.arguments ?? {};
+      const fromDate = String(args.fromDate ?? "");
+      const toDate = String(args.toDate ?? "");
+      const payload = await profitAndLossWithFetch(
+        {
+          accessToken: token.accessToken,
+          tenantId: token.tenantId,
+          apiBaseUrl: XERO_AUTH.apiBaseUrl,
+          fetchImpl: fetch,
+        },
+        {
+          fromDate: fromDate || undefined,
+          toDate: toDate || undefined,
+          periods: args.periods != null ? Number(args.periods) : undefined,
+          timeframe: args.timeframe as "MONTH" | "QUARTER" | "YEAR" | undefined,
+        },
+      );
+      const xeroToken = { accessToken: token.accessToken, tenantId: token.tenantId };
+      const organisationCurrency =
+        payload.parsed.currencyCode ?? (await fetchOrganisationBaseCurrency(xeroToken));
+      return {
+        ok: true,
+        latencyMs: Date.now() - started,
+        result: {
+          organisationName: token.payload.organisationName,
+          currencyCode: organisationCurrency,
+          fromDate: fromDate || null,
+          toDate: toDate || null,
+          parsed: {
+            ...payload.parsed,
+            currencyCode: organisationCurrency,
+          },
+          report: payload.report,
+        },
+      };
+    }
+
     if (input.toolName === "xero_top_customers") {
       const args = input.arguments ?? {};
       const limit = Math.min(Math.max(1, Number(args.limit ?? 3)), 20);
@@ -264,7 +304,7 @@ export async function executeXeroReadToolOnInfra(
       return {
         ok: false,
         status: error.provider.status === 504 ? 503 : 502,
-        error: error.provider.message,
+        error: customerSafeXeroErrorMessage(error.provider.code, error.provider.message),
         code: error.provider.code,
       };
     }

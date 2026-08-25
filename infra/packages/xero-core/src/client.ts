@@ -55,13 +55,16 @@ export class XeroClient {
     }
 
     try {
-      const response = await this.fetchImpl(url.toString(), {
+      const init: RequestInit = {
         method,
         headers: body
           ? { ...this.headers(), "Content-Type": "application/json" }
           : this.headers(),
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      };
+      if (body !== undefined) {
+        init.body = JSON.stringify(body);
+      }
+      const response = await this.fetchImpl(url.toString(), init);
       const text = await response.text();
       if (!response.ok) {
         throw new XeroApiError(mapXeroHttpError(response.status, text));
@@ -90,6 +93,7 @@ export class XeroClient {
         status: 503,
         code: "XERO_PROVIDER_UNAVAILABLE",
         message: "Unable to reach Xero.",
+        detail: error instanceof Error ? error.message : String(error),
         providerUnavailable: true,
       });
     } finally {

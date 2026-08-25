@@ -1,5 +1,11 @@
 import { XERO_DATA_BOUNDS } from "@infra/shared";
 import type { XeroClient } from "../client";
+import { xeroGetJson } from "../fetch-json";
+import {
+  buildProfitAndLossQuery,
+  parseProfitAndLossReport,
+  type ParsedProfitAndLoss,
+} from "../reports/profit-and-loss";
 import {
   aggregateSales,
   aggregateTopCustomers,
@@ -177,14 +183,70 @@ export async function listBankTransactions(
 
 export async function profitAndLoss(
   client: XeroClient,
-  input: { fromDate?: string; toDate?: string },
+  input: {
+    fromDate?: string;
+    toDate?: string;
+    periods?: number;
+    timeframe?: "MONTH" | "QUARTER" | "YEAR";
+    standardLayout?: boolean;
+    paymentsOnly?: boolean;
+  },
 ) {
   const dates = boundedDates(input.fromDate, input.toDate);
-  const report = await client.get("/Reports/ProfitAndLoss", {
+  const query = buildProfitAndLossQuery({
     fromDate: dates.fromDate,
     toDate: dates.toDate,
+    periods: input.periods,
+    timeframe: input.timeframe,
+    standardLayout: input.standardLayout,
+    paymentsOnly: input.paymentsOnly,
   });
-  return { report };
+  const reportBody = await client.get<{ Reports?: import("../reports/profit-and-loss").XeroReport[] }>(
+    "/Reports/ProfitAndLoss",
+    query,
+  );
+  const parsed = parseProfitAndLossReport(reportBody);
+  return {
+    report: reportBody.Reports?.[0] ?? null,
+    parsed,
+  };
+}
+
+export async function profitAndLossWithFetch(
+  config: {
+    accessToken: string;
+    tenantId: string;
+    apiBaseUrl?: string;
+    fetchImpl?: typeof fetch;
+  },
+  input: {
+    fromDate?: string;
+    toDate?: string;
+    periods?: number;
+    timeframe?: "MONTH" | "QUARTER" | "YEAR";
+    standardLayout?: boolean;
+    paymentsOnly?: boolean;
+  },
+): Promise<{ report: unknown; parsed: ParsedProfitAndLoss }> {
+  const dates = boundedDates(input.fromDate, input.toDate);
+  const query = buildProfitAndLossQuery({
+    fromDate: dates.fromDate,
+    toDate: dates.toDate,
+    periods: input.periods,
+    timeframe: input.timeframe,
+    standardLayout: input.standardLayout,
+    paymentsOnly: input.paymentsOnly,
+  });
+  const reportBody = await xeroGetJson<{ Reports?: import("../reports/profit-and-loss").XeroReport[] }>(
+    config,
+    "/Reports/ProfitAndLoss",
+    query,
+  );
+  const parsed = parseProfitAndLossReport(reportBody);
+  return {
+    report: reportBody.Reports?.[0] ?? null,
+    parsed,
+  };
 }
 
 export async function balanceSheet(client: XeroClient, input: { date?: string }) {

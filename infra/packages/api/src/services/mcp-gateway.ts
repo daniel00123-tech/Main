@@ -129,7 +129,7 @@ export function enrichMcpToolDescription(
     xero_list_bank_transactions:
       "List recent Xero bank transactions. Read-only.",
     xero_profit_and_loss:
-      "Return a bounded Xero Profit & Loss report for a date range. Read-only.",
+      "Return Xero's Profit & Loss report for a date range using GET /Reports/ProfitAndLoss with fromDate/toDate (YYYY-MM-DD). Parsed summary includes revenue, cost of sales, gross profit, operating expenses and net profit. Optional periods/timeframe supports Xero comparative columns. Read-only.",
     xero_balance_sheet:
       "Return a bounded Xero Balance Sheet report. Read-only.",
     xero_aged_receivables:

@@ -2,6 +2,7 @@ export type XeroProviderErrorBody = {
   status: number;
   code: string;
   message: string;
+  detail?: string;
   retryAfterSeconds?: number;
   providerUnavailable?: boolean;
 };
