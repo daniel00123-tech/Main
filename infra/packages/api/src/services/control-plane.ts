@@ -23,6 +23,7 @@ import { buildCapabilitySnapshot } from "./capability-snapshot";
 import { buildKnowledgeSources } from "./knowledge-sources";
 import { classifyLedgerCredit } from "./wallet-credits";
 import { evaluateApprovalRequirement } from "./approvals";
+import { resolveCompanyMcpToolName } from "./mcp-knowledge-standard";
 
 export async function listCompanies(
   db: D1Database,
@@ -440,22 +441,28 @@ export async function isToolAllowed(
   mcpEnvironmentId: string,
   toolName: string,
 ): Promise<{ allowed: boolean; riskClass: string }> {
-  const row = await db
-    .prepare(
-      `SELECT enabled, risk_class FROM mcp_tool_allowlist
-       WHERE mcp_environment_id = ? AND tool_name = ?`,
-    )
-    .bind(mcpEnvironmentId, toolName)
-    .first();
+  const candidates = Array.from(
+    new Set([toolName, resolveCompanyMcpToolName(toolName)]),
+  );
 
-  if (!row) {
-    return { allowed: false, riskClass: "high_risk" };
+  for (const name of candidates) {
+    const row = await db
+      .prepare(
+        `SELECT enabled, risk_class FROM mcp_tool_allowlist
+         WHERE mcp_environment_id = ? AND tool_name = ?`,
+      )
+      .bind(mcpEnvironmentId, name)
+      .first();
+
+    if (row) {
+      return {
+        allowed: Boolean(row.enabled),
+        riskClass: String(row.risk_class ?? "low_risk"),
+      };
+    }
   }
 
-  return {
-    allowed: Boolean(row.enabled),
-    riskClass: String(row.risk_class ?? "low_risk"),
-  };
+  return { allowed: false, riskClass: "high_risk" };
 }
 
 export async function runMcpHealthCheck(
@@ -773,7 +780,8 @@ export async function executeRegisteredMcpTool(
 
   await ensureDefaultToolAllowlist(env.DB, mcp.companyId, mcp.id);
 
-  const allow = await isToolAllowed(env.DB, mcp.id, input.toolName);
+  const companyToolName = resolveCompanyMcpToolName(input.toolName);
+  const allow = await isToolAllowed(env.DB, mcp.id, companyToolName);
   if (!allow.allowed) {
     await recordAuditEvent(env.DB, {
       companyId: mcp.companyId,
@@ -833,7 +841,7 @@ export async function executeRegisteredMcpTool(
       endpointUrl: mcp.endpointUrl,
       authSecretRef: mcp.authSecretRef,
       serviceBindingRef: mcp.serviceBindingRef,
-      toolName: input.toolName,
+      toolName: companyToolName,
       arguments: input.arguments,
     });
 

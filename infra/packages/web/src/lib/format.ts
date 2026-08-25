@@ -150,6 +150,8 @@ export function humanOperation(action?: string | null, toolName?: string | null)
     "system.health": "Connection check",
     search_company_knowledge: "Knowledge Search",
     get_knowledge_document: "Knowledge Document Read",
+    search: "Knowledge Search",
+    fetch: "Knowledge Document Read",
     database_summary: "Business data summary",
     system_health: "Connection check",
     "xero.contacts.search": "Xero contact search",

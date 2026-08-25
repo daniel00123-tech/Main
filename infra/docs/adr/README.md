@@ -28,5 +28,6 @@ Authoritative decisions that future INFRA / Business MCP work must follow.
 | [022](./022-connector-health-and-sync.md) | Connector health and sync | **Accepted** |
 | [023](./023-knowledge-source-contract.md) | Knowledge source contract | **Accepted** |
 | [024](./024-caddington-google-drive-lessons.md) | Google Drive as knowledge template | **Accepted** |
+| [025](./025-chatgpt-company-knowledge-adaptors.md) | ChatGPT Company Knowledge adaptors | **Accepted** |
 
 **Core principle:** Company MCPs own company knowledge, business data and business capabilities. INFRA owns identity, authorisation, routing, metering, billing and audit.

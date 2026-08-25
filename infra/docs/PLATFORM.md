@@ -38,6 +38,8 @@ Business systems → Company MCP (knowledge / warehouse / connectors)
 
 ChatGPT authenticates to INFRA. INFRA authenticates separately to the company MCP. Downstream tokens never appear in the UI.
 
+The public INFRA MCP (`/api/gateway/v1/mcp`) advertises company tools plus, when the tenant has knowledge tools, standard read-only `search` and `fetch` adaptors so ChatGPT Company Knowledge / File Search can use the same corpus. `search` reuses `search_company_knowledge`; `fetch` reuses `get_knowledge_document`. Tenant isolation stays on the authenticated identity. After a tool-catalogue change, ChatGPT Workspace Settings must refresh/republish the app — ChatGPT stores a frozen snapshot.
+
 ## Metering & billing
 
 - Three levels: interaction → tool operation → optional cost component (ADR 006).

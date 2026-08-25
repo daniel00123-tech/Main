@@ -29,6 +29,15 @@ import {
 } from "./service-identities";
 import { newId, nowIso } from "../db/mappers";
 import { publicToolErrorMessage } from "./public-errors";
+import {
+  mapFetchArgumentsForCompanyMcp,
+  sanitizeStandardFetchArguments,
+  sanitizeStandardSearchArguments,
+  toStandardFetchPayload,
+  toStandardSearchPayload,
+  withStandardKnowledgeTools,
+  wrapStandardToolResult,
+} from "./mcp-knowledge-standard";
 
 type JsonRpcId = string | number | null;
 
@@ -87,6 +96,10 @@ export function enrichMcpToolDescription(
   upstreamDescription?: string | null,
 ): string {
   const defaults: Record<string, string> = {
+    search:
+      "Search this company's knowledge for policies, processes, and other indexed documents. Use a natural-language query. Returns matching documents with stable ids so you can call fetch. Read-only.",
+    fetch:
+      "Fetch the full content of a company knowledge document previously returned by search. Pass the document id. Read-only. Use the returned url and metadata for source attribution when present.",
     search_company_knowledge:
       "Search this company's indexed knowledge documents (policies, project docs, spend limits, approvals, etc.). Pass a natural-language query only (for example \"vehicle mileage policy\" or \"Company Van Policy\"). Do NOT set topic/category/department filters unless the user explicitly asks to filter by that metadata — invented filters often return zero results. Returns matching excerpts with source document titles.",
     get_knowledge_document:
@@ -320,8 +333,14 @@ async function resolveToolActionForFilter(
     .bind(mcpEnvironmentId, toolName)
     .first();
   if (mapped?.action) return String(mapped.action);
-  if (toolName === "search_company_knowledge") return "knowledge.search";
-  if (toolName === "get_knowledge_document" || toolName === "database_summary") {
+  if (toolName === "search_company_knowledge" || toolName === "search") {
+    return "knowledge.search";
+  }
+  if (
+    toolName === "get_knowledge_document" ||
+    toolName === "fetch" ||
+    toolName === "database_summary"
+  ) {
     return "knowledge.read";
   }
   if (toolName === "system_health") return "system.health";
@@ -460,10 +479,10 @@ export async function handleInfraMcpJsonRpc(
           name: "infra-gateway",
           version: "1.0.0",
           instructions:
-            "All tool calls are authorised, metered, and billed by INFRA. Do not call company MCP endpoints directly.",
+            "All tool calls are authorised, metered, and billed by INFRA. Use search then fetch to read this company's knowledge. Both are read-only. Do not call company MCP endpoints directly.",
         },
         instructions:
-          "All tool calls are authorised, metered, and billed by INFRA. Do not call company MCP endpoints directly.",
+          "All tool calls are authorised, metered, and billed by INFRA. Use search then fetch to read this company's knowledge. Both are read-only. Do not call company MCP endpoints directly.",
       }),
       httpStatus: 200,
     };
@@ -552,17 +571,19 @@ export async function handleInfraMcpJsonRpc(
         });
       }
 
+      const advertised = withStandardKnowledgeTools(tools);
+
       await logFacadeEvent(env.DB, {
         companyId: resolvedCompanyId,
         actor: actorLabel,
         method,
         status: "ok",
         httpStatus: 200,
-        detail: { toolNames: tools.map((t) => t.name), mcpId: mcp.id },
+        detail: { toolNames: advertised.map((t) => t.name), mcpId: mcp.id },
       });
 
       return {
-        payload: jsonRpcResult(id, { tools }),
+        payload: jsonRpcResult(id, { tools: advertised }),
         httpStatus: 200,
       };
     } catch (err) {
@@ -598,7 +619,25 @@ export async function handleInfraMcpJsonRpc(
     }
 
     let strippedKeys: string[] = [];
-    if (toolName === "search_company_knowledge") {
+    if (toolName === "search") {
+      const sanitized = sanitizeStandardSearchArguments(args);
+      if ("error" in sanitized) {
+        return {
+          payload: jsonRpcError(id, -32602, sanitized.error),
+          httpStatus: 400,
+        };
+      }
+      args = { query: sanitized.query };
+    } else if (toolName === "fetch") {
+      const sanitized = sanitizeStandardFetchArguments(args);
+      if ("error" in sanitized) {
+        return {
+          payload: jsonRpcError(id, -32602, sanitized.error),
+          httpStatus: 400,
+        };
+      }
+      args = mapFetchArgumentsForCompanyMcp(sanitized.id);
+    } else if (toolName === "search_company_knowledge") {
       const sanitized = sanitizeKnowledgeSearchArguments(args);
       args = sanitized.forwarded;
       strippedKeys = sanitized.strippedKeys;
@@ -705,34 +744,47 @@ export async function handleInfraMcpJsonRpc(
     }
 
     const payload = result.result;
+    const infraMeta = {
+      correlationId: result.correlationId,
+      requestId: result.requestId,
+      charge: result.charge,
+    };
+
     const wrapped =
-      payload &&
-      typeof payload === "object" &&
-      "content" in (payload as Record<string, unknown>)
+      toolName === "search"
         ? {
-            ...(payload as object),
-            _infra: {
-              correlationId: result.correlationId,
-              requestId: result.requestId,
-              charge: result.charge,
-            },
+            ...wrapStandardToolResult(toStandardSearchPayload(payload)),
+            _infra: infraMeta,
           }
-        : {
-            content: [
-              {
-                type: "text",
-                text:
-                  typeof payload === "string"
-                    ? payload
-                    : JSON.stringify(payload ?? {}, null, 2),
-              },
-            ],
-            _infra: {
-              correlationId: result.correlationId,
-              requestId: result.requestId,
-              charge: result.charge,
-            },
-          };
+        : toolName === "fetch"
+          ? {
+              ...wrapStandardToolResult(
+                toStandardFetchPayload(
+                  payload,
+                  typeof args.id === "string" ? args.id : "",
+                ),
+              ),
+              _infra: infraMeta,
+            }
+          : payload &&
+              typeof payload === "object" &&
+              "content" in (payload as Record<string, unknown>)
+            ? {
+                ...(payload as object),
+                _infra: infraMeta,
+              }
+            : {
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      typeof payload === "string"
+                        ? payload
+                        : JSON.stringify(payload ?? {}, null, 2),
+                  },
+                ],
+                _infra: infraMeta,
+              };
 
     await logFacadeEvent(env.DB, {
       companyId: resolvedCompanyId,

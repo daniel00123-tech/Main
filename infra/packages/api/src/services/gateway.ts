@@ -60,10 +60,14 @@ async function resolveToolAction(
     };
   }
 
-  if (toolName === "search_company_knowledge") {
+  if (toolName === "search_company_knowledge" || toolName === "search") {
     return { action: "knowledge.search", riskClass: "low_risk" };
   }
-  if (toolName === "get_knowledge_document" || toolName === "database_summary") {
+  if (
+    toolName === "get_knowledge_document" ||
+    toolName === "fetch" ||
+    toolName === "database_summary"
+  ) {
     return { action: "knowledge.read", riskClass: "low_risk" };
   }
   if (toolName === "system_health") {

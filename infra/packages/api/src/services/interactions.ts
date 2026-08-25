@@ -79,9 +79,11 @@ export function labelForOperation(operation: string): string {
   switch (operation) {
     case "knowledge.search":
     case "search_company_knowledge":
+    case "search":
       return "Knowledge Search";
     case "knowledge.read":
     case "get_knowledge_document":
+    case "fetch":
       return "Knowledge Document Read";
     case "system.health":
     case "system_health":
@@ -119,7 +121,9 @@ export function labelInteraction(records: UsageRecord[]): string {
       (op) =>
         op.startsWith("knowledge.") ||
         op === "search_company_knowledge" ||
-        op === "get_knowledge_document",
+        op === "get_knowledge_document" ||
+        op === "search" ||
+        op === "fetch",
     );
   if (onlyKnowledge) {
     return records.length === 1

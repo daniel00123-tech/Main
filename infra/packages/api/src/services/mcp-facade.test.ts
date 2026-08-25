@@ -372,11 +372,17 @@ describe("INFRA MCP facade tool catalogue consistency", () => {
             name: string;
             description?: string;
             inputSchema?: { properties?: Record<string, unknown> };
+            annotations?: {
+              readOnlyHint?: boolean;
+              destructiveHint?: boolean;
+              openWorldHint?: boolean;
+            };
           }>;
         };
       }
     ).result?.tools;
     expect(tools?.map((t) => t.name).sort()).toEqual([
+      "search",
       "search_company_knowledge",
       "system_health",
     ]);
@@ -385,6 +391,14 @@ describe("INFRA MCP facade tool catalogue consistency", () => {
     expect(search?.description?.toLowerCase()).toContain("knowledge");
     expect(search?.inputSchema?.properties?.query).toBeTruthy();
     expect(search?.inputSchema?.properties?.topic).toBeUndefined();
+    const standard = tools?.find((t) => t.name === "search");
+    expect(standard?.inputSchema?.properties?.query).toBeTruthy();
+    expect(standard?.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    });
+    expect(search?.annotations?.readOnlyHint).toBe(true);
   });
 });
 
@@ -587,8 +601,13 @@ describe("tenant isolation across Caddington / HT / EL identities", () => {
         "mcp_caddington_primary",
       ),
     );
-    expect(names.sort()).toEqual(["search_company_knowledge", "system_health"]);
+    expect(names.sort()).toEqual([
+      "search",
+      "search_company_knowledge",
+      "system_health",
+    ]);
     expect(names).not.toContain("database_summary");
+    expect(names).not.toContain("fetch");
   });
 
   it("HT token cannot spoof EL or Caddington via params/header", async () => {

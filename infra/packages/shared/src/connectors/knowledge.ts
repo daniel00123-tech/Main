@@ -2,6 +2,8 @@ import type { KnowledgeSourceKind, KnowledgeSourceSummary } from "../types";
 
 export const KNOWLEDGE_SEARCH_TOOL = "search_company_knowledge";
 export const KNOWLEDGE_READ_TOOL = "get_knowledge_document";
+export const STANDARD_KNOWLEDGE_SEARCH_TOOL = "search";
+export const STANDARD_KNOWLEDGE_FETCH_TOOL = "fetch";
 
 export const KNOWLEDGE_TOOLS = [KNOWLEDGE_SEARCH_TOOL, KNOWLEDGE_READ_TOOL] as const;
 

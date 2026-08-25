@@ -304,6 +304,14 @@ describe("MCP tool allowlist", () => {
 
     expect(allowed.allowed).toBe(true);
     expect(denied.allowed).toBe(false);
+
+    const aliased = await isToolAllowed(
+      db as unknown as D1Database,
+      "mcp_caddington_primary",
+      "search",
+    );
+    expect(aliased.allowed).toBe(true);
+    expect(aliased.riskClass).toBe("low_risk");
   });
 
   it("seeds default read-only allowlist entries", async () => {
