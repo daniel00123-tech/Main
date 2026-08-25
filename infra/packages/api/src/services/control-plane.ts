@@ -16,23 +16,45 @@ import {
   resolveMcpAuthHeader,
 } from "./mcp-client";
 import { getUsageSummary, listPlatformUsage, recordUsageEvent } from "./usage";
-import { getWalletBalance } from "./ledger";
+import { getWalletBalance, listLedgerEntries } from "./ledger";
+import { buildCompanyOnboarding } from "./onboarding";
+import { deriveMcpOnboardingStatus } from "./mcp-capabilities";
 
-export async function listCompanies(db: D1Database, companyIds?: string[]) {
+export async function listCompanies(
+  db: D1Database,
+  companyIds?: string[],
+  filters?: { query?: string; status?: string; limit?: number; offset?: number },
+) {
   if (companyIds && companyIds.length === 0) {
     return [];
   }
 
-  const query =
-    companyIds && companyIds.length > 0
-      ? db
-          .prepare(
-            `SELECT * FROM companies WHERE id IN (${companyIds.map(() => "?").join(", ")}) ORDER BY name ASC`,
-          )
-          .bind(...companyIds)
-      : db.prepare("SELECT * FROM companies ORDER BY name ASC");
-
-  const result = await query.all();
+  const clauses: string[] = [];
+  const binds: unknown[] = [];
+  if (companyIds && companyIds.length > 0) {
+    clauses.push(`id IN (${companyIds.map(() => "?").join(", ")})`);
+    binds.push(...companyIds);
+  }
+  if (filters?.status && filters.status !== "all") {
+    clauses.push("status = ?");
+    binds.push(filters.status);
+  }
+  if (filters?.query?.trim()) {
+    const like = `%${filters.query.trim().toLowerCase()}%`;
+    clauses.push(
+      "(lower(name) LIKE ? OR lower(slug) LIKE ? OR lower(COALESCE(trading_name, '')) LIKE ?)",
+    );
+    binds.push(like, like, like);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const limit = Math.min(Math.max(filters?.limit ?? 200, 1), 500);
+  const offset = Math.max(filters?.offset ?? 0, 0);
+  const result = await db
+    .prepare(
+      `SELECT * FROM companies ${where} ORDER BY name ASC LIMIT ? OFFSET ?`,
+    )
+    .bind(...binds, limit, offset)
+    .all();
   return (result.results ?? []).map((row) => rowToCompany(row));
 }
 
@@ -191,6 +213,42 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
       .sort()
       .at(-1) ?? null;
 
+  const [adminRow, usageCountRow, ledger, teamRow] = await Promise.all([
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM company_memberships
+         WHERE company_id = ? AND role = 'company_admin' AND status = 'active'`,
+      )
+      .bind(companyId)
+      .first(),
+    db
+      .prepare(`SELECT COUNT(*) AS count FROM usage_records WHERE company_id = ?`)
+      .bind(companyId)
+      .first(),
+    listLedgerEntries(db, companyId, 50),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM company_memberships
+         WHERE company_id = ? AND status = 'active'`,
+      )
+      .bind(companyId)
+      .first(),
+  ]);
+
+  const onboarding = buildCompanyOnboarding({
+    company,
+    mcp,
+    connectors: connectorInstances,
+    wallet: wallet ?? {
+      balanceCents: creditBalance?.balanceCents ?? 0,
+      lowBalance: false,
+    },
+    ledger,
+    adminCount: Number(adminRow?.count ?? 0),
+    activeTokenCount: Number(identityRow?.active_count ?? 0),
+    usageCount: Number(usageCountRow?.count ?? 0),
+  });
+
   return {
     company,
     mcpEnvironments,
@@ -205,6 +263,10 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     lastActivityAt,
     aiIdentityCount: Number(identityRow?.count ?? 0),
     activeAiIdentityCount: Number(identityRow?.active_count ?? 0),
+    onboarding,
+    mcpOnboardingStatus: deriveMcpOnboardingStatus(mcp),
+    teamCount: Number(teamRow?.count ?? 0),
+    readyForUse: onboarding.readyForUse,
   };
 }
 
@@ -953,9 +1015,43 @@ export async function getPlatformSummary(
   const activeConnectors = scopedConnectors.filter(
     (c) => c.status !== "disabled" && c.status !== "draft",
   ).length;
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const startOfMonth = new Date();
+  startOfMonth.setUTCDate(1);
+  startOfMonth.setUTCHours(0, 0, 0, 0);
+
+  const [usageTodayRow, usageMonthRow, walletRow, aiRow] = await Promise.all([
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM usage_records WHERE recorded_at >= ?`,
+      )
+      .bind(startOfDay.toISOString())
+      .first(),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM usage_records WHERE recorded_at >= ?`,
+      )
+      .bind(startOfMonth.toISOString())
+      .first(),
+    db
+      .prepare(
+        `SELECT COALESCE(SUM(balance_cents), 0) AS total,
+                SUM(CASE WHEN balance_cents < low_balance_threshold_cents THEN 1 ELSE 0 END) AS low_count
+         FROM credit_balances`,
+      )
+      .first(),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM service_identities WHERE status = 'active'`,
+      )
+      .first(),
+  ]);
 
   return {
     companies: companies.length,
+    onboardingCompanies: companies.filter((c) => c.status === "onboarding").length,
+    suspendedCompanies: companies.filter((c) => c.status === "suspended").length,
     mcpEnvironments: scopedMcp.length,
     healthyMcp,
     connectorInstances: scopedConnectors.length,
@@ -969,5 +1065,10 @@ export async function getPlatformSummary(
     unhealthyMcp: scopedMcp.filter(
       (m) => m.status === "unreachable" || m.status === "degraded",
     ).length,
+    usageToday: Number(usageTodayRow?.count ?? 0),
+    usageThisMonth: Number(usageMonthRow?.count ?? 0),
+    totalWalletCents: Number(walletRow?.total ?? 0),
+    lowBalanceCompanies: Number(walletRow?.low_count ?? 0),
+    activeAiIdentities: Number(aiRow?.count ?? 0),
   };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   EmptyState,
@@ -58,18 +58,6 @@ export default function PortalBillingPage() {
     }
   }
 
-  const totals = useMemo(() => {
-    if (!wallet) return { credits: 0, charges: 0 };
-    return {
-      credits: wallet.ledger
-        .filter((e) => e.amountCents > 0)
-        .reduce((sum, e) => sum + e.amountCents, 0),
-      charges: wallet.ledger
-        .filter((e) => e.amountCents < 0)
-        .reduce((sum, e) => sum + Math.abs(e.amountCents), 0),
-    };
-  }, [wallet]);
-
   if (loading || (!wallet && !loadError && !error)) {
     return <LoadingState label="Loading billing…" />;
   }
@@ -91,8 +79,8 @@ export default function PortalBillingPage() {
 
       {!wallet.stripeConfigured ? (
         <Notice tone="warning">
-          Card payments are not live. Your balance below is accurate. Ask a platform
-          administrator if you need credit added.
+          Online payments not configured. Stripe is prepared but not live. Tide is the
+          payout bank account only — there is no Tide API in this product.
         </Notice>
       ) : null}
 
@@ -116,12 +104,18 @@ export default function PortalBillingPage() {
           )}
         </div>
         <div className="card metric-card">
-          <h3>Credits added</h3>
-          <div className="metric">{formatCurrency(totals.credits, wallet.wallet.currency)}</div>
+          <h3>TEST credit</h3>
+          <div className="metric">
+            {formatCurrency(wallet.wallet.testCreditCents ?? 0, wallet.wallet.currency)}
+          </div>
+          <p className="muted small">Promotional / opening TEST credit</p>
         </div>
         <div className="card metric-card">
-          <h3>Usage charges</h3>
-          <div className="metric">{formatCurrency(totals.charges, wallet.wallet.currency)}</div>
+          <h3>Paid credit</h3>
+          <div className="metric">
+            {formatCurrency(wallet.wallet.paidCreditCents ?? 0, wallet.wallet.currency)}
+          </div>
+          <p className="muted small">Stripe top-ups once payments are live</p>
         </div>
       </div>
 
@@ -134,23 +128,26 @@ export default function PortalBillingPage() {
               : "Card top-up is prepared but not enabled."
           }
         >
-          <div className="topup-grid">
-            {wallet.topUpOptionsCents.map((amount) => (
-              <button
-                key={amount}
-                className="button topup-button"
-                type="button"
-                disabled={busy || !wallet.stripeConfigured}
-                onClick={() => void topUp(amount)}
-              >
-                {formatCurrency(amount)}
-              </button>
-            ))}
-          </div>
-          <p className="muted small" style={{ marginTop: 12 }}>
-            Planned amounts: £10, £25, £50, £100. Auto top-up (for example below £5 add £25)
-            is not enabled yet.
-          </p>
+          {wallet.stripeConfigured ? (
+            <div className="topup-grid">
+              {wallet.topUpOptionsCents.map((amount) => (
+                <button
+                  key={amount}
+                  className="button topup-button"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void topUp(amount)}
+                >
+                  {formatCurrency(amount)}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>
+              Planned top-ups: £10, £25, £50, £100, plus custom. Auto top-up (balance below
+              £5 → add £25) is designed but not enabled.
+            </p>
+          )}
           {message ? <p className="info-banner" style={{ marginTop: 16 }}>{message}</p> : null}
         </SectionCard>
 

@@ -37,10 +37,10 @@ describe("connector catalogue", () => {
     expect(gdrive?.integrationType).toBe("business_system");
   });
 
-  it("marks AI channels as coming soon", () => {
-    for (const connector of getAiChannelConnectors()) {
-      expect(connector.catalogueStatus).toBe("coming_soon");
-    }
+  it("marks ChatGPT as available now and WhatsApp as coming soon", () => {
+    expect(getConnectorBySlug("chatgpt")?.catalogueStatus).toBe("active");
+    expect(getConnectorBySlug("claude")?.catalogueStatus).toBe("available");
+    expect(getConnectorBySlug("whatsapp")?.catalogueStatus).toBe("coming_soon");
   });
 
   it("separates business systems from AI channels", () => {

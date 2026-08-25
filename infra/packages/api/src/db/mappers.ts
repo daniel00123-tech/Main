@@ -41,6 +41,17 @@ export function rowToCompany(row: Record<string, unknown>): Company {
     provisionedAt: row.provisioned_at ? String(row.provisioned_at) : null,
     suspendedAt: row.suspended_at ? String(row.suspended_at) : null,
     closedAt: row.closed_at ? String(row.closed_at) : null,
+    archivedAt: row.archived_at ? String(row.archived_at) : null,
+    currency: row.currency ? String(row.currency) : "GBP",
+    billingMode: row.billing_mode ? String(row.billing_mode) : "test",
+    mcpOnboardingStatus: row.mcp_onboarding_status
+      ? String(row.mcp_onboarding_status)
+      : null,
+    primaryAdminUserId: row.primary_admin_user_id
+      ? String(row.primary_admin_user_id)
+      : null,
+    branding: parseJson(row.branding_json ? String(row.branding_json) : null, {}),
+    config: parseJson(row.config_json ? String(row.config_json) : null, {}),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };

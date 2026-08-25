@@ -213,6 +213,15 @@ export async function registerExistingMcpEnvironment(
       .run();
   }
 
+  await db
+    .prepare(
+      `UPDATE companies
+       SET mcp_onboarding_status = 'registered', updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(now, input.companyId)
+    .run();
+
   await recordAuditEvent(db, {
     companyId: input.companyId,
     eventType: "mcp.registered",

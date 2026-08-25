@@ -3,8 +3,10 @@
 export type CompanyStatus =
   | "draft"
   | "provisioning"
+  | "onboarding"
   | "active"
   | "suspended"
+  | "archived"
   | "closed";
 
 export type McpEnvironmentStatus =
@@ -43,10 +45,18 @@ export type AuditEventType =
   | "company.accessed"
   | "company.created"
   | "company.updated"
+  | "company.suspended"
+  | "company.reactivated"
+  | "company.archived"
   | "user.created"
   | "user.disabled"
+  | "user.role_changed"
   | "role.assigned"
   | "role.changed"
+  | "ai_connection.created"
+  | "ai_connection.revoked"
+  | "wallet.adjusted"
+  | "pricing.changed"
   | "permission.denied"
   | "mcp.registered"
   | "mcp.updated"
@@ -89,6 +99,13 @@ export interface Company {
   provisionedAt: string | null;
   suspendedAt: string | null;
   closedAt: string | null;
+  archivedAt: string | null;
+  currency: string | null;
+  billingMode: string | null;
+  mcpOnboardingStatus: string | null;
+  primaryAdminUserId: string | null;
+  branding: Record<string, unknown>;
+  config: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -122,7 +139,7 @@ export interface CreateCompanyInput {
   tradingName?: string | null;
   /** Optional explicit slug; otherwise derived from trading/legal name */
   slug?: string | null;
-  /** Short portal subdomain, e.g. caddington / ht / el */
+  /** Short portal hostname label, derived from the slug when omitted */
   portalSubdomain?: string | null;
   companyNumber?: string | null;
   country?: string | null;
@@ -211,6 +228,15 @@ export interface ServiceIdentity {
   updatedAt: string;
 }
 
+export type ConnectorAuthMethod =
+  | "none"
+  | "oauth"
+  | "api_key"
+  | "service_account"
+  | "client_credentials"
+  | "webhook"
+  | "infra_service_identity";
+
 export interface ConnectorDefinition {
   id: string;
   slug: string;
@@ -226,6 +252,11 @@ export interface ConnectorDefinition {
   configSchema: Record<string, unknown>;
   supportedSyncModes: SyncMode[];
   isAvailable: boolean;
+  authenticationMethod?: ConnectorAuthMethod;
+  readWrite?: "read" | "read_write";
+  setupInstructions?: string;
+  availabilityLabel?: "available_now" | "requires_setup" | "coming_soon";
+  requiresCompanyMcp?: boolean;
 }
 
 export interface ConnectorInstance {
@@ -470,4 +501,23 @@ export interface CompanyOverview {
   lastActivityAt?: string | null;
   aiIdentityCount?: number;
   activeAiIdentityCount?: number;
+  onboarding?: CompanyOnboarding;
+  mcpOnboardingStatus?: string;
+  teamCount?: number;
+  readyForUse?: boolean;
+}
+
+export interface OnboardingItem {
+  id: string;
+  title: string;
+  status: "complete" | "pending" | "not_provisioned" | "not_configured" | "test_mode" | "no";
+  detail: string;
+  href?: string | null;
+}
+
+export interface CompanyOnboarding {
+  companyId: string;
+  readyForUse: boolean;
+  items: OnboardingItem[];
+  problems: Array<{ id: string; title: string; detail: string; href?: string | null }>;
 }

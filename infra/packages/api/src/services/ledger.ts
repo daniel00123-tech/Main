@@ -212,16 +212,35 @@ export async function appendLedgerEntry(
 
 export async function listPlatformBalances(db: D1Database) {
   const companies = await db
-    .prepare("SELECT id, name, slug FROM companies ORDER BY name ASC")
+    .prepare(
+      `SELECT c.id, c.name, c.slug, c.status,
+              COALESCE(cb.balance_cents, 0) AS balance_cents,
+              COALESCE(cb.currency, 'GBP') AS currency,
+              COALESCE(cb.low_balance_threshold_cents, 500) AS low_balance_threshold_cents,
+              cb.stripe_customer_id, cb.updated_at
+       FROM companies c
+       LEFT JOIN credit_balances cb ON cb.company_id = c.id
+       ORDER BY c.name ASC`,
+    )
     .all();
 
   const balances = [];
   for (const company of companies.results ?? []) {
-    const wallet = await getWalletBalance(db, String(company.id));
+    const balanceCents = Number(company.balance_cents ?? 0);
+    const threshold = Number(company.low_balance_threshold_cents ?? 500);
     balances.push({
+      companyId: String(company.id),
       companyName: String(company.name),
       companySlug: String(company.slug),
-      ...wallet,
+      companyStatus: String(company.status ?? "active"),
+      balanceCents,
+      currency: String(company.currency ?? "GBP"),
+      lowBalanceThresholdCents: threshold,
+      lowBalance: balanceCents < threshold,
+      stripeCustomerId: company.stripe_customer_id
+        ? String(company.stripe_customer_id)
+        : null,
+      updatedAt: String(company.updated_at ?? nowIso()),
     });
   }
   return balances;

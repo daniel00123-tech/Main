@@ -88,8 +88,9 @@ export default function BillingPage() {
 
       {stripeConfigured === false ? (
         <Notice tone="warning">
-          Card payments are not live. Wallet balances and usage charges are real; Stripe top-ups stay
-          disabled until the platform owner enables them.
+          Online payments not configured. Stripe is the intended card provider. Tide is only the
+          payout bank account — INFRA has no Tide API. Provider costs stay unknown unless a rate
+          card exists; unknown is shown rather than £0.
         </Notice>
       ) : stripeConfigured ? (
         <Notice tone="info">

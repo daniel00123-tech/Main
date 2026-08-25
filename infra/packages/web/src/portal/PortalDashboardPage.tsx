@@ -12,6 +12,7 @@ import {
   StatusBadge,
   formatCurrency,
 } from "../components";
+import { OnboardingChecklist } from "../components/OnboardingChecklist";
 import { formatRelativeTime, greetingForNow, humanEventLabel } from "../lib/format";
 import { usePortalCompany } from "./usePortalCompany";
 
@@ -24,35 +25,27 @@ export default function PortalDashboardPage() {
   }
 
   const base = `/portal/${company.slug}`;
-  const mcp = overview.mcpEnvironments[0];
+  const mcp = overview.mcpEnvironments[0] ?? null;
   const usage = overview.usageSummary;
   const wallet = overview.wallet;
   const connectors = overview.connectorInstances;
   const activeConnectors = connectors.filter(
     (item) => item.status !== "disabled" && item.status !== "draft",
   );
-  const attention: Array<{ id: string; title: string; description?: string; to?: string }> = [];
-  if (mcp && ["unreachable", "degraded"].includes(mcp.status)) {
-    attention.push({
-      id: "mcp",
-      title: "AI connection needs attention",
-      description: mcp.healthMessage ?? mcp.status,
-      to: `${base}/ai-connections`,
+  const attention = (overview.onboarding?.problems ?? []).map((item) => ({
+    id: item.id,
+    title: item.title,
+    description: item.detail,
+    to: item.href ?? undefined,
+  }));
+  if (company.status === "suspended") {
+    attention.unshift({
+      id: "suspended",
+      title: "Company is suspended",
+      description: "Paid AI operations are blocked. Contact a platform administrator.",
+      to: `${base}/settings`,
     });
   }
-  if (wallet?.lowBalance) {
-    attention.push({
-      id: "wallet",
-      title: "Credit balance is low",
-      description: "Add credit to keep requests flowing",
-      to: `${base}/billing`,
-    });
-  }
-
-  const isFresh =
-    activeConnectors.length === 0 &&
-    overview.mcpEnvironments.length === 0 &&
-    (usage?.requestsThisMonth ?? 0) === 0;
 
   return (
     <>
@@ -62,100 +55,76 @@ export default function PortalDashboardPage() {
         meta={<StatusBadge status={company.status} />}
       />
 
-      <AttentionBanner
-        items={attention}
-        allClear="No alerts right now"
-      />
+      <AttentionBanner items={attention} allClear="No alerts right now" />
 
       <SectionCard
-        title="Connect ChatGPT"
-        description="Create a one-time token and point ChatGPT at INFRA. Company systems stay behind INFRA."
+        title="Onboarding"
+        description="What exists, what does not, and what still needs to happen."
       >
-        <p className="muted" style={{ marginTop: 0 }}>
-          Open AI connections, choose ChatGPT, then follow the setup steps. The token is shown once.
-        </p>
-        <Link to={`${base}/ai-connections`} className="button button-primary">
-          Open AI connections · ChatGPT
-        </Link>
+        {overview.onboarding ? (
+          <OnboardingChecklist onboarding={overview.onboarding} />
+        ) : (
+          <p className="muted">Onboarding state is not available yet.</p>
+        )}
       </SectionCard>
-
-      {isFresh ? (
-        <SectionCard title="Welcome to INFRA" description="Let's connect your company.">
-          <ol className="stack" style={{ margin: 0, paddingLeft: 18, color: "var(--text-secondary)" }}>
-            <li>
-              <Link to={`${base}/connectors`}>Connect a business system</Link>
-            </li>
-            <li>
-              <Link to={`${base}/ai-connections`}>Connect AI</Link>
-            </li>
-            <li>
-              <Link to={`${base}/team`}>Invite your team</Link>
-            </li>
-            <li>
-              <Link to={`${base}/team`}>Review roles</Link>
-            </li>
-            <li>Start using INFRA</li>
-          </ol>
-        </SectionCard>
-      ) : null}
 
       <MetricGrid cols={4}>
         <MetricCard
-          label="Connected systems"
-          value={String(activeConnectors.length)}
-          hint={`${connectors.length} total`}
-          to={`${base}/connectors`}
-        />
-        <MetricCard
           label="Business MCP"
-          value={mcp ? <StatusBadge status={mcp.status} /> : "Not configured"}
-          hint={mcp ? "Company AI environment" : "No company MCP registered"}
+          value={
+            <StatusBadge
+              status={overview.mcpOnboardingStatus ?? "not_provisioned"}
+              label={mcp ? undefined : "Not provisioned"}
+            />
+          }
+          hint={mcp ? mcp.name : "Register an existing MCP from Platform Admin"}
+        />
+        <MetricCard
+          label="Knowledge"
+          value={overview.knowledgeStatus === "configured" ? "Configured" : "Not configured"}
+          hint={
+            overview.knowledgeStatus === "configured"
+              ? `${mcp?.knowledgeDocumentCount ?? 0} documents reported by the company MCP`
+              : "MCP health does not mean knowledge is configured"
+          }
+        />
+        <MetricCard
+          label="Structured data"
+          value={overview.warehouseStatus === "configured" ? "Configured" : "Not configured"}
+          hint="Company MCP warehouse / database summary"
+        />
+        <MetricCard
+          label="AI connections"
+          value={String(overview.activeAiIdentityCount ?? 0)}
+          hint="Active service identities"
           to={`${base}/ai-connections`}
-        />
-        <MetricCard
-          label="Usage this month"
-          value={String(usage?.requestsThisMonth ?? 0)}
-          hint={`${usage?.requestsToday ?? 0} today`}
-          to={`${base}/usage`}
-        />
-        <MetricCard
-          label="Available credit"
-          value={wallet ? formatCurrency(wallet.balanceCents, wallet.currency) : "—"}
-          hint={wallet?.lowBalance ? "Low balance" : "Wallet"}
-          to={`${base}/billing`}
         />
       </MetricGrid>
 
       <div style={{ marginTop: 16 }}>
         <MetricGrid cols={4}>
           <MetricCard
-            label="MCP version"
-            value={mcp?.mcpVersion ?? "—"}
-            hint={mcp?.businessMcpCoreVersion ? `Core ${mcp.businessMcpCoreVersion}` : "Core not reported"}
+            label="Systems"
+            value={String(activeConnectors.length)}
+            hint={`${connectors.length} registered`}
+            to={`${base}/connectors`}
           />
           <MetricCard
-            label="Knowledge"
-            value={
-              overview.knowledgeStatus === "configured"
-                ? String(mcp?.knowledgeDocumentCount ?? 0)
-                : "Not configured"
-            }
-            hint={
-              (mcp?.knowledgeChunkCount ?? 0) > 0
-                ? `${mcp?.knowledgeChunkCount} chunks`
-                : "No indexed documents"
-            }
+            label="Usage this month"
+            value={String(usage?.requestsThisMonth ?? 0)}
+            hint={`${usage?.requestsToday ?? 0} today`}
+            to={`${base}/usage`}
           />
           <MetricCard
-            label="Warehouse"
-            value={overview.warehouseStatus === "configured" ? "Available" : "No data yet"}
-            hint="Company MCP structured data"
+            label="Wallet"
+            value={wallet ? formatCurrency(wallet.balanceCents, wallet.currency) : "—"}
+            hint={wallet?.lowBalance ? "Low balance" : "TEST mode"}
+            to={`${base}/billing`}
           />
           <MetricCard
-            label="AI connections"
-            value="ChatGPT"
-            hint="Generate token in AI connections"
-            to={`${base}/ai-connections`}
+            label="Team"
+            value={String(overview.teamCount ?? 0)}
+            to={`${base}/team`}
           />
         </MetricGrid>
       </div>
@@ -165,10 +134,10 @@ export default function PortalDashboardPage() {
           {connectors.length === 0 && !mcp ? (
             <EmptyState
               title="Nothing connected yet"
-              description="Connect a business system or AI assistant to get started."
+              description="Business systems are configured per company. Nothing is assumed from another tenant."
               action={
                 <Link to={`${base}/connectors`} className="button button-primary">
-                  Connect system
+                  View catalogue
                 </Link>
               }
             />
@@ -179,17 +148,17 @@ export default function PortalDashboardPage() {
                   <strong>{c.name}</strong>
                   <StatusBadge
                     status={c.status === "draft" ? "not_configured" : c.status}
-                    label={c.status === "draft" ? "Not connected" : undefined}
+                    label={c.status === "draft" ? "Not configured" : undefined}
                   />
                 </div>
               ))}
               {mcp ? (
                 <div className="connection-header" style={{ marginBottom: 0 }}>
                   <div>
-                    <strong>AI gateway</strong>
+                    <strong>Business MCP</strong>
                     <div className="muted small">{mcp.name}</div>
                   </div>
-                  <StatusBadge status={mcp.status} />
+                  <StatusBadge status={overview.mcpOnboardingStatus ?? mcp.status} />
                 </div>
               ) : null}
             </div>
@@ -197,14 +166,18 @@ export default function PortalDashboardPage() {
         </SectionCard>
 
         <SectionCard title="Recent activity">
-          <ActivityFeed
-            items={overview.recentAuditEvents.slice(0, 8).map((event) => ({
-              id: event.id,
-              title: humanEventLabel(event.eventType),
-              description: event.actor,
-              meta: formatRelativeTime(event.createdAt),
-            }))}
-          />
+          {overview.recentAuditEvents.length === 0 ? (
+            <EmptyState title="No activity yet" description="Company changes will appear here." />
+          ) : (
+            <ActivityFeed
+              items={overview.recentAuditEvents.slice(0, 8).map((event) => ({
+                id: event.id,
+                title: humanEventLabel(event.eventType),
+                description: event.actor,
+                meta: formatRelativeTime(event.createdAt),
+              }))}
+            />
+          )}
         </SectionCard>
       </div>
     </>

@@ -68,6 +68,8 @@ import {
   processStripeWebhookEvent,
   verifyStripeWebhookSignature,
 } from "../services/stripe";
+import { getPlatformPaymentProviderStatus } from "../services/payment-providers";
+import { classifyLedgerCredit } from "../services/wallet-credits";
 import {
   getUserCompanyRole,
   userHasCompanyAccess,
@@ -195,12 +197,19 @@ phase3.get("/api/companies/:slug/wallet", requireAuth, async (c) => {
     listLedgerEntries(c.env.DB, company.id, 30),
   ]);
 
+  const credits = classifyLedgerCredit(ledger);
+  const payments = getPlatformPaymentProviderStatus(c.env);
   return c.json({
-    wallet,
+    wallet: {
+      ...wallet,
+      testCreditCents: credits.testCents,
+      paidCreditCents: credits.paidCents,
+    },
     ledger,
     chargeGroups: groupLedgerCharges(ledger),
-    stripeConfigured: isStripeConfigured(c.env),
-    topUpOptionsCents: [5000, 10000, 25000],
+    stripeConfigured: payments.configured,
+    paymentProvider: payments,
+    topUpOptionsCents: payments.topUpOptionsCents,
   });
 });
 
@@ -265,16 +274,16 @@ phase3.post(
       referenceType: "manual",
       referenceId: newId("manual"),
       createdBy: c.get("user").email,
-      metadata: { isTestConfig: true },
+      metadata: { isTestConfig: true, creditClass: "test" },
     });
 
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
-      eventType: "billing.credit_adjusted",
+      eventType: "wallet.adjusted",
       actor: c.get("user").email,
       resourceType: "ledger",
       resourceId: entry.entry.id,
-      detail: { amountCents: body.amountCents },
+      detail: { amountCents: body.amountCents, creditClass: "test" },
     });
 
     return c.json(entry);
@@ -284,6 +293,25 @@ phase3.post(
 phase3.get("/api/billing/balances", requireAuth, requirePlatformAdmin, async (c) => {
   const balances = await listPlatformBalances(c.env.DB);
   return c.json(balances);
+});
+
+phase3.get("/api/billing/overview", requireAuth, requirePlatformAdmin, async (c) => {
+  const balances = await listPlatformBalances(c.env.DB);
+  const payments = getPlatformPaymentProviderStatus(c.env);
+  const totalCents = balances.reduce((sum, row) => sum + row.balanceCents, 0);
+  const low = balances.filter((row) => row.lowBalance);
+  return c.json({
+    paymentProvider: payments,
+    tide: {
+      role: "payout_destination",
+      integrated: false,
+      note: "Stripe payouts settle to the Tide business bank account. No Tide API is required.",
+    },
+    totalWalletCents: totalCents,
+    companyCount: balances.length,
+    lowBalanceCompanies: low,
+    balances,
+  });
 });
 
 phase3.get("/api/pricing/rules", requireAuth, async (c) => {
@@ -444,7 +472,7 @@ phase3.post("/api/companies/:slug/users/:userId/role", requireAuth, async (c) =>
 
   await recordAuditEvent(c.env.DB, {
     companyId: company.id,
-    eventType: "role.changed",
+    eventType: "user.role_changed",
     actor: actor.email,
     resourceType: "user",
     resourceId: c.req.param("userId"),
@@ -614,11 +642,6 @@ async function ensureDefaultAiConnections(
   ];
 
   for (const item of defaults) {
-    // Prefer stable seed IDs for Caddington; fall back to generated ids for other companies.
-    const preferredId =
-      companyId === "co_caddington"
-        ? `ai_cad_${item.clientType}`
-        : item.id;
     await db
       .prepare(
         `INSERT OR IGNORE INTO ai_client_connections
@@ -626,7 +649,7 @@ async function ensureDefaultAiConnections(
          VALUES (?, ?, ?, ?, ?, '/api/gateway/v1/mcp', ?, ?, ?)`,
       )
       .bind(
-        preferredId,
+        item.id,
         companyId,
         item.clientType,
         item.displayName,
@@ -756,7 +779,7 @@ phase3.post(
     const setupNotes =
       `REQUIRED: Connect ${clientType === "chatgpt" ? "ChatGPT" : "Claude"} to ${mcpEndpoint} with Authorization: Bearer <token>. ` +
       `Direct company MCP URLs are blocked (401 Unauthorized) and will not work. ` +
-      `Remove any caddington-mcp / company MCP connector from the AI client.`;
+      `Remove any company MCP connector from the AI client.`;
 
     await c.env.DB.prepare(
       `UPDATE ai_client_connections
@@ -776,7 +799,7 @@ phase3.post(
 
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
-      eventType: "company.accessed",
+      eventType: "ai_connection.created",
       actor: c.get("user").email,
       resourceType: "ai_connection",
       resourceId: clientType,
@@ -849,7 +872,7 @@ phase3.post(
 
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
-      eventType: "company.updated",
+      eventType: "ai_connection.revoked",
       actor: c.get("user").email,
       resourceType: "ai_connection",
       resourceId: clientType,

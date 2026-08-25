@@ -39,6 +39,8 @@ export interface SessionUser {
 
 export interface PlatformSummary {
   companies: number;
+  onboardingCompanies?: number;
+  suspendedCompanies?: number;
   mcpEnvironments: number;
   healthyMcp: number;
   connectorInstances: number;
@@ -47,6 +49,11 @@ export interface PlatformSummary {
   recentUsage?: UsageRecord[];
   permissionDenialsLast24h?: number;
   unhealthyMcp?: number;
+  usageToday?: number;
+  usageThisMonth?: number;
+  totalWalletCents?: number;
+  lowBalanceCompanies?: number;
+  activeAiIdentities?: number;
 }
 
 export interface RolePresetResponse {
@@ -144,7 +151,31 @@ export const api = {
       body: JSON.stringify({ token, password, confirmPassword }),
     }),
   getSummary: () => fetchJson<PlatformSummary>("/api/summary"),
-  getCompanies: () => fetchJson<Company[]>("/api/companies"),
+  getCompanies: (params?: { q?: string; status?: string; limit?: number; offset?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.q) search.set("q", params.q);
+    if (params?.status) search.set("status", params.status);
+    if (params?.limit) search.set("limit", String(params.limit));
+    if (params?.offset) search.set("offset", String(params.offset));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return fetchJson<Company[]>(`/api/companies${suffix}`);
+  },
+  checkCompanySlug: (slug: string) =>
+    fetchJson<{ available: boolean; slug: string; error: string | null }>(
+      `/api/companies/slug-availability?slug=${encodeURIComponent(slug)}`,
+    ),
+  registerExistingMcp: (input: {
+    companySlug: string;
+    name: string;
+    endpointUrl: string;
+    authSecretRef: string;
+    serviceBindingRef?: string;
+    description?: string;
+  }) =>
+    fetchJson<McpEnvironment>("/api/mcp-environments", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   createCompany: (input: CreateCompanyInput) =>
     fetchJson<{
       company: Company;
@@ -159,7 +190,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
-  setCompanyStatus: (slug: string, status: "active" | "suspended" | "closed") =>
+  setCompanyStatus: (
+    slug: string,
+    status: "onboarding" | "active" | "suspended" | "archived" | "closed",
+  ) =>
     fetchJson<Company>(`/api/companies/${slug}/status`, {
       method: "POST",
       body: JSON.stringify({ status }),
@@ -218,6 +252,8 @@ export const api = {
         lowBalance: boolean;
         stripeCustomerId: string | null;
         updatedAt: string;
+        testCreditCents?: number;
+        paidCreditCents?: number;
       };
       ledger: Array<{
         id: string;
@@ -245,7 +281,36 @@ export const api = {
       }>;
       stripeConfigured: boolean;
       topUpOptionsCents: number[];
+      paymentProvider?: {
+        provider: string;
+        configured: boolean;
+        status: string;
+        message: string;
+        topUpOptionsCents: number[];
+        autoTopUp: {
+          supported: boolean;
+          enabled: boolean;
+          thresholdCents: number | null;
+          amountCents: number | null;
+        };
+      };
     }>(`/api/companies/${slug}/wallet`),
+  getBillingOverview: () =>
+    fetchJson<{
+      paymentProvider: { provider: string; configured: boolean; message: string };
+      tide: { role: string; integrated: boolean; note: string };
+      totalWalletCents: number;
+      companyCount: number;
+      lowBalanceCompanies: Array<{ companyName: string; companySlug: string; balanceCents: number }>;
+      balances: Array<{
+        companyId: string;
+        companyName: string;
+        companySlug: string;
+        balanceCents: number;
+        currency: string;
+        lowBalance: boolean;
+      }>;
+    }>("/api/billing/overview"),
   createTopUp: (slug: string, amountCents: number) =>
     fetchJson<Record<string, unknown>>(`/api/companies/${slug}/wallet/top-up`, {
       method: "POST",

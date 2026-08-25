@@ -129,6 +129,35 @@ export default function DashboardPage() {
         />
       </MetricGrid>
 
+      <div style={{ marginTop: 16 }}>
+        <MetricGrid cols={4}>
+          <MetricCard
+            label="Onboarding"
+            value={formatNumber(summary.onboardingCompanies ?? 0)}
+            hint="Companies still being set up"
+            to="/companies"
+          />
+          <MetricCard
+            label="Usage today"
+            value={formatNumber(summary.usageToday ?? 0)}
+            hint={`${formatNumber(summary.usageThisMonth ?? 0)} this month`}
+            to="/usage"
+          />
+          <MetricCard
+            label="Active AI identities"
+            value={formatNumber(summary.activeAiIdentities ?? 0)}
+            hint="Service tokens currently active"
+            to="/ai-clients"
+          />
+          <MetricCard
+            label="Low wallets"
+            value={formatNumber(summary.lowBalanceCompanies ?? 0)}
+            hint="Below alert threshold"
+            to="/billing"
+          />
+        </MetricGrid>
+      </div>
+
       <div className="grid grid-2" style={{ marginTop: 24 }}>
         <SectionCard
           title="Companies"

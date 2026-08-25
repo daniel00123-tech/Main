@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Building2, Plus } from "lucide-react";
 import type { Company, ConnectorInstance, CreateCompanyInput, McpEnvironment } from "@infra/shared";
+import { DEFAULT_TEST_OPENING_CREDIT_CENTS, validateCompanySlug } from "@infra/shared";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -52,7 +53,7 @@ const INITIAL_FORM = {
   telephone: "",
   slug: "",
   portalSubdomain: "",
-  openingCreditPounds: "0",
+  openingCreditPounds: String(DEFAULT_TEST_OPENING_CREDIT_CENTS / 100),
   currency: "GBP",
   adminEmail: "",
   adminDisplayName: "",
@@ -76,7 +77,9 @@ export default function CompaniesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "active" | "attention" | "disabled">("all");
+  const [filter, setFilter] = useState<
+    "all" | "active" | "onboarding" | "attention" | "disabled" | "archived"
+  >("all");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [step, setStep] = useState<WizardStep>(1);
   const [form, setForm] = useState(INITIAL_FORM);
@@ -112,7 +115,9 @@ export default function CompaniesPage() {
     const q = query.trim().toLowerCase();
     return companies.filter((c) => {
       if (filter === "active" && c.status !== "active") return false;
+      if (filter === "onboarding" && c.status !== "onboarding") return false;
       if (filter === "disabled" && c.status !== "suspended") return false;
+      if (filter === "archived" && c.status !== "archived" && c.status !== "closed") return false;
       if (filter === "attention" && !c.needsAttention) return false;
       if (!q) return true;
       return (
@@ -125,9 +130,10 @@ export default function CompaniesPage() {
 
   const stats = useMemo(() => {
     const active = companies.filter((c) => c.status === "active").length;
+    const onboarding = companies.filter((c) => c.status === "onboarding").length;
     const connected = companies.filter((c) => c.connectedCount > 0 || c.mcpCount > 0).length;
     const attention = companies.filter((c) => c.needsAttention).length;
-    return { total: companies.length, active, connected, attention };
+    return { total: companies.length, active, onboarding, connected, attention };
   }, [companies]);
 
   const derivedSlug = useMemo(
@@ -178,7 +184,11 @@ export default function CompaniesPage() {
     }
     if (current === 2) {
       if (!effectiveSlug) return "Slug is required";
+      const slugCheck = validateCompanySlug(effectiveSlug);
+      if (!slugCheck.ok) return slugCheck.error;
       if (!effectiveSubdomain) return "Portal subdomain is required";
+      const subCheck = validateCompanySlug(effectiveSubdomain);
+      if (!subCheck.ok) return `Portal subdomain: ${subCheck.error}`;
     }
     if (current === 3) {
       const pounds = Number(form.openingCreditPounds);
@@ -296,7 +306,7 @@ export default function CompaniesPage() {
       <MetricGrid cols={4}>
         <MetricCard label="Total" value={formatNumber(stats.total)} />
         <MetricCard label="Active" value={formatNumber(stats.active)} />
-        <MetricCard label="Connected" value={formatNumber(stats.connected)} hint="Has gateway or connector" />
+        <MetricCard label="Onboarding" value={formatNumber(stats.onboarding)} />
         <MetricCard label="Attention" value={formatNumber(stats.attention)} />
       </MetricGrid>
 
@@ -309,11 +319,17 @@ export default function CompaniesPage() {
           <FilterChip active={filter === "active"} onClick={() => setFilter("active")} count={stats.active}>
             Active
           </FilterChip>
+          <FilterChip active={filter === "onboarding"} onClick={() => setFilter("onboarding")} count={stats.onboarding}>
+            Onboarding
+          </FilterChip>
           <FilterChip active={filter === "attention"} onClick={() => setFilter("attention")} count={stats.attention}>
             Needs attention
           </FilterChip>
           <FilterChip active={filter === "disabled"} onClick={() => setFilter("disabled")}>
             Suspended
+          </FilterChip>
+          <FilterChip active={filter === "archived"} onClick={() => setFilter("archived")}>
+            Archived
           </FilterChip>
         </div>
       </FilterBar>
@@ -385,12 +401,6 @@ export default function CompaniesPage() {
                       >
                         Portal
                       </Link>
-                      <Link
-                        to={`/portal/${company.slug}/ai-connections`}
-                        className="button button-primary button-small"
-                      >
-                        ChatGPT
-                      </Link>
                     </div>
                   </td>
                   {user?.isPlatformAdmin ? (
@@ -423,7 +433,7 @@ export default function CompaniesPage() {
         title={createdSlug ? "Company created" : "Add company"}
         description={
           createdSlug
-            ? "Provisioning complete. Open the portal or company detail next."
+            ? "Company created. The reusable portal is ready. Business MCP is not provisioned."
             : `Step ${step} of 5 — ${STEP_LABELS[step - 1]}`
         }
         footer={
@@ -482,9 +492,16 @@ export default function CompaniesPage() {
         }
       >
         {createdSlug ? (
-          <p className="muted" style={{ margin: 0 }}>
-            Company slug <code className="mono">{createdSlug}</code> is ready.
-          </p>
+          <div className="stack" style={{ gap: 8 }}>
+            <p className="muted" style={{ margin: 0 }}>
+              Company slug <code className="mono">{createdSlug}</code> is ready. The same
+              company portal routes apply as for every other tenant.
+            </p>
+            <p className="muted small" style={{ margin: 0 }}>
+              Business MCP is not provisioned. Register an existing company MCP from the
+              company detail screen when one exists.
+            </p>
+          </div>
         ) : (
           <div className="stack" style={{ gap: 16 }}>
             <ol
@@ -622,7 +639,7 @@ export default function CompaniesPage() {
             {step === 3 ? (
               <div className="form-grid">
                 <label>
-                  Opening credit (£)
+                  Opening TEST credit (£)
                   <input
                     type="number"
                     min={0}
@@ -636,9 +653,9 @@ export default function CompaniesPage() {
                   <input value={form.currency} readOnly />
                 </label>
                 <p className="muted small" style={{ margin: 0 }}>
-                  Opening credit is stored in pence. £
-                  {Number(form.openingCreditPounds) || 0} ={" "}
-                  {Math.round((Number(form.openingCreditPounds) || 0) * 100)} cents.
+                  Recorded as TEST CREDIT with ledger evidence. Default is £
+                  {DEFAULT_TEST_OPENING_CREDIT_CENTS / 100}. This is not paid credit and
+                  does not activate Stripe. Architecture does not permanently assume GBP.
                 </p>
               </div>
             ) : null}
@@ -687,8 +704,12 @@ export default function CompaniesPage() {
                   mono
                 />
                 <ReviewRow
-                  label="Opening credit"
+                  label="Opening TEST credit"
                   value={`£${Number(form.openingCreditPounds) || 0} ${form.currency}`}
+                />
+                <ReviewRow
+                  label="Business MCP"
+                  value="Not provisioned — register later if an existing MCP exists"
                 />
                 <ReviewRow
                   label="Admin invite"
@@ -778,7 +799,7 @@ function CompanyCard({
           to={`/portal/${company.slug}/ai-connections`}
           className="button button-primary button-small"
         >
-          ChatGPT connector
+          AI connections
         </Link>
         {isPlatformAdmin && company.status !== "suspended" && company.status !== "closed" ? (
           <Button
@@ -815,7 +836,10 @@ function buildRows(
       connectorCount: companyConnectors.length,
       connectedCount,
       mcpStatus: companyMcps[0]?.status ?? null,
-      needsAttention: Boolean(badMcp) || company.status === "suspended",
+      needsAttention:
+        Boolean(badMcp) ||
+        company.status === "suspended" ||
+        (company.status === "onboarding" && companyMcps.length === 0),
     };
   });
 }

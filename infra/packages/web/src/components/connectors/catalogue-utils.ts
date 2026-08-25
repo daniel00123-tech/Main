@@ -131,8 +131,11 @@ export function getDevelopmentStatusMessage(
   if (connector.catalogueStatus === "available") {
     return "Connector framework is defined in INFRA. Per-company connection flows and credential storage will be enabled in a future release.";
   }
+  if (connector.slug === "chatgpt") {
+    return "ChatGPT is live through the single INFRA MCP gateway. Create a company AI connection and use the INFRA URL — never a company MCP URL.";
+  }
   if (connector.integrationType === "ai_channel") {
-    return "AI and messaging channels are interaction surfaces for company MCP environments. Native connection setup is planned — not yet available.";
+    return "AI and messaging channels resolve to identity, company, permissions, interaction, usage, and audit. WhatsApp is designed, not activated.";
   }
   return "This integration is on the roadmap. Capabilities and sync modes shown reflect the intended design.";
 }

@@ -25,6 +25,14 @@ const EVENT_LABELS: Record<string, string> = {
   "company.accessed": "Company opened",
   "company.created": "Company created",
   "company.updated": "Company updated",
+  "company.suspended": "Company suspended",
+  "company.reactivated": "Company reactivated",
+  "company.archived": "Company archived",
+  "ai_connection.created": "AI connection created",
+  "ai_connection.revoked": "AI connection revoked",
+  "user.role_changed": "User role changed",
+  "wallet.adjusted": "Wallet adjusted",
+  "pricing.changed": "Pricing changed",
   "user.created": "User invited",
   "user.disabled": "User disabled",
   "role.assigned": "Role assigned",
@@ -190,18 +198,18 @@ export type InfraStatusKind =
 
 export function statusTone(value: string): string {
   const v = value.toLowerCase();
-  if (["healthy", "active", "connected", "completed", "success", "ok", "operational"].includes(v)) {
+  if (["healthy", "active", "connected", "completed", "success", "ok", "operational", "complete"].includes(v)) {
     return "success";
   }
-  if (["degraded", "warning", "pending", "registered", "configured", "available", "syncing"].includes(v)) {
+  if (["degraded", "warning", "pending", "registered", "configured", "available", "syncing", "onboarding", "test_mode"].includes(v)) {
     return "warning";
   }
   if (
-    ["unreachable", "error", "failed", "suspended", "disabled"].includes(v)
+    ["unreachable", "error", "failed", "suspended", "disabled", "offline", "archived"].includes(v)
   ) {
     return "danger";
   }
-  if (["coming_soon", "draft", "not_configured", "unknown"].includes(v)) {
+  if (["coming_soon", "draft", "not_configured", "unknown", "not_provisioned", "no"].includes(v)) {
     return "muted";
   }
   return "info";
@@ -231,8 +239,17 @@ export function humanStatus(value: string): string {
     unknown: "Unknown",
     suspended: "Suspended",
     provisioning: "Provisioning",
+    onboarding: "Onboarding",
+    archived: "Archived",
+    closed: "Closed",
     ready_to_connect: "Ready to connect",
     unavailable: "Unavailable",
+    not_provisioned: "Not provisioned",
+    test_mode: "TEST mode",
+    no: "No",
+    complete: "Complete",
+    authentication_required: "Authentication required",
+    offline: "Offline",
   };
   return map[value] ?? value.replace(/_/g, " ");
 }

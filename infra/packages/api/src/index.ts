@@ -300,12 +300,32 @@ app.get("/api/connectors/catalogue/:slug", requireAuth, (c) => {
   return c.json(connector);
 });
 
+app.get("/api/companies/slug-availability", requireAuth, requirePlatformAdmin, async (c) => {
+  const raw = c.req.query("slug") ?? "";
+  const { validateCompanySlug } = await import("@infra/shared");
+  const checked = validateCompanySlug(raw);
+  if (!checked.ok) {
+    return c.json({ available: false, slug: raw, error: checked.error });
+  }
+  const existing = await getCompanyBySlug(c.env.DB, checked.slug);
+  return c.json({
+    available: !existing,
+    slug: checked.slug,
+    error: existing ? "Slug is already in use" : null,
+  });
+});
+
 app.get("/api/companies", requireAuth, async (c) => {
   const user = c.get("user");
   const companyIds = user.isPlatformAdmin
     ? undefined
     : user.memberships.map((membership) => membership.companyId);
-  const companies = await listCompanies(c.env.DB, companyIds);
+  const companies = await listCompanies(c.env.DB, companyIds, {
+    query: c.req.query("q") ?? undefined,
+    status: c.req.query("status") ?? undefined,
+    limit: c.req.query("limit") ? Number(c.req.query("limit")) : undefined,
+    offset: c.req.query("offset") ? Number(c.req.query("offset")) : undefined,
+  });
   return c.json(companies);
 });
 
@@ -428,9 +448,19 @@ app.post(
   async (c) => {
     const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
     if (!company) return c.json({ error: "Company not found" }, 404);
-    const body = await c.req.json<{ status?: "active" | "suspended" | "closed" }>();
-    if (!body.status || !["active", "suspended", "closed"].includes(body.status)) {
-      return c.json({ error: "status must be active, suspended, or closed" }, 400);
+    const body = await c.req.json<{
+      status?: "onboarding" | "active" | "suspended" | "archived" | "closed";
+    }>();
+    if (
+      !body.status ||
+      !["onboarding", "active", "suspended", "archived", "closed"].includes(
+        body.status,
+      )
+    ) {
+      return c.json(
+        { error: "status must be onboarding, active, suspended, archived, or closed" },
+        400,
+      );
     }
     const updated = await setCompanyLifecycleStatus(
       c.env.DB,
@@ -508,6 +538,16 @@ app.get("/api/companies/:slug/overview", requireAuth, async (c) => {
 
   const overview = await getCompanyOverview(c.env.DB, company.id);
   return c.json(overview);
+});
+
+app.get("/api/companies/:slug/onboarding", requireAuth, async (c) => {
+  const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!userHasCompanyAccess(c.get("user"), company.id)) {
+    return c.json({ error: "Access to this company is denied" }, 403);
+  }
+  const overview = await getCompanyOverview(c.env.DB, company.id);
+  return c.json(overview?.onboarding ?? { companyId: company.id, readyForUse: false, items: [], problems: [] });
 });
 
 app.get("/api/mcp-environments", requireAuth, async (c) => {

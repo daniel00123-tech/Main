@@ -2,17 +2,29 @@
 
 Read this plus [ADR 001](./adr/001-company-mcp-vs-infra-boundary.md) before changing control-plane code.
 
-## Tenants (production)
+INFRA is a **company-agnostic** multi-tenant control plane. Caddington, HT, and EL are the first three configuration records — not three applications. A fourth company is created from Platform Admin without new React routes, billing code, or permission code.
 
-| Company | ID | Slug | Existing Business MCP |
-| --- | --- | --- | --- |
-| Caddington Holdings | `co_caddington` | `caddington-holdings` | `caddington-mcp` |
-| HT Business | `co_ht` | `ht-business` | `ht-business-mcp` |
-| EL Business | `co_el` | `el-business` | `el-business-mcp` |
+## Tenants (production configuration — not hardcoded product)
+
+| Company | ID | Slug | Existing Business MCP | Notes |
+| --- | --- | --- | --- | --- |
+| Caddington Holdings | `co_caddington` | `caddington-holdings` | `caddington-mcp` | Reference tenant |
+| HT Business | `co_ht` | `ht-business` | `ht-business-mcp` | Available, paused for deeper integration |
+| EL Business | `co_el` | `el-business` | `el-business-mcp` | Available, paused for deeper integration |
 
 Do **not** rebuild those MCPs. INFRA only registers and routes to them.
 
+New companies start as `onboarding` with a wallet, TEST credit, AI connection shells, and a reusable portal. Business MCP is **not** provisioned automatically.
+
 Company portals are one reusable app: `/portal/:companySlug/…`.
+
+## Create Company
+
+`POST /api/companies` (platform admin). Validates slug format / reserved words / uniqueness. Does not create Cloudflare Workers.
+
+## Onboarding
+
+`GET /api/companies/:slug/onboarding` and `overview.onboarding` are computed from live state. Do not show fake Connected.
 
 ## Boundary
 

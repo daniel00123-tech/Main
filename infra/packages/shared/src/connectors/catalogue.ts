@@ -33,6 +33,12 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     },
     supportedSyncModes: ["scheduled", "incremental", "webhook"],
     isAvailable: true,
+    authenticationMethod: "service_account",
+    readWrite: "read",
+    requiresCompanyMcp: true,
+    availabilityLabel: "available_now",
+    setupInstructions:
+      "Google Drive stays on the company Business MCP. INFRA shows health and document counts reported by that MCP. Credentials are never stored in INFRA D1.",
   },
   {
     id: "conn_sharepoint",
@@ -63,6 +69,12 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     },
     supportedSyncModes: ["scheduled", "incremental", "webhook"],
     isAvailable: false,
+    authenticationMethod: "oauth",
+    readWrite: "read",
+    requiresCompanyMcp: true,
+    availabilityLabel: "requires_setup",
+    setupInstructions:
+      "Microsoft 365 app registration (tenant, client id, client secret). Credential submission is disabled until secure secret storage is enabled.",
   },
   {
     id: "conn_onedrive",
@@ -92,6 +104,12 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     },
     supportedSyncModes: ["scheduled", "incremental"],
     isAvailable: false,
+    authenticationMethod: "oauth",
+    readWrite: "read",
+    requiresCompanyMcp: true,
+    availabilityLabel: "requires_setup",
+    setupInstructions:
+      "Shared OneDrive libraries require a Microsoft 365 application. Secrets are not accepted in this phase.",
   },
   {
     id: "conn_outlook_shared",
@@ -125,6 +143,12 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     },
     supportedSyncModes: ["scheduled", "incremental", "webhook"],
     isAvailable: false,
+    authenticationMethod: "oauth",
+    readWrite: "read",
+    requiresCompanyMcp: true,
+    availabilityLabel: "requires_setup",
+    setupInstructions:
+      "Shared mailbox access via Microsoft Graph. Credential submission is disabled in this phase.",
   },
   {
     id: "conn_bigchange",
@@ -168,6 +192,12 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     },
     supportedSyncModes: ["live_api", "scheduled", "incremental"],
     isAvailable: false,
+    authenticationMethod: "api_key",
+    readWrite: "read_write",
+    requiresCompanyMcp: true,
+    availabilityLabel: "coming_soon",
+    setupInstructions:
+      "Not implemented in this phase. Do not collect BigChange credentials.",
   },
   {
     id: "conn_commusoft",
@@ -201,6 +231,12 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     },
     supportedSyncModes: ["live_api", "scheduled", "incremental"],
     isAvailable: false,
+    authenticationMethod: "api_key",
+    readWrite: "read_write",
+    requiresCompanyMcp: true,
+    availabilityLabel: "coming_soon",
+    setupInstructions:
+      "Not implemented in this phase. Do not collect Commusoft credentials.",
   },
   {
     id: "conn_xero",
@@ -229,13 +265,26 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
           type: "array",
           items: {
             type: "string",
-            enum: ["contacts", "invoices", "payments", "accounts"],
+            enum: [
+              "contacts",
+              "invoices",
+              "payments",
+              "accounts",
+              "bank_transactions",
+              "credit_notes",
+            ],
           },
         },
       },
     },
     supportedSyncModes: ["scheduled", "incremental", "webhook"],
     isAvailable: false,
+    authenticationMethod: "oauth",
+    readWrite: "read_write",
+    requiresCompanyMcp: true,
+    availabilityLabel: "requires_setup",
+    setupInstructions:
+      "Xero OAuth is prepared but not activated. Financial writes will require permission and approval. Credential submission is disabled.",
   },
   {
     id: "conn_freshdesk",
@@ -266,6 +315,12 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     },
     supportedSyncModes: ["scheduled", "incremental", "webhook", "live_api"],
     isAvailable: false,
+    authenticationMethod: "api_key",
+    readWrite: "read",
+    requiresCompanyMcp: true,
+    availabilityLabel: "requires_setup",
+    setupInstructions:
+      "Freshdesk API key and domain. Secret submission is disabled until secure storage is enabled.",
   },
   {
     id: "conn_custom_api",
@@ -300,6 +355,11 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     },
     supportedSyncModes: ["live_api", "scheduled"],
     isAvailable: false,
+    authenticationMethod: "api_key",
+    readWrite: "read",
+    requiresCompanyMcp: true,
+    availabilityLabel: "coming_soon",
+    setupInstructions: "Custom REST connectors are a later phase.",
   },
   {
     id: "conn_chatgpt",
@@ -307,14 +367,20 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     name: "ChatGPT / OpenAI",
     category: "ai_assistant",
     integrationType: "ai_channel",
-    catalogueStatus: "coming_soon",
+    catalogueStatus: "active",
     description:
-      "Let staff interact with company MCP tools and knowledge through ChatGPT.",
+      "Staff interact with company tools through ChatGPT. ChatGPT authenticates to the single INFRA MCP gateway — never to a company MCP URL.",
     capabilities: ["read", "search", "send"],
     credentialSchema: { type: "object", properties: {} },
     configSchema: { type: "object", properties: {} },
     supportedSyncModes: ["live_api"],
-    isAvailable: false,
+    isAvailable: true,
+    authenticationMethod: "infra_service_identity",
+    readWrite: "read",
+    requiresCompanyMcp: true,
+    availabilityLabel: "available_now",
+    setupInstructions:
+      "Create an AI connection in the company portal. Point ChatGPT at the INFRA MCP URL with the one-time Bearer token.",
   },
   {
     id: "conn_claude",
@@ -322,14 +388,20 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     name: "Claude / Anthropic",
     category: "ai_assistant",
     integrationType: "ai_channel",
-    catalogueStatus: "coming_soon",
+    catalogueStatus: "available",
     description:
-      "Let staff interact with company MCP tools and knowledge through Claude.",
+      "Claude connects through the same INFRA MCP gateway using a company service identity.",
     capabilities: ["read", "search", "send"],
     credentialSchema: { type: "object", properties: {} },
     configSchema: { type: "object", properties: {} },
     supportedSyncModes: ["live_api"],
-    isAvailable: false,
+    isAvailable: true,
+    authenticationMethod: "infra_service_identity",
+    readWrite: "read",
+    requiresCompanyMcp: true,
+    availabilityLabel: "available_now",
+    setupInstructions:
+      "Create a Claude AI connection in the company portal. Use the INFRA MCP URL only.",
   },
   {
     id: "conn_whatsapp",
@@ -339,12 +411,18 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     integrationType: "ai_channel",
     catalogueStatus: "coming_soon",
     description:
-      "Future channel for staff to reach company AI tools and workflows via WhatsApp.",
+      "Future AI channel: WhatsApp → INFRA identity mapping → company MCP → WhatsApp. Not a data connector.",
     capabilities: ["read", "send"],
     credentialSchema: { type: "object", properties: {} },
     configSchema: { type: "object", properties: {} },
     supportedSyncModes: ["webhook", "live_api"],
     isAvailable: false,
+    authenticationMethod: "webhook",
+    readWrite: "read_write",
+    requiresCompanyMcp: true,
+    availabilityLabel: "coming_soon",
+    setupInstructions:
+      "WhatsApp Cloud API is not activated. See ADR 016 for the channel design.",
   },
 ];
 

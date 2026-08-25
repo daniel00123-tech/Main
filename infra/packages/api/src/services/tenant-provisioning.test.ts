@@ -112,7 +112,7 @@ class MockD1 {
         id: binds[0],
         slug: binds[1],
         name: binds[2],
-        status: "provisioning",
+        status: "onboarding",
         primary_domain: binds[3],
         notes: binds[4],
         trading_name: binds[5],
@@ -130,6 +130,15 @@ class MockD1 {
         created_at: binds[17],
         updated_at: binds[18],
       });
+      return;
+    }
+    if (q.includes("update companies") && q.includes("status = 'onboarding'")) {
+      const row = this.tables.companies.find((r) => r.id === binds[binds.length - 1]);
+      if (row) {
+        row.status = "onboarding";
+        row.primary_admin_user_id = binds[0];
+        row.updated_at = binds[1];
+      }
       return;
     }
     if (q.includes("update companies set status = 'active'")) {
@@ -272,7 +281,7 @@ describe("tenant provisioning", () => {
     expect(a.company.slug).not.toBe(b.company.slug);
     expect(a.company.portalSubdomain).toBe("caddington");
     expect(b.company.portalSubdomain).toBe("infra-test");
-    expect(a.company.status).toBe("active");
+    expect(a.company.status).toBe("onboarding");
 
     const mock = db as unknown as MockD1;
     const walletsA = mock.tables.credit_balances.filter(

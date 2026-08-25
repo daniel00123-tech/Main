@@ -1,23 +1,24 @@
 import type { Company, CreateCompanyInput } from "@infra/shared";
+import {
+  DEFAULT_COMPANY_CURRENCY,
+  DEFAULT_TEST_OPENING_CREDIT_CENTS,
+  GATEWAY_ALLOWED_STATUSES,
+  slugifyCompanyName as sharedSlugify,
+  validateCompanySlug,
+} from "@infra/shared";
 import { newId, nowIso, rowToCompany } from "../db/mappers";
 import { createMembership, getUserByEmail, createUser } from "../auth/users";
 import { createPasswordSetupToken } from "../auth/password-setup";
 import { appendLedgerEntry } from "./ledger";
 import { recordAuditEvent } from "./control-plane";
+import { ensurePaymentProviderAccount } from "./payment-providers";
 
 const DEFAULT_PORTAL_BASE_DOMAIN = "infra-web.pages.dev";
 
 const DEFAULT_MODULES = ["knowledge", "chatgpt", "claude", "whatsapp"] as const;
 
 export function slugifyCompanyName(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-")
-    .slice(0, 48);
+  return sharedSlugify(value);
 }
 
 export function portalHostnameFor(
@@ -62,18 +63,39 @@ export async function getCompanyByPortalSubdomain(
   return row ? rowToCompany(row) : null;
 }
 
-async function ensureUniqueSlug(db: D1Database, base: string): Promise<string> {
-  let candidate = base || "company";
+async function slugIsTaken(db: D1Database, slug: string): Promise<boolean> {
+  const existing = await db
+    .prepare("SELECT id FROM companies WHERE slug = ?")
+    .bind(slug)
+    .first();
+  return Boolean(existing);
+}
+
+async function ensureUniqueSlug(
+  db: D1Database,
+  base: string,
+  explicit: boolean,
+): Promise<string> {
+  const validated = validateCompanySlug(base);
+  if (!validated.ok) {
+    throw new Error(validated.error);
+  }
+  if (!(await slugIsTaken(db, validated.slug))) {
+    return validated.slug;
+  }
+  if (explicit) {
+    throw new Error(`Slug "${validated.slug}" is already in use`);
+  }
   let n = 2;
-  while (true) {
-    const existing = await db
-      .prepare("SELECT id FROM companies WHERE slug = ?")
-      .bind(candidate)
-      .first();
-    if (!existing) return candidate;
-    candidate = `${base}-${n}`.slice(0, 56);
+  while (n < 100) {
+    const candidate = `${validated.slug}-${n}`.slice(0, 48);
+    const again = validateCompanySlug(candidate);
+    if (again.ok && !(await slugIsTaken(db, again.slug))) {
+      return again.slug;
+    }
     n += 1;
   }
+  throw new Error("Unable to allocate a unique company slug");
 }
 
 async function ensureUniqueSubdomain(
@@ -195,13 +217,13 @@ export async function provisionCompany(
   }
 
   const tradingName = (input.tradingName ?? legalName).trim();
+  const explicitSlug = Boolean(input.slug?.trim());
   const baseSlug = slugifyCompanyName(input.slug?.trim() || tradingName || legalName);
   const baseSub =
-    slugifyCompanyName(input.portalSubdomain?.trim() || baseSlug.split("-")[0] || baseSlug) ||
-    "company";
+    slugifyCompanyName(input.portalSubdomain?.trim() || baseSlug) || "company";
 
   const now = nowIso();
-  const slug = await ensureUniqueSlug(db, baseSlug);
+  const slug = await ensureUniqueSlug(db, baseSlug, explicitSlug);
   const portalSubdomain = await ensureUniqueSubdomain(db, baseSub);
   const portalHostname = portalHostnameFor(
     portalSubdomain,
@@ -216,8 +238,11 @@ export async function provisionCompany(
       .first();
     if (!taken) companyId = preferredId;
   }
-  const currency = (input.currency ?? "GBP").toUpperCase();
-  const openingCreditCents = Math.max(0, Math.floor(input.openingCreditCents ?? 0));
+  const currency = (input.currency ?? DEFAULT_COMPANY_CURRENCY).toUpperCase();
+  const openingCreditCents = Math.max(
+    0,
+    Math.floor(input.openingCreditCents ?? DEFAULT_TEST_OPENING_CREDIT_CENTS),
+  );
   const modules = input.modules?.length
     ? input.modules
     : [...DEFAULT_MODULES];
@@ -229,8 +254,9 @@ export async function provisionCompany(
         trading_name, company_number, country, timezone,
         primary_contact_name, primary_email, billing_email, telephone, logo_url,
         portal_subdomain, portal_hostname, provisioned_at,
+        currency, billing_mode, mcp_onboarding_status, branding_json, config_json,
         created_at, updated_at
-      ) VALUES (?, ?, ?, 'provisioning', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, 'onboarding', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'test', 'not_provisioned', '{}', '{}', ?, ?)`,
     )
     .bind(
       companyId,
@@ -252,6 +278,7 @@ export async function provisionCompany(
       portalSubdomain,
       portalHostname,
       now,
+      currency,
       now,
       now,
     )
@@ -280,6 +307,8 @@ export async function provisionCompany(
   await ensureModules(db, companyId, modules, now);
   await ensureDefaultAiConnections(db, companyId, now);
 
+  await ensurePaymentProviderAccount(db, companyId, "stripe");
+
   if (openingCreditCents > 0) {
     await appendLedgerEntry(db, {
       companyId,
@@ -290,9 +319,13 @@ export async function provisionCompany(
       referenceId: `opening_${companyId}`,
       description:
         options?.openingCreditDescription ??
-        `Opening promotional credit for ${legalName}`,
+        `Opening TEST credit for ${legalName}`,
       createdBy: actorEmail,
-      metadata: { provisioned: true, ...(options?.openingCreditMetadata ?? {}) },
+      metadata: {
+        provisioned: true,
+        creditClass: "test",
+        ...(options?.openingCreditMetadata ?? {}),
+      },
     });
   }
 
@@ -342,9 +375,13 @@ export async function provisionCompany(
 
   await db
     .prepare(
-      `UPDATE companies SET status = 'active', updated_at = ? WHERE id = ?`,
+      `UPDATE companies
+       SET status = 'onboarding',
+           primary_admin_user_id = ?,
+           updated_at = ?
+       WHERE id = ?`,
     )
-    .bind(now, companyId)
+    .bind(adminInvite?.userId ?? null, now, companyId)
     .run();
 
   await recordAuditEvent(db, {
@@ -358,7 +395,9 @@ export async function provisionCompany(
       portalSubdomain,
       portalHostname,
       openingCreditCents,
+      creditClass: openingCreditCents > 0 ? "test" : null,
       modules,
+      mcpProvisioned: false,
     },
   });
 
@@ -374,7 +413,7 @@ export async function provisionCompany(
 export async function setCompanyLifecycleStatus(
   db: D1Database,
   companyId: string,
-  status: "active" | "suspended" | "closed",
+  status: "onboarding" | "active" | "suspended" | "archived" | "closed",
   actorEmail: string,
 ): Promise<Company> {
   const now = nowIso();
@@ -384,6 +423,12 @@ export async function setCompanyLifecycleStatus(
     .first();
   if (!company) throw new Error("Company not found");
 
+  let eventType:
+    | "company.updated"
+    | "company.suspended"
+    | "company.reactivated"
+    | "company.archived" = "company.updated";
+
   if (status === "suspended") {
     await db
       .prepare(
@@ -391,19 +436,19 @@ export async function setCompanyLifecycleStatus(
       )
       .bind(now, now, companyId)
       .run();
-    // Disable service identities so chargeable gateway use stops
     await db
       .prepare(
         `UPDATE service_identities SET status = 'disabled', updated_at = ? WHERE company_id = ? AND status = 'active'`,
       )
       .bind(now, companyId)
       .run();
-  } else if (status === "closed") {
+    eventType = "company.suspended";
+  } else if (status === "archived" || status === "closed") {
     await db
       .prepare(
-        `UPDATE companies SET status = 'closed', closed_at = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE companies SET status = ?, archived_at = ?, closed_at = ?, updated_at = ? WHERE id = ?`,
       )
-      .bind(now, now, companyId)
+      .bind(status, now, now, now, companyId)
       .run();
     await db
       .prepare(
@@ -411,22 +456,28 @@ export async function setCompanyLifecycleStatus(
       )
       .bind(now, companyId)
       .run();
+    eventType = "company.archived";
   } else {
     await db
       .prepare(
-        `UPDATE companies SET status = 'active', suspended_at = NULL, closed_at = NULL, updated_at = ? WHERE id = ?`,
+        `UPDATE companies
+         SET status = ?, suspended_at = NULL, closed_at = NULL, archived_at = NULL, updated_at = ?
+         WHERE id = ?`,
       )
-      .bind(now, companyId)
+      .bind(status, now, companyId)
       .run();
+    if (String(company.status) === "suspended") {
+      eventType = "company.reactivated";
+    }
   }
 
   await recordAuditEvent(db, {
     companyId,
-    eventType: "company.updated",
+    eventType,
     actor: actorEmail,
     resourceType: "company",
     resourceId: companyId,
-    detail: { status },
+    detail: { status, previousStatus: company.status },
   });
 
   const row = await db
@@ -456,7 +507,7 @@ export async function assertCompanyAcceptsGateway(
       status: 403,
     };
   }
-  if (status === "closed" || status === "draft" || status === "provisioning") {
+  if (!GATEWAY_ALLOWED_STATUSES.has(status)) {
     return {
       ok: false,
       error: `Company status '${status}' does not allow gateway requests`,
