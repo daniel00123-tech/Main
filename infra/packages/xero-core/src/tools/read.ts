@@ -24,6 +24,13 @@ export async function getOrganisation(client: XeroClient) {
   return { organisation: body.Organisations?.[0] ?? null };
 }
 
+async function resolveBaseCurrency(client: XeroClient): Promise<string | null> {
+  const body = await client.get<{ Organisations?: Array<{ BaseCurrency?: string }> }>(
+    "/Organisation",
+  );
+  return body.Organisations?.[0]?.BaseCurrency ?? null;
+}
+
 export async function listContacts(
   client: XeroClient,
   input: { query?: string; contactType?: string; limit?: number },
@@ -202,12 +209,15 @@ export async function salesSummary(
   for (const row of invoices as Array<{ Total?: number }>) {
     total += Number(row.Total ?? 0);
   }
+  const currencyCode = await resolveBaseCurrency(client);
   return {
+    currencyCode,
     summary: {
       fromDate: input.fromDate,
       toDate: input.toDate,
       invoiceCount: invoices.length,
       totalSales: total,
+      currencyCode,
     },
   };
 }
@@ -238,5 +248,9 @@ export async function topCustomers(
   const customers = [...totals.values()]
     .sort((a, b) => b.total - a.total)
     .slice(0, client.clampLimit(input.limit ?? 3));
-  return { customers };
+  const currencyCode = await resolveBaseCurrency(client);
+  return {
+    currencyCode,
+    customers: customers.map((customer) => ({ ...customer, currencyCode })),
+  };
 }

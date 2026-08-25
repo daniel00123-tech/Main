@@ -432,7 +432,7 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
     "xero_sales_summary",
     {
       description:
-        "Summarise sales/revenue from Xero invoices for a date range. Use for questions like 'sales last month'.",
+        "Summarise sales/revenue from Xero invoices for a date range. Amounts are in the organisation base currency (currencyCode in the response, e.g. GBP).",
       inputSchema: {
         fromDate: zf.string().min(1).describe("ISO date YYYY-MM-DD."),
         toDate: zf.string().min(1).describe("ISO date YYYY-MM-DD."),
@@ -453,7 +453,8 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
   server.registerTool(
     "xero_top_customers",
     {
-      description: "Top customers by invoice revenue for a date range.",
+      description:
+        "Top customers by invoice revenue for a date range. Amounts are in the organisation base currency (currencyCode in the response, e.g. GBP).",
       inputSchema: {
         fromDate: zf.string().optional(),
         toDate: zf.string().optional(),

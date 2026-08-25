@@ -73,6 +73,16 @@ async function fetchInvoicesInRange(
   return invoices.slice(0, target);
 }
 
+async function fetchOrganisationBaseCurrency(
+  token: { accessToken: string; tenantId: string },
+): Promise<string | null> {
+  const body = await fetchXeroJson<{ Organisations?: Array<{ BaseCurrency?: string }> }>(
+    token,
+    "/Organisation",
+  );
+  return body.Organisations?.[0]?.BaseCurrency ?? null;
+}
+
 export async function executeXeroReadToolOnInfra(
   env: Env,
   input: {
@@ -154,6 +164,7 @@ export async function executeXeroReadToolOnInfra(
       const args = input.arguments ?? {};
       const fromDate = String(args.fromDate ?? "");
       const toDate = String(args.toDate ?? "");
+      const currencyCode = await fetchOrganisationBaseCurrency(xeroToken);
       const invoices = await fetchInvoicesInRange(xeroToken, {
         fromDate,
         toDate,
@@ -166,11 +177,13 @@ export async function executeXeroReadToolOnInfra(
         latencyMs: Date.now() - started,
         result: {
           organisationName: token.payload.organisationName,
+          currencyCode,
           summary: {
             fromDate,
             toDate,
             invoiceCount: invoices.length,
             totalSales,
+            currencyCode,
           },
         },
       };
@@ -179,6 +192,7 @@ export async function executeXeroReadToolOnInfra(
     if (input.toolName === "xero_top_customers") {
       const args = input.arguments ?? {};
       const limit = Math.min(Math.max(1, Number(args.limit ?? 3)), 20);
+      const currencyCode = await fetchOrganisationBaseCurrency(xeroToken);
       const invoices = await fetchInvoicesInRange(xeroToken, {
         fromDate: args.fromDate as string | undefined,
         toDate: args.toDate as string | undefined,
@@ -201,7 +215,8 @@ export async function executeXeroReadToolOnInfra(
         latencyMs: Date.now() - started,
         result: {
           organisationName: token.payload.organisationName,
-          customers,
+          currencyCode,
+          customers: customers.map((customer) => ({ ...customer, currencyCode })),
         },
       };
     }
