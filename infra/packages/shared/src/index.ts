@@ -8,4 +8,7 @@ export * from "./connectors/knowledge";
 export * from "./connectors/errors";
 export * from "./connectors/field-labels";
 export * from "./connectors/xero-spec";
+export * from "./connectors/xero-scopes";
+export * from "./connectors/xero-actions";
+export * from "./connectors/execution-plan";
 export * from "./permissions/role-presets";

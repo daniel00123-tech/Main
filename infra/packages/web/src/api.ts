@@ -235,7 +235,16 @@ export const api = {
       { method: "POST" },
     ),
   getCredentialStorage: () =>
-    fetchJson<{ enabled: boolean; reason: string }>("/api/credential-storage"),
+    fetchJson<{
+      enabled: boolean;
+      reason: string;
+      xero?: {
+        appConfigured: boolean;
+        storageEnabled: boolean;
+        readyToConnect: boolean;
+        scopes: string[];
+      };
+    }>("/api/credential-storage"),
   getConnectorCredentialMetadata: (slug: string, instanceId: string) =>
     fetchJson<{
       stored: boolean;
@@ -244,7 +253,40 @@ export const api = {
       lastUpdated: string | null;
       fields: Array<{ name: string; masked: true }>;
       storage: { enabled: boolean; reason: string };
+      xero?: {
+        organisationName: string | null;
+        organisationSelected: boolean;
+        pendingOrganisations: Array<{ tenantId: string; name: string }>;
+        authStatus: string | null;
+        connectedAt: string | null;
+        lastCheckedAt: string | null;
+        grantedScopes: string[];
+      };
     }>(`/api/companies/${slug}/connectors/${instanceId}/credentials`),
+  startConnectorOAuth: (slug: string, definitionId: string) =>
+    fetchJson<{
+      authorizationUrl: string;
+      expiresAt: string;
+      instanceId: string;
+    }>(`/api/companies/${slug}/connectors/${definitionId}/oauth/start`, {
+      method: "POST",
+      body: "{}",
+    }),
+  selectXeroOrganisation: (slug: string, instanceId: string, tenantId: string) =>
+    fetchJson<{ ok: boolean; organisationName: string }>(
+      `/api/companies/${slug}/connectors/${instanceId}/xero/select-organisation`,
+      { method: "POST", body: JSON.stringify({ tenantId }) },
+    ),
+  startXeroScopeUpgrade: (slug: string, instanceId: string) =>
+    fetchJson<{
+      authorizationUrl: string;
+      expiresAt: string;
+      instanceId: string;
+      requestedScopes: string[];
+    }>(`/api/companies/${slug}/connectors/${instanceId}/xero/scope-upgrade`, {
+      method: "POST",
+      body: "{}",
+    }),
   saveConnectorCredentials: (
     slug: string,
     instanceId: string,

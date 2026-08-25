@@ -11,7 +11,12 @@ export const CONNECTOR_ERROR_CODES = {
   COMPANY_INACTIVE: "CONNECTOR_COMPANY_INACTIVE",
   OAUTH_NOT_ACTIVATED: "OAUTH_NOT_ACTIVATED",
   OAUTH_STATE_INVALID: "OAUTH_STATE_INVALID",
+  OAUTH_APP_NOT_CONFIGURED: "OAUTH_APP_NOT_CONFIGURED",
+  OAUTH_PROVIDER_DENIED: "OAUTH_PROVIDER_DENIED",
+  CONNECTOR_NOT_CONNECTED: "CONNECTOR_NOT_CONNECTED",
+  XERO_MCP_UNAVAILABLE: "XERO_MCP_UNAVAILABLE",
   FINANCIAL_WRITES_DISABLED: "FINANCIAL_WRITES_DISABLED",
+  OAUTH_SCOPE_UPGRADE_REQUIRED: "OAUTH_SCOPE_UPGRADE_REQUIRED",
 } as const;
 
 export type ConnectorErrorCode =
@@ -32,7 +37,15 @@ export const CUSTOMER_ERROR_MESSAGES: Record<ConnectorErrorCode, string> = {
     "This company cannot store or use credentials in its current state",
   OAUTH_NOT_ACTIVATED: "OAuth for this connector is prepared but not activated",
   OAUTH_STATE_INVALID: "The sign-in request expired or was not recognised",
+  OAUTH_APP_NOT_CONFIGURED:
+    "The Xero application is not configured. Connect Xero stays disabled until the Client ID and Client Secret are set.",
+  OAUTH_PROVIDER_DENIED: "Xero did not complete authorisation",
+  CONNECTOR_NOT_CONNECTED: "Xero is not connected for this company",
+  XERO_MCP_UNAVAILABLE:
+    "This company Business MCP does not yet expose that Xero tool",
   FINANCIAL_WRITES_DISABLED: "Financial writes are not enabled",
+  OAUTH_SCOPE_UPGRADE_REQUIRED:
+    "Additional Xero permissions are required. A company administrator must enable write capabilities and re-consent.",
 };
 
 export function customerConnectorError(code: ConnectorErrorCode): {

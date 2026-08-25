@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   CONNECTOR_CATALOGUE,
   taxonomyForConnector,
@@ -11,6 +12,7 @@ import {
   KeyValue,
   LoadingState,
   Modal,
+  Notice,
   PageHeader,
   SectionCard,
   StatusBadge,
@@ -21,7 +23,13 @@ import { usePortalCompany } from "./usePortalCompany";
 
 export default function PortalConnectorsPage() {
   const { company, overview, loading, error, refresh } = usePortalCompany();
+  const [searchParams] = useSearchParams();
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const xeroReturn = searchParams.get("xero");
+
+  useEffect(() => {
+    if (xeroReturn) setSelectedSlug("xero");
+  }, [xeroReturn]);
 
   const selected = useMemo(
     () => CONNECTOR_CATALOGUE.find((item) => item.slug === selectedSlug) ?? null,
@@ -62,6 +70,15 @@ export default function PortalConnectorsPage() {
         title="Connectors"
         description={`Business systems for ${company.name}. AI clients are listed under AI Connections.`}
       />
+      {xeroReturn === "connected" ? (
+        <Notice tone="success">Xero is connected. Tokens are stored encrypted and are never shown.</Notice>
+      ) : null}
+      {xeroReturn === "select_org" ? (
+        <Notice tone="info">Choose the Xero organisation in the Xero setup panel to finish connecting.</Notice>
+      ) : null}
+      {xeroReturn === "error" ? (
+        <Notice tone="danger">Xero authorisation did not complete. You can try Connect Xero again.</Notice>
+      ) : null}
 
       {gdrive ? (
         <SectionCard

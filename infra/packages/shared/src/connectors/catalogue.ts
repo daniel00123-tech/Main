@@ -279,12 +279,9 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     capabilities: ["read", "search", "sync", "live_query", "export"],
     credentialSchema: {
       type: "object",
-      required: ["clientId", "clientSecret", "refreshToken"],
       properties: {
-        clientId: { type: "string" },
-        clientSecret: { type: "string", format: "secret" },
+        accessToken: { type: "string", format: "secret" },
         refreshToken: { type: "string", format: "secret" },
-        tenantId: { type: "string" },
       },
     },
     configSchema: {
@@ -307,7 +304,7 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
       },
     },
     supportedSyncModes: ["scheduled", "incremental", "webhook"],
-    isAvailable: false,
+    isAvailable: true,
     authenticationMethod: "oauth",
     readWrite: "read_write",
     requiresCompanyMcp: true,
@@ -320,17 +317,26 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
       pkceRequired: true,
       requiredScopes: [
         "offline_access",
-        "accounting.contacts.read",
-        "accounting.transactions.read",
         "accounting.settings.read",
+        "accounting.contacts.read",
+        "accounting.invoices.read",
+        "accounting.payments.read",
+        "accounting.banktransactions.read",
+        "accounting.reports.profitandloss.read",
+        "accounting.reports.balancesheet.read",
+        "accounting.reports.aged.read",
       ],
-      optionalScopes: ["accounting.contacts", "accounting.transactions"],
-      callbackPath: "/api/connectors/oauth/callback",
+      optionalScopes: [
+        "accounting.invoices",
+        "accounting.payments",
+        "accounting.contacts",
+      ],
+      callbackPath: "/api/connectors/xero/oauth/callback",
     },
     riskNotes:
-      "Reads are low risk. Invoice create/send are financial or external-send actions and require approval.",
+      "Initial connect requests granular read scopes only. Financial write scopes require deliberate admin scope upgrade + re-consent. Production write execution stays disabled until explicitly approved.",
     setupInstructions:
-      "Xero OAuth is prepared but not activated. Financial writes will require permission and approval. Credential submission is disabled.",
+      "Connect Xero to authorise read access. Write capabilities can be added later via scope upgrade. INFRA stores encrypted tokens only. Accounting data stays on Xero and the company Business MCP.",
   },
   {
     id: "conn_freshdesk",

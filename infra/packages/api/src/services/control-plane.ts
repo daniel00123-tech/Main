@@ -745,11 +745,14 @@ export async function refreshMcpCapabilities(
   return result;
 }
 
+import { XERO_READ_MCP_TOOLS } from "@infra/shared";
+
 const READ_ONLY_DEFAULT_TOOLS = [
   "search_company_knowledge",
   "system_health",
   "database_summary",
   "get_knowledge_document",
+  ...XERO_READ_MCP_TOOLS,
 ] as const;
 
 export async function executeRegisteredMcpTool(

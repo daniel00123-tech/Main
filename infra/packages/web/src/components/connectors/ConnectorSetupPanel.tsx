@@ -42,11 +42,39 @@ export function ConnectorSetupPanel({
     [connector],
   );
   const [values, setValues] = useState<Record<string, string>>({});
-  const [storage, setStorage] = useState<{ enabled: boolean; reason: string } | null>(null);
+  const [storage, setStorage] = useState<{
+    enabled: boolean;
+    reason: string;
+      xero?: {
+        appConfigured: boolean;
+        storageEnabled: boolean;
+        readyToConnect: boolean;
+        scopes: string[];
+        writeScopes?: string[];
+        writesSupported?: boolean;
+        writesEnabled?: boolean;
+      };
+  } | null>(null);
   const [metadata, setMetadata] = useState<{
     stored: boolean;
     lastUpdated: string | null;
     fields: Array<{ name: string; masked: true }>;
+      xero?: {
+        organisationName: string | null;
+        organisationSelected: boolean;
+        pendingOrganisations: Array<{ tenantId: string; name: string }>;
+        authStatus: string | null;
+        connectedAt: string | null;
+        lastCheckedAt: string | null;
+        grantedScopes: string[];
+        scopeTier?: string;
+        scopeTierLabel?: string;
+        writeScopesConsented?: boolean;
+        writesSupported?: boolean;
+        writesEnabled?: boolean;
+        writeCapabilityMessage?: string;
+        missingWriteScopes?: string[];
+      };
   } | null>(null);
   const [replacing, setReplacing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -55,6 +83,9 @@ export function ConnectorSetupPanel({
 
   const oauth = connector.authenticationMethod === "oauth";
   const apiKey = connector.authenticationMethod === "api_key";
+  const xero = connector.slug === "xero";
+  const xeroReady = Boolean(storage?.xero?.readyToConnect);
+  const xeroView = metadata?.xero;
 
   useEffect(() => {
     void (async () => {
@@ -132,8 +163,53 @@ export function ConnectorSetupPanel({
     try {
       const result = await api.testConnectorConnection(companySlug, instance.id);
       setMessage(result.message ?? "No provider test is available for this connector yet.");
+      const meta = await api.getConnectorCredentialMetadata(companySlug, instance.id);
+      setMetadata(meta);
+      await onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Test failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onScopeUpgrade() {
+    if (!instance?.id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const started = await api.startXeroScopeUpgrade(companySlug, instance.id);
+      window.location.assign(started.authorizationUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start scope upgrade");
+      setBusy(false);
+    }
+  }
+
+  async function onConnectXero() {
+    setBusy(true);
+    setError(null);
+    try {
+      const started = await api.startConnectorOAuth(companySlug, connector.id);
+      window.location.assign(started.authorizationUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to start Xero connection");
+      setBusy(false);
+    }
+  }
+
+  async function onSelectOrg(tenantId: string) {
+    if (!instance?.id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.selectXeroOrganisation(companySlug, instance.id, tenantId);
+      const meta = await api.getConnectorCredentialMetadata(companySlug, instance.id);
+      setMetadata(meta);
+      setMessage("Xero organisation confirmed.");
+      await onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to select organisation");
     } finally {
       setBusy(false);
     }
@@ -187,18 +263,116 @@ export function ConnectorSetupPanel({
       {message ? <Notice tone="success">{message}</Notice> : null}
 
       {oauth ? (
-        <div className="stack" style={{ gap: 8 }}>
-          <p style={{ margin: 0 }}>
-            Staff will click Connect, sign in with the provider, then return here. Live OAuth
-            is prepared but not activated.
-          </p>
-          <button type="button" className="button button-primary" disabled>
-            Connect with {connector.name} — not activated
-          </button>
+        <div className="stack" style={{ gap: 12 }}>
+          {xero && !xeroReady ? (
+            <Notice tone="warning">
+              {storage?.enabled
+                ? "The Xero application is not configured. Connect Xero stays disabled until the Client ID and Client Secret are set as Worker secrets."
+                : "Secure credential storage is not configured."}
+            </Notice>
+          ) : null}
+          <div className="muted small">
+            Status:{" "}
+            {instance?.authStatus === "connected"
+              ? "Connected"
+              : instance?.authStatus === "configuring"
+                ? "Connecting"
+                : instance?.authStatus === "auth_expired"
+                  ? "Authentication expired"
+                  : instance?.authStatus === "rotation_required"
+                    ? "Reconnect required"
+                    : instance?.authStatus === "revoked"
+                      ? "Disconnected"
+                      : instance?.authStatus === "error"
+                        ? "Error"
+                        : "Not connected"}
+          </div>
+          {xeroView?.organisationName ? (
+            <div className="connector-xero-org">
+              <div className="muted small">Xero organisation</div>
+              <div>{xeroView.organisationName}</div>
+            </div>
+          ) : null}
+          {xero && instance?.authStatus === "connected" ? (
+            <div className="muted small">
+              Capability: {xeroView?.scopeTierLabel ?? "Read access"}
+              {xeroView?.writesSupported ? " · Write architecture ready" : ""}
+            </div>
+          ) : null}
+          {xeroView?.writeCapabilityMessage ? (
+            <Notice tone="info">{xeroView.writeCapabilityMessage}</Notice>
+          ) : null}
+          {xeroView?.connectedAt ? (
+            <div className="muted small">Connected: {xeroView.connectedAt}</div>
+          ) : null}
+          {xeroView?.lastCheckedAt ? (
+            <div className="muted small">Last API check: {xeroView.lastCheckedAt}</div>
+          ) : null}
+          {xeroView?.grantedScopes?.length ? (
+            <div className="muted small">
+              OAuth scopes: {xeroView.grantedScopes.length} granted
+            </div>
+          ) : null}
+          {xeroView?.pendingOrganisations?.length ? (
+            <div className="stack" style={{ gap: 8 }}>
+              <p style={{ margin: 0 }}>Select the Xero organisation to finish connecting.</p>
+              {xeroView.pendingOrganisations.map((org) => (
+                <button
+                  key={org.tenantId}
+                  type="button"
+                  className="button button-secondary"
+                  disabled={busy}
+                  onClick={() => void onSelectOrg(org.tenantId)}
+                >
+                  Use {org.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <button
+              type="button"
+              className="button button-primary"
+              disabled={!xeroReady || busy}
+              onClick={() => void onConnectXero()}
+            >
+              {instance?.authStatus === "connected" || instance?.authStatus === "auth_expired"
+                ? "Reconnect Xero"
+                : "Connect Xero"}
+            </button>
+            {xero &&
+            instance?.authStatus === "connected" &&
+            xeroView?.writeScopesConsented === false ? (
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={!xeroReady || busy}
+                onClick={() => void onScopeUpgrade()}
+              >
+                Enable write capabilities
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={busy || !instance?.id}
+              onClick={() => void onTest()}
+            >
+              Test connection
+            </button>
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={busy || !instance?.id}
+              onClick={() => void onDisconnect()}
+            >
+              Disconnect
+            </button>
+          </div>
         </div>
       ) : null}
 
-      {showStored ? (
+      {showStored && !oauth ? (
         <div className="stack" style={{ gap: 12 }}>
           {(metadata?.fields.length ? metadata.fields : credentialFields).map((field) => (
             <div key={field.name}>
@@ -242,7 +416,7 @@ export function ConnectorSetupPanel({
         </div>
       ) : null}
 
-      {!showStored && (credentialFields.length > 0 || configFields.length > 0) ? (
+      {!showStored && !oauth && (credentialFields.length > 0 || configFields.length > 0) ? (
         <form className="stack" style={{ gap: 16 }} onSubmit={(event) => void onSave(event)}>
           {credentialFields.length > 0 ? (
             <fieldset style={{ border: 0, padding: 0, margin: 0 }}>

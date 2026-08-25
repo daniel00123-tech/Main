@@ -4,6 +4,7 @@ import {
   CONNECTOR_ERROR_CODES,
   CUSTOMER_ERROR_MESSAGES,
   XERO_TOOL_CONTRACTS,
+  XERO_WRITE_ACTIVATION,
   mcpHasKnowledgeTools,
   publicConnectorDefinition,
   taxonomyForConnector,
@@ -305,11 +306,19 @@ describe("connector definition contract", () => {
     expect(JSON.stringify(xero)).not.toMatch(/sk_live|refresh_token_value/);
   });
 
-  it("defines future Xero tools as unimplemented", () => {
-    expect(XERO_TOOL_CONTRACTS.every((tool) => tool.implemented === false)).toBe(true);
-    expect(XERO_TOOL_CONTRACTS.some((tool) => tool.riskClass === "financial_action")).toBe(
-      true,
-    );
+  it("marks read and write Xero tools as contract-ready with production writes gated", () => {
+    expect(
+      XERO_TOOL_CONTRACTS.filter((tool) => tool.riskClass === "low_risk").every(
+        (tool) => tool.implemented,
+      ),
+    ).toBe(true);
+    expect(
+      XERO_TOOL_CONTRACTS.filter((tool) => tool.riskClass === "financial_action").every(
+        (tool) => tool.implemented === true,
+      ),
+    ).toBe(true);
+    expect(XERO_WRITE_ACTIVATION.writesSupported).toBe(true);
+    expect(XERO_WRITE_ACTIVATION.writesEnabled).toBe(false);
   });
 });
 

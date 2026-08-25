@@ -20,6 +20,10 @@ export interface Env {
   /** Envelope-encryption wrapping key for connector credentials. Never store in D1. */
   INFRA_CREDENTIAL_WRAPPING_KEY?: string;
   INFRA_CREDENTIAL_KEY_VERSION?: string;
+  /** Xero app credentials — Worker secrets only. Never store in D1. */
+  XERO_CLIENT_ID?: string;
+  XERO_CLIENT_SECRET?: string;
+  XERO_OAUTH_REDIRECT_URI?: string;
   [key: string]: unknown;
 }
 

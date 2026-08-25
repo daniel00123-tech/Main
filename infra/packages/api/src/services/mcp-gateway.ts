@@ -38,6 +38,7 @@ import {
   withStandardKnowledgeTools,
   wrapStandardToolResult,
 } from "./mcp-knowledge-standard";
+import { isXeroWriteToolName } from "./xero-tools";
 
 type JsonRpcId = string | number | null;
 
@@ -108,6 +109,40 @@ export function enrichMcpToolDescription(
       "Summarise available company business-data collections exposed through the knowledge layer.",
     system_health:
       "Non-billable health check for the company MCP connection through INFRA. Does not search documents and does not debit the wallet.",
+    xero_get_organisation:
+      "Read this company's connected Xero organisation profile. Read-only. Returns nothing invented if Xero is not connected.",
+    xero_list_contacts:
+      "Search this company's Xero contacts (customers and suppliers). Read-only. Requires a connected Xero organisation.",
+    xero_get_contact:
+      "Fetch one Xero contact by id. Read-only.",
+    xero_search_invoices:
+      "Search this company's Xero invoices, including overdue or unpaid filters. Read-only.",
+    xero_get_invoice:
+      "Fetch one Xero invoice by id or invoice number (for example INV-XXXXX). Read-only.",
+    xero_list_overdue_invoices:
+      "List overdue Xero invoices for this company. Read-only.",
+    xero_list_payments:
+      "List recent Xero payments. Read-only.",
+    xero_list_accounts:
+      "List the Xero chart of accounts. Read-only.",
+    xero_list_bank_transactions:
+      "List recent Xero bank transactions. Read-only.",
+    xero_profit_and_loss:
+      "Return a bounded Xero Profit & Loss report for a date range. Read-only.",
+    xero_balance_sheet:
+      "Return a bounded Xero Balance Sheet report. Read-only.",
+    xero_aged_receivables:
+      "Return aged receivables or payables for debtor/creditor position. Read-only.",
+    xero_sales_summary:
+      "Summarise sales/revenue for a date range from Xero invoice data. Read-only.",
+    xero_top_customers:
+      "Return top customers by revenue for a date range. Read-only.",
+    xero_create_draft_invoice:
+      "Create a draft invoice in Xero. Financial write — requires scope upgrade, permission, and production write activation.",
+    xero_create_credit_note:
+      "Create a credit note in Xero. Financial write — uses execution plan when batching.",
+    xero_allocate_payment:
+      "Allocate a payment to invoices in Xero. Financial write — remittance workflow.",
   };
   const enriched = defaults[toolName];
   if (enriched) return enriched;
@@ -535,6 +570,7 @@ export async function handleInfraMcpJsonRpc(
 
       const tools = [];
       for (const tool of listed.tools) {
+        if (isXeroWriteToolName(tool.name)) continue;
         if (allowed.size > 0 && !allowed.has(tool.name)) continue;
 
         const action = await resolveToolActionForFilter(env.DB, mcp.id, tool.name);

@@ -51,9 +51,12 @@ export function decideTestBilling(input: {
 
   if (
     action === "system.health" ||
+    action === "xero.health" ||
+    action === "xero.token_refresh" ||
     tool === "system_health" ||
     tool === "initialize" ||
-    tool === "tools/list"
+    tool === "tools/list" ||
+    tool === "xero_connection_test"
   ) {
     return {
       outcome: "non_billable_tool",

@@ -8,6 +8,7 @@ import {
 } from "@infra/shared";
 import type { Env } from "../env";
 import {
+  loadSession,
   requireAuth,
   requirePlatformAdmin,
   type AuthVariables,
@@ -28,10 +29,19 @@ import { buildCompanyReadiness } from "../services/onboarding";
 import { getWalletBalance, listLedgerEntries } from "../services/ledger";
 import { listMcpEnvironments, listConnectorInstances } from "../services/control-plane";
 import {
-  createOauthAuthorizationState,
   consumeOauthAuthorizationState,
   oauthProviderNotActivated,
 } from "../services/connector-oauth";
+import {
+  disconnectXero,
+  handleXeroOAuthCallback,
+  publicXeroView,
+  selectXeroOrganisation,
+  startXeroOAuth,
+  startXeroScopeUpgrade,
+  testXeroConnection,
+  xeroOauthStatus,
+} from "../services/xero";
 import {
   connectorHasProviderTest,
   getConnectorCredentialMetadata,
@@ -62,7 +72,10 @@ connectors.get("/api/connectors/catalogue", requireAuth, (c) =>
 );
 
 connectors.get("/api/credential-storage", requireAuth, (c) =>
-  c.json(credentialStorageStatus(c.env)),
+  c.json({
+    ...credentialStorageStatus(c.env),
+    xero: xeroOauthStatus(c.env),
+  }),
 );
 
 connectors.get("/api/admin/connectors", requireAuth, requirePlatformAdmin, async (c) => {
@@ -337,6 +350,10 @@ connectors.get(
     return c.json({
       ...metadata,
       storage: credentialStorageStatus(c.env),
+      xero:
+        instance.connectorDefinitionId === "conn_xero"
+          ? publicXeroView(instance)
+          : undefined,
     });
   },
 );
@@ -418,6 +435,15 @@ connectors.post(
     if (!instance || instance.companyId !== company.id) {
       return c.json({ error: "Connector not found" }, 404);
     }
+    if (instance.connectorDefinitionId === "conn_xero") {
+      const result = await testXeroConnection({
+        env: c.env,
+        companyId: company.id,
+        instanceId: instance.id,
+        actor: c.get("user").email,
+      });
+      return c.json(result, result.tested ? 200 : 409);
+    }
     const tested = connectorHasProviderTest(instance.connectorDefinitionId);
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
@@ -451,6 +477,16 @@ connectors.post(
     if (!instance || instance.companyId !== company.id) {
       return c.json({ error: "Connector not found" }, 404);
     }
+    if (instance.connectorDefinitionId === "conn_xero") {
+      const revoked = await disconnectXero({
+        env: c.env,
+        companyId: company.id,
+        instanceId: instance.id,
+        actor: c.get("user").email,
+      });
+      if (!revoked.ok) return c.json(revoked.body, revoked.status);
+      return c.json({ ok: true, authStatus: "revoked" });
+    }
     const revoked = await revokeConnectorCredential({
       env: c.env,
       companyId: company.id,
@@ -477,11 +513,23 @@ connectors.post(
     const definition = getConnectorById(c.req.param("definitionId"));
     if (!definition) return c.json({ error: "Unknown connector" }, 404);
 
-    const state = await createOauthAuthorizationState(c.env.DB, {
-      companyId: company.id,
-      userId: c.get("user").userId,
-      definitionId: definition.id,
-    });
+    if (definition.id === "conn_xero") {
+      const started = await startXeroOAuth({
+        env: c.env,
+        companyId: company.id,
+        companySlug: company.slug,
+        userId: c.get("user").userId,
+        actor: c.get("user").email,
+      });
+      if (!started.ok) return c.json(started.body, started.status);
+      return c.json({
+        authorizationUrl: started.authorizationUrl,
+        expiresAt: started.expiresAt,
+        instanceId: started.instanceId,
+        pkce: "S256",
+      });
+    }
+
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
       eventType: "connector.setup_started",
@@ -493,12 +541,87 @@ connectors.post(
     return c.json(
       {
         ...oauthProviderNotActivated(),
-        stateIssued: true,
-        expiresAt: state.expiresAt,
+        stateIssued: false,
         pkce: "S256",
       },
       409,
     );
+  },
+);
+
+connectors.get("/api/connectors/xero/oauth/callback", loadSession, async (c) => {
+  const user = c.get("user");
+  const result = await handleXeroOAuthCallback({
+    env: c.env,
+    state: c.req.query("state") ?? "",
+    code: c.req.query("code") ?? null,
+    error: c.req.query("error") ?? null,
+    sessionUserId: user?.userId ?? null,
+  });
+  return c.redirect(result.redirectTo, 302);
+});
+
+connectors.post(
+  "/api/companies/:slug/connectors/:instanceId/xero/select-organisation",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+    const instance = await getConnectorInstance(c.env.DB, c.req.param("instanceId"));
+    if (!instance || instance.companyId !== company.id) {
+      return c.json({ error: "Connector not found" }, 404);
+    }
+    const body = await c.req.json<{ tenantId?: string }>().catch(() => ({ tenantId: "" }));
+    const selected = await selectXeroOrganisation({
+      env: c.env,
+      companyId: company.id,
+      instanceId: instance.id,
+      tenantId: body.tenantId ?? "",
+      actor: c.get("user").email,
+    });
+    if (!selected.ok) return c.json(selected.body, selected.status);
+    return c.json({ ok: true, organisationName: selected.organisationName });
+  },
+);
+
+connectors.post(
+  "/api/companies/:slug/connectors/:instanceId/xero/scope-upgrade",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+    if (company.status === "suspended") {
+      return c.json(customerConnectorError(CONNECTOR_ERROR_CODES.SUSPENDED), 403);
+    }
+    const instance = await getConnectorInstance(c.env.DB, c.req.param("instanceId"));
+    if (!instance || instance.companyId !== company.id) {
+      return c.json({ error: "Connector not found" }, 404);
+    }
+    if (instance.connectorDefinitionId !== "conn_xero") {
+      return c.json({ error: "Not a Xero connector" }, 400);
+    }
+    const started = await startXeroScopeUpgrade({
+      env: c.env,
+      companyId: company.id,
+      companySlug: company.slug,
+      userId: c.get("user").userId,
+      actor: c.get("user").email,
+      instanceId: instance.id,
+    });
+    if (!started.ok) return c.json(started.body, started.status);
+    return c.json({
+      authorizationUrl: started.authorizationUrl,
+      expiresAt: started.expiresAt,
+      instanceId: started.instanceId,
+      requestedScopes: started.requestedScopes,
+      pkce: "S256",
+    });
   },
 );
 
@@ -509,15 +632,15 @@ connectors.get("/api/connectors/oauth/callback", requireAuth, async (c) => {
     userId: c.get("user").userId,
   });
   if (!consumed.ok) return c.json(consumed.error, 400);
-  if (!userHasCompanyAccess(c.get("user"), consumed.companyId)) {
+  if (!userHasCompanyAccess(c.get("user"), consumed.value.companyId)) {
     return c.json(customerConnectorError(CONNECTOR_ERROR_CODES.OAUTH_STATE_INVALID), 403);
   }
   await recordAuditEvent(c.env.DB, {
-    companyId: consumed.companyId,
+    companyId: consumed.value.companyId,
     eventType: "connector.connection_failed",
     actor: c.get("user").email,
     resourceType: "connector",
-    resourceId: consumed.definitionId,
+    resourceId: consumed.value.definitionId,
     detail: { reason: "oauth_not_activated", tokenPersisted: false },
   });
   return c.json({ ...oauthProviderNotActivated(), tokenPersisted: false }, 409);

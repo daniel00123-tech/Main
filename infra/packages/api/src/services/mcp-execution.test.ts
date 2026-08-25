@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
+import { XERO_READ_MCP_TOOLS } from "@infra/shared";
 import app from "../index";
 import { hashPassword, generateSalt } from "../auth/password";
 import { resolveMcpAuthHeader } from "../services/mcp-client";
@@ -321,7 +322,20 @@ describe("MCP tool allowlist", () => {
       "co_caddington",
       "mcp_caddington_primary",
     );
-    expect(db.tables.get("mcp_tool_allowlist")?.length).toBe(4);
+    const names = (db.tables.get("mcp_tool_allowlist") ?? []).map((row) =>
+      String(row.tool_name),
+    );
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "search_company_knowledge",
+        "system_health",
+        "database_summary",
+        "get_knowledge_document",
+        ...XERO_READ_MCP_TOOLS,
+      ]),
+    );
+    expect(names).not.toContain("xero_create_draft_invoice");
+    expect(names).toHaveLength(4 + XERO_READ_MCP_TOOLS.length);
   });
 });
 
