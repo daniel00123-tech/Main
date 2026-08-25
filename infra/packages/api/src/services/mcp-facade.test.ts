@@ -8,8 +8,13 @@ import {
   sanitizeKnowledgeSearchArguments,
   wantsSse,
 } from "./mcp-gateway";
+import { ACTION_CONTROL_TOOLS } from "./mcp-action-tools";
 import { extractServiceCredential } from "./gateway";
 import type { Env } from "../env";
+
+function withActionTools(names: string[]): string[] {
+  return [...new Set([...names, ...ACTION_CONTROL_TOOLS])].sort();
+}
 
 type Row = Record<string, unknown>;
 
@@ -381,11 +386,9 @@ describe("INFRA MCP facade tool catalogue consistency", () => {
         };
       }
     ).result?.tools;
-    expect(tools?.map((t) => t.name).sort()).toEqual([
-      "search",
-      "search_company_knowledge",
-      "system_health",
-    ]);
+    expect(tools?.map((t) => t.name).sort()).toEqual(
+      withActionTools(["search", "search_company_knowledge", "system_health"]),
+    );
     expect(tools?.some((t) => t.name === "query_business_data")).toBe(false);
     const search = tools?.find((t) => t.name === "search_company_knowledge");
     expect(search?.description?.toLowerCase()).toContain("knowledge");
@@ -576,7 +579,7 @@ describe("tenant isolation across Caddington / HT / EL identities", () => {
       envFor(db),
       serviceActor("co_ht", "HT Business ChatGPT", "mcp_ht_primary"),
     );
-    expect(names.sort()).toEqual(["database_summary", "system_health"]);
+    expect(names.sort()).toEqual(withActionTools(["database_summary", "system_health"]));
     expect(names).not.toContain("search_company_knowledge");
   });
 
@@ -586,7 +589,7 @@ describe("tenant isolation across Caddington / HT / EL identities", () => {
       envFor(db),
       serviceActor("co_el", "EL Business ChatGPT", "mcp_el_primary"),
     );
-    expect(names).toEqual(["system_health"]);
+    expect(names.sort()).toEqual(withActionTools(["system_health"]));
     expect(names).not.toContain("database_summary");
     expect(names).not.toContain("search_company_knowledge");
   });
@@ -601,11 +604,9 @@ describe("tenant isolation across Caddington / HT / EL identities", () => {
         "mcp_caddington_primary",
       ),
     );
-    expect(names.sort()).toEqual([
-      "search",
-      "search_company_knowledge",
-      "system_health",
-    ]);
+    expect(names.sort()).toEqual(
+      withActionTools(["search", "search_company_knowledge", "system_health"]),
+    );
     expect(names).not.toContain("database_summary");
     expect(names).not.toContain("fetch");
   });

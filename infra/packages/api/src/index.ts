@@ -69,6 +69,7 @@ import { verifyPassword } from "./auth/password";
 import phase3Routes from "./routes/phase3";
 import connectorRoutes from "./routes/connectors";
 import internalMcpRoutes from "./routes/internal-mcp";
+import actionPlanRoutes from "./routes/action-plans";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -77,6 +78,7 @@ app.use("*", createCorsMiddleware());
 app.route("/", phase3Routes);
 app.route("/", connectorRoutes);
 app.route("/", internalMcpRoutes);
+app.route("/", actionPlanRoutes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(

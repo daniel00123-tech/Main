@@ -40,6 +40,8 @@ import {
 } from "./mcp-knowledge-standard";
 import { isXeroWriteToolName } from "./xero-tools";
 import { XERO_TOOL_CONTRACTS } from "@infra/shared";
+import { withActionControlTools, isActionControlTool } from "./mcp-action-tools";
+import { executeActionControlTool } from "./action-engine/action-control-handler";
 
 type JsonRpcId = string | number | null;
 
@@ -612,7 +614,7 @@ export async function handleInfraMcpJsonRpc(
         });
       }
 
-      const advertised = withStandardKnowledgeTools(tools);
+      const advertised = withActionControlTools(withStandardKnowledgeTools(tools));
 
       await logFacadeEvent(env.DB, {
         companyId: resolvedCompanyId,
@@ -696,6 +698,26 @@ export async function handleInfraMcpJsonRpc(
 
     const clientRequestId = resolveMcpClientRequestId(request, body);
     const interactionHints = pickInteractionHints(request, body);
+
+    if (isActionControlTool(toolName)) {
+      const actionResult = await executeActionControlTool(env, {
+        companyId: resolvedCompanyId,
+        toolName,
+        arguments: args,
+        actor,
+        sourceClient:
+          actor.type === "service" ? actor.identity.identityType : "infra-mcp",
+        correlationId: clientRequestId ?? undefined,
+        interactionId: interactionHints.interactionId ?? undefined,
+      });
+      const payloadText = JSON.stringify(actionResult.body, null, 2);
+      return {
+        payload: jsonRpcResult(id, {
+          content: [{ type: "text", text: payloadText }],
+        }),
+        httpStatus: actionResult.status,
+      };
+    }
 
     const result = await executeGatewayRequest(env, {
       actor,

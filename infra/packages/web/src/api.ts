@@ -1,4 +1,5 @@
 import type {
+  ActionPlanRecord,
   AuditEvent,
   Company,
   CompanyOverview,
@@ -201,6 +202,12 @@ export const api = {
   getCompany: (slug: string) => fetchJson<Company>(`/api/companies/${slug}`),
   getCompanyOverview: (slug: string) =>
     fetchJson<CompanyOverview>(`/api/companies/${slug}/overview`),
+  listCompanyActions: (slug: string, status?: string) => {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    return fetchJson<{ plans: ActionPlanRecord[] }>(`/api/companies/${slug}/actions${query}`);
+  },
+  getCompanyAction: (slug: string, planId: string) =>
+    fetchJson<{ plan: ActionPlanRecord }>(`/api/companies/${slug}/actions/${planId}`),
   getCompanyUsage: (slug: string, limit = 50) =>
     fetchJson<CompanyUsageResponse>(
       `/api/companies/${slug}/usage?limit=${encodeURIComponent(String(limit))}`,

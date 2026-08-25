@@ -65,7 +65,11 @@ Initial OAuth uses **granular read scopes** (apps created after March 2026). Wri
 
 Company MCP resolves Xero credentials via internal bridge `POST /api/internal/mcp/:mcpId/xero/context` (server-to-server only). Reusable execution logic lives in `@infra/xero-core`.
 
-Multi-step financial actions use `execution_plans` (migration 0015) with idempotency keys and per-item results.
+Multi-step financial actions use `execution_plans` (migrations 0015, 0016) with idempotency keys, confirmation tokens, plan fingerprints, and per-item targets. See **ADR 029** for the Action Engine (plan → confirm → approve → execute, stale-state protection, write feature flags). Production financial writes remain disabled (`FINANCIAL_WRITES_ENABLED = false`).
+
+Company portal **Actions** page (`/portal/:slug/actions`) lists pending and completed action plans.
+
+Future **company data warehouse** direction: ADR 030 (planning only — not built).
 
 `POST /api/mcp-environments/:id/refresh-capabilities` refreshes tools via `tools/list` + `system_health` + optional `database_summary`. It does **not** run knowledge search and is not billable.
 

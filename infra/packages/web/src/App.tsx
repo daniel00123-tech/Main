@@ -58,6 +58,7 @@ import PortalAiConnectionsPage from "./portal/PortalAiConnectionsPage";
 import PortalTeamPage from "./portal/PortalTeamPage";
 import PortalSettingsPage from "./portal/PortalSettingsPage";
 import PortalActivityPage from "./portal/PortalActivityPage";
+import PortalActionsPage from "./portal/PortalActionsPage";
 import { useState } from "react";
 
 type NavItem = {
@@ -252,6 +253,7 @@ export default function App() {
         <Route path="/portal/billing" element={<PortalEntryRedirect />} />
         <Route path="/portal/settings" element={<PortalEntryRedirect />} />
         <Route path="/portal/activity" element={<PortalEntryRedirect />} />
+        <Route path="/portal/actions" element={<PortalEntryRedirect />} />
         <Route path="/portal/:companySlug" element={<PortalShell />}>
           <Route index element={<PortalDashboardPage />} />
           <Route path="dashboard" element={<PortalDashboardPage />} />
@@ -261,6 +263,7 @@ export default function App() {
           <Route path="usage" element={<PortalUsagePage />} />
           <Route path="billing" element={<PortalBillingPage />} />
           <Route path="activity" element={<PortalActivityPage />} />
+          <Route path="actions" element={<PortalActionsPage />} />
           <Route path="settings" element={<PortalSettingsPage />} />
         </Route>
       </Route>

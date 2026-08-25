@@ -73,8 +73,8 @@ function injectedContextFromArgs(
   };
 }
 
-function normalizeMcpAuthToken(value: string): string {
-  return value.trim().replace(/^Bearer\s+/i, "");
+function normalizeMcpAuthToken(value: string | undefined): string {
+  return String(value ?? "").trim().replace(/^Bearer\s+/i, "");
 }
 
 const DEFAULT_INFRA_API = "https://infra-api.daniel-dwyer123.workers.dev";

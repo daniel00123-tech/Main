@@ -59,7 +59,7 @@ class MockStatement {
       return [{ count: this.table("users").length }];
     }
 
-    if (q.includes("from users where email")) {
+    if (q.includes("from users") && q.includes("email")) {
       const email = String(this.binds[0]).toLowerCase();
       return this.table("users").filter(
         (row) => String(row.email).toLowerCase() === email,
@@ -126,6 +126,14 @@ class MockStatement {
         created_at: this.binds[6],
         updated_at: this.binds[7],
       });
+    }
+
+    if (q.startsWith("update users set last_login_at")) {
+      const row = this.table("users").find((r) => r.id === this.binds[2]);
+      if (row) {
+        row.last_login_at = this.binds[0];
+        row.updated_at = this.binds[1];
+      }
     }
 
     if (q.startsWith("insert into audit_events")) {

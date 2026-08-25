@@ -14,7 +14,12 @@ vi.mock("./gateway", async (importOriginal) => {
 });
 
 import { handleInfraMcpJsonRpc } from "./mcp-gateway";
+import { ACTION_CONTROL_TOOLS } from "./mcp-action-tools";
 import { READ_ONLY_TOOL_ANNOTATIONS } from "./mcp-knowledge-standard";
+
+function withActionTools(names: string[]): string[] {
+  return [...new Set([...names, ...ACTION_CONTROL_TOOLS])].sort();
+}
 
 type Row = Record<string, unknown>;
 
@@ -276,14 +281,16 @@ describe("INFRA MCP Company Knowledge adaptors", () => {
       }
     ).result?.tools;
     const names = tools?.map((tool) => tool.name) ?? [];
-    expect(names).toEqual([
-      "search",
-      "fetch",
-      "search_company_knowledge",
-      "get_knowledge_document",
-      "system_health",
-      "database_summary",
-    ]);
+    expect(names.sort()).toEqual(
+      withActionTools([
+        "search",
+        "fetch",
+        "search_company_knowledge",
+        "get_knowledge_document",
+        "system_health",
+        "database_summary",
+      ]),
+    );
 
     const search = tools?.find((tool) => tool.name === "search");
     const fetchTool = tools?.find((tool) => tool.name === "fetch");

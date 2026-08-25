@@ -28,6 +28,45 @@ export async function createDraftInvoice(client: XeroClient, input: DraftInvoice
   return { invoice: body.Invoices?.[0] ?? null };
 }
 
+export async function updateDraftInvoice(
+  client: XeroClient,
+  input: {
+    invoiceId: string;
+    patch: { reference?: string; lineItems?: DraftInvoiceInput["lineItems"] };
+  },
+) {
+  const body = await client.post<{ Invoices?: unknown[] }>("/Invoices", {
+    Invoices: [
+      {
+        InvoiceID: input.invoiceId,
+        Reference: input.patch.reference,
+        LineItems: input.patch.lineItems,
+        Status: "DRAFT",
+      },
+    ],
+  });
+  return { invoice: body.Invoices?.[0] ?? null };
+}
+
+export async function createOrUpdateContact(
+  client: XeroClient,
+  input: {
+    contactId?: string;
+    name: string;
+    email?: string;
+  },
+) {
+  const payload: Record<string, unknown> = {
+    Name: input.name,
+    EmailAddress: input.email,
+  };
+  if (input.contactId) payload.ContactID = input.contactId;
+  const body = await client.post<{ Contacts?: unknown[] }>("/Contacts", {
+    Contacts: [payload],
+  });
+  return { contact: body.Contacts?.[0] ?? null };
+}
+
 export async function createCreditNote(
   client: XeroClient,
   input: {

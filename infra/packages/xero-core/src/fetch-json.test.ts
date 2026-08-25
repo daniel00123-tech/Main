@@ -39,7 +39,8 @@ describe("xeroGetJson", () => {
       { fromDate: "2026-07-01", toDate: "2026-07-31" },
     );
     expect(body.Reports?.[0]?.ReportName).toBe("Profit and Loss");
-    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain("/Reports/ProfitAndLoss");
+    const firstCall = fetchImpl.mock.calls[0] as unknown as [string] | undefined;
+    expect(String(firstCall?.[0])).toContain("/Reports/ProfitAndLoss");
   });
 
   it("maps 401 auth expiry", async () => {

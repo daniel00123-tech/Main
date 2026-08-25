@@ -1,3 +1,3 @@
-import { registerXeroReadTools as __registerXeroReadTools } from "./register.ts";
+import { registerXeroReadTools as __registerXeroReadTools } from "./register";
 
 export { __registerXeroReadTools };
