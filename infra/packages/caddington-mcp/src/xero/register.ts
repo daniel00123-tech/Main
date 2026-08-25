@@ -33,6 +33,8 @@ type ZodLike = {
     optional: () => unknown;
   };
   boolean: () => { optional: () => unknown };
+  object: (shape: Record<string, unknown>) => unknown;
+  array: (schema: unknown) => { min: (n: number) => unknown };
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -497,20 +499,16 @@ export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcp
         "Create a draft ACCREC sales invoice in Xero. INFRA Action Engine only — not for direct AI execution.",
       inputSchema: {
         contactId: zf.string().min(1).describe("Xero ContactID."),
-        lineItems: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              description: { type: "string" },
-              quantity: { type: "number" },
-              unitAmount: { type: "number" },
-              accountCode: { type: "string" },
-            },
-            required: ["description", "quantity", "unitAmount"],
-          },
-          minItems: 1,
-        },
+        lineItems: zf
+          .array(
+            zf.object({
+              description: zf.string(),
+              quantity: zf.number(),
+              unitAmount: zf.number(),
+              accountCode: zf.string().optional(),
+            }),
+          )
+          .min(1),
         reference: zf.string().optional(),
         date: zf.string().optional().describe("ISO date YYYY-MM-DD."),
       },

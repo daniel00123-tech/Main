@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripXeroInjection } from "./strip-xero-inject.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(__dirname, "..");
@@ -31,6 +32,10 @@ if (raw.startsWith("--")) {
   if (marker >= 0) raw = raw.slice(marker);
   raw = raw.replace(/\n--[0-9a-f]+--\s*$/i, "");
 }
-fs.writeFileSync(outPath, raw);
+
+const cleaned = stripXeroInjection(raw);
+fs.writeFileSync(outPath, `${cleaned}\n`);
 fs.unlinkSync(`${outPath}.raw`);
-console.log(`Saved cleaned base worker to ${outPath} (${raw.length} bytes)`);
+console.log(
+  `Saved cleaned base worker to ${outPath} (${cleaned.length} bytes, Xero injection stripped for idempotent rebuild)`,
+);

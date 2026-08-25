@@ -6,6 +6,7 @@
   "scripts": {
     "download-base": "node scripts/download-base.mjs",
     "build": "node scripts/build-worker.mjs",
+    "build:verify": "node scripts/build-worker.mjs && node scripts/build-worker.mjs",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

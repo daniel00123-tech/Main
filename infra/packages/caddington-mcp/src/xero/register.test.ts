@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchInfraXeroContext } from "./register";
+import { fetchInfraXeroContext, registerXeroReadTools, registerXeroWriteTools } from "./register";
 
 describe("fetchInfraXeroContext", () => {
   it("fails truthfully when bridge auth is missing", async () => {
@@ -25,3 +25,60 @@ describe("fetchInfraXeroContext", () => {
     expect(JSON.stringify(result)).not.toMatch(/accessToken|refresh/i);
   });
 });
+
+describe("registerXeroTools", () => {
+  it("registers all read and write tools without duplicate names", () => {
+    const server = createMockServer();
+    registerXeroReadTools(server, {}, z);
+    registerXeroWriteTools(server, {}, z);
+    const names = server.tools.map((tool) => tool.name);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toContain("xero_get_organisation");
+    expect(names).toContain("xero_profit_and_loss");
+    expect(names).toContain("xero_sales_summary");
+    expect(names).toContain("xero_create_draft_invoice");
+  });
+});
+
+function createMockServer() {
+  const tools: Array<{ name: string }> = [];
+  return {
+    tools,
+    registerTool(name: string) {
+      tools.push({ name });
+    },
+  };
+}
+
+const z = {
+  string: () => ({
+    min: () => chain(),
+    optional: () => chain(),
+    describe: () => chain(),
+  }),
+  number: () => ({
+    int: () => ({
+      min: () => ({
+        max: () => chain(),
+        optional: () => chain(),
+        describe: () => chain(),
+      }),
+    }),
+    optional: () => chain(),
+  }),
+  boolean: () => ({ optional: () => chain() }),
+  object: (shape: Record<string, unknown>) => shape,
+  array: (_schema: unknown) => ({
+    min: () => chain(),
+  }),
+};
+
+function chain() {
+  const api = {
+    min: () => api,
+    max: () => api,
+    optional: () => api,
+    describe: () => api,
+  };
+  return api;
+}
