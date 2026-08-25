@@ -17,6 +17,7 @@ export {
   balanceSheetWithFetch,
   agedReceivablesWithFetch,
 } from "./tools/read";
+export { createDraftInvoiceWithFetch } from "./tools/write";
 export * as xeroReadTools from "./tools/read";
 export * as xeroWriteTools from "./tools/write";
 

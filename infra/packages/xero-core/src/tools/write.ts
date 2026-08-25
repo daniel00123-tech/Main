@@ -4,6 +4,7 @@
  */
 
 import type { XeroClient } from "../client";
+import { xeroPostJson, type XeroFetchConfig } from "../fetch-json";
 
 export type DraftInvoiceLineItem = {
   description: string;
@@ -20,6 +21,32 @@ export type DraftInvoiceInput = {
   date?: string;
   dueDate?: string;
 };
+
+export async function createDraftInvoiceWithFetch(
+  config: XeroFetchConfig,
+  input: DraftInvoiceInput,
+) {
+  const body = await xeroPostJson<{ Invoices?: unknown[] }>(config, "/Invoices", {
+    Invoices: [
+      {
+        Type: "ACCREC",
+        Contact: { ContactID: input.contactId },
+        LineItems: input.lineItems.map((row) => ({
+          Description: row.description,
+          Quantity: row.quantity,
+          UnitAmount: row.unitAmount,
+          AccountCode: row.accountCode,
+          TaxType: row.taxType,
+        })),
+        Reference: input.reference,
+        Date: input.date,
+        DueDate: input.dueDate,
+        Status: "DRAFT",
+      },
+    ],
+  });
+  return { invoice: body.Invoices?.[0] ?? null };
+}
 
 export async function createDraftInvoice(client: XeroClient, input: DraftInvoiceInput) {
   const body = await client.post<{ Invoices?: unknown[] }>("/Invoices", {

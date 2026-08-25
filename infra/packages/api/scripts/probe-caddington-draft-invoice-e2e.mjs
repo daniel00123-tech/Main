@@ -106,6 +106,7 @@ try {
     2,
   );
   const plan = toolPayload(planCall.body);
+  const confirmationToken = plan?.confirmationToken ?? null;
   report.steps.push({
     step: "plan_xero_draft_invoice",
     ok: Boolean(plan?.planId),
@@ -120,23 +121,39 @@ try {
   const dryRun = toolPayload((await mcpCall("tools/call", { name: "dry_run_action_plan", arguments: { planId: plan.planId } }, 3)).body);
   report.steps.push({
     step: "dry_run_action_plan",
-    ok: dryRun?.proposedChanges?.length > 0,
-    dueDate: dryRun?.proposedChanges?.[0]?.dueDate ?? null,
-    taxType: dryRun?.proposedChanges?.[0]?.taxType ?? null,
-    status: dryRun?.proposedChanges?.[0]?.status ?? null,
+    ok: dryRun?.dueDate === "2026-08-26" && dryRun?.taxType === "NONE" && dryRun?.type === "ACCREC",
+    dueDate: dryRun?.dueDate ?? null,
+    taxType: dryRun?.taxType ?? null,
+    type: dryRun?.type ?? null,
+    readyToExecute: dryRun?.readyToExecute ?? null,
+    headline: dryRun?.headline ?? null,
   });
 
   if (!EXECUTE) {
     report.summary = "Dry-run complete. Set EXECUTE=true to confirm, approve, and create DRAFT invoice.";
   } else {
     const confirm = toolPayload(
-      (await mcpCall("tools/call", { name: "confirm_action_plan", arguments: { planId: plan.planId } }, 4)).body,
+      (
+        await mcpCall(
+          "tools/call",
+          {
+            name: "confirm_action_plan",
+            arguments: { planId: plan.planId, confirmationToken },
+          },
+          4,
+        )
+      ).body,
     );
     report.steps.push({
       step: "confirm_action_plan",
       ok: confirm?.confirmationStatus === "confirmed",
       status: confirm?.status ?? null,
+      message: confirm?.message ?? null,
     });
+
+    if (confirm?.confirmationStatus !== "confirmed") {
+      throw new Error(`Confirm failed: ${confirm?.message ?? confirm?.error ?? "unknown"}`);
+    }
 
     runSql(
       `UPDATE execution_plans SET approval_status = 'approved', status = 'approved', updated_at = datetime('now') WHERE id = '${plan.planId}' AND company_id = 'co_caddington';`,

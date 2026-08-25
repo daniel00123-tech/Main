@@ -1,4 +1,4 @@
-import { XeroApiError, XeroClient, xeroReadTools, xeroWriteTools } from "@infra/xero-core";
+import { XeroApiError, XeroClient, xeroReadTools, xeroWriteTools, createDraftInvoiceWithFetch } from "@infra/xero-core";
 
 export type CaddingtonMcpEnv = {
   MCP_AUTH_TOKEN?: string;
@@ -515,11 +515,26 @@ export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcp
         dueDate: zf.string().optional().describe("ISO date YYYY-MM-DD."),
       },
     },
-    async (args) =>
-      withXeroClient(
-        env,
-        (client, _context, xeroArgs) =>
-          xeroWriteTools.createDraftInvoice(client, {
+    async (args) => {
+      const injected =
+        injectedContextFromArgs(args) ??
+        (env.__infraXeroContext ? env.__infraXeroContext : null);
+      const resolved = injected
+        ? { ok: true as const, context: injected }
+        : await fetchInfraXeroContext(env);
+      if (!resolved.ok) {
+        return toolError(resolved.message, resolved.code);
+      }
+      const xeroArgs = stripInternalArgs(args);
+      try {
+        const result = await createDraftInvoiceWithFetch(
+          {
+            accessToken: resolved.context.accessToken,
+            tenantId: resolved.context.tenantId,
+            apiBaseUrl: resolved.context.apiBaseUrl,
+            fetchImpl: fetch,
+          },
+          {
             contactId: String(xeroArgs.contactId),
             lineItems: (xeroArgs.lineItems as Array<{
               description: string;
@@ -531,8 +546,19 @@ export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcp
             reference: xeroArgs.reference as string | undefined,
             date: xeroArgs.date as string | undefined,
             dueDate: xeroArgs.dueDate as string | undefined,
-          }),
-        args,
-      ),
+          },
+        );
+        return toolSuccess({
+          organisationName: resolved.context.organisationName,
+          ...result,
+        });
+      } catch (error) {
+        if (error instanceof XeroApiError) {
+          return toolError(error.provider.message, error.provider.code);
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        return toolError(message, "XERO_EXECUTION_FAILED");
+      }
+    },
   );
 }
