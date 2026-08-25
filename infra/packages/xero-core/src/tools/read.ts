@@ -137,6 +137,184 @@ export async function getContactWithFetch(
   return { contact: body.Contacts?.[0] ?? null };
 }
 
+function clampReadLimit(limit?: number): number {
+  const value = limit ?? XERO_DATA_BOUNDS.defaultListResults;
+  return Math.min(Math.max(1, value), XERO_DATA_BOUNDS.maxListResults);
+}
+
+function readMaxPages(): number {
+  return Math.ceil(XERO_DATA_BOUNDS.maxListResults / XERO_DATA_BOUNDS.defaultListResults);
+}
+
+async function fetchPagedCollectionWithConfig<T>(
+  config: XeroFetchConfig,
+  path: string,
+  collectionKey: string,
+  where: string | undefined,
+  target: number,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let page = 1;
+  while (rows.length < target && page <= readMaxPages()) {
+    const body = await xeroGetJson<Record<string, T[]>>(config, path, { where, page });
+    const batch = body[collectionKey] ?? [];
+    if (!batch.length) break;
+    rows.push(...batch);
+    if (batch.length < 100) break;
+    page += 1;
+  }
+  return rows.slice(0, target);
+}
+
+function buildInvoiceSearchWhere(input: {
+  query?: string;
+  status?: string;
+  contactId?: string;
+  overdueOnly?: boolean;
+  unpaidOnly?: boolean;
+  fromDate?: string;
+  toDate?: string;
+}): string {
+  const clauses: string[] = [];
+  if (input.contactId) clauses.push(`Contact.ContactID=guid("${input.contactId}")`);
+  if (input.status) clauses.push(`Status=="${input.status}"`);
+  if (input.overdueOnly) clauses.push("AmountDue>0");
+  if (input.unpaidOnly) clauses.push('Status=="AUTHORISED"');
+  if (input.query) clauses.push(`InvoiceNumber.Contains("${input.query.replace(/"/g, "")}")`);
+  const dates = boundedDates(input.fromDate, input.toDate);
+  clauses.push(`Date>=DateTime(${dates.fromDate.replace(/-/g, ",")})`);
+  if (input.toDate) {
+    clauses.push(`Date<=DateTime(${dates.toDate.replace(/-/g, ",")})`);
+  }
+  return clauses.join(" AND ");
+}
+
+export async function listAccountsWithFetch(
+  config: XeroFetchConfig,
+  input: { accountType?: string },
+) {
+  const body = await xeroGetJson<{ Accounts?: unknown[] }>(config, "/Accounts", {
+    where: input.accountType ? `Type=="${input.accountType}"` : undefined,
+  });
+  return { accounts: body.Accounts ?? [] };
+}
+
+export async function searchInvoicesWithFetch(
+  config: XeroFetchConfig,
+  input: {
+    query?: string;
+    status?: string;
+    contactId?: string;
+    overdueOnly?: boolean;
+    unpaidOnly?: boolean;
+    fromDate?: string;
+    toDate?: string;
+    limit?: number;
+  },
+) {
+  const target = clampReadLimit(input.limit);
+  const where = buildInvoiceSearchWhere(input) || undefined;
+  const invoices = await fetchPagedCollectionWithConfig<unknown>(
+    config,
+    "/Invoices",
+    "Invoices",
+    where,
+    target,
+  );
+  const truncated = invoices.length >= target;
+  return {
+    invoices,
+    meta: {
+      returned: invoices.length,
+      truncated,
+      message: truncated
+        ? `Results truncated to ${target} invoices (safety limit). Narrow the date range or filters for complete coverage.`
+        : undefined,
+    },
+  };
+}
+
+export async function getInvoiceWithFetch(
+  config: XeroFetchConfig,
+  input: { invoiceId?: string; invoiceNumber?: string },
+) {
+  if (input.invoiceId) {
+    const body = await xeroGetJson<{ Invoices?: unknown[] }>(
+      config,
+      `/Invoices/${input.invoiceId}`,
+    );
+    return { invoice: body.Invoices?.[0] ?? null };
+  }
+  if (input.invoiceNumber) {
+    const found = await searchInvoicesWithFetch(config, {
+      query: input.invoiceNumber,
+      limit: 5,
+    });
+    const match = (found.invoices as Array<{ InvoiceNumber?: string }>).find(
+      (row) => row.InvoiceNumber === input.invoiceNumber,
+    );
+    return { invoice: match ?? found.invoices[0] ?? null };
+  }
+  return { invoice: null, error: "Provide invoiceId or invoiceNumber." };
+}
+
+export async function listOverdueInvoicesWithFetch(
+  config: XeroFetchConfig,
+  input: { contactId?: string; limit?: number },
+) {
+  return searchInvoicesWithFetch(config, { ...input, overdueOnly: true, unpaidOnly: true });
+}
+
+export async function listPaymentsWithFetch(
+  config: XeroFetchConfig,
+  input: { since?: string; toDate?: string; limit?: number },
+) {
+  const dates = boundedDates(input.since, input.toDate);
+  const body = await xeroGetJson<{ Payments?: unknown[] }>(config, "/Payments", {
+    where: `Date>=DateTime(${dates.fromDate.replace(/-/g, ",")})`,
+    page: 1,
+  });
+  return { payments: (body.Payments ?? []).slice(0, clampReadLimit(input.limit)) };
+}
+
+export async function listBankTransactionsWithFetch(
+  config: XeroFetchConfig,
+  input: { since?: string; toDate?: string; limit?: number },
+) {
+  const dates = boundedDates(input.since, input.toDate);
+  const body = await xeroGetJson<{ BankTransactions?: unknown[] }>(config, "/BankTransactions", {
+    where: `Date>=DateTime(${dates.fromDate.replace(/-/g, ",")})`,
+    page: 1,
+  });
+  return {
+    bankTransactions: (body.BankTransactions ?? []).slice(0, clampReadLimit(input.limit)),
+  };
+}
+
+export async function balanceSheetWithFetch(
+  config: XeroFetchConfig,
+  input: { date?: string },
+) {
+  const report = await xeroGetJson(config, "/Reports/BalanceSheet", {
+    date: input.date ?? new Date().toISOString().slice(0, 10),
+  });
+  return { report };
+}
+
+export async function agedReceivablesWithFetch(
+  config: XeroFetchConfig,
+  input: { reportType?: string; date?: string },
+) {
+  const path =
+    input.reportType === "payables"
+      ? "/Reports/AgedPayablesByContact"
+      : "/Reports/AgedReceivablesByContact";
+  const report = await xeroGetJson(config, path, {
+    date: input.date ?? new Date().toISOString().slice(0, 10),
+  });
+  return { report };
+}
+
 export async function listContacts(
   client: XeroClient,
   input: { query?: string; contactType?: string; limit?: number },

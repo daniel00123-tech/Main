@@ -8,6 +8,14 @@ export {
   profitAndLossWithFetch,
   listContactsWithFetch,
   getContactWithFetch,
+  listAccountsWithFetch,
+  searchInvoicesWithFetch,
+  getInvoiceWithFetch,
+  listOverdueInvoicesWithFetch,
+  listPaymentsWithFetch,
+  listBankTransactionsWithFetch,
+  balanceSheetWithFetch,
+  agedReceivablesWithFetch,
 } from "./tools/read";
 export * as xeroReadTools from "./tools/read";
 export * as xeroWriteTools from "./tools/write";

@@ -1,7 +1,6 @@
 import { XERO_AUTH } from "@infra/shared";
 import type { ActionTarget } from "@infra/shared";
-import { xeroReadTools } from "@infra/xero-core";
-import { XeroClient } from "@infra/xero-core";
+import { getInvoiceWithFetch } from "@infra/xero-core";
 import type { Env } from "../../env";
 import { getValidXeroAccessToken } from "../xero";
 
@@ -45,13 +44,14 @@ export async function verifyCreatedDraftInvoice(input: {
     return { ok: false, code: "XERO_AUTH_FAILED", message: token.body.error };
   }
 
-  const client = new XeroClient({
-    accessToken: token.accessToken,
-    tenantId: token.tenantId,
-    apiBaseUrl: XERO_AUTH.apiBaseUrl,
-  });
-
-  const fetched = await xeroReadTools.getInvoice(client, { invoiceId: input.invoiceId });
+  const fetched = await getInvoiceWithFetch(
+    {
+      accessToken: token.accessToken,
+      tenantId: token.tenantId,
+      apiBaseUrl: XERO_AUTH.apiBaseUrl,
+    },
+    { invoiceId: input.invoiceId },
+  );
   const invoice = fetched.invoice as Record<string, unknown> | null;
   if (!invoice) {
     return { ok: false, code: "VERIFICATION_NOT_FOUND", message: "Created invoice not found in Xero." };

@@ -1,8 +1,6 @@
 import { XERO_AUTH, XERO_DATA_BOUNDS } from "@infra/shared";
 import {
   XeroApiError,
-  XeroClient,
-  xeroReadTools,
   XERO_READ_TOOL_HANDLERS,
   aggregateSales,
   aggregateTopCustomers,
@@ -10,16 +8,37 @@ import {
   customerSafeXeroErrorMessage,
   dateRangeWhere,
   getContactWithFetch,
+  getInvoiceWithFetch,
+  listAccountsWithFetch,
+  listBankTransactionsWithFetch,
   listContactsWithFetch,
+  listOverdueInvoicesWithFetch,
+  listPaymentsWithFetch,
+  searchInvoicesWithFetch,
+  balanceSheetWithFetch,
+  agedReceivablesWithFetch,
   mapCreditNoteRow,
   mapInvoiceRow,
   profitAndLossWithFetch,
+  type XeroFetchConfig,
 } from "@infra/xero-core";
 import type { Env } from "../env";
 import { getValidXeroAccessToken } from "./xero";
 import { isXeroToolName, isXeroWriteToolName, prepareXeroMcpExecution } from "./xero-tools";
 
 type ReadHandlerName = (typeof XERO_READ_TOOL_HANDLERS)[keyof typeof XERO_READ_TOOL_HANDLERS];
+
+function xeroFetchConfig(token: {
+  accessToken: string;
+  tenantId: string;
+}): XeroFetchConfig {
+  return {
+    accessToken: token.accessToken,
+    tenantId: token.tenantId,
+    apiBaseUrl: XERO_AUTH.apiBaseUrl,
+    fetchImpl: fetch,
+  };
+}
 
 function xeroHeaders(token: { accessToken: string; tenantId: string }): HeadersInit {
   return {
@@ -168,17 +187,8 @@ export async function executeXeroReadToolOnInfra(
     return { ok: false, status: 409, error: "Xero read handler not registered" };
   }
 
-  const handler = xeroReadTools[handlerName] as (
-    client: XeroClient,
-    args: Record<string, unknown>,
-  ) => Promise<Record<string, unknown>>;
-
-  const workerClient = new XeroClient({
-    accessToken: token.accessToken,
-    tenantId: token.tenantId,
-    apiBaseUrl: XERO_AUTH.apiBaseUrl,
-    fetchImpl: fetch,
-  });
+  const xeroToken = { accessToken: token.accessToken, tenantId: token.tenantId };
+  const fetchConfig = xeroFetchConfig(xeroToken);
 
   try {
     if (input.toolName === "xero_get_organisation") {
@@ -294,19 +304,11 @@ export async function executeXeroReadToolOnInfra(
 
     if (input.toolName === "xero_list_contacts") {
       const args = input.arguments ?? {};
-      const payload = await listContactsWithFetch(
-        {
-          accessToken: token.accessToken,
-          tenantId: token.tenantId,
-          apiBaseUrl: XERO_AUTH.apiBaseUrl,
-          fetchImpl: fetch,
-        },
-        {
+      const payload = await listContactsWithFetch(fetchConfig, {
           query: args.query != null ? String(args.query) : undefined,
           contactType: args.contactType != null ? String(args.contactType) : undefined,
           limit: args.limit != null ? Number(args.limit) : undefined,
-        },
-      );
+      });
       return {
         ok: true,
         latencyMs: Date.now() - started,
@@ -323,15 +325,7 @@ export async function executeXeroReadToolOnInfra(
       if (!contactId) {
         return { ok: false, status: 409, error: "contactId is required", code: "VALIDATION_FAILED" };
       }
-      const payload = await getContactWithFetch(
-        {
-          accessToken: token.accessToken,
-          tenantId: token.tenantId,
-          apiBaseUrl: XERO_AUTH.apiBaseUrl,
-          fetchImpl: fetch,
-        },
-        { contactId },
-      );
+      const payload = await getContactWithFetch(fetchConfig, { contactId });
       return {
         ok: true,
         latencyMs: Date.now() - started,
@@ -342,14 +336,145 @@ export async function executeXeroReadToolOnInfra(
       };
     }
 
-    const payload = await handler(workerClient, input.arguments ?? {});
+    if (input.toolName === "xero_list_accounts") {
+      const args = input.arguments ?? {};
+      const payload = await listAccountsWithFetch(fetchConfig, {
+        accountType: args.accountType != null ? String(args.accountType) : undefined,
+      });
+      return {
+        ok: true,
+        latencyMs: Date.now() - started,
+        result: {
+          organisationName: token.payload.organisationName,
+          ...payload,
+        },
+      };
+    }
+
+    if (input.toolName === "xero_search_invoices") {
+      const args = input.arguments ?? {};
+      const payload = await searchInvoicesWithFetch(fetchConfig, {
+        query: args.query != null ? String(args.query) : undefined,
+        status: args.status != null ? String(args.status) : undefined,
+        contactId: args.contactId != null ? String(args.contactId) : undefined,
+        overdueOnly: args.overdueOnly === true,
+        unpaidOnly: args.unpaidOnly === true,
+        fromDate: args.fromDate != null ? String(args.fromDate) : undefined,
+        toDate: args.toDate != null ? String(args.toDate) : undefined,
+        limit: args.limit != null ? Number(args.limit) : undefined,
+      });
+      return {
+        ok: true,
+        latencyMs: Date.now() - started,
+        result: {
+          organisationName: token.payload.organisationName,
+          ...payload,
+        },
+      };
+    }
+
+    if (input.toolName === "xero_get_invoice") {
+      const args = input.arguments ?? {};
+      const payload = await getInvoiceWithFetch(fetchConfig, {
+        invoiceId: args.invoiceId != null ? String(args.invoiceId) : undefined,
+        invoiceNumber: args.invoiceNumber != null ? String(args.invoiceNumber) : undefined,
+      });
+      return {
+        ok: true,
+        latencyMs: Date.now() - started,
+        result: {
+          organisationName: token.payload.organisationName,
+          ...payload,
+        },
+      };
+    }
+
+    if (input.toolName === "xero_list_overdue_invoices") {
+      const args = input.arguments ?? {};
+      const payload = await listOverdueInvoicesWithFetch(fetchConfig, {
+        contactId: args.contactId != null ? String(args.contactId) : undefined,
+        limit: args.limit != null ? Number(args.limit) : undefined,
+      });
+      return {
+        ok: true,
+        latencyMs: Date.now() - started,
+        result: {
+          organisationName: token.payload.organisationName,
+          ...payload,
+        },
+      };
+    }
+
+    if (input.toolName === "xero_list_payments") {
+      const args = input.arguments ?? {};
+      const payload = await listPaymentsWithFetch(fetchConfig, {
+        since: args.since != null ? String(args.since) : undefined,
+        toDate: args.toDate != null ? String(args.toDate) : undefined,
+        limit: args.limit != null ? Number(args.limit) : undefined,
+      });
+      return {
+        ok: true,
+        latencyMs: Date.now() - started,
+        result: {
+          organisationName: token.payload.organisationName,
+          ...payload,
+        },
+      };
+    }
+
+    if (input.toolName === "xero_list_bank_transactions") {
+      const args = input.arguments ?? {};
+      const payload = await listBankTransactionsWithFetch(fetchConfig, {
+        since: args.since != null ? String(args.since) : undefined,
+        toDate: args.toDate != null ? String(args.toDate) : undefined,
+        limit: args.limit != null ? Number(args.limit) : undefined,
+      });
+      return {
+        ok: true,
+        latencyMs: Date.now() - started,
+        result: {
+          organisationName: token.payload.organisationName,
+          ...payload,
+        },
+      };
+    }
+
+    if (input.toolName === "xero_balance_sheet") {
+      const args = input.arguments ?? {};
+      const payload = await balanceSheetWithFetch(fetchConfig, {
+        date: args.date != null ? String(args.date) : undefined,
+      });
+      return {
+        ok: true,
+        latencyMs: Date.now() - started,
+        result: {
+          organisationName: token.payload.organisationName,
+          ...payload,
+        },
+      };
+    }
+
+    if (input.toolName === "xero_aged_receivables") {
+      const args = input.arguments ?? {};
+      const payload = await agedReceivablesWithFetch(fetchConfig, {
+        reportType: args.reportType != null ? String(args.reportType) : undefined,
+        date: args.date != null ? String(args.date) : undefined,
+      });
+      return {
+        ok: true,
+        latencyMs: Date.now() - started,
+        result: {
+          organisationName: token.payload.organisationName,
+          ...payload,
+        },
+      };
+    }
+
     return {
-      ok: true,
-      latencyMs: Date.now() - started,
-      result: {
-        organisationName: token.payload.organisationName,
-        ...payload,
-      },
+      ok: false,
+      status: 409,
+      error: `Xero read tool ${input.toolName} is not routed through the fetch execution path`,
+      code: "READ_HANDLER_NOT_ROUTED",
     };
   } catch (error) {
     if (error instanceof XeroApiError) {
