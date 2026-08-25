@@ -125,11 +125,21 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
   },
   plan_xero_draft_invoice: {
     description:
-      "Plan creating a draft sales invoice (ACCREC, DRAFT status) in Xero. Returns an action plan for human confirmation — does NOT execute.",
+      "Plan creating a draft sales invoice (ACCREC, DRAFT status) in Xero. Returns an action plan for human confirmation — does NOT execute. Provide contactName (e.g. \"Elvex\" for Elvex Property Services) or contactId.",
     inputSchema: {
       type: "object",
       properties: {
-        contactId: { type: "string", minLength: 1 },
+        contactId: {
+          type: "string",
+          minLength: 1,
+          description: "Xero ContactID GUID. Optional if contactName is provided.",
+        },
+        contactName: {
+          type: "string",
+          minLength: 1,
+          description:
+            "Customer name or short name to match in Xero (e.g. \"Elvex\" → Elvex Property Services). Optional if contactId is provided.",
+        },
         lineItems: {
           type: "array",
           items: {
@@ -148,7 +158,7 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
         date: { type: "string", description: "ISO date YYYY-MM-DD." },
         idempotencyKey: { type: "string" },
       },
-      required: ["contactId", "lineItems"],
+      required: ["lineItems"],
       additionalProperties: false,
     },
   },

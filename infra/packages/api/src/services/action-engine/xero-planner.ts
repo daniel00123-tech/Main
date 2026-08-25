@@ -12,6 +12,7 @@ import { XERO_AUTH } from "@infra/shared";
 import { listConnectorInstances, getConnectorInstance } from "../control-plane";
 import { isSalesTransactionType } from "@infra/xero-core";
 import { fingerprintTargets } from "./action-engine";
+import { resolveXeroContactForDraftInvoice } from "./xero-contact-resolve";
 
 type XeroInvoiceRow = {
   InvoiceID?: string;
@@ -188,50 +189,63 @@ export async function planXeroDraftInvoice(input: {
   companyId: string;
   instanceId: string;
   actor: string;
-  contactId: string;
+  contactId?: string;
+  contactName?: string;
   lineItems: Array<{ description: string; quantity: number; unitAmount: number; accountCode?: string }>;
   reference?: string;
   date?: string;
 }): Promise<{ targets: ActionTarget[]; summary: string; financialImpact: FinancialImpact }> {
   const token = await resolveXeroToken(input.env, input.companyId, input.instanceId, input.actor);
   if (!token.ok) throw new Error(token.body.error);
-  const contactBody = await xeroGetJson<{ Contacts?: Array<{ ContactID?: string; Name?: string }> }>(
-    { accessToken: token.accessToken, tenantId: token.tenantId, apiBaseUrl: XERO_AUTH.apiBaseUrl },
-    `/Contacts/${input.contactId}`,
-  );
-  const contact = contactBody.Contacts?.[0];
-  if (!contact) {
+
+  const resolved = await resolveXeroContactForDraftInvoice({
+    accessToken: token.accessToken,
+    tenantId: token.tenantId,
+    contactId: input.contactId,
+    contactName: input.contactName,
+  });
+
+  if (!resolved.ok) {
+    const ref = input.contactId ?? input.contactName ?? "contact";
     return {
       targets: [
         {
-          targetId: input.contactId,
-          targetType: "contact",
-          humanRef: input.contactId,
-          currentState: {},
+          targetId: ref,
+          targetType: resolved.validation === "ambiguous" ? "contact" : "contact",
+          humanRef: ref,
+          currentState:
+            resolved.validation === "ambiguous"
+              ? { candidates: resolved.candidates ?? [] }
+              : {},
           proposedState: {},
-          validation: "not_found",
-          validationDetail: "Contact not found in Xero.",
+          validation: resolved.validation === "ambiguous" ? "ambiguous" : "not_found",
+          validationDetail: resolved.validationDetail,
         },
       ],
-      summary: "Draft invoice plan failed — contact not found.",
+      summary:
+        resolved.validation === "ambiguous"
+          ? `Draft invoice plan needs contact disambiguation for "${ref}".`
+          : "Draft invoice plan failed — contact not found.",
       financialImpact: { currencyCode: null, totalAmount: null, direction: "debit", itemCount: 0 },
     };
   }
+
+  const { contactId, contactName } = resolved.contact;
 
   const totalAmount = input.lineItems.reduce(
     (sum, row) => sum + Number(row.quantity) * Number(row.unitAmount),
     0,
   );
   const target: ActionTarget = {
-    targetId: input.contactId,
+    targetId: contactId,
     targetType: "draft_invoice",
-    humanRef: contact.Name ?? input.contactId,
-    currentState: { contactId: input.contactId, contactName: contact.Name ?? null },
+    humanRef: contactName,
+    currentState: { contactId, contactName },
     proposedState: {
       action: "create_draft_invoice",
       type: "ACCREC",
       status: "DRAFT",
-      contactId: input.contactId,
+      contactId,
       lineItems: input.lineItems,
       reference: input.reference ?? null,
       date: input.date ?? null,
@@ -242,7 +256,7 @@ export async function planXeroDraftInvoice(input: {
 
   return {
     targets: [target],
-    summary: `Create draft sales invoice for ${contact.Name ?? "contact"} totalling ${totalAmount}.`,
+    summary: `Create draft sales invoice for ${contactName} totalling ${totalAmount}.`,
     financialImpact: {
       currencyCode: null,
       totalAmount,

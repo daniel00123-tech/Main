@@ -258,7 +258,8 @@ export async function executeActionControlTool(
       companyId: input.companyId,
       instanceId: instance.id,
       actor,
-      contactId: String(input.arguments.contactId ?? ""),
+      contactId: input.arguments.contactId ? String(input.arguments.contactId) : undefined,
+      contactName: input.arguments.contactName ? String(input.arguments.contactName) : undefined,
       lineItems: Array.isArray(input.arguments.lineItems)
         ? (input.arguments.lineItems as Array<{
             description: string;
