@@ -36,6 +36,7 @@ import {
   consumeOauthAuthorizationState,
   oauthAppNotConfigured,
 } from "./connector-oauth";
+import { syncActiveServiceIdentityScopesForCompany } from "./service-identity-scopes";
 import { sanitizeCustomerError } from "./secrets";
 
 const REFRESH_SKEW_MS = 2 * 60 * 1000;
@@ -503,6 +504,13 @@ export async function handleXeroOAuthCallback(input: {
       },
     });
 
+    if (organisations.length === 1) {
+      await syncActiveServiceIdentityScopesForCompany(
+        input.env.DB,
+        bound.companyId,
+      );
+    }
+
     if (organisations.length !== 1) {
       return {
         redirectTo: portalXeroReturnUrl(input.env, slug, {
@@ -701,6 +709,7 @@ export async function selectXeroOrganisation(input: {
     resourceId: input.instanceId,
     detail: { provider: "xero", organisationName: chosen.name },
   });
+  await syncActiveServiceIdentityScopesForCompany(input.env.DB, input.companyId);
   return { ok: true, organisationName: chosen.name };
 }
 
@@ -1085,6 +1094,7 @@ export async function disconnectXero(input: {
     resourceId: input.instanceId,
     detail: { provider: "xero" },
   });
+  await syncActiveServiceIdentityScopesForCompany(input.env.DB, input.companyId);
   return { ok: true };
 }
 

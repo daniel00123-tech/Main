@@ -745,7 +745,7 @@ export async function refreshMcpCapabilities(
   return result;
 }
 
-import { XERO_READ_MCP_TOOLS } from "@infra/shared";
+import { XERO_READ_MCP_TOOLS, XERO_TOOL_CONTRACTS } from "@infra/shared";
 
 const READ_ONLY_DEFAULT_TOOLS = [
   "search_company_knowledge",
@@ -1052,6 +1052,34 @@ export async function ensureDefaultToolAllowlist(
          VALUES (?, ?, ?, ?, 'low_risk', 1, ?, ?)`,
       )
       .bind(id, companyId, mcpEnvironmentId, toolName, now, now)
+      .run();
+  }
+  await ensureXeroToolActionMaps(db, mcpEnvironmentId);
+}
+
+export async function ensureXeroToolActionMaps(
+  db: D1Database,
+  mcpEnvironmentId: string,
+) {
+  const now = nowIso();
+  for (const contract of XERO_TOOL_CONTRACTS.filter(
+    (tool) => tool.implemented && tool.riskClass === "low_risk",
+  )) {
+    const id = newId("map");
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO mcp_tool_action_map
+          (id, mcp_environment_id, tool_name, action, risk_class, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        id,
+        mcpEnvironmentId,
+        contract.mcpToolName,
+        contract.action,
+        contract.riskClass,
+        now,
+      )
       .run();
   }
 }

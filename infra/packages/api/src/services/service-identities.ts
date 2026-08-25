@@ -1,4 +1,5 @@
 import type { ToolAction } from "@infra/shared";
+import { BASE_AI_SERVICE_SCOPES } from "@infra/shared";
 import { newId, nowIso } from "../db/mappers";
 
 export type ServiceIdentityType =
@@ -136,7 +137,7 @@ export async function createServiceIdentity(
       input.identityType,
       hash,
       prefix,
-      JSON.stringify(input.scopes ?? ["knowledge.search", "knowledge.read", "system.health"]),
+      JSON.stringify(input.scopes ?? [...BASE_AI_SERVICE_SCOPES]),
       input.mcpEnvironmentId ?? null,
       now,
       now,

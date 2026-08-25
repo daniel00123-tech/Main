@@ -39,6 +39,7 @@ import {
   wrapStandardToolResult,
 } from "./mcp-knowledge-standard";
 import { isXeroWriteToolName } from "./xero-tools";
+import { XERO_TOOL_CONTRACTS } from "@infra/shared";
 
 type JsonRpcId = string | number | null;
 
@@ -368,6 +369,10 @@ async function resolveToolActionForFilter(
     .bind(mcpEnvironmentId, toolName)
     .first();
   if (mapped?.action) return String(mapped.action);
+  const xeroContract = XERO_TOOL_CONTRACTS.find(
+    (tool) => tool.mcpToolName === toolName,
+  );
+  if (xeroContract) return xeroContract.action;
   if (toolName === "search_company_knowledge" || toolName === "search") {
     return "knowledge.search";
   }

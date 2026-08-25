@@ -62,6 +62,7 @@ import {
   getServiceIdentity,
   type ServiceIdentityType,
 } from "../services/service-identities";
+import { resolveServiceIdentityScopesForCompany } from "../services/service-identity-scopes";
 import {
   createTopUpCheckoutIntent,
   isStripeConfigured,
@@ -768,11 +769,16 @@ phase3.post(
       );
     }
 
+    const aiScopes = await resolveServiceIdentityScopesForCompany(
+      c.env.DB,
+      company.id,
+    );
+
     const created = await createServiceIdentity(c.env.DB, {
       companyId: company.id,
       name: `${company.name} ${clientType === "chatgpt" ? "ChatGPT" : "Claude"}`,
       identityType: clientType,
-      scopes: ["knowledge.search", "knowledge.read", "system.health"],
+      scopes: aiScopes,
       mcpEnvironmentId: mcps[0]?.id ?? null,
     });
 
