@@ -6,6 +6,7 @@ import {
   STANDARD_SEARCH_INPUT_SCHEMA,
   annotationsForTool,
   firstHttpUrl,
+  mapFetchArgumentsForCompanyMcp,
   resolveCompanyMcpToolName,
   sanitizeStandardFetchArguments,
   sanitizeStandardSearchArguments,
@@ -16,25 +17,26 @@ import {
 } from "./mcp-knowledge-standard";
 
 const BOILER_BONUS_SEARCH = {
-  tenant: "example-tenant",
   query: "boiler bonus policy",
   resultCount: 2,
   results: [
     {
-      id: "doc_boiler_bonus_001",
-      title: "Boiler Sales Bonus process.docx",
-      excerpt:
-        "The boiler sales bonus is paid monthly against completed installations that meet the quality checklist.",
-      score: 0.91,
-      source: "google_drive",
-      sourceType: "google_drive",
+      documentId: 40,
+      externalId: "gdrive-boiler-bonus-example",
       filename: "Boiler Sales Bonus process.docx",
+      title: "Boiler Sales Bonus process.docx",
+      snippet:
+        "The boiler sales bonus is paid monthly against completed installations that meet the quality checklist.",
+      score: 1.06,
+      source: "google_drive",
       sourceUrl: "https://docs.example.test/boiler-sales-bonus",
+      metadata: { fileType: "docx", chunkNumber: 0 },
     },
     {
-      id: "doc_leave_policy_002",
+      documentId: 12,
+      externalId: "gdrive-leave-example",
       title: "Annual leave policy.pdf",
-      excerpt: "Annual leave must be requested through the HR portal.",
+      snippet: "Annual leave must be requested through the HR portal.",
       score: 0.41,
       source: "google_drive",
     },
@@ -42,14 +44,20 @@ const BOILER_BONUS_SEARCH = {
 };
 
 const BOILER_BONUS_DOCUMENT = {
-  id: "doc_boiler_bonus_001",
-  title: "Boiler Sales Bonus process.docx",
-  text: "Boiler sales bonus policy\n\nEligible engineers receive a monthly bonus for completed boiler installations that pass the quality checklist. Claims are submitted by the 5th working day.",
-  source: "google_drive",
-  filename: "Boiler Sales Bonus process.docx",
-  sourceUrl: "https://docs.example.test/boiler-sales-bonus",
-  mimeType:
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  document: {
+    id: 40,
+    external_id: "gdrive-boiler-bonus-example",
+    title: "Boiler Sales Bonus process.docx",
+    mime_type:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    metadata: { source: "google_drive" },
+  },
+  chunks: [
+    {
+      content:
+        "Boiler sales bonus policy\n\nEligible engineers receive a monthly bonus for completed boiler installations that pass the quality checklist. Claims are submitted by the 5th working day.",
+    },
+  ],
 };
 
 describe("standard knowledge tool mapping", () => {
@@ -117,7 +125,7 @@ describe("Company Knowledge response adaptors", () => {
       item.title.toLowerCase().includes("boiler sales bonus"),
     );
     expect(match).toBeTruthy();
-    expect(match?.id).toBe("doc_boiler_bonus_001");
+    expect(match?.id).toBe("gdrive-boiler-bonus-example");
     expect(match?.title).toBe("Boiler Sales Bonus process.docx");
     expect(match?.snippet?.toLowerCase()).toContain("boiler sales bonus");
     expect(match?.url).toBe("https://docs.example.test/boiler-sales-bonus");
@@ -131,8 +139,12 @@ describe("Company Knowledge response adaptors", () => {
     expect(fetched.id).toBe(hit.id);
     expect(fetched.title).toBe(hit.title);
     expect(fetched.text).toContain("Eligible engineers receive a monthly bonus");
-    expect(fetched.url).toBe(hit.url);
-    expect(fetched.metadata?.filename).toBe("Boiler Sales Bonus process.docx");
+    expect(fetched.url).toBe("");
+    expect(fetched.metadata?.external_id).toBe("gdrive-boiler-bonus-example");
+    expect(mapFetchArgumentsForCompanyMcp(hit.id)).toEqual({
+      documentRef: hit.id,
+      id: hit.id,
+    });
   });
 
   it("does not invent citation URLs", () => {
@@ -160,7 +172,7 @@ describe("Company Knowledge response adaptors", () => {
       ],
     };
     const payload = toStandardSearchPayload(wrapped);
-    expect(payload.results[0]?.id).toBe("doc_boiler_bonus_001");
+    expect(payload.results[0]?.id).toBe("gdrive-boiler-bonus-example");
   });
 
   it("joins chunked document bodies for fetch", () => {

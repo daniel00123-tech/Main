@@ -157,9 +157,14 @@ export function sanitizeStandardFetchArguments(
   return { id };
 }
 
-/** Arguments forwarded to the company MCP knowledge-read tool. */
+/**
+ * Arguments forwarded to the company MCP knowledge-read tool.
+ * ChatGPT Company Knowledge always sends `id`. Company MCPs may require
+ * `documentRef` (numeric document id or external_id) or `id`.
+ * Send both so the same adaptor works for every tenant.
+ */
 export function mapFetchArgumentsForCompanyMcp(id: string): Record<string, unknown> {
-  return { id };
+  return { documentRef: id, id };
 }
 
 export function firstHttpUrl(...candidates: unknown[]): string {
@@ -224,6 +229,11 @@ function asNonEmptyString(value: unknown): string {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
+function asIdString(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return asNonEmptyString(value);
+}
+
 function pickSnippet(hit: Record<string, unknown>): string | undefined {
   const snippet = asNonEmptyString(
     hit.excerpt ??
@@ -250,14 +260,14 @@ function pickTitle(hit: Record<string, unknown>, fallback = "Untitled document")
 
 function pickId(hit: Record<string, unknown>, fallback = ""): string {
   return (
-    asNonEmptyString(
-      hit.id ??
-        hit.documentId ??
-        hit.document_id ??
-        hit.docId ??
-        hit.doc_id ??
-        hit.chunkId,
-    ) || fallback
+    asIdString(hit.id) ||
+    asIdString(hit.externalId) ||
+    asIdString(hit.external_id) ||
+    asIdString(hit.documentId) ||
+    asIdString(hit.document_id) ||
+    asIdString(hit.docId) ||
+    asIdString(hit.doc_id) ||
+    fallback
   );
 }
 
@@ -274,6 +284,10 @@ function provenanceMetadata(
     "mime_type",
     "score",
     "path",
+    "documentId",
+    "document_id",
+    "externalId",
+    "external_id",
     "modifiedAt",
     "modified_at",
     "updatedAt",
@@ -373,13 +387,15 @@ export function toStandardFetchPayload(
   requestedId: string,
 ): StandardFetchPayload {
   const unwrapped = unwrapToolPayload(payload);
-  const doc = isRecord(unwrapped)
-    ? isRecord(unwrapped.document)
-      ? unwrapped.document
-      : unwrapped
+  const nested = isRecord(unwrapped) && isRecord(unwrapped.document)
+    ? unwrapped.document
     : {};
+  const doc = isRecord(unwrapped) ? { ...unwrapped, ...nested } : {};
 
-  const id = pickId(doc, requestedId) || requestedId;
+  const id =
+    requestedId ||
+    pickId(doc) ||
+    pickId(nested);
   const title = pickTitle(doc, "Untitled document");
   const text = collectDocumentText(doc);
   const url = firstHttpUrl(
@@ -390,11 +406,14 @@ export function toStandardFetchPayload(
     doc.web_view_link,
     doc.canonicalUrl,
     doc.canonical_url,
+    nested.url,
+    nested.sourceUrl,
     isRecord(unwrapped) ? unwrapped.url : undefined,
     isRecord(unwrapped) ? unwrapped.sourceUrl : undefined,
   );
   const metadata = provenanceMetadata({
     ...(isRecord(unwrapped) ? unwrapped : {}),
+    ...nested,
     ...doc,
   });
 

@@ -328,7 +328,10 @@ describe("INFRA MCP Company Knowledge adaptors", () => {
         };
       }
       if (input.toolName === "fetch") {
-        expect(input.arguments).toEqual({ id: "doc_boiler_bonus_001" });
+        expect(input.arguments).toEqual({
+          documentRef: "doc_boiler_bonus_001",
+          id: "doc_boiler_bonus_001",
+        });
         return {
           status: 200,
           correlationId: "corr_fetch",
