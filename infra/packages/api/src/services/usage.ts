@@ -309,24 +309,33 @@ export async function getUsageCommercialSummary(
          SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successful,
          SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed,
          COALESCE(SUM(customer_charge_cents), 0) AS customer_charges,
-         COALESCE(SUM(underlying_cost_cents), 0) AS underlying_costs,
-         COALESCE(SUM(gross_profit_cents), 0) AS gross_profit
+         SUM(CASE WHEN cost_basis = 'actual' THEN underlying_cost_cents ELSE NULL END) AS underlying_costs,
+         SUM(CASE WHEN cost_basis = 'actual' THEN 1 ELSE 0 END) AS costs_known,
+         SUM(CASE
+           WHEN cost_basis = 'actual' AND underlying_cost_cents IS NOT NULL
+             THEN COALESCE(customer_charge_cents, 0) - underlying_cost_cents
+           ELSE NULL
+         END) AS gross_profit
        FROM usage_records ${clause}`,
     )
     .bind(...binds)
     .first();
 
   const charges = Number(row?.customer_charges ?? 0);
-  const costs = Number(row?.underlying_costs ?? 0);
-  const profit = Number(row?.gross_profit ?? charges - costs);
+  const costsKnown = Number(row?.costs_known ?? 0) > 0;
+  const costs = costsKnown && row?.underlying_costs != null ? Number(row.underlying_costs) : null;
+  const profit =
+    costsKnown && row?.gross_profit != null ? Number(row.gross_profit) : null;
   return {
     requests: Number(row?.requests ?? 0),
     successful: Number(row?.successful ?? 0),
     failed: Number(row?.failed ?? 0),
     customerChargesCents: charges,
     underlyingCostsCents: costs,
+    providerCostKnown: costsKnown,
     grossProfitCents: profit,
-    grossMarginBps: charges > 0 ? Math.round((profit * 10_000) / charges) : null,
+    grossMarginBps:
+      charges > 0 && profit != null ? Math.round((profit * 10_000) / charges) : null,
   };
 }
 

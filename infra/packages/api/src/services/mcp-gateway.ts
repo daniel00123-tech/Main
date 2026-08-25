@@ -18,6 +18,7 @@ import {
 } from "./gateway";
 import {
   ensureDefaultToolAllowlist,
+  getCompanyBySlug,
   getMcpEnvironment,
   listMcpEnvironments,
   recordAuditEvent,
@@ -176,6 +177,73 @@ export function pickInteractionHints(
   };
 }
 
+export async function detectTenantSpoof(
+  db: D1Database,
+  request: Request,
+  body: { params?: Record<string, unknown> },
+  identity: { companyId: string; mcpEnvironmentId?: string | null },
+): Promise<{
+  attemptedCompanyId?: string;
+  attemptedSlug?: string;
+  attemptedMcpId?: string;
+} | null> {
+  const params = body.params ?? {};
+  const args =
+    params.arguments && typeof params.arguments === "object"
+      ? (params.arguments as Record<string, unknown>)
+      : {};
+
+  const asString = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+
+  const attemptedCompanyId =
+    asString(params.companyId) ||
+    asString(request.headers.get("X-Infra-Company-Id")) ||
+    asString(args.companyId) ||
+    asString(args.company_id);
+
+  if (attemptedCompanyId && attemptedCompanyId !== identity.companyId) {
+    return { attemptedCompanyId };
+  }
+
+  const attemptedSlug =
+    asString(params.companySlug) ||
+    asString(request.headers.get("X-Infra-Company-Slug")) ||
+    asString(args.companySlug) ||
+    asString(args.company_slug);
+
+  if (attemptedSlug) {
+    const company = await getCompanyBySlug(db, attemptedSlug);
+    if (company && company.id !== identity.companyId) {
+      return { attemptedSlug, attemptedCompanyId: company.id };
+    }
+  }
+
+  const attemptedMcpId =
+    asString(params.mcpId) ||
+    asString(params.mcpEnvironmentId) ||
+    asString(request.headers.get("X-Infra-Mcp-Id")) ||
+    asString(args.mcpId) ||
+    asString(args.mcpEnvironmentId);
+
+  if (attemptedMcpId) {
+    const mcp = await getMcpEnvironment(db, attemptedMcpId);
+    if (mcp && mcp.companyId !== identity.companyId) {
+      return { attemptedMcpId, attemptedCompanyId: mcp.companyId };
+    }
+    if (
+      identity.mcpEnvironmentId &&
+      attemptedMcpId !== identity.mcpEnvironmentId &&
+      mcp &&
+      mcp.companyId !== identity.companyId
+    ) {
+      return { attemptedMcpId, attemptedCompanyId: mcp.companyId };
+    }
+  }
+
+  return null;
+}
+
 /** Arguments ChatGPT may safely forward to Caddington knowledge search. */
 export const KNOWLEDGE_SEARCH_FORWARD_KEYS = [
   "query",
@@ -320,30 +388,34 @@ export async function handleInfraMcpJsonRpc(
       : headerCompany;
   // Service identities are bound to one company. Never honour a prompt/header
   // company override — tenant routing comes only from the authenticated identity.
-  if (
-    actor.type === "service" &&
-    requestedCompanyId &&
-    requestedCompanyId !== companyId
-  ) {
-    await logFacadeEvent(env.DB, {
+  if (actor.type === "service" && companyId) {
+    const spoof = await detectTenantSpoof(env.DB, request, body, {
       companyId,
-      actor: actorLabel,
-      method,
-      status: "denied",
-      httpStatus: 403,
-      detail: {
-        reason: "service_tenant_spoof",
-        attemptedCompanyId: requestedCompanyId,
-      },
+      mcpEnvironmentId: actor.identity.mcpEnvironmentId,
     });
-    return {
-      payload: jsonRpcError(
-        id,
-        -32003,
-        "Service identity does not belong to this company",
-      ),
-      httpStatus: 403,
-    };
+    if (spoof) {
+      await logFacadeEvent(env.DB, {
+        companyId,
+        actor: actorLabel,
+        method,
+        status: "denied",
+        httpStatus: 403,
+        detail: {
+          reason: "service_tenant_spoof",
+          attemptedCompanyId: spoof.attemptedCompanyId,
+          attemptedSlug: spoof.attemptedSlug,
+          attemptedMcpId: spoof.attemptedMcpId,
+        },
+      });
+      return {
+        payload: jsonRpcError(
+          id,
+          -32003,
+          "Service identity does not belong to this company",
+        ),
+        httpStatus: 403,
+      };
+    }
   }
 
   const resolvedCompanyId = companyId ?? requestedCompanyId ?? null;

@@ -63,6 +63,7 @@ import {
   runMcpHealthCheck,
 } from "./services/control-plane";
 import { getUsageSummary, listUsageRecords } from "./services/usage";
+import { groupOperationsIntoInteractions } from "./services/interactions";
 import { listMcpTools } from "./services/mcp-client";
 import { verifyPassword } from "./auth/password";
 import phase3Routes from "./routes/phase3";
@@ -706,8 +707,9 @@ app.get("/api/companies/:slug/usage", requireAuth, async (c) => {
     listUsageRecords(c.env.DB, company.id, limit),
     getUsageSummary(c.env.DB, company.id),
   ]);
+  const interactions = groupOperationsIntoInteractions(records);
 
-  return c.json({ companyId: company.id, summary, records });
+  return c.json({ companyId: company.id, summary, records, interactions });
 });
 
 app.get("/api/companies/:slug/usage/summary", requireAuth, async (c) => {

@@ -893,6 +893,71 @@ textarea:focus-visible {
   padding-top: var(--s-4);
   border-top: 1px solid var(--border);
 }
+
+.interaction-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.interaction-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.interaction-summary {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 140px 1fr auto;
+  gap: var(--s-4);
+  align-items: center;
+  padding: var(--s-4);
+  background: transparent;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.interaction-when {
+  font-weight: 600;
+}
+.interaction-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.interaction-charge {
+  font-weight: 650;
+  min-width: 4.5rem;
+}
+.interaction-body {
+  padding: 0 var(--s-4) var(--s-4);
+  border-top: 1px solid var(--border);
+}
+.interaction-details {
+  display: grid;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+.interaction-details dt {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.interaction-details dd {
+  margin: 0;
+}
+.ledger-child {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-2) 0;
+  font-size: var(--text-sm);
+}
+@media (max-width: 720px) {
+  .interaction-summary {
+    grid-template-columns: 1fr;
+  }
+}
 .advanced-block summary {
   cursor: pointer;
   color: var(--text-secondary);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChartColumn } from "lucide-react";
-import type { Company, UsageRecord } from "@infra/shared";
+import type { Company, UsageInteraction, UsageRecord } from "@infra/shared";
 import { api } from "../api";
 import {
   Drawer,
@@ -34,8 +34,9 @@ export default function UsagePage() {
     successful: number;
     failed: number;
     customerChargesCents: number;
-    underlyingCostsCents: number;
-    grossProfitCents: number;
+    underlyingCostsCents: number | null;
+    providerCostKnown?: boolean;
+    grossProfitCents: number | null;
     grossMarginBps: number | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,6 +46,9 @@ export default function UsagePage() {
   const [sourceClient, setSourceClient] = useState("");
   const [successFilter, setSuccessFilter] = useState("");
   const [selected, setSelected] = useState<UsageRow | null>(null);
+  const [view, setView] = useState<"interactions" | "operations">("interactions");
+  const [interactions, setInteractions] = useState<UsageInteraction[]>([]);
+  const [openInteraction, setOpenInteraction] = useState<string | null>(null);
   const [auditEvents, setAuditEvents] = useState<
     Awaited<ReturnType<typeof api.getAuditEvents>>
   >([]);
@@ -75,6 +79,7 @@ export default function UsagePage() {
         };
       });
       setRows(mapped);
+      setInteractions(usage.interactions ?? []);
       setSummary(usage.summary);
     } catch (err) {
       // Fallback to per-company usage if commercial route unavailable
@@ -100,6 +105,7 @@ export default function UsagePage() {
         );
         collected.sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
         setRows(collected);
+        setInteractions([]);
         setSummary(null);
       } catch (fallbackErr) {
         setError(
@@ -172,20 +178,26 @@ export default function UsagePage() {
       (sum, r) => sum + (r.customerChargeCents ?? 0),
       0,
     );
-    const underlyingCostsCents = filtered.reduce(
-      (sum, r) => sum + (r.underlyingCostCents ?? 0),
-      0,
+    const knownCosts = filtered.filter(
+      (r) => r.costBasis === "actual" && r.underlyingCostCents != null,
     );
-    const grossProfitCents = filtered.reduce((sum, r) => {
-      if (r.grossProfitCents != null) return sum + r.grossProfitCents;
-      return sum + (r.customerChargeCents ?? 0) - (r.underlyingCostCents ?? 0);
-    }, 0);
+    const underlyingCostsCents = knownCosts.length
+      ? knownCosts.reduce((sum, r) => sum + (r.underlyingCostCents ?? 0), 0)
+      : 0;
+    const costsKnown = knownCosts.length > 0;
+    const grossProfitCents = costsKnown
+      ? filtered.reduce((sum, r) => {
+          if (r.costBasis !== "actual" || r.underlyingCostCents == null) return sum;
+          return sum + (r.customerChargeCents ?? 0) - r.underlyingCostCents;
+        }, 0)
+      : 0;
     return {
       requests,
       successful,
       failed,
       customerChargesCents,
       underlyingCostsCents,
+      providerCostKnown: costsKnown,
       grossProfitCents,
       grossMarginBps:
         customerChargesCents > 0
@@ -218,22 +230,22 @@ export default function UsagePage() {
         <MetricCard
           label="Underlying provider cost"
           value={
-            totals.underlyingCostsCents > 0
+            totals.providerCostKnown && totals.underlyingCostsCents != null
               ? formatCurrency(totals.underlyingCostsCents)
-              : "Unavailable / not configured"
+              : "Unavailable"
           }
           hint={
-            totals.underlyingCostsCents > 0
+            totals.providerCostKnown
               ? undefined
-              : "Shown when provider rate cards have measurable unit costs"
+              : "Shown when provider rate cards have measurable unit costs. Missing cost is not treated as £0."
           }
         />
         <MetricCard
           label="Gross profit"
           value={
-            totals.customerChargesCents > 0
+            totals.providerCostKnown && totals.grossProfitCents != null
               ? formatCurrency(totals.grossProfitCents)
-              : "—"
+              : "Unavailable"
           }
         />
         <MetricCard
@@ -269,9 +281,91 @@ export default function UsagePage() {
           <option value="success">Successful</option>
           <option value="failed">Failed</option>
         </Select>
+        <Select
+          value={view}
+          onChange={(e) => setView(e.target.value as "interactions" | "operations")}
+        >
+          <option value="interactions">Interactions</option>
+          <option value="operations">Operations</option>
+        </Select>
       </FilterBar>
 
-      {filtered.length === 0 ? (
+      {view === "interactions" && interactions.length > 0 ? (
+        <div className="interaction-list">
+          {interactions.map((item) => {
+            const open = openInteraction === item.id;
+            return (
+              <article key={item.id} className="interaction-card">
+                <button
+                  type="button"
+                  className="interaction-summary"
+                  onClick={() => setOpenInteraction(open ? null : item.id)}
+                >
+                  <div>
+                    <div className="interaction-when">{formatDate(item.createdAt)}</div>
+                    <div className="muted small">{humanClient(item.clientKind)}</div>
+                  </div>
+                  <div className="interaction-main">
+                    <strong>{item.label}</strong>
+                    <div className="muted small">
+                      {item.operationCount === 1
+                        ? "1 operation"
+                        : `${item.operationCount} operations`}
+                    </div>
+                  </div>
+                  <div className="interaction-meta">
+                    <StatusBadge status={item.status === "error" ? "failed" : "completed"} />
+                    <div className="num interaction-charge">
+                      {formatCurrency(item.customerChargeCents)}
+                    </div>
+                  </div>
+                </button>
+                {open ? (
+                  <div className="interaction-body">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Operation</th>
+                          <th className="num">Charge</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {item.operations.map((op) => (
+                          <tr
+                            key={op.id}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => {
+                              const company = companies.find((c) => c.id === op.companyId);
+                              setSelected({
+                                ...op,
+                                companyName: company?.name ?? op.companyId,
+                                companySlug: company?.slug ?? "",
+                              });
+                            }}
+                          >
+                            <td>{humaniseOperation(op.action ?? op.toolName ?? "Request")}</td>
+                            <td className="num">
+                              {op.customerChargeCents != null
+                                ? formatCurrency(op.customerChargeCents)
+                                : "—"}
+                            </td>
+                            <td>
+                              <StatusBadge
+                                status={op.success === false ? "failed" : "completed"}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={<ChartColumn size={28} />}
           title="No usage recorded yet"

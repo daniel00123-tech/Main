@@ -28,11 +28,12 @@ ChatGPT authenticates to INFRA. INFRA authenticates separately to the company MC
 
 ## Metering & billing
 
-- Granular `usage_records` per tool call.
-- `interaction_id` groups one human turn when the client supplies it (ADR 002).
-- Ledger is the wallet source of truth (ADR 004).
-- TEST prices stay 1p search / 1p read / health free (ADR 003).
-- Stripe is prepared, not live.
+- Three levels: interaction → tool operation → optional cost component (ADR 006).
+- Granular `usage_records` + ledger debits remain authoritative (ADR 004).
+- `interaction_id` groups one human turn only when correlation is defensible (ADR 002). ChatGPT does not currently send one, so search+read stay separate unless `X-Infra-Interaction-Id` is supplied.
+- TEST prices stay 1p search / 1p read / health free (ADR 003, ADR 007).
+- Missing provider cost is **unavailable**, not £0.
+- Stripe is prepared, not live. 60% margin remains banked.
 
 ## Health checks
 

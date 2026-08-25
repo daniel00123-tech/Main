@@ -28,7 +28,13 @@ import {
   evaluateActionPermission,
   userHasCompanyAccess,
 } from "../permissions/service";
-import { resolveInteractionIds } from "./interactions";
+import { decideTestBilling } from "./billing-policy";
+import {
+  labelForOperation,
+  persistInteraction,
+  refreshInteractionTotals,
+  resolveInteractionIds,
+} from "./interactions";
 
 export type GatewayActor =
   | { type: "user"; user: SessionUser }
@@ -339,6 +345,18 @@ export async function executeGatewayRequest(
     input.toolName,
   );
 
+  await persistInteraction(env.DB, {
+    id: interaction.interactionId,
+    companyId: input.companyId,
+    actorType: input.actor.type,
+    actorId,
+    clientKind: String(sourceClient),
+    mcpId: mcp.id,
+    mcpSessionId: interaction.mcpSessionId,
+    label: labelForOperation(action),
+    sourcedFrom: interaction.sourcedFrom,
+  });
+
   let permissionAllowed = false;
   let permissionReason: string | undefined;
 
@@ -599,11 +617,19 @@ export async function executeGatewayRequest(
       interactionSourcedFrom: interaction.sourcedFrom,
     },
     settlementStatus:
-      charge.billable && charge.customerChargeCents && success
+      decideTestBilling({
+        toolName: input.toolName,
+        action,
+        success,
+        httpStatus: execution.status,
+        ruleBillable: charge.billable,
+        chargeOnFailure: pricing?.chargeOnFailure ?? false,
+      }).customerBillable && charge.customerChargeCents
         ? "unsettled"
         : "zero_charge",
   });
   usageRecordId = usage.id;
+  await refreshInteractionTotals(env.DB, interaction.interactionId);
 
   await recordAuditEvent(env.DB, {
     companyId: input.companyId,
@@ -619,9 +645,17 @@ export async function executeGatewayRequest(
     },
   });
 
+  const billing = decideTestBilling({
+    toolName: input.toolName,
+    action,
+    success,
+    httpStatus: execution.status,
+    ruleBillable: charge.billable,
+    chargeOnFailure: pricing?.chargeOnFailure ?? false,
+  });
+
   if (
-    success &&
-    charge.billable &&
+    billing.customerBillable &&
     charge.customerChargeCents &&
     charge.customerChargeCents > 0
   ) {

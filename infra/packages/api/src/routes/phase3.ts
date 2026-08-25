@@ -51,6 +51,10 @@ import {
   listPlatformUsage,
 } from "../services/usage";
 import {
+  groupLedgerCharges,
+  groupOperationsIntoInteractions,
+} from "../services/interactions";
+import {
   createServiceIdentity,
   listServiceIdentities,
   rotateServiceIdentityToken,
@@ -194,6 +198,7 @@ phase3.get("/api/companies/:slug/wallet", requireAuth, async (c) => {
   return c.json({
     wallet,
     ledger,
+    chargeGroups: groupLedgerCharges(ledger),
     stripeConfigured: isStripeConfigured(c.env),
     topUpOptionsCents: [5000, 10000, 25000],
   });
@@ -1120,7 +1125,11 @@ phase3.get("/api/commercial/usage", requireAuth, requirePlatformAdmin, async (c)
     listPlatformUsage(c.env.DB, 100, { companyId, sourceClient, success }),
     getUsageCommercialSummary(c.env.DB, companyId),
   ]);
-  return c.json({ summary, records });
+  return c.json({
+    summary,
+    records,
+    interactions: groupOperationsIntoInteractions(records),
+  });
 });
 
 phase3.get("/api/commercial/provider-costs", requireAuth, requirePlatformAdmin, async (c) => {

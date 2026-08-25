@@ -47,8 +47,24 @@ Rules:
 
 ---
 
+## Correlation strategy (authoritative)
+
+1. Read optional `X-Infra-Interaction-Id`, then `params._meta.interactionId`, then `params.interactionId`.
+2. Accept a client value for **grouping** only when it matches `int_[A-Za-z0-9_-]{6,128}`. Other strings are stored as metadata and a server `int_…` is generated.
+3. Reject `"0"` and empty / oversized values. JSON-RPC `id` is never read.
+4. If nothing trustworthy is supplied, generate a fresh `int_…` **per operation**.
+5. Never group by prompt text, company slug, MCP id, or time proximity.
+6. If we cannot know that two calls belong to one human prompt, leave them separate.
+
+## Limitations
+
+ChatGPT and Claude do **not** currently send a shared interaction identifier. Until they do (or INFRA adds a session helper that the client forwards), a typical Knowledge Search + Knowledge Read pair appears as two generated interactions. That is honest. Guessing would merge concurrent users.
+
+`Mcp-Session-Id` is a transport session, not an interaction. One session can contain many unrelated prompts.
+
 ## Consequences
 
-- New columns on `usage_records` and `gateway_requests` (migration 0009).
-- Usage UI may show an expandable group **only** when multiple rows share a non-null `interaction_id`.
-- ChatGPT will continue to create one generated `int_…` per tool call until a client (or INFRA session helper) starts sending a shared header.
+- Columns on `usage_records` and `gateway_requests` (migration 0009).
+- First-class `interactions` rollup (migration 0010) — totals only, no guessed backfill.
+- Usage UI may show an expandable group **only** when multiple rows share the same `interaction_id`.
+- See ADR 006 for the interaction → operation → cost-component hierarchy.

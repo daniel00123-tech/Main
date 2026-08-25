@@ -9,6 +9,7 @@ import type {
   InfraUser,
   McpEnvironment,
   ToolAction,
+  UsageInteraction,
   UsageRecord,
   UsageSummary,
 } from "@infra/shared";
@@ -60,6 +61,7 @@ export interface CompanyUsageResponse {
   companyId: string;
   summary: UsageSummary;
   records: UsageRecord[];
+  interactions?: UsageInteraction[];
 }
 
 export interface McpExecuteResult {
@@ -226,6 +228,20 @@ export const api = {
         referenceType?: string | null;
         referenceId?: string | null;
         createdAt: string;
+        metadata?: Record<string, unknown>;
+      }>;
+      chargeGroups?: Array<{
+        id: string;
+        kind: "interaction" | "entry";
+        label: string;
+        amountCents: number;
+        createdAt: string;
+        entries: Array<{
+          id: string;
+          description: string | null;
+          amountCents: number;
+          createdAt: string;
+        }>;
       }>;
       stripeConfigured: boolean;
       topUpOptionsCents: number[];
@@ -361,11 +377,13 @@ export const api = {
         successful: number;
         failed: number;
         customerChargesCents: number;
-        underlyingCostsCents: number;
-        grossProfitCents: number;
+        underlyingCostsCents: number | null;
+        providerCostKnown?: boolean;
+        grossProfitCents: number | null;
         grossMarginBps: number | null;
       };
       records: UsageRecord[];
+      interactions?: UsageInteraction[];
     }>(`/api/commercial/usage${suffix}`);
   },
   getProviderCosts: () =>

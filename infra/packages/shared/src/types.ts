@@ -332,6 +332,28 @@ export interface UsageSummary {
   failedThisMonth: number;
 }
 
+/** Customer-facing rollup of one or more usage operations that share interaction_id. */
+export interface UsageInteraction {
+  id: string;
+  companyId: string;
+  actorType: string;
+  actorId: string | null;
+  actorLabel: string | null;
+  clientKind: string;
+  mcpId: string | null;
+  mcpSessionId: string | null;
+  label: string;
+  status: "completed" | "error" | "denied";
+  currency: string;
+  operationCount: number;
+  customerChargeCents: number;
+  providerCostCents: number | null;
+  providerCostKnown: boolean;
+  createdAt: string;
+  updatedAt: string;
+  operations: UsageRecord[];
+}
+
 export interface AuditEvent {
   id: string;
   companyId: string | null;

@@ -81,6 +81,16 @@ class FakeD1 {
     if (q.includes("from permission_grants")) {
       return null;
     }
+    if (q.includes("from companies where slug")) {
+      return (
+        (this.tables.companies ?? []).find((r) => r.slug === binds[0]) ?? null
+      );
+    }
+    if (q.includes("from companies where id")) {
+      return (
+        (this.tables.companies ?? []).find((r) => r.id === binds[0]) ?? null
+      );
+    }
     return null;
   }
 
@@ -407,6 +417,32 @@ function serviceActor(
 describe("tenant isolation across Caddington / HT / EL identities", () => {
   function threeTenantDb() {
     return new FakeD1({
+      companies: [
+        {
+          id: "co_caddington",
+          slug: "caddington-holdings",
+          name: "Caddington Holdings",
+          status: "active",
+          created_at: "t",
+          updated_at: "t",
+        },
+        {
+          id: "co_ht",
+          slug: "ht-business",
+          name: "HT Business",
+          status: "active",
+          created_at: "t",
+          updated_at: "t",
+        },
+        {
+          id: "co_el",
+          slug: "el-business",
+          name: "EL Business",
+          status: "active",
+          created_at: "t",
+          updated_at: "t",
+        },
+      ],
       mcp_environments: [
         {
           id: "mcp_caddington_primary",
@@ -624,6 +660,75 @@ describe("tenant isolation across Caddington / HT / EL identities", () => {
         method: "tools/list",
         params: { companyId: "co_ht" },
       },
+    );
+    expect(result.httpStatus).toBe(403);
+  });
+
+  it("EL token cannot spoof Caddington via slug", async () => {
+    const db = threeTenantDb();
+    const result = await handleInfraMcpJsonRpc(
+      envFor(db),
+      new Request("https://infra.test/api/gateway/v1/mcp", { method: "POST" }),
+      serviceActor("co_el", "EL Business ChatGPT", "mcp_el_primary"),
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: { companySlug: "caddington-holdings" },
+      },
+    );
+    expect(result.httpStatus).toBe(403);
+  });
+
+  it("Caddington token cannot spoof EL via MCP id", async () => {
+    const db = threeTenantDb();
+    const result = await handleInfraMcpJsonRpc(
+      envFor(db),
+      new Request("https://infra.test/api/gateway/v1/mcp", { method: "POST" }),
+      serviceActor(
+        "co_caddington",
+        "Caddington Holdings ChatGPT",
+        "mcp_caddington_primary",
+      ),
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: { mcpId: "mcp_el_primary" },
+      },
+    );
+    expect(result.httpStatus).toBe(403);
+  });
+
+  it("HT token cannot spoof Caddington via tool arguments", async () => {
+    const db = threeTenantDb();
+    const result = await handleInfraMcpJsonRpc(
+      envFor(db),
+      new Request("https://infra.test/api/gateway/v1/mcp", { method: "POST" }),
+      serviceActor("co_ht", "HT Business ChatGPT", "mcp_ht_primary"),
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "system_health",
+          arguments: { companyId: "co_caddington" },
+        },
+      },
+    );
+    expect(result.httpStatus).toBe(403);
+  });
+
+  it("EL header slug cannot switch tenant to HT", async () => {
+    const db = threeTenantDb();
+    const result = await handleInfraMcpJsonRpc(
+      envFor(db),
+      new Request("https://infra.test/api/gateway/v1/mcp", {
+        method: "POST",
+        headers: { "X-Infra-Company-Slug": "ht-business" },
+      }),
+      serviceActor("co_el", "EL Business ChatGPT", "mcp_el_primary"),
+      { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
     );
     expect(result.httpStatus).toBe(403);
   });

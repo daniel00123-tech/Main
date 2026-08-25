@@ -128,11 +128,11 @@ export function humanLedgerType(type: string): string {
 export function humanOperation(action?: string | null, toolName?: string | null): string {
   const key = action ?? toolName ?? "";
   const map: Record<string, string> = {
-    "knowledge.search": "Knowledge search",
-    "knowledge.read": "Knowledge read",
+    "knowledge.search": "Knowledge Search",
+    "knowledge.read": "Knowledge Document Read",
     "system.health": "Connection check",
-    search_company_knowledge: "Knowledge search",
-    get_knowledge_document: "Knowledge read",
+    search_company_knowledge: "Knowledge Search",
+    get_knowledge_document: "Knowledge Document Read",
     database_summary: "Business data summary",
     system_health: "Connection check",
   };

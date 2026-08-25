@@ -154,47 +154,100 @@ export default function PortalBillingPage() {
           {message ? <p className="info-banner" style={{ marginTop: 16 }}>{message}</p> : null}
         </SectionCard>
 
-        <SectionCard title="Transaction history">
-          {wallet.ledger.length === 0 ? (
+        <SectionCard
+          title="Charges"
+          description="Grouped only when several actions belong to the same request. The ledger below remains the source of truth."
+        >
+          {(wallet.chargeGroups ?? []).length === 0 && wallet.ledger.length === 0 ? (
             <EmptyState
               title="No transactions yet"
               description="Credits and usage charges will appear here."
             />
           ) : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th className="num">Amount</th>
-                    <th className="num">Balance</th>
-                    <th>When</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {wallet.ledger.map((entry) => (
-                    <tr key={entry.id}>
-                      <td>
-                        <strong>{humanLedgerType(entry.entryType)}</strong>
-                        {entry.description ? (
-                          <div className="muted small">{entry.description}</div>
-                        ) : null}
-                      </td>
-                      <td className="num">
-                        {formatCurrency(entry.amountCents, wallet.wallet.currency)}
-                      </td>
-                      <td className="num">
-                        {formatCurrency(entry.balanceAfterCents, wallet.wallet.currency)}
-                      </td>
-                      <td>{formatDate(entry.createdAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="interaction-list">
+              {(wallet.chargeGroups ?? []).map((group) => (
+                <details key={group.id} className="interaction-card" open={group.kind === "entry"}>
+                  <summary className="interaction-summary">
+                    <div>
+                      <div className="interaction-when">{formatDate(group.createdAt)}</div>
+                      <div className="muted small">
+                        {group.kind === "interaction"
+                          ? `${group.entries.length} operations`
+                          : humanLedgerType(
+                              wallet.ledger.find((e) => e.id === group.entries[0]?.id)?.entryType ??
+                                "usage_debit",
+                            )}
+                      </div>
+                    </div>
+                    <div className="interaction-main">
+                      <strong>{group.label}</strong>
+                    </div>
+                    <div className="num interaction-charge">
+                      {formatCurrency(group.amountCents, wallet.wallet.currency)}
+                    </div>
+                  </summary>
+                  {group.entries.length > 1 ? (
+                    <div className="interaction-body">
+                      {group.entries.map((entry) => (
+                        <div key={entry.id} className="ledger-child">
+                          <span>{entry.description ?? "Usage charge"}</span>
+                          <span className="num">
+                            {formatCurrency(entry.amountCents, wallet.wallet.currency)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </details>
+              ))}
             </div>
           )}
         </SectionCard>
       </div>
+
+      <SectionCard
+        title="Ledger"
+        description="Every wallet change is listed here. A 2p request still shows as two 1p lines."
+      >
+        {wallet.ledger.length === 0 ? (
+          <EmptyState
+            title="No ledger entries yet"
+            description="Credits and usage charges will appear here."
+          />
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th className="num">Amount</th>
+                  <th className="num">Balance</th>
+                  <th>When</th>
+                </tr>
+              </thead>
+              <tbody>
+                {wallet.ledger.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>
+                      <strong>{humanLedgerType(entry.entryType)}</strong>
+                      {entry.description ? (
+                        <div className="muted small">{entry.description}</div>
+                      ) : null}
+                    </td>
+                    <td className="num">
+                      {formatCurrency(entry.amountCents, wallet.wallet.currency)}
+                    </td>
+                    <td className="num">
+                      {formatCurrency(entry.balanceAfterCents, wallet.wallet.currency)}
+                    </td>
+                    <td>{formatDate(entry.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
     </>
   );
 }
