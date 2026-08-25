@@ -382,6 +382,8 @@ export const api = {
         configured: boolean;
         status: string;
         message: string;
+        stripeMode?: string;
+        testModeOnly?: boolean;
         topUpOptionsCents: number[];
         autoTopUp: {
           supported: boolean;
@@ -390,7 +392,28 @@ export const api = {
           amountCents: number | null;
         };
       };
+      recentTopUps?: Array<{
+        id: string;
+        amountCents: number;
+        currency: string;
+        status: string;
+        createdAt: string;
+        creditedAt?: string | null;
+        failureReason?: string | null;
+      }>;
     }>(`/api/companies/${slug}/wallet`),
+  getTopUpStatus: (slug: string, checkoutId: string) =>
+    fetchJson<{
+      checkout: {
+        id: string;
+        status: string;
+        amountCents: number;
+        currency: string;
+        ledgerCredited: boolean;
+        awaitingWebhook: boolean;
+        creditedAt?: string | null;
+      };
+    }>(`/api/companies/${slug}/wallet/top-up/${checkoutId}`),
   getBillingOverview: () =>
     fetchJson<{
       paymentProvider: { provider: string; configured: boolean; message: string };
