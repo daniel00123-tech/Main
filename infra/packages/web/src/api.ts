@@ -234,6 +234,76 @@ export const api = {
       `/api/mcp-environments/${id}/refresh-capabilities`,
       { method: "POST" },
     ),
+  getCredentialStorage: () =>
+    fetchJson<{ enabled: boolean; reason: string }>("/api/credential-storage"),
+  getConnectorCredentialMetadata: (slug: string, instanceId: string) =>
+    fetchJson<{
+      stored: boolean;
+      credentialRefId: string | null;
+      status: string | null;
+      lastUpdated: string | null;
+      fields: Array<{ name: string; masked: true }>;
+      storage: { enabled: boolean; reason: string };
+    }>(`/api/companies/${slug}/connectors/${instanceId}/credentials`),
+  saveConnectorCredentials: (
+    slug: string,
+    instanceId: string,
+    body: {
+      credentials?: Record<string, string>;
+      config?: Record<string, string>;
+      label?: string;
+    },
+  ) =>
+    fetchJson<{
+      ok: boolean;
+      credentialRefId: string;
+      stored: boolean;
+      tested: boolean;
+      authStatus: string;
+    }>(`/api/companies/${slug}/connectors/${instanceId}/credentials`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  rotateConnectorCredentials: (
+    slug: string,
+    instanceId: string,
+    body: {
+      credentials?: Record<string, string>;
+      config?: Record<string, string>;
+      credentialRefId?: string;
+    },
+  ) =>
+    fetchJson<{ ok: boolean }>(
+      `/api/companies/${slug}/connectors/${instanceId}/rotate`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  testConnectorConnection: (slug: string, instanceId: string) =>
+    fetchJson<{ tested: boolean; code?: string; message?: string }>(
+      `/api/companies/${slug}/connectors/${instanceId}/test`,
+      { method: "POST", body: "{}" },
+    ),
+  disconnectConnector: (slug: string, instanceId: string) =>
+    fetchJson<{ ok: boolean; authStatus: string }>(
+      `/api/companies/${slug}/connectors/${instanceId}/disconnect`,
+      { method: "POST", body: "{}" },
+    ),
+  setupConnector: (
+    slug: string,
+    definitionId: string,
+    body?: { name?: string; config?: Record<string, unknown> },
+  ) =>
+    fetchJson<{
+      id: string;
+      companyId: string;
+      connectorDefinitionId: string;
+      status: string;
+      authStatus: string;
+      credentialSubmission: string;
+      credentialRefId: string | null;
+    }>(`/api/companies/${slug}/connectors/${definitionId}/setup`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
   getConnectorOversight: () =>
     fetchJson<
       Array<{

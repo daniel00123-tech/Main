@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
-import type { ConnectorDefinition } from "@infra/shared";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import type { ConnectorDefinition, ConnectorInstance } from "@infra/shared";
 import { connectorFieldLabel, taxonomyForConnector, taxonomyLabel } from "@infra/shared";
 import { Notice } from "../../components";
+import { api } from "../../api";
 
 function schemaProperties(schema: Record<string, unknown>): Array<{
   name: string;
@@ -12,11 +13,26 @@ function schemaProperties(schema: Record<string, unknown>): Array<{
   return Object.entries(props).map(([name, def]) => ({
     name,
     type: def.type ?? "string",
-    secret: def.format === "secret",
+    secret:
+      def.format === "secret" ||
+      def.format === "password" ||
+      /(password|secret|token|api[_-]?key|authorization|refresh|bearer|client[_-]?secret|private[_-]?key|access[_-]?token)/i.test(
+        name,
+      ),
   }));
 }
 
-export function ConnectorSetupPanel({ connector }: { connector: ConnectorDefinition }) {
+export function ConnectorSetupPanel({
+  connector,
+  companySlug,
+  instance,
+  onChanged,
+}: {
+  connector: ConnectorDefinition;
+  companySlug: string;
+  instance?: ConnectorInstance | null;
+  onChanged?: () => Promise<void> | void;
+}) {
   const credentialFields = useMemo(
     () => schemaProperties(connector.credentialSchema),
     [connector],
@@ -26,15 +42,135 @@ export function ConnectorSetupPanel({ connector }: { connector: ConnectorDefinit
     [connector],
   );
   const [values, setValues] = useState<Record<string, string>>({});
+  const [storage, setStorage] = useState<{ enabled: boolean; reason: string } | null>(null);
+  const [metadata, setMetadata] = useState<{
+    stored: boolean;
+    lastUpdated: string | null;
+    fields: Array<{ name: string; masked: true }>;
+  } | null>(null);
+  const [replacing, setReplacing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const oauth = connector.authenticationMethod === "oauth";
   const apiKey = connector.authenticationMethod === "api_key";
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const status = await api.getCredentialStorage();
+        setStorage(status);
+        if (instance?.id) {
+          const meta = await api.getConnectorCredentialMetadata(companySlug, instance.id);
+          setMetadata(meta);
+          setReplacing(!meta.stored);
+        } else {
+          setMetadata(null);
+          setReplacing(true);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to load credential status");
+      }
+    })();
+  }, [companySlug, instance?.id]);
+
+  async function ensureInstance(): Promise<string> {
+    if (instance?.id) return instance.id;
+    const created = await api.setupConnector(companySlug, connector.id, {
+      name: `${connector.name}`,
+    });
+    return created.id;
+  }
+
+  async function onSave(event: FormEvent) {
+    event.preventDefault();
+    if (!storage?.enabled) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const instanceId = await ensureInstance();
+      const credentials = Object.fromEntries(
+        credentialFields
+          .filter((field) => field.secret && values[field.name])
+          .map((field) => [field.name, values[field.name]]),
+      );
+      const config = Object.fromEntries(
+        [...credentialFields, ...configFields]
+          .filter((field) => !field.secret && values[field.name])
+          .map((field) => [field.name, values[field.name]]),
+      );
+      if (metadata?.stored && instance?.id) {
+        await api.rotateConnectorCredentials(companySlug, instanceId, {
+          credentials,
+          config,
+        });
+      } else {
+        await api.saveConnectorCredentials(companySlug, instanceId, {
+          credentials,
+          config,
+        });
+      }
+      setValues({});
+      setReplacing(false);
+      const meta = await api.getConnectorCredentialMetadata(companySlug, instanceId);
+      setMetadata(meta);
+      setMessage("Stored securely. This connector has no provider test yet, so it is not marked Connected.");
+      await onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save credentials");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onTest() {
+    if (!instance?.id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.testConnectorConnection(companySlug, instance.id);
+      setMessage(result.message ?? "No provider test is available for this connector yet.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Test failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDisconnect() {
+    if (!instance?.id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.disconnectConnector(companySlug, instance.id);
+      setMetadata({ stored: false, lastUpdated: null, fields: metadata?.fields ?? [] });
+      setReplacing(true);
+      setMessage("Disconnected. Stored credentials were revoked.");
+      await onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to disconnect");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const storageEnabled = Boolean(storage?.enabled);
+  const showStored = Boolean(metadata?.stored) && !replacing;
+
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <Notice tone="warning">
-        Secure credential storage is not enabled. You can review the setup contract, but
-        secrets are never posted to INFRA.
-      </Notice>
+      {!storageEnabled ? (
+        <Notice tone="warning">
+          Secure credential storage is not configured. Save &amp; Test stays disabled until
+          the wrapping key is set.
+        </Notice>
+      ) : (
+        <Notice tone="info">
+          Secrets are encrypted before they are stored. INFRA never shows the saved value again.
+        </Notice>
+      )}
 
       <p className="muted" style={{ margin: 0 }}>
         {taxonomyLabel(taxonomyForConnector(connector))} ·{" "}
@@ -47,11 +183,14 @@ export function ConnectorSetupPanel({ connector }: { connector: ConnectorDefinit
         </p>
       ) : null}
 
+      {error ? <Notice tone="danger">{error}</Notice> : null}
+      {message ? <Notice tone="success">{message}</Notice> : null}
+
       {oauth ? (
         <div className="stack" style={{ gap: 8 }}>
           <p style={{ margin: 0 }}>
-            Staff will click Connect, sign in with the provider, then return here. Tokens
-            will be stored only after a secure secret provider is enabled.
+            Staff will click Connect, sign in with the provider, then return here. Live OAuth
+            is prepared but not activated.
           </p>
           <button type="button" className="button button-primary" disabled>
             Connect with {connector.name} — not activated
@@ -59,12 +198,52 @@ export function ConnectorSetupPanel({ connector }: { connector: ConnectorDefinit
         </div>
       ) : null}
 
-      {credentialFields.length > 0 || configFields.length > 0 ? (
-        <form
-          className="stack"
-          style={{ gap: 16 }}
-          onSubmit={(event) => event.preventDefault()}
-        >
+      {showStored ? (
+        <div className="stack" style={{ gap: 12 }}>
+          {(metadata?.fields.length ? metadata.fields : credentialFields).map((field) => (
+            <div key={field.name}>
+              <div className="muted small">{connectorFieldLabel(field.name)}</div>
+              <div>••••••••••••</div>
+              <div className="muted small">Stored securely</div>
+            </div>
+          ))}
+          <div className="muted small">
+            Last updated: {metadata?.lastUpdated ?? "Unavailable"}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={!storageEnabled || busy}
+              onClick={() => {
+                setReplacing(true);
+                setValues({});
+              }}
+            >
+              Reconnect / Replace
+            </button>
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={busy || !instance?.id}
+              onClick={() => void onTest()}
+            >
+              Test connection
+            </button>
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={busy || !instance?.id}
+              onClick={() => void onDisconnect()}
+            >
+              Disconnect
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {!showStored && (credentialFields.length > 0 || configFields.length > 0) ? (
+        <form className="stack" style={{ gap: 16 }} onSubmit={(event) => void onSave(event)}>
           {credentialFields.length > 0 ? (
             <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
               <legend className="muted small">Credentials</legend>
@@ -83,6 +262,7 @@ export function ConnectorSetupPanel({ connector }: { connector: ConnectorDefinit
                       autoComplete="off"
                       autoCapitalize="off"
                       spellCheck={false}
+                      disabled={!storageEnabled || busy}
                     />
                   </label>
                 ))}
@@ -105,6 +285,7 @@ export function ConnectorSetupPanel({ connector }: { connector: ConnectorDefinit
                         setValues((prev) => ({ ...prev, [field.name]: event.target.value }))
                       }
                       autoComplete="off"
+                      disabled={busy}
                     />
                   </label>
                 ))}
@@ -112,13 +293,21 @@ export function ConnectorSetupPanel({ connector }: { connector: ConnectorDefinit
             </fieldset>
           ) : null}
 
-          <button type="submit" className="button button-primary" disabled>
-            {apiKey ? "Save and test — disabled" : "Save credentials — disabled"}
+          <button type="submit" className="button button-primary" disabled={!storageEnabled || busy}>
+            {storageEnabled
+              ? busy
+                ? "Saving…"
+                : apiKey
+                  ? "Save & Test"
+                  : "Save credentials"
+              : "Save & Test — disabled"}
           </button>
         </form>
-      ) : (
+      ) : null}
+
+      {!showStored && credentialFields.length === 0 && configFields.length === 0 && !oauth ? (
         <p className="muted">This connector does not declare setup fields yet.</p>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -24,6 +24,7 @@ import { buildKnowledgeSources } from "./knowledge-sources";
 import { classifyLedgerCredit } from "./wallet-credits";
 import { evaluateApprovalRequirement } from "./approvals";
 import { resolveCompanyMcpToolName } from "./mcp-knowledge-standard";
+import { redactSecretFields } from "./secrets";
 
 export async function listCompanies(
   db: D1Database,
@@ -335,7 +336,7 @@ export async function recordAuditEvent(
       input.actor,
       input.resourceType ?? null,
       input.resourceId ?? null,
-      JSON.stringify(input.detail ?? {}),
+      JSON.stringify(redactSecretFields(input.detail ?? {})),
       createdAt,
     )
     .run();

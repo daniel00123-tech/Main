@@ -35,6 +35,7 @@ import {
   refreshInteractionTotals,
   resolveInteractionIds,
 } from "./interactions";
+import { sanitizeCustomerError } from "./secrets";
 
 export type GatewayActor =
   | { type: "user"; user: SessionUser }
@@ -812,7 +813,11 @@ export async function executeGatewayRequest(
         usageRecordId,
         ledgerEntryId,
         success ? null : "mcp_execution_failed",
-        success ? null : "error" in execution ? execution.error : "failed",
+        success
+          ? null
+          : sanitizeCustomerError(
+              "error" in execution ? String(execution.error) : "failed",
+            ),
         JSON.stringify({
           action,
           riskClass,

@@ -20,7 +20,7 @@
 
 Application code uses `SecretProvider` (`store`, `resolve`, `rotate`, `revoke`, `exists`). Connector instances hold only an opaque reference.
 
-Production submission is **disabled** until a scalable store is approved. Tests use an in-memory provider. Existing MCP auth continues to resolve named Worker secret *bindings*.
+Production submission uses envelope encryption when `INFRA_CREDENTIAL_WRAPPING_KEY` is configured (ADR 026). If that Worker secret is missing, store/rotate stay disabled. Tests use an in-memory provider or a test wrapping key. Existing MCP auth continues to resolve named Worker secret *bindings* and is not migrated into D1.
 
 Frontend, logs, audit, URLs, and ordinary D1 rows never receive secret values.
 

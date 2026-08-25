@@ -17,6 +17,9 @@ export interface Env {
   /** Stripe secrets — set via wrangler secret put when ready */
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  /** Envelope-encryption wrapping key for connector credentials. Never store in D1. */
+  INFRA_CREDENTIAL_WRAPPING_KEY?: string;
+  INFRA_CREDENTIAL_KEY_VERSION?: string;
   [key: string]: unknown;
 }
 

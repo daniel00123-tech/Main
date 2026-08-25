@@ -33,11 +33,16 @@ import {
   oauthProviderNotActivated,
 } from "../services/connector-oauth";
 import {
+  connectorHasProviderTest,
+  getConnectorCredentialMetadata,
+  partitionConnectorInput,
   rejectPlaintextCredentialStore,
+  revokeConnectorCredential,
   rotateConnectorCredential,
   sanitizeConnectorConfig,
   storeConnectorCredential,
 } from "../services/connector-credentials";
+import { credentialStorageStatus } from "../services/secrets";
 import { deriveConnectorPresentation } from "../services/connector-lifecycle";
 import { newId, nowIso } from "../db/mappers";
 import { assertCompanyAcceptsGateway } from "../services/tenant-provisioning";
@@ -54,6 +59,10 @@ function canManageCompany(user: AuthVariables["user"], companyId: string) {
 
 connectors.get("/api/connectors/catalogue", requireAuth, (c) =>
   c.json(CONNECTOR_CATALOGUE.map(publicConnectorDefinition)),
+);
+
+connectors.get("/api/credential-storage", requireAuth, (c) =>
+  c.json(credentialStorageStatus(c.env)),
 );
 
 connectors.get("/api/admin/connectors", requireAuth, requirePlatformAdmin, async (c) => {
@@ -179,13 +188,15 @@ connectors.post(
       detail: { definitionId: definition.id },
     });
 
-    if (body.credentials && Object.keys(body.credentials).length > 0) {
+    const storage = credentialStorageStatus(c.env);
+    if (body.credentials && Object.keys(body.credentials).length > 0 && !storage.enabled) {
       return c.json(rejectPlaintextCredentialStore().body, 409);
     }
 
     const id = newId("ci");
     const now = nowIso();
-    const safeConfig = sanitizeConnectorConfig(body.config);
+    const partitioned = partitionConnectorInput(definition, body.credentials, body.config);
+    const safeConfig = sanitizeConnectorConfig(partitioned.publicConfig);
     await c.env.DB.prepare(
       `INSERT INTO connector_instances (
         id, company_id, connector_definition_id, name, status, config_json,
@@ -209,22 +220,41 @@ connectors.post(
       )
       .run();
 
+    let credentialRefId: string | null = null;
+    if (storage.enabled && Object.keys(partitioned.secretPayload).length > 0) {
+      const stored = await storeConnectorCredential({
+        env: c.env,
+        companyId: company.id,
+        instanceId: id,
+        label: "Primary credential",
+        provider: definition.id,
+        credentials: partitioned.secretPayload,
+        actor: c.get("user").email,
+      });
+      if (!stored.ok) return c.json(stored.body, stored.status);
+      credentialRefId = stored.credentialRefId;
+    }
+
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
       eventType: "connector.instance_created",
       actor: c.get("user").email,
       resourceType: "connector",
       resourceId: id,
-      detail: { definitionId: definition.id, credentialStored: false },
+      detail: {
+        definitionId: definition.id,
+        credentialStored: Boolean(credentialRefId),
+      },
     });
 
     return c.json({
       id,
       companyId: company.id,
       connectorDefinitionId: definition.id,
-      status: "draft",
-      authStatus: "credentials_required",
-      credentialSubmission: "disabled",
+      status: credentialRefId ? "configured" : "draft",
+      authStatus: credentialRefId ? "configuring" : "credentials_required",
+      credentialSubmission: storage.enabled ? "enabled" : "disabled",
+      credentialRefId,
     });
   },
 );
@@ -247,11 +277,15 @@ connectors.post(
     }
     const body = await c.req.json<{
       secretValue?: string;
+      credentials?: Record<string, unknown>;
+      config?: Record<string, unknown>;
       label?: string;
-    }>().catch(() => ({ secretValue: undefined, label: undefined }));
-    if (!body.secretValue) {
-      return c.json(rejectPlaintextCredentialStore().body, 409);
-    }
+    }>().catch(() => ({
+      secretValue: undefined,
+      credentials: undefined,
+      config: undefined,
+      label: undefined,
+    }));
     const stored = await storeConnectorCredential({
       env: c.env,
       companyId: company.id,
@@ -259,6 +293,8 @@ connectors.post(
       label: body.label ?? "Primary credential",
       provider: instance.connectorDefinitionId,
       secretValue: body.secretValue,
+      credentials: body.credentials,
+      config: body.config,
       actor: c.get("user").email,
     });
     if (!stored.ok) return c.json(stored.body, stored.status);
@@ -268,9 +304,40 @@ connectors.post(
       actor: c.get("user").email,
       resourceType: "connector",
       resourceId: instance.id,
-      detail: { credentialRefId: stored.credentialRefId },
+      detail: { credentialRefId: stored.credentialRefId, providerTested: false },
     });
-    return c.json({ ok: true, credentialRefId: stored.credentialRefId });
+    return c.json({
+      ok: true,
+      credentialRefId: stored.credentialRefId,
+      stored: true,
+      tested: false,
+      authStatus: "configuring",
+    });
+  },
+);
+
+connectors.get(
+  "/api/companies/:slug/connectors/:instanceId/credentials",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access to this company is denied" }, 403);
+    }
+    const instance = await getConnectorInstance(c.env.DB, c.req.param("instanceId"));
+    if (!instance || instance.companyId !== company.id) {
+      return c.json({ error: "Connector not found" }, 404);
+    }
+    const metadata = await getConnectorCredentialMetadata({
+      env: c.env,
+      companyId: company.id,
+      instanceId: instance.id,
+    });
+    return c.json({
+      ...metadata,
+      storage: credentialStorageStatus(c.env),
+    });
   },
 );
 
@@ -292,11 +359,18 @@ connectors.post(
     }
     const body = await c.req.json<{
       secretValue?: string;
+      credentials?: Record<string, unknown>;
+      config?: Record<string, unknown>;
       credentialRefId?: string;
-    }>().catch(() => ({ secretValue: undefined, credentialRefId: undefined }));
+    }>().catch(() => ({
+      secretValue: undefined,
+      credentials: undefined,
+      config: undefined,
+      credentialRefId: undefined,
+    }));
     const credentialRefId = body.credentialRefId ?? instance.credentialRefId;
-    if (!credentialRefId || !body.secretValue) {
-      return c.json(rejectPlaintextCredentialStore().body, 409);
+    if (!credentialRefId) {
+      return c.json(customerConnectorError(CONNECTOR_ERROR_CODES.CONFIG_INCOMPLETE), 409);
     }
     const rotated = await rotateConnectorCredential({
       env: c.env,
@@ -304,6 +378,8 @@ connectors.post(
       instanceId: instance.id,
       credentialRefId,
       secretValue: body.secretValue,
+      credentials: body.credentials,
+      config: body.config,
       actor: c.get("user").email,
     });
     if (!rotated.ok) return c.json(rotated.body, rotated.status);
@@ -316,6 +392,73 @@ connectors.post(
       detail: { credentialRefId },
     });
     return c.json({ ok: true });
+  },
+);
+
+connectors.post(
+  "/api/companies/:slug/connectors/:instanceId/test",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+    if (company.status === "suspended" || company.status === "archived") {
+      return c.json(
+        customerConnectorError(
+          company.status === "suspended"
+            ? CONNECTOR_ERROR_CODES.SUSPENDED
+            : CONNECTOR_ERROR_CODES.COMPANY_INACTIVE,
+        ),
+        403,
+      );
+    }
+    const instance = await getConnectorInstance(c.env.DB, c.req.param("instanceId"));
+    if (!instance || instance.companyId !== company.id) {
+      return c.json({ error: "Connector not found" }, 404);
+    }
+    const tested = connectorHasProviderTest(instance.connectorDefinitionId);
+    await recordAuditEvent(c.env.DB, {
+      companyId: company.id,
+      eventType: tested
+        ? "credential.validation_succeeded"
+        : "credential.validation_failed",
+      actor: c.get("user").email,
+      resourceType: "connector",
+      resourceId: instance.id,
+      detail: { tested: false, reason: "no_provider_test" },
+    });
+    return c.json({
+      tested: false,
+      code: "NO_PROVIDER_TEST",
+      message:
+        "No provider test is available for this connector yet. Credentials were not re-checked against the provider.",
+    });
+  },
+);
+
+connectors.post(
+  "/api/companies/:slug/connectors/:instanceId/disconnect",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+    const instance = await getConnectorInstance(c.env.DB, c.req.param("instanceId"));
+    if (!instance || instance.companyId !== company.id) {
+      return c.json({ error: "Connector not found" }, 404);
+    }
+    const revoked = await revokeConnectorCredential({
+      env: c.env,
+      companyId: company.id,
+      instanceId: instance.id,
+      actor: c.get("user").email,
+    });
+    if (!revoked.ok) return c.json(revoked.body, revoked.status);
+    return c.json({ ok: true, authStatus: "revoked" });
   },
 );
 

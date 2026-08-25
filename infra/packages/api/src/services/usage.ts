@@ -1,4 +1,5 @@
 import { newId, nowIso } from "../db/mappers";
+import { redactSecretFields } from "./secrets";
 import type { ChargeResult, CostBasis } from "./pricing";
 
 export interface UsageEventInput {
@@ -92,7 +93,7 @@ export async function recordUsageEvent(db: D1Database, input: UsageEventInput) {
         input.quantity ?? 1,
         input.unit ?? "request",
         recordedAt,
-        JSON.stringify(input.metadata ?? {}),
+        JSON.stringify(redactSecretFields(input.metadata ?? {})),
         input.userId ?? null,
         input.actorEmail ?? null,
         input.mcpEnvironmentId ?? null,

@@ -5,6 +5,8 @@ import {
   CredentialSubmissionDisabledError,
   SecretTenantMismatchError,
   redactSecretFields,
+  sanitizeCustomerError,
+  sanitizeForLog,
   stripSecretFields,
 } from "./provider";
 import type { Env } from "../../env";
@@ -102,5 +104,14 @@ describe("secret provider", () => {
     expect(stripSecretFields({ apiKey: "abc", folderIds: ["1"] })).toEqual({
       folderIds: ["1"],
     });
+  });
+
+  it("redacts JWT-shaped values even when the key name is generic", () => {
+    const redacted = redactSecretFields({
+      note: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.aaaaaaaaaa",
+    });
+    expect(redacted.note).toBe("[redacted]");
+    expect(sanitizeForLog("sk-live-example")).toBe("[redacted]");
+    expect(sanitizeCustomerError("password = hunter2 leftover")).toMatch(/password=\[redacted\]/);
   });
 });

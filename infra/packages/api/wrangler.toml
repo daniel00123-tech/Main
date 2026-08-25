@@ -21,6 +21,8 @@ COOKIE_CROSS_ORIGIN = "true"
 # EL_MCP_AUTH_TOKEN (downstream auth for existing el-business-mcp — same value as that Worker's MCP_AUTH_TOKEN)
 # STRIPE_SECRET_KEY (optional — prepaid top-ups)
 # STRIPE_WEBHOOK_SECRET (optional — webhook verification)
+# INFRA_CREDENTIAL_WRAPPING_KEY (32-byte AES-256 wrapping key; never put in D1)
+# INFRA_CREDENTIAL_KEY_VERSION (optional, default v1)
 # INITIAL_PLATFORM_ADMIN_EMAIL (temporary bootstrap only)
 # INITIAL_PLATFORM_ADMIN_PASSWORD (temporary bootstrap only)
 

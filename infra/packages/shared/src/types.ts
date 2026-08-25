@@ -70,6 +70,8 @@ export type AuditEventType =
   | "credential.created"
   | "credential.rotated"
   | "credential.revoked"
+  | "credential.validation_succeeded"
+  | "credential.validation_failed"
   | "permission.updated"
   | "billing.credit_adjusted"
   | "mcp.capabilities_refreshed"
@@ -79,7 +81,8 @@ export type AuditEventType =
   | "connector.reauthenticated"
   | "connector.disconnected"
   | "connector.credentials_rotated"
-  | "connector.health_checked";
+  | "connector.health_checked"
+  | "connector.authentication_expired";
 
 export type UserStatus = "active" | "disabled";
 

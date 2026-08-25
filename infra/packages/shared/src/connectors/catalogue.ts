@@ -368,7 +368,7 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     taxonomyCategory: "customer_support",
     brandKey: "freshdesk",
     setupInstructions:
-      "Freshdesk API key and domain. Secret submission is disabled until secure storage is enabled.",
+      "Freshdesk API key and domain. Secrets are encrypted when secure storage is configured.",
   },
   {
     id: "conn_custom_api",

@@ -33,7 +33,14 @@ export interface StoredSecretRef {
 export interface SecretAccessContext {
   companyId: string;
   actor: string;
-  reason: "mcp_resolve" | "rotation" | "revocation" | "existence_check" | "test";
+  reason:
+    | "mcp_resolve"
+    | "rotation"
+    | "revocation"
+    | "existence_check"
+    | "test"
+    | "execution"
+    | "token_refresh";
 }
 
 export interface SecretProvider {
@@ -52,7 +59,7 @@ export interface SecretProvider {
 
 export class CredentialSubmissionDisabledError extends Error {
   readonly code = "CREDENTIAL_SUBMISSION_DISABLED";
-  constructor(message = "Secure credential storage is not enabled yet") {
+  constructor(message = "Secure credential storage is not configured") {
     super(message);
     this.name = "CredentialSubmissionDisabledError";
   }
@@ -66,26 +73,86 @@ export class SecretTenantMismatchError extends Error {
   }
 }
 
-const SECRET_KEY_PATTERN =
-  /(password|secret|token|api[_-]?key|authorization|refresh|bearer|client[_-]?secret)/i;
+export const SECRET_KEY_PATTERN =
+  /(password|secret|token|api[_-]?key|authorization|refresh|bearer|client[_-]?secret|private[_-]?key|access[_-]?token|id[_-]?token|session)/i;
+
+const SECRET_VALUE_HINT =
+  /^(sk-|rk-|xox[baprs]-|ghp_|github_pat_|ya29\.|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,})/;
+
+export function isSecretFieldName(name: string): boolean {
+  return SECRET_KEY_PATTERN.test(name);
+}
+
+export function isSecretSchemaProperty(property: unknown): boolean {
+  if (!property || typeof property !== "object" || Array.isArray(property)) {
+    return false;
+  }
+  const format = (property as { format?: unknown }).format;
+  return format === "secret" || format === "password";
+}
+
+export function secretFieldNamesFromSchema(
+  schema: Record<string, unknown> | null | undefined,
+): Set<string> {
+  const names = new Set<string>();
+  const props =
+    schema && schema.properties && typeof schema.properties === "object"
+      ? (schema.properties as Record<string, unknown>)
+      : {};
+  for (const [name, property] of Object.entries(props)) {
+    if (isSecretSchemaProperty(property) || isSecretFieldName(name)) {
+      names.add(name);
+    }
+  }
+  return names;
+}
 
 export function redactSecretFields(
   value: Record<string, unknown> | null | undefined,
+  schema?: Record<string, unknown> | null,
 ): Record<string, unknown> {
   if (!value) return {};
+  const schemaSecrets = secretFieldNamesFromSchema(schema);
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
-    if (SECRET_KEY_PATTERN.test(key)) {
+    if (schemaSecrets.has(key) || isSecretFieldName(key)) {
+      out[key] = "[redacted]";
+      continue;
+    }
+    if (typeof item === "string" && SECRET_VALUE_HINT.test(item)) {
       out[key] = "[redacted]";
       continue;
     }
     if (item && typeof item === "object" && !Array.isArray(item)) {
-      out[key] = redactSecretFields(item as Record<string, unknown>);
+      out[key] = redactSecretFields(item as Record<string, unknown>, schema);
     } else {
       out[key] = item;
     }
   }
   return out;
+}
+
+export function sanitizeForLog(value: unknown): unknown {
+  if (value == null) return value;
+  if (typeof value === "string") {
+    return SECRET_VALUE_HINT.test(value) ? "[redacted]" : value;
+  }
+  if (Array.isArray(value)) return value.map((item) => sanitizeForLog(item));
+  if (typeof value === "object") {
+    return redactSecretFields(value as Record<string, unknown>);
+  }
+  return value;
+}
+
+export function sanitizeCustomerError(message: string): string {
+  const redacted = message
+    .replace(
+      /(sk-|rk-|xox[baprs]-|ghp_|github_pat_|ya29\.|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,})/g,
+      "[redacted]",
+    )
+    .replace(/(api[_-]?key|token|password|secret)\s*[:=]\s*\S+/gi, "$1=[redacted]");
+  if (redacted.length > 180) return "Request failed — retry";
+  return redacted;
 }
 
 export function stripSecretFields<T extends Record<string, unknown>>(

@@ -57,7 +57,7 @@ Capability-aware (ADR 017). Required: company, admin, MCP + auth, wallet. Knowle
 
 Definitions live in shared catalogue. Instances are per-company (ADR 018). Auth, sync, and provider health are separate (ADR 022). ChatGPT is an AI connection, not a Drive-like data source.
 
-Credential submission is disabled. `SecretProvider` is the only storage interface (ADR 019). OAuth state uses hashed state + PKCE; Xero is not activated (ADR 021).
+`SecretProvider` is the only storage interface (ADR 019 / 026). Production uses AES-256-GCM ciphertext in D1 and `INFRA_CREDENTIAL_WRAPPING_KEY` as a Worker secret. If that key is missing, Save & Test stays disabled and the UI says storage is not configured. Frontend, API responses, audit, and logs never receive stored plaintext. OAuth state uses hashed state + PKCE; Xero is not activated (ADR 021). MCP Worker auth tokens stay as existing Worker secrets.
 
 `POST /api/mcp-environments/:id/refresh-capabilities` refreshes tools via `tools/list` + `system_health` + optional `database_summary`. It does **not** run knowledge search and is not billable.
 
@@ -72,3 +72,5 @@ Required for Caddington: `CADDINGTON_MCP_AUTH_TOKEN`, `SESSION_SECRET`.
 Required for HT / EL routing: `HT_MCP_AUTH_TOKEN`, `EL_MCP_AUTH_TOKEN` (same values as each Worker’s existing `MCP_AUTH_TOKEN` — do not rotate).
 
 Stripe later: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
+
+Connector credential wrapping: `INFRA_CREDENTIAL_WRAPPING_KEY` (optional until credential submission is required). Never store this value in D1, Git, or the UI.

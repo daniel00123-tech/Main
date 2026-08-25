@@ -16,4 +16,4 @@ Security: state validation, CSRF, PKCE, tenant + user binding, scope checks, no 
 
 Company admin enters credentials → SecretProvider.store → instance holds reference → test → connected.
 
-Production POST of secret values returns `CREDENTIAL_SUBMISSION_DISABLED` (409).
+Production POST of secret values succeeds only when `INFRA_CREDENTIAL_WRAPPING_KEY` is configured (ADR 026). Otherwise it returns `CREDENTIAL_SUBMISSION_DISABLED` (409).

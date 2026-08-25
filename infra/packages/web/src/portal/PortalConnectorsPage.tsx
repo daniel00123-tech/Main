@@ -20,7 +20,7 @@ import { ConnectorLogo } from "../components/connectors/ConnectorLogo";
 import { usePortalCompany } from "./usePortalCompany";
 
 export default function PortalConnectorsPage() {
-  const { company, overview, loading, error } = usePortalCompany();
+  const { company, overview, loading, error, refresh } = usePortalCompany();
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
 
   const selected = useMemo(
@@ -105,7 +105,7 @@ export default function PortalConnectorsPage() {
         <EmptyState
           icon={<Plug size={28} />}
           title="No systems configured"
-          description="Choose a connector from the catalogue. Secrets cannot be submitted until secure storage is enabled."
+          description="Choose a connector from the catalogue. Secrets are stored only after secure encryption is configured."
         />
       ) : (
         <div className="connector-grid" style={{ margin: "16px 0 24px" }}>
@@ -194,7 +194,16 @@ export default function PortalConnectorsPage() {
         title={selected?.name ?? "Connector"}
         description={selected?.setupInstructions}
       >
-        {selected ? <ConnectorSetupPanel connector={selected} /> : null}
+        {selected ? (
+          <ConnectorSetupPanel
+            connector={selected}
+            companySlug={company.slug}
+            instance={instances.find((row) => row.connectorDefinitionId === selected.id) ?? null}
+            onChanged={async () => {
+              await refresh();
+            }}
+          />
+        ) : null}
       </Modal>
     </>
   );
