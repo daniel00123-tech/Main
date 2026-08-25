@@ -67,5 +67,5 @@ export function evaluateApprovalRequirement(input: {
   };
 }
 
-/** Explicit production gate — do not enable without operator approval. */
-export const FINANCIAL_WRITES_ENABLED = false;
+/** Explicit production gate — enabled for controlled first-write acceptance (operator approved). */
+export const FINANCIAL_WRITES_ENABLED = true;

@@ -24,6 +24,7 @@ import {
   wrappingKeyConfigured,
   type SecretProvider,
 } from "./secrets";
+import { FINANCIAL_WRITES_ENABLED } from "./approvals";
 import {
   parseCredentialPayload,
   revokeConnectorCredential,
@@ -85,7 +86,7 @@ export function xeroOauthStatus(env: Env): {
     readyToConnect:
       xeroAppConfigured(env) && wrappingKeyConfigured(env as Record<string, unknown>),
     writesSupported: XERO_WRITE_ACTIVATION.writesSupported,
-    writesEnabled: XERO_WRITE_ACTIVATION.writesEnabled,
+    writesEnabled: FINANCIAL_WRITES_ENABLED,
   };
 }
 
@@ -1134,12 +1135,12 @@ export function publicXeroView(instance: {
     scopeTierLabel: scopeTier === "write" ? "Read + Write (OAuth)" : "Read access",
     writeScopesConsented: missingWriteScopes.length === 0,
     writesSupported: activation.writesSupported,
-    writesEnabled: activation.writesEnabled,
+    writesEnabled: FINANCIAL_WRITES_ENABLED,
     writeCapabilityMessage:
       missingWriteScopes.length > 0
         ? "Read access connected — additional approval required to enable financial write capabilities."
-        : activation.writesEnabled
-          ? "Read + Write OAuth scopes consented. INFRA role permissions still control who may execute writes."
+        : FINANCIAL_WRITES_ENABLED
+          ? "Read + Write OAuth scopes consented. Financial execution enabled — Action Engine required for all writes."
           : "Write OAuth scopes consented — production financial write execution remains disabled pending operator approval.",
     missingWriteScopes,
   };

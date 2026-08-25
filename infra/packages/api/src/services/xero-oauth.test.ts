@@ -502,14 +502,14 @@ describe("Xero OAuth", () => {
       "accounting.payments",
       "accounting.contacts",
     ]);
-    const writeBlocked = await prepareXeroMcpExecution({
+    const writeReady = await prepareXeroMcpExecution({
       env,
       companyId: "co_a",
       toolName: "xero_create_draft_invoice",
     });
-    expect(writeBlocked.ok).toBe(false);
-    if (!writeBlocked.ok) {
-      expect(writeBlocked.body.code).toBe("FINANCIAL_WRITES_DISABLED");
+    expect(writeReady.ok).toBe(true);
+    if (writeReady.ok) {
+      expect(writeReady.writesEnabled).toBe(true);
     }
 
     const tested = await testXeroConnection({

@@ -334,7 +334,7 @@ describe("action plan lifecycle", () => {
     expect(confirmationToken).not.toBe("wrong-token");
   });
 
-  it("confirms valid plan but blocks execution when writes disabled", async () => {
+  it("confirms valid plan and allows execution when operator gate is enabled", async () => {
     const db = new FakeD1() as unknown as D1Database;
     const { plan, confirmationToken } = await createActionPlan(db, {
       companyId: "co_test",
@@ -352,8 +352,8 @@ describe("action plan lifecycle", () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.executionBlocked).toBe(true);
-      expect(result.blockReason).toBe("FINANCIAL_WRITES_DISABLED");
+      expect(result.executionBlocked).toBe(false);
+      expect(result.blockReason).toBeUndefined();
     }
   });
 

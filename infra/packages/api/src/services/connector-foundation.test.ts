@@ -243,14 +243,14 @@ describe("connector health vs sync", () => {
 });
 
 describe("approvals and suspension", () => {
-  it("blocks financial writes and suspended companies", () => {
+  it("allows financial writes when operator gate is enabled and blocks suspended companies", () => {
     expect(
       evaluateApprovalRequirement({
         riskClass: "financial_action",
         action: "xero.invoices.create_draft",
         companyStatus: "active",
       }).allowed,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       evaluateApprovalRequirement({
         riskClass: "write",

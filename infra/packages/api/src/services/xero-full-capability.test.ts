@@ -11,16 +11,16 @@ import {
 import { CONNECTOR_ERROR_CODES } from "@infra/shared";
 
 describe("Xero full-capability gates", () => {
-  it("blocks financial writes in production", () => {
-    expect(FINANCIAL_WRITES_ENABLED).toBe(false);
+  it("allows financial writes when operator gate is enabled", () => {
+    expect(FINANCIAL_WRITES_ENABLED).toBe(true);
     const decision = evaluateApprovalRequirement({
       riskClass: "financial_action",
       action: "xero.invoices.create",
       companyStatus: "active",
     });
-    expect(decision.allowed).toBe(false);
+    expect(decision.allowed).toBe(true);
     expect(decision.writesSupported).toBe(true);
-    expect(decision.error?.code).toBe("FINANCIAL_WRITES_DISABLED");
+    expect(decision.writesEnabled).toBe(true);
   });
 
   it("requires scope upgrade before write tools when OAuth lacks write scopes", async () => {
