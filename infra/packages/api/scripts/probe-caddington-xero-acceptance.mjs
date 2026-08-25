@@ -90,6 +90,8 @@ async function main() {
           organisationName: salesPayload?.organisationName ?? null,
           currencyCode: salesPayload?.currencyCode ?? salesPayload?.summary?.currencyCode ?? null,
           summary: salesPayload?.summary ?? salesPayload,
+          transactions: salesPayload?.transactions ?? [],
+          excludedTransactions: salesPayload?.excludedTransactions ?? [],
           error: sales.body?.error?.message ?? null,
         },
       },

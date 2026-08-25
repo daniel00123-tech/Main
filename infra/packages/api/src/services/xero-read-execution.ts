@@ -4,6 +4,12 @@ import {
   XeroClient,
   xeroReadTools,
   XERO_READ_TOOL_HANDLERS,
+  aggregateSales,
+  aggregateTopCustomers,
+  classifySalesDocuments,
+  dateRangeWhere,
+  mapCreditNoteRow,
+  mapInvoiceRow,
 } from "@infra/xero-core";
 import type { Env } from "../env";
 import { getValidXeroAccessToken } from "./xero";
@@ -45,34 +51,6 @@ async function fetchXeroJson<T>(
   return text.trim() ? (JSON.parse(text) as T) : ({} as T);
 }
 
-async function fetchInvoicesInRange(
-  token: { accessToken: string; tenantId: string },
-  input: { fromDate?: string; toDate?: string; limit?: number },
-) {
-  const from = input.fromDate ?? new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const to = input.toDate ?? new Date().toISOString().slice(0, 10);
-  const target = Math.min(
-    Math.max(1, input.limit ?? XERO_DATA_BOUNDS.defaultListResults),
-    XERO_DATA_BOUNDS.maxListResults,
-  );
-  const invoices: Array<{
-    Total?: number;
-    Contact?: { ContactID?: string; Name?: string };
-  }> = [];
-  let page = 1;
-  while (invoices.length < target && page <= 10) {
-    const body = await fetchXeroJson<{ Invoices?: typeof invoices }>(token, "/Invoices", {
-      where: `Date>=DateTime(${from.replace(/-/g, ",")}) AND Date<=DateTime(${to.replace(/-/g, ",")})`,
-      page,
-    });
-    const batch = body.Invoices ?? [];
-    if (!batch.length) break;
-    invoices.push(...batch);
-    page += 1;
-  }
-  return invoices.slice(0, target);
-}
-
 async function fetchOrganisationBaseCurrency(
   token: { accessToken: string; tenantId: string },
 ): Promise<string | null> {
@@ -81,6 +59,55 @@ async function fetchOrganisationBaseCurrency(
     "/Organisation",
   );
   return body.Organisations?.[0]?.BaseCurrency ?? null;
+}
+
+async function fetchPagedXeroCollection<T>(
+  token: { accessToken: string; tenantId: string },
+  path: "/Invoices" | "/CreditNotes",
+  collectionKey: "Invoices" | "CreditNotes",
+  where: string,
+  target: number,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let page = 1;
+  while (rows.length < target && page <= 10) {
+    const body = await fetchXeroJson<Record<string, T[]>>(token, path, { where, page });
+    const batch = body[collectionKey] ?? [];
+    if (!batch.length) break;
+    rows.push(...batch);
+    if (batch.length < 100) break;
+    page += 1;
+  }
+  return rows.slice(0, target);
+}
+
+async function fetchSalesDocumentsWithToken(
+  token: { accessToken: string; tenantId: string },
+  input: { fromDate: string; toDate: string; limit?: number },
+) {
+  const where = dateRangeWhere(input.fromDate, input.toDate);
+  const target = Math.min(
+    Math.max(1, input.limit ?? XERO_DATA_BOUNDS.defaultListResults),
+    XERO_DATA_BOUNDS.maxListResults,
+  );
+  const invoices = await fetchPagedXeroCollection<Record<string, unknown>>(
+    token,
+    "/Invoices",
+    "Invoices",
+    where,
+    target,
+  );
+  const creditNotes = await fetchPagedXeroCollection<Record<string, unknown>>(
+    token,
+    "/CreditNotes",
+    "CreditNotes",
+    where,
+    target,
+  );
+  return [
+    ...invoices.map(mapInvoiceRow),
+    ...creditNotes.map(mapCreditNoteRow),
+  ];
 }
 
 export async function executeXeroReadToolOnInfra(
@@ -142,12 +169,17 @@ export async function executeXeroReadToolOnInfra(
     args: Record<string, unknown>,
   ) => Promise<Record<string, unknown>>;
 
-  const xeroToken = { accessToken: token.accessToken, tenantId: token.tenantId };
+  const workerClient = new XeroClient({
+    accessToken: token.accessToken,
+    tenantId: token.tenantId,
+    apiBaseUrl: XERO_AUTH.apiBaseUrl,
+    fetchImpl: fetch,
+  });
 
   try {
     if (input.toolName === "xero_get_organisation") {
       const organisationBody = await fetchXeroJson<{ Organisations?: unknown[] }>(
-        xeroToken,
+        { accessToken: token.accessToken, tenantId: token.tenantId },
         "/Organisation",
       );
       return {
@@ -164,14 +196,14 @@ export async function executeXeroReadToolOnInfra(
       const args = input.arguments ?? {};
       const fromDate = String(args.fromDate ?? "");
       const toDate = String(args.toDate ?? "");
+      const xeroToken = { accessToken: token.accessToken, tenantId: token.tenantId };
       const currencyCode = await fetchOrganisationBaseCurrency(xeroToken);
-      const invoices = await fetchInvoicesInRange(xeroToken, {
+      const raw = await fetchSalesDocumentsWithToken(xeroToken, {
         fromDate,
         toDate,
         limit: XERO_DATA_BOUNDS.maxListResults,
       });
-      let totalSales = 0;
-      for (const row of invoices) totalSales += Number(row.Total ?? 0);
+      const aggregated = aggregateSales(classifySalesDocuments(raw));
       return {
         ok: true,
         latencyMs: Date.now() - started,
@@ -181,10 +213,13 @@ export async function executeXeroReadToolOnInfra(
           summary: {
             fromDate,
             toDate,
-            invoiceCount: invoices.length,
-            totalSales,
+            transactionCount: aggregated.qualifyingTransactionCount,
+            excludedTransactionCount: aggregated.excludedTransactionCount,
+            totalSales: aggregated.totalSales,
             currencyCode,
           },
+          transactions: aggregated.transactions,
+          excludedTransactions: aggregated.excludedTransactions,
         },
       };
     }
@@ -192,41 +227,28 @@ export async function executeXeroReadToolOnInfra(
     if (input.toolName === "xero_top_customers") {
       const args = input.arguments ?? {};
       const limit = Math.min(Math.max(1, Number(args.limit ?? 3)), 20);
+      const fromDate = String(args.fromDate ?? "");
+      const toDate = String(args.toDate ?? "");
+      const xeroToken = { accessToken: token.accessToken, tenantId: token.tenantId };
       const currencyCode = await fetchOrganisationBaseCurrency(xeroToken);
-      const invoices = await fetchInvoicesInRange(xeroToken, {
-        fromDate: args.fromDate as string | undefined,
-        toDate: args.toDate as string | undefined,
+      const raw = await fetchSalesDocumentsWithToken(xeroToken, {
+        fromDate,
+        toDate,
         limit: XERO_DATA_BOUNDS.maxListResults,
       });
-      const totals = new Map<string, { contactId: string; name: string; total: number }>();
-      for (const row of invoices) {
-        const id = row.Contact?.ContactID ?? "unknown";
-        const existing = totals.get(id) ?? {
-          contactId: id,
-          name: row.Contact?.Name ?? "Unknown",
-          total: 0,
-        };
-        existing.total += Number(row.Total ?? 0);
-        totals.set(id, existing);
-      }
-      const customers = [...totals.values()].sort((a, b) => b.total - a.total).slice(0, limit);
+      const customers = aggregateTopCustomers(classifySalesDocuments(raw), limit).map(
+        (customer) => ({ ...customer, currencyCode }),
+      );
       return {
         ok: true,
         latencyMs: Date.now() - started,
         result: {
           organisationName: token.payload.organisationName,
           currencyCode,
-          customers: customers.map((customer) => ({ ...customer, currencyCode })),
+          customers,
         },
       };
     }
-
-    const workerClient = new XeroClient({
-      accessToken: token.accessToken,
-      tenantId: token.tenantId,
-      apiBaseUrl: XERO_AUTH.apiBaseUrl,
-      fetchImpl: fetch,
-    });
 
     const payload = await handler(workerClient, input.arguments ?? {});
     return {

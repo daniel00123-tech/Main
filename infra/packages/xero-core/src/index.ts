@@ -1,5 +1,6 @@
 export * from "./client";
 export * from "./errors";
+export * from "./sales-aggregation";
 export * as xeroReadTools from "./tools/read";
 export * as xeroWriteTools from "./tools/write";
 

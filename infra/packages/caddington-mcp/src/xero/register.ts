@@ -432,7 +432,7 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
     "xero_sales_summary",
     {
       description:
-        "Summarise sales/revenue from Xero invoices for a date range. Amounts are in the organisation base currency (currencyCode in the response, e.g. GBP).",
+        "Summarise qualifying ACCREC sales for a date range, net of sales credit notes. Excludes ACCPAY purchase bills and voided/deleted documents. Returns currencyCode and transaction breakdown.",
       inputSchema: {
         fromDate: zf.string().min(1).describe("ISO date YYYY-MM-DD."),
         toDate: zf.string().min(1).describe("ISO date YYYY-MM-DD."),
@@ -454,7 +454,7 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
     "xero_top_customers",
     {
       description:
-        "Top customers by invoice revenue for a date range. Amounts are in the organisation base currency (currencyCode in the response, e.g. GBP).",
+        "Top customers by qualifying ACCREC sales revenue for a date range. Purchase-side documents are excluded. Returns currencyCode (e.g. GBP).",
       inputSchema: {
         fromDate: zf.string().optional(),
         toDate: zf.string().optional(),

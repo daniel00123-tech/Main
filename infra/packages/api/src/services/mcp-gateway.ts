@@ -135,9 +135,9 @@ export function enrichMcpToolDescription(
     xero_aged_receivables:
       "Return aged receivables or payables for debtor/creditor position. Read-only.",
     xero_sales_summary:
-      "Summarise sales/revenue for a date range from Xero invoice data. Amounts use the connected organisation's base currency (returned as currencyCode, e.g. GBP). Read-only.",
+      "Summarise qualifying Accounts Receivable (ACCREC) sales for a date range, net of sales credit notes (ACCRECCREDIT). Excludes purchase bills (ACCPAY), purchase credits, voided/deleted documents. Returns currencyCode and reconcilable transactions. Read-only.",
     xero_top_customers:
-      "Return top customers by revenue for a date range. Amounts use the connected organisation's base currency (returned as currencyCode, e.g. GBP). Read-only.",
+      "Return top customers by qualifying ACCREC sales revenue for a date range. Purchase-side documents never count as customers. Amounts use currencyCode (e.g. GBP). Read-only.",
     xero_create_draft_invoice:
       "Create a draft invoice in Xero. Financial write — requires scope upgrade, permission, and production write activation.",
     xero_create_credit_note:

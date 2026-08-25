@@ -1,5 +1,14 @@
 import { XERO_DATA_BOUNDS } from "@infra/shared";
 import type { XeroClient } from "../client";
+import {
+  aggregateSales,
+  aggregateTopCustomers,
+  classifySalesDocuments,
+  dateRangeWhere,
+  mapCreditNoteRow,
+  mapInvoiceRow,
+  type RawSalesDocument,
+} from "../sales-aggregation";
 
 function boundedDates(fromDate?: string, toDate?: string): { fromDate: string; toDate: string } {
   const to = toDate ? new Date(toDate) : new Date();
@@ -75,6 +84,9 @@ export async function searchInvoices(
   if (input.query) clauses.push(`InvoiceNumber.Contains("${input.query.replace(/"/g, "")}")`);
   const dates = boundedDates(input.fromDate, input.toDate);
   clauses.push(`Date>=DateTime(${dates.fromDate.replace(/-/g, ",")})`);
+  if (input.toDate) {
+    clauses.push(`Date<=DateTime(${dates.toDate.replace(/-/g, ",")})`);
+  }
   const target = client.clampLimit(input.limit);
   const invoices: unknown[] = [];
   let page = 1;
@@ -196,29 +208,81 @@ export async function agedReceivables(
   return { report };
 }
 
+async function fetchPaged<T>(
+  client: XeroClient,
+  path: string,
+  collectionKey: string,
+  where: string,
+  target: number,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let page = 1;
+  while (rows.length < target && page <= client.maxPages()) {
+    const body = await client.get<Record<string, unknown[]>>(path, { where, page });
+    const batch = body[collectionKey] ?? [];
+    if (!batch.length) break;
+    rows.push(...(batch as T[]));
+    if (batch.length < 100) break;
+    page += 1;
+  }
+  return rows.slice(0, target);
+}
+
+export async function fetchSalesDocumentsInRange(
+  client: XeroClient,
+  input: { fromDate: string; toDate: string; limit?: number },
+): Promise<RawSalesDocument[]> {
+  const dates = boundedDates(input.fromDate, input.toDate);
+  const where = dateRangeWhere(dates.fromDate, dates.toDate);
+  const target = Math.min(
+    Math.max(1, input.limit ?? XERO_DATA_BOUNDS.defaultListResults),
+    XERO_DATA_BOUNDS.maxListResults,
+  );
+  const perKindLimit = target;
+  const invoices = await fetchPaged<Record<string, unknown>>(
+    client,
+    "/Invoices",
+    "Invoices",
+    where,
+    perKindLimit,
+  );
+  const creditNotes = await fetchPaged<Record<string, unknown>>(
+    client,
+    "/CreditNotes",
+    "CreditNotes",
+    where,
+    perKindLimit,
+  );
+  return [
+    ...invoices.map(mapInvoiceRow),
+    ...creditNotes.map(mapCreditNoteRow),
+  ];
+}
+
 export async function salesSummary(
   client: XeroClient,
   input: { fromDate: string; toDate: string },
 ) {
-  const { invoices } = await searchInvoices(client, {
+  const raw = await fetchSalesDocumentsInRange(client, {
     fromDate: input.fromDate,
     toDate: input.toDate,
     limit: XERO_DATA_BOUNDS.maxListResults,
   });
-  let total = 0;
-  for (const row of invoices as Array<{ Total?: number }>) {
-    total += Number(row.Total ?? 0);
-  }
+  const classified = classifySalesDocuments(raw);
+  const aggregated = aggregateSales(classified);
   const currencyCode = await resolveBaseCurrency(client);
   return {
     currencyCode,
     summary: {
       fromDate: input.fromDate,
       toDate: input.toDate,
-      invoiceCount: invoices.length,
-      totalSales: total,
+      transactionCount: aggregated.qualifyingTransactionCount,
+      excludedTransactionCount: aggregated.excludedTransactionCount,
+      totalSales: aggregated.totalSales,
       currencyCode,
     },
+    transactions: aggregated.transactions,
+    excludedTransactions: aggregated.excludedTransactions,
   };
 }
 
@@ -226,28 +290,17 @@ export async function topCustomers(
   client: XeroClient,
   input: { fromDate?: string; toDate?: string; limit?: number },
 ) {
-  const { invoices } = await searchInvoices(client, {
-    fromDate: input.fromDate,
-    toDate: input.toDate,
+  const dates = boundedDates(input.fromDate, input.toDate);
+  const raw = await fetchSalesDocumentsInRange(client, {
+    fromDate: dates.fromDate,
+    toDate: dates.toDate,
     limit: XERO_DATA_BOUNDS.maxListResults,
   });
-  const totals = new Map<string, { contactId: string; name: string; total: number }>();
-  for (const row of invoices as Array<{
-    Contact?: { ContactID?: string; Name?: string };
-    Total?: number;
-  }>) {
-    const id = row.Contact?.ContactID ?? "unknown";
-    const existing = totals.get(id) ?? {
-      contactId: id,
-      name: row.Contact?.Name ?? "Unknown",
-      total: 0,
-    };
-    existing.total += Number(row.Total ?? 0);
-    totals.set(id, existing);
-  }
-  const customers = [...totals.values()]
-    .sort((a, b) => b.total - a.total)
-    .slice(0, client.clampLimit(input.limit ?? 3));
+  const classified = classifySalesDocuments(raw);
+  const customers = aggregateTopCustomers(
+    classified,
+    client.clampLimit(input.limit ?? 3),
+  );
   const currencyCode = await resolveBaseCurrency(client);
   return {
     currencyCode,
