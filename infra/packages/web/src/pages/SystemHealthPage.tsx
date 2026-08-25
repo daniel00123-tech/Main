@@ -159,14 +159,22 @@ export default function SystemHealthPage() {
     ["unavailable", "degraded"].includes(s.status),
   );
   const unhealthyMcps = mcps.filter((m) => ["unreachable", "degraded"].includes(m.status));
-  const connected = connectors.filter((c) => !["draft", "disabled"].includes(c.status));
-  const overallOk = unhealthyServices.length === 0 && unhealthyMcps.length === 0;
+  const attentionConnectors = connectors.filter((c) => {
+    const auth = c.authStatus ?? "not_configured";
+    return (
+      auth === "auth_expired" ||
+      auth === "rotation_required" ||
+      c.status === "error" ||
+      c.status === "degraded"
+    );
+  });
+  const platformOk = unhealthyServices.length === 0;
 
   return (
     <>
       <PageHeader
         title="System Health"
-        description="Current status of INFRA control-plane services."
+        description="Platform services vs customer integration health — one broken connector does not mean INFRA is offline."
         actions={
           <button type="button" className="button button-secondary" onClick={() => void load()}>
             Refresh
@@ -174,35 +182,43 @@ export default function SystemHealthPage() {
         }
       />
 
-      <div className={`attention-banner ${overallOk ? "ok" : "warn"}`} role="status">
+      <div className={`attention-banner ${platformOk ? "ok" : "warn"}`} role="status">
         <Activity size={18} aria-hidden />
         <div>
           <p className="attention-title">
-            {overallOk ? "All observed systems operational" : "Attention required"}
+            {platformOk ? "Platform services operational" : "Platform attention required"}
           </p>
           <p>
             Last checked {checkedAt ? formatRelativeTime(checkedAt) : "—"}.
+            {unhealthyMcps.length > 0
+              ? ` ${unhealthyMcps.length} customer MCP(s) need attention — see Customer integrations below.`
+              : ""}
             {stripeConfigured === false ? " Stripe billing is not configured." : ""}
           </p>
         </div>
       </div>
 
-      <div className="grid grid-3" style={{ marginBottom: 24 }}>
-        {services.map((service) => (
-          <div key={service.id} className="card">
-            <div className="connection-header">
-              <h3 style={{ margin: 0, fontSize: "var(--text-md)" }}>{service.name}</h3>
-              <HealthIndicator status={service.status} />
+      <SectionCard title="Platform health" description="INFRA control plane — shared across all tenants.">
+        <div className="grid grid-3" style={{ marginBottom: 0 }}>
+          {services.map((service) => (
+            <div key={service.id} className="card">
+              <div className="connection-header">
+                <h3 style={{ margin: 0, fontSize: "var(--text-md)" }}>{service.name}</h3>
+                <HealthIndicator status={service.status} />
+              </div>
+              <p className="muted small" style={{ margin: "8px 0 0" }}>
+                {service.detail}
+              </p>
             </div>
-            <p className="muted small" style={{ margin: "8px 0 0" }}>
-              {service.detail}
-            </p>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </SectionCard>
 
-      <div className="grid grid-2">
-        <SectionCard title="AI gateways" description="Live health from registered environments.">
+      <div className="grid grid-2" style={{ marginTop: 24 }}>
+        <SectionCard
+          title="Customer integrations — Business MCPs"
+          description="Per-company gateways. Degraded MCP affects one tenant, not platform uptime."
+        >
           {mcps.length === 0 ? (
             <p className="muted">No gateways registered.</p>
           ) : (
@@ -226,8 +242,8 @@ export default function SystemHealthPage() {
         </SectionCard>
 
         <SectionCard
-          title="Connectors"
-          description="Instance status — not configured is not an error."
+          title="Customer integrations — Connectors"
+          description="Auth and sync health per company. Draft/not configured is normal."
         >
           {connectors.length === 0 ? (
             <p className="muted">No connector instances.</p>
@@ -238,22 +254,36 @@ export default function SystemHealthPage() {
                   <div>
                     <strong>{c.name}</strong>
                     <div className="muted small">
-                      {c.status === "draft"
-                        ? "Not connected"
-                        : c.lastSyncAt
-                          ? `Last sync ${formatDate(c.lastSyncAt)}`
-                          : "No sync yet"}
+                      {(c.authStatus ?? "not_configured") === "auth_expired"
+                        ? "Authentication expired"
+                        : c.status === "draft"
+                          ? "Not connected"
+                          : c.lastSyncAt
+                            ? `Last sync ${formatDate(c.lastSyncAt)}`
+                            : c.authStatus === "connected"
+                              ? "Connected"
+                              : "Requires setup"}
                     </div>
                   </div>
                   <StatusBadge
-                    status={c.status === "draft" ? "not_configured" : c.status}
+                    status={
+                      (c.authStatus ?? "not_configured") === "auth_expired"
+                        ? "error"
+                        : c.status === "draft"
+                          ? "not_configured"
+                          : c.status
+                    }
                     label={c.status === "draft" ? "Not connected" : undefined}
                   />
                 </div>
               ))}
-              <p className="muted small">
-                {connected.length} connected · {connectors.length - connected.length} not connected
-              </p>
+              {attentionConnectors.length > 0 ? (
+                <p className="muted small">
+                  {attentionConnectors.length} connector(s) need attention
+                </p>
+              ) : (
+                <p className="muted small">No connector auth or health alerts</p>
+              )}
             </div>
           )}
         </SectionCard>

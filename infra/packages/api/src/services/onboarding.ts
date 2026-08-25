@@ -10,7 +10,7 @@ import { mcpHasKnowledgeTools } from "@infra/shared";
 import type { LedgerEntry } from "./ledger";
 import { classifyLedgerCredit } from "./wallet-credits";
 import { deriveMcpOnboardingStatus } from "./mcp-capabilities";
-import { deriveConnectorPresentation } from "./connector-lifecycle";
+import { deriveConnectorPresentation, deriveAuthStatus } from "./connector-lifecycle";
 
 export function deriveConnectorLifecycle(instance: ConnectorInstance): string {
   return deriveConnectorPresentation(instance).label === "Not configured"
@@ -147,14 +147,26 @@ export function buildCompanyReadiness(input: {
       href: `/companies/${company.slug}`,
     },
     {
-      id: "mcp_auth",
-      title: "MCP authentication",
-      status: !mcp || !mcp.authSecretRef ? "not_configured" : "complete",
+      id: "credential_storage",
+      title: "Credential storage",
+      status: mcp?.authSecretRef ? "complete" : "not_configured",
       required: true,
       applicability: "required",
       detail: mcp?.authSecretRef
-        ? `Secret reference ${mcp.authSecretRef} (value never stored in D1)`
-        : "No downstream secret reference registered",
+        ? "Downstream MCP auth uses Worker secret references — values never stored in D1"
+        : "Register auth secret reference before production use",
+    },
+    {
+      id: "permissions",
+      title: "Permissions & team",
+      status: input.adminCount > 0 ? "complete" : "pending",
+      required: true,
+      applicability: "required",
+      detail:
+        input.adminCount > 0
+          ? `${input.adminCount} administrator(s); role presets govern future capability permissions`
+          : "Assign at least one company administrator",
+      href: `/portal/${company.slug}/team`,
     },
     {
       id: "knowledge",
@@ -213,6 +225,18 @@ export function buildCompanyReadiness(input: {
       href: `/portal/${company.slug}/ai-connections`,
     },
     {
+      id: "acceptance_test",
+      title: "Acceptance test",
+      status: input.usageCount > 0 ? "complete" : "not_configured",
+      required: false,
+      applicability: "optional",
+      detail:
+        input.usageCount > 0
+          ? `${input.usageCount} usage record(s) — gateway path verified`
+          : "Run a non-destructive health or knowledge query via AI connection when ready",
+      href: `/portal/${company.slug}/usage`,
+    },
+    {
       id: "billing",
       title: "Billing",
       status: "test_mode",
@@ -255,7 +279,7 @@ export function buildCompanyReadiness(input: {
       detail: "Paid AI operations and connector writes are blocked until reactivation.",
     });
   }
-  if (mcp && ["degraded", "offline", "unreachable"].includes(mcp.status)) {
+  if (mcp && ["degraded", "unreachable"].includes(mcp.status)) {
     problems.push({
       id: "mcp_unhealthy",
       title: "Business MCP needs attention",
@@ -268,6 +292,24 @@ export function buildCompanyReadiness(input: {
       title: "Wallet balance is low",
       detail: "Add TEST or paid credit before chargeable operations continue.",
       href: `/portal/${company.slug}/billing`,
+    });
+  }
+  for (const connector of connectors) {
+    if (deriveAuthStatus(connector) === "auth_expired") {
+      problems.push({
+        id: `oauth_expired_${connector.id}`,
+        title: `${connector.name}: OAuth expired`,
+        detail: "Re-authenticate in Connectors before business-system tools can run.",
+        href: `/portal/${company.slug}/connectors`,
+      });
+    }
+  }
+  if (!mcp && company.status === "onboarding") {
+    problems.push({
+      id: "mcp_missing",
+      title: "Business MCP not registered",
+      detail: "This company cannot serve AI requests until a company MCP is attached.",
+      href: `/companies/${company.slug}`,
     });
   }
 

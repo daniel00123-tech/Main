@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Building2, Network, Plug, ShieldAlert } from "lucide-react";
-import type { Company, McpEnvironment } from "@infra/shared";
+import type { Company } from "@infra/shared";
 import { api } from "../api";
 import {
   ActivityFeed,
@@ -26,8 +26,10 @@ import {
 export default function DashboardPage() {
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof api.getSummary>> | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [mcps, setMcps] = useState<McpEnvironment[]>([]);
   const [balances, setBalances] = useState<Awaited<ReturnType<typeof api.getBillingBalances>>>([]);
+  const [attentionItems, setAttentionItems] = useState<
+    Awaited<ReturnType<typeof api.getPlatformAttention>>["items"]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,16 +37,16 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const [summaryData, companyList, mcpList, balanceList] = await Promise.all([
+      const [summaryData, companyList, balanceList, attentionData] = await Promise.all([
         api.getSummary(),
         api.getCompanies(),
-        api.getMcpEnvironments(),
         api.getBillingBalances().catch(() => []),
+        api.getPlatformAttention().catch(() => ({ items: [], checkedAt: "" })),
       ]);
       setSummary(summaryData);
       setCompanies(companyList);
-      setMcps(mcpList);
       setBalances(balanceList);
+      setAttentionItems(attentionData.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load dashboard");
     } finally {
@@ -56,31 +58,16 @@ export default function DashboardPage() {
     void load();
   }, []);
 
-  const attention = useMemo(() => {
-    const items: Array<{ id: string; title: string; description?: string; to?: string }> = [];
-    for (const mcp of mcps) {
-      if (mcp.status === "unreachable" || mcp.status === "degraded") {
-        const company = companies.find((c) => c.id === mcp.companyId);
-        items.push({
-          id: `mcp-${mcp.id}`,
-          title: mcp.status === "degraded" ? `${mcp.name} degraded` : `${mcp.name} unavailable`,
-          description: company?.name,
-          to: "/mcp-environments",
-        });
-      }
-    }
-    for (const bal of balances) {
-      if (bal.lowBalance) {
-        items.push({
-          id: `bal-${bal.companyId}`,
-          title: `Low credit — ${bal.companyName}`,
-          description: "Top up recommended",
-          to: `/companies/${bal.companySlug}`,
-        });
-      }
-    }
-    return items;
-  }, [mcps, companies, balances]);
+  const attention = useMemo(
+    () =>
+      attentionItems.map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.companyName ? `${item.companyName} — ${item.detail}` : item.detail,
+        to: item.href ?? undefined,
+      })),
+    [attentionItems],
+  );
 
   if (loading) return <LoadingState label="Loading control plane…" />;
   if (error || !summary) {
@@ -96,7 +83,7 @@ export default function DashboardPage() {
         description="Operational command centre for companies, integrations, and AI gateways."
       />
 
-      <AttentionBanner items={attention} allClear="No gateway or balance alerts" />
+      <AttentionBanner items={attention} allClear="No platform alerts" />
 
       <MetricGrid cols={4}>
         <MetricCard

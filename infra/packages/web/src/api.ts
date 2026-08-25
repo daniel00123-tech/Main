@@ -1,3 +1,4 @@
+import { API_BASE, infraMcpGatewayUrl } from "./config";
 import type {
   AuditEvent,
   Company,
@@ -14,16 +15,11 @@ import type {
   UsageSummary,
 } from "@infra/shared";
 
-export const API_BASE =
-  import.meta.env.VITE_API_BASE ??
-  (import.meta.env.PROD
-    ? "https://infra-api.daniel-dwyer123.workers.dev"
-    : "");
+export { API_BASE } from "./config";
 
 /** ChatGPT / Claude connect here — never to a company MCP. */
 export function infraMcpUrl(): string {
-  const base = API_BASE.replace(/\/$/, "");
-  return `${base}/api/gateway/v1/mcp`;
+  return infraMcpGatewayUrl();
 }
 
 export interface SessionUser {
@@ -151,6 +147,32 @@ export const api = {
       body: JSON.stringify({ token, password, confirmPassword }),
     }),
   getSummary: () => fetchJson<PlatformSummary>("/api/summary"),
+  getPlatformAttention: () =>
+    fetchJson<{
+      items: Array<{
+        id: string;
+        severity: "critical" | "warning" | "info";
+        category: string;
+        companyId: string | null;
+        companyName: string | null;
+        companySlug: string | null;
+        title: string;
+        detail: string;
+        href: string | null;
+      }>;
+      checkedAt: string;
+    }>("/api/platform/attention"),
+  getCompanyAttention: (slug: string) =>
+    fetchJson<{
+      items: Array<{
+        id: string;
+        severity: "critical" | "warning" | "info";
+        title: string;
+        detail: string;
+        href: string | null;
+      }>;
+      checkedAt: string;
+    }>(`/api/companies/${encodeURIComponent(slug)}/attention`),
   getCompanies: (params?: { q?: string; status?: string; limit?: number; offset?: number }) => {
     const search = new URLSearchParams();
     if (params?.q) search.set("q", params.q);

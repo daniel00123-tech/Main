@@ -26,6 +26,7 @@ import {
   getCompanyByPortalHostname,
   getCompanyByPortalSubdomain,
 } from "./services/tenant-provisioning";
+import { portalOrigin } from "./services/public-urls";
 import {
   attachExistingCompanyMcp,
   EXISTING_PRODUCTION_COMPANY_MCPS,
@@ -292,6 +293,31 @@ app.get("/api/summary", requireAuth, async (c) => {
   return c.json(summary);
 });
 
+app.get("/api/platform/attention", requireAuth, async (c) => {
+  const user = c.get("user");
+  if (!user.isPlatformAdmin) {
+    return c.json({ error: "Platform administrator access required" }, 403);
+  }
+  const { buildPlatformAttention } = await import("./services/attention");
+  const { isStripeConfigured } = await import("./services/stripe");
+  const items = await buildPlatformAttention(c.env.DB, {
+    stripeConfigured: isStripeConfigured(c.env),
+  });
+  return c.json({ items, checkedAt: new Date().toISOString() });
+});
+
+app.get("/api/companies/:slug/attention", requireAuth, async (c) => {
+  const slug = c.req.param("slug");
+  const company = await getCompanyBySlug(c.env.DB, slug);
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!userHasCompanyAccess(c.get("user"), company.id) && !c.get("user").isPlatformAdmin) {
+    return c.json({ error: "Access denied" }, 403);
+  }
+  const { buildCompanyAttention } = await import("./services/attention");
+  const items = await buildCompanyAttention(c.env.DB, company.id);
+  return c.json({ items, checkedAt: new Date().toISOString() });
+});
+
 app.get("/api/connectors/catalogue/:slug", requireAuth, (c) => {
   const connector = CONNECTOR_CATALOGUE.find((item) => item.slug === c.req.param("slug"));
   if (!connector) return c.json({ error: "Connector not found" }, 404);
@@ -426,7 +452,7 @@ app.post("/api/companies", requireAuth, requirePlatformAdmin, async (c) => {
         adminInvite: result.adminInvite
           ? {
               email: result.adminInvite.email,
-              setupUrl: `https://infra-web.pages.dev/setup-password?token=${encodeURIComponent(result.adminInvite.setupToken)}`,
+              setupUrl: `${portalOrigin(c.env, c.req.header("Origin"))}/setup-password?token=${encodeURIComponent(result.adminInvite.setupToken)}`,
               expiresAt: result.adminInvite.expiresAt,
             }
           : null,

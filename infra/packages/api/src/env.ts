@@ -17,6 +17,10 @@ export interface Env {
   /** Stripe secrets — set via wrangler secret put when ready */
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  /** Public API base URL for gateway/MCP endpoints returned to clients (no trailing slash) */
+  INFRA_PUBLIC_API_URL?: string;
+  /** Portal host domain for subdomain routing, e.g. infra-web.pages.dev */
+  PORTAL_BASE_DOMAIN?: string;
   /** Envelope-encryption wrapping key for connector credentials. Never store in D1. */
   INFRA_CREDENTIAL_WRAPPING_KEY?: string;
   INFRA_CREDENTIAL_KEY_VERSION?: string;

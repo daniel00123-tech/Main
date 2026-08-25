@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCompanyOnboarding, deriveConnectorLifecycle } from "./onboarding";
+import { deriveConnectorLifecycle, buildCompanyOnboarding } from "./onboarding";
 import { deriveMcpOnboardingStatus, discoverMcpCapabilities } from "./mcp-capabilities";
 import { classifyLedgerCredit } from "./wallet-credits";
 import type { Company, ConnectorInstance, McpEnvironment } from "@infra/shared";
@@ -120,6 +120,30 @@ describe("onboarding honesty", () => {
       updatedAt: "2026-01-01T00:00:00.000Z",
     } as ConnectorInstance;
     expect(deriveConnectorLifecycle(instance)).toBe("not_configured");
+  });
+
+  it("includes credential storage and acceptance test stages from real config", () => {
+    const mcp = {
+      id: "mcp_1",
+      companyId: "co_alpha",
+      name: "Alpha MCP",
+      authSecretRef: "ALPHA_MCP_AUTH_TOKEN",
+      status: "healthy",
+      capabilities: ["system_health"],
+      knowledgeDocumentCount: 0,
+    } as McpEnvironment;
+    const result = buildCompanyOnboarding({
+      company: company({ status: "onboarding" }),
+      mcp,
+      connectors: [],
+      wallet: { balanceCents: 1000, lowBalance: false },
+      ledger: [],
+      adminCount: 1,
+      activeTokenCount: 0,
+      usageCount: 2,
+    });
+    expect(result.items.find((i) => i.id === "credential_storage")?.status).toBe("complete");
+    expect(result.items.find((i) => i.id === "acceptance_test")?.status).toBe("complete");
   });
 });
 

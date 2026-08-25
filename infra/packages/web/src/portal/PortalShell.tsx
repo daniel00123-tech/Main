@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Bot,
   ChartColumn,
+  ClipboardList,
   LayoutDashboard,
   Menu,
   Plug,
@@ -37,6 +38,12 @@ const ALL_NAV: NavItem[] = [
   { path: "dashboard", label: "Overview", icon: <LayoutDashboard size={18} /> },
   { path: "connectors", label: "Connections", icon: <Plug size={18} /> },
   { path: "ai-connections", label: "AI connections", icon: <Bot size={18} /> },
+  {
+    path: "actions",
+    label: "Actions",
+    icon: <ClipboardList size={18} />,
+    roles: ["company_admin", "director", "manager", "supervisor"],
+  },
   {
     path: "team",
     label: "Team",
