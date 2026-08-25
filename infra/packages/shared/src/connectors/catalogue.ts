@@ -336,7 +336,7 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     riskNotes:
       "Initial connect requests granular read scopes only. Financial write scopes require deliberate admin scope upgrade + re-consent. Production write execution stays disabled until explicitly approved.",
     setupInstructions:
-      "Connect Xero to authorise read access. Write capabilities can be added later via scope upgrade. INFRA stores encrypted tokens only. Accounting data stays on Xero and the company Business MCP.",
+      "Connect Xero to authorise read access first. Invoice write scopes can be added later via scope upgrade. Production financial execution stays disabled until explicitly approved. INFRA stores encrypted tokens only.",
   },
   {
     id: "conn_freshdesk",

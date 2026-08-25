@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { ConnectorDefinition, ConnectorInstance } from "@infra/shared";
 import { connectorFieldLabel, taxonomyForConnector, taxonomyLabel } from "@infra/shared";
-import { Notice } from "../../components";
+import { KeyValue, Notice } from "../../components";
 import { api } from "../../api";
 
 function schemaProperties(schema: Record<string, unknown>): Array<{
@@ -84,7 +84,9 @@ export function ConnectorSetupPanel({
   const oauth = connector.authenticationMethod === "oauth";
   const apiKey = connector.authenticationMethod === "api_key";
   const xero = connector.slug === "xero";
+  const xeroAppConfigured = storage?.xero?.appConfigured ?? false;
   const xeroReady = Boolean(storage?.xero?.readyToConnect);
+  const xeroConnected = instance?.authStatus === "connected";
   const xeroView = metadata?.xero;
 
   useEffect(() => {
@@ -264,30 +266,64 @@ export function ConnectorSetupPanel({
 
       {oauth ? (
         <div className="stack" style={{ gap: 12 }}>
-          {xero && !xeroReady ? (
+          {xero && !xeroAppConfigured && !xeroConnected ? (
             <Notice tone="warning">
               {storage?.enabled
                 ? "The Xero application is not configured. Connect Xero stays disabled until the Client ID and Client Secret are set as Worker secrets."
                 : "Secure credential storage is not configured."}
             </Notice>
           ) : null}
-          <div className="muted small">
-            Status:{" "}
-            {instance?.authStatus === "connected"
-              ? "Connected"
-              : instance?.authStatus === "configuring"
-                ? "Connecting"
-                : instance?.authStatus === "auth_expired"
-                  ? "Authentication expired"
-                  : instance?.authStatus === "rotation_required"
-                    ? "Reconnect required"
-                    : instance?.authStatus === "revoked"
-                      ? "Disconnected"
-                      : instance?.authStatus === "error"
-                        ? "Error"
-                        : "Not connected"}
-          </div>
-          {xeroView?.organisationName ? (
+          {xero && xeroConnected ? (
+            <div className="stack" style={{ gap: 6 }}>
+              <KeyValue label="Connection" value="Connected" />
+              <KeyValue
+                label="Organisation"
+                value={xeroView?.organisationName ?? "—"}
+              />
+              <KeyValue
+                label="Read access"
+                value={
+                  xeroView?.grantedScopes?.length
+                    ? "Enabled"
+                    : "Unknown — run Test connection"
+                }
+              />
+              <KeyValue
+                label="Invoice write access"
+                value={
+                  xeroView?.writeScopesConsented
+                    ? "Authorised (accounting.invoices granted)"
+                    : "Not authorised"
+                }
+              />
+              <KeyValue
+                label="Financial execution"
+                value={
+                  xeroView?.writesEnabled
+                    ? "Enabled"
+                    : "Disabled (operator gate)"
+                }
+              />
+            </div>
+          ) : (
+            <div className="muted small">
+              Connection:{" "}
+              {instance?.authStatus === "connected"
+                ? "Connected"
+                : instance?.authStatus === "configuring"
+                  ? "Connecting"
+                  : instance?.authStatus === "auth_expired"
+                    ? "Authentication expired"
+                    : instance?.authStatus === "rotation_required"
+                      ? "Reconnect required"
+                      : instance?.authStatus === "revoked"
+                        ? "Disconnected"
+                        : instance?.authStatus === "error"
+                          ? "Error"
+                          : "Not connected"}
+            </div>
+          )}
+          {!xeroConnected && xeroView?.organisationName ? (
             <div className="connector-xero-org">
               <div className="muted small">Xero organisation</div>
               <div>{xeroView.organisationName}</div>

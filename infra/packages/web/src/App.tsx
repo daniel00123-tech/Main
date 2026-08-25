@@ -270,7 +270,6 @@ export default function App() {
           <Route path="usage" element={<PortalUsagePage />} />
           <Route path="billing" element={<PortalBillingPage />} />
           <Route path="activity" element={<PortalActivityPage />} />
-          <Route path="actions" element={<PortalActionsPage />} />
           <Route path="settings" element={<PortalSettingsPage />} />
         </Route>
       </Route>
