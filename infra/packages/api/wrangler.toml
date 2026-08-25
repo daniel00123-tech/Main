@@ -23,6 +23,9 @@ COOKIE_CROSS_ORIGIN = "true"
 # STRIPE_WEBHOOK_SECRET (optional — webhook verification)
 # INFRA_CREDENTIAL_WRAPPING_KEY (32-byte AES-256 wrapping key; never put in D1)
 # INFRA_CREDENTIAL_KEY_VERSION (optional, default v1)
+# XERO_CLIENT_ID (Xero Web App client id; never put in D1)
+# XERO_CLIENT_SECRET (Xero Web App client secret; never put in D1)
+# XERO_OAUTH_REDIRECT_URI (optional override; default is the registered Xero callback)
 # INITIAL_PLATFORM_ADMIN_EMAIL (temporary bootstrap only)
 # INITIAL_PLATFORM_ADMIN_PASSWORD (temporary bootstrap only)
 

@@ -305,11 +305,17 @@ describe("connector definition contract", () => {
     expect(JSON.stringify(xero)).not.toMatch(/sk_live|refresh_token_value/);
   });
 
-  it("defines future Xero tools as unimplemented", () => {
-    expect(XERO_TOOL_CONTRACTS.every((tool) => tool.implemented === false)).toBe(true);
-    expect(XERO_TOOL_CONTRACTS.some((tool) => tool.riskClass === "financial_action")).toBe(
-      true,
-    );
+  it("marks read Xero tools as control-plane ready and writes as unimplemented", () => {
+    expect(
+      XERO_TOOL_CONTRACTS.filter((tool) => tool.riskClass === "low_risk").every(
+        (tool) => tool.implemented,
+      ),
+    ).toBe(true);
+    expect(
+      XERO_TOOL_CONTRACTS.filter((tool) => tool.riskClass === "financial_action").every(
+        (tool) => tool.implemented === false,
+      ),
+    ).toBe(true);
   });
 });
 

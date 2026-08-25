@@ -78,4 +78,4 @@ Existing MCP Worker auth secrets (`CADDINGTON_MCP_AUTH_TOKEN`, HT/EL) stay as Wo
 
 ## Xero
 
-This store can hold `{ accessToken, refreshToken, expiresAt, scopes, providerTenantId }`. Live Xero OAuth is still not activated (ADR 015 / 021).
+This store can hold `{ accessToken, refreshToken, expiresAt, scopes, providerTenantId }`. Live Xero OAuth uses this store (ADR 027). Application Client ID/Secret remain Worker secrets, not D1 rows.

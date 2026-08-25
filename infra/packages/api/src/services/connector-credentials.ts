@@ -523,8 +523,8 @@ export async function getConnectorCredentialMetadata(input: {
   };
 }
 
-export function connectorHasProviderTest(_definitionId: string): boolean {
-  return false;
+export function connectorHasProviderTest(definitionId: string): boolean {
+  return definitionId === "conn_xero";
 }
 
 export function sanitizeConnectorConfig(

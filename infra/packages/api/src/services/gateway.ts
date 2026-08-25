@@ -36,6 +36,11 @@ import {
   resolveInteractionIds,
 } from "./interactions";
 import { sanitizeCustomerError } from "./secrets";
+import {
+  isXeroToolName,
+  prepareXeroMcpExecution,
+  xeroActionForTool,
+} from "./xero-tools";
 
 export type GatewayActor =
   | { type: "user"; user: SessionUser }
@@ -74,6 +79,9 @@ async function resolveToolAction(
   if (toolName === "system_health") {
     return { action: "system.health", riskClass: "low_risk" };
   }
+
+  const xero = xeroActionForTool(toolName);
+  if (xero) return xero;
 
   return { action: `mcp.${toolName}`, riskClass: "high_risk" };
 }
@@ -324,6 +332,37 @@ export async function executeGatewayRequest(
     resourceId: input.toolName,
     detail: { stage: "gateway.authenticated", correlationId, requestId },
   });
+
+  if (isXeroToolName(input.toolName)) {
+    const prepared = await prepareXeroMcpExecution({
+      env,
+      companyId: input.companyId,
+      toolName: input.toolName,
+    });
+    if (!prepared.ok) {
+      await recordAuditEvent(env.DB, {
+        companyId: input.companyId,
+        eventType: "mcp.execution_failed",
+        actor: actorLabel,
+        resourceType: "gateway",
+        resourceId: input.toolName,
+        detail: {
+          correlationId,
+          requestId,
+          provider: "xero",
+          billed: false,
+          inventsData: false,
+          code: prepared.body.code,
+        },
+      });
+      return {
+        status: prepared.status,
+        error: prepared.body.error,
+        correlationId,
+        requestId,
+      };
+    }
+  }
 
   const mcp = await pickCompanyMcp(
     env.DB,

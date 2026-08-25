@@ -15,6 +15,23 @@ describe("TEST billing policy", () => {
         ruleBillable: false,
       }).customerBillable,
     ).toBe(false);
+    expect(
+      decideTestBilling({
+        action: "xero.health",
+        toolName: "xero_connection_test",
+        success: true,
+        httpStatus: 200,
+        ruleBillable: true,
+      }).customerBillable,
+    ).toBe(false);
+    expect(
+      decideTestBilling({
+        action: "xero.token_refresh",
+        success: true,
+        httpStatus: 200,
+        ruleBillable: true,
+      }).customerBillable,
+    ).toBe(false);
   });
 
   it("does not charge auth, permission, or insufficient credit", () => {

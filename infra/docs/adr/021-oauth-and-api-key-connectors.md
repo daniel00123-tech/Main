@@ -6,11 +6,11 @@
 
 ## OAuth
 
-Start → hashed `state` + PKCE S256 → provider → callback → validate tenant/user/expiry → (future) store tokens via SecretProvider → connected.
+Start → hashed `state` + encrypted PKCE S256 verifier → provider → callback → validate tenant/user/expiry/replay → store tokens via SecretProvider → connected.
 
-Xero is specified, not activated. Callbacks persist no tokens in this phase.
+Xero is the first activated OAuth provider (ADR 027). Other OAuth catalogue entries still return `OAUTH_NOT_ACTIVATED`.
 
-Security: state validation, CSRF, PKCE, tenant + user binding, scope checks, no tokens in logs.
+Security: state validation, CSRF, PKCE, tenant + user binding, single-use expiry, scope checks, no tokens in logs. The callback never trusts a company id supplied only by the browser.
 
 ## API key
 

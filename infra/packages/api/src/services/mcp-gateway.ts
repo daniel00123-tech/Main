@@ -38,6 +38,7 @@ import {
   withStandardKnowledgeTools,
   wrapStandardToolResult,
 } from "./mcp-knowledge-standard";
+import { isXeroWriteToolName } from "./xero-tools";
 
 type JsonRpcId = string | number | null;
 
@@ -108,6 +109,22 @@ export function enrichMcpToolDescription(
       "Summarise available company business-data collections exposed through the knowledge layer.",
     system_health:
       "Non-billable health check for the company MCP connection through INFRA. Does not search documents and does not debit the wallet.",
+    xero_organisation_read:
+      "Read this company's connected Xero organisation profile. Read-only. Returns nothing invented if Xero is not connected.",
+    xero_contacts_search:
+      "Search this company's Xero contacts. Read-only. Requires a connected Xero organisation.",
+    xero_invoices_search:
+      "Search this company's Xero invoices, including overdue or unpaid filters. Read-only.",
+    xero_invoices_get:
+      "Fetch one Xero invoice by id or invoice number (for example INV-XXXXX). Read-only.",
+    xero_payments_read:
+      "List recent Xero payments. Read-only.",
+    xero_accounts_list:
+      "List the Xero chart of accounts and bank/account position where Xero provides it. Read-only.",
+    xero_bank_transactions_read:
+      "List recent Xero bank transactions. Read-only.",
+    xero_profit_and_loss:
+      "Return a bounded Xero profit and loss summary for a date range. Read-only.",
   };
   const enriched = defaults[toolName];
   if (enriched) return enriched;
@@ -535,6 +552,7 @@ export async function handleInfraMcpJsonRpc(
 
       const tools = [];
       for (const tool of listed.tools) {
+        if (isXeroWriteToolName(tool.name)) continue;
         if (allowed.size > 0 && !allowed.has(tool.name)) continue;
 
         const action = await resolveToolActionForFilter(env.DB, mcp.id, tool.name);
