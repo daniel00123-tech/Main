@@ -13,6 +13,8 @@ migrations_dir = "../../migrations"
 ENVIRONMENT = "production"
 ALLOWED_ORIGINS = "https://infra-web.pages.dev,http://localhost:5173,http://127.0.0.1:5173,https://chatgpt.com,https://chat.openai.com,https://claude.ai"
 COOKIE_CROSS_ORIGIN = "true"
+INFRA_PUBLIC_API_URL = "https://infra-api.daniel-dwyer123.workers.dev"
+PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 
 # Secrets (set via `wrangler secret put` — never commit):
 # SESSION_SECRET

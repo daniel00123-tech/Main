@@ -77,6 +77,37 @@ Future **company data warehouse** direction: ADR 030 (planning only — not buil
 
 `/health` and `/ready` and MCP `system_health` are **not billable**. Connector health and capability refresh are not billable.
 
+## Needs attention
+
+Derived model (`GET /api/platform/attention`, `GET /api/companies/:slug/attention`): MCP offline, OAuth expired, low wallet, onboarding gaps, missing AI identity, Stripe not configured. Surfaces on Control Plane dashboard and company portal problems — not external notifications yet.
+
+## Runbooks
+
+Operational guides under [`docs/runbooks/`](./runbooks/):
+
+- [New company onboarding](./runbooks/new-company-onboarding.md)
+- [MCP provisioning recommendation](./runbooks/mcp-provisioning-recommendation.md)
+- [Backup & recovery review](./runbooks/backup-recovery-review.md)
+- Incident: MCP offline, OAuth expired, AI token compromised, wallet, connector degraded, suspension, credential rotation, failed financial action, provider outage
+
+## Public URLs
+
+Configure per environment (not tenant-specific):
+
+- `INFRA_PUBLIC_API_URL` — API Worker (e.g. `https://infra-api.<account>.workers.dev`)
+- `PORTAL_BASE_DOMAIN` — Pages host for portal subdomains (e.g. `infra-web.pages.dev`)
+- Web build: `VITE_API_BASE` optional override; dev uses Vite proxy
+
+## Scale notes (conceptual)
+
+| Tenants | First pressure |
+| --- | --- |
+| 3–10 | Manual MCP registration; admin dashboard MCP health polling |
+| 10–100 | D1 company listing pagination; unbounded audit/usage lists; Worker secret count |
+| 100–1000 | Per-tenant MCP provisioning automation; health probe fan-out; D1 export/backup |
+
+Near-term mitigations: company search, attention API, pagination on list endpoints where added, derived readiness (no fake states).
+
 ## Secrets on `infra-api` (names only)
 
 Required for Caddington: `CADDINGTON_MCP_AUTH_TOKEN`, `SESSION_SECRET`.

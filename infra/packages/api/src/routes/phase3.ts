@@ -72,6 +72,12 @@ import {
 import { getPlatformPaymentProviderStatus } from "../services/payment-providers";
 import { classifyLedgerCredit } from "../services/wallet-credits";
 import {
+  infraGatewayExecuteUrl,
+  infraMcpGatewayUrl,
+  portalOrigin,
+  infraPublicApiBase,
+} from "../services/public-urls";
+import {
   getUserCompanyRole,
   userHasCompanyAccess,
 } from "../permissions/service";
@@ -232,7 +238,7 @@ phase3.post("/api/companies/:slug/wallet/top-up", requireAuth, async (c) => {
     return c.json({ error: "amountCents must be at least 500 (£5)" }, 400);
   }
 
-  const origin = c.req.header("Origin") ?? "https://infra-web.pages.dev";
+  const origin = portalOrigin(c.env, c.req.header("Origin"));
   const result = await createTopUpCheckoutIntent(c.env, {
     companyId: company.id,
     amountCents: body.amountCents,
@@ -399,7 +405,7 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
     detail: { role: body.role, created: invited.created },
   });
 
-  const origin = c.req.header("Origin") ?? "https://infra-web.pages.dev";
+  const origin = portalOrigin(c.env, c.req.header("Origin"));
   return c.json({
     user: {
       id: invited.user.id,
@@ -678,7 +684,9 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
     .bind(company.id)
     .all();
 
-  const origin = "https://infra-api.daniel-dwyer123.workers.dev";
+  const apiBase = infraPublicApiBase(c.env, c.req.url);
+  const mcpUrl = infraMcpGatewayUrl(c.env, c.req.url);
+  const executeUrl = infraGatewayExecuteUrl(c.env, c.req.url);
   const identities = await listServiceIdentities(c.env.DB, company.id);
   const identityById = new Map(identities.map((item) => [item.id, item]));
 
@@ -708,8 +716,8 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
         tokenStatus,
         tokenPrefix: identity?.tokenPrefix ?? null,
         connectionMethod: "INFRA MCP Gateway",
-        gatewayEndpoint: `${origin}/api/gateway/v1/execute`,
-        mcpEndpoint: `${origin}/api/gateway/v1/mcp`,
+        gatewayEndpoint: executeUrl,
+        mcpEndpoint: mcpUrl,
         gatewayPath: row.gateway_path ? String(row.gateway_path) : null,
         setupNotes: row.setup_notes ? String(row.setup_notes) : null,
         lastUsedAt: identity?.lastUsedAt
@@ -749,10 +757,8 @@ phase3.post(
     await ensureDefaultAiConnections(c.env.DB, company.id);
 
     const mcps = await listMcpEnvironments(c.env.DB, company.id);
-    const mcpEndpoint =
-      "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp";
-    const gatewayEndpoint =
-      "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/execute";
+    const mcpEndpoint = infraMcpGatewayUrl(c.env, c.req.url);
+    const gatewayEndpoint = infraGatewayExecuteUrl(c.env, c.req.url);
 
     // Disable any previous identity for this AI connection before issuing a new token.
     const existing = await c.env.DB.prepare(
@@ -980,8 +986,7 @@ phase3.post(
         gateway: health.status === 200 ? "passed" : "failed",
         mcp: health.status === 200 ? "passed" : "failed",
       },
-      mcpEndpoint:
-        "https://infra-api.daniel-dwyer123.workers.dev/api/gateway/v1/mcp",
+      mcpEndpoint: infraMcpGatewayUrl(c.env, c.req.url),
     });
   },
 );

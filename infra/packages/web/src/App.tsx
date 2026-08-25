@@ -59,6 +59,7 @@ import PortalTeamPage from "./portal/PortalTeamPage";
 import PortalSettingsPage from "./portal/PortalSettingsPage";
 import PortalActivityPage from "./portal/PortalActivityPage";
 import PortalActionsPage from "./portal/PortalActionsPage";
+import AdminCompanySearch from "./components/AdminCompanySearch";
 import { useState } from "react";
 
 type NavItem = {
@@ -229,7 +230,12 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         )}
       </aside>
 
-      <main className="main">{children}</main>
+      <main className="main">
+        <div className="admin-toolbar" style={{ padding: "12px 24px 0", maxWidth: 1200 }}>
+          <AdminCompanySearch />
+        </div>
+        {children}
+      </main>
       <ToastHost />
     </div>
   );
@@ -259,6 +265,7 @@ export default function App() {
           <Route path="dashboard" element={<PortalDashboardPage />} />
           <Route path="connectors" element={<PortalConnectorsPage />} />
           <Route path="ai-connections" element={<PortalAiConnectionsPage />} />
+          <Route path="actions" element={<PortalActionsPage />} />
           <Route path="team" element={<PortalTeamPage />} />
           <Route path="usage" element={<PortalUsagePage />} />
           <Route path="billing" element={<PortalBillingPage />} />
