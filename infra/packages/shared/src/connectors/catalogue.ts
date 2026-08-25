@@ -37,6 +37,9 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read",
     requiresCompanyMcp: true,
     availabilityLabel: "available_now",
+    taxonomyCategory: "knowledge_sources",
+    brandKey: "google-drive",
+    minMcpVersion: "1.0.0",
     setupInstructions:
       "Google Drive stays on the company Business MCP. INFRA shows health and document counts reported by that MCP. Credentials are never stored in INFRA D1.",
   },
@@ -73,6 +76,16 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read",
     requiresCompanyMcp: true,
     availabilityLabel: "requires_setup",
+    taxonomyCategory: "knowledge_sources",
+    brandKey: "sharepoint",
+    oauth: {
+      authorizationUrl: null,
+      tokenUrl: null,
+      pkceRequired: true,
+      requiredScopes: ["Sites.Read.All", "Files.Read.All"],
+      optionalScopes: [],
+      callbackPath: "/api/connectors/oauth/callback",
+    },
     setupInstructions:
       "Microsoft 365 app registration (tenant, client id, client secret). Credential submission is disabled until secure secret storage is enabled.",
   },
@@ -108,6 +121,16 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read",
     requiresCompanyMcp: true,
     availabilityLabel: "requires_setup",
+    taxonomyCategory: "knowledge_sources",
+    brandKey: "onedrive",
+    oauth: {
+      authorizationUrl: null,
+      tokenUrl: null,
+      pkceRequired: true,
+      requiredScopes: ["Files.Read.All"],
+      optionalScopes: [],
+      callbackPath: "/api/connectors/oauth/callback",
+    },
     setupInstructions:
       "Shared OneDrive libraries require a Microsoft 365 application. Secrets are not accepted in this phase.",
   },
@@ -147,6 +170,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read",
     requiresCompanyMcp: true,
     availabilityLabel: "requires_setup",
+    taxonomyCategory: "productivity",
+    brandKey: "outlook",
     setupInstructions:
       "Shared mailbox access via Microsoft Graph. Credential submission is disabled in this phase.",
   },
@@ -196,6 +221,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read_write",
     requiresCompanyMcp: true,
     availabilityLabel: "coming_soon",
+    taxonomyCategory: "field_service_crm",
+    brandKey: "bigchange",
     setupInstructions:
       "Not implemented in this phase. Do not collect BigChange credentials.",
   },
@@ -235,6 +262,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read_write",
     requiresCompanyMcp: true,
     availabilityLabel: "coming_soon",
+    taxonomyCategory: "field_service_crm",
+    brandKey: "commusoft",
     setupInstructions:
       "Not implemented in this phase. Do not collect Commusoft credentials.",
   },
@@ -283,6 +312,23 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read_write",
     requiresCompanyMcp: true,
     availabilityLabel: "requires_setup",
+    taxonomyCategory: "accounting_finance",
+    brandKey: "xero",
+    oauth: {
+      authorizationUrl: "https://login.xero.com/identity/connect/authorize",
+      tokenUrl: "https://identity.xero.com/connect/token",
+      pkceRequired: true,
+      requiredScopes: [
+        "offline_access",
+        "accounting.contacts.read",
+        "accounting.transactions.read",
+        "accounting.settings.read",
+      ],
+      optionalScopes: ["accounting.contacts", "accounting.transactions"],
+      callbackPath: "/api/connectors/oauth/callback",
+    },
+    riskNotes:
+      "Reads are low risk. Invoice create/send are financial or external-send actions and require approval.",
     setupInstructions:
       "Xero OAuth is prepared but not activated. Financial writes will require permission and approval. Credential submission is disabled.",
   },
@@ -319,6 +365,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read",
     requiresCompanyMcp: true,
     availabilityLabel: "requires_setup",
+    taxonomyCategory: "customer_support",
+    brandKey: "freshdesk",
     setupInstructions:
       "Freshdesk API key and domain. Secret submission is disabled until secure storage is enabled.",
   },
@@ -359,6 +407,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read",
     requiresCompanyMcp: true,
     availabilityLabel: "coming_soon",
+    taxonomyCategory: "custom_integrations",
+    brandKey: "custom-api",
     setupInstructions: "Custom REST connectors are a later phase.",
   },
   {
@@ -379,6 +429,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read",
     requiresCompanyMcp: true,
     availabilityLabel: "available_now",
+    taxonomyCategory: "ai_connections",
+    brandKey: "chatgpt",
     setupInstructions:
       "Create an AI connection in the company portal. Point ChatGPT at the INFRA MCP URL with the one-time Bearer token.",
   },
@@ -400,6 +452,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read",
     requiresCompanyMcp: true,
     availabilityLabel: "available_now",
+    taxonomyCategory: "ai_connections",
+    brandKey: "claude",
     setupInstructions:
       "Create a Claude AI connection in the company portal. Use the INFRA MCP URL only.",
   },
@@ -421,6 +475,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     readWrite: "read_write",
     requiresCompanyMcp: true,
     availabilityLabel: "coming_soon",
+    taxonomyCategory: "communication_channels",
+    brandKey: "whatsapp",
     setupInstructions:
       "WhatsApp Cloud API is not activated. See ADR 016 for the channel design.",
   },

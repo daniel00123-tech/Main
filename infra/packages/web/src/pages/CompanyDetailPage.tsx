@@ -245,8 +245,18 @@ export default function CompanyDetailPage() {
             />
             <MetricCard
               label="Knowledge"
-              value={overview.knowledgeStatus === "configured" ? "Configured" : "Not configured"}
-              hint="Reported by company MCP — not inferred from health"
+              value={
+                mcp?.knowledgeDocumentCount != null
+                  ? `${formatNumber(mcp.knowledgeDocumentCount)} docs`
+                  : overview.knowledgeStatus === "configured"
+                    ? "Configured"
+                    : "Not configured"
+              }
+              hint={
+                mcp?.knowledgeChunkCount != null
+                  ? `${formatNumber(mcp.knowledgeChunkCount)} chunks · Last sync ${mcp.lastSyncAt ?? "Unavailable"}`
+                  : "Reported by company MCP — not inferred from health"
+              }
             />
             <MetricCard
               label="AI connections"
@@ -295,6 +305,32 @@ export default function CompanyDetailPage() {
                 <p className="muted small">
                   {item.healthMessage ?? "Awaiting authenticated health check"}
                 </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "12px 0" }}>
+                  <button
+                    type="button"
+                    className="button button-secondary button-small"
+                    disabled={busy}
+                    onClick={() =>
+                      void (async () => {
+                        setBusy(true);
+                        try {
+                          await api.refreshMcpCapabilities(item.id);
+                          toast("Capabilities refreshed · not billed");
+                          await load();
+                        } catch (err) {
+                          toast(
+                            err instanceof Error ? err.message : "Refresh failed",
+                            "error",
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      })()
+                    }
+                  >
+                    Refresh capabilities
+                  </button>
+                </div>
                 <AdvancedDetails>
                   <KeyValue label="Environment ID" value={item.id} mono />
                   <KeyValue label="Endpoint" value={item.endpointUrl} mono />
@@ -304,7 +340,27 @@ export default function CompanyDetailPage() {
                   <KeyValue label="Core version" value={item.businessMcpCoreVersion ?? "—"} />
                   <KeyValue
                     label="Knowledge documents"
-                    value={String(item.knowledgeDocumentCount ?? "not reported")}
+                    value={
+                      item.knowledgeDocumentCount == null
+                        ? "not reported"
+                        : String(item.knowledgeDocumentCount)
+                    }
+                  />
+                  <KeyValue
+                    label="Knowledge chunks"
+                    value={
+                      item.knowledgeChunkCount == null
+                        ? "not reported"
+                        : String(item.knowledgeChunkCount)
+                    }
+                  />
+                  <KeyValue
+                    label="Last knowledge sync"
+                    value={item.lastSyncAt ?? "Unavailable"}
+                  />
+                  <KeyValue
+                    label="Tools"
+                    value={item.capabilities.length ? item.capabilities.join(", ") : "—"}
                   />
                 </AdvancedDetails>
               </div>
@@ -393,7 +449,8 @@ export default function CompanyDetailPage() {
                   <tr>
                     <th>Name</th>
                     <th>Status</th>
-                    <th>Health</th>
+                    <th>Auth</th>
+                    <th>Sync</th>
                     <th>Last sync</th>
                   </tr>
                 </thead>
@@ -408,10 +465,13 @@ export default function CompanyDetailPage() {
                         <StatusBadge status={connector.status} />
                       </td>
                       <td>
-                        <StatusBadge status={connector.healthStatus ?? "unknown"} />
+                        <StatusBadge status={connector.authStatus ?? connector.healthStatus ?? "unknown"} />
+                      </td>
+                      <td>
+                        <StatusBadge status={connector.syncHealth ?? connector.lastSyncStatus ?? "unknown"} />
                       </td>
                       <td className="muted">
-                        {connector.lastSyncAt ? formatDate(connector.lastSyncAt) : "Not reported"}
+                        {connector.lastSyncAt ? formatDate(connector.lastSyncAt) : "Unavailable"}
                       </td>
                     </tr>
                   ))}

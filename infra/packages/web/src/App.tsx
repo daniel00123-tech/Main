@@ -34,6 +34,7 @@ import AiClientsPage from "./pages/AiClientsPage";
 import AuditLogPage from "./pages/AuditLogPage";
 import BillingPage from "./pages/BillingPage";
 import CataloguePage from "./pages/CataloguePage";
+import ConnectorOversightPage from "./pages/ConnectorOversightPage";
 import CompaniesPage from "./pages/CompaniesPage";
 import CompanyDetailPage from "./pages/CompanyDetailPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -80,7 +81,8 @@ const ADMIN_NAV: NavGroup[] = [
   {
     label: "Integrations",
     items: [
-      { to: "/connectors", label: "Connectors", icon: <Plug size={18} /> },
+      { to: "/connectors", label: "Catalogue", icon: <Plug size={18} /> },
+      { to: "/connector-oversight", label: "Oversight", icon: <Network size={18} /> },
       { to: "/mcp-environments", label: "AI Gateways", icon: <Network size={18} /> },
       { to: "/ai-clients", label: "AI Clients", icon: <Bot size={18} /> },
     ],
@@ -273,6 +275,7 @@ export default function App() {
                 <Route path="/companies" element={<CompaniesPage />} />
                 <Route path="/companies/:slug" element={<CompanyDetailPage />} />
                 <Route path="/connectors" element={<CataloguePage />} />
+                <Route path="/connector-oversight" element={<ConnectorOversightPage />} />
                 <Route path="/mcp-environments" element={<McpEnvironmentsPage />} />
                 <Route path="/ai-clients" element={<AiClientsPage />} />
                 <Route path="/users" element={<UsersPermissionsPage />} />

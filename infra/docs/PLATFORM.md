@@ -47,9 +47,21 @@ ChatGPT authenticates to INFRA. INFRA authenticates separately to the company MC
 - Missing provider cost is **unavailable**, not £0.
 - Stripe is prepared, not live. 60% margin remains banked.
 
+## Readiness
+
+Capability-aware (ADR 017). Required: company, admin, MCP + auth, wallet. Knowledge / AI / Xero are optional unless `company.config.readiness` says otherwise. Caddington is the reference tenant, not a hardcoded special case.
+
+## Connectors
+
+Definitions live in shared catalogue. Instances are per-company (ADR 018). Auth, sync, and provider health are separate (ADR 022). ChatGPT is an AI connection, not a Drive-like data source.
+
+Credential submission is disabled. `SecretProvider` is the only storage interface (ADR 019). OAuth state uses hashed state + PKCE; Xero is not activated (ADR 021).
+
+`POST /api/mcp-environments/:id/refresh-capabilities` refreshes tools via `tools/list` + `system_health` + optional `database_summary`. It does **not** run knowledge search and is not billable.
+
 ## Health checks
 
-`/health` and `/ready` and MCP `system_health` are **not billable**.
+`/health` and `/ready` and MCP `system_health` are **not billable**. Connector health and capability refresh are not billable.
 
 ## Secrets on `infra-api` (names only)
 

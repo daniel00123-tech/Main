@@ -69,8 +69,17 @@ export type AuditEventType =
   | "connector.sync_failed"
   | "credential.created"
   | "credential.rotated"
+  | "credential.revoked"
   | "permission.updated"
-  | "billing.credit_adjusted";
+  | "billing.credit_adjusted"
+  | "mcp.capabilities_refreshed"
+  | "connector.setup_started"
+  | "connector.connected"
+  | "connector.connection_failed"
+  | "connector.reauthenticated"
+  | "connector.disconnected"
+  | "connector.credentials_rotated"
+  | "connector.health_checked";
 
 export type UserStatus = "active" | "disabled";
 
@@ -189,6 +198,8 @@ export interface McpEnvironment {
   knowledgeDocumentCount: number | null;
   knowledgeChunkCount: number | null;
   lastSyncAt: string | null;
+  capabilitySnapshot?: CapabilitySnapshot | null;
+  capabilityRefreshedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -237,11 +248,58 @@ export type ConnectorAuthMethod =
   | "webhook"
   | "infra_service_identity";
 
+export type ConnectorTaxonomyCategory =
+  | "knowledge_sources"
+  | "accounting_finance"
+  | "field_service_crm"
+  | "customer_support"
+  | "productivity"
+  | "ai_connections"
+  | "communication_channels"
+  | "custom_integrations";
+
+export type ConnectorAuthStatus =
+  | "not_configured"
+  | "credentials_required"
+  | "configuring"
+  | "connected"
+  | "auth_expired"
+  | "rotation_required"
+  | "revoked"
+  | "error";
+
+export type ConnectorSyncHealth =
+  | "not_applicable"
+  | "idle"
+  | "running"
+  | "completed"
+  | "failed"
+  | "unknown";
+
+export type ConnectorProviderHealth =
+  | "unknown"
+  | "healthy"
+  | "degraded"
+  | "unavailable";
+
+export type ConnectorManagedBy = "company_mcp" | "infra";
+
+export interface ConnectorOauthContract {
+  authorizationUrl?: string | null;
+  tokenUrl?: string | null;
+  pkceRequired: boolean;
+  requiredScopes: string[];
+  optionalScopes: string[];
+  callbackPath: string;
+}
+
 export interface ConnectorDefinition {
   id: string;
   slug: string;
   name: string;
   category: ConnectorCategory;
+  /** Customer-facing catalogue grouping. Independent of legacy `category`. */
+  taxonomyCategory?: ConnectorTaxonomyCategory;
   /** Business systems ingest data; AI/channels are user interaction surfaces. */
   integrationType: ConnectorIntegrationType;
   /** Marketplace display status — independent of per-company instance state. */
@@ -257,6 +315,12 @@ export interface ConnectorDefinition {
   setupInstructions?: string;
   availabilityLabel?: "available_now" | "requires_setup" | "coming_soon";
   requiresCompanyMcp?: boolean;
+  brandKey?: string;
+  minMcpVersion?: string | null;
+  minCoreVersion?: string | null;
+  documentationUrl?: string | null;
+  oauth?: ConnectorOauthContract;
+  riskNotes?: string;
 }
 
 export interface ConnectorInstance {
@@ -273,6 +337,25 @@ export interface ConnectorInstance {
   lastSyncMessage: string | null;
   healthStatus: HealthStatus;
   healthMessage: string | null;
+  credentialRefId?: string | null;
+  externalAccountId?: string | null;
+  displayAccountName?: string | null;
+  authStatus?: ConnectorAuthStatus;
+  syncHealth?: ConnectorSyncHealth;
+  providerHealth?: ConnectorProviderHealth;
+  lastSuccessfulSyncAt?: string | null;
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
+  configuredBy?: string | null;
+  connectedAt?: string | null;
+  managedBy?: ConnectorManagedBy;
+  lastHealthAt?: string | null;
+  capabilitiesEnabled?: string[];
+  recordsProcessed?: number | null;
+  recordsCreated?: number | null;
+  recordsUpdated?: number | null;
+  recordsFailed?: number | null;
+  syncCheckpoint?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -292,6 +375,8 @@ export interface CredentialRef {
   secretRef: string;
   status: CredentialStatus;
   expiresAt: string | null;
+  purpose?: string | null;
+  rotatedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -505,7 +590,13 @@ export interface CompanyOverview {
   mcpOnboardingStatus?: string;
   teamCount?: number;
   readyForUse?: boolean;
+  readiness?: CompanyReadiness;
+  knowledgeSources?: KnowledgeSourceSummary[];
+  capabilitySnapshot?: CapabilitySnapshot | null;
+  walletCredits?: { testCents: number; paidCents: number };
 }
+
+export type ReadinessApplicability = "required" | "optional" | "not_applicable";
 
 export interface OnboardingItem {
   id: string;
@@ -513,6 +604,8 @@ export interface OnboardingItem {
   status: "complete" | "pending" | "not_provisioned" | "not_configured" | "test_mode" | "no";
   detail: string;
   href?: string | null;
+  required?: boolean;
+  applicability?: ReadinessApplicability;
 }
 
 export interface CompanyOnboarding {
@@ -520,4 +613,54 @@ export interface CompanyOnboarding {
   readyForUse: boolean;
   items: OnboardingItem[];
   problems: Array<{ id: string; title: string; detail: string; href?: string | null }>;
+}
+
+export interface CompanyReadiness {
+  companyId: string;
+  readyForUse: boolean;
+  requiredComplete: boolean;
+  items: OnboardingItem[];
+  problems: Array<{ id: string; title: string; detail: string; href?: string | null }>;
+}
+
+export interface CapabilitySnapshot {
+  version: string | null;
+  coreVersion: string | null;
+  tools: string[];
+  groups: {
+    system: boolean;
+    knowledge: boolean;
+    structured_data: boolean;
+    connectors: boolean;
+    writes: boolean;
+    financial_actions: boolean;
+    external_send: boolean;
+    sync: boolean;
+    webhooks: boolean;
+  };
+  knowledgeConfigured: boolean;
+  structuredDataConfigured: boolean;
+  writesSupported: boolean;
+  connectorTypes: string[];
+  refreshedAt: string;
+}
+
+export type KnowledgeSourceKind =
+  | "google_drive"
+  | "onedrive"
+  | "sharepoint"
+  | "manual_upload"
+  | "other";
+
+export interface KnowledgeSourceSummary {
+  sourceKey: string;
+  displayName: string;
+  kind: KnowledgeSourceKind;
+  documentCount: number | null;
+  chunkCount: number | null;
+  lastSyncAt: string | null;
+  lastSuccessfulSyncAt: string | null;
+  lastError: string | null;
+  health: "healthy" | "degraded" | "unknown" | "unavailable";
+  managedBy: ConnectorManagedBy;
 }

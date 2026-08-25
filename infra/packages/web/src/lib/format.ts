@@ -41,7 +41,16 @@ const EVENT_LABELS: Record<string, string> = {
   "permission.updated": "Permissions updated",
   "credential.created": "Credential created",
   "credential.rotated": "Credential rotated",
+  "credential.revoked": "Credential revoked",
   "billing.credit_adjusted": "Credit adjusted",
+  "mcp.capabilities_refreshed": "Business MCP capabilities refreshed",
+  "connector.setup_started": "Connector setup started",
+  "connector.connected": "Connector connected",
+  "connector.connection_failed": "Connector connection failed",
+  "connector.reauthenticated": "Connector reconnected",
+  "connector.disconnected": "Connector disconnected",
+  "connector.credentials_rotated": "Connector credentials replaced",
+  "connector.health_checked": "Connector health checked",
 };
 
 export function humanEventLabel(eventType: string): string {
@@ -143,6 +152,8 @@ export function humanOperation(action?: string | null, toolName?: string | null)
     get_knowledge_document: "Knowledge Document Read",
     database_summary: "Business data summary",
     system_health: "Connection check",
+    "xero.contacts.search": "Xero contact search",
+    "xero.invoices.search": "Xero invoice search",
   };
   if (map[key]) return map[key];
   if (!key) return "Request";
@@ -250,6 +261,13 @@ export function humanStatus(value: string): string {
     complete: "Complete",
     authentication_required: "Authentication required",
     offline: "Offline",
+    credentials_required: "Credentials required",
+    auth_expired: "Authentication expired",
+    rotation_required: "Rotation required",
+    revoked: "Revoked",
+    not_applicable: "Not applicable",
+    optional: "Optional",
+    required: "Required",
   };
   return map[value] ?? value.replace(/_/g, " ");
 }

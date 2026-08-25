@@ -167,8 +167,21 @@ export default function PortalAiConnectionsPage() {
     <>
       <PageHeader
         title="AI connections"
-        description={`${company.name} · connect AI clients through the INFRA MCP gateway`}
+        description={`${company.name} · available AI clients versus active tokens. These are not business-data connectors.`}
       />
+
+      <div className="grid grid-3" style={{ marginBottom: 24 }}>
+        {ordered.map((conn) => (
+          <div key={`summary-${conn.id}`} className="card metric-card">
+            <h3>{conn.displayName}</h3>
+            <div className="metric">{conn.tokenStatus === "Active" ? "1" : "0"}</div>
+            <p className="muted small">
+              {conn.status === "coming_soon" ? "Coming soon" : "Available"} ·{" "}
+              {conn.tokenStatus === "Active" ? "1 active connection" : "0 active connections"}
+            </p>
+          </div>
+        ))}
+      </div>
 
       {loadError ? <Notice tone="danger">{loadError}</Notice> : null}
 

@@ -1004,12 +1004,17 @@ phase3.post(
     const now = nowIso();
     const name = body.name ?? `${company.name} connector`;
 
-    // Never accept plaintext secrets into config_json
-    const safeConfig = { ...(body.config ?? {}) };
-    delete (safeConfig as Record<string, unknown>).apiKey;
-    delete (safeConfig as Record<string, unknown>).password;
-    delete (safeConfig as Record<string, unknown>).token;
-    delete (safeConfig as Record<string, unknown>).clientSecret;
+    const { sanitizeConnectorConfig } = await import(
+      "../services/connector-credentials"
+    );
+    const safeConfig = sanitizeConnectorConfig(body.config);
+
+    if (body.secretRef && /secret|token|password|apikey/i.test(body.secretRef) && body.secretRef.length > 80) {
+      return c.json(
+        { error: "Plaintext secrets are not accepted. Store a secret reference only." },
+        409,
+      );
+    }
 
     await c.env.DB.prepare(
       `INSERT INTO connector_instances (

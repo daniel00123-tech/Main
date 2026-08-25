@@ -7,14 +7,14 @@ import type {
 } from "@infra/shared";
 
 export const CATEGORY_LABELS: Record<ConnectorCategory, string> = {
-  cloud_storage: "Cloud Storage",
-  email: "Email",
-  field_service: "Field Service",
-  accounting: "Accounting",
-  helpdesk: "Helpdesk",
-  ai_assistant: "AI Assistant",
-  messaging: "Messaging",
-  api: "API",
+  cloud_storage: "Knowledge Sources",
+  email: "Productivity",
+  field_service: "Field Service / CRM",
+  accounting: "Accounting & Finance",
+  helpdesk: "Customer Support",
+  ai_assistant: "AI Connections",
+  messaging: "Communication Channels",
+  api: "Custom Integrations",
 };
 
 export const CAPABILITY_LABELS: Record<ConnectorCapability, string> = {

@@ -438,6 +438,42 @@ export async function executeGatewayRequest(
     };
   }
 
+  const companyRow = await env.DB.prepare(
+    `SELECT status FROM companies WHERE id = ?`,
+  )
+    .bind(input.companyId)
+    .first();
+  const { evaluateApprovalRequirement } = await import("./approvals");
+  const approval = evaluateApprovalRequirement({
+    riskClass,
+    action,
+    companyStatus: String(companyRow?.status ?? "active"),
+  });
+  if (!approval.allowed) {
+    await recordAuditEvent(env.DB, {
+      companyId: input.companyId,
+      eventType: "permission.denied",
+      actor: actorLabel,
+      resourceType: "action",
+      resourceId: action,
+      detail: {
+        correlationId,
+        requestId,
+        toolName: input.toolName,
+        reason: approval.error?.code ?? "approval_blocked",
+        riskClass,
+      },
+    });
+    return {
+      status: 403 as const,
+      error: approval.error?.error ?? "Action is not permitted",
+      correlationId,
+      requestId,
+      action,
+      riskClass,
+    };
+  }
+
   await recordAuditEvent(env.DB, {
     companyId: input.companyId,
     eventType: "company.accessed",

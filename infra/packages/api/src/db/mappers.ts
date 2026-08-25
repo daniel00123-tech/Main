@@ -1,12 +1,18 @@
 import type {
   AuditEvent,
+  CapabilitySnapshot,
   Company,
+  ConnectorAuthStatus,
   ConnectorInstance,
+  ConnectorManagedBy,
+  ConnectorProviderHealth,
+  ConnectorSyncHealth,
   ConnectorSyncSettings,
   CreditBalance,
   McpEnvironment,
   SyncHistoryEntry,
 } from "@infra/shared";
+import { parseCapabilityList } from "../services/capability-snapshot";
 
 function parseJson<T>(value: string | null, fallback: T): T {
   if (!value) return fallback;
@@ -57,16 +63,6 @@ export function rowToCompany(row: Record<string, unknown>): Company {
   };
 }
 
-function parseJsonArray(value: string | null): string[] {
-  if (!value) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.map(String) : [];
-  } catch {
-    return [];
-  }
-}
-
 export function rowToMcpEnvironment(row: Record<string, unknown>): McpEnvironment {
   return {
     id: String(row.id),
@@ -83,7 +79,7 @@ export function rowToMcpEnvironment(row: Record<string, unknown>): McpEnvironmen
     businessMcpCoreVersion: row.business_mcp_core_version
       ? String(row.business_mcp_core_version)
       : null,
-    capabilities: parseJsonArray(
+    capabilities: parseCapabilityList(
       row.capabilities_json ? String(row.capabilities_json) : null,
     ),
     authSecretRef: row.auth_secret_ref ? String(row.auth_secret_ref) : null,
@@ -110,6 +106,13 @@ export function rowToMcpEnvironment(row: Record<string, unknown>): McpEnvironmen
         ? null
         : Number(row.knowledge_chunk_count),
     lastSyncAt: row.last_sync_at ? String(row.last_sync_at) : null,
+    capabilitySnapshot: parseJson<CapabilitySnapshot | null>(
+      row.capability_snapshot_json ? String(row.capability_snapshot_json) : null,
+      null,
+    ),
+    capabilityRefreshedAt: row.capability_refreshed_at
+      ? String(row.capability_refreshed_at)
+      : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -141,6 +144,50 @@ export function rowToConnectorInstance(
       : null,
     healthStatus: row.health_status as ConnectorInstance["healthStatus"],
     healthMessage: row.health_message ? String(row.health_message) : null,
+    credentialRefId: row.credential_ref_id ? String(row.credential_ref_id) : null,
+    externalAccountId: row.external_account_id
+      ? String(row.external_account_id)
+      : null,
+    displayAccountName: row.display_account_name
+      ? String(row.display_account_name)
+      : null,
+    authStatus: row.auth_status
+      ? (row.auth_status as ConnectorAuthStatus)
+      : undefined,
+    syncHealth: row.sync_health
+      ? (row.sync_health as ConnectorSyncHealth)
+      : undefined,
+    providerHealth: row.provider_health
+      ? (row.provider_health as ConnectorProviderHealth)
+      : undefined,
+    lastSuccessfulSyncAt: row.last_successful_sync_at
+      ? String(row.last_successful_sync_at)
+      : null,
+    lastErrorCode: row.last_error_code ? String(row.last_error_code) : null,
+    lastErrorMessage: row.last_error_message
+      ? String(row.last_error_message)
+      : null,
+    configuredBy: row.configured_by ? String(row.configured_by) : null,
+    connectedAt: row.connected_at ? String(row.connected_at) : null,
+    managedBy: row.managed_by
+      ? (row.managed_by as ConnectorManagedBy)
+      : undefined,
+    lastHealthAt: row.last_health_at ? String(row.last_health_at) : null,
+    capabilitiesEnabled: parseJson<string[]>(
+      row.capabilities_enabled_json
+        ? String(row.capabilities_enabled_json)
+        : null,
+      [],
+    ),
+    recordsProcessed:
+      row.records_processed == null ? null : Number(row.records_processed),
+    recordsCreated:
+      row.records_created == null ? null : Number(row.records_created),
+    recordsUpdated:
+      row.records_updated == null ? null : Number(row.records_updated),
+    recordsFailed:
+      row.records_failed == null ? null : Number(row.records_failed),
+    syncCheckpoint: row.sync_checkpoint ? String(row.sync_checkpoint) : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };

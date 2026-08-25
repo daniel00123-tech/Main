@@ -5,6 +5,7 @@ import {
   getBusinessSystemConnectors,
   getConnectorBySlug,
 } from "./catalogue";
+import { taxonomyForConnector } from "./taxonomy";
 
 describe("connector catalogue", () => {
   it("includes planned business connectors", () => {
@@ -46,6 +47,14 @@ describe("connector catalogue", () => {
   it("separates business systems from AI channels", () => {
     expect(getBusinessSystemConnectors().length).toBeGreaterThan(0);
     expect(getAiChannelConnectors().length).toBe(3);
+  });
+
+  it("places ChatGPT in AI Connections, not Knowledge Sources", () => {
+    expect(taxonomyForConnector(getConnectorBySlug("chatgpt")!)).toBe("ai_connections");
+    expect(taxonomyForConnector(getConnectorBySlug("google-drive")!)).toBe(
+      "knowledge_sources",
+    );
+    expect(taxonomyForConnector(getConnectorBySlug("xero")!)).toBe("accounting_finance");
   });
 
   it("does not include personal connector types", () => {

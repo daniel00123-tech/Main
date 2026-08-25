@@ -229,6 +229,32 @@ export const api = {
     fetchJson<Record<string, unknown>>(`/api/mcp-environments/${id}/health-check`, {
       method: "POST",
     }),
+  refreshMcpCapabilities: (id: string) =>
+    fetchJson<Record<string, unknown>>(
+      `/api/mcp-environments/${id}/refresh-capabilities`,
+      { method: "POST" },
+    ),
+  getConnectorOversight: () =>
+    fetchJson<
+      Array<{
+        companyId: string;
+        companyName: string;
+        companySlug: string;
+        companyStatus: string;
+        connectorInstanceId: string;
+        connectorDefinitionId: string;
+        name: string;
+        status: string;
+        authStatus: string;
+        syncHealth: string;
+        providerHealth: string;
+        lastSyncAt: string | null;
+        lastSuccessfulSyncAt: string | null;
+        lastErrorCode: string | null;
+        lastErrorMessage: string | null;
+        managedBy: string | null;
+      }>
+    >("/api/admin/connectors"),
   getMcpAllowedTools: (id: string) =>
     fetchJson<Array<{ toolName: string; riskClass: string; enabled: boolean }>>(
       `/api/mcp-environments/${id}/allowed-tools`,

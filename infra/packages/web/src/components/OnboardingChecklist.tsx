@@ -16,6 +16,13 @@ export function OnboardingChecklist({
             <div className="muted small">{item.detail}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {item.applicability === "optional" ? (
+              <span className="muted small">Optional</span>
+            ) : item.applicability === "not_applicable" ? (
+              <span className="muted small">Not required</span>
+            ) : (
+              <span className="muted small">Required</span>
+            )}
             <StatusBadge status={item.status} />
             {item.href ? (
               <Link to={item.href} className="button button-ghost button-small">
@@ -27,8 +34,8 @@ export function OnboardingChecklist({
       ))}
       <p className="muted small" style={{ margin: 0 }}>
         {onboarding.readyForUse
-          ? "This company has the INFRA foundation needed for day-to-day use."
-          : "Ready for use stays No until a Business MCP and an AI connection both exist. Creating a company does not provision a Worker."}
+          ? "Required foundation is in place. Optional connectors do not block readiness."
+          : "Ready for use stays No until required items are complete. Optional systems such as Xero or ChatGPT do not block a company that does not need them."}
       </p>
     </div>
   );

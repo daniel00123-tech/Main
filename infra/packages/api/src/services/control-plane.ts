@@ -19,6 +19,10 @@ import { getUsageSummary, listPlatformUsage, recordUsageEvent } from "./usage";
 import { getWalletBalance, listLedgerEntries } from "./ledger";
 import { buildCompanyOnboarding } from "./onboarding";
 import { deriveMcpOnboardingStatus } from "./mcp-capabilities";
+import { buildCapabilitySnapshot } from "./capability-snapshot";
+import { buildKnowledgeSources } from "./knowledge-sources";
+import { classifyLedgerCredit } from "./wallet-credits";
+import { evaluateApprovalRequirement } from "./approvals";
 
 export async function listCompanies(
   db: D1Database,
@@ -248,6 +252,11 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     activeTokenCount: Number(identityRow?.active_count ?? 0),
     usageCount: Number(usageCountRow?.count ?? 0),
   });
+  const knowledgeSources = buildKnowledgeSources({
+    mcp,
+    connectors: connectorInstances,
+  });
+  const walletCredits = classifyLedgerCredit(ledger);
 
   return {
     company,
@@ -264,10 +273,39 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     aiIdentityCount: Number(identityRow?.count ?? 0),
     activeAiIdentityCount: Number(identityRow?.active_count ?? 0),
     onboarding,
+    readiness: onboarding,
     mcpOnboardingStatus: deriveMcpOnboardingStatus(mcp),
     teamCount: Number(teamRow?.count ?? 0),
     readyForUse: onboarding.readyForUse,
+    knowledgeSources,
+    capabilitySnapshot: mcp?.capabilitySnapshot ?? null,
+    walletCredits,
   };
+}
+
+export async function listConnectorOversight(db: D1Database, limit = 200) {
+  const result = await db
+    .prepare(
+      `SELECT ci.*, c.name AS company_name, c.slug AS company_slug, c.status AS company_status
+       FROM connector_instances ci
+       JOIN companies c ON c.id = ci.company_id
+       ORDER BY c.name ASC, ci.name ASC
+       LIMIT ?`,
+    )
+    .bind(Math.min(Math.max(limit, 1), 500))
+    .all();
+
+  return (result.results ?? []).map((row) => {
+    const instance = rowToConnectorInstance(row);
+    return {
+      ...instance,
+      companyName: String(row.company_name),
+      companySlug: String(row.company_slug),
+      companyStatus: String(row.company_status),
+      credentialRefId: instance.credentialRefId ?? null,
+      secretValue: undefined,
+    };
+  });
 }
 
 export async function recordAuditEvent(
@@ -486,64 +524,56 @@ export async function runMcpHealthCheck(
       tools.tools.map((tool) => tool.name),
     );
 
-    // Functional probe only when the company MCP actually exposes knowledge search.
-    // HT/EL currently have knowledge not_configured — missing search is not unhealthy.
-    const hasKnowledgeSearch = tools.tools.some(
-      (tool) => tool.name === "search_company_knowledge",
-    );
-    let searchStatus: "ok" | "failed" | "not_configured" = "not_configured";
-    let searchError: string | null = null;
-    if (hasKnowledgeSearch) {
-      try {
-        const probe = await callMcpTool(env, {
-          endpointUrl: mcp.endpointUrl,
-          authSecretRef: mcp.authSecretRef,
-          serviceBindingRef: mcp.serviceBindingRef,
-          toolName: "search_company_knowledge",
-          arguments: { query: "Project Falcon", topK: 1 },
-        });
-        if (probe.textContent && probe.textContent.length > 0) {
-          searchStatus = "ok";
-        } else {
-          searchStatus = "failed";
-          searchError = "Search returned empty content";
-        }
-      } catch (err) {
-        searchStatus = "failed";
-        searchError = err instanceof Error ? err.message : "Search probe failed";
-      }
-    }
+    const toolNames = tools.tools.map((tool) => tool.name);
+    const hasKnowledgeSearch = toolNames.includes("search_company_knowledge");
+    const searchStatus: "ok" | "failed" | "not_configured" = hasKnowledgeSearch
+      ? (documentCount ?? 0) > 0
+        ? "ok"
+        : "not_configured"
+      : "not_configured";
 
     let mcpVersion = mcp.mcpVersion;
+    let coreVersion = mcp.businessMcpCoreVersion;
     let transportMessage = "Transport reachable";
     try {
       if (health.textContent) {
         const parsed = JSON.parse(health.textContent) as {
           status?: string;
-          mcp?: { version?: string; name?: string };
+          mcp?: { version?: string; name?: string; coreVersion?: string };
+          version?: string;
         };
         if (parsed.mcp?.version) mcpVersion = parsed.mcp.version;
-        transportMessage = `Transport ${parsed.status ?? "healthy"} · ${tools.tools.length} tools`;
+        if (parsed.mcp?.coreVersion) coreVersion = parsed.mcp.coreVersion;
+        transportMessage = `MCP healthy · ${toolNames.length} tools`;
       }
     } catch {
-      transportMessage = `Transport reachable · ${tools.tools.length} tools`;
+      transportMessage = `MCP healthy · ${toolNames.length} tools`;
     }
 
     const latencyMs = health.latencyMs;
     const transportStatus = "healthy" as const;
-    const overallStatus =
-      searchStatus === "failed" ? ("degraded" as const) : ("healthy" as const);
+    const overallStatus = "healthy" as const;
     const healthMessage =
       searchStatus === "ok"
-        ? `${transportMessage} · Search ok`
-        : searchStatus === "not_configured"
-          ? `${transportMessage} · Knowledge not configured`
-          : `${transportMessage} · Search failed${searchError ? `: ${searchError}` : ""}`;
+        ? `${transportMessage} · Knowledge reported`
+        : hasKnowledgeSearch
+          ? `${transportMessage} · Knowledge tools present`
+          : `${transportMessage} · Knowledge not configured`;
+
+    const snapshot = buildCapabilitySnapshot({
+      tools: toolNames,
+      version: mcpVersion,
+      coreVersion,
+      knowledgeDocumentCount: documentCount,
+      refreshedAt: checkedAt,
+    });
 
     await env.DB.prepare(
       `UPDATE mcp_environments
        SET status = ?, last_health_check_at = ?, last_healthy_at = ?, health_message = ?,
-           mcp_version = ?, capabilities_json = ?, last_successful_request_at = ?,
+           mcp_version = ?, business_mcp_core_version = ?, capabilities_json = ?,
+           capability_snapshot_json = ?, capability_refreshed_at = ?,
+           last_successful_request_at = ?,
            last_error = NULL, last_latency_ms = ?, knowledge_document_count = ?,
            knowledge_chunk_count = ?, updated_at = ?
        WHERE id = ?`,
@@ -551,15 +581,13 @@ export async function runMcpHealthCheck(
       .bind(
         overallStatus,
         checkedAt,
-        overallStatus === "healthy" ? checkedAt : mcp.lastHealthyAt,
+        checkedAt,
         healthMessage,
         mcpVersion,
-        JSON.stringify({
-          tools: tools.tools.map((tool) => tool.name),
-          transport: transportStatus,
-          search: searchStatus,
-          searchError,
-        }),
+        coreVersion,
+        JSON.stringify(toolNames),
+        JSON.stringify(snapshot),
+        checkedAt,
         checkedAt,
         latencyMs,
         documentCount,
@@ -579,11 +607,10 @@ export async function runMcpHealthCheck(
         status: overallStatus,
         transport: transportStatus,
         search: searchStatus,
-        searchError,
         latencyMs,
         message: healthMessage,
         authConfigured,
-        toolCount: tools.tools.length,
+        toolCount: toolNames.length,
         knowledgeDocumentCount: documentCount,
         billed: false,
       },
@@ -594,7 +621,8 @@ export async function runMcpHealthCheck(
       status: overallStatus,
       transport: transportStatus,
       search: searchStatus,
-      searchError,
+      searchError: null,
+      capabilities: snapshot,
       message: healthMessage,
       latencyMs,
       checkedAt,
@@ -685,6 +713,30 @@ export async function runMcpHealthCheck(
   }
 }
 
+/** Manual / health-driven capability refresh. Non-billable. No knowledge search. */
+export async function refreshMcpCapabilities(
+  env: Env,
+  mcpId: string,
+  actor: string,
+) {
+  const result = await runMcpHealthCheck(env, mcpId, actor);
+  if (result) {
+    await recordAuditEvent(env.DB, {
+      companyId: (await getMcpEnvironment(env.DB, mcpId))?.companyId ?? null,
+      eventType: "mcp.capabilities_refreshed",
+      actor,
+      resourceType: "mcp",
+      resourceId: mcpId,
+      detail: {
+        billed: false,
+        toolCount: Array.isArray(result.tools) ? result.tools.length : 0,
+        status: result.status,
+      },
+    });
+  }
+  return result;
+}
+
 const READ_ONLY_DEFAULT_TOOLS = [
   "search_company_knowledge",
   "system_health",
@@ -733,6 +785,31 @@ export async function executeRegisteredMcpTool(
     });
     return {
       error: "Tool is not allowlisted for this MCP environment",
+      status: 403 as const,
+    };
+  }
+
+  const company = await getCompanyById(env.DB, mcp.companyId);
+  const approval = evaluateApprovalRequirement({
+    riskClass: allow.riskClass,
+    action: input.toolName,
+    companyStatus: company?.status ?? "active",
+  });
+  if (!approval.allowed) {
+    await recordAuditEvent(env.DB, {
+      companyId: mcp.companyId,
+      eventType: "permission.denied",
+      actor: input.actorEmail,
+      resourceType: "mcp_tool",
+      resourceId: input.toolName,
+      detail: {
+        mcpId: mcp.id,
+        reason: approval.error?.code ?? "approval_blocked",
+        riskClass: allow.riskClass,
+      },
+    });
+    return {
+      error: approval.error?.error ?? "Action is not permitted",
       status: 403 as const,
     };
   }

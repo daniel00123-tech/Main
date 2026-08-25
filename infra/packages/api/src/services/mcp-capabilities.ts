@@ -1,4 +1,10 @@
-import type { McpEnvironment, McpOnboardingStatus } from "@infra/shared";
+import type {
+  CapabilitySnapshot,
+  McpEnvironment,
+  McpOnboardingStatus,
+} from "@infra/shared";
+import { mcpHasKnowledgeTools } from "@infra/shared";
+import { buildCapabilitySnapshot, snapshotFromMcp } from "./capability-snapshot";
 
 /** Baseline tools INFRA understands when a Business MCP reports them. */
 export const BUSINESS_MCP_BASELINE_TOOLS = [
@@ -16,6 +22,7 @@ export interface DiscoveredMcpCapabilities {
   tools: string[];
   version: string | null;
   coreVersion: string | null;
+  snapshot: CapabilitySnapshot | null;
 }
 
 export function deriveMcpOnboardingStatus(
@@ -35,10 +42,9 @@ export function discoverMcpCapabilities(
   mcp: McpEnvironment | null | undefined,
 ): DiscoveredMcpCapabilities {
   const tools = mcp?.capabilities ?? [];
+  const snapshot = snapshotFromMcp(mcp ?? null);
   const knowledge =
-    (mcp?.knowledgeDocumentCount ?? 0) > 0 ||
-    tools.includes("search_company_knowledge") ||
-    tools.includes("get_knowledge_document")
+    (mcp?.knowledgeDocumentCount ?? 0) > 0 || mcpHasKnowledgeTools(tools)
       ? "configured"
       : "not_configured";
   const structuredData = tools.some((name) =>
@@ -60,5 +66,18 @@ export function discoverMcpCapabilities(
     tools,
     version: mcp?.mcpVersion ?? null,
     coreVersion: mcp?.businessMcpCoreVersion ?? null,
+    snapshot,
   };
+}
+
+export function capabilitySnapshotFromTools(
+  tools: string[],
+  mcp?: McpEnvironment | null,
+): CapabilitySnapshot {
+  return buildCapabilitySnapshot({
+    tools,
+    version: mcp?.mcpVersion,
+    coreVersion: mcp?.businessMcpCoreVersion,
+    knowledgeDocumentCount: mcp?.knowledgeDocumentCount,
+  });
 }

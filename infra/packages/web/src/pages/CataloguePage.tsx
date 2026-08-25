@@ -19,14 +19,14 @@ const FILTERS: Array<{ id: CatalogueFilter; label: string }> = [
 const CATEGORY_FILTERS: Array<{ id: ConnectorCategory | "all"; label: string }> =
   [
     { id: "all", label: "All categories" },
-    { id: "cloud_storage", label: "Cloud Storage" },
-    { id: "field_service", label: "Field Service" },
-    { id: "accounting", label: "Accounting" },
-    { id: "helpdesk", label: "Helpdesk" },
-    { id: "email", label: "Email" },
-    { id: "ai_assistant", label: "AI Assistant" },
-    { id: "messaging", label: "Messaging" },
-    { id: "api", label: "API" },
+    { id: "cloud_storage", label: "Knowledge Sources" },
+    { id: "field_service", label: "Field Service / CRM" },
+    { id: "accounting", label: "Accounting & Finance" },
+    { id: "helpdesk", label: "Customer Support" },
+    { id: "email", label: "Productivity" },
+    { id: "ai_assistant", label: "AI Connections" },
+    { id: "messaging", label: "Communication Channels" },
+    { id: "api", label: "Custom Integrations" },
   ];
 
 export default function CataloguePage() {

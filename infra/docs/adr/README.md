@@ -20,5 +20,13 @@ Authoritative decisions that future INFRA / Business MCP work must follow.
 | [014](./014-wallet-payment-provider.md) | Wallet / payment-provider separation | **Accepted** |
 | [015](./015-xero-connector-direction.md) | Xero connector direction | **Accepted** |
 | [016](./016-whatsapp-channel-direction.md) | WhatsApp channel direction | **Accepted** |
+| [017](./017-reference-tenant-standard.md) | Reference Tenant Standard | **Accepted** |
+| [018](./018-connector-definition-vs-instance.md) | Connector definition vs instance | **Accepted** |
+| [019](./019-secret-provider.md) | Secret Provider architecture | **Accepted** |
+| [020](./020-credential-lifecycle.md) | Credential lifecycle | **Accepted** |
+| [021](./021-oauth-and-api-key-connectors.md) | OAuth and API-key frameworks | **Accepted** |
+| [022](./022-connector-health-and-sync.md) | Connector health and sync | **Accepted** |
+| [023](./023-knowledge-source-contract.md) | Knowledge source contract | **Accepted** |
+| [024](./024-caddington-google-drive-lessons.md) | Google Drive as knowledge template | **Accepted** |
 
 **Core principle:** Company MCPs own company knowledge, business data and business capabilities. INFRA owns identity, authorisation, routing, metering, billing and audit.

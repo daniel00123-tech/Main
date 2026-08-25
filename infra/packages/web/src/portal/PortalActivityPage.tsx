@@ -22,12 +22,15 @@ export default function PortalActivityPage() {
         title="Activity"
         description={`${company.name} · who did what in this company`}
       />
-      <SectionCard title="Recent events">
+      <SectionCard
+        title="Recent events"
+        description="What changed in this company. Technical IDs stay in the detail line."
+      >
         <ActivityFeed
           items={overview.recentAuditEvents.map((event) => ({
             id: event.id,
             title: humanEventLabel(event.eventType),
-            description: event.actor,
+            description: [event.actor, event.resourceType].filter(Boolean).join(" · "),
             meta: formatRelativeTime(event.createdAt),
           }))}
         />

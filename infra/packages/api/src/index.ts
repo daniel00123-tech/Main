@@ -67,12 +67,14 @@ import { groupOperationsIntoInteractions } from "./services/interactions";
 import { listMcpTools } from "./services/mcp-client";
 import { verifyPassword } from "./auth/password";
 import phase3Routes from "./routes/phase3";
+import connectorRoutes from "./routes/connectors";
 
 const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", createCorsMiddleware());
 
 app.route("/", phase3Routes);
+app.route("/", connectorRoutes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(
@@ -289,10 +291,6 @@ app.get("/api/summary", requireAuth, async (c) => {
   const summary = await getPlatformSummary(c.env.DB, companyIds);
   return c.json(summary);
 });
-
-app.get("/api/connectors/catalogue", requireAuth, (c) =>
-  c.json(CONNECTOR_CATALOGUE),
-);
 
 app.get("/api/connectors/catalogue/:slug", requireAuth, (c) => {
   const connector = CONNECTOR_CATALOGUE.find((item) => item.slug === c.req.param("slug"));
