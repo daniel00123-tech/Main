@@ -1,7 +1,7 @@
 import type { PaymentProviderId } from "@infra/shared";
 import { newId, nowIso } from "../db/mappers";
 import type { Env } from "../env";
-import { isStripeConfigured } from "./stripe";
+import { getStripeMode, isStripeConfigured, isStripeTestModeActive } from "./stripe";
 
 export interface PaymentProviderStatus {
   provider: PaymentProviderId;
@@ -9,6 +9,8 @@ export interface PaymentProviderStatus {
   configured: boolean;
   status: "not_configured" | "ready" | "disabled";
   message: string;
+  stripeMode: "unconfigured" | "test" | "live";
+  testModeOnly: boolean;
   autoTopUp: {
     supported: boolean;
     enabled: boolean;
@@ -22,13 +24,19 @@ export const DEFAULT_TOP_UP_OPTIONS_CENTS = [1000, 2500, 5000, 10000];
 
 export function getPlatformPaymentProviderStatus(env: Env): PaymentProviderStatus {
   const configured = isStripeConfigured(env);
+  const stripeMode = getStripeMode(env);
+  const testMode = isStripeTestModeActive(env);
   return {
     provider: "stripe",
     label: "Stripe",
     configured,
     status: configured ? "ready" : "not_configured",
+    stripeMode,
+    testModeOnly: testMode,
     message: configured
-      ? "Stripe Checkout is configured for prepaid wallet top-ups."
+      ? testMode
+        ? "Stripe Checkout is configured in TEST MODE for prepaid wallet top-ups."
+        : "Stripe is configured but live mode is blocked until operator approval."
       : "Online payments not configured",
     autoTopUp: {
       supported: true,

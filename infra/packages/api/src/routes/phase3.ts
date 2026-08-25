@@ -65,7 +65,10 @@ import {
 import { resolveServiceIdentityScopesForCompany } from "../services/service-identity-scopes";
 import {
   createTopUpCheckoutIntent,
+  getTopUpCheckoutStatus,
+  isAllowedTopUpAmountCents,
   isStripeConfigured,
+  listRecentTopUps,
   processStripeWebhookEvent,
   verifyStripeWebhookSignature,
 } from "../services/stripe";
@@ -199,9 +202,10 @@ phase3.get("/api/companies/:slug/wallet", requireAuth, async (c) => {
     return c.json({ error: "Access to this company is denied" }, 403);
   }
 
-  const [wallet, ledger] = await Promise.all([
+  const [wallet, ledger, recentTopUps] = await Promise.all([
     getWalletBalance(c.env.DB, company.id),
     listLedgerEntries(c.env.DB, company.id, 30),
+    listRecentTopUps(c.env.DB, company.id, 10),
   ]);
 
   const credits = classifyLedgerCredit(ledger);
@@ -214,15 +218,35 @@ phase3.get("/api/companies/:slug/wallet", requireAuth, async (c) => {
     },
     ledger,
     chargeGroups: groupLedgerCharges(ledger),
+    recentTopUps,
     stripeConfigured: payments.configured,
     paymentProvider: payments,
     topUpOptionsCents: payments.topUpOptionsCents,
   });
 });
 
+phase3.get("/api/companies/:slug/wallet/top-up/:checkoutId", requireAuth, async (c) => {
+  const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!userHasCompanyAccess(c.get("user"), company.id)) {
+    return c.json({ error: "Access to this company is denied" }, 403);
+  }
+  const checkoutId = c.req.param("checkoutId");
+  if (!checkoutId) return c.json({ error: "checkoutId required" }, 400);
+  const status = await getTopUpCheckoutStatus(c.env, company.id, checkoutId);
+  if (!status) return c.json({ error: "Top-up not found" }, 404);
+  return c.json({ checkout: status });
+});
+
 phase3.post("/api/companies/:slug/wallet/top-up", requireAuth, async (c) => {
   const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
   if (!company) return c.json({ error: "Company not found" }, 404);
+  if (String(company.status) === "suspended") {
+    return c.json({ error: "Company is suspended" }, 403);
+  }
+  if (company.archivedAt) {
+    return c.json({ error: "Company is archived" }, 403);
+  }
   const user = c.get("user");
   if (!canManageCompany(user, company.id)) {
     return c.json({ error: "Company administrator access required" }, 403);
@@ -237,10 +261,17 @@ phase3.post("/api/companies/:slug/wallet/top-up", requireAuth, async (c) => {
   if (!body.amountCents || body.amountCents < 500) {
     return c.json({ error: "amountCents must be at least 500 (£5)" }, 400);
   }
+  if (!isAllowedTopUpAmountCents(body.amountCents)) {
+    return c.json(
+      { error: "Invalid top-up amount. Allowed preset amounts: £10, £25, £50, £100." },
+      400,
+    );
+  }
 
   const origin = portalOrigin(c.env, c.req.header("Origin"));
   const result = await createTopUpCheckoutIntent(c.env, {
     companyId: company.id,
+    companyName: company.name,
     amountCents: body.amountCents,
     createdBy: user.email,
     successUrl:
