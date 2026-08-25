@@ -5,6 +5,10 @@ import { XeroClient } from "@infra/xero-core";
 import type { Env } from "../../env";
 import { getValidXeroAccessToken } from "../xero";
 
+import {
+  draftInvoiceExpectedFromProposed,
+} from "./draft-invoice-plan";
+
 export type DraftInvoiceVerificationExpected = {
   contactId: string;
   type: "ACCREC";
@@ -12,6 +16,10 @@ export type DraftInvoiceVerificationExpected = {
   total: number;
   reference?: string | null;
   lineItemDescription?: string | null;
+  dueDate?: string | null;
+  invoiceDate?: string | null;
+  taxType?: string | null;
+  accountCode?: string | null;
 };
 
 export type VerificationResult =
@@ -114,26 +122,38 @@ export async function verifyCreatedDraftInvoice(input: {
     }
   }
 
+  if (input.expected.dueDate) {
+    const due = invoice.DueDate ? String(invoice.DueDate).slice(0, 10) : null;
+    if (due !== input.expected.dueDate) {
+      return {
+        ok: false,
+        code: "VERIFICATION_WRONG_DUE_DATE",
+        message: `Expected due date ${input.expected.dueDate}, got ${due ?? "null"}.`,
+        invoice,
+      };
+    }
+  }
+
+  if (input.expected.taxType) {
+    const lines = Array.isArray(invoice.LineItems) ? invoice.LineItems : [];
+    const lineTax = lines[0]
+      ? String((lines[0] as Record<string, unknown>).TaxType ?? "")
+      : "";
+    if (lineTax && lineTax !== input.expected.taxType) {
+      return {
+        ok: false,
+        code: "VERIFICATION_WRONG_TAX_TYPE",
+        message: `Expected tax type ${input.expected.taxType}, got ${lineTax}.`,
+        invoice,
+      };
+    }
+  }
+
   return { ok: true, invoice };
 }
 
 export function draftInvoiceExpectedFromTarget(target: ActionTarget): DraftInvoiceVerificationExpected | null {
-  const proposed = target.proposedState ?? {};
-  const lineItems = Array.isArray(proposed.lineItems)
-    ? (proposed.lineItems as Array<{ description?: string; quantity?: number; unitAmount?: number }>)
-    : [];
-  const total = lineItems.reduce(
-    (sum, row) => sum + Number(row.quantity ?? 0) * Number(row.unitAmount ?? 0),
-    0,
-  );
-  return {
-    contactId: String(proposed.contactId ?? target.targetId),
-    type: "ACCREC",
-    status: "DRAFT",
-    total,
-    reference: proposed.reference ? String(proposed.reference) : null,
-    lineItemDescription: lineItems[0]?.description ? String(lineItems[0].description) : null,
-  };
+  return draftInvoiceExpectedFromProposed(target);
 }
 
 export function extractInvoiceIdFromMcpResult(result: unknown): string | null {

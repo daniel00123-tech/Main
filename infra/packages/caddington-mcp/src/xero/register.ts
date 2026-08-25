@@ -506,11 +506,13 @@ export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcp
               quantity: zf.number(),
               unitAmount: zf.number(),
               accountCode: zf.string().optional(),
+              taxType: zf.string().optional(),
             }),
           )
           .min(1),
         reference: zf.string().optional(),
-        date: zf.string().optional().describe("ISO date YYYY-MM-DD."),
+        date: zf.string().optional().describe("ISO date YYYY-MM-DD (invoice date)."),
+        dueDate: zf.string().optional().describe("ISO date YYYY-MM-DD."),
       },
     },
     async (args) =>
@@ -524,9 +526,11 @@ export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcp
               quantity: number;
               unitAmount: number;
               accountCode?: string;
+              taxType?: string;
             }>) ?? [],
             reference: xeroArgs.reference as string | undefined,
             date: xeroArgs.date as string | undefined,
+            dueDate: xeroArgs.dueDate as string | undefined,
           }),
         args,
       ),

@@ -15,7 +15,7 @@ import {
 } from "../services/action-engine/action-engine";
 import { revalidateXeroPlanTargets } from "../services/action-engine/xero-planner";
 import { buildActionDryRunReport } from "../services/action-engine/dry-run";
-import { getExecutionEvidence } from "../services/action-engine/action-executor";
+import { getExecutionEvidence, executeApprovedActionPlan } from "../services/action-engine/action-executor";
 
 type AppEnv = { Bindings: Env; Variables: AuthVariables };
 
@@ -151,7 +151,17 @@ actionPlans.post("/api/companies/:slug/actions/:planId/approve", ...authed, asyn
     actor: user.email,
   });
   if (!result.ok) return c.json({ error: result.message, code: result.code }, 409);
-  return c.json({ plan: result.plan });
+
+  let execution: Awaited<ReturnType<typeof executeApprovedActionPlan>> | null = null;
+  if (result.plan.confirmationStatus === "confirmed" && result.plan.status === "approved") {
+    execution = await executeApprovedActionPlan(c.env, {
+      plan: result.plan,
+      actor: user.email,
+    });
+  }
+
+  const refreshed = (await getActionPlan(c.env.DB, company.id, planId)) ?? result.plan;
+  return c.json({ plan: refreshed, execution });
 });
 
 actionPlans.post("/api/companies/:slug/actions/:planId/reject", ...authed, async (c) => {

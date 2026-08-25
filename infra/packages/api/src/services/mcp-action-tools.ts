@@ -9,6 +9,7 @@ export const ACTION_CONTROL_TOOLS = [
   "cancel_action_plan",
   "list_pending_actions",
   "dry_run_action_plan",
+  "execute_action_plan",
   "plan_xero_credit_invoices",
   "plan_xero_draft_invoice",
   "plan_xero_remittance_allocation",
@@ -25,6 +26,7 @@ export const ACTION_CONTROL_TOOL_REQUIRED_SCOPES: Record<ActionControlTool, stri
   get_action_plan: "xero.action.read",
   list_pending_actions: "xero.action.list",
   dry_run_action_plan: "xero.action.read",
+  execute_action_plan: "xero.action.execute",
   confirm_action_plan: "xero.action.confirm",
   cancel_action_plan: "xero.action.cancel",
   plan_xero_draft_invoice: "xero.action.plan",
@@ -105,6 +107,18 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
       additionalProperties: false,
     },
   },
+  execute_action_plan: {
+    description:
+      "Execute a confirmed and approved action plan via the INFRA Action Engine. Requires plan_id. Does not bypass confirmation or organisational approval checks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        planId: { type: "string", minLength: 1 },
+      },
+      required: ["planId"],
+      additionalProperties: false,
+    },
+  },
   plan_xero_credit_invoices: {
     description:
       "Plan crediting one or more Xero sales invoices (ACCREC). Retrieves live invoice state from Xero and returns an action plan — does NOT execute. Use for 'Credit INV-123' or batch credit requests.",
@@ -125,7 +139,7 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
   },
   plan_xero_draft_invoice: {
     description:
-      "Plan creating a draft sales invoice (ACCREC, DRAFT status) in Xero. Returns an action plan for human confirmation — does NOT execute. Provide contactName (e.g. \"Elvex\" for Elvex Property Services) or contactId.",
+      "Plan creating a draft sales invoice (ACCREC, DRAFT status) in Xero. Returns an action plan for human confirmation — does NOT execute. Provide contactName (e.g. \"Elvex\") or contactId.",
     inputSchema: {
       type: "object",
       properties: {
@@ -149,13 +163,30 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
               quantity: { type: "number" },
               unitAmount: { type: "number" },
               accountCode: { type: "string" },
+              taxType: {
+                type: "string",
+                description: "Explicit Xero TaxType. Prefer taxTreatment when unsure.",
+              },
             },
             required: ["description", "quantity", "unitAmount"],
           },
           minItems: 1,
         },
         reference: { type: "string" },
-        date: { type: "string", description: "ISO date YYYY-MM-DD." },
+        invoiceDate: { type: "string", description: "ISO date YYYY-MM-DD for the invoice date." },
+        dueDate: { type: "string", description: "ISO date YYYY-MM-DD for payment due date." },
+        date: {
+          type: "string",
+          description: "Deprecated alias for invoiceDate (ISO date YYYY-MM-DD).",
+        },
+        taxTreatment: {
+          type: "string",
+          description: "Natural-language VAT treatment, e.g. \"No VAT\", \"standard rate\".",
+        },
+        taxType: {
+          type: "string",
+          description: "Explicit Xero TaxType override when taxTreatment is insufficient.",
+        },
         idempotencyKey: { type: "string" },
       },
       required: ["lineItems"],

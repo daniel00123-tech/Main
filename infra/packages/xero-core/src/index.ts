@@ -1,6 +1,7 @@
 export * from "./client";
 export * from "./errors";
 export * from "./fetch-json";
+export * from "./tax-rates";
 export * from "./sales-aggregation";
 export * from "./reports/profit-and-loss";
 export {

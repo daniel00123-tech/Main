@@ -30,6 +30,14 @@ export type ActionDryRunReport = {
   currencyCode: string | null;
   reference: string | null;
   description: string | null;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  accountCode: string | null;
+  taxType: string | null;
+  taxTypeLabel: string | null;
+  quantity: number | null;
+  unitAmount: number | null;
+  total: number | null;
   risk: string;
   confirmation: string;
   approval: string;
@@ -118,6 +126,18 @@ export async function buildActionDryRunReport(
     currencyCode: input.plan.financialImpact?.currencyCode ?? target?.currencyCode ?? null,
     reference: payload?.reference ?? (proposed.reference ? String(proposed.reference) : null),
     description: payload?.lineItems?.[0]?.description ?? null,
+    invoiceDate:
+      (proposed.invoiceDate ? String(proposed.invoiceDate) : null) ??
+      (proposed.date ? String(proposed.date) : null) ??
+      payload?.date ??
+      null,
+    dueDate: proposed.dueDate ? String(proposed.dueDate) : payload?.dueDate ?? null,
+    accountCode: payload?.lineItems?.[0]?.accountCode ?? null,
+    taxType: payload?.lineItems?.[0]?.taxType ?? (proposed.taxType ? String(proposed.taxType) : null),
+    taxTypeLabel: proposed.taxTypeLabel ? String(proposed.taxTypeLabel) : null,
+    quantity: payload?.lineItems?.[0]?.quantity ?? null,
+    unitAmount: payload?.lineItems?.[0]?.unitAmount ?? null,
+    total: amount,
     risk: input.plan.riskClass,
     confirmation:
       input.plan.confirmationStatus === "confirmed"

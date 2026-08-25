@@ -21,8 +21,9 @@ import { FINANCIAL_WRITES_ENABLED } from "../approvals";
 import { xeroToolContract } from "../xero-tools";
 import { missingScopesForTier, XERO_SCOPES_DRAFT_INVOICE } from "@infra/shared";
 import { buildActionDryRunReport } from "./dry-run";
-import { getExecutionEvidence } from "./action-executor";
+import { getExecutionEvidence, executeApprovedActionPlan } from "./action-executor";
 import { actionControlToolAllowed } from "../mcp-action-tools";
+import { draftInvoiceReviewFromPlan } from "./draft-invoice-plan";
 
 function actorLabel(actor: GatewayActor): string {
   return actor.type === "service" ? actor.identity.name : actor.user.email;
@@ -77,6 +78,42 @@ export async function executeActionControlTool(
     if (!plan) return { status: 404, body: { error: "Action plan not found", code: "PLAN_NOT_FOUND" } };
     const report = await buildActionDryRunReport(env, { plan, actor });
     return { status: 200, body: report };
+  }
+
+  if (input.toolName === "execute_action_plan") {
+    const planId = String(input.arguments.planId ?? "");
+    const plan = await getActionPlan(env.DB, input.companyId, planId);
+    if (!plan) return { status: 404, body: { error: "Action plan not found", code: "PLAN_NOT_FOUND" } };
+
+    if (plan.status !== "approved") {
+      return {
+        status: 409,
+        body: {
+          error:
+            plan.status === "awaiting_approval"
+              ? "Plan is awaiting organisational approval before execution."
+              : `Plan status ${plan.status} is not executable.`,
+          code: "APPROVAL_REQUIRED",
+          plan: sanitizePlanForClient(plan),
+          workflow: workflowHints(plan),
+        },
+      };
+    }
+
+    const exec = await executeApprovedActionPlan(env, {
+      plan,
+      actor,
+      correlationId: input.correlationId,
+    });
+    const updated = (await getActionPlan(env.DB, input.companyId, planId)) ?? plan;
+    return {
+      status: exec.ok ? 200 : 409,
+      body: {
+        ...sanitizePlanForClient(updated),
+        executionResult: exec,
+        workflow: workflowHints(updated),
+      },
+    };
   }
 
   if (input.toolName === "list_pending_actions") {
@@ -175,9 +212,16 @@ export async function executeActionControlTool(
         blockReason: result.blockReason ?? null,
         executionResult,
         dryRun,
+        workflow: workflowHints(result.plan),
         message: result.executionBlocked
           ? "Plan confirmed. Execution blocked — financial writes disabled in production."
-          : "Plan confirmed and executed.",
+          : result.plan.status === "awaiting_approval"
+            ? "Plan confirmed. Awaiting separate organisational approval from a director/admin via the INFRA portal before execution."
+            : result.plan.status === "approved" && executionResult
+              ? "Plan confirmed and executed."
+              : result.plan.status === "approved"
+                ? "Plan confirmed and approved. Call execute_action_plan to create the Xero draft invoice."
+                : "Plan confirmed.",
       },
     };
   }
@@ -266,10 +310,18 @@ export async function executeActionControlTool(
             quantity: number;
             unitAmount: number;
             accountCode?: string;
+            taxType?: string;
           }>)
         : [],
       reference: input.arguments.reference ? String(input.arguments.reference) : undefined,
-      date: input.arguments.date ? String(input.arguments.date) : undefined,
+      invoiceDate: input.arguments.invoiceDate
+        ? String(input.arguments.invoiceDate)
+        : input.arguments.date
+          ? String(input.arguments.date)
+          : undefined,
+      dueDate: input.arguments.dueDate ? String(input.arguments.dueDate) : undefined,
+      taxTreatment: input.arguments.taxTreatment ? String(input.arguments.taxTreatment) : undefined,
+      taxType: input.arguments.taxType ? String(input.arguments.taxType) : undefined,
     });
     const { plan, confirmationToken } = await createActionPlan(env.DB, {
       companyId: input.companyId,
@@ -291,8 +343,10 @@ export async function executeActionControlTool(
       body: {
         ...sanitizePlanForClient(plan),
         confirmationToken,
+        review: planned.review ?? null,
         permission: permission.reasonCode,
         writesEnabled: FINANCIAL_WRITES_ENABLED,
+        workflow: workflowHints(plan),
       },
     };
   }
@@ -349,7 +403,32 @@ export async function executeActionControlTool(
   return { status: 400, body: { error: "Unknown action control tool", code: "UNKNOWN_TOOL" } };
 }
 
+function workflowHints(plan: Awaited<ReturnType<typeof getActionPlan>> & object) {
+  const approvalRequired = plan.approvalStatus === "pending";
+  return {
+    approvalRequired,
+    confirmationStatus: plan.confirmationStatus,
+    approvalStatus: plan.approvalStatus,
+    planStatus: plan.status,
+    nextStep:
+      plan.confirmationStatus === "awaiting"
+        ? "Call confirm_action_plan with confirmationToken."
+        : plan.approvalStatus === "pending"
+          ? "A director or company admin must approve this plan in the INFRA portal. After approval, call execute_action_plan or wait for portal auto-execution."
+          : plan.status === "approved"
+            ? "Call execute_action_plan to create the Xero draft invoice."
+            : plan.status === "completed"
+              ? "Execution complete. Use get_action_plan to read invoice number."
+              : null,
+    portalApprovalPath: approvalRequired
+      ? "POST /api/companies/{slug}/actions/{planId}/approve (authenticated director/admin — not available to ChatGPT service identity)"
+      : null,
+  };
+}
+
 function sanitizePlanForClient(plan: Awaited<ReturnType<typeof getActionPlan>> & object) {
+  const draftReview =
+    plan.requestedAction === "xero.invoices.create" ? draftInvoiceReviewFromPlan(plan).review : null;
   return {
     planId: plan.id,
     status: plan.status,
@@ -357,6 +436,7 @@ function sanitizePlanForClient(plan: Awaited<ReturnType<typeof getActionPlan>> &
     provider: plan.provider,
     summary: plan.summary,
     targets: plan.targets,
+    review: draftReview,
     financialImpact: plan.financialImpact,
     permission: plan.permissionDecision?.reasonCode ?? null,
     confirmationStatus: plan.confirmationStatus,

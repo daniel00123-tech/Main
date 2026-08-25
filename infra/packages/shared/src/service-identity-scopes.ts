@@ -17,6 +17,7 @@ export const XERO_ACTION_SERVICE_SCOPES = [
   "xero.action.plan",
   "xero.action.read",
   "xero.action.confirm",
+  "xero.action.execute",
   "xero.action.cancel",
   "xero.action.list",
 ] as const;

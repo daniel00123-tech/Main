@@ -13,6 +13,13 @@ import { listConnectorInstances, getConnectorInstance } from "../control-plane";
 import { isSalesTransactionType } from "@infra/xero-core";
 import { fingerprintTargets } from "./action-engine";
 import { resolveXeroContactForDraftInvoice } from "./xero-contact-resolve";
+import { resolveXeroTaxTypeForDraftInvoice } from "@infra/xero-core";
+import {
+  buildDraftInvoiceProposedState,
+  buildDraftInvoiceReviewSummary,
+  normalizeDraftInvoicePlanInput,
+  type DraftInvoiceLineInput,
+} from "./draft-invoice-plan";
 
 type XeroInvoiceRow = {
   InvoiceID?: string;
@@ -191,10 +198,19 @@ export async function planXeroDraftInvoice(input: {
   actor: string;
   contactId?: string;
   contactName?: string;
-  lineItems: Array<{ description: string; quantity: number; unitAmount: number; accountCode?: string }>;
+  lineItems: DraftInvoiceLineInput[];
   reference?: string;
+  invoiceDate?: string;
+  dueDate?: string;
   date?: string;
-}): Promise<{ targets: ActionTarget[]; summary: string; financialImpact: FinancialImpact }> {
+  taxTreatment?: string;
+  taxType?: string;
+}): Promise<{
+  targets: ActionTarget[];
+  summary: string;
+  financialImpact: FinancialImpact;
+  review?: ReturnType<typeof buildDraftInvoiceReviewSummary>;
+}> {
   const token = await resolveXeroToken(input.env, input.companyId, input.instanceId, input.actor);
   if (!token.ok) throw new Error(token.body.error);
 
@@ -231,28 +247,70 @@ export async function planXeroDraftInvoice(input: {
   }
 
   const { contactId, contactName } = resolved.contact;
+  const primaryAccountCode = input.lineItems[0]?.accountCode;
+  let resolvedTax: { taxType: string; label: string; source: string };
+  try {
+    resolvedTax = await resolveXeroTaxTypeForDraftInvoice(
+      {
+        accessToken: token.accessToken,
+        tenantId: token.tenantId,
+        apiBaseUrl: XERO_AUTH.apiBaseUrl,
+      },
+      {
+        taxTreatment: input.taxTreatment,
+        taxType: input.taxType,
+        accountCode: primaryAccountCode,
+      },
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      targets: [
+        {
+          targetId: contactId,
+          targetType: "draft_invoice",
+          humanRef: contactName,
+          currentState: { contactId, contactName },
+          proposedState: {},
+          validation: "reference_required",
+          validationDetail: message,
+        },
+      ],
+      summary: "Draft invoice plan failed — tax treatment could not be resolved.",
+      financialImpact: { currencyCode: null, totalAmount: null, direction: "debit", itemCount: 0 },
+    };
+  }
 
-  const totalAmount = input.lineItems.reduce(
-    (sum, row) => sum + Number(row.quantity) * Number(row.unitAmount),
-    0,
-  );
+  const lineItems = input.lineItems.map((row) => ({
+    ...row,
+    taxType: row.taxType ?? resolvedTax.taxType,
+  }));
+
+  const normalized = normalizeDraftInvoicePlanInput({
+    contactId,
+    contactName,
+    lineItems,
+    reference: input.reference,
+    invoiceDate: input.invoiceDate ?? input.date,
+    dueDate: input.dueDate,
+    taxTreatment: input.taxTreatment,
+    taxType: resolvedTax.taxType,
+    taxTypeLabel: resolvedTax.label,
+  });
+
+  const proposedState = buildDraftInvoiceProposedState(normalized);
+  const totalAmount = Number(proposedState.total ?? 0);
   const target: ActionTarget = {
     targetId: contactId,
     targetType: "draft_invoice",
     humanRef: contactName,
     currentState: { contactId, contactName },
-    proposedState: {
-      action: "create_draft_invoice",
-      type: "ACCREC",
-      status: "DRAFT",
-      contactId,
-      lineItems: input.lineItems,
-      reference: input.reference ?? null,
-      date: input.date ?? null,
-    },
+    proposedState,
     amount: totalAmount,
     validation: "valid",
   };
+
+  const review = buildDraftInvoiceReviewSummary(proposedState);
 
   return {
     targets: [target],
@@ -263,6 +321,7 @@ export async function planXeroDraftInvoice(input: {
       direction: "debit",
       itemCount: 1,
     },
+    review,
   };
 }
 

@@ -9,32 +9,16 @@ import {
   extractInvoiceNumberFromMcpResult,
 } from "./xero-write-verification";
 
+import {
+  draftInvoicePayloadFromProposedState,
+} from "./draft-invoice-plan";
+
 export type CompanyMcpWriteResult =
   | { ok: true; result: Record<string, unknown>; invoiceId: string | null; invoiceNumber: string | null }
   | { ok: false; code: string; message: string; httpStatus?: number };
 
-function draftInvoicePayloadFromPlan(plan: ActionPlanRecord): {
-  contactId: string;
-  lineItems: Array<{ description: string; quantity: number; unitAmount: number; accountCode?: string }>;
-  reference?: string;
-  date?: string;
-} {
-  const target = plan.targets[0];
-  if (!target) throw new Error("Plan has no targets.");
-  const proposed = target.proposedState ?? {};
-  return {
-    contactId: String(proposed.contactId ?? target.targetId),
-    lineItems: Array.isArray(proposed.lineItems)
-      ? (proposed.lineItems as Array<{
-          description: string;
-          quantity: number;
-          unitAmount: number;
-          accountCode?: string;
-        }>)
-      : [],
-    reference: proposed.reference ? String(proposed.reference) : undefined,
-    date: proposed.date ? String(proposed.date) : undefined,
-  };
+function draftInvoicePayloadFromPlan(plan: ActionPlanRecord) {
+  return draftInvoicePayloadFromProposedState(plan);
 }
 
 export async function executeXeroDraftInvoiceViaCompanyMcp(

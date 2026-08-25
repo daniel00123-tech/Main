@@ -5,11 +5,20 @@
 
 import type { XeroClient } from "../client";
 
+export type DraftInvoiceLineItem = {
+  description: string;
+  quantity: number;
+  unitAmount: number;
+  accountCode?: string;
+  taxType?: string;
+};
+
 export type DraftInvoiceInput = {
   contactId: string;
-  lineItems: Array<{ description: string; quantity: number; unitAmount: number; accountCode?: string }>;
+  lineItems: DraftInvoiceLineItem[];
   reference?: string;
   date?: string;
+  dueDate?: string;
 };
 
 export async function createDraftInvoice(client: XeroClient, input: DraftInvoiceInput) {
@@ -18,9 +27,16 @@ export async function createDraftInvoice(client: XeroClient, input: DraftInvoice
       {
         Type: "ACCREC",
         Contact: { ContactID: input.contactId },
-        LineItems: input.lineItems,
+        LineItems: input.lineItems.map((row) => ({
+          Description: row.description,
+          Quantity: row.quantity,
+          UnitAmount: row.unitAmount,
+          AccountCode: row.accountCode,
+          TaxType: row.taxType,
+        })),
         Reference: input.reference,
         Date: input.date,
+        DueDate: input.dueDate,
         Status: "DRAFT",
       },
     ],
