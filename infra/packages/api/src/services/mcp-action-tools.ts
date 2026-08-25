@@ -8,6 +8,7 @@ export const ACTION_CONTROL_TOOLS = [
   "confirm_action_plan",
   "cancel_action_plan",
   "list_pending_actions",
+  "dry_run_action_plan",
   "plan_xero_credit_invoices",
   "plan_xero_draft_invoice",
   "plan_xero_remittance_allocation",
@@ -67,6 +68,18 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
       properties: {
         limit: { type: "number", minimum: 1, maximum: 50 },
       },
+      additionalProperties: false,
+    },
+  },
+  dry_run_action_plan: {
+    description:
+      "Dry-run an action plan against live Xero/INFRA state without mutating accounting records. Returns READY TO EXECUTE readiness including OAuth scope and execution gate status.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        planId: { type: "string", minLength: 1 },
+      },
+      required: ["planId"],
       additionalProperties: false,
     },
   },

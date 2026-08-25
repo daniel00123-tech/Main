@@ -8,7 +8,6 @@ import {
   listActionPlans,
   isPlanStale,
   markPlanStale,
-  fingerprintTargets,
 } from "./action-engine";
 import { evaluateActionPermission } from "./permission-engine";
 import {
@@ -20,7 +19,9 @@ import {
 } from "./xero-planner";
 import { FINANCIAL_WRITES_ENABLED } from "../approvals";
 import { xeroToolContract } from "../xero-tools";
-import { missingScopesForTier, tierFromGrantedScopes } from "@infra/shared";
+import { missingScopesForTier, XERO_SCOPES_DRAFT_INVOICE } from "@infra/shared";
+import { buildActionDryRunReport } from "./dry-run";
+import { getExecutionEvidence } from "./action-executor";
 
 function actorLabel(actor: GatewayActor): string {
   return actor.type === "service" ? actor.identity.name : actor.user.email;
@@ -45,14 +46,23 @@ export async function executeActionControlTool(
     correlationId?: string;
     interactionId?: string;
   },
-): Promise<{ status: 200 | 400 | 403 | 404 | 409; body: Record<string, unknown> }> {
+): Promise<{ status: 200 | 400 | 403 | 404 | 409 | 503; body: Record<string, unknown> }> {
   const actor = actorLabel(input.actor);
 
   if (input.toolName === "get_action_plan") {
     const planId = String(input.arguments.planId ?? "");
     const plan = await getActionPlan(env.DB, input.companyId, planId);
     if (!plan) return { status: 404, body: { error: "Action plan not found", code: "PLAN_NOT_FOUND" } };
-    return { status: 200, body: sanitizePlanForClient(plan) };
+    const execution = await getExecutionEvidence(env, input.companyId, planId);
+    return { status: 200, body: { ...sanitizePlanForClient(plan), execution } };
+  }
+
+  if (input.toolName === "dry_run_action_plan") {
+    const planId = String(input.arguments.planId ?? "");
+    const plan = await getActionPlan(env.DB, input.companyId, planId);
+    if (!plan) return { status: 404, body: { error: "Action plan not found", code: "PLAN_NOT_FOUND" } };
+    const report = await buildActionDryRunReport(env, { plan, actor });
+    return { status: 200, body: report };
   }
 
   if (input.toolName === "list_pending_actions") {
@@ -127,6 +137,8 @@ export async function executeActionControlTool(
     if (!result.ok) return { status: 409, body: { error: result.message, code: result.code } };
 
     let executionResult: Record<string, unknown> | null = null;
+    let dryRun = await buildActionDryRunReport(env, { plan: result.plan, actor });
+
     if (!result.executionBlocked && result.plan.status === "approved") {
       const { executeApprovedActionPlan } = await import("./action-executor");
       const exec = await executeApprovedActionPlan(env, {
@@ -135,6 +147,10 @@ export async function executeActionControlTool(
         correlationId: input.correlationId,
       });
       executionResult = exec as Record<string, unknown>;
+      dryRun = await buildActionDryRunReport(env, {
+        plan: (await getActionPlan(env.DB, input.companyId, planId)) ?? result.plan,
+        actor,
+      });
     }
 
     return {
@@ -144,9 +160,10 @@ export async function executeActionControlTool(
         executionBlocked: result.executionBlocked,
         blockReason: result.blockReason ?? null,
         executionResult,
+        dryRun,
         message: result.executionBlocked
-          ? "Plan confirmed but financial writes are disabled in production."
-          : "Plan confirmed and ready for execution.",
+          ? "Plan confirmed. Execution blocked — financial writes disabled in production."
+          : "Plan confirmed and executed.",
       },
     };
   }
@@ -169,7 +186,7 @@ export async function executeActionControlTool(
       riskClass: "financial_action",
       companyStatus: "active",
       connectorConnected: true,
-      connectorAuthStatus: instance.authStatus,
+      connectorAuthStatus: instance.authStatus ?? "unknown",
       grantedScopes: grantedScopes(instance),
       requiredScopes: missingScopesForTier(grantedScopes(instance), "write").length
         ? missingScopesForTier(grantedScopes(instance), "write")
@@ -217,8 +234,9 @@ export async function executeActionControlTool(
       riskClass: "financial_action",
       companyStatus: "active",
       connectorConnected: true,
-      connectorAuthStatus: instance.authStatus,
+      connectorAuthStatus: instance.authStatus ?? "unknown",
       grantedScopes: grantedScopes(instance),
+      requiredScopes: [...XERO_SCOPES_DRAFT_INVOICE],
       flags: { financialWritesEnabled: FINANCIAL_WRITES_ENABLED, writesEnabled: FINANCIAL_WRITES_ENABLED },
     });
     const planned = await planXeroDraftInvoice({
@@ -270,7 +288,7 @@ export async function executeActionControlTool(
       riskClass: "financial_action",
       companyStatus: "active",
       connectorConnected: true,
-      connectorAuthStatus: instance.authStatus,
+      connectorAuthStatus: instance.authStatus ?? "unknown",
       grantedScopes: grantedScopes(instance),
       flags: { financialWritesEnabled: FINANCIAL_WRITES_ENABLED, writesEnabled: FINANCIAL_WRITES_ENABLED },
     });

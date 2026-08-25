@@ -36,7 +36,7 @@ const xeroBundle = fs.readFileSync(xeroBundlePath, "utf8");
 let base = fs.readFileSync(basePath, "utf8");
 
 const injectCall =
-  "  registerXeroReadTools(server, env2, external_exports);\n  return server;\n}\n__name(createCaddingtonMcpServer";
+  "  registerXeroReadTools(server, env2, external_exports);\n  registerXeroWriteTools(server, env2, external_exports);\n  return server;\n}\n__name(createCaddingtonMcpServer";
 const fetchPatchTarget =
   "      const handler = createStatelessMcpHandler(\n        () => createCaddingtonMcpServer(env2),\n        { route: \"/mcp\", legacy: \"stateless\" }\n      );\n      return handler(request, env2, ctx);";
 const fetchPatchReplacement = `      const xeroContextHeader = request.headers.get("X-Infra-Xero-Context");
@@ -69,9 +69,11 @@ if (!base.includes('request.headers.get("X-Infra-Xero-Context")')) {
 
 const inlinedXero = xeroBundle
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*\};?\s*/g, "")
-  .replace(/\bfunction registerXeroReadTools\b/g, "function __registerXeroReadTools");
+  .replace(/\bexport\s+\{\s*registerXeroWriteTools\s+as\s+__registerXeroWriteTools\s*\};?\s*/g, "")
+  .replace(/\bfunction registerXeroReadTools\b/g, "function __registerXeroReadTools")
+  .replace(/\bfunction registerXeroWriteTools\b/g, "function __registerXeroWriteTools");
 
-const patched = `${base}\n${inlinedXero}\nfunction registerXeroReadTools(server, env2, external_exports) {\n  return __registerXeroReadTools(server, env2, external_exports);\n}\n__name(registerXeroReadTools, "registerXeroReadTools");\n`;
+const patched = `${base}\n${inlinedXero}\nfunction registerXeroReadTools(server, env2, external_exports) {\n  return __registerXeroReadTools(server, env2, external_exports);\n}\n__name(registerXeroReadTools, "registerXeroReadTools");\nfunction registerXeroWriteTools(server, env2, external_exports) {\n  return __registerXeroWriteTools(server, env2, external_exports);\n}\n__name(registerXeroWriteTools, "registerXeroWriteTools");\n`;
 
 fs.writeFileSync(outPath, patched);
 console.log(`Built ${outPath} (${patched.length} bytes)`);

@@ -1,4 +1,3 @@
-import { createHash, randomBytes } from "node:crypto";
 import type {
   ActionPlanCreateInput,
   ActionPlanRecord,
@@ -14,7 +13,12 @@ import { newId, nowIso } from "../../db/mappers";
 import { recordAuditEvent } from "../control-plane";
 import { FINANCIAL_WRITES_ENABLED } from "../approvals";
 
-function fingerprintTargets(targets: ActionTarget[]): string {
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function fingerprintTargets(targets: ActionTarget[]): Promise<string> {
   const payload = targets.map((target) => ({
     targetId: target.targetId,
     targetType: target.targetType,
@@ -23,15 +27,17 @@ function fingerprintTargets(targets: ActionTarget[]): string {
     validation: target.validation,
     proposed: target.proposedState,
   }));
-  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  return sha256Hex(JSON.stringify(payload));
 }
 
-function hashConfirmationToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
+async function hashConfirmationToken(token: string): Promise<string> {
+  return sha256Hex(token);
 }
 
 export function generateConfirmationToken(): string {
-  return randomBytes(24).toString("hex");
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export async function findActionPlanByIdempotency(
@@ -96,7 +102,7 @@ export async function createActionPlan(
   const expiresAt = new Date(
     Date.now() + (input.expiresInMinutes ?? ACTION_PLAN_DEFAULT_TTL_MINUTES) * 60_000,
   ).toISOString();
-  const planFingerprint = fingerprintTargets(input.targets);
+  const planFingerprint = await fingerprintTargets(input.targets);
   const confirmationToken = input.permissionDecision.requiresConfirmation
     ? generateConfirmationToken()
     : null;
@@ -151,7 +157,7 @@ export async function createActionPlan(
       JSON.stringify(input.permissionDecision),
       input.financialImpact ? JSON.stringify(input.financialImpact) : null,
       confirmationStatus,
-      confirmationToken ? hashConfirmationToken(confirmationToken) : null,
+      confirmationToken ? await hashConfirmationToken(confirmationToken) : null,
       planFingerprint,
       expiresAt,
     )
@@ -220,7 +226,7 @@ export async function confirmActionPlan(
   const expectedHash = row?.confirmation_token_hash ? String(row.confirmation_token_hash) : null;
   if (expectedHash) {
     const provided = input.confirmationToken?.trim();
-    if (!provided || hashConfirmationToken(provided) !== expectedHash) {
+    if (!provided || (await hashConfirmationToken(provided)) !== expectedHash) {
       return { ok: false, code: "CONFIRMATION_INVALID", message: "Invalid confirmation token." };
     }
   }

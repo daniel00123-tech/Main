@@ -22,6 +22,39 @@ const PENDING_STATUSES = new Set([
   "executing",
 ]);
 
+type DryRunReport = {
+  readyToExecute?: boolean;
+  headline?: string;
+  organisation?: string | null;
+  actionLabel?: string;
+  type?: string | null;
+  contact?: { id: string; name: string | null } | null;
+  amount?: number | null;
+  currencyCode?: string | null;
+  reference?: string | null;
+  description?: string | null;
+  risk?: string;
+  confirmation?: string;
+  approval?: string;
+  oauthWriteScope?: { status?: string; missing?: string[]; required?: string[] };
+  executionGate?: { blocked?: boolean; reason?: string | null };
+  preflightChecks?: Array<{ name: string; ok: boolean; detail?: string }>;
+};
+
+type ExecutionEvidence = {
+  id?: string;
+  status?: string;
+  verificationStatus?: string | null;
+  xeroResourceId?: string | null;
+  humanReference?: string | null;
+  amount?: number | null;
+  currencyCode?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+};
+
 function humanAction(action: string): string {
   return action.replace(/^xero\./, "Xero · ").replace(/\./g, " · ");
 }
@@ -33,6 +66,10 @@ export default function PortalActionsPage() {
   const [plansError, setPlansError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"pending" | "all">("pending");
+  const [dryRun, setDryRun] = useState<DryRunReport | null>(null);
+  const [dryRunLoading, setDryRunLoading] = useState(false);
+  const [execution, setExecution] = useState<ExecutionEvidence | null>(null);
+  const [executionLoading, setExecutionLoading] = useState(false);
 
   const loadPlans = useCallback(async () => {
     if (!company) return;
@@ -58,6 +95,48 @@ export default function PortalActionsPage() {
   }, [plans, filter]);
 
   const selected = filtered.find((plan) => plan.id === selectedId) ?? filtered[0] ?? null;
+
+  useEffect(() => {
+    if (!company || !selected) {
+      setDryRun(null);
+      setExecution(null);
+      return;
+    }
+
+    let cancelled = false;
+    setDryRunLoading(true);
+    setExecutionLoading(true);
+    setDryRun(null);
+    setExecution(null);
+
+    void api
+      .getCompanyActionDryRun(company.slug, selected.id)
+      .then((response) => {
+        if (!cancelled) setDryRun(response.report as DryRunReport);
+      })
+      .catch(() => {
+        if (!cancelled) setDryRun(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDryRunLoading(false);
+      });
+
+    void api
+      .getCompanyActionExecution(company.slug, selected.id)
+      .then((response) => {
+        if (!cancelled) setExecution((response.execution as ExecutionEvidence) ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setExecution(null);
+      })
+      .finally(() => {
+        if (!cancelled) setExecutionLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [company, selected?.id]);
 
   if (loading) return <LoadingState />;
   if (error || !company) {
@@ -132,15 +211,68 @@ export default function PortalActionsPage() {
                 <KeyValue label="Source" value={selected.sourceClient ?? "—"} />
                 <KeyValue label="Confirmation" value={selected.confirmationStatus} />
                 <KeyValue label="Approval" value={selected.approvalStatus} />
+                <KeyValue label="Risk" value={selected.riskClass.replace(/_/g, " ")} />
                 {selected.financialImpact ? (
                   <KeyValue
-                    label="Financial impact"
+                    label="Amount"
                     value={`${selected.financialImpact.totalAmount ?? "—"} ${selected.financialImpact.currencyCode ?? ""}`.trim()}
                   />
                 ) : null}
                 {selected.expiresAt ? (
                   <KeyValue label="Expires" value={formatRelativeTime(selected.expiresAt)} />
                 ) : null}
+
+                <h4>Execution readiness</h4>
+                {dryRunLoading ? (
+                  <p className="muted small">Checking live readiness…</p>
+                ) : dryRun ? (
+                  <>
+                    <KeyValue label="Readiness" value={dryRun.headline ?? "—"} />
+                    <KeyValue label="Xero organisation" value={dryRun.organisation ?? "—"} />
+                    <KeyValue label="Action type" value={dryRun.type ?? "—"} />
+                    {dryRun.contact ? (
+                      <KeyValue
+                        label="Contact"
+                        value={`${dryRun.contact.name ?? "Unknown"} (${dryRun.contact.id})`}
+                      />
+                    ) : null}
+                    {dryRun.reference ? <KeyValue label="Reference" value={dryRun.reference} /> : null}
+                    {dryRun.description ? <KeyValue label="Description" value={dryRun.description} /> : null}
+                    <KeyValue
+                      label="OAuth write scope"
+                      value={
+                        dryRun.oauthWriteScope?.status === "ready"
+                          ? "Ready"
+                          : `Missing: ${(dryRun.oauthWriteScope?.missing ?? []).join(", ") || "accounting.invoices"}`
+                      }
+                    />
+                    <KeyValue
+                      label="Execution gate"
+                      value={
+                        dryRun.executionGate?.blocked
+                          ? dryRun.executionGate.reason ?? "Blocked"
+                          : "Open"
+                      }
+                    />
+                    <KeyValue label="Confirmation required" value={dryRun.confirmation ?? "—"} />
+                    <KeyValue label="Approval required" value={dryRun.approval ?? "—"} />
+                    {dryRun.preflightChecks?.length ? (
+                      <>
+                        <h5>Preflight checks</h5>
+                        <ul className="plain-list">
+                          {dryRun.preflightChecks.map((check) => (
+                            <li key={check.name}>
+                              <strong>{check.name}</strong> — {check.ok ? "OK" : "FAIL"}
+                              {check.detail ? <span className="muted small"> · {check.detail}</span> : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="muted small">Dry-run unavailable for this plan.</p>
+                )}
 
                 <h4>Targets ({selected.targets.length})</h4>
                 <ul className="plain-list">
@@ -165,6 +297,34 @@ export default function PortalActionsPage() {
                     />
                   </>
                 ) : null}
+
+                <h4>Execution evidence</h4>
+                {executionLoading ? (
+                  <p className="muted small">Loading execution record…</p>
+                ) : execution?.id ? (
+                  <>
+                    <KeyValue label="Execution ID" value={execution.id} />
+                    <KeyValue label="Execution status" value={execution.status ?? "—"} />
+                    <KeyValue label="Verification" value={execution.verificationStatus ?? "—"} />
+                    {execution.xeroResourceId ? (
+                      <KeyValue label="Xero record ID" value={execution.xeroResourceId} />
+                    ) : null}
+                    {execution.humanReference ? (
+                      <KeyValue label="Xero reference" value={execution.humanReference} />
+                    ) : null}
+                    {execution.amount != null ? (
+                      <KeyValue
+                        label="Result amount"
+                        value={`${execution.amount} ${execution.currencyCode ?? ""}`.trim()}
+                      />
+                    ) : null}
+                    {execution.errorCode ? (
+                      <KeyValue label="Error" value={`${execution.errorCode}: ${execution.errorMessage ?? ""}`} />
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="muted small">No execution attempted yet.</p>
+                )}
               </div>
             ) : null}
           </div>

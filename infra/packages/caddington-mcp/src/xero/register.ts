@@ -1,4 +1,4 @@
-import { XeroApiError, XeroClient, xeroReadTools } from "@infra/xero-core";
+import { XeroApiError, XeroClient, xeroReadTools, xeroWriteTools } from "@infra/xero-core";
 
 export type CaddingtonMcpEnv = {
   MCP_AUTH_TOKEN?: string;
@@ -481,6 +481,55 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
           toDate: xeroArgs.toDate as string | undefined,
           limit: xeroArgs.limit as number | undefined,
         }),
+        args,
+      ),
+  );
+}
+
+/** Write tools — callable only via INFRA Action Engine (hidden from ChatGPT tools/list). */
+export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcpEnv, z: ZodLike) {
+  const zf: ZodField = z;
+
+  server.registerTool(
+    "xero_create_draft_invoice",
+    {
+      description:
+        "Create a draft ACCREC sales invoice in Xero. INFRA Action Engine only — not for direct AI execution.",
+      inputSchema: {
+        contactId: zf.string().min(1).describe("Xero ContactID."),
+        lineItems: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              description: { type: "string" },
+              quantity: { type: "number" },
+              unitAmount: { type: "number" },
+              accountCode: { type: "string" },
+            },
+            required: ["description", "quantity", "unitAmount"],
+          },
+          minItems: 1,
+        },
+        reference: zf.string().optional(),
+        date: zf.string().optional().describe("ISO date YYYY-MM-DD."),
+      },
+    },
+    async (args) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
+          xeroWriteTools.createDraftInvoice(client, {
+            contactId: String(xeroArgs.contactId),
+            lineItems: (xeroArgs.lineItems as Array<{
+              description: string;
+              quantity: number;
+              unitAmount: number;
+              accountCode?: string;
+            }>) ?? [],
+            reference: xeroArgs.reference as string | undefined,
+            date: xeroArgs.date as string | undefined,
+          }),
         args,
       ),
   );

@@ -207,7 +207,15 @@ export const api = {
     return fetchJson<{ plans: ActionPlanRecord[] }>(`/api/companies/${slug}/actions${query}`);
   },
   getCompanyAction: (slug: string, planId: string) =>
-    fetchJson<{ plan: ActionPlanRecord }>(`/api/companies/${slug}/actions/${planId}`),
+    fetchJson<{ plan: ActionPlanRecord; execution?: unknown }>(
+      `/api/companies/${slug}/actions/${planId}`,
+    ),
+  getCompanyActionDryRun: (slug: string, planId: string) =>
+    fetchJson<{ report: Record<string, unknown> }>(
+      `/api/companies/${slug}/actions/${planId}/dry-run`,
+    ),
+  getCompanyActionExecution: (slug: string, planId: string) =>
+    fetchJson<{ execution: unknown }>(`/api/companies/${slug}/actions/${planId}/execution`),
   getCompanyUsage: (slug: string, limit = 50) =>
     fetchJson<CompanyUsageResponse>(
       `/api/companies/${slug}/usage?limit=${encodeURIComponent(String(limit))}`,

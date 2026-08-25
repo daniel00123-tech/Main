@@ -336,6 +336,28 @@ export async function executeGatewayRequest(
   });
 
   if (isXeroToolName(input.toolName)) {
+    if (isXeroWriteToolName(input.toolName)) {
+      await recordAuditEvent(env.DB, {
+        companyId: input.companyId,
+        eventType: "permission.denied",
+        actor: actorLabel,
+        resourceType: "gateway",
+        resourceId: input.toolName,
+        detail: {
+          correlationId,
+          requestId,
+          reason: "action_engine_required",
+          toolName: input.toolName,
+        },
+      });
+      return {
+        status: 403 as const,
+        error: "Financial writes must use the INFRA Action Engine (plan → confirm → execute).",
+        correlationId,
+        requestId,
+        code: "ACTION_ENGINE_REQUIRED",
+      };
+    }
     const prepared = await prepareXeroMcpExecution({
       env,
       companyId: input.companyId,

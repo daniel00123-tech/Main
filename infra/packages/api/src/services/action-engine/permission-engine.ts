@@ -18,8 +18,23 @@ export type PermissionEvaluationInput = {
   grantedScopes?: string[];
   requiredScopes?: string[];
   identityStatus?: string;
+  /** When director/company_admin, separate organisational approval is not required for confirmation-only flows. */
+  actorRole?: string;
   flags?: Partial<WriteFeatureFlags>;
 };
+
+const DIRECTOR_ROLES = new Set(["director", "company_admin"]);
+
+function separateApprovalRequired(input: {
+  isFinancial: boolean;
+  riskClass: RiskClassification;
+  actorRole?: string;
+}): boolean {
+  if (!input.isFinancial && input.riskClass !== "delete") return false;
+  if (input.riskClass === "delete") return true;
+  if (input.actorRole && DIRECTOR_ROLES.has(input.actorRole)) return false;
+  return true;
+}
 
 export function evaluateActionPermission(
   input: PermissionEvaluationInput,
@@ -98,18 +113,19 @@ export function evaluateActionPermission(
 
   if (isFinancial || isWrite || riskClass === "delete") {
     if (!flags.financialWritesEnabled && !flags.writesEnabled) {
+      const needsSeparateApproval = separateApprovalRequired({ isFinancial, riskClass, actorRole: input.actorRole });
       return {
         ...base,
         allowed: false,
         reasonCode: "writes_disabled",
         requiresConfirmation: true,
-        requiresApproval: isFinancial,
+        requiresApproval: needsSeparateApproval,
         message: customerConnectorError(CONNECTOR_ERROR_CODES.FINANCIAL_WRITES_DISABLED).error,
       };
     }
   }
 
-  const requiresApproval = isFinancial || riskClass === "delete";
+  const requiresApproval = separateApprovalRequired({ isFinancial, riskClass, actorRole: input.actorRole });
   const requiresConfirmation = isFinancial || isWrite;
 
   return {
@@ -119,9 +135,9 @@ export function evaluateActionPermission(
     requiresConfirmation,
     requiresApproval,
     message: requiresApproval
-      ? "Director approval required before execution."
+      ? "Separate organisational approval required before execution."
       : requiresConfirmation
-        ? "Human confirmation required before execution."
+        ? "User confirmation required before execution."
         : undefined,
   };
 }

@@ -258,16 +258,16 @@ describe("permission engine", () => {
 });
 
 describe("action plan fingerprint", () => {
-  it("changes when proposed state changes", () => {
+  it("changes when proposed state changes", async () => {
     const base: ActionTarget[] = [validTarget];
     const changed: ActionTarget[] = [
       { ...validTarget, proposedState: { creditAmount: 50 } },
     ];
-    expect(fingerprintTargets(base)).not.toBe(fingerprintTargets(changed));
+    expect(await fingerprintTargets(base)).not.toBe(await fingerprintTargets(changed));
   });
 
-  it("detects stale plans", () => {
-    const fp = fingerprintTargets([validTarget]);
+  it("detects stale plans", async () => {
+    const fp = await fingerprintTargets([validTarget]);
     expect(isPlanStale({ planFingerprint: fp } as never, fp)).toBe(false);
     expect(isPlanStale({ planFingerprint: fp } as never, "different")).toBe(true);
   });

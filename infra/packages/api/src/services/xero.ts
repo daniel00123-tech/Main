@@ -775,7 +775,7 @@ export async function getValidXeroAccessToken(input: {
   companyId: string;
   instanceId: string;
   actor: string;
-  reason: "test" | "token_refresh" | "mcp_resolve";
+  reason: "test" | "token_refresh" | "mcp_resolve" | "action_execute" | "action_verify" | "dry_run";
 }): Promise<
   | { ok: true; accessToken: string; tenantId: string; payload: XeroCredentialPayload }
   | { ok: false; status: 403 | 404 | 409; body: ReturnType<typeof customerConnectorError> }

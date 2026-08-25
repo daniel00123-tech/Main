@@ -1,3 +1,6 @@
-import { registerXeroReadTools as __registerXeroReadTools } from "./register";
+import {
+  registerXeroReadTools as __registerXeroReadTools,
+  registerXeroWriteTools as __registerXeroWriteTools,
+} from "./register";
 
-export { __registerXeroReadTools };
+export { __registerXeroReadTools, __registerXeroWriteTools };

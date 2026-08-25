@@ -375,7 +375,7 @@ export async function revalidateXeroPlanTargets(input: {
       const invoice = await fetchInvoice(xeroToken, { invoiceId: target.targetId });
       targets.push(validateSalesInvoice(invoice));
     }
-    return { targets, fingerprint: fingerprintTargets(targets) };
+    return { targets, fingerprint: await fingerprintTargets(targets) };
   }
 
   if (input.requestedAction === "xero.invoices.create") {
@@ -406,7 +406,7 @@ export async function revalidateXeroPlanTargets(input: {
           validationDetail: "Contact not found in Xero.",
         };
     const targets = [target];
-    return { targets, fingerprint: fingerprintTargets(targets) };
+    return { targets, fingerprint: await fingerprintTargets(targets) };
   }
 
   if (input.requestedAction === "xero.payments.allocate") {
@@ -433,8 +433,8 @@ export async function revalidateXeroPlanTargets(input: {
         validation: amountDue <= 0 ? "zero_outstanding" : target.validation,
       });
     }
-    return { targets, fingerprint: fingerprintTargets(targets) };
+    return { targets, fingerprint: await fingerprintTargets(targets) };
   }
 
-  return { targets: input.targets, fingerprint: fingerprintTargets(input.targets) };
+  return { targets: input.targets, fingerprint: await fingerprintTargets(input.targets) };
 }

@@ -14,6 +14,8 @@ import {
   rejectActionPlan,
 } from "../services/action-engine/action-engine";
 import { revalidateXeroPlanTargets } from "../services/action-engine/xero-planner";
+import { buildActionDryRunReport } from "../services/action-engine/dry-run";
+import { getExecutionEvidence } from "../services/action-engine/action-executor";
 
 type AppEnv = { Bindings: Env; Variables: AuthVariables };
 
@@ -38,6 +40,27 @@ actionPlans.get("/api/companies/:slug/actions", ...authed, async (c) => {
   const plans = await listActionPlans(c.env.DB, company.id, { limit: 100 });
   const filtered = status ? plans.filter((plan) => plan.status === status) : plans;
   return c.json({ plans: filtered });
+});
+
+actionPlans.get("/api/companies/:slug/actions/:planId/dry-run", ...authed, async (c) => {
+  const company = await resolveCompany(c);
+  if (!company) return c.json({ error: "Company not found or access denied" }, 404);
+  const planId = c.req.param("planId");
+  if (!planId) return c.json({ error: "Plan id required" }, 400);
+  const plan = await getActionPlan(c.env.DB, company.id, planId);
+  if (!plan) return c.json({ error: "Action plan not found" }, 404);
+  const user = c.get("user");
+  const report = await buildActionDryRunReport(c.env, { plan, actor: user.email });
+  return c.json({ report });
+});
+
+actionPlans.get("/api/companies/:slug/actions/:planId/execution", ...authed, async (c) => {
+  const company = await resolveCompany(c);
+  if (!company) return c.json({ error: "Company not found or access denied" }, 404);
+  const planId = c.req.param("planId");
+  if (!planId) return c.json({ error: "Plan id required" }, 400);
+  const execution = await getExecutionEvidence(c.env, company.id, planId);
+  return c.json({ execution });
 });
 
 actionPlans.get("/api/companies/:slug/actions/:planId", ...authed, async (c) => {
