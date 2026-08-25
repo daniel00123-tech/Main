@@ -1,4 +1,4 @@
-import { XeroApiError, XeroClient, xeroReadTools, xeroWriteTools, createDraftInvoiceWithFetch } from "@infra/xero-core";
+import { XeroApiError, XeroClient, xeroReadTools, createDraftInvoiceWithFetch } from "@infra/xero-core";
 
 export type CaddingtonMcpEnv = {
   MCP_AUTH_TOKEN?: string;

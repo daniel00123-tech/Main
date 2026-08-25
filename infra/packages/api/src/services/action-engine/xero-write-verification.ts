@@ -25,6 +25,24 @@ export type VerificationResult =
   | { ok: true; invoice: Record<string, unknown> }
   | { ok: false; code: string; message: string; invoice?: Record<string, unknown> | null };
 
+export function xeroDateToIsoDate(invoice: Record<string, unknown>, field: "DueDate" | "Date"): string | null {
+  const stringField = field === "DueDate" ? "DueDateString" : "DateString";
+  const stringValue = invoice[stringField];
+  if (typeof stringValue === "string" && stringValue.length >= 10) {
+    return stringValue.slice(0, 10);
+  }
+  const raw = invoice[field];
+  if (typeof raw !== "string") return null;
+  const match = /\/Date\((\d+)/.exec(raw);
+  if (match) {
+    return new Date(Number(match[1])).toISOString().slice(0, 10);
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    return raw.slice(0, 10);
+  }
+  return null;
+}
+
 export async function verifyCreatedDraftInvoice(input: {
   env: Env;
   companyId: string;
@@ -123,7 +141,7 @@ export async function verifyCreatedDraftInvoice(input: {
   }
 
   if (input.expected.dueDate) {
-    const due = invoice.DueDate ? String(invoice.DueDate).slice(0, 10) : null;
+    const due = xeroDateToIsoDate(invoice, "DueDate");
     if (due !== input.expected.dueDate) {
       return {
         ok: false,
