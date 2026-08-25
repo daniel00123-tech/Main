@@ -14,6 +14,7 @@ export type TopUpCheckoutStatus =
   | "credited"
   | "failed"
   | "expired"
+  | "partially_refunded"
   | "refunded";
 
 /** Production commercial live mode is blocked until explicit operator approval. */
@@ -41,8 +42,12 @@ export function stripePaymentsAllowed(env: Env): boolean {
   return mode === "live" && STRIPE_LIVE_MODE_ALLOWED;
 }
 
-export function isAllowedTopUpAmountCents(amountCents: number): boolean {
-  return (DEFAULT_TOP_UP_OPTIONS_CENTS as readonly number[]).includes(amountCents);
+export function isAllowedTopUpAmountCents(amountCents: number, env?: Env): boolean {
+  const allowed: number[] = [...DEFAULT_TOP_UP_OPTIONS_CENTS];
+  if (env && isStripeTestModeActive(env)) {
+    allowed.push(100);
+  }
+  return allowed.includes(amountCents);
 }
 
 type CheckoutRow = Record<string, unknown>;
@@ -183,10 +188,12 @@ export async function createTopUpCheckoutIntent(
       stripeMode: StripeMode;
     }
 > {
-  if (!isAllowedTopUpAmountCents(input.amountCents)) {
+  if (!isAllowedTopUpAmountCents(input.amountCents, env)) {
     return {
       configured: false,
-      error: "Invalid top-up amount. Allowed: £10, £25, £50, £100.",
+      error: isStripeTestModeActive(env)
+        ? "Invalid top-up amount. Allowed: £1 (sandbox), £10, £25, £50, £100."
+        : "Invalid top-up amount. Allowed: £10, £25, £50, £100.",
       code: "INVALID_AMOUNT",
     };
   }
@@ -407,6 +414,20 @@ export async function listRecentTopUps(db: D1Database, companyId: string, limit 
     .bind(companyId, limit)
     .all();
   return (rows.results ?? []).map((row) => parseCheckoutRow(row as CheckoutRow));
+}
+
+async function getRefundedTotalForCheckout(db: D1Database, checkoutId: string): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(ABS(amount_cents)), 0) AS total
+       FROM ledger_entries
+       WHERE entry_type = 'refund'
+         AND reference_type = 'stripe_refund'
+         AND json_extract(metadata_json, '$.checkoutId') = ?`,
+    )
+    .bind(checkoutId)
+    .first();
+  return Number(row?.total ?? 0);
 }
 
 type WebhookProcessResult = {
@@ -636,11 +657,22 @@ export async function processStripeWebhookEvent(
         metadataString(object, "infra_checkout_id") ?? object.client_reference_id ?? "",
       );
       if (localId) {
+        const checkout = await getCheckoutById(env.DB, localId);
         await env.DB.prepare(
           `UPDATE stripe_checkout_sessions SET status = 'expired' WHERE id = ? AND status != 'credited'`,
         )
           .bind(localId)
           .run();
+        if (checkout && checkout.status !== "credited") {
+          await recordAuditEvent(env.DB, {
+            companyId: checkout.companyId,
+            eventType: "checkout.expired",
+            actor: "stripe-webhook",
+            resourceType: "stripe_checkout",
+            resourceId: localId,
+            detail: { stripeEventId: input.stripeEventId },
+          });
+        }
       }
       await markWebhookProcessed(env.DB, input.stripeEventId);
       return { processed: true, duplicate: false, message: "checkout expired" };
@@ -660,48 +692,76 @@ export async function processStripeWebhookEvent(
         return { processed: false, duplicate: false, message: "Checkout not found for refund", code: "UNKNOWN_REFUND" };
       }
 
-      const amountRefunded = Number(object.amount_refunded ?? 0);
-      if (amountRefunded <= 0) {
+      const amountRefundedCumulative = Number(object.amount_refunded ?? 0);
+      if (amountRefundedCumulative <= 0) {
         await markWebhookProcessed(env.DB, input.stripeEventId);
         return { processed: true, duplicate: false, message: "No refund amount" };
       }
 
-      const refundId = object.id ? String(object.id) : input.stripeEventId;
+      const alreadyRefunded = await getRefundedTotalForCheckout(env.DB, checkout.id);
+      const incrementalRefund = amountRefundedCumulative - alreadyRefunded;
+      if (incrementalRefund <= 0) {
+        await markWebhookProcessed(env.DB, input.stripeEventId);
+        return { processed: false, duplicate: true, message: "Refund already recorded" };
+      }
+
+      const chargeId = object.id ? String(object.id) : null;
       const ledger = await appendLedgerEntry(env.DB, {
         companyId: checkout.companyId,
         entryType: "refund",
-        amountCents: -amountRefunded,
+        amountCents: -incrementalRefund,
         referenceType: "stripe_refund",
-        referenceId: refundId,
-        description: `Stripe refund £${(amountRefunded / 100).toFixed(2)}`,
+        referenceId: input.stripeEventId,
+        description: `Stripe refund £${(incrementalRefund / 100).toFixed(2)}`,
         metadata: {
           creditClass: "paid",
           stripeEventId: input.stripeEventId,
           stripePaymentIntentId: paymentIntentId,
+          stripeChargeId: chargeId,
           checkoutId: checkout.id,
+          cumulativeRefundedCents: amountRefundedCumulative,
+          incrementalRefundedCents: incrementalRefund,
         },
         createdBy: "stripe-webhook",
       });
 
+      const nextStatus =
+        amountRefundedCumulative >= checkout.amountCents ? "refunded" : "partially_refunded";
       await env.DB.prepare(
-        `UPDATE stripe_checkout_sessions SET status = 'refunded' WHERE id = ?`,
+        `UPDATE stripe_checkout_sessions SET status = ? WHERE id = ?`,
       )
-        .bind(checkout.id)
+        .bind(nextStatus, checkout.id)
         .run();
 
-      await recordAuditEvent(env.DB, {
-        companyId: checkout.companyId,
-        eventType: "refund.received",
-        actor: "stripe-webhook",
-        resourceType: "stripe_checkout",
-        resourceId: checkout.id,
-        detail: {
-          amountRefunded,
-          ledgerEntryId: ledger.entry.id,
-          consumedBalanceNote:
-            "If paid credit was already consumed, wallet may show reduced balance or negative paid-credit classification until adjusted manually.",
-        },
-      });
+      if (!ledger.alreadyExists) {
+        await recordAuditEvent(env.DB, {
+          companyId: checkout.companyId,
+          eventType: "refund.received",
+          actor: "stripe-webhook",
+          resourceType: "stripe_checkout",
+          resourceId: checkout.id,
+          detail: {
+            incrementalRefunded: incrementalRefund,
+            cumulativeRefunded: amountRefundedCumulative,
+            ledgerEntryId: ledger.entry.id,
+            walletMayGoNegative:
+              "Refunds reduce paid wallet balance; negative balance is permitted when credit was already consumed.",
+          },
+        });
+        await recordAuditEvent(env.DB, {
+          companyId: checkout.companyId,
+          eventType: "wallet.adjusted",
+          actor: "stripe-webhook",
+          resourceType: "ledger",
+          resourceId: ledger.entry.id,
+          detail: {
+            amountCents: -incrementalRefund,
+            entryType: "refund",
+            creditClass: "paid",
+            reason: "stripe_refund",
+          },
+        });
+      }
 
       await markWebhookProcessed(env.DB, input.stripeEventId);
       return {

@@ -66,10 +66,13 @@ import { resolveServiceIdentityScopesForCompany } from "../services/service-iden
 import {
   createTopUpCheckoutIntent,
   getTopUpCheckoutStatus,
+  getStripeMode,
   isAllowedTopUpAmountCents,
   isStripeConfigured,
+  isStripeTestModeActive,
   listRecentTopUps,
   processStripeWebhookEvent,
+  stripePaymentsAllowed,
   verifyStripeWebhookSignature,
 } from "../services/stripe";
 import { getPlatformPaymentProviderStatus } from "../services/payment-providers";
@@ -189,6 +192,8 @@ phase3.get("/api/gateway/v1/health", (c) =>
     service: "infra-gateway",
     version: "v1",
     stripeConfigured: isStripeConfigured(c.env),
+    stripeMode: getStripeMode(c.env),
+    stripePaymentsAllowed: stripePaymentsAllowed(c.env),
     mcpFacade: "/api/gateway/v1/mcp",
   }),
 );
@@ -261,9 +266,13 @@ phase3.post("/api/companies/:slug/wallet/top-up", requireAuth, async (c) => {
   if (!body.amountCents || body.amountCents < 500) {
     return c.json({ error: "amountCents must be at least 500 (£5)" }, 400);
   }
-  if (!isAllowedTopUpAmountCents(body.amountCents)) {
+  if (!isAllowedTopUpAmountCents(body.amountCents, c.env)) {
     return c.json(
-      { error: "Invalid top-up amount. Allowed preset amounts: £10, £25, £50, £100." },
+      {
+        error: isStripeTestModeActive(c.env)
+          ? "Invalid top-up amount. Allowed: £1 (sandbox), £10, £25, £50, £100."
+          : "Invalid top-up amount. Allowed preset amounts: £10, £25, £50, £100.",
+      },
       400,
     );
   }
@@ -382,6 +391,17 @@ phase3.post("/api/stripe/webhook", async (c) => {
     signature ?? null,
   );
   if (!valid) {
+    await recordAuditEvent(c.env.DB, {
+      companyId: null,
+      eventType: "webhook.rejected",
+      actor: "stripe-webhook",
+      resourceType: "stripe_event",
+      resourceId: null,
+      detail: {
+        reason: signature ? "invalid_signature" : "missing_signature",
+        endpoint: "/api/stripe/webhook",
+      },
+    });
     return c.json({ error: "Invalid Stripe signature" }, 400);
   }
 

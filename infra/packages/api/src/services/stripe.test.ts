@@ -130,6 +130,25 @@ class FakeD1 {
         .reduce((sum, r) => sum + Number(r.amount_cents), 0);
       return { total };
     }
+    if (q.includes("json_extract(metadata_json, '$.checkoutid')")) {
+      const checkoutId = binds[0];
+      const total = this.tables.ledger_entries
+        .filter(
+          (r) =>
+            r.entry_type === "refund" &&
+            r.reference_type === "stripe_refund" &&
+            (() => {
+              try {
+                const meta = JSON.parse(String(r.metadata_json ?? "{}")) as Record<string, unknown>;
+                return meta.checkoutId === checkoutId;
+              } catch {
+                return false;
+              }
+            })(),
+        )
+        .reduce((sum, r) => sum + Math.abs(Number(r.amount_cents)), 0);
+      return { total };
+    }
     return null;
   }
 
@@ -179,9 +198,13 @@ class FakeD1 {
         row.stripe_payment_intent_id = binds[2];
       }
     }
-    if (q.includes("update stripe_checkout_sessions set status = 'paid'")) {
+    if (q.includes("update stripe_checkout_sessions set status = 'expired'")) {
       const row = this.tables.stripe_checkout_sessions.find((r) => r.id === binds[0]);
-      if (row) row.status = "paid";
+      if (row && row.status !== "credited") row.status = "expired";
+    }
+    if (q.includes("update stripe_checkout_sessions set status = ?")) {
+      const row = this.tables.stripe_checkout_sessions.find((r) => r.id === binds[1]);
+      if (row) row.status = binds[0];
     }
     if (q.startsWith("insert into stripe_webhook_events")) {
       this.tables.stripe_webhook_events.push({
@@ -261,10 +284,16 @@ describe("stripe mode detection", () => {
 describe("top-up amount whitelist", () => {
   it("allows preset amounts only", () => {
     for (const amount of DEFAULT_TOP_UP_OPTIONS_CENTS) {
-      expect(isAllowedTopUpAmountCents(amount)).toBe(true);
+      expect(isAllowedTopUpAmountCents(amount, testEnv)).toBe(true);
     }
-    expect(isAllowedTopUpAmountCents(1500)).toBe(false);
-    expect(isAllowedTopUpAmountCents(999999)).toBe(false);
+    expect(isAllowedTopUpAmountCents(1500, testEnv)).toBe(false);
+    expect(isAllowedTopUpAmountCents(999999, testEnv)).toBe(false);
+  });
+
+  it("allows £1 sandbox amount in Stripe test mode", () => {
+    expect(isAllowedTopUpAmountCents(100, testEnv)).toBe(true);
+    const liveEnv = { ...testEnv, STRIPE_SECRET_KEY: "sk_live_fake" } as import("../env").Env;
+    expect(isAllowedTopUpAmountCents(100, liveEnv)).toBe(false);
   });
 });
 
@@ -490,6 +519,91 @@ describe("processStripeWebhookEvent", () => {
     );
     expect(refunds.length).toBe(1);
     expect(refunds[0]?.amount_cents).toBe(-2500);
+  });
+
+  it("records incremental partial refunds from cumulative charge.refunded amounts", async () => {
+    (testEnv.DB as unknown as FakeD1).tables.stripe_checkout_sessions[0]!.status = "credited";
+    (testEnv.DB as unknown as FakeD1).tables.stripe_checkout_sessions[0]!.stripe_payment_intent_id =
+      "pi_test_123";
+    (testEnv.DB as unknown as FakeD1).tables.stripe_checkout_sessions[0]!.amount_cents = 10000;
+
+    const first = await processStripeWebhookEvent(testEnv, {
+      stripeEventId: "evt_partial_1",
+      eventType: "charge.refunded",
+      payload: {
+        data: {
+          object: {
+            id: "ch_test",
+            payment_intent: "pi_test_123",
+            amount_refunded: 2000,
+          },
+        },
+      },
+    });
+    expect(first.processed).toBe(true);
+
+    const second = await processStripeWebhookEvent(testEnv, {
+      stripeEventId: "evt_partial_2",
+      eventType: "charge.refunded",
+      payload: {
+        data: {
+          object: {
+            id: "ch_test",
+            payment_intent: "pi_test_123",
+            amount_refunded: 5000,
+          },
+        },
+      },
+    });
+    expect(second.processed).toBe(true);
+
+    const refunds = (testEnv.DB as unknown as FakeD1).tables.ledger_entries.filter(
+      (r) => r.entry_type === "refund",
+    );
+    expect(refunds).toHaveLength(2);
+    expect(refunds[0]?.amount_cents).toBe(-2000);
+    expect(refunds[1]?.amount_cents).toBe(-3000);
+  });
+
+  it("marks checkout expired without crediting wallet", async () => {
+    const result = await processStripeWebhookEvent(testEnv, {
+      stripeEventId: "evt_expired",
+      eventType: "checkout.session.expired",
+      payload: {
+        data: {
+          object: {
+            id: "cs_test_123",
+            client_reference_id: checkoutId,
+            metadata: { company_id: companyId, infra_checkout_id: checkoutId },
+          },
+        },
+      },
+    });
+    expect(result.processed).toBe(true);
+    expect((testEnv.DB as unknown as FakeD1).tables.stripe_checkout_sessions[0]?.status).toBe(
+      "expired",
+    );
+    expect((testEnv.DB as unknown as FakeD1).tables.ledger_entries.length).toBe(0);
+  });
+
+  it("rejects currency mismatch", async () => {
+    const result = await processStripeWebhookEvent(testEnv, {
+      stripeEventId: "evt_currency",
+      eventType: "checkout.session.completed",
+      payload: {
+        data: {
+          object: {
+            id: "cs_test_123",
+            payment_status: "paid",
+            client_reference_id: checkoutId,
+            metadata: { company_id: companyId, infra_checkout_id: checkoutId },
+            amount_total: 2500,
+            currency: "usd",
+          },
+        },
+      },
+    });
+    expect(result.code).toBe("CURRENCY_MISMATCH");
   });
 });
 
