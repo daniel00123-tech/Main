@@ -1,6 +1,6 @@
 import { XERO_DATA_BOUNDS } from "@infra/shared";
 import type { XeroClient } from "../client";
-import { xeroGetJson } from "../fetch-json";
+import { xeroGetJson, type XeroFetchConfig } from "../fetch-json";
 import {
   buildProfitAndLossQuery,
   parseProfitAndLossReport,
@@ -46,22 +46,141 @@ async function resolveBaseCurrency(client: XeroClient): Promise<string | null> {
   return body.Organisations?.[0]?.BaseCurrency ?? null;
 }
 
+function clampContactLimit(limit?: number): number {
+  const value = limit ?? XERO_DATA_BOUNDS.defaultListResults;
+  return Math.min(Math.max(1, value), XERO_DATA_BOUNDS.maxListResults);
+}
+
+function buildContactWhere(input: { query?: string; contactType?: string }): string | undefined {
+  const clauses: string[] = [];
+  if (input.query?.trim()) {
+    clauses.push(`Name.Contains("${input.query.trim().replace(/"/g, "")}")`);
+  }
+  const type = input.contactType?.trim().toLowerCase();
+  if (type === "customer") {
+    clauses.push("IsCustomer==true");
+  } else if (type === "supplier") {
+    clauses.push("IsSupplier==true");
+  } else if (input.contactType?.trim()) {
+    clauses.push('ContactStatus=="ACTIVE"');
+  }
+  return clauses.length ? clauses.join(" AND ") : undefined;
+}
+
+function refineContactsByQuery<T extends { Name?: string }>(
+  contacts: T[],
+  query?: string,
+): T[] {
+  const q = query?.trim().toLowerCase();
+  if (!q) return contacts;
+  return contacts.filter((contact) => {
+    const name = String(contact.Name ?? "").toLowerCase();
+    if (!name) return false;
+    if (name === q || name.includes(q)) return true;
+    return name.split(/\s+/).some((word) => word.startsWith(q));
+  });
+}
+
+async function fetchContactsPage(
+  config: XeroFetchConfig,
+  where?: string,
+): Promise<Array<{ Name?: string }>> {
+  const body = await xeroGetJson<{ Contacts?: Array<{ Name?: string }> }>(config, "/Contacts", {
+    where,
+    page: 1,
+  });
+  return body.Contacts ?? [];
+}
+
+async function searchContactsWithFallback(
+  config: XeroFetchConfig,
+  input: { query?: string; contactType?: string; limit?: number },
+): Promise<Array<{ Name?: string }>> {
+  const limit = clampContactLimit(input.limit);
+  const query = input.query?.trim();
+  const where = buildContactWhere(input);
+
+  if (!query) {
+    return (await fetchContactsPage(config, where)).slice(0, limit);
+  }
+
+  let contacts = refineContactsByQuery(await fetchContactsPage(config, where), query);
+  if (contacts.length > 0) {
+    return contacts.slice(0, limit);
+  }
+
+  const upperWhere = buildContactWhere({ ...input, query: query.toUpperCase() });
+  contacts = refineContactsByQuery(await fetchContactsPage(config, upperWhere), query);
+  if (contacts.length > 0) {
+    return contacts.slice(0, limit);
+  }
+
+  // Xero Name.Contains is case-sensitive; scan the first page in-memory for natural-language names.
+  const typeOnlyWhere = buildContactWhere({ contactType: input.contactType });
+  contacts = refineContactsByQuery(await fetchContactsPage(config, typeOnlyWhere), query);
+  return contacts.slice(0, limit);
+}
+
+export async function listContactsWithFetch(
+  config: XeroFetchConfig,
+  input: { query?: string; contactType?: string; limit?: number },
+) {
+  const contacts = await searchContactsWithFallback(config, input);
+  return { contacts };
+}
+
+export async function getContactWithFetch(
+  config: XeroFetchConfig,
+  input: { contactId: string },
+) {
+  const body = await xeroGetJson<{ Contacts?: unknown[] }>(config, `/Contacts/${input.contactId}`);
+  return { contact: body.Contacts?.[0] ?? null };
+}
+
 export async function listContacts(
   client: XeroClient,
   input: { query?: string; contactType?: string; limit?: number },
 ) {
-  const where = [
-    input.query ? `Name.Contains("${input.query.replace(/"/g, "")}")` : null,
-    input.contactType ? `ContactStatus=="ACTIVE"` : null,
-  ]
-    .filter(Boolean)
-    .join(" AND ");
-  const body = await client.get<{ Contacts?: unknown[] }>("/Contacts", {
-    where: where || undefined,
-    page: 1,
-  });
-  const contacts = (body.Contacts ?? []).slice(0, client.clampLimit(input.limit));
-  return { contacts };
+  const limit = client.clampLimit(input.limit);
+  const query = input.query?.trim();
+  const where = buildContactWhere(input);
+  let contacts = refineContactsByQuery(
+    (
+      await client.get<{ Contacts?: Array<{ Name?: string }> }>("/Contacts", {
+        where,
+        page: 1,
+      })
+    ).Contacts ?? [],
+    input.query,
+  );
+
+  if (query && contacts.length === 0) {
+    const upperWhere = buildContactWhere({ ...input, query: query.toUpperCase() });
+    contacts = refineContactsByQuery(
+      (
+        await client.get<{ Contacts?: Array<{ Name?: string }> }>("/Contacts", {
+          where: upperWhere,
+          page: 1,
+        })
+      ).Contacts ?? [],
+      input.query,
+    );
+  }
+
+  if (query && contacts.length === 0) {
+    const typeOnlyWhere = buildContactWhere({ contactType: input.contactType });
+    contacts = refineContactsByQuery(
+      (
+        await client.get<{ Contacts?: Array<{ Name?: string }> }>("/Contacts", {
+          where: typeOnlyWhere,
+          page: 1,
+        })
+      ).Contacts ?? [],
+      input.query,
+    );
+  }
+
+  return { contacts: contacts.slice(0, limit) };
 }
 
 export async function getContact(client: XeroClient, input: { contactId: string }) {

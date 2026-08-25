@@ -148,10 +148,28 @@ export async function resolveXeroContactForDraftInvoice(input: {
   }
 
   const escaped = contactName.replace(/"/g, "");
-  const body = await xeroGetJson<{ Contacts?: XeroContactRow[] }>(token, "/Contacts", {
-    where: `Name.Contains("${escaped}")`,
-  });
-  const active = (body.Contacts ?? []).filter(
+
+  async function searchByWhere(where: string) {
+    const body = await xeroGetJson<{ Contacts?: XeroContactRow[] }>(token, "/Contacts", {
+      where,
+    });
+    return body.Contacts ?? [];
+  }
+
+  let rows = await searchByWhere(`Name.Contains("${escaped}")`);
+  if (!rows.length) {
+    rows = await searchByWhere(`Name.Contains("${escaped.toUpperCase()}")`);
+  }
+  if (!rows.length) {
+    const body = await xeroGetJson<{ Contacts?: XeroContactRow[] }>(token, "/Contacts", {
+      page: 1,
+    });
+    rows = (body.Contacts ?? []).filter((row) =>
+      scoreContactNameMatch(contactName, String(row.Name ?? "")) > 0,
+    );
+  }
+
+  const active = rows.filter(
     (row) => String(row.ContactStatus ?? "ACTIVE").toUpperCase() !== "ARCHIVED",
   );
   return pickContactFromRankedMatches(contactName, rankContactNameMatches(contactName, active));

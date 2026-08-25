@@ -9,6 +9,8 @@ import {
   classifySalesDocuments,
   customerSafeXeroErrorMessage,
   dateRangeWhere,
+  getContactWithFetch,
+  listContactsWithFetch,
   mapCreditNoteRow,
   mapInvoiceRow,
   profitAndLossWithFetch,
@@ -286,6 +288,56 @@ export async function executeXeroReadToolOnInfra(
           organisationName: token.payload.organisationName,
           currencyCode,
           customers,
+        },
+      };
+    }
+
+    if (input.toolName === "xero_list_contacts") {
+      const args = input.arguments ?? {};
+      const payload = await listContactsWithFetch(
+        {
+          accessToken: token.accessToken,
+          tenantId: token.tenantId,
+          apiBaseUrl: XERO_AUTH.apiBaseUrl,
+          fetchImpl: fetch,
+        },
+        {
+          query: args.query != null ? String(args.query) : undefined,
+          contactType: args.contactType != null ? String(args.contactType) : undefined,
+          limit: args.limit != null ? Number(args.limit) : undefined,
+        },
+      );
+      return {
+        ok: true,
+        latencyMs: Date.now() - started,
+        result: {
+          organisationName: token.payload.organisationName,
+          ...payload,
+        },
+      };
+    }
+
+    if (input.toolName === "xero_get_contact") {
+      const args = input.arguments ?? {};
+      const contactId = String(args.contactId ?? "").trim();
+      if (!contactId) {
+        return { ok: false, status: 409, error: "contactId is required", code: "VALIDATION_FAILED" };
+      }
+      const payload = await getContactWithFetch(
+        {
+          accessToken: token.accessToken,
+          tenantId: token.tenantId,
+          apiBaseUrl: XERO_AUTH.apiBaseUrl,
+          fetchImpl: fetch,
+        },
+        { contactId },
+      );
+      return {
+        ok: true,
+        latencyMs: Date.now() - started,
+        result: {
+          organisationName: token.payload.organisationName,
+          ...payload,
         },
       };
     }

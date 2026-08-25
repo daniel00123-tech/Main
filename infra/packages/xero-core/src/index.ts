@@ -3,7 +3,11 @@ export * from "./errors";
 export * from "./fetch-json";
 export * from "./sales-aggregation";
 export * from "./reports/profit-and-loss";
-export { profitAndLossWithFetch } from "./tools/read";
+export {
+  profitAndLossWithFetch,
+  listContactsWithFetch,
+  getContactWithFetch,
+} from "./tools/read";
 export * as xeroReadTools from "./tools/read";
 export * as xeroWriteTools from "./tools/write";
 
