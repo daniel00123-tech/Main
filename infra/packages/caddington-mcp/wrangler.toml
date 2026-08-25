@@ -1,0 +1,28 @@
+name = "caddington-mcp"
+main = "dist/worker.js"
+compatibility_date = "2025-08-24"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "CADDINGTON_BUSINESS_DATA"
+database_name = "caddington-business-data"
+database_id = "2837bf7d-cf76-4920-84b9-48c4d2fe16db"
+
+[[vectorize]]
+binding = "CADDINGTON_KNOWLEDGE_INDEX"
+index_name = "caddington-knowledge-index"
+
+[[r2_buckets]]
+binding = "CADDINGTON_KNOWLEDGE"
+bucket_name = "caddington-knowledge"
+
+[ai]
+binding = "AI"
+
+[vars]
+INFRA_API_URL = "https://infra-api.daniel-dwyer123.workers.dev"
+INFRA_MCP_ENVIRONMENT_ID = "mcp_caddington_primary"
+
+# Secrets (names only — set via wrangler secret put, never commit values):
+# MCP_AUTH_TOKEN — must match INFRA CADDINGTON_MCP_AUTH_TOKEN for Xero bridge + MCP auth
+# CADDINGTON_ADMIN_TOKEN — existing admin routes

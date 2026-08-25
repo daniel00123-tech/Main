@@ -1,27 +1,33 @@
 import { XERO_AUTH, XERO_DATA_BOUNDS } from "@infra/shared";
+import { mapXeroHttpError, type XeroProviderErrorBody } from "./errors";
 
 export type XeroClientConfig = {
   accessToken: string;
   tenantId: string;
   apiBaseUrl?: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
 };
 
 export class XeroApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly code?: string,
-  ) {
-    super(message);
+  readonly provider: XeroProviderErrorBody;
+
+  constructor(provider: XeroProviderErrorBody) {
+    super(provider.message);
     this.name = "XeroApiError";
+    this.provider = provider;
   }
 }
 
 export class XeroClient {
   private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
 
   constructor(private readonly config: XeroClientConfig) {
     this.baseUrl = config.apiBaseUrl ?? XERO_AUTH.apiBaseUrl;
+    this.fetchImpl = config.fetchImpl ?? fetch;
+    this.timeoutMs = config.timeoutMs ?? 30_000;
   }
 
   private headers(): HeadersInit {
@@ -32,7 +38,12 @@ export class XeroClient {
     };
   }
 
-  async get<T>(path: string, query?: Record<string, string | number | boolean | undefined>): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    query?: Record<string, string | number | boolean | undefined>,
+    body?: unknown,
+  ): Promise<T> {
     const url = new URL(`${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`);
     if (query) {
       for (const [key, value] of Object.entries(query)) {
@@ -41,39 +52,73 @@ export class XeroClient {
         }
       }
     }
-    const response = await fetch(url.toString(), { headers: this.headers() });
-    if (!response.ok) {
-      throw new XeroApiError(`Xero API ${response.status}`, response.status);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(url.toString(), {
+        method,
+        headers: body
+          ? { ...this.headers(), "Content-Type": "application/json" }
+          : this.headers(),
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        throw new XeroApiError(mapXeroHttpError(response.status, text));
+      }
+      if (!text.trim()) return {} as T;
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        throw new XeroApiError({
+          status: 502,
+          code: "XERO_MALFORMED_RESPONSE",
+          message: "Xero returned a malformed response.",
+        });
+      }
+    } catch (error) {
+      if (error instanceof XeroApiError) throw error;
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new XeroApiError({
+          status: 504,
+          code: "XERO_TIMEOUT",
+          message: "Xero request timed out.",
+          providerUnavailable: true,
+        });
+      }
+      throw new XeroApiError({
+        status: 503,
+        code: "XERO_PROVIDER_UNAVAILABLE",
+        message: "Unable to reach Xero.",
+        providerUnavailable: true,
+      });
+    } finally {
+      clearTimeout(timer);
     }
-    return (await response.json()) as T;
+  }
+
+  async get<T>(path: string, query?: Record<string, string | number | boolean | undefined>): Promise<T> {
+    return this.request<T>("GET", path, query);
   }
 
   async post<T>(path: string, body: unknown): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`, {
-      method: "POST",
-      headers: { ...this.headers(), "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      throw new XeroApiError(`Xero API ${response.status}`, response.status);
-    }
-    return (await response.json()) as T;
+    return this.request<T>("POST", path, undefined, body);
   }
 
   async put<T>(path: string, body: unknown): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`, {
-      method: "PUT",
-      headers: { ...this.headers(), "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      throw new XeroApiError(`Xero API ${response.status}`, response.status);
-    }
-    return (await response.json()) as T;
+    return this.request<T>("PUT", path, undefined, body);
   }
 
   clampLimit(limit?: number): number {
     const value = limit ?? XERO_DATA_BOUNDS.defaultListResults;
     return Math.min(Math.max(1, value), XERO_DATA_BOUNDS.maxListResults);
   }
+
+  maxPages(): number {
+    return Math.ceil(XERO_DATA_BOUNDS.maxListResults / XERO_DATA_BOUNDS.defaultListResults);
+  }
 }
+
+export { mapXeroHttpError };

@@ -42,6 +42,11 @@ export async function listContacts(
   return { contacts };
 }
 
+export async function getContact(client: XeroClient, input: { contactId: string }) {
+  const body = await client.get<{ Contacts?: unknown[] }>(`/Contacts/${input.contactId}`);
+  return { contact: body.Contacts?.[0] ?? null };
+}
+
 export async function searchInvoices(
   client: XeroClient,
   input: {
@@ -63,12 +68,52 @@ export async function searchInvoices(
   if (input.query) clauses.push(`InvoiceNumber.Contains("${input.query.replace(/"/g, "")}")`);
   const dates = boundedDates(input.fromDate, input.toDate);
   clauses.push(`Date>=DateTime(${dates.fromDate.replace(/-/g, ",")})`);
-  const body = await client.get<{ Invoices?: unknown[] }>("/Invoices", {
-    where: clauses.join(" AND ") || undefined,
-    page: 1,
-  });
-  const invoices = (body.Invoices ?? []).slice(0, client.clampLimit(input.limit));
-  return { invoices };
+  const target = client.clampLimit(input.limit);
+  const invoices: unknown[] = [];
+  let page = 1;
+  while (invoices.length < target && page <= client.maxPages()) {
+    const body = await client.get<{ Invoices?: unknown[] }>("/Invoices", {
+      where: clauses.join(" AND ") || undefined,
+      page,
+    });
+    const batch = body.Invoices ?? [];
+    if (!batch.length) break;
+    invoices.push(...batch);
+    if (batch.length < 100) break;
+    page += 1;
+  }
+  const truncated = invoices.length > target;
+  return {
+    invoices: invoices.slice(0, target),
+    meta: {
+      returned: Math.min(invoices.length, target),
+      truncated,
+      message: truncated
+        ? `Results truncated to ${target} invoices (safety limit). Narrow the date range or filters for complete coverage.`
+        : undefined,
+    },
+  };
+}
+
+export async function getInvoice(
+  client: XeroClient,
+  input: { invoiceId?: string; invoiceNumber?: string },
+) {
+  if (input.invoiceId) {
+    const body = await client.get<{ Invoices?: unknown[] }>(`/Invoices/${input.invoiceId}`);
+    return { invoice: body.Invoices?.[0] ?? null };
+  }
+  if (input.invoiceNumber) {
+    const found = await searchInvoices(client, {
+      query: input.invoiceNumber,
+      limit: 5,
+    });
+    const match = (found.invoices as Array<{ InvoiceNumber?: string }>).find(
+      (row) => row.InvoiceNumber === input.invoiceNumber,
+    );
+    return { invoice: match ?? found.invoices[0] ?? null };
+  }
+  return { invoice: null, error: "Provide invoiceId or invoiceNumber." };
 }
 
 export async function listOverdueInvoices(

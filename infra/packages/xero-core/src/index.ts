@@ -1,4 +1,5 @@
 export * from "./client";
+export * from "./errors";
 export * as xeroReadTools from "./tools/read";
 export * as xeroWriteTools from "./tools/write";
 
@@ -6,7 +7,9 @@ export * as xeroWriteTools from "./tools/write";
 export const XERO_READ_TOOL_HANDLERS = {
   xero_get_organisation: "getOrganisation",
   xero_list_contacts: "listContacts",
+  xero_get_contact: "getContact",
   xero_search_invoices: "searchInvoices",
+  xero_get_invoice: "getInvoice",
   xero_list_overdue_invoices: "listOverdueInvoices",
   xero_list_payments: "listPayments",
   xero_list_accounts: "listAccounts",
