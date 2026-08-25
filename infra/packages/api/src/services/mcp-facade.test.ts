@@ -11,10 +11,13 @@ import {
 import { ACTION_CONTROL_TOOLS } from "./mcp-action-tools";
 import { extractServiceCredential } from "./gateway";
 import type { Env } from "../env";
+import { XERO_ACTION_SERVICE_SCOPES } from "@infra/shared";
 
 function withActionTools(names: string[]): string[] {
   return [...new Set([...names, ...ACTION_CONTROL_TOOLS])].sort();
 }
+
+const ACTION_ENGINE_SCOPES = [...XERO_ACTION_SERVICE_SCOPES];
 
 type Row = Record<string, unknown>;
 
@@ -354,7 +357,12 @@ describe("INFRA MCP facade tool catalogue consistency", () => {
         status: "active" as const,
         tokenPrefix: "infra_test",
         hasToken: true,
-        scopes: ["knowledge.search", "knowledge.read", "system.health"],
+        scopes: [
+          "knowledge.search",
+          "knowledge.read",
+          "system.health",
+          ...ACTION_ENGINE_SCOPES,
+        ],
         mcpEnvironmentId: "mcp_caddington_primary",
         lastUsedAt: null,
         requestCount: 0,
@@ -421,7 +429,12 @@ function serviceActor(
       status: "active" as const,
       tokenPrefix: "infra_test",
       hasToken: true,
-      scopes: ["knowledge.search", "knowledge.read", "system.health"],
+      scopes: [
+        "knowledge.search",
+        "knowledge.read",
+        "system.health",
+        ...ACTION_ENGINE_SCOPES,
+      ],
       mcpEnvironmentId,
       lastUsedAt: null,
       requestCount: 0,

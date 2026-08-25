@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   BASE_AI_SERVICE_SCOPES,
   serviceIdentityScopesWithXeroRead,
+  serviceIdentityScopesWithXeroActionEngine,
   XERO_READ_SERVICE_SCOPES,
+  XERO_ACTION_SERVICE_SCOPES,
 } from "@infra/shared";
 import {
   isXeroConnectedForCompany,
+  isXeroWriteOAuthConnectedForCompany,
   resolveServiceIdentityScopesForCompany,
   syncActiveServiceIdentityScopesForCompany,
 } from "./service-identity-scopes";
@@ -46,15 +49,22 @@ class FakeD1 {
   first(sql: string, binds: unknown[]) {
     const q = sql.replace(/\s+/g, " ").trim().toLowerCase();
     if (q.includes("from connector_instances")) {
-      return (
-        this.rows.connector_instances.find(
-          (row) =>
-            row.company_id === binds[0] &&
-            row.connector_definition_id === "conn_xero" &&
-            row.auth_status === "connected" &&
-            !["draft", "disabled"].includes(String(row.status)),
-        ) ?? null
-      );
+      const row = this.rows.connector_instances.find((candidate) => {
+        if (candidate.company_id !== binds[0]) return false;
+        if (q.includes("capabilities_enabled_json")) {
+          return (
+            candidate.connector_definition_id === "conn_xero" &&
+            candidate.auth_status === "connected" &&
+            !["draft", "disabled"].includes(String(candidate.status))
+          );
+        }
+        return (
+          candidate.connector_definition_id === "conn_xero" &&
+          candidate.auth_status === "connected" &&
+          !["draft", "disabled"].includes(String(candidate.status))
+        );
+      });
+      return row ?? null;
     }
     return null;
   }
@@ -116,6 +126,62 @@ describe("service identity scopes", () => {
     expect(scopes).not.toContain("xero.sales.summary");
   });
 
+  it("includes Action Engine scopes when Xero write OAuth is consented", async () => {
+    const db = new FakeD1({
+      connector_instances: [
+        {
+          company_id: "co_caddington",
+          connector_definition_id: "conn_xero",
+          auth_status: "connected",
+          status: "healthy",
+          capabilities_enabled_json: JSON.stringify([
+            "offline_access",
+            "accounting.invoices.read",
+            "accounting.invoices",
+          ]),
+        },
+      ],
+      service_identities: [],
+    });
+
+    await expect(
+      isXeroWriteOAuthConnectedForCompany(db as unknown as D1Database, "co_caddington"),
+    ).resolves.toBe(true);
+
+    const scopes = await resolveServiceIdentityScopesForCompany(
+      db as unknown as D1Database,
+      "co_caddington",
+    );
+    expect(scopes).toEqual(serviceIdentityScopesWithXeroActionEngine());
+    expect(scopes).toEqual(expect.arrayContaining([...XERO_ACTION_SERVICE_SCOPES]));
+  });
+
+  it("keeps read-only scopes when Xero connected without write OAuth", async () => {
+    const db = new FakeD1({
+      connector_instances: [
+        {
+          company_id: "co_caddington",
+          connector_definition_id: "conn_xero",
+          auth_status: "connected",
+          status: "healthy",
+          capabilities_enabled_json: JSON.stringify(["accounting.invoices.read"]),
+        },
+      ],
+      service_identities: [],
+    });
+
+    await expect(
+      isXeroWriteOAuthConnectedForCompany(db as unknown as D1Database, "co_caddington"),
+    ).resolves.toBe(false);
+
+    const scopes = await resolveServiceIdentityScopesForCompany(
+      db as unknown as D1Database,
+      "co_caddington",
+    );
+    expect(scopes).toEqual(serviceIdentityScopesWithXeroRead());
+    expect(scopes).not.toContain("xero.action.plan");
+  });
+
   it("syncs active service identities without rotating tokens", async () => {
     const db = new FakeD1({
       connector_instances: [
@@ -124,6 +190,7 @@ describe("service identity scopes", () => {
           connector_definition_id: "conn_xero",
           auth_status: "connected",
           status: "healthy",
+          capabilities_enabled_json: JSON.stringify(["accounting.invoices"]),
         },
       ],
       service_identities: [
@@ -142,7 +209,7 @@ describe("service identity scopes", () => {
     );
     expect(synced.updated).toBe(1);
     expect(JSON.parse(String(db.rows.service_identities[0].scopes_json))).toEqual(
-      serviceIdentityScopesWithXeroRead(),
+      serviceIdentityScopesWithXeroActionEngine(),
     );
     expect(db.rows.service_identities[0].token_hash).toBe("unchanged");
   });

@@ -16,6 +16,7 @@ vi.mock("./gateway", async (importOriginal) => {
 import { handleInfraMcpJsonRpc } from "./mcp-gateway";
 import { ACTION_CONTROL_TOOLS } from "./mcp-action-tools";
 import { READ_ONLY_TOOL_ANNOTATIONS } from "./mcp-knowledge-standard";
+import { XERO_ACTION_SERVICE_SCOPES } from "@infra/shared";
 
 function withActionTools(names: string[]): string[] {
   return [...new Set([...names, ...ACTION_CONTROL_TOOLS])].sort();
@@ -120,7 +121,12 @@ function serviceActor(
       status: "active" as const,
       tokenPrefix: "infra_test",
       hasToken: true,
-      scopes: ["knowledge.search", "knowledge.read", "system.health"],
+      scopes: [
+        "knowledge.search",
+        "knowledge.read",
+        "system.health",
+        ...XERO_ACTION_SERVICE_SCOPES,
+      ],
       mcpEnvironmentId,
       lastUsedAt: null,
       requestCount: 0,

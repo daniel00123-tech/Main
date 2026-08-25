@@ -40,7 +40,7 @@ import {
 } from "./mcp-knowledge-standard";
 import { isXeroWriteToolName } from "./xero-tools";
 import { XERO_TOOL_CONTRACTS } from "@infra/shared";
-import { withActionControlTools, isActionControlTool } from "./mcp-action-tools";
+import { withActionControlTools, isActionControlTool, actionControlToolAllowed } from "./mcp-action-tools";
 import { executeActionControlTool } from "./action-engine/action-control-handler";
 
 type JsonRpcId = string | number | null;
@@ -614,7 +614,12 @@ export async function handleInfraMcpJsonRpc(
         });
       }
 
-      const advertised = withActionControlTools(withStandardKnowledgeTools(tools));
+      const identityScopes =
+        actor.type === "service" ? actor.identity.scopes : undefined;
+      const advertised = withActionControlTools(
+        withStandardKnowledgeTools(tools),
+        identityScopes,
+      );
 
       await logFacadeEvent(env.DB, {
         companyId: resolvedCompanyId,
@@ -700,6 +705,35 @@ export async function handleInfraMcpJsonRpc(
     const interactionHints = pickInteractionHints(request, body);
 
     if (isActionControlTool(toolName)) {
+      if (
+        actor.type === "service" &&
+        !actionControlToolAllowed(toolName, actor.identity.scopes)
+      ) {
+        await logFacadeEvent(env.DB, {
+          companyId: resolvedCompanyId,
+          actor: actorLabel,
+          method,
+          toolName,
+          status: "denied_or_failed",
+          httpStatus: 403,
+          detail: {
+            reason: "action_control_scope_required",
+            toolName,
+          },
+        });
+        const publicError = publicToolErrorMessage(
+          403,
+          "Action not in service identity scopes",
+        );
+        return {
+          payload: jsonRpcError(id, -32003, publicError.message, {
+            httpStatus: 403,
+            errorCode: publicError.code,
+          }),
+          httpStatus: 200,
+        };
+      }
+
       const actionResult = await executeActionControlTool(env, {
         companyId: resolvedCompanyId,
         toolName,

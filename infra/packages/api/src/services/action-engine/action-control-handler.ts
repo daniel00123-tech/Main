@@ -22,6 +22,7 @@ import { xeroToolContract } from "../xero-tools";
 import { missingScopesForTier, XERO_SCOPES_DRAFT_INVOICE } from "@infra/shared";
 import { buildActionDryRunReport } from "./dry-run";
 import { getExecutionEvidence } from "./action-executor";
+import { actionControlToolAllowed } from "../mcp-action-tools";
 
 function actorLabel(actor: GatewayActor): string {
   return actor.type === "service" ? actor.identity.name : actor.user.email;
@@ -48,6 +49,19 @@ export async function executeActionControlTool(
   },
 ): Promise<{ status: 200 | 400 | 403 | 404 | 409 | 503; body: Record<string, unknown> }> {
   const actor = actorLabel(input.actor);
+
+  if (
+    input.actor.type === "service" &&
+    !actionControlToolAllowed(input.toolName, input.actor.identity.scopes)
+  ) {
+    return {
+      status: 403,
+      body: {
+        error: "Action not in service identity scopes",
+        code: "INSUFFICIENT_SCOPE",
+      },
+    };
+  }
 
   if (input.toolName === "get_action_plan") {
     const planId = String(input.arguments.planId ?? "");

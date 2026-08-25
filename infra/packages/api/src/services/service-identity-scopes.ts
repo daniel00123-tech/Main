@@ -1,6 +1,6 @@
 import {
   BASE_AI_SERVICE_SCOPES,
-  serviceIdentityScopesWithXeroRead,
+  serviceIdentityScopesForConnectedXero,
 } from "@infra/shared";
 import { nowIso } from "../db/mappers";
 
@@ -22,14 +22,40 @@ export async function isXeroConnectedForCompany(
   return Boolean(row);
 }
 
+/** True when connected Xero OAuth includes invoice write scope (Action Engine eligible). */
+export async function isXeroWriteOAuthConnectedForCompany(
+  db: D1Database,
+  companyId: string,
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT capabilities_enabled_json FROM connector_instances
+       WHERE company_id = ?
+         AND connector_definition_id = 'conn_xero'
+         AND auth_status = 'connected'
+         AND status NOT IN ('draft', 'disabled')
+       LIMIT 1`,
+    )
+    .bind(companyId)
+    .first();
+  if (!row) return false;
+  try {
+    const caps = JSON.parse(String(row.capabilities_enabled_json ?? "[]"));
+    return Array.isArray(caps) && caps.includes("accounting.invoices");
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveServiceIdentityScopesForCompany(
   db: D1Database,
   companyId: string,
 ): Promise<string[]> {
-  if (await isXeroConnectedForCompany(db, companyId)) {
-    return serviceIdentityScopesWithXeroRead();
+  if (!(await isXeroConnectedForCompany(db, companyId))) {
+    return [...BASE_AI_SERVICE_SCOPES];
   }
-  return [...BASE_AI_SERVICE_SCOPES];
+  const writeOAuthConsented = await isXeroWriteOAuthConnectedForCompany(db, companyId);
+  return serviceIdentityScopesForConnectedXero({ writeOAuthConsented });
 }
 
 /** Refresh scopes on all active service identities when connector capabilities change. */

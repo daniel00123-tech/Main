@@ -2,7 +2,7 @@
 -- Safe to re-run.
 
 UPDATE service_identities
-SET scopes_json = '["knowledge.search","knowledge.read","system.health","xero.organisation.read","xero.contacts.read","xero.contacts.search","xero.invoices.read","xero.invoices.search","xero.invoices.get","xero.payments.read","xero.accounts.read","xero.bank_transactions.read","xero.reports.pnl.read","xero.reports.balance_sheet.read","xero.reports.aged.read","xero.sales.summary","xero.top_customers","xero.health","xero.token_refresh"]',
+SET scopes_json = '["knowledge.search","knowledge.read","system.health","xero.organisation.read","xero.contacts.read","xero.contacts.search","xero.invoices.read","xero.invoices.search","xero.invoices.get","xero.payments.read","xero.accounts.read","xero.bank_transactions.read","xero.reports.pnl.read","xero.reports.balance_sheet.read","xero.reports.aged.read","xero.sales.summary","xero.top_customers","xero.health","xero.token_refresh","xero.action.plan","xero.action.read","xero.action.confirm","xero.action.cancel","xero.action.list"]',
     updated_at = datetime('now')
 WHERE company_id = 'co_caddington'
   AND status = 'active';

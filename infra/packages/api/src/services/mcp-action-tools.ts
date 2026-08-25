@@ -20,6 +20,28 @@ export function isActionControlTool(name: string): name is ActionControlTool {
   return (ACTION_CONTROL_TOOLS as readonly string[]).includes(name);
 }
 
+/** Required service-identity scope per Action Engine MCP tool. */
+export const ACTION_CONTROL_TOOL_REQUIRED_SCOPES: Record<ActionControlTool, string> = {
+  get_action_plan: "xero.action.read",
+  list_pending_actions: "xero.action.list",
+  dry_run_action_plan: "xero.action.read",
+  confirm_action_plan: "xero.action.confirm",
+  cancel_action_plan: "xero.action.cancel",
+  plan_xero_draft_invoice: "xero.action.plan",
+  plan_xero_credit_invoices: "xero.action.plan",
+  plan_xero_remittance_allocation: "xero.action.plan",
+};
+
+export function actionControlToolAllowed(
+  toolName: string,
+  scopes: readonly string[],
+): boolean {
+  if (!isActionControlTool(toolName)) return false;
+  if (scopes.includes("*")) return true;
+  const required = ACTION_CONTROL_TOOL_REQUIRED_SCOPES[toolName];
+  return scopes.includes(required);
+}
+
 export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
   ActionControlTool,
   { description: string; inputSchema: Record<string, unknown> }
@@ -158,11 +180,13 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
 
 export function withActionControlTools(
   tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>,
+  scopes?: readonly string[],
 ): Array<{ name: string; description: string; inputSchema: Record<string, unknown> }> {
   const existing = new Set(tools.map((tool) => tool.name));
   const merged = [...tools];
   for (const name of ACTION_CONTROL_TOOLS) {
     if (existing.has(name)) continue;
+    if (scopes && !actionControlToolAllowed(name, scopes)) continue;
     const spec = ACTION_CONTROL_TOOL_SCHEMAS[name];
     merged.push({ name, description: spec.description, inputSchema: spec.inputSchema });
   }
