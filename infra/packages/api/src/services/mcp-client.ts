@@ -12,6 +12,10 @@ export type McpToolDefinition = {
   inputSchema?: Record<string, unknown>;
 };
 
+export function normalizeMcpAuthToken(value: string): string {
+  return value.trim().replace(/^Bearer\s+/i, "");
+}
+
 function parseSseOrJson(body: string): McpJsonRpcResult {
   const trimmed = body.trim();
   if (trimmed.startsWith("{")) {
@@ -43,12 +47,13 @@ export function resolveMcpAuthHeader(
     return { authorizationHeader: null, authConfigured: false };
   }
 
-  if (secretValue.toLowerCase().startsWith("bearer ")) {
-    return { authorizationHeader: secretValue, authConfigured: true };
+  const token = normalizeMcpAuthToken(secretValue);
+  if (!token) {
+    return { authorizationHeader: null, authConfigured: false };
   }
 
   return {
-    authorizationHeader: `Bearer ${secretValue}`,
+    authorizationHeader: `Bearer ${token}`,
     authConfigured: true,
   };
 }

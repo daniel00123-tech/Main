@@ -45,6 +45,37 @@ type McpToolServer = {
   ) => void;
 };
 
+function stripInternalArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const { _infraXeroContext: _ignored, ...rest } = args;
+  return rest;
+}
+
+function injectedContextFromArgs(
+  args: Record<string, unknown>,
+): InfraXeroContext | null {
+  const raw = args._infraXeroContext;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const accessToken = String(record.accessToken ?? "");
+  const tenantId = String(record.tenantId ?? "");
+  const apiBaseUrl = String(record.apiBaseUrl ?? "");
+  if (!accessToken || !tenantId || !apiBaseUrl) return null;
+  return {
+    accessToken,
+    tenantId,
+    apiBaseUrl,
+    instanceId: String(record.instanceId ?? ""),
+    organisationName: record.organisationName ? String(record.organisationName) : null,
+    grantedScopes: Array.isArray(record.grantedScopes)
+      ? record.grantedScopes.map(String)
+      : [],
+  };
+}
+
+function normalizeMcpAuthToken(value: string): string {
+  return value.trim().replace(/^Bearer\s+/i, "");
+}
+
 const DEFAULT_INFRA_API = "https://infra-api.daniel-dwyer123.workers.dev";
 const DEFAULT_MCP_ID = "mcp_caddington_primary";
 
@@ -54,7 +85,7 @@ export async function fetchInfraXeroContext(env: CaddingtonMcpEnv): Promise<
 > {
   const base = (env.INFRA_API_URL ?? DEFAULT_INFRA_API).replace(/\/$/, "");
   const mcpId = env.INFRA_MCP_ENVIRONMENT_ID ?? DEFAULT_MCP_ID;
-  const token = env.MCP_AUTH_TOKEN;
+  const token = normalizeMcpAuthToken(env.MCP_AUTH_TOKEN);
   if (!token) {
     return {
       ok: false,
@@ -106,19 +137,28 @@ function toolSuccess(payload: unknown) {
 
 async function withXeroClient<T>(
   env: CaddingtonMcpEnv,
-  run: (client: XeroClient, context: InfraXeroContext) => Promise<T>,
+  run: (
+    client: XeroClient,
+    context: InfraXeroContext,
+    args: Record<string, unknown>,
+  ) => Promise<T>,
+  args: Record<string, unknown> = {},
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
-  const resolved = await fetchInfraXeroContext(env);
+  const injected = injectedContextFromArgs(args);
+  const resolved = injected
+    ? { ok: true as const, context: injected }
+    : await fetchInfraXeroContext(env);
   if (!resolved.ok) {
     return toolError(resolved.message, resolved.code);
   }
+  const xeroArgs = stripInternalArgs(args);
   const client = new XeroClient({
     accessToken: resolved.context.accessToken,
     tenantId: resolved.context.tenantId,
     apiBaseUrl: resolved.context.apiBaseUrl,
   });
   try {
-    const result = await run(client, resolved.context);
+    const result = await run(client, resolved.context, xeroArgs);
     return toolSuccess({
       organisationName: resolved.context.organisationName,
       ...((typeof result === "object" && result !== null ? result : { result }) as object),
@@ -140,7 +180,8 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       description:
         "Read the connected Xero organisation profile for this company. Live data only.",
     },
-    async () => withXeroClient(env, (client) => xeroReadTools.getOrganisation(client)),
+    async (args = {}) =>
+      withXeroClient(env, (client, _context, _xeroArgs) => xeroReadTools.getOrganisation(client), args),
   );
 
   server.registerTool(
@@ -154,12 +195,15 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
         xeroReadTools.listContacts(client, {
-          query: args.query as string | undefined,
-          contactType: args.contactType as string | undefined,
-          limit: args.limit as number | undefined,
+          query: xeroArgs.query as string | undefined,
+          contactType: xeroArgs.contactType as string | undefined,
+          limit: xeroArgs.limit as number | undefined,
         }),
+        args,
       ),
   );
 
@@ -172,8 +216,11 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
-        xeroReadTools.getContact(client, { contactId: String(args.contactId) }),
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
+        xeroReadTools.getContact(client, { contactId: String(xeroArgs.contactId) }),
+        args,
       ),
   );
 
@@ -194,17 +241,20 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
         xeroReadTools.searchInvoices(client, {
-          query: args.query as string | undefined,
-          status: args.status as string | undefined,
-          contactId: args.contactId as string | undefined,
-          overdueOnly: args.overdueOnly as boolean | undefined,
-          unpaidOnly: args.unpaidOnly as boolean | undefined,
-          fromDate: args.fromDate as string | undefined,
-          toDate: args.toDate as string | undefined,
-          limit: args.limit as number | undefined,
+          query: xeroArgs.query as string | undefined,
+          status: xeroArgs.status as string | undefined,
+          contactId: xeroArgs.contactId as string | undefined,
+          overdueOnly: xeroArgs.overdueOnly as boolean | undefined,
+          unpaidOnly: xeroArgs.unpaidOnly as boolean | undefined,
+          fromDate: xeroArgs.fromDate as string | undefined,
+          toDate: xeroArgs.toDate as string | undefined,
+          limit: xeroArgs.limit as number | undefined,
         }),
+        args,
       ),
   );
 
@@ -218,11 +268,14 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
         xeroReadTools.getInvoice(client, {
-          invoiceId: args.invoiceId as string | undefined,
-          invoiceNumber: args.invoiceNumber as string | undefined,
+          invoiceId: xeroArgs.invoiceId as string | undefined,
+          invoiceNumber: xeroArgs.invoiceNumber as string | undefined,
         }),
+        args,
       ),
   );
 
@@ -236,11 +289,14 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
         xeroReadTools.listOverdueInvoices(client, {
-          contactId: args.contactId as string | undefined,
-          limit: args.limit as number | undefined,
+          contactId: xeroArgs.contactId as string | undefined,
+          limit: xeroArgs.limit as number | undefined,
         }),
+        args,
       ),
   );
 
@@ -255,12 +311,15 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
         xeroReadTools.listPayments(client, {
-          since: args.since as string | undefined,
-          toDate: args.toDate as string | undefined,
-          limit: args.limit as number | undefined,
+          since: xeroArgs.since as string | undefined,
+          toDate: xeroArgs.toDate as string | undefined,
+          limit: xeroArgs.limit as number | undefined,
         }),
+        args,
       ),
   );
 
@@ -273,10 +332,13 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
         xeroReadTools.listAccounts(client, {
-          accountType: args.accountType as string | undefined,
+          accountType: xeroArgs.accountType as string | undefined,
         }),
+        args,
       ),
   );
 
@@ -291,12 +353,15 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
         xeroReadTools.listBankTransactions(client, {
-          since: args.since as string | undefined,
-          toDate: args.toDate as string | undefined,
-          limit: args.limit as number | undefined,
+          since: xeroArgs.since as string | undefined,
+          toDate: xeroArgs.toDate as string | undefined,
+          limit: xeroArgs.limit as number | undefined,
         }),
+        args,
       ),
   );
 
@@ -311,11 +376,14 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
         xeroReadTools.profitAndLoss(client, {
-          fromDate: args.fromDate as string | undefined,
-          toDate: args.toDate as string | undefined,
+          fromDate: xeroArgs.fromDate as string | undefined,
+          toDate: xeroArgs.toDate as string | undefined,
         }),
+        args,
       ),
   );
 
@@ -328,8 +396,11 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
-        xeroReadTools.balanceSheet(client, { date: args.date as string | undefined }),
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
+        xeroReadTools.balanceSheet(client, { date: xeroArgs.date as string | undefined }),
+        args,
       ),
   );
 
@@ -343,11 +414,14 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
         xeroReadTools.agedReceivables(client, {
-          reportType: args.reportType as string | undefined,
-          date: args.date as string | undefined,
+          reportType: xeroArgs.reportType as string | undefined,
+          date: xeroArgs.date as string | undefined,
         }),
+        args,
       ),
   );
 
@@ -362,11 +436,14 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
         xeroReadTools.salesSummary(client, {
-          fromDate: String(args.fromDate),
-          toDate: String(args.toDate),
+          fromDate: String(xeroArgs.fromDate),
+          toDate: String(xeroArgs.toDate),
         }),
+        args,
       ),
   );
 
@@ -381,12 +458,15 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
       },
     },
     async (args) =>
-      withXeroClient(env, (client) =>
+      withXeroClient(
+        env,
+        (client, _context, xeroArgs) =>
         xeroReadTools.topCustomers(client, {
-          fromDate: args.fromDate as string | undefined,
-          toDate: args.toDate as string | undefined,
-          limit: args.limit as number | undefined,
+          fromDate: xeroArgs.fromDate as string | undefined,
+          toDate: xeroArgs.toDate as string | undefined,
+          limit: xeroArgs.limit as number | undefined,
         }),
+        args,
       ),
   );
 }

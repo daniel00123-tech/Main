@@ -6,6 +6,7 @@ import {
 import type { Env } from "../env";
 import { getConnectorInstance, listConnectorInstances, listMcpEnvironments } from "./control-plane";
 import { getValidXeroAccessToken } from "./xero";
+import { normalizeMcpAuthToken } from "./mcp-client";
 
 /**
  * Server-to-server bridge: Company Business MCP resolves Xero execution context.
@@ -40,7 +41,7 @@ export async function resolveXeroMcpExecutionContext(input: {
   }
 
   const bearer = input.authHeader?.startsWith("Bearer ")
-    ? input.authHeader.slice(7).trim()
+    ? normalizeMcpAuthToken(input.authHeader.slice(7))
     : null;
   if (!bearer || !mcp.authSecretRef) {
     return {
@@ -49,8 +50,10 @@ export async function resolveXeroMcpExecutionContext(input: {
       body: customerConnectorError(CONNECTOR_ERROR_CODES.PERMISSION_DENIED),
     };
   }
-  const expected = input.env[mcp.authSecretRef as keyof Env];
-  if (typeof expected !== "string" || !expected.trim() || bearer !== expected.trim()) {
+  const expectedRaw = input.env[mcp.authSecretRef as keyof Env];
+  const expected =
+    typeof expectedRaw === "string" ? normalizeMcpAuthToken(expectedRaw) : "";
+  if (!expected || bearer !== expected) {
     return {
       ok: false,
       status: 401,

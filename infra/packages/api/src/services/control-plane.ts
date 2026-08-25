@@ -745,7 +745,9 @@ export async function refreshMcpCapabilities(
   return result;
 }
 
-import { XERO_READ_MCP_TOOLS, XERO_TOOL_CONTRACTS } from "@infra/shared";
+import { XERO_AUTH, XERO_READ_MCP_TOOLS, XERO_TOOL_CONTRACTS } from "@infra/shared";
+import { isXeroToolName, prepareXeroMcpExecution } from "./xero-tools";
+import { getValidXeroAccessToken } from "./xero";
 
 const READ_ONLY_DEFAULT_TOOLS = [
   "search_company_knowledge",
@@ -836,17 +838,50 @@ export async function executeRegisteredMcpTool(
     detail: {
       mcpId: mcp.id,
       correlationId,
-      argumentKeys: Object.keys(input.arguments ?? {}),
+      argumentKeys: Object.keys(input.arguments ?? {}).filter(
+        (key) => key !== "_infraXeroContext",
+      ),
     },
   });
 
   try {
+    let forwardArgs = input.arguments ?? {};
+    if (isXeroToolName(input.toolName)) {
+      const prepared = await prepareXeroMcpExecution({
+        env,
+        companyId: mcp.companyId,
+        toolName: input.toolName,
+      });
+      if (prepared.ok) {
+        const token = await getValidXeroAccessToken({
+          env,
+          companyId: mcp.companyId,
+          instanceId: prepared.instanceId,
+          actor: input.actorEmail,
+          reason: "mcp_resolve",
+        });
+        if (token.ok) {
+          forwardArgs = {
+            ...forwardArgs,
+            _infraXeroContext: {
+              tenantId: token.tenantId,
+              apiBaseUrl: XERO_AUTH.apiBaseUrl,
+              accessToken: token.accessToken,
+              instanceId: prepared.instanceId,
+              organisationName: token.payload.organisationName,
+              grantedScopes: token.payload.scopes,
+            },
+          };
+        }
+      }
+    }
+
     const execution = await callMcpTool(env, {
       endpointUrl: mcp.endpointUrl,
       authSecretRef: mcp.authSecretRef,
       serviceBindingRef: mcp.serviceBindingRef,
       toolName: companyToolName,
-      arguments: input.arguments,
+      arguments: forwardArgs,
     });
 
     const checkedAt = nowIso();
