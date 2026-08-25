@@ -627,7 +627,22 @@ export async function handleInfraMcpJsonRpc(
         method,
         status: "ok",
         httpStatus: 200,
-        detail: { toolNames: advertised.map((t) => t.name), mcpId: mcp.id },
+        detail: {
+          toolNames: advertised.map((t) => t.name),
+          mcpId: mcp.id,
+          serviceIdentityId:
+            actor.type === "service" ? actor.identity.id : null,
+          tokenPrefix: actor.type === "service" ? actor.identity.tokenPrefix : null,
+          scopeCount:
+            actor.type === "service" ? actor.identity.scopes.length : null,
+          hasActionScopes:
+            actor.type === "service"
+              ? actor.identity.scopes.some((s) => s.startsWith("xero.action."))
+              : null,
+          downstreamToolCount: tools.length,
+          actionToolCount: advertised.length - tools.length,
+          finalToolCount: advertised.length,
+        },
       });
 
       return {
