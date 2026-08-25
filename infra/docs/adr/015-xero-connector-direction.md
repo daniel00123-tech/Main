@@ -1,26 +1,24 @@
 # ADR 015 — Xero connector direction
 
-- **Status:** Accepted (architecture only)
+- **Status:** Accepted (superseded in implementation by ADR 027)
 - **Date:** 2026-08-25
 - **Depends on:** ADR 001, ADR 005, ADR 012
+- **See also:** ADR 027
 
 ---
 
 ## Decision
 
-Xero is a future **company Business MCP** connector, not an INFRA operational dataset.
+Xero is a **company Business MCP** connector, not an INFRA operational dataset.
 
-Prepared in INFRA:
+INFRA owns:
 
-- catalogue definition (`conn_xero`)
-- OAuth configuration schema (client id / secret / tenant — submission disabled)
-- intended entities: contacts, invoices, payments, accounts, bank transactions, credit notes
-- read vs write boundary: reads may be low-risk; writes are `financial_action` and require permission + future approval (ADR 005)
+- reusable catalogue definition (`conn_xero`)
+- OAuth orchestration and encrypted token storage (ADR 027)
+- tenant identity, permissions, metering, and audit
 
-Unknowns (do not guess):
+The company Business MCP owns live accounting reads. INFRA must not become a duplicate Xero warehouse.
 
-- exact Xero OAuth app scopes for the first live tenant
-- which entities should be exposed to AI vs admin-only
-- webhook vs scheduled sync for the first production tenant
+Phase one is **read only**. Writes remain `financial_action` and require permission + future approval (ADR 005). Do not enable invoice creation, payments, journals, bank-transaction writes, or payroll modifications.
 
-Do not collect Xero credentials in this phase. Do not enable financial writes.
+Caddington is the first production tenant. No Caddington-specific React routes.

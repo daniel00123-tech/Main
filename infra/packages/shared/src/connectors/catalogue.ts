@@ -279,12 +279,9 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     capabilities: ["read", "search", "sync", "live_query", "export"],
     credentialSchema: {
       type: "object",
-      required: ["clientId", "clientSecret", "refreshToken"],
       properties: {
-        clientId: { type: "string" },
-        clientSecret: { type: "string", format: "secret" },
+        accessToken: { type: "string", format: "secret" },
         refreshToken: { type: "string", format: "secret" },
-        tenantId: { type: "string" },
       },
     },
     configSchema: {
@@ -307,9 +304,9 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
       },
     },
     supportedSyncModes: ["scheduled", "incremental", "webhook"],
-    isAvailable: false,
+    isAvailable: true,
     authenticationMethod: "oauth",
-    readWrite: "read_write",
+    readWrite: "read",
     requiresCompanyMcp: true,
     availabilityLabel: "requires_setup",
     taxonomyCategory: "accounting_finance",
@@ -320,17 +317,18 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
       pkceRequired: true,
       requiredScopes: [
         "offline_access",
+        "accounting.settings.read",
         "accounting.contacts.read",
         "accounting.transactions.read",
-        "accounting.settings.read",
+        "accounting.reports.read",
       ],
-      optionalScopes: ["accounting.contacts", "accounting.transactions"],
-      callbackPath: "/api/connectors/oauth/callback",
+      optionalScopes: [],
+      callbackPath: "/api/connectors/xero/oauth/callback",
     },
     riskNotes:
-      "Reads are low risk. Invoice create/send are financial or external-send actions and require approval.",
+      "Phase one is read-only. Invoice create/send remain financial or external-send actions and are not requested.",
     setupInstructions:
-      "Xero OAuth is prepared but not activated. Financial writes will require permission and approval. Credential submission is disabled.",
+      "Connect Xero to authorise read-only access. INFRA stores encrypted tokens only. Accounting data stays on Xero and the company Business MCP.",
   },
   {
     id: "conn_freshdesk",

@@ -56,6 +56,9 @@ class MemoryD1 {
         expires_at: binds[9],
         consumed_at: null,
         created_at: binds[10],
+        code_verifier_nonce_b64: binds[11] ?? null,
+        code_verifier_ciphertext_b64: binds[12] ?? null,
+        return_path: binds[13] ?? null,
       });
     }
     if (q.includes("update oauth_authorization_states set consumed_at")) {
@@ -86,11 +89,29 @@ describe("oauth state binding", () => {
       userId: "user_a",
     });
     expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.value.companyId).toBe("co_a");
     const replay = await consumeOauthAuthorizationState(db, {
       state: created.state,
       companyId: "co_a",
     });
     expect(replay.ok).toBe(false);
+  });
+
+  it("rejects expired OAuth state", async () => {
+    const db = new MemoryD1();
+    const created = await createOauthAuthorizationState(db as unknown as D1Database, {
+      companyId: "co_a",
+      userId: "user_a",
+      definitionId: "conn_xero",
+    });
+    const row = db.tables.oauth_authorization_states[0];
+    if (row) row.expires_at = "2000-01-01T00:00:00.000Z";
+    const expired = await consumeOauthAuthorizationState(db as unknown as D1Database, {
+      state: created.state,
+      companyId: "co_a",
+      userId: "user_a",
+    });
+    expect(expired.ok).toBe(false);
   });
 
   it("never persists tokens on the authorization row", async () => {

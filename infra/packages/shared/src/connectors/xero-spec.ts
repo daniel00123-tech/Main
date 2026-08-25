@@ -1,41 +1,65 @@
 /**
- * Reusable Xero connector specification for the next implementation phase.
+ * Reusable Xero connector contract.
  *
- * VERIFY AGAINST CURRENT XERO API DOCUMENTATION BEFORE IMPLEMENTATION.
- * This file is a control-plane contract, not a live integration.
+ * Phase one is READ ONLY. Write scopes and financial-action tools stay
+ * specified but unimplemented.
  */
+
+export const XERO_CLIENT_ID_SECRET = "XERO_CLIENT_ID";
+export const XERO_CLIENT_SECRET_SECRET = "XERO_CLIENT_SECRET";
+export const XERO_REDIRECT_URI_SECRET = "XERO_OAUTH_REDIRECT_URI";
+
+export const XERO_DEFAULT_REDIRECT_URI =
+  "https://infra-api.daniel-dwyer123.workers.dev/api/connectors/xero/oauth/callback";
 
 export const XERO_AUTH = {
   type: "oauth2" as const,
   pkceRequired: true,
   authorizationUrl: "https://login.xero.com/identity/connect/authorize",
   tokenUrl: "https://identity.xero.com/connect/token",
+  connectionsUrl: "https://api.xero.com/connections",
+  apiBaseUrl: "https://api.xero.com/api.xro/2.0",
+  callbackPath: "/api/connectors/xero/oauth/callback",
   requiredScopes: [
     "offline_access",
+    "accounting.settings.read",
     "accounting.contacts.read",
     "accounting.transactions.read",
-    "accounting.settings.read",
+    "accounting.reports.read",
   ],
-  optionalScopes: [
+  optionalScopes: [] as string[],
+  writeScopesNeverRequested: [
     "accounting.contacts",
     "accounting.transactions",
     "accounting.settings",
+    "accounting.attachments",
+    "payroll.employees",
+    "payroll.payruns",
   ],
-  notes: [
-    "VERIFY AGAINST CURRENT XERO API DOCUMENTATION BEFORE IMPLEMENTATION.",
-    "Do not collect or store Xero secrets in this phase.",
-    "Financial writes require INFRA permission + approval (ADR 005).",
-  ],
+} as const;
+
+export const XERO_SCOPE_REASONS: Record<string, string> = {
+  offline_access:
+    "Issues a refresh token so INFRA can renew access without another consent screen.",
+  "accounting.settings.read":
+    "Organisation profile, accounting settings, and chart of accounts.",
+  "accounting.contacts.read":
+    "Customers/suppliers for debtor questions and invoice counterparties.",
+  "accounting.transactions.read":
+    "Invoices, credit notes, payments, and bank transactions (read only).",
+  "accounting.reports.read":
+    "Bounded P&L and other financial reports Xero already computes.",
 };
 
 export const XERO_READ_CAPABILITIES = [
-  { key: "organisation", label: "Organisation", verified: false },
-  { key: "contacts", label: "Contacts", verified: false },
-  { key: "invoices", label: "Invoices", verified: false },
-  { key: "credit_notes", label: "Credit Notes", verified: false },
-  { key: "payments", label: "Payments", verified: false },
-  { key: "accounts", label: "Accounts", verified: false },
-  { key: "bank_transactions", label: "Bank Transactions", verified: false },
+  { key: "organisation", label: "Organisation", verified: true },
+  { key: "contacts", label: "Contacts", verified: true },
+  { key: "invoices", label: "Invoices", verified: true },
+  { key: "credit_notes", label: "Credit Notes", verified: true },
+  { key: "payments", label: "Payments", verified: true },
+  { key: "accounts", label: "Accounts", verified: true },
+  { key: "bank_transactions", label: "Bank Transactions", verified: true },
+  { key: "reports", label: "Reports", verified: true },
 ] as const;
 
 export const XERO_WRITE_CAPABILITIES_FUTURE = [
@@ -52,7 +76,9 @@ export type XeroToolContract = {
   auditEvent: string;
   input: Record<string, string>;
   output: Record<string, string>;
-  implemented: false;
+  /** Control-plane contract ready. Company MCP still owns live accounting data. */
+  implemented: boolean;
+  mcpToolName: string;
 };
 
 export const XERO_TOOL_CONTRACTS: XeroToolContract[] = [
@@ -64,7 +90,8 @@ export const XERO_TOOL_CONTRACTS: XeroToolContract[] = [
     auditEvent: "mcp.execution_succeeded",
     input: {},
     output: { organisationName: "string", organisationId: "string" },
-    implemented: false,
+    implemented: true,
+    mcpToolName: "xero_organisation_read",
   },
   {
     name: "xero.contacts.search",
@@ -74,7 +101,8 @@ export const XERO_TOOL_CONTRACTS: XeroToolContract[] = [
     auditEvent: "mcp.execution_succeeded",
     input: { query: "string", limit: "number?" },
     output: { contacts: "array" },
-    implemented: false,
+    implemented: true,
+    mcpToolName: "xero_contacts_search",
   },
   {
     name: "xero.invoices.search",
@@ -82,9 +110,10 @@ export const XERO_TOOL_CONTRACTS: XeroToolContract[] = [
     riskClass: "low_risk",
     billingOperation: "xero.invoices.search",
     auditEvent: "mcp.execution_succeeded",
-    input: { query: "string", status: "string?", limit: "number?" },
+    input: { query: "string", status: "string?", overdueOnly: "boolean?", limit: "number?" },
     output: { invoices: "array" },
-    implemented: false,
+    implemented: true,
+    mcpToolName: "xero_invoices_search",
   },
   {
     name: "xero.invoices.get",
@@ -92,9 +121,21 @@ export const XERO_TOOL_CONTRACTS: XeroToolContract[] = [
     riskClass: "low_risk",
     billingOperation: "xero.invoices.get",
     auditEvent: "mcp.execution_succeeded",
-    input: { invoiceId: "string" },
+    input: { invoiceId: "string", invoiceNumber: "string?" },
     output: { invoice: "object" },
-    implemented: false,
+    implemented: true,
+    mcpToolName: "xero_invoices_get",
+  },
+  {
+    name: "xero.payments.read",
+    action: "xero.payments.read",
+    riskClass: "low_risk",
+    billingOperation: "xero.payments.read",
+    auditEvent: "mcp.execution_succeeded",
+    input: { since: "string?", limit: "number?" },
+    output: { payments: "array" },
+    implemented: true,
+    mcpToolName: "xero_payments_read",
   },
   {
     name: "xero.accounts.list",
@@ -104,7 +145,30 @@ export const XERO_TOOL_CONTRACTS: XeroToolContract[] = [
     auditEvent: "mcp.execution_succeeded",
     input: {},
     output: { accounts: "array" },
-    implemented: false,
+    implemented: true,
+    mcpToolName: "xero_accounts_list",
+  },
+  {
+    name: "xero.bank_transactions.read",
+    action: "xero.bank_transactions.read",
+    riskClass: "low_risk",
+    billingOperation: "xero.bank_transactions.read",
+    auditEvent: "mcp.execution_succeeded",
+    input: { since: "string?", limit: "number?" },
+    output: { bankTransactions: "array" },
+    implemented: true,
+    mcpToolName: "xero_bank_transactions_read",
+  },
+  {
+    name: "xero.reports.profit_and_loss",
+    action: "xero.reports.profit_and_loss",
+    riskClass: "low_risk",
+    billingOperation: "xero.reports.profit_and_loss",
+    auditEvent: "mcp.execution_succeeded",
+    input: { fromDate: "string?", toDate: "string?" },
+    output: { report: "object" },
+    implemented: true,
+    mcpToolName: "xero_profit_and_loss",
   },
   {
     name: "xero.invoices.create_draft",
@@ -115,15 +179,18 @@ export const XERO_TOOL_CONTRACTS: XeroToolContract[] = [
     input: { contactId: "string", lineItems: "array" },
     output: { invoice: "object" },
     implemented: false,
+    mcpToolName: "xero_invoices_create_draft",
   },
 ];
 
+export const XERO_READ_MCP_TOOLS = XERO_TOOL_CONTRACTS.filter(
+  (tool) => tool.implemented && tool.riskClass === "low_risk",
+).map((tool) => tool.mcpToolName);
+
 export const XERO_DATA_PLANE = [
   "Xero",
-  "Reusable Xero Connector",
-  "Company Business MCP",
-  "Company structured-data layer / warehouse",
-  "Business MCP tools",
-  "INFRA (identity, permission, approval, meter, audit)",
+  "Reusable Xero Connector (INFRA OAuth + encrypted tokens)",
+  "Company Business MCP / company data layer",
+  "INFRA (identity, permission, meter, audit)",
   "ChatGPT / Claude / other AI clients",
 ] as const;

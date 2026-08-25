@@ -25,6 +25,9 @@ export type ToolAction =
   | "xero.credit_notes.read"
   | "xero.payments.read"
   | "xero.bank_transactions.read"
+  | "xero.reports.profit_and_loss"
+  | "xero.health"
+  | "xero.token_refresh"
   // Write (WRITE / FINANCIAL_ACTION)
   | "bigchange.jobs.create"
   | "bigchange.jobs.update"
@@ -132,6 +135,12 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "xero.invoices.read",
       "xero.invoices.search",
       "xero.organisation.read",
+      "xero.invoices.get",
+      "xero.payments.read",
+      "xero.accounts.list",
+      "xero.bank_transactions.read",
+      "xero.reports.profit_and_loss",
+      "xero.health",
     ],
     deniedByDefault: [
       "bigchange.invoices.create",
@@ -171,6 +180,12 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "xero.invoices.search",
       "xero.contacts.read",
       "xero.organisation.read",
+      "xero.invoices.get",
+      "xero.payments.read",
+      "xero.accounts.list",
+      "xero.bank_transactions.read",
+      "xero.reports.profit_and_loss",
+      "xero.health",
     ],
     deniedByDefault: [
       "bigchange.invoices.delete",
@@ -216,6 +231,8 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "xero.credit_notes.read",
       "xero.payments.read",
       "xero.bank_transactions.read",
+      "xero.reports.profit_and_loss",
+      "xero.health",
     ],
     deniedByDefault: ["bigchange.jobs.delete", "bigchange.invoices.delete", "bigchange.batch.update"],
   },
@@ -256,6 +273,8 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "xero.credit_notes.read",
       "xero.payments.read",
       "xero.bank_transactions.read",
+      "xero.reports.profit_and_loss",
+      "xero.health",
     ],
     deniedByDefault: ["bigchange.jobs.delete", "bigchange.invoices.delete"],
   },
@@ -297,6 +316,8 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "xero.credit_notes.read",
       "xero.payments.read",
       "xero.bank_transactions.read",
+      "xero.reports.profit_and_loss",
+      "xero.health",
     ],
     deniedByDefault: ["bigchange.batch.update", "commusoft.batch.send"],
   },
@@ -329,6 +350,9 @@ export const TOOL_ACTION_RISK: Record<
   "xero.credit_notes.read": { capability: "read", riskClass: "low_risk" },
   "xero.payments.read": { capability: "read", riskClass: "low_risk" },
   "xero.bank_transactions.read": { capability: "read", riskClass: "low_risk" },
+  "xero.reports.profit_and_loss": { capability: "read", riskClass: "low_risk" },
+  "xero.health": { capability: "read", riskClass: "low_risk" },
+  "xero.token_refresh": { capability: "read", riskClass: "low_risk" },
   "bigchange.jobs.create": { capability: "create", riskClass: "write" },
   "bigchange.jobs.update": { capability: "update", riskClass: "write" },
   "bigchange.jobs.book_engineer": { capability: "update", riskClass: "write" },
