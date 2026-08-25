@@ -27,6 +27,7 @@ const SCOPES = JSON.stringify([
   "xero.accounts.read",
   "xero.invoices.read",
   "xero.invoices.search",
+  "xero.invoices.get",
   "xero.action.plan",
   "xero.action.read",
   "xero.action.confirm",
@@ -172,15 +173,22 @@ try {
 
     const invoiceId = execute?.executionResult?.xeroResourceId;
     if (invoiceId) {
-      const readBack = await execRead("xero_get_invoice", { invoiceId });
-      const invoice = readBack.body?.result?.invoice;
+      const readBackCall = await mcpCall(
+        "tools/call",
+        { name: "xero_get_invoice", arguments: { invoiceId } },
+        6,
+      );
+      const readPayload = toolPayload(readBackCall.body);
+      const invoice = readPayload?.invoice;
       report.steps.push({
         step: "xero_get_invoice_readback",
-        ok: readBack.status === 200 && invoice?.Status === "DRAFT",
+        ok: Boolean(invoice?.Status === "DRAFT" && invoice?.InvoiceNumber),
         status: invoice?.Status ?? null,
+        invoiceNumber: invoice?.InvoiceNumber ?? null,
         total: invoice?.Total ?? null,
-        dueDate: invoice?.DueDate ?? null,
+        dueDate: invoice?.DueDateString?.slice(0, 10) ?? null,
         taxType: invoice?.LineItems?.[0]?.TaxType ?? null,
+        error: readBackCall.body?.error?.message ?? readPayload?.error ?? null,
       });
     }
 
