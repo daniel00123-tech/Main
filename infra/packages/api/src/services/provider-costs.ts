@@ -293,3 +293,89 @@ export async function createManualPricingReviewProposal(
 
   return id;
 }
+
+export async function updateDraftRateCardItems(
+  db: D1Database,
+  cardId: string,
+  items: Array<{ id: string; unitCostMicros: number; notes?: string | null }>,
+  actor: string,
+): Promise<{ card: ProviderRateCard; items: ProviderRateItem[] }> {
+  const full = await getProviderRateCard(db, cardId);
+  if (!full) throw new Error("Rate card not found");
+  if (full.card.status !== "draft") {
+    throw new Error("Only draft rate cards can be edited");
+  }
+
+  const itemIds = new Set(full.items.map((i) => i.id));
+  for (const update of items) {
+    if (!itemIds.has(update.id)) {
+      throw new Error(`Unknown rate item: ${update.id}`);
+    }
+    if (update.unitCostMicros < 0) {
+      throw new Error("Unit cost cannot be negative");
+    }
+    await db
+      .prepare(
+        `UPDATE provider_rate_items
+         SET unit_cost_micros = ?, notes = COALESCE(?, notes)
+         WHERE id = ? AND rate_card_id = ?`,
+      )
+      .bind(update.unitCostMicros, update.notes ?? null, update.id, cardId)
+      .run();
+  }
+
+  await db
+    .prepare(`UPDATE provider_rate_cards SET updated_at = ? WHERE id = ?`)
+    .bind(nowIso(), cardId)
+    .run();
+
+  const refreshed = await getProviderRateCard(db, cardId);
+  if (!refreshed) throw new Error("Rate card not found after update");
+  return { card: refreshed.card, items: refreshed.items };
+}
+
+export async function approveProviderRateCard(
+  db: D1Database,
+  cardId: string,
+  actor: string,
+): Promise<ProviderRateCard> {
+  const full = await getProviderRateCard(db, cardId);
+  if (!full) throw new Error("Rate card not found");
+  if (!["draft", "proposed"].includes(full.card.status)) {
+    throw new Error("Only draft or proposed rate cards can be approved");
+  }
+
+  const hasConfiguredCost = full.items.some((item) => item.unitCostMicros > 0);
+  if (!hasConfiguredCost) {
+    throw new Error(
+      "Configure at least one unit cost before approving. Zero-cost cards cannot be activated.",
+    );
+  }
+
+  const now = nowIso();
+  await db
+    .prepare(
+      `UPDATE provider_rate_cards
+       SET status = 'superseded', effective_to = ?, updated_at = ?
+       WHERE provider = ? AND status = 'active' AND id != ?`,
+    )
+    .bind(now, now, full.card.provider, cardId)
+    .run();
+
+  await db
+    .prepare(
+      `UPDATE provider_rate_cards
+       SET status = 'active', approved_by = ?, approved_at = ?, verified_at = ?,
+           effective_from = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(actor, now, now, now, now, cardId)
+    .run();
+
+  const row = await db
+    .prepare(`SELECT * FROM provider_rate_cards WHERE id = ?`)
+    .bind(cardId)
+    .first();
+  if (!row) throw new Error("Rate card missing after approval");
+  return mapCard(row);
+}

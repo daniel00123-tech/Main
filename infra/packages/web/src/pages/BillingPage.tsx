@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Download, Plus } from "lucide-react";
 import { api } from "../api";
+import { useAdminScope } from "../context/AdminScopeContext";
 import {
   Button,
   EmptyState,
@@ -36,6 +37,7 @@ type LedgerRow = Awaited<ReturnType<typeof api.getBillingLedger>>[number];
 
 export default function BillingPage() {
   const navigate = useNavigate();
+  const { companySlug: scopeCompanySlug } = useAdminScope();
   const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<BalanceRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -107,9 +109,15 @@ export default function BillingPage() {
       setSummary(billingSummary);
       setStripeConfigured(gateway ? Boolean(gateway.stripeConfigured) : null);
       const slug =
-        selectedSlug && balances.some((b) => b.companySlug === selectedSlug)
+        (scopeCompanySlug &&
+        balances.some((b) => b.companySlug === scopeCompanySlug)
+          ? scopeCompanySlug
+          : null) ??
+        (selectedSlug && balances.some((b) => b.companySlug === selectedSlug)
           ? selectedSlug
-          : balances[0]?.companySlug ?? null;
+          : null) ??
+        balances[0]?.companySlug ??
+        null;
       setSelectedSlug(slug);
       const companyId = balances.find((b) => b.companySlug === slug)?.companyId;
       await loadLedger(companyId);
@@ -124,6 +132,13 @@ export default function BillingPage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (scopeCompanySlug) {
+      setSelectedSlug(scopeCompanySlug);
+      setSearchParams({ company: scopeCompanySlug }, { replace: true });
+    }
+  }, [scopeCompanySlug, setSearchParams]);
 
   useEffect(() => {
     setLedgerLimit(25);

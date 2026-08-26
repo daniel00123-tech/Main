@@ -5,6 +5,7 @@ import type { CreateCompanyInput } from "@infra/shared";
 import { DEFAULT_TEST_OPENING_CREDIT_CENTS, validateCompanySlug } from "@infra/shared";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { useAdminScope } from "../context/AdminScopeContext";
 import {
   ActionMenu,
   Button,
@@ -73,6 +74,7 @@ function slugify(value: string): string {
 export default function CompaniesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { companySlug: scopeCompanySlug } = useAdminScope();
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +116,7 @@ export default function CompaniesPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = companies.filter((c) => {
+      if (scopeCompanySlug && c.slug !== scopeCompanySlug) return false;
       if (filter === "active" && c.status !== "active") return false;
       if (filter === "onboarding" && c.status !== "onboarding") return false;
       if (filter === "disabled" && c.status !== "suspended") return false;
@@ -138,7 +141,7 @@ export default function CompaniesPage() {
       }
       return a.name.localeCompare(b.name);
     });
-  }, [companies, query, filter, sort]);
+  }, [companies, query, filter, sort, scopeCompanySlug]);
 
   const stats = useMemo(() => {
     const active = companies.filter((c) => c.status === "active").length;

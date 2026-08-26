@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateActionPermission,
   getUserCompanyRole,
+  isRolePermissionEditable,
   userHasCompanyAccess,
 } from "../permissions/service";
 import type { SessionUser } from "../auth/session";
@@ -70,5 +71,10 @@ describe("permission service", () => {
     );
     expect(decision.allowed).toBe(false);
     expect(decision.reason).toContain("not a member");
+  });
+
+  it("protects company_admin role from override editing", () => {
+    expect(isRolePermissionEditable("company_admin")).toBe(false);
+    expect(isRolePermissionEditable("engineer")).toBe(true);
   });
 });

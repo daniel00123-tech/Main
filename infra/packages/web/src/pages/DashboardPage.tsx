@@ -11,6 +11,7 @@ import {
 import type { Company } from "@infra/shared";
 import { api } from "../api";
 import AttentionCentre from "../components/AttentionCentre";
+import { useAdminScope } from "../context/AdminScopeContext";
 import {
   ActivityFeed,
   EmptyState,
@@ -31,6 +32,7 @@ import {
 } from "../lib/format";
 
 export default function DashboardPage() {
+  const { companyId: scopeCompanyId, companySlug: scopeCompanySlug } = useAdminScope();
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof api.getSummary>> | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [balances, setBalances] = useState<Awaited<ReturnType<typeof api.getBillingBalances>>>([]);
@@ -67,7 +69,9 @@ export default function DashboardPage() {
 
   const attention = useMemo(
     () =>
-      attentionItems.map((item) => ({
+      attentionItems
+        .filter((item) => !scopeCompanyId || item.companyId === scopeCompanyId)
+        .map((item) => ({
         id: item.id,
         severity: item.severity,
         title: item.title,
@@ -83,7 +87,22 @@ export default function DashboardPage() {
                 ? "Create an AI connection in the company portal"
                 : "Review and take action",
       })),
-    [attentionItems],
+    [attentionItems, scopeCompanyId],
+  );
+
+  const scopedCompanies = useMemo(
+    () =>
+      scopeCompanySlug
+        ? companies.filter((c) => c.slug === scopeCompanySlug)
+        : companies,
+    [companies, scopeCompanySlug],
+  );
+  const scopedRecentUsage = useMemo(
+    () =>
+      scopeCompanyId
+        ? (summary?.recentUsage ?? []).filter((r) => r.companyId === scopeCompanyId)
+        : summary?.recentUsage ?? [],
+    [summary?.recentUsage, scopeCompanyId],
   );
 
   async function dismissItem(item: { id: string; severity: "critical" | "warning" | "info" }) {
@@ -107,7 +126,7 @@ export default function DashboardPage() {
   }
 
   const companyById = new Map(companies.map((c) => [c.id, c]));
-  const activeCompanies = companies.filter((c) => c.status === "active").length;
+  const activeCompanies = scopedCompanies.filter((c) => c.status === "active").length;
   const lowWallets = balances.filter((b) => b.lowBalance).length;
   const platformHealthy =
     summary.mcpEnvironments === 0
@@ -219,7 +238,7 @@ export default function DashboardPage() {
             </Link>
           }
         >
-          {companies.length === 0 ? (
+          {scopedCompanies.length === 0 ? (
             <EmptyState
               title="No companies yet"
               description="Create a company record from the Companies screen."
@@ -235,7 +254,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {companies.slice(0, 6).map((company) => (
+                  {scopedCompanies.slice(0, 6).map((company) => (
                     <tr key={company.id}>
                       <td>
                         <Link to={`/companies/${company.slug}`} className="table-link">
@@ -292,7 +311,7 @@ export default function DashboardPage() {
             </Link>
           }
         >
-          {!summary.recentUsage || summary.recentUsage.length === 0 ? (
+          {!scopedRecentUsage || scopedRecentUsage.length === 0 ? (
             <EmptyState
               title="No usage yet"
               description="Usage appears after an AI client calls INFRA."
@@ -308,7 +327,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {summary.recentUsage.slice(0, 6).map((row) => (
+                  {scopedRecentUsage.slice(0, 6).map((row) => (
                     <tr key={row.id}>
                       <td>{formatRelativeTime(row.recordedAt)}</td>
                       <td>{humanOperation(row.action, row.toolName)}</td>

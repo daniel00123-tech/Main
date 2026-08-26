@@ -70,6 +70,43 @@ export default function ProviderCostsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
+  const [itemDrafts, setItemDrafts] = useState<
+    Record<string, Record<string, string>>
+  >({});
+
+  async function saveDraftItems(cardId: string, items: ProviderCard["items"]) {
+    setBusyProvider(cardId);
+    try {
+      const drafts = itemDrafts[cardId] ?? {};
+      await api.updateProviderRateCardItems(
+        cardId,
+        items.map((item) => ({
+          id: item.id,
+          unitCostMicros: Math.round(Number(drafts[item.id] ?? item.unitCostMicros / 10_000) * 10_000),
+          notes: item.notes,
+        })),
+      );
+      toast("Unit costs saved");
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Unable to save unit costs", "error");
+    } finally {
+      setBusyProvider(null);
+    }
+  }
+
+  async function approveCard(cardId: string) {
+    setBusyProvider(cardId);
+    try {
+      await api.approveProviderRateCard(cardId);
+      toast("Rate card approved");
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Unable to approve rate card", "error");
+    } finally {
+      setBusyProvider(null);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -279,9 +316,35 @@ export default function ProviderCostsPage() {
                                     </td>
                                     <td className="muted">{item.billingUnit}</td>
                                     <td className="num">
-                                      {item.unitCostMicros > 0
-                                        ? `£${(item.unitCostMicros / 1_000_000).toFixed(6)}`
-                                        : "Not configured"}
+                                      {row.active?.card.status === "draft" ? (
+                                        <input
+                                          className="input"
+                                          style={{ maxWidth: 120 }}
+                                          type="number"
+                                          step="0.000001"
+                                          min="0"
+                                          value={
+                                            itemDrafts[row.active.card.id]?.[item.id] ??
+                                            (item.unitCostMicros > 0
+                                              ? String(item.unitCostMicros / 1_000_000)
+                                              : "")
+                                          }
+                                          onChange={(e) =>
+                                            setItemDrafts((prev) => ({
+                                              ...prev,
+                                              [row.active!.card.id]: {
+                                                ...(prev[row.active!.card.id] ?? {}),
+                                                [item.id]: e.target.value,
+                                              },
+                                            }))
+                                          }
+                                          placeholder="£ per unit"
+                                        />
+                                      ) : item.unitCostMicros > 0 ? (
+                                        `£${(item.unitCostMicros / 1_000_000).toFixed(6)}`
+                                      ) : (
+                                        "Not configured"
+                                      )}
                                     </td>
                                   </tr>
                                 ))}
@@ -291,6 +354,26 @@ export default function ProviderCostsPage() {
                           <p className="mono small muted" style={{ marginTop: 8 }}>
                             Rate card ID: {row.active.card.versionLabel ?? row.active.card.id}
                           </p>
+                          {row.active.card.status === "draft" ? (
+                            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                loading={busyProvider === row.active.card.id}
+                                onClick={() => void saveDraftItems(row.active!.card.id, row.active!.items)}
+                              >
+                                Save unit costs
+                              </Button>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                loading={busyProvider === row.active.card.id}
+                                onClick={() => void approveCard(row.active!.card.id)}
+                              >
+                                Approve rate card
+                              </Button>
+                            </div>
+                          ) : null}
                         </details>
                       </td>
                     </tr>

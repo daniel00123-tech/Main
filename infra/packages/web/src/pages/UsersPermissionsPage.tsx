@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Users } from "lucide-react";
 import type { Company, CompanyRole, InfraUser } from "@infra/shared";
 import { api } from "../api";
+import { useAdminScope } from "../context/AdminScopeContext";
 import {
   Button,
   Drawer,
@@ -21,6 +22,7 @@ import {
 import { formatRelativeTime, humanRole } from "../lib/format";
 
 export default function UsersPermissionsPage() {
+  const { companySlug: scopeCompanySlug } = useAdminScope();
   const [users, setUsers] = useState<InfraUser[]>([]);
   const [roles, setRoles] = useState<Awaited<ReturnType<typeof api.getRolePresets>>>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -66,13 +68,22 @@ export default function UsersPermissionsPage() {
 
   const filteredUsers = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(
+    let list = users;
+    if (scopeCompanySlug) {
+      const company = companies.find((c) => c.slug === scopeCompanySlug);
+      if (company) {
+        list = users.filter((u) =>
+          u.memberships.some((m) => m.companyId === company.id),
+        );
+      }
+    }
+    if (!q) return list;
+    return list.filter(
       (u) =>
         u.displayName.toLowerCase().includes(q) ||
         u.email.toLowerCase().includes(q),
     );
-  }, [users, query]);
+  }, [users, query, scopeCompanySlug, companies]);
 
   const roleUserCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -221,7 +232,11 @@ export default function UsersPermissionsPage() {
       ) : null}
 
       {tab === "permissions" ? (
-        <PermissionsEditor companies={companies} roles={roles} />
+        <PermissionsEditor
+          companies={companies}
+          roles={roles}
+          initialCompanySlug={scopeCompanySlug}
+        />
       ) : null}
 
       <Modal
@@ -329,11 +344,15 @@ export default function UsersPermissionsPage() {
 function PermissionsEditor({
   companies,
   roles,
+  initialCompanySlug,
 }: {
   companies: Company[];
   roles: Awaited<ReturnType<typeof api.getRolePresets>>;
+  initialCompanySlug?: string;
 }) {
-  const [companySlug, setCompanySlug] = useState(companies[0]?.slug ?? "");
+  const [companySlug, setCompanySlug] = useState(
+    initialCompanySlug ?? companies[0]?.slug ?? "",
+  );
   const [selectedRole, setSelectedRole] = useState<string>("engineer");
   const [draft, setDraft] = useState<Map<string, boolean>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -344,6 +363,10 @@ function PermissionsEditor({
   >([]);
 
   const editableRoles = roles.filter((r) => r.role !== "company_admin");
+
+  useEffect(() => {
+    if (initialCompanySlug) setCompanySlug(initialCompanySlug);
+  }, [initialCompanySlug]);
 
   async function loadPermissions(slug: string) {
     if (!slug) return;

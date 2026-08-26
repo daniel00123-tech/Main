@@ -4,6 +4,7 @@ import { Network } from "lucide-react";
 import type { Company, McpEnvironment } from "@infra/shared";
 import { api, type McpExecuteResult } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { useAdminScope } from "../context/AdminScopeContext";
 import {
   AdvancedDetails,
   Button,
@@ -29,6 +30,7 @@ const DEFAULT_TEST_QUERY = "What does the company annual leave policy say?";
 
 export default function McpEnvironmentsPage() {
   const { user } = useAuth();
+  const { companyId: scopeCompanyId } = useAdminScope();
   const [rows, setRows] = useState<McpRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +50,7 @@ export default function McpEnvironmentsPage() {
     setError(null);
     try {
       const [mcpList, companies] = await Promise.all([
-        api.getMcpEnvironments(),
+        api.getMcpEnvironments(scopeCompanyId),
         api.getCompanies(),
       ]);
       const companyById = new Map(companies.map((c: Company) => [c.id, c]));
@@ -67,7 +69,7 @@ export default function McpEnvironmentsPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [scopeCompanyId]);
 
   useEffect(() => {
     if (!selectedMcpId || !user?.isPlatformAdmin) return;

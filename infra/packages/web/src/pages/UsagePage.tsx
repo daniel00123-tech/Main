@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ChartColumn, Download } from "lucide-react";
 import type { Company, UsageInteraction, UsageRecord } from "@infra/shared";
 import { api } from "../api";
+import { useAdminScope } from "../context/AdminScopeContext";
 import {
   Button,
   Drawer,
@@ -40,6 +41,7 @@ type UsageRow = UsageRecord & {
 };
 
 export default function UsagePage() {
+  const { companyId: scopeCompanyId } = useAdminScope();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [rows, setRows] = useState<UsageRow[]>([]);
   const [summary, setSummary] = useState<{
@@ -68,6 +70,10 @@ export default function UsagePage() {
   const [auditEvents, setAuditEvents] = useState<
     Awaited<ReturnType<typeof api.getAuditEvents>>
   >([]);
+
+  useEffect(() => {
+    setCompanyId(scopeCompanyId ?? "");
+  }, [scopeCompanyId]);
 
   async function load() {
     setLoading(true);

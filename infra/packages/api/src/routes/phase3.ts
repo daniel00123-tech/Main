@@ -36,11 +36,13 @@ import {
   listPricingRules,
 } from "../services/pricing";
 import {
+  approveProviderRateCard,
   createManualPricingReviewProposal,
   ensureProviderCostCatalogue,
   getProviderRateCard,
   listPricingReviews,
   listProviderRateCards,
+  updateDraftRateCardItems,
 } from "../services/provider-costs";
 import {
   listFinancialExceptions,
@@ -1458,6 +1460,69 @@ phase3.post(
 phase3.get("/api/commercial/pricing-reviews", requireAuth, requirePlatformAdmin, async (c) => {
   return c.json({ reviews: await listPricingReviews(c.env.DB) });
 });
+
+phase3.put(
+  "/api/commercial/provider-costs/:id/items",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    const body = await c.req.json<{
+      items?: Array<{ id: string; unitCostMicros: number; notes?: string | null }>;
+    }>();
+    if (!body.items?.length) {
+      return c.json({ error: "items array is required" }, 400);
+    }
+    try {
+      const updated = await updateDraftRateCardItems(
+        c.env.DB,
+        c.req.param("id"),
+        body.items,
+        c.get("user").email,
+      );
+      await recordAuditEvent(c.env.DB, {
+        eventType: "pricing.rate_card_updated",
+        actor: c.get("user").email,
+        resourceType: "provider_rate_card",
+        resourceId: c.req.param("id"),
+        detail: { itemCount: body.items.length },
+      });
+      return c.json(updated);
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : "Unable to update rate card" },
+        400,
+      );
+    }
+  },
+);
+
+phase3.post(
+  "/api/commercial/provider-costs/:id/approve",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    try {
+      const card = await approveProviderRateCard(
+        c.env.DB,
+        c.req.param("id"),
+        c.get("user").email,
+      );
+      await recordAuditEvent(c.env.DB, {
+        eventType: "pricing.rate_card_approved",
+        actor: c.get("user").email,
+        resourceType: "provider_rate_card",
+        resourceId: card.id,
+        detail: { provider: card.provider, versionLabel: card.versionLabel },
+      });
+      return c.json({ ok: true, card });
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : "Unable to approve rate card" },
+        400,
+      );
+    }
+  },
+);
 
 phase3.post(
   "/api/commercial/reconciliation/run",

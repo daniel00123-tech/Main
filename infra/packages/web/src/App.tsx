@@ -62,6 +62,8 @@ import PortalSettingsPage from "./portal/PortalSettingsPage";
 import PortalActivityPage from "./portal/PortalActivityPage";
 import PortalActionsPage from "./portal/PortalActionsPage";
 import AdminCompanySwitcher from "./components/AdminCompanySwitcher";
+import ScopeBanner from "./components/ScopeBanner";
+import { AdminScopeProvider } from "./context/AdminScopeContext";
 import PortalCompanyPickerPage from "./pages/PortalCompanyPickerPage";
 import { useState } from "react";
 
@@ -260,10 +262,13 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="main">
-        <div className="admin-toolbar">
-          <AdminCompanySwitcher />
-        </div>
-        {children}
+        <AdminScopeProvider>
+          <div className="admin-toolbar">
+            <AdminCompanySwitcher />
+          </div>
+          <ScopeBanner />
+          {children}
+        </AdminScopeProvider>
       </main>
       <ToastHost />
     </div>

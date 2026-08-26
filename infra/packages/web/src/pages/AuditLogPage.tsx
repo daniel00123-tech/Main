@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AuditEvent, Company } from "@infra/shared";
 import { api } from "../api";
+import { useAdminScope } from "../context/AdminScopeContext";
 import {
   Drawer,
   EmptyState,
@@ -59,6 +60,7 @@ function formatActorDisplay(event: AuditEvent): string {
 }
 
 export default function AuditLogPage() {
+  const { companyId: scopeCompanyId } = useAdminScope();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +72,10 @@ export default function AuditLogPage() {
   const [companyFilter, setCompanyFilter] = useState("");
   const [selected, setSelected] = useState<AuditEvent | null>(null);
   const [displayLimit, setDisplayLimit] = useState(30);
+
+  useEffect(() => {
+    setCompanyFilter(scopeCompanyId ?? "");
+  }, [scopeCompanyId]);
 
   async function load() {
     setLoading(true);

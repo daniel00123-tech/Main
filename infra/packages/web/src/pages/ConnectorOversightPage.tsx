@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { useAdminScope } from "../context/AdminScopeContext";
 import {
   EmptyState,
   ErrorState,
@@ -13,6 +14,7 @@ import {
 type OversightRow = Awaited<ReturnType<typeof api.getConnectorOversight>>[number];
 
 export default function ConnectorOversightPage() {
+  const { companySlug: scopeCompanySlug } = useAdminScope();
   const [rows, setRows] = useState<OversightRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +34,10 @@ export default function ConnectorOversightPage() {
   if (loading) return <LoadingState label="Loading connector oversight…" />;
   if (error) return <ErrorState title="Unable to load connectors" description={error} />;
 
+  const visibleRows = scopeCompanySlug
+    ? rows.filter((r) => r.companySlug === scopeCompanySlug)
+    : rows;
+
   return (
     <>
       <PageHeader
@@ -39,7 +45,7 @@ export default function ConnectorOversightPage() {
         description="Control-plane status across tenants. Secret values are never shown."
       />
       <SectionCard title="Instances" description="Auth health and sync health are separate.">
-        {rows.length === 0 ? (
+        {visibleRows.length === 0 ? (
           <EmptyState
             title="No connector instances"
             description="New companies start with an empty catalogue. Nothing is copied from another tenant."
@@ -58,7 +64,7 @@ export default function ConnectorOversightPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {visibleRows.map((row) => (
                   <tr key={row.connectorInstanceId}>
                     <td>
                       <Link to={`/companies/${row.companySlug}`}>{row.companyName}</Link>

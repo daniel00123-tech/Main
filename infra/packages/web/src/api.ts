@@ -910,6 +910,22 @@ export const api = {
       }>;
       nextReviewNote: string;
     }>("/api/commercial/provider-costs"),
+  updateProviderRateCardItems: (
+    cardId: string,
+    items: Array<{ id: string; unitCostMicros: number; notes?: string | null }>,
+  ) =>
+    fetchJson<{
+      card: Record<string, unknown>;
+      items: Array<{ id: string; unitCostMicros: number; notes: string | null }>;
+    }>(`/api/commercial/provider-costs/${encodeURIComponent(cardId)}/items`, {
+      method: "PUT",
+      body: JSON.stringify({ items }),
+    }),
+  approveProviderRateCard: (cardId: string) =>
+    fetchJson<{ ok: boolean; card: Record<string, unknown> }>(
+      `/api/commercial/provider-costs/${encodeURIComponent(cardId)}/approve`,
+      { method: "POST", body: "{}" },
+    ),
   getPricingRules: (companyId?: string) => {
     const suffix = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
     return fetchJson<{

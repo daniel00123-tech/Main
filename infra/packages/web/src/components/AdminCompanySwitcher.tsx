@@ -1,53 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, ChevronDown, Clock, ExternalLink, Globe } from "lucide-react";
+import { Building2, ChevronDown, ExternalLink, Globe, Globe2 } from "lucide-react";
 import type { Company } from "@infra/shared";
-import { api } from "../api";
+import { useAdminScope, loadRecent } from "../context/AdminScopeContext";
 import { SearchInput, StatusBadge } from "../components";
-
-const RECENT_KEY = "infra.admin.recentCompanies";
-
-function loadRecent(): string[] {
-  try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function rememberRecent(slug: string) {
-  const next = [slug, ...loadRecent().filter((s) => s !== slug)].slice(0, 6);
-  localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-}
 
 export default function AdminCompanySwitcher() {
   const navigate = useNavigate();
+  const {
+    scope,
+    companies,
+    loading,
+    setPlatformScope,
+    setCompanyScope,
+    scopeLabel,
+    scopeSublabel,
+  } = useAdminScope();
   const [query, setQuery] = useState("");
-  const [companies, setCompanies] = useState<Company[]>([]);
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => loadRecent());
   const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const list = await api.getCompanies({ q: query.trim() || undefined, limit: 200 });
-        if (!cancelled) setCompanies(list);
-      } catch {
-        if (!cancelled) setCompanies([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [query]);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -69,19 +41,24 @@ export default function AdminCompanySwitcher() {
             c.id.toLowerCase().includes(q),
         )
       : companies;
-    return pool.slice(0, 10);
+    return pool.slice(0, 12);
   }, [companies, query]);
 
   const recentCompanies = recent
     .map((slug) => companyBySlug.get(slug))
     .filter((c): c is Company => Boolean(c));
 
-  function selectCompany(slug: string, destination: "admin" | "portal") {
-    rememberRecent(slug);
+  function selectPlatform() {
+    setPlatformScope();
+    setOpen(false);
+    setQuery("");
+  }
+
+  function selectCompany(company: Company) {
+    setCompanyScope(company);
     setRecent(loadRecent());
     setOpen(false);
     setQuery("");
-    navigate(destination === "portal" ? `/portal/${slug}/dashboard` : `/companies/${slug}`);
   }
 
   return (
@@ -93,44 +70,68 @@ export default function AdminCompanySwitcher() {
         aria-haspopup="listbox"
         onClick={() => setOpen((v) => !v)}
       >
-        <Building2 size={16} aria-hidden />
-        <span>Switch company</span>
+        {scope.mode === "platform" ? (
+          <Globe2 size={16} aria-hidden />
+        ) : (
+          <Building2 size={16} aria-hidden />
+        )}
+        <span className="admin-scope-trigger-text">
+          <span className="admin-scope-trigger-label">{scopeLabel}</span>
+          <span className="admin-scope-trigger-sublabel muted small">{scopeSublabel}</span>
+        </span>
         <ChevronDown size={14} aria-hidden />
       </button>
       {open ? (
-        <div className="admin-company-switcher-panel card" role="listbox" aria-label="Company switcher">
+        <div className="admin-company-switcher-panel card" role="listbox" aria-label="Scope selector">
           <div className="panel-pad" style={{ paddingBottom: 8 }}>
             <SearchInput
               value={query}
               onChange={(v) => setQuery(v)}
               placeholder="Search companies…"
               className="admin-company-search-input"
-              aria-label="Search companies to switch"
+              aria-label="Search companies"
             />
           </div>
           {loading ? (
-            <p className="muted small panel-pad">Loading companies…</p>
+            <p className="muted small panel-pad">Loading…</p>
           ) : (
             <>
+              <div className="panel-section">
+                <div className="panel-section-label">Platform</div>
+                <button
+                  type="button"
+                  className={`scope-option ${scope.mode === "platform" ? "scope-option-active" : ""}`}
+                  onClick={selectPlatform}
+                >
+                  <Globe2 size={16} aria-hidden />
+                  <span className="company-switcher-text">
+                    <strong>INFRA Platform</strong>
+                    <span className="muted small">All companies</span>
+                  </span>
+                  {scope.mode === "platform" ? (
+                    <span className="scope-option-check" aria-hidden>
+                      ✓
+                    </span>
+                  ) : null}
+                </button>
+              </div>
               {recentCompanies.length > 0 && !query.trim() ? (
                 <div className="panel-section">
-                  <div className="panel-section-label">
-                    <Clock size={14} aria-hidden /> Recent
-                  </div>
+                  <div className="panel-section-label">Recent companies</div>
                   {recentCompanies.map((company) => (
                     <CompanyOption
                       key={`recent-${company.id}`}
                       company={company}
-                      onAdmin={() => selectCompany(company.slug, "admin")}
-                      onPortal={() => selectCompany(company.slug, "portal")}
+                      active={scope.mode === "company" && scope.companySlug === company.slug}
+                      onSelect={() => selectCompany(company)}
+                      onAdmin={() => navigate(`/companies/${company.slug}`)}
+                      onPortal={() => navigate(`/portal/${company.slug}/dashboard`)}
                     />
                   ))}
                 </div>
               ) : null}
               <div className="panel-section">
-                <div className="panel-section-label">
-                  {query.trim() ? "Search results" : "All companies"}
-                </div>
+                <div className="panel-section-label">Companies</div>
                 {matches.length === 0 ? (
                   <p className="muted small panel-pad">No companies match.</p>
                 ) : (
@@ -138,8 +139,10 @@ export default function AdminCompanySwitcher() {
                     <CompanyOption
                       key={company.id}
                       company={company}
-                      onAdmin={() => selectCompany(company.slug, "admin")}
-                      onPortal={() => selectCompany(company.slug, "portal")}
+                      active={scope.mode === "company" && scope.companySlug === company.slug}
+                      onSelect={() => selectCompany(company)}
+                      onAdmin={() => navigate(`/companies/${company.slug}`)}
+                      onPortal={() => navigate(`/portal/${company.slug}/dashboard`)}
                     />
                   ))
                 )}
@@ -154,16 +157,20 @@ export default function AdminCompanySwitcher() {
 
 function CompanyOption({
   company,
+  active,
+  onSelect,
   onAdmin,
   onPortal,
 }: {
   company: Company;
+  active: boolean;
+  onSelect: () => void;
   onAdmin: () => void;
   onPortal: () => void;
 }) {
   return (
-    <div className="company-switcher-row">
-      <button type="button" className="company-switcher-main" onClick={onAdmin}>
+    <div className={`company-switcher-row ${active ? "scope-option-active" : ""}`}>
+      <button type="button" className="company-switcher-main" onClick={onSelect}>
         <Building2 size={16} aria-hidden />
         <span className="company-switcher-text">
           <strong>{company.name}</strong>
@@ -183,8 +190,8 @@ function CompanyOption({
       <button
         type="button"
         className="button button-ghost button-small"
-        title="Open control centre"
-        aria-label={`Open ${company.name} control centre`}
+        title="Open company detail"
+        aria-label={`Open ${company.name} detail`}
         onClick={onAdmin}
       >
         <ExternalLink size={14} />

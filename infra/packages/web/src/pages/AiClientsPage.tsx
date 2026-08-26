@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Bot } from "lucide-react";
 import { CONNECTOR_CATALOGUE } from "@infra/shared";
 import { api } from "../api";
+import { useAdminScope } from "../context/AdminScopeContext";
 import {
   EmptyState,
   ErrorState,
@@ -29,6 +30,7 @@ type AiRow = {
 const AI_CHANNELS = CONNECTOR_CATALOGUE.filter((c) => c.integrationType === "ai_channel");
 
 export default function AiClientsPage() {
+  const { companySlug: scopeCompanySlug } = useAdminScope();
   const [rows, setRows] = useState<AiRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,18 +103,22 @@ export default function AiClientsPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [scopeCompanySlug]);
 
   const filtered = useMemo(() => {
+    let list = rows;
+    if (scopeCompanySlug) {
+      list = list.filter((r) => r.companySlug === scopeCompanySlug || r.source === "catalogue");
+    }
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
+    if (!q) return list;
+    return list.filter(
       (r) =>
         r.displayName.toLowerCase().includes(q) ||
         r.companyName.toLowerCase().includes(q) ||
         r.clientType.toLowerCase().includes(q),
     );
-  }, [rows, query]);
+  }, [rows, query, scopeCompanySlug]);
 
   if (loading) return <LoadingState label="Loading AI clients…" />;
   if (error) {
