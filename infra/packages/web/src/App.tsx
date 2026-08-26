@@ -40,6 +40,7 @@ import CompaniesPage from "./pages/CompaniesPage";
 import CompanyDetailPage from "./pages/CompanyDetailPage";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import PasswordSetupPage from "./pages/PasswordSetupPage";
 import McpEnvironmentsPage from "./pages/McpEnvironmentsPage";
 import PricingRulesPage from "./pages/PricingRulesPage";
@@ -273,6 +274,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/setup-password" element={<PasswordSetupPage />} />
       <Route path="/portal/login" element={<PortalLoginPage />} />
 

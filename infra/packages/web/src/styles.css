@@ -831,6 +831,14 @@ textarea:focus-visible {
   gap: var(--s-4);
   margin-top: var(--s-5);
 }
+.login-form-meta {
+  margin: calc(-1 * var(--s-2)) 0 0;
+  text-align: right;
+  font-size: var(--text-sm);
+}
+.login-form-meta a {
+  color: var(--accent);
+}
 
 /* ——— Connection / integration cards ——— */
 .connection-card,

@@ -34,6 +34,7 @@ import {
 } from "./services/register-existing-mcp";
 import {
   consumeSetupToken,
+  createPasswordSetupToken,
   findValidSetupToken,
   maskEmail,
   validateNewPassword,
@@ -219,6 +220,50 @@ app.post("/api/auth/password-setup", async (c) => {
   });
 
   return c.json({ ok: true });
+});
+
+app.post("/api/auth/password-reset/request", async (c) => {
+  const body = await c.req.json<{ email?: string }>();
+  const email = body.email?.trim().toLowerCase();
+  if (!email) {
+    return c.json({ error: "Email is required" }, 400);
+  }
+
+  const genericMessage =
+    "If an account exists for that email, use the secure link to set a new password. Links expire after one hour.";
+
+  const user = await getUserByEmail(c.env.DB, email);
+  if (!user || user.status !== "active") {
+    await recordAuditEvent(c.env.DB, {
+      eventType: "auth.password_reset_requested",
+      actor: email,
+      detail: { outcome: "no_account" },
+    });
+    return c.json({ ok: true, message: genericMessage });
+  }
+
+  const { token, expiresAt } = await createPasswordSetupToken(
+    c.env.DB,
+    user.id,
+    "password_reset",
+  );
+  const origin = portalOrigin(c.env, c.req.header("Origin"));
+  const resetUrl = `${origin}/setup-password?token=${encodeURIComponent(token)}`;
+
+  await recordAuditEvent(c.env.DB, {
+    eventType: "auth.password_reset_requested",
+    actor: user.email,
+    resourceType: "user",
+    resourceId: user.id,
+    detail: { outcome: "link_created", expiresAt },
+  });
+
+  return c.json({
+    ok: true,
+    message: "Use this secure link to set a new password. It is single-use and expires in one hour.",
+    resetUrl,
+    expiresAt,
+  });
 });
 
 app.post("/api/auth/login", async (c) => {

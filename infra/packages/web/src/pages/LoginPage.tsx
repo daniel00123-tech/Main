@@ -66,6 +66,9 @@ export default function LoginPage() {
               required
             />
           </label>
+          <p className="login-form-meta">
+            <Link to="/forgot-password">Forgot password?</Link>
+          </p>
           {error ? <p className="error-text">{error}</p> : null}
           <button className="button button-primary" type="submit" disabled={loading}>
             {loading ? "Signing in…" : "Sign in"}

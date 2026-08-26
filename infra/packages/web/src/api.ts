@@ -178,6 +178,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ token, password, confirmPassword }),
     }),
+  requestPasswordReset: (email: string) =>
+    fetchJson<{ ok: boolean; message: string; resetUrl?: string; expiresAt?: string }>(
+      "/api/auth/password-reset/request",
+      { method: "POST", body: JSON.stringify({ email }) },
+    ),
   getSummary: () => fetchJson<PlatformSummary>("/api/summary"),
   getPlatformAttention: () =>
     fetchJson<{

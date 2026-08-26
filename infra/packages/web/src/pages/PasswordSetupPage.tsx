@@ -8,6 +8,7 @@ export default function PasswordSetupPage() {
   const token = searchParams.get("token") ?? "";
 
   const [maskedEmail, setMaskedEmail] = useState<string | null>(null);
+  const [purpose, setPurpose] = useState<string>("password_setup");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +30,7 @@ export default function PasswordSetupPage() {
           return;
         }
         setMaskedEmail(result.maskedEmail ?? null);
+        setPurpose(result.purpose ?? "password_setup");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to validate setup token");
       } finally {
@@ -46,7 +48,12 @@ export default function PasswordSetupPage() {
       await api.completePasswordSetup(token, password, confirmPassword);
       navigate("/login", {
         replace: true,
-        state: { message: "Password set successfully. Sign in with your new password." },
+        state: {
+          message:
+            purpose === "password_reset"
+              ? "Password updated. Sign in with your new password."
+              : "Password set successfully. Sign in with your new password.",
+        },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Password setup failed");
@@ -74,8 +81,8 @@ export default function PasswordSetupPage() {
           <h1>Password setup unavailable</h1>
           <p className="error-text">{error}</p>
           <p className="muted">
-            Setup links are single-use and expire after one hour. Request a new link if
-            needed.
+            Links are single-use and expire after one hour.{" "}
+            <Link to="/forgot-password">Request a new reset link</Link>.
           </p>
           <Link to="/login" className="button button-secondary">
             Back to sign in
@@ -85,16 +92,22 @@ export default function PasswordSetupPage() {
     );
   }
 
+  const isReset = purpose === "password_reset";
+
   return (
     <div className="login-page">
       <div className="login-card">
         <div className="brand">INFRA</div>
-        <div className="brand-sub">Platform admin account handover</div>
-        <h1>Set your password</h1>
+        <div className="brand-sub">
+          {isReset ? "Password reset" : "Platform admin account handover"}
+        </div>
+        <h1>{isReset ? "Set a new password" : "Set your password"}</h1>
         <p className="muted">
-          Create your permanent Platform Admin password for{" "}
-          {maskedEmail ? <strong>{maskedEmail}</strong> : "your account"}. Your password is
-          sent over HTTPS, hashed server-side, and never stored in plaintext.
+          {isReset
+            ? "Choose a new password for "
+            : "Create your permanent Platform Admin password for "}
+          {maskedEmail ? <strong>{maskedEmail}</strong> : "your account"}.
+          Your password is sent over HTTPS, hashed server-side, and never stored in plaintext.
         </p>
 
         <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
