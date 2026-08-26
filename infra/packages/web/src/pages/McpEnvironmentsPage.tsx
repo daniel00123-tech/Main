@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Network } from "lucide-react";
 import type { Company, McpEnvironment } from "@infra/shared";
@@ -33,6 +33,7 @@ export default function McpEnvironmentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedMcpId, setSelectedMcpId] = useState("");
   const [toolName, setToolName] = useState(DEFAULT_TEST_TOOL);
   const [query, setQuery] = useState(DEFAULT_TEST_QUERY);
@@ -40,6 +41,7 @@ export default function McpEnvironmentsPage() {
   const [executing, setExecuting] = useState(false);
   const [executeError, setExecuteError] = useState<string | null>(null);
   const [executeResult, setExecuteResult] = useState<McpExecuteResult | null>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -119,14 +121,16 @@ export default function McpEnvironmentsPage() {
 
   if (loading) return <LoadingState label="Loading AI gateways…" />;
   if (error && rows.length === 0) {
-    return <ErrorState title="Unable to load AI gateways" description={error} onRetry={() => void load()} />;
+    return (
+      <ErrorState title="Unable to load AI gateways" description={error} onRetry={() => void load()} />
+    );
   }
 
   return (
     <>
       <PageHeader
         title="AI Gateways"
-        description="Company AI connection environments. Health and diagnostics for platform administrators."
+        description="Secure INFRA access layer for each company. Gateways are not the same as AI connections (ChatGPT/Claude) — they route authenticated requests to company systems."
       />
 
       {rows.length === 0 ? (
@@ -136,128 +140,157 @@ export default function McpEnvironmentsPage() {
           description="Gateways appear here once a company MCP environment is registered."
         />
       ) : (
-        <div className="grid grid-2" style={{ marginBottom: 24 }}>
-          {rows.map((mcp) => (
-            <article key={mcp.id} className="entity-card">
-              <div className="connection-header">
-                <div>
-                  <h3>{mcp.name}</h3>
-                  <p className="muted small" style={{ margin: "4px 0 0" }}>
-                    {mcp.companySlug ? (
-                      <Link to={`/companies/${mcp.companySlug}`}>{mcp.companyName}</Link>
-                    ) : (
-                      mcp.companyName
-                    )}
-                  </p>
-                </div>
-                <StatusBadge status={mcp.status} />
-              </div>
-
-              <div className="grid grid-3" style={{ margin: "12px 0" }}>
-                <div>
-                  <div className="muted small">Last check</div>
-                  <div>{formatRelativeTime(mcp.lastHealthCheckAt)}</div>
-                </div>
-                <div>
-                  <div className="muted small">Latency</div>
-                  <div>{mcp.lastLatencyMs != null ? `${mcp.lastLatencyMs}ms` : "—"}</div>
-                </div>
-                <div>
-                  <div className="muted small">Knowledge</div>
-                  <div>
-                    {mcp.knowledgeDocumentCount != null
-                      ? `${mcp.knowledgeDocumentCount} docs`
-                      : "—"}
-                  </div>
-                </div>
-              </div>
-
-              {mcp.status === "unreachable" || mcp.status === "degraded" ? (
-                <div className="error-box" style={{ marginBottom: 12 }}>
-                  {mcp.lastError || mcp.healthMessage || "Gateway needs attention"}
-                </div>
-              ) : null}
-
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  loading={checkingId === mcp.id}
-                  onClick={() => void runHealthCheck(mcp.id)}
-                >
-                  Check health
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedMcpId(mcp.id)}
-                >
-                  Select for test
-                </Button>
-              </div>
-
-              <AdvancedDetails label="Technical details">
-                <KeyValue label="Environment ID" value={mcp.id} mono />
-                <KeyValue label="Endpoint" value={mcp.endpointUrl} mono />
-                <KeyValue label="Version" value={mcp.mcpVersion ?? "—"} />
-                <KeyValue label="Transport" value={mcp.transport} />
-                <KeyValue label="Last check" value={formatDate(mcp.lastHealthCheckAt)} />
-                {mcp.capabilities?.length ? (
-                  <KeyValue label="Capabilities" value={mcp.capabilities.join(", ")} />
-                ) : null}
-              </AdvancedDetails>
-            </article>
-          ))}
+        <div className="table-wrap">
+          <table className="table compact gateway-table-compact">
+            <thead>
+              <tr>
+                <th>Gateway</th>
+                <th>Company</th>
+                <th>Health</th>
+                <th>Last check</th>
+                <th className="num">Latency</th>
+                <th>Knowledge</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((mcp) => (
+                <Fragment key={mcp.id}>
+                  <tr>
+                    <td>
+                      <strong>{mcp.name}</strong>
+                      {(mcp.status === "unreachable" || mcp.status === "degraded") && (
+                        <div className="warning-text small">
+                          {mcp.lastError || mcp.healthMessage || "Needs attention"}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      {mcp.companySlug ? (
+                        <Link to={`/companies/${mcp.companySlug}`}>{mcp.companyName}</Link>
+                      ) : (
+                        mcp.companyName
+                      )}
+                    </td>
+                    <td>
+                      <StatusBadge status={mcp.status} />
+                    </td>
+                    <td className="muted">{formatRelativeTime(mcp.lastHealthCheckAt)}</td>
+                    <td className="num">{mcp.lastLatencyMs != null ? `${mcp.lastLatencyMs}ms` : "—"}</td>
+                    <td>
+                      {mcp.knowledgeDocumentCount != null
+                        ? `${mcp.knowledgeDocumentCount} docs`
+                        : "—"}
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          loading={checkingId === mcp.id}
+                          onClick={() => void runHealthCheck(mcp.id)}
+                        >
+                          Check
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setExpandedId((id) => (id === mcp.id ? null : mcp.id))
+                          }
+                        >
+                          {expandedId === mcp.id ? "Hide" : "Details"}
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                  {expandedId === mcp.id ? (
+                    <tr key={`${mcp.id}-details`}>
+                      <td colSpan={7}>
+                        <AdvancedDetails label="Technical details">
+                          <KeyValue label="Environment ID" value={mcp.id} mono />
+                          <KeyValue label="Endpoint" value={mcp.endpointUrl} mono />
+                          <KeyValue label="Version" value={mcp.mcpVersion ?? "—"} />
+                          <KeyValue label="Transport" value={mcp.transport} />
+                          <KeyValue label="Last check" value={formatDate(mcp.lastHealthCheckAt)} />
+                          {mcp.capabilities?.length ? (
+                            <KeyValue label="Capabilities" value={mcp.capabilities.join(", ")} />
+                          ) : null}
+                        </AdvancedDetails>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
       {user?.isPlatformAdmin ? (
-        <SectionCard
-          title="Platform test"
-          description="Run an allowlisted read-only tool against a selected gateway."
-        >
-          <div className="form-grid" style={{ maxWidth: 560 }}>
-            <label>
-              Gateway
-              <select value={selectedMcpId} onChange={(e) => setSelectedMcpId(e.target.value)}>
-                {rows.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Tool
-              <select value={toolName} onChange={(e) => setToolName(e.target.value)}>
-                {(allowedTools.length ? allowedTools : [DEFAULT_TEST_TOOL]).map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Query / document ref
-              <input value={query} onChange={(e) => setQuery(e.target.value)} />
-            </label>
-            {executeError ? <div className="error-box">{executeError}</div> : null}
-            <Button type="button" variant="primary" loading={executing} onClick={() => void runTestExecute()}>
-              Run test
-            </Button>
-          </div>
-          {executeResult ? (
-            <AdvancedDetails label="Result details">
-              <KeyValue label="Correlation ID" value={executeResult.correlationId} mono />
-              <KeyValue label="Latency" value={`${executeResult.latencyMs}ms`} />
-              <pre className="mono" style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0 }}>
-                {JSON.stringify(executeResult.result, null, 2)}
-              </pre>
-            </AdvancedDetails>
+        <div className="gateway-diagnostics">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowDiagnostics((v) => !v)}
+          >
+            {showDiagnostics ? "Hide platform test" : "Show platform test"}
+          </Button>
+          {showDiagnostics ? (
+            <SectionCard
+              title="Platform test"
+              description="Admin diagnostic tool — run an allowlisted read-only tool against a selected gateway."
+            >
+              <div className="form-grid" style={{ maxWidth: 560 }}>
+                <label>
+                  Gateway
+                  <select value={selectedMcpId} onChange={(e) => setSelectedMcpId(e.target.value)}>
+                    {rows.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Tool
+                  <select value={toolName} onChange={(e) => setToolName(e.target.value)}>
+                    {(allowedTools.length ? allowedTools : [DEFAULT_TEST_TOOL]).map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Query / document ref
+                  <input value={query} onChange={(e) => setQuery(e.target.value)} />
+                </label>
+                {executeError ? <div className="error-box">{executeError}</div> : null}
+                <Button
+                  type="button"
+                  variant="primary"
+                  loading={executing}
+                  onClick={() => void runTestExecute()}
+                >
+                  Run test
+                </Button>
+              </div>
+              {executeResult ? (
+                <AdvancedDetails label="Result details">
+                  <KeyValue label="Correlation ID" value={executeResult.correlationId} mono />
+                  <KeyValue label="Latency" value={`${executeResult.latencyMs}ms`} />
+                  <pre className="mono" style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0 }}>
+                    {JSON.stringify(executeResult.result, null, 2)}
+                  </pre>
+                </AdvancedDetails>
+              ) : null}
+            </SectionCard>
           ) : null}
-        </SectionCard>
+        </div>
       ) : null}
     </>
   );

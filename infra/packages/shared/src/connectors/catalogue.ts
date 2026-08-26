@@ -275,8 +275,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     integrationType: "business_system",
     catalogueStatus: "available",
     description:
-      "Connect invoices, payments, contacts, and accounting data from Xero.",
-    capabilities: ["read", "search", "sync", "live_query", "export"],
+      "Access and manage live accounting information through INFRA and connected AI tools.",
+    capabilities: ["read", "search", "sync", "live_query", "create", "update"],
     credentialSchema: {
       type: "object",
       properties: {
@@ -377,47 +377,6 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
       "Freshdesk API key and domain. Secrets are encrypted when secure storage is configured.",
   },
   {
-    id: "conn_custom_api",
-    slug: "custom-api",
-    name: "Custom API",
-    category: "api",
-    integrationType: "business_system",
-    catalogueStatus: "draft",
-    description:
-      "Configurable REST API connector for customer-specific integrations.",
-    capabilities: ["read", "search", "live_query", "export"],
-    credentialSchema: {
-      type: "object",
-      properties: {
-        authType: {
-          type: "string",
-          enum: ["none", "api_key", "bearer", "basic", "oauth2"],
-        },
-        apiKey: { type: "string", format: "secret" },
-        bearerToken: { type: "string", format: "secret" },
-        username: { type: "string" },
-        password: { type: "string", format: "secret" },
-      },
-    },
-    configSchema: {
-      type: "object",
-      required: ["baseUrl"],
-      properties: {
-        baseUrl: { type: "string", format: "uri" },
-        endpoints: { type: "array", items: { type: "object" } },
-      },
-    },
-    supportedSyncModes: ["live_api", "scheduled"],
-    isAvailable: false,
-    authenticationMethod: "api_key",
-    readWrite: "read",
-    requiresCompanyMcp: true,
-    availabilityLabel: "coming_soon",
-    taxonomyCategory: "custom_integrations",
-    brandKey: "custom-api",
-    setupInstructions: "Custom REST connectors are a later phase.",
-  },
-  {
     id: "conn_chatgpt",
     slug: "chatgpt",
     name: "ChatGPT / OpenAI",
@@ -425,8 +384,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     integrationType: "ai_channel",
     catalogueStatus: "active",
     description:
-      "Staff interact with company tools through ChatGPT. ChatGPT authenticates to the single INFRA MCP gateway — never to a company MCP URL.",
-    capabilities: ["read", "search", "send"],
+      "Let your team use ChatGPT to securely work with the company systems and information connected to INFRA.",
+    capabilities: ["read", "search", "send", "create", "update"],
     credentialSchema: { type: "object", properties: {} },
     configSchema: { type: "object", properties: {} },
     supportedSyncModes: ["live_api"],
@@ -448,8 +407,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     integrationType: "ai_channel",
     catalogueStatus: "available",
     description:
-      "Claude connects through the same INFRA MCP gateway using a company service identity.",
-    capabilities: ["read", "search", "send"],
+      "Let your team use Claude to securely work with the company systems and information connected to INFRA.",
+    capabilities: ["read", "search", "send", "create", "update"],
     credentialSchema: { type: "object", properties: {} },
     configSchema: { type: "object", properties: {} },
     supportedSyncModes: ["live_api"],
@@ -485,6 +444,48 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     brandKey: "whatsapp",
     setupInstructions:
       "WhatsApp Cloud API is not activated. See ADR 016 for the channel design.",
+  },
+  {
+    id: "conn_custom_api",
+    slug: "custom-api",
+    name: "Custom API",
+    category: "api",
+    integrationType: "business_system",
+    catalogueStatus: "draft",
+    description:
+      "Connect other business software to INFRA when a ready-made integration is not available.",
+    capabilities: ["read", "search", "live_query", "create", "update"],
+    credentialSchema: {
+      type: "object",
+      properties: {
+        authType: {
+          type: "string",
+          enum: ["none", "api_key", "bearer", "basic", "oauth2"],
+        },
+        apiKey: { type: "string", format: "secret" },
+        bearerToken: { type: "string", format: "secret" },
+        username: { type: "string" },
+        password: { type: "string", format: "secret" },
+      },
+    },
+    configSchema: {
+      type: "object",
+      required: ["baseUrl"],
+      properties: {
+        baseUrl: { type: "string", format: "uri" },
+        endpoints: { type: "array", items: { type: "object" } },
+      },
+    },
+    supportedSyncModes: ["live_api", "scheduled"],
+    isAvailable: false,
+    authenticationMethod: "api_key",
+    readWrite: "read_write",
+    requiresCompanyMcp: true,
+    availabilityLabel: "coming_soon",
+    taxonomyCategory: "custom_integrations",
+    brandKey: "custom-api",
+    setupInstructions:
+      "Advanced fallback for bespoke REST APIs. Prefer a first-class connector where one exists.",
   },
 ];
 

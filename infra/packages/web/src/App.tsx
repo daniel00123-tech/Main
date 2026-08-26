@@ -8,6 +8,7 @@ import {
   ChevronsRight,
   Globe,
   LayoutDashboard,
+  LogOut,
   Menu,
   Network,
   Plug,
@@ -59,7 +60,8 @@ import PortalTeamPage from "./portal/PortalTeamPage";
 import PortalSettingsPage from "./portal/PortalSettingsPage";
 import PortalActivityPage from "./portal/PortalActivityPage";
 import PortalActionsPage from "./portal/PortalActionsPage";
-import AdminCompanySearch from "./components/AdminCompanySearch";
+import AdminCompanySwitcher from "./components/AdminCompanySwitcher";
+import PortalCompanyPickerPage from "./pages/PortalCompanyPickerPage";
 import { useState } from "react";
 
 type NavItem = {
@@ -86,7 +88,7 @@ const ADMIN_NAV: NavGroup[] = [
       { to: "/connectors", label: "Catalogue", icon: <Plug size={18} /> },
       { to: "/connector-oversight", label: "Oversight", icon: <Network size={18} /> },
       { to: "/mcp-environments", label: "AI Gateways", icon: <Network size={18} /> },
-      { to: "/ai-clients", label: "AI Clients", icon: <Bot size={18} /> },
+      { to: "/ai-clients", label: "AI Connections", icon: <Bot size={18} /> },
     ],
   },
   {
@@ -211,7 +213,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                 size="sm"
                 onClick={() => {
                   setMobileOpen(false);
-                  navigate("/portal");
+                  navigate("/portal/select");
                 }}
               >
                 Company portal
@@ -222,17 +224,43 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         ) : (
-          <div className="sidebar-footer">
-            <Button type="button" variant="ghost" size="sm" title="Sign out" onClick={() => void logout()}>
-              <X size={16} />
+          <div className="sidebar-footer sidebar-footer-collapsed">
+            <button
+              type="button"
+              className="button button-ghost button-small nav-expand-btn"
+              aria-label="Expand navigation"
+              title="Expand navigation"
+              onClick={() => setCollapsed(false)}
+            >
+              <ChevronsRight size={16} />
+            </button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Company portal"
+              aria-label="Company portal"
+              onClick={() => navigate("/portal/select")}
+            >
+              <Globe size={16} />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Sign out"
+              aria-label="Sign out"
+              onClick={() => void logout()}
+            >
+              <LogOut size={16} />
             </Button>
           </div>
         )}
       </aside>
 
       <main className="main">
-        <div className="admin-toolbar" style={{ padding: "12px 24px 0", maxWidth: 1200 }}>
-          <AdminCompanySearch />
+        <div className="admin-toolbar">
+          <AdminCompanySwitcher />
         </div>
         {children}
       </main>
@@ -250,6 +278,7 @@ export default function App() {
 
       <Route element={<PortalAuthShell />}>
         <Route path="/portal" element={<PortalEntryRedirect />} />
+        <Route path="/portal/select" element={<PortalCompanyPickerPage />} />
         {/* Legacy flat portal paths → entry redirect (must precede :companySlug) */}
         <Route path="/portal/dashboard" element={<PortalEntryRedirect />} />
         <Route path="/portal/ai-connections" element={<PortalEntryRedirect />} />

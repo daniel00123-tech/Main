@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { Users } from "lucide-react";
-import type { Company, InfraUser } from "@infra/shared";
+import type { Company, CompanyRole, InfraUser } from "@infra/shared";
 import { api } from "../api";
 import {
+  Button,
   Drawer,
   EmptyState,
   ErrorState,
   FilterBar,
   LoadingState,
+  Modal,
   PageHeader,
   SearchInput,
   SectionCard,
   StatusBadge,
   Tabs,
+  toast,
   formatDate,
 } from "../components";
 import { formatRelativeTime, humanRole } from "../lib/format";
@@ -26,6 +29,13 @@ export default function UsersPermissionsPage() {
   const [tab, setTab] = useState("users");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<InfraUser | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteCompany, setInviteCompany] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteRole, setInviteRole] = useState<CompanyRole>("office_staff");
+  const [inviting, setInviting] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<string>("engineer");
 
   async function load() {
     setLoading(true);
@@ -80,11 +90,40 @@ export default function UsersPermissionsPage() {
     return <ErrorState title="Unable to load users" description={error} onRetry={() => void load()} />;
   }
 
+  async function submitInvite() {
+    if (!inviteCompany || !inviteEmail.trim() || !inviteName.trim()) {
+      toast("Company, email, and display name are required", "error");
+      return;
+    }
+    setInviting(true);
+    try {
+      await api.inviteUser(inviteCompany, {
+        email: inviteEmail.trim(),
+        displayName: inviteName.trim(),
+        role: inviteRole,
+      });
+      toast(`Invitation sent to ${inviteEmail.trim()}`);
+      setInviteOpen(false);
+      setInviteEmail("");
+      setInviteName("");
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Unable to send invitation", "error");
+    } finally {
+      setInviting(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
         title="Users & Roles"
-        description="People, roles, and permission presets across companies."
+        description="People, roles, and permission presets across companies. AI Connections (ChatGPT/Claude) are company portal tokens; AI Gateways are the secure INFRA routing layer."
+        actions={
+          <Button type="button" variant="primary" onClick={() => setInviteOpen(true)}>
+            Invite user
+          </Button>
+        }
       />
 
       <Tabs
@@ -184,42 +223,115 @@ export default function UsersPermissionsPage() {
 
       {tab === "permissions" ? (
         <SectionCard
-          title="Permission model"
-          description="Company admins see human capability labels. Technical action strings stay in Advanced."
+          title="Permissions editor"
+          description="Select a role to review grouped capabilities. Enforcement remains server-side; this reflects default role templates."
         >
-          <div className="stack">
-            {roles.slice(0, 3).map((role) => (
-              <details key={role.role} className="advanced-block" style={{ marginTop: 0 }}>
-                <summary>
-                  {role.displayName} — can / cannot
-                </summary>
-                <div className="grid grid-2" style={{ marginTop: 12 }}>
-                  <div>
-                    <strong className="small">Can</strong>
-                    <ul className="muted small">
-                      {role.allowedActions.slice(0, 8).map((a) => (
-                        <li key={a}>{humaniseAction(a)}</li>
-                      ))}
-                    </ul>
+          <div style={{ marginBottom: 16 }}>
+            <label className="muted small">
+              Role template
+              <select
+                className="input"
+                value={selectedRole}
+                onChange={(e) => setSelectedRole(e.target.value)}
+                style={{ display: "block", marginTop: 4, maxWidth: 320 }}
+              >
+                {roles.map((role) => (
+                  <option key={role.role} value={role.role}>
+                    {role.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {(() => {
+            const role = roles.find((r) => r.role === selectedRole);
+            if (!role) return null;
+            const groups = groupPermissions(role.allowedActions, role.deniedByDefault);
+            return (
+              <div className="permissions-editor">
+                {groups.map((group) => (
+                  <div key={group.id} className="permission-group">
+                    <h4 className="permission-group-title">{group.label}</h4>
+                    {group.items.map((item) => (
+                      <label key={item.action} className="permission-row">
+                        <input type="checkbox" checked={item.allowed} readOnly disabled />
+                        <span>{item.label}</span>
+                      </label>
+                    ))}
                   </div>
-                  <div>
-                    <strong className="small">Cannot (by default)</strong>
-                    <ul className="muted small">
-                      {role.deniedByDefault.slice(0, 8).map((a) => (
-                        <li key={a}>{humaniseAction(a)}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
+                ))}
                 <details className="advanced-block">
-                  <summary>Technical permissions</summary>
+                  <summary>Advanced — technical action strings</summary>
                   <p className="mono small">{role.allowedActions.join(", ")}</p>
                 </details>
-              </details>
-            ))}
-          </div>
+              </div>
+            );
+          })()}
         </SectionCard>
       ) : null}
+
+      <Modal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        title="Invite user"
+        description="Send a secure email invitation. The user sets their own password via the activation link."
+        footer={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setInviteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              loading={inviting}
+              onClick={() => void submitInvite()}
+            >
+              Send invitation
+            </Button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          <label>
+            Company
+            <select
+              value={inviteCompany}
+              onChange={(e) => setInviteCompany(e.target.value)}
+              required
+            >
+              <option value="">Select company…</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.slug}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Email
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            Display name
+            <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} required />
+          </label>
+          <label>
+            Role
+            <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as CompanyRole)}>
+              {roles.map((role) => (
+                <option key={role.role} value={role.role}>
+                  {role.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </Modal>
 
       <Drawer open={Boolean(selected)} onClose={() => setSelected(null)} title={selected?.displayName ?? "User"}>
         {selected ? (
@@ -258,6 +370,28 @@ export default function UsersPermissionsPage() {
       </Drawer>
     </>
   );
+}
+
+const PERMISSION_GROUP_DEFS: Array<{ id: string; label: string; prefix: string }> = [
+  { id: "knowledge", label: "Knowledge", prefix: "knowledge." },
+  { id: "finance", label: "Finance", prefix: "xero." },
+  { id: "field", label: "Field service", prefix: "bigchange." },
+  { id: "crm", label: "Customers", prefix: "commusoft." },
+  { id: "admin", label: "Administration", prefix: "system." },
+];
+
+function groupPermissions(allowed: string[], denied: string[]) {
+  const allowedSet = new Set(allowed);
+  return PERMISSION_GROUP_DEFS.map((group) => ({
+    ...group,
+    items: [...allowed, ...denied]
+      .filter((action) => action.startsWith(group.prefix))
+      .map((action) => ({
+        action,
+        label: humaniseAction(action),
+        allowed: allowedSet.has(action),
+      })),
+  })).filter((group) => group.items.length > 0);
 }
 
 function humaniseAction(action: string): string {

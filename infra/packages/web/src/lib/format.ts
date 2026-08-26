@@ -50,11 +50,41 @@ const EVENT_LABELS: Record<string, string> = {
   "connector.reauthenticated": "Connector reconnected",
   "connector.disconnected": "Connector disconnected",
   "connector.credentials_rotated": "Connector credentials replaced",
-  "connector.health_checked": "Connector health checked",
+  "payment.confirmed": "Payment confirmed",
+  "wallet.credited": "Wallet credited",
+  "refund.received": "Refund processed",
+  "action_plan.created": "Action planned",
+  "action_plan.confirmed": "Action confirmed",
+  "action_plan.completed": "Action completed",
+  "action_plan.execution_failed": "Action failed",
 };
 
 export function humanEventLabel(eventType: string): string {
   return EVENT_LABELS[eventType] ?? eventType.replace(/\./g, " · ");
+}
+
+const PROBE_ACTOR_PATTERN = /\b(temp|probe|e2e|acceptance|readback|cleanup)\b/i;
+
+/** Hide internal probe/service identity names from polished activity UI. */
+export function humanActor(actor: string | null | undefined): string {
+  if (!actor) return "System";
+  const trimmed = actor.trim();
+  if (!trimmed) return "System";
+  if (PROBE_ACTOR_PATTERN.test(trimmed)) return "System automation";
+  if (/^svc_probe_/i.test(trimmed) || /^TEMP\b/i.test(trimmed)) return "System automation";
+  if (trimmed === "stripe-webhook") return "Stripe";
+  if (/^chatgpt$/i.test(trimmed) || trimmed.includes("ChatGPT")) return "ChatGPT";
+  if (/^claude$/i.test(trimmed) || trimmed.includes("Claude")) return "Claude";
+  if (/^cursor$/i.test(trimmed) || trimmed.includes("cursor")) return "Cursor";
+  if (trimmed.includes("@")) {
+    const local = trimmed.split("@")[0] ?? trimmed;
+    return local
+      .split(/[._-]/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }
+  return trimmed;
 }
 
 export function formatRelativeTime(iso: string | null | undefined): string {
@@ -154,8 +184,19 @@ export function humanOperation(action?: string | null, toolName?: string | null)
     fetch: "Knowledge Document Read",
     database_summary: "Business data summary",
     system_health: "Connection check",
-    "xero.contacts.search": "Xero contact search",
-    "xero.invoices.search": "Xero invoice search",
+    "xero.contacts.search": "Search Xero contacts",
+    "xero.invoices.search": "Search Xero invoices",
+    "xero.invoices.get": "View Xero invoice",
+    "xero.invoices.create": "Create Xero draft invoice",
+    "xero.invoices.create_draft": "Create Xero draft invoice",
+    "xero.organisation.read": "View Xero organisation",
+    "xero.accounts.read": "View Xero accounts",
+    "xero.reports.pnl.read": "Xero profit & loss report",
+    xero_get_invoice: "View Xero invoice",
+    xero_search_invoices: "Search Xero invoices",
+    xero_list_contacts: "Search Xero contacts",
+    plan_xero_draft_invoice: "Plan Xero draft invoice",
+    execute_action_plan: "Execute approved action",
   };
   if (map[key]) return map[key];
   if (!key) return "Request";
@@ -169,9 +210,75 @@ export function humanClient(source?: string | null): string {
     whatsapp: "WhatsApp",
     "infra-mcp": "INFRA",
     "infra-gateway": "INFRA",
+    "e2e-probe": "System",
+    portal: "Portal",
+    "action-engine": "INFRA",
   };
   if (!source) return "—";
   return map[source] ?? source;
+}
+
+export type UsageFailureCategory =
+  | "AUTHENTICATION"
+  | "PERMISSION"
+  | "MISSING_CAPABILITY"
+  | "VALIDATION"
+  | "UPSTREAM_API"
+  | "RATE_LIMIT"
+  | "TIMEOUT"
+  | "INSUFFICIENT_CREDIT"
+  | "INFRA_INTERNAL"
+  | "USER_INPUT"
+  | "UNKNOWN";
+
+export function classifyUsageFailure(input: {
+  success?: boolean;
+  action?: string | null;
+  toolName?: string | null;
+  metadata?: Record<string, unknown>;
+}): UsageFailureCategory | null {
+  if (input.success !== false) return null;
+  const meta = input.metadata ?? {};
+  const code = String(meta.code ?? meta.errorCode ?? meta.reasonCode ?? "").toUpperCase();
+  const message = String(meta.error ?? meta.message ?? meta.publicError ?? "").toLowerCase();
+  if (code.includes("401") || message.includes("auth") || code.includes("AUTH")) return "AUTHENTICATION";
+  if (code.includes("403") || code.includes("PERMISSION") || code.includes("SCOPE")) return "PERMISSION";
+  if (code.includes("402") || message.includes("insufficient credit")) return "INSUFFICIENT_CREDIT";
+  if (code.includes("404") && message.includes("tool")) return "MISSING_CAPABILITY";
+  if (code.includes("VALID") || message.includes("validation")) return "VALIDATION";
+  if (code.includes("429") || message.includes("rate limit")) return "RATE_LIMIT";
+  if (code.includes("TIMEOUT") || message.includes("timeout")) return "TIMEOUT";
+  if (code.includes("502") || code.includes("503") || message.includes("upstream")) return "UPSTREAM_API";
+  if (message.includes("user") || message.includes("input")) return "USER_INPUT";
+  if (code.includes("INTERNAL") || message.includes("internal")) return "INFRA_INTERNAL";
+  return "UNKNOWN";
+}
+
+export function humanFailureCategory(category: UsageFailureCategory): string {
+  const map: Record<UsageFailureCategory, string> = {
+    AUTHENTICATION: "Authentication",
+    PERMISSION: "Permission denied",
+    MISSING_CAPABILITY: "Missing capability",
+    VALIDATION: "Validation",
+    UPSTREAM_API: "Upstream API",
+    RATE_LIMIT: "Rate limit",
+    TIMEOUT: "Timeout",
+    INSUFFICIENT_CREDIT: "Insufficient credit",
+    INFRA_INTERNAL: "INFRA internal",
+    USER_INPUT: "User input",
+    UNKNOWN: "Unknown",
+  };
+  return map[category];
+}
+
+export function integrationLabel(action?: string | null, toolName?: string | null): string {
+  const key = `${action ?? ""} ${toolName ?? ""}`.toLowerCase();
+  if (key.includes("xero")) return "Xero";
+  if (key.includes("knowledge") || key.includes("search_company")) return "Knowledge";
+  if (key.includes("bigchange")) return "BigChange";
+  if (key.includes("commusoft")) return "Commusoft";
+  if (key.includes("stripe") || key.includes("wallet")) return "Billing";
+  return "INFRA";
 }
 
 export function formatCharge(cents: number | null | undefined, currency = "GBP"): string {

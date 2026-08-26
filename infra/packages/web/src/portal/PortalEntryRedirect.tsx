@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { api } from "../api";
 import { ErrorState, LoadingState } from "../components";
 
-/** Redirect /portal → first accessible company portal */
+/** Redirect /portal → company picker (platform admin) or own company portal. */
 export default function PortalEntryRedirect() {
   const { user, loading } = useAuth();
   const [target, setTarget] = useState<string | null>(null);
@@ -12,19 +12,19 @@ export default function PortalEntryRedirect() {
 
   useEffect(() => {
     if (loading || !user) return;
+    if (user.isPlatformAdmin) {
+      setTarget("/portal/select");
+      return;
+    }
     let cancelled = false;
     void (async () => {
       try {
         const companies = await api.getCompanies();
         const memberIds = new Set(user.memberships.map((m) => m.companyId));
-        const preferred =
-          companies.find((c) => memberIds.has(c.id)) ??
-          (user.isPlatformAdmin ? companies[0] : undefined);
+        const preferred = companies.find((c) => memberIds.has(c.id));
         if (!preferred) {
           if (!cancelled) {
-            setFailed(
-              "No companies available. Create one from Platform Admin → Companies.",
-            );
+            setFailed("No company access. Contact your administrator.");
           }
           return;
         }

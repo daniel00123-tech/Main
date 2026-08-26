@@ -123,7 +123,7 @@ export default function AiClientsPage() {
     <>
       <PageHeader
         title="AI Clients"
-        description="How staff access company systems through AI assistants and channels."
+        description="Active ChatGPT, Claude, and channel connections per company. These are not AI Gateways — clients authenticate to INFRA; gateways route requests to company systems."
       />
 
       <FilterBar>

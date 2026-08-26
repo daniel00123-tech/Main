@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Building2, Plus } from "lucide-react";
-import type { Company, ConnectorInstance, CreateCompanyInput, McpEnvironment } from "@infra/shared";
+import type { CreateCompanyInput } from "@infra/shared";
 import { DEFAULT_TEST_OPENING_CREDIT_CENTS, validateCompanySlug } from "@infra/shared";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
@@ -21,15 +21,13 @@ import {
   StatusBadge,
   toast,
 } from "../components";
-import { formatNumber } from "../lib/format";
+import { formatNumber, formatRelativeTime, formatCharge } from "../lib/format";
 
-interface CompanyRow extends Company {
-  mcpCount: number;
-  connectorCount: number;
-  connectedCount: number;
-  mcpStatus: string | null;
-  needsAttention: boolean;
-}
+export type CompanyAdminRow = Awaited<
+  ReturnType<typeof api.getCompaniesAdminDirectory>
+>[number];
+
+interface CompanyRow extends CompanyAdminRow {}
 
 type WizardStep = 1 | 2 | 3 | 4 | 5;
 
@@ -78,8 +76,9 @@ export default function CompaniesPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<
-    "all" | "active" | "onboarding" | "attention" | "disabled" | "archived"
+    "all" | "active" | "onboarding" | "attention" | "disabled" | "archived" | "low_wallet" | "inactive"
   >("all");
+  const [sort, setSort] = useState<"name" | "usage" | "wallet" | "last_active">("name");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [step, setStep] = useState<WizardStep>(1);
   const [form, setForm] = useState(INITIAL_FORM);
@@ -94,12 +93,8 @@ export default function CompaniesPage() {
     setLoading(true);
     setError(null);
     try {
-      const [companyList, mcpList, connectorList] = await Promise.all([
-        api.getCompanies(),
-        api.getMcpEnvironments(),
-        api.getConnectorInstances(),
-      ]);
-      setCompanies(buildRows(companyList, mcpList, connectorList));
+      const directory = await api.getCompaniesAdminDirectory();
+      setCompanies(directory);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load companies");
     } finally {
@@ -113,12 +108,14 @@ export default function CompaniesPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return companies.filter((c) => {
+    const list = companies.filter((c) => {
       if (filter === "active" && c.status !== "active") return false;
       if (filter === "onboarding" && c.status !== "onboarding") return false;
       if (filter === "disabled" && c.status !== "suspended") return false;
       if (filter === "archived" && c.status !== "archived" && c.status !== "closed") return false;
       if (filter === "attention" && !c.needsAttention) return false;
+      if (filter === "low_wallet" && !c.walletLowBalance) return false;
+      if (filter === "inactive" && c.usageThisMonth > 0) return false;
       if (!q) return true;
       return (
         c.name.toLowerCase().includes(q) ||
@@ -126,14 +123,25 @@ export default function CompaniesPage() {
         (c.primaryDomain ?? "").toLowerCase().includes(q)
       );
     });
-  }, [companies, query, filter]);
+    return [...list].sort((a, b) => {
+      if (sort === "usage") return b.usageThisMonth - a.usageThisMonth;
+      if (sort === "wallet") return a.walletBalanceCents - b.walletBalanceCents;
+      if (sort === "last_active") {
+        const aT = a.lastActivityAt ? Date.parse(a.lastActivityAt) : 0;
+        const bT = b.lastActivityAt ? Date.parse(b.lastActivityAt) : 0;
+        return bT - aT;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, [companies, query, filter, sort]);
 
   const stats = useMemo(() => {
     const active = companies.filter((c) => c.status === "active").length;
     const onboarding = companies.filter((c) => c.status === "onboarding").length;
-    const connected = companies.filter((c) => c.connectedCount > 0 || c.mcpCount > 0).length;
+    const connected = companies.filter((c) => c.connectedConnectors > 0 || c.mcpStatus).length;
     const attention = companies.filter((c) => c.needsAttention).length;
-    return { total: companies.length, active, onboarding, connected, attention };
+    const lowWallet = companies.filter((c) => c.walletLowBalance).length;
+    return { total: companies.length, active, onboarding, connected, attention, lowWallet };
   }, [companies]);
 
   const derivedSlug = useMemo(
@@ -295,7 +303,7 @@ export default function CompaniesPage() {
     <>
       <PageHeader
         title="Companies"
-        description="Manage organisations connected to INFRA."
+        description="Customer health, adoption, and operational status across your platform."
         actions={
           <Button type="button" variant="primary" onClick={openWizard}>
             <Plus size={16} /> Add company
@@ -306,12 +314,18 @@ export default function CompaniesPage() {
       <MetricGrid cols={4}>
         <MetricCard label="Total" value={formatNumber(stats.total)} />
         <MetricCard label="Active" value={formatNumber(stats.active)} />
-        <MetricCard label="Onboarding" value={formatNumber(stats.onboarding)} />
-        <MetricCard label="Attention" value={formatNumber(stats.attention)} />
+        <MetricCard label="Usage leaders" value={formatNumber(stats.connected)} hint="With live connections" />
+        <MetricCard label="Needs attention" value={formatNumber(stats.attention)} />
       </MetricGrid>
 
       <FilterBar>
         <SearchInput value={query} onChange={setQuery} placeholder="Search companies…" className="grow" />
+        <select className="input" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="Sort companies">
+          <option value="name">Sort: Name</option>
+          <option value="usage">Sort: Usage this month</option>
+          <option value="wallet">Sort: Wallet balance</option>
+          <option value="last_active">Sort: Last active</option>
+        </select>
         <div className="filter-chips">
           <FilterChip active={filter === "all"} onClick={() => setFilter("all")} count={stats.total}>
             All
@@ -324,6 +338,12 @@ export default function CompaniesPage() {
           </FilterChip>
           <FilterChip active={filter === "attention"} onClick={() => setFilter("attention")} count={stats.attention}>
             Needs attention
+          </FilterChip>
+          <FilterChip active={filter === "low_wallet"} onClick={() => setFilter("low_wallet")} count={stats.lowWallet}>
+            Low wallet
+          </FilterChip>
+          <FilterChip active={filter === "inactive"} onClick={() => setFilter("inactive")}>
+            Inactive
           </FilterChip>
           <FilterChip active={filter === "disabled"} onClick={() => setFilter("disabled")}>
             Suspended
@@ -365,9 +385,11 @@ export default function CompaniesPage() {
               <tr>
                 <th>Company</th>
                 <th>Status</th>
-                <th>Connectors</th>
-                <th>AI Gateway</th>
-                <th>Domain</th>
+                <th className="num">Wallet</th>
+                <th className="num">Usage (mo)</th>
+                <th>Last active</th>
+                <th>Systems</th>
+                <th>AI</th>
                 <th>Portal</th>
                 {user?.isPlatformAdmin ? <th>Actions</th> : null}
               </tr>
@@ -376,7 +398,7 @@ export default function CompaniesPage() {
               {filtered.map((company) => (
                 <tr key={company.id}>
                   <td>
-                    <Link to={`/companies/${company.slug}`} style={{ fontWeight: 600 }}>
+                    <Link to={`/companies/${company.slug}`} className="table-link">
                       {company.name}
                     </Link>
                     {company.needsAttention ? (
@@ -386,22 +408,36 @@ export default function CompaniesPage() {
                   <td>
                     <StatusBadge status={company.status} />
                   </td>
+                  <td className="num">
+                    {formatCharge(company.walletBalanceCents)}
+                    {company.walletLowBalance ? (
+                      <div className="warning-text">Low</div>
+                    ) : null}
+                  </td>
+                  <td className="num">
+                    {formatNumber(company.usageThisMonth)}
+                    {company.usageFailedThisMonth > 0 ? (
+                      <div className="muted small">{company.usageFailedThisMonth} failed</div>
+                    ) : null}
+                  </td>
+                  <td className="muted">{formatRelativeTime(company.lastActivityAt)}</td>
                   <td>
-                    {company.connectedCount}/{company.connectorCount}
+                    {company.connectedConnectors}/{company.connectorCount}
                   </td>
                   <td>
-                    {company.mcpStatus ? <StatusBadge status={company.mcpStatus} /> : <span className="muted">None</span>}
+                    {company.mcpStatus ? (
+                      <StatusBadge status={company.mcpStatus} />
+                    ) : (
+                      <span className="muted">None</span>
+                    )}
                   </td>
-                  <td className="muted">{company.primaryDomain ?? "—"}</td>
                   <td>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      <Link
-                        to={`/portal/${company.slug}/dashboard`}
-                        className="button button-secondary button-small"
-                      >
-                        Portal
-                      </Link>
-                    </div>
+                    <Link
+                      to={`/portal/${company.slug}/dashboard`}
+                      className="button button-secondary button-small"
+                    >
+                      Portal
+                    </Link>
                   </td>
                   {user?.isPlatformAdmin ? (
                     <td>
@@ -775,16 +811,16 @@ function CompanyCard({
           <div>
             <div className="muted small">Connectors</div>
             <div style={{ fontWeight: 600 }}>
-              {company.connectedCount}/{company.connectorCount}
+              {company.connectedConnectors}/{company.connectorCount}
             </div>
           </div>
           <div>
-            <div className="muted small">AI Gateway</div>
-            <div>{company.mcpStatus ? <StatusBadge status={company.mcpStatus} /> : "—"}</div>
+            <div className="muted small">Usage this month</div>
+            <div style={{ fontWeight: 600 }}>{formatNumber(company.usageThisMonth)}</div>
           </div>
           <div>
-            <div className="muted small">Attention</div>
-            <div style={{ fontWeight: 600 }}>{company.needsAttention ? "Yes" : "None"}</div>
+            <div className="muted small">Wallet</div>
+            <div style={{ fontWeight: 600 }}>{formatCharge(company.walletBalanceCents)}</div>
           </div>
         </div>
       </Link>
@@ -815,31 +851,4 @@ function CompanyCard({
       </div>
     </div>
   );
-}
-
-function buildRows(
-  companies: Company[],
-  mcps: McpEnvironment[],
-  connectors: ConnectorInstance[],
-): CompanyRow[] {
-  return companies.map((company) => {
-    const companyMcps = mcps.filter((m) => m.companyId === company.id);
-    const companyConnectors = connectors.filter((c) => c.companyId === company.id);
-    const connectedCount = companyConnectors.filter((c) =>
-      ["connected", "active", "healthy"].includes(c.status) ||
-      ["healthy", "connected"].includes(c.healthStatus ?? ""),
-    ).length;
-    const badMcp = companyMcps.find((m) => ["unreachable", "degraded"].includes(m.status));
-    return {
-      ...company,
-      mcpCount: companyMcps.length,
-      connectorCount: companyConnectors.length,
-      connectedCount,
-      mcpStatus: companyMcps[0]?.status ?? null,
-      needsAttention:
-        Boolean(badMcp) ||
-        company.status === "suspended" ||
-        (company.status === "onboarding" && companyMcps.length === 0),
-    };
-  });
 }

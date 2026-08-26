@@ -30,7 +30,7 @@ export const CAPABILITY_LABELS: Record<ConnectorCapability, string> = {
   sync: "Sync",
   index: "Index",
   export: "Export",
-  live_query: "Live Query",
+  live_query: "Live data",
 };
 
 export const SYNC_MODE_LABELS: Record<SyncMode, string> = {
@@ -79,7 +79,7 @@ export function filterConnectors(
 ): ConnectorDefinition[] {
   const normalizedQuery = query.trim().toLowerCase();
 
-  return connectors.filter((connector) => {
+  const filtered = connectors.filter((connector) => {
     if (statusFilter !== "all") {
       if (statusFilter === "product_ready" && connector.catalogueStatus !== "active") {
         return false;
@@ -119,6 +119,20 @@ export function filterConnectors(
       .toLowerCase();
 
     return haystack.includes(normalizedQuery);
+  });
+
+  return sortConnectorsForDisplay(filtered);
+}
+
+/** Custom API is an advanced fallback — show last in browse order. */
+export function sortConnectorsForDisplay(
+  connectors: ConnectorDefinition[],
+): ConnectorDefinition[] {
+  return [...connectors].sort((a, b) => {
+    const aCustom = a.slug === "custom-api" ? 1 : 0;
+    const bCustom = b.slug === "custom-api" ? 1 : 0;
+    if (aCustom !== bCustom) return aCustom - bCustom;
+    return a.name.localeCompare(b.name);
   });
 }
 

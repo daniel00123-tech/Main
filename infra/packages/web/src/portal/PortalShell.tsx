@@ -5,6 +5,7 @@ import {
   ChartColumn,
   ClipboardList,
   LayoutDashboard,
+  LogOut,
   Menu,
   Plug,
   Settings,
@@ -67,12 +68,6 @@ const ALL_NAV: NavItem[] = [
     label: "Activity",
     icon: <Shield size={18} />,
     roles: ["company_admin", "director", "manager"],
-  },
-  {
-    path: "actions",
-    label: "Actions",
-    icon: <ClipboardList size={18} />,
-    roles: ["company_admin", "director", "manager", "supervisor"],
   },
   {
     path: "settings",
@@ -160,10 +155,10 @@ function PortalShellInner() {
           )}
         </div>
 
-        {showLabels && companies.length > 1 ? (
-          <div style={{ padding: "0 12px 12px" }}>
+        {showLabels && (user.isPlatformAdmin || companies.length > 1) ? (
+          <div className="portal-company-switch">
             <label className="muted small" htmlFor="portal-company-switch">
-              Company
+              {user.isPlatformAdmin ? "Switch company" : "Company"}
             </label>
             <select
               id="portal-company-switch"
@@ -173,7 +168,6 @@ function PortalShellInner() {
                 navigate(`/portal/${e.target.value}/dashboard`);
                 setMobileOpen(false);
               }}
-              style={{ width: "100%", marginTop: 4 }}
             >
               {companies.map((c) => (
                 <option key={c.id} value={c.slug}>
@@ -229,9 +223,27 @@ function PortalShellInner() {
               </div>
             </>
           ) : (
-            <Button type="button" variant="ghost" size="sm" title="Sign out" onClick={() => void logout()}>
-              <X size={16} />
-            </Button>
+            <div className="sidebar-footer-collapsed">
+              <button
+                type="button"
+                className="button button-ghost button-small nav-expand-btn"
+                aria-label="Expand navigation"
+                title="Expand navigation"
+                onClick={() => setCollapsed(false)}
+              >
+                <ChevronsRight size={16} />
+              </button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                title="Sign out"
+                aria-label="Sign out"
+                onClick={() => void logout()}
+              >
+                <LogOut size={16} />
+              </Button>
+            </div>
           )}
         </div>
       </aside>

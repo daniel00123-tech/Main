@@ -1,24 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Building2, Network, Plug, ShieldAlert } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  Building2,
+  Network,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import type { Company } from "@infra/shared";
 import { api } from "../api";
+import AttentionCentre from "../components/AttentionCentre";
 import {
   ActivityFeed,
-  AttentionBanner,
   EmptyState,
   ErrorState,
   LoadingState,
-  MetricCard,
-  MetricGrid,
   PageHeader,
   SectionCard,
   StatusBadge,
+  formatCurrency,
 } from "../components";
 import {
   formatCharge,
   formatNumber,
   formatRelativeTime,
+  humanActor,
   humanEventLabel,
   humanOperation,
 } from "../lib/format";
@@ -62,93 +69,150 @@ export default function DashboardPage() {
     () =>
       attentionItems.map((item) => ({
         id: item.id,
+        severity: item.severity,
         title: item.title,
-        description: item.companyName ? `${item.companyName} — ${item.detail}` : item.detail,
-        to: item.href ?? undefined,
+        detail: item.detail,
+        companyName: item.companyName,
+        href: item.href ?? undefined,
+        recommendedAction:
+          item.severity === "critical"
+            ? "Resolve before dismissing"
+            : item.category === "wallet"
+              ? "Review billing and top up if needed"
+              : item.category === "ai_identity"
+                ? "Create an AI connection in the company portal"
+                : "Review and take action",
       })),
     [attentionItems],
   );
 
+  async function dismissItem(item: { id: string; severity: "critical" | "warning" | "info" }) {
+    try {
+      await api.dismissAttention({ attentionKey: item.id, severity: item.severity });
+      setAttentionItems((prev) => prev.filter((a) => a.id !== item.id || a.severity === "critical"));
+    } catch {
+      /* keep item visible */
+    }
+  }
+
   if (loading) return <LoadingState label="Loading control plane…" />;
   if (error || !summary) {
-    return <ErrorState title="Unable to load dashboard" description={error ?? undefined} onRetry={() => void load()} />;
+    return (
+      <ErrorState
+        title="Unable to load dashboard"
+        description={error ?? undefined}
+        onRetry={() => void load()}
+      />
+    );
   }
 
   const companyById = new Map(companies.map((c) => [c.id, c]));
+  const activeCompanies = companies.filter((c) => c.status === "active").length;
+  const lowWallets = balances.filter((b) => b.lowBalance).length;
+  const platformHealthy =
+    summary.mcpEnvironments === 0
+      ? "No gateways"
+      : summary.healthyMcp === summary.mcpEnvironments
+        ? "Healthy"
+        : "Needs review";
 
   return (
     <>
       <PageHeader
         title="Dashboard"
-        description="Operational command centre for companies, integrations, and AI gateways."
+        description="Executive control centre for platform health, customers, usage, and commercial activity."
       />
 
-      <AttentionBanner items={attention} allClear="No platform alerts" />
+      <div className="executive-pillars">
+        <Link to="/mcp-environments" className="executive-pillar card">
+          <div className="executive-pillar-icon">
+            <Network size={18} />
+          </div>
+          <div className="executive-pillar-body">
+            <span className="executive-pillar-label">Platform health</span>
+            <strong className="executive-pillar-value">{platformHealthy}</strong>
+            <span className="muted small">
+              {formatNumber(summary.healthyMcp)}/{formatNumber(summary.mcpEnvironments)} gateways ·{" "}
+              {formatNumber(summary.activeConnectors)} active connectors
+            </span>
+          </div>
+        </Link>
 
-      <MetricGrid cols={4}>
-        <MetricCard
-          label="Companies"
-          value={formatNumber(summary.companies)}
-          hint="Organisations on INFRA"
-          icon={<Building2 size={16} />}
-          to="/companies"
-        />
-        <MetricCard
-          label="Active connectors"
-          value={formatNumber(summary.activeConnectors)}
-          hint={`${formatNumber(summary.connectorInstances)} total instances`}
-          icon={<Plug size={16} />}
-          to="/connectors"
-        />
-        <MetricCard
-          label="Healthy gateways"
-          value={`${formatNumber(summary.healthyMcp)} / ${formatNumber(summary.mcpEnvironments)}`}
-          hint="AI gateway environments"
-          icon={<Network size={16} />}
-          to="/mcp-environments"
-        />
-        <MetricCard
-          label="Attention"
-          value={formatNumber(attention.length)}
-          hint={attention.length === 0 ? "Nothing pending" : "Needs review"}
-          icon={<ShieldAlert size={16} />}
-          to="/companies"
-        />
-      </MetricGrid>
+        <Link to="/companies" className="executive-pillar card">
+          <div className="executive-pillar-icon">
+            <Building2 size={18} />
+          </div>
+          <div className="executive-pillar-body">
+            <span className="executive-pillar-label">Customers</span>
+            <strong className="executive-pillar-value">{formatNumber(activeCompanies)} active</strong>
+            <span className="muted small">
+              {formatNumber(summary.companies)} total · {formatNumber(summary.onboardingCompanies ?? 0)}{" "}
+              onboarding
+            </span>
+          </div>
+        </Link>
 
-      <div style={{ marginTop: 16 }}>
-        <MetricGrid cols={4}>
-          <MetricCard
-            label="Onboarding"
-            value={formatNumber(summary.onboardingCompanies ?? 0)}
-            hint="Companies still being set up"
-            to="/companies"
-          />
-          <MetricCard
-            label="Usage today"
-            value={formatNumber(summary.usageToday ?? 0)}
-            hint={`${formatNumber(summary.usageThisMonth ?? 0)} this month`}
-            to="/usage"
-          />
-          <MetricCard
-            label="Active AI identities"
-            value={formatNumber(summary.activeAiIdentities ?? 0)}
-            hint="Service tokens currently active"
-            to="/ai-clients"
-          />
-          <MetricCard
-            label="Low wallets"
-            value={formatNumber(summary.lowBalanceCompanies ?? 0)}
-            hint="Below alert threshold"
-            to="/billing"
-          />
-        </MetricGrid>
+        <Link to="/usage" className="executive-pillar card">
+          <div className="executive-pillar-icon">
+            <Activity size={18} />
+          </div>
+          <div className="executive-pillar-body">
+            <span className="executive-pillar-label">Usage</span>
+            <strong className="executive-pillar-value">
+              {formatNumber(summary.usageThisMonth ?? 0)} this month
+            </strong>
+            <span className="muted small">
+              {formatNumber(summary.usageToday ?? 0)} today ·{" "}
+              {formatNumber(summary.activeAiIdentities ?? 0)} AI identities
+            </span>
+          </div>
+        </Link>
+
+        <Link to="/billing" className="executive-pillar card">
+          <div className="executive-pillar-icon">
+            <Wallet size={18} />
+          </div>
+          <div className="executive-pillar-body">
+            <span className="executive-pillar-label">Commercial</span>
+            <strong className="executive-pillar-value">
+              {summary.totalWalletCents != null
+                ? formatCurrency(summary.totalWalletCents)
+                : "—"}
+            </strong>
+            <span className="muted small">
+              {lowWallets > 0
+                ? `${formatNumber(lowWallets)} low wallet${lowWallets === 1 ? "" : "s"}`
+                : "Wallet balances healthy"}
+            </span>
+          </div>
+        </Link>
+
+        <Link to="/companies?filter=attention" className="executive-pillar card">
+          <div className="executive-pillar-icon executive-pillar-icon-warn">
+            <AlertTriangle size={18} />
+          </div>
+          <div className="executive-pillar-body">
+            <span className="executive-pillar-label">Attention</span>
+            <strong className="executive-pillar-value">{formatNumber(attention.length)}</strong>
+            <span className="muted small">
+              {attention.length === 0 ? "Nothing pending" : "Items need review"}
+            </span>
+          </div>
+        </Link>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <AttentionCentre
+          items={attention}
+          onDismiss={(item) => void dismissItem(item)}
+          allClear="No platform alerts"
+        />
       </div>
 
       <div className="grid grid-2" style={{ marginTop: 24 }}>
         <SectionCard
           title="Companies"
-          description="Jump into a company control centre."
+          description="Open a company control centre."
           actions={
             <Link to="/companies" className="button button-ghost button-small">
               View all
@@ -174,7 +238,9 @@ export default function DashboardPage() {
                   {companies.slice(0, 6).map((company) => (
                     <tr key={company.id}>
                       <td>
-                        <Link to={`/companies/${company.slug}`}>{company.name}</Link>
+                        <Link to={`/companies/${company.slug}`} className="table-link">
+                          {company.name}
+                        </Link>
                       </td>
                       <td>
                         <StatusBadge status={company.status} />
@@ -188,16 +254,24 @@ export default function DashboardPage() {
           )}
         </SectionCard>
 
-        <SectionCard title="Recent activity" description="Human-readable platform events.">
+        <SectionCard title="Recent activity" description="Who did what, when.">
           <ActivityFeed
             items={summary.recentAuditEvents.slice(0, 8).map((event) => {
               const company = event.companyId ? companyById.get(event.companyId) : undefined;
+              const actor = humanActor(event.actor);
+              const result =
+                typeof event.detail?.result === "string" ? String(event.detail.result) : undefined;
               return {
                 id: event.id,
-                title: humanEventLabel(event.eventType),
-                description: [company?.name, event.actor].filter(Boolean).join(" · ") || undefined,
+                title: actor,
+                description: [
+                  humanEventLabel(event.eventType),
+                  company?.name,
+                  result && result !== "ok" ? result : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
                 meta: formatRelativeTime(event.createdAt),
-                status: typeof event.detail?.result === "string" ? String(event.detail.result) : undefined,
               };
             })}
           />
@@ -246,20 +320,31 @@ export default function DashboardPage() {
             </div>
           )}
         </SectionCard>
-        <SectionCard title="Wallet alerts" description="Companies below their low-balance threshold.">
-          {balances.filter((b) => b.lowBalance).length === 0 ? (
-            <EmptyState title="No low wallets" description="Every company is above its alert threshold." />
-          ) : (
-            <ul className="stack" style={{ margin: 0, paddingLeft: 18 }}>
-              {balances
-                .filter((b) => b.lowBalance)
-                .map((b) => (
-                  <li key={b.companyId}>
-                    <Link to={`/companies/${b.companySlug}`}>{b.companyName}</Link>
-                  </li>
-                ))}
-            </ul>
-          )}
+        <SectionCard
+          title="Secondary metrics"
+          description="Operational detail — expand from pillar cards above."
+        >
+          <div className="secondary-metrics">
+            <div className="secondary-metric">
+              <TrendingUp size={14} aria-hidden />
+              <span>
+                Onboarding: <strong>{formatNumber(summary.onboardingCompanies ?? 0)}</strong>
+              </span>
+            </div>
+            <div className="secondary-metric">
+              <Network size={14} aria-hidden />
+              <span>
+                Connector instances: <strong>{formatNumber(summary.connectorInstances)}</strong>
+              </span>
+            </div>
+            <div className="secondary-metric">
+              <AlertTriangle size={14} aria-hidden />
+              <span>
+                Permission denials (24h):{" "}
+                <strong>{formatNumber(summary.permissionDenialsLast24h ?? 0)}</strong>
+              </span>
+            </div>
+          </div>
         </SectionCard>
       </div>
     </>

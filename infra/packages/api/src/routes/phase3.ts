@@ -1222,6 +1222,58 @@ phase3.get("/api/commercial/usage", requireAuth, requirePlatformAdmin, async (c)
   });
 });
 
+phase3.get("/api/commercial/usage/export", requireAuth, requirePlatformAdmin, async (c) => {
+  const companyId = c.req.query("companyId") || undefined;
+  const sourceClient = c.req.query("sourceClient") || undefined;
+  const successParam = c.req.query("success");
+  const success =
+    successParam === "1" || successParam === "true"
+      ? true
+      : successParam === "0" || successParam === "false"
+        ? false
+        : undefined;
+  const records = await listPlatformUsage(c.env.DB, 5000, { companyId, sourceClient, success });
+  const companies = await c.env.DB.prepare(`SELECT id, name FROM companies`).all();
+  const companyName = new Map(
+    (companies.results ?? []).map((row) => [String(row.id), String(row.name)]),
+  );
+  const header = [
+    "recorded_at",
+    "company",
+    "actor",
+    "ai_client",
+    "action",
+    "tool",
+    "status",
+    "charge_gbp",
+    "request_id",
+    "correlation_id",
+  ].join(",");
+  const lines = records.map((row) => {
+    const charge = row.customerChargeCents != null ? (row.customerChargeCents / 100).toFixed(2) : "";
+    const fields = [
+      row.recordedAt,
+      companyName.get(row.companyId) ?? row.companyId,
+      row.actorEmail ?? "",
+      row.sourceClient ?? "",
+      row.action ?? "",
+      row.toolName ?? "",
+      row.success === false ? "failed" : "success",
+      charge,
+      row.requestId ?? "",
+      row.correlationId ?? "",
+    ];
+    return fields.map((f) => `"${String(f).replace(/"/g, '""')}"`).join(",");
+  });
+  const csv = [header, ...lines].join("\n");
+  return new Response(csv, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="infra-usage-export.csv"',
+    },
+  });
+});
+
 phase3.get("/api/commercial/provider-costs", requireAuth, requirePlatformAdmin, async (c) => {
   await ensureProviderCostCatalogue(c.env.DB);
   const cards = await listProviderRateCards(c.env.DB);

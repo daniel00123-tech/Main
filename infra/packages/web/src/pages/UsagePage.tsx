@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChartColumn } from "lucide-react";
+import { ChartColumn, Download } from "lucide-react";
 import type { Company, UsageInteraction, UsageRecord } from "@infra/shared";
 import { api } from "../api";
 import {
+  Button,
   Drawer,
   EmptyState,
   ErrorState,
@@ -18,8 +19,19 @@ import {
   StatusBadge,
   formatCurrency,
   formatDate,
+  toast,
 } from "../components";
-import { formatNumber } from "../lib/format";
+import {
+  classifyUsageFailure,
+  formatNumber,
+  formatRelativeTime,
+  humanActor,
+  humanClient,
+  humanFailureCategory,
+  humanOperation,
+  integrationLabel,
+  type UsageFailureCategory,
+} from "../lib/format";
 
 type UsageRow = UsageRecord & {
   companyName: string;
@@ -45,6 +57,8 @@ export default function UsagePage() {
   const [companyId, setCompanyId] = useState("");
   const [sourceClient, setSourceClient] = useState("");
   const [successFilter, setSuccessFilter] = useState("");
+  const [failureCategory, setFailureCategory] = useState("");
+  const [exporting, setExporting] = useState(false);
   const [selected, setSelected] = useState<UsageRow | null>(null);
   const [view, setView] = useState<"interactions" | "operations">("interactions");
   const [interactions, setInteractions] = useState<UsageInteraction[]>([]);
@@ -158,16 +172,23 @@ export default function UsagePage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
+    let list = rows;
+    if (failureCategory) {
+      list = list.filter(
+        (r) => classifyUsageFailure(r) === failureCategory,
+      );
+    }
+    if (!q) return list;
+    return list.filter(
       (r) =>
         r.companyName.toLowerCase().includes(q) ||
         (r.action ?? "").toLowerCase().includes(q) ||
         (r.toolName ?? "").toLowerCase().includes(q) ||
         (r.sourceClient ?? "").toLowerCase().includes(q) ||
-        (r.requestId ?? "").toLowerCase().includes(q),
+        (r.requestId ?? "").toLowerCase().includes(q) ||
+        humanActor(r.actorEmail ?? r.userId).toLowerCase().includes(q),
     );
-  }, [rows, query]);
+  }, [rows, query, failureCategory]);
 
   const totals = useMemo(() => {
     if (summary && !query.trim()) return summary;
@@ -206,6 +227,38 @@ export default function UsagePage() {
     };
   }, [filtered, summary, query]);
 
+  const successRate =
+    totals.requests > 0 ? Math.round((totals.successful / totals.requests) * 100) : null;
+  const highFailureRate =
+    totals.requests > 0 && totals.failed / totals.requests > 0.25;
+
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const blob = await api.exportCommercialUsage({
+        companyId: companyId || undefined,
+        sourceClient: sourceClient || undefined,
+        success:
+          successFilter === "success"
+            ? true
+            : successFilter === "failed"
+              ? false
+              : undefined,
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `infra-usage-${new Date().toISOString().slice(0, 10)}.csv`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast("Usage exported to CSV");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Export failed", "error");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (loading) return <LoadingState label="Loading usage…" />;
   if (error) {
     return <ErrorState title="Unable to load usage" description={error} onRetry={() => void load()} />;
@@ -215,7 +268,12 @@ export default function UsagePage() {
     <>
       <PageHeader
         title="Usage"
-        description="Customer charges, underlying provider cost, and margin from the same accounting data as Billing."
+        description="Analytics and audit trail for customer charges, success rates, and operational failures."
+        actions={
+          <Button type="button" variant="secondary" size="sm" loading={exporting} onClick={() => void exportCsv()}>
+            <Download size={14} /> Export CSV
+          </Button>
+        }
       />
 
       <MetricGrid cols={3}>
@@ -227,6 +285,20 @@ export default function UsagePage() {
               : "—"
           }
         />
+        <MetricCard
+          label="Success rate"
+          value={successRate != null ? `${successRate}%` : "—"}
+          hint={`${formatNumber(totals.successful)} ok · ${formatNumber(totals.failed)} failed`}
+        />
+        <MetricCard
+          label="Failed requests"
+          value={formatNumber(totals.failed)}
+          hint={highFailureRate ? "Abnormally high — review failure categories" : undefined}
+        />
+      </MetricGrid>
+
+      <div style={{ marginTop: 12 }}>
+        <MetricGrid cols={3}>
         <MetricCard
           label="Underlying provider cost"
           value={
@@ -257,8 +329,8 @@ export default function UsagePage() {
           }
         />
         <MetricCard label="Successful requests" value={formatNumber(totals.successful)} />
-        <MetricCard label="Failed requests" value={formatNumber(totals.failed)} />
-      </MetricGrid>
+        </MetricGrid>
+      </div>
 
       <FilterBar>
         <SearchInput value={query} onChange={setQuery} placeholder="Search usage…" className="grow" />
@@ -280,6 +352,28 @@ export default function UsagePage() {
           <option value="">Success & failure</option>
           <option value="success">Successful</option>
           <option value="failed">Failed</option>
+        </Select>
+        <Select value={failureCategory} onChange={(e) => setFailureCategory(e.target.value)}>
+          <option value="">All failure types</option>
+          {(
+            [
+              "AUTHENTICATION",
+              "PERMISSION",
+              "MISSING_CAPABILITY",
+              "VALIDATION",
+              "UPSTREAM_API",
+              "RATE_LIMIT",
+              "TIMEOUT",
+              "INSUFFICIENT_CREDIT",
+              "INFRA_INTERNAL",
+              "USER_INPUT",
+              "UNKNOWN",
+            ] as UsageFailureCategory[]
+          ).map((cat) => (
+            <option key={cat} value={cat}>
+              {humanFailureCategory(cat)}
+            </option>
+          ))}
         </Select>
         <Select
           value={view}
@@ -344,7 +438,7 @@ export default function UsagePage() {
                               });
                             }}
                           >
-                            <td>{humaniseOperation(op.action ?? op.toolName ?? "Request")}</td>
+                            <td>{humanOperation(op.action, op.toolName)}</td>
                             <td className="num">
                               {op.customerChargeCents != null
                                 ? formatCurrency(op.customerChargeCents)
@@ -373,53 +467,66 @@ export default function UsagePage() {
         />
       ) : (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table compact">
             <thead>
               <tr>
-                <th>Time</th>
+                <th>When</th>
                 <th>Company</th>
-                <th>Client</th>
-                <th>Operation</th>
+                <th>Actor</th>
+                <th>AI client</th>
+                <th>Action</th>
+                <th>System</th>
                 <th className="num">Charge</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => (
-                <tr
-                  key={row.id}
-                  style={{ cursor: "pointer" }}
-                  tabIndex={0}
-                  onClick={() => setSelected(row)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelected(row);
-                    }
-                  }}
-                >
-                  <td>{formatDate(row.recordedAt)}</td>
-                  <td>
-                    {row.companySlug ? (
-                      <Link to={`/companies/${row.companySlug}`} onClick={(e) => e.stopPropagation()}>
-                        {row.companyName}
-                      </Link>
-                    ) : (
-                      row.companyName
-                    )}
-                  </td>
-                  <td className="muted">{humanClient(row.sourceClient)}</td>
-                  <td>{humaniseOperation(row.action ?? row.toolName ?? "Request")}</td>
-                  <td className="num">
-                    {row.customerChargeCents != null
-                      ? formatCurrency(row.customerChargeCents)
-                      : "—"}
-                  </td>
-                  <td>
-                    <StatusBadge status={row.success !== false ? "completed" : "failed"} />
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((row) => {
+                const failure = classifyUsageFailure(row);
+                return (
+                  <tr
+                    key={row.id}
+                    style={{ cursor: "pointer" }}
+                    tabIndex={0}
+                    onClick={() => setSelected(row)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelected(row);
+                      }
+                    }}
+                  >
+                    <td>{formatRelativeTime(row.recordedAt)}</td>
+                    <td>
+                      {row.companySlug ? (
+                        <Link
+                          to={`/companies/${row.companySlug}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {row.companyName}
+                        </Link>
+                      ) : (
+                        row.companyName
+                      )}
+                    </td>
+                    <td className="muted">{humanActor(row.actorEmail ?? row.userId)}</td>
+                    <td className="muted">{humanClient(row.sourceClient)}</td>
+                    <td>{humanOperation(row.action, row.toolName)}</td>
+                    <td className="muted">{integrationLabel(row.action, row.toolName)}</td>
+                    <td className="num">
+                      {row.customerChargeCents != null
+                        ? formatCurrency(row.customerChargeCents)
+                        : "—"}
+                    </td>
+                    <td>
+                      <StatusBadge status={row.success !== false ? "completed" : "failed"} />
+                      {failure ? (
+                        <div className="muted small">{humanFailureCategory(failure)}</div>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -456,15 +563,29 @@ function UsageDetail({
         Request
       </h3>
       <KeyValue label="Client" value={humanClient(row.sourceClient)} />
+      <KeyValue label="Actor" value={humanActor(row.actorEmail ?? row.userId)} />
       <KeyValue label="Company" value={row.companyName} />
       <KeyValue
+        label="Integration"
+        value={integrationLabel(row.action, row.toolName)}
+      />
+      <KeyValue
         label="Operation"
-        value={humaniseOperation(row.action ?? row.toolName ?? "Request")}
+        value={humanOperation(row.action, row.toolName)}
+      />
+      <KeyValue
+        label="Failure category"
+        value={
+          classifyUsageFailure(row)
+            ? humanFailureCategory(classifyUsageFailure(row)!)
+            : "—"
+        }
       />
       <KeyValue
         label="Status"
         value={<StatusBadge status={row.success !== false ? "completed" : "failed"} />}
       />
+      <KeyValue label="Recorded" value={formatRelativeTime(row.recordedAt)} />
       <KeyValue
         label="Customer charge"
         value={
@@ -575,17 +696,3 @@ function formatUnderlyingCost(row: UsageRow): string {
   return "Unavailable / not configured";
 }
 
-function humaniseOperation(value: string): string {
-  if (value.includes("knowledge.search") || value.includes("search_company_knowledge")) {
-    return "Knowledge Search";
-  }
-  if (value.includes("knowledge.read")) return "Knowledge Read";
-  return value.replace(/[._]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function humanClient(value: string | null | undefined): string {
-  if (!value) return "—";
-  if (value === "chatgpt") return "ChatGPT";
-  if (value === "claude") return "Claude";
-  return value;
-}

@@ -176,6 +176,44 @@ export async function buildPlatformAttention(
   });
 }
 
+export async function filterAttentionDismissals(
+  db: D1Database,
+  items: AttentionItem[],
+  actor: string,
+): Promise<AttentionItem[]> {
+  const rows = await db
+    .prepare(
+      `SELECT attention_key FROM attention_dismissals
+       WHERE dismissed_by = ?
+         AND (snooze_until IS NULL OR snooze_until > datetime('now'))`,
+    )
+    .bind(actor)
+    .all();
+  const dismissed = new Set((rows.results ?? []).map((row) => String(row.attention_key)));
+  return items.filter((item) => item.severity === "critical" || !dismissed.has(item.id));
+}
+
+export async function dismissAttentionItem(
+  db: D1Database,
+  input: { attentionKey: string; actor: string; severity: AttentionSeverity; snoozeUntil?: string | null },
+): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
+  if (input.severity === "critical") {
+    return { ok: false, code: "NOT_DISMISSABLE", message: "Critical infrastructure items cannot be dismissed." };
+  }
+  const id = `attd_${crypto.randomUUID()}`;
+  await db
+    .prepare(
+      `INSERT INTO attention_dismissals (id, attention_key, dismissed_by, dismissed_at, snooze_until)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(attention_key, dismissed_by) DO UPDATE SET
+         dismissed_at = excluded.dismissed_at,
+         snooze_until = excluded.snooze_until`,
+    )
+    .bind(id, input.attentionKey, input.actor, new Date().toISOString(), input.snoozeUntil ?? null)
+    .run();
+  return { ok: true };
+}
+
 export async function buildCompanyAttention(
   db: D1Database,
   companyId: string,

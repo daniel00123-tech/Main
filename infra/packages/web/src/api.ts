@@ -174,6 +174,66 @@ export const api = {
       }>;
       checkedAt: string;
     }>(`/api/companies/${encodeURIComponent(slug)}/attention`),
+  getCompaniesAdminDirectory: () =>
+    fetchJson<
+      Array<{
+        id: string;
+        name: string;
+        slug: string;
+        status: string;
+        primaryDomain: string | null;
+        walletBalanceCents: number;
+        walletLowBalance: boolean;
+        usageThisMonth: number;
+        usageFailedThisMonth: number;
+        lastActivityAt: string | null;
+        connectorCount: number;
+        connectedConnectors: number;
+        mcpStatus: string | null;
+        aiIdentityCount: number;
+        needsAttention: boolean;
+      }>
+    >("/api/companies/admin-directory"),
+  dismissAttention: (input: {
+    attentionKey: string;
+    severity: "critical" | "warning" | "info";
+    snoozeUntil?: string | null;
+  }) =>
+    fetchJson<{ ok: boolean }>("/api/platform/attention/dismiss", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  exportCommercialUsage: (params?: {
+    companyId?: string;
+    sourceClient?: string;
+    success?: boolean;
+    from?: string;
+    to?: string;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.companyId) q.set("companyId", params.companyId);
+    if (params?.sourceClient) q.set("sourceClient", params.sourceClient);
+    if (params?.success === true) q.set("success", "true");
+    if (params?.success === false) q.set("success", "false");
+    if (params?.from) q.set("from", params.from);
+    if (params?.to) q.set("to", params.to);
+    const suffix = q.toString() ? `?${q}` : "";
+    return fetch(`${API_BASE}/api/commercial/usage/export${suffix}`, {
+      credentials: "include",
+    }).then(async (response) => {
+      if (!response.ok) {
+        let message = `Export failed: ${response.status}`;
+        try {
+          const body = (await response.json()) as { error?: string };
+          if (body.error) message = body.error;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(message);
+      }
+      return response.blob();
+    });
+  },
   getCompanies: (params?: { q?: string; status?: string; limit?: number; offset?: number }) => {
     const search = new URLSearchParams();
     if (params?.q) search.set("q", params.q);

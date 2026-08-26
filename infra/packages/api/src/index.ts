@@ -302,12 +302,37 @@ app.get("/api/platform/attention", requireAuth, async (c) => {
   if (!user.isPlatformAdmin) {
     return c.json({ error: "Platform administrator access required" }, 403);
   }
-  const { buildPlatformAttention } = await import("./services/attention");
+  const { buildPlatformAttention, filterAttentionDismissals } = await import("./services/attention");
   const { isStripeConfigured } = await import("./services/stripe");
-  const items = await buildPlatformAttention(c.env.DB, {
-    stripeConfigured: isStripeConfigured(c.env),
-  });
+  const items = await filterAttentionDismissals(
+    c.env.DB,
+    await buildPlatformAttention(c.env.DB, {
+      stripeConfigured: isStripeConfigured(c.env),
+    }),
+    c.get("user").email,
+  );
   return c.json({ items, checkedAt: new Date().toISOString() });
+});
+
+app.post("/api/platform/attention/dismiss", requireAuth, requirePlatformAdmin, async (c) => {
+  const body = await c.req.json<{ attentionKey?: string; severity?: string; snoozeUntil?: string | null }>();
+  if (!body.attentionKey || !body.severity) {
+    return c.json({ error: "attentionKey and severity required" }, 400);
+  }
+  const { dismissAttentionItem } = await import("./services/attention");
+  const result = await dismissAttentionItem(c.env.DB, {
+    attentionKey: body.attentionKey,
+    severity: body.severity as "critical" | "warning" | "info",
+    actor: c.get("user").email,
+    snoozeUntil: body.snoozeUntil ?? null,
+  });
+  if (!result.ok) return c.json({ error: result.message, code: result.code }, 409);
+  return c.json({ ok: true });
+});
+
+app.get("/api/companies/admin-directory", requireAuth, requirePlatformAdmin, async (c) => {
+  const { listCompaniesAdminDirectory } = await import("./services/companies-admin");
+  return c.json(await listCompaniesAdminDirectory(c.env.DB));
 });
 
 app.get("/api/companies/:slug/attention", requireAuth, async (c) => {
