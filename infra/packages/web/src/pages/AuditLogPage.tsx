@@ -9,8 +9,11 @@ import {
   FilterChip,
   KeyValue,
   LoadingState,
+  MobileRecordCard,
+  MobileRecordList,
   PageHeader,
   SearchInput,
+  ShowMoreFooter,
   StatusBadge,
   formatDate,
 } from "../components";
@@ -66,6 +69,7 @@ export default function AuditLogPage() {
   >("all");
   const [companyFilter, setCompanyFilter] = useState("");
   const [selected, setSelected] = useState<AuditEvent | null>(null);
+  const [displayLimit, setDisplayLimit] = useState(30);
 
   async function load() {
     setLoading(true);
@@ -92,6 +96,10 @@ export default function AuditLogPage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, companyFilter]);
+
+  useEffect(() => {
+    setDisplayLimit(30);
+  }, [query, filter, companyFilter]);
 
   const companyById = useMemo(
     () => new Map(companies.map((c) => [c.id, c])),
@@ -126,7 +134,7 @@ export default function AuditLogPage() {
         description="Investigation tool for platform activity — who did what, when, and with what result."
       />
 
-      <FilterBar>
+      <FilterBar className="filter-bar-mobile-stack">
         <SearchInput value={query} onChange={setQuery} placeholder="Search events…" className="grow" />
         <select
           className="select"
@@ -162,7 +170,8 @@ export default function AuditLogPage() {
       {filtered.length === 0 ? (
         <EmptyState title="No audit events" description="Events will appear as platform activity occurs." />
       ) : (
-        <div className="table-wrap">
+        <>
+        <div className="table-wrap desktop-only">
           <table className="table compact">
             <thead>
               <tr>
@@ -175,7 +184,7 @@ export default function AuditLogPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((event) => {
+              {filtered.slice(0, displayLimit).map((event) => {
                 const company = event.companyId
                   ? companyById.get(event.companyId)?.name ?? "—"
                   : "Platform";
@@ -205,6 +214,41 @@ export default function AuditLogPage() {
             </tbody>
           </table>
         </div>
+
+        <div className="mobile-only">
+          <MobileRecordList>
+            {filtered.slice(0, displayLimit).map((event) => {
+              const company = event.companyId
+                ? companyById.get(event.companyId)?.name ?? "—"
+                : "Platform";
+              const result = auditResult(event);
+              return (
+                <MobileRecordCard key={event.id} onClick={() => setSelected(event)}>
+                  <div className="mobile-record-header">
+                    <div>
+                      <div className="ledger-row-primary">{formatRelativeTime(event.createdAt)}</div>
+                      <div className="ledger-row-meta">{formatActorDisplay(event)}</div>
+                    </div>
+                    <StatusBadge status={result.status} label={result.label} />
+                  </div>
+                  <p className="small" style={{ margin: "8px 0 0" }}>
+                    <strong>{humanEventLabel(event.eventType)}</strong>
+                  </p>
+                  <div className="muted small">
+                    {company} · {auditIntegration(event)}
+                  </div>
+                </MobileRecordCard>
+              );
+            })}
+          </MobileRecordList>
+        </div>
+
+        <ShowMoreFooter
+          shown={Math.min(displayLimit, filtered.length)}
+          total={filtered.length}
+          onShowMore={() => setDisplayLimit((n) => n + 30)}
+        />
+        </>
       )}
 
       <Drawer open={Boolean(selected)} onClose={() => setSelected(null)} title="Event details">

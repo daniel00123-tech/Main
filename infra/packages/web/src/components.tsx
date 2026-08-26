@@ -305,8 +305,8 @@ export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
 
 /* ─── Filters & tabs ─── */
 
-export function FilterBar({ children }: { children: ReactNode }) {
-  return <div className="filter-bar">{children}</div>;
+export function FilterBar({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`filter-bar ${className}`.trim()}>{children}</div>;
 }
 
 export function FilterChip({
@@ -850,6 +850,83 @@ export function useMediaQuery(query: string) {
     return () => mq.removeEventListener("change", fn);
   }, [query]);
   return matches;
+}
+
+export function useIsMobile() {
+  return useMediaQuery("(max-width: 768px)");
+}
+
+export function ShowMoreFooter({
+  shown,
+  total,
+  onShowMore,
+  step = 20,
+}: {
+  shown: number;
+  total: number;
+  onShowMore: () => void;
+  step?: number;
+}) {
+  if (shown >= total) return null;
+  return (
+    <div className="show-more-footer">
+      <Button type="button" variant="secondary" size="sm" onClick={onShowMore}>
+        Show more ({Math.min(step, total - shown)} of {total - shown} remaining)
+      </Button>
+    </div>
+  );
+}
+
+export function MobileRecordList({ children }: { children: ReactNode }) {
+  return <div className="mobile-record-list">{children}</div>;
+}
+
+export function MobileRecordCard({
+  children,
+  onClick,
+  className = "",
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  className?: string;
+}) {
+  const Tag = onClick ? "button" : "article";
+  return (
+    <Tag
+      type={onClick ? "button" : undefined}
+      className={`mobile-record-card ${className}`.trim()}
+      onClick={onClick}
+    >
+      {children}
+    </Tag>
+  );
+}
+
+export function CollapsibleBlock({
+  title,
+  summary,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  summary?: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <details
+      className="collapsible-block"
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+    >
+      <summary>
+        <span>{title}</span>
+        {summary ? <span className="collapsible-summary">{summary}</span> : null}
+      </summary>
+      <div className="collapsible-body">{children}</div>
+    </details>
+  );
 }
 
 export function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: () => void) {

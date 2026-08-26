@@ -30,7 +30,7 @@ export default function AttentionCentre({
   if (items.length === 0) {
     return (
       <div className="attention-centre attention-centre-clear" role="status">
-        <CheckCircle2 size={20} color="var(--success)" aria-hidden />
+        <CheckCircle2 size={20} color="var(--healthy)" aria-hidden />
         <div>
           <p className="attention-title">{allClear}</p>
           <p className="muted small" style={{ margin: 0 }}>

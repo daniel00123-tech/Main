@@ -251,9 +251,13 @@ export default function PricingRulesPage() {
           <p className="muted small">
             Customer charge is derived from underlying provider cost and target gross margin, then
             rounded up to the minimum charge where applicable. Formula: charge = cost ÷ (1 −
-            margin). This is Platform Admin information only — customers never see margin or
-            provider cost.
+            margin).
           </p>
+          <Notice tone="info">
+            <strong>Gross margin is not markup.</strong> A 60% gross margin means 60% of the
+            customer price is profit after provider cost — not a 60% increase on top of cost. A 60%
+            markup would be a different (higher) price.
+          </Notice>
         </AdvancedDetails>
       </SectionCard>
 

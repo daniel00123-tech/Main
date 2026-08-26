@@ -16,6 +16,7 @@ import {
   PageHeader,
   SearchInput,
   Select,
+  ShowMoreFooter,
   StatusBadge,
   formatCurrency,
   formatDate,
@@ -63,6 +64,7 @@ export default function UsagePage() {
   const [view, setView] = useState<"interactions" | "operations">("interactions");
   const [interactions, setInteractions] = useState<UsageInteraction[]>([]);
   const [openInteraction, setOpenInteraction] = useState<string | null>(null);
+  const [displayLimit, setDisplayLimit] = useState(15);
   const [auditEvents, setAuditEvents] = useState<
     Awaited<ReturnType<typeof api.getAuditEvents>>
   >([]);
@@ -139,6 +141,10 @@ export default function UsagePage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId, sourceClient, successFilter]);
+
+  useEffect(() => {
+    setDisplayLimit(15);
+  }, [query, companyId, sourceClient, successFilter, failureCategory, view]);
 
   useEffect(() => {
     if (!selected) {
@@ -332,7 +338,7 @@ export default function UsagePage() {
         </MetricGrid>
       </div>
 
-      <FilterBar>
+      <FilterBar className="filter-bar-mobile-stack">
         <SearchInput value={query} onChange={setQuery} placeholder="Search usage…" className="grow" />
         <Select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
           <option value="">All companies</option>
@@ -386,7 +392,7 @@ export default function UsagePage() {
 
       {view === "interactions" && interactions.length > 0 ? (
         <div className="interaction-list">
-          {interactions.map((item) => {
+          {interactions.slice(0, displayLimit).map((item) => {
             const open = openInteraction === item.id;
             return (
               <article key={item.id} className="interaction-card">
@@ -459,14 +465,33 @@ export default function UsagePage() {
             );
           })}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : null}
+
+      {view === "interactions" && interactions.length > 0 ? (
+        <ShowMoreFooter
+          shown={Math.min(displayLimit, interactions.length)}
+          total={interactions.length}
+          onShowMore={() => setDisplayLimit((n) => n + 15)}
+        />
+      ) : null}
+
+      {view === "interactions" && interactions.length === 0 ? (
+        <EmptyState
+          icon={<ChartColumn size={28} />}
+          title="No interactions yet"
+          description="Grouped interactions appear when usage is recorded through the gateway."
+        />
+      ) : null}
+
+      {view === "operations" && filtered.length === 0 ? (
         <EmptyState
           icon={<ChartColumn size={28} />}
           title="No usage recorded yet"
           description="Usage appears after a request passes through the INFRA gateway or MCP facade."
         />
-      ) : (
-        <div className="table-wrap">
+      ) : view === "operations" ? (
+        <>
+        <div className="table-wrap desktop-only">
           <table className="table compact">
             <thead>
               <tr>
@@ -481,7 +506,7 @@ export default function UsagePage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => {
+              {filtered.slice(0, displayLimit).map((row) => {
                 const failure = classifyUsageFailure(row);
                 return (
                   <tr
@@ -530,7 +555,13 @@ export default function UsagePage() {
             </tbody>
           </table>
         </div>
-      )}
+        <ShowMoreFooter
+          shown={Math.min(displayLimit, filtered.length)}
+          total={filtered.length}
+          onShowMore={() => setDisplayLimit((n) => n + 20)}
+        />
+        </>
+      ) : null}
 
       <Drawer open={Boolean(selected)} onClose={() => setSelected(null)} title="Usage details">
         {selected ? <UsageDetail row={selected} auditEvents={auditEvents} /> : null}

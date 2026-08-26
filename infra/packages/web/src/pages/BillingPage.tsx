@@ -11,10 +11,13 @@ import {
   KpiStrip,
   LoadingState,
   Modal,
+  MobileRecordCard,
+  MobileRecordList,
   Notice,
   PageHeader,
   SearchInput,
   SectionCard,
+  ShowMoreFooter,
   StatusBadge,
   formatCurrency,
   toast,
@@ -54,6 +57,7 @@ export default function BillingPage() {
     reason: "",
     internalNote: "",
   });
+  const [ledgerLimit, setLedgerLimit] = useState(25);
 
   const selectedRow = useMemo(
     () => rows.find((r) => r.companySlug === selectedSlug) ?? null,
@@ -120,6 +124,10 @@ export default function BillingPage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    setLedgerLimit(25);
+  }, [query, entryTypeFilter, creditClassFilter, selectedRow?.companyId]);
 
   useEffect(() => {
     if (!selectedRow) return;
@@ -243,6 +251,12 @@ export default function BillingPage() {
         />
       ) : null}
 
+      <Notice tone="info">
+        Paid and promotional credit are classified separately for reporting. The wallet balance is
+        a single pooled amount — usage draws from total available credit. Promotional-first
+        consumption is not applied separately in the current accounting model.
+      </Notice>
+
       {rows.length === 0 ? (
         <EmptyState
           title="No wallets yet"
@@ -250,8 +264,8 @@ export default function BillingPage() {
         />
       ) : (
         <>
-          <SectionCard title="Wallets" description="Click a company to view wallet detail and ledger.">
-            <div className="table-wrap">
+          <SectionCard title="Wallets" description="Tap a company to view wallet detail and ledger.">
+            <div className="table-wrap desktop-only">
               <table className="table compact">
                 <thead>
                   <tr>
@@ -300,6 +314,43 @@ export default function BillingPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="mobile-only">
+              <MobileRecordList>
+                {rows.map((row) => (
+                  <MobileRecordCard
+                    key={row.companyId}
+                    onClick={() => selectCompany(row.companySlug)}
+                    className={row.companySlug === selectedSlug ? "selected-record" : ""}
+                  >
+                    <div className="mobile-record-header">
+                      <strong>{row.companyName}</strong>
+                      <StatusBadge
+                        status={row.lowBalance ? "warning" : "healthy"}
+                        label={row.lowBalance ? "Low balance" : "OK"}
+                      />
+                    </div>
+                    <dl className="mobile-record-meta">
+                      <div>
+                        <dt>Paid</dt>
+                        <dd>{formatCurrency(row.paidCreditCents, row.currency)}</dd>
+                      </div>
+                      <div>
+                        <dt>Promotional</dt>
+                        <dd>{formatCurrency(row.promotionalCreditCents, row.currency)}</dd>
+                      </div>
+                      <div>
+                        <dt>Available</dt>
+                        <dd>{formatCurrency(row.balanceCents, row.currency)}</dd>
+                      </div>
+                      <div>
+                        <dt>Spend (mo)</dt>
+                        <dd>{formatCurrency(row.spendThisMonthCents, row.currency)}</dd>
+                      </div>
+                    </dl>
+                  </MobileRecordCard>
+                ))}
+              </MobileRecordList>
             </div>
           </SectionCard>
 
@@ -381,7 +432,8 @@ export default function BillingPage() {
               ) : ledger.length === 0 ? (
                 <p className="muted">No ledger entries match your filters.</p>
               ) : (
-                <div className="table-wrap" style={{ marginTop: 12 }}>
+                <>
+                <div className="table-wrap desktop-only" style={{ marginTop: 12 }}>
                   <table className="table compact">
                     <thead>
                       <tr>
@@ -394,7 +446,7 @@ export default function BillingPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {ledger.map((entry) => (
+                      {ledger.slice(0, ledgerLimit).map((entry) => (
                         <tr
                           key={entry.id}
                           style={{
@@ -448,6 +500,46 @@ export default function BillingPage() {
                     </tbody>
                   </table>
                 </div>
+                <div className="mobile-only" style={{ marginTop: 12 }}>
+                  <MobileRecordList>
+                    {ledger.slice(0, ledgerLimit).map((entry) => (
+                      <MobileRecordCard
+                        key={entry.id}
+                        onClick={() => {
+                          if (entry.entryType.includes("usage")) navigate("/usage");
+                        }}
+                      >
+                        <div className="mobile-record-header">
+                          <div>
+                            <div className="ledger-row-primary">{formatShortDate(entry.createdAt)}</div>
+                            <div className="ledger-row-meta">{entry.sourceLabel}</div>
+                          </div>
+                          <span
+                            className={
+                              entry.amountCents >= 0 ? "ledger-amount-credit" : "ledger-amount-debit"
+                            }
+                          >
+                            {formatMoney(entry.amountCents, entry.currency, { signed: true })}
+                          </span>
+                        </div>
+                        <p className="small" style={{ margin: "8px 0 0" }}>
+                          {entry.description
+                            ? humanOperation(entry.description.split(" · ").pop())
+                            : humanLedgerType(entry.entryType)}
+                        </p>
+                        <div className="muted small" style={{ marginTop: 4 }}>
+                          Balance after {formatCurrency(entry.balanceAfterCents, entry.currency)}
+                        </div>
+                      </MobileRecordCard>
+                    ))}
+                  </MobileRecordList>
+                </div>
+                <ShowMoreFooter
+                  shown={Math.min(ledgerLimit, ledger.length)}
+                  total={ledger.length}
+                  onShowMore={() => setLedgerLimit((n) => n + 25)}
+                />
+                </>
               )}
             </SectionCard>
           ) : null}

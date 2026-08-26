@@ -16,6 +16,8 @@ import {
   MetricCard,
   MetricGrid,
   Modal,
+  MobileRecordCard,
+  MobileRecordList,
   PageHeader,
   SearchInput,
   StatusBadge,
@@ -379,8 +381,9 @@ export default function CompaniesPage() {
           onSuspend={() => void suspendCompany(filtered[0].slug)}
         />
       ) : (
-        <div className="table-wrap">
-          <table className="table">
+        <>
+        <div className="table-wrap desktop-only">
+          <table className="table compact">
             <thead>
               <tr>
                 <th>Company</th>
@@ -461,6 +464,74 @@ export default function CompaniesPage() {
             </tbody>
           </table>
         </div>
+
+        <div className="mobile-only">
+        <MobileRecordList>
+          {filtered.map((company) => (
+            <MobileRecordCard key={company.id}>
+              <div className="mobile-record-header">
+                <div>
+                  <Link to={`/companies/${company.slug}`} className="mobile-record-title table-link">
+                    {company.name}
+                  </Link>
+                  {company.needsAttention ? (
+                    <div className="warning-text small">Needs attention</div>
+                  ) : null}
+                </div>
+                <StatusBadge status={company.status} />
+              </div>
+              <dl className="mobile-record-meta">
+                <div>
+                  <dt>Wallet</dt>
+                  <dd>
+                    {formatCharge(company.walletBalanceCents)}
+                    {company.walletLowBalance ? " · Low" : ""}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Usage (mo)</dt>
+                  <dd>{formatNumber(company.usageThisMonth)}</dd>
+                </div>
+                <div>
+                  <dt>Last active</dt>
+                  <dd>{formatRelativeTime(company.lastActivityAt)}</dd>
+                </div>
+                <div>
+                  <dt>Systems</dt>
+                  <dd>
+                    {company.connectedConnectors}/{company.connectorCount}
+                  </dd>
+                </div>
+                <div>
+                  <dt>AI gateway</dt>
+                  <dd>
+                    {company.mcpStatus ? (
+                      <StatusBadge status={company.mcpStatus} />
+                    ) : (
+                      "None"
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              <div className="mobile-record-actions">
+                <Link
+                  to={`/companies/${company.slug}`}
+                  className="button button-secondary button-small"
+                >
+                  Open
+                </Link>
+                <Link
+                  to={`/portal/${company.slug}/dashboard`}
+                  className="button button-secondary button-small"
+                >
+                  Portal
+                </Link>
+              </div>
+            </MobileRecordCard>
+          ))}
+        </MobileRecordList>
+        </div>
+        </>
       )}
 
       <Modal
