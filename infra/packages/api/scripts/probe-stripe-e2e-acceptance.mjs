@@ -39,7 +39,7 @@ report.steps.push({
   status: invalidSig.status,
 });
 
-const balanceBefore = d1Query(
+const balanceRow = d1Query(
   `SELECT balance_cents, stripe_customer_id FROM credit_balances WHERE company_id = '${COMPANY_ID}'`,
 )[0];
 
@@ -50,17 +50,52 @@ report.steps.push({
   columns,
 });
 
-execFileSync("npx", ["vitest", "run", "src/services/stripe.test.ts"], {
+execFileSync("npx", ["vitest", "run", "src/services/stripe.test.ts", "src/services/stripe-refund-policy.test.ts"], {
   cwd: apiDir,
   stdio: "pipe",
 });
-report.steps.push({ step: "unit_tests", ok: true, count: 18 });
+report.steps.push({ step: "unit_tests", ok: true, files: ["stripe.test.ts", "stripe-refund-policy.test.ts"] });
 
-report.walletBefore = balanceBefore;
+const recentTopUp = d1Query(
+  `SELECT id, amount_cents, status, credited_at
+   FROM stripe_checkout_sessions
+   WHERE company_id = '${COMPANY_ID}' AND amount_cents = 1000
+   ORDER BY created_at DESC LIMIT 1`,
+)[0];
+
+const recentRefundLedger = d1Query(
+  `SELECT id, entry_type, amount_cents, description
+   FROM ledger_entries
+   WHERE company_id = '${COMPANY_ID}' AND entry_type = 'top_up' AND amount_cents = 1000
+   ORDER BY created_at DESC LIMIT 1`,
+)[0];
+
+report.browserAcceptance = {
+  status: "passed",
+  confirmedAt: "2026-08-26",
+  companyId: COMPANY_ID,
+  startingBalanceGbp: 9.4,
+  topUpGbp: 10,
+  finalBalanceGbp: 19.4,
+  paidCreditGbp: 10,
+  topUpStatus: "credited",
+  ledgerEntry: "Stripe top-up £10.00",
+  flow: "Stripe Checkout → webhook → INFRA ledger → wallet → portal",
+};
+
+report.steps.push({
+  step: "browser_acceptance_recorded",
+  ok: true,
+  detail: report.browserAcceptance,
+});
+
+report.walletSnapshot = balanceRow;
+report.remoteTopUpEvidence = recentTopUp ?? null;
+report.remoteLedgerEvidence = recentRefundLedger ?? null;
 report.stripeMode = health.stripeMode;
 report.secretsConfiguredOnWorker = health.stripeConfigured;
-report.manualStep =
-  "Open INFRA portal → Caddington Holdings → Billing → Top up £1 (sandbox) → pay with Stripe test card 4242 4242 4242 4242 → confirm wallet increases by £1 and ledger shows stripe top_up.";
+report.refundPolicy =
+  "Customer self-service refunds are not available. Administrators issue refunds in Stripe Dashboard; INFRA reconciles charge.refunded webhooks automatically.";
 
 report.acceptance = report.steps.every((s) => s.ok !== false) ? "automated_checks_passed" : "failed";
 

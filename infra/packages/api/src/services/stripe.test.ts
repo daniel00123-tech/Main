@@ -521,6 +521,58 @@ describe("processStripeWebhookEvent", () => {
     expect(refunds[0]?.amount_cents).toBe(-2500);
   });
 
+  it("allows refund ledger debit when paid credit was already consumed", async () => {
+    (testEnv.DB as unknown as FakeD1).tables.stripe_checkout_sessions[0]!.status = "credited";
+    (testEnv.DB as unknown as FakeD1).tables.stripe_checkout_sessions[0]!.stripe_payment_intent_id =
+      "pi_test_123";
+    (testEnv.DB as unknown as FakeD1).tables.credit_balances[0]!.balance_cents = 100;
+    (testEnv.DB as unknown as FakeD1).tables.ledger_entries.push({
+      id: "ledger_topup",
+      company_id: companyId,
+      entry_type: "top_up",
+      amount_cents: 2500,
+      currency: "GBP",
+      balance_after_cents: 2500,
+      reference_type: "stripe_checkout",
+      reference_id: checkoutId,
+      description: "top up",
+      metadata_json: "{}",
+      created_by: "stripe-webhook",
+      created_at: new Date().toISOString(),
+    });
+    (testEnv.DB as unknown as FakeD1).tables.ledger_entries.push({
+      id: "ledger_usage",
+      company_id: companyId,
+      entry_type: "usage_debit",
+      amount_cents: -2400,
+      currency: "GBP",
+      balance_after_cents: 100,
+      reference_type: "usage",
+      reference_id: "usage_1",
+      description: "usage",
+      metadata_json: "{}",
+      created_by: "system",
+      created_at: new Date().toISOString(),
+    });
+
+    const result = await processStripeWebhookEvent(testEnv, {
+      stripeEventId: "evt_refund_spent",
+      eventType: "charge.refunded",
+      payload: {
+        data: {
+          object: {
+            id: "ch_test",
+            payment_intent: "pi_test_123",
+            amount_refunded: 2500,
+          },
+        },
+      },
+    });
+
+    expect(result.processed).toBe(true);
+    expect((testEnv.DB as unknown as FakeD1).tables.credit_balances[0]?.balance_cents).toBe(-2400);
+  });
+
   it("records incremental partial refunds from cumulative charge.refunded amounts", async () => {
     (testEnv.DB as unknown as FakeD1).tables.stripe_checkout_sessions[0]!.status = "credited";
     (testEnv.DB as unknown as FakeD1).tables.stripe_checkout_sessions[0]!.stripe_payment_intent_id =

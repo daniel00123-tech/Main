@@ -678,6 +678,11 @@ export async function processStripeWebhookEvent(
       return { processed: true, duplicate: false, message: "checkout expired" };
     }
 
+    /**
+     * Admin-only refunds: customers cannot initiate refunds via INFRA.
+     * An authorised administrator issues the refund in Stripe Dashboard (or Stripe API
+     * outside INFRA). This handler reconciles charge.refunded webhooks into ledger rows.
+     */
     if (input.eventType === "charge.refunded") {
       const object = sessionObject(input.payload);
       const paymentIntentId = object.payment_intent ? String(object.payment_intent) : null;

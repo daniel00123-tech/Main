@@ -223,6 +223,10 @@ export default function PortalBillingPage() {
                 : "Card top-up is prepared but not enabled."
           }
         >
+          <p className="muted small" style={{ marginTop: 0, marginBottom: 16 }}>
+            Refunds are handled by INFRA administrators only. Contact INFRA if you need a
+            refund — completed refunds appear in your ledger below.
+          </p>
           {wallet.stripeConfigured && stripeTestMode ? (
             <div className="topup-grid">
               {wallet.topUpOptionsCents.map((amount) => (
