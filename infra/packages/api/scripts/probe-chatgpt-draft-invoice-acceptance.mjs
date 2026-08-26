@@ -148,28 +148,40 @@ try {
     );
     report.steps.push({
       step: "confirm_action_plan",
-      ok: confirm?.confirmationStatus === "confirmed" && confirm?.status === "approved",
+      ok: confirm?.confirmationStatus === "confirmed" && ["approved", "completed"].includes(String(confirm?.status)),
       status: confirm?.status ?? null,
       approvalStatus: confirm?.approvalStatus ?? null,
       message: confirm?.message ?? null,
+      autoExecuted: Boolean(confirm?.executionResult),
     });
 
-    if (confirm?.status !== "approved") {
-      throw new Error(`Expected approved after confirm, got ${confirm?.status ?? "unknown"}`);
+    if (!["approved", "completed"].includes(String(confirm?.status ?? ""))) {
+      throw new Error(`Expected approved/completed after confirm, got ${confirm?.status ?? "unknown"}`);
     }
 
-    const execute = toolPayload(
-      (await mcpCall("tools/call", { name: "execute_action_plan", arguments: { planId: plan.planId } }, 5)).body,
-    );
+    let execution = confirm?.executionResult ?? null;
+    if (!execution?.ok) {
+      const executePayload = toolPayload(
+        (await mcpCall("tools/call", { name: "execute_action_plan", arguments: { planId: plan.planId } }, 5)).body,
+      );
+      execution = executePayload?.executionResult ?? null;
+      if (!execution?.ok && executePayload?.status === "completed") {
+        const evidence = toolPayload(
+          (await mcpCall("tools/call", { name: "get_action_plan", arguments: { planId: plan.planId } }, 51)).body,
+        );
+        execution = evidence?.execution ?? execution;
+      }
+    }
+
     report.steps.push({
       step: "execute_action_plan",
-      ok: execute?.executionResult?.ok === true,
-      execution: execute?.executionResult ?? null,
-      invoiceId: execute?.executionResult?.xeroResourceId ?? null,
-      invoiceNumber: execute?.executionResult?.humanReference ?? null,
+      ok: execution?.ok === true,
+      execution,
+      invoiceId: execution?.xeroResourceId ?? null,
+      invoiceNumber: execution?.humanReference ?? null,
     });
 
-    const invoiceId = execute?.executionResult?.xeroResourceId;
+    const invoiceId = execution?.xeroResourceId;
     if (invoiceId) {
       const readBack = toolPayload(
         (await mcpCall("tools/call", { name: "xero_get_invoice", arguments: { invoiceId } }, 6)).body,

@@ -85,6 +85,28 @@ export async function executeActionControlTool(
     const plan = await getActionPlan(env.DB, input.companyId, planId);
     if (!plan) return { status: 404, body: { error: "Action plan not found", code: "PLAN_NOT_FOUND" } };
 
+    if (plan.status === "completed") {
+      const execution = await getExecutionEvidence(env, input.companyId, planId);
+      return {
+        status: 200,
+        body: {
+          ...sanitizePlanForClient(plan),
+          executionResult: execution
+            ? {
+                ok: execution.status === "succeeded",
+                status: execution.status === "succeeded" ? "completed" : execution.status,
+                executionId: execution.id,
+                xeroResourceId: execution.xeroResourceId,
+                humanReference: execution.humanReference,
+                verificationStatus: execution.verificationStatus,
+                results: execution.resultJson ?? {},
+              }
+            : { ok: true, status: "completed", message: "Plan already completed." },
+          workflow: workflowHints(plan),
+        },
+      };
+    }
+
     if (plan.status !== "approved") {
       return {
         status: 409,
