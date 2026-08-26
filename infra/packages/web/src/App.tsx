@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import {
   Activity,
   Bot,
@@ -56,7 +56,7 @@ import PortalConnectorsPage from "./portal/PortalConnectorsPage";
 import PortalBillingPage from "./portal/PortalBillingPage";
 import PortalUsagePage from "./portal/PortalUsagePage";
 import PortalAiConnectionsPage from "./portal/PortalAiConnectionsPage";
-import PortalTeamPage from "./portal/PortalTeamPage";
+import PortalUsersPage from "./portal/PortalUsersPage";
 import PortalSettingsPage from "./portal/PortalSettingsPage";
 import PortalActivityPage from "./portal/PortalActivityPage";
 import PortalActionsPage from "./portal/PortalActionsPage";
@@ -284,6 +284,7 @@ export default function App() {
         <Route path="/portal/ai-connections" element={<PortalEntryRedirect />} />
         <Route path="/portal/connectors" element={<PortalEntryRedirect />} />
         <Route path="/portal/team" element={<PortalEntryRedirect />} />
+        <Route path="/portal/users" element={<PortalEntryRedirect />} />
         <Route path="/portal/usage" element={<PortalEntryRedirect />} />
         <Route path="/portal/billing" element={<PortalEntryRedirect />} />
         <Route path="/portal/settings" element={<PortalEntryRedirect />} />
@@ -295,7 +296,8 @@ export default function App() {
           <Route path="connectors" element={<PortalConnectorsPage />} />
           <Route path="ai-connections" element={<PortalAiConnectionsPage />} />
           <Route path="actions" element={<PortalActionsPage />} />
-          <Route path="team" element={<PortalTeamPage />} />
+          <Route path="users" element={<PortalUsersPage />} />
+          <Route path="team" element={<Navigate to="users" replace />} />
           <Route path="usage" element={<PortalUsagePage />} />
           <Route path="billing" element={<PortalBillingPage />} />
           <Route path="activity" element={<PortalActivityPage />} />

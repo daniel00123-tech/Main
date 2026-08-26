@@ -3,18 +3,20 @@ import { Bot, Copy, Check } from "lucide-react";
 import {
   AdvancedDetails,
   Button,
+  CollapsibleBlock,
   EmptyState,
   ErrorState,
   KeyValue,
   LoadingState,
+  Modal,
   Notice,
-  PageHeader,
-  SectionCard,
   StatusBadge,
   toast,
+  useIsMobile,
 } from "../components";
 import { api, infraMcpUrl } from "../api";
-import { formatRelativeTime } from "../lib/format";
+import { formatRelativeTime, humanClient, humanConnectorPurpose, humanScope } from "../lib/format";
+import { PortalPageHeader } from "./components";
 import { usePortalCompany } from "./usePortalCompany";
 
 const DEFAULT_MCP_URL = infraMcpUrl();
@@ -32,13 +34,12 @@ async function copyText(value: string, label: string) {
   }
 }
 
-function statusLabel(conn: AiConnection): string {
-  if (conn.status === "coming_soon") return "Coming soon";
-  if (conn.status === "connected" && conn.tokenStatus === "Active") return "Token active";
-  if (conn.status === "connected" && conn.tokenStatus === "Revoked") return "Needs reconnection";
-  if (conn.status === "ready_to_connect") return "Not connected";
-  if (conn.status === "error") return "Error";
-  return conn.status.replace(/_/g, " ");
+function connectionStatus(conn: AiConnection): { status: string; label: string } {
+  if (conn.status === "coming_soon") return { status: "coming_soon", label: "Coming soon" };
+  if (conn.tokenStatus === "Active") return { status: "connected", label: "Connected" };
+  if (conn.tokenStatus === "Revoked") return { status: "warning", label: "Needs reconnection" };
+  if (conn.status === "error") return { status: "failed", label: "Error" };
+  return { status: "not_configured", label: "Not connected" };
 }
 
 export default function PortalAiConnectionsPage() {
@@ -47,17 +48,14 @@ export default function PortalAiConnectionsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyType, setBusyType] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [manageType, setManageType] = useState<string | null>(null);
   const [tokenReveal, setTokenReveal] = useState<{
     clientType: string;
     token: string;
     endpoint: string;
     mcpEndpoint: string;
   } | null>(null);
-  const [testResult, setTestResult] = useState<{
-    clientType: string;
-    status: string;
-    message: string;
-  } | null>(null);
+  const isMobile = useIsMobile();
 
   async function refresh() {
     if (!company) return;
@@ -78,12 +76,11 @@ export default function PortalAiConnectionsPage() {
   }, [company]);
 
   const ordered = useMemo(() => {
-    const rank = (type: string) =>
-      type === "chatgpt" ? 0 : type === "claude" ? 1 : 2;
-    return [...connections].sort(
-      (a, b) => rank(a.clientType) - rank(b.clientType),
-    );
+    const rank = (type: string) => (type === "chatgpt" ? 0 : type === "claude" ? 1 : 2);
+    return [...connections].sort((a, b) => rank(a.clientType) - rank(b.clientType));
   }, [connections]);
+
+  const activeConn = ordered.find((c) => c.clientType === manageType) ?? null;
 
   async function connect(clientType: string) {
     if (!company) return;
@@ -98,7 +95,7 @@ export default function PortalAiConnectionsPage() {
         endpoint: result.gatewayEndpoint,
         mcpEndpoint: result.mcpEndpoint ?? DEFAULT_MCP_URL,
       });
-      toast("Token issued — copy it now; it will not be shown again");
+      toast("Connection ready — copy your token now");
       await refresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Connection failed";
@@ -116,33 +113,11 @@ export default function PortalAiConnectionsPage() {
     try {
       await api.revokeAiClient(company.slug, clientType);
       setTokenReveal(null);
-      toast(`${clientType} token revoked`);
+      setManageType(null);
+      toast(`${humanClient(clientType)} disconnected`);
       await refresh();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Revoke failed";
-      setLoadError(message);
-      toast(message, "error");
-    } finally {
-      setBusyType(null);
-    }
-  }
-
-  async function testConnection(clientType: string) {
-    if (!company) return;
-    setBusyType(`test-${clientType}`);
-    setTestResult(null);
-    setLoadError(null);
-    try {
-      const result = await api.testAiClient(company.slug, clientType);
-      const status = String(result.status ?? "FAILED");
-      const message = String(result.message ?? "Test completed");
-      setTestResult({ clientType, status, message });
-      toast(
-        status === "HEALTHY" ? "Connection healthy" : message,
-        status === "HEALTHY" ? "success" : "error",
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Test failed";
+      const message = err instanceof Error ? err.message : "Disconnect failed";
       setLoadError(message);
       toast(message, "error");
     } finally {
@@ -165,80 +140,39 @@ export default function PortalAiConnectionsPage() {
 
   return (
     <>
-      <PageHeader
-        title="AI connections"
-        description={`${company.name} · available AI clients versus active tokens. These are not business-data connectors.`}
+      <PortalPageHeader
+        title="AI"
+        description={`Connect ChatGPT or Claude to ${company.name}'s business systems securely through INFRA.`}
       />
-
-      <div className="grid grid-3" style={{ marginBottom: 24 }}>
-        {ordered.map((conn) => (
-          <div key={`summary-${conn.id}`} className="card metric-card">
-            <h3>{conn.displayName}</h3>
-            <div className="metric">{conn.tokenStatus === "Active" ? "1" : "0"}</div>
-            <p className="muted small">
-              {conn.status === "coming_soon" ? "Coming soon" : "Available"} ·{" "}
-              {conn.tokenStatus === "Active" ? "1 active connection" : "0 active connections"}
-            </p>
-          </div>
-        ))}
-      </div>
 
       {loadError ? <Notice tone="danger">{loadError}</Notice> : null}
 
       {tokenReveal ? (
         <Notice tone="success">
-          <strong>{tokenReveal.clientType === "chatgpt" ? "ChatGPT" : tokenReveal.clientType} connection ready</strong>
+          <strong>{humanClient(tokenReveal.clientType)} connection ready</strong>
           <p style={{ margin: "8px 0" }}>
-            Copy this token now. For security, INFRA will not display it again.
+            Copy this token now. For security, INFRA will not show it again.
           </p>
-          <div className="muted small">INFRA MCP URL</div>
-          <code className="mono" style={{ display: "block", wordBreak: "break-all" }}>
-            {tokenReveal.mcpEndpoint}
-          </code>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            style={{ marginTop: 8 }}
-            onClick={() => void handleCopy("mcp-token", tokenReveal.mcpEndpoint, "INFRA MCP URL")}
-          >
-            {copiedKey === "mcp-token" ? <Check size={14} /> : <Copy size={14} />}
-            Copy URL
-          </Button>
-
-          <div className="muted small" style={{ marginTop: 16 }}>
-            Bearer token
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={() => void handleCopy("token", tokenReveal.token, "Bearer token")}
+            >
+              {copiedKey === "token" ? <Check size={14} /> : <Copy size={14} />}
+              Copy token
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleCopy("mcp-token", tokenReveal.mcpEndpoint, "Connection URL")}
+            >
+              {copiedKey === "mcp-token" ? <Check size={14} /> : <Copy size={14} />}
+              Copy connection URL
+            </Button>
           </div>
-          <code className="mono" style={{ display: "block", wordBreak: "break-all" }}>
-            {tokenReveal.token}
-          </code>
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            style={{ marginTop: 8 }}
-            onClick={() => void handleCopy("token", tokenReveal.token, "Bearer token")}
-          >
-            {copiedKey === "token" ? <Check size={14} /> : <Copy size={14} />}
-            Copy Token
-          </Button>
-        </Notice>
-      ) : null}
-
-      {testResult ? (
-        <Notice
-          tone={
-            testResult.status === "HEALTHY"
-              ? "success"
-              : testResult.status === "DEGRADED"
-                ? "warning"
-                : "danger"
-          }
-        >
-          <strong>
-            Test · {testResult.clientType}: {testResult.status}
-          </strong>
-          <p style={{ margin: "8px 0 0" }}>{testResult.message}</p>
         </Notice>
       ) : null}
 
@@ -246,113 +180,69 @@ export default function PortalAiConnectionsPage() {
         <EmptyState
           icon={<Bot size={28} />}
           title="No AI connections"
-          description="Generate a ChatGPT token to connect this company through INFRA."
+          description="Connect ChatGPT to start using your company systems through INFRA."
           action={
             <Button type="button" variant="primary" onClick={() => void connect("chatgpt")}>
-              Generate Token
+              Connect ChatGPT
             </Button>
           }
         />
       ) : (
-        <div className="connector-grid" style={{ marginBottom: 24 }}>
+        <div className="stack" style={{ gap: 12 }}>
           {ordered.map((conn) => {
-            const isChatgpt = conn.clientType === "chatgpt";
+            const { status, label } = connectionStatus(conn);
             const comingSoon = conn.status === "coming_soon";
-            const hasToken = conn.tokenStatus === "Active";
-            const primaryLabel = comingSoon
-              ? "Coming soon"
-              : hasToken
-                ? "Reconnect / New Token"
-                : "Generate Token";
-
+            const connected = conn.tokenStatus === "Active";
             return (
               <article
                 key={conn.id}
-                className="connector-card"
-                style={{
-                  minHeight: isChatgpt ? 280 : 160,
-                  outline: isChatgpt ? "2px solid var(--accent)" : undefined,
-                }}
+                className={`ai-connection-card${connected ? " connected" : ""}`}
               >
                 <div className="connection-header">
-                  <h3 style={{ margin: 0 }}>{conn.displayName}</h3>
-                  <StatusBadge status={conn.status} label={statusLabel(conn)} />
+                  <div>
+                    <h3 style={{ margin: 0 }}>{conn.displayName}</h3>
+                    <p className="muted small" style={{ margin: "4px 0 0" }}>
+                      {humanConnectorPurpose(conn.clientType)}
+                    </p>
+                  </div>
+                  <StatusBadge status={status} label={label} />
                 </div>
-
-                <div className="kv-stack" style={{ marginTop: 12 }}>
-                  <KeyValue label="Connection method" value={conn.connectionMethod ?? "INFRA MCP Gateway"} />
-                  <KeyValue label="Company" value={conn.companyName ?? company.name} />
-                  <KeyValue
-                    label="MCP endpoint"
-                    value={
-                      <code className="mono small" style={{ wordBreak: "break-all" }}>
-                        {conn.mcpEndpoint ?? DEFAULT_MCP_URL}
-                      </code>
-                    }
-                  />
-                  {isChatgpt || conn.status === "connected" ? (
+                {connected && conn.lastUsedAt ? (
+                  <p className="muted small">Last used {formatRelativeTime(conn.lastUsedAt)}</p>
+                ) : null}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {comingSoon ? (
+                    <Button type="button" variant="secondary" size="sm" disabled>
+                      Coming soon
+                    </Button>
+                  ) : connected ? (
                     <>
-                      <KeyValue
-                        label="Service identity"
-                        value={conn.serviceIdentityName ?? "Not generated yet"}
-                      />
-                      <KeyValue
-                        label="Scopes"
-                        value={
-                          conn.scopes && conn.scopes.length > 0
-                            ? conn.scopes.join(", ")
-                            : "—"
-                        }
-                      />
-                      <KeyValue label="Token status" value={conn.tokenStatus ?? "Not Generated"} />
-                      <KeyValue
-                        label="Last used"
-                        value={
-                          conn.lastUsedAt ? formatRelativeTime(conn.lastUsedAt) : "No activity yet"
-                        }
-                      />
-                    </>
-                  ) : null}
-                </div>
-
-                <div
-                  className="connector-card-actions"
-                  style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}
-                >
-                  <Button
-                    type="button"
-                    variant={isChatgpt ? "primary" : "secondary"}
-                    size="sm"
-                    disabled={comingSoon || busyType === conn.clientType}
-                    loading={busyType === conn.clientType}
-                    onClick={() => void connect(conn.clientType)}
-                  >
-                    {primaryLabel}
-                  </Button>
-                  {!comingSoon && hasToken ? (
-                    <>
+                      <Button type="button" variant="primary" size="sm" onClick={() => setManageType(conn.clientType)}>
+                        Manage connection
+                      </Button>
                       <Button
                         type="button"
                         variant="secondary"
                         size="sm"
-                        disabled={busyType === `test-${conn.clientType}`}
-                        loading={busyType === `test-${conn.clientType}`}
-                        onClick={() => void testConnection(conn.clientType)}
+                        disabled={busyType === conn.clientType}
+                        loading={busyType === conn.clientType}
+                        onClick={() => void connect(conn.clientType)}
                       >
-                        Test Connection
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="danger"
-                        size="sm"
-                        disabled={busyType === `revoke-${conn.clientType}`}
-                        loading={busyType === `revoke-${conn.clientType}`}
-                        onClick={() => void revoke(conn.clientType)}
-                      >
-                        Revoke
+                        New token
                       </Button>
                     </>
-                  ) : null}
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      disabled={busyType === conn.clientType}
+                      loading={busyType === conn.clientType}
+                      onClick={() => void connect(conn.clientType)}
+                    >
+                      Connect
+                    </Button>
+                  )}
                 </div>
               </article>
             );
@@ -360,42 +250,96 @@ export default function PortalAiConnectionsPage() {
         </div>
       )}
 
-      <SectionCard title="Setup help" description="Secondary instructions for connecting ChatGPT.">
+      <CollapsibleBlock title="How to connect ChatGPT" summary="Setup steps">
         <ol className="stack" style={{ margin: 0, paddingLeft: 18, color: "var(--text-secondary)" }}>
-          <li>
-            Click <strong>Generate Token</strong> or <strong>Reconnect / New Token</strong> on the
-            ChatGPT card above
-          </li>
-          <li>Copy the Bearer token (shown once) and the INFRA MCP URL</li>
-          <li>
-            In ChatGPT Connectors / MCPs, remove any old direct company MCP URL
-          </li>
-          <li>
-            Add only this INFRA endpoint. Authentication type: <strong>Bearer token</strong>.
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8, alignItems: "center" }}>
-              <code className="mono" style={{ wordBreak: "break-all" }}>
-                {DEFAULT_MCP_URL}
-              </code>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => void handleCopy("mcp-setup", DEFAULT_MCP_URL, "INFRA MCP URL")}
-              >
-                {copiedKey === "mcp-setup" ? <Check size={14} /> : <Copy size={14} />}
-                Copy URL
-              </Button>
-            </div>
-          </li>
-          <li>Start a brand-new ChatGPT conversation, then test a knowledge search</li>
+          <li>Click <strong>Connect</strong> on the ChatGPT card and copy your token</li>
+          <li>In ChatGPT, add an MCP connection using Bearer token authentication</li>
+          <li>Use the connection URL provided — not a direct company MCP address</li>
+          <li>Start a new conversation and try a knowledge search or Xero query</li>
         </ol>
-        <AdvancedDetails label="Why INFRA MCP only?">
-          <p className="muted small" style={{ margin: 0 }}>
-            Direct company MCP access is locked (401). ChatGPT must use the INFRA MCP URL or usage
-            and billing will not record.
-          </p>
-        </AdvancedDetails>
-      </SectionCard>
+      </CollapsibleBlock>
+
+      <Modal
+        open={Boolean(activeConn)}
+        onClose={() => setManageType(null)}
+        title={activeConn ? `${activeConn.displayName} connection` : "Manage connection"}
+        description="Manage your AI connection. Technical setup details are available below."
+        footer={
+          activeConn && activeConn.tokenStatus === "Active" ? (
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              loading={busyType === `revoke-${activeConn.clientType}`}
+              onClick={() => void revoke(activeConn.clientType)}
+            >
+              Disconnect
+            </Button>
+          ) : null
+        }
+      >
+        {activeConn ? (
+          <>
+            <KeyValue label="Status" value={<StatusBadge {...connectionStatus(activeConn)} />} />
+            <KeyValue
+              label="Last activity"
+              value={activeConn.lastUsedAt ? formatRelativeTime(activeConn.lastUsedAt) : "No activity yet"}
+            />
+            <KeyValue label="Company" value={activeConn.companyName ?? company.name} />
+            <AdvancedDetails label="Technical details">
+              <KeyValue label="Connection method" value={activeConn.connectionMethod ?? "INFRA secure gateway"} />
+              <KeyValue
+                label="Connection URL"
+                value={
+                  <code className="mono small" style={{ wordBreak: "break-all" }}>
+                    {activeConn.mcpEndpoint ?? DEFAULT_MCP_URL}
+                  </code>
+                }
+              />
+              {activeConn.serviceIdentityName ? (
+                <KeyValue label="Service identity" value={activeConn.serviceIdentityName} mono />
+              ) : null}
+              {activeConn.scopes && activeConn.scopes.length > 0 ? (
+                <div>
+                  <div className="muted small" style={{ marginBottom: 8 }}>
+                    What this connection can do
+                  </div>
+                  <ul className="plain-list">
+                    {activeConn.scopes.map((scope) => (
+                      <li key={scope} className="small">
+                        {humanScope(scope)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    void handleCopy("manage-url", activeConn.mcpEndpoint ?? DEFAULT_MCP_URL, "Connection URL")
+                  }
+                >
+                  Copy connection URL
+                </Button>
+                {!isMobile ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    loading={busyType === activeConn.clientType}
+                    onClick={() => void connect(activeConn.clientType)}
+                  >
+                    Generate new token
+                  </Button>
+                ) : null}
+              </div>
+            </AdvancedDetails>
+          </>
+        ) : null}
+      </Modal>
     </>
   );
 }

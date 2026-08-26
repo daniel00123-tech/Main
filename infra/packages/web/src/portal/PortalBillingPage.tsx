@@ -1,17 +1,21 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  Button,
   EmptyState,
   ErrorState,
+  Input,
+  KpiStrip,
   LoadingState,
   Notice,
-  PageHeader,
   SectionCard,
+  Tabs,
   formatCurrency,
   formatDate,
 } from "../components";
 import { api } from "../api";
 import { humanLedgerType } from "../lib/format";
+import { PortalPageHeader, ProductCard } from "./components";
 import { usePortalCompany } from "./usePortalCompany";
 
 type TopUpRecord = {
@@ -24,16 +28,42 @@ type TopUpRecord = {
   failureReason?: string | null;
 };
 
+type BillingTab = "overview" | "payment" | "auto-topup" | "transactions" | "invoices" | "addons";
+
+const ADDON_PRODUCTS = [
+  {
+    name: "Priority data refresh",
+    benefit: "Faster knowledge and connector sync cycles for time-sensitive operations.",
+    price: "Pricing TBC",
+  },
+  {
+    name: "Enhanced analytics",
+    benefit: "Deeper usage insights and exportable reports for finance and operations teams.",
+    price: "Pricing TBC",
+  },
+  {
+    name: "Additional knowledge capacity",
+    benefit: "Expanded document indexing limits for larger company knowledge bases.",
+    price: "Pricing TBC",
+  },
+  {
+    name: "Premium support",
+    benefit: "Priority response for connector, billing, and AI connection issues.",
+    price: "Pricing TBC",
+  },
+];
+
 export default function PortalBillingPage() {
   const { company, loading, error } = usePortalCompany();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [wallet, setWallet] = useState<Awaited<ReturnType<typeof api.getWallet>> | null>(
-    null,
-  );
+  const [wallet, setWallet] = useState<Awaited<ReturnType<typeof api.getWallet>> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const [tab, setTab] = useState<BillingTab>("overview");
+  const [customAmount, setCustomAmount] = useState("");
+  const [ledgerLimit, setLedgerLimit] = useState(30);
 
   const topupState = searchParams.get("topup");
   const checkoutId = searchParams.get("checkout");
@@ -61,11 +91,9 @@ export default function PortalBillingPage() {
       setConfirmingPayment(false);
       return;
     }
-
     let cancelled = false;
     let attempts = 0;
     setConfirmingPayment(true);
-
     const poll = async () => {
       if (cancelled || attempts > 20) {
         setConfirmingPayment(false);
@@ -80,11 +108,10 @@ export default function PortalBillingPage() {
           return;
         }
       } catch {
-        // keep polling
+        /* keep polling */
       }
       window.setTimeout(() => void poll(), 2000);
     };
-
     void poll();
     return () => {
       cancelled = true;
@@ -99,7 +126,7 @@ export default function PortalBillingPage() {
       const result = await api.createTopUp(company.slug, amountCents);
       if (result.mode === "pending_credentials" || !result.url) {
         setMessage(
-          "Card payments are not live yet. Your current balance is unchanged. Contact your administrator if you need credit added.",
+          "Card payments are not live yet. Your balance is unchanged. Contact your administrator if you need credit added.",
         );
       } else if (typeof result.url === "string") {
         const localId = typeof result.localId === "string" ? result.localId : "";
@@ -122,49 +149,42 @@ export default function PortalBillingPage() {
   }
   if (error || loadError || !company || !wallet) {
     return (
-      <ErrorState
-        title="Unable to load billing"
-        description={error ?? loadError ?? undefined}
-      />
+      <ErrorState title="Unable to load billing" description={error ?? loadError ?? undefined} />
     );
   }
 
   const stripeTestMode = wallet.paymentProvider?.testModeOnly ?? false;
   const recentTopUps = (wallet.recentTopUps ?? []) as TopUpRecord[];
+  const topUpOptions = wallet.topUpOptionsCents.filter((amount) => amount >= 1000);
+  const autoTopUp = wallet.paymentProvider?.autoTopUp;
+  const spendThisMonth = wallet.ledger
+    .filter((e) => e.entryType.includes("usage") || e.entryType === "debit")
+    .reduce((sum, e) => sum + Math.abs(e.amountCents), 0);
 
   return (
     <>
-      <PageHeader
+      <PortalPageHeader
         title="Billing"
-        description={`${company.name} · prepaid credit for AI usage`}
+        description={`Prepaid credit for AI usage · ${company.name}`}
       />
 
       {!wallet.stripeConfigured ? (
         <Notice tone="warning">
-          Online payments not configured. Stripe is prepared but not live. Tide is the
-          payout bank account only — there is no Tide API in this product.
+          Online payments are not configured yet. Contact your administrator to add credit manually.
         </Notice>
       ) : stripeTestMode ? (
         <Notice tone="info">
-          <strong>STRIPE TEST MODE</strong> — card payments use Stripe test credentials only.
-          No real money is collected. Commercial live payments are not enabled.
+          <strong>Test mode</strong> — card payments use Stripe test credentials only. No real
+          money is collected.
         </Notice>
-      ) : (
-        <Notice tone="warning">
-          Stripe is configured but not in test mode. Live commercial payments are blocked
-          until operator approval.
-        </Notice>
-      )}
+      ) : null}
 
       {topupState === "success" ? (
         confirmingPayment ? (
-          <Notice tone="info">
-            Payment received by Stripe; confirming credit… Your balance updates once the
-            webhook is processed (usually within a few seconds).
-          </Notice>
+          <Notice tone="info">Payment received — confirming credit…</Notice>
         ) : (
           <Notice tone="success">
-            Top-up complete. Your wallet balance reflects confirmed credit.
+            Top-up complete.
             <button
               type="button"
               className="button button-small button-secondary"
@@ -184,204 +204,245 @@ export default function PortalBillingPage() {
         <Notice tone="info">Top-up cancelled. No charge was made.</Notice>
       ) : null}
 
-      <div className="grid grid-3" style={{ marginBottom: 24 }}>
-        <div className="card metric-card">
-          <h3>Current balance</h3>
-          <div className="metric">
-            {formatCurrency(wallet.wallet.balanceCents, wallet.wallet.currency)}
-          </div>
-          {wallet.wallet.lowBalance ? (
-            <p className="warning-text">Low balance — add credit soon</p>
-          ) : (
-            <p className="muted small">Available for AI usage</p>
-          )}
-        </div>
-        <div className="card metric-card">
-          <h3>TEST credit</h3>
-          <div className="metric">
-            {formatCurrency(wallet.wallet.testCreditCents ?? 0, wallet.wallet.currency)}
-          </div>
-          <p className="muted small">Promotional / opening TEST credit</p>
-        </div>
-        <div className="card metric-card">
-          <h3>Paid credit</h3>
-          <div className="metric">
-            {formatCurrency(wallet.wallet.paidCreditCents ?? 0, wallet.wallet.currency)}
-          </div>
-          <p className="muted small">Stripe top-ups (test or live once enabled)</p>
-        </div>
-      </div>
+      <Tabs
+        active={tab}
+        onChange={(id) => setTab(id as BillingTab)}
+        tabs={[
+          { id: "overview", label: "Overview" },
+          { id: "payment", label: "Payment method" },
+          { id: "auto-topup", label: "Auto top-up" },
+          { id: "transactions", label: "Transactions" },
+          { id: "invoices", label: "Invoices" },
+          { id: "addons", label: "Add-ons" },
+        ]}
+      />
 
-      <div className="grid grid-2">
-        <SectionCard
-          title="Add credit"
-          description={
-            wallet.stripeConfigured && stripeTestMode
-              ? "Choose an amount. Card details are handled by Stripe Checkout — INFRA never stores card data."
-              : wallet.stripeConfigured
-                ? "Top-up buttons appear when Stripe test mode is active."
-                : "Card top-up is prepared but not enabled."
-          }
-        >
-          <p className="muted small" style={{ marginTop: 0, marginBottom: 16 }}>
-            Refunds are handled by INFRA administrators only. Contact INFRA if you need a
-            refund — completed refunds appear in your ledger below.
-          </p>
-          {wallet.stripeConfigured && stripeTestMode ? (
-            <div className="topup-grid">
-              {wallet.topUpOptionsCents.map((amount) => (
-                <button
-                  key={amount}
-                  className="button topup-button"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void topUp(amount)}
-                >
-                  {formatCurrency(amount)}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="muted" style={{ margin: 0 }}>
-              Planned top-ups: £10, £25, £50, £100. Auto top-up (balance below £5 → add £25)
-              is designed but not enabled — see ADR 015.
-            </p>
-          )}
-          {message ? <p className="info-banner" style={{ marginTop: 16 }}>{message}</p> : null}
-        </SectionCard>
-
-        <SectionCard
-          title="Recent top-ups"
-          description="Payment status from server-side checkout records. Wallet credit is applied only after verified webhook."
-        >
-          {recentTopUps.length === 0 ? (
-            <EmptyState
-              title="No top-ups yet"
-              description="Stripe checkout sessions will appear here."
-            />
-          ) : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Amount</th>
-                    <th>Status</th>
-                    <th>When</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentTopUps.map((topUp) => (
-                    <tr key={topUp.id}>
-                      <td>{formatCurrency(topUp.amountCents, topUp.currency)}</td>
-                      <td>
-                        <strong>{topUp.status.replace(/_/g, " ")}</strong>
-                        {topUp.failureReason ? (
-                          <div className="muted small">{topUp.failureReason}</div>
-                        ) : null}
-                      </td>
-                      <td>{formatDate(topUp.creditedAt ?? topUp.createdAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </SectionCard>
-      </div>
-
-      <SectionCard
-        title="Charges"
-        description="Grouped only when several actions belong to the same request. The ledger below remains the source of truth."
-      >
-        {(wallet.chargeGroups ?? []).length === 0 && wallet.ledger.length === 0 ? (
-          <EmptyState
-            title="No transactions yet"
-            description="Credits and usage charges will appear here."
+      {tab === "overview" ? (
+        <div className="billing-tab-panel">
+          <KpiStrip
+            items={[
+              {
+                label: "Current balance",
+                value: formatCurrency(wallet.wallet.balanceCents, wallet.wallet.currency),
+                hint: wallet.wallet.lowBalance ? "Low balance" : "Available for AI usage",
+              },
+              {
+                label: "Spend this month",
+                value: formatCurrency(spendThisMonth, wallet.wallet.currency),
+                hint: "Usage charges this month",
+              },
+              {
+                label: "Paid credit",
+                value: formatCurrency(wallet.wallet.paidCreditCents ?? 0, wallet.wallet.currency),
+                hint: "From Stripe top-ups",
+              },
+              {
+                label: "Auto top-up",
+                value: autoTopUp?.enabled ? "On" : "Off",
+                hint: autoTopUp?.enabled
+                  ? `Below ${formatCurrency(autoTopUp.thresholdCents ?? 0)} → add ${formatCurrency(autoTopUp.amountCents ?? 0)}`
+                  : "Not enabled yet",
+              },
+            ]}
           />
-        ) : (
-          <div className="interaction-list">
-            {(wallet.chargeGroups ?? []).map((group) => (
-              <details key={group.id} className="interaction-card" open={group.kind === "entry"}>
-                <summary className="interaction-summary">
-                  <div>
-                    <div className="interaction-when">{formatDate(group.createdAt)}</div>
-                    <div className="muted small">
-                      {group.kind === "interaction"
-                        ? `${group.entries.length} operations`
-                        : humanLedgerType(
-                            wallet.ledger.find((e) => e.id === group.entries[0]?.id)?.entryType ??
-                              "usage_debit",
-                          )}
-                    </div>
-                  </div>
-                  <div className="interaction-main">
-                    <strong>{group.label}</strong>
-                  </div>
-                  <div className="num interaction-charge">
-                    {formatCurrency(group.amountCents, wallet.wallet.currency)}
-                  </div>
-                </summary>
-                {group.entries.length > 1 ? (
-                  <div className="interaction-body">
-                    {group.entries.map((entry) => (
-                      <div key={entry.id} className="ledger-child">
-                        <span>{entry.description ?? "Usage charge"}</span>
-                        <span className="num">
-                          {formatCurrency(entry.amountCents, wallet.wallet.currency)}
-                        </span>
-                      </div>
+
+          <SectionCard title="Add credit" description="Card details are handled securely by Stripe Checkout.">
+            {wallet.stripeConfigured && stripeTestMode ? (
+              <>
+                <div className="topup-grid-compact">
+                  {topUpOptions.map((amount) => (
+                    <button
+                      key={amount}
+                      className="button topup-button"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void topUp(amount)}
+                    >
+                      {formatCurrency(amount)}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <Input
+                    type="number"
+                    min={10}
+                    step={1}
+                    placeholder="Custom £"
+                    value={customAmount}
+                    onChange={(e) => setCustomAmount(e.target.value)}
+                    style={{ maxWidth: 120 }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy || !customAmount}
+                    onClick={() => {
+                      const pounds = Number(customAmount);
+                      if (Number.isFinite(pounds) && pounds >= 10) void topUp(Math.round(pounds * 100));
+                    }}
+                  >
+                    Top up custom amount
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="muted">Top-up is available when Stripe test mode is active.</p>
+            )}
+            {message ? <p className="info-banner" style={{ marginTop: 16 }}>{message}</p> : null}
+          </SectionCard>
+
+          {recentTopUps.length > 0 ? (
+            <SectionCard title="Recent top-ups">
+              <div className="table-wrap">
+                <table className="table compact">
+                  <thead>
+                    <tr>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>When</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentTopUps.slice(0, 5).map((topUp) => (
+                      <tr key={topUp.id}>
+                        <td>{formatCurrency(topUp.amountCents, topUp.currency)}</td>
+                        <td>{topUp.status.replace(/_/g, " ")}</td>
+                        <td>{formatDate(topUp.creditedAt ?? topUp.createdAt)}</td>
+                      </tr>
                     ))}
-                  </div>
-                ) : null}
-              </details>
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
+          ) : null}
+        </div>
+      ) : null}
+
+      {tab === "payment" ? (
+        <SectionCard title="Payment method">
+          <Notice tone="info">
+            Payment methods are managed through Stripe Checkout when you add credit. INFRA never
+            stores card details on its servers.
+          </Notice>
+          <p className="muted small" style={{ marginTop: 12 }}>
+            Saved payment methods and billing portal self-service will be available in a future
+            release.
+          </p>
+        </SectionCard>
+      ) : null}
+
+      {tab === "auto-topup" ? (
+        <SectionCard title="Auto top-up">
+          <Notice tone="info">
+            <strong>Coming soon</strong> — automatic top-up when your balance falls below a
+            threshold is designed but not yet enabled.
+          </Notice>
+          <div className="kv-stack" style={{ marginTop: 16, opacity: 0.7 }}>
+            <div className="drawer-row">
+              <dt>When balance falls below</dt>
+              <dd>{formatCurrency(autoTopUp?.thresholdCents ?? 1000)}</dd>
+            </div>
+            <div className="drawer-row">
+              <dt>Automatically add</dt>
+              <dd>{formatCurrency(autoTopUp?.amountCents ?? 5000)}</dd>
+            </div>
+          </div>
+          <p className="muted small">
+            Backend requirement: recurring Stripe payment method, customer consent, and wallet
+            credit webhook handling before this can be safely enabled.
+          </p>
+        </SectionCard>
+      ) : null}
+
+      {tab === "transactions" ? (
+        <SectionCard title="Transaction history">
+          {wallet.ledger.length === 0 ? (
+            <EmptyState title="No transactions yet" description="Credits and usage charges will appear here." />
+          ) : (
+            <>
+              <div className="table-wrap">
+                <table className="table compact">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Description</th>
+                      <th>Type</th>
+                      <th className="num">Amount</th>
+                      <th className="num">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wallet.ledger.slice(0, ledgerLimit).map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="muted small">{formatDate(entry.createdAt)}</td>
+                        <td>
+                          {entry.description ?? humanLedgerType(entry.entryType)}
+                        </td>
+                        <td>{humanLedgerType(entry.entryType)}</td>
+                        <td className="num">
+                          {formatCurrency(entry.amountCents, wallet.wallet.currency)}
+                        </td>
+                        <td className="num">
+                          {formatCurrency(entry.balanceAfterCents, wallet.wallet.currency)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {wallet.ledger.length > ledgerLimit ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  style={{ marginTop: 12 }}
+                  onClick={() => setLedgerLimit((n) => n + 30)}
+                >
+                  Show more
+                </Button>
+              ) : null}
+            </>
+          )}
+        </SectionCard>
+      ) : null}
+
+      {tab === "invoices" ? (
+        <SectionCard title="Invoice history">
+          <EmptyState
+            title="Your INFRA invoices will appear here"
+            description="When commercial billing is live, invoices generated through INFRA's accounting system will be listed with view and PDF download options."
+          />
+          <div style={{ marginTop: 16 }}>
+            <Notice tone="info">
+              Future integration requires: tenant-to-customer mapping in INFRA's Xero organisation,
+              authenticated invoice retrieval, secure PDF download, and cross-tenant isolation on
+              every invoice query.
+            </Notice>
+          </div>
+        </SectionCard>
+      ) : null}
+
+      {tab === "addons" ? (
+        <SectionCard title="Add-ons & upgrades" description="Optional services to extend your INFRA subscription.">
+          <div className="product-grid">
+            {ADDON_PRODUCTS.map((product) => (
+              <ProductCard
+                key={product.name}
+                name={product.name}
+                benefit={product.benefit}
+                price={product.price}
+                status="coming_soon"
+                action={
+                  <Button type="button" variant="secondary" size="sm" disabled>
+                    Coming soon
+                  </Button>
+                }
+              />
             ))}
           </div>
-        )}
-      </SectionCard>
-
-      <SectionCard
-        title="Ledger"
-        description="Every wallet change is listed here. A 2p request still shows as two 1p lines."
-      >
-        {wallet.ledger.length === 0 ? (
-          <EmptyState
-            title="No ledger entries yet"
-            description="Credits and usage charges will appear here."
-          />
-        ) : (
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th className="num">Amount</th>
-                  <th className="num">Balance</th>
-                  <th>When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {wallet.ledger.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>
-                      <strong>{humanLedgerType(entry.entryType)}</strong>
-                      {entry.description ? (
-                        <div className="muted small">{entry.description}</div>
-                      ) : null}
-                    </td>
-                    <td className="num">
-                      {formatCurrency(entry.amountCents, wallet.wallet.currency)}
-                    </td>
-                    <td className="num">
-                      {formatCurrency(entry.balanceAfterCents, wallet.wallet.currency)}
-                    </td>
-                    <td>{formatDate(entry.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SectionCard>
+        </SectionCard>
+      ) : null}
     </>
   );
 }

@@ -1,27 +1,53 @@
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Plug } from "lucide-react";
 import {
-  ActivityFeed,
   AttentionBanner,
+  CollapsibleBlock,
   EmptyState,
   ErrorState,
+  KpiStrip,
   LoadingState,
-  MetricCard,
-  MetricGrid,
-  PageHeader,
   SectionCard,
   StatusBadge,
   formatCurrency,
 } from "../components";
 import { OnboardingChecklist } from "../components/OnboardingChecklist";
-import { formatRelativeTime, greetingForNow, humanEventLabel } from "../lib/format";
+import { api } from "../api";
+import {
+  actionCentreBucket,
+  formatRelativeTime,
+  greetingForNow,
+  humanActor,
+  humanEventLabel,
+  humanRole,
+} from "../lib/format";
+import { CompactList, IntegrationRow, PortalPageHeader, ViewAllLink } from "./components";
+import { ConnectorLogo } from "../components/connectors/ConnectorLogo";
 import { usePortalCompany } from "./usePortalCompany";
 
-function unavailable(value: string | null | undefined): string {
-  return value ? formatRelativeTime(value) : "Unavailable";
+function connectorStatus(instance: { status: string; healthStatus?: string | null }): string {
+  if (instance.status === "draft") return "not_configured";
+  if (instance.healthStatus === "healthy") return "healthy";
+  return instance.status;
 }
 
 export default function PortalDashboardPage() {
   const { company, overview, loading, error, user, membership } = usePortalCompany();
+  const [pendingActions, setPendingActions] = useState(0);
+
+  useEffect(() => {
+    if (!company) return;
+    void api.listCompanyActions(company.slug).then((response) => {
+      setPendingActions(
+        response.plans.filter(
+          (plan) =>
+            actionCentreBucket(plan.status) === "needs_approval" ||
+            actionCentreBucket(plan.status) === "in_progress",
+        ).length,
+      );
+    }).catch(() => setPendingActions(0));
+  }, [company]);
 
   if (loading) return <LoadingState label="Loading your company…" />;
   if (error || !company || !overview || !user) {
@@ -32,183 +58,214 @@ export default function PortalDashboardPage() {
   const mcp = overview.mcpEnvironments[0] ?? null;
   const usage = overview.usageSummary;
   const wallet = overview.wallet;
-  const connectors = overview.connectorInstances;
-  const knowledgeSource = overview.knowledgeSources?.[0];
-  const documentCount = knowledgeSource?.documentCount ?? mcp?.knowledgeDocumentCount ?? null;
-  const chunkCount = knowledgeSource?.chunkCount ?? mcp?.knowledgeChunkCount ?? null;
-  const lastSync = knowledgeSource?.lastSyncAt ?? mcp?.lastSyncAt ?? null;
+  const connectors = overview.connectorInstances.filter((c) => c.status !== "draft");
   const testCents = overview.walletCredits?.testCents ?? 0;
   const paidCents = overview.walletCredits?.paidCents ?? 0;
-  const attention = (overview.onboarding?.problems ?? []).map((item) => ({
-    id: item.id,
-    title: item.title,
-    description: item.detail,
-    to: item.href ?? undefined,
-  }));
+  const lowBalance = wallet?.lowBalance ?? false;
+
+  const attention: Array<{ id: string; title: string; description?: string; to?: string }> = [];
+
   if (company.status === "suspended") {
-    attention.unshift({
+    attention.push({
       id: "suspended",
       title: "Company is suspended",
       description: "Paid AI operations and connector writes are blocked.",
       to: `${base}/settings`,
     });
   }
+  if (lowBalance) {
+    attention.push({
+      id: "low-balance",
+      title: "Low wallet balance",
+      description: "Add credit to avoid interrupted AI usage.",
+      to: `${base}/billing`,
+    });
+  }
+  if (pendingActions > 0) {
+    attention.push({
+      id: "pending-actions",
+      title: `${pendingActions} action${pendingActions === 1 ? "" : "s"} need attention`,
+      description: "Review and approve planned financial actions.",
+      to: `${base}/actions`,
+    });
+  }
+  for (const item of overview.onboarding?.problems ?? []) {
+    attention.push({
+      id: item.id,
+      title: item.title,
+      description: item.detail,
+      to: item.href ?? undefined,
+    });
+  }
 
-  const knowledgeValue =
-    documentCount != null
-      ? `${documentCount} documents`
-      : overview.knowledgeStatus === "configured"
-        ? "Configured"
-        : "Not configured";
+  const overallHealthy =
+    company.status === "active" &&
+    attention.filter((a) => a.id !== "suspended").length === 0 &&
+    (overview.mcpOnboardingStatus === "healthy" || overview.mcpOnboardingStatus === "registered");
+
+  const recentEvents = overview.recentAuditEvents.slice(0, 5);
 
   return (
-    <>
-      <PageHeader
-        title={greetingForNow(user.displayName)}
-        description={`${company.name} · ${membership?.role ? membership.role.replace(/_/g, " ") : "member"}`}
-        meta={<StatusBadge status={company.status} />}
+    <div className="executive-overview">
+      <PortalPageHeader
+        title={company.name}
+        description={`${greetingForNow(user.displayName)} · ${humanRole(membership?.role)}`}
+        meta={
+          <StatusBadge
+            status={overallHealthy ? "healthy" : company.status === "suspended" ? "suspended" : "warning"}
+            label={overallHealthy ? "All systems operational" : company.status === "suspended" ? "Suspended" : "Needs attention"}
+          />
+        }
+        actions={
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {connectors.length === 0 ? (
+              <Link to={`${base}/connectors`} className="button button-primary">
+                Connect a system
+              </Link>
+            ) : pendingActions > 0 ? (
+              <Link to={`${base}/actions`} className="button button-primary">
+                Review actions ({pendingActions})
+              </Link>
+            ) : (
+              <Link to={`${base}/usage`} className="button button-secondary">
+                View usage
+              </Link>
+            )}
+          </div>
+        }
       />
 
-      <AttentionBanner items={attention} allClear="No alerts right now" />
+      <AttentionBanner items={attention} allClear="You're all caught up" />
 
-      <MetricGrid cols={4}>
-        <MetricCard
-          label="Business MCP"
-          value={
-            <StatusBadge
-              status={overview.mcpOnboardingStatus ?? "not_provisioned"}
-              label={mcp ? undefined : "Not provisioned"}
-            />
-          }
-          hint={mcp ? `${mcp.name} · ${mcp.healthMessage ?? mcp.status}` : "Register an existing MCP"}
-        />
-        <MetricCard
-          label="Knowledge"
-          value={knowledgeValue}
-          hint={
-            documentCount != null
-              ? `${chunkCount ?? "—"} chunks · Last sync: ${lastSync ? unavailable(lastSync) : "Unavailable"}`
-              : "Reported by the company Business MCP — not stored in INFRA"
-          }
-        />
-        <MetricCard
-          label="AI connections"
-          value={String(overview.activeAiIdentityCount ?? 0)}
-          hint="Active ChatGPT / Claude tokens"
-          to={`${base}/ai-connections`}
-        />
-        <MetricCard
-          label="Wallet"
-          value={wallet ? formatCurrency(wallet.balanceCents, wallet.currency) : "—"}
-          hint={`TEST ${formatCurrency(testCents, wallet?.currency ?? "GBP")} · Paid ${formatCurrency(paidCents, wallet?.currency ?? "GBP")}`}
-          to={`${base}/billing`}
-        />
-      </MetricGrid>
+      <KpiStrip
+        items={[
+          {
+            label: "Connected systems",
+            value: String(connectors.length),
+            hint: mcp ? `${mcp.name} healthy` : "None registered",
+          },
+          {
+            label: "AI connections",
+            value: String(overview.activeAiIdentityCount ?? 0),
+            hint: "Active ChatGPT / Claude",
+          },
+          {
+            label: "Usage this month",
+            value: String(usage?.requestsThisMonth ?? 0),
+            hint: `${usage?.successfulThisMonth ?? 0} successful`,
+          },
+          {
+            label: "Wallet",
+            value: wallet ? formatCurrency(wallet.balanceCents, wallet.currency) : "—",
+            hint: lowBalance ? "Low balance" : `Paid ${formatCurrency(paidCents, wallet?.currency ?? "GBP")}`,
+          },
+          {
+            label: "Users",
+            value: String(overview.teamCount ?? 0),
+            hint: "Team members",
+          },
+          {
+            label: "Actions",
+            value: String(pendingActions),
+            hint: pendingActions > 0 ? "Need attention" : "None pending",
+          },
+        ]}
+      />
 
-      <div style={{ marginTop: 16 }}>
-        <MetricGrid cols={4}>
-          <MetricCard
-            label="Usage today"
-            value={String(usage?.requestsToday ?? 0)}
-            hint={`${usage?.requestsThisMonth ?? 0} this month`}
-            to={`${base}/usage`}
-          />
-          <MetricCard
-            label="Usage this month"
-            value={String(usage?.requestsThisMonth ?? 0)}
-            hint={`${usage?.successfulThisMonth ?? 0} successful`}
-            to={`${base}/usage`}
-          />
-          <MetricCard
-            label="Team"
-            value={String(overview.teamCount ?? 0)}
-            to={`${base}/team`}
-          />
-          <MetricCard
-            label="Systems"
-            value={String(connectors.filter((item) => item.status !== "draft").length)}
-            hint={`${connectors.length} registered`}
-            to={`${base}/connectors`}
-          />
-        </MetricGrid>
-      </div>
-
-      <div className="grid grid-2" style={{ marginTop: 24 }}>
+      <div className="grid grid-2">
         <SectionCard
           title="Connected systems"
-          description="Business systems reported to INFRA. Files and operational data stay on the company MCP."
+          actions={<ViewAllLink to={`${base}/connectors`} />}
         >
           {connectors.length === 0 && !mcp ? (
             <EmptyState
-              title="Nothing connected yet"
-              description="Business systems are configured per company. Nothing is assumed from another tenant."
+              icon={<Plug size={24} />}
+              title="Connect your first business system"
+              description="Link accounting, documents, or field service tools so INFRA can help your team."
               action={
                 <Link to={`${base}/connectors`} className="button button-primary">
-                  View catalogue
+                  Browse connections
                 </Link>
               }
             />
           ) : (
-            <div className="stack" style={{ gap: 12 }}>
-              {connectors.map((item) => (
-                <div key={item.id} className="connection-header" style={{ marginBottom: 0 }}>
-                  <div>
-                    <strong>{item.name}</strong>
-                    <div className="muted small">
-                      {item.managedBy === "company_mcp"
-                        ? "Managed by company Business MCP"
-                        : item.authStatus === "connected"
-                          ? "Connected"
-                          : "Requires setup"}
-                    </div>
-                  </div>
-                  <StatusBadge
-                    status={item.status === "draft" ? "not_configured" : item.status}
-                    label={item.status === "draft" ? "Not configured" : undefined}
-                  />
-                </div>
+            <CompactList>
+              {connectors.slice(0, 5).map((item) => (
+                <IntegrationRow
+                  key={item.id}
+                  icon={<ConnectorLogo slug={item.connectorDefinitionId.replace("conn_", "").replace(/_/g, "-")} name={item.name} />}
+                  name={item.name}
+                  purpose={
+                    item.managedBy === "company_mcp"
+                      ? "Managed through your Business MCP"
+                      : "Connected business system"
+                  }
+                  status={connectorStatus(item)}
+                  statusLabel={item.status === "healthy" ? "Healthy" : undefined}
+                />
               ))}
-              {mcp ? (
-                <div className="connection-header" style={{ marginBottom: 0 }}>
-                  <div>
-                    <strong>Business MCP</strong>
-                    <div className="muted small">{mcp.name}</div>
-                  </div>
-                  <StatusBadge status={overview.mcpOnboardingStatus ?? mcp.status} />
-                </div>
+              {mcp && connectors.length === 0 ? (
+                <IntegrationRow
+                  name="Business MCP"
+                  purpose={mcp.name}
+                  status={overview.mcpOnboardingStatus ?? mcp.status}
+                />
               ) : null}
-            </div>
+            </CompactList>
           )}
         </SectionCard>
 
-        <SectionCard title="Recent activity">
-          {overview.recentAuditEvents.length === 0 ? (
+        <SectionCard title="Recent activity" actions={<ViewAllLink to={`${base}/activity`} />}>
+          {recentEvents.length === 0 ? (
             <EmptyState title="No activity yet" description="Company changes will appear here." />
           ) : (
-            <ActivityFeed
-              items={overview.recentAuditEvents.slice(0, 8).map((event) => ({
-                id: event.id,
-                title: humanEventLabel(event.eventType),
-                description: event.actor,
-                meta: formatRelativeTime(event.createdAt),
-              }))}
-            />
+            <CompactList>
+              {recentEvents.map((event) => (
+                <IntegrationRow
+                  key={event.id}
+                  name={humanEventLabel(event.eventType)}
+                  purpose={humanActor(event.actor)}
+                  status="healthy"
+                  statusLabel={formatRelativeTime(event.createdAt)}
+                />
+              ))}
+            </CompactList>
           )}
         </SectionCard>
       </div>
 
-      <div style={{ marginTop: 24 }}>
-      <SectionCard
-        title="Setup"
-        description="Required items must be complete. Optional items do not fail readiness."
-      >
-        {overview.onboarding ? (
+      {overview.onboarding ? (
+        <CollapsibleBlock
+          title="Setup checklist"
+          summary={
+            overview.onboarding.readyForUse ? (
+              <StatusBadge status="healthy" label="Ready" />
+            ) : (
+              <StatusBadge status="warning" label="Incomplete" />
+            )
+          }
+        >
           <OnboardingChecklist onboarding={overview.onboarding} />
-        ) : (
-          <p className="muted">Readiness is not available yet.</p>
-        )}
-      </SectionCard>
-      </div>
-    </>
+        </CollapsibleBlock>
+      ) : null}
+
+      {(testCents > 0 || paidCents > 0) && (
+        <CollapsibleBlock title="Credit breakdown" summary="Wallet details">
+          <div className="kv-stack">
+            <div className="drawer-row">
+              <dt>Promotional / test credit</dt>
+              <dd>{formatCurrency(testCents, wallet?.currency ?? "GBP")}</dd>
+            </div>
+            <div className="drawer-row">
+              <dt>Paid credit</dt>
+              <dd>{formatCurrency(paidCents, wallet?.currency ?? "GBP")}</dd>
+            </div>
+            <p className="muted small" style={{ margin: "8px 0 0" }}>
+              Usage draws from your pooled balance. Credit type is tracked for reporting only.
+            </p>
+          </div>
+        </CollapsibleBlock>
+      )}
+    </div>
   );
 }

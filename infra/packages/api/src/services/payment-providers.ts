@@ -44,7 +44,7 @@ export function getPlatformPaymentProviderStatus(env: Env): PaymentProviderStatu
       thresholdCents: 500,
       amountCents: 2500,
     },
-    topUpOptionsCents: testMode ? [100, ...DEFAULT_TOP_UP_OPTIONS_CENTS] : DEFAULT_TOP_UP_OPTIONS_CENTS,
+    topUpOptionsCents: DEFAULT_TOP_UP_OPTIONS_CENTS,
   };
 }
 

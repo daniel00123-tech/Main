@@ -301,6 +301,25 @@ export const api = {
     ),
   getCompanyActionExecution: (slug: string, planId: string) =>
     fetchJson<{ execution: unknown }>(`/api/companies/${slug}/actions/${planId}/execution`),
+  confirmCompanyAction: (slug: string, planId: string, confirmationToken?: string) =>
+    fetchJson<{ plan: ActionPlanRecord }>(`/api/companies/${slug}/actions/${planId}/confirm`, {
+      method: "POST",
+      body: JSON.stringify({ confirmationToken }),
+    }),
+  approveCompanyAction: (slug: string, planId: string) =>
+    fetchJson<{ plan: ActionPlanRecord; execution?: unknown }>(
+      `/api/companies/${slug}/actions/${planId}/approve`,
+      { method: "POST" },
+    ),
+  rejectCompanyAction: (slug: string, planId: string, reason?: string) =>
+    fetchJson<{ plan: ActionPlanRecord }>(`/api/companies/${slug}/actions/${planId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  cancelCompanyAction: (slug: string, planId: string) =>
+    fetchJson<{ plan: ActionPlanRecord }>(`/api/companies/${slug}/actions/${planId}/cancel`, {
+      method: "POST",
+    }),
   getCompanyUsage: (slug: string, limit = 50) =>
     fetchJson<CompanyUsageResponse>(
       `/api/companies/${slug}/usage?limit=${encodeURIComponent(String(limit))}`,

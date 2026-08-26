@@ -33,49 +33,61 @@ type NavItem = {
   label: string;
   icon: React.ReactNode;
   roles?: string[];
+  section?: "main" | "manage" | "account";
 };
 
 const ALL_NAV: NavItem[] = [
-  { path: "dashboard", label: "Overview", icon: <LayoutDashboard size={18} /> },
-  { path: "connectors", label: "Connections", icon: <Plug size={18} /> },
-  { path: "ai-connections", label: "AI connections", icon: <Bot size={18} /> },
+  { path: "dashboard", label: "Overview", icon: <LayoutDashboard size={18} />, section: "main" },
+  { path: "connectors", label: "Connections", icon: <Plug size={18} />, section: "main" },
+  { path: "ai-connections", label: "AI", icon: <Bot size={18} />, section: "main" },
   {
     path: "actions",
     label: "Actions",
     icon: <ClipboardList size={18} />,
+    section: "main",
     roles: ["company_admin", "director", "manager", "supervisor"],
   },
   {
-    path: "team",
-    label: "Team",
+    path: "users",
+    label: "Users",
     icon: <Users size={18} />,
+    section: "manage",
     roles: ["company_admin", "director", "manager", "supervisor"],
   },
   {
     path: "usage",
     label: "Usage",
     icon: <ChartColumn size={18} />,
+    section: "manage",
     roles: ["company_admin", "director", "manager", "supervisor", "office_staff"],
   },
   {
     path: "billing",
     label: "Billing",
     icon: <Wallet size={18} />,
+    section: "account",
     roles: ["company_admin", "director"],
   },
   {
     path: "activity",
     label: "Activity",
     icon: <Shield size={18} />,
+    section: "account",
     roles: ["company_admin", "director", "manager"],
   },
   {
     path: "settings",
     label: "Settings",
     icon: <Settings size={18} />,
+    section: "account",
     roles: ["company_admin", "director", "manager"],
   },
 ];
+
+const SECTION_LABELS: Record<string, string> = {
+  manage: "Manage",
+  account: "Account",
+};
 
 function PortalShellInner() {
   const { user, logout } = useAuth();
@@ -97,6 +109,20 @@ function PortalShellInner() {
       }),
     [role, user?.isPlatformAdmin],
   );
+
+  const navSections = useMemo(() => {
+    const sections: Array<{ key: string; items: NavItem[] }> = [];
+    let current = "";
+    for (const item of nav) {
+      const section = item.section ?? "main";
+      if (section !== current) {
+        sections.push({ key: section, items: [] });
+        current = section;
+      }
+      sections[sections.length - 1]!.items.push(item);
+    }
+    return sections;
+  }, [nav]);
 
   if (loading) return <LoadingState label="Opening company portal…" />;
   if (error || !company || !user) {
@@ -139,6 +165,7 @@ function PortalShellInner() {
               type="button"
               className="button button-ghost button-small nav-collapse-btn"
               aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+              title={collapsed ? "Expand navigation" : "Collapse navigation"}
               onClick={() => setCollapsed((v) => !v)}
             >
               {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
@@ -188,17 +215,24 @@ function PortalShellInner() {
         ) : null}
 
         <nav>
-          {nav.map((item) => (
-            <NavLink
-              key={item.path}
-              className="nav-link"
-              to={`${base}/${item.path}`}
-              title={!showLabels ? item.label : undefined}
-              onClick={() => setMobileOpen(false)}
-            >
-              {item.icon}
-              <span className="label">{item.label}</span>
-            </NavLink>
+          {navSections.map((section) => (
+            <div key={section.key}>
+              {showLabels && section.key !== "main" ? (
+                <div className="nav-section-label">{SECTION_LABELS[section.key] ?? section.key}</div>
+              ) : null}
+              {section.items.map((item) => (
+                <NavLink
+                  key={item.path}
+                  className="nav-link"
+                  to={`${base}/${item.path}`}
+                  title={!showLabels ? item.label : undefined}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {item.icon}
+                  <span className="label">{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
 

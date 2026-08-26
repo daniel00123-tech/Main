@@ -391,6 +391,177 @@ export function statusIcon(tone: string): string {
   return "–";
 }
 
+export function customerTaxonomyLabel(category: string): string {
+  const map: Record<string, string> = {
+    knowledge_sources: "Knowledge & Documents",
+    accounting_finance: "Finance",
+    field_service_crm: "CRM & Field Service",
+    customer_support: "Customer Support",
+    productivity: "Productivity",
+    ai_connections: "AI",
+    communication_channels: "Communications",
+    custom_integrations: "Other",
+  };
+  return map[category] ?? category.replace(/_/g, " ");
+}
+
+export type ActionCentreBucket = "needs_approval" | "in_progress" | "completed" | "failed";
+
+export function actionCentreBucket(status: string): ActionCentreBucket {
+  if (status === "awaiting_approval") return "needs_approval";
+  if (
+    [
+      "awaiting_confirmation",
+      "validated",
+      "approved",
+      "executing",
+      "draft",
+    ].includes(status)
+  ) {
+    return "in_progress";
+  }
+  if (status === "completed") return "completed";
+  return "failed";
+}
+
+export function humanActionStatus(status: string): string {
+  const map: Record<string, string> = {
+    draft: "Draft",
+    validated: "Validated",
+    awaiting_confirmation: "Awaiting confirmation",
+    awaiting_approval: "Needs your approval",
+    approved: "Approved",
+    executing: "In progress",
+    completed: "Completed",
+    partial_failure: "Partially failed",
+    failed: "Failed",
+    rejected: "Rejected",
+    cancelled: "Cancelled",
+    expired: "Expired",
+    plan_stale: "Out of date",
+    execution_uncertain: "Needs attention",
+  };
+  return map[status] ?? status.replace(/_/g, " ");
+}
+
+export function humanConfirmationStatus(value: string): string {
+  const map: Record<string, string> = {
+    not_required: "Not required",
+    awaiting: "Awaiting",
+    confirmed: "Confirmed",
+  };
+  return map[value] ?? value.replace(/_/g, " ");
+}
+
+export function humanApprovalStatus(value: string): string {
+  const map: Record<string, string> = {
+    not_required: "Not required",
+    pending: "Pending",
+    approved: "Approved",
+    denied: "Denied",
+  };
+  return map[value] ?? value.replace(/_/g, " ");
+}
+
+export function humanRiskClass(value: string): string {
+  const map: Record<string, string> = {
+    low_risk: "Low risk",
+    write: "Data change",
+    financial_action: "Financial action",
+    external_send: "External send",
+    delete: "Deletion",
+  };
+  return map[value] ?? value.replace(/_/g, " ");
+}
+
+export function humanScope(scope: string): string {
+  const map: Record<string, string> = {
+    "knowledge.search": "Search company knowledge",
+    "knowledge.read": "Read company documents",
+    "system.health": "Check connection health",
+    "xero.organisation.read": "View organisation details",
+    "xero.contacts.read": "View contacts",
+    "xero.contacts.search": "Search contacts",
+    "xero.invoices.read": "View invoices",
+    "xero.invoices.search": "Search invoices",
+    "xero.invoices.get": "View invoice details",
+    "xero.invoices.create": "Create draft invoices",
+    "xero.payments.read": "View payments",
+    "xero.accounts.read": "View accounts",
+    "xero.bank_transactions.read": "View bank transactions",
+    "xero.reports.pnl.read": "View profit & loss",
+    "xero.reports.balance_sheet.read": "View balance sheet",
+    "xero.reports.aged.read": "View aged reports",
+    "xero.action.plan": "Plan financial actions",
+    "xero.action.read": "View planned actions",
+    "xero.action.confirm": "Confirm planned actions",
+    "xero.action.execute": "Execute approved actions",
+    "xero.action.cancel": "Cancel planned actions",
+    "xero.action.list": "List planned actions",
+  };
+  if (map[scope]) return map[scope];
+  return scope.replace(/\./g, " · ").replace(/_/g, " ");
+}
+
+export function humanAuditDetail(event: {
+  eventType: string;
+  actor?: string | null;
+  resourceType?: string | null;
+  detail?: Record<string, unknown> | null;
+}): string {
+  const actor = humanActor(event.actor);
+  const detail = event.detail ?? {};
+  const client = detail.sourceClient ?? detail.client;
+  const clientLabel =
+    client === "chatgpt"
+      ? "ChatGPT"
+      : client === "claude"
+        ? "Claude"
+        : client
+          ? humanClient(String(client))
+          : null;
+  const integration = integrationLabel(
+    String(detail.action ?? detail.toolName ?? ""),
+    event.resourceType ?? undefined,
+  );
+  if (clientLabel && integration !== "INFRA") {
+    return `${actor} · ${clientLabel} · ${integration}`;
+  }
+  if (clientLabel) return `${actor} · ${clientLabel}`;
+  if (event.resourceType) return `${actor} · ${event.resourceType.replace(/_/g, " ")}`;
+  return actor;
+}
+
+export function humanConnectorPurpose(slug: string, fallback?: string): string {
+  const map: Record<string, string> = {
+    xero: "Accounting, invoices, contacts and payments",
+    "google-drive": "Company documents available to INFRA",
+    sharepoint: "Shared company documents and files",
+    onedrive: "Shared company documents and files",
+    outlook: "Shared mailbox messages and attachments",
+    bigchange: "Jobs, schedules and field operations",
+    commusoft: "Customers, jobs and service history",
+    chatgpt: "Use ChatGPT securely with your connected systems",
+    claude: "Use Claude securely with your connected systems",
+    whatsapp: "Business messaging through INFRA",
+  };
+  return map[slug] ?? fallback ?? "Connect this system to INFRA";
+}
+
+export function formatActionAmount(
+  amount: number | null | undefined,
+  currency = "GBP",
+): string {
+  if (amount == null) return "—";
+  return formatMoney(Math.round(amount * 100), currency);
+}
+
+export function usageSuccessRate(successful: number, total: number): string {
+  if (total <= 0) return "—";
+  const pct = Math.round((successful / total) * 100);
+  return `${pct}%`;
+}
+
 export function humanStatus(value: string): string {
   const map: Record<string, string> = {
     healthy: "Healthy",

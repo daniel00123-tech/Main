@@ -327,7 +327,7 @@ export default function CompanyDetailPage() {
             <MetricCard
               label="Team"
               value={formatNumber(overview.teamCount ?? 0)}
-              to={`/portal/${company.slug}/team`}
+              to={`/portal/${company.slug}/users`}
             />
             <MetricCard
               label="Systems"
