@@ -13,10 +13,11 @@ import { listConnectorInstances, getConnectorInstance } from "../control-plane";
 import { isSalesTransactionType } from "@infra/xero-core";
 import { fingerprintTargets } from "./action-engine";
 import { resolveXeroContactForDraftInvoice } from "./xero-contact-resolve";
-import { resolveXeroTaxTypeForDraftInvoice } from "@infra/xero-core";
+import { resolveXeroTaxTypeForDraftInvoice, resolveSalesAccountCodeWithFetch } from "@infra/xero-core";
 import {
   buildDraftInvoiceProposedState,
   buildDraftInvoiceReviewSummary,
+  defaultDraftInvoiceDates,
   normalizeDraftInvoicePlanInput,
   type DraftInvoiceLineInput,
 } from "./draft-invoice-plan";
@@ -214,6 +215,29 @@ export async function planXeroDraftInvoice(input: {
   const token = await resolveXeroToken(input.env, input.companyId, input.instanceId, input.actor);
   if (!token.ok) throw new Error(token.body.error);
 
+  const xeroConfig = {
+    accessToken: token.accessToken,
+    tenantId: token.tenantId,
+    apiBaseUrl: XERO_AUTH.apiBaseUrl,
+  };
+
+  const defaultDates = defaultDraftInvoiceDates();
+  const invoiceDate = input.invoiceDate ?? input.date ?? defaultDates.invoiceDate;
+  const dueDate = input.dueDate ?? defaultDates.dueDate;
+
+  const resolvedLineItems: DraftInvoiceLineInput[] = [];
+  for (const row of input.lineItems) {
+    if (row.accountCode?.trim()) {
+      resolvedLineItems.push(row);
+      continue;
+    }
+    const account = await resolveSalesAccountCodeWithFetch(xeroConfig, {
+      accountCode: row.accountCode,
+      accountName: row.accountName ?? "Sales",
+    });
+    resolvedLineItems.push({ ...row, accountCode: account.code });
+  }
+
   const resolved = await resolveXeroContactForDraftInvoice({
     accessToken: token.accessToken,
     tenantId: token.tenantId,
@@ -247,15 +271,11 @@ export async function planXeroDraftInvoice(input: {
   }
 
   const { contactId, contactName } = resolved.contact;
-  const primaryAccountCode = input.lineItems[0]?.accountCode;
+  const primaryAccountCode = resolvedLineItems[0]?.accountCode;
   let resolvedTax: { taxType: string; label: string; source: string };
   try {
     resolvedTax = await resolveXeroTaxTypeForDraftInvoice(
-      {
-        accessToken: token.accessToken,
-        tenantId: token.tenantId,
-        apiBaseUrl: XERO_AUTH.apiBaseUrl,
-      },
+      xeroConfig,
       {
         taxTreatment: input.taxTreatment,
         taxType: input.taxType,
@@ -281,7 +301,7 @@ export async function planXeroDraftInvoice(input: {
     };
   }
 
-  const lineItems = input.lineItems.map((row) => ({
+  const lineItems = resolvedLineItems.map((row) => ({
     ...row,
     taxType: row.taxType ?? resolvedTax.taxType,
   }));
@@ -291,8 +311,8 @@ export async function planXeroDraftInvoice(input: {
     contactName,
     lineItems,
     reference: input.reference,
-    invoiceDate: input.invoiceDate ?? input.date,
-    dueDate: input.dueDate,
+    invoiceDate,
+    dueDate,
     taxTreatment: input.taxTreatment,
     taxType: resolvedTax.taxType,
     taxTypeLabel: resolvedTax.label,

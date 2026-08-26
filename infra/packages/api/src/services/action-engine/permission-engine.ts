@@ -25,11 +25,18 @@ export type PermissionEvaluationInput = {
 
 const DIRECTOR_ROLES = new Set(["director", "company_admin"]);
 
+/** Draft ACCREC invoices are created in DRAFT status only — ChatGPT confirmation is sufficient. */
+function isDraftInvoiceCreateAction(action: string): boolean {
+  return action === "xero.invoices.create";
+}
+
 function separateApprovalRequired(input: {
+  action: string;
   isFinancial: boolean;
   riskClass: RiskClassification;
   actorRole?: string;
 }): boolean {
+  if (isDraftInvoiceCreateAction(input.action)) return false;
   if (!input.isFinancial && input.riskClass !== "delete") return false;
   if (input.riskClass === "delete") return true;
   if (input.actorRole && DIRECTOR_ROLES.has(input.actorRole)) return false;
@@ -113,7 +120,12 @@ export function evaluateActionPermission(
 
   if (isFinancial || isWrite || riskClass === "delete") {
     if (!flags.financialWritesEnabled && !flags.writesEnabled) {
-      const needsSeparateApproval = separateApprovalRequired({ isFinancial, riskClass, actorRole: input.actorRole });
+      const needsSeparateApproval = separateApprovalRequired({
+        action: input.action,
+        isFinancial,
+        riskClass,
+        actorRole: input.actorRole,
+      });
       return {
         ...base,
         allowed: false,
@@ -125,7 +137,12 @@ export function evaluateActionPermission(
     }
   }
 
-  const requiresApproval = separateApprovalRequired({ isFinancial, riskClass, actorRole: input.actorRole });
+  const requiresApproval = separateApprovalRequired({
+    action: input.action,
+    isFinancial,
+    riskClass,
+    actorRole: input.actorRole,
+  });
   const requiresConfirmation = isFinancial || isWrite;
 
   return {

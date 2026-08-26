@@ -436,7 +436,22 @@ describe("permission engine — first acceptance policy", () => {
     expect(decision.requiresApproval).toBe(false);
   });
 
-  it("requires separate approval for office staff", () => {
+  it("requires separate approval for non-draft financial actions from office staff", () => {
+    const decision = evaluateActionPermission({
+      action: "xero.credit_notes.create",
+      riskClass: "financial_action",
+      companyStatus: "active",
+      connectorConnected: true,
+      connectorAuthStatus: "connected",
+      actorRole: "office_staff",
+      grantedScopes: ["accounting.invoices"],
+      requiredScopes: ["accounting.invoices"],
+      flags: { financialWritesEnabled: true, writesEnabled: true },
+    });
+    expect(decision.requiresApproval).toBe(true);
+  });
+
+  it("requires confirmation only for draft invoice create from office staff", () => {
     const decision = evaluateActionPermission({
       action: "xero.invoices.create",
       riskClass: "financial_action",
@@ -448,7 +463,9 @@ describe("permission engine — first acceptance policy", () => {
       requiredScopes: ["accounting.invoices"],
       flags: { financialWritesEnabled: true, writesEnabled: true },
     });
-    expect(decision.requiresApproval).toBe(true);
+    expect(decision.requiresConfirmation).toBe(true);
+    expect(decision.requiresApproval).toBe(false);
+    expect(decision.reasonCode).toBe("confirmation_required");
   });
 });
 

@@ -310,6 +310,7 @@ export async function executeActionControlTool(
             quantity: number;
             unitAmount: number;
             accountCode?: string;
+            accountName?: string;
             taxType?: string;
           }>)
         : [],

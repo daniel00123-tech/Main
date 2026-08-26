@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDraftInvoiceProposedState,
   buildDraftInvoiceReviewSummary,
+  defaultDraftInvoiceDates,
   draftInvoicePayloadFromProposedState,
   normalizeDraftInvoicePlanInput,
 } from "./draft-invoice-plan";
@@ -40,6 +41,12 @@ describe("draft invoice plan pipeline", () => {
     expect(review.accountCode).toBe("200");
     expect(review.taxType).toBe("NONE");
     expect(review.total).toBe(1);
+  });
+
+  it("defaults invoice date to today and due date to tomorrow", () => {
+    const dates = defaultDraftInvoiceDates(new Date("2026-08-26T12:00:00.000Z"));
+    expect(dates.invoiceDate).toBe("2026-08-26");
+    expect(dates.dueDate).toBe("2026-08-27");
   });
 
   it("maps proposed state to executor payload unchanged", () => {

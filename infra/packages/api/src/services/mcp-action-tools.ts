@@ -109,7 +109,7 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
   },
   execute_action_plan: {
     description:
-      "Execute a confirmed and approved action plan via the INFRA Action Engine. Requires plan_id. Does not bypass confirmation or organisational approval checks.",
+      "Execute a confirmed action plan via the INFRA Action Engine. Draft invoice plans require confirm_action_plan first; separate portal approval is not required for DRAFT sales invoices.",
     inputSchema: {
       type: "object",
       properties: {
@@ -162,7 +162,11 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
               description: { type: "string" },
               quantity: { type: "number" },
               unitAmount: { type: "number" },
-              accountCode: { type: "string" },
+              accountCode: { type: "string", description: "Xero account code (e.g. 200 for Sales)." },
+              accountName: {
+                type: "string",
+                description: "Natural-language sales account label when accountCode is omitted (defaults to Sales).",
+              },
               taxType: {
                 type: "string",
                 description: "Explicit Xero TaxType. Prefer taxTreatment when unsure.",

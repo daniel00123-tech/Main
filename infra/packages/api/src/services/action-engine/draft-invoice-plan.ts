@@ -5,6 +5,7 @@ export type DraftInvoiceLineInput = {
   quantity: number;
   unitAmount: number;
   accountCode?: string;
+  accountName?: string;
   taxType?: string;
 };
 
@@ -19,6 +20,13 @@ export type DraftInvoicePlanInput = {
   taxType?: string;
   taxTypeLabel?: string;
 };
+
+export function defaultDraftInvoiceDates(now = new Date()): { invoiceDate: string; dueDate: string } {
+  const invoiceDate = now.toISOString().slice(0, 10);
+  const due = new Date(now);
+  due.setUTCDate(due.getUTCDate() + 1);
+  return { invoiceDate, dueDate: due.toISOString().slice(0, 10) };
+}
 
 export function normalizeDraftInvoicePlanInput(input: {
   contactId: string;
