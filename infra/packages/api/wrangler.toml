@@ -1,0 +1,45 @@
+name = "infra-api"
+main = "src/index.ts"
+compatibility_date = "2025-02-14"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "infra-control-plane"
+database_id = "adacb84d-7ee8-4b27-87ff-3d554b563d71"
+migrations_dir = "../../migrations"
+
+[vars]
+ENVIRONMENT = "production"
+ALLOWED_ORIGINS = "https://infra-web.pages.dev,http://localhost:5173,http://127.0.0.1:5173,https://chatgpt.com,https://chat.openai.com,https://claude.ai"
+COOKIE_CROSS_ORIGIN = "true"
+INFRA_PUBLIC_API_URL = "https://infra-api.daniel-dwyer123.workers.dev"
+PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
+
+# Secrets (set via `wrangler secret put` — never commit):
+# SESSION_SECRET
+# CADDINGTON_MCP_AUTH_TOKEN (referenced by mcp_environments.auth_secret_ref)
+# HT_MCP_AUTH_TOKEN (downstream auth for existing ht-business-mcp — same value as that Worker's MCP_AUTH_TOKEN)
+# EL_MCP_AUTH_TOKEN (downstream auth for existing el-business-mcp — same value as that Worker's MCP_AUTH_TOKEN)
+# STRIPE_SECRET_KEY (optional — prepaid top-ups)
+# STRIPE_WEBHOOK_SECRET (optional — webhook verification)
+# INFRA_CREDENTIAL_WRAPPING_KEY (32-byte AES-256 wrapping key; never put in D1)
+# INFRA_CREDENTIAL_KEY_VERSION (optional, default v1)
+# XERO_CLIENT_ID (Xero Web App client id; never put in D1)
+# XERO_CLIENT_SECRET (Xero Web App client secret; never put in D1)
+# XERO_OAUTH_REDIRECT_URI (optional override; default is the registered Xero callback)
+# INITIAL_PLATFORM_ADMIN_EMAIL (temporary bootstrap only)
+# INITIAL_PLATFORM_ADMIN_PASSWORD (temporary bootstrap only)
+
+# Same-account Worker MCP access (workers.dev public fetch returns CF 1042)
+[[services]]
+binding = "CADDINGTON_MCP"
+service = "caddington-mcp"
+
+[[services]]
+binding = "HT_BUSINESS_MCP"
+service = "ht-business-mcp"
+
+[[services]]
+binding = "EL_BUSINESS_MCP"
+service = "el-business-mcp"
