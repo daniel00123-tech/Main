@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Cloud, RefreshCw } from "lucide-react";
 import { api } from "../api";
 import {
   Button,
   EmptyState,
   ErrorState,
-  KeyValue,
   LoadingState,
   Notice,
   PageHeader,
@@ -17,10 +16,41 @@ import {
 
 type ProviderCard = Awaited<ReturnType<typeof api.getProviderCosts>>["cards"][number];
 
-const PROVIDER_LABELS: Record<string, string> = {
-  cloudflare: "Cloudflare",
-  openai: "OpenAI",
-  anthropic: "Anthropic",
+type ProviderMeta = {
+  label: string;
+  category: string;
+  customerAttributable: string;
+  notes: string;
+};
+
+const PROVIDER_META: Record<string, ProviderMeta> = {
+  cloudflare: {
+    label: "Cloudflare",
+    category: "Platform infrastructure",
+    customerAttributable: "Partially",
+    notes: "CDN, Workers, and edge infrastructure for the platform.",
+  },
+  openai: {
+    label: "OpenAI API",
+    category: "Direct usage cost",
+    customerAttributable: "API usage only",
+    notes:
+      "Only where INFRA pays OpenAI API charges. Customer ChatGPT subscriptions are not an INFRA cost.",
+  },
+  anthropic: {
+    label: "Anthropic API",
+    category: "Direct usage cost",
+    customerAttributable: "API usage only",
+    notes:
+      "Only where INFRA pays Anthropic API charges. Customer Claude subscriptions are not an INFRA cost.",
+  },
+  cursor: {
+    label: "Cursor",
+    category: "Development / operating cost",
+    customerAttributable: "No",
+    notes:
+      "Development overhead — not allocated to individual customer AI requests.",
+  },
 };
 
 function nextReviewDate(fromIso: string | null | undefined): string {
@@ -69,7 +99,7 @@ export default function ProviderCostsPage() {
       await api.requestProviderPricingReview(provider, {
         notes: "Monthly provider pricing review requested from Platform Admin",
       });
-      toast(`Pricing review proposed for ${PROVIDER_LABELS[provider] ?? provider}`);
+      toast(`Pricing review proposed for ${PROVIDER_META[provider]?.label ?? provider}`);
       await load();
     } catch (err) {
       toast(err instanceof Error ? err.message : "Review request failed", "error");
@@ -78,120 +108,203 @@ export default function ProviderCostsPage() {
     }
   }
 
+  const tableRows = useMemo(() => {
+    const byProvider = new Map<string, ProviderCard[]>();
+    for (const entry of cards) {
+      const list = byProvider.get(entry.card.provider) ?? [];
+      list.push(entry);
+      byProvider.set(entry.card.provider, list);
+    }
+
+    const providers = ["cloudflare", "openai", "anthropic", "cursor"] as const;
+    return providers.map((provider) => {
+      const meta = PROVIDER_META[provider];
+      const entries = byProvider.get(provider) ?? [];
+      const active =
+        entries.find((e) => e.card.status === "active") ??
+        entries.find((e) => e.card.status === "draft") ??
+        entries[0];
+      const lastReview = active?.card.verifiedAt ?? active?.card.updatedAt ?? null;
+      const hasRates = active?.items.some((i) => i.unitCostMicros > 0) ?? false;
+      const pendingReview = reviews.find(
+        (r) => r.provider === provider && r.status === "pending",
+      );
+
+      return {
+        provider,
+        meta,
+        active,
+        lastReview,
+        nextReview: nextReviewDate(lastReview),
+        hasRates,
+        pendingReview,
+        costStatus:
+          provider === "cursor"
+            ? "Tracked manually"
+            : hasRates
+              ? "Configured"
+              : active
+                ? "Not configured"
+                : "Not currently used",
+        currentSpend: "—" as const,
+      };
+    });
+  }, [cards, reviews]);
+
   if (loading) return <LoadingState label="Loading provider costs…" />;
   if (error) {
     return (
-      <ErrorState title="Unable to load provider costs" description={error} onRetry={() => void load()} />
+      <ErrorState
+        title="Unable to load provider costs"
+        description={error}
+        onRetry={() => void load()}
+      />
     );
-  }
-
-  const byProvider = new Map<string, ProviderCard[]>();
-  for (const entry of cards) {
-    const list = byProvider.get(entry.card.provider) ?? [];
-    list.push(entry);
-    byProvider.set(entry.card.provider, list);
   }
 
   return (
     <>
       <PageHeader
         title="Provider costs"
-        description="Versioned rate cards for underlying infrastructure INFRA may consume in production transactions. Cursor development overhead is excluded."
+        description="Underlying infrastructure costs INFRA may pay. Customer-owned AI subscriptions (ChatGPT, Claude) are not included unless INFRA pays API usage directly."
       />
 
       {note ? <Notice tone="info">{note}</Notice> : null}
 
-      <div className="connector-grid" style={{ marginTop: 16 }}>
-        {(["cloudflare", "openai", "anthropic"] as const).map((provider) => {
-          const entries = byProvider.get(provider) ?? [];
-          const active =
-            entries.find((e) => e.card.status === "active") ??
-            entries.find((e) => e.card.status === "draft") ??
-            entries[0];
-          const lastReview = active?.card.verifiedAt ?? active?.card.updatedAt ?? null;
-          return (
-            <article key={provider} className="connector-card" style={{ minHeight: 220 }}>
-              <div className="connection-header">
-                <h3 style={{ margin: 0 }}>{PROVIDER_LABELS[provider] ?? provider}</h3>
-                <StatusBadge status={active?.card.status ?? "draft"} />
-              </div>
-              <KeyValue
-                label="Last pricing review"
-                value={lastReview ? formatDate(lastReview) : "Not verified"}
-              />
-              <KeyValue
-                label="Next scheduled review"
-                value={formatDate(nextReviewDate(lastReview))}
-              />
-              <KeyValue
-                label="Rate card"
-                value={active?.card.versionLabel ?? "—"}
-                mono
-              />
-              <p className="muted small" style={{ marginTop: 8 }}>
-                {active?.items.some((i) => i.unitCostMicros > 0)
-                  ? `${active.items.length} configured rate line(s)`
-                  : "Underlying unit costs: unavailable / not configured"}
-              </p>
-              <div className="connector-card-actions">
-                <Button
-                  variant="secondary"
-                  disabled={!active}
-                  onClick={() => setExpanded(expanded === active?.card.id ? null : active?.card.id ?? null)}
-                >
-                  View rates
-                </Button>
-                <Button
-                  variant="secondary"
-                  disabled={busyProvider === provider}
-                  onClick={() => void requestReview(provider)}
-                >
-                  <RefreshCw size={14} /> Check for updates
-                </Button>
-              </div>
-              {expanded && active && expanded === active.card.id ? (
-                <div style={{ marginTop: 12 }}>
-                  {active.items.length === 0 ? (
-                    <p className="muted small">No SKUs on this card yet.</p>
-                  ) : (
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>Service</th>
-                          <th>Unit</th>
-                          <th className="num">Unit cost</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {active.items.map((item) => (
-                          <tr key={item.id}>
-                            <td>
-                              {item.service}
-                              {item.sku ? (
-                                <div className="muted small mono">{item.sku}</div>
-                              ) : null}
-                            </td>
-                            <td className="muted">{item.billingUnit}</td>
-                            <td className="num">
-                              {item.unitCostMicros > 0
-                                ? `£${(item.unitCostMicros / 1_000_000).toFixed(6)}`
-                                : "Not configured"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              ) : null}
-            </article>
-          );
-        })}
-      </div>
+      <Notice tone="info">
+        Provider rate changes require Platform Admin approval before customer pricing is affected.
+        Cursor development spend is platform operating expenditure, not per-request provider cost.
+      </Notice>
+
+      <SectionCard title="Cost overview" className="mt-6">
+        <div className="table-wrap">
+          <table className="table compact">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Category</th>
+                <th>Cost status</th>
+                <th className="num">Current spend</th>
+                <th>Customer attributable?</th>
+                <th>Last reviewed</th>
+                <th>Next review</th>
+                <th>Pricing change</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.map((row) => (
+                <Fragment key={row.provider}>
+                  <tr key={row.provider}>
+                    <td>
+                      <strong>{row.meta.label}</strong>
+                      <div className="cost-category muted small">{row.meta.notes}</div>
+                    </td>
+                    <td className="muted">{row.meta.category}</td>
+                    <td>
+                      <StatusBadge
+                        status={
+                          row.provider === "cursor"
+                            ? "configured"
+                            : row.hasRates
+                              ? "healthy"
+                              : "not_configured"
+                        }
+                        label={row.costStatus}
+                      />
+                    </td>
+                    <td className="num muted">{row.currentSpend}</td>
+                    <td className="muted">{row.meta.customerAttributable}</td>
+                    <td>{row.lastReview ? formatDate(row.lastReview) : "—"}</td>
+                    <td>{formatDate(row.nextReview)}</td>
+                    <td>
+                      {row.pendingReview ? (
+                        <StatusBadge status="warning" label="Review required" />
+                      ) : (
+                        <StatusBadge status="healthy" label="No change" />
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {row.active ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() =>
+                              setExpanded(
+                                expanded === row.active?.card.id ? null : row.active?.card.id ?? null,
+                              )
+                            }
+                          >
+                            View
+                          </Button>
+                        ) : null}
+                        {row.provider !== "cursor" ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={busyProvider === row.provider}
+                            onClick={() => void requestReview(row.provider)}
+                          >
+                            <RefreshCw size={14} />
+                          </Button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                  {expanded && row.active && expanded === row.active.card.id ? (
+                    <tr key={`${row.provider}-detail`} className="expand-row">
+                      <td colSpan={9}>
+                        <details className="advanced-block" open>
+                          <summary>Rate lines & technical details</summary>
+                          {row.active.items.length === 0 ? (
+                            <p className="muted small">No SKUs on this card yet.</p>
+                          ) : (
+                            <table className="table compact" style={{ marginTop: 8 }}>
+                              <thead>
+                                <tr>
+                                  <th>Service</th>
+                                  <th>Unit</th>
+                                  <th className="num">Unit cost</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {row.active.items.map((item) => (
+                                  <tr key={item.id}>
+                                    <td>
+                                      {item.service}
+                                      {item.sku ? (
+                                        <div className="mono small muted">{item.sku}</div>
+                                      ) : null}
+                                    </td>
+                                    <td className="muted">{item.billingUnit}</td>
+                                    <td className="num">
+                                      {item.unitCostMicros > 0
+                                        ? `£${(item.unitCostMicros / 1_000_000).toFixed(6)}`
+                                        : "Not configured"}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                          <p className="mono small muted" style={{ marginTop: 8 }}>
+                            Rate card ID: {row.active.card.versionLabel ?? row.active.card.id}
+                          </p>
+                        </details>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="Proposed updates"
-        description="Scraped or imported tariffs stay pending until a Platform Administrator approves a new rate-card version."
+        description="Detected tariff changes stay pending until a Platform Administrator approves a new rate-card version."
         className="mt-6"
       >
         {reviews.length === 0 ? (
@@ -202,7 +315,7 @@ export default function ProviderCostsPage() {
           />
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table compact">
               <thead>
                 <tr>
                   <th>Provider</th>
@@ -214,7 +327,7 @@ export default function ProviderCostsPage() {
               <tbody>
                 {reviews.map((review) => (
                   <tr key={review.id}>
-                    <td>{PROVIDER_LABELS[review.provider] ?? review.provider}</td>
+                    <td>{PROVIDER_META[review.provider]?.label ?? review.provider}</td>
                     <td>
                       <StatusBadge status={review.status} />
                     </td>

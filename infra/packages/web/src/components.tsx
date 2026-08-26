@@ -17,6 +17,7 @@ import {
   formatRelativeTime,
   formatShortDate,
   humanStatus,
+  statusIcon,
   statusTone,
 } from "./lib/format";
 
@@ -161,6 +162,24 @@ export function MetricGrid({ children, cols = 4 }: { children: ReactNode; cols?:
   return <div className={`grid grid-${cols}`}>{children}</div>;
 }
 
+export function KpiStrip({
+  items,
+}: {
+  items: Array<{ label: string; value: ReactNode; hint?: string }>;
+}) {
+  return (
+    <div className="kpi-strip" role="group" aria-label="Key metrics">
+      {items.map((item) => (
+        <div key={item.label} className="kpi-item">
+          <div className="kpi-item-label">{item.label}</div>
+          <div className="kpi-item-value">{item.value}</div>
+          {item.hint ? <div className="kpi-item-hint">{item.hint}</div> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ─── Status ─── */
 
 export function StatusBadge({
@@ -175,7 +194,15 @@ export function StatusBadge({
 }) {
   const raw = status ?? value ?? "unknown";
   const tone = statusTone(raw);
-  return <span className={`badge badge-${tone}`}>{label ?? humanStatus(raw)}</span>;
+  const icon = statusIcon(tone);
+  return (
+    <span className={`badge badge-${tone}`}>
+      <span className="badge-icon" aria-hidden>
+        {icon}
+      </span>
+      {label ?? humanStatus(raw)}
+    </span>
+  );
 }
 
 export function HealthIndicator({

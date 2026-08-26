@@ -147,7 +147,7 @@ export default function UsagePage() {
     }
     void (async () => {
       try {
-        const events = await api.getAuditEvents(selected.companyId, 80);
+        const events = await api.getAuditEvents({ companyId: selected.companyId, limit: 80 });
         const corr = selected.correlationId;
         const req = selected.requestId;
         const usageId = selected.id;

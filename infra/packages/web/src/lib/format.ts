@@ -316,23 +316,79 @@ export type InfraStatusKind =
   | "suspended"
   | "provisioning";
 
+/** Accessible status tones: blue=healthy, yellow=attention, red=failed, grey=neutral */
 export function statusTone(value: string): string {
   const v = value.toLowerCase();
-  if (["healthy", "active", "connected", "completed", "success", "ok", "operational", "complete"].includes(v)) {
-    return "success";
+  if (
+    [
+      "healthy",
+      "active",
+      "connected",
+      "completed",
+      "success",
+      "ok",
+      "operational",
+      "complete",
+      "settled",
+      "credited",
+    ].includes(v)
+  ) {
+    return "healthy";
   }
-  if (["degraded", "warning", "pending", "registered", "configured", "available", "syncing", "onboarding", "test_mode"].includes(v)) {
+  if (
+    [
+      "degraded",
+      "warning",
+      "attention",
+      "pending",
+      "low",
+      "syncing",
+      "onboarding",
+      "test_mode",
+      "draft",
+    ].includes(v)
+  ) {
     return "warning";
   }
   if (
-    ["unreachable", "error", "failed", "suspended", "disabled", "offline", "archived"].includes(v)
+    [
+      "unreachable",
+      "error",
+      "failed",
+      "suspended",
+      "disabled",
+      "offline",
+      "closed",
+      "critical",
+    ].includes(v)
   ) {
     return "danger";
   }
-  if (["coming_soon", "draft", "not_configured", "unknown", "not_provisioned", "no"].includes(v)) {
+  if (
+    [
+      "coming_soon",
+      "not_configured",
+      "unknown",
+      "not_provisioned",
+      "no",
+      "unavailable",
+      "not_live",
+      "archived",
+      "registered",
+      "configured",
+      "available",
+    ].includes(v)
+  ) {
     return "muted";
   }
-  return "info";
+  return "healthy";
+}
+
+export function statusIcon(tone: string): string {
+  if (tone === "healthy") return "✓";
+  if (tone === "warning") return "!";
+  if (tone === "danger") return "×";
+  return "–";
 }
 
 export function humanStatus(value: string): string {

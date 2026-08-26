@@ -1,49 +1,114 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Wallet } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Download, Plus } from "lucide-react";
 import { api } from "../api";
 import {
+  Button,
   EmptyState,
   ErrorState,
+  FilterBar,
+  FilterChip,
+  KpiStrip,
   LoadingState,
-  MetricCard,
-  MetricGrid,
+  Modal,
   Notice,
   PageHeader,
+  SearchInput,
   SectionCard,
   StatusBadge,
   formatCurrency,
-  formatDate,
+  toast,
 } from "../components";
-import { formatNumber, humanLedgerType } from "../lib/format";
+import {
+  formatFullDate,
+  formatMoney,
+  formatShortDate,
+  humanLedgerType,
+  humanOperation,
+} from "../lib/format";
 
 type BalanceRow = Awaited<ReturnType<typeof api.getBillingBalances>>[number];
-type WalletDetail = Awaited<ReturnType<typeof api.getWallet>>;
+type Summary = Awaited<ReturnType<typeof api.getBillingSummary>>;
+type LedgerRow = Awaited<ReturnType<typeof api.getBillingLedger>>[number];
 
 export default function BillingPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<BalanceRow[]>([]);
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
-  const [wallet, setWallet] = useState<WalletDetail | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [ledger, setLedger] = useState<LedgerRow[]>([]);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(
+    searchParams.get("company") ?? null,
+  );
   const [stripeConfigured, setStripeConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [entryTypeFilter, setEntryTypeFilter] = useState<"all" | "credit" | "debit">("all");
+  const [creditClassFilter, setCreditClassFilter] = useState<"all" | "paid" | "promotional">("all");
+  const [creditModalOpen, setCreditModalOpen] = useState(false);
+  const [creditBusy, setCreditBusy] = useState(false);
+  const [creditForm, setCreditForm] = useState({
+    amountPounds: "10",
+    reason: "",
+    internalNote: "",
+  });
+
+  const selectedRow = useMemo(
+    () => rows.find((r) => r.companySlug === selectedSlug) ?? null,
+    [rows, selectedSlug],
+  );
+
+  const loadLedger = useCallback(
+    async (companyId?: string) => {
+      setLedgerLoading(true);
+      try {
+        const entries = await api.getBillingLedger({
+          companyId,
+          q: query.trim() || undefined,
+          creditClass: creditClassFilter === "all" ? undefined : creditClassFilter,
+          entryType:
+            entryTypeFilter === "credit"
+              ? undefined
+              : entryTypeFilter === "debit"
+                ? "usage_debit"
+                : undefined,
+          limit: 200,
+        });
+        const filtered =
+          entryTypeFilter === "credit"
+            ? entries.filter((e) => e.amountCents > 0)
+            : entries;
+        setLedger(filtered);
+      } catch (err) {
+        toast(err instanceof Error ? err.message : "Unable to load ledger", "error");
+      } finally {
+        setLedgerLoading(false);
+      }
+    },
+    [query, entryTypeFilter, creditClassFilter],
+  );
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const [balances, gateway] = await Promise.all([
+      const [balances, billingSummary, gateway] = await Promise.all([
         api.getBillingBalances(),
+        api.getBillingSummary(),
         api.getGatewayHealth().catch(() => null),
       ]);
       setRows(balances);
+      setSummary(billingSummary);
       setStripeConfigured(gateway ? Boolean(gateway.stripeConfigured) : null);
-      const preferred = balances[0] ?? null;
-      if (preferred) {
-        setSelectedSlug(preferred.companySlug);
-        setWallet(await api.getWallet(preferred.companySlug));
-      }
+      const slug =
+        selectedSlug && balances.some((b) => b.companySlug === selectedSlug)
+          ? selectedSlug
+          : balances[0]?.companySlug ?? null;
+      setSelectedSlug(slug);
+      const companyId = balances.find((b) => b.companySlug === slug)?.companyId;
+      await loadLedger(companyId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load billing");
     } finally {
@@ -53,60 +118,130 @@ export default function BillingPage() {
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function selectCompany(slug: string) {
+  useEffect(() => {
+    if (!selectedRow) return;
+    void loadLedger(selectedRow.companyId);
+  }, [selectedRow, loadLedger]);
+
+  useEffect(() => {
+    if (selectedSlug) {
+      searchParams.set("company", selectedSlug);
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [selectedSlug, searchParams, setSearchParams]);
+
+  function selectCompany(slug: string) {
     setSelectedSlug(slug);
-    setWallet(await api.getWallet(slug));
   }
 
-  const totals = useMemo(() => {
-    const balance = rows.reduce((sum, r) => sum + r.balanceCents, 0);
-    const low = rows.filter((r) => r.lowBalance).length;
-    return { balance, low, companies: rows.length };
-  }, [rows]);
+  function exportCsv() {
+    const url = api.exportBillingLedgerUrl({
+      companyId: selectedRow?.companyId,
+      q: query.trim() || undefined,
+      creditClass: creditClassFilter === "all" ? undefined : creditClassFilter,
+    });
+    window.open(`${url}`, "_blank", "noopener,noreferrer");
+  }
 
-  const selectedBalance = rows.find((r) => r.companySlug === selectedSlug) ?? null;
-  const ledgerCredits = (wallet?.ledger ?? [])
-    .filter((e) => e.amountCents > 0)
-    .reduce((sum, e) => sum + e.amountCents, 0);
-  const ledgerDebits = (wallet?.ledger ?? [])
-    .filter((e) => e.amountCents < 0)
-    .reduce((sum, e) => sum + Math.abs(e.amountCents), 0);
+  async function submitCredit(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedRow) return;
+    const pounds = Number(creditForm.amountPounds);
+    if (!Number.isFinite(pounds) || pounds <= 0) {
+      toast("Enter a valid amount", "error");
+      return;
+    }
+    if (!creditForm.reason.trim()) {
+      toast("Reason is required", "error");
+      return;
+    }
+    setCreditBusy(true);
+    try {
+      await api.grantWalletCredit(selectedRow.companySlug, {
+        amountCents: Math.round(pounds * 100),
+        reason: creditForm.reason.trim(),
+        creditClass: "promotional",
+        internalNote: creditForm.internalNote.trim() || undefined,
+      });
+      toast(`Promotional credit of ${formatCurrency(Math.round(pounds * 100))} granted`);
+      setCreditModalOpen(false);
+      setCreditForm({ amountPounds: "10", reason: "", internalNote: "" });
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Unable to grant credit", "error");
+    } finally {
+      setCreditBusy(false);
+    }
+  }
 
   if (loading) return <LoadingState label="Loading billing…" />;
   if (error) {
-    return <ErrorState title="Unable to load billing" description={error} onRetry={() => void load()} />;
+    return (
+      <ErrorState title="Unable to load billing" description={error} onRetry={() => void load()} />
+    );
   }
 
   return (
     <>
       <PageHeader
         title="Billing"
-        description="Company credit wallets. Ledger is the financial source of truth — Usage and Billing share the same accounting data."
+        description="Company wallets and immutable ledger. Usage charges and top-ups share one financial source of truth."
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => exportCsv()}>
+              <Download size={14} /> Export CSV
+            </Button>
+            {selectedRow ? (
+              <Button variant="primary" onClick={() => setCreditModalOpen(true)}>
+                <Plus size={14} /> Add promotional credit
+              </Button>
+            ) : null}
+          </>
+        }
       />
 
       {stripeConfigured === false ? (
         <Notice tone="warning">
-          Online payments not configured. Stripe is the intended card provider. Tide is only the
-          payout bank account — INFRA has no Tide API. Provider costs stay unknown unless a rate
-          card exists; unknown is shown rather than £0.
+          Online payments not configured. Customer top-ups require Stripe. Provider costs remain
+          unknown unless rate cards exist — never shown as £0.
         </Notice>
       ) : stripeConfigured ? (
         <Notice tone="info">
-          Stripe credentials are present. Treat live charging as unapproved until an owner confirms go-live.
+          Stripe credentials are present. Live charging requires explicit go-live approval.
         </Notice>
       ) : null}
 
-      <MetricGrid cols={3}>
-        <MetricCard
-          label="Companies with wallets"
-          value={formatNumber(totals.companies)}
-          icon={<Wallet size={16} />}
+      {summary ? (
+        <KpiStrip
+          items={[
+            {
+              label: "Companies with wallets",
+              value: summary.companyCount,
+              hint: `${summary.lowBalanceCount} low balance`,
+            },
+            {
+              label: "Total credit held",
+              value: formatCurrency(summary.totalWalletCents),
+            },
+            {
+              label: "Spend this month",
+              value: formatCurrency(summary.spendThisMonthCents),
+            },
+            {
+              label: "Credits added this month",
+              value: formatCurrency(summary.creditsAddedThisMonthCents),
+            },
+            {
+              label: "Promotional credit outstanding",
+              value: formatCurrency(summary.totalPromotionalCreditCents),
+              hint: `Paid: ${formatCurrency(summary.totalPaidCreditCents)}`,
+            },
+          ]}
         />
-        <MetricCard label="Total credit held" value={formatCurrency(totals.balance)} />
-        <MetricCard label="Low balance" value={formatNumber(totals.low)} />
-      </MetricGrid>
+      ) : null}
 
       {rows.length === 0 ? (
         <EmptyState
@@ -114,14 +249,17 @@ export default function BillingPage() {
           description="Company wallets appear after a company is provisioned with billing."
         />
       ) : (
-        <div className="grid grid-2" style={{ marginTop: 16, gap: 24 }}>
-          <SectionCard title="Wallets">
+        <>
+          <SectionCard title="Wallets" description="Click a company to view wallet detail and ledger.">
             <div className="table-wrap">
-              <table className="table">
+              <table className="table compact">
                 <thead>
                   <tr>
                     <th>Company</th>
-                    <th className="num">Available</th>
+                    <th className="num">Paid credit</th>
+                    <th className="num">Promotional</th>
+                    <th className="num">Total available</th>
+                    <th className="num">Spend this month</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -132,26 +270,29 @@ export default function BillingPage() {
                       style={{
                         cursor: "pointer",
                         background:
-                          row.companySlug === selectedSlug
-                            ? "var(--accent-soft)"
-                            : undefined,
+                          row.companySlug === selectedSlug ? "var(--accent-soft)" : undefined,
                       }}
-                      onClick={() => void selectCompany(row.companySlug)}
+                      onClick={() => selectCompany(row.companySlug)}
                     >
                       <td>
                         <Link
-                          to={`/companies/${row.companySlug}`}
+                          to={`/companies/${row.companySlug}?tab=billing`}
                           onClick={(e) => e.stopPropagation()}
                         >
                           {row.companyName}
                         </Link>
                       </td>
+                      <td className="num">{formatCurrency(row.paidCreditCents, row.currency)}</td>
                       <td className="num">
-                        {formatCurrency(row.balanceCents, row.currency)}
+                        {formatCurrency(row.promotionalCreditCents, row.currency)}
+                      </td>
+                      <td className="num">{formatCurrency(row.balanceCents, row.currency)}</td>
+                      <td className="num">
+                        {formatCurrency(row.spendThisMonthCents, row.currency)}
                       </td>
                       <td>
                         <StatusBadge
-                          status={row.lowBalance ? "warning" : "active"}
+                          status={row.lowBalance ? "warning" : "healthy"}
                           label={row.lowBalance ? "Low balance" : "OK"}
                         />
                       </td>
@@ -162,70 +303,144 @@ export default function BillingPage() {
             </div>
           </SectionCard>
 
-          {selectedBalance && wallet ? (
+          {selectedRow ? (
             <SectionCard
-              title={selectedBalance.companyName}
-              description="Prepaid credit — ledger is the source of truth"
+              title={selectedRow.companyName}
+              description="Paid and promotional credit are classified from ledger entries. Consumption draws from the pooled balance."
+              className="mt-6"
+              actions={
+                <Button variant="secondary" size="sm" onClick={() => setCreditModalOpen(true)}>
+                  Add promotional credit
+                </Button>
+              }
             >
-              <div className="metric" style={{ fontSize: "var(--text-3xl)", marginBottom: 12 }}>
-                {formatCurrency(selectedBalance.balanceCents, selectedBalance.currency)}
-              </div>
-              <div className="kv-stack" style={{ marginBottom: 16 }}>
-                <div className="muted small">Credits added: {formatCurrency(ledgerCredits)}</div>
-                <div className="muted small">Usage charges: {formatCurrency(ledgerDebits)}</div>
-                <div className="muted small">
-                  Current balance:{" "}
-                  {formatCurrency(selectedBalance.balanceCents, selectedBalance.currency)}
+              <div className="kpi-strip" style={{ marginBottom: 16 }}>
+                <div className="kpi-item">
+                  <div className="kpi-item-label">Paid credit</div>
+                  <div className="kpi-item-value">
+                    {formatCurrency(selectedRow.paidCreditCents, selectedRow.currency)}
+                  </div>
+                </div>
+                <div className="kpi-item">
+                  <div className="kpi-item-label">Promotional credit</div>
+                  <div className="kpi-item-value">
+                    {formatCurrency(selectedRow.promotionalCreditCents, selectedRow.currency)}
+                  </div>
+                </div>
+                <div className="kpi-item">
+                  <div className="kpi-item-label">Total available</div>
+                  <div className="kpi-item-value">
+                    {formatCurrency(selectedRow.balanceCents, selectedRow.currency)}
+                  </div>
                 </div>
               </div>
 
-              <h4 className="section-title" style={{ marginTop: 8 }}>
-                Ledger
-              </h4>
-              {wallet.ledger.length === 0 ? (
-                <p className="muted">No ledger entries yet.</p>
+              <FilterBar>
+                <SearchInput
+                  value={query}
+                  onChange={setQuery}
+                  placeholder="Search ledger…"
+                  className="grow"
+                />
+                <div className="filter-chips">
+                  {(
+                    [
+                      ["all", "All"],
+                      ["credit", "Credits"],
+                      ["debit", "Debits"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <FilterChip
+                      key={id}
+                      active={entryTypeFilter === id}
+                      onClick={() => setEntryTypeFilter(id)}
+                    >
+                      {label}
+                    </FilterChip>
+                  ))}
+                  {(
+                    [
+                      ["all", "All credit types"],
+                      ["paid", "Paid"],
+                      ["promotional", "Promotional"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <FilterChip
+                      key={id}
+                      active={creditClassFilter === id}
+                      onClick={() => setCreditClassFilter(id)}
+                    >
+                      {label}
+                    </FilterChip>
+                  ))}
+                </div>
+              </FilterBar>
+
+              {ledgerLoading ? (
+                <LoadingState label="Loading ledger…" />
+              ) : ledger.length === 0 ? (
+                <p className="muted">No ledger entries match your filters.</p>
               ) : (
-                <div className="table-wrap">
-                  <table className="table">
+                <div className="table-wrap" style={{ marginTop: 12 }}>
+                  <table className="table compact">
                     <thead>
                       <tr>
-                        <th>Entry</th>
+                        <th>Date & time</th>
+                        <th>User / source</th>
+                        <th>Description</th>
                         <th className="num">Amount</th>
-                        <th className="num">Balance</th>
+                        <th className="num">Balance after</th>
+                        <th>Type</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {wallet.ledger.map((entry) => (
+                      {ledger.map((entry) => (
                         <tr
                           key={entry.id}
                           style={{
-                            cursor: entry.entryType.includes("usage")
-                              ? "pointer"
-                              : undefined,
+                            cursor: entry.entryType.includes("usage") ? "pointer" : undefined,
                           }}
                           onClick={() => {
-                            if (entry.entryType.includes("usage")) {
-                              navigate("/usage");
-                            }
+                            if (entry.entryType.includes("usage")) navigate("/usage");
                           }}
                         >
                           <td>
-                            <strong>
-                              {entry.amountCents >= 0 ? "+" : "−"}{" "}
-                              {formatCurrency(Math.abs(entry.amountCents))}
-                            </strong>
-                            <div className="muted small">
-                              {entry.description ?? humanLedgerType(entry.entryType)}
+                            <div className="ledger-row-primary">{formatShortDate(entry.createdAt)}</div>
+                            <div className="ledger-row-meta">{formatFullDate(entry.createdAt)}</div>
+                          </td>
+                          <td>{entry.sourceLabel}</td>
+                          <td>
+                            <div className="ledger-row-primary">
+                              {entry.description
+                                ? humanOperation(entry.description.split(" · ").pop())
+                                : humanLedgerType(entry.entryType)}
                             </div>
-                            <div className="muted small">{formatDate(entry.createdAt)}</div>
+                            <div className="ledger-row-meta">{entry.companyName}</div>
                           </td>
                           <td className="num">
-                            {formatCurrency(entry.amountCents, selectedBalance.currency)}
+                            <span
+                              className={
+                                entry.amountCents >= 0
+                                  ? "ledger-amount-credit"
+                                  : "ledger-amount-debit"
+                              }
+                            >
+                              {formatMoney(entry.amountCents, entry.currency, { signed: true })}
+                            </span>
                           </td>
                           <td className="num">
-                            {formatCurrency(
-                              entry.balanceAfterCents,
-                              selectedBalance.currency,
+                            {formatCurrency(entry.balanceAfterCents, entry.currency)}
+                          </td>
+                          <td>
+                            {entry.creditClass ? (
+                              <StatusBadge
+                                status={entry.creditClass === "paid" ? "configured" : "pending"}
+                                label={
+                                  entry.creditClass === "paid" ? "Paid credit" : "Promotional"
+                                }
+                              />
+                            ) : (
+                              <span className="muted small">{humanLedgerType(entry.entryType)}</span>
                             )}
                           </td>
                         </tr>
@@ -236,8 +451,62 @@ export default function BillingPage() {
               )}
             </SectionCard>
           ) : null}
-        </div>
+        </>
       )}
+
+      <Modal
+        open={creditModalOpen}
+        onClose={() => setCreditModalOpen(false)}
+        title="Add promotional credit"
+        description={
+          selectedRow
+            ? `Grant free credit to ${selectedRow.companyName}. Creates an immutable ledger entry and audit record.`
+            : undefined
+        }
+      >
+        <form onSubmit={(e) => void submitCredit(e)} className="stack">
+          <label className="field">
+            <span>Amount (£)</span>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={creditForm.amountPounds}
+              onChange={(e) => setCreditForm((f) => ({ ...f, amountPounds: e.target.value }))}
+              required
+            />
+          </label>
+          <label className="field">
+            <span>Reason (required)</span>
+            <input
+              value={creditForm.reason}
+              onChange={(e) => setCreditForm((f) => ({ ...f, reason: e.target.value }))}
+              placeholder="e.g. New customer onboarding credit"
+              required
+            />
+          </label>
+          <label className="field">
+            <span>Internal note (optional)</span>
+            <textarea
+              value={creditForm.internalNote}
+              onChange={(e) => setCreditForm((f) => ({ ...f, internalNote: e.target.value }))}
+              rows={2}
+            />
+          </label>
+          <Notice tone="info">
+            Promotional credit is classified separately from Stripe-paid credit. It is not customer
+            money received.
+          </Notice>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <Button type="button" variant="secondary" onClick={() => setCreditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" loading={creditBusy}>
+              Confirm grant
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </>
   );
 }

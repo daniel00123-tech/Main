@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type { AuditEvent, CompanyOverview } from "@infra/shared";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
@@ -7,12 +7,14 @@ import {
   ActionMenu,
   ActivityFeed,
   AdvancedDetails,
+  Button,
   EmptyState,
   ErrorState,
   KeyValue,
   LoadingState,
   MetricCard,
   MetricGrid,
+  Modal,
   Notice,
   PageHeader,
   SectionCard,
@@ -40,6 +42,7 @@ type TabId =
 
 export default function CompanyDetailPage() {
   const { slug = "" } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [overview, setOverview] = useState<CompanyOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,6 +56,10 @@ export default function CompanyDetailPage() {
     serviceBindingRef: "",
     description: "",
   });
+  const [lifecycleModal, setLifecycleModal] = useState<{
+    action: "suspend" | "archive" | "delete" | "reactivate";
+    reason: string;
+  } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -70,18 +77,48 @@ export default function CompanyDetailPage() {
     void load();
   }, [slug]);
 
-  async function changeStatus(status: "active" | "suspended" | "archived") {
-    if (!overview) return;
+  async function applyLifecycle() {
+    if (!overview || !lifecycleModal) return;
     setBusy(true);
     try {
-      await api.setCompanyStatus(overview.company.slug, status);
+      if (lifecycleModal.action === "delete") {
+        await api.deleteCompany(overview.company.slug);
+        toast("Company deleted");
+        navigate("/companies");
+        return;
+      }
+      const status =
+        lifecycleModal.action === "suspend"
+          ? "suspended"
+          : lifecycleModal.action === "archive"
+            ? "archived"
+            : "active";
+      await api.setCompanyStatus(
+        overview.company.slug,
+        status,
+        lifecycleModal.reason.trim() || undefined,
+      );
       toast(`Company ${status}`);
+      setLifecycleModal(null);
       await load();
     } catch (err) {
-      toast(err instanceof Error ? err.message : "Unable to update status", "error");
+      toast(err instanceof Error ? err.message : "Unable to update company", "error");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function changeStatus(status: "active" | "suspended" | "archived") {
+    if (!overview) return;
+    if (status === "suspended") {
+      setLifecycleModal({ action: "suspend", reason: "" });
+      return;
+    }
+    if (status === "archived") {
+      setLifecycleModal({ action: "archive", reason: "" });
+      return;
+    }
+    setLifecycleModal({ action: "reactivate", reason: "" });
   }
 
   async function registerMcp(event: FormEvent) {
@@ -169,6 +206,15 @@ export default function CompanyDetailPage() {
                   label: "View activity",
                   onClick: () => setTab("activity"),
                 },
+                ...(user?.isPlatformAdmin && company.status !== "archived"
+                  ? [
+                      {
+                        label: "Archive company",
+                        disabled: busy,
+                        onClick: () => void changeStatus("archived"),
+                      },
+                    ]
+                  : []),
                 ...(user?.isPlatformAdmin && company.status !== "suspended"
                   ? [
                       {
@@ -185,6 +231,16 @@ export default function CompanyDetailPage() {
                         label: "Reactivate",
                         disabled: busy,
                         onClick: () => void changeStatus("active"),
+                      },
+                    ]
+                  : []),
+                ...(user?.isPlatformAdmin
+                  ? [
+                      {
+                        label: "Delete company (if safe)",
+                        danger: true,
+                        disabled: busy,
+                        onClick: () => setLifecycleModal({ action: "delete", reason: "" }),
                       },
                     ]
                   : []),
@@ -572,6 +628,71 @@ export default function CompanyDetailPage() {
           ) : null}
         </SectionCard>
       ) : null}
+
+      <Modal
+        open={Boolean(lifecycleModal)}
+        onClose={() => setLifecycleModal(null)}
+        title={
+          lifecycleModal?.action === "delete"
+            ? "Delete company"
+            : lifecycleModal?.action === "suspend"
+              ? "Suspend company"
+              : lifecycleModal?.action === "archive"
+                ? "Archive company"
+                : "Reactivate company"
+        }
+        description={
+          lifecycleModal?.action === "delete"
+            ? "Hard deletion is only allowed for empty test companies with no ledger or usage history."
+            : lifecycleModal?.action === "suspend"
+              ? "Suspension blocks customer access and chargeable operations. Data, wallet, and audit history are preserved."
+              : lifecycleModal?.action === "archive"
+                ? "Archived companies are hidden from active lists but retain all history."
+                : "Restore this company to active status."
+        }
+      >
+        {lifecycleModal ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void applyLifecycle();
+            }}
+            className="stack"
+          >
+            {lifecycleModal.action !== "delete" && lifecycleModal.action !== "reactivate" ? (
+              <label className="field">
+                <span>Reason</span>
+                <textarea
+                  value={lifecycleModal.reason}
+                  onChange={(e) =>
+                    setLifecycleModal({ ...lifecycleModal, reason: e.target.value })
+                  }
+                  rows={2}
+                  placeholder="Optional reason for audit log"
+                />
+              </label>
+            ) : null}
+            {lifecycleModal.action === "delete" ? (
+              <Notice tone="warning">
+                This cannot be undone. Companies with billing or usage history must be archived
+                instead.
+              </Notice>
+            ) : null}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <Button type="button" variant="secondary" onClick={() => setLifecycleModal(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant={lifecycleModal.action === "delete" ? "danger" : "primary"}
+                loading={busy}
+              >
+                Confirm
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
     </>
   );
 }

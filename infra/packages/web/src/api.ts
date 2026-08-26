@@ -276,11 +276,14 @@ export const api = {
   setCompanyStatus: (
     slug: string,
     status: "onboarding" | "active" | "suspended" | "archived" | "closed",
+    reason?: string,
   ) =>
     fetchJson<Company>(`/api/companies/${slug}/status`, {
       method: "POST",
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, ...(reason ? { reason } : {}) }),
     }),
+  deleteCompany: (slug: string) =>
+    fetchJson<{ ok: boolean }>(`/api/companies/${slug}`, { method: "DELETE" }),
   getCompany: (slug: string) => fetchJson<Company>(`/api/companies/${slug}`),
   getCompanyOverview: (slug: string) =>
     fetchJson<CompanyOverview>(`/api/companies/${slug}/overview`),
@@ -312,10 +315,23 @@ export const api = {
     const query = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
     return fetchJson<ConnectorInstance[]>(`/api/connector-instances${query}`);
   },
-  getAuditEvents: (companyId?: string, limit = 50) => {
-    const params = new URLSearchParams({ limit: String(limit) });
-    if (companyId) params.set("companyId", companyId);
-    return fetchJson<AuditEvent[]>(`/api/audit-events?${params.toString()}`);
+  getAuditEvents: (params?: {
+    companyId?: string;
+    limit?: number;
+    category?: string;
+    from?: string;
+    to?: string;
+    actor?: string;
+  }) => {
+    const search = new URLSearchParams({
+      limit: String(params?.limit ?? 100),
+    });
+    if (params?.companyId) search.set("companyId", params.companyId);
+    if (params?.category) search.set("category", params.category);
+    if (params?.from) search.set("from", params.from);
+    if (params?.to) search.set("to", params.to);
+    if (params?.actor) search.set("actor", params.actor);
+    return fetchJson<AuditEvent[]>(`/api/audit-events?${search.toString()}`);
   },
   getUsers: (companyId?: string) => {
     const query = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
@@ -665,8 +681,94 @@ export const api = {
         balanceCents: number;
         currency: string;
         lowBalance: boolean;
+        paidCreditCents: number;
+        promotionalCreditCents: number;
+        spendThisMonthCents: number;
+        creditsAddedThisMonthCents: number;
       }>
     >("/api/billing/balances"),
+  getBillingSummary: () =>
+    fetchJson<{
+      companyCount: number;
+      totalWalletCents: number;
+      totalPaidCreditCents: number;
+      totalPromotionalCreditCents: number;
+      spendThisMonthCents: number;
+      creditsAddedThisMonthCents: number;
+      lowBalanceCount: number;
+      monthStart: string;
+    }>("/api/billing/summary"),
+  getBillingLedger: (params?: {
+    companyId?: string;
+    from?: string;
+    to?: string;
+    entryType?: string;
+    creditClass?: "paid" | "promotional";
+    q?: string;
+    limit?: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (params?.companyId) search.set("companyId", params.companyId);
+    if (params?.from) search.set("from", params.from);
+    if (params?.to) search.set("to", params.to);
+    if (params?.entryType) search.set("entryType", params.entryType);
+    if (params?.creditClass) search.set("creditClass", params.creditClass);
+    if (params?.q) search.set("q", params.q);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search}` : "";
+    return fetchJson<
+      Array<{
+        id: string;
+        companyId: string;
+        companyName: string;
+        companySlug: string;
+        entryType: string;
+        amountCents: number;
+        currency: string;
+        balanceAfterCents: number;
+        description: string | null;
+        referenceType: string | null;
+        referenceId: string | null;
+        metadata: Record<string, unknown>;
+        createdBy: string | null;
+        createdAt: string;
+        creditClass: "paid" | "promotional" | null;
+        sourceLabel: string;
+      }>
+    >(`/api/billing/ledger${suffix}`);
+  },
+  exportBillingLedgerUrl: (params?: {
+    companyId?: string;
+    from?: string;
+    to?: string;
+    entryType?: string;
+    creditClass?: "paid" | "promotional";
+    q?: string;
+  }) => {
+    const search = new URLSearchParams();
+    if (params?.companyId) search.set("companyId", params.companyId);
+    if (params?.from) search.set("from", params.from);
+    if (params?.to) search.set("to", params.to);
+    if (params?.entryType) search.set("entryType", params.entryType);
+    if (params?.creditClass) search.set("creditClass", params.creditClass);
+    if (params?.q) search.set("q", params.q);
+    const suffix = search.toString() ? `?${search}` : "";
+    return `${API_BASE}/api/billing/ledger/export${suffix}`;
+  },
+  grantWalletCredit: (
+    slug: string,
+    input: {
+      amountCents: number;
+      reason: string;
+      creditClass?: "paid" | "promotional";
+      description?: string;
+      internalNote?: string;
+    },
+  ) =>
+    fetchJson<unknown>(`/api/companies/${slug}/wallet/manual-credit`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   getCommercialSummary: () =>
     fetchJson<{
       usage: {
@@ -735,8 +837,9 @@ export const api = {
       }>;
       nextReviewNote: string;
     }>("/api/commercial/provider-costs"),
-  getPricingRules: () =>
-    fetchJson<{
+  getPricingRules: (companyId?: string) => {
+    const suffix = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
+    return fetchJson<{
       policies: Array<{
         id: string;
         companyId: string | null;
@@ -766,8 +869,41 @@ export const api = {
         versionLabel: string | null;
         effectiveFrom: string | null;
         effectiveTo: string | null;
+        marginBasis: string;
+        costCategory: string | null;
       }>;
-    }>("/api/commercial/pricing-rules"),
+    }>(`/api/pricing/rules${suffix}`);
+  },
+  createPricingPolicy: (input: {
+    companyId?: string | null;
+    targetMarginBps: number;
+    minimumChargeCents: number;
+    label?: string;
+  }) =>
+    fetchJson<{ policy: Record<string, unknown> }>("/api/pricing/policies", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  previewPricing: (input: {
+    companyId?: string | null;
+    action: string;
+    underlyingCostMicros?: number | null;
+    underlyingCostCents?: number | null;
+  }) =>
+    fetchJson<{
+      action: string;
+      underlyingCostCents: number | null;
+      targetMarginBps: number;
+      calculatedPriceCents: number;
+      minimumChargeCents: number;
+      finalCustomerChargeCents: number;
+      minimumApplied: boolean;
+      pricingRuleId: string | null;
+      pricingLabel: string | null;
+    }>("/api/pricing/preview", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   requestProviderPricingReview: (
     provider: string,
     body?: { sourceUrl?: string; notes?: string },
