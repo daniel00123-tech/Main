@@ -135,17 +135,41 @@ export async function listAuditEvents(
   db: D1Database,
   companyId?: string,
   limit = 20,
+  filters?: {
+    eventPrefix?: string;
+    from?: string;
+    to?: string;
+    actor?: string;
+  },
 ) {
-  const query = companyId
-    ? db
-        .prepare(
-          "SELECT * FROM audit_events WHERE company_id = ? ORDER BY created_at DESC LIMIT ?",
-        )
-        .bind(companyId, limit)
-    : db
-        .prepare("SELECT * FROM audit_events ORDER BY created_at DESC LIMIT ?")
-        .bind(limit);
-  const result = await query.all();
+  const binds: unknown[] = [];
+  const where: string[] = [];
+  if (companyId) {
+    where.push("company_id = ?");
+    binds.push(companyId);
+  }
+  if (filters?.eventPrefix) {
+    where.push("event_type LIKE ?");
+    binds.push(`${filters.eventPrefix}%`);
+  }
+  if (filters?.from) {
+    where.push("created_at >= ?");
+    binds.push(filters.from);
+  }
+  if (filters?.to) {
+    where.push("created_at <= ?");
+    binds.push(filters.to);
+  }
+  if (filters?.actor) {
+    where.push("actor LIKE ?");
+    binds.push(`%${filters.actor}%`);
+  }
+  binds.push(limit);
+  const query =
+    where.length > 0
+      ? `SELECT * FROM audit_events WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT ?`
+      : "SELECT * FROM audit_events ORDER BY created_at DESC LIMIT ?";
+  const result = await db.prepare(query).bind(...binds).all();
   return (result.results ?? []).map((row) => rowToAuditEvent(row));
 }
 

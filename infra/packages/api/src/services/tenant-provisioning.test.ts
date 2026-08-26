@@ -3,6 +3,7 @@ import {
   portalHostnameFor,
   provisionCompany,
   setCompanyLifecycleStatus,
+  deleteCompanyIfSafe,
   slugifyCompanyName,
   assertCompanyAcceptsGateway,
 } from "./tenant-provisioning";
@@ -101,6 +102,20 @@ class MockD1 {
       return this.tables.ai_client_connections.filter(
         (r) => r.company_id === binds[0] && r.client_type === binds[1],
       );
+    }
+    if (q.includes("count(*)") && q.includes("ledger_entries")) {
+      return [
+        {
+          count: this.tables.ledger_entries.filter((r) => r.company_id === binds[0]).length,
+        },
+      ];
+    }
+    if (q.includes("count(*)") && q.includes("usage_records")) {
+      return [{ count: 0 }];
+    }
+    if (q.includes("select balance_cents from credit_balances")) {
+      const row = this.tables.credit_balances.find((r) => r.company_id === binds[0]);
+      return row ? [{ balance_cents: row.balance_cents }] : [];
     }
     return [];
   }
@@ -313,8 +328,35 @@ describe("tenant provisioning", () => {
       "admin@infra.test",
     );
     expect((await assertCompanyAcceptsGateway(db, created.company.id)).ok).toBe(true);
-    await setCompanyLifecycleStatus(db, created.company.id, "suspended", "admin@infra.test");
+    await setCompanyLifecycleStatus(db, created.company.id, "suspended", "admin@infra.test", "Test suspend");
     const blocked = await assertCompanyAcceptsGateway(db, created.company.id);
     expect(blocked.ok).toBe(false);
+  });
+
+  it("blocks delete when ledger history exists", async () => {
+    const mock = new MockD1();
+    const db = mock as unknown as D1Database;
+    const created = await provisionCompany(
+      db,
+      { legalName: "Has Ledger", portalSubdomain: "hasledger" },
+      "admin@infra.test",
+    );
+    mock.tables.ledger_entries.push({
+      id: "le_test",
+      company_id: created.company.id,
+      entry_type: "manual_credit",
+      amount_cents: 100,
+      currency: "GBP",
+      balance_after_cents: 100,
+      reference_type: "manual",
+      reference_id: "m1",
+      description: "test",
+      metadata_json: "{}",
+      created_by: "admin@infra.test",
+      created_at: new Date().toISOString(),
+    });
+    const result = await deleteCompanyIfSafe(db, created.company.id, "admin@infra.test");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("HAS_LEDGER");
   });
 });

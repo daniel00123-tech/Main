@@ -308,29 +308,47 @@ phase3.post(
     const body = await c.req.json<{
       amountCents?: number;
       description?: string;
+      creditClass?: "paid" | "promotional";
+      reason?: string;
+      internalNote?: string;
     }>();
     if (!body.amountCents || body.amountCents === 0) {
       return c.json({ error: "amountCents is required" }, 400);
     }
+    if (!body.reason?.trim()) {
+      return c.json({ error: "reason is required for admin credit grants" }, 400);
+    }
 
+    const isPromotional = body.creditClass !== "paid";
+    const entryType = isPromotional ? "promotional_credit" : "manual_credit";
     const entry = await appendLedgerEntry(c.env.DB, {
       companyId: company.id,
-      entryType: body.amountCents > 0 ? "manual_credit" : "adjustment",
+      entryType,
       amountCents: body.amountCents,
-      description: body.description ?? "Platform admin manual adjustment",
+      description: body.description ?? body.reason.trim(),
       referenceType: "manual",
       referenceId: newId("manual"),
       createdBy: c.get("user").email,
-      metadata: { isTestConfig: true, creditClass: "test" },
+      metadata: {
+        creditClass: isPromotional ? "test" : "paid",
+        paid: !isPromotional,
+        reason: body.reason.trim(),
+        internalNote: body.internalNote?.trim() ?? null,
+        grantedBy: c.get("user").email,
+      },
     });
 
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
-      eventType: "wallet.adjusted",
+      eventType: "wallet.credited",
       actor: c.get("user").email,
       resourceType: "ledger",
       resourceId: entry.entry.id,
-      detail: { amountCents: body.amountCents, creditClass: "test" },
+      detail: {
+        amountCents: body.amountCents,
+        creditClass: isPromotional ? "promotional" : "paid",
+        reason: body.reason.trim(),
+      },
     });
 
     return c.json(entry);
@@ -338,6 +356,61 @@ phase3.post(
 );
 
 phase3.get("/api/billing/balances", requireAuth, requirePlatformAdmin, async (c) => {
+  const { listEnrichedPlatformBalances } = await import("../services/billing-admin");
+  return c.json(await listEnrichedPlatformBalances(c.env.DB));
+});
+
+phase3.get("/api/billing/summary", requireAuth, requirePlatformAdmin, async (c) => {
+  const { getBillingPlatformSummary } = await import("../services/billing-admin");
+  return c.json(await getBillingPlatformSummary(c.env.DB));
+});
+
+phase3.get("/api/billing/ledger", requireAuth, requirePlatformAdmin, async (c) => {
+  const { listPlatformLedger } = await import("../services/billing-admin");
+  const creditClass = c.req.query("creditClass");
+  return c.json(
+    await listPlatformLedger(c.env.DB, {
+      companyId: c.req.query("companyId") ?? undefined,
+      from: c.req.query("from") ?? undefined,
+      to: c.req.query("to") ?? undefined,
+      entryType: c.req.query("entryType") ?? undefined,
+      creditClass:
+        creditClass === "paid" || creditClass === "promotional"
+          ? creditClass
+          : undefined,
+      q: c.req.query("q") ?? undefined,
+      limit: c.req.query("limit") ? Number(c.req.query("limit")) : 200,
+    }),
+  );
+});
+
+phase3.get("/api/billing/ledger/export", requireAuth, requirePlatformAdmin, async (c) => {
+  const { listPlatformLedger, platformLedgerToCsv } = await import(
+    "../services/billing-admin"
+  );
+  const creditClass = c.req.query("creditClass");
+  const rows = await listPlatformLedger(c.env.DB, {
+    companyId: c.req.query("companyId") ?? undefined,
+    from: c.req.query("from") ?? undefined,
+    to: c.req.query("to") ?? undefined,
+    entryType: c.req.query("entryType") ?? undefined,
+    creditClass:
+      creditClass === "paid" || creditClass === "promotional"
+        ? creditClass
+        : undefined,
+    q: c.req.query("q") ?? undefined,
+    limit: 5000,
+  });
+  const csv = platformLedgerToCsv(rows);
+  return new Response(csv, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="infra-ledger-export.csv"',
+    },
+  });
+});
+
+phase3.get("/api/billing/balances-legacy", requireAuth, requirePlatformAdmin, async (c) => {
   const balances = await listPlatformBalances(c.env.DB);
   return c.json(balances);
 });
@@ -366,7 +439,51 @@ phase3.get("/api/pricing/rules", requireAuth, async (c) => {
   if (companyId && !userHasCompanyAccess(c.get("user"), companyId)) {
     return c.json({ error: "Access to this company is denied" }, 403);
   }
-  return c.json(await listPricingRules(c.env.DB, companyId));
+  const [rules, policies] = await Promise.all([
+    listPricingRules(c.env.DB, companyId),
+    listPricingPolicies(c.env.DB),
+  ]);
+  return c.json({ rules, policies });
+});
+
+phase3.post("/api/pricing/policies", requireAuth, requirePlatformAdmin, async (c) => {
+  const body = await c.req.json<{
+    companyId?: string | null;
+    targetMarginBps?: number;
+    minimumChargeCents?: number;
+    label?: string;
+  }>();
+  if (body.targetMarginBps == null || body.minimumChargeCents == null) {
+    return c.json({ error: "targetMarginBps and minimumChargeCents required" }, 400);
+  }
+  const { createPricingPolicyVersion } = await import("../services/pricing-admin");
+  const policy = await createPricingPolicyVersion(c.env.DB, {
+    companyId: body.companyId ?? null,
+    targetMarginBps: body.targetMarginBps,
+    minimumChargeCents: body.minimumChargeCents,
+    label: body.label ?? "Updated pricing policy",
+    actor: c.get("user").email,
+  });
+  return c.json({ policy });
+});
+
+phase3.post("/api/pricing/preview", requireAuth, requirePlatformAdmin, async (c) => {
+  const body = await c.req.json<{
+    companyId?: string | null;
+    action?: string;
+    underlyingCostMicros?: number | null;
+    underlyingCostCents?: number | null;
+  }>();
+  if (!body.action) return c.json({ error: "action required" }, 400);
+  const { previewPricingCharge } = await import("../services/pricing-admin");
+  return c.json(
+    await previewPricingCharge(c.env.DB, {
+      companyId: body.companyId ?? null,
+      action: body.action,
+      underlyingCostMicros: body.underlyingCostMicros ?? null,
+      underlyingCostCents: body.underlyingCostCents ?? null,
+    }),
+  );
 });
 
 // ---------- Stripe webhook ----------

@@ -503,6 +503,7 @@ app.post(
     if (!company) return c.json({ error: "Company not found" }, 404);
     const body = await c.req.json<{
       status?: "onboarding" | "active" | "suspended" | "archived" | "closed";
+      reason?: string;
     }>();
     if (
       !body.status ||
@@ -520,10 +521,20 @@ app.post(
       company.id,
       body.status,
       c.get("user").email,
+      body.reason?.trim(),
     );
     return c.json(updated);
   },
 );
+
+app.delete("/api/companies/:slug", requireAuth, requirePlatformAdmin, async (c) => {
+  const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  const { deleteCompanyIfSafe } = await import("./services/tenant-provisioning");
+  const result = await deleteCompanyIfSafe(c.env.DB, company.id, c.get("user").email);
+  if (!result.ok) return c.json({ error: result.message, code: result.code }, 409);
+  return c.json({ ok: true });
+});
 
 app.get("/api/portal/resolve", requireAuth, async (c) => {
   const host = c.req.query("host")?.trim();
@@ -867,7 +878,7 @@ app.get("/api/connector-instances/:id/sync-history", requireAuth, async (c) => {
 app.get("/api/audit-events", requireAuth, async (c) => {
   const user = c.get("user");
   const requestedCompanyId = c.req.query("companyId");
-  const limit = Number(c.req.query("limit") ?? "20");
+  const limit = Math.min(Number(c.req.query("limit") ?? "100"), 500);
 
   if (requestedCompanyId && !userHasCompanyAccess(user, requestedCompanyId)) {
     return c.json({ error: "Access to this company is denied" }, 403);
@@ -879,7 +890,12 @@ app.get("/api/audit-events", requireAuth, async (c) => {
       ? undefined
       : user.memberships[0]?.companyId;
 
-  const events = await listAuditEvents(c.env.DB, companyId, limit);
+  const events = await listAuditEvents(c.env.DB, companyId, limit, {
+    eventPrefix: c.req.query("category") ?? undefined,
+    from: c.req.query("from") ?? undefined,
+    to: c.req.query("to") ?? undefined,
+    actor: c.req.query("actor") ?? undefined,
+  });
 
   if (!user.isPlatformAdmin) {
     const allowed = new Set(user.memberships.map((membership) => membership.companyId));

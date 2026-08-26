@@ -11,9 +11,49 @@ import {
   LoadingState,
   PageHeader,
   SearchInput,
+  StatusBadge,
   formatDate,
 } from "../components";
-import { formatFullDate, formatRelativeTime, humanEventLabel } from "../lib/format";
+import {
+  formatFullDate,
+  formatRelativeTime,
+  humanActor,
+  humanEventLabel,
+  integrationLabel,
+} from "../lib/format";
+
+function auditResult(event: AuditEvent): { status: string; label: string } {
+  const type = event.eventType.toLowerCase();
+  if (type.includes("failed") || type.includes("denied")) {
+    return { status: "failed", label: "Failed" };
+  }
+  if (type.includes("started") || type.includes("pending")) {
+    return { status: "warning", label: "In progress" };
+  }
+  return { status: "healthy", label: "Completed" };
+}
+
+function auditIntegration(event: AuditEvent): string {
+  const detail = event.detail ?? {};
+  const action = String(detail.action ?? detail.toolName ?? event.resourceType ?? "");
+  return integrationLabel(action, event.resourceId ?? undefined);
+}
+
+function formatActorDisplay(event: AuditEvent): string {
+  const human = humanActor(event.actor);
+  const detail = event.detail ?? {};
+  const client = detail.sourceClient ?? detail.client;
+  if (client && human !== "System" && human !== "System automation") {
+    const clientLabel =
+      String(client) === "chatgpt"
+        ? "ChatGPT"
+        : String(client) === "claude"
+          ? "Claude"
+          : String(client);
+    if (!human.includes(clientLabel)) return `${human} via ${clientLabel}`;
+  }
+  return human;
+}
 
 export default function AuditLogPage() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
@@ -21,7 +61,10 @@ export default function AuditLogPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "auth" | "mcp" | "connector" | "billing">("all");
+  const [filter, setFilter] = useState<
+    "all" | "auth" | "mcp" | "connector" | "billing" | "company"
+  >("all");
+  const [companyFilter, setCompanyFilter] = useState("");
   const [selected, setSelected] = useState<AuditEvent | null>(null);
 
   async function load() {
@@ -29,7 +72,11 @@ export default function AuditLogPage() {
     setError(null);
     try {
       const [eventList, companyList] = await Promise.all([
-        api.getAuditEvents(undefined, 100),
+        api.getAuditEvents({
+          limit: 200,
+          category: filter === "all" ? undefined : filter,
+          companyId: companyFilter || undefined,
+        }),
         api.getCompanies(),
       ]);
       setEvents(eventList);
@@ -43,7 +90,8 @@ export default function AuditLogPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, companyFilter]);
 
   const companyById = useMemo(
     () => new Map(companies.map((c) => [c.id, c])),
@@ -53,32 +101,46 @@ export default function AuditLogPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return events.filter((event) => {
-      if (filter !== "all" && !event.eventType.startsWith(filter)) return false;
       if (!q) return true;
-      const company = event.companyId ? companyById.get(event.companyId)?.name ?? "" : "platform";
+      const company = event.companyId ? companyById.get(event.companyId)?.name ?? "" : "Platform";
       return (
         humanEventLabel(event.eventType).toLowerCase().includes(q) ||
-        event.actor.toLowerCase().includes(q) ||
+        formatActorDisplay(event).toLowerCase().includes(q) ||
         event.eventType.toLowerCase().includes(q) ||
         company.toLowerCase().includes(q)
       );
     });
-  }, [events, query, filter, companyById]);
+  }, [events, query, companyById]);
 
   if (loading) return <LoadingState label="Loading audit log…" />;
   if (error) {
-    return <ErrorState title="Unable to load audit log" description={error} onRetry={() => void load()} />;
+    return (
+      <ErrorState title="Unable to load audit log" description={error} onRetry={() => void load()} />
+    );
   }
 
   return (
     <>
       <PageHeader
         title="Audit Log"
-        description="Who did what, across the INFRA control plane."
+        description="Investigation tool for platform activity — who did what, when, and with what result."
       />
 
       <FilterBar>
         <SearchInput value={query} onChange={setQuery} placeholder="Search events…" className="grow" />
+        <select
+          className="select"
+          value={companyFilter}
+          onChange={(e) => setCompanyFilter(e.target.value)}
+          aria-label="Filter by company"
+        >
+          <option value="">All companies</option>
+          {companies.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
         <div className="filter-chips">
           {(
             [
@@ -87,6 +149,7 @@ export default function AuditLogPage() {
               ["mcp", "Gateway"],
               ["connector", "Connectors"],
               ["billing", "Billing"],
+              ["company", "Company"],
             ] as const
           ).map(([id, label]) => (
             <FilterChip key={id} active={filter === id} onClick={() => setFilter(id)}>
@@ -100,14 +163,15 @@ export default function AuditLogPage() {
         <EmptyState title="No audit events" description="Events will appear as platform activity occurs." />
       ) : (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table compact">
             <thead>
               <tr>
-                <th>When</th>
-                <th>Actor</th>
-                <th>Action</th>
+                <th>Date & time</th>
+                <th>User / source</th>
                 <th>Company</th>
-                <th>Resource</th>
+                <th>Action</th>
+                <th>Item</th>
+                <th>Result</th>
               </tr>
             </thead>
             <tbody>
@@ -115,6 +179,7 @@ export default function AuditLogPage() {
                 const company = event.companyId
                   ? companyById.get(event.companyId)?.name ?? "—"
                   : "Platform";
+                const result = auditResult(event);
                 return (
                   <tr
                     key={event.id}
@@ -125,16 +190,14 @@ export default function AuditLogPage() {
                       {formatRelativeTime(event.createdAt)}
                       <div className="muted small">{formatDate(event.createdAt)}</div>
                     </td>
-                    <td>{event.actor}</td>
+                    <td>{formatActorDisplay(event)}</td>
+                    <td>{company}</td>
                     <td>
                       <strong>{humanEventLabel(event.eventType)}</strong>
                     </td>
-                    <td>{company}</td>
-                    <td className="muted">
-                      {event.resourceType ?? "—"}
-                      {event.resourceId ? (
-                        <div className="mono small">{truncate(event.resourceId)}</div>
-                      ) : null}
+                    <td className="muted">{auditIntegration(event)}</td>
+                    <td>
+                      <StatusBadge status={result.status} label={result.label} />
                     </td>
                   </tr>
                 );
@@ -148,7 +211,8 @@ export default function AuditLogPage() {
         {selected ? (
           <>
             <KeyValue label="Action" value={humanEventLabel(selected.eventType)} />
-            <KeyValue label="Actor" value={selected.actor} />
+            <KeyValue label="User / source" value={formatActorDisplay(selected)} />
+            <KeyValue label="Raw actor" value={selected.actor} />
             <KeyValue label="Time" value={formatFullDate(selected.createdAt)} />
             <KeyValue
               label="Company"
@@ -158,10 +222,20 @@ export default function AuditLogPage() {
                   : "Platform"
               }
             />
+            <KeyValue label="Integration" value={auditIntegration(selected)} />
             <KeyValue label="Resource" value={selected.resourceType ?? "—"} />
-            <details className="advanced-block" open>
+            <KeyValue
+              label="Result"
+              value={
+                <StatusBadge
+                  status={auditResult(selected).status}
+                  label={auditResult(selected).label}
+                />
+              }
+            />
+            <details className="advanced-block">
               <summary>Technical details</summary>
-              <KeyValue label="Event" value={selected.eventType} mono />
+              <KeyValue label="Event type" value={selected.eventType} mono />
               <KeyValue label="Event ID" value={selected.id} mono />
               <KeyValue label="Resource ID" value={selected.resourceId ?? "—"} mono />
               {Object.keys(selected.detail ?? {}).length > 0 ? (
@@ -175,8 +249,4 @@ export default function AuditLogPage() {
       </Drawer>
     </>
   );
-}
-
-function truncate(value: string, max = 24): string {
-  return value.length > max ? `${value.slice(0, max)}…` : value;
 }

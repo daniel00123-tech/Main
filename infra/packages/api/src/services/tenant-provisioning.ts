@@ -415,6 +415,7 @@ export async function setCompanyLifecycleStatus(
   companyId: string,
   status: "onboarding" | "active" | "suspended" | "archived" | "closed",
   actorEmail: string,
+  reason?: string,
 ): Promise<Company> {
   const now = nowIso();
   const company = await db
@@ -477,7 +478,11 @@ export async function setCompanyLifecycleStatus(
     actor: actorEmail,
     resourceType: "company",
     resourceId: companyId,
-    detail: { status, previousStatus: company.status },
+    detail: {
+      status,
+      previousStatus: company.status,
+      ...(reason ? { reason } : {}),
+    },
   });
 
   const row = await db
@@ -486,6 +491,108 @@ export async function setCompanyLifecycleStatus(
     .first();
   if (!row) throw new Error("Company not found after update");
   return rowToCompany(row);
+}
+
+export async function deleteCompanyIfSafe(
+  db: D1Database,
+  companyId: string,
+  actorEmail: string,
+): Promise<
+  | { ok: true }
+  | { ok: false; message: string; code: string }
+> {
+  const company = await db
+    .prepare("SELECT * FROM companies WHERE id = ?")
+    .bind(companyId)
+    .first();
+  if (!company) {
+    return { ok: false, message: "Company not found", code: "NOT_FOUND" };
+  }
+
+  const [ledgerRow, usageRow, balanceRow] = await Promise.all([
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM ledger_entries WHERE company_id = ?`,
+      )
+      .bind(companyId)
+      .first(),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM usage_records WHERE company_id = ?`,
+      )
+      .bind(companyId)
+      .first(),
+    db
+      .prepare(
+        `SELECT balance_cents FROM credit_balances WHERE company_id = ?`,
+      )
+      .bind(companyId)
+      .first(),
+  ]);
+
+  const ledgerCount = Number(ledgerRow?.count ?? 0);
+  const usageCount = Number(usageRow?.count ?? 0);
+  const balanceCents = Number(balanceRow?.balance_cents ?? 0);
+
+  if (ledgerCount > 0) {
+    return {
+      ok: false,
+      message:
+        "This company has financial ledger history. Archive it instead of deleting.",
+      code: "HAS_LEDGER",
+    };
+  }
+  if (usageCount > 0) {
+    return {
+      ok: false,
+      message:
+        "This company has usage history. Archive it instead of deleting.",
+      code: "HAS_USAGE",
+    };
+  }
+  if (balanceCents !== 0) {
+    return {
+      ok: false,
+      message: "This company has a non-zero wallet balance.",
+      code: "HAS_BALANCE",
+    };
+  }
+
+  const now = nowIso();
+  await recordAuditEvent(db, {
+    companyId: null,
+    eventType: "company.updated",
+    actor: actorEmail,
+    resourceType: "company",
+    resourceId: companyId,
+    detail: {
+      action: "deleted",
+      companyName: String(company.name),
+      companySlug: String(company.slug),
+      deletedAt: now,
+    },
+  });
+
+  const tables = [
+    "company_memberships",
+    "service_identities",
+    "connector_instances",
+    "mcp_environments",
+    "company_modules",
+    "company_commercial_settings",
+    "ai_client_connections",
+    "credit_balances",
+    "attention_dismissals",
+  ];
+  for (const table of tables) {
+    await db
+      .prepare(`DELETE FROM ${table} WHERE company_id = ?`)
+      .bind(companyId)
+      .run();
+  }
+  await db.prepare(`DELETE FROM companies WHERE id = ?`).bind(companyId).run();
+
+  return { ok: true };
 }
 
 export async function assertCompanyAcceptsGateway(
