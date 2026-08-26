@@ -137,3 +137,75 @@ export function listRolePresets() {
     deniedByDefault: preset.deniedByDefault,
   }));
 }
+
+const ALL_TOOL_ACTIONS = Object.keys(TOOL_ACTION_RISK) as ToolAction[];
+
+/** Roles whose preset permissions cannot be overridden (prevents admin lockout). */
+const PROTECTED_ROLES: CompanyRole[] = ["company_admin"];
+
+export function isRolePermissionEditable(role: CompanyRole): boolean {
+  return !PROTECTED_ROLES.includes(role);
+}
+
+export function effectiveActionAllowed(
+  role: CompanyRole,
+  action: ToolAction,
+  overrides: Array<{ role: CompanyRole; action: ToolAction; effect: "allow" | "deny" }>,
+): boolean {
+  const override = overrides.find((item) => item.role === role && item.action === action);
+  if (override?.effect === "deny") return false;
+  if (override?.effect === "allow") return true;
+  return isActionAllowed(role, action);
+}
+
+export async function replaceCompanyRoleOverrides(
+  db: D1Database,
+  companyId: string,
+  role: CompanyRole,
+  grants: Array<{ action: ToolAction; effect: "allow" | "deny" }>,
+): Promise<Array<{ role: CompanyRole; action: ToolAction; effect: "allow" | "deny" }>> {
+  if (!isRolePermissionEditable(role)) {
+    throw new Error("This role cannot be modified");
+  }
+
+  const preset = COMPANY_ROLE_PRESETS.find((item) => item.role === role);
+  if (!preset) throw new Error("Unknown role");
+
+  const normalized: Array<{ action: ToolAction; effect: "allow" | "deny" }> = [];
+  for (const grant of grants) {
+    if (!ALL_TOOL_ACTIONS.includes(grant.action)) {
+      throw new Error(`Unknown action: ${grant.action}`);
+    }
+    const presetAllowed = isActionAllowed(role, grant.action);
+    const differs =
+      (grant.effect === "allow" && !presetAllowed) ||
+      (grant.effect === "deny" && presetAllowed);
+    if (differs) normalized.push(grant);
+  }
+
+  const now = new Date().toISOString();
+  await db
+    .prepare(`DELETE FROM role_action_grants WHERE company_id = ? AND role = ?`)
+    .bind(companyId, role)
+    .run();
+
+  for (const grant of normalized) {
+    await db
+      .prepare(
+        `INSERT INTO role_action_grants (id, company_id, role, action, effect, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        companyId,
+        role,
+        grant.action,
+        grant.effect,
+        now,
+        now,
+      )
+      .run();
+  }
+
+  return listRoleActionOverrides(db, companyId);
+}

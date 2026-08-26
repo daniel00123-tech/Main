@@ -90,6 +90,9 @@ export default function CompaniesPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
   const [suspendingSlug, setSuspendingSlug] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CompanyRow | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -296,6 +299,84 @@ export default function CompaniesPage() {
     }
   }
 
+  async function reactivateCompany(slug: string) {
+    setSuspendingSlug(slug);
+    try {
+      await api.setCompanyStatus(slug, "active");
+      toast("Company reactivated");
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Unable to reactivate company", "error");
+    } finally {
+      setSuspendingSlug(null);
+    }
+  }
+
+  async function archiveCompany(slug: string) {
+    setSuspendingSlug(slug);
+    try {
+      await api.setCompanyStatus(slug, "archived");
+      toast("Company archived");
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Unable to archive company", "error");
+    } finally {
+      setSuspendingSlug(null);
+    }
+  }
+
+  async function confirmDeleteCompany() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deleteCompany(deleteTarget.slug);
+      toast(`Company “${deleteTarget.name}” deleted`);
+      setDeleteTarget(null);
+      await load();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Unable to delete company");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function companyActionItems(company: CompanyRow) {
+    const busy = suspendingSlug === company.slug;
+    return [
+      {
+        label: "Open company",
+        onClick: () => navigate(`/companies/${company.slug}`),
+      },
+      {
+        label: "Open company portal",
+        onClick: () => navigate(`/portal/${company.slug}/dashboard`),
+      },
+      {
+        label: busy ? "Updating…" : company.status === "suspended" ? "Reactivate" : "Suspend",
+        disabled: busy || company.status === "closed" || company.status === "archived",
+        onClick: () =>
+          void (company.status === "suspended"
+            ? reactivateCompany(company.slug)
+            : suspendCompany(company.slug)),
+      },
+      {
+        label: "Archive",
+        disabled: busy || company.status === "archived" || company.status === "closed",
+        onClick: () => void archiveCompany(company.slug),
+      },
+      {
+        label: "Delete",
+        danger: true,
+        disabled: busy,
+        onClick: () => {
+          setDeleteError(null);
+          setDeleteTarget(company);
+        },
+      },
+    ];
+  }
+
   if (loading) return <LoadingState label="Loading companies…" />;
   if (error) {
     return <ErrorState title="Unable to load companies" description={error} onRetry={() => void load()} />;
@@ -389,7 +470,8 @@ export default function CompaniesPage() {
                 <th>Company</th>
                 <th>Status</th>
                 <th className="num">Wallet</th>
-                <th className="num">Usage (mo)</th>
+                <th className="num">Spend (mo)</th>
+                <th className="num">Users</th>
                 <th>Last active</th>
                 <th>Systems</th>
                 <th>AI</th>
@@ -414,15 +496,18 @@ export default function CompaniesPage() {
                   <td className="num">
                     {formatCharge(company.walletBalanceCents)}
                     {company.walletLowBalance ? (
-                      <div className="warning-text">Low</div>
-                    ) : null}
+                      <div className="warning-text">Low balance</div>
+                    ) : (
+                      <div className="muted small">OK</div>
+                    )}
                   </td>
                   <td className="num">
-                    {formatNumber(company.usageThisMonth)}
-                    {company.usageFailedThisMonth > 0 ? (
-                      <div className="muted small">{company.usageFailedThisMonth} failed</div>
+                    {formatCharge(company.spendThisMonthCents ?? 0)}
+                    {company.usageThisMonth > 0 ? (
+                      <div className="muted small">{formatNumber(company.usageThisMonth)} ops</div>
                     ) : null}
                   </td>
+                  <td className="num">{formatNumber(company.activeUserCount ?? 0)}</td>
                   <td className="muted">{formatRelativeTime(company.lastActivityAt)}</td>
                   <td>
                     {company.connectedConnectors}/{company.connectorCount}
@@ -444,19 +529,7 @@ export default function CompaniesPage() {
                   </td>
                   {user?.isPlatformAdmin ? (
                     <td>
-                      <ActionMenu
-                        items={[
-                          {
-                            label: suspendingSlug === company.slug ? "Suspending…" : "Suspend",
-                            danger: true,
-                            disabled:
-                              company.status === "suspended" ||
-                              company.status === "closed" ||
-                              suspendingSlug === company.slug,
-                            onClick: () => void suspendCompany(company.slug),
-                          },
-                        ]}
-                      />
+                      <ActionMenu items={companyActionItems(company)} />
                     </td>
                   ) : null}
                 </tr>
@@ -830,6 +903,48 @@ export default function CompaniesPage() {
             ) : null}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={Boolean(deleteTarget)}
+        onClose={() => {
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+        title="Delete company"
+        description={
+          deleteTarget
+            ? `Permanently delete “${deleteTarget.name}”. This is only allowed for empty test companies with no ledger or usage history.`
+            : undefined
+        }
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setDeleteTarget(null);
+                setDeleteError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              loading={deleting}
+              onClick={() => void confirmDeleteCompany()}
+            >
+              Delete company
+            </Button>
+          </>
+        }
+      >
+        {deleteError ? <p className="error-text">{deleteError}</p> : null}
+        <p className="muted small">
+          If deletion is blocked, the company may have billing history, usage records, or a non-zero
+          wallet balance. Archive or suspend instead.
+        </p>
       </Modal>
     </>
   );

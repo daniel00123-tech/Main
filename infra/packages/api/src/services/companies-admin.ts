@@ -12,11 +12,13 @@ export type CompanyAdminRow = {
   walletLowBalance: boolean;
   usageThisMonth: number;
   usageFailedThisMonth: number;
+  spendThisMonthCents: number;
   lastActivityAt: string | null;
   connectorCount: number;
   connectedConnectors: number;
   mcpStatus: string | null;
   aiIdentityCount: number;
+  activeUserCount: number;
   needsAttention: boolean;
 };
 
@@ -32,6 +34,7 @@ export async function listCompaniesAdminDirectory(db: D1Database): Promise<Compa
         `SELECT company_id,
                 COUNT(*) AS requests,
                 SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed,
+                SUM(COALESCE(customer_charge_cents, 0)) AS spend_cents,
                 MAX(recorded_at) AS last_at
          FROM usage_records
          WHERE recorded_at >= datetime('now', 'start of month')
@@ -46,6 +49,7 @@ export async function listCompaniesAdminDirectory(db: D1Database): Promise<Compa
       {
         requests: Number(row.requests ?? 0),
         failed: Number(row.failed ?? 0),
+        spendCents: Number(row.spend_cents ?? 0),
         lastAt: row.last_at ? String(row.last_at) : null,
       },
     ]),
@@ -58,6 +62,10 @@ export async function listCompaniesAdminDirectory(db: D1Database): Promise<Compa
     const companyMcps = mcps.filter((m) => m.companyId === id);
     const wallet = await getWalletBalance(db, id);
     const identities = await listServiceIdentities(db, id);
+    const membershipRow = await db
+      .prepare(`SELECT COUNT(*) AS count FROM company_memberships WHERE company_id = ?`)
+      .bind(id)
+      .first();
     const usage = usageByCompany.get(id);
     const mcpStatus = companyMcps[0]?.status ?? null;
     const connectedConnectors = companyConnectors.filter(
@@ -79,11 +87,13 @@ export async function listCompaniesAdminDirectory(db: D1Database): Promise<Compa
       walletLowBalance: wallet.lowBalance,
       usageThisMonth: usage?.requests ?? 0,
       usageFailedThisMonth: usage?.failed ?? 0,
+      spendThisMonthCents: usage?.spendCents ?? 0,
       lastActivityAt: usage?.lastAt ?? (raw.updated_at ? String(raw.updated_at) : null),
       connectorCount: companyConnectors.length,
       connectedConnectors,
       mcpStatus,
       aiIdentityCount: identities.filter((i) => i.status === "active").length,
+      activeUserCount: Number(membershipRow?.count ?? 0),
       needsAttention,
     });
   }

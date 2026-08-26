@@ -79,6 +79,29 @@ export interface McpExecuteResult {
   result: unknown;
 }
 
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+type UnauthorizedHandler = () => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+let authStateGetter: () => boolean = () => false;
+
+/** Central 401 handler — wired from AuthProvider. */
+export function configureApiAuth(options: {
+  onUnauthorized: UnauthorizedHandler | null;
+  isAuthenticated: () => boolean;
+}) {
+  unauthorizedHandler = options.onUnauthorized;
+  authStateGetter = options.isAuthenticated;
+}
+
 async function fetchJson<T>(
   path: string,
   init?: RequestInit,
@@ -100,7 +123,15 @@ async function fetchJson<T>(
     } catch {
       // ignore parse errors
     }
-    throw new Error(message);
+    if (
+      response.status === 401 &&
+      unauthorizedHandler &&
+      authStateGetter() &&
+      !path.startsWith("/api/auth/login")
+    ) {
+      unauthorizedHandler();
+    }
+    throw new ApiError(message, response.status);
   }
 
   if (response.status === 204) {
@@ -186,11 +217,13 @@ export const api = {
         walletLowBalance: boolean;
         usageThisMonth: number;
         usageFailedThisMonth: number;
+        spendThisMonthCents: number;
         lastActivityAt: string | null;
         connectorCount: number;
         connectedConnectors: number;
         mcpStatus: string | null;
         aiIdentityCount: number;
+        activeUserCount: number;
         needsAttention: boolean;
       }>
     >("/api/companies/admin-directory"),
@@ -357,6 +390,22 @@ export const api = {
     return fetchJson<InfraUser[]>(`/api/users${query}`);
   },
   getRolePresets: () => fetchJson<RolePresetResponse[]>("/api/roles/presets"),
+  getCompanyRolePermissions: (slug: string) =>
+    fetchJson<{
+      companyId: string;
+      companySlug: string;
+      overrides: Array<{ role: CompanyRole; action: string; effect: "allow" | "deny" }>;
+      editableRoles: CompanyRole[];
+      presets: RolePresetResponse[];
+    }>(`/api/companies/${encodeURIComponent(slug)}/role-permissions`),
+  saveCompanyRolePermissions: (
+    slug: string,
+    input: { role: CompanyRole; grants: Array<{ action: string; effect: "allow" | "deny" }> },
+  ) =>
+    fetchJson<{ ok: boolean; overrides: Array<{ role: CompanyRole; action: string; effect: "allow" | "deny" }> }>(
+      `/api/companies/${encodeURIComponent(slug)}/role-permissions`,
+      { method: "PUT", body: JSON.stringify(input) },
+    ),
   runMcpHealthCheck: (id: string) =>
     fetchJson<Record<string, unknown>>(`/api/mcp-environments/${id}/health-check`, {
       method: "POST",

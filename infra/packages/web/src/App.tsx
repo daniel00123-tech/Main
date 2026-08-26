@@ -85,10 +85,10 @@ const ADMIN_NAV: NavGroup[] = [
   {
     label: "Integrations",
     items: [
-      { to: "/connectors", label: "Catalogue", icon: <Plug size={18} /> },
+      { to: "/connectors", label: "Connectors", icon: <Plug size={18} /> },
       { to: "/connector-oversight", label: "Oversight", icon: <Network size={18} /> },
       { to: "/mcp-environments", label: "AI Gateways", icon: <Network size={18} /> },
-      { to: "/ai-clients", label: "AI Connections", icon: <Bot size={18} /> },
+      { to: "/ai-clients", label: "AI Clients", icon: <Bot size={18} /> },
     ],
   },
   {

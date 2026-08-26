@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { ToolAction } from "@infra/shared";
+import type { ToolAction, CompanyRole } from "@infra/shared";
 import { CONNECTOR_CATALOGUE } from "@infra/shared";
 import {
   clearSessionCookie,
@@ -42,7 +42,10 @@ import { createCorsMiddleware } from "./cors";
 import type { Env } from "./env";
 import {
   evaluateActionPermission,
+  isRolePermissionEditable,
+  listRoleActionOverrides,
   listRolePresets,
+  replaceCompanyRoleOverrides,
   userHasCompanyAccess,
 } from "./permissions/service";
 import {
@@ -937,6 +940,59 @@ app.get("/api/users", requireAuth, async (c) => {
 });
 
 app.get("/api/roles/presets", requireAuth, (c) => c.json(listRolePresets()));
+
+app.get("/api/companies/:slug/role-permissions", requireAuth, requirePlatformAdmin, async (c) => {
+  const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  const overrides = await listRoleActionOverrides(c.env.DB, company.id);
+  const presets = listRolePresets();
+  return c.json({
+    companyId: company.id,
+    companySlug: company.slug,
+    overrides,
+    editableRoles: presets
+      .map((preset) => preset.role)
+      .filter((role) => isRolePermissionEditable(role)),
+    presets,
+  });
+});
+
+app.put("/api/companies/:slug/role-permissions", requireAuth, requirePlatformAdmin, async (c) => {
+  const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  const body = await c.req.json<{
+    role?: CompanyRole;
+    grants?: Array<{ action: ToolAction; effect: "allow" | "deny" }>;
+  }>();
+  if (!body.role || !Array.isArray(body.grants)) {
+    return c.json({ error: "role and grants array are required" }, 400);
+  }
+  if (!isRolePermissionEditable(body.role)) {
+    return c.json({ error: "This role cannot be modified" }, 403);
+  }
+  try {
+    const overrides = await replaceCompanyRoleOverrides(
+      c.env.DB,
+      company.id,
+      body.role,
+      body.grants,
+    );
+    await recordAuditEvent(c.env.DB, {
+      companyId: company.id,
+      eventType: "role.permissions.updated",
+      actor: c.get("user").email,
+      resourceType: "role",
+      resourceId: body.role,
+      detail: { grantCount: body.grants.length },
+    });
+    return c.json({ ok: true, overrides });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Unable to save permissions" },
+      400,
+    );
+  }
+});
 
 app.post("/api/permissions/check", requireAuth, async (c) => {
   const body = await c.req.json<{ companyId?: string; action?: ToolAction }>();

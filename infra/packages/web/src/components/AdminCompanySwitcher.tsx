@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, Clock, ExternalLink, Globe } from "lucide-react";
+import { Building2, ChevronDown, Clock, ExternalLink, Globe } from "lucide-react";
 import type { Company } from "@infra/shared";
 import { api } from "../api";
 import { SearchInput, StatusBadge } from "../components";
@@ -86,18 +86,28 @@ export default function AdminCompanySwitcher() {
 
   return (
     <div ref={containerRef} className="admin-company-switcher">
-      <SearchInput
-        value={query}
-        onChange={(v) => {
-          setQuery(v);
-          setOpen(true);
-        }}
-        placeholder="Find company…"
-        className="admin-company-search-input"
-        aria-label="Find company"
-      />
+      <button
+        type="button"
+        className="admin-company-switcher-trigger"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Building2 size={16} aria-hidden />
+        <span>Switch company</span>
+        <ChevronDown size={14} aria-hidden />
+      </button>
       {open ? (
         <div className="admin-company-switcher-panel card" role="listbox" aria-label="Company switcher">
+          <div className="panel-pad" style={{ paddingBottom: 8 }}>
+            <SearchInput
+              value={query}
+              onChange={(v) => setQuery(v)}
+              placeholder="Search companies…"
+              className="admin-company-search-input"
+              aria-label="Search companies to switch"
+            />
+          </div>
           {loading ? (
             <p className="muted small panel-pad">Loading companies…</p>
           ) : (

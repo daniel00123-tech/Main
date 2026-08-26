@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { api, type SessionUser } from "../api";
+import { api, configureApiAuth, type SessionUser } from "../api";
 
 interface AuthContextValue {
   user: SessionUser | null;
@@ -38,9 +38,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    configureApiAuth({
+      isAuthenticated: () => user !== null,
+      onUnauthorized: () => {
+        setUser(null);
+      },
+    });
+    return () => configureApiAuth({ isAuthenticated: () => false, onUnauthorized: null });
+  }, [user]);
+
   const login = useCallback(async (email: string, password: string) => {
-    const session = await api.login(email, password);
-    setUser(session);
+    await api.login(email, password);
+    try {
+      const session = await api.getSession();
+      setUser(session);
+    } catch {
+      setUser(null);
+      throw new Error(
+        "Sign-in succeeded but the session cookie was not stored. Allow cookies for this site, or try a non-private window.",
+      );
+    }
   }, []);
 
   const logout = useCallback(async () => {

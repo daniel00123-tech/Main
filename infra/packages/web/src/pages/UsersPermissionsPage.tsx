@@ -35,7 +35,6 @@ export default function UsersPermissionsPage() {
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<CompanyRole>("office_staff");
   const [inviting, setInviting] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<string>("engineer");
 
   async function load() {
     setLoading(true);
@@ -121,7 +120,7 @@ export default function UsersPermissionsPage() {
         description="People, roles, and permission presets across companies. AI Connections (ChatGPT/Claude) are company portal tokens; AI Gateways are the secure INFRA routing layer."
         actions={
           <Button type="button" variant="primary" onClick={() => setInviteOpen(true)}>
-            Invite user
+            + Add user
           </Button>
         }
       />
@@ -222,52 +221,7 @@ export default function UsersPermissionsPage() {
       ) : null}
 
       {tab === "permissions" ? (
-        <SectionCard
-          title="Permissions editor"
-          description="Select a role to review grouped capabilities. Enforcement remains server-side; this reflects default role templates."
-        >
-          <div style={{ marginBottom: 16 }}>
-            <label className="muted small">
-              Role template
-              <select
-                className="input"
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
-                style={{ display: "block", marginTop: 4, maxWidth: 320 }}
-              >
-                {roles.map((role) => (
-                  <option key={role.role} value={role.role}>
-                    {role.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {(() => {
-            const role = roles.find((r) => r.role === selectedRole);
-            if (!role) return null;
-            const groups = groupPermissions(role.allowedActions, role.deniedByDefault);
-            return (
-              <div className="permissions-editor">
-                {groups.map((group) => (
-                  <div key={group.id} className="permission-group">
-                    <h4 className="permission-group-title">{group.label}</h4>
-                    {group.items.map((item) => (
-                      <label key={item.action} className="permission-row">
-                        <input type="checkbox" checked={item.allowed} readOnly disabled />
-                        <span>{item.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                ))}
-                <details className="advanced-block">
-                  <summary>Advanced — technical action strings</summary>
-                  <p className="mono small">{role.allowedActions.join(", ")}</p>
-                </details>
-              </div>
-            );
-          })()}
-        </SectionCard>
+        <PermissionsEditor companies={companies} roles={roles} />
       ) : null}
 
       <Modal
@@ -369,6 +323,176 @@ export default function UsersPermissionsPage() {
         ) : null}
       </Drawer>
     </>
+  );
+}
+
+function PermissionsEditor({
+  companies,
+  roles,
+}: {
+  companies: Company[];
+  roles: Awaited<ReturnType<typeof api.getRolePresets>>;
+}) {
+  const [companySlug, setCompanySlug] = useState(companies[0]?.slug ?? "");
+  const [selectedRole, setSelectedRole] = useState<string>("engineer");
+  const [draft, setDraft] = useState<Map<string, boolean>>(new Map());
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [overrides, setOverrides] = useState<
+    Array<{ role: string; action: string; effect: "allow" | "deny" }>
+  >([]);
+
+  const editableRoles = roles.filter((r) => r.role !== "company_admin");
+
+  async function loadPermissions(slug: string) {
+    if (!slug) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await api.getCompanyRolePermissions(slug);
+      setOverrides(data.overrides);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load permissions");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (companySlug) void loadPermissions(companySlug);
+  }, [companySlug]);
+
+  const rolePreset = roles.find((r) => r.role === selectedRole);
+
+  useEffect(() => {
+    if (!rolePreset) return;
+    const map = new Map<string, boolean>();
+    const allActions = [...rolePreset.allowedActions, ...rolePreset.deniedByDefault];
+    for (const action of allActions) {
+      const override = overrides.find((o) => o.role === selectedRole && o.action === action);
+      if (override?.effect === "allow") map.set(action, true);
+      else if (override?.effect === "deny") map.set(action, false);
+      else map.set(action, rolePreset.allowedActions.includes(action));
+    }
+    setDraft(map);
+  }, [rolePreset, overrides, selectedRole]);
+
+  async function savePermissions() {
+    if (!companySlug || !rolePreset) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const grants: Array<{ action: string; effect: "allow" | "deny" }> = [];
+      for (const [action, allowed] of draft.entries()) {
+        const presetAllowed = (rolePreset.allowedActions as string[]).includes(action);
+        if (allowed !== presetAllowed) {
+          grants.push({ action, effect: allowed ? "allow" : "deny" });
+        }
+      }
+      const result = await api.saveCompanyRolePermissions(companySlug, {
+        role: rolePreset.role,
+        grants,
+      });
+      setOverrides(result.overrides);
+      toast("Permissions saved");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save permissions");
+      toast(err instanceof Error ? err.message : "Unable to save permissions", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!companies.length) {
+    return (
+      <EmptyState
+        title="No companies"
+        description="Create a company before editing role permissions."
+      />
+    );
+  }
+
+  const groups = rolePreset
+    ? groupPermissions(rolePreset.allowedActions, rolePreset.deniedByDefault)
+    : [];
+
+  return (
+    <SectionCard
+      title="Permissions editor"
+      description="Company-scoped role overrides. Defaults come from platform presets; changes apply only to the selected company. Company Admin presets are protected."
+      actions={
+        <Button type="button" variant="primary" loading={saving} onClick={() => void savePermissions()}>
+          Save changes
+        </Button>
+      }
+    >
+      <div className="permissions-editor-controls">
+        <label className="muted small">
+          Company
+          <select
+            className="input"
+            value={companySlug}
+            onChange={(e) => setCompanySlug(e.target.value)}
+          >
+            {companies.map((c) => (
+              <option key={c.id} value={c.slug}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="muted small">
+          Role
+          <select
+            className="input"
+            value={selectedRole}
+            onChange={(e) => setSelectedRole(e.target.value)}
+          >
+            {editableRoles.map((role) => (
+              <option key={role.role} value={role.role}>
+                {role.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {loading ? <LoadingState label="Loading permissions…" /> : null}
+      {error ? <p className="error-text">{error}</p> : null}
+      {!loading && rolePreset ? (
+        <div className="permissions-editor">
+          <div className="permissions-matrix-head">
+            <span>Capability</span>
+            <span>{rolePreset.displayName}</span>
+          </div>
+          {groups.map((group) => (
+            <div key={group.id} className="permission-group">
+              <h4 className="permission-group-title">{group.label}</h4>
+              {group.items.map((item) => (
+                <label key={item.action} className="permission-row">
+                  <span>{item.label}</span>
+                  <input
+                    type="checkbox"
+                    checked={draft.get(item.action) ?? item.allowed}
+                    onChange={(e) => {
+                      setDraft((prev) => {
+                        const next = new Map(prev);
+                        next.set(item.action, e.target.checked);
+                        return next;
+                      });
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+          ))}
+          <details className="advanced-block">
+            <summary>Advanced — technical action strings</summary>
+            <p className="mono small">{[...draft.entries()].filter(([, v]) => v).map(([a]) => a).join(", ")}</p>
+          </details>
+        </div>
+      ) : null}
+    </SectionCard>
   );
 }
 
