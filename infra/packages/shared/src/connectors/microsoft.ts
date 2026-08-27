@@ -54,6 +54,30 @@ export const MICROSOFT_GRAPH_SCOPES = {
   outlook_shared: ["Mail.Read.Shared", "User.Read"],
 } as const;
 
+/** Application permissions granted via admin consent (OneDrive + SharePoint only). */
+export const MICROSOFT_APP_PERMISSIONS = [
+  "Files.Read.All",
+  "Sites.Read.All",
+  "User.Read.All",
+] as const;
+
+/**
+ * How a company authenticates to Microsoft Graph.
+ * - platform_legacy: shared Worker secrets (Caddington production path)
+ * - platform_multitenant: INFRA SaaS app + per-company admin consent
+ * - company_app: customer-owned Entra app credentials stored encrypted per company
+ */
+export type MicrosoftConnectorAuthMode =
+  | "platform_legacy"
+  | "platform_multitenant"
+  | "company_app";
+
+export const MICROSOFT_CONNECTOR_AUTH_MODES: readonly MicrosoftConnectorAuthMode[] = [
+  "platform_legacy",
+  "platform_multitenant",
+  "company_app",
+] as const;
+
 export const MICROSOFT_CONNECTOR_DEFINITION_IDS = [
   "conn_microsoft_365",
   "conn_onedrive",

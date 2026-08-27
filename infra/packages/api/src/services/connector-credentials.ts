@@ -524,7 +524,7 @@ export async function getConnectorCredentialMetadata(input: {
 }
 
 export function connectorHasProviderTest(definitionId: string): boolean {
-  return definitionId === "conn_xero";
+  return definitionId === "conn_xero" || definitionId === "conn_microsoft_365";
 }
 
 export function sanitizeConnectorConfig(

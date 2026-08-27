@@ -373,6 +373,16 @@ connectors.post(
       actor: c.get("user").email,
     });
     if (!stored.ok) return c.json(stored.body, stored.status);
+    if (instance.connectorDefinitionId === "conn_microsoft_365") {
+      await c.env.DB.prepare(
+        `UPDATE connector_instances
+         SET microsoft_auth_mode = 'company_app', health_message = 'Awaiting Microsoft admin consent',
+             updated_at = ?
+         WHERE id = ? AND company_id = ?`,
+      )
+        .bind(nowIso(), instance.id, company.id)
+        .run();
+    }
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
       eventType: "connector.connected",
@@ -415,6 +425,13 @@ connectors.get(
       xero:
         instance.connectorDefinitionId === "conn_xero"
           ? publicXeroView(instance)
+          : undefined,
+      microsoft:
+        instance.connectorDefinitionId === "conn_microsoft_365"
+          ? await (async () => {
+              const { getMicrosoftConnectorPublicView } = await import("../services/microsoft-oauth");
+              return getMicrosoftConnectorPublicView(c.env, company.id, instance.id);
+            })()
           : undefined,
     });
   },
@@ -506,6 +523,16 @@ connectors.post(
       });
       return c.json(result, result.tested ? 200 : 409);
     }
+    if (instance.connectorDefinitionId === "conn_microsoft_365") {
+      const { testMicrosoftConnection } = await import("../services/microsoft-oauth");
+      const result = await testMicrosoftConnection({
+        env: c.env,
+        companyId: company.id,
+        instanceId: instance.id,
+        actor: c.get("user").email,
+      });
+      return c.json(result, result.tested && result.ok ? 200 : 409);
+    }
     const tested = connectorHasProviderTest(instance.connectorDefinitionId);
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
@@ -541,6 +568,17 @@ connectors.post(
     }
     if (instance.connectorDefinitionId === "conn_xero") {
       const revoked = await disconnectXero({
+        env: c.env,
+        companyId: company.id,
+        instanceId: instance.id,
+        actor: c.get("user").email,
+      });
+      if (!revoked.ok) return c.json(revoked.body, revoked.status);
+      return c.json({ ok: true, authStatus: "revoked" });
+    }
+    if (instance.connectorDefinitionId === "conn_microsoft_365") {
+      const { disconnectMicrosoft } = await import("../services/microsoft-oauth");
+      const revoked = await disconnectMicrosoft({
         env: c.env,
         companyId: company.id,
         instanceId: instance.id,
@@ -618,6 +656,21 @@ connectors.get("/api/connectors/xero/oauth/callback", loadSession, async (c) => 
     state: c.req.query("state") ?? "",
     code: c.req.query("code") ?? null,
     error: c.req.query("error") ?? null,
+    sessionUserId: user?.userId ?? null,
+  });
+  return c.redirect(result.redirectTo, 302);
+});
+
+connectors.get("/api/connectors/microsoft/oauth/callback", loadSession, async (c) => {
+  const user = c.get("user");
+  const { handleMicrosoftAdminConsentCallback } = await import("../services/microsoft-oauth");
+  const result = await handleMicrosoftAdminConsentCallback({
+    env: c.env,
+    state: c.req.query("state") ?? "",
+    adminConsent: c.req.query("admin_consent") ?? null,
+    tenant: c.req.query("tenant") ?? null,
+    error: c.req.query("error") ?? null,
+    errorDescription: c.req.query("error_description") ?? null,
     sessionUserId: user?.userId ?? null,
   });
   return c.redirect(result.redirectTo, 302);
@@ -1053,11 +1106,20 @@ connectors.get(
       return c.json({ error: "Access denied" }, 403);
     }
     const instanceId = c.req.query("instanceId") ?? null;
+    const instances = await listConnectorInstances(c.env.DB, company.id);
+    const instance =
+      instances.find((i) => i.id === instanceId) ??
+      instances.find((i) => i.connectorDefinitionId === "conn_microsoft_365") ??
+      null;
     const { listMicrosoftSources } = await import("../services/microsoft-sync");
     const { getMicrosoftConnectorHealth } = await import("../services/microsoft-sync");
     const { microsoftOAuthStatus } = await import("../services/microsoft-oauth");
-    const sources = await listMicrosoftSources(c.env.DB, company.id, instanceId);
-    const health = await getMicrosoftConnectorHealth(c.env);
+    const sources = await listMicrosoftSources(c.env.DB, company.id, instance?.id ?? instanceId);
+    const health = await getMicrosoftConnectorHealth(c.env, {
+      companyId: company.id,
+      connectorInstanceId: instance?.id ?? undefined,
+      actor: c.get("user").email,
+    });
     const { getMicrosoftSourceJobStats } = await import("../services/microsoft-sync");
     const sourcesWithQueue = await Promise.all(
       sources.map(async (source) => {
@@ -1085,6 +1147,7 @@ connectors.get(
     const outlookPermissions = await assessOutlookPermissions(c.env, { companyId: company.id });
     return c.json({
       status: microsoftOAuthStatus(c.env),
+      instanceId: instance?.id ?? null,
       health,
       outlook: {
         permissions: outlookPermissions,
@@ -1136,13 +1199,19 @@ connectors.post(
     }
     if (!instance) {
       const { newId: genId, nowIso: now } = await import("../db/mappers");
-      const instanceId = genId("ci");
+      const newInstanceId = genId("ci");
       await c.env.DB.prepare(
         `INSERT INTO connector_instances (id, company_id, connector_definition_id, name, status, auth_status, created_at, updated_at)
          VALUES (?, ?, 'conn_microsoft_365', 'Microsoft 365', 'configured', 'connected', ?, ?)`,
-      ).bind(instanceId, company.id, now(), now()).run();
-      instance = (await getConnectorInstance(c.env.DB, instanceId))!;
+      ).bind(newInstanceId, company.id, now(), now()).run();
+      instance = (await getConnectorInstance(c.env.DB, newInstanceId))!;
     }
+    const { ensureMicrosoftLegacyBinding } = await import("../services/microsoft-credentials");
+    await ensureMicrosoftLegacyBinding(c.env, c.env.DB, {
+      companyId: company.id,
+      connectorInstanceId: instance.id,
+      actor: c.get("user").email,
+    });
     const { discoverMicrosoftSources } = await import("../services/microsoft-sync");
     const result = await discoverMicrosoftSources(c.env, {
       companyId: company.id,
@@ -1378,6 +1447,7 @@ connectors.post(
       definitionId?: string;
       instanceId?: string;
       component?: string;
+      authMode?: "platform_multitenant" | "company_app";
     };
     const { startMicrosoftOAuth } = await import("../services/microsoft-oauth");
     const result = await startMicrosoftOAuth(c.env.DB, c.env, {
@@ -1385,8 +1455,11 @@ connectors.post(
       userId: c.get("user").userId,
       definitionId: body.definitionId ?? "conn_microsoft_365",
       instanceId: body.instanceId ?? null,
-      component: (body.component as "onedrive" | "sharepoint" | "outlook_shared" | "microsoft_365") ?? "microsoft_365",
-      returnPath: `/portal/${company.slug}/connectors`,
+      component: (body.component as "onedrive" | "sharepoint" | "outlook_shared" | "microsoft_365") ?? "onedrive",
+      returnPath: `/portal/${company.slug}/microsoft-365`,
+      authMode: body.authMode ?? "company_app",
+      companySlug: company.slug,
+      actor: c.get("user").email,
     });
     if (!result.ok) return c.json({ error: result.message, code: result.code }, 409);
     return c.json({ authorizationUrl: result.authorizationUrl, state: result.state });

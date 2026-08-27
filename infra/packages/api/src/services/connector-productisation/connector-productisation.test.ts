@@ -85,7 +85,7 @@ describe("Connector productisation profiles", () => {
 });
 
 describe("Connector blockers", () => {
-  it("reports Microsoft single-tenant platform blocker", () => {
+  it("reports Microsoft onboarding blockers for new tenants", () => {
     const blockers = assessConnectorBlockers({
       env: baseEnv,
       companyId: "co_ht",
@@ -94,7 +94,8 @@ describe("Connector blockers", () => {
       instance: null,
       mcp,
     });
-    expect(blockers.some((b) => b.code === "MICROSOFT_SINGLE_TENANT_PLATFORM")).toBe(true);
+    expect(blockers.some((b) => b.code === "MICROSOFT_MULTITENANT_ENTRA_MANUAL")).toBe(true);
+    expect(blockers.some((b) => b.code === "MICROSOFT_NOT_CONNECTED")).toBe(true);
   });
 
   it("allows Xero when platform secrets configured", () => {

@@ -330,6 +330,7 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
       properties: {
         tenantId: { type: "string" },
         clientId: { type: "string" },
+        clientSecret: { type: "string", format: "secret" },
       },
     },
     configSchema: {

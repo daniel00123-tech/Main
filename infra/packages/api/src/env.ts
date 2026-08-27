@@ -37,6 +37,8 @@ export interface Env {
   MICROSOFT_CLIENT_ID?: string;
   MICROSOFT_CLIENT_SECRET?: string;
   MICROSOFT_REDIRECT_URI?: string;
+  /** Set to true after Daniel converts the platform Entra app to multi-tenant */
+  MICROSOFT_MULTITENANT_APP?: string;
   /** Caddington MCP admin token for knowledge upload bridge */
   CADDINGTON_ADMIN_TOKEN?: string;
   /** Cloudflare Queue for Microsoft file ingestion (one file per message) */
