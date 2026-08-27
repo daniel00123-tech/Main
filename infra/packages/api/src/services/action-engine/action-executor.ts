@@ -125,30 +125,12 @@ export async function executeApprovedActionPlan(
   });
 
   try {
-    if (plan.requestedAction === "xero.invoices.create") {
-      return await executeDraftInvoicePlan(env, { plan, actor, executionId: execution.id, def, correlationId: input.correlationId });
-    }
-
-    await finalizeExecution(env.DB, {
+    const { executeXeroActionPlan } = await import("./xero-write-executors");
+    return executeXeroActionPlan(env, {
+      plan: input.plan,
+      actor: input.actor,
       executionId: execution.id,
-      companyId: plan.companyId,
-      status: "failed",
-      errorCode: "ACTION_NOT_EXECUTABLE",
-      errorMessage: `No executor for ${plan.requestedAction}`,
     });
-    await updateActionPlanStatus(env.DB, {
-      planId: plan.id,
-      companyId: plan.companyId,
-      status: "failed",
-      actor,
-    });
-    return {
-      ok: false,
-      status: "failed",
-      executionId: execution.id,
-      error: `Action ${plan.requestedAction} is not yet executable.`,
-      code: "ACTION_NOT_EXECUTABLE",
-    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await finalizeExecution(env.DB, {

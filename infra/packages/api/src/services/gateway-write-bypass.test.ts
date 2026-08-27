@@ -6,6 +6,9 @@ describe("gateway direct write bypass protection", () => {
     expect(isXeroWriteToolName("xero_create_draft_invoice")).toBe(true);
     expect(isXeroWriteToolName("xero_create_credit_note")).toBe(true);
     expect(isXeroWriteToolName("xero_allocate_payment")).toBe(true);
+    expect(isXeroWriteToolName("xero_approve_invoice")).toBe(true);
+    expect(isXeroWriteToolName("xero_send_invoice")).toBe(true);
+    expect(isXeroWriteToolName("xero_create_draft_bill")).toBe(true);
   });
 
   it("does not classify read tools as write tools", () => {

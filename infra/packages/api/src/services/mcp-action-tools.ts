@@ -13,6 +13,14 @@ export const ACTION_CONTROL_TOOLS = [
   "plan_xero_credit_invoices",
   "plan_xero_draft_invoice",
   "plan_xero_remittance_allocation",
+  "plan_xero_approve_invoice",
+  "plan_xero_send_invoice",
+  "plan_xero_draft_bill",
+  "plan_xero_approve_bill",
+  "plan_xero_draft_credit_note",
+  "plan_xero_create_contact",
+  "plan_xero_create_approve_send",
+  "list_xero_test_artefacts",
 ] as const;
 
 export type ActionControlTool = (typeof ACTION_CONTROL_TOOLS)[number];
@@ -32,6 +40,14 @@ export const ACTION_CONTROL_TOOL_REQUIRED_SCOPES: Record<ActionControlTool, stri
   plan_xero_draft_invoice: "xero.action.plan",
   plan_xero_credit_invoices: "xero.action.plan",
   plan_xero_remittance_allocation: "xero.action.plan",
+  plan_xero_approve_invoice: "xero.action.plan",
+  plan_xero_send_invoice: "xero.action.plan",
+  plan_xero_draft_bill: "xero.action.plan",
+  plan_xero_approve_bill: "xero.action.plan",
+  plan_xero_draft_credit_note: "xero.action.plan",
+  plan_xero_create_contact: "xero.action.plan",
+  plan_xero_create_approve_send: "xero.action.plan",
+  list_xero_test_artefacts: "xero.action.read",
 };
 
 export function actionControlToolAllowed(
@@ -218,6 +234,121 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
         idempotencyKey: { type: "string" },
       },
       required: ["paymentAmount", "currencyCode", "invoiceHints"],
+      additionalProperties: false,
+    },
+  },
+  plan_xero_approve_invoice: {
+    description: "Plan approving/authorising a DRAFT ACCREC sales invoice in Xero. Does NOT execute.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        invoiceId: { type: "string" },
+        invoiceNumber: { type: "string" },
+        idempotencyKey: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+  },
+  plan_xero_send_invoice: {
+    description: "Plan sending an authorised sales invoice via Xero email. Does NOT execute.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        invoiceId: { type: "string" },
+        invoiceNumber: { type: "string" },
+        idempotencyKey: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+  },
+  plan_xero_draft_bill: {
+    description: "Plan creating a DRAFT ACCPAY supplier bill in Xero. Does NOT execute.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        contactId: { type: "string" },
+        contactName: { type: "string" },
+        lineItems: { type: "array", items: { type: "object" }, minItems: 1 },
+        reference: { type: "string" },
+        billDate: { type: "string" },
+        dueDate: { type: "string" },
+        taxTreatment: { type: "string" },
+        idempotencyKey: { type: "string" },
+      },
+      required: ["lineItems"],
+      additionalProperties: false,
+    },
+  },
+  plan_xero_approve_bill: {
+    description: "Plan approving a DRAFT ACCPAY supplier bill. Does NOT execute.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        invoiceId: { type: "string" },
+        invoiceNumber: { type: "string" },
+        idempotencyKey: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+  },
+  plan_xero_draft_credit_note: {
+    description: "Plan creating a DRAFT sales credit note in Xero. Does NOT execute.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        contactId: { type: "string" },
+        contactName: { type: "string" },
+        lineItems: { type: "array", items: { type: "object" }, minItems: 1 },
+        reference: { type: "string" },
+        taxTreatment: { type: "string" },
+        idempotencyKey: { type: "string" },
+      },
+      required: ["lineItems"],
+      additionalProperties: false,
+    },
+  },
+  plan_xero_create_contact: {
+    description: "Plan creating a new Xero contact. Does NOT execute. Duplicate names are blocked.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", minLength: 1 },
+        email: { type: "string" },
+        phone: { type: "string" },
+        isCustomer: { type: "boolean" },
+        isSupplier: { type: "boolean" },
+        idempotencyKey: { type: "string" },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  plan_xero_create_approve_send: {
+    description: "Plan a combined create → approve → send sales invoice workflow. Does NOT execute until confirmed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        contactId: { type: "string" },
+        contactName: { type: "string" },
+        lineItems: { type: "array", items: { type: "object" }, minItems: 1 },
+        reference: { type: "string" },
+        invoiceDate: { type: "string" },
+        dueDate: { type: "string" },
+        taxTreatment: { type: "string" },
+        idempotencyKey: { type: "string" },
+      },
+      required: ["lineItems"],
+      additionalProperties: false,
+    },
+  },
+  list_xero_test_artefacts: {
+    description: "Report-only manifest of INFRA test invoice references (no deletion).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        prefix: { type: "string", description: "Reference prefix, default INFRA-" },
+        limit: { type: "number", minimum: 1, maximum: 100 },
+      },
       additionalProperties: false,
     },
   },

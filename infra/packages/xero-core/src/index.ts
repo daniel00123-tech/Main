@@ -28,7 +28,21 @@ export {
   vatCapabilityWithFetch,
 } from "./tools/read";
 export { createDraftInvoiceWithFetch } from "./tools/write";
-export { resolveSalesAccountCodeWithFetch } from "./accounts-resolve";
+export {
+  approveInvoiceWithFetch,
+  sendInvoiceWithFetch,
+  updateDraftInvoiceWithFetch,
+  createDraftBillWithFetch,
+  approveBillWithFetch,
+  createDraftCreditNoteWithFetch,
+  approveCreditNoteWithFetch,
+  allocateCreditNoteWithFetch,
+  createContactWithFetch,
+  voidInvoiceWithFetch,
+  voidCreditNoteWithFetch,
+} from "./tools/write";
+export { withXeroRetry } from "./retry";
+export { resolveSalesAccountCodeWithFetch, resolveExpenseAccountCodeWithFetch } from "./accounts-resolve";
 export * as xeroReadTools from "./tools/read";
 export * as xeroWriteTools from "./tools/write";
 

@@ -1,4 +1,16 @@
-import { XeroApiError, XeroClient, xeroReadTools, createDraftInvoiceWithFetch } from "@infra/xero-core";
+import {
+  XeroApiError,
+  XeroClient,
+  xeroReadTools,
+  createDraftInvoiceWithFetch,
+  approveInvoiceWithFetch,
+  sendInvoiceWithFetch,
+  createDraftBillWithFetch,
+  approveBillWithFetch,
+  createDraftCreditNoteWithFetch,
+  createContactWithFetch,
+  updateDraftInvoiceWithFetch,
+} from "@infra/xero-core";
 
 export type CaddingtonMcpEnv = {
   MCP_AUTH_TOKEN?: string;
@@ -564,73 +576,187 @@ export function registerXeroReadTools(server: McpToolServer, env: CaddingtonMcpE
 export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcpEnv, z: ZodLike) {
   const zf: ZodField = z;
 
+  async function runWriteTool<T>(
+    args: Record<string, unknown>,
+    run: (config: { accessToken: string; tenantId: string; apiBaseUrl: string }, xeroArgs: Record<string, unknown>) => Promise<T>,
+  ) {
+    const injected =
+      injectedContextFromArgs(args) ?? (env.__infraXeroContext ? env.__infraXeroContext : null);
+    const resolved = injected ? { ok: true as const, context: injected } : await fetchInfraXeroContext(env);
+    if (!resolved.ok) return toolError(resolved.message, resolved.code);
+    const xeroArgs = stripInternalArgs(args);
+    const config = {
+      accessToken: resolved.context.accessToken,
+      tenantId: resolved.context.tenantId,
+      apiBaseUrl: resolved.context.apiBaseUrl,
+      fetchImpl: fetch,
+    };
+    try {
+      const result = await run(config, xeroArgs);
+      return toolSuccess({ organisationName: resolved.context.organisationName, ...result });
+    } catch (error) {
+      if (error instanceof XeroApiError) return toolError(error.provider.message, error.provider.code);
+      return toolError(error instanceof Error ? error.message : String(error), "XERO_EXECUTION_FAILED");
+    }
+  }
+
   server.registerTool(
     "xero_create_draft_invoice",
     {
-      description:
-        "Create a draft ACCREC sales invoice in Xero. INFRA Action Engine only — not for direct AI execution.",
+      description: "Create a draft ACCREC sales invoice in Xero. Action Engine only.",
       inputSchema: {
-        contactId: zf.string().min(1).describe("Xero ContactID."),
-        lineItems: zf
-          .array(
-            zf.object({
-              description: zf.string(),
-              quantity: zf.number(),
-              unitAmount: zf.number(),
-              accountCode: zf.string().optional(),
-              taxType: zf.string().optional(),
-            }),
-          )
-          .min(1),
+        contactId: zf.string().min(1),
+        lineItems: zf.array(zf.object({
+          description: zf.string(), quantity: zf.number(), unitAmount: zf.number(),
+          accountCode: zf.string().optional(), taxType: zf.string().optional(),
+        })).min(1),
         reference: zf.string().optional(),
-        date: zf.string().optional().describe("ISO date YYYY-MM-DD (invoice date)."),
-        dueDate: zf.string().optional().describe("ISO date YYYY-MM-DD."),
+        date: zf.string().optional(),
+        dueDate: zf.string().optional(),
       },
     },
-    async (args) => {
-      const injected =
-        injectedContextFromArgs(args) ??
-        (env.__infraXeroContext ? env.__infraXeroContext : null);
-      const resolved = injected
-        ? { ok: true as const, context: injected }
-        : await fetchInfraXeroContext(env);
-      if (!resolved.ok) {
-        return toolError(resolved.message, resolved.code);
-      }
-      const xeroArgs = stripInternalArgs(args);
-      try {
-        const result = await createDraftInvoiceWithFetch(
-          {
-            accessToken: resolved.context.accessToken,
-            tenantId: resolved.context.tenantId,
-            apiBaseUrl: resolved.context.apiBaseUrl,
-            fetchImpl: fetch,
-          },
-          {
-            contactId: String(xeroArgs.contactId),
-            lineItems: (xeroArgs.lineItems as Array<{
-              description: string;
-              quantity: number;
-              unitAmount: number;
-              accountCode?: string;
-              taxType?: string;
-            }>) ?? [],
-            reference: xeroArgs.reference as string | undefined,
-            date: xeroArgs.date as string | undefined,
-            dueDate: xeroArgs.dueDate as string | undefined,
-          },
-        );
-        return toolSuccess({
-          organisationName: resolved.context.organisationName,
-          ...result,
-        });
-      } catch (error) {
-        if (error instanceof XeroApiError) {
-          return toolError(error.provider.message, error.provider.code);
-        }
-        const message = error instanceof Error ? error.message : String(error);
-        return toolError(message, "XERO_EXECUTION_FAILED");
-      }
+    async (args) =>
+      runWriteTool(args, (config, xeroArgs) =>
+        createDraftInvoiceWithFetch(config, {
+          contactId: String(xeroArgs.contactId),
+          lineItems: xeroArgs.lineItems as never,
+          reference: xeroArgs.reference as string | undefined,
+          date: xeroArgs.date as string | undefined,
+          dueDate: xeroArgs.dueDate as string | undefined,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "xero_approve_invoice",
+    {
+      description: "Approve/authorise a DRAFT ACCREC sales invoice. Action Engine only.",
+      inputSchema: { invoiceId: zf.string().min(1) },
     },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      approveInvoiceWithFetch(config, { invoiceId: String(xeroArgs.invoiceId) })),
+  );
+
+  server.registerTool(
+    "xero_send_invoice",
+    {
+      description: "Send an authorised sales invoice via Xero email. Action Engine only.",
+      inputSchema: {
+        invoiceId: zf.string().min(1),
+        emailAddress: zf.string().optional(),
+      },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      sendInvoiceWithFetch(config, {
+        invoiceId: String(xeroArgs.invoiceId),
+        emailAddress: xeroArgs.emailAddress as string | undefined,
+      })),
+  );
+
+  server.registerTool(
+    "xero_create_draft_bill",
+    {
+      description: "Create a draft ACCPAY supplier bill in Xero. Action Engine only.",
+      inputSchema: {
+        contactId: zf.string().min(1),
+        lineItems: zf.array(zf.object({
+          description: zf.string(), quantity: zf.number(), unitAmount: zf.number(),
+          accountCode: zf.string().optional(), taxType: zf.string().optional(),
+        })).min(1),
+        reference: zf.string().optional(),
+        date: zf.string().optional(),
+        dueDate: zf.string().optional(),
+      },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      createDraftBillWithFetch(config, {
+        contactId: String(xeroArgs.contactId),
+        lineItems: xeroArgs.lineItems as never,
+        reference: xeroArgs.reference as string | undefined,
+        date: xeroArgs.date as string | undefined,
+        dueDate: xeroArgs.dueDate as string | undefined,
+      })),
+  );
+
+  server.registerTool(
+    "xero_approve_bill",
+    {
+      description: "Approve/authorise a DRAFT ACCPAY supplier bill. Action Engine only.",
+      inputSchema: { invoiceId: zf.string().min(1) },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      approveBillWithFetch(config, { invoiceId: String(xeroArgs.invoiceId) })),
+  );
+
+  server.registerTool(
+    "xero_create_draft_credit_note",
+    {
+      description: "Create a draft ACCREC credit note in Xero. Action Engine only.",
+      inputSchema: {
+        contactId: zf.string().min(1),
+        lineItems: zf.array(zf.object({
+          description: zf.string(), quantity: zf.number(), unitAmount: zf.number(),
+          accountCode: zf.string().optional(), taxType: zf.string().optional(),
+        })).min(1),
+        reference: zf.string().optional(),
+      },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      createDraftCreditNoteWithFetch(config, {
+        contactId: String(xeroArgs.contactId),
+        lineItems: xeroArgs.lineItems as never,
+        reference: xeroArgs.reference as string | undefined,
+      })),
+  );
+
+  server.registerTool(
+    "xero_create_contact",
+    {
+      description: "Create a Xero contact. Action Engine only.",
+      inputSchema: {
+        name: zf.string().min(1),
+        email: zf.string().optional(),
+        phone: zf.string().optional(),
+        isCustomer: zf.boolean().optional(),
+        isSupplier: zf.boolean().optional(),
+      },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      createContactWithFetch(config, {
+        name: String(xeroArgs.name),
+        email: xeroArgs.email as string | undefined,
+        phone: xeroArgs.phone as string | undefined,
+        isCustomer: xeroArgs.isCustomer as boolean | undefined,
+        isSupplier: xeroArgs.isSupplier as boolean | undefined,
+      })),
+  );
+
+  server.registerTool(
+    "xero_update_draft_invoice",
+    {
+      description: "Update a DRAFT invoice or bill in Xero. Action Engine only.",
+      inputSchema: {
+        invoiceId: zf.string().min(1),
+        type: zf.string().min(1),
+        reference: zf.string().optional(),
+        date: zf.string().optional(),
+        dueDate: zf.string().optional(),
+        lineItems: zf.array(zf.object({
+          description: zf.string(), quantity: zf.number(), unitAmount: zf.number(),
+          accountCode: zf.string().optional(), taxType: zf.string().optional(),
+        })),
+      },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      updateDraftInvoiceWithFetch(config, {
+        invoiceId: String(xeroArgs.invoiceId),
+        type: String(xeroArgs.type) === "ACCPAY" ? "ACCPAY" : "ACCREC",
+        patch: {
+          reference: xeroArgs.reference as string | undefined,
+          date: xeroArgs.date as string | undefined,
+          dueDate: xeroArgs.dueDate as string | undefined,
+          lineItems: xeroArgs.lineItems as never,
+        },
+      })),
   );
 }

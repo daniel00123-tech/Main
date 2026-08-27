@@ -6,6 +6,7 @@ import {
   type WriteFeatureFlags,
   DEFAULT_WRITE_FEATURE_FLAGS,
   xeroActionDefinition,
+  actionRiskProfile,
 } from "@infra/shared";
 import { isFinancialRiskClass, isWriteRiskClass } from "../connector-lifecycle";
 
@@ -20,25 +21,26 @@ export type PermissionEvaluationInput = {
   identityStatus?: string;
   /** When director/company_admin, separate organisational approval is not required for confirmation-only flows. */
   actorRole?: string;
+  /** MCP service identities use confirmation-only for accounting commitment; portal users may need approval. */
+  actorType?: "service" | "user";
   flags?: Partial<WriteFeatureFlags>;
 };
 
 const DIRECTOR_ROLES = new Set(["director", "company_admin"]);
 
-/** Draft ACCREC invoices are created in DRAFT status only — ChatGPT confirmation is sufficient. */
-function isDraftInvoiceCreateAction(action: string): boolean {
-  return action === "xero.invoices.create";
-}
-
 function separateApprovalRequired(input: {
   action: string;
-  isFinancial: boolean;
-  riskClass: RiskClassification;
   actorRole?: string;
+  actorType?: "service" | "user";
 }): boolean {
-  if (isDraftInvoiceCreateAction(input.action)) return false;
-  if (!input.isFinancial && input.riskClass !== "delete") return false;
-  if (input.riskClass === "delete") return true;
+  const profile = actionRiskProfile(input.action);
+  if (!profile.requiresApproval) return false;
+
+  // ChatGPT / MCP service identities: enhanced confirmation only (no portal loop).
+  if (input.actorType === "service") {
+    return profile.level === "MONEY_MOVEMENT" || profile.level === "DESTRUCTIVE";
+  }
+
   if (input.actorRole && DIRECTOR_ROLES.has(input.actorRole)) return false;
   return true;
 }
@@ -50,6 +52,7 @@ export function evaluateActionPermission(
   const def = xeroActionDefinition(input.action);
   const requiredPermission = input.action;
   const riskClass = input.riskClass;
+  const profile = actionRiskProfile(input.action);
 
   const base = {
     requiredPermission,
@@ -122,15 +125,14 @@ export function evaluateActionPermission(
     if (!flags.financialWritesEnabled && !flags.writesEnabled) {
       const needsSeparateApproval = separateApprovalRequired({
         action: input.action,
-        isFinancial,
-        riskClass,
         actorRole: input.actorRole,
+        actorType: input.actorType,
       });
       return {
         ...base,
         allowed: false,
         reasonCode: "writes_disabled",
-        requiresConfirmation: true,
+        requiresConfirmation: profile.requiresConfirmation,
         requiresApproval: needsSeparateApproval,
         message: customerConnectorError(CONNECTOR_ERROR_CODES.FINANCIAL_WRITES_DISABLED).error,
       };
@@ -139,11 +141,11 @@ export function evaluateActionPermission(
 
   const requiresApproval = separateApprovalRequired({
     action: input.action,
-    isFinancial,
-    riskClass,
     actorRole: input.actorRole,
+    actorType: input.actorType,
   });
-  const requiresConfirmation = isFinancial || isWrite;
+  const requiresConfirmation =
+    profile.requiresConfirmation || isFinancial || isWrite;
 
   return {
     ...base,
@@ -154,7 +156,9 @@ export function evaluateActionPermission(
     message: requiresApproval
       ? "Separate organisational approval required before execution."
       : requiresConfirmation
-        ? "User confirmation required before execution."
+        ? profile.requiresEnhancedConfirmation
+          ? "Enhanced user confirmation required before execution."
+          : "User confirmation required before execution."
         : undefined,
   };
 }

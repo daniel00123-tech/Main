@@ -33,6 +33,7 @@ type XeroInvoiceRow = {
   CurrencyCode?: string;
   Contact?: { ContactID?: string; Name?: string };
   LineItems?: Array<{ Description?: string; Quantity?: number; UnitAmount?: number; AccountCode?: string }>;
+  UpdatedDateUTC?: string;
 };
 
 async function resolveXeroToken(env: Env, companyId: string, instanceId: string, actor: string) {
@@ -541,6 +542,46 @@ export async function revalidateXeroPlanTargets(input: {
         amount: amountDue,
         validation: amountDue <= 0 ? "zero_outstanding" : target.validation,
       });
+    }
+    return { targets, fingerprint: await fingerprintTargets(targets) };
+  }
+
+  if (input.requestedAction === "xero.invoices.approve" || input.requestedAction === "xero.invoices.send") {
+    const targets: ActionTarget[] = [];
+    for (const target of input.targets) {
+      const invoice = await fetchInvoice(xeroToken, { invoiceId: target.targetId });
+      if (!invoice || !isSalesTransactionType(String(invoice.Type ?? ""))) {
+        targets.push({ ...target, validation: "not_found", validationDetail: "Sales invoice not found." });
+        continue;
+      }
+      const fp = {
+        status: invoice.Status ?? null,
+        total: invoice.Total ?? null,
+        updatedDateUtc: invoice.UpdatedDateUTC ?? null,
+      };
+      const plannedFp = (target.proposedState?.stateFingerprint ?? {}) as Record<string, unknown>;
+      const stale =
+        plannedFp.status != null && plannedFp.status !== fp.status ||
+        (plannedFp.updatedDateUtc != null && plannedFp.updatedDateUtc !== fp.updatedDateUtc);
+      targets.push({
+        ...target,
+        currentState: { ...target.currentState, ...fp },
+        validation: stale ? "wrong_status" : target.validation,
+        validationDetail: stale ? "Invoice changed since plan was created (PLAN_STALE)." : target.validationDetail,
+      });
+    }
+    return { targets, fingerprint: await fingerprintTargets(targets) };
+  }
+
+  if (input.requestedAction === "xero.bills.approve") {
+    const targets: ActionTarget[] = [];
+    for (const target of input.targets) {
+      const invoice = await fetchInvoice(xeroToken, { invoiceId: target.targetId });
+      if (!invoice || String(invoice.Type ?? "") !== "ACCPAY") {
+        targets.push({ ...target, validation: "wrong_type", validationDetail: "Supplier bill not found." });
+        continue;
+      }
+      targets.push({ ...target, validation: String(invoice.Status ?? "") === "DRAFT" ? "valid" : "wrong_status" });
     }
     return { targets, fingerprint: await fingerprintTargets(targets) };
   }

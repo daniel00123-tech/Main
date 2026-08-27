@@ -436,7 +436,23 @@ describe("permission engine — first acceptance policy", () => {
     expect(decision.requiresApproval).toBe(false);
   });
 
-  it("requires separate approval for non-draft financial actions from office staff", () => {
+  it("requires separate approval for money movement from office staff", () => {
+    const decision = evaluateActionPermission({
+      action: "xero.payments.allocate",
+      riskClass: "financial_action",
+      companyStatus: "active",
+      connectorConnected: true,
+      connectorAuthStatus: "connected",
+      actorRole: "office_staff",
+      actorType: "user",
+      grantedScopes: ["accounting.invoices"],
+      requiredScopes: ["accounting.invoices"],
+      flags: { financialWritesEnabled: true, writesEnabled: true },
+    });
+    expect(decision.requiresApproval).toBe(true);
+  });
+
+  it("requires confirmation only for accounting commitment from office staff", () => {
     const decision = evaluateActionPermission({
       action: "xero.credit_notes.create",
       riskClass: "financial_action",
@@ -444,11 +460,30 @@ describe("permission engine — first acceptance policy", () => {
       connectorConnected: true,
       connectorAuthStatus: "connected",
       actorRole: "office_staff",
+      actorType: "user",
       grantedScopes: ["accounting.invoices"],
       requiredScopes: ["accounting.invoices"],
       flags: { financialWritesEnabled: true, writesEnabled: true },
     });
-    expect(decision.requiresApproval).toBe(true);
+    expect(decision.requiresConfirmation).toBe(true);
+    expect(decision.requiresApproval).toBe(false);
+  });
+
+  it("requires confirmation only for MCP service identity on invoice approve", () => {
+    const decision = evaluateActionPermission({
+      action: "xero.invoices.approve",
+      riskClass: "financial_action",
+      companyStatus: "active",
+      connectorConnected: true,
+      connectorAuthStatus: "connected",
+      actorType: "service",
+      grantedScopes: ["accounting.invoices"],
+      requiredScopes: ["accounting.invoices"],
+      flags: { financialWritesEnabled: true, writesEnabled: true },
+    });
+    expect(decision.requiresConfirmation).toBe(true);
+    expect(decision.requiresApproval).toBe(false);
+    expect(decision.reasonCode).toBe("confirmation_required");
   });
 
   it("requires confirmation only for draft invoice create from office staff", () => {

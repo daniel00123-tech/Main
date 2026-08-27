@@ -84,3 +84,51 @@ export async function resolveSalesAccountCodeWithFetch(
 
   throw new Error("Unable to resolve a sales/revenue account in Xero.");
 }
+
+function isExpenseAccount(row: XeroAccountRow): boolean {
+  const type = String(row.Type ?? "").toUpperCase();
+  return type === "EXPENSE" || type === "DIRECTCOSTS" || type === "OVERHEADS";
+}
+
+export async function resolveExpenseAccountCodeWithFetch(
+  config: XeroFetchConfig,
+  input?: { accountCode?: string; accountName?: string },
+): Promise<{ code: string; name: string; source: "explicit" | "default_code" | "name_match" }> {
+  const explicitCode = input?.accountCode?.trim();
+  if (explicitCode) {
+    const account = await fetchAccountByCodeWithFetch(config, explicitCode);
+    if (!account?.Code) {
+      throw new Error(`Expense account code "${explicitCode}" was not found in Xero.`);
+    }
+    return {
+      code: String(account.Code),
+      name: String(account.Name ?? account.Code),
+      source: "explicit",
+    };
+  }
+
+  const accountsBody = await listAccountsWithFetch(config, {});
+  const accounts = (accountsBody.accounts ?? []) as XeroAccountRow[];
+  const active = accounts.filter((row) => String(row.Status ?? "ACTIVE").toUpperCase() === "ACTIVE");
+  const expenses = active.filter(isExpenseAccount);
+
+  const label = input?.accountName?.trim();
+  if (label) {
+    const normalized = normalizeAccountLabel(label);
+    const exact = expenses.find((row) => normalizeAccountLabel(String(row.Name ?? "")) === normalized);
+    if (exact?.Code) {
+      return { code: String(exact.Code), name: String(exact.Name ?? exact.Code), source: "name_match" };
+    }
+  }
+
+  const defaultExpense = expenses.find((row) => String(row.Code ?? "") === "400") ?? expenses[0];
+  if (defaultExpense?.Code) {
+    return {
+      code: String(defaultExpense.Code),
+      name: String(defaultExpense.Name ?? defaultExpense.Code),
+      source: defaultExpense.Code === "400" ? "default_code" : "name_match",
+    };
+  }
+
+  throw new Error("Unable to resolve an expense account in Xero for supplier bills.");
+}

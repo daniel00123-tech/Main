@@ -14,19 +14,43 @@ import {
 } from "./draft-invoice-plan";
 
 export type CompanyMcpWriteResult =
-  | { ok: true; result: Record<string, unknown>; invoiceId: string | null; invoiceNumber: string | null }
+  | { ok: true; result: Record<string, unknown>; invoiceId: string | null; invoiceNumber: string | null; resourceId?: string | null; humanReference?: string | null }
   | { ok: false; code: string; message: string; httpStatus?: number };
 
-function draftInvoicePayloadFromPlan(plan: ActionPlanRecord) {
-  return draftInvoicePayloadFromProposedState(plan);
+function extractResourceMeta(parsed: Record<string, unknown>): {
+  resourceId: string | null;
+  humanReference: string | null;
+} {
+  const invoice = parsed.invoice as Record<string, unknown> | undefined;
+  const bill = parsed.bill as Record<string, unknown> | undefined;
+  const creditNote = parsed.creditNote as Record<string, unknown> | undefined;
+  const contact = parsed.contact as Record<string, unknown> | undefined;
+  if (invoice?.InvoiceID) {
+    return { resourceId: String(invoice.InvoiceID), humanReference: invoice.InvoiceNumber ? String(invoice.InvoiceNumber) : null };
+  }
+  if (bill?.InvoiceID) {
+    return { resourceId: String(bill.InvoiceID), humanReference: bill.InvoiceNumber ? String(bill.InvoiceNumber) : null };
+  }
+  if (creditNote?.CreditNoteID) {
+    return { resourceId: String(creditNote.CreditNoteID), humanReference: creditNote.CreditNoteNumber ? String(creditNote.CreditNoteNumber) : null };
+  }
+  if (contact?.ContactID) {
+    return { resourceId: String(contact.ContactID), humanReference: contact.Name ? String(contact.Name) : null };
+  }
+  return {
+    resourceId: extractInvoiceIdFromMcpResult(parsed),
+    humanReference: extractInvoiceNumberFromMcpResult(parsed),
+  };
 }
 
-export async function executeXeroDraftInvoiceViaCompanyMcp(
+export async function executeXeroMcpTool(
   env: Env,
   input: {
     plan: ActionPlanRecord;
     executionId: string;
     actor: string;
+    toolName: string;
+    arguments: Record<string, unknown>;
   },
 ): Promise<CompanyMcpWriteResult> {
   const mcps = await listMcpEnvironments(env.DB, input.plan.companyId);
@@ -34,7 +58,6 @@ export async function executeXeroDraftInvoiceViaCompanyMcp(
   if (!mcpEnv) {
     return { ok: false, code: "MCP_NOT_FOUND", message: "No enabled Company MCP for this tenant." };
   }
-
   if (!input.plan.connectorInstanceId) {
     return { ok: false, code: "CONNECTOR_MISSING", message: "Plan has no connector instance." };
   }
@@ -60,17 +83,12 @@ export async function executeXeroDraftInvoiceViaCompanyMcp(
     }),
   );
 
-  const payload = draftInvoicePayloadFromPlan(input.plan);
-
   const response = await mcpRequest(env, {
     endpointUrl: mcpEnv.endpointUrl,
     authSecretRef: mcpEnv.authSecretRef,
     serviceBindingRef: mcpEnv.serviceBindingRef,
     method: "tools/call",
-    params: {
-      name: "xero_create_draft_invoice",
-      arguments: payload,
-    },
+    params: { name: input.toolName, arguments: input.arguments },
     internalHeaders: {
       "X-Infra-Xero-Context": xeroContextHeader,
       "X-Infra-Action-Plan-Id": input.plan.id,
@@ -109,12 +127,34 @@ export async function executeXeroDraftInvoiceViaCompanyMcp(
     };
   }
 
+  const meta = extractResourceMeta(parsed);
   return {
     ok: true,
     result: parsed,
-    invoiceId: extractInvoiceIdFromMcpResult(parsed),
-    invoiceNumber: extractInvoiceNumberFromMcpResult(parsed),
+    invoiceId: meta.resourceId,
+    invoiceNumber: meta.humanReference,
+    resourceId: meta.resourceId,
+    humanReference: meta.humanReference,
   };
+}
+
+function draftInvoicePayloadFromPlan(plan: ActionPlanRecord) {
+  return draftInvoicePayloadFromProposedState(plan);
+}
+
+export async function executeXeroDraftInvoiceViaCompanyMcp(
+  env: Env,
+  input: {
+    plan: ActionPlanRecord;
+    executionId: string;
+    actor: string;
+  },
+): Promise<CompanyMcpWriteResult> {
+  return executeXeroMcpTool(env, {
+    ...input,
+    toolName: "xero_create_draft_invoice",
+    arguments: draftInvoicePayloadFromPlan(input.plan),
+  });
 }
 
 export { draftInvoicePayloadFromPlan };

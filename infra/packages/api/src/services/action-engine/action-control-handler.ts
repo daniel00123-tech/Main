@@ -17,6 +17,17 @@ import {
   resolveConnectedXeroInstance,
   revalidateXeroPlanTargets,
 } from "./xero-planner";
+import {
+  planXeroApproveInvoice,
+  planXeroApproveBill,
+  planXeroCreateContact,
+  planXeroCombinedCreateApproveSend,
+  planXeroDraftBill,
+  planXeroDraftCreditNote,
+  planXeroSendInvoice,
+} from "./xero-planner-beta";
+import { humanReadablePlanPreview, humanReadableExecutionSummary } from "./human-readable";
+import { actionRiskProfile } from "@infra/shared";
 import { FINANCIAL_WRITES_ENABLED } from "../approvals";
 import { xeroToolContract } from "../xero-tools";
 import { missingScopesForTier, XERO_SCOPES_DRAFT_INVOICE } from "@infra/shared";
@@ -27,6 +38,22 @@ import { draftInvoiceReviewFromPlan } from "./draft-invoice-plan";
 
 function actorLabel(actor: GatewayActor): string {
   return actor.type === "service" ? actor.identity.name : actor.user.email;
+}
+
+function permissionActorContext(actor: GatewayActor, companyId: string) {
+  if (actor.type === "service") {
+    return {
+      actorType: "service" as const,
+      actorRole: undefined,
+      identityStatus: actor.identity.status,
+    };
+  }
+  const membership = actor.user.memberships.find((m) => m.companyId === companyId);
+  return {
+    actorType: "user" as const,
+    actorRole: membership?.role,
+    identityStatus: undefined,
+  };
 }
 
 function grantedScopes(instance: { capabilitiesEnabled?: string[]; config?: Record<string, unknown> }) {
@@ -133,6 +160,7 @@ export async function executeActionControlTool(
       body: {
         ...sanitizePlanForClient(updated),
         executionResult: exec,
+        humanSummary: humanReadableExecutionSummary(plan, exec),
         workflow: workflowHints(updated),
       },
     };
@@ -233,6 +261,9 @@ export async function executeActionControlTool(
         executionBlocked: result.executionBlocked,
         blockReason: result.blockReason ?? null,
         executionResult,
+        humanSummary: executionResult
+          ? humanReadableExecutionSummary(result.plan, executionResult as never)
+          : null,
         dryRun,
         workflow: workflowHints(result.plan),
         message: result.executionBlocked
@@ -272,6 +303,7 @@ export async function executeActionControlTool(
         ? missingScopesForTier(grantedScopes(instance), "write")
         : undefined,
       flags: { financialWritesEnabled: FINANCIAL_WRITES_ENABLED, writesEnabled: FINANCIAL_WRITES_ENABLED },
+      ...permissionActorContext(input.actor, input.companyId),
     });
     const planned = await planXeroCreditInvoices({
       env,
@@ -318,6 +350,7 @@ export async function executeActionControlTool(
       grantedScopes: grantedScopes(instance),
       requiredScopes: [...XERO_SCOPES_DRAFT_INVOICE],
       flags: { financialWritesEnabled: FINANCIAL_WRITES_ENABLED, writesEnabled: FINANCIAL_WRITES_ENABLED },
+      ...permissionActorContext(input.actor, input.companyId),
     });
     const planned = await planXeroDraftInvoice({
       env,
@@ -383,6 +416,7 @@ export async function executeActionControlTool(
       connectorAuthStatus: instance.authStatus ?? "unknown",
       grantedScopes: grantedScopes(instance),
       flags: { financialWritesEnabled: FINANCIAL_WRITES_ENABLED, writesEnabled: FINANCIAL_WRITES_ENABLED },
+      ...permissionActorContext(input.actor, input.companyId),
     });
     const planned = await planXeroRemittanceAllocation({
       env,
@@ -421,6 +455,172 @@ export async function executeActionControlTool(
         writesEnabled: FINANCIAL_WRITES_ENABLED,
       },
     };
+  }
+
+  if (input.toolName === "list_xero_test_artefacts") {
+    const prefix = String(input.arguments.prefix ?? "INFRA-");
+    return {
+      status: 200,
+      body: {
+        reportOnly: true,
+        message: "Cleanup manifest (report only — no records deleted). Use Xero UI or a future operator-confirmed cleanup action.",
+        prefix,
+        note: "Search by reference prefix requires read-back of known test IDs. Alpha refs: INFRA-ALPHA-WRITE-*. Beta refs: INFRA-BETA-WRITE-*.",
+      },
+    };
+  }
+
+  async function persistPlan(
+    requestedAction: string,
+    riskClass: ReturnType<typeof actionRiskProfile>["riskClass"],
+    planned: {
+      targets: Awaited<ReturnType<typeof planXeroDraftInvoice>>["targets"];
+      summary: string;
+      financialImpact: Awaited<ReturnType<typeof planXeroDraftInvoice>>["financialImpact"];
+      review?: Record<string, unknown>;
+    },
+    requiredScopes?: string[],
+  ) {
+    const permission = evaluateActionPermission({
+      action: requestedAction,
+      riskClass,
+      companyStatus: "active",
+      connectorConnected: true,
+      connectorAuthStatus: instance!.authStatus ?? "unknown",
+      grantedScopes: grantedScopes(instance!),
+      requiredScopes,
+      flags: { financialWritesEnabled: FINANCIAL_WRITES_ENABLED, writesEnabled: FINANCIAL_WRITES_ENABLED },
+      ...permissionActorContext(input.actor, input.companyId),
+    });
+    const { plan, confirmationToken } = await createActionPlan(env.DB, {
+      companyId: input.companyId,
+      connectorInstanceId: instance!.id,
+      requestedAction,
+      idempotencyKey: input.arguments.idempotencyKey ? String(input.arguments.idempotencyKey) : null,
+      actor,
+      sourceClient: input.sourceClient,
+      correlationId: input.correlationId ?? null,
+      interactionId: input.interactionId ?? null,
+      targets: planned.targets,
+      summary: planned.summary,
+      financialImpact: planned.financialImpact,
+      permissionDecision: permission,
+      riskClass,
+    });
+    const preview = humanReadablePlanPreview(plan);
+    return {
+      status: 200 as const,
+      body: {
+        ...sanitizePlanForClient(plan),
+        confirmationToken,
+        review: planned.review ?? null,
+        preview,
+        permission: permission.reasonCode,
+        writesEnabled: FINANCIAL_WRITES_ENABLED,
+        workflow: workflowHints(plan),
+        riskLevel: actionRiskProfile(requestedAction).level,
+      },
+    };
+  }
+
+  if (input.toolName === "plan_xero_approve_invoice") {
+    const planned = await planXeroApproveInvoice({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      invoiceId: input.arguments.invoiceId ? String(input.arguments.invoiceId) : undefined,
+      invoiceNumber: input.arguments.invoiceNumber ? String(input.arguments.invoiceNumber) : undefined,
+    });
+    return persistPlan("xero.invoices.approve", "financial_action", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
+  }
+
+  if (input.toolName === "plan_xero_send_invoice") {
+    const planned = await planXeroSendInvoice({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      invoiceId: input.arguments.invoiceId ? String(input.arguments.invoiceId) : undefined,
+      invoiceNumber: input.arguments.invoiceNumber ? String(input.arguments.invoiceNumber) : undefined,
+    });
+    return persistPlan("xero.invoices.send", "external_send", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
+  }
+
+  if (input.toolName === "plan_xero_draft_bill") {
+    const planned = await planXeroDraftBill({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      contactId: input.arguments.contactId ? String(input.arguments.contactId) : undefined,
+      contactName: input.arguments.contactName ? String(input.arguments.contactName) : undefined,
+      lineItems: (input.arguments.lineItems as never) ?? [],
+      reference: input.arguments.reference ? String(input.arguments.reference) : undefined,
+      billDate: input.arguments.billDate ? String(input.arguments.billDate) : undefined,
+      dueDate: input.arguments.dueDate ? String(input.arguments.dueDate) : undefined,
+      taxTreatment: input.arguments.taxTreatment ? String(input.arguments.taxTreatment) : undefined,
+    });
+    return persistPlan("xero.bills.create", "financial_action", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
+  }
+
+  if (input.toolName === "plan_xero_approve_bill") {
+    const planned = await planXeroApproveBill({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      invoiceId: input.arguments.invoiceId ? String(input.arguments.invoiceId) : undefined,
+      invoiceNumber: input.arguments.invoiceNumber ? String(input.arguments.invoiceNumber) : undefined,
+    });
+    return persistPlan("xero.bills.approve", "financial_action", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
+  }
+
+  if (input.toolName === "plan_xero_draft_credit_note") {
+    const planned = await planXeroDraftCreditNote({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      contactId: input.arguments.contactId ? String(input.arguments.contactId) : undefined,
+      contactName: input.arguments.contactName ? String(input.arguments.contactName) : undefined,
+      lineItems: (input.arguments.lineItems as never) ?? [],
+      reference: input.arguments.reference ? String(input.arguments.reference) : undefined,
+      taxTreatment: input.arguments.taxTreatment ? String(input.arguments.taxTreatment) : undefined,
+    });
+    return persistPlan("xero.credit_notes.create_draft", "financial_action", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
+  }
+
+  if (input.toolName === "plan_xero_create_contact") {
+    const planned = await planXeroCreateContact({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      name: String(input.arguments.name ?? ""),
+      email: input.arguments.email ? String(input.arguments.email) : undefined,
+      phone: input.arguments.phone ? String(input.arguments.phone) : undefined,
+      isCustomer: input.arguments.isCustomer as boolean | undefined,
+      isSupplier: input.arguments.isSupplier as boolean | undefined,
+    });
+    return persistPlan("xero.contacts.create", "write", planned);
+  }
+
+  if (input.toolName === "plan_xero_create_approve_send") {
+    const planned = await planXeroCombinedCreateApproveSend({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      contactId: input.arguments.contactId ? String(input.arguments.contactId) : undefined,
+      contactName: input.arguments.contactName ? String(input.arguments.contactName) : undefined,
+      lineItems: (input.arguments.lineItems as never) ?? [],
+      reference: input.arguments.reference ? String(input.arguments.reference) : undefined,
+      invoiceDate: input.arguments.invoiceDate ? String(input.arguments.invoiceDate) : undefined,
+      dueDate: input.arguments.dueDate ? String(input.arguments.dueDate) : undefined,
+      taxTreatment: input.arguments.taxTreatment ? String(input.arguments.taxTreatment) : undefined,
+    });
+    return persistPlan("xero.invoices.create_approve_send", "external_send", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
   }
 
   return { status: 400, body: { error: "Unknown action control tool", code: "UNKNOWN_TOOL" } };
