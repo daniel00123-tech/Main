@@ -747,7 +747,7 @@ export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcp
         lineItems: zf.array(zf.object({
           description: zf.string(), quantity: zf.number(), unitAmount: zf.number(),
           accountCode: zf.string().optional(), taxType: zf.string().optional(),
-        })),
+        })).optional(),
       },
     },
     async (args) => runWriteTool(args, (config, xeroArgs) =>
