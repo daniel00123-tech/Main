@@ -519,6 +519,9 @@ export const api = {
         pathOrUrl: string | null;
         lastSyncAt: string | null;
         lastError: string | null;
+        folderScopeMode?: string;
+        folderIncludePaths?: string[];
+        folderExcludePaths?: string[];
       }>;
     }>(`/api/companies/${slug}/microsoft/dashboard`),
   discoverMicrosoftSources: (
@@ -537,6 +540,19 @@ export const api = {
     fetchJson<{ ok: boolean }>(`/api/companies/${slug}/microsoft/sources/${sourceId}/inclusion`, {
       method: "PATCH",
       body: JSON.stringify({ inclusionStatus }),
+    }),
+  setMicrosoftSourceFolderScope: (
+    slug: string,
+    sourceId: string,
+    body: {
+      mode: "all" | "include_paths" | "exclude_paths";
+      includePaths?: string[];
+      excludePaths?: string[];
+    },
+  ) =>
+    fetchJson<{ ok: boolean }>(`/api/companies/${slug}/microsoft/sources/${sourceId}/folder-scope`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
   syncMicrosoftSource: (slug: string, sourceId: string, body?: { useDelta?: boolean; maxFiles?: number }) =>
     fetchJson<{ ok: boolean; discovered: number; indexed: number; skipped: number; failed: number; deleted: number }>(

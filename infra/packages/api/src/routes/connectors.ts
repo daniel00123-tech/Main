@@ -743,6 +743,58 @@ connectors.post("/api/internal/cmd13/microsoft-acceptance", async (c) => {
   }
 });
 
+connectors.post("/api/internal/cmd13d/microsoft-acceptance", async (c) => {
+  const token = c.req.header("X-CMD13-Acceptance-Token")?.trim();
+  if (!token) return c.json({ error: "Missing acceptance token" }, 401);
+  const { createHash } = await import("node:crypto");
+  const hash = createHash("sha256").update(token).digest("hex");
+  await c.env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS cmd13_acceptance_tokens (
+      token_hash TEXT PRIMARY KEY,
+      expires_at TEXT NOT NULL
+    )`,
+  ).run();
+  const valid = await c.env.DB.prepare(
+    `SELECT token_hash FROM cmd13_acceptance_tokens WHERE token_hash = ? AND expires_at > datetime('now') LIMIT 1`,
+  )
+    .bind(hash)
+    .first();
+  if (!valid) return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  await c.env.DB.prepare(`DELETE FROM cmd13_acceptance_tokens WHERE token_hash = ?`).bind(hash).run();
+
+  const phase = c.req.query("phase") ?? "full";
+  try {
+    if (phase === "discover") {
+      const { runCmd13dDiscovery } = await import("../services/microsoft-acceptance-cmd13d-discovery");
+      return c.json(await runCmd13dDiscovery(c.env));
+    }
+    if (phase === "sync") {
+      const body = (await c.req.json().catch(() => ({}))) as {
+        driveId?: string;
+        ownerDisplayName?: string;
+        ownerUpn?: string | null;
+      };
+      if (!body.driveId) return c.json({ error: "driveId required" }, 400);
+      const { runCmd13dOneDriveSync } = await import("../services/microsoft-acceptance-cmd13d");
+      return c.json(
+        await runCmd13dOneDriveSync(c.env, {
+          driveId: body.driveId,
+          ownerDisplayName: body.ownerDisplayName,
+          ownerUpn: body.ownerUpn,
+        }),
+      );
+    }
+    const { runCmd13dDiscovery } = await import("../services/microsoft-acceptance-cmd13d-discovery");
+    const discovery = await runCmd13dDiscovery(c.env);
+    return c.json({ command: "CMD13D", discovery, verdict: discovery.verdict });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Acceptance failed", verdict: "ERROR" },
+      500,
+    );
+  }
+});
+
 connectors.get(
   "/api/companies/:slug/microsoft/dashboard",
   requireAuth,
@@ -864,11 +916,57 @@ connectors.patch(
       return c.json({ error: "Access denied" }, 403);
     }
     const body = await c.req.json<{ inclusionStatus: "included" | "excluded" | "available" }>();
+    const sourceId = c.req.param("sourceId");
+    if (body.inclusionStatus === "excluded") {
+      const row = await c.env.DB.prepare(
+        `SELECT connector_instance_id FROM microsoft_connector_sources WHERE id = ? AND company_id = ? LIMIT 1`,
+      )
+        .bind(sourceId, company.id)
+        .first<{ connector_instance_id: string }>();
+      if (!row) return c.json({ error: "Source not found" }, 404);
+      const { applyMicrosoftSourceExclusion } = await import("../services/microsoft-sync");
+      const result = await applyMicrosoftSourceExclusion(c.env, {
+        companyId: company.id,
+        connectorInstanceId: row.connector_instance_id,
+        sourceId,
+        actor: c.get("user").email,
+      });
+      return c.json({ ok: true, ...result });
+    }
     const { setMicrosoftSourceInclusion } = await import("../services/microsoft-sync");
     await setMicrosoftSourceInclusion(c.env.DB, {
       companyId: company.id,
-      sourceId: c.req.param("sourceId"),
+      sourceId,
       inclusionStatus: body.inclusionStatus,
+      actor: c.get("user").email,
+    });
+    return c.json({ ok: true });
+  },
+);
+
+connectors.patch(
+  "/api/companies/:slug/microsoft/sources/:sourceId/folder-scope",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    const body = await c.req.json<{
+      mode: "all" | "include_paths" | "exclude_paths";
+      includePaths?: string[];
+      excludePaths?: string[];
+    }>();
+    const { setMicrosoftSourceFolderScope } = await import("../services/microsoft-sync");
+    await setMicrosoftSourceFolderScope(c.env.DB, {
+      companyId: company.id,
+      sourceId: c.req.param("sourceId"),
+      folderScope: {
+        mode: body.mode ?? "all",
+        includePaths: body.includePaths ?? [],
+        excludePaths: body.excludePaths ?? [],
+      },
       actor: c.get("user").email,
     });
     return c.json({ ok: true });

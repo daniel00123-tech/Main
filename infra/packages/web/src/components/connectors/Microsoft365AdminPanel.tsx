@@ -140,6 +140,7 @@ export function Microsoft365AdminPanel({ companySlug }: Props) {
                 <th>Source</th>
                 <th>Type</th>
                 <th>Inclusion</th>
+                <th>Folder scope</th>
                 <th>Sync</th>
                 <th>Indexed</th>
                 <th>Last sync</th>
@@ -156,6 +157,14 @@ export function Microsoft365AdminPanel({ companySlug }: Props) {
                   <td>{source.sourceType}</td>
                   <td>
                     <StatusBadge status={source.inclusionStatus} />
+                  </td>
+                  <td className="muted small">
+                    {source.folderScopeMode === "include_paths" && (source.folderIncludePaths?.length ?? 0) > 0
+                      ? `Include: ${source.folderIncludePaths!.join(", ")}`
+                      : source.folderScopeMode === "exclude_paths" &&
+                          (source.folderExcludePaths?.length ?? 0) > 0
+                        ? `Exclude: ${source.folderExcludePaths!.join(", ")}`
+                        : "Whole source"}
                   </td>
                   <td>
                     <StatusBadge status={source.syncStatus} />

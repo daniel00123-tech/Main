@@ -118,6 +118,88 @@ if (!base.includes(uploadIdempotencyMarker)) {
   base = base.replace(uploadIdempotencyTarget, uploadIdempotencyReplacement);
 }
 
+const knowledgeVisibilityMarker = "deactivateKnowledgeDocument";
+if (!base.includes(knowledgeVisibilityMarker)) {
+  const visibilityHelpersTarget = "async function handleAdminRequest(request, env22, url2) {";
+  const visibilityHelpersReplacement = `async function deactivateKnowledgeDocument(env22, documentId) {
+  const doc = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+    "SELECT id, external_id, status FROM knowledge_documents WHERE id = ?"
+  ).bind(documentId).first();
+  if (!doc?.id) throw new Error("Document not found");
+  const chunks = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+    "SELECT vector_id FROM knowledge_chunks WHERE document_id = ?"
+  ).bind(documentId).all();
+  const vectorIds = (chunks.results ?? []).map((row) => row.vector_id).filter(Boolean);
+  if (vectorIds.length > 0 && env22.CADDINGTON_KNOWLEDGE_INDEX?.deleteByIds) {
+    await env22.CADDINGTON_KNOWLEDGE_INDEX.deleteByIds(vectorIds);
+  }
+  await deleteDocumentFtsRows(env22, documentId);
+  await env22.CADDINGTON_BUSINESS_DATA.prepare(
+    "UPDATE knowledge_documents SET status = 'archived', updated_at = datetime('now') WHERE id = ?"
+  ).bind(documentId).run();
+  clearSearchCache();
+  return { ok: true, documentId, previousStatus: doc.status };
+}
+__name(deactivateKnowledgeDocument, "deactivateKnowledgeDocument");
+async function reactivateKnowledgeDocument(env22, documentId) {
+  const doc = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+    "SELECT id, status FROM knowledge_documents WHERE id = ?"
+  ).bind(documentId).first();
+  if (!doc?.id) throw new Error("Document not found");
+  const chunkCount = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+    "SELECT COUNT(*) as cnt FROM knowledge_chunks WHERE document_id = ?"
+  ).bind(documentId).first();
+  if (Number(chunkCount?.cnt ?? 0) > 0) {
+    const result = await indexKnowledgeDocument(env22, documentId);
+    return { ok: true, documentId, status: "indexed", ...result };
+  }
+  await env22.CADDINGTON_BUSINESS_DATA.prepare(
+    "UPDATE knowledge_documents SET status = 'pending', updated_at = datetime('now') WHERE id = ?"
+  ).bind(documentId).run();
+  clearSearchCache();
+  return { ok: true, documentId, status: "pending" };
+}
+__name(reactivateKnowledgeDocument, "reactivateKnowledgeDocument");
+async function handleAdminRequest(request, env22, url2) {`;
+  if (!base.includes(visibilityHelpersTarget)) {
+    throw new Error("Unable to locate handleAdminRequest for visibility helpers");
+  }
+  base = base.replace(visibilityHelpersTarget, visibilityHelpersReplacement);
+
+  const visibilityRoutesTarget = `  return json2({ error: "Not Found" }, 404);
+}
+__name(handleAdminRequest, "handleAdminRequest");`;
+  const visibilityRoutesReplacement = `  const deactivateMatch = url2.pathname.match(/^\\/admin\\/knowledge\\/(\\d+)\\/deactivate$/);
+  if (deactivateMatch && request.method === "POST") {
+    const documentId = Number(deactivateMatch[1]);
+    try {
+      const result = await deactivateKnowledgeDocument(env22, documentId);
+      return json2(result);
+    } catch (error53) {
+      const message = error53 instanceof Error ? error53.message : String(error53);
+      return json2({ error: message }, 400);
+    }
+  }
+  const reactivateMatch = url2.pathname.match(/^\\/admin\\/knowledge\\/(\\d+)\\/reactivate$/);
+  if (reactivateMatch && request.method === "POST") {
+    const documentId = Number(reactivateMatch[1]);
+    try {
+      const result = await reactivateKnowledgeDocument(env22, documentId);
+      return json2(result);
+    } catch (error53) {
+      const message = error53 instanceof Error ? error53.message : String(error53);
+      return json2({ error: message }, 400);
+    }
+  }
+  return json2({ error: "Not Found" }, 404);
+}
+__name(handleAdminRequest, "handleAdminRequest");`;
+  if (!base.includes(visibilityRoutesTarget)) {
+    throw new Error("Unable to locate handleAdminRequest footer for visibility routes");
+  }
+  base = base.replace(visibilityRoutesTarget, visibilityRoutesReplacement);
+}
+
 const inlinedXero = xeroBundle
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*,?\s*registerXeroWriteTools\s+as\s+__registerXeroWriteTools\s*\};?\s*/g, "")
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*\};?\s*/g, "")

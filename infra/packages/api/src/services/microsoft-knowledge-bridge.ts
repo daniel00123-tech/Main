@@ -137,3 +137,45 @@ export function buildMicrosoftExternalId(input: {
   const prefix = input.sourceType === "sharepoint" ? "mssp" : "msod";
   return `${prefix}-${fnv1aHex(raw)}${fnv1aHex(`${raw}|salt`)}`;
 }
+
+export async function deactivateMicrosoftKnowledgeDocument(
+  env: Env,
+  mcp: McpEnvironment,
+  documentId: number,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const response = await adminFetch(env, mcp, `/admin/knowledge/${documentId}/deactivate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const body = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!response.ok || body.ok === false) {
+      return { ok: false, message: body.error ?? `Deactivate HTTP ${response.status}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Deactivate failed" };
+  }
+}
+
+export async function reactivateMicrosoftKnowledgeDocument(
+  env: Env,
+  mcp: McpEnvironment,
+  documentId: number,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const response = await adminFetch(env, mcp, `/admin/knowledge/${documentId}/reactivate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const body = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!response.ok || body.ok === false) {
+      return { ok: false, message: body.error ?? `Reactivate HTTP ${response.status}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Reactivate failed" };
+  }
+}

@@ -219,40 +219,71 @@ export async function listSites(config: MicrosoftGraphConfig, search = "*"): Pro
   return sites;
 }
 
+/** Enumerate tenant users (requires User.Read.All application permission). */
+export async function listTenantUsers(
+  config: MicrosoftGraphConfig,
+): Promise<Array<{ id: string; userPrincipalName: string | null; displayName: string | null; mail: string | null }>> {
+  return graphGetAll(
+    config,
+    `/users?$select=id,userPrincipalName,displayName,mail&$top=100`,
+    10,
+  );
+}
+
+/** Fetch a single user's OneDrive by user ID. */
+export async function getUserOneDrive(
+  config: MicrosoftGraphConfig,
+  userId: string,
+): Promise<GraphDrive | null> {
+  try {
+    const drive = await graphGet<GraphDrive>(
+      config,
+      `/users/${userId}/drive?$select=id,name,driveType,webUrl,owner,createdBy,quota`,
+    );
+    return drive?.id ? drive : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Enumerate personal OneDrive drives via /users when /drives omits them. */
-export async function listUserOneDrives(config: MicrosoftGraphConfig): Promise<GraphDrive[]> {
+export async function listUserOneDrives(
+  config: MicrosoftGraphConfig,
+  options?: { userIds?: string[]; maxUsers?: number },
+): Promise<GraphDrive[]> {
   const drives: GraphDrive[] = [];
+  if (options?.userIds?.length) {
+    for (const userId of options.userIds) {
+      const drive = await getUserOneDrive(config, userId);
+      if (drive) drives.push(drive);
+    }
+    return drives;
+  }
+
   let users: Array<{ id: string; userPrincipalName?: string; displayName?: string }> = [];
   try {
     users = await graphGetAll(
       config,
       `/users?$select=id,userPrincipalName,displayName&$top=100`,
-      5,
+      options?.maxUsers ?? 5,
     );
   } catch {
     return drives;
   }
 
   for (const user of users) {
-    try {
-      const drive = await graphGet<GraphDrive>(
-        config,
-        `/users/${user.id}/drive?$select=id,name,driveType,webUrl,owner,createdBy,quota`,
-      );
-      if (drive?.id) {
-        drives.push({
-          ...drive,
-          owner: drive.owner ?? {
-            user: {
-              id: user.id,
-              email: user.userPrincipalName,
-              displayName: user.displayName,
-            },
+    const drive = await getUserOneDrive(config, user.id);
+    if (drive) {
+      drives.push({
+        ...drive,
+        owner: drive.owner ?? {
+          user: {
+            id: user.id,
+            email: user.userPrincipalName,
+            displayName: user.displayName,
           },
-        });
-      }
-    } catch {
-      /* user may not have OneDrive provisioned */
+        },
+      });
     }
   }
   return drives;

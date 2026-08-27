@@ -126,6 +126,62 @@ export default function PortalMicrosoft365Page() {
     }
   }
 
+  async function editFolderScope(source: MicrosoftSource) {
+    if (!company) return;
+    const current = (source.folderIncludePaths ?? []).join(", ");
+    const input = window.prompt(
+      `Included folder paths for "${source.displayName}" (comma-separated). Leave empty for whole source.`,
+      current,
+    );
+    if (input === null) return;
+    const includePaths = input
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    setBusy(true);
+    try {
+      await api.setMicrosoftSourceFolderScope(company.slug, source.id, {
+        mode: includePaths.length > 0 ? "include_paths" : "all",
+        includePaths,
+      });
+      setMessage(`Updated folder scope for ${source.displayName}.`);
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Folder scope update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function folderScopeSummary(source: MicrosoftSource): string {
+    if (source.folderScopeMode === "include_paths" && (source.folderIncludePaths?.length ?? 0) > 0) {
+      return `Folders: ${source.folderIncludePaths!.join(", ")}`;
+    }
+    if (source.folderScopeMode === "exclude_paths" && (source.folderExcludePaths?.length ?? 0) > 0) {
+      return `Excluding: ${source.folderExcludePaths!.join(", ")}`;
+    }
+    return source.inclusionStatus === "included" ? "Whole source" : "—";
+  }
+
+  function renderSourceActions(source: MicrosoftSource) {
+    if (!canManage) return null;
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void toggleInclusion(source)}>
+          {source.inclusionStatus === "included" ? "Exclude" : "Include"}
+        </Button>
+        <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void editFolderScope(source)}>
+          Folders
+        </Button>
+        {source.inclusionStatus === "included" ? (
+          <Button type="button" size="sm" variant="primary" disabled={busy} onClick={() => void syncSource(source)}>
+            Sync now
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+
   if (loading || dashLoading) return <LoadingState />;
   if (error || !company) {
     return <ErrorState title="Unable to load Microsoft 365" description={error ?? undefined} />;
@@ -240,6 +296,7 @@ export default function PortalMicrosoft365Page() {
                   <th>Owner / drive</th>
                   {!isMobile ? <th>Status</th> : null}
                   <th>Inclusion</th>
+                  {!isMobile ? <th>Scope</th> : null}
                   <th>Indexed</th>
                   <th>Actions</th>
                 </tr>
@@ -259,21 +316,9 @@ export default function PortalMicrosoft365Page() {
                       </td>
                     ) : null}
                     <td>{inclusionLabel(source.inclusionStatus)}</td>
+                    {!isMobile ? <td className="muted small">{folderScopeSummary(source)}</td> : null}
                     <td>{source.itemsIndexed}</td>
-                    <td>
-                      {canManage ? (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void toggleInclusion(source)}>
-                            {source.inclusionStatus === "included" ? "Exclude" : "Include"}
-                          </Button>
-                          {source.inclusionStatus === "included" ? (
-                            <Button type="button" size="sm" variant="primary" disabled={busy} onClick={() => void syncSource(source)}>
-                              Sync now
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </td>
+                    <td>{renderSourceActions(source)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -296,6 +341,7 @@ export default function PortalMicrosoft365Page() {
                   <th>Site / library</th>
                   {!isMobile ? <th>Status</th> : null}
                   <th>Inclusion</th>
+                  {!isMobile ? <th>Scope</th> : null}
                   <th>Indexed</th>
                   <th>Actions</th>
                 </tr>
@@ -315,21 +361,9 @@ export default function PortalMicrosoft365Page() {
                       </td>
                     ) : null}
                     <td>{inclusionLabel(source.inclusionStatus)}</td>
+                    {!isMobile ? <td className="muted small">{folderScopeSummary(source)}</td> : null}
                     <td>{source.itemsIndexed}</td>
-                    <td>
-                      {canManage ? (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void toggleInclusion(source)}>
-                            {source.inclusionStatus === "included" ? "Exclude" : "Include"}
-                          </Button>
-                          {source.inclusionStatus === "included" ? (
-                            <Button type="button" size="sm" variant="primary" disabled={busy} onClick={() => void syncSource(source)}>
-                              Sync now
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </td>
+                    <td>{renderSourceActions(source)}</td>
                   </tr>
                 ))}
               </tbody>

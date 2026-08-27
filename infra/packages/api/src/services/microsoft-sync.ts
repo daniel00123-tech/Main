@@ -26,8 +26,17 @@ import {
 } from "./microsoft-graph";
 import {
   buildMicrosoftExternalId,
+  deactivateMicrosoftKnowledgeDocument,
+  reactivateMicrosoftKnowledgeDocument,
   uploadMicrosoftDocumentToKnowledge,
 } from "./microsoft-knowledge-bridge";
+import {
+  normaliseFolderPath,
+  parseFolderScope,
+  pathMatchesFolderScope,
+  serializeFolderScope,
+  type FolderScope,
+} from "./microsoft-folder-scope";
 
 export type MicrosoftSourceRow = {
   id: string;
@@ -50,6 +59,9 @@ export type MicrosoftSourceRow = {
   itemsIndexed: number;
   lastDiscoveryAt: string | null;
   deltaLink: string | null;
+  folderScopeMode: "all" | "include_paths" | "exclude_paths";
+  folderIncludePaths: string[];
+  folderExcludePaths: string[];
 };
 
 function mapSourceRow(row: Record<string, unknown>): MicrosoftSourceRow {
@@ -74,6 +86,18 @@ function mapSourceRow(row: Record<string, unknown>): MicrosoftSourceRow {
     itemsIndexed: Number(row.items_indexed ?? 0),
     lastDiscoveryAt: row.last_discovery_at ? String(row.last_discovery_at) : null,
     deltaLink: row.delta_link ? String(row.delta_link) : null,
+    ...(() => {
+      const scope = parseFolderScope({
+        folderScopeMode: row.folder_scope_mode ? String(row.folder_scope_mode) : null,
+        folderIncludePathsJson: row.folder_include_paths_json ? String(row.folder_include_paths_json) : null,
+        folderExcludePathsJson: row.folder_exclude_paths_json ? String(row.folder_exclude_paths_json) : null,
+      });
+      return {
+        folderScopeMode: scope.mode,
+        folderIncludePaths: scope.includePaths,
+        folderExcludePaths: scope.excludePaths,
+      };
+    })(),
   };
 }
 
@@ -232,7 +256,10 @@ export async function discoverMicrosoftSources(
       connectorInstanceId: input.connectorInstanceId,
       sourceType,
       externalId: drive.id,
-      displayName: owner.name ?? drive.name,
+      displayName:
+        sourceType === "onedrive"
+          ? `${owner.name ?? drive.name} (OneDrive)`
+          : owner.name ?? drive.name,
       pathOrUrl: drive.webUrl,
       ownerUpn: owner.upn,
       ownerDisplayName: owner.name,
@@ -315,6 +342,185 @@ async function enumerateDriveFiles(
     }
   }
   return files;
+}
+
+async function findFolderByPath(
+  config: MicrosoftGraphConfig,
+  driveId: string,
+  targetPath: string,
+): Promise<{ folderId: string; path: string } | null> {
+  const segments = normaliseFolderPath(targetPath).split("/").filter(Boolean);
+  if (segments.length === 0) return { folderId: "root", path: "" };
+  let folderId: string | undefined;
+  let pathPrefix = "";
+  for (const segment of segments) {
+    const children = await listDriveChildren(config, driveId, folderId);
+    const match = children.find(
+      (item) => item.folder && item.name.toLowerCase() === segment.toLowerCase(),
+    );
+    if (!match?.id) return null;
+    folderId = match.id;
+    pathPrefix = pathPrefix ? `${pathPrefix}/${match.name}` : match.name;
+  }
+  return { folderId, path: pathPrefix };
+}
+
+async function enumerateScopedDriveFiles(
+  config: MicrosoftGraphConfig,
+  driveId: string,
+  scope: FolderScope,
+): Promise<Array<GraphDriveItem & { relativePath: string }>> {
+  if (scope.mode === "include_paths" && scope.includePaths.length > 0) {
+    const files: Array<GraphDriveItem & { relativePath: string }> = [];
+    for (const includePath of scope.includePaths) {
+      const folder = await findFolderByPath(config, driveId, includePath);
+      if (!folder) continue;
+      const nested = await enumerateDriveFiles(
+        config,
+        driveId,
+        folder.folderId === "root" ? undefined : folder.folderId,
+        folder.path,
+      );
+      files.push(...nested.filter((f) => pathMatchesFolderScope(f.relativePath, scope)));
+    }
+    return files;
+  }
+  const all = await enumerateDriveFiles(config, driveId);
+  return all.filter((f) => pathMatchesFolderScope(f.relativePath, scope));
+}
+
+async function recordSyncRun(
+  db: D1Database,
+  input: {
+    companyId: string;
+    connectorInstanceId: string;
+    sourceId: string;
+    runType: "sync" | "discovery" | "full_sync";
+    status: "running" | "completed" | "failed" | "partial";
+    metadata?: Record<string, unknown>;
+  },
+): Promise<string> {
+  const id = newId("msr");
+  await db
+    .prepare(
+      `INSERT INTO microsoft_sync_runs (
+        id, company_id, connector_instance_id, run_type, status, started_at, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      id,
+      input.companyId,
+      input.connectorInstanceId,
+      input.runType,
+      input.status,
+      nowIso(),
+      input.metadata ? JSON.stringify(input.metadata) : null,
+    )
+    .run();
+  return id;
+}
+
+async function completeSyncRun(
+  db: D1Database,
+  runId: string,
+  input: {
+    status: "completed" | "failed" | "partial";
+    sourcesProcessed?: number;
+    itemsDiscovered?: number;
+    itemsIndexed?: number;
+    itemsFailed?: number;
+    errorSummary?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE microsoft_sync_runs SET
+        status = ?, sources_processed = ?, items_discovered = ?, items_indexed = ?,
+        items_failed = ?, completed_at = ?, error_summary = ?, metadata_json = COALESCE(?, metadata_json)
+       WHERE id = ?`,
+    )
+    .bind(
+      input.status,
+      input.sourcesProcessed ?? 0,
+      input.itemsDiscovered ?? 0,
+      input.itemsIndexed ?? 0,
+      input.itemsFailed ?? 0,
+      nowIso(),
+      input.errorSummary ?? null,
+      input.metadata ? JSON.stringify(input.metadata) : null,
+      runId,
+    )
+    .run();
+}
+
+export async function tombstoneMicrosoftSourceKnowledge(
+  env: Env,
+  input: {
+    companyId: string;
+    connectorInstanceId: string;
+    sourceId: string;
+    actor: string;
+    folderPaths?: string[];
+  },
+): Promise<{ tombstoned: number; failed: number }> {
+  const mcps = await listMcpEnvironments(env.DB, input.companyId);
+  const mcp = mcps[0] ?? null;
+
+  const rows = await env.DB.prepare(
+    `SELECT id, knowledge_document_id, path, visibility_status
+     FROM microsoft_knowledge_items
+     WHERE company_id = ? AND connector_instance_id = ? AND source_id = ?
+       AND knowledge_document_id IS NOT NULL AND visibility_status = 'active'`,
+  )
+    .bind(input.companyId, input.connectorInstanceId, input.sourceId)
+    .all<{ id: string; knowledge_document_id: number; path: string | null; visibility_status: string }>();
+
+  let tombstoned = 0;
+  let failed = 0;
+  const folderPaths = (input.folderPaths ?? []).map(normaliseFolderPath);
+
+  for (const row of rows.results ?? []) {
+    if (folderPaths.length > 0) {
+      const itemPath = normaliseFolderPath(row.path ?? "");
+      const inScope = folderPaths.some(
+        (p) => itemPath === p || itemPath.startsWith(`${p}/`),
+      );
+      if (!inScope) continue;
+    }
+    if (!mcp) {
+      failed++;
+      continue;
+    }
+    const result = await deactivateMicrosoftKnowledgeDocument(env, mcp, row.knowledge_document_id);
+    if (!result.ok) {
+      failed++;
+      continue;
+    }
+    await env.DB.prepare(
+      `UPDATE microsoft_knowledge_items SET visibility_status = 'tombstoned', indexing_status = 'deleted', updated_at = ?
+       WHERE id = ?`,
+    )
+      .bind(nowIso(), row.id)
+      .run();
+    tombstoned++;
+  }
+
+  await recordAuditEvent(env.DB, {
+    companyId: input.companyId,
+    eventType: "connector.changed",
+    actor: input.actor,
+    resourceType: "connector",
+    resourceId: input.sourceId,
+    detail: {
+      stage: "microsoft.knowledge.tombstoned",
+      tombstoned,
+      failed,
+      folderPaths: input.folderPaths ?? [],
+    },
+  });
+
+  return { tombstoned, failed };
 }
 
 async function upsertKnowledgeItem(
@@ -470,6 +676,25 @@ export async function syncMicrosoftSource(
   let failed = 0;
   let deleted = 0;
   const maxFiles = input.maxFiles ?? 200;
+  const folderScope: FolderScope = {
+    mode: source.folderScopeMode,
+    includePaths: source.folderIncludePaths,
+    excludePaths: source.folderExcludePaths,
+  };
+
+  const syncRunId = await recordSyncRun(env.DB, {
+    companyId: input.companyId,
+    connectorInstanceId: input.connectorInstanceId,
+    sourceId: source.id,
+    runType: "sync",
+    status: "running",
+    metadata: {
+      sourceName: source.displayName,
+      sourceType: source.sourceType,
+      folderScope,
+      useDelta: Boolean(input.useDelta && source.deltaLink),
+    },
+  });
 
   try {
     let files: Array<GraphDriveItem & { relativePath: string }> = [];
@@ -483,17 +708,20 @@ export async function syncMicrosoftSource(
       for (const item of delta.items) {
         if (item.deleted) {
           await env.DB.prepare(
-            `UPDATE microsoft_knowledge_items SET indexing_status = 'deleted', updated_at = ? WHERE company_id = ? AND external_item_id = ?`,
+            `UPDATE microsoft_knowledge_items SET indexing_status = 'deleted', visibility_status = 'tombstoned', updated_at = ? WHERE company_id = ? AND external_item_id = ?`,
           ).bind(nowIso(), input.companyId, item.id).run();
           deleted++;
           continue;
         }
         if (!item.folder && item.file) {
-          files.push({ ...item, relativePath: item.name });
+          const relativePath = item.name;
+          if (pathMatchesFolderScope(relativePath, folderScope)) {
+            files.push({ ...item, relativePath });
+          }
         }
       }
     } else {
-      files = await enumerateDriveFiles(config, source.externalId);
+      files = await enumerateScopedDriveFiles(config, source.externalId, folderScope);
     }
 
     for (const file of files.slice(0, maxFiles)) {
@@ -520,20 +748,43 @@ export async function syncMicrosoftSource(
       });
 
       const existingItem = await env.DB.prepare(
-        `SELECT indexing_status, knowledge_document_id, e_tag
+        `SELECT indexing_status, knowledge_document_id, e_tag, visibility_status
          FROM microsoft_knowledge_items
          WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ? LIMIT 1`,
       )
         .bind(input.companyId, input.connectorInstanceId, file.id)
-        .first<{ indexing_status: string; knowledge_document_id: number | null; e_tag: string | null }>();
+        .first<{
+          indexing_status: string;
+          knowledge_document_id: number | null;
+          e_tag: string | null;
+          visibility_status: string | null;
+        }>();
 
       if (
         existingItem?.indexing_status === "indexed" &&
         existingItem.knowledge_document_id &&
+        existingItem.visibility_status === "active" &&
         existingItem.e_tag === (file.eTag ?? null)
       ) {
         skipped++;
         continue;
+      }
+
+      if (
+        existingItem?.knowledge_document_id &&
+        existingItem.visibility_status === "tombstoned" &&
+        existingItem.indexing_status === "indexed"
+      ) {
+        await reactivateMicrosoftKnowledgeDocument(env, mcp, existingItem.knowledge_document_id);
+        await env.DB.prepare(
+          `UPDATE microsoft_knowledge_items SET visibility_status = 'active', updated_at = ? WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ?`,
+        )
+          .bind(nowIso(), input.companyId, input.connectorInstanceId, file.id)
+          .run();
+        if (existingItem.e_tag === (file.eTag ?? null)) {
+          skipped++;
+          continue;
+        }
       }
 
       if (classification.indexingStatus !== "indexable") {
@@ -617,6 +868,11 @@ export async function syncMicrosoftSource(
           indexingStatus: "indexed",
           knowledgeDocumentId: upload.documentId,
         });
+        await env.DB.prepare(
+          `UPDATE microsoft_knowledge_items SET visibility_status = 'active', updated_at = ? WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ?`,
+        )
+          .bind(nowIso(), input.companyId, input.connectorInstanceId, file.id)
+          .run();
         indexed++;
       } catch (err) {
         failed++;
@@ -667,7 +923,18 @@ export async function syncMicrosoftSource(
         skipped,
         failed,
         deleted,
+        folderScope,
+        syncRunId,
       },
+    });
+
+    await completeSyncRun(env.DB, syncRunId, {
+      status: failed > 0 ? "partial" : "completed",
+      sourcesProcessed: 1,
+      itemsDiscovered: discovered,
+      itemsIndexed: indexed,
+      itemsFailed: failed,
+      metadata: { skipped, deleted, folderScope },
     });
 
     return { discovered, indexed, skipped, failed, deleted };
@@ -676,6 +943,11 @@ export async function syncMicrosoftSource(
     await env.DB.prepare(
       `UPDATE microsoft_connector_sources SET sync_status = 'error', last_error = ?, updated_at = ? WHERE id = ?`,
     ).bind(message, nowIso(), source.id).run();
+
+    await completeSyncRun(env.DB, syncRunId, {
+      status: "failed",
+      errorSummary: message,
+    });
 
     await recordAuditEvent(env.DB, {
       companyId: input.companyId,
@@ -701,7 +973,7 @@ export async function setMicrosoftSourceInclusion(
   const source = await db
     .prepare(`SELECT * FROM microsoft_connector_sources WHERE id = ? AND company_id = ? LIMIT 1`)
     .bind(input.sourceId, input.companyId)
-    .first<{ display_name: string }>();
+    .first<{ display_name: string; connector_instance_id: string }>();
   if (!source) throw new Error("Source not found");
 
   await db
@@ -726,6 +998,70 @@ export async function setMicrosoftSourceInclusion(
       inclusionStatus: input.inclusionStatus,
     },
   });
+}
+
+export async function setMicrosoftSourceFolderScope(
+  db: D1Database,
+  input: {
+    companyId: string;
+    sourceId: string;
+    folderScope: FolderScope;
+    actor: string;
+  },
+): Promise<void> {
+  const source = await db
+    .prepare(`SELECT display_name FROM microsoft_connector_sources WHERE id = ? AND company_id = ? LIMIT 1`)
+    .bind(input.sourceId, input.companyId)
+    .first<{ display_name: string }>();
+  if (!source) throw new Error("Source not found");
+
+  const serialised = serializeFolderScope(input.folderScope);
+  await db
+    .prepare(
+      `UPDATE microsoft_connector_sources SET
+        folder_scope_mode = ?, folder_include_paths_json = ?, folder_exclude_paths_json = ?, updated_at = ?
+       WHERE id = ? AND company_id = ?`,
+    )
+    .bind(
+      serialised.folderScopeMode,
+      serialised.folderIncludePathsJson,
+      serialised.folderExcludePathsJson,
+      nowIso(),
+      input.sourceId,
+      input.companyId,
+    )
+    .run();
+
+  await recordAuditEvent(db, {
+    companyId: input.companyId,
+    eventType: "connector.changed",
+    actor: input.actor,
+    resourceType: "connector",
+    resourceId: input.sourceId,
+    detail: {
+      stage: "microsoft.source.folder_scope_updated",
+      sourceName: source.display_name,
+      folderScope: input.folderScope,
+    },
+  });
+}
+
+export async function applyMicrosoftSourceExclusion(
+  env: Env,
+  input: {
+    companyId: string;
+    connectorInstanceId: string;
+    sourceId: string;
+    actor: string;
+  },
+): Promise<{ tombstoned: number; failed: number }> {
+  await setMicrosoftSourceInclusion(env.DB, {
+    companyId: input.companyId,
+    sourceId: input.sourceId,
+    inclusionStatus: "excluded",
+    actor: input.actor,
+  });
+  return tombstoneMicrosoftSourceKnowledge(env, input);
 }
 
 export async function getMicrosoftConnectorHealth(env: Env): Promise<{
