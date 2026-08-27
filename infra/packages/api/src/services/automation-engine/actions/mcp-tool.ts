@@ -4,9 +4,8 @@
 
 import type { Env } from "../../../env";
 import type { AutomationMcpToolConfiguration } from "@infra/shared";
-import { authenticateServiceToken, getServiceIdentity } from "../../service-identities";
-import { evaluateServiceActionPermission } from "../../service-identities";
-import { resolveToolAction } from "../../mcp-knowledge-standard";
+import { getServiceIdentity } from "../../service-identities";
+import { executeGatewayRequest } from "../../gateway";
 import type { AutomationActionResult, AutomationExecutionContext } from "../actions/index";
 
 export async function executeMcpToolAction(
@@ -24,40 +23,31 @@ export async function executeMcpToolAction(
 
   const config = ctx.automation.configuration as AutomationMcpToolConfiguration;
   const toolName = config.toolName.trim();
-  const action = resolveToolAction(toolName);
-  if (!action) throw new Error(`Unknown or unsupported MCP tool: ${toolName}`);
+  if (!toolName) throw new Error("MCP tool name is required");
 
-  const permission = await evaluateServiceActionPermission(env.DB, identity, action);
-  if (!permission.allowed) {
-    throw new Error(permission.reason ?? "Automation service identity lacks permission for tool");
-  }
-
-  const { executeGatewayRequest } = await import("../../gateway");
   const result = await executeGatewayRequest(env, {
+    actor: { type: "service", identity },
     companyId: ctx.companyId,
     toolName,
     arguments: config.arguments ?? {},
-    serviceIdentity: identity,
     sourceClient: "automation-engine",
-    correlationId: ctx.runId,
-    requestId: `automation_${ctx.runId}`,
+    clientRequestId: ctx.runId,
   });
 
-  if (!result.ok) {
-    throw new Error(result.error ?? "MCP tool execution failed");
+  if (result.status !== 200) {
+    throw new Error("error" in result ? result.error : "MCP tool execution failed");
   }
 
-  const summary =
-    typeof result.data === "object" && result.data && "summary" in result.data
-      ? String((result.data as { summary?: string }).summary)
-      : `Executed ${toolName}`;
+  const summary = `Executed ${toolName}`;
 
   return {
     summary: summary.slice(0, 240),
     result: {
       action: "mcp_tool",
       toolName,
-      data: result.data ?? null,
+      gatewayRequestId: result.gatewayRequestId,
+      correlationId: result.correlationId,
+      data: result.result ?? null,
       meteringRecordedByGateway: true,
     },
   };

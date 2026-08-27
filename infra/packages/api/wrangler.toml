@@ -55,9 +55,21 @@ crons = ["0 */6 * * *", "*/15 * * * *"]
 binding = "MICROSOFT_KNOWLEDGE_QUEUE"
 queue = "microsoft-knowledge-ingest"
 
-[[queues.producers]]
-binding = "AUTOMATION_RUN_QUEUE"
-queue = "automation-runs"
+# Automation run queue — uncomment after `wrangler queues create automation-runs` (+ dlq).
+# Account may need quota increase (3 queues currently provisioned).
+# [[queues.producers]]
+# binding = "AUTOMATION_RUN_QUEUE"
+# queue = "automation-runs"
+#
+# [[queues.consumers]]
+# queue = "automation-runs"
+# max_batch_size = 1
+# max_retries = 5
+# dead_letter_queue = "automation-runs-dlq"
+#
+# [[queues.consumers]]
+# queue = "automation-runs-dlq"
+# max_batch_size = 10
 
 [[queues.consumers]]
 queue = "microsoft-knowledge-ingest"
@@ -66,16 +78,6 @@ max_retries = 5
 dead_letter_queue = "microsoft-knowledge-ingest-dlq"
 
 [[queues.consumers]]
-queue = "automation-runs"
-max_batch_size = 1
-max_retries = 5
-dead_letter_queue = "automation-runs-dlq"
-
-[[queues.consumers]]
 queue = "microsoft-knowledge-ingest-dlq"
-max_batch_size = 10
-
-[[queues.consumers]]
-queue = "automation-runs-dlq"
 max_batch_size = 10
 
