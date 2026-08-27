@@ -88,6 +88,36 @@ if (!base.includes("received === String(expected).trim()")) {
   base = base.replace(adminAuthTrimTarget, adminAuthTrimReplacement);
 }
 
+const uploadIdempotencyMarker = 'action: "existing"';
+const uploadIdempotencyTarget = `  const insert = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+    \`INSERT INTO knowledge_documents (external_id, title, description, r2_key, mime_type, byte_size, status, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)\`
+  ).bind(`;
+const uploadIdempotencyReplacement = `  const existingDoc = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+    "SELECT id FROM knowledge_documents WHERE external_id = ? LIMIT 1"
+  ).bind(externalId).first();
+  if (existingDoc?.id) {
+    return json2({
+      ok: true,
+      documentId: existingDoc.id,
+      externalId,
+      r2Key: null,
+      byteSize: bytes.byteLength,
+      action: "existing",
+      indexUrl: \`/admin/knowledge/\${existingDoc.id}/index\`
+    });
+  }
+  const insert = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+    \`INSERT INTO knowledge_documents (external_id, title, description, r2_key, mime_type, byte_size, status, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)\`
+  ).bind(`;
+if (!base.includes(uploadIdempotencyMarker)) {
+  if (!base.includes(uploadIdempotencyTarget)) {
+    throw new Error("Unable to locate uploadKnowledgeDocument insert in base worker");
+  }
+  base = base.replace(uploadIdempotencyTarget, uploadIdempotencyReplacement);
+}
+
 const inlinedXero = xeroBundle
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*,?\s*registerXeroWriteTools\s+as\s+__registerXeroWriteTools\s*\};?\s*/g, "")
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*\};?\s*/g, "")

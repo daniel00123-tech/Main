@@ -519,6 +519,23 @@ export async function syncMicrosoftSource(
         inclusionStatus: "included",
       });
 
+      const existingItem = await env.DB.prepare(
+        `SELECT indexing_status, knowledge_document_id, e_tag
+         FROM microsoft_knowledge_items
+         WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ? LIMIT 1`,
+      )
+        .bind(input.companyId, input.connectorInstanceId, file.id)
+        .first<{ indexing_status: string; knowledge_document_id: number | null; e_tag: string | null }>();
+
+      if (
+        existingItem?.indexing_status === "indexed" &&
+        existingItem.knowledge_document_id &&
+        existingItem.e_tag === (file.eTag ?? null)
+      ) {
+        skipped++;
+        continue;
+      }
+
       if (classification.indexingStatus !== "indexable") {
         await upsertKnowledgeItem(env.DB, {
           companyId: input.companyId,

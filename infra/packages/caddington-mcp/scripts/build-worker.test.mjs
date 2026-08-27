@@ -74,4 +74,12 @@ describe("build-worker idempotency", () => {
     expect(writeToolBlock.includes("minItems:")).toBe(false);
     expect(writeToolBlock.includes("zf.array(")).toBe(true);
   });
+
+  it("patches uploadKnowledgeDocument for external_id idempotency", async () => {
+    const { execFileSync } = await import("node:child_process");
+    execFileSync("node", ["scripts/build-worker.mjs"], { cwd: pkgRoot, stdio: "pipe" });
+    const worker = fs.readFileSync(path.join(pkgRoot, "dist/worker.js"), "utf8");
+    expect(worker.includes('action: "existing"')).toBe(true);
+    expect(worker.includes("SELECT id FROM knowledge_documents WHERE external_id = ?")).toBe(true);
+  });
 });
