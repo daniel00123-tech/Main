@@ -776,6 +776,26 @@ export const api = {
     fetchJson<{ transactions: Array<Record<string, unknown>> }>(
       `/api/companies/${slug}/wallet/auto-topup/transactions`,
     ),
+  getAutoTopUpDiagnostics: (slug: string) =>
+    fetchJson<{ diagnostics: Record<string, unknown> }>(
+      `/api/companies/${slug}/wallet/auto-topup/diagnostics`,
+    ),
+  getWalletHealth: (slug: string) =>
+    fetchJson<{
+      health: {
+        state: string;
+        balanceCents: number;
+        thresholdCents: number;
+        promotionalCents: number;
+        paidCents: number;
+      };
+    }>(`/api/companies/${slug}/wallet/health`),
+  getFailedRequests: () =>
+    fetchJson<{ failures: Array<Record<string, unknown>> }>("/api/platform/failed-requests"),
+  getWeeklyReview: () =>
+    fetchJson<{ summary: Array<Record<string, unknown>>; generatedAt: string }>(
+      "/api/platform/weekly-review",
+    ),
   getCustomRoles: (slug: string) =>
     fetchJson<{ roles: Array<Record<string, unknown>> }>(`/api/companies/${slug}/custom-roles`),
   createCustomRole: (slug: string, input: { name: string; description?: string; cloneFromRole?: string }) =>

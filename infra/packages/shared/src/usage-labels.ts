@@ -14,16 +14,31 @@ const ACTION_LABELS: Record<string, string> = {
   "xero.draft_invoice": "Prepare draft Xero invoice",
   "xero.create_draft_invoice": "Create draft Xero invoice",
   "plan.xero_draft_invoice": "Prepare draft Xero invoice",
+  "action_plan.updated": "Updated action plan",
+  "action_plan.execution_started": "Started action execution",
+  "action_plan.completed": "Completed action",
+  "invitation.sent": "Sent user invitation",
+  "invitation.queued": "Queued user invitation",
+  "payment_method.added": "Saved payment method",
+  "payment_method.replaced": "Replaced payment method",
+  "payment_method.removed": "Removed payment method",
+  "auto_topup.eligible": "Auto top-up eligible",
+  "auto_topup.failed": "Auto top-up failed",
+  "auto_topup.succeeded": "Auto top-up succeeded",
   "search_company_knowledge": "Search company knowledge",
 };
 
 const TOOL_LABELS: Record<string, string> = {
   xero_list_contacts: "Search Xero contacts",
+  xero_get_organisation: "View Xero organisation",
   xero_profit_and_loss: "View profit & loss report",
   xero_balance_sheet: "View balance sheet",
   xero_list_invoices: "Search Xero invoices",
+  xero_get_invoice: "View Xero invoice",
+  xero_list_accounts: "Search Xero accounts",
   plan_xero_draft_invoice: "Prepare draft Xero invoice",
   search_company_knowledge: "Search company knowledge",
+  system_health: "System health check",
 };
 
 export function humaniseActionLabel(action: string): string {

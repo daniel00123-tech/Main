@@ -93,7 +93,14 @@ export default function PortalUsersPage() {
       setInviteName("");
       await refresh();
     } catch (err) {
-      setInviteResult(err instanceof Error ? err.message : "Invite failed");
+      const message = err instanceof Error ? err.message : "Invite failed";
+      if (message.includes("DUPLICATE_ACTIVE_INVITATION") || message.includes("already exists")) {
+        setInviteResult(
+          "An active invitation already exists for this email. Use Resend on the existing row or cancel it first.",
+        );
+      } else {
+        setInviteResult(message);
+      }
     } finally {
       setBusy(false);
     }

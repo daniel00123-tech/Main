@@ -6,9 +6,8 @@ import {
 import { isFinancialRiskClass, isWriteRiskClass } from "./connector-lifecycle";
 
 /**
- * Approval gate for connector actions including Xero financial writes.
- * Architecture supports writes (writesSupported) but production execution
- * remains blocked until FINANCIAL_WRITES_ENABLED is explicitly approved.
+ * Action Engine execution gate — when true, approved action plans may execute via the controlled path.
+ * Direct MCP/gateway Xero write tools remain blocked unconditionally in gateway.ts (ACTION_ENGINE_REQUIRED).
  */
 export function evaluateApprovalRequirement(input: {
   riskClass: string;
@@ -67,5 +66,11 @@ export function evaluateApprovalRequirement(input: {
   };
 }
 
-/** Explicit production gate — enabled for controlled first-write acceptance (operator approved). */
+/**
+ * Enables Action Engine financial execution after plan approval + preflight.
+ * Does NOT expose direct xero_create_* tools — those are rejected at the gateway layer.
+ */
 export const FINANCIAL_WRITES_ENABLED = true;
+
+/** Documented invariant: gateway always returns ACTION_ENGINE_REQUIRED for direct write tools. */
+export const DIRECT_MCP_FINANCIAL_WRITES_BLOCKED = true;

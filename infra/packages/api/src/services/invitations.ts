@@ -7,6 +7,23 @@ import type { Env } from "../env";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+export async function findActiveInvitation(
+  db: D1Database,
+  companyId: string,
+  email: string,
+) {
+  const normalised = email.trim().toLowerCase();
+  const now = nowIso();
+  return db
+    .prepare(
+      `SELECT * FROM user_invitations
+       WHERE company_id = ? AND email = ? AND status = 'pending' AND expires_at > ?
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .bind(companyId, normalised, now)
+    .first();
+}
+
 export async function createCompanyInvitation(
   env: Env,
   input: {
@@ -23,6 +40,17 @@ export async function createCompanyInvitation(
     origin: string;
   },
 ) {
+  const existingInvite = await findActiveInvitation(env.DB, input.companyId, input.email);
+  if (existingInvite) {
+    const err = new Error("DUPLICATE_ACTIVE_INVITATION") as Error & {
+      code: string;
+      invitationId: string;
+    };
+    err.code = "DUPLICATE_ACTIVE_INVITATION";
+    err.invitationId = String(existingInvite.id);
+    throw err;
+  }
+
   const invited = await inviteCompanyUser(env.DB, {
     email: input.email,
     displayName: input.displayName,

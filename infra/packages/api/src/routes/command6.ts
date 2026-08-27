@@ -41,7 +41,7 @@ import { listBillingDocuments } from "../services/billing-documents";
 import { listAddonCatalog, listCompanyAddons, requestCompanyAddon } from "../services/addons";
 import { getWalletHealth } from "../services/wallet-health";
 import { listPromotionalGrants, grantPromotionalCredit } from "../services/promotional-grants";
-import { evaluateAutoTopUp } from "../services/auto-topup";
+import { evaluateAutoTopUp, getAutoTopUpDiagnostics } from "../services/auto-topup";
 import { detachStripePaymentMethod } from "../services/stripe";
 import { updateAutoTopUpSettings } from "../services/company-settings";
 import { listLedgerEntries } from "../services/ledger";
@@ -142,7 +142,8 @@ export function registerCommand6Routes(app: Hono<AppEnv>) {
       return c.json({ error: "Access denied" }, 403);
     }
     const evaluation = await evaluateAutoTopUp(c.env.DB, company.id);
-    return c.json({ evaluation });
+    const diagnostics = await getAutoTopUpDiagnostics(c.env, company.id);
+    return c.json({ evaluation, diagnostics });
   });
 
   // ---------- Wallet health ----------
@@ -505,7 +506,10 @@ export function registerCommand6Routes(app: Hono<AppEnv>) {
   // ---------- Failed requests intelligence (platform admin) ----------
   app.get("/api/platform/failed-requests", requireAuth, requirePlatformAdmin, async (c) => {
     const rows = await c.env.DB.prepare(
-      `SELECT company_id, tool_name, action, error_code, COUNT(*) AS count
+      `SELECT company_id, tool_name, action, error_code,
+              COUNT(*) AS count,
+              MIN(created_at) AS first_seen,
+              MAX(created_at) AS last_seen
        FROM gateway_requests
        WHERE status = 'failed' AND created_at >= datetime('now', '-7 days')
        GROUP BY company_id, tool_name, action, error_code
@@ -513,15 +517,44 @@ export function registerCommand6Routes(app: Hono<AppEnv>) {
        LIMIT 100`,
     ).all();
 
+    const companies = await c.env.DB.prepare(`SELECT id, name, slug FROM companies`).all();
+    const companyMap = new Map(
+      (companies.results ?? []).map((row) => [
+        String(row.id),
+        { name: String(row.name), slug: String(row.slug) },
+      ]),
+    );
+
     return c.json({
-      failures: (rows.results ?? []).map((row) => ({
-        companyId: String(row.company_id),
-        toolName: row.tool_name ? String(row.tool_name) : null,
-        action: row.action ? String(row.action) : null,
-        errorCode: row.error_code ? String(row.error_code) : null,
-        count: Number(row.count),
-      })),
+      failures: (rows.results ?? []).map((row) => {
+        const companyId = String(row.company_id);
+        const meta = companyMap.get(companyId);
+        const count = Number(row.count);
+        return {
+          companyId,
+          companyName: meta?.name ?? null,
+          companySlug: meta?.slug ?? null,
+          toolName: row.tool_name ? String(row.tool_name) : null,
+          action: row.action ? String(row.action) : null,
+          errorCode: row.error_code ? String(row.error_code) : null,
+          count,
+          firstSeen: row.first_seen ? String(row.first_seen) : null,
+          lastSeen: row.last_seen ? String(row.last_seen) : null,
+          severity: count >= 10 ? "high" : count >= 3 ? "medium" : "low",
+          recurring: count >= 3,
+        };
+      }),
     });
+  });
+
+  app.get("/api/companies/:slug/wallet/auto-topup/diagnostics", requireAuth, async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    const user = c.get("user");
+    if (!userHasCompanyAccess(user, company.id) && !user.isPlatformAdmin) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    return c.json({ diagnostics: await getAutoTopUpDiagnostics(c.env, company.id) });
   });
 
   // ---------- Weekly review foundation ----------

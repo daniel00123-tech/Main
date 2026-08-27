@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { AuditEvent, CompanyOverview } from "@infra/shared";
+import type { AuditEvent, CompanyOverview, InfraUser } from "@infra/shared";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -33,6 +33,8 @@ import {
 
 type TabId =
   | "overview"
+  | "users"
+  | "commercial"
   | "mcp"
   | "connectors"
   | "usage"
@@ -60,6 +62,13 @@ export default function CompanyDetailPage() {
     action: "suspend" | "archive" | "delete" | "reactivate";
     reason: string;
   } | null>(null);
+  const [companyUsers, setCompanyUsers] = useState<InfraUser[]>([]);
+  const [invitations, setInvitations] = useState<Array<Record<string, unknown>>>([]);
+  const [walletHealth, setWalletHealth] = useState<Awaited<
+    ReturnType<typeof api.getWalletHealth>
+  >["health"] | null>(null);
+  const [autoTopUpDiag, setAutoTopUpDiag] = useState<Record<string, unknown> | null>(null);
+  const [tabDataLoading, setTabDataLoading] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -76,6 +85,36 @@ export default function CompanyDetailPage() {
   useEffect(() => {
     void load();
   }, [slug]);
+
+  useEffect(() => {
+    if (!overview) return;
+    if (tab !== "users" && tab !== "commercial" && tab !== "overview") return;
+    setTabDataLoading(true);
+    void (async () => {
+      try {
+        if (tab === "users" || tab === "overview") {
+          const [users, inv] = await Promise.all([
+            api.getUsers(overview.company.id),
+            api.getInvitations(overview.company.slug).catch(() => ({ invitations: [] })),
+          ]);
+          setCompanyUsers(users);
+          setInvitations(inv.invitations);
+        }
+        if (tab === "commercial" || tab === "overview") {
+          const [health, diag] = await Promise.all([
+            api.getWalletHealth(overview.company.slug),
+            api.getAutoTopUpDiagnostics(overview.company.slug),
+          ]);
+          setWalletHealth(health.health);
+          setAutoTopUpDiag(diag.diagnostics);
+        }
+      } catch {
+        /* non-blocking tab data */
+      } finally {
+        setTabDataLoading(false);
+      }
+    })();
+  }, [tab, overview?.company.id, overview?.company.slug]);
 
   async function applyLifecycle() {
     if (!overview || !lifecycleModal) return;
@@ -255,12 +294,14 @@ export default function CompanyDetailPage() {
         onChange={(id) => setTab(id as TabId)}
         tabs={[
           { id: "overview", label: "Overview" },
-          { id: "mcp", label: "Business MCP", count: mcpEnvironments.length },
-          { id: "connectors", label: "Connectors", count: connectorInstances.length },
+          { id: "users", label: "Users", count: overview.teamCount ?? undefined },
+          { id: "commercial", label: "Commercial" },
+          { id: "mcp", label: "AI Gateway", count: mcpEnvironments.length },
+          { id: "connectors", label: "Systems", count: connectorInstances.length },
           { id: "usage", label: "Usage" },
           { id: "billing", label: "Billing" },
           { id: "activity", label: "Activity" },
-          { id: "settings", label: "Configuration" },
+          { id: "settings", label: "Settings" },
         ]}
       />
 
@@ -323,6 +364,35 @@ export default function CompanyDetailPage() {
             <MetricCard label="Available credit" value={formatCurrency(balanceCents, currency)} />
           </MetricGrid>
 
+          {walletHealth ? (
+            <MetricGrid cols={4}>
+              <MetricCard
+                label="Wallet health"
+                value={walletHealth.state}
+                hint={`Paid ${formatCurrency(walletHealth.paidCents, currency)} · Promo ${formatCurrency(walletHealth.promotionalCents, currency)}`}
+              />
+              <MetricCard
+                label="Auto top-up"
+                value={autoTopUpDiag?.enabled ? "On" : "Off"}
+                hint={
+                  autoTopUpDiag?.executionEnabled
+                    ? "Execution enabled"
+                    : "Execution disabled (safe)"
+                }
+              />
+              <MetricCard
+                label="Pending invitations"
+                value={formatNumber(invitations.filter((i) => i.status === "pending").length)}
+              />
+              <MetricCard
+                label="Billing status"
+                value={company.billingMode === "live" ? "Live" : "Test mode"}
+              />
+            </MetricGrid>
+          ) : tabDataLoading ? (
+            <LoadingState label="Loading commercial summary…" />
+          ) : null}
+
           <MetricGrid cols={4}>
             <MetricCard
               label="Team"
@@ -341,6 +411,174 @@ export default function CompanyDetailPage() {
               }
             />
           </MetricGrid>
+        </div>
+      ) : null}
+
+      {tab === "users" ? (
+        <div className="stack">
+          <SectionCard title="Team members" description="Company users and roles.">
+            {tabDataLoading ? (
+              <LoadingState label="Loading users…" />
+            ) : companyUsers.length === 0 ? (
+              <EmptyState title="No users" description="Invite users from the company portal." />
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Role</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {companyUsers.map((u) => {
+                      const membership = u.memberships.find(
+                        (m) => m.companyId === overview.company.id,
+                      );
+                      return (
+                      <tr key={String(u.id)}>
+                        <td>{String(u.displayName ?? "—")}</td>
+                        <td>{String(u.email ?? "—")}</td>
+                        <td>{String(membership?.role ?? "—")}</td>
+                        <td>
+                          <StatusBadge status={String(u.status ?? "unknown")} />
+                        </td>
+                      </tr>
+                    );})}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div style={{ marginTop: 16 }}>
+              <Link to={`/portal/${company.slug}/users`} className="button button-primary">
+                Manage in portal
+              </Link>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Invitations" description="Pending and recent invitations.">
+            {invitations.length === 0 ? (
+              <EmptyState title="No invitations" description="Active invites appear here." />
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Email</th>
+                      <th>Role</th>
+                      <th>Status</th>
+                      <th>Expires</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invitations.map((inv) => (
+                      <tr key={String(inv.id)}>
+                        <td>{String(inv.email)}</td>
+                        <td>{String(inv.role)}</td>
+                        <td>
+                          <StatusBadge status={String(inv.status)} />
+                        </td>
+                        <td className="muted small">
+                          {inv.expiresAt ? formatDate(String(inv.expiresAt)) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      ) : null}
+
+      {tab === "commercial" ? (
+        <div className="stack">
+          {tabDataLoading ? (
+            <LoadingState label="Loading commercial data…" />
+          ) : (
+            <>
+              <SectionCard title="Wallet & credit">
+                {walletHealth ? (
+                  <MetricGrid cols={4}>
+                    <MetricCard
+                      label="Balance"
+                      value={formatCurrency(walletHealth.balanceCents, currency)}
+                    />
+                    <MetricCard label="Health" value={walletHealth.state} />
+                    <MetricCard
+                      label="Paid credit"
+                      value={formatCurrency(walletHealth.paidCents, currency)}
+                    />
+                    <MetricCard
+                      label="Promotional credit"
+                      value={formatCurrency(walletHealth.promotionalCents, currency)}
+                    />
+                  </MetricGrid>
+                ) : (
+                  <EmptyState title="Wallet unavailable" />
+                )}
+              </SectionCard>
+
+              <SectionCard title="Auto top-up diagnostics" description="No secrets shown. Execution gate status for operators.">
+                {autoTopUpDiag ? (
+                  <div className="kv-stack">
+                    <KeyValue label="Auto top-up" value={autoTopUpDiag.enabled ? "On" : "Off"} />
+                    <KeyValue
+                      label="Execution"
+                      value={autoTopUpDiag.executionEnabled ? "Enabled" : "Disabled"}
+                    />
+                    <KeyValue
+                      label="Threshold"
+                      value={formatCurrency(Number(autoTopUpDiag.thresholdCents ?? 0), currency)}
+                    />
+                    <KeyValue
+                      label="Top-up amount"
+                      value={formatCurrency(Number(autoTopUpDiag.amountCents ?? 0), currency)}
+                    />
+                    <KeyValue
+                      label="Saved card"
+                      value={
+                        autoTopUpDiag.paymentMethod &&
+                        typeof autoTopUpDiag.paymentMethod === "object" &&
+                        (autoTopUpDiag.paymentMethod as { ready?: boolean }).ready
+                          ? `${String((autoTopUpDiag.paymentMethod as { brand?: string }).brand ?? "Card")} ···${String((autoTopUpDiag.paymentMethod as { last4?: string }).last4 ?? "????")}`
+                          : "Not saved"
+                      }
+                    />
+                    <KeyValue label="Portal status" value={String(autoTopUpDiag.portalStatus ?? "—")} />
+                    <KeyValue
+                      label="Daily auto top-up"
+                      value={`${formatCurrency(Number(autoTopUpDiag.dailySpentCents ?? 0), currency)} / ${formatCurrency(Number(autoTopUpDiag.dailyCapCents ?? 0), currency)}`}
+                    />
+                    <KeyValue
+                      label="Monthly auto top-up"
+                      value={`${formatCurrency(Number(autoTopUpDiag.monthlySpentCents ?? 0), currency)} / ${formatCurrency(Number(autoTopUpDiag.monthlyCapCents ?? 0), currency)}`}
+                    />
+                    {autoTopUpDiag.suppressedUntil ? (
+                      <KeyValue
+                        label="Suppressed until"
+                        value={formatDate(String(autoTopUpDiag.suppressedUntil))}
+                      />
+                    ) : null}
+                    {autoTopUpDiag.lastFailure &&
+                    typeof autoTopUpDiag.lastFailure === "object" ? (
+                      <KeyValue
+                        label="Last failure"
+                        value={String(
+                          (autoTopUpDiag.lastFailure as { failureReason?: string }).failureReason ??
+                            "Unknown",
+                        )}
+                      />
+                    ) : null}
+                  </div>
+                ) : (
+                  <EmptyState title="Diagnostics unavailable" />
+                )}
+              </SectionCard>
+            </>
+          )}
         </div>
       ) : null}
 

@@ -72,6 +72,7 @@ export default function PortalBillingPage() {
   const [autoTopUpAmount, setAutoTopUpAmount] = useState("25");
   const [autoTopUpConfirm, setAutoTopUpConfirm] = useState(false);
   const [payments, setPayments] = useState<Array<Record<string, unknown>>>([]);
+  const [autoTopUpDiag, setAutoTopUpDiag] = useState<Record<string, unknown> | null>(null);
 
   const topupState = searchParams.get("topup");
   const checkoutId = searchParams.get("checkout");
@@ -102,6 +103,10 @@ export default function PortalBillingPage() {
         if (tab === "invoices") {
           const p = await api.getBillingPayments(company.slug);
           setPayments(p.payments);
+        }
+        if (tab === "auto-topup") {
+          const diag = await api.getAutoTopUpDiagnostics(company.slug);
+          setAutoTopUpDiag(diag.diagnostics);
         }
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "Failed to load wallet");
@@ -534,6 +539,38 @@ export default function PortalBillingPage() {
             <p className="muted small" style={{ marginTop: 12 }}>
               {autoTopUp.message}
             </p>
+          ) : null}
+          {autoTopUpDiag ? (
+            <div className="kv-stack" style={{ marginTop: 20 }}>
+              <KeyValue
+                label="Execution gate"
+                value={autoTopUpDiag.executionEnabled ? "Enabled" : "Disabled (production safe)"}
+              />
+              <KeyValue label="Status" value={String(autoTopUpDiag.portalStatus ?? "—")} />
+              <KeyValue
+                label="Saved card"
+                value={
+                  autoTopUpDiag.paymentMethod &&
+                  typeof autoTopUpDiag.paymentMethod === "object" &&
+                  (autoTopUpDiag.paymentMethod as { ready?: boolean }).ready
+                    ? `${String((autoTopUpDiag.paymentMethod as { brand?: string }).brand ?? "Card")} ···${String((autoTopUpDiag.paymentMethod as { last4?: string }).last4 ?? "????")}`
+                    : "None"
+                }
+              />
+              <KeyValue
+                label="Daily usage"
+                value={`£${((Number(autoTopUpDiag.dailySpentCents ?? 0)) / 100).toFixed(2)} / £${((Number(autoTopUpDiag.dailyCapCents ?? 0)) / 100).toFixed(2)}`}
+              />
+              {autoTopUpDiag.lastFailure && typeof autoTopUpDiag.lastFailure === "object" ? (
+                <KeyValue
+                  label="Last failure"
+                  value={String(
+                    (autoTopUpDiag.lastFailure as { failureReason?: string }).failureReason ??
+                      "—",
+                  )}
+                />
+              ) : null}
+            </div>
           ) : null}
         </SectionCard>
       ) : null}

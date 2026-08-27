@@ -546,3 +546,151 @@ export async function maybeTriggerAutoTopUp(
   }
   return { triggered: true, reason: "initiated" };
 }
+
+export type AutoTopUpDiagnostics = {
+  enabled: boolean;
+  executionEnabled: boolean;
+  thresholdCents: number | null;
+  amountCents: number | null;
+  portalStatus: AutoTopUpEvaluation["portalStatus"];
+  evaluation: AutoTopUpEvaluation;
+  paymentMethod: {
+    ready: boolean;
+    brand: string | null;
+    last4: string | null;
+    status: string | null;
+  };
+  lastAttempt: {
+    id: string;
+    status: string;
+    amountCents: number;
+    failureReason: string | null;
+    createdAt: string;
+    completedAt: string | null;
+  } | null;
+  lastSuccess: {
+    id: string;
+    amountCents: number;
+    completedAt: string | null;
+  } | null;
+  lastFailure: {
+    id: string;
+    amountCents: number;
+    failureReason: string | null;
+    completedAt: string | null;
+  } | null;
+  dailySpentCents: number;
+  dailyCapCents: number;
+  monthlySpentCents: number;
+  monthlyCapCents: number;
+  suppressedUntil: string | null;
+  failureCount: number;
+};
+
+export async function getAutoTopUpDiagnostics(
+  env: Env,
+  companyId: string,
+): Promise<AutoTopUpDiagnostics> {
+  const executionEnabled =
+    String(env.AUTO_TOPUP_EXECUTION_ENABLED ?? "").toLowerCase() === "true";
+  const settings = await getCompanySettings(env.DB, companyId);
+  const commercial = await getCommercialSafety(env.DB, companyId);
+  const provider = await env.DB.prepare(
+    `SELECT payment_method_brand, payment_method_last4, payment_method_status
+     FROM payment_provider_accounts WHERE company_id = ? AND provider = 'stripe'`,
+  )
+    .bind(companyId)
+    .first();
+
+  const evaluation = await evaluateAutoTopUp(env.DB, companyId);
+  const portalStatus = await getAutoTopUpPortalStatus(env.DB, companyId, executionEnabled);
+
+  const lastAttemptRow = await env.DB.prepare(
+    `SELECT id, status, amount_cents, failure_reason, created_at, completed_at
+     FROM auto_top_up_transactions WHERE company_id = ?
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(companyId)
+    .first();
+
+  const lastSuccessRow = await env.DB.prepare(
+    `SELECT id, amount_cents, completed_at FROM auto_top_up_transactions
+     WHERE company_id = ? AND status = 'completed'
+     ORDER BY completed_at DESC LIMIT 1`,
+  )
+    .bind(companyId)
+    .first();
+
+  const lastFailureRow = await env.DB.prepare(
+    `SELECT id, amount_cents, failure_reason, completed_at FROM auto_top_up_transactions
+     WHERE company_id = ? AND status = 'failed'
+     ORDER BY completed_at DESC LIMIT 1`,
+  )
+    .bind(companyId)
+    .first();
+
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const dayKey = new Date().toISOString().slice(0, 10);
+  let monthlySpent = Number(commercial?.auto_top_up_monthly_spent_cents ?? 0);
+  if (String(commercial?.auto_top_up_month_key ?? "") !== monthKey) monthlySpent = 0;
+  let dailySpent = Number(commercial?.auto_top_up_daily_spent_cents ?? 0);
+  if (String(commercial?.auto_top_up_day_key ?? "") !== dayKey) dailySpent = 0;
+
+  return {
+    enabled: Boolean(settings?.autoTopUp.enabled),
+    executionEnabled,
+    thresholdCents: settings?.autoTopUp.thresholdCents ?? null,
+    amountCents: settings?.autoTopUp.amountCents ?? null,
+    portalStatus,
+    evaluation,
+    paymentMethod: {
+      ready: Boolean(settings?.autoTopUp.paymentMethodReady),
+      brand: provider?.payment_method_brand ? String(provider.payment_method_brand) : null,
+      last4: provider?.payment_method_last4 ? String(provider.payment_method_last4) : null,
+      status: provider?.payment_method_status ? String(provider.payment_method_status) : null,
+    },
+    lastAttempt: lastAttemptRow
+      ? {
+          id: String(lastAttemptRow.id),
+          status: String(lastAttemptRow.status),
+          amountCents: Number(lastAttemptRow.amount_cents),
+          failureReason: lastAttemptRow.failure_reason
+            ? String(lastAttemptRow.failure_reason)
+            : null,
+          createdAt: String(lastAttemptRow.created_at),
+          completedAt: lastAttemptRow.completed_at ? String(lastAttemptRow.completed_at) : null,
+        }
+      : null,
+    lastSuccess: lastSuccessRow
+      ? {
+          id: String(lastSuccessRow.id),
+          amountCents: Number(lastSuccessRow.amount_cents),
+          completedAt: lastSuccessRow.completed_at ? String(lastSuccessRow.completed_at) : null,
+        }
+      : null,
+    lastFailure: lastFailureRow
+      ? {
+          id: String(lastFailureRow.id),
+          amountCents: Number(lastFailureRow.amount_cents),
+          failureReason: lastFailureRow.failure_reason
+            ? String(lastFailureRow.failure_reason)
+            : null,
+          completedAt: lastFailureRow.completed_at ? String(lastFailureRow.completed_at) : null,
+        }
+      : null,
+    dailySpentCents: dailySpent,
+    dailyCapCents:
+      commercial?.auto_top_up_daily_cap_cents != null
+        ? Number(commercial.auto_top_up_daily_cap_cents)
+        : AUTO_TOPUP_DEFAULT_DAILY_CAP_CENTS,
+    monthlySpentCents: monthlySpent,
+    monthlyCapCents:
+      commercial?.auto_top_up_monthly_cap_cents != null
+        ? Number(commercial.auto_top_up_monthly_cap_cents)
+        : AUTO_TOPUP_DEFAULT_MONTHLY_CAP_CENTS,
+    suppressedUntil: commercial?.auto_top_up_suppressed_until
+      ? String(commercial.auto_top_up_suppressed_until)
+      : null,
+    failureCount: Number(commercial?.auto_top_up_failed_count ?? 0),
+  };
+}

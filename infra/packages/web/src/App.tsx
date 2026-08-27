@@ -45,6 +45,7 @@ import PasswordSetupPage from "./pages/PasswordSetupPage";
 import McpEnvironmentsPage from "./pages/McpEnvironmentsPage";
 import PricingRulesPage from "./pages/PricingRulesPage";
 import ProviderCostsPage from "./pages/ProviderCostsPage";
+import FailedRequestsPage from "./pages/FailedRequestsPage";
 import SettingsPage from "./pages/SettingsPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
 import UsagePage from "./pages/UsagePage";
@@ -111,6 +112,7 @@ const ADMIN_NAV: NavGroup[] = [
     label: "Platform",
     items: [
       { to: "/system-health", label: "System Health", icon: <Activity size={18} /> },
+      { to: "/failed-requests", label: "Failed Requests", icon: <Activity size={18} /> },
       { to: "/audit-log", label: "Audit Log", icon: <Shield size={18} /> },
       { to: "/settings", label: "Settings", icon: <Settings size={18} /> },
     ],
@@ -331,6 +333,7 @@ export default function App() {
                 <Route path="/commercial/provider-costs" element={<ProviderCostsPage />} />
                 <Route path="/commercial/pricing-rules" element={<PricingRulesPage />} />
                 <Route path="/system-health" element={<SystemHealthPage />} />
+                <Route path="/failed-requests" element={<FailedRequestsPage />} />
                 <Route path="/audit-log" element={<AuditLogPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>

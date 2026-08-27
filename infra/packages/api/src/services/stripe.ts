@@ -1,7 +1,10 @@
 import { newId, nowIso } from "../db/mappers";
 import { appendLedgerEntry } from "./ledger";
 import { recordAuditEvent } from "./control-plane";
-import { DEFAULT_TOP_UP_OPTIONS_CENTS } from "./payment-providers";
+import {
+  DEFAULT_TOP_UP_OPTIONS_CENTS,
+  ensurePaymentProviderAccount,
+} from "./payment-providers";
 import type { Env } from "../env";
 
 export type StripeMode = "unconfigured" | "test" | "live";
@@ -127,7 +130,17 @@ export async function ensureStripeCustomer(
     (balanceRow?.stripe_customer_id ? String(balanceRow.stripe_customer_id) : null) ??
     (providerRow?.external_customer_ref ? String(providerRow.external_customer_ref) : null);
 
-  if (existing) return { ok: true, customerId: existing };
+  if (existing) {
+    await ensurePaymentProviderAccount(env.DB, input.companyId, "stripe");
+    await env.DB.prepare(
+      `UPDATE payment_provider_accounts
+       SET external_customer_ref = COALESCE(external_customer_ref, ?), status = 'ready', updated_at = ?
+       WHERE company_id = ? AND provider = 'stripe'`,
+    )
+      .bind(existing, nowIso(), input.companyId)
+      .run();
+    return { ok: true, customerId: existing };
+  }
 
   const params = new URLSearchParams();
   params.set("name", input.companyName);
@@ -156,6 +169,7 @@ export async function ensureStripeCustomer(
     .bind(body.id, now, input.companyId)
     .run();
 
+  await ensurePaymentProviderAccount(env.DB, input.companyId, "stripe");
   await env.DB.prepare(
     `UPDATE payment_provider_accounts
      SET external_customer_ref = ?, status = 'ready', updated_at = ?
@@ -986,6 +1000,21 @@ export async function getStripePaymentMethodStatus(
   };
 }
 
+/**
+ * Stripe is authoritative for card presence; D1 stores masked metadata only.
+ * Self-heals payment_provider_accounts when Stripe has a default PM but D1 is empty/stale.
+ */
+export async function reconcilePaymentMethodFromStripe(
+  env: Env,
+  input: { companyId: string; companyName: string; actorEmail: string },
+): Promise<StripePaymentMethodSummary> {
+  const status = await getStripePaymentMethodStatus(env, input);
+  if (status.hasPaymentMethod) {
+    await syncDefaultPaymentMethodForCompany(env, input.companyId);
+  }
+  return status;
+}
+
 /** Create Stripe Checkout Session in setup mode — saves card without charging. */
 export async function createStripePaymentMethodSetupSession(
   env: Env,
@@ -1175,6 +1204,15 @@ export async function syncDefaultPaymentMethodForCompany(
     ? String(balanceRow.stripe_customer_id)
     : null;
   if (!customerId) return { ok: false, error: "Stripe customer not found" };
+
+  await ensurePaymentProviderAccount(env.DB, companyId, "stripe");
+  await env.DB.prepare(
+    `UPDATE payment_provider_accounts
+     SET external_customer_ref = COALESCE(external_customer_ref, ?), updated_at = ?
+     WHERE company_id = ? AND provider = 'stripe'`,
+  )
+    .bind(customerId, nowIso(), companyId)
+    .run();
 
   const existing = await env.DB.prepare(
     `SELECT payment_method_id FROM payment_provider_accounts WHERE company_id = ? AND provider = 'stripe'`,

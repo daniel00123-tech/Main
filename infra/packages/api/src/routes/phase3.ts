@@ -370,11 +370,13 @@ phase3.get("/api/companies/:slug/wallet/payment-method", requireAuth, async (c) 
     return c.json({ error: "Access to this company is denied" }, 403);
   }
   const user = c.get("user");
-  const status = await getStripePaymentMethodStatus(c.env, {
-    companyId: company.id,
-    companyName: company.name,
-    actorEmail: user.email,
-  });
+  const status = await import("../services/stripe").then((m) =>
+    m.reconcilePaymentMethodFromStripe(c.env, {
+      companyId: company.id,
+      companyName: company.name,
+      actorEmail: user.email,
+    }),
+  );
   return c.json({ paymentMethod: status });
 });
 
@@ -775,45 +777,68 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
   }
 
   const origin = portalOrigin(c.env, c.req.header("Origin"));
-  const invited = await import("../services/invitations").then((m) =>
-    m.createCompanyInvitation(c.env, {
+  try {
+    const invited = await import("../services/invitations").then((m) =>
+      m.createCompanyInvitation(c.env, {
+        companyId: company.id,
+        companyName: company.name,
+        companySlug: company.slug,
+        email: body.email!,
+        displayName: body.displayName!,
+        role: body.role!,
+        invitedBy: user.email,
+        inviterName: user.displayName,
+        teamId: body.teamId,
+        customRoleId: body.customRoleId,
+        origin,
+      }),
+    );
+
+    await recordAuditEvent(c.env.DB, {
       companyId: company.id,
-      companyName: company.name,
-      companySlug: company.slug,
-      email: body.email!,
-      displayName: body.displayName!,
-      role: body.role!,
-      invitedBy: user.email,
-      inviterName: user.displayName,
-      teamId: body.teamId,
-      customRoleId: body.customRoleId,
-      origin,
-    }),
-  );
+      eventType: "user.created",
+      actor: user.email,
+      resourceType: "user",
+      resourceId: invited.user.id,
+      detail: { role: body.role, emailSent: invited.emailSent },
+    });
 
-  await recordAuditEvent(c.env.DB, {
-    companyId: company.id,
-    eventType: "user.created",
-    actor: user.email,
-    resourceType: "user",
-    resourceId: invited.user.id,
-    detail: { role: body.role, emailSent: invited.emailSent },
-  });
-
-  return c.json({
-    user: {
-      id: invited.user.id,
-      email: invited.user.email,
-      displayName: invited.user.displayName,
-      status: invited.user.status,
-    },
-    role: body.role,
-    setupUrl: invited.setupUrl,
-    setupTokenExpiresAt: invited.expiresAt,
-    emailSent: invited.emailSent,
-    emailError: invited.emailError,
-    setupToken: invited.setupToken,
-  });
+    return c.json({
+      user: {
+        id: invited.user.id,
+        email: invited.user.email,
+        displayName: invited.user.displayName,
+        status: invited.user.status,
+      },
+      role: body.role,
+      setupUrl: invited.setupUrl,
+      setupTokenExpiresAt: invited.expiresAt,
+      emailSent: invited.emailSent,
+      emailError: invited.emailError,
+      setupToken: invited.setupToken,
+    });
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      (err as Error & { code?: string }).code === "DUPLICATE_ACTIVE_INVITATION"
+    ) {
+      const invitationId = (err as Error & { invitationId?: string }).invitationId;
+      const invitations = await import("../services/invitations").then((m) =>
+        m.listCompanyInvitations(c.env.DB, company.id),
+      );
+      const existing = invitations.find((i) => i.id === invitationId);
+      return c.json(
+        {
+          error:
+            "An active invitation already exists for this email. Resend or cancel it instead of creating a duplicate.",
+          code: "DUPLICATE_ACTIVE_INVITATION",
+          existingInvitation: existing ?? null,
+        },
+        409,
+      );
+    }
+    throw err;
+  }
 });
 
 phase3.post("/api/companies/:slug/users/:userId/status", requireAuth, async (c) => {
