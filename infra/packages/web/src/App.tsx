@@ -63,6 +63,7 @@ import PortalUsersPage from "./portal/PortalUsersPage";
 import PortalSettingsPage from "./portal/PortalSettingsPage";
 import PortalActivityPage from "./portal/PortalActivityPage";
 import PortalActionsPage from "./portal/PortalActionsPage";
+import PortalAutomationsPage from "./portal/PortalAutomationsPage";
 import AdminCompanySwitcher from "./components/AdminCompanySwitcher";
 import ScopeBanner from "./components/ScopeBanner";
 import { AdminScopeProvider } from "./context/AdminScopeContext";
@@ -300,6 +301,7 @@ export default function App() {
         <Route path="/portal/settings" element={<PortalEntryRedirect />} />
         <Route path="/portal/activity" element={<PortalEntryRedirect />} />
         <Route path="/portal/actions" element={<PortalEntryRedirect />} />
+        <Route path="/portal/automations" element={<PortalEntryRedirect />} />
         <Route path="/portal/:companySlug" element={<PortalShell />}>
           <Route index element={<PortalDashboardPage />} />
           <Route path="dashboard" element={<PortalDashboardPage />} />
@@ -307,6 +309,7 @@ export default function App() {
           <Route path="microsoft-365" element={<PortalMicrosoft365Page />} />
           <Route path="ai-connections" element={<PortalAiConnectionsPage />} />
           <Route path="actions" element={<PortalActionsPage />} />
+          <Route path="automations" element={<PortalAutomationsPage />} />
           <Route path="users" element={<PortalUsersPage />} />
           <Route path="team" element={<Navigate to="users" replace />} />
           <Route path="usage" element={<PortalUsagePage />} />
