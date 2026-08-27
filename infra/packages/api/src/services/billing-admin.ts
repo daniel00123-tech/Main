@@ -1,6 +1,11 @@
 import type { LedgerEntry } from "./ledger";
 import { classifyLedgerCredit, creditClassForEntry } from "./wallet-credits";
 import { listLedgerEntries, listPlatformBalances } from "./ledger";
+import {
+  getCreditsAddedThisMonthCents,
+  getMonthStartUtcIso,
+  getSpendThisMonthCents,
+} from "./wallet-metrics";
 
 export type EnrichedBalanceRow = Awaited<
   ReturnType<typeof listPlatformBalances>
@@ -15,26 +20,16 @@ export async function listEnrichedPlatformBalances(
   db: D1Database,
 ): Promise<EnrichedBalanceRow[]> {
   const balances = await listPlatformBalances(db);
-  const monthStart = new Date();
-  monthStart.setUTCDate(1);
-  monthStart.setUTCHours(0, 0, 0, 0);
-  const monthStartIso = monthStart.toISOString();
+  const monthStartIso = getMonthStartUtcIso();
 
   const rows: EnrichedBalanceRow[] = [];
   for (const row of balances) {
     const ledger = await listLedgerEntries(db, row.companyId, 500);
     const credits = classifyLedgerCredit(ledger);
-    const spendThisMonthCents = ledger
-      .filter(
-        (e) =>
-          e.entryType === "usage_debit" &&
-          e.createdAt >= monthStartIso &&
-          e.amountCents < 0,
-      )
-      .reduce((sum, e) => sum + Math.abs(e.amountCents), 0);
-    const creditsAddedThisMonthCents = ledger
-      .filter((e) => e.amountCents > 0 && e.createdAt >= monthStartIso)
-      .reduce((sum, e) => sum + e.amountCents, 0);
+    const [spendThisMonthCents, creditsAddedThisMonthCents] = await Promise.all([
+      getSpendThisMonthCents(db, row.companyId, monthStartIso),
+      getCreditsAddedThisMonthCents(db, row.companyId, monthStartIso),
+    ]);
 
     rows.push({
       ...row,

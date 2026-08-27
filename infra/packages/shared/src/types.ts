@@ -580,6 +580,7 @@ export interface CompanyOverview {
     currency: string;
     lowBalanceThresholdCents: number;
     lowBalance: boolean;
+    walletHealthState?: "healthy" | "low" | "critical" | "empty";
     stripeCustomerId: string | null;
     updatedAt: string;
   };
@@ -597,6 +598,7 @@ export interface CompanyOverview {
   knowledgeSources?: KnowledgeSourceSummary[];
   capabilitySnapshot?: CapabilitySnapshot | null;
   walletCredits?: { testCents: number; paidCents: number };
+  spendThisMonthCents?: number;
 }
 
 export type ReadinessApplicability = "required" | "optional" | "not_applicable";

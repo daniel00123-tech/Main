@@ -402,6 +402,7 @@ export const api = {
       overrides: Array<{ role: CompanyRole; action: string; effect: "allow" | "deny" }>;
       editableRoles: CompanyRole[];
       presets: RolePresetResponse[];
+      canEdit?: boolean;
     }>(`/api/companies/${encodeURIComponent(slug)}/role-permissions`),
   saveCompanyRolePermissions: (
     slug: string,
@@ -578,6 +579,13 @@ export const api = {
         updatedAt: string;
         testCreditCents?: number;
         paidCreditCents?: number;
+        spendThisMonthCents?: number;
+        walletHealthState?: "healthy" | "low" | "critical" | "empty";
+      };
+      billing?: {
+        spendThisMonthCents: number;
+        monthStartUtc: string;
+        lowBalanceThresholdCents: number;
       };
       ledger: Array<{
         id: string;
@@ -618,6 +626,9 @@ export const api = {
           enabled: boolean;
           thresholdCents: number | null;
           amountCents: number | null;
+          paymentMethodReady?: boolean;
+          setupRequired?: boolean;
+          message?: string;
         };
       };
       recentTopUps?: Array<{
@@ -662,6 +673,39 @@ export const api = {
     fetchJson<Record<string, unknown>>(`/api/companies/${slug}/wallet/top-up`, {
       method: "POST",
       body: JSON.stringify({ amountCents }),
+    }),
+  getPaymentMethod: (slug: string) =>
+    fetchJson<{
+      paymentMethod: {
+        configured: boolean;
+        hasPaymentMethod: boolean;
+        brand: string | null;
+        last4: string | null;
+        expMonth: number | null;
+        expYear: number | null;
+        setupRequired: boolean;
+        message: string;
+      };
+    }>(`/api/companies/${slug}/wallet/payment-method`),
+  startPaymentMethodSetup: (slug: string) =>
+    fetchJson<{ url: string; stripeConfigured: boolean; testMode: boolean }>(
+      `/api/companies/${slug}/wallet/payment-method/setup`,
+      { method: "POST", body: "{}" },
+    ),
+  updateAutoTopUp: (
+    slug: string,
+    input: { enabled: boolean; thresholdCents: number; amountCents: number; confirm?: boolean },
+  ) =>
+    fetchJson<{ settings: Record<string, unknown> }>(`/api/companies/${slug}/wallet/auto-topup`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  getCompanySettings: (slug: string) =>
+    fetchJson<{ settings: Record<string, unknown> }>(`/api/companies/${slug}/settings`),
+  updateCompanySettings: (slug: string, patch: Record<string, unknown>) =>
+    fetchJson<{ settings: Record<string, unknown> }>(`/api/companies/${slug}/settings`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
     }),
   getAiConnections: (slug: string) =>
     fetchJson<

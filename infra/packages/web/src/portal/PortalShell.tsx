@@ -38,8 +38,8 @@ type NavItem = {
 
 const ALL_NAV: NavItem[] = [
   { path: "dashboard", label: "Overview", icon: <LayoutDashboard size={18} />, section: "main" },
-  { path: "connectors", label: "Connections", icon: <Plug size={18} />, section: "main" },
-  { path: "ai-connections", label: "AI", icon: <Bot size={18} />, section: "main" },
+  { path: "connectors", label: "Systems", icon: <Plug size={18} />, section: "main" },
+  { path: "ai-connections", label: "AI Access", icon: <Bot size={18} />, section: "main" },
   {
     path: "actions",
     label: "Actions",

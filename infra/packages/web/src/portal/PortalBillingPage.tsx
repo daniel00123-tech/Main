@@ -6,6 +6,7 @@ import {
   ErrorState,
   Input,
   KpiStrip,
+  KeyValue,
   LoadingState,
   Notice,
   SectionCard,
@@ -64,9 +65,22 @@ export default function PortalBillingPage() {
   const [tab, setTab] = useState<BillingTab>("overview");
   const [customAmount, setCustomAmount] = useState("");
   const [ledgerLimit, setLedgerLimit] = useState(30);
+  const [paymentMethod, setPaymentMethod] = useState<Awaited<
+    ReturnType<typeof api.getPaymentMethod>
+  >["paymentMethod"] | null>(null);
+  const [autoTopUpThreshold, setAutoTopUpThreshold] = useState("10");
+  const [autoTopUpAmount, setAutoTopUpAmount] = useState("25");
+  const [autoTopUpConfirm, setAutoTopUpConfirm] = useState(false);
 
   const topupState = searchParams.get("topup");
   const checkoutId = searchParams.get("checkout");
+  const tabParam = searchParams.get("tab");
+
+  useEffect(() => {
+    if (tabParam === "payment" || tabParam === "auto-topup" || tabParam === "overview") {
+      setTab(tabParam as BillingTab);
+    }
+  }, [tabParam]);
 
   const reloadWallet = useCallback(async () => {
     if (!company) return null;
@@ -80,11 +94,15 @@ export default function PortalBillingPage() {
     void (async () => {
       try {
         await reloadWallet();
+        if (tab === "payment" || searchParams.get("setup") === "complete") {
+          const pm = await api.getPaymentMethod(company.slug);
+          setPaymentMethod(pm.paymentMethod);
+        }
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "Failed to load wallet");
       }
     })();
-  }, [company, reloadWallet]);
+  }, [company, reloadWallet, tab, searchParams]);
 
   useEffect(() => {
     if (!company || topupState !== "success" || !checkoutId) {
@@ -157,9 +175,48 @@ export default function PortalBillingPage() {
   const recentTopUps = (wallet.recentTopUps ?? []) as TopUpRecord[];
   const topUpOptions = wallet.topUpOptionsCents.filter((amount) => amount >= 1000);
   const autoTopUp = wallet.paymentProvider?.autoTopUp;
-  const spendThisMonth = wallet.ledger
-    .filter((e) => e.entryType.includes("usage") || e.entryType === "debit")
-    .reduce((sum, e) => sum + Math.abs(e.amountCents), 0);
+  const spendThisMonth =
+    wallet.wallet.spendThisMonthCents ??
+    wallet.billing?.spendThisMonthCents ??
+    0;
+  const walletHealth = wallet.wallet.walletHealthState ?? (wallet.wallet.lowBalance ? "low" : "healthy");
+
+  async function startPaymentMethodSetup() {
+    if (!company) return;
+    setBusy(true);
+    try {
+      const result = await api.startPaymentMethodSetup(company.slug);
+      if (result.url) window.location.href = result.url;
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Unable to start payment setup");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveAutoTopUp(enabled: boolean) {
+    if (!company) return;
+    if (enabled && !autoTopUpConfirm) {
+      setMessage("Please confirm you understand auto top-up will charge your saved card.");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api.updateAutoTopUp(company.slug, {
+        enabled,
+        thresholdCents: Math.round(Number(autoTopUpThreshold) * 100) || 1000,
+        amountCents: Math.round(Number(autoTopUpAmount) * 100) || 2500,
+        confirm: enabled,
+      });
+      await reloadWallet();
+      setMessage(enabled ? "Auto top-up configuration saved." : "Auto top-up disabled.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Unable to save auto top-up settings");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <>
@@ -224,7 +281,17 @@ export default function PortalBillingPage() {
               {
                 label: "Current balance",
                 value: formatCurrency(wallet.wallet.balanceCents, wallet.wallet.currency),
-                hint: wallet.wallet.lowBalance ? "Low balance" : "Available for AI usage",
+                hint:
+                  walletHealth === "healthy"
+                    ? "Available for AI usage"
+                    : walletHealth === "empty"
+                      ? "Empty — add credit"
+                      : "Low balance — add credit",
+              },
+              {
+                label: "Promotional credit",
+                value: formatCurrency(wallet.wallet.testCreditCents ?? 0, wallet.wallet.currency),
+                hint: "Non-paid trial or promotional balance",
               },
               {
                 label: "Spend this month",
@@ -321,37 +388,118 @@ export default function PortalBillingPage() {
 
       {tab === "payment" ? (
         <SectionCard title="Payment method">
-          <Notice tone="info">
-            Payment methods are managed through Stripe Checkout when you add credit. INFRA never
-            stores card details on its servers.
-          </Notice>
-          <p className="muted small" style={{ marginTop: 12 }}>
-            Saved payment methods and billing portal self-service will be available in a future
-            release.
-          </p>
+          {searchParams.get("setup") === "complete" ? (
+            <Notice tone="success">Payment method setup completed in Stripe.</Notice>
+          ) : null}
+          {paymentMethod?.hasPaymentMethod ? (
+            <>
+              <KeyValue
+                label="Card on file"
+                value={`${paymentMethod.brand ?? "Card"} ·••• ${paymentMethod.last4 ?? "****"}`}
+              />
+              {paymentMethod.expMonth && paymentMethod.expYear ? (
+                <KeyValue
+                  label="Expires"
+                  value={`${String(paymentMethod.expMonth).padStart(2, "0")}/${paymentMethod.expYear}`}
+                />
+              ) : null}
+            </>
+          ) : (
+            <Notice tone="info">
+              No saved payment method yet. Add one via Stripe — card details never touch INFRA
+              servers.
+            </Notice>
+          )}
+          {wallet.stripeConfigured ? (
+            <div style={{ marginTop: 16 }}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={busy}
+                onClick={() => void startPaymentMethodSetup()}
+              >
+                {paymentMethod?.hasPaymentMethod ? "Replace payment method" : "Add payment method"}
+              </Button>
+              {stripeTestMode ? (
+                <p className="muted small" style={{ marginTop: 8 }}>
+                  Test mode — use Stripe test card 4242 4242 4242 4242.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </SectionCard>
       ) : null}
 
       {tab === "auto-topup" ? (
         <SectionCard title="Auto top-up">
           <Notice tone="info">
-            <strong>Coming soon</strong> — automatic top-up when your balance falls below a
-            threshold is designed but not yet enabled.
+            Configure automatic credit when your balance falls below a threshold. Unattended
+            charging requires a saved payment method and remains disabled until operator approval.
           </Notice>
-          <div className="kv-stack" style={{ marginTop: 16, opacity: 0.7 }}>
-            <div className="drawer-row">
-              <dt>When balance falls below</dt>
-              <dd>{formatCurrency(autoTopUp?.thresholdCents ?? 1000)}</dd>
-            </div>
-            <div className="drawer-row">
-              <dt>Automatically add</dt>
-              <dd>{formatCurrency(autoTopUp?.amountCents ?? 5000)}</dd>
-            </div>
+          <div className="kv-stack" style={{ marginTop: 16 }}>
+            <label className="field">
+              <span className="field-label">When balance falls below (£)</span>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={autoTopUpThreshold}
+                onChange={(e) => setAutoTopUpThreshold(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field-label">Automatically add (£)</span>
+              <select
+                className="input"
+                value={autoTopUpAmount}
+                onChange={(e) => setAutoTopUpAmount(e.target.value)}
+              >
+                <option value="10">£10</option>
+                <option value="25">£25</option>
+                <option value="50">£50</option>
+                <option value="100">£100</option>
+              </select>
+            </label>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={autoTopUpConfirm}
+                onChange={(e) => setAutoTopUpConfirm(e.target.checked)}
+              />
+              <span>
+                I understand enabling auto top-up will charge my saved payment method when the
+                threshold is reached (test mode only until live approval).
+              </span>
+            </label>
           </div>
-          <p className="muted small">
-            Backend requirement: recurring Stripe payment method, customer consent, and wallet
-            credit webhook handling before this can be safely enabled.
-          </p>
+          <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              disabled={busy || !autoTopUp?.supported}
+              onClick={() => void saveAutoTopUp(true)}
+            >
+              {autoTopUp?.enabled ? "Update auto top-up" : "Enable auto top-up"}
+            </Button>
+            {autoTopUp?.enabled ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={busy}
+                onClick={() => void saveAutoTopUp(false)}
+              >
+                Disable
+              </Button>
+            ) : null}
+          </div>
+          {autoTopUp?.message ? (
+            <p className="muted small" style={{ marginTop: 12 }}>
+              {autoTopUp.message}
+            </p>
+          ) : null}
         </SectionCard>
       ) : null}
 

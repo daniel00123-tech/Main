@@ -1,4 +1,5 @@
 import { newId, nowIso } from "../db/mappers";
+import { deriveWalletHealthState } from "./wallet-metrics";
 
 export type LedgerEntryType =
   | "top_up"
@@ -96,12 +97,15 @@ export async function getWalletBalance(db: D1Database, companyId: string) {
       .run();
   }
 
+  const walletHealthState = deriveWalletHealthState(derived, threshold);
+
   return {
     companyId,
     balanceCents: derived,
     currency: String(row?.currency ?? "GBP"),
     lowBalanceThresholdCents: threshold,
     lowBalance: derived < threshold,
+    walletHealthState,
     stripeCustomerId,
     updatedAt: String(row?.updated_at ?? nowIso()),
   };

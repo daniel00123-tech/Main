@@ -828,6 +828,216 @@ export async function verifyStripeWebhookSignature(
   return expected === signature;
 }
 
+export type StripePaymentMethodSummary = {
+  configured: boolean;
+  hasPaymentMethod: boolean;
+  brand: string | null;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+  setupRequired: boolean;
+  message: string;
+};
+
+/** Read saved payment method summary from Stripe Customer (never returns full PAN). */
+export async function getStripePaymentMethodStatus(
+  env: Env,
+  input: { companyId: string; companyName: string; actorEmail: string },
+): Promise<StripePaymentMethodSummary> {
+  if (!stripePaymentsAllowed(env)) {
+    return {
+      configured: false,
+      hasPaymentMethod: false,
+      brand: null,
+      last4: null,
+      expMonth: null,
+      expYear: null,
+      setupRequired: true,
+      message: "Stripe payments are not configured",
+    };
+  }
+
+  const customer = await ensureStripeCustomer(env, input);
+  if (!customer.ok) {
+    return {
+      configured: false,
+      hasPaymentMethod: false,
+      brand: null,
+      last4: null,
+      expMonth: null,
+      expYear: null,
+      setupRequired: true,
+      message: customer.error,
+    };
+  }
+
+  const response = await fetch(
+    `https://api.stripe.com/v1/customers/${customer.customerId}?expand[]=invoice_settings.default_payment_method`,
+    {
+      headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+    },
+  );
+  const body = (await response.json()) as {
+    invoice_settings?: {
+      default_payment_method?: {
+        card?: { brand?: string; last4?: string; exp_month?: number; exp_year?: number };
+      } | null;
+    };
+    error?: { message?: string };
+  };
+
+  if (!response.ok) {
+    return {
+      configured: true,
+      hasPaymentMethod: false,
+      brand: null,
+      last4: null,
+      expMonth: null,
+      expYear: null,
+      setupRequired: true,
+      message: body.error?.message ?? "Unable to load payment method",
+    };
+  }
+
+  const pm = body.invoice_settings?.default_payment_method?.card;
+  if (!pm) {
+    return {
+      configured: true,
+      hasPaymentMethod: false,
+      brand: null,
+      last4: null,
+      expMonth: null,
+      expYear: null,
+      setupRequired: true,
+      message: "No payment method on file",
+    };
+  }
+
+  return {
+    configured: true,
+    hasPaymentMethod: true,
+    brand: pm.brand ?? null,
+    last4: pm.last4 ?? null,
+    expMonth: pm.exp_month ?? null,
+    expYear: pm.exp_year ?? null,
+    setupRequired: false,
+    message: "Payment method saved",
+  };
+}
+
+/** Create Stripe Checkout Session in setup mode — saves card without charging. */
+export async function createStripePaymentMethodSetupSession(
+  env: Env,
+  input: {
+    companyId: string;
+    companyName: string;
+    actorEmail: string;
+    successUrl: string;
+    cancelUrl: string;
+  },
+): Promise<
+  | { configured: true; url: string; sessionId: string; customerId: string }
+  | { configured: false; error: string }
+> {
+  if (!stripePaymentsAllowed(env)) {
+    return { configured: false, error: "Stripe payments are not enabled" };
+  }
+
+  const customer = await ensureStripeCustomer(env, input);
+  if (!customer.ok) return { configured: false, error: customer.error };
+
+  const params = new URLSearchParams();
+  params.set("mode", "setup");
+  params.set("customer", customer.customerId);
+  params.set("success_url", input.successUrl);
+  params.set("cancel_url", input.cancelUrl);
+  params.set("payment_method_types[]", "card");
+  params.set("metadata[company_id]", input.companyId);
+  params.set("metadata[infra_company_id]", input.companyId);
+
+  const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: params.toString(),
+  });
+
+  const body = (await response.json()) as {
+    id?: string;
+    url?: string;
+    error?: { message?: string };
+  };
+  if (!response.ok || !body.url || !body.id) {
+    return {
+      configured: false,
+      error: body.error?.message ?? "Unable to create payment method setup session",
+    };
+  }
+
+  return {
+    configured: true,
+    url: body.url,
+    sessionId: body.id,
+    customerId: customer.customerId,
+  };
+}
+
+/** Create Stripe SetupIntent for saving a card without charging (test mode supported). */
+export async function createStripeSetupIntent(
+  env: Env,
+  input: {
+    companyId: string;
+    companyName: string;
+    actorEmail: string;
+    returnUrl: string;
+  },
+): Promise<
+  | { configured: true; clientSecret: string; customerId: string }
+  | { configured: false; error: string }
+> {
+  if (!stripePaymentsAllowed(env)) {
+    return { configured: false, error: "Stripe payments are not enabled" };
+  }
+
+  const customer = await ensureStripeCustomer(env, input);
+  if (!customer.ok) return { configured: false, error: customer.error };
+
+  const params = new URLSearchParams();
+  params.set("customer", customer.customerId);
+  params.set("usage", "off_session");
+  params.set("payment_method_types[]", "card");
+  params.set("metadata[company_id]", input.companyId);
+  params.set("metadata[infra_company_id]", input.companyId);
+
+  const response = await fetch("https://api.stripe.com/v1/setup_intents", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: params.toString(),
+  });
+
+  const body = (await response.json()) as {
+    client_secret?: string;
+    error?: { message?: string };
+  };
+  if (!response.ok || !body.client_secret) {
+    return {
+      configured: false,
+      error: body.error?.message ?? "Unable to create setup intent",
+    };
+  }
+
+  return {
+    configured: true,
+    clientSecret: body.client_secret,
+    customerId: customer.customerId,
+  };
+}
+
 export {
   getCheckoutById,
   parseCheckoutRow,

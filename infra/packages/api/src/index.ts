@@ -43,6 +43,7 @@ import { createCorsMiddleware } from "./cors";
 import type { Env } from "./env";
 import {
   evaluateActionPermission,
+  getUserCompanyRole,
   isRolePermissionEditable,
   listRoleActionOverrides,
   listRolePresets,
@@ -68,6 +69,7 @@ import {
   runMcpHealthCheck,
 } from "./services/control-plane";
 import { getUsageSummary, listUsageRecords } from "./services/usage";
+import { getSpendThisMonthCents } from "./services/wallet-metrics";
 import { groupOperationsIntoInteractions } from "./services/interactions";
 import { listMcpTools } from "./services/mcp-client";
 import { verifyPassword } from "./auth/password";
@@ -986,9 +988,16 @@ app.get("/api/users", requireAuth, async (c) => {
 
 app.get("/api/roles/presets", requireAuth, (c) => c.json(listRolePresets()));
 
-app.get("/api/companies/:slug/role-permissions", requireAuth, requirePlatformAdmin, async (c) => {
+app.get("/api/companies/:slug/role-permissions", requireAuth, async (c) => {
   const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
   if (!company) return c.json({ error: "Company not found" }, 404);
+  const user = c.get("user");
+  const role = getUserCompanyRole(user, company.id);
+  const canView =
+    user.isPlatformAdmin || role === "company_admin" || role === "director";
+  if (!canView) {
+    return c.json({ error: "Company administrator access required" }, 403);
+  }
   const overrides = await listRoleActionOverrides(c.env.DB, company.id);
   const presets = listRolePresets();
   return c.json({
@@ -997,14 +1006,22 @@ app.get("/api/companies/:slug/role-permissions", requireAuth, requirePlatformAdm
     overrides,
     editableRoles: presets
       .map((preset) => preset.role)
-      .filter((role) => isRolePermissionEditable(role)),
+      .filter((r) => isRolePermissionEditable(r)),
     presets,
+    canEdit: user.isPlatformAdmin || role === "company_admin" || role === "director",
   });
 });
 
-app.put("/api/companies/:slug/role-permissions", requireAuth, requirePlatformAdmin, async (c) => {
+app.put("/api/companies/:slug/role-permissions", requireAuth, async (c) => {
   const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
   if (!company) return c.json({ error: "Company not found" }, 404);
+  const user = c.get("user");
+  const role = getUserCompanyRole(user, company.id);
+  const canEdit =
+    user.isPlatformAdmin || role === "company_admin" || role === "director";
+  if (!canEdit) {
+    return c.json({ error: "Company administrator access required" }, 403);
+  }
   const body = await c.req.json<{
     role?: CompanyRole;
     grants?: Array<{ action: ToolAction; effect: "allow" | "deny" }>;
@@ -1025,7 +1042,7 @@ app.put("/api/companies/:slug/role-permissions", requireAuth, requirePlatformAdm
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
       eventType: "role.permissions.updated",
-      actor: c.get("user").email,
+      actor: user.email,
       resourceType: "role",
       resourceId: body.role,
       detail: { grantCount: body.grants.length },

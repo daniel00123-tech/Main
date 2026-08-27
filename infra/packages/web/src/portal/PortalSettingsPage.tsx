@@ -1,45 +1,100 @@
-import { useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  Button,
   ErrorState,
+  Input,
   KeyValue,
   LoadingState,
   Notice,
   SectionCard,
   StatusBadge,
 } from "../components";
+import { api } from "../api";
 import { humanRole } from "../lib/format";
 import { PortalPageHeader } from "./components";
 import { usePortalCompany } from "./usePortalCompany";
 
-type SettingsTab =
-  | "general"
-  | "notifications"
-  | "security"
-  | "billing"
-  | "integrations"
-  | "data"
-  | "branding"
-  | "advanced";
+type SettingsTab = "general" | "security" | "billing" | "integrations" | "advanced";
 
-const TABS: Array<{ id: SettingsTab; label: string; available: boolean }> = [
-  { id: "general", label: "General", available: true },
-  { id: "notifications", label: "Notifications", available: false },
-  { id: "security", label: "Security", available: true },
-  { id: "billing", label: "Billing", available: true },
-  { id: "integrations", label: "AI & integrations", available: true },
-  { id: "data", label: "Data & privacy", available: false },
-  { id: "branding", label: "Branding", available: false },
-  { id: "advanced", label: "Advanced", available: true },
+const TABS: Array<{ id: SettingsTab; label: string }> = [
+  { id: "general", label: "General" },
+  { id: "security", label: "Security" },
+  { id: "billing", label: "Billing" },
+  { id: "integrations", label: "AI & integrations" },
+  { id: "advanced", label: "Advanced" },
 ];
 
 export default function PortalSettingsPage() {
   const { company, membership, loading, error } = usePortalCompany();
   const [tab, setTab] = useState<SettingsTab>("general");
+  const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
-  if (loading) return <LoadingState />;
-  if (error || !company) {
-    return <ErrorState title="Unable to load settings" description={error ?? undefined} />;
+  const [name, setName] = useState("");
+  const [primaryContact, setPrimaryContact] = useState("");
+  const [primaryEmail, setPrimaryEmail] = useState("");
+  const [billingEmail, setBillingEmail] = useState("");
+  const [telephone, setTelephone] = useState("");
+  const [timezone, setTimezone] = useState("Europe/London");
+  const [lowBalanceThreshold, setLowBalanceThreshold] = useState("5");
+
+  const canManage =
+    membership?.role === "company_admin" ||
+    membership?.role === "director";
+
+  useEffect(() => {
+    if (!company) return;
+    void (async () => {
+      try {
+        const result = await api.getCompanySettings(company.slug);
+        setSettings(result.settings);
+        setName(String(result.settings.name ?? company.name));
+        setPrimaryContact(String(result.settings.primaryContactName ?? ""));
+        setPrimaryEmail(String(result.settings.primaryEmail ?? ""));
+        setBillingEmail(String(result.settings.billingEmail ?? ""));
+        setTelephone(String(result.settings.telephone ?? ""));
+        setTimezone(String(result.settings.timezone ?? "Europe/London"));
+        setLowBalanceThreshold(
+          String(Number(result.settings.lowBalanceThresholdCents ?? 500) / 100),
+        );
+      } catch (err) {
+        setLoadError(err instanceof Error ? err.message : "Failed to load settings");
+      }
+    })();
+  }, [company]);
+
+  async function onSaveGeneral(event: FormEvent) {
+    event.preventDefault();
+    if (!company || !canManage) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await api.updateCompanySettings(company.slug, {
+        name,
+        primaryContactName: primaryContact || null,
+        primaryEmail: primaryEmail || null,
+        billingEmail: billingEmail || null,
+        telephone: telephone || null,
+        timezone,
+        lowBalanceThresholdCents: Math.round(Number(lowBalanceThreshold) * 100) || 500,
+      });
+      setSettings(result.settings);
+      setMessage("Settings saved.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Unable to save settings");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading || (!settings && !loadError && !error)) {
+    return <LoadingState label="Loading settings…" />;
+  }
+  if (error || loadError || !company) {
+    return <ErrorState title="Unable to load settings" description={error ?? loadError ?? undefined} />;
   }
 
   const base = `/portal/${company.slug}`;
@@ -57,80 +112,95 @@ export default function PortalSettingsPage() {
             onClick={() => setTab(item.id)}
           >
             {item.label}
-            {!item.available ? " · Soon" : ""}
           </button>
         ))}
       </nav>
 
+      {message ? <Notice tone="info">{message}</Notice> : null}
+
       {tab === "general" ? (
         <SectionCard title="Company profile">
-          <KeyValue label="Company" value={company.name} />
-          <KeyValue label="Domain" value={company.primaryDomain ?? "—"} />
-          <KeyValue label="Status" value={<StatusBadge status={company.status} />} />
-          <KeyValue label="Your role" value={humanRole(membership?.role)} />
-          <KeyValue label="Portal address" value={company.portalSubdomain ?? company.slug} />
-        </SectionCard>
-      ) : null}
-
-      {tab === "notifications" ? (
-        <SectionCard title="Notifications">
-          <Notice tone="info">
-            Email and in-app notification preferences will appear here when available.
-          </Notice>
+          {canManage ? (
+            <form onSubmit={(e) => void onSaveGeneral(e)} className="form-stack">
+              <label className="field">
+                <span className="field-label">Company name</span>
+                <Input value={name} onChange={(e) => setName(e.target.value)} required />
+              </label>
+              <label className="field">
+                <span className="field-label">Primary contact</span>
+                <Input value={primaryContact} onChange={(e) => setPrimaryContact(e.target.value)} />
+              </label>
+              <label className="field">
+                <span className="field-label">Primary email</span>
+                <Input type="email" value={primaryEmail} onChange={(e) => setPrimaryEmail(e.target.value)} />
+              </label>
+              <label className="field">
+                <span className="field-label">Billing email</span>
+                <Input type="email" value={billingEmail} onChange={(e) => setBillingEmail(e.target.value)} />
+              </label>
+              <label className="field">
+                <span className="field-label">Telephone</span>
+                <Input value={telephone} onChange={(e) => setTelephone(e.target.value)} />
+              </label>
+              <label className="field">
+                <span className="field-label">Timezone</span>
+                <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} />
+              </label>
+              <label className="field">
+                <span className="field-label">Low balance alert threshold (£)</span>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={lowBalanceThreshold}
+                  onChange={(e) => setLowBalanceThreshold(e.target.value)}
+                />
+              </label>
+              <Button type="submit" variant="primary" size="sm" disabled={busy}>
+                Save changes
+              </Button>
+            </form>
+          ) : (
+            <>
+              <KeyValue label="Company" value={company.name} />
+              <KeyValue label="Domain" value={company.primaryDomain ?? "—"} />
+              <KeyValue label="Status" value={<StatusBadge status={company.status} />} />
+              <KeyValue label="Your role" value={humanRole(membership?.role)} />
+            </>
+          )}
         </SectionCard>
       ) : null}
 
       {tab === "security" ? (
         <SectionCard title="Security">
           <KeyValue label="Access control" value="Role-based permissions per user" />
-          <KeyValue label="AI connections" value="Bearer tokens — revocable from the AI page" />
+          <KeyValue label="AI connections" value="Bearer tokens — revocable from AI Access" />
           <KeyValue label="Financial actions" value="Approval required for sensitive writes" />
-          <div style={{ marginTop: 16 }}>
-            <Notice tone="info">
-              SSO, MFA enforcement, and session management are planned for a future release.
-            </Notice>
-          </div>
+          <Notice tone="info">
+            SSO and MFA enforcement are planned for a future release.
+          </Notice>
         </SectionCard>
       ) : null}
 
       {tab === "billing" ? (
         <SectionCard title="Billing preferences">
           <p className="muted small">
-            Manage wallet balance, top-ups, and transaction history from the{" "}
-            <Link to={`${base}/billing`}>Billing</Link> page.
+            Manage wallet balance, top-ups, and auto top-up from{" "}
+            <Link to={`${base}/billing`}>Billing</Link>.
           </p>
-          <div style={{ marginTop: 12 }}>
-            <Notice tone="info">
-              Auto top-up and monthly spending caps are designed but not yet enabled.
-            </Notice>
-          </div>
+          <KeyValue
+            label="Low balance threshold"
+            value={`£${lowBalanceThreshold}`}
+          />
         </SectionCard>
       ) : null}
 
       {tab === "integrations" ? (
         <SectionCard title="AI & integrations">
           <p className="muted small">
-            Connect business systems from <Link to={`${base}/connectors`}>Connections</Link> and
-            manage AI clients from <Link to={`${base}/ai-connections`}>AI</Link>.
+            Connect business systems from <Link to={`${base}/connectors`}>Systems</Link> and manage
+            AI clients from <Link to={`${base}/ai-connections`}>AI Access</Link>.
           </p>
-        </SectionCard>
-      ) : null}
-
-      {tab === "data" ? (
-        <SectionCard title="Data & privacy">
-          <Notice tone="info">
-            Data retention policies and export requests will be configurable here in a future
-            release.
-          </Notice>
-        </SectionCard>
-      ) : null}
-
-      {tab === "branding" ? (
-        <SectionCard title="Branding">
-          <Notice tone="info">
-            Custom logos, colours, and portal domains will appear here when white-labelling is
-            available.
-          </Notice>
         </SectionCard>
       ) : null}
 
@@ -138,11 +208,9 @@ export default function PortalSettingsPage() {
         <SectionCard title="Advanced">
           <KeyValue label="Company slug" value={company.slug} />
           <KeyValue label="Company ID" value={company.id} />
-          <div style={{ marginTop: 16 }}>
-            <Notice tone="info">
-              Platform-level settings are only available in the Control Plane for INFRA operators.
-            </Notice>
-          </div>
+          <Notice tone="info">
+            Platform-level settings are only available in the Control Plane for INFRA operators.
+          </Notice>
         </SectionCard>
       ) : null}
     </>

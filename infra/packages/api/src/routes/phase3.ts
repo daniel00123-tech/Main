@@ -77,8 +77,18 @@ import {
   stripePaymentsAllowed,
   verifyStripeWebhookSignature,
 } from "../services/stripe";
-import { getPlatformPaymentProviderStatus } from "../services/payment-providers";
+import { getPlatformPaymentProviderStatus, getCompanyPaymentProviderStatus } from "../services/payment-providers";
 import { classifyLedgerCredit } from "../services/wallet-credits";
+import {
+  getCompanySettings,
+  updateAutoTopUpSettings,
+  updateCompanySettings,
+} from "../services/company-settings";
+import { getSpendThisMonthCents } from "../services/wallet-metrics";
+import {
+  createStripePaymentMethodSetupSession,
+  getStripePaymentMethodStatus,
+} from "../services/stripe";
 import {
   infraGatewayExecuteUrl,
   infraMcpGatewayUrl,
@@ -103,6 +113,47 @@ function canManageCompany(user: AuthVariables["user"], companyId: string) {
   if (user.isPlatformAdmin) return true;
   const role = getUserCompanyRole(user, companyId);
   return role === "company_admin" || role === "director";
+}
+
+async function countActiveCompanyAdmins(db: D1Database, companyId: string): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM company_memberships
+       WHERE company_id = ? AND role = 'company_admin' AND status = 'active'`,
+    )
+    .bind(companyId)
+    .first();
+  return Number(row?.count ?? 0);
+}
+
+async function assertNotLastCompanyAdmin(
+  db: D1Database,
+  companyId: string,
+  userId: string,
+  nextRole?: CompanyRole,
+  disabling?: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const membership = await db
+    .prepare(
+      `SELECT role, status FROM company_memberships WHERE company_id = ? AND user_id = ?`,
+    )
+    .bind(companyId, userId)
+    .first();
+  if (!membership) return { ok: true };
+  const isAdmin =
+    String(membership.role) === "company_admin" && String(membership.status) === "active";
+  if (!isAdmin) return { ok: true };
+  const removingAdmin =
+    disabling || (nextRole != null && nextRole !== "company_admin");
+  if (!removingAdmin) return { ok: true };
+  const adminCount = await countActiveCompanyAdmins(db, companyId);
+  if (adminCount <= 1) {
+    return {
+      ok: false,
+      error: "Cannot remove or demote the last company administrator",
+    };
+  }
+  return { ok: true };
 }
 
 // ---------- Gateway ----------
@@ -209,19 +260,24 @@ phase3.get("/api/companies/:slug/wallet", requireAuth, async (c) => {
     return c.json({ error: "Access to this company is denied" }, 403);
   }
 
-  const [wallet, ledger, recentTopUps] = await Promise.all([
+  const [wallet, ledger, recentTopUps, spendThisMonthCents, settings] = await Promise.all([
     getWalletBalance(c.env.DB, company.id),
     listLedgerEntries(c.env.DB, company.id, 30),
     listRecentTopUps(c.env.DB, company.id, 10),
+    getSpendThisMonthCents(c.env.DB, company.id),
+    getCompanySettings(c.env.DB, company.id),
   ]);
 
-  const credits = classifyLedgerCredit(ledger);
-  const payments = getPlatformPaymentProviderStatus(c.env);
+  const credits = classifyLedgerCredit(
+    await listLedgerEntries(c.env.DB, company.id, 500),
+  );
+  const payments = await getCompanyPaymentProviderStatus(c.env, c.env.DB, company.id);
   return c.json({
     wallet: {
       ...wallet,
       testCreditCents: credits.testCents,
       paidCreditCents: credits.paidCents,
+      spendThisMonthCents,
     },
     ledger,
     chargeGroups: groupLedgerCharges(ledger),
@@ -229,6 +285,13 @@ phase3.get("/api/companies/:slug/wallet", requireAuth, async (c) => {
     stripeConfigured: payments.configured,
     paymentProvider: payments,
     topUpOptionsCents: payments.topUpOptionsCents,
+    billing: {
+      spendThisMonthCents,
+      monthStartUtc: new Date(
+        Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1),
+      ).toISOString(),
+      lowBalanceThresholdCents: settings?.lowBalanceThresholdCents ?? wallet.lowBalanceThresholdCents,
+    },
   });
 });
 
@@ -298,6 +361,122 @@ phase3.post("/api/companies/:slug/wallet/top-up", requireAuth, async (c) => {
   }
 
   return c.json(result);
+});
+
+phase3.get("/api/companies/:slug/wallet/payment-method", requireAuth, async (c) => {
+  const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!userHasCompanyAccess(c.get("user"), company.id)) {
+    return c.json({ error: "Access to this company is denied" }, 403);
+  }
+  const user = c.get("user");
+  const status = await getStripePaymentMethodStatus(c.env, {
+    companyId: company.id,
+    companyName: company.name,
+    actorEmail: user.email,
+  });
+  return c.json({ paymentMethod: status });
+});
+
+phase3.post("/api/companies/:slug/wallet/payment-method/setup", requireAuth, async (c) => {
+  const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!canManageCompany(c.get("user"), company.id)) {
+    return c.json({ error: "Company administrator access required" }, 403);
+  }
+  const user = c.get("user");
+  const origin = portalOrigin(c.env, c.req.header("Origin"));
+  const result = await createStripePaymentMethodSetupSession(c.env, {
+    companyId: company.id,
+    companyName: company.name,
+    actorEmail: user.email,
+    successUrl: `${origin}/portal/${company.slug}/billing?tab=payment&setup=complete`,
+    cancelUrl: `${origin}/portal/${company.slug}/billing?tab=payment&setup=cancelled`,
+  });
+  if (!result.configured) {
+    return c.json({ error: result.error, stripeConfigured: false }, 400);
+  }
+  await recordAuditEvent(c.env.DB, {
+    companyId: company.id,
+    eventType: "payment_method.setup_started",
+    actor: user.email,
+    resourceType: "stripe_customer",
+    resourceId: result.customerId,
+  });
+  return c.json({
+    url: result.url,
+    sessionId: result.sessionId,
+    stripeConfigured: true,
+    testMode: isStripeTestModeActive(c.env),
+  });
+});
+
+phase3.put("/api/companies/:slug/wallet/auto-topup", requireAuth, async (c) => {
+  const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!canManageCompany(c.get("user"), company.id)) {
+    return c.json({ error: "Company administrator access required" }, 403);
+  }
+  const body = await c.req.json<{
+    enabled?: boolean;
+    thresholdCents?: number;
+    amountCents?: number;
+    confirm?: boolean;
+  }>();
+  if (body.enabled && !body.confirm) {
+    return c.json({ error: "Explicit confirmation required to enable auto top-up" }, 400);
+  }
+  const current = await getCompanySettings(c.env.DB, company.id);
+  const patch = {
+    enabled: Boolean(body.enabled),
+    thresholdCents: body.thresholdCents ?? current?.autoTopUp.thresholdCents ?? 500,
+    amountCents: body.amountCents ?? current?.autoTopUp.amountCents ?? 2500,
+  };
+  const updated = await updateAutoTopUpSettings(c.env.DB, company.id, patch);
+  await recordAuditEvent(c.env.DB, {
+    companyId: company.id,
+    eventType: "auto_topup.updated",
+    actor: c.get("user").email,
+    resourceType: "company_commercial_settings",
+    resourceId: company.id,
+    detail: patch,
+  });
+  return c.json({ settings: updated.autoTopUp });
+});
+
+phase3.get("/api/companies/:slug/settings", requireAuth, async (c) => {
+  const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!userHasCompanyAccess(c.get("user"), company.id)) {
+    return c.json({ error: "Access to this company is denied" }, 403);
+  }
+  const settings = await getCompanySettings(c.env.DB, company.id);
+  if (!settings) return c.json({ error: "Company not found" }, 404);
+  return c.json({ settings });
+});
+
+phase3.patch("/api/companies/:slug/settings", requireAuth, async (c) => {
+  const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!canManageCompany(c.get("user"), company.id)) {
+    return c.json({ error: "Company administrator access required" }, 403);
+  }
+  const body = await c.req.json<Parameters<typeof updateCompanySettings>[2]>();
+  try {
+    const settings = await updateCompanySettings(c.env.DB, company.id, body);
+    await recordAuditEvent(c.env.DB, {
+      companyId: company.id,
+      eventType: "company.settings.updated",
+      actor: c.get("user").email,
+      resourceType: "company",
+      resourceId: company.id,
+      detail: { fields: Object.keys(body) },
+    });
+    return c.json({ settings });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unable to save settings";
+    return c.json({ error: message }, 400);
+  }
 });
 
 phase3.post(
@@ -607,6 +786,17 @@ phase3.post("/api/companies/:slug/users/:userId/status", requireAuth, async (c) 
     return c.json({ error: "Cannot change your own status" }, 400);
   }
 
+  if (body.status === "disabled") {
+    const guard = await assertNotLastCompanyAdmin(
+      c.env.DB,
+      company.id,
+      targetId,
+      undefined,
+      true,
+    );
+    if (!guard.ok) return c.json({ error: guard.error }, 400);
+  }
+
   await setMembershipStatus(c.env.DB, targetId, company.id, body.status);
   // Also disable platform login if membership revoked and not platform admin
   const target = await getUserById(c.env.DB, targetId);
@@ -640,9 +830,28 @@ phase3.post("/api/companies/:slug/users/:userId/role", requireAuth, async (c) =>
   const body = await c.req.json<{ role?: CompanyRole }>();
   if (!body.role) return c.json({ error: "role is required" }, 400);
 
+  const targetId = c.req.param("userId");
+  if (targetId === actor.userId && body.role !== "company_admin") {
+    const guard = await assertNotLastCompanyAdmin(
+      c.env.DB,
+      company.id,
+      targetId,
+      body.role,
+    );
+    if (!guard.ok) return c.json({ error: guard.error }, 400);
+  } else {
+    const guard = await assertNotLastCompanyAdmin(
+      c.env.DB,
+      company.id,
+      targetId,
+      body.role,
+    );
+    if (!guard.ok) return c.json({ error: guard.error }, 400);
+  }
+
   const membership = await updateMembershipRole(
     c.env.DB,
-    c.req.param("userId"),
+    targetId,
     company.id,
     body.role,
   );

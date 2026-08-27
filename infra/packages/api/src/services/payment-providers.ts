@@ -2,6 +2,7 @@ import type { PaymentProviderId } from "@infra/shared";
 import { newId, nowIso } from "../db/mappers";
 import type { Env } from "../env";
 import { getStripeMode, isStripeConfigured, isStripeTestModeActive } from "./stripe";
+import { getCompanySettings } from "./company-settings";
 
 export interface PaymentProviderStatus {
   provider: PaymentProviderId;
@@ -16,6 +17,10 @@ export interface PaymentProviderStatus {
     enabled: boolean;
     thresholdCents: number | null;
     amountCents: number | null;
+    paymentMethodReady?: boolean;
+    canExecute?: boolean;
+    setupRequired?: boolean;
+    message?: string;
   };
   topUpOptionsCents: number[];
 }
@@ -45,6 +50,34 @@ export function getPlatformPaymentProviderStatus(env: Env): PaymentProviderStatu
       amountCents: 2500,
     },
     topUpOptionsCents: DEFAULT_TOP_UP_OPTIONS_CENTS,
+  };
+}
+
+export async function getCompanyPaymentProviderStatus(
+  env: Env,
+  db: D1Database,
+  companyId: string,
+): Promise<PaymentProviderStatus> {
+  const base = getPlatformPaymentProviderStatus(env);
+  const settings = await getCompanySettings(db, companyId);
+  if (!settings) return base;
+
+  return {
+    ...base,
+    autoTopUp: {
+      supported: base.configured,
+      enabled: settings.autoTopUp.enabled,
+      thresholdCents: settings.autoTopUp.thresholdCents ?? 500,
+      amountCents: settings.autoTopUp.amountCents ?? 2500,
+      paymentMethodReady: settings.autoTopUp.paymentMethodReady,
+      canExecute: false,
+      setupRequired: !settings.autoTopUp.paymentMethodReady,
+      message: settings.autoTopUp.enabled
+        ? settings.autoTopUp.paymentMethodReady
+          ? "Auto top-up is configured. Unattended charging awaits operator approval."
+          : "Auto top-up enabled — add a payment method to activate."
+        : "Auto top-up is off.",
+    },
   };
 }
 

@@ -16,6 +16,7 @@ import {
   resolveMcpAuthHeader,
 } from "./mcp-client";
 import { getUsageSummary, listPlatformUsage, recordUsageEvent } from "./usage";
+import { getSpendThisMonthCents } from "./wallet-metrics";
 import { getWalletBalance, listLedgerEntries } from "./ledger";
 import { buildCompanyOnboarding } from "./onboarding";
 import { deriveMcpOnboardingStatus } from "./mcp-capabilities";
@@ -198,6 +199,7 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     recentAuditEvents,
     usageSummary,
     wallet,
+    spendThisMonthCents,
   ] = await Promise.all([
     listMcpEnvironments(db, companyId),
     listConnectorInstances(db, companyId),
@@ -205,6 +207,7 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     listAuditEvents(db, companyId, 10),
     getUsageSummary(db, companyId),
     getWalletBalance(db, companyId),
+    getSpendThisMonthCents(db, companyId),
   ]);
 
   const mcp = mcpEnvironments[0];
@@ -306,6 +309,7 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     knowledgeSources,
     capabilitySnapshot: mcp?.capabilitySnapshot ?? null,
     walletCredits,
+    spendThisMonthCents,
   };
 }
 

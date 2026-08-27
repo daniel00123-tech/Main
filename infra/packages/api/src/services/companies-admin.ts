@@ -1,6 +1,7 @@
 import { getWalletBalance } from "./ledger";
 import { listConnectorInstances, listMcpEnvironments } from "./control-plane";
 import { listServiceIdentities } from "./service-identities";
+import { getMonthStartUtcIso, getSpendThisMonthCents } from "./wallet-metrics";
 
 export type CompanyAdminRow = {
   id: string;
@@ -26,6 +27,7 @@ export async function listCompaniesAdminDirectory(db: D1Database): Promise<Compa
   const companies = await db
     .prepare(`SELECT id, name, slug, status, primary_domain, updated_at FROM companies ORDER BY name ASC`)
     .all();
+  const monthStartIso = getMonthStartUtcIso();
   const [connectors, mcps, usageRows] = await Promise.all([
     listConnectorInstances(db),
     listMcpEnvironments(db),
@@ -34,12 +36,12 @@ export async function listCompaniesAdminDirectory(db: D1Database): Promise<Compa
         `SELECT company_id,
                 COUNT(*) AS requests,
                 SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed,
-                SUM(COALESCE(customer_charge_cents, 0)) AS spend_cents,
                 MAX(recorded_at) AS last_at
          FROM usage_records
-         WHERE recorded_at >= datetime('now', 'start of month')
+         WHERE recorded_at >= ?
          GROUP BY company_id`,
       )
+      .bind(monthStartIso)
       .all(),
   ]);
 
@@ -49,7 +51,6 @@ export async function listCompaniesAdminDirectory(db: D1Database): Promise<Compa
       {
         requests: Number(row.requests ?? 0),
         failed: Number(row.failed ?? 0),
-        spendCents: Number(row.spend_cents ?? 0),
         lastAt: row.last_at ? String(row.last_at) : null,
       },
     ]),
@@ -67,6 +68,7 @@ export async function listCompaniesAdminDirectory(db: D1Database): Promise<Compa
       .bind(id)
       .first();
     const usage = usageByCompany.get(id);
+    const spendThisMonthCents = await getSpendThisMonthCents(db, id, monthStartIso);
     const mcpStatus = companyMcps[0]?.status ?? null;
     const connectedConnectors = companyConnectors.filter(
       (c) => c.status === "connected" || c.authStatus === "connected",
@@ -87,7 +89,7 @@ export async function listCompaniesAdminDirectory(db: D1Database): Promise<Compa
       walletLowBalance: wallet.lowBalance,
       usageThisMonth: usage?.requests ?? 0,
       usageFailedThisMonth: usage?.failed ?? 0,
-      spendThisMonthCents: usage?.spendCents ?? 0,
+      spendThisMonthCents,
       lastActivityAt: usage?.lastAt ?? (raw.updated_at ? String(raw.updated_at) : null),
       connectorCount: companyConnectors.length,
       connectedConnectors,

@@ -62,6 +62,9 @@ export default function PortalDashboardPage() {
   const testCents = overview.walletCredits?.testCents ?? 0;
   const paidCents = overview.walletCredits?.paidCents ?? 0;
   const lowBalance = wallet?.lowBalance ?? false;
+  const spendThisMonthCents = overview.spendThisMonthCents ?? 0;
+  const walletHealth =
+    wallet?.walletHealthState ?? (wallet?.lowBalance ? "low" : "healthy");
 
   const attention: Array<{ id: string; title: string; description?: string; to?: string }> = [];
 
@@ -73,10 +76,15 @@ export default function PortalDashboardPage() {
       to: `${base}/settings`,
     });
   }
-  if (lowBalance) {
+  if (lowBalance || walletHealth === "critical" || walletHealth === "empty") {
     attention.push({
       id: "low-balance",
-      title: "Low wallet balance",
+      title:
+        walletHealth === "empty"
+          ? "Wallet empty"
+          : walletHealth === "critical"
+            ? "Critical wallet balance"
+            : "Low wallet balance",
       description: "Add credit to avoid interrupted AI usage.",
       to: `${base}/billing`,
     });
@@ -150,6 +158,11 @@ export default function PortalDashboardPage() {
             hint: "Active ChatGPT / Claude",
           },
           {
+            label: "Spend this month",
+            value: formatCurrency(spendThisMonthCents, wallet?.currency ?? "GBP"),
+            hint: `${usage?.requestsThisMonth ?? 0} requests`,
+          },
+          {
             label: "Usage this month",
             value: String(usage?.requestsThisMonth ?? 0),
             hint: `${usage?.successfulThisMonth ?? 0} successful`,
@@ -157,7 +170,12 @@ export default function PortalDashboardPage() {
           {
             label: "Wallet",
             value: wallet ? formatCurrency(wallet.balanceCents, wallet.currency) : "—",
-            hint: lowBalance ? "Low balance" : `Paid ${formatCurrency(paidCents, wallet?.currency ?? "GBP")}`,
+            hint:
+              walletHealth === "healthy"
+                ? `Paid ${formatCurrency(paidCents, wallet?.currency ?? "GBP")}`
+                : walletHealth === "empty"
+                  ? "Empty — add credit"
+                  : "Low balance",
           },
           {
             label: "Users",
