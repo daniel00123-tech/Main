@@ -77,6 +77,17 @@ if (!base.includes('request.headers.get("X-Infra-Xero-Context")')) {
   base = base.replace(fetchPatchTarget, fetchPatchReplacement);
 }
 
+const adminAuthTrimTarget =
+  'return header.slice("Bearer ".length) === expected;';
+const adminAuthTrimReplacement =
+  'const received = header.slice("Bearer ".length).trim();\n  return received === String(expected).trim();';
+if (!base.includes("received === String(expected).trim()")) {
+  if (!base.includes(adminAuthTrimTarget)) {
+    throw new Error("Unable to locate checkAdminAuth comparison in base worker");
+  }
+  base = base.replace(adminAuthTrimTarget, adminAuthTrimReplacement);
+}
+
 const inlinedXero = xeroBundle
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*,?\s*registerXeroWriteTools\s+as\s+__registerXeroWriteTools\s*\};?\s*/g, "")
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*\};?\s*/g, "")
