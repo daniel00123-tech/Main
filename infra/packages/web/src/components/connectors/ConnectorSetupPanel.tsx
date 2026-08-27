@@ -94,8 +94,6 @@ export function ConnectorSetupPanel({
   const mcpManaged = connector.requiresCompanyMcp === true;
   const microsoft =
     connector.slug === "microsoft-365" || isMicrosoftConnectorDefinition(connector.id);
-  const microsoftView = storage?.microsoft;
-  const microsoftAppConfigured = microsoftView?.appConfigured ?? false;
   const xeroAppConfigured = storage?.xero?.appConfigured ?? false;
   const xeroReady = Boolean(storage?.xero?.readyToConnect);
   const xeroConnected = instance?.authStatus === "connected";
