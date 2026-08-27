@@ -10,6 +10,8 @@ import {
   provisionMicrosoftGraphSubscriptionsForIncludedSources,
   renewExpiringMicrosoftGraphSubscriptions,
 } from "./microsoft-graph-subscriptions";
+import { provisionOutlookMailboxGraphSubscriptions } from "./microsoft-outlook-notifications";
+import { syncOutlookMailbox } from "./microsoft-outlook-sync";
 
 export async function runMicrosoftScheduledSync(env: Env): Promise<{
   companies: number;
@@ -29,6 +31,7 @@ export async function runMicrosoftScheduledSync(env: Env): Promise<{
   }
 
   const graphSubscriptions = await provisionMicrosoftGraphSubscriptionsForIncludedSources(env);
+  const outlookGraphSubscriptions = await provisionOutlookMailboxGraphSubscriptions(env);
   const graphRenewals = await renewExpiringMicrosoftGraphSubscriptions(env);
 
   const companies = await env.DB.prepare(
@@ -36,7 +39,11 @@ export async function runMicrosoftScheduledSync(env: Env): Promise<{
   ).all<{ company_id: string; connector_instance_id: string }>();
 
   let sourcesSynced = 0;
-  const errors: string[] = [...graphSubscriptions.errors, ...graphRenewals.errors];
+  const errors: string[] = [
+    ...graphSubscriptions.errors,
+    ...outlookGraphSubscriptions.errors,
+    ...graphRenewals.errors,
+  ];
 
   for (const row of companies.results ?? []) {
     await ensureConnectorMicrosoftTenant(env, {
@@ -47,14 +54,25 @@ export async function runMicrosoftScheduledSync(env: Env): Promise<{
     const sources = await listMicrosoftSources(env.DB, row.company_id, row.connector_instance_id);
     for (const source of sources.filter((s) => s.inclusionStatus === "included")) {
       try {
-        await syncMicrosoftSource(env, {
-          companyId: row.company_id,
-          connectorInstanceId: row.connector_instance_id,
-          sourceId: source.id,
-          actor: "system:microsoft-scheduler",
-          useDelta: true,
-          maxFiles: 100,
-        });
+        if (source.sourceType === "outlook_shared") {
+          await syncOutlookMailbox(env, {
+            companyId: row.company_id,
+            connectorInstanceId: row.connector_instance_id,
+            sourceId: source.id,
+            actor: "system:microsoft-scheduler",
+            useDelta: true,
+            maxMessages: 100,
+          });
+        } else {
+          await syncMicrosoftSource(env, {
+            companyId: row.company_id,
+            connectorInstanceId: row.connector_instance_id,
+            sourceId: source.id,
+            actor: "system:microsoft-scheduler",
+            useDelta: true,
+            maxFiles: 100,
+          });
+        }
         sourcesSynced++;
       } catch (err) {
         errors.push(

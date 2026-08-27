@@ -69,6 +69,120 @@ export function outlookPermissionAssessmentTemplate(): Omit<
   };
 }
 
+export type ExchangeApplicationRbacGuide = {
+  mechanism: "RBAC for Applications";
+  replacesLegacy: "Application Access Policy (retiring)";
+  appDisplayName: string;
+  scopeGroupName: string;
+  scopeGroupEmail: string;
+  roleName: "Application Mail.Read";
+  exchangeSteps: string[];
+  verificationSteps: string[];
+  manualActionRequired: boolean;
+};
+
+export function exchangeApplicationRbacGuide(input?: {
+  appClientId?: string;
+  scopeGroupName?: string;
+  scopeGroupEmail?: string;
+}): ExchangeApplicationRbacGuide {
+  const appClientId = input?.appClientId ?? "<INFRA_APP_CLIENT_ID>";
+  const scopeGroupName = input?.scopeGroupName ?? "INFRA Approved Mailboxes";
+  const scopeGroupEmail = input?.scopeGroupEmail ?? "infra-approved-mailboxes@tenant";
+
+  return {
+    mechanism: "RBAC for Applications",
+    replacesLegacy: "Application Access Policy (retiring)",
+    appDisplayName: "INFRA Microsoft 365 Connector",
+    scopeGroupName,
+    scopeGroupEmail,
+    roleName: "Application Mail.Read",
+    manualActionRequired: true,
+    exchangeSteps: [
+      "Connect-ExchangeOnline (as Exchange Administrator)",
+      `# Register Exchange service principal pointer (once per tenant)`,
+      `New-ServicePrincipal -AppId ${appClientId} -ObjectId <SERVICE_PRINCIPAL_OBJECT_ID> -DisplayName "INFRA Microsoft 365 Connector"`,
+      `# Create management scope limited to approved mailboxes (mail-enabled security group members)`,
+      `$group = Get-DistributionGroup -Identity "${scopeGroupName}"`,
+      `New-ManagementScope -Name "INFRA Approved Mailboxes Scope" -RecipientRestrictionFilter "MemberOfGroup -eq '$($group.DistinguishedName)'"`,
+      `# Assign Application Mail.Read to the app with the custom scope`,
+      `New-ManagementRoleAssignment -App ${appClientId} -Role "Application Mail.Read" -CustomResourceScope "INFRA Approved Mailboxes Scope"`,
+      `# Alternative: New-ManagementRoleAssignment -App ${appClientId} -Role "Application Mail.Read" -RecipientGroupScope "${scopeGroupName}"`,
+    ],
+    verificationSteps: [
+      `Test-ServicePrincipalAuthorization -Identity "${scopeGroupEmail}" -Resource "admin@tenant" -Action Mail.Read`,
+      "Graph probe: approved mailbox inbox messages should return HTTP 200",
+      "Graph probe: non-member personal mailbox should return HTTP 403 ErrorAccessDenied",
+    ],
+  };
+}
+
+export type ExchangeMailboxIsolationResult = {
+  approvedMailbox: string;
+  deniedMailbox: string;
+  approvedProbe: Awaited<ReturnType<typeof probeMailboxReadAccess>>;
+  deniedProbe: Awaited<ReturnType<typeof probeMailboxReadAccess>>;
+  approvedAccessPass: boolean;
+  deniedAccessPass: boolean;
+  exchangeRbacEffective: boolean;
+  appClientId: string | null;
+};
+
+export async function assessExchangeMailboxIsolation(
+  env: Env,
+  input: {
+    approvedMailbox: string;
+    deniedMailbox: string;
+    companyId?: string;
+    connectorInstanceId?: string;
+  },
+): Promise<ExchangeMailboxIsolationResult> {
+  const token = await acquireMicrosoftAppToken(env, {
+    companyId: input.companyId,
+    connectorInstanceId: input.connectorInstanceId,
+  });
+
+  const appClientId =
+    typeof env.MICROSOFT_CLIENT_ID === "string" ? env.MICROSOFT_CLIENT_ID.trim() : null;
+
+  if (!token.ok) {
+    const denied = {
+      ok: false,
+      status: 401,
+      code: "TOKEN_DENIED",
+      message: token.message,
+    };
+    return {
+      approvedMailbox: input.approvedMailbox,
+      deniedMailbox: input.deniedMailbox,
+      approvedProbe: denied,
+      deniedProbe: denied,
+      approvedAccessPass: false,
+      deniedAccessPass: false,
+      exchangeRbacEffective: false,
+      appClientId,
+    };
+  }
+
+  const config = { accessToken: token.accessToken, tenantId: token.tenantId };
+  const approvedProbe = await probeMailboxReadAccess(config, input.approvedMailbox);
+  const deniedProbe = await probeMailboxReadAccess(config, input.deniedMailbox);
+
+  const approvedAccessPass = approvedProbe.ok === true;
+  const deniedAccessPass = deniedProbe.ok === false && deniedProbe.status === 403;
+
+  return {
+    approvedMailbox: input.approvedMailbox,
+    deniedMailbox: input.deniedMailbox,
+    approvedProbe,
+    deniedProbe,
+    approvedAccessPass,
+    deniedAccessPass,
+    exchangeRbacEffective: approvedAccessPass && deniedAccessPass,
+    appClientId,
+  };
+}
+
 export async function assessOutlookPermissions(
   env: Env,
   input?: { probeMailboxAddress?: string | null; companyId?: string; connectorInstanceId?: string },

@@ -40,11 +40,13 @@ export type GraphMailMessageDetail = {
   ccRecipients: GraphMailAddress[];
   receivedDateTime: string | null;
   sentDateTime: string | null;
+  lastModifiedDateTime?: string | null;
   conversationId: string | null;
   internetMessageId: string | null;
   hasAttachments: boolean;
   webLink: string | null;
   parentFolderId: string | null;
+  "@removed"?: { reason?: string };
 };
 
 export type GraphTenantUser = {
@@ -134,7 +136,7 @@ export async function listMailboxMessages(
       : "mailFolders/inbox";
 
   const select =
-    "id,subject,bodyPreview,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,conversationId,internetMessageId,hasAttachments,webLink,parentFolderId";
+    "id,subject,bodyPreview,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,lastModifiedDateTime,conversationId,internetMessageId,hasAttachments,webLink,parentFolderId";
   const path = `/users/${encodeURIComponent(input.mailboxAddress)}/${folderSegment}/messages?$top=${top}&$orderby=receivedDateTime desc&$select=${select}${input.skip ? `&$skip=${input.skip}` : ""}`;
   const page = await graphMailRequest<GraphPage<GraphMailMessageDetail>>(config, path);
   return page.value ?? [];
@@ -189,7 +191,7 @@ export async function getMailboxMessage(
 ): Promise<GraphMailMessageDetail> {
   return graphMailRequest<GraphMailMessageDetail>(
     config,
-    `/users/${encodeURIComponent(mailboxAddress)}/messages/${encodeURIComponent(messageId)}?$select=id,subject,bodyPreview,body,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,conversationId,internetMessageId,hasAttachments,webLink,parentFolderId`,
+    `/users/${encodeURIComponent(mailboxAddress)}/messages/${encodeURIComponent(messageId)}?$select=id,subject,bodyPreview,body,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,lastModifiedDateTime,conversationId,internetMessageId,hasAttachments,webLink,parentFolderId`,
   );
 }
 
@@ -259,6 +261,81 @@ export async function probeMailboxReadAccess(
     }
     return { ok: false, status: 500, code: "MAIL_READ_ERROR", message: String(err) };
   }
+}
+
+export type GraphMailDeltaResult = {
+  messages: GraphMailMessageDetail[];
+  deltaLink: string | null;
+};
+
+export async function listMailboxMessagesDelta(
+  config: MicrosoftGraphConfig,
+  input: { mailboxAddress: string; deltaLink?: string | null; folderId?: string; top?: number },
+): Promise<GraphMailDeltaResult> {
+  const folderSegment = input.folderId
+    ? `mailFolders/${input.folderId}`
+    : "mailFolders/inbox";
+  const select =
+    "id,subject,bodyPreview,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,lastModifiedDateTime,conversationId,internetMessageId,hasAttachments,webLink,parentFolderId";
+  const path = input.deltaLink
+    ? input.deltaLink
+    : `/users/${encodeURIComponent(input.mailboxAddress)}/${folderSegment}/messages/delta?$select=${select}&$top=${input.top ?? 50}`;
+
+  const messages: GraphMailMessageDetail[] = [];
+  let next: string | null = path;
+  let deltaLink: string | null = null;
+
+  while (next) {
+    const page = await graphMailRequest<
+      GraphPage<GraphMailMessageDetail> & { "@odata.deltaLink"?: string; "@odata.nextLink"?: string }
+    >(config, next);
+    messages.push(...(page.value ?? []));
+    if (page["@odata.deltaLink"]) {
+      deltaLink = page["@odata.deltaLink"];
+      break;
+    }
+    next = page["@odata.nextLink"] ?? null;
+  }
+
+  return { messages, deltaLink };
+}
+
+export function mailMessageVersionTag(message: GraphMailMessageDetail): string {
+  return message.lastModifiedDateTime ?? message.receivedDateTime ?? message.internetMessageId ?? message.id;
+}
+
+export function stripHtmlToText(html: string): string {
+  return html
+   .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function buildMailKnowledgeText(message: GraphMailMessageDetail): string {
+  const lines = [
+    `Subject: ${message.subject ?? "(no subject)"}`,
+    `From: ${message.from?.emailAddress?.address ?? message.sender?.emailAddress?.address ?? "unknown"}`,
+    `To: ${(message.toRecipients ?? []).map((r) => r.emailAddress?.address).filter(Boolean).join(", ")}`,
+    `Received: ${message.receivedDateTime ?? "unknown"}`,
+    `Internet Message ID: ${message.internetMessageId ?? "unknown"}`,
+    "",
+  ];
+  if (message.body?.content) {
+    const body =
+      message.body.contentType?.toLowerCase() === "html"
+        ? stripHtmlToText(message.body.content)
+        : message.body.content;
+    lines.push(body);
+  } else if (message.bodyPreview) {
+    lines.push(message.bodyPreview);
+  }
+  return lines.join("\n");
 }
 
 export async function probeUserReadAllAccess(

@@ -18,10 +18,17 @@ import {
 } from "./microsoft-graph";
 import {
   buildMicrosoftExternalId,
+  buildMicrosoftMailExternalId,
+  buildOutlookKnowledgeProvenance,
   reactivateMicrosoftKnowledgeDocument,
   uploadMicrosoftDocumentToKnowledge,
 } from "./microsoft-knowledge-bridge";
 import { upsertKnowledgeItem } from "./microsoft-sync-internals";
+import {
+  buildMailKnowledgeText,
+  getMailboxMessage,
+  getMessageAttachmentContent,
+} from "./microsoft-outlook-graph";
 
 export const MICROSOFT_KNOWLEDGE_INGEST_QUEUE = "microsoft-knowledge-ingest";
 export const MICROSOFT_KNOWLEDGE_INGEST_DLQ = "microsoft-knowledge-ingest-dlq";
@@ -66,6 +73,9 @@ export type MicrosoftFileJobRow = {
   status: MicrosoftFileJobStatus;
   attempts: number;
   last_error: string | null;
+  item_kind?: string | null;
+  parent_message_id?: string | null;
+  attachment_id?: string | null;
 };
 
 export function hasMicrosoftKnowledgeQueue(env: Env): boolean {
@@ -205,6 +215,9 @@ export async function createMicrosoftFileJob(
     modifiedAt: string | null;
     webUrl: string | null;
     sizeBytes: number | null;
+    itemKind?: "drive_file" | "mail_message" | "mail_attachment";
+    parentMessageId?: string | null;
+    attachmentId?: string | null;
     sendToQueue?: boolean;
   },
 ): Promise<{ jobId: string; enqueued: boolean; duplicate: boolean }> {
@@ -223,13 +236,14 @@ export async function createMicrosoftFileJob(
 
   const jobId = newId("msj");
   const now = nowIso();
+  const itemKind = input.itemKind ?? "drive_file";
   await env.DB.prepare(
     `INSERT INTO microsoft_file_jobs (
       id, company_id, connector_instance_id, source_id, sync_run_id,
       external_item_id, drive_id, file_name, relative_path, mime_type,
       e_tag, modified_at, web_url, size_bytes, action, status, attempts,
-      created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'index', 'queued', 0, ?, ?)`,
+      item_kind, parent_message_id, attachment_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'index', 'queued', 0, ?, ?, ?, ?, ?)`,
   )
     .bind(
       jobId,
@@ -246,6 +260,9 @@ export async function createMicrosoftFileJob(
       input.modifiedAt,
       input.webUrl,
       input.sizeBytes,
+      itemKind,
+      input.parentMessageId ?? null,
+      input.attachmentId ?? null,
       now,
       now,
     )
@@ -299,7 +316,10 @@ export async function processMicrosoftFileJob(
     return;
   }
 
-  const token = await acquireMicrosoftAppToken(env);
+  const token = await acquireMicrosoftAppToken(env, {
+    companyId: job.company_id,
+    connectorInstanceId: job.connector_instance_id,
+  });
   if (!token.ok) {
     await markJobRetrying(env.DB, job.id, token.message);
     throw new Error(token.message);
@@ -315,6 +335,19 @@ export async function processMicrosoftFileJob(
   if (!mcp) {
     await markJobFailed(env.DB, job.id, "No Business MCP registered");
     await finalizeMicrosoftSyncRunIfComplete(env, job.sync_run_id, job.source_id);
+    return;
+  }
+
+  const itemKind = job.item_kind ?? "drive_file";
+  if (itemKind === "mail_message" || itemKind === "mail_attachment") {
+    await processMicrosoftMailJob(env, {
+      job,
+      source,
+      config,
+      mcp,
+      itemKind,
+      tenantId: token.tenantId,
+    });
     return;
   }
 
@@ -518,6 +551,192 @@ export async function processMicrosoftFileJob(
       indexingStatus: "failed",
       lastError: message,
     });
+    await markJobRetrying(env.DB, job.id, message);
+    throw err;
+  }
+}
+
+async function processMicrosoftMailJob(
+  env: Env,
+  input: {
+    job: MicrosoftFileJobRow;
+    source: NonNullable<Awaited<ReturnType<typeof loadSourceContext>>>;
+    config: MicrosoftGraphConfig;
+    mcp: Awaited<ReturnType<typeof listMcpEnvironments>>[number];
+    itemKind: "mail_message" | "mail_attachment";
+    tenantId: string;
+  },
+): Promise<void> {
+  const { job, source, config, mcp, itemKind, tenantId } = input;
+  const mailboxAddress = job.drive_id;
+
+  await env.DB.prepare(
+    `UPDATE microsoft_file_jobs SET status = 'processing', attempts = attempts + 1, updated_at = ? WHERE id = ?`,
+  )
+    .bind(nowIso(), job.id)
+    .run();
+
+  const messageId =
+    itemKind === "mail_attachment"
+      ? job.parent_message_id ?? job.external_item_id.split("|")[0]
+      : job.external_item_id;
+  const attachmentId =
+    itemKind === "mail_attachment"
+      ? job.attachment_id ?? job.external_item_id.split("|")[1] ?? null
+      : null;
+
+  const externalId = buildMicrosoftMailExternalId({
+    mailboxAddress,
+    messageId: messageId ?? job.external_item_id,
+    attachmentId,
+  });
+
+  const existingItem = await env.DB.prepare(
+    `SELECT indexing_status, knowledge_document_id, e_tag, visibility_status
+     FROM microsoft_knowledge_items
+     WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ? LIMIT 1`,
+  )
+    .bind(job.company_id, job.connector_instance_id, job.external_item_id)
+    .first<{
+      indexing_status: string;
+      knowledge_document_id: number | null;
+      e_tag: string | null;
+      visibility_status: string | null;
+    }>();
+
+  if (
+    existingItem?.indexing_status === "indexed" &&
+    existingItem.knowledge_document_id &&
+    existingItem.visibility_status === "active" &&
+    existingItem.e_tag === (job.e_tag ?? null)
+  ) {
+    await completeJob(env.DB, job.id, "skipped_unchanged");
+    await finalizeMicrosoftSyncRunIfComplete(env, job.sync_run_id, job.source_id);
+    return;
+  }
+
+  try {
+    const message = await getMailboxMessage(config, mailboxAddress, messageId!);
+    const from = message.from?.emailAddress?.address ?? message.sender?.emailAddress?.address ?? null;
+    const to = (message.toRecipients ?? [])
+      .map((r) => r.emailAddress?.address)
+      .filter(Boolean) as string[];
+
+    let bytes: ArrayBuffer;
+    let mimeType: string | null;
+    let title: string;
+    let filename: string;
+
+    if (itemKind === "mail_attachment") {
+      if (!attachmentId) throw new Error("Attachment ID missing on mail attachment job");
+      const attachment = await getMessageAttachmentContent(
+        config,
+        mailboxAddress,
+        messageId!,
+        attachmentId,
+      );
+      if (!attachment.contentBytes) throw new Error("Attachment content unavailable");
+      const binary = Uint8Array.from(atob(attachment.contentBytes), (c) => c.charCodeAt(0));
+      bytes = binary.buffer;
+      mimeType = attachment.contentType;
+      title = attachment.name;
+      filename = attachment.name;
+    } else {
+      const text = buildMailKnowledgeText(message);
+      bytes = new TextEncoder().encode(text).buffer;
+      mimeType = "text/plain";
+      title = message.subject ?? job.file_name;
+      filename = job.file_name;
+    }
+
+    const provenance = buildOutlookKnowledgeProvenance({
+      companyId: job.company_id,
+      tenantId,
+      mailboxAddress,
+      folderName: "Inbox",
+      messageId: message.id,
+      internetMessageId: message.internetMessageId,
+      subject: message.subject,
+      from,
+      to,
+      receivedDateTime: message.receivedDateTime,
+      sentDateTime: message.sentDateTime,
+      attachmentId,
+      attachmentName: itemKind === "mail_attachment" ? filename : null,
+    });
+
+    const upload = await uploadMicrosoftDocumentToKnowledge(env, mcp, {
+      filename,
+      bytes,
+      mimeType,
+      externalId,
+      title,
+      metadata: {
+        ...provenance,
+        sourceType: "outlook_shared",
+        companyId: job.company_id,
+        topic: String(provenance.sourceLabel),
+      },
+      autoIndex: true,
+    });
+
+    if (!upload.ok) {
+      await upsertKnowledgeItem(env.DB, {
+        companyId: job.company_id,
+        connectorInstanceId: job.connector_instance_id,
+        sourceId: job.source_id,
+        sourceType: source.sourceType,
+        externalItemId: job.external_item_id,
+        externalId,
+        title,
+        path: job.relative_path,
+        mimeType,
+        modifiedAt: job.modified_at,
+        webUrl: job.web_url,
+        sizeBytes: bytes.byteLength,
+        eTag: job.e_tag,
+        provenance,
+        indexingStatus: "failed",
+        lastError: upload.message,
+      });
+      await markJobRetrying(env.DB, job.id, upload.message);
+      throw new Error(upload.message);
+    }
+
+    await upsertKnowledgeItem(env.DB, {
+      companyId: job.company_id,
+      connectorInstanceId: job.connector_instance_id,
+      sourceId: job.source_id,
+      sourceType: source.sourceType,
+      externalItemId: job.external_item_id,
+      externalId,
+      title,
+      path: job.relative_path,
+      mimeType,
+      modifiedAt: job.modified_at,
+      webUrl: job.web_url,
+      sizeBytes: bytes.byteLength,
+      eTag: job.e_tag,
+      provenance,
+      indexingStatus: "indexed",
+      knowledgeDocumentId: upload.documentId,
+    });
+    await env.DB.prepare(
+      `UPDATE microsoft_knowledge_items SET visibility_status = 'active', updated_at = ? WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ?`,
+    )
+      .bind(nowIso(), job.company_id, job.connector_instance_id, job.external_item_id)
+      .run();
+
+    await completeJob(env.DB, job.id, "indexed");
+    await finalizeMicrosoftSyncRunIfComplete(env, job.sync_run_id, job.source_id);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Mail job failed";
+    const current = await loadJob(env.DB, job.id);
+    if ((current?.attempts ?? 0) >= MICROSOFT_QUEUE_MAX_RETRIES) {
+      await markJobFailed(env.DB, job.id, message);
+      await finalizeMicrosoftSyncRunIfComplete(env, job.sync_run_id, job.source_id);
+      return;
+    }
     await markJobRetrying(env.DB, job.id, message);
     throw err;
   }

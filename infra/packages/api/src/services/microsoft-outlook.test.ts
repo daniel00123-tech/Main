@@ -206,3 +206,33 @@ describe("Outlook permission assessment", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("Outlook mail knowledge helpers", () => {
+  it("builds stable mail external ids", async () => {
+    const { buildMicrosoftMailExternalId } = await import("./microsoft-knowledge-bridge");
+    const messageId = buildMicrosoftMailExternalId({
+      mailboxAddress: "admin@example.com",
+      messageId: "msg-1",
+    });
+    const attachmentId = buildMicrosoftMailExternalId({
+      mailboxAddress: "admin@example.com",
+      messageId: "msg-1",
+      attachmentId: "att-1",
+    });
+    expect(messageId.startsWith("msml-")).toBe(true);
+    expect(attachmentId.startsWith("msat-")).toBe(true);
+    expect(messageId).not.toBe(attachmentId);
+  });
+
+  it("documents Exchange Application RBAC steps without secrets", async () => {
+    const { exchangeApplicationRbacGuide } = await import("./microsoft-outlook-permissions");
+    const guide = exchangeApplicationRbacGuide({
+      appClientId: "00000000-0000-0000-0000-000000000001",
+      scopeGroupName: "INFRA Approved Mailboxes",
+    });
+    expect(guide.mechanism).toBe("RBAC for Applications");
+    expect(guide.roleName).toBe("Application Mail.Read");
+    expect(guide.exchangeSteps.join("\n")).toContain("New-ManagementRoleAssignment");
+    expect(guide.exchangeSteps.join("\n")).not.toContain("secret");
+  });
+});

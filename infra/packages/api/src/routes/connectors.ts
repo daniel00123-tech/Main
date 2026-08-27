@@ -968,6 +968,21 @@ connectors.post("/api/internal/cmd16/outlook-alpha", async (c) => {
   }
 });
 
+connectors.post("/api/internal/cmd16b/outlook-rbac", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runCmd16bOutlookRbacAcceptance } = await import("../services/microsoft-acceptance-cmd16b");
+    return c.json(await runCmd16bOutlookRbacAcceptance(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Acceptance failed", verdict: "ERROR" },
+      500,
+    );
+  }
+});
+
 connectors.get(
   "/api/companies/:slug/microsoft/dashboard",
   requireAuth,

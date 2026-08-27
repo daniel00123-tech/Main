@@ -138,6 +138,60 @@ export function buildMicrosoftExternalId(input: {
   return `${prefix}-${fnv1aHex(raw)}${fnv1aHex(`${raw}|salt`)}`;
 }
 
+/** Stable external id for Outlook mail messages and attachments. */
+export function buildMicrosoftMailExternalId(input: {
+  mailboxAddress: string;
+  messageId: string;
+  attachmentId?: string | null;
+}): string {
+  const raw = input.attachmentId
+    ? `outlook_shared|${input.mailboxAddress}|${input.messageId}|${input.attachmentId}`
+    : `outlook_shared|${input.mailboxAddress}|${input.messageId}`;
+  const prefix = input.attachmentId ? "msat" : "msml";
+  return `${prefix}-${fnv1aHex(raw)}${fnv1aHex(`${raw}|salt`)}`;
+}
+
+export function buildOutlookKnowledgeProvenance(input: {
+  companyId: string;
+  tenantId: string | null;
+  mailboxAddress: string;
+  folderName?: string | null;
+  messageId: string;
+  internetMessageId?: string | null;
+  subject?: string | null;
+  from?: string | null;
+  to?: string[];
+  receivedDateTime?: string | null;
+  sentDateTime?: string | null;
+  attachmentId?: string | null;
+  attachmentName?: string | null;
+}): Record<string, unknown> {
+  return {
+    connector: "microsoft_365",
+    sourceType: "outlook_shared",
+    companyId: input.companyId,
+    tenantId: input.tenantId,
+    mailboxAddress: input.mailboxAddress,
+    folderName: input.folderName ?? "Inbox",
+    messageId: input.messageId,
+    internetMessageId: input.internetMessageId ?? null,
+    subject: input.subject ?? null,
+    from: input.from ?? null,
+    to: input.to ?? [],
+    receivedDateTime: input.receivedDateTime ?? null,
+    sentDateTime: input.sentDateTime ?? null,
+    attachmentId: input.attachmentId ?? null,
+    attachmentName: input.attachmentName ?? null,
+    sourceLabel: [
+      "Microsoft 365",
+      "Outlook",
+      input.mailboxAddress,
+      input.folderName ?? "Inbox",
+      input.attachmentName ?? input.subject ?? input.messageId,
+    ].join(" → "),
+  };
+}
+
 export async function deactivateMicrosoftKnowledgeDocument(
   env: Env,
   mcp: McpEnvironment,

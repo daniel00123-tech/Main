@@ -367,7 +367,7 @@ export async function handleMicrosoftGraphNotification(
 
     const sub = await env.DB.prepare(
       `SELECT s.id, s.company_id, s.connector_instance_id, s.source_id, s.client_state,
-              src.inclusion_status
+              src.inclusion_status, src.source_type, src.mailbox_address, s.resource_kind
        FROM microsoft_graph_subscriptions s
        JOIN microsoft_connector_sources src ON src.id = s.source_id
        WHERE s.graph_subscription_id = ? LIMIT 1`,
@@ -380,6 +380,9 @@ export async function handleMicrosoftGraphNotification(
         source_id: string;
         client_state: string;
         inclusion_status: string;
+        source_type: string;
+        mailbox_address: string | null;
+        resource_kind: string | null;
       }>();
 
     if (!sub) {
@@ -412,14 +415,26 @@ export async function handleMicrosoftGraphNotification(
       .run();
 
     try {
-      await syncMicrosoftSource(env, {
-        companyId: sub.company_id,
-        connectorInstanceId: sub.connector_instance_id,
-        sourceId: sub.source_id,
-        actor: "system:microsoft-graph-notification",
-        useDelta: true,
-        maxFiles: 50,
-      });
+      if (sub.resource_kind === "mailbox" || sub.source_type === "outlook_shared") {
+        const { syncOutlookMailbox } = await import("./microsoft-outlook-sync");
+        await syncOutlookMailbox(env, {
+          companyId: sub.company_id,
+          connectorInstanceId: sub.connector_instance_id,
+          sourceId: sub.source_id,
+          actor: "system:microsoft-graph-mail-notification",
+          useDelta: true,
+          maxMessages: 50,
+        });
+      } else {
+        await syncMicrosoftSource(env, {
+          companyId: sub.company_id,
+          connectorInstanceId: sub.connector_instance_id,
+          sourceId: sub.source_id,
+          actor: "system:microsoft-graph-notification",
+          useDelta: true,
+          maxFiles: 50,
+        });
+      }
       processed++;
     } catch (err) {
       errors.push(err instanceof Error ? err.message : "Delta sync failed");

@@ -144,8 +144,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     integrationType: "business_system",
     catalogueStatus: "available",
     description:
-      "Read explicitly selected Microsoft 365 shared mailboxes via live Graph retrieval (alpha — not auto-indexed to Company Knowledge).",
-    capabilities: ["read", "search", "live_query"],
+      "Read and index explicitly selected Microsoft 365 shared mailboxes via Graph with Exchange Application RBAC scoping.",
+    capabilities: ["read", "search", "sync", "live_query"],
     credentialSchema: {
       type: "object",
       required: ["tenantId", "clientId", "clientSecret"],

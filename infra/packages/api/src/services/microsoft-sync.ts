@@ -564,6 +564,31 @@ export async function syncMicrosoftSource(
     throw new Error("Source is not included — enable inclusion before sync");
   }
 
+  if (source.sourceType === "outlook_shared") {
+    const { syncOutlookMailbox } = await import("./microsoft-outlook-sync");
+    const mailResult = await syncOutlookMailbox(env, {
+      companyId: input.companyId,
+      connectorInstanceId: input.connectorInstanceId,
+      sourceId: input.sourceId,
+      actor: input.actor,
+      useDelta: input.useDelta,
+      maxMessages: input.maxFiles,
+      drainInline: input.drainInline,
+      onJobsEnqueued: input.onJobsEnqueued,
+    });
+    return {
+      discovered: mailResult.discovered,
+      queued: mailResult.queued,
+      indexed: mailResult.indexed,
+      skipped: mailResult.skipped,
+      unsupported: 0,
+      failed: mailResult.failed,
+      deleted: 0,
+      syncRunId: mailResult.syncRunId,
+      mode: mailResult.mode,
+    };
+  }
+
   const token = await acquireMicrosoftAppToken(env);
   if (!token.ok) throw new Error(token.message);
 
