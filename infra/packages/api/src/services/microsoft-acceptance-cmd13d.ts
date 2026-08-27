@@ -11,6 +11,7 @@ import {
   syncMicrosoftSource,
 } from "./microsoft-sync";
 import { formatMicrosoftSourceLabel } from "./microsoft-graph";
+import { runCmd13dDiscovery } from "./microsoft-acceptance-cmd13d-discovery";
 
 const COMPANY_ID = "co_caddington";
 const CONNECTOR_DEF = "conn_microsoft_365";

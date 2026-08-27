@@ -1104,6 +1104,20 @@ const worker = {
     const { runMicrosoftScheduledSync } = await import("./services/microsoft-scheduler");
     await runMicrosoftScheduledSync(env);
   },
+  async queue(batch: MessageBatch<import("./services/microsoft-queue").MicrosoftFileJobMessage>, env: Env) {
+    const { processMicrosoftFileJob, MICROSOFT_KNOWLEDGE_INGEST_DLQ } = await import(
+      "./services/microsoft-queue"
+    );
+    const isDeadLetter = batch.queue === MICROSOFT_KNOWLEDGE_INGEST_DLQ;
+    for (const message of batch.messages) {
+      try {
+        await processMicrosoftFileJob(env, message.body, { deadLetter: isDeadLetter });
+        message.ack();
+      } catch {
+        message.retry();
+      }
+    }
+  },
 };
 
 export { app };

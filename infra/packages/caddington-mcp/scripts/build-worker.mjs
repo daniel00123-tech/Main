@@ -200,6 +200,152 @@ __name(handleAdminRequest, "handleAdminRequest");`;
   base = base.replace(visibilityRoutesTarget, visibilityRoutesReplacement);
 }
 
+const indexBatchMarker = "indexChunkOffset === 0";
+if (!base.includes(indexBatchMarker)) {
+  const indexDeleteTarget = `    if (chunks.length === 0) {
+      throw new Error("No extractable text in document.");
+    }
+    await env22.CADDINGTON_BUSINESS_DATA.prepare(
+      "DELETE FROM knowledge_chunks WHERE document_id = ?"
+    ).bind(documentId).run();
+    await deleteDocumentFtsRows(env22, documentId);`;
+  const indexDeleteReplacement = `    if (chunks.length === 0) {
+      throw new Error("No extractable text in document.");
+    }
+    const MAX_CHUNKS_PER_INDEX_CALL = 8;
+    const progressRow = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+      "SELECT metadata FROM knowledge_documents WHERE id = ?"
+    ).bind(documentId).first();
+    let indexChunkOffset = 0;
+    try {
+      const progressMeta = progressRow?.metadata ? JSON.parse(progressRow.metadata) : {};
+      indexChunkOffset = Number(progressMeta.indexChunkOffset ?? 0);
+    } catch {
+      indexChunkOffset = 0;
+    }
+    const batchEnd = Math.min(chunks.length, indexChunkOffset + MAX_CHUNKS_PER_INDEX_CALL);
+    if (indexChunkOffset === 0) {
+      await env22.CADDINGTON_BUSINESS_DATA.prepare(
+        "DELETE FROM knowledge_chunks WHERE document_id = ?"
+      ).bind(documentId).run();
+      await deleteDocumentFtsRows(env22, documentId);
+    }`;
+  if (!base.includes(indexDeleteTarget)) {
+    throw new Error("Unable to locate indexKnowledgeDocument delete block in base worker");
+  }
+  base = base.replace(indexDeleteTarget, indexDeleteReplacement);
+
+  const indexLoopTarget = `    for (let i = 0; i < chunks.length; i++) {
+      const { content, metadata } = chunks[i];`;
+  const indexLoopReplacement = `    for (let i = indexChunkOffset; i < batchEnd; i++) {
+      const { content, metadata } = chunks[i];`;
+  if (!base.includes(indexLoopTarget)) {
+    throw new Error("Unable to locate indexKnowledgeDocument chunk loop in base worker");
+  }
+  base = base.replace(indexLoopTarget, indexLoopReplacement);
+
+  const indexCompleteTarget = `    if (vectors.length > 0) {
+      await env22.CADDINGTON_KNOWLEDGE_INDEX.upsert(vectors);
+    }
+    await env22.CADDINGTON_BUSINESS_DATA.prepare(
+      \`UPDATE knowledge_documents SET status = 'indexed', indexed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?\`
+    ).bind(documentId).run();
+    clearSearchCache();
+    await completeKnowledgeImportLog(env22, logId, "completed", indexed);
+    log32("info", "knowledge_document_indexed", {
+      documentId,
+      format: extracted.format,
+      chunks: indexed
+    });
+    return { chunksIndexed: indexed };`;
+  const indexCompleteReplacement = `    if (vectors.length > 0) {
+      await env22.CADDINGTON_KNOWLEDGE_INDEX.upsert(vectors);
+    }
+    if (batchEnd < chunks.length) {
+      await mergeDocumentMetadata(env22, documentId, { indexChunkOffset: batchEnd });
+      await env22.CADDINGTON_BUSINESS_DATA.prepare(
+        \`UPDATE knowledge_documents SET status = 'pending', updated_at = datetime('now') WHERE id = ?\`
+      ).bind(documentId).run();
+      log32("info", "knowledge_document_index_partial", {
+        documentId,
+        indexedThisBatch: indexed,
+        continueAt: batchEnd,
+        totalChunks: chunks.length
+      });
+      return { chunksIndexed: indexed, partial: true, continueAt: batchEnd, totalChunks: chunks.length };
+    }
+    await mergeDocumentMetadata(env22, documentId, { indexChunkOffset: null });
+    await env22.CADDINGTON_BUSINESS_DATA.prepare(
+      \`UPDATE knowledge_documents SET status = 'indexed', indexed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?\`
+    ).bind(documentId).run();
+    clearSearchCache();
+    await completeKnowledgeImportLog(env22, logId, "completed", indexed);
+    log32("info", "knowledge_document_indexed", {
+      documentId,
+      format: extracted.format,
+      chunks: indexed
+    });
+    return { chunksIndexed: indexed, partial: false };`;
+  if (!base.includes(indexCompleteTarget)) {
+    throw new Error("Unable to locate indexKnowledgeDocument completion block in base worker");
+  }
+  base = base.replace(indexCompleteTarget, indexCompleteReplacement);
+
+  const indexRouteTarget = `  if (indexMatch && request.method === "POST") {
+    const documentId = Number(indexMatch[1]);
+    try {
+      const result = await indexKnowledgeDocument(env22, documentId);
+      return json2({ ok: true, documentId, ...result });
+    } catch (error53) {
+      const message = error53 instanceof Error ? error53.message : String(error53);
+      return json2({ error: message }, 400);
+    }
+  }`;
+  const indexRouteReplacement = `  if (indexMatch && request.method === "POST") {
+    const documentId = Number(indexMatch[1]);
+    try {
+      const result = await indexKnowledgeDocument(env22, documentId);
+      if (result?.partial) {
+        const continueUrl = new URL(request.url);
+        ctx.waitUntil(
+          fetch(continueUrl.toString(), {
+            method: "POST",
+            headers: { Authorization: request.headers.get("Authorization") ?? "" }
+          })
+        );
+      }
+      return json2({ ok: true, documentId, ...result });
+    } catch (error53) {
+      const message = error53 instanceof Error ? error53.message : String(error53);
+      return json2({ error: message }, 400);
+    }
+  }`;
+  if (!base.includes('result?.partial')) {
+    if (!base.includes(indexRouteTarget)) {
+      throw new Error("Unable to locate admin knowledge index route in base worker");
+    }
+    base = base.replace(indexRouteTarget, indexRouteReplacement);
+  }
+
+  const adminHandlerSigTarget = "async function handleAdminRequest(request, env22, url2) {";
+  const adminHandlerSigReplacement = "async function handleAdminRequest(request, env22, url2, ctx) {";
+  if (!base.includes(adminHandlerSigReplacement)) {
+    if (!base.includes(adminHandlerSigTarget)) {
+      throw new Error("Unable to locate handleAdminRequest signature in base worker");
+    }
+    base = base.replace(adminHandlerSigTarget, adminHandlerSigReplacement);
+  }
+
+  const adminHandlerCallTarget = "return handleAdminRequest(request, env22, url2);";
+  const adminHandlerCallReplacement = "return handleAdminRequest(request, env22, url2, ctx);";
+  if (!base.includes(adminHandlerCallReplacement)) {
+    if (!base.includes(adminHandlerCallTarget)) {
+      throw new Error("Unable to locate handleAdminRequest call site in base worker");
+    }
+    base = base.replace(adminHandlerCallTarget, adminHandlerCallReplacement);
+  }
+}
+
 const inlinedXero = xeroBundle
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*,?\s*registerXeroWriteTools\s+as\s+__registerXeroWriteTools\s*\};?\s*/g, "")
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*\};?\s*/g, "")

@@ -48,3 +48,22 @@ service = "el-business-mcp"
 
 [triggers]
 crons = ["0 */6 * * *"]
+
+# Cloudflare Queues — create via dashboard/CLI when account quota allows:
+#   wrangler queues create microsoft-knowledge-ingest
+#   wrangler queues create microsoft-knowledge-ingest-dlq
+# Until bound, self-fetch job processor handles one-file-per-invocation ingestion.
+# [[queues.producers]]
+# binding = "MICROSOFT_KNOWLEDGE_QUEUE"
+# queue = "microsoft-knowledge-ingest"
+#
+# [[queues.consumers]]
+# queue = "microsoft-knowledge-ingest"
+# max_batch_size = 1
+# max_retries = 5
+# dead_letter_queue = "microsoft-knowledge-ingest-dlq"
+#
+# [[queues.consumers]]
+# queue = "microsoft-knowledge-ingest-dlq"
+# max_batch_size = 10
+

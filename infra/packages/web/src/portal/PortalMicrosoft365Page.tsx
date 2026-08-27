@@ -115,9 +115,11 @@ export default function PortalMicrosoft365Page() {
     setMessage(null);
     try {
       const result = await api.syncMicrosoftSource(company.slug, source.id);
-      setMessage(
-        `Synced ${source.displayName}: ${result.indexed} indexed, ${result.skipped} skipped, ${result.failed} failed.`,
-      );
+      const syncNote =
+        result.queued > 0
+          ? `${result.queued} files queued for background indexing (${result.skipped} skipped unchanged).`
+          : `Synced ${source.displayName}: ${result.indexed} indexed, ${result.skipped} skipped, ${result.failed} failed.`;
+      setMessage(syncNote);
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Sync failed");
@@ -154,6 +156,9 @@ export default function PortalMicrosoft365Page() {
   }
 
   function folderScopeSummary(source: MicrosoftSource): string {
+    if (source.folderScopeMode === "all" && source.inclusionStatus === "included") {
+      return source.sourceType === "onedrive" ? "Entire OneDrive" : "Whole source";
+    }
     if (source.folderScopeMode === "include_paths" && (source.folderIncludePaths?.length ?? 0) > 0) {
       return `Folders: ${source.folderIncludePaths!.join(", ")}`;
     }
@@ -161,6 +166,22 @@ export default function PortalMicrosoft365Page() {
       return `Excluding: ${source.folderExcludePaths!.join(", ")}`;
     }
     return source.inclusionStatus === "included" ? "Whole source" : "—";
+  }
+
+  function queueSummary(source: MicrosoftSource): string | null {
+    const stats = source.queueStats;
+    if (!stats) return null;
+    const pending = stats.pending ?? 0;
+    if (pending > 0) {
+      const indexed = stats.byStatus?.indexed ?? 0;
+      const queued = stats.byStatus?.queued ?? 0;
+      const processing = stats.byStatus?.processing ?? 0;
+      return `Processing: ${indexed} indexed, ${queued} queued, ${processing} active`;
+    }
+    if ((stats.byStatus?.failed ?? 0) > 0 || (stats.byStatus?.dead_letter ?? 0) > 0) {
+      return `${(stats.byStatus?.failed ?? 0) + (stats.byStatus?.dead_letter ?? 0)} failed`;
+    }
+    return null;
   }
 
   function renderSourceActions(source: MicrosoftSource) {
@@ -298,6 +319,7 @@ export default function PortalMicrosoft365Page() {
                   <th>Inclusion</th>
                   {!isMobile ? <th>Scope</th> : null}
                   <th>Indexed</th>
+                  {!isMobile ? <th>Sync state</th> : null}
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -318,6 +340,9 @@ export default function PortalMicrosoft365Page() {
                     <td>{inclusionLabel(source.inclusionStatus)}</td>
                     {!isMobile ? <td className="muted small">{folderScopeSummary(source)}</td> : null}
                     <td>{source.itemsIndexed}</td>
+                    {!isMobile ? (
+                      <td className="muted small">{queueSummary(source) ?? (source.syncStatus === "syncing" ? "Sync in progress…" : "—")}</td>
+                    ) : null}
                     <td>{renderSourceActions(source)}</td>
                   </tr>
                 ))}
@@ -343,6 +368,7 @@ export default function PortalMicrosoft365Page() {
                   <th>Inclusion</th>
                   {!isMobile ? <th>Scope</th> : null}
                   <th>Indexed</th>
+                  {!isMobile ? <th>Sync state</th> : null}
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -363,6 +389,9 @@ export default function PortalMicrosoft365Page() {
                     <td>{inclusionLabel(source.inclusionStatus)}</td>
                     {!isMobile ? <td className="muted small">{folderScopeSummary(source)}</td> : null}
                     <td>{source.itemsIndexed}</td>
+                    {!isMobile ? (
+                      <td className="muted small">{queueSummary(source) ?? (source.syncStatus === "syncing" ? "Sync in progress…" : "—")}</td>
+                    ) : null}
                     <td>{renderSourceActions(source)}</td>
                   </tr>
                 ))}

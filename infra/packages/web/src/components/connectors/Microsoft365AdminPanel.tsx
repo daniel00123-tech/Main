@@ -143,6 +143,7 @@ export function Microsoft365AdminPanel({ companySlug }: Props) {
                 <th>Folder scope</th>
                 <th>Sync</th>
                 <th>Indexed</th>
+                <th>Queue</th>
                 <th>Last sync</th>
                 <th>Error</th>
               </tr>
@@ -159,17 +160,28 @@ export function Microsoft365AdminPanel({ companySlug }: Props) {
                     <StatusBadge status={source.inclusionStatus} />
                   </td>
                   <td className="muted small">
-                    {source.folderScopeMode === "include_paths" && (source.folderIncludePaths?.length ?? 0) > 0
-                      ? `Include: ${source.folderIncludePaths!.join(", ")}`
-                      : source.folderScopeMode === "exclude_paths" &&
-                          (source.folderExcludePaths?.length ?? 0) > 0
-                        ? `Exclude: ${source.folderExcludePaths!.join(", ")}`
-                        : "Whole source"}
+                    {source.folderScopeMode === "all"
+                      ? source.sourceType === "onedrive"
+                        ? "Entire OneDrive"
+                        : "Whole source"
+                      : source.folderScopeMode === "include_paths" && (source.folderIncludePaths?.length ?? 0) > 0
+                        ? `Include: ${source.folderIncludePaths!.join(", ")}`
+                        : source.folderScopeMode === "exclude_paths" &&
+                            (source.folderExcludePaths?.length ?? 0) > 0
+                          ? `Exclude: ${source.folderExcludePaths!.join(", ")}`
+                          : "Whole source"}
                   </td>
                   <td>
                     <StatusBadge status={source.syncStatus} />
                   </td>
                   <td>{source.itemsIndexed}</td>
+                  <td className="muted small">
+                    {(source.queueStats?.pending ?? 0) > 0
+                      ? `${source.queueStats!.pending} pending`
+                      : (source.queueStats?.byStatus?.failed ?? 0) > 0
+                        ? `${source.queueStats!.byStatus!.failed} failed`
+                        : "—"}
+                  </td>
                   <td className="muted small">
                     {source.lastSyncAt ? formatRelativeTime(source.lastSyncAt) : "—"}
                   </td>

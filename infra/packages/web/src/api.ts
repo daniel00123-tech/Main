@@ -522,6 +522,11 @@ export const api = {
         folderScopeMode?: string;
         folderIncludePaths?: string[];
         folderExcludePaths?: string[];
+        queueStats?: {
+          pending: number;
+          byStatus: Record<string, number>;
+          latestFailure: { fileName: string; error: string; at: string } | null;
+        };
       }>;
     }>(`/api/companies/${slug}/microsoft/dashboard`),
   discoverMicrosoftSources: (
@@ -555,7 +560,18 @@ export const api = {
       body: JSON.stringify(body),
     }),
   syncMicrosoftSource: (slug: string, sourceId: string, body?: { useDelta?: boolean; maxFiles?: number }) =>
-    fetchJson<{ ok: boolean; discovered: number; indexed: number; skipped: number; failed: number; deleted: number }>(
+    fetchJson<{
+      ok: boolean;
+      discovered: number;
+      queued: number;
+      indexed: number;
+      skipped: number;
+      unsupported: number;
+      failed: number;
+      deleted: number;
+      syncRunId: string;
+      mode: "queue" | "inline";
+    }>(
       `/api/companies/${slug}/microsoft/sources/${sourceId}/sync`,
       { method: "POST", body: JSON.stringify(body ?? {}) },
     ),

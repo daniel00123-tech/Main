@@ -795,6 +795,94 @@ connectors.post("/api/internal/cmd13d/microsoft-acceptance", async (c) => {
   }
 });
 
+connectors.post("/api/internal/microsoft/process-next-job", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { syncRunId?: string };
+  if (!body.syncRunId) return c.json({ error: "syncRunId required" }, 400);
+
+  const auth = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "") ?? null;
+  const { verifyJobProcessorToken, processNextMicrosoftJob, continueMicrosoftJobChain } =
+    await import("../services/microsoft-job-processor");
+  if (!verifyJobProcessorToken(c.env, body.syncRunId, auth)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const result = await processNextMicrosoftJob(c.env, body.syncRunId);
+    if (result.remaining > 0) {
+      c.executionCtx.waitUntil(continueMicrosoftJobChain(c.env, body.syncRunId));
+    }
+    return c.json({ ok: true, ...result });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Job processing failed" },
+      500,
+    );
+  }
+});
+
+connectors.post("/api/internal/cmd14/microsoft-acceptance", async (c) => {
+  const token = c.req.header("X-CMD13-Acceptance-Token")?.trim();
+  if (!token) return c.json({ error: "Missing acceptance token" }, 401);
+  const { createHash } = await import("node:crypto");
+  const hash = createHash("sha256").update(token).digest("hex");
+  await c.env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS cmd13_acceptance_tokens (
+      token_hash TEXT PRIMARY KEY,
+      expires_at TEXT NOT NULL
+    )`,
+  ).run();
+  const valid = await c.env.DB.prepare(
+    `SELECT token_hash FROM cmd13_acceptance_tokens WHERE token_hash = ? AND expires_at > datetime('now') LIMIT 1`,
+  )
+    .bind(hash)
+    .first();
+  if (!valid) return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  await c.env.DB.prepare(`DELETE FROM cmd13_acceptance_tokens WHERE token_hash = ?`).bind(hash).run();
+
+  const phase = c.req.query("phase") ?? "full";
+  try {
+    if (phase === "discover") {
+      const { runCmd14Discovery } = await import("../services/microsoft-acceptance-cmd14");
+      return c.json(await runCmd14Discovery(c.env));
+    }
+    if (phase === "process-jobs") {
+      const body = (await c.req.json().catch(() => ({}))) as { syncRunId?: string; maxRounds?: number };
+      const { processNextMicrosoftJob, kickMicrosoftJobProcessor } = await import(
+        "../services/microsoft-job-processor"
+      );
+      const syncRunId = body.syncRunId;
+      if (!syncRunId) return c.json({ error: "syncRunId required" }, 400);
+      const rounds = body.maxRounds ?? 1;
+      const results = [];
+      for (let i = 0; i < rounds; i++) {
+        const result = await processNextMicrosoftJob(c.env, syncRunId);
+        results.push(result);
+        if (result.remaining <= 0) break;
+      }
+      if (results.at(-1)?.remaining && (results.at(-1)?.remaining ?? 0) > 0) {
+        await kickMicrosoftJobProcessor(c.env, syncRunId);
+      }
+      return c.json({ phase: "process-jobs", results });
+    }
+    if (phase === "sync") {
+      const body = (await c.req.json().catch(() => ({}))) as { sourceId?: string; waitMs?: number };
+      const { runCmd14FullSync } = await import("../services/microsoft-acceptance-cmd14");
+      return c.json(await runCmd14FullSync(c.env, body));
+    }
+    if (phase === "search") {
+      const { runCmd14SearchAcceptance } = await import("../services/microsoft-acceptance-cmd14");
+      return c.json(await runCmd14SearchAcceptance(c.env));
+    }
+    const { runCmd14MicrosoftAcceptance } = await import("../services/microsoft-acceptance-cmd14");
+    return c.json(await runCmd14MicrosoftAcceptance(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Acceptance failed", verdict: "ERROR" },
+      500,
+    );
+  }
+});
+
 connectors.get(
   "/api/companies/:slug/microsoft/dashboard",
   requireAuth,
@@ -810,6 +898,23 @@ connectors.get(
     const { microsoftOAuthStatus } = await import("../services/microsoft-oauth");
     const sources = await listMicrosoftSources(c.env.DB, company.id, instanceId);
     const health = await getMicrosoftConnectorHealth(c.env);
+    const { getMicrosoftSourceJobStats } = await import("../services/microsoft-sync");
+    const sourcesWithQueue = await Promise.all(
+      sources.map(async (source) => {
+        const queueStats = await getMicrosoftSourceJobStats(c.env.DB, {
+          companyId: company.id,
+          sourceId: source.id,
+        });
+        return {
+          ...source,
+          queueStats: {
+            pending: queueStats.pending,
+            byStatus: queueStats.byStatus,
+            latestFailure: queueStats.latestFailure,
+          },
+        };
+      }),
+    );
     const onedrive = sources.filter((s) => s.sourceType === "onedrive");
     const sharepoint = sources.filter((s) => s.sourceType === "sharepoint");
     const outlook = sources.filter((s) => s.sourceType === "outlook_shared");
@@ -829,7 +934,7 @@ connectors.get(
         },
         outlook: { total: outlook.length, status: "requires_additional_permission" },
       },
-      sources,
+      sources: sourcesWithQueue,
     });
   },
 );
@@ -901,6 +1006,14 @@ connectors.post(
       actor: c.get("user").email,
       useDelta: body.useDelta ?? false,
       maxFiles: body.maxFiles,
+      onJobsEnqueued: (syncRunId) => {
+        c.executionCtx.waitUntil(
+          (async () => {
+            const { kickMicrosoftJobProcessor } = await import("../services/microsoft-job-processor");
+            await kickMicrosoftJobProcessor(c.env, syncRunId);
+          })(),
+        );
+      },
     });
     return c.json({ ok: true, ...result });
   },

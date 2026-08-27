@@ -7,12 +7,11 @@ import type { Env } from "../env";
 import type { MicrosoftSourceType } from "@infra/shared";
 import { newId, nowIso } from "../db/mappers";
 import { recordAuditEvent } from "./control-plane";
-import { getMcpEnvironment, listMcpEnvironments } from "./control-plane";
+import { listMcpEnvironments } from "./control-plane";
 import { acquireMicrosoftAppToken } from "./microsoft-auth";
 import {
   buildMicrosoftProvenance,
   classifyMicrosoftFile,
-  downloadDriveItemContent,
   formatMicrosoftSourceLabel,
   listAllDrives,
   listDriveChildren,
@@ -27,9 +26,16 @@ import {
 import {
   buildMicrosoftExternalId,
   deactivateMicrosoftKnowledgeDocument,
-  reactivateMicrosoftKnowledgeDocument,
-  uploadMicrosoftDocumentToKnowledge,
 } from "./microsoft-knowledge-bridge";
+import {
+  createMicrosoftFileJob,
+  drainMicrosoftFileJobsForSyncRun,
+  finalizeMicrosoftSyncRunIfComplete,
+  getMicrosoftSourceJobStats,
+  hasMicrosoftKnowledgeQueue,
+} from "./microsoft-queue";
+import { kickMicrosoftJobProcessor } from "./microsoft-job-processor";
+import { upsertKnowledgeItem } from "./microsoft-sync-internals";
 import {
   normaliseFolderPath,
   parseFolderScope,
@@ -523,101 +529,6 @@ export async function tombstoneMicrosoftSourceKnowledge(
   return { tombstoned, failed };
 }
 
-async function upsertKnowledgeItem(
-  db: D1Database,
-  input: {
-    companyId: string;
-    connectorInstanceId: string;
-    sourceId: string;
-    sourceType: MicrosoftSourceType;
-    externalItemId: string;
-    externalId: string;
-    title: string;
-    path: string | null;
-    mimeType: string | null;
-    modifiedAt: string | null;
-    webUrl: string | null;
-    sizeBytes: number | null;
-    eTag: string | null;
-    provenance: Record<string, unknown>;
-    indexingStatus: string;
-    knowledgeDocumentId?: number | null;
-    lastError?: string | null;
-  },
-): Promise<string> {
-  const existing = await db
-    .prepare(
-      `SELECT id FROM microsoft_knowledge_items
-       WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ? LIMIT 1`,
-    )
-    .bind(input.companyId, input.connectorInstanceId, input.externalItemId)
-    .first<{ id: string }>();
-
-  const now = nowIso();
-  if (existing?.id) {
-    await db
-      .prepare(
-        `UPDATE microsoft_knowledge_items SET
-          title = ?, path = ?, mime_type = ?, modified_at = ?, web_url = ?, size_bytes = ?,
-          e_tag = ?, provenance_json = ?, indexing_status = ?, knowledge_document_id = ?,
-          external_id = ?, last_error = ?, updated_at = ?
-         WHERE id = ?`,
-      )
-      .bind(
-        input.title,
-        input.path,
-        input.mimeType,
-        input.modifiedAt,
-        input.webUrl,
-        input.sizeBytes,
-        input.eTag,
-        JSON.stringify(input.provenance),
-        input.indexingStatus,
-        input.knowledgeDocumentId ?? null,
-        input.externalId,
-        input.lastError ?? null,
-        now,
-        existing.id,
-      )
-      .run();
-    return existing.id;
-  }
-
-  const id = newId("mki");
-  await db
-    .prepare(
-      `INSERT INTO microsoft_knowledge_items (
-        id, company_id, connector_instance_id, source_id, source_type, external_item_id,
-        external_id, title, path, mime_type, modified_at, web_url, size_bytes, e_tag,
-        provenance_json, indexing_status, knowledge_document_id, last_error, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      id,
-      input.companyId,
-      input.connectorInstanceId,
-      input.sourceId,
-      input.sourceType,
-      input.externalItemId,
-      input.externalId,
-      input.title,
-      input.path,
-      input.mimeType,
-      input.modifiedAt,
-      input.webUrl,
-      input.sizeBytes,
-      input.eTag,
-      JSON.stringify(input.provenance),
-      input.indexingStatus,
-      input.knowledgeDocumentId ?? null,
-      input.lastError ?? null,
-      now,
-      now,
-    )
-    .run();
-  return id;
-}
-
 export async function syncMicrosoftSource(
   env: Env,
   input: {
@@ -627,13 +538,19 @@ export async function syncMicrosoftSource(
     actor: string;
     useDelta?: boolean;
     maxFiles?: number;
+    drainInline?: boolean;
+    onJobsEnqueued?: (syncRunId: string) => void;
   },
 ): Promise<{
   discovered: number;
+  queued: number;
   indexed: number;
   skipped: number;
+  unsupported: number;
   failed: number;
   deleted: number;
+  syncRunId: string;
+  mode: "queue" | "inline";
 }> {
   const sourceRow = await env.DB.prepare(`SELECT * FROM microsoft_connector_sources WHERE id = ? AND company_id = ? LIMIT 1`)
     .bind(input.sourceId, input.companyId)
@@ -654,8 +571,7 @@ export async function syncMicrosoftSource(
   };
 
   const mcps = await listMcpEnvironments(env.DB, input.companyId);
-  const mcp = mcps[0] ?? null;
-  if (!mcp) throw new Error("No Business MCP registered for this company");
+  if (!mcps[0]) throw new Error("No Business MCP registered for this company");
 
   await env.DB.prepare(
     `UPDATE microsoft_connector_sources SET sync_status = 'syncing', updated_at = ? WHERE id = ?`,
@@ -671,16 +587,17 @@ export async function syncMicrosoftSource(
   });
 
   let discovered = 0;
-  let indexed = 0;
+  let queued = 0;
   let skipped = 0;
-  let failed = 0;
+  let unsupported = 0;
   let deleted = 0;
-  const maxFiles = input.maxFiles ?? 200;
+  const maxFiles = input.maxFiles ?? 10_000;
   const folderScope: FolderScope = {
     mode: source.folderScopeMode,
     includePaths: source.folderIncludePaths,
     excludePaths: source.folderExcludePaths,
   };
+  const queueMode = hasMicrosoftKnowledgeQueue(env) && input.drainInline !== true;
 
   const syncRunId = await recordSyncRun(env.DB, {
     companyId: input.companyId,
@@ -693,6 +610,7 @@ export async function syncMicrosoftSource(
       sourceType: source.sourceType,
       folderScope,
       useDelta: Boolean(input.useDelta && source.deltaLink),
+      ingestionMode: queueMode ? "queue" : "inline",
     },
   });
 
@@ -722,6 +640,11 @@ export async function syncMicrosoftSource(
       }
     } else {
       files = await enumerateScopedDriveFiles(config, source.externalId, folderScope);
+      await env.DB.prepare(
+        `UPDATE microsoft_connector_sources SET last_discovery_at = ?, updated_at = ? WHERE id = ?`,
+      )
+        .bind(nowIso(), nowIso(), source.id)
+        .run();
     }
 
     for (const file of files.slice(0, maxFiles)) {
@@ -770,23 +693,6 @@ export async function syncMicrosoftSource(
         continue;
       }
 
-      if (
-        existingItem?.knowledge_document_id &&
-        existingItem.visibility_status === "tombstoned" &&
-        existingItem.indexing_status === "indexed"
-      ) {
-        await reactivateMicrosoftKnowledgeDocument(env, mcp, existingItem.knowledge_document_id);
-        await env.DB.prepare(
-          `UPDATE microsoft_knowledge_items SET visibility_status = 'active', updated_at = ? WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ?`,
-        )
-          .bind(nowIso(), input.companyId, input.connectorInstanceId, file.id)
-          .run();
-        if (existingItem.e_tag === (file.eTag ?? null)) {
-          skipped++;
-          continue;
-        }
-      }
-
       if (classification.indexingStatus !== "indexable") {
         await upsertKnowledgeItem(env.DB, {
           companyId: input.companyId,
@@ -802,100 +708,51 @@ export async function syncMicrosoftSource(
           webUrl: file.webUrl,
           sizeBytes: file.size ?? null,
           eTag: file.eTag ?? null,
-          provenance: { ...provenance, sourceLabel: formatMicrosoftSourceLabel({ sourceType: source.sourceType, displayName: source.displayName, path: file.relativePath, filename: file.name }) },
+          provenance: {
+            ...provenance,
+            sourceLabel: formatMicrosoftSourceLabel({
+              sourceType: source.sourceType,
+              displayName: source.displayName,
+              path: file.relativePath,
+              filename: file.name,
+            }),
+          },
           indexingStatus: classification.indexingStatus === "catalogue_only" ? "unsupported" : "skipped",
           lastError: classification.reason,
         });
-        skipped++;
+        unsupported++;
         continue;
       }
 
-      try {
-        const download = await downloadDriveItemContent(config, source.externalId, file.id);
-        const upload = await uploadMicrosoftDocumentToKnowledge(env, mcp, {
-          filename: file.name,
-          bytes: download.bytes,
-          mimeType: download.mimeType,
-          externalId,
-          title: file.name,
-          metadata: {
-            ...provenance,
-            sourceType: source.sourceType,
-            companyId: input.companyId,
-            topic: formatMicrosoftSourceLabel({ sourceType: source.sourceType, displayName: source.displayName, path: file.relativePath, filename: file.name }),
-          },
-          autoIndex: true,
-        });
-
-        if (!upload.ok) {
-          failed++;
-          await upsertKnowledgeItem(env.DB, {
-            companyId: input.companyId,
-            connectorInstanceId: input.connectorInstanceId,
-            sourceId: source.id,
-            sourceType: source.sourceType,
-            externalItemId: file.id,
-            externalId,
-            title: file.name,
-            path: file.relativePath,
-            mimeType: download.mimeType,
-            modifiedAt: file.lastModifiedDateTime,
-            webUrl: file.webUrl,
-            sizeBytes: download.contentLength,
-            eTag: file.eTag ?? null,
-            provenance,
-            indexingStatus: "failed",
-            lastError: upload.message,
-          });
-          continue;
-        }
-
-        await upsertKnowledgeItem(env.DB, {
-          companyId: input.companyId,
-          connectorInstanceId: input.connectorInstanceId,
-          sourceId: source.id,
-          sourceType: source.sourceType,
-          externalItemId: file.id,
-          externalId,
-          title: file.name,
-          path: file.relativePath,
-          mimeType: download.mimeType,
-          modifiedAt: file.lastModifiedDateTime,
-          webUrl: file.webUrl,
-          sizeBytes: download.contentLength,
-          eTag: file.eTag ?? null,
-          provenance,
-          indexingStatus: "indexed",
-          knowledgeDocumentId: upload.documentId,
-        });
-        await env.DB.prepare(
-          `UPDATE microsoft_knowledge_items SET visibility_status = 'active', updated_at = ? WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ?`,
-        )
-          .bind(nowIso(), input.companyId, input.connectorInstanceId, file.id)
-          .run();
-        indexed++;
-      } catch (err) {
-        failed++;
-        await upsertKnowledgeItem(env.DB, {
-          companyId: input.companyId,
-          connectorInstanceId: input.connectorInstanceId,
-          sourceId: source.id,
-          sourceType: source.sourceType,
-          externalItemId: file.id,
-          externalId,
-          title: file.name,
-          path: file.relativePath,
-          mimeType: file.file?.mimeType ?? null,
-          modifiedAt: file.lastModifiedDateTime,
-          webUrl: file.webUrl,
-          sizeBytes: file.size ?? null,
-          eTag: file.eTag ?? null,
-          provenance,
-          indexingStatus: "failed",
-          lastError: err instanceof Error ? err.message : "Sync failed",
-        });
+      const job = await createMicrosoftFileJob(env, {
+        companyId: input.companyId,
+        connectorInstanceId: input.connectorInstanceId,
+        sourceId: source.id,
+        syncRunId,
+        driveId: source.externalId,
+        externalItemId: file.id,
+        fileName: file.name,
+        relativePath: file.relativePath,
+        mimeType: file.file?.mimeType ?? file.mimeType ?? null,
+        eTag: file.eTag ?? null,
+        modifiedAt: file.lastModifiedDateTime,
+        webUrl: file.webUrl ?? null,
+        sizeBytes: file.size ?? null,
+        sendToQueue: queueMode,
+      });
+      if (!job.duplicate) {
+        queued++;
+      } else if (existingItem?.indexing_status === "failed") {
+        queued++;
       }
     }
+
+    const pendingForRun = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM microsoft_file_jobs
+       WHERE sync_run_id = ? AND status IN ('queued', 'retrying')`,
+    )
+      .bind(syncRunId)
+      .first<{ count: number }>();
 
     if (!input.useDelta) {
       const delta = await listDriveDelta(config, source.externalId, null);
@@ -904,40 +761,87 @@ export async function syncMicrosoftSource(
         .run();
     }
 
-    const syncStatus = failed > 0 ? "needs_attention" : "healthy";
-    await env.DB.prepare(
-      `UPDATE microsoft_connector_sources SET sync_status = ?, last_sync_at = ?, last_error = NULL,
-       items_discovered = ?, items_indexed = ?, updated_at = ? WHERE id = ?`,
-    ).bind(syncStatus, nowIso(), discovered, indexed, nowIso(), source.id).run();
+    if (!queueMode && (queued > 0 || (pendingForRun?.count ?? 0) > 0)) {
+      if (input.drainInline) {
+        await drainMicrosoftFileJobsForSyncRun(env, syncRunId);
+      } else if (input.onJobsEnqueued) {
+        input.onJobsEnqueued(syncRunId);
+      }
+    }
+
+    if (queued === 0) {
+      await finalizeMicrosoftSyncRunIfComplete(env, syncRunId, source.id);
+    }
+
+    const jobStats = await getMicrosoftSourceJobStats(env.DB, {
+      companyId: input.companyId,
+      sourceId: source.id,
+      syncRunId,
+    });
+
+    const indexed = (jobStats.byStatus.indexed ?? 0) + (jobStats.byStatus.skipped_unchanged ?? 0);
+    const failed = (jobStats.byStatus.failed ?? 0) + (jobStats.byStatus.dead_letter ?? 0);
 
     await recordAuditEvent(env.DB, {
       companyId: input.companyId,
-      eventType: "connector.sync_completed",
+      eventType: queued > 0 && queueMode ? "connector.sync_started" : "connector.sync_completed",
       actor: input.actor,
       resourceType: "connector",
       resourceId: source.id,
       detail: {
-        stage: "microsoft.sync.completed",
+        stage: queued > 0 && queueMode ? "microsoft.sync.enqueued" : "microsoft.sync.completed",
         discovered,
-        indexed,
+        queued,
         skipped,
+        unsupported,
         failed,
         deleted,
         folderScope,
         syncRunId,
+        mode: queueMode ? "queue" : "inline",
       },
     });
 
-    await completeSyncRun(env.DB, syncRunId, {
-      status: failed > 0 ? "partial" : "completed",
-      sourcesProcessed: 1,
-      itemsDiscovered: discovered,
-      itemsIndexed: indexed,
-      itemsFailed: failed,
-      metadata: { skipped, deleted, folderScope },
-    });
+    if (queued === 0 || !queueMode) {
+      await completeSyncRun(env.DB, syncRunId, {
+        status: failed > 0 ? "partial" : "completed",
+        sourcesProcessed: 1,
+        itemsDiscovered: discovered,
+        itemsIndexed: indexed,
+        itemsFailed: failed,
+        metadata: { skipped, unsupported, deleted, folderScope, queued: 0 },
+      });
+    } else {
+      await env.DB.prepare(
+        `UPDATE microsoft_sync_runs SET items_discovered = ?, metadata_json = ? WHERE id = ?`,
+      )
+        .bind(
+          discovered,
+          JSON.stringify({
+            sourceName: source.displayName,
+            folderScope,
+            queued,
+            skipped,
+            unsupported,
+            deleted,
+            ingestionMode: "queue",
+          }),
+          syncRunId,
+        )
+        .run();
+    }
 
-    return { discovered, indexed, skipped, failed, deleted };
+    return {
+      discovered,
+      queued,
+      indexed,
+      skipped,
+      unsupported,
+      failed,
+      deleted,
+      syncRunId,
+      mode: queueMode ? "queue" : "inline",
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
     await env.DB.prepare(
@@ -960,6 +864,8 @@ export async function syncMicrosoftSource(
     throw err;
   }
 }
+
+export { getMicrosoftSourceJobStats };
 
 export async function setMicrosoftSourceInclusion(
   db: D1Database,
