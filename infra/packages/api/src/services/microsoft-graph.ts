@@ -445,3 +445,158 @@ export function formatMicrosoftSourceLabel(input: {
   if (input.filename) parts.push(input.filename);
   return parts.filter(Boolean).join(" → ");
 }
+
+export type GraphSubscription = {
+  id: string;
+  resource: string;
+  changeType: string;
+  notificationUrl: string;
+  expirationDateTime: string;
+  clientState?: string;
+};
+
+export async function createGraphSubscription(
+  config: MicrosoftGraphConfig,
+  input: {
+    resource: string;
+    changeType: string;
+    notificationUrl: string;
+    expirationDateTime: string;
+    clientState: string;
+  },
+): Promise<GraphSubscription> {
+  return graphRequest<GraphSubscription>(config, "/subscriptions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      changeType: input.changeType,
+      notificationUrl: input.notificationUrl,
+      resource: input.resource,
+      expirationDateTime: input.expirationDateTime,
+      clientState: input.clientState,
+      includeResourceData: false,
+    }),
+  });
+}
+
+export async function renewGraphSubscription(
+  config: MicrosoftGraphConfig,
+  subscriptionId: string,
+  expirationDateTime: string,
+): Promise<GraphSubscription> {
+  return graphRequest<GraphSubscription>(config, `/subscriptions/${subscriptionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expirationDateTime }),
+  });
+}
+
+export async function deleteGraphSubscription(
+  config: MicrosoftGraphConfig,
+  subscriptionId: string,
+): Promise<void> {
+  await graphRequest<void>(config, `/subscriptions/${subscriptionId}`, { method: "DELETE" });
+}
+
+export async function ensureDriveFolderByPath(
+  config: MicrosoftGraphConfig,
+  driveId: string,
+  folderPath: string,
+): Promise<string> {
+  const segments = folderPath.split("/").filter(Boolean);
+  let parentId: string | undefined;
+  for (const segment of segments) {
+    const children = await listDriveChildren(config, driveId, parentId);
+    const existing = children.find((c) => c.name === segment && c.folder);
+    if (existing?.id) {
+      parentId = existing.id;
+      continue;
+    }
+    const created = await graphRequest<GraphDriveItem>(
+      config,
+      parentId
+        ? `/drives/${driveId}/items/${parentId}/children`
+        : `/drives/${driveId}/root/children`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: segment,
+          folder: {},
+          "@microsoft.graph.conflictBehavior": "fail",
+        }),
+      },
+    );
+    parentId = created.id;
+  }
+  if (!parentId) throw new Error("Failed to resolve folder path");
+  return parentId;
+}
+
+export async function uploadTextFileToDrive(
+  config: MicrosoftGraphConfig,
+  driveId: string,
+  parentId: string,
+  fileName: string,
+  content: string,
+): Promise<GraphDriveItem> {
+  return graphRequest<GraphDriveItem>(
+    config,
+    `/drives/${driveId}/items/${parentId}:/${encodeURIComponent(fileName)}:/content`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "text/plain" },
+      body: content,
+    },
+  );
+}
+
+export async function updateTextFileContent(
+  config: MicrosoftGraphConfig,
+  driveId: string,
+  itemId: string,
+  content: string,
+): Promise<void> {
+  await graphRequest<void>(config, `/drives/${driveId}/items/${itemId}/content`, {
+    method: "PUT",
+    headers: { "Content-Type": "text/plain" },
+    body: content,
+  });
+}
+
+export async function renameDriveItem(
+  config: MicrosoftGraphConfig,
+  driveId: string,
+  itemId: string,
+  newName: string,
+): Promise<GraphDriveItem> {
+  return graphRequest<GraphDriveItem>(config, `/drives/${driveId}/items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: newName }),
+  });
+}
+
+export async function deleteDriveItem(
+  config: MicrosoftGraphConfig,
+  driveId: string,
+  itemId: string,
+): Promise<void> {
+  await graphRequest<void>(config, `/drives/${driveId}/items/${itemId}`, { method: "DELETE" });
+}
+
+export async function findDriveItemByPath(
+  config: MicrosoftGraphConfig,
+  driveId: string,
+  itemPath: string,
+): Promise<GraphDriveItem | null> {
+  try {
+    return await graphGet<GraphDriveItem>(
+      config,
+      `/drives/${driveId}/root:/${itemPath.split("/").map(encodeURIComponent).join("/")}`,
+    );
+  } catch (err) {
+    if (err instanceof MicrosoftGraphError && err.status === 404) return null;
+    throw err;
+  }
+}

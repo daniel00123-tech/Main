@@ -795,6 +795,31 @@ connectors.post("/api/internal/cmd13d/microsoft-acceptance", async (c) => {
   }
 });
 
+connectors.get("/api/webhooks/microsoft/graph", async (c) => {
+  const validationToken = c.req.query("validationToken");
+  if (validationToken) {
+    return new Response(validationToken, {
+      status: 200,
+      headers: { "Content-Type": "text/plain" },
+    });
+  }
+  return c.json({ error: "Missing validationToken" }, 400);
+});
+
+connectors.post("/api/webhooks/microsoft/graph", async (c) => {
+  const validationToken = c.req.query("validationToken");
+  if (validationToken) {
+    return new Response(validationToken, {
+      status: 200,
+      headers: { "Content-Type": "text/plain" },
+    });
+  }
+  const payload = (await c.req.json().catch(() => ({}))) as import("../services/microsoft-graph-subscriptions").GraphNotificationPayload;
+  const { handleMicrosoftGraphNotification } = await import("../services/microsoft-graph-subscriptions");
+  const result = await handleMicrosoftGraphNotification(c.env, payload);
+  return c.json({ ok: true, ...result });
+});
+
 connectors.post("/api/internal/microsoft/process-next-job", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { syncRunId?: string };
   if (!body.syncRunId) return c.json({ error: "syncRunId required" }, 400);
@@ -875,6 +900,51 @@ connectors.post("/api/internal/cmd14/microsoft-acceptance", async (c) => {
     }
     const { runCmd14MicrosoftAcceptance } = await import("../services/microsoft-acceptance-cmd14");
     return c.json(await runCmd14MicrosoftAcceptance(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Acceptance failed", verdict: "ERROR" },
+      500,
+    );
+  }
+});
+
+async function verifyCmdAcceptanceToken(c: { env: Env; req: { header: (name: string) => string | undefined } }): Promise<boolean> {
+  const token = c.req.header("X-CMD13-Acceptance-Token")?.trim();
+  if (!token) return false;
+  const { createHash } = await import("node:crypto");
+  const hash = createHash("sha256").update(token).digest("hex");
+  await c.env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS cmd13_acceptance_tokens (
+      token_hash TEXT PRIMARY KEY,
+      expires_at TEXT NOT NULL
+    )`,
+  ).run();
+  const valid = await c.env.DB.prepare(
+    `SELECT token_hash FROM cmd13_acceptance_tokens WHERE token_hash = ? AND expires_at > datetime('now') LIMIT 1`,
+  )
+    .bind(hash)
+    .first();
+  if (!valid) return false;
+  await c.env.DB.prepare(`DELETE FROM cmd13_acceptance_tokens WHERE token_hash = ?`).bind(hash).run();
+  return true;
+}
+
+connectors.post("/api/internal/cmd15/microsoft-acceptance", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  const phase = c.req.query("phase") ?? "full";
+  try {
+    const mod = await import("../services/microsoft-acceptance-cmd15");
+    if (phase === "queue-status") return c.json(await mod.runCmd15QueueStatus(c.env));
+    if (phase === "queue-prove") return c.json(await mod.runCmd15QueueProve(c.env));
+    if (phase === "queue") return c.json(await mod.runCmd15QueueAcceptance(c.env));
+    if (phase === "idempotency") return c.json(await mod.runCmd15Idempotency(c.env));
+    if (phase === "lifecycle") return c.json(await mod.runCmd15Lifecycle(c.env));
+    if (phase === "exclusion") return c.json(await mod.runCmd15Exclusion(c.env));
+    if (phase === "regression") return c.json(await mod.runCmd15Regression(c.env));
+    if (phase === "graph") return c.json(await mod.runCmd15GraphNotifications(c.env));
+    return c.json(await mod.runCmd15MicrosoftAcceptance(c.env));
   } catch (err) {
     return c.json(
       { error: err instanceof Error ? err.message : "Acceptance failed", verdict: "ERROR" },

@@ -55,7 +55,38 @@ export function microsoftAppConfigured(env: Env): boolean {
   return microsoftCredentialStatus(env).configured;
 }
 
-export async function acquireMicrosoftAppToken(env: Env): Promise<
+export type MicrosoftTokenContext = {
+  companyId?: string;
+  connectorInstanceId?: string;
+  tenantId?: string;
+};
+
+/** Resolve Entra tenant ID from connector instance data, falling back to Worker secret. */
+export async function resolveMicrosoftTenantId(
+  env: Env,
+  db: D1Database,
+  input?: { companyId?: string; connectorInstanceId?: string },
+): Promise<string | null> {
+  if (input?.connectorInstanceId && input?.companyId) {
+    const row = await db
+      .prepare(
+        `SELECT microsoft_tenant_id, external_account_id FROM connector_instances
+         WHERE id = ? AND company_id = ? LIMIT 1`,
+      )
+      .bind(input.connectorInstanceId, input.companyId)
+      .first<{ microsoft_tenant_id: string | null; external_account_id: string | null }>();
+    const fromInstance = row?.microsoft_tenant_id?.trim() || row?.external_account_id?.trim();
+    if (fromInstance) return fromInstance;
+  }
+  const global =
+    typeof env.MICROSOFT_TENANT_ID === "string" ? env.MICROSOFT_TENANT_ID.trim() : "";
+  return global || null;
+}
+
+export async function acquireMicrosoftAppToken(
+  env: Env,
+  context?: MicrosoftTokenContext,
+): Promise<
   | { ok: true; accessToken: string; tenantId: string; expiresAtMs: number }
   | { ok: false; code: string; message: string }
 > {
@@ -68,7 +99,25 @@ export async function acquireMicrosoftAppToken(env: Env): Promise<
     };
   }
 
-  const tenantId = String(env.MICROSOFT_TENANT_ID).trim();
+  let tenantId = context?.tenantId?.trim();
+  if (!tenantId && context?.companyId) {
+    tenantId =
+      (await resolveMicrosoftTenantId(env, env.DB, {
+        companyId: context.companyId,
+        connectorInstanceId: context.connectorInstanceId,
+      })) ?? undefined;
+  }
+  if (!tenantId) {
+    tenantId = String(env.MICROSOFT_TENANT_ID ?? "").trim();
+  }
+  if (!tenantId) {
+    return {
+      ok: false,
+      code: "MICROSOFT_TENANT_MISSING",
+      message: "Microsoft tenant ID is not configured for this company.",
+    };
+  }
+
   const cacheKey = `${tenantId}:${String(env.MICROSOFT_CLIENT_ID).trim()}`;
   const cached = tokenCache.get(cacheKey);
   if (cached && cached.expiresAtMs > Date.now() + 60_000) {
