@@ -242,6 +242,10 @@ export async function registerExistingMcpEnvironment(
     .bind(id)
     .first();
   if (!row) throw new Error("Failed to load registered MCP");
+
+  const { ensureConnectorPlaceholders } = await import("./connector-productisation");
+  await ensureConnectorPlaceholders(db, { companyId: input.companyId, actor: input.actor });
+
   return rowToMcpEnvironment(row);
 }
 

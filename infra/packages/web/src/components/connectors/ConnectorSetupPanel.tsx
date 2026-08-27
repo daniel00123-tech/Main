@@ -91,6 +91,7 @@ export function ConnectorSetupPanel({
   const oauth = connector.authenticationMethod === "oauth";
   const apiKey = connector.authenticationMethod === "api_key";
   const xero = connector.slug === "xero";
+  const mcpManaged = connector.requiresCompanyMcp === true;
   const microsoft =
     connector.slug === "microsoft-365" || isMicrosoftConnectorDefinition(connector.id);
   const microsoftView = storage?.microsoft;
@@ -275,6 +276,13 @@ export function ConnectorSetupPanel({
       {error ? <Notice tone="danger">{error}</Notice> : null}
       {message ? <Notice tone="success">{message}</Notice> : null}
 
+      {mcpManaged && connector.slug === "google-drive" ? (
+        <Notice tone="info">
+          Google Drive is managed by your company Business MCP. Configure service account access on
+          that Worker — INFRA only displays health and document counts reported by the MCP.
+        </Notice>
+      ) : null}
+
       {microsoft ? (
         <div className="stack microsoft-setup-panel" style={{ gap: 12 }}>
           {!microsoftAppConfigured ? (
@@ -438,7 +446,7 @@ export function ConnectorSetupPanel({
         </div>
       ) : null}
 
-      {showStored && !oauth ? (
+      {showStored && !oauth && !mcpManaged ? (
         <div className="stack" style={{ gap: 12 }}>
           {(metadata?.fields.length ? metadata.fields : credentialFields).map((field) => (
             <div key={field.name}>
@@ -482,7 +490,7 @@ export function ConnectorSetupPanel({
         </div>
       ) : null}
 
-      {!showStored && !oauth && (credentialFields.length > 0 || configFields.length > 0) ? (
+      {!showStored && !oauth && !mcpManaged && (credentialFields.length > 0 || configFields.length > 0) ? (
         <form className="stack" style={{ gap: 16 }} onSubmit={(event) => void onSave(event)}>
           {credentialFields.length > 0 ? (
             <fieldset style={{ border: 0, padding: 0, margin: 0 }}>

@@ -13,6 +13,7 @@ export * from "./connectors/xero-actions";
 export * from "./connectors/execution-plan";
 export * from "./connectors/microsoft";
 export * from "./connectors/outlook";
+export * from "./connectors/onboarding";
 export * from "./action-engine";
 export * from "./automation-engine";
 export * from "./permissions/role-presets";

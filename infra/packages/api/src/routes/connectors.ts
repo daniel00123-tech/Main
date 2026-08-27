@@ -168,6 +168,66 @@ connectors.get("/api/companies/:slug/readiness", requireAuth, async (c) => {
   );
 });
 
+connectors.get("/api/companies/:slug/connectors/productisation", requireAuth, async (c) => {
+  const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!userHasCompanyAccess(c.get("user"), company.id)) {
+    return c.json({ error: "Access to this company is denied" }, 403);
+  }
+
+  const [mcpEnvironments, connectorInstances] = await Promise.all([
+    listMcpEnvironments(c.env.DB, company.id),
+    listConnectorInstances(c.env.DB, company.id),
+  ]);
+
+  const { buildCompanyProductisationReport } = await import(
+    "../services/connector-productisation"
+  );
+  const report = buildCompanyProductisationReport({
+    env: c.env,
+    companyId: company.id,
+    companySlug: company.slug,
+    connectors: connectorInstances,
+    mcp: mcpEnvironments[0] ?? null,
+  });
+  return c.json(report);
+});
+
+connectors.get(
+  "/api/companies/:slug/connectors/:definitionId/wizard",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access to this company is denied" }, 403);
+    }
+
+    const definitionId = c.req.param("definitionId");
+    const definition = getConnectorById(definitionId);
+    if (!definition) return c.json({ error: "Unknown connector" }, 404);
+
+    const [mcpEnvironments, connectorInstances] = await Promise.all([
+      listMcpEnvironments(c.env.DB, company.id),
+      listConnectorInstances(c.env.DB, company.id),
+    ]);
+    const instance =
+      connectorInstances.find((row) => row.connectorDefinitionId === definitionId) ?? null;
+
+    const { buildConnectorWizardState } = await import("../services/connector-productisation");
+    const wizard = buildConnectorWizardState({
+      env: c.env,
+      companyId: company.id,
+      companySlug: company.slug,
+      definitionId,
+      instance,
+      mcp: mcpEnvironments[0] ?? null,
+    });
+    if (!wizard) return c.json({ error: "Connector is not productised" }, 404);
+    return c.json({ wizard, definition: publicConnectorDefinition(definition) });
+  },
+);
+
 connectors.post(
   "/api/companies/:slug/connectors/:definitionId/setup",
   requireAuth,

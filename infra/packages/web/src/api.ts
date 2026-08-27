@@ -496,6 +496,14 @@ export const api = {
         scopes: string[];
       };
     }>("/api/credential-storage"),
+  getConnectorProductisation: (slug: string) =>
+    fetchJson<import("@infra/shared").CompanyConnectorProductisationReport>(
+      `/api/companies/${slug}/connectors/productisation`,
+    ),
+  getConnectorWizard: (slug: string, definitionId: string) =>
+    fetchJson<{ wizard: import("@infra/shared").ConnectorWizardState; definition: import("@infra/shared").ConnectorDefinition }>(
+      `/api/companies/${slug}/connectors/${definitionId}/wizard`,
+    ),
   getConnectorCredentialMetadata: (slug: string, instanceId: string) =>
     fetchJson<{
       stored: boolean;

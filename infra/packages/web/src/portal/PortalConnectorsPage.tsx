@@ -21,6 +21,7 @@ import {
   useIsMobile,
 } from "../components";
 import { ConnectorSetupPanel } from "../components/connectors/ConnectorSetupPanel";
+import { ConnectorSetupWizard } from "../components/connectors/ConnectorSetupWizard";
 import { ConnectorLogo } from "../components/connectors/ConnectorLogo";
 import {
   customerTaxonomyLabel,
@@ -361,6 +362,13 @@ export default function PortalConnectorsPage() {
                 </>
               ) : null}
             </div>
+            <ConnectorSetupWizard
+              connector={selected}
+              companySlug={company.slug}
+              onAction={async () => {
+                await refresh();
+              }}
+            />
             <ConnectorSetupPanel
               connector={selected}
               companySlug={company.slug}

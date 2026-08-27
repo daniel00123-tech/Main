@@ -6,15 +6,14 @@
 import type { Env } from "../env";
 import type { McpEnvironment } from "@infra/shared";
 import { resolveMcpFetcher } from "./mcp-client";
+import { resolveMcpAdminAuthHeader } from "./mcp-admin-bridge";
 
 export type KnowledgeUploadResult =
   | { ok: true; documentId: number; externalId: string; indexed: boolean }
   | { ok: false; code: string; message: string };
 
-function adminAuthHeader(env: Env): string | null {
-  const token =
-    typeof env.CADDINGTON_ADMIN_TOKEN === "string" ? env.CADDINGTON_ADMIN_TOKEN.trim() : "";
-  return token ? `Bearer ${token}` : null;
+function adminAuthHeader(env: Env, mcp: McpEnvironment): string | null {
+  return resolveMcpAdminAuthHeader(env, mcp).authorizationHeader;
 }
 
 async function adminFetch(
@@ -23,9 +22,9 @@ async function adminFetch(
   path: string,
   init: RequestInit,
 ): Promise<Response> {
-  const auth = adminAuthHeader(env);
+  const auth = adminAuthHeader(env, mcp);
   if (!auth) {
-    throw new Error("CADDINGTON_ADMIN_TOKEN is not configured on infra-api");
+    throw new Error("MCP admin bridge token is not configured on infra-api");
   }
 
   const binding = resolveMcpFetcher(env, mcp.serviceBindingRef ?? "CADDINGTON_MCP");
