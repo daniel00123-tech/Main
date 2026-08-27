@@ -671,3 +671,242 @@ async function planXeroDraftInvoiceBeta(input: {
 }
 
 export { fetchInvoice, stateFingerprint, invoiceReview };
+
+export async function planXeroUpdateDraftInvoice(input: {
+  env: Env;
+  companyId: string;
+  instanceId: string;
+  actor: string;
+  invoiceId: string;
+  patch: {
+    reference?: string;
+    invoiceDate?: string;
+    dueDate?: string;
+    lineItems?: DraftInvoiceLineInput[];
+  };
+}): Promise<{ targets: ActionTarget[]; summary: string; financialImpact: FinancialImpact; review: Record<string, unknown> }> {
+  const tok = await token(input.env, input.companyId, input.instanceId, input.actor);
+  if (!tok.ok) throw new Error(tok.body.error);
+  const invoice = await fetchInvoice(tok, { invoiceId: input.invoiceId });
+  const id = String(invoice?.InvoiceID ?? input.invoiceId);
+  const ref = String(invoice?.InvoiceNumber ?? id);
+
+  if (!invoice) {
+    return {
+      targets: [invalidTarget(id, ref, "invoice", "not_found", "Invoice not found in Xero.")],
+      summary: "Update draft invoice plan failed — not found.",
+      financialImpact: { currencyCode: null, totalAmount: null, direction: "debit", itemCount: 0 },
+      review: {},
+    };
+  }
+  const type = String(invoice.Type ?? "");
+  const status = String(invoice.Status ?? "");
+  if (type !== "ACCREC") {
+    return {
+      targets: [invalidTarget(id, ref, "invoice", "wrong_type", "Only sales invoices (ACCREC) can be updated with this action.")],
+      summary: "Update draft invoice plan failed — wrong document type.",
+      financialImpact: { currencyCode: null, totalAmount: null, direction: "debit", itemCount: 0 },
+      review: {},
+    };
+  }
+  if (status !== "DRAFT") {
+    return {
+      targets: [invalidTarget(id, ref, "invoice", "wrong_status", `Invoice status is ${status}; only DRAFT invoices can be edited.`, stateFingerprint(invoice))],
+      summary: "Update draft invoice plan failed — not a draft.",
+      financialImpact: { currencyCode: invoice.CurrencyCode ?? null, totalAmount: Number(invoice.Total ?? 0), direction: "debit", itemCount: 1 },
+      review: invoiceReview(invoice),
+    };
+  }
+
+  const before = invoiceReview(invoice);
+  const cfg = xeroConfig(tok);
+  let proposedLines = input.patch.lineItems;
+  if (proposedLines?.length) {
+    const resolved: DraftInvoiceLineInput[] = [];
+    for (const row of proposedLines) {
+      const account = await resolveSalesAccountCodeWithFetch(cfg, { accountCode: row.accountCode, accountName: row.accountName ?? "Sales" });
+      resolved.push({ ...row, accountCode: account.code });
+    }
+    proposedLines = resolved;
+  }
+  const proposedTotal = proposedLines?.length
+    ? proposedLines.reduce((s, r) => s + r.quantity * r.unitAmount, 0)
+    : Number(invoice.Total ?? 0);
+
+  const after = {
+    ...before,
+    reference: input.patch.reference ?? before.reference,
+    invoiceDate: input.patch.invoiceDate ?? before.invoiceDate,
+    dueDate: input.patch.dueDate ?? before.dueDate,
+    total: proposedTotal,
+    lineItems: proposedLines ?? before.lineItems,
+  };
+
+  const target: ActionTarget = {
+    targetId: id,
+    targetType: "draft_invoice",
+    humanRef: ref,
+    currentState: { ...stateFingerprint(invoice), ...before, documentKind: "SALES INVOICE" },
+    proposedState: {
+      action: "update_draft_invoice",
+      invoiceId: id,
+      type: "ACCREC",
+      patch: {
+        reference: input.patch.reference,
+        date: input.patch.invoiceDate,
+        dueDate: input.patch.dueDate,
+        lineItems: proposedLines,
+      },
+      after,
+      stateFingerprint: stateFingerprint(invoice),
+    },
+    amount: proposedTotal,
+    currencyCode: invoice.CurrencyCode ?? null,
+    validation: "valid",
+  };
+
+  return {
+    targets: [target],
+    summary: `Update draft invoice ${ref} — total ${proposedTotal}.`,
+    financialImpact: { currencyCode: invoice.CurrencyCode ?? null, totalAmount: proposedTotal, direction: "debit", itemCount: 1 },
+    review: { before, after, changes: diffInvoiceReview(before, after) },
+  };
+}
+
+function diffInvoiceReview(before: Record<string, unknown>, after: Record<string, unknown>): string[] {
+  const changes: string[] = [];
+  for (const key of ["reference", "invoiceDate", "dueDate", "total"]) {
+    if (before[key] !== after[key]) changes.push(`${key}: ${String(before[key] ?? "—")} → ${String(after[key] ?? "—")}`);
+  }
+  return changes;
+}
+
+export async function planXeroApproveCreditNote(input: {
+  env: Env;
+  companyId: string;
+  instanceId: string;
+  actor: string;
+  creditNoteId?: string;
+  creditNoteNumber?: string;
+}): Promise<{ targets: ActionTarget[]; summary: string; financialImpact: FinancialImpact; review: Record<string, unknown> }> {
+  const tok = await token(input.env, input.companyId, input.instanceId, input.actor);
+  if (!tok.ok) throw new Error(tok.body.error);
+  let cn: Record<string, unknown> | null = null;
+  if (input.creditNoteId) {
+    const body = await xeroGetJson<{ CreditNotes?: Array<Record<string, unknown>> }>(xeroConfig(tok), `/CreditNotes/${input.creditNoteId}`);
+    cn = body.CreditNotes?.[0] ?? null;
+  }
+  const id = String(cn?.CreditNoteID ?? input.creditNoteId ?? "unknown");
+  const ref = String(cn?.CreditNoteNumber ?? input.creditNoteNumber ?? id);
+  if (!cn) {
+    return {
+      targets: [invalidTarget(id, ref, "credit_note", "not_found", "Credit note not found.")],
+      summary: "Approve credit note plan failed.",
+      financialImpact: { currencyCode: null, totalAmount: null, direction: "credit", itemCount: 0 },
+      review: { documentKind: "SALES CREDIT NOTE" },
+    };
+  }
+  const type = String(cn.Type ?? "");
+  const status = String(cn.Status ?? "");
+  if (type !== "ACCRECCREDIT") {
+    return {
+      targets: [invalidTarget(id, ref, "credit_note", "wrong_type", "Only sales credit notes (ACCRECCREDIT) supported.")],
+      summary: "Approve credit note plan failed — wrong type.",
+      financialImpact: { currencyCode: null, totalAmount: null, direction: "credit", itemCount: 0 },
+      review: { documentKind: "SALES CREDIT NOTE" },
+    };
+  }
+  if (status !== "DRAFT") {
+    return {
+      targets: [invalidTarget(id, ref, "credit_note", "wrong_status", `Credit note status is ${status}; only DRAFT can be approved.`)],
+      summary: "Approve credit note plan failed — wrong status.",
+      financialImpact: { currencyCode: cn.CurrencyCode ? String(cn.CurrencyCode) : null, totalAmount: Number(cn.Total ?? 0), direction: "credit", itemCount: 1 },
+      review: { documentKind: "SALES CREDIT NOTE", status },
+    };
+  }
+  const review = {
+    documentKind: "SALES CREDIT NOTE" as const,
+    customer: (cn.Contact as { Name?: string })?.Name ?? null,
+    creditNoteNumber: ref,
+    reference: cn.Reference ?? null,
+    total: cn.Total ?? null,
+    status,
+    resultingStatus: "AUTHORISED",
+  };
+  return {
+    targets: [{
+      targetId: id,
+      targetType: "credit_note",
+      humanRef: ref,
+      currentState: { status, total: cn.Total, reference: cn.Reference },
+      proposedState: { action: "approve_credit_note", creditNoteId: id, resultingStatus: "AUTHORISED", stateFingerprint: { status, total: cn.Total } },
+      amount: Number(cn.Total ?? 0),
+      currencyCode: cn.CurrencyCode ? String(cn.CurrencyCode) : null,
+      validation: "valid",
+    }],
+    summary: `Approve sales credit note ${ref} for ${formatMoney(Number(cn.Total ?? 0))}.`,
+    financialImpact: { currencyCode: cn.CurrencyCode ? String(cn.CurrencyCode) : null, totalAmount: Number(cn.Total ?? 0), direction: "credit", itemCount: 1 },
+    review,
+  };
+}
+
+export async function planXeroVoidDocument(input: {
+  env: Env;
+  companyId: string;
+  instanceId: string;
+  actor: string;
+  invoiceId?: string;
+  creditNoteId?: string;
+  documentKind?: "invoice" | "bill" | "credit_note";
+  reason?: string;
+}): Promise<{ targets: ActionTarget[]; summary: string; financialImpact: FinancialImpact; review: Record<string, unknown> }> {
+  const tok = await token(input.env, input.companyId, input.instanceId, input.actor);
+  if (!tok.ok) throw new Error(tok.body.error);
+
+  if (input.creditNoteId || input.documentKind === "credit_note") {
+    const cnId = input.creditNoteId ?? "";
+    const body = await xeroGetJson<{ CreditNotes?: Array<Record<string, unknown>> }>(xeroConfig(tok), `/CreditNotes/${cnId}`);
+    const cn = body.CreditNotes?.[0];
+    if (!cn) {
+      return { targets: [invalidTarget(cnId, cnId, "credit_note", "not_found", "Credit note not found.")], summary: "Void plan failed.", financialImpact: { currencyCode: null, totalAmount: null, direction: "neutral", itemCount: 0 }, review: {} };
+    }
+    const ref = String(cn.CreditNoteNumber ?? cnId);
+    return {
+      targets: [{
+        targetId: cnId,
+        targetType: "credit_note",
+        humanRef: ref,
+        currentState: { status: cn.Status, total: cn.Total },
+        proposedState: { action: "void_credit_note", creditNoteId: cnId, resultingStatus: "VOIDED", reason: input.reason ?? null },
+        amount: Number(cn.Total ?? 0),
+        validation: "valid",
+      }],
+      summary: `VOID sales credit note ${ref} — this cannot be undone without a reversing document.`,
+      financialImpact: { currencyCode: cn.CurrencyCode ? String(cn.CurrencyCode) : null, totalAmount: Number(cn.Total ?? 0), direction: "neutral", itemCount: 1 },
+      review: { documentKind: "SALES CREDIT NOTE", warning: "YOU ARE ABOUT TO VOID this credit note.", currentStatus: cn.Status, resultingStatus: "VOIDED", reason: input.reason ?? null },
+    };
+  }
+
+  const invoice = await fetchInvoice(tok, { invoiceId: input.invoiceId });
+  const id = String(invoice?.InvoiceID ?? input.invoiceId ?? "unknown");
+  const ref = String(invoice?.InvoiceNumber ?? id);
+  if (!invoice) {
+    return { targets: [invalidTarget(id, ref, "invoice", "not_found", "Document not found.")], summary: "Void plan failed.", financialImpact: { currencyCode: null, totalAmount: null, direction: "neutral", itemCount: 0 }, review: {} };
+  }
+  const kind = String(invoice.Type ?? "") === "ACCPAY" ? "SUPPLIER BILL" : "SALES INVOICE";
+  return {
+    targets: [{
+      targetId: id,
+      targetType: String(invoice.Type ?? "") === "ACCPAY" ? "draft_bill" : "invoice",
+      humanRef: ref,
+      currentState: { ...stateFingerprint(invoice), ...invoiceReview(invoice) },
+      proposedState: { action: "void_document", invoiceId: id, type: invoice.Type, resultingStatus: "VOIDED", reason: input.reason ?? null },
+      amount: Number(invoice.Total ?? 0),
+      currencyCode: invoice.CurrencyCode ?? null,
+      validation: "valid",
+    }],
+    summary: `VOID ${kind} ${ref} — this cannot be undone without a reversing document.`,
+    financialImpact: { currencyCode: invoice.CurrencyCode ?? null, totalAmount: Number(invoice.Total ?? 0), direction: "neutral", itemCount: 1 },
+    review: { documentKind: kind, warning: `YOU ARE ABOUT TO VOID ${kind} ${ref}.`, currentStatus: invoice.Status, resultingStatus: "VOIDED", reason: input.reason ?? null },
+  };
+}

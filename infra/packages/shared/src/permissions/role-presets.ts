@@ -41,7 +41,15 @@ export type ToolAction =
   | "xero.invoices.create"
   | "xero.invoices.create_draft"
   | "xero.invoices.update_draft"
+  | "xero.invoices.approve"
   | "xero.invoices.send"
+  | "xero.bills.create"
+  | "xero.bills.approve"
+  | "xero.credit_notes.create_draft"
+  | "xero.credit_notes.approve"
+  | "xero.contacts.create"
+  | "xero.payments.allocate"
+  | "xero.invoice.void"
   // High risk
   | "bigchange.jobs.delete"
   | "bigchange.invoices.delete"
@@ -267,6 +275,12 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "xero.invoices.create",
       "xero.invoices.create_draft",
       "xero.invoices.update_draft",
+      "xero.invoices.approve",
+      "xero.bills.create",
+      "xero.bills.approve",
+      "xero.credit_notes.create_draft",
+      "xero.credit_notes.approve",
+      "xero.contacts.create",
       "xero.contacts.read",
       "xero.organisation.read",
       "xero.accounts.list",
@@ -309,6 +323,12 @@ export const COMPANY_ROLE_PRESETS: RolePreset[] = [
       "xero.invoices.create",
       "xero.invoices.create_draft",
       "xero.invoices.update_draft",
+      "xero.invoices.approve",
+      "xero.bills.create",
+      "xero.bills.approve",
+      "xero.credit_notes.create_draft",
+      "xero.credit_notes.approve",
+      "xero.contacts.create",
       "xero.contacts.read",
       "xero.contacts.search",
       "xero.organisation.read",
@@ -365,7 +385,15 @@ export const TOOL_ACTION_RISK: Record<
   "xero.invoices.create": { capability: "create", riskClass: "financial_action" },
   "xero.invoices.create_draft": { capability: "create", riskClass: "financial_action" },
   "xero.invoices.update_draft": { capability: "update", riskClass: "financial_action" },
+  "xero.invoices.approve": { capability: "update", riskClass: "financial_action" },
   "xero.invoices.send": { capability: "send", riskClass: "external_send" },
+  "xero.bills.create": { capability: "create", riskClass: "financial_action" },
+  "xero.bills.approve": { capability: "update", riskClass: "financial_action" },
+  "xero.credit_notes.create_draft": { capability: "create", riskClass: "financial_action" },
+  "xero.credit_notes.approve": { capability: "update", riskClass: "financial_action" },
+  "xero.contacts.create": { capability: "create", riskClass: "write" },
+  "xero.payments.allocate": { capability: "update", riskClass: "financial_action" },
+  "xero.invoice.void": { capability: "delete", riskClass: "delete" },
   "bigchange.jobs.delete": { capability: "delete", riskClass: "delete" },
   "bigchange.invoices.delete": { capability: "delete", riskClass: "delete" },
   "bigchange.batch.update": { capability: "batch", riskClass: "batch_write" },

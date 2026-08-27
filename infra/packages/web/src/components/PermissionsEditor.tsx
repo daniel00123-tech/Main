@@ -2,19 +2,36 @@ import { useEffect, useState } from "react";
 import type { CompanyRole } from "@infra/shared";
 import { api } from "../api";
 import { humaniseActionLabel } from "@infra/shared";
+import { XERO_PERMISSION_GROUPS, isPlatformBlockedXeroAction } from "@infra/shared";
 import { Button, EmptyState, LoadingState, SectionCard, toast } from "../components";
 
 const PERMISSION_GROUP_DEFS: Array<{ id: string; label: string; prefix: string }> = [
   { id: "knowledge", label: "Knowledge", prefix: "knowledge." },
-  { id: "finance", label: "Finance", prefix: "xero." },
   { id: "jobs", label: "Jobs", prefix: "bigchange." },
   { id: "customers", label: "Customers", prefix: "commusoft." },
   { id: "admin", label: "Administration", prefix: "system." },
 ];
 
+function xeroGroupedPermissions(allowed: string[], denied: string[]) {
+  const allowedSet = new Set(allowed);
+  const allKnown = new Set([...allowed, ...denied]);
+  return XERO_PERMISSION_GROUPS.map((group) => ({
+    id: group.id,
+    label: group.label,
+    description: group.description,
+    items: group.actions.map((item) => ({
+      action: item.action,
+      label: item.label,
+      allowed: allowedSet.has(item.action),
+      platformBlocked: item.platformBlocked ?? isPlatformBlockedXeroAction(item.action),
+      inPreset: allKnown.has(item.action),
+    })),
+  }));
+}
+
 function groupPermissions(allowed: string[], denied: string[]) {
   const allowedSet = new Set(allowed);
-  return PERMISSION_GROUP_DEFS.map((group) => ({
+  const legacy = PERMISSION_GROUP_DEFS.map((group) => ({
     ...group,
     items: [...allowed, ...denied]
       .filter((action) => action.startsWith(group.prefix))
@@ -22,8 +39,11 @@ function groupPermissions(allowed: string[], denied: string[]) {
         action,
         label: humaniseActionLabel(action),
         allowed: allowedSet.has(action),
+        platformBlocked: false,
+        inPreset: true,
       })),
   })).filter((group) => group.items.length > 0);
+  return [...xeroGroupedPermissions(allowed, denied), ...legacy];
 }
 
 export function PermissionsEditor({
@@ -70,12 +90,18 @@ export function PermissionsEditor({
   useEffect(() => {
     if (!rolePreset) return;
     const map = new Map<string, boolean>();
-    const allActions = [...rolePreset.allowedActions, ...rolePreset.deniedByDefault];
+    const xeroActions = XERO_PERMISSION_GROUPS.flatMap((g) => g.actions.map((a) => a.action));
+    const allActions = [...new Set([...rolePreset.allowedActions, ...rolePreset.deniedByDefault, ...xeroActions])];
     for (const action of allActions) {
       const override = overrides.find((o) => o.role === selectedRole && o.action === action);
       if (override?.effect === "allow") map.set(action, true);
       else if (override?.effect === "deny") map.set(action, false);
-      else map.set(action, rolePreset.allowedActions.includes(action));
+      else map.set(action, rolePreset.allowedActions.includes(action as never));
+    }
+    for (const group of XERO_PERMISSION_GROUPS) {
+      for (const item of group.actions) {
+        if (!map.has(item.action)) map.set(item.action, false);
+      }
     }
     setDraft(map);
     setInitialDraft(new Map(map));
@@ -181,11 +207,20 @@ export function PermissionsEditor({
               <h4 className="permission-group-title">{group.label}</h4>
               {group.items.map((item) => (
                 <label key={item.action} className="permission-row">
-                  <span>{item.label}</span>
+                  <span>
+                    {item.label}
+                    {item.platformBlocked ? (
+                      <span className="muted small" style={{ display: "block" }}>
+                        Platform restricted — cannot be enabled
+                      </span>
+                    ) : null}
+                  </span>
                   <input
                     type="checkbox"
                     checked={draft.get(item.action) ?? item.allowed}
+                    disabled={item.platformBlocked}
                     onChange={(e) => {
+                      if (item.platformBlocked) return;
                       setDraft((prev) => {
                         const next = new Map(prev);
                         next.set(item.action, e.target.checked);

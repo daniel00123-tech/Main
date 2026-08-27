@@ -43,7 +43,7 @@ const ALL_NAV: NavItem[] = [
   { path: "ai-connections", label: "AI Access", icon: <Bot size={18} />, section: "main" },
   {
     path: "actions",
-    label: "Actions",
+    label: "Approvals",
     icon: <ClipboardList size={18} />,
     section: "main",
     roles: ["company_admin", "director", "manager", "supervisor"],

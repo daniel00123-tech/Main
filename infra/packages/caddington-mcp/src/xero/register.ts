@@ -10,6 +10,9 @@ import {
   createDraftCreditNoteWithFetch,
   createContactWithFetch,
   updateDraftInvoiceWithFetch,
+  approveCreditNoteWithFetch,
+  voidInvoiceWithFetch,
+  voidCreditNoteWithFetch,
 } from "@infra/xero-core";
 
 export type CaddingtonMcpEnv = {
@@ -758,5 +761,35 @@ export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcp
           lineItems: xeroArgs.lineItems as never,
         },
       })),
+  );
+
+  server.registerTool(
+    "xero_approve_credit_note",
+    {
+      description: "Approve/authorise a DRAFT sales credit note. Action Engine only.",
+      inputSchema: { creditNoteId: zf.string().min(1) },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      approveCreditNoteWithFetch(config, { creditNoteId: String(xeroArgs.creditNoteId) })),
+  );
+
+  server.registerTool(
+    "xero_void_invoice",
+    {
+      description: "Void an invoice or supplier bill in Xero. Action Engine only.",
+      inputSchema: { invoiceId: zf.string().min(1) },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      voidInvoiceWithFetch(config, { invoiceId: String(xeroArgs.invoiceId) })),
+  );
+
+  server.registerTool(
+    "xero_void_credit_note",
+    {
+      description: "Void a credit note in Xero. Action Engine only.",
+      inputSchema: { creditNoteId: zf.string().min(1) },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      voidCreditNoteWithFetch(config, { creditNoteId: String(xeroArgs.creditNoteId) })),
   );
 }

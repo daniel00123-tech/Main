@@ -237,6 +237,23 @@ export default function PortalActionsPage() {
           )}
         />
       ) : null}
+      {selected.targets[0]?.proposedState?.documentKind ? (
+        <KeyValue label="Document type" value={String(selected.targets[0].proposedState.documentKind)} />
+      ) : null}
+      {selected.targets[0]?.currentState?.status != null ? (
+        <KeyValue label="Current state" value={String(selected.targets[0].currentState.status)} />
+      ) : null}
+      {selected.targets[0]?.proposedState?.resultingStatus != null ? (
+        <KeyValue label="Resulting state" value={String(selected.targets[0].proposedState.resultingStatus)} />
+      ) : null}
+      {(selected.targets[0]?.proposedState as { warning?: string })?.warning ? (
+        <KeyValue label="Warning" value={String((selected.targets[0]?.proposedState as { warning?: string }).warning)} />
+      ) : null}
+
+      <SectionCard title="What will happen">
+        <p style={{ margin: 0 }}>{selected.summary}</p>
+        {dryRun?.headline ? <p className="muted" style={{ marginTop: "0.5rem" }}>{dryRun.headline}</p> : null}
+      </SectionCard>
       <KeyValue label="Confirmation" value={humanConfirmationStatus(selected.confirmationStatus)} />
       <KeyValue label="Approval" value={humanApprovalStatus(selected.approvalStatus)} />
       <KeyValue label="Risk" value={humanRiskClass(selected.riskClass)} />
@@ -255,12 +272,21 @@ export default function PortalActionsPage() {
         {selected.status === "awaiting_approval" && canApprove ? (
           <>
             <Button type="button" variant="primary" loading={busy === "approve"} onClick={() => void approve(selected)}>
-              Approve
+              {selected.riskClass === "delete" || selected.requestedAction.includes("void")
+                ? "Approve void action"
+                : selected.requestedAction.includes("payment")
+                  ? `Approve payment action${selected.financialImpact?.totalAmount != null ? ` (${formatActionAmount(selected.financialImpact.totalAmount, selected.financialImpact.currencyCode ?? "GBP")})` : ""}`
+                  : "Approve action"}
             </Button>
             <Button type="button" variant="danger" onClick={() => setRejectOpen(true)}>
               Reject
             </Button>
           </>
+        ) : null}
+        {selected.actor === user?.email && selected.status === "awaiting_approval" ? (
+          <p className="muted" style={{ marginTop: "0.5rem" }}>
+            You cannot approve your own request — another director or admin must approve.
+          </p>
         ) : null}
       </div>
 
@@ -276,8 +302,8 @@ export default function PortalActionsPage() {
   return (
     <>
       <PortalPageHeader
-        title="Actions"
-        description={`Review and approve planned actions for ${company.name}.`}
+        title="Approvals"
+        description={`Review and approve planned accounting actions for ${company.name}.`}
       />
 
       <FilterBar>

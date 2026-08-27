@@ -28,7 +28,7 @@ export type XeroWriteBetaGates = {
 /** Production ceiling after WRITE beta sprint. */
 export const XERO_WRITE_PRODUCTION_GATES: XeroWriteBetaGates = {
   draftInvoiceCreate: "PRODUCTION_ENABLED",
-  draftInvoiceUpdate: "BETA_ENABLED",
+  draftInvoiceUpdate: "PRODUCTION_ENABLED",
   invoiceApprove: "PRODUCTION_ENABLED",
   invoiceSend: "IMPLEMENTED", // gated — no live send without explicit operator enable
   combinedCreateApproveSend: "IMPLEMENTED",

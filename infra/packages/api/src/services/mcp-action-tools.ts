@@ -20,6 +20,9 @@ export const ACTION_CONTROL_TOOLS = [
   "plan_xero_draft_credit_note",
   "plan_xero_create_contact",
   "plan_xero_create_approve_send",
+  "plan_xero_update_draft_invoice",
+  "plan_xero_approve_credit_note",
+  "plan_xero_void_document",
   "list_xero_test_artefacts",
 ] as const;
 
@@ -47,6 +50,9 @@ export const ACTION_CONTROL_TOOL_REQUIRED_SCOPES: Record<ActionControlTool, stri
   plan_xero_draft_credit_note: "xero.action.plan",
   plan_xero_create_contact: "xero.action.plan",
   plan_xero_create_approve_send: "xero.action.plan",
+  plan_xero_update_draft_invoice: "xero.action.plan",
+  plan_xero_approve_credit_note: "xero.action.plan",
+  plan_xero_void_document: "xero.action.plan",
   list_xero_test_artefacts: "xero.action.read",
 };
 
@@ -342,12 +348,54 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
     },
   },
   list_xero_test_artefacts: {
-    description: "Report-only manifest of INFRA test invoice references (no deletion).",
+    description: "Search manifest of INFRA test Xero artefacts by reference prefix (report only — no deletion).",
     inputSchema: {
       type: "object",
       properties: {
-        prefix: { type: "string", description: "Reference prefix, default INFRA-" },
+        prefix: { type: "string", description: "Reference prefix, e.g. INFRA-BETA-WRITE-" },
         limit: { type: "number", minimum: 1, maximum: 100 },
+      },
+      additionalProperties: false,
+    },
+  },
+  plan_xero_update_draft_invoice: {
+    description: "Plan updating a DRAFT sales invoice in Xero.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        invoiceId: { type: "string" },
+        reference: { type: "string" },
+        invoiceDate: { type: "string" },
+        dueDate: { type: "string" },
+        lineItems: { type: "array", items: { type: "object" } },
+        idempotencyKey: { type: "string" },
+      },
+      required: ["invoiceId"],
+      additionalProperties: false,
+    },
+  },
+  plan_xero_approve_credit_note: {
+    description: "Plan approving a DRAFT sales credit note in Xero.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        creditNoteId: { type: "string" },
+        creditNoteNumber: { type: "string" },
+        idempotencyKey: { type: "string" },
+      },
+      additionalProperties: false,
+    },
+  },
+  plan_xero_void_document: {
+    description: "Plan voiding an invoice, bill, or credit note in Xero (destructive).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        invoiceId: { type: "string" },
+        creditNoteId: { type: "string" },
+        documentKind: { type: "string", enum: ["invoice", "bill", "credit_note"] },
+        reason: { type: "string" },
+        idempotencyKey: { type: "string" },
       },
       additionalProperties: false,
     },

@@ -20,12 +20,16 @@ import {
 import {
   planXeroApproveInvoice,
   planXeroApproveBill,
+  planXeroApproveCreditNote,
   planXeroCreateContact,
   planXeroCombinedCreateApproveSend,
   planXeroDraftBill,
   planXeroDraftCreditNote,
   planXeroSendInvoice,
+  planXeroUpdateDraftInvoice,
+  planXeroVoidDocument,
 } from "./xero-planner-beta";
+import { searchXeroTestArtefacts } from "./xero-test-artefacts";
 import { humanReadablePlanPreview, humanReadableExecutionSummary } from "./human-readable";
 import { actionRiskProfile } from "@infra/shared";
 import { FINANCIAL_WRITES_ENABLED } from "../approvals";
@@ -459,15 +463,14 @@ export async function executeActionControlTool(
 
   if (input.toolName === "list_xero_test_artefacts") {
     const prefix = String(input.arguments.prefix ?? "INFRA-");
-    return {
-      status: 200,
-      body: {
-        reportOnly: true,
-        message: "Cleanup manifest (report only — no records deleted). Use Xero UI or a future operator-confirmed cleanup action.",
-        prefix,
-        note: "Search by reference prefix requires read-back of known test IDs. Alpha refs: INFRA-ALPHA-WRITE-*. Beta refs: INFRA-BETA-WRITE-*.",
-      },
-    };
+    const result = await searchXeroTestArtefacts(env, {
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      prefix,
+      limit: input.arguments.limit ? Number(input.arguments.limit) : 50,
+    });
+    return { status: 200, body: result };
   }
 
   async function persistPlan(
@@ -621,6 +624,50 @@ export async function executeActionControlTool(
       taxTreatment: input.arguments.taxTreatment ? String(input.arguments.taxTreatment) : undefined,
     });
     return persistPlan("xero.invoices.create_approve_send", "external_send", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
+  }
+
+  if (input.toolName === "plan_xero_update_draft_invoice") {
+    const planned = await planXeroUpdateDraftInvoice({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      invoiceId: String(input.arguments.invoiceId ?? ""),
+      patch: {
+        reference: input.arguments.reference ? String(input.arguments.reference) : undefined,
+        invoiceDate: input.arguments.invoiceDate ? String(input.arguments.invoiceDate) : undefined,
+        dueDate: input.arguments.dueDate ? String(input.arguments.dueDate) : undefined,
+        lineItems: Array.isArray(input.arguments.lineItems) ? (input.arguments.lineItems as never) : undefined,
+      },
+    });
+    return persistPlan("xero.invoices.update", "financial_action", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
+  }
+
+  if (input.toolName === "plan_xero_approve_credit_note") {
+    const planned = await planXeroApproveCreditNote({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      creditNoteId: input.arguments.creditNoteId ? String(input.arguments.creditNoteId) : undefined,
+      creditNoteNumber: input.arguments.creditNoteNumber ? String(input.arguments.creditNoteNumber) : undefined,
+    });
+    return persistPlan("xero.credit_notes.approve", "financial_action", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
+  }
+
+  if (input.toolName === "plan_xero_void_document") {
+    const planned = await planXeroVoidDocument({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      invoiceId: input.arguments.invoiceId ? String(input.arguments.invoiceId) : undefined,
+      creditNoteId: input.arguments.creditNoteId ? String(input.arguments.creditNoteId) : undefined,
+      documentKind: input.arguments.documentKind as "invoice" | "bill" | "credit_note" | undefined,
+      reason: input.arguments.reason ? String(input.arguments.reason) : undefined,
+    });
+    const voidAction = input.arguments.creditNoteId ? "xero.credit_note.void" : String(input.arguments.documentKind) === "bill" ? "xero.bill.void" : "xero.invoice.void";
+    return persistPlan(voidAction, "delete", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
   }
 
   return { status: 400, body: { error: "Unknown action control tool", code: "UNKNOWN_TOOL" } };

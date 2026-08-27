@@ -145,10 +145,23 @@ actionPlans.post("/api/companies/:slug/actions/:planId/approve", ...authed, asyn
   const planId = c.req.param("planId");
   if (!planId) return c.json({ error: "Plan id required" }, 400);
   const user = c.get("user");
+  const membership = user.memberships.find((m) => m.companyId === company.id);
+  const approverRole = membership?.role;
+  if (
+    !user.isPlatformAdmin &&
+    approverRole !== "director" &&
+    approverRole !== "company_admin"
+  ) {
+    return c.json(
+      { error: "Only a director or company admin may approve actions.", code: "APPROVER_ROLE_REQUIRED" },
+      403,
+    );
+  }
   const result = await approveActionPlan(c.env.DB, {
     companyId: company.id,
     planId,
     actor: user.email,
+    approverRole,
   });
   if (!result.ok) return c.json({ error: result.message, code: result.code }, 409);
 

@@ -488,6 +488,33 @@ export async function ensureDefaultPricing(db: D1Database) {
       label: "system.health non-billable",
       min: 0,
     },
+    {
+      id: "price_xero_invoice_create",
+      action: "xero.invoices.create",
+      mode: "fixed",
+      fixed: 1,
+      billable: 1,
+      label: "TEST: xero.invoices.create = 1p",
+      min: 1,
+    },
+    {
+      id: "price_xero_invoice_approve",
+      action: "xero.invoices.approve",
+      mode: "fixed",
+      fixed: 1,
+      billable: 1,
+      label: "TEST: xero.invoices.approve = 1p",
+      min: 1,
+    },
+    {
+      id: "price_xero_bill_create",
+      action: "xero.bills.create",
+      mode: "fixed",
+      fixed: 1,
+      billable: 1,
+      label: "TEST: xero.bills.create = 1p",
+      min: 1,
+    },
   ];
 
   for (const item of defaults) {

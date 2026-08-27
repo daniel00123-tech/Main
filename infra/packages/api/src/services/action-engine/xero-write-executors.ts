@@ -15,6 +15,7 @@ import { getInvoiceWithFetch } from "@infra/xero-core";
 import { finalizeExecution } from "./execution-store";
 import { updateActionPlanStatus } from "./action-engine";
 import { recordAuditEvent } from "../control-plane";
+import { recordActionExecutionUsage } from "./action-metering";
 
 export function checkBetaProductionGate(action: string): ExecutionOutcome | null {
   const gate = betaGateForAction(action);
@@ -64,6 +65,14 @@ async function finalizeSuccess(
     resourceType: "action_execution",
     resourceId: input.executionId,
     detail: { planId: input.plan.id, xeroResourceId: input.resourceId },
+  });
+  await recordActionExecutionUsage(env, {
+    plan: input.plan,
+    executionId: input.executionId,
+    actor: input.actor,
+    success: true,
+    amount: input.results.total != null ? Number(input.results.total) : null,
+    metadata: { xeroResourceId: input.resourceId, humanReference: input.humanReference },
   });
   return {
     ok: true,
@@ -142,6 +151,14 @@ export async function executeXeroActionPlan(
       return executeCreateContact(env, input);
     case "xero.invoices.create_approve_send":
       return executeCombinedWorkflow(env, input);
+    case "xero.invoices.update":
+      return executeUpdateDraftInvoice(env, input);
+    case "xero.credit_notes.approve":
+      return executeApproveCreditNote(env, input);
+    case "xero.invoice.void":
+    case "xero.bill.void":
+    case "xero.credit_note.void":
+      return executeVoidDocument(env, input);
     default:
       return {
         ok: false,
@@ -422,6 +439,80 @@ async function executeCombinedWorkflow(
     },
     auditEvent: "xero.external_send_executed",
   });
+}
+
+async function executeUpdateDraftInvoice(
+  env: Env,
+  input: { plan: ActionPlanRecord; actor: string; executionId: string },
+): Promise<ExecutionOutcome> {
+  const proposed = input.plan.targets[0]?.proposedState ?? {};
+  const invoiceId = String(proposed.invoiceId ?? input.plan.targets[0]?.targetId ?? "");
+  const patch = (proposed.patch ?? {}) as Record<string, unknown>;
+  const writeResult = await executeXeroMcpTool(env, {
+    ...input,
+    toolName: "xero_update_draft_invoice",
+    arguments: {
+      invoiceId,
+      type: proposed.type ?? "ACCREC",
+      reference: patch.reference,
+      date: patch.date,
+      dueDate: patch.dueDate,
+      lineItems: patch.lineItems,
+    },
+  });
+  if (!writeResult.ok) {
+    return finalizeFailure(env, { ...input, code: writeResult.code, message: writeResult.message });
+  }
+  const verified = await verifyInvoiceStatus(env, input, invoiceId, "DRAFT", "ACCREC");
+  if (!verified.ok) {
+    return finalizeFailure(env, { ...input, code: verified.code, message: verified.message, results: writeResult.result });
+  }
+  return finalizeSuccess(env, {
+    ...input,
+    resourceId: invoiceId,
+    humanReference: writeResult.humanReference ?? verified.invoiceNumber,
+    results: { xeroInvoiceId: invoiceId, invoiceNumber: verified.invoiceNumber, status: "DRAFT", total: verified.total },
+  });
+}
+
+async function executeApproveCreditNote(
+  env: Env,
+  input: { plan: ActionPlanRecord; actor: string; executionId: string },
+): Promise<ExecutionOutcome> {
+  const proposed = input.plan.targets[0]?.proposedState ?? {};
+  const creditNoteId = String(proposed.creditNoteId ?? input.plan.targets[0]?.targetId ?? "");
+  const writeResult = await executeXeroMcpTool(env, {
+    ...input,
+    toolName: "xero_approve_credit_note",
+    arguments: { creditNoteId },
+  });
+  if (!writeResult.ok) {
+    return finalizeFailure(env, { ...input, code: writeResult.code, message: writeResult.message });
+  }
+  return finalizeSuccess(env, {
+    ...input,
+    resourceId: creditNoteId,
+    humanReference: writeResult.humanReference,
+    results: { xeroCreditNoteId: creditNoteId, status: "AUTHORISED", ...writeResult.result },
+  });
+}
+
+async function executeVoidDocument(
+  env: Env,
+  input: { plan: ActionPlanRecord; actor: string; executionId: string },
+): Promise<ExecutionOutcome> {
+  const proposed = input.plan.targets[0]?.proposedState ?? {};
+  const action = String(proposed.action ?? "");
+  if (action === "void_credit_note") {
+    const creditNoteId = String(proposed.creditNoteId ?? input.plan.targets[0]?.targetId ?? "");
+    const writeResult = await executeXeroMcpTool(env, { ...input, toolName: "xero_void_credit_note", arguments: { creditNoteId } });
+    if (!writeResult.ok) return finalizeFailure(env, { ...input, code: writeResult.code, message: writeResult.message });
+    return finalizeSuccess(env, { ...input, resourceId: creditNoteId, humanReference: writeResult.humanReference, results: { status: "VOIDED", ...writeResult.result }, auditEvent: "xero.destructive_executed" });
+  }
+  const invoiceId = String(proposed.invoiceId ?? input.plan.targets[0]?.targetId ?? "");
+  const writeResult = await executeXeroMcpTool(env, { ...input, toolName: "xero_void_invoice", arguments: { invoiceId } });
+  if (!writeResult.ok) return finalizeFailure(env, { ...input, code: writeResult.code, message: writeResult.message });
+  return finalizeSuccess(env, { ...input, resourceId: invoiceId, humanReference: writeResult.humanReference, results: { status: "VOIDED", ...writeResult.result }, auditEvent: "xero.destructive_executed" });
 }
 
 async function verifyInvoiceStatus(

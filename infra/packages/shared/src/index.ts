@@ -13,5 +13,6 @@ export * from "./connectors/xero-actions";
 export * from "./connectors/execution-plan";
 export * from "./action-engine";
 export * from "./permissions/role-presets";
+export * from "./permissions/xero-permissions";
 export * from "./service-identity-scopes";
 export * from "./usage-labels";
