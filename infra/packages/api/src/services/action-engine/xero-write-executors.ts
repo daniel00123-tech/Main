@@ -11,7 +11,7 @@ import { draftInvoicePayloadFromProposedState } from "./draft-invoice-plan";
 import { verifyCreatedDraftInvoice, draftInvoiceExpectedFromTarget } from "./xero-write-verification";
 import { getValidXeroAccessToken } from "../xero";
 import { XERO_AUTH } from "@infra/shared";
-import { getInvoiceWithFetch } from "@infra/xero-core";
+import { getInvoiceWithFetch, allocateCreditNoteWithFetch } from "@infra/xero-core";
 import { finalizeExecution } from "./execution-store";
 import { updateActionPlanStatus } from "./action-engine";
 import { recordAuditEvent } from "../control-plane";
@@ -155,6 +155,10 @@ export async function executeXeroActionPlan(
       return executeUpdateDraftInvoice(env, input);
     case "xero.credit_notes.approve":
       return executeApproveCreditNote(env, input);
+    case "xero.credit_notes.allocate":
+      return executeCreditNoteAllocation(env, input);
+    case "xero.payments.allocate":
+      return executePaymentAllocation(env, input);
     case "xero.invoice.void":
     case "xero.bill.void":
     case "xero.credit_note.void":
@@ -494,6 +498,62 @@ async function executeApproveCreditNote(
     resourceId: creditNoteId,
     humanReference: writeResult.humanReference,
     results: { xeroCreditNoteId: creditNoteId, status: "AUTHORISED", ...writeResult.result },
+  });
+}
+
+async function executeCreditNoteAllocation(
+  env: Env,
+  input: { plan: ActionPlanRecord; actor: string; executionId: string },
+): Promise<ExecutionOutcome> {
+  const proposed = input.plan.targets[0]?.proposedState ?? {};
+  const creditNoteId = String(proposed.creditNoteId ?? input.plan.targets[0]?.targetId ?? "");
+  const invoiceId = String(proposed.invoiceId ?? "");
+  const amount = Number(proposed.allocateAmount ?? proposed.amount ?? 0);
+  if (!creditNoteId || !invoiceId || amount <= 0) {
+    return finalizeFailure(env, { ...input, code: "INVALID_ALLOCATION", message: "Credit note allocation requires creditNoteId, invoiceId, and positive amount." });
+  }
+  const writeResult = await executeXeroMcpTool(env, {
+    ...input,
+    toolName: "xero_allocate_credit_note",
+    arguments: { creditNoteId, invoiceId, amount },
+  });
+  if (!writeResult.ok) {
+    return finalizeFailure(env, { ...input, code: writeResult.code, message: writeResult.message });
+  }
+  return finalizeSuccess(env, {
+    ...input,
+    resourceId: creditNoteId,
+    humanReference: writeResult.humanReference,
+    results: { creditNoteId, invoiceId, amount, ...writeResult.result },
+    auditEvent: "xero.financial_action_executed",
+  });
+}
+
+async function executePaymentAllocation(
+  env: Env,
+  input: { plan: ActionPlanRecord; actor: string; executionId: string },
+): Promise<ExecutionOutcome> {
+  const proposed = input.plan.targets[0]?.proposedState ?? {};
+  const paymentId = String(proposed.paymentId ?? "");
+  const invoiceId = String(proposed.invoiceId ?? input.plan.targets[0]?.targetId ?? "");
+  const amount = Number(proposed.allocateAmount ?? proposed.amount ?? 0);
+  if (!paymentId || !invoiceId || amount <= 0) {
+    return finalizeFailure(env, { ...input, code: "INVALID_ALLOCATION", message: "Payment allocation requires paymentId, invoiceId, and positive amount." });
+  }
+  const writeResult = await executeXeroMcpTool(env, {
+    ...input,
+    toolName: "xero_allocate_payment",
+    arguments: { paymentId, invoiceId, amount },
+  });
+  if (!writeResult.ok) {
+    return finalizeFailure(env, { ...input, code: writeResult.code, message: writeResult.message });
+  }
+  return finalizeSuccess(env, {
+    ...input,
+    resourceId: paymentId,
+    humanReference: writeResult.humanReference,
+    results: { paymentId, invoiceId, amount, ...writeResult.result },
+    auditEvent: "xero.financial_action_executed",
   });
 }
 

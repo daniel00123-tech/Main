@@ -910,3 +910,127 @@ export async function planXeroVoidDocument(input: {
     review: { documentKind: kind, warning: `YOU ARE ABOUT TO VOID ${kind} ${ref}.`, currentStatus: invoice.Status, resultingStatus: "VOIDED", reason: input.reason ?? null },
   };
 }
+
+export async function planXeroCreditNoteAllocation(input: {
+  env: Env;
+  companyId: string;
+  instanceId: string;
+  actor: string;
+  creditNoteId: string;
+  invoiceId: string;
+  amount: number;
+}): Promise<{ targets: ActionTarget[]; summary: string; financialImpact: FinancialImpact; review: Record<string, unknown> }> {
+  const tok = await token(input.env, input.companyId, input.instanceId, input.actor);
+  if (!tok.ok) throw new Error(tok.body.error);
+
+  const cnBody = await xeroGetJson<{ CreditNotes?: Array<Record<string, unknown>> }>(
+    xeroConfig(tok),
+    `/CreditNotes/${input.creditNoteId}`,
+  );
+  const cn = cnBody.CreditNotes?.[0];
+  const invoice = await fetchInvoice(tok, { invoiceId: input.invoiceId });
+
+  if (!cn) {
+    return {
+      targets: [invalidTarget(input.creditNoteId, input.creditNoteId, "credit_note", "not_found", "Credit note not found.")],
+      summary: "Credit note allocation plan failed.",
+      financialImpact: { currencyCode: null, totalAmount: null, direction: "credit", itemCount: 0 },
+      review: {},
+    };
+  }
+  if (!invoice) {
+    return {
+      targets: [invalidTarget(input.invoiceId, input.invoiceId, "invoice", "not_found", "Target invoice not found.")],
+      summary: "Credit note allocation plan failed.",
+      financialImpact: { currencyCode: null, totalAmount: null, direction: "credit", itemCount: 0 },
+      review: {},
+    };
+  }
+
+  const cnContact = (cn.Contact as { ContactID?: string })?.ContactID;
+  const invContact = invoice.Contact?.ContactID;
+  const cnRemaining = Number(cn.RemainingCredit ?? cn.Total ?? 0);
+  const invDue = Number(invoice.AmountDue ?? 0);
+  const cnCurrency = String(cn.CurrencyCode ?? "GBP");
+  const invCurrency = String(invoice.CurrencyCode ?? "GBP");
+  const cnStatus = String(cn.Status ?? "");
+  const invStatus = String(invoice.Status ?? "");
+
+  let validation: ActionTarget["validation"] = "valid";
+  let validationDetail: string | null = null;
+
+  if (cnContact && invContact && cnContact !== invContact) {
+    validation = "invalid";
+    validationDetail = "Contact mismatch between credit note and invoice.";
+  } else if (cnCurrency !== invCurrency) {
+    validation = "invalid";
+    validationDetail = "Currency mismatch.";
+  } else if (String(cn.Type ?? "") !== "ACCRECCREDIT") {
+    validation = "invalid";
+    validationDetail = "Only sales credit notes (ACCRECCREDIT) can be allocated.";
+  } else if (String(invoice.Type ?? "") !== "ACCREC") {
+    validation = "invalid";
+    validationDetail = "Target must be a sales invoice (ACCREC).";
+  } else if (input.amount <= 0) {
+    validation = "invalid";
+    validationDetail = "Allocation amount must be positive.";
+  } else if (input.amount > cnRemaining) {
+    validation = "invalid";
+    validationDetail = `Over-allocation: credit note has ${cnRemaining} remaining.`;
+  } else if (input.amount > invDue) {
+    validation = "invalid";
+    validationDetail = `Over-allocation: invoice has ${invDue} due.`;
+  } else if (cnStatus === "VOIDED" || invStatus === "VOIDED") {
+    validation = "invalid";
+    validationDetail = "Cannot allocate to or from voided documents.";
+  } else if (invStatus === "PAID") {
+    validation = "invalid";
+    validationDetail = "Target invoice is already paid.";
+  } else if (!["AUTHORISED", "SUBMITTED"].includes(cnStatus)) {
+    validation = "invalid";
+    validationDetail = `Credit note status ${cnStatus} is not eligible for allocation.`;
+  }
+
+  const ref = String(cn.CreditNoteNumber ?? input.creditNoteId);
+  const invRef = String(invoice.InvoiceNumber ?? input.invoiceId);
+
+  return {
+    targets: [{
+      targetId: input.creditNoteId,
+      targetType: "credit_note_allocation",
+      humanRef: ref,
+      currentState: {
+        creditNoteRemaining: cnRemaining,
+        invoiceAmountDue: invDue,
+        contactId: cnContact,
+      },
+      proposedState: {
+        action: "allocate_credit_note",
+        creditNoteId: input.creditNoteId,
+        invoiceId: input.invoiceId,
+        allocateAmount: input.amount,
+      },
+      amount: input.amount,
+      currencyCode: cnCurrency,
+      validation,
+      validationDetail,
+    }],
+    summary: validation === "valid"
+      ? `Allocate ${formatMoney(input.amount)} from credit note ${ref} to invoice ${invRef}.`
+      : `Credit note allocation invalid: ${validationDetail}`,
+    financialImpact: {
+      currencyCode: cnCurrency,
+      totalAmount: input.amount,
+      direction: "credit",
+      itemCount: 1,
+    },
+    review: {
+      creditNoteNumber: ref,
+      invoiceNumber: invRef,
+      amount: input.amount,
+      remainingCredit: cnRemaining,
+      invoiceAmountDue: invDue,
+      validationDetail,
+    },
+  };
+}

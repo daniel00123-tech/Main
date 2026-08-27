@@ -254,6 +254,32 @@ export default function PortalActionsPage() {
         <p style={{ margin: 0 }}>{selected.summary}</p>
         {dryRun?.headline ? <p className="muted" style={{ marginTop: "0.5rem" }}>{dryRun.headline}</p> : null}
       </SectionCard>
+
+      <SectionCard title="Timeline">
+        <ol className="action-timeline" style={{ margin: 0, paddingLeft: "1.25rem" }}>
+          <li>Requested — {formatRelativeTime(selected.createdAt)} by {humanActor(selected.actor)}</li>
+          {selected.confirmationStatus === "confirmed" || selected.confirmationStatus === "not_required" ? (
+            <li>Confirmed — {humanConfirmationStatus(selected.confirmationStatus)}</li>
+          ) : selected.confirmationStatus === "awaiting" ? (
+            <li>Awaiting confirmation</li>
+          ) : null}
+          {selected.approvalStatus === "pending" ? (
+            <li>Approval requested — {humanApprovalStatus(selected.approvalStatus)}</li>
+          ) : selected.approvalStatus === "approved" ? (
+            <li>Approved</li>
+          ) : selected.approvalStatus === "denied" ? (
+            <li>Rejected</li>
+          ) : null}
+          {selected.status === "executing" ? <li>Execution started</li> : null}
+          {execution?.xeroResourceId ? <li>Xero updated — {execution.humanReference ?? execution.xeroResourceId}</li> : null}
+          {selected.status === "completed" ? <li>Completed — read-back verified</li> : null}
+          {selected.status === "failed" || selected.status === "partial_failure" ? (
+            <li>Failed — {execution?.errorMessage ?? "See error details"}</li>
+          ) : null}
+          {selected.status === "expired" ? <li>Expired</li> : null}
+        </ol>
+      </SectionCard>
+
       <KeyValue label="Confirmation" value={humanConfirmationStatus(selected.confirmationStatus)} />
       <KeyValue label="Approval" value={humanApprovalStatus(selected.approvalStatus)} />
       <KeyValue label="Risk" value={humanRiskClass(selected.riskClass)} />

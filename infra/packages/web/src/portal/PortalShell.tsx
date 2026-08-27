@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Bot,
@@ -26,6 +26,7 @@ import {
   useSidebarCollapsed,
 } from "../components";
 import { humanRole } from "../lib/format";
+import { api } from "../api";
 import { PortalCompanyProvider, usePortalCompany } from "./usePortalCompany";
 import { PortalNotificationBell } from "./PortalNotificationBell";
 
@@ -35,6 +36,7 @@ type NavItem = {
   icon: React.ReactNode;
   roles?: string[];
   section?: "main" | "manage" | "account";
+  badgeCount?: number;
 };
 
 const ALL_NAV: NavItem[] = [
@@ -97,6 +99,24 @@ function PortalShellInner() {
   const [collapsed, setCollapsed] = useSidebarCollapsed("infra.portal.sidebar.collapsed");
   const isMobile = useMediaQuery("(max-width: 900px)");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+
+  const refreshPendingApprovals = useCallback(async () => {
+    if (!company) return;
+    try {
+      const response = await api.listCompanyActions(company.slug);
+      const count = response.plans.filter((p) => p.status === "awaiting_approval").length;
+      setPendingApprovals(count);
+    } catch {
+      /* non-blocking */
+    }
+  }, [company]);
+
+  useEffect(() => {
+    void refreshPendingApprovals();
+    const timer = window.setInterval(() => void refreshPendingApprovals(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [refreshPendingApprovals]);
 
   const role = membership?.role ?? "office_staff";
   const base = company ? `/portal/${company.slug}` : "/portal";
@@ -107,8 +127,10 @@ function PortalShellInner() {
         if (!item.roles) return true;
         if (user?.isPlatformAdmin) return true;
         return item.roles.includes(role);
-      }),
-    [role, user?.isPlatformAdmin],
+      }).map((item) =>
+        item.path === "actions" ? { ...item, badgeCount: pendingApprovals } : item,
+      ),
+    [role, user?.isPlatformAdmin, pendingApprovals],
   );
 
   const navSections = useMemo(() => {
@@ -234,6 +256,26 @@ function PortalShellInner() {
                 >
                   {item.icon}
                   <span className="label">{item.label}</span>
+                  {item.badgeCount && item.badgeCount > 0 ? (
+                    <span
+                      className="nav-badge"
+                      style={{
+                        marginLeft: "auto",
+                        background: "var(--danger)",
+                        color: "#fff",
+                        borderRadius: 999,
+                        fontSize: 10,
+                        minWidth: 18,
+                        height: 18,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "0 5px",
+                      }}
+                    >
+                      {item.badgeCount > 9 ? "9+" : item.badgeCount}
+                    </span>
+                  ) : null}
                 </NavLink>
               ))}
             </div>

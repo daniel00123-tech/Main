@@ -356,6 +356,28 @@ export async function allocateCreditNoteWithFetch(
   });
 }
 
+export async function allocatePaymentWithFetch(
+  config: XeroFetchConfig,
+  input: { paymentId: string; invoiceId: string; amount: number },
+) {
+  return withXeroRetry(async () => {
+    const body = await xeroPostJson<{ Payments?: InvoiceRow[] }>(config, `/Payments/${input.paymentId}`, {
+      Payments: [
+        {
+          PaymentID: input.paymentId,
+          Allocations: [
+            {
+              Invoice: { InvoiceID: input.invoiceId },
+              Amount: input.amount,
+            },
+          ],
+        },
+      ],
+    });
+    return { payment: body.Payments?.[0] ?? null };
+  });
+}
+
 export async function createContactWithFetch(
   config: XeroFetchConfig,
   input: {

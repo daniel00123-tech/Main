@@ -125,6 +125,15 @@ export async function executeApprovedActionPlan(
   });
 
   try {
+    const { isBatchPlan } = await import("./batch-executor");
+    if (isBatchPlan(plan)) {
+      const { executeBatchActionPlan } = await import("./batch-runner");
+      return executeBatchActionPlan(env, {
+        plan: input.plan,
+        actor: input.actor,
+        executionId: execution.id,
+      });
+    }
     const { executeXeroActionPlan } = await import("./xero-write-executors");
     return executeXeroActionPlan(env, {
       plan: input.plan,

@@ -13,6 +13,8 @@ import {
   approveCreditNoteWithFetch,
   voidInvoiceWithFetch,
   voidCreditNoteWithFetch,
+  allocateCreditNoteWithFetch,
+  allocatePaymentWithFetch,
 } from "@infra/xero-core";
 
 export type CaddingtonMcpEnv = {
@@ -791,5 +793,41 @@ export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcp
     },
     async (args) => runWriteTool(args, (config, xeroArgs) =>
       voidCreditNoteWithFetch(config, { creditNoteId: String(xeroArgs.creditNoteId) })),
+  );
+
+  server.registerTool(
+    "xero_allocate_credit_note",
+    {
+      description: "Allocate a credit note to an invoice in Xero. Action Engine only.",
+      inputSchema: {
+        creditNoteId: zf.string().min(1),
+        invoiceId: zf.string().min(1),
+        amount: zf.number(),
+      },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      allocateCreditNoteWithFetch(config, {
+        creditNoteId: String(xeroArgs.creditNoteId),
+        invoiceId: String(xeroArgs.invoiceId),
+        amount: Number(xeroArgs.amount),
+      })),
+  );
+
+  server.registerTool(
+    "xero_allocate_payment",
+    {
+      description: "Allocate a payment to an invoice in Xero. Action Engine only.",
+      inputSchema: {
+        paymentId: zf.string().min(1),
+        invoiceId: zf.string().min(1),
+        amount: zf.number(),
+      },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      allocatePaymentWithFetch(config, {
+        paymentId: String(xeroArgs.paymentId),
+        invoiceId: String(xeroArgs.invoiceId),
+        amount: Number(xeroArgs.amount),
+      })),
   );
 }

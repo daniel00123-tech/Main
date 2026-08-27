@@ -1,7 +1,7 @@
 import type { ActionPlanRecord } from "@infra/shared";
 import { xeroActionDefinition } from "@infra/shared";
 import type { Env } from "../../env";
-import { recordUsageEvent } from "../usage";
+import { settleActionExecutionUsage } from "./action-settlement";
 
 /** Record commercial usage once per successful execution — idempotent via requestId. */
 export async function recordActionExecutionUsage(
@@ -20,22 +20,19 @@ export async function recordActionExecutionUsage(
   const billingAction = def?.billingOperation ?? input.plan.requestedAction;
   if (!billingAction) return;
 
-  await recordUsageEvent(env.DB, {
+  await settleActionExecutionUsage(env, {
     companyId: input.plan.companyId,
     action: billingAction,
-    actorEmail: input.actor,
-    resourceType: "action_execution",
-    resourceId: input.executionId,
+    actor: input.actor,
+    executionId: input.executionId,
+    planId: input.plan.id,
     connectorInstanceId: input.plan.connectorInstanceId,
     riskClass: input.plan.riskClass,
     success: input.success,
     correlationId: input.plan.correlationId ?? null,
     interactionId: input.plan.interactionId ?? null,
-    requestId: `aex_${input.executionId}`,
     sourceClient: input.plan.sourceClient ?? "action-engine",
     metadata: {
-      planId: input.plan.id,
-      executionId: input.executionId,
       requestedAction: input.plan.requestedAction,
       amount: input.amount ?? null,
       currencyCode: input.currencyCode ?? null,

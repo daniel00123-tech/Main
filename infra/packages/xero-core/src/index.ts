@@ -37,6 +37,7 @@ export {
   createDraftCreditNoteWithFetch,
   approveCreditNoteWithFetch,
   allocateCreditNoteWithFetch,
+  allocatePaymentWithFetch,
   createContactWithFetch,
   voidInvoiceWithFetch,
   voidCreditNoteWithFetch,

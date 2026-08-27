@@ -28,6 +28,7 @@ import {
   planXeroSendInvoice,
   planXeroUpdateDraftInvoice,
   planXeroVoidDocument,
+  planXeroCreditNoteAllocation,
 } from "./xero-planner-beta";
 import { searchXeroTestArtefacts } from "./xero-test-artefacts";
 import { humanReadablePlanPreview, humanReadableExecutionSummary } from "./human-readable";
@@ -668,6 +669,19 @@ export async function executeActionControlTool(
     });
     const voidAction = input.arguments.creditNoteId ? "xero.credit_note.void" : String(input.arguments.documentKind) === "bill" ? "xero.bill.void" : "xero.invoice.void";
     return persistPlan(voidAction, "delete", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
+  }
+
+  if (input.toolName === "plan_xero_credit_note_allocation") {
+    const planned = await planXeroCreditNoteAllocation({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      creditNoteId: String(input.arguments.creditNoteId ?? ""),
+      invoiceId: String(input.arguments.invoiceId ?? ""),
+      amount: Number(input.arguments.amount ?? 0),
+    });
+    return persistPlan("xero.credit_notes.allocate", "financial_action", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
   }
 
   return { status: 400, body: { error: "Unknown action control tool", code: "UNKNOWN_TOOL" } };

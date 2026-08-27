@@ -12,9 +12,27 @@ export type TestArtefactRow = {
   status: string | null;
   createdDate: string | null;
   contactName: string | null;
+  recommendedCleanup?: "delete_draft" | "void_authorised" | "report_only";
 };
 
-const ALLOWED_PREFIXES = ["INFRA-ALPHA-WRITE-", "INFRA-BETA-WRITE-", "INFRA-CMD10-UAT-"];
+const ALLOWED_PREFIXES = [
+  "INFRA-ALPHA-WRITE-",
+  "INFRA-BETA-WRITE-",
+  "INFRA-CMD10-UAT-",
+  "INFRA-CMD11-UAT-",
+];
+
+export const INFRA_TEST_ARTEFACT_PREFIXES = ALLOWED_PREFIXES;
+
+export function isAllowedInfraTestPrefix(reference: string): boolean {
+  return ALLOWED_PREFIXES.some((p) => reference.startsWith(p));
+}
+
+export function recommendedCleanupAction(artefact: TestArtefactRow): "delete_draft" | "void_authorised" | "report_only" {
+  if (artefact.status === "DRAFT") return "delete_draft";
+  if (artefact.status === "AUTHORISED" || artefact.status === "SUBMITTED") return "void_authorised";
+  return "report_only";
+}
 
 export async function searchXeroTestArtefacts(
   env: Env,
@@ -32,7 +50,7 @@ export async function searchXeroTestArtefacts(
       reportOnly: true,
       prefix,
       artefacts: [],
-      note: "Only INFRA test prefixes are searchable (INFRA-ALPHA-WRITE-, INFRA-BETA-WRITE-, INFRA-CMD10-UAT-).",
+      note: "Only INFRA test prefixes are searchable (INFRA-ALPHA-WRITE-, INFRA-BETA-WRITE-, INFRA-CMD10-UAT-, INFRA-CMD11-UAT-).",
     };
   }
 
@@ -67,6 +85,16 @@ export async function searchXeroTestArtefacts(
       status: inv.Status ? String(inv.Status) : null,
       createdDate: inv.DateString ? String(inv.DateString).slice(0, 10) : null,
       contactName: (inv.Contact as { Name?: string } | undefined)?.Name ?? null,
+      recommendedCleanup: recommendedCleanupAction({
+        type: String(inv.Type ?? "") === "ACCPAY" ? "ACCPAY" : "ACCREC",
+        invoiceNumber: inv.InvoiceNumber ? String(inv.InvoiceNumber) : null,
+        reference: ref,
+        xeroId: String(inv.InvoiceID ?? ""),
+        amount: inv.Total != null ? Number(inv.Total) : null,
+        status: inv.Status ? String(inv.Status) : null,
+        createdDate: inv.DateString ? String(inv.DateString).slice(0, 10) : null,
+        contactName: (inv.Contact as { Name?: string } | undefined)?.Name ?? null,
+      }),
     });
   }
 
@@ -86,6 +114,16 @@ export async function searchXeroTestArtefacts(
       status: cn.Status ? String(cn.Status) : null,
       createdDate: cn.DateString ? String(cn.DateString).slice(0, 10) : null,
       contactName: (cn.Contact as { Name?: string } | undefined)?.Name ?? null,
+      recommendedCleanup: recommendedCleanupAction({
+        type: "CREDIT_NOTE",
+        invoiceNumber: cn.CreditNoteNumber ? String(cn.CreditNoteNumber) : null,
+        reference: ref,
+        xeroId: String(cn.CreditNoteID ?? ""),
+        amount: cn.Total != null ? Number(cn.Total) : null,
+        status: cn.Status ? String(cn.Status) : null,
+        createdDate: cn.DateString ? String(cn.DateString).slice(0, 10) : null,
+        contactName: (cn.Contact as { Name?: string } | undefined)?.Name ?? null,
+      }),
     });
   }
 

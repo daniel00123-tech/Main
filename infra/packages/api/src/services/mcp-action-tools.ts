@@ -22,6 +22,7 @@ export const ACTION_CONTROL_TOOLS = [
   "plan_xero_create_approve_send",
   "plan_xero_update_draft_invoice",
   "plan_xero_approve_credit_note",
+  "plan_xero_credit_note_allocation",
   "plan_xero_void_document",
   "list_xero_test_artefacts",
 ] as const;
@@ -52,6 +53,7 @@ export const ACTION_CONTROL_TOOL_REQUIRED_SCOPES: Record<ActionControlTool, stri
   plan_xero_create_approve_send: "xero.action.plan",
   plan_xero_update_draft_invoice: "xero.action.plan",
   plan_xero_approve_credit_note: "xero.action.plan",
+  plan_xero_credit_note_allocation: "xero.action.plan",
   plan_xero_void_document: "xero.action.plan",
   list_xero_test_artefacts: "xero.action.read",
 };
@@ -383,6 +385,20 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
         creditNoteNumber: { type: "string" },
         idempotencyKey: { type: "string" },
       },
+      additionalProperties: false,
+    },
+  },
+  plan_xero_credit_note_allocation: {
+    description: "Plan allocating a credit note to a sales invoice in Xero.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        creditNoteId: { type: "string", minLength: 1 },
+        invoiceId: { type: "string", minLength: 1 },
+        amount: { type: "number", minimum: 0.01 },
+        idempotencyKey: { type: "string" },
+      },
+      required: ["creditNoteId", "invoiceId", "amount"],
       additionalProperties: false,
     },
   },

@@ -63,13 +63,19 @@ const z = {
         optional: () => chain(),
         describe: () => chain(),
       }),
+      min: () => chain(),
+      optional: () => chain(),
+      describe: () => chain(),
     }),
     optional: () => chain(),
+    describe: () => chain(),
+    min: () => chain(),
   }),
   boolean: () => ({ optional: () => chain() }),
   object: (shape: Record<string, unknown>) => shape,
   array: (_schema: unknown) => ({
     min: () => chain(),
+    optional: () => chain(),
   }),
 };
 
