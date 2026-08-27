@@ -54,8 +54,8 @@ async function main() {
     const res = await fetch(`${apiBase}/api/internal/cmd16b/outlook-rbac`, { method: "POST" });
     report.checks.push({
       id: "cmd16b_endpoint_present",
-      pass: res.status === 401,
-      detail: `HTTP ${res.status} (401 = endpoint exists, token required)`,
+      pass: res.status === 401 || res.status === 403,
+      detail: `HTTP ${res.status} (401/403 = endpoint exists, token required)`,
     });
   }
 
