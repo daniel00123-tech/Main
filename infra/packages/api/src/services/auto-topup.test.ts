@@ -9,6 +9,9 @@ function mockDb(rows: Record<string, Record<string, unknown>>) {
           if (sql.includes("payment_provider_accounts") && sql.includes("payment_method")) {
             return rows.provider ?? null;
           }
+          if (sql.includes("auto_top_up_transactions") && sql.includes("ledger_entry_id")) {
+            return rows.awaitingWebhook ?? null;
+          }
           if (sql.includes("auto_top_up_transactions") && sql.includes("pending")) {
             return rows.pending ?? null;
           }
@@ -26,6 +29,10 @@ function mockDb(rows: Record<string, Record<string, unknown>>) {
     }),
   } as unknown as D1Database;
 }
+
+vi.mock("./control-plane", () => ({
+  recordAuditEvent: vi.fn(async () => undefined),
+}));
 
 vi.mock("./company-settings", () => ({
   getCompanySettings: vi.fn(async () => ({
@@ -74,6 +81,11 @@ describe("evaluateAutoTopUp", () => {
           auto_top_up_monthly_cap_cents: null,
           auto_top_up_monthly_spent_cents: 0,
           auto_top_up_month_key: "2026-08",
+          auto_top_up_daily_cap_cents: null,
+          auto_top_up_daily_spent_cents: 0,
+          auto_top_up_day_key: "2026-08-27",
+          auto_top_up_failed_count: 0,
+          auto_top_up_suppressed_until: null,
         },
       }),
       "c1",

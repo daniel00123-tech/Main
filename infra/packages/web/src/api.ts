@@ -763,6 +763,19 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+  resendInvitation: (slug: string, id: string) =>
+    fetchJson<{ setupUrl: string; emailSent: boolean; emailError?: string }>(
+      `/api/companies/${slug}/invitations/${id}/resend`,
+      { method: "POST", body: "{}" },
+    ),
+  getBillingPayments: (slug: string) =>
+    fetchJson<{ payments: Array<Record<string, unknown>> }>(
+      `/api/companies/${slug}/billing-payments`,
+    ),
+  getAutoTopUpTransactions: (slug: string) =>
+    fetchJson<{ transactions: Array<Record<string, unknown>> }>(
+      `/api/companies/${slug}/wallet/auto-topup/transactions`,
+    ),
   getCustomRoles: (slug: string) =>
     fetchJson<{ roles: Array<Record<string, unknown>> }>(`/api/companies/${slug}/custom-roles`),
   createCustomRole: (slug: string, input: { name: string; description?: string; cloneFromRole?: string }) =>
@@ -825,6 +838,8 @@ export const api = {
       setupUrl: string;
       setupToken: string;
       setupTokenExpiresAt: string;
+      emailSent?: boolean;
+      emailError?: string;
     }>(`/api/companies/${slug}/users/invite`, {
       method: "POST",
       body: JSON.stringify(input),

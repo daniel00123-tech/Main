@@ -296,6 +296,64 @@ export function registerCommand6Routes(app: Hono<AppEnv>) {
     return c.json({ invitations: await listCompanyInvitations(c.env.DB, company.id) });
   });
 
+  app.post("/api/companies/:slug/invitations/:id/resend", requireAuth, async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+    try {
+      const origin = portalOrigin(c.env, c.req.header("Origin"));
+      const result = await import("../services/invitations").then((m) =>
+        m.resendInvitation(c.env, {
+          companyId: company.id,
+          companyName: company.name,
+          invitationId: c.req.param("id"),
+          inviterName: c.get("user").displayName,
+          origin,
+        }),
+      );
+      return c.json(result);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "Unable to resend invitation" }, 400);
+    }
+  });
+
+  app.get("/api/companies/:slug/billing-payments", requireAuth, async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+    const { listBillingPayments } = await import("../services/billing-payments");
+    return c.json({ payments: await listBillingPayments(c.env.DB, company.id) });
+  });
+
+  app.get("/api/companies/:slug/wallet/auto-topup/transactions", requireAuth, async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    const rows = await c.env.DB.prepare(
+      `SELECT id, amount_cents, status, failure_reason, stripe_payment_intent_id, created_at, completed_at
+       FROM auto_top_up_transactions WHERE company_id = ? ORDER BY created_at DESC LIMIT 20`,
+    )
+      .bind(company.id)
+      .all();
+    return c.json({
+      transactions: (rows.results ?? []).map((row) => ({
+        id: String(row.id),
+        amountCents: Number(row.amount_cents),
+        status: String(row.status),
+        failureReason: row.failure_reason ? String(row.failure_reason) : null,
+        paymentIntentId: row.stripe_payment_intent_id ? String(row.stripe_payment_intent_id) : null,
+        createdAt: String(row.created_at),
+        completedAt: row.completed_at ? String(row.completed_at) : null,
+      })),
+    });
+  });
+
   app.post("/api/companies/:slug/invitations/:id/cancel", requireAuth, async (c) => {
     const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
     if (!company) return c.json({ error: "Company not found" }, 404);

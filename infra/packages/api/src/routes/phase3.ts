@@ -435,6 +435,14 @@ phase3.put("/api/companies/:slug/wallet/auto-topup", requireAuth, async (c) => {
   const updated = await updateAutoTopUpSettings(c.env.DB, company.id, patch);
   await recordAuditEvent(c.env.DB, {
     companyId: company.id,
+    eventType: patch.enabled ? "auto_topup.enabled" : "auto_topup.disabled",
+    actor: c.get("user").email,
+    resourceType: "company_commercial_settings",
+    resourceId: company.id,
+    detail: patch,
+  });
+  await recordAuditEvent(c.env.DB, {
+    companyId: company.id,
     eventType: "auto_topup.updated",
     actor: c.get("user").email,
     resourceType: "company_commercial_settings",

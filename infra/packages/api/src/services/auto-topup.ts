@@ -8,13 +8,56 @@ import { stripePaymentsAllowed, ensureStripeCustomer } from "./stripe";
 
 export const AUTO_TOPUP_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 export const AUTO_TOPUP_MAX_AMOUNT_CENTS = 10000_00; // £10,000 cap per charge
+export const AUTO_TOPUP_DEFAULT_DAILY_CAP_CENTS = 50000_00; // £500/day default
+export const AUTO_TOPUP_DEFAULT_MONTHLY_CAP_CENTS = 200000_00; // £2,000/month default
+export const AUTO_TOPUP_MAX_FAILURES_BEFORE_SUPPRESS = 3;
+export const AUTO_TOPUP_SUPPRESSION_MS = 24 * 60 * 60 * 1000;
 
 export type AutoTopUpEvaluation = {
   shouldExecute: boolean;
   reason: string;
   amountCents?: number;
   thresholdCents?: number;
+  portalStatus?: "disabled" | "configured" | "ready" | "awaiting_activation" | "active" | "suppressed" | "payment_failed";
 };
+
+async function getCommercialSafety(db: D1Database, companyId: string) {
+  return db
+    .prepare(
+      `SELECT auto_top_up_monthly_cap_cents, auto_top_up_monthly_spent_cents, auto_top_up_month_key,
+              auto_top_up_daily_cap_cents, auto_top_up_daily_spent_cents, auto_top_up_day_key,
+              auto_top_up_failed_count, auto_top_up_suppressed_until, auto_top_up_last_failure_at
+       FROM company_commercial_settings WHERE company_id = ?`,
+    )
+    .bind(companyId)
+    .first();
+}
+
+export async function getAutoTopUpPortalStatus(
+  db: D1Database,
+  companyId: string,
+  executionEnabled: boolean,
+): Promise<AutoTopUpEvaluation["portalStatus"]> {
+  const settings = await getCompanySettings(db, companyId);
+  if (!settings?.autoTopUp.enabled) return "disabled";
+  if (!settings.autoTopUp.paymentMethodReady) return "configured";
+  const commercial = await getCommercialSafety(db, companyId);
+  const suppressedUntil = commercial?.auto_top_up_suppressed_until
+    ? String(commercial.auto_top_up_suppressed_until)
+    : null;
+  if (suppressedUntil && suppressedUntil > nowIso()) return "suppressed";
+  const recentFail = await db
+    .prepare(
+      `SELECT id FROM auto_top_up_transactions
+       WHERE company_id = ? AND status = 'failed' AND completed_at >= datetime('now', '-1 day')
+       LIMIT 1`,
+    )
+    .bind(companyId)
+    .first();
+  if (recentFail) return "payment_failed";
+  if (!executionEnabled) return "awaiting_activation";
+  return "active";
+}
 
 export async function evaluateAutoTopUp(
   db: D1Database,
@@ -43,6 +86,14 @@ export async function evaluateAutoTopUp(
     return { shouldExecute: false, reason: "no_payment_method" };
   }
 
+  const commercial = await getCommercialSafety(db, companyId);
+  const suppressedUntil = commercial?.auto_top_up_suppressed_until
+    ? String(commercial.auto_top_up_suppressed_until)
+    : null;
+  if (suppressedUntil && suppressedUntil > nowIso()) {
+    return { shouldExecute: false, reason: "suppressed" };
+  }
+
   const wallet = await getWalletBalance(db, companyId);
   if (wallet.balanceCents > threshold) {
     return { shouldExecute: false, reason: "balance_above_threshold" };
@@ -51,13 +102,26 @@ export async function evaluateAutoTopUp(
   const pending = await db
     .prepare(
       `SELECT id FROM auto_top_up_transactions
-       WHERE company_id = ? AND status IN ('pending', 'processing')
+       WHERE company_id = ? AND status IN ('pending', 'processing', 'payment_created')
        LIMIT 1`,
     )
     .bind(companyId)
     .first();
   if (pending) {
     return { shouldExecute: false, reason: "pending_transaction" };
+  }
+
+  const recentProcessing = await db
+    .prepare(
+      `SELECT id FROM auto_top_up_transactions
+       WHERE company_id = ? AND status = 'completed' AND ledger_entry_id IS NULL
+         AND created_at >= datetime('now', '-1 hour')
+       LIMIT 1`,
+    )
+    .bind(companyId)
+    .first();
+  if (recentProcessing) {
+    return { shouldExecute: false, reason: "awaiting_webhook_credit" };
   }
 
   const cooldownSince = new Date(Date.now() - AUTO_TOPUP_COOLDOWN_MS).toISOString();
@@ -74,24 +138,40 @@ export async function evaluateAutoTopUp(
   }
 
   const monthKey = new Date().toISOString().slice(0, 7);
-  const commercial = await db
-    .prepare(
-      `SELECT auto_top_up_monthly_cap_cents, auto_top_up_monthly_spent_cents, auto_top_up_month_key
-       FROM company_commercial_settings WHERE company_id = ?`,
-    )
-    .bind(companyId)
-    .first();
+  const dayKey = new Date().toISOString().slice(0, 10);
 
   let monthlySpent = Number(commercial?.auto_top_up_monthly_spent_cents ?? 0);
   if (String(commercial?.auto_top_up_month_key ?? "") !== monthKey) {
     monthlySpent = 0;
   }
-  const monthlyCap = commercial?.auto_top_up_monthly_cap_cents
-    ? Number(commercial.auto_top_up_monthly_cap_cents)
-    : null;
-  if (monthlyCap != null && monthlySpent + amount > monthlyCap) {
+  const monthlyCap =
+    commercial?.auto_top_up_monthly_cap_cents != null
+      ? Number(commercial.auto_top_up_monthly_cap_cents)
+      : AUTO_TOPUP_DEFAULT_MONTHLY_CAP_CENTS;
+  if (monthlySpent + amount > monthlyCap) {
     return { shouldExecute: false, reason: "monthly_cap_reached" };
   }
+
+  let dailySpent = Number(commercial?.auto_top_up_daily_spent_cents ?? 0);
+  if (String(commercial?.auto_top_up_day_key ?? "") !== dayKey) {
+    dailySpent = 0;
+  }
+  const dailyCap =
+    commercial?.auto_top_up_daily_cap_cents != null
+      ? Number(commercial.auto_top_up_daily_cap_cents)
+      : AUTO_TOPUP_DEFAULT_DAILY_CAP_CENTS;
+  if (dailySpent + amount > dailyCap) {
+    return { shouldExecute: false, reason: "daily_cap_reached" };
+  }
+
+  await recordAuditEvent(db, {
+    companyId,
+    eventType: "auto_topup.eligible",
+    actor: "auto-topup-service",
+    resourceType: "company_commercial_settings",
+    resourceId: companyId,
+    detail: { balanceCents: wallet.balanceCents, thresholdCents: threshold, amountCents: amount },
+  });
 
   return {
     shouldExecute: true,
@@ -165,6 +245,15 @@ export async function createAutoTopUpTransaction(
     .bind(txId, input.companyId, idempotencyKey, input.amountCents, input.triggerBalanceCents, now)
     .run();
 
+  await recordAuditEvent(env.DB, {
+    companyId: input.companyId,
+    eventType: "auto_topup.payment_requested",
+    actor: "auto-topup-service",
+    resourceType: "auto_top_up_transaction",
+    resourceId: txId,
+    detail: { amountCents: input.amountCents, idempotencyKey },
+  });
+
   const params = new URLSearchParams();
   params.set("amount", String(input.amountCents));
   params.set("currency", "gbp");
@@ -223,7 +312,7 @@ export async function createAutoTopUpTransaction(
 
   await env.DB.prepare(
     `UPDATE auto_top_up_transactions
-     SET status = 'processing', stripe_payment_intent_id = ?
+     SET status = 'payment_created', stripe_payment_intent_id = ?
      WHERE id = ?`,
   )
     .bind(body.id, txId)
@@ -231,22 +320,14 @@ export async function createAutoTopUpTransaction(
 
   await recordAuditEvent(env.DB, {
     companyId: input.companyId,
-    eventType: "auto_topup.initiated",
+    eventType: "auto_topup.payment_created",
     actor: "auto-topup-service",
     resourceType: "auto_top_up_transaction",
     resourceId: txId,
-    detail: { amountCents: input.amountCents, paymentIntentId: body.id },
+    detail: { amountCents: input.amountCents, paymentIntentId: body.id, stripeStatus: body.status },
   });
 
-  if (body.status === "succeeded") {
-    await creditAutoTopUpFromPaymentIntent(env, {
-      stripeEventId: `pi_direct_${body.id}`,
-      paymentIntentId: body.id,
-      companyId: input.companyId,
-      amountCents: input.amountCents,
-      transactionId: txId,
-    });
-  }
+  // Wallet credit ONLY via verified Stripe webhook — never on PaymentIntent creation alone.
 
   return {
     ok: true,
@@ -298,13 +379,14 @@ export async function creditAutoTopUpFromPaymentIntent(
   const now = nowIso();
   await env.DB.prepare(
     `UPDATE auto_top_up_transactions
-     SET status = 'completed', ledger_entry_id = ?, stripe_event_id = ?, completed_at = ?
+     SET status = 'credited', ledger_entry_id = ?, stripe_event_id = ?, completed_at = ?
      WHERE id = ?`,
   )
     .bind(ledger.entry.id, input.stripeEventId, now, txId)
     .run();
 
   const monthKey = now.slice(0, 7);
+  const dayKey = now.slice(0, 10);
   await env.DB.prepare(
     `UPDATE company_commercial_settings
      SET auto_top_up_month_key = ?,
@@ -312,16 +394,42 @@ export async function creditAutoTopUpFromPaymentIntent(
            WHEN auto_top_up_month_key = ? THEN COALESCE(auto_top_up_monthly_spent_cents, 0) + ?
            ELSE ?
          END,
+         auto_top_up_day_key = ?,
+         auto_top_up_daily_spent_cents = CASE
+           WHEN auto_top_up_day_key = ? THEN COALESCE(auto_top_up_daily_spent_cents, 0) + ?
+           ELSE ?
+         END,
+         auto_top_up_failed_count = 0,
+         auto_top_up_suppressed_until = NULL,
          updated_at = ?
      WHERE company_id = ?`,
   )
-    .bind(monthKey, monthKey, input.amountCents, input.amountCents, now, input.companyId)
+    .bind(
+      monthKey,
+      monthKey,
+      input.amountCents,
+      input.amountCents,
+      dayKey,
+      dayKey,
+      input.amountCents,
+      input.amountCents,
+      now,
+      input.companyId,
+    )
     .run();
 
   if (!ledger.alreadyExists) {
     await recordAuditEvent(env.DB, {
       companyId: input.companyId,
-      eventType: "auto_topup.completed",
+      eventType: "auto_topup.payment_succeeded",
+      actor: "stripe-webhook",
+      resourceType: "auto_top_up_transaction",
+      resourceId: txId!,
+      detail: { amountCents: input.amountCents, paymentIntentId: input.paymentIntentId },
+    });
+    await recordAuditEvent(env.DB, {
+      companyId: input.companyId,
+      eventType: "auto_topup.wallet_credited",
       actor: "stripe-webhook",
       resourceType: "ledger",
       resourceId: ledger.entry.id,
@@ -360,18 +468,41 @@ export async function failAutoTopUpFromPaymentIntent(
   await env.DB.prepare(
     `UPDATE auto_top_up_transactions
      SET status = 'failed', failure_reason = ?, stripe_event_id = ?, completed_at = ?
-     WHERE id = ? AND status != 'completed'`,
+     WHERE id = ? AND status != 'credited'`,
   )
     .bind(input.failureReason, input.stripeEventId, nowIso(), tx.id)
     .run();
 
+  const now = nowIso();
+  const commercial = await env.DB.prepare(
+    `SELECT auto_top_up_failed_count FROM company_commercial_settings WHERE company_id = ?`,
+  )
+    .bind(input.companyId)
+    .first();
+  const failCount = Number(commercial?.auto_top_up_failed_count ?? 0) + 1;
+  const suppressedUntil =
+    failCount >= AUTO_TOPUP_MAX_FAILURES_BEFORE_SUPPRESS
+      ? new Date(Date.now() + AUTO_TOPUP_SUPPRESSION_MS).toISOString()
+      : null;
+
+  await env.DB.prepare(
+    `UPDATE company_commercial_settings
+     SET auto_top_up_failed_count = ?,
+         auto_top_up_last_failure_at = ?,
+         auto_top_up_suppressed_until = COALESCE(?, auto_top_up_suppressed_until),
+         updated_at = ?
+     WHERE company_id = ?`,
+  )
+    .bind(failCount, now, suppressedUntil, now, input.companyId)
+    .run();
+
   await recordAuditEvent(env.DB, {
     companyId: input.companyId,
-    eventType: "auto_topup.failed",
+    eventType: suppressedUntil ? "auto_topup.suppressed" : "auto_topup.payment_failed",
     actor: "stripe-webhook",
     resourceType: "auto_top_up_transaction",
     resourceId: String(tx.id),
-    detail: { reason: input.failureReason },
+    detail: { reason: input.failureReason, failCount, suppressedUntil },
   });
 
   await createNotification(env.DB, {

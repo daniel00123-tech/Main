@@ -71,6 +71,7 @@ export default function PortalBillingPage() {
   const [autoTopUpThreshold, setAutoTopUpThreshold] = useState("10");
   const [autoTopUpAmount, setAutoTopUpAmount] = useState("25");
   const [autoTopUpConfirm, setAutoTopUpConfirm] = useState(false);
+  const [payments, setPayments] = useState<Array<Record<string, unknown>>>([]);
 
   const topupState = searchParams.get("topup");
   const checkoutId = searchParams.get("checkout");
@@ -97,6 +98,10 @@ export default function PortalBillingPage() {
         if (tab === "payment" || searchParams.get("setup") === "complete") {
           const pm = await api.getPaymentMethod(company.slug);
           setPaymentMethod(pm.paymentMethod);
+        }
+        if (tab === "invoices") {
+          const p = await api.getBillingPayments(company.slug);
+          setPayments(p.payments);
         }
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "Failed to load wallet");
@@ -269,7 +274,7 @@ export default function PortalBillingPage() {
           { id: "payment", label: "Payment method" },
           { id: "auto-topup", label: "Auto top-up" },
           { id: "transactions", label: "Transactions" },
-          { id: "invoices", label: "Invoices" },
+          { id: "invoices", label: "Payments" },
           { id: "addons", label: "Add-ons" },
         ]}
       />
@@ -586,16 +591,49 @@ export default function PortalBillingPage() {
       ) : null}
 
       {tab === "invoices" ? (
-        <SectionCard title="Invoice history">
-          <EmptyState
-            title="Your INFRA invoices will appear here"
-            description="When commercial billing is live, invoices generated through INFRA's accounting system will be listed with view and PDF download options."
-          />
+        <SectionCard title="Payment history" description="Stripe wallet top-ups and credits. These are payment receipts, not VAT invoices.">
+          {payments.length === 0 ? (
+            <EmptyState
+              title="No payment records yet"
+              description="Wallet top-ups and manual credits will appear here with Stripe references where available."
+            />
+          ) : (
+            <div className="table-wrap">
+              <table className="table compact">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Type</th>
+                    <th className="num">Amount</th>
+                    <th>Reference</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.map((p) => (
+                    <tr key={String(p.id)}>
+                      <td className="muted small">{formatDate(String(p.date))}</td>
+                      <td>{String(p.description ?? p.entryType)}</td>
+                      <td>{String(p.creditClass === "test" ? "Promotional" : p.creditClass === "paid" ? "Paid top-up" : p.entryType)}</td>
+                      <td className="num">{formatCurrency(Number(p.amountCents), wallet.wallet.currency)}</td>
+                      <td>
+                        {p.receiptUrl ? (
+                          <a href={String(p.receiptUrl)} target="_blank" rel="noreferrer">
+                            Stripe receipt
+                          </a>
+                        ) : (
+                          <span className="muted small">{p.stripePaymentIntentId ? String(p.stripePaymentIntentId) : "—"}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <div style={{ marginTop: 16 }}>
             <Notice tone="info">
-              Future integration requires: tenant-to-customer mapping in INFRA's Xero organisation,
-              authenticated invoice retrieval, secure PDF download, and cross-tenant isolation on
-              every invoice query.
+              Accounting invoices from Xero will appear separately when that workflow is enabled.
             </Notice>
           </div>
         </SectionCard>

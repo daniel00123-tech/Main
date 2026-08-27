@@ -4,7 +4,6 @@ import { api } from "../api";
 import type { CompanyRole, InfraUser } from "@infra/shared";
 import {
   Button,
-  CollapsibleBlock,
   DataTable,
   Drawer,
   EmptyState,
@@ -15,9 +14,11 @@ import {
   Notice,
   SectionCard,
   StatusBadge,
+  Tabs,
   formatDate,
   useIsMobile,
 } from "../components";
+import { PermissionsEditor } from "../components/PermissionsEditor";
 import { humanRole } from "../lib/format";
 import { PortalPageHeader } from "./components";
 import { usePortalCompany } from "./usePortalCompany";
@@ -35,6 +36,8 @@ export default function PortalUsersPage() {
   const [inviteResult, setInviteResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<InfraUser | null>(null);
+  const [tab, setTab] = useState("users");
+  const [invitations, setInvitations] = useState<Array<Record<string, unknown>>>([]);
   const isMobile = useIsMobile();
 
   const canManage =
@@ -44,12 +47,14 @@ export default function PortalUsersPage() {
 
   async function refresh() {
     if (!company) return;
-    const [users, rolePresets] = await Promise.all([
+    const [users, rolePresets, inviteList] = await Promise.all([
       api.getUsers(company.id),
       api.getRolePresets(),
+      canManage ? api.getInvitations(company.slug).catch(() => ({ invitations: [] })) : Promise.resolve({ invitations: [] }),
     ]);
     setTeam(users);
     setRoles(rolePresets);
+    setInvitations(inviteList.invitations);
   }
 
   useEffect(() => {
@@ -79,7 +84,11 @@ export default function PortalUsersPage() {
         displayName: inviteName,
         role: inviteRole,
       });
-      setInviteResult(result.setupUrl);
+      setInviteResult(
+        result.emailSent
+          ? `Invitation email sent to ${inviteEmail}`
+          : result.setupUrl ?? "Invitation created",
+      );
       setInviteEmail("");
       setInviteName("");
       await refresh();
@@ -134,6 +143,21 @@ export default function PortalUsersPage() {
         }
       />
 
+      <Tabs
+        active={tab}
+        onChange={setTab}
+        tabs={[
+          { id: "users", label: "Users", count: team.length },
+          ...(canManage
+            ? [
+                { id: "permissions", label: "Permissions" },
+                { id: "invitations", label: "Invitations", count: invitations.length },
+              ]
+            : []),
+        ]}
+      />
+
+      {tab === "users" ? (
       <SectionCard title="Team members">
         {team.length === 0 ? (
           <EmptyState
@@ -260,27 +284,80 @@ export default function PortalUsersPage() {
           />
         )}
       </SectionCard>
+      ) : null}
 
-      <CollapsibleBlock title="Role permissions" summary={`${roles.length} role templates`}>
-        <div className="table-wrap">
-          <table className="table compact">
-            <thead>
-              <tr>
-                <th>Role</th>
-                <th>What they can do</th>
-              </tr>
-            </thead>
-            <tbody>
-              {roles.map((role) => (
-                <tr key={role.role}>
-                  <td>{role.displayName}</td>
-                  <td className="muted">{role.description}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CollapsibleBlock>
+      {tab === "permissions" && canManage ? (
+        <PermissionsEditor companySlug={company.slug} roles={roles} />
+      ) : null}
+
+      {tab === "invitations" && canManage ? (
+        <SectionCard title="Pending invitations">
+          {invitations.length === 0 ? (
+            <EmptyState title="No pending invitations" description="Invited users will appear here until they accept." />
+          ) : (
+            <div className="table-wrap">
+              <table className="table compact">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Expires</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {invitations.map((inv) => (
+                    <tr key={String(inv.id)}>
+                      <td>{String(inv.email)}</td>
+                      <td>{humanRole(String(inv.role))}</td>
+                      <td>
+                        <StatusBadge status={String(inv.status)} />
+                      </td>
+                      <td className="muted small">{formatDate(String(inv.expiresAt))}</td>
+                      <td>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {inv.status === "pending" || inv.status === "expired" ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={async () => {
+                                const r = await api.resendInvitation(company.slug, String(inv.id));
+                                window.alert(
+                                  r.emailSent ? "Invitation resent by email" : `Copy link: ${r.setupUrl}`,
+                                );
+                                await refresh();
+                              }}
+                            >
+                              Resend
+                            </Button>
+                          ) : null}
+                          {inv.status === "pending" ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={async () => {
+                                await api.cancelInvitation(company.slug, String(inv.id));
+                                await refresh();
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SectionCard>
+      ) : null}
+
+      {/* legacy read-only role summary removed — use Permissions tab */}
 
       <Modal
         open={inviteOpen}

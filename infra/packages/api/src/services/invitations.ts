@@ -130,3 +130,66 @@ export async function cancelInvitation(db: D1Database, companyId: string, invita
     .bind(now, now, invitationId, companyId)
     .run();
 }
+
+export async function resendInvitation(
+  env: Env,
+  input: {
+    companyId: string;
+    companyName: string;
+    invitationId: string;
+    inviterName: string;
+    origin: string;
+  },
+) {
+  const row = await env.DB.prepare(
+    `SELECT * FROM user_invitations WHERE id = ? AND company_id = ? AND status IN ('pending', 'expired')`,
+  )
+    .bind(input.invitationId, input.companyId)
+    .first();
+  if (!row) throw new Error("INVITATION_NOT_FOUND");
+
+  const invited = await inviteCompanyUser(env.DB, {
+    email: String(row.email),
+    displayName: String(row.display_name),
+    companyId: input.companyId,
+    role: row.role as CompanyRole,
+  });
+
+  const now = nowIso();
+  const expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
+  const setupUrl = `${input.origin}/setup-password?token=${encodeURIComponent(invited.setupToken)}`;
+
+  await env.DB.prepare(
+    `UPDATE user_invitations SET status = 'pending', sent_at = ?, expires_at = ?, updated_at = ?, setup_token_id = ?
+     WHERE id = ?`,
+  )
+    .bind(now, expiresAt, now, invited.user.id, input.invitationId)
+    .run();
+
+  const emailContent = renderInvitationEmail({
+    companyName: input.companyName,
+    inviterName: input.inviterName,
+    setupUrl,
+    expiresAt: new Date(expiresAt).toLocaleDateString("en-GB"),
+  });
+
+  const emailResult = await queueEmail(env, env.DB, {
+    companyId: input.companyId,
+    toEmail: String(row.email),
+    templateKey: "user_invitation",
+    subject: emailContent.subject,
+    bodyText: emailContent.text,
+    bodyHtml: emailContent.html,
+  });
+
+  await recordAuditEvent(env.DB, {
+    companyId: input.companyId,
+    eventType: "invitation.resent",
+    actor: input.inviterName,
+    resourceType: "user_invitation",
+    resourceId: input.invitationId,
+    detail: { emailSent: emailResult.sent },
+  });
+
+  return { setupUrl, expiresAt, emailSent: emailResult.sent, emailError: emailResult.error };
+}

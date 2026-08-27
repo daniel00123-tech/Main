@@ -7,6 +7,7 @@ import {
   verifySessionToken,
   type SessionUser,
 } from "./session";
+import { getUserById } from "./users";
 
 export type AuthVariables = {
   user: SessionUser;
@@ -39,6 +40,11 @@ export const requireAuth = createMiddleware<{ Bindings: Env; Variables: AuthVari
     const user = await verifySessionToken(token, c.env.SESSION_SECRET);
     if (!user) {
       return c.json({ error: "Invalid or expired session" }, 401);
+    }
+
+    const dbUser = await getUserById(c.env.DB, user.userId);
+    if (!dbUser || dbUser.status !== "active") {
+      return c.json({ error: "Account is disabled or unavailable" }, 401);
     }
 
     c.set("user", user);
