@@ -26,6 +26,7 @@ import {
 } from "../components";
 import { OnboardingChecklist } from "../components/OnboardingChecklist";
 import { PermissionsEditor } from "../components/PermissionsEditor";
+import { Microsoft365AdminPanel } from "../components/connectors/Microsoft365AdminPanel";
 import type { ActionPlanRecord } from "@infra/shared";
 import {
   formatNumber,
@@ -800,55 +801,62 @@ export default function CompanyDetailPage() {
       ) : null}
 
       {tab === "connectors" ? (
-        <SectionCard title="Connectors" description="Company instances. Catalogue items are shared.">
-          {connectorInstances.length === 0 ? (
-            <EmptyState
-              title="No connectors yet"
-              description="Open the company portal catalogue. Credential submission stays disabled until secure storage exists."
-              action={
-                <Link to={`/portal/${company.slug}/connectors`} className="button button-primary">
-                  Open portal connectors
-                </Link>
-              }
-            />
-          ) : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>Auth</th>
-                    <th>Sync</th>
-                    <th>Last sync</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {connectorInstances.map((connector) => (
-                    <tr key={connector.id}>
-                      <td>
-                        <strong>{connector.name}</strong>
-                        <div className="muted small">{connector.connectorDefinitionId}</div>
-                      </td>
-                      <td>
-                        <StatusBadge status={connector.status} />
-                      </td>
-                      <td>
-                        <StatusBadge status={connector.authStatus ?? connector.healthStatus ?? "unknown"} />
-                      </td>
-                      <td>
-                        <StatusBadge status={connector.syncHealth ?? connector.lastSyncStatus ?? "unknown"} />
-                      </td>
-                      <td className="muted">
-                        {connector.lastSyncAt ? formatDate(connector.lastSyncAt) : "Unavailable"}
-                      </td>
+        <div className="stack">
+          <SectionCard title="Connectors" description="Company instances. Catalogue items are shared.">
+            {connectorInstances.length === 0 ? (
+              <EmptyState
+                title="No connectors yet"
+                description="Open the company portal catalogue. Credential submission stays disabled until secure storage exists."
+                action={
+                  <Link to={`/portal/${company.slug}/connectors`} className="button button-primary">
+                    Open portal connectors
+                  </Link>
+                }
+              />
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Status</th>
+                      <th>Auth</th>
+                      <th>Sync</th>
+                      <th>Last sync</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </SectionCard>
+                  </thead>
+                  <tbody>
+                    {connectorInstances.map((connector) => (
+                      <tr key={connector.id}>
+                        <td>
+                          <strong>{connector.name}</strong>
+                          <div className="muted small">{connector.connectorDefinitionId}</div>
+                        </td>
+                        <td>
+                          <StatusBadge status={connector.status} />
+                        </td>
+                        <td>
+                          <StatusBadge status={connector.authStatus ?? connector.healthStatus ?? "unknown"} />
+                        </td>
+                        <td>
+                          <StatusBadge status={connector.syncHealth ?? connector.lastSyncStatus ?? "unknown"} />
+                        </td>
+                        <td className="muted">
+                          {connector.lastSyncAt ? formatDate(connector.lastSyncAt) : "Unavailable"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+
+          {user?.isPlatformAdmin &&
+          connectorInstances.some((c) => c.connectorDefinitionId === "conn_microsoft_365") ? (
+            <Microsoft365AdminPanel companySlug={company.slug} />
+          ) : null}
+        </div>
       ) : null}
 
       {tab === "usage" ? (

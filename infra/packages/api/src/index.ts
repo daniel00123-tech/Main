@@ -1098,4 +1098,14 @@ app.post("/api/permissions/check", requireAuth, async (c) => {
   return c.json(decision);
 });
 
-export default app;
+const worker = {
+  fetch: app.fetch.bind(app),
+  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
+    const { runMicrosoftScheduledSync } = await import("./services/microsoft-scheduler");
+    await runMicrosoftScheduledSync(env);
+  },
+};
+
+export { app };
+
+export default worker;

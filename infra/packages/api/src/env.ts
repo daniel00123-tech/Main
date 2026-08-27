@@ -33,9 +33,12 @@ export interface Env {
   /** Feature flag — auto top-up execution (test mode only until operator approval) */
   AUTO_TOPUP_EXECUTION_ENABLED?: string;
   /** Microsoft 365 app registration — Worker secrets only */
+  MICROSOFT_TENANT_ID?: string;
   MICROSOFT_CLIENT_ID?: string;
   MICROSOFT_CLIENT_SECRET?: string;
   MICROSOFT_REDIRECT_URI?: string;
+  /** Caddington MCP admin token for knowledge upload bridge */
+  CADDINGTON_ADMIN_TOKEN?: string;
   /** Safe send UAT — requires XERO_SEND_UAT_MODE=true simultaneously */
   XERO_SEND_UAT_MODE?: string;
   XERO_SEND_TEST_RECIPIENT?: string;

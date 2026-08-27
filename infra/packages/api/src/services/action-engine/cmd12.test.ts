@@ -63,7 +63,17 @@ describe("CMD12 Microsoft foundation", () => {
   it("reports not configured without app credentials", () => {
     const status = microsoftOAuthStatus({} as never);
     expect(status.appConfigured).toBe(false);
-    expect(status.readyForConsent).toBe(false);
+    expect(status.authMode).toBe("not_configured");
+  });
+
+  it("reports app-only mode when tenant credentials present", () => {
+    const status = microsoftOAuthStatus({
+      MICROSOFT_TENANT_ID: "tenant-id",
+      MICROSOFT_CLIENT_ID: "client-id",
+      MICROSOFT_CLIENT_SECRET: "secret",
+    } as never);
+    expect(status.appConfigured).toBe(true);
+    expect(status.authMode).toBe("app_only");
   });
 
   it("uses least-privilege scopes per component", () => {

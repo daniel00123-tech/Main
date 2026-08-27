@@ -264,7 +264,13 @@ export default function PortalConnectorsPage() {
                     variant="secondary"
                     size="sm"
                     disabled={comingSoon}
-                    onClick={() => setSelectedSlug(definition.slug)}
+                    onClick={() => {
+                      if (definition.slug === "microsoft-365") {
+                        window.location.assign(`/portal/${company.slug}/microsoft-365`);
+                        return;
+                      }
+                      setSelectedSlug(definition.slug);
+                    }}
                   >
                     {comingSoon
                       ? definition.catalogueStatus === "deferred"

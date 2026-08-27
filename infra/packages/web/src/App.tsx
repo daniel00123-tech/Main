@@ -55,6 +55,7 @@ import PortalEntryRedirect from "./portal/PortalEntryRedirect";
 import PortalLoginPage from "./portal/PortalLoginPage";
 import PortalDashboardPage from "./portal/PortalDashboardPage";
 import PortalConnectorsPage from "./portal/PortalConnectorsPage";
+import PortalMicrosoft365Page from "./portal/PortalMicrosoft365Page";
 import PortalBillingPage from "./portal/PortalBillingPage";
 import PortalUsagePage from "./portal/PortalUsagePage";
 import PortalAiConnectionsPage from "./portal/PortalAiConnectionsPage";
@@ -303,6 +304,7 @@ export default function App() {
           <Route index element={<PortalDashboardPage />} />
           <Route path="dashboard" element={<PortalDashboardPage />} />
           <Route path="connectors" element={<PortalConnectorsPage />} />
+          <Route path="microsoft-365" element={<PortalMicrosoft365Page />} />
           <Route path="ai-connections" element={<PortalAiConnectionsPage />} />
           <Route path="actions" element={<PortalActionsPage />} />
           <Route path="users" element={<PortalUsersPage />} />

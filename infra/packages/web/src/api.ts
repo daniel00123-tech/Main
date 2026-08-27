@@ -487,6 +487,62 @@ export const api = {
       note: string;
       instanceId?: string;
     }>(`/api/companies/${slug}/xero/test-artefacts${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""}`),
+  getMicrosoftHealth: () =>
+    fetchJson<{
+      credentials: {
+        configured: boolean;
+        authMode: string;
+        tenantIdMasked: string | null;
+      };
+      graph: { ok: boolean; message: string } | null;
+      knowledgeBridgeConfigured: boolean;
+    }>("/api/connectors/microsoft/health"),
+  getMicrosoftDashboard: (slug: string) =>
+    fetchJson<{
+      status: Record<string, unknown>;
+      health: Awaited<ReturnType<typeof api.getMicrosoftHealth>>;
+      summary: {
+        onedrive: { total: number; included: number; indexed: number };
+        sharepoint: { total: number; included: number; indexed: number };
+        outlook: { total: number; status: string };
+      };
+      sources: Array<{
+        id: string;
+        sourceType: string;
+        displayName: string;
+        inclusionStatus: string;
+        syncStatus: string;
+        itemsIndexed: number;
+        itemsDiscovered: number;
+        ownerUpn: string | null;
+        ownerDisplayName: string | null;
+        pathOrUrl: string | null;
+        lastSyncAt: string | null;
+        lastError: string | null;
+      }>;
+    }>(`/api/companies/${slug}/microsoft/dashboard`),
+  discoverMicrosoftSources: (
+    slug: string,
+    body?: { includeAllOneDrives?: boolean; includeAllSharePoint?: boolean; instanceId?: string },
+  ) =>
+    fetchJson<{ ok: boolean; discovered: number; onedrive: number; sharepoint: number; instanceId: string }>(
+      `/api/companies/${slug}/microsoft/discover`,
+      { method: "POST", body: JSON.stringify(body ?? {}) },
+    ),
+  setMicrosoftSourceInclusion: (
+    slug: string,
+    sourceId: string,
+    inclusionStatus: "included" | "excluded" | "available",
+  ) =>
+    fetchJson<{ ok: boolean }>(`/api/companies/${slug}/microsoft/sources/${sourceId}/inclusion`, {
+      method: "PATCH",
+      body: JSON.stringify({ inclusionStatus }),
+    }),
+  syncMicrosoftSource: (slug: string, sourceId: string, body?: { useDelta?: boolean; maxFiles?: number }) =>
+    fetchJson<{ ok: boolean; discovered: number; indexed: number; skipped: number; failed: number; deleted: number }>(
+      `/api/companies/${slug}/microsoft/sources/${sourceId}/sync`,
+      { method: "POST", body: JSON.stringify(body ?? {}) },
+    ),
   selectXeroOrganisation: (slug: string, instanceId: string, tenantId: string) =>
     fetchJson<{ ok: boolean; organisationName: string }>(
       `/api/companies/${slug}/connectors/${instanceId}/xero/select-organisation`,

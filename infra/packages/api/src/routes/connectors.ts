@@ -708,6 +708,143 @@ connectors.get("/api/connectors/microsoft/status", requireAuth, async (c) => {
   return c.json(microsoftOAuthStatus(c.env));
 });
 
+connectors.get("/api/connectors/microsoft/health", requireAuth, async (c) => {
+  const { getMicrosoftConnectorHealth } = await import("../services/microsoft-sync");
+  return c.json(await getMicrosoftConnectorHealth(c.env));
+});
+
+connectors.get(
+  "/api/companies/:slug/microsoft/dashboard",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    const instanceId = c.req.query("instanceId") ?? null;
+    const { listMicrosoftSources } = await import("../services/microsoft-sync");
+    const { getMicrosoftConnectorHealth } = await import("../services/microsoft-sync");
+    const { microsoftOAuthStatus } = await import("../services/microsoft-oauth");
+    const sources = await listMicrosoftSources(c.env.DB, company.id, instanceId);
+    const health = await getMicrosoftConnectorHealth(c.env);
+    const onedrive = sources.filter((s) => s.sourceType === "onedrive");
+    const sharepoint = sources.filter((s) => s.sourceType === "sharepoint");
+    const outlook = sources.filter((s) => s.sourceType === "outlook_shared");
+    return c.json({
+      status: microsoftOAuthStatus(c.env),
+      health,
+      summary: {
+        onedrive: {
+          total: onedrive.length,
+          included: onedrive.filter((s) => s.inclusionStatus === "included").length,
+          indexed: onedrive.reduce((n, s) => n + s.itemsIndexed, 0),
+        },
+        sharepoint: {
+          total: sharepoint.length,
+          included: sharepoint.filter((s) => s.inclusionStatus === "included").length,
+          indexed: sharepoint.reduce((n, s) => n + s.itemsIndexed, 0),
+        },
+        outlook: { total: outlook.length, status: "requires_additional_permission" },
+      },
+      sources,
+    });
+  },
+);
+
+connectors.post(
+  "/api/companies/:slug/microsoft/discover",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    const body = (await c.req.json().catch(() => ({}))) as {
+      instanceId?: string;
+      includeAllOneDrives?: boolean;
+      includeAllSharePoint?: boolean;
+    };
+    const instances = await listConnectorInstances(c.env.DB, company.id);
+    let instance = instances.find((i) => i.id === body.instanceId);
+    if (!instance) {
+      instance = instances.find((i) => i.connectorDefinitionId === "conn_microsoft_365");
+    }
+    if (!instance) {
+      const { newId: genId, nowIso: now } = await import("../db/mappers");
+      const instanceId = genId("ci");
+      await c.env.DB.prepare(
+        `INSERT INTO connector_instances (id, company_id, connector_definition_id, name, status, auth_status, created_at, updated_at)
+         VALUES (?, ?, 'conn_microsoft_365', 'Microsoft 365', 'configured', 'connected', ?, ?)`,
+      ).bind(instanceId, company.id, now(), now()).run();
+      instance = (await getConnectorInstance(c.env.DB, instanceId))!;
+    }
+    const { discoverMicrosoftSources } = await import("../services/microsoft-sync");
+    const result = await discoverMicrosoftSources(c.env, {
+      companyId: company.id,
+      connectorInstanceId: instance.id,
+      actor: c.get("user").email,
+      includeAllOneDrives: body.includeAllOneDrives ?? false,
+      includeAllSharePoint: body.includeAllSharePoint ?? false,
+    });
+    return c.json({ ok: true, instanceId: instance.id, ...result });
+  },
+);
+
+connectors.post(
+  "/api/companies/:slug/microsoft/sources/:sourceId/sync",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    const body = (await c.req.json().catch(() => ({}))) as {
+      instanceId?: string;
+      useDelta?: boolean;
+      maxFiles?: number;
+    };
+    const source = await c.env.DB.prepare(
+      `SELECT connector_instance_id FROM microsoft_connector_sources WHERE id = ? AND company_id = ? LIMIT 1`,
+    ).bind(c.req.param("sourceId"), company.id).first<{ connector_instance_id: string }>();
+    if (!source) return c.json({ error: "Source not found" }, 404);
+
+    const { syncMicrosoftSource } = await import("../services/microsoft-sync");
+    const result = await syncMicrosoftSource(c.env, {
+      companyId: company.id,
+      connectorInstanceId: source.connector_instance_id,
+      sourceId: c.req.param("sourceId"),
+      actor: c.get("user").email,
+      useDelta: body.useDelta ?? false,
+      maxFiles: body.maxFiles,
+    });
+    return c.json({ ok: true, ...result });
+  },
+);
+
+connectors.patch(
+  "/api/companies/:slug/microsoft/sources/:sourceId/inclusion",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    const body = await c.req.json<{ inclusionStatus: "included" | "excluded" | "available" }>();
+    const { setMicrosoftSourceInclusion } = await import("../services/microsoft-sync");
+    await setMicrosoftSourceInclusion(c.env.DB, {
+      companyId: company.id,
+      sourceId: c.req.param("sourceId"),
+      inclusionStatus: body.inclusionStatus,
+      actor: c.get("user").email,
+    });
+    return c.json({ ok: true });
+  },
+);
+
 connectors.post(
   "/api/companies/:slug/connectors/microsoft/oauth/start",
   requireAuth,

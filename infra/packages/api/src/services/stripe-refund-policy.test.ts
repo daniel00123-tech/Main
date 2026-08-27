@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import app from "../index";
+import { app } from "../index";
 import phase3Source from "../routes/phase3.ts?raw";
 
 const apiDir = join(dirname(fileURLToPath(import.meta.url)), "../..");

@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { XERO_READ_MCP_TOOLS } from "@infra/shared";
-import app from "../index";
+import { app } from "../index";
 import { hashPassword, generateSalt } from "../auth/password";
 import { resolveMcpAuthHeader } from "../services/mcp-client";
 import { isToolAllowed, ensureDefaultToolAllowlist } from "../services/control-plane";

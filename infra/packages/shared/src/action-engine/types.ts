@@ -32,6 +32,7 @@ export type ApprovalStatus = "not_required" | "pending" | "approved" | "denied";
 
 export type ActionTargetValidationResult =
   | "valid"
+  | "invalid"
   | "not_found"
   | "wrong_company"
   | "wrong_type"
@@ -39,7 +40,8 @@ export type ActionTargetValidationResult =
   | "already_credited"
   | "zero_outstanding"
   | "currency_mismatch"
-  | "ambiguous";
+  | "ambiguous"
+  | "reference_required";
 
 export type ActionTarget = {
   targetId: string;
@@ -65,7 +67,13 @@ export type PermissionDecision = {
     | "connector_disconnected"
     | "company_suspended"
     | "scope_missing"
-    | "identity_disabled";
+    | "identity_disabled"
+    | "platform_restricted"
+    | "tenant_disabled"
+    | "production_gate_closed"
+    | "role_permission_denied"
+    | "self_approval_denied"
+    | "denied";
   requiredPermission: string;
   riskClass: RiskClassification;
   writesSupported: boolean;

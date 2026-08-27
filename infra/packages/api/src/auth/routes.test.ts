@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import app from "../index";
+import { app } from "../index";
 import { hashPassword, generateSalt } from "../auth/password";
 
 type Row = Record<string, unknown>;

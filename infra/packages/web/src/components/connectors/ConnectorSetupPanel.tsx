@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import type { ConnectorDefinition, ConnectorInstance } from "@infra/shared";
 import { connectorFieldLabel, taxonomyForConnector, taxonomyLabel, isMicrosoftConnectorDefinition } from "@infra/shared";
-import { KeyValue, Notice, StatusBadge } from "../../components";
+import { KeyValue, Notice } from "../../components";
 import { api } from "../../api";
 
 function schemaProperties(schema: Record<string, unknown>): Array<{
@@ -94,8 +95,6 @@ export function ConnectorSetupPanel({
     connector.slug === "microsoft-365" || isMicrosoftConnectorDefinition(connector.id);
   const microsoftView = storage?.microsoft;
   const microsoftAppConfigured = microsoftView?.appConfigured ?? false;
-  const microsoftReady = Boolean(microsoftView?.readyForConsent);
-  const microsoftConnected = instance?.authStatus === "connected";
   const xeroAppConfigured = storage?.xero?.appConfigured ?? false;
   const xeroReady = Boolean(storage?.xero?.readyToConnect);
   const xeroConnected = instance?.authStatus === "connected";
@@ -212,30 +211,6 @@ export function ConnectorSetupPanel({
     }
   }
 
-  async function onConnectMicrosoft() {
-    setBusy(true);
-    setError(null);
-    try {
-      const component =
-        connector.slug === "onedrive"
-          ? "onedrive"
-          : connector.slug === "sharepoint"
-            ? "sharepoint"
-            : connector.slug === "outlook-shared-mailbox"
-              ? "outlook_shared"
-              : "microsoft_365";
-      const started = await api.startMicrosoftOAuth(companySlug, {
-        definitionId: connector.parentConnectorId ?? connector.id,
-        instanceId: instance?.id,
-        component,
-      });
-      window.location.assign(started.authorizationUrl);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to start Microsoft connection");
-      setBusy(false);
-    }
-  }
-
   async function onSelectOrg(tenantId: string) {
     if (!instance?.id) return;
     setBusy(true);
@@ -302,40 +277,20 @@ export function ConnectorSetupPanel({
 
       {microsoft ? (
         <div className="stack microsoft-setup-panel" style={{ gap: 12 }}>
-          {!microsoftAppConfigured && !microsoftConnected ? (
+          {!microsoftAppConfigured ? (
             <Notice tone="warning">
-              Microsoft 365 app registration is not configured. Daniel must supply MICROSOFT_CLIENT_ID
-              and MICROSOFT_CLIENT_SECRET before OAuth can begin.
+              Microsoft 365 app credentials are not configured on INFRA. OneDrive and SharePoint use
+              app-only Graph authentication once MICROSOFT_TENANT_ID, MICROSOFT_CLIENT_ID, and
+              MICROSOFT_CLIENT_SECRET are set.
             </Notice>
-          ) : null}
-          <KeyValue
-            label="Microsoft 365"
-            value={microsoftConnected ? "Connected" : "Requires authentication"}
-          />
-          {microsoftView?.components?.length ? (
-            <div className="microsoft-component-list">
-              {microsoftView.components.map((item) => (
-                <div key={item.id} className="microsoft-component-row">
-                  <span>{item.id.replace(/_/g, " ")}</span>
-                  <StatusBadge status={item.status} />
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            <button
-              type="button"
-              className="button button-primary"
-              disabled={!microsoftReady || busy}
-              onClick={() => void onConnectMicrosoft()}
-            >
-              {microsoftConnected ? "Reconnect Microsoft 365" : "Connect Microsoft 365"}
-            </button>
-          </div>
-          <Notice tone="info">
-            OneDrive, SharePoint, and shared mailboxes are configured as explicit sources after
-            authentication. Personal inboxes are not indexed.
-          </Notice>
+          ) : (
+            <Notice tone="success">
+              Microsoft 365 app-only authentication is configured. Manage sources from the Microsoft 365 dashboard.
+            </Notice>
+          )}
+          <Link to={`/portal/${companySlug}/microsoft-365`} className="button button-primary">
+            Open Microsoft 365 dashboard
+          </Link>
         </div>
       ) : null}
 

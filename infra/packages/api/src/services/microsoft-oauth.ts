@@ -1,43 +1,65 @@
 /**
- * Microsoft 365 OAuth foundation — tenant-scoped, PKCE, state validation.
- * Interactive admin consent required before live token exchange.
+ * Microsoft 365 connector status — app-only (primary) + delegated OAuth (future Outlook).
  */
 
 import type { Env } from "../env";
 import { newId, nowIso } from "../db/mappers";
 import {
   createOauthAuthorizationState,
-  pkceS256Challenge,
 } from "./connector-oauth";
 import { MICROSOFT_GRAPH_SCOPES } from "@infra/shared";
+import {
+  microsoftAppConfigured,
+  microsoftCredentialStatus,
+  type MicrosoftAuthMode,
+} from "./microsoft-auth";
 
 const MICROSOFT_AUTH_BASE = "https://login.microsoftonline.com";
 
 export type MicrosoftOAuthComponent = "onedrive" | "sharepoint" | "outlook_shared" | "microsoft_365";
 
-export function microsoftAppConfigured(env: Env): boolean {
-  const clientId = env.MICROSOFT_CLIENT_ID;
-  return typeof clientId === "string" && Boolean(clientId.trim());
-}
-
 export function microsoftOAuthStatus(env: Env): {
   appConfigured: boolean;
   readyForConsent: boolean;
+  authMode: MicrosoftAuthMode;
+  tenantIdMasked: string | null;
   authorizationBaseUrl: string | null;
   components: Array<{ id: MicrosoftOAuthComponent; scopes: string[]; status: string }>;
+  outlookStatus: string;
 } {
-  const configured = microsoftAppConfigured(env);
+  const creds = microsoftCredentialStatus(env);
+  const configured = creds.configured;
+
   return {
     appConfigured: configured,
-    readyForConsent: configured && Boolean(env.INFRA_CREDENTIAL_WRAPPING_KEY),
-    authorizationBaseUrl: configured ? `${MICROSOFT_AUTH_BASE}/common/oauth2/v2.0/authorize` : null,
+    readyForConsent: configured,
+    authMode: creds.authMode,
+    tenantIdMasked: creds.tenantIdMasked,
+    authorizationBaseUrl: configured
+      ? `${MICROSOFT_AUTH_BASE}/${creds.tenantIdMasked ? "common" : "common"}/oauth2/v2.0/authorize`
+      : null,
     components: [
-      { id: "onedrive", scopes: [...MICROSOFT_GRAPH_SCOPES.onedrive], status: configured ? "requires_authentication" : "not_configured" },
-      { id: "sharepoint", scopes: [...MICROSOFT_GRAPH_SCOPES.sharepoint], status: configured ? "requires_authentication" : "not_configured" },
-      { id: "outlook_shared", scopes: [...MICROSOFT_GRAPH_SCOPES.outlook_shared], status: configured ? "requires_authentication" : "not_configured" },
+      {
+        id: "onedrive",
+        scopes: [...MICROSOFT_GRAPH_SCOPES.onedrive],
+        status: configured ? "connected" : "requires_authentication",
+      },
+      {
+        id: "sharepoint",
+        scopes: [...MICROSOFT_GRAPH_SCOPES.sharepoint],
+        status: configured ? "connected" : "requires_authentication",
+      },
+      {
+        id: "outlook_shared",
+        scopes: [...MICROSOFT_GRAPH_SCOPES.outlook_shared],
+        status: "requires_additional_permission",
+      },
     ],
+    outlookStatus: "requires_mail_read_application_permission",
   };
 }
+
+export { microsoftAppConfigured, microsoftCredentialStatus };
 
 export function scopesForMicrosoftComponent(component: MicrosoftOAuthComponent): string[] {
   switch (component) {
@@ -58,6 +80,7 @@ export function scopesForMicrosoftComponent(component: MicrosoftOAuthComponent):
   }
 }
 
+/** Delegated OAuth — retained for future interactive Outlook consent. OneDrive/SharePoint use app-only. */
 export async function startMicrosoftOAuth(
   db: D1Database,
   env: Env,
@@ -77,11 +100,22 @@ export async function startMicrosoftOAuth(
     return {
       ok: false,
       code: "MICROSOFT_APP_NOT_CONFIGURED",
-      message: "Microsoft 365 app registration is not configured. Daniel must supply tenant app credentials.",
+      message:
+        "Microsoft 365 credentials are not configured. Set MICROSOFT_TENANT_ID, MICROSOFT_CLIENT_ID, and MICROSOFT_CLIENT_SECRET.",
+    };
+  }
+
+  if (input.component === "outlook_shared" || input.component === "microsoft_365") {
+    return {
+      ok: false,
+      code: "MICROSOFT_OUTLOOK_NOT_READY",
+      message:
+        "Outlook shared mailboxes require additional Mail.Read application permission. OneDrive and SharePoint use app-only authentication automatically.",
     };
   }
 
   const clientId = String(env.MICROSOFT_CLIENT_ID);
+  const tenantId = String(env.MICROSOFT_TENANT_ID ?? "common");
   const redirectUri =
     typeof env.MICROSOFT_REDIRECT_URI === "string" && env.MICROSOFT_REDIRECT_URI.trim()
       ? env.MICROSOFT_REDIRECT_URI.trim()
@@ -117,20 +151,19 @@ export async function startMicrosoftOAuth(
 
   return {
     ok: true,
-    authorizationUrl: `${MICROSOFT_AUTH_BASE}/common/oauth2/v2.0/authorize?${params.toString()}`,
+    authorizationUrl: `${MICROSOFT_AUTH_BASE}/${encodeURIComponent(tenantId)}/oauth2/v2.0/authorize?${params.toString()}`,
     state: oauthState.state,
   };
 }
 
-/** Placeholder for token exchange — requires Daniel's app secret and live consent. */
 export async function exchangeMicrosoftAuthorizationCode(
   _env: Env,
   _input: { code: string; redirectUri: string; codeVerifier: string },
 ): Promise<{ ok: false; code: string; message: string }> {
   return {
     ok: false,
-    code: "MICROSOFT_CONSENT_REQUIRED",
-    message: "Microsoft token exchange requires operator-supplied app credentials and completed admin consent.",
+    code: "MICROSOFT_DELEGATED_NOT_REQUIRED",
+    message: "OneDrive and SharePoint use app-only authentication. Delegated OAuth is reserved for future Outlook flows.",
   };
 }
 
@@ -139,25 +172,8 @@ export async function listMicrosoftConnectorSources(
   companyId: string,
   connectorInstanceId?: string | null,
 ) {
-  const query = connectorInstanceId
-    ? `SELECT * FROM microsoft_connector_sources WHERE company_id = ? AND connector_instance_id = ? ORDER BY display_name`
-    : `SELECT * FROM microsoft_connector_sources WHERE company_id = ? ORDER BY source_type, display_name`;
-  const binds = connectorInstanceId ? [companyId, connectorInstanceId] : [companyId];
-  const result = await db.prepare(query).bind(...binds).all();
-  return (result.results ?? []).map((row) => ({
-    id: String(row.id),
-    companyId: String(row.company_id),
-    connectorInstanceId: String(row.connector_instance_id),
-    sourceType: String(row.source_type),
-    externalId: String(row.external_id),
-    displayName: String(row.display_name),
-    pathOrUrl: row.path_or_url ? String(row.path_or_url) : null,
-    mailboxAddress: row.mailbox_address ? String(row.mailbox_address) : null,
-    inclusionStatus: String(row.inclusion_status),
-    syncStatus: String(row.sync_status),
-    lastSyncAt: row.last_sync_at ? String(row.last_sync_at) : null,
-    lastError: row.last_error ? String(row.last_error) : null,
-  }));
+  const { listMicrosoftSources } = await import("./microsoft-sync");
+  return listMicrosoftSources(db, companyId, connectorInstanceId);
 }
 
 export async function upsertMicrosoftConnectorSource(

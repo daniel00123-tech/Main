@@ -58,7 +58,7 @@ export function resolveMcpAuthHeader(
   };
 }
 
-function resolveMcpFetcher(
+export function resolveMcpFetcher(
   env: Env,
   serviceBindingRef?: string | null,
 ): Fetcher | null {

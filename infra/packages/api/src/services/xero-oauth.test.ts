@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { Env } from "../env";
-import app from "../index";
+import { app } from "../index";
 import {
   disconnectXero,
   getValidXeroAccessToken,
