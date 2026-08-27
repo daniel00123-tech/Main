@@ -11,10 +11,12 @@ import {
   createContactWithFetch,
   updateDraftInvoiceWithFetch,
   approveCreditNoteWithFetch,
-  voidInvoiceWithFetch,
-  voidCreditNoteWithFetch,
   allocateCreditNoteWithFetch,
   allocatePaymentWithFetch,
+  voidInvoiceWithFetch,
+  voidCreditNoteWithFetch,
+  deleteDraftInvoiceWithFetch,
+  deleteDraftCreditNoteWithFetch,
 } from "@infra/xero-core";
 
 export type CaddingtonMcpEnv = {
@@ -782,7 +784,10 @@ export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcp
       inputSchema: { invoiceId: zf.string().min(1) },
     },
     async (args) => runWriteTool(args, (config, xeroArgs) =>
-      voidInvoiceWithFetch(config, { invoiceId: String(xeroArgs.invoiceId) })),
+      voidInvoiceWithFetch(config, {
+        invoiceId: String(xeroArgs.invoiceId),
+        type: (String(xeroArgs.type ?? "ACCREC") as "ACCREC" | "ACCPAY"),
+      })),
   );
 
   server.registerTool(
@@ -829,5 +834,31 @@ export function registerXeroWriteTools(server: McpToolServer, env: CaddingtonMcp
         invoiceId: String(xeroArgs.invoiceId),
         amount: Number(xeroArgs.amount),
       })),
+  );
+
+  server.registerTool(
+    "xero_delete_draft_invoice",
+    {
+      description: "Delete a DRAFT invoice in Xero. Action Engine cleanup only.",
+      inputSchema: {
+        invoiceId: zf.string().min(1),
+        type: zf.string().optional(),
+      },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      deleteDraftInvoiceWithFetch(config, {
+        invoiceId: String(xeroArgs.invoiceId),
+        type: (String(xeroArgs.type ?? "ACCREC") as "ACCREC" | "ACCPAY"),
+      })),
+  );
+
+  server.registerTool(
+    "xero_delete_draft_credit_note",
+    {
+      description: "Delete a DRAFT credit note in Xero. Action Engine cleanup only.",
+      inputSchema: { creditNoteId: zf.string().min(1) },
+    },
+    async (args) => runWriteTool(args, (config, xeroArgs) =>
+      deleteDraftCreditNoteWithFetch(config, { creditNoteId: String(xeroArgs.creditNoteId) })),
   );
 }

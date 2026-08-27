@@ -11,6 +11,7 @@ export * from "./connectors/xero-spec";
 export * from "./connectors/xero-scopes";
 export * from "./connectors/xero-actions";
 export * from "./connectors/execution-plan";
+export * from "./connectors/microsoft";
 export * from "./action-engine";
 export * from "./permissions/role-presets";
 export * from "./permissions/xero-permissions";

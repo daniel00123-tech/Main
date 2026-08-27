@@ -205,10 +205,23 @@ export function PermissionsEditor({
           {groups.map((group) => (
             <div key={group.id} className="permission-group">
               <h4 className="permission-group-title">{group.label}</h4>
-              {group.items.map((item) => (
+              {group.items.map((item) => {
+                const presetAllowed = rolePreset?.allowedActions.includes(item.action as never) ?? item.allowed;
+                const current = draft.get(item.action) ?? item.allowed;
+                const isOverride = current !== presetAllowed;
+                return (
                 <label key={item.action} className="permission-row">
                   <span>
                     {item.label}
+                    {isOverride ? (
+                      <span className="muted small" style={{ display: "block" }}>
+                        Company override ({current ? "allowed" : "denied"}) — preset: {presetAllowed ? "allowed" : "denied"}
+                      </span>
+                    ) : (
+                      <span className="muted small" style={{ display: "block" }}>
+                        Inherited from role preset
+                      </span>
+                    )}
                     {item.platformBlocked ? (
                       <span className="muted small" style={{ display: "block" }}>
                         Platform restricted — cannot be enabled
@@ -217,7 +230,7 @@ export function PermissionsEditor({
                   </span>
                   <input
                     type="checkbox"
-                    checked={draft.get(item.action) ?? item.allowed}
+                    checked={current}
                     disabled={item.platformBlocked}
                     onChange={(e) => {
                       if (item.platformBlocked) return;
@@ -229,7 +242,7 @@ export function PermissionsEditor({
                     }}
                   />
                 </label>
-              ))}
+              );})}
             </div>
           ))}
           <details className="advanced-block">

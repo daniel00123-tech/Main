@@ -24,6 +24,7 @@ export const ACTION_CONTROL_TOOLS = [
   "plan_xero_approve_credit_note",
   "plan_xero_credit_note_allocation",
   "plan_xero_void_document",
+  "plan_xero_delete_test_draft",
   "list_xero_test_artefacts",
 ] as const;
 
@@ -55,6 +56,7 @@ export const ACTION_CONTROL_TOOL_REQUIRED_SCOPES: Record<ActionControlTool, stri
   plan_xero_approve_credit_note: "xero.action.plan",
   plan_xero_credit_note_allocation: "xero.action.plan",
   plan_xero_void_document: "xero.action.plan",
+  plan_xero_delete_test_draft: "xero.action.plan",
   list_xero_test_artefacts: "xero.action.read",
 };
 
@@ -413,6 +415,20 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
         reason: { type: "string" },
         idempotencyKey: { type: "string" },
       },
+      additionalProperties: false,
+    },
+  },
+  plan_xero_delete_test_draft: {
+    description: "Plan deletion of a DRAFT INFRA test artefact (prefix-enforced). Operator confirmation required.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        xeroId: { type: "string", minLength: 1 },
+        reference: { type: "string", minLength: 1 },
+        documentType: { type: "string", enum: ["ACCREC", "ACCPAY", "CREDIT_NOTE"] },
+        idempotencyKey: { type: "string" },
+      },
+      required: ["xeroId", "reference"],
       additionalProperties: false,
     },
   },

@@ -656,6 +656,19 @@ export async function executeActionControlTool(
     return persistPlan("xero.credit_notes.approve", "financial_action", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
   }
 
+  if (input.toolName === "plan_xero_credit_note_allocation") {
+    const planned = await planXeroCreditNoteAllocation({
+      env,
+      companyId: input.companyId,
+      instanceId: instance.id,
+      actor,
+      creditNoteId: String(input.arguments.creditNoteId ?? ""),
+      invoiceId: String(input.arguments.invoiceId ?? ""),
+      amount: Number(input.arguments.amount ?? 0),
+    });
+    return persistPlan("xero.credit_notes.allocate", "financial_action", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
+  }
+
   if (input.toolName === "plan_xero_void_document") {
     const planned = await planXeroVoidDocument({
       env,
@@ -671,17 +684,18 @@ export async function executeActionControlTool(
     return persistPlan(voidAction, "delete", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
   }
 
-  if (input.toolName === "plan_xero_credit_note_allocation") {
-    const planned = await planXeroCreditNoteAllocation({
+  if (input.toolName === "plan_xero_delete_test_draft") {
+    const { planXeroDeleteTestDraft } = await import("./xero-cleanup");
+    const planned = await planXeroDeleteTestDraft({
       env,
       companyId: input.companyId,
       instanceId: instance.id,
       actor,
-      creditNoteId: String(input.arguments.creditNoteId ?? ""),
-      invoiceId: String(input.arguments.invoiceId ?? ""),
-      amount: Number(input.arguments.amount ?? 0),
+      xeroId: String(input.arguments.xeroId ?? input.arguments.invoiceId ?? ""),
+      reference: String(input.arguments.reference ?? ""),
+      documentType: (input.arguments.documentType as "ACCREC" | "ACCPAY" | "CREDIT_NOTE") ?? "ACCREC",
     });
-    return persistPlan("xero.credit_notes.allocate", "financial_action", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
+    return persistPlan("xero.test_artefact.delete_draft", "delete", planned, [...XERO_SCOPES_DRAFT_INVOICE]);
   }
 
   return { status: 400, body: { error: "Unknown action control tool", code: "UNKNOWN_TOOL" } };

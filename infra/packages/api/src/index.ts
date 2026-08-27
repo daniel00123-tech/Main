@@ -94,6 +94,8 @@ app.use("*", async (c, next) => {
     c.env.INITIAL_PLATFORM_ADMIN_EMAIL,
     c.env.INITIAL_PLATFORM_ADMIN_PASSWORD,
   );
+  const { ensureDefaultPricing } = await import("./services/pricing");
+  await ensureDefaultPricing(c.env.DB);
   await next();
 });
 

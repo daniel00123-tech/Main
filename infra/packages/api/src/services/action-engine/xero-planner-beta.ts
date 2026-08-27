@@ -256,6 +256,8 @@ export async function planXeroSendInvoice(input: {
   }
 
   const review = invoiceReview(invoice);
+  const { resolveSendRecipient } = await import("./send-uat");
+  const recipient = resolveSendRecipient(input.env, email);
   const target: ActionTarget = {
     targetId: id,
     targetType: "invoice",
@@ -264,7 +266,10 @@ export async function planXeroSendInvoice(input: {
     proposedState: {
       action: "send_sales_invoice",
       invoiceId: id,
-      destinationEmail: email,
+      destinationEmail: recipient.effectiveRecipient,
+      intendedRecipient: recipient.intendedRecipient,
+      testOverrideActive: recipient.testOverrideActive,
+      testOverrideRecipient: recipient.testOverrideRecipient,
       stateFingerprint: stateFingerprint(invoice),
     },
     amount: Number(invoice.Total ?? 0),
@@ -272,9 +277,13 @@ export async function planXeroSendInvoice(input: {
     validation: "valid",
   };
 
+  const sendSummary = recipient.testOverrideActive
+    ? `Send invoice ${ref} for ${formatMoney(Number(invoice.Total ?? 0))} — UAT override to ${recipient.effectiveRecipient} (intended: ${email}).`
+    : `Send invoice ${ref} for ${formatMoney(Number(invoice.Total ?? 0))} to ${email}.`;
+
   return {
     targets: [target],
-    summary: `Send invoice ${ref} for ${formatMoney(Number(invoice.Total ?? 0))} to ${email}.`,
+    summary: sendSummary,
     financialImpact: {
       currencyCode: invoice.CurrencyCode ?? null,
       totalAmount: Number(invoice.Total ?? 0),

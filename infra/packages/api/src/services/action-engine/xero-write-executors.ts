@@ -163,6 +163,8 @@ export async function executeXeroActionPlan(
     case "xero.bill.void":
     case "xero.credit_note.void":
       return executeVoidDocument(env, input);
+    case "xero.test_artefact.delete_draft":
+      return executeDeleteTestDraft(env, input);
     default:
       return {
         ok: false,
@@ -554,6 +556,45 @@ async function executePaymentAllocation(
     humanReference: writeResult.humanReference,
     results: { paymentId, invoiceId, amount, ...writeResult.result },
     auditEvent: "xero.financial_action_executed",
+  });
+}
+
+async function executeDeleteTestDraft(
+  env: Env,
+  input: { plan: ActionPlanRecord; actor: string; executionId: string },
+): Promise<ExecutionOutcome> {
+  const proposed = input.plan.targets[0]?.proposedState ?? {};
+  const reference = String(proposed.reference ?? input.plan.targets[0]?.humanRef ?? "");
+  const { isAllowedInfraTestPrefix } = await import("./xero-test-artefacts");
+  if (!isAllowedInfraTestPrefix(reference)) {
+    return finalizeFailure(env, {
+      ...input,
+      code: "CLEANUP_PREFIX_DENIED",
+      message: "Only INFRA test prefixes may be deleted through this action.",
+    });
+  }
+  const docType = String(proposed.documentType ?? "ACCREC");
+  const xeroId = String(proposed.xeroId ?? input.plan.targets[0]?.targetId ?? "");
+  const toolName =
+    docType === "CREDIT_NOTE" ? "xero_delete_draft_credit_note" : "xero_delete_draft_invoice";
+  const writeResult = await executeXeroMcpTool(env, {
+    ...input,
+    toolName,
+    arguments: {
+      invoiceId: xeroId,
+      creditNoteId: xeroId,
+      type: docType === "ACCPAY" ? "ACCPAY" : "ACCREC",
+    },
+  });
+  if (!writeResult.ok) {
+    return finalizeFailure(env, { ...input, code: writeResult.code, message: writeResult.message });
+  }
+  return finalizeSuccess(env, {
+    ...input,
+    resourceId: xeroId,
+    humanReference: reference,
+    results: { status: "DELETED", reference, ...writeResult.result },
+    auditEvent: "xero.test_artefact_deleted",
   });
 }
 

@@ -404,6 +404,30 @@ export async function createContactWithFetch(
   });
 }
 
+export async function deleteDraftInvoiceWithFetch(
+  config: XeroFetchConfig,
+  input: { invoiceId: string; type: "ACCREC" | "ACCPAY" },
+) {
+  return withXeroRetry(async () => {
+    const body = await xeroPostJson<{ Invoices?: InvoiceRow[] }>(config, "/Invoices", {
+      Invoices: [{ InvoiceID: input.invoiceId, Type: input.type, Status: "DELETED" }],
+    });
+    return { invoice: invoiceFromBody(body) };
+  });
+}
+
+export async function deleteDraftCreditNoteWithFetch(
+  config: XeroFetchConfig,
+  input: { creditNoteId: string },
+) {
+  return withXeroRetry(async () => {
+    const body = await xeroPostJson<{ CreditNotes?: InvoiceRow[] }>(config, "/CreditNotes", {
+      CreditNotes: [{ CreditNoteID: input.creditNoteId, Status: "DELETED" }],
+    });
+    return { creditNote: creditNoteFromBody(body) };
+  });
+}
+
 export async function voidInvoiceWithFetch(
   config: XeroFetchConfig,
   input: { invoiceId: string; type: "ACCREC" | "ACCPAY" },

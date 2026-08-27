@@ -48,7 +48,10 @@ export async function settleActionExecutionUsage(
     metadata?: Record<string, unknown>;
   },
 ): Promise<ActionSettlementResult> {
-  const requestId = `aex_${input.executionId}`;
+  // executionId is already aex_{uuid} from execution-store — do not double-prefix
+  const requestId = input.executionId.startsWith("aex_")
+    ? input.executionId
+    : `aex_${input.executionId}`;
   const balanceBefore = await getWalletBalance(env.DB, input.companyId);
 
   const pricing = await resolvePricingRule(env.DB, input.companyId, input.action);
@@ -97,7 +100,8 @@ export async function settleActionExecutionUsage(
       : usage.settlementStatus === "zero_charge"
         ? "zero_charge"
         : "unsettled";
-  let ledgerEntryId: string | null = usage.ledgerEntryId ?? null;
+  let ledgerEntryId: string | null =
+    "ledgerEntryId" in usage && usage.ledgerEntryId ? String(usage.ledgerEntryId) : null;
   let balanceAfterCents: number | null = null;
 
   if (usage.alreadyExists && usage.ledgerEntryId) {

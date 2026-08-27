@@ -459,6 +459,34 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+  startMicrosoftOAuth: (
+    slug: string,
+    body: {
+      definitionId?: string;
+      instanceId?: string;
+      component?: string;
+    },
+  ) =>
+    fetchJson<{ authorizationUrl: string; state: string }>(
+      `/api/companies/${slug}/connectors/microsoft/oauth/start`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  listXeroTestArtefacts: (slug: string, prefix?: string) =>
+    fetchJson<{
+      reportOnly: boolean;
+      prefix: string;
+      artefacts: Array<{
+        type: string;
+        invoiceNumber: string | null;
+        reference: string | null;
+        xeroId: string;
+        amount: number | null;
+        status: string | null;
+        recommendedCleanup?: string;
+      }>;
+      note: string;
+      instanceId?: string;
+    }>(`/api/companies/${slug}/xero/test-artefacts${prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""}`),
   selectXeroOrganisation: (slug: string, instanceId: string, tenantId: string) =>
     fetchJson<{ ok: boolean; organisationName: string }>(
       `/api/companies/${slug}/connectors/${instanceId}/xero/select-organisation`,

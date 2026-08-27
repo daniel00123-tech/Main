@@ -15,6 +15,28 @@ const portalBillingSource = readFileSync(
   "utf8",
 );
 
+function minimalMockDb(): D1Database {
+  return {
+    prepare() {
+      return {
+        bind() {
+          return {
+            async first() {
+              return null;
+            },
+            async all() {
+              return { results: [] };
+            },
+            async run() {
+              return { success: true };
+            },
+          };
+        },
+      };
+    },
+  } as unknown as D1Database;
+}
+
 const CUSTOMER_REFUND_PATHS = [
   "/api/companies/demo/wallet/refund",
   "/api/companies/demo/wallet/refunds",
@@ -54,7 +76,7 @@ describe("admin-only refund policy", () => {
           body: JSON.stringify({ amountCents: 1000 }),
         },
         {
-          DB: {} as D1Database,
+          DB: minimalMockDb(),
           ENVIRONMENT: "development",
           SESSION_SECRET: "test-session-secret-at-least-32-characters",
           ALLOWED_ORIGINS: "http://localhost:5173",

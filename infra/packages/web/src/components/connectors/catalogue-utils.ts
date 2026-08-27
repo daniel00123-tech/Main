@@ -45,6 +45,8 @@ export const STATUS_LABELS: Record<ConnectorCatalogueStatus, string> = {
   active: "Active",
   available: "Available",
   coming_soon: "Coming Soon",
+  planned: "Coming Later",
+  deferred: "Deferred",
   draft: "Draft",
 };
 

@@ -316,9 +316,11 @@ export interface ConnectorDefinition {
   authenticationMethod?: ConnectorAuthMethod;
   readWrite?: "read" | "read_write";
   setupInstructions?: string;
-  availabilityLabel?: "available_now" | "requires_setup" | "coming_soon";
+  availabilityLabel?: "available_now" | "requires_setup" | "requires_authentication" | "coming_soon" | "coming_later" | "deferred";
   requiresCompanyMcp?: boolean;
   brandKey?: string;
+  /** When set, this connector is a component of a parent family (e.g. Microsoft 365). */
+  parentConnectorId?: string;
   minMcpVersion?: string | null;
   minCoreVersion?: string | null;
   documentationUrl?: string | null;
@@ -512,6 +514,8 @@ export type ConnectorCatalogueStatus =
   | "active"
   | "available"
   | "coming_soon"
+  | "planned"
+  | "deferred"
   | "draft";
 
 export type ConnectorCapability =

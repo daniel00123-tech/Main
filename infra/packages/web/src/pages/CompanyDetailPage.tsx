@@ -25,6 +25,8 @@ import {
   toast,
 } from "../components";
 import { OnboardingChecklist } from "../components/OnboardingChecklist";
+import { PermissionsEditor } from "../components/PermissionsEditor";
+import type { ActionPlanRecord } from "@infra/shared";
 import {
   formatNumber,
   formatRelativeTime,
@@ -34,6 +36,8 @@ import {
 type TabId =
   | "overview"
   | "users"
+  | "permissions"
+  | "approvals"
   | "commercial"
   | "mcp"
   | "connectors"
@@ -69,6 +73,11 @@ export default function CompanyDetailPage() {
   >["health"] | null>(null);
   const [autoTopUpDiag, setAutoTopUpDiag] = useState<Record<string, unknown> | null>(null);
   const [tabDataLoading, setTabDataLoading] = useState(false);
+  const [rolePresets, setRolePresets] = useState<Awaited<ReturnType<typeof api.getRolePresets>>>([]);
+  const [actionPlans, setActionPlans] = useState<ActionPlanRecord[]>([]);
+  const [testArtefacts, setTestArtefacts] = useState<
+    Awaited<ReturnType<typeof api.listXeroTestArtefacts>> | null
+  >(null);
 
   async function load() {
     setLoading(true);
@@ -88,7 +97,7 @@ export default function CompanyDetailPage() {
 
   useEffect(() => {
     if (!overview) return;
-    if (tab !== "users" && tab !== "commercial" && tab !== "overview") return;
+    if (tab !== "users" && tab !== "commercial" && tab !== "overview" && tab !== "permissions" && tab !== "approvals" && tab !== "settings") return;
     setTabDataLoading(true);
     void (async () => {
       try {
@@ -107,6 +116,18 @@ export default function CompanyDetailPage() {
           ]);
           setWalletHealth(health.health);
           setAutoTopUpDiag(diag.diagnostics);
+        }
+        if (tab === "permissions") {
+          setRolePresets(await api.getRolePresets());
+        }
+        if (tab === "approvals") {
+          const actions = await api.listCompanyActions(overview.company.slug);
+          setActionPlans(actions.plans);
+        }
+        if (tab === "settings" && user?.isPlatformAdmin) {
+          setTestArtefacts(
+            await api.listXeroTestArtefacts(overview.company.slug, "INFRA-").catch(() => null),
+          );
         }
       } catch {
         /* non-blocking tab data */
@@ -295,8 +316,10 @@ export default function CompanyDetailPage() {
         tabs={[
           { id: "overview", label: "Overview" },
           { id: "users", label: "Users", count: overview.teamCount ?? undefined },
+          { id: "permissions", label: "Permissions" },
+          { id: "approvals", label: "Approvals", count: actionPlans.filter((p) => p.status === "awaiting_approval").length || undefined },
           { id: "commercial", label: "Commercial" },
-          { id: "mcp", label: "AI Gateway", count: mcpEnvironments.length },
+          { id: "mcp", label: "AI Access", count: mcpEnvironments.length },
           { id: "connectors", label: "Systems", count: connectorInstances.length },
           { id: "usage", label: "Usage" },
           { id: "billing", label: "Billing" },
@@ -489,6 +512,58 @@ export default function CompanyDetailPage() {
                 </table>
               </div>
             )}
+          </SectionCard>
+        </div>
+      ) : null}
+
+      {tab === "permissions" ? (
+        <div className="stack">
+          {tabDataLoading ? (
+            <LoadingState label="Loading permissions…" />
+          ) : (
+            <PermissionsEditor companySlug={company.slug} roles={rolePresets} />
+          )}
+        </div>
+      ) : null}
+
+      {tab === "approvals" ? (
+        <div className="stack">
+          <SectionCard title="Action approvals" description="Pending and recent governed accounting actions.">
+            {tabDataLoading ? (
+              <LoadingState label="Loading approvals…" />
+            ) : actionPlans.length === 0 ? (
+              <EmptyState title="No action plans" description="Governed actions appear here when planned." />
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Action</th>
+                      <th>Requester</th>
+                      <th>Status</th>
+                      <th>Risk</th>
+                      <th>When</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {actionPlans.slice(0, 50).map((plan) => (
+                      <tr key={plan.id}>
+                        <td>{plan.summary ?? plan.requestedAction}</td>
+                        <td>{plan.actor}</td>
+                        <td><StatusBadge status={plan.status} /></td>
+                        <td>{plan.riskClass}</td>
+                        <td className="muted small">{formatRelativeTime(plan.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div style={{ marginTop: 16 }}>
+              <Link to={`/portal/${company.slug}/actions`} className="button button-primary">
+                Open approvals centre
+              </Link>
+            </div>
           </SectionCard>
         </div>
       ) : null}
@@ -820,51 +895,96 @@ export default function CompanyDetailPage() {
       ) : null}
 
       {tab === "settings" ? (
-        <SectionCard title="Company configuration">
-          <KeyValue label="Name" value={company.name} />
-          <KeyValue label="Slug" value={company.slug} mono />
-          <KeyValue label="Status" value={<StatusBadge status={company.status} />} />
-          <KeyValue label="Timezone" value={company.timezone ?? "—"} />
-          <KeyValue label="Currency" value={company.currency ?? "GBP"} />
-          <KeyValue label="Billing mode" value={company.billingMode ?? "test"} />
-          <AdvancedDetails>
-            <KeyValue label="Company ID" value={company.id} mono />
-            {company.notes ? <KeyValue label="Notes" value={company.notes} /> : null}
-          </AdvancedDetails>
+        <div className="stack">
+          <SectionCard title="Company configuration">
+            <KeyValue label="Name" value={company.name} />
+            <KeyValue label="Slug" value={company.slug} mono />
+            <KeyValue label="Status" value={<StatusBadge status={company.status} />} />
+            <KeyValue label="Timezone" value={company.timezone ?? "—"} />
+            <KeyValue label="Currency" value={company.currency ?? "GBP"} />
+            <KeyValue label="Billing mode" value={company.billingMode ?? "test"} />
+            <AdvancedDetails>
+              <KeyValue label="Company ID" value={company.id} mono />
+              {company.notes ? <KeyValue label="Notes" value={company.notes} /> : null}
+            </AdvancedDetails>
+            {user?.isPlatformAdmin ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
+                {company.status === "suspended" ? (
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    disabled={busy}
+                    onClick={() => void changeStatus("active")}
+                  >
+                    Reactivate
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    disabled={busy}
+                    onClick={() => void changeStatus("suspended")}
+                  >
+                    Suspend
+                  </button>
+                )}
+                {company.status !== "archived" && company.status !== "closed" ? (
+                  <button
+                    type="button"
+                    className="button button-ghost"
+                    disabled={busy}
+                    onClick={() => void changeStatus("archived")}
+                  >
+                    Archive
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </SectionCard>
+
           {user?.isPlatformAdmin ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
-              {company.status === "suspended" ? (
-                <button
-                  type="button"
-                  className="button button-primary"
-                  disabled={busy}
-                  onClick={() => void changeStatus("active")}
-                >
-                  Reactivate
-                </button>
+            <SectionCard
+              title="Xero test artefact cleanup"
+              description="Preview only — DRAFT records with INFRA test prefixes. Deletion requires operator confirmation via Action Engine."
+            >
+              {tabDataLoading ? (
+                <LoadingState label="Loading cleanup manifest…" />
+              ) : !testArtefacts ? (
+                <EmptyState title="Manifest unavailable" description="Connect Xero or reload to generate the cleanup manifest." />
               ) : (
-                <button
-                  type="button"
-                  className="button button-secondary"
-                  disabled={busy}
-                  onClick={() => void changeStatus("suspended")}
-                >
-                  Suspend
-                </button>
+                <>
+                  <Notice tone="info">{testArtefacts.note}</Notice>
+                  {testArtefacts.artefacts.length === 0 ? (
+                    <EmptyState title="No matching test artefacts" description={`Prefix: ${testArtefacts.prefix}`} />
+                  ) : (
+                    <div className="table-wrap">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Reference</th>
+                            <th>Status</th>
+                            <th>Amount</th>
+                            <th>Recommended</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {testArtefacts.artefacts.map((row) => (
+                            <tr key={row.xeroId}>
+                              <td>{row.reference ?? row.invoiceNumber ?? row.xeroId}</td>
+                              <td><StatusBadge status={row.status ?? "unknown"} /></td>
+                              <td>{row.amount != null ? formatCurrency(Math.round(row.amount * 100), currency) : "—"}</td>
+                              <td>{row.recommendedCleanup ?? "report_only"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
-              {company.status !== "archived" && company.status !== "closed" ? (
-                <button
-                  type="button"
-                  className="button button-ghost"
-                  disabled={busy}
-                  onClick={() => void changeStatus("archived")}
-                >
-                  Archive
-                </button>
-              ) : null}
-            </div>
+            </SectionCard>
           ) : null}
-        </SectionCard>
+        </div>
       ) : null}
 
       <Modal

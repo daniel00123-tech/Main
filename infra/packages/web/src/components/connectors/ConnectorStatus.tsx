@@ -5,6 +5,8 @@ const STATUS_CLASS: Record<ConnectorCatalogueStatus, string> = {
   active: "connector-status-active",
   available: "connector-status-available",
   coming_soon: "connector-status-coming-soon",
+  planned: "connector-status-coming-soon",
+  deferred: "connector-status-draft",
   draft: "connector-status-draft",
 };
 

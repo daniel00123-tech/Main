@@ -71,12 +71,14 @@ connectors.get("/api/connectors/catalogue", requireAuth, (c) =>
   c.json(CONNECTOR_CATALOGUE.map(publicConnectorDefinition)),
 );
 
-connectors.get("/api/credential-storage", requireAuth, (c) =>
-  c.json({
+connectors.get("/api/credential-storage", requireAuth, async (c) => {
+  const { microsoftOAuthStatus } = await import("../services/microsoft-oauth");
+  return c.json({
     ...credentialStorageStatus(c.env),
     xero: xeroOauthStatus(c.env),
-  }),
-);
+    microsoft: microsoftOAuthStatus(c.env),
+  });
+});
 
 connectors.get("/api/admin/connectors", requireAuth, requirePlatformAdmin, async (c) => {
   const rows = await listConnectorOversight(c.env.DB);
@@ -698,6 +700,95 @@ connectors.post(
       },
       409,
     );
+  },
+);
+
+connectors.get("/api/connectors/microsoft/status", requireAuth, async (c) => {
+  const { microsoftOAuthStatus } = await import("../services/microsoft-oauth");
+  return c.json(microsoftOAuthStatus(c.env));
+});
+
+connectors.post(
+  "/api/companies/:slug/connectors/microsoft/oauth/start",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    const body = (await c.req.json().catch(() => ({}))) as {
+      definitionId?: string;
+      instanceId?: string;
+      component?: string;
+    };
+    const { startMicrosoftOAuth } = await import("../services/microsoft-oauth");
+    const result = await startMicrosoftOAuth(c.env.DB, c.env, {
+      companyId: company.id,
+      userId: c.get("user").userId,
+      definitionId: body.definitionId ?? "conn_microsoft_365",
+      instanceId: body.instanceId ?? null,
+      component: (body.component as "onedrive" | "sharepoint" | "outlook_shared" | "microsoft_365") ?? "microsoft_365",
+      returnPath: `/portal/${company.slug}/connectors`,
+    });
+    if (!result.ok) return c.json({ error: result.message, code: result.code }, 409);
+    return c.json({ authorizationUrl: result.authorizationUrl, state: result.state });
+  },
+);
+
+connectors.get(
+  "/api/companies/:slug/xero/test-artefacts",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    const user = c.get("user");
+    if (!user.isPlatformAdmin && !canManageCompany(user, company.id)) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    const prefix = c.req.query("prefix") ?? "INFRA-";
+    const instanceId = c.req.query("instanceId");
+    const instances = await listConnectorInstances(c.env.DB, company.id);
+    const xeroInstance =
+      instances.find((i) => i.id === instanceId) ??
+      instances.find((i) => i.connectorDefinitionId === "conn_xero" && i.authStatus === "connected");
+    if (!xeroInstance) {
+      return c.json({
+        reportOnly: true,
+        prefix,
+        artefacts: [],
+        note: "No connected Xero instance for this company.",
+      });
+    }
+    const { searchXeroTestArtefacts } = await import("../services/action-engine/xero-test-artefacts");
+    const manifest = await searchXeroTestArtefacts(c.env, {
+      companyId: company.id,
+      instanceId: xeroInstance.id,
+      actor: user.email,
+      prefix,
+      limit: Number(c.req.query("limit") ?? 50),
+    });
+    return c.json({ ...manifest, instanceId: xeroInstance.id });
+  },
+);
+
+connectors.get(
+  "/api/companies/:slug/microsoft/sources",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    const instanceId = c.req.query("instanceId") ?? null;
+    const { listMicrosoftConnectorSources } = await import("../services/microsoft-oauth");
+    const sources = await listMicrosoftConnectorSources(
+      c.env.DB,
+      company.id,
+      instanceId,
+    );
+    return c.json({ sources });
   },
 );
 

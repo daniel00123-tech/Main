@@ -41,6 +41,8 @@ export {
   createContactWithFetch,
   voidInvoiceWithFetch,
   voidCreditNoteWithFetch,
+  deleteDraftInvoiceWithFetch,
+  deleteDraftCreditNoteWithFetch,
 } from "./tools/write";
 export { withXeroRetry } from "./retry";
 export { resolveSalesAccountCodeWithFetch, resolveExpenseAccountCodeWithFetch } from "./accounts-resolve";

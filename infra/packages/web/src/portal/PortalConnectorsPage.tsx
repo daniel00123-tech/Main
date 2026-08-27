@@ -71,7 +71,9 @@ export default function PortalConnectorsPage() {
 
   const catalogueById = new Map(CONNECTOR_CATALOGUE.map((item) => [item.id, item]));
   const instances = overview.connectorInstances;
-  const businessCatalogue = CONNECTOR_CATALOGUE.filter((item) => item.integrationType === "business_system");
+  const businessCatalogue = CONNECTOR_CATALOGUE.filter(
+    (item) => item.integrationType === "business_system" && !item.parentConnectorId,
+  );
 
   const connectedItems = useMemo(() => {
     return instances.map((instance) => {
@@ -233,14 +235,25 @@ export default function PortalConnectorsPage() {
         ) : (
           <div className="product-grid">
             {filteredAvailable.map(({ definition, instance }) => {
-              const comingSoon = definition.catalogueStatus === "coming_soon";
+              const comingSoon =
+                definition.catalogueStatus === "coming_soon" ||
+                definition.catalogueStatus === "planned" ||
+                definition.catalogueStatus === "deferred";
               const taxonomy = taxonomyForConnector(definition);
               return (
                 <article key={definition.id} className="product-card">
                   <div className="product-card-header">
                     <ConnectorLogo slug={definition.slug} name={definition.name} />
                     <StatusBadge
-                      status={comingSoon ? "coming_soon" : instance ? "not_configured" : "available"}
+                      status={
+                        comingSoon
+                          ? definition.catalogueStatus === "deferred"
+                            ? "deferred"
+                            : "coming_soon"
+                          : instance
+                            ? "not_configured"
+                            : "available"
+                      }
                     />
                   </div>
                   <h4 style={{ margin: 0 }}>{definition.name}</h4>
@@ -253,7 +266,15 @@ export default function PortalConnectorsPage() {
                     disabled={comingSoon}
                     onClick={() => setSelectedSlug(definition.slug)}
                   >
-                    {comingSoon ? "Coming soon" : instance ? "View setup" : "Connect"}
+                    {comingSoon
+                      ? definition.catalogueStatus === "deferred"
+                        ? "Deferred"
+                        : definition.catalogueStatus === "planned"
+                          ? "Coming later"
+                          : "Coming soon"
+                      : instance
+                        ? "View setup"
+                        : "Connect"}
                   </Button>
                 </article>
               );
