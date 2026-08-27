@@ -144,8 +144,8 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
     integrationType: "business_system",
     catalogueStatus: "available",
     description:
-      "Index shared company mailboxes for operational context and support history.",
-    capabilities: ["read", "search", "sync", "index"],
+      "Read explicitly selected Microsoft 365 shared mailboxes via live Graph retrieval (alpha — not auto-indexed to Company Knowledge).",
+    capabilities: ["read", "search", "live_query"],
     credentialSchema: {
       type: "object",
       required: ["tenantId", "clientId", "clientSecret"],
@@ -184,7 +184,7 @@ export const CONNECTOR_CATALOGUE: ConnectorDefinition[] = [
       callbackPath: "/api/connectors/microsoft/oauth/callback",
     },
     setupInstructions:
-      "Shared mailboxes are configured individually after Microsoft 365 authentication. Personal inboxes are not indexed.",
+      "Shared mailboxes are discovered and explicitly selected by a company administrator. Default is excluded. Personal inboxes are never auto-included. Requires Mail.Read (Application) admin consent plus Exchange mailbox scoping.",
   },
   {
     id: "conn_bigchange",

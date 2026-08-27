@@ -68,6 +68,7 @@ export type MicrosoftSourceRow = {
   folderScopeMode: "all" | "include_paths" | "exclude_paths";
   folderIncludePaths: string[];
   folderExcludePaths: string[];
+  mailboxType?: string | null;
 };
 
 function mapSourceRow(row: Record<string, unknown>): MicrosoftSourceRow {
@@ -92,6 +93,7 @@ function mapSourceRow(row: Record<string, unknown>): MicrosoftSourceRow {
     itemsIndexed: Number(row.items_indexed ?? 0),
     lastDiscoveryAt: row.last_discovery_at ? String(row.last_discovery_at) : null,
     deltaLink: row.delta_link ? String(row.delta_link) : null,
+    mailboxType: row.mailbox_type ? String(row.mailbox_type) : null,
     ...(() => {
       const scope = parseFolderScope({
         folderScopeMode: row.folder_scope_mode ? String(row.folder_scope_mode) : null,

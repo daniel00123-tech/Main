@@ -1,0 +1,312 @@
+/**
+ * Microsoft Graph mail API — READ ONLY for explicitly allowlisted shared mailboxes.
+ */
+
+import type { MicrosoftGraphConfig } from "./microsoft-graph";
+import { MicrosoftGraphError } from "./microsoft-graph";
+
+const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
+
+export type GraphMailAddress = {
+  emailAddress?: { address?: string; name?: string };
+};
+
+export type GraphMailAttachment = {
+  id: string;
+  name: string;
+  contentType: string | null;
+  size: number;
+  isInline?: boolean;
+  "@odata.type"?: string;
+};
+
+export type GraphMailFolder = {
+  id: string;
+  displayName: string;
+  parentFolderId: string | null;
+  childFolderCount: number;
+  totalItemCount: number;
+  unreadItemCount: number;
+};
+
+export type GraphMailMessageDetail = {
+  id: string;
+  subject: string | null;
+  bodyPreview: string | null;
+  body?: { contentType?: string; content?: string };
+  from: GraphMailAddress | null;
+  sender: GraphMailAddress | null;
+  toRecipients: GraphMailAddress[];
+  ccRecipients: GraphMailAddress[];
+  receivedDateTime: string | null;
+  sentDateTime: string | null;
+  conversationId: string | null;
+  internetMessageId: string | null;
+  hasAttachments: boolean;
+  webLink: string | null;
+  parentFolderId: string | null;
+};
+
+export type GraphTenantUser = {
+  id: string;
+  displayName: string | null;
+  mail: string | null;
+  userPrincipalName: string | null;
+  userType: string | null;
+  accountEnabled: boolean | null;
+  assignedLicenses?: Array<{ skuId: string }>;
+};
+
+type GraphPage<T> = { value: T[]; "@odata.nextLink"?: string };
+
+async function graphMailRequest<T>(
+  config: MicrosoftGraphConfig,
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const url = path.startsWith("http") ? path : `${GRAPH_BASE}${path}`;
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${config.accessToken}`,
+      Accept: "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new MicrosoftGraphError(
+      `Microsoft Graph error ${response.status}: ${body.slice(0, 400)}`,
+      response.status,
+    );
+  }
+
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+export async function listTenantMailUsers(
+  config: MicrosoftGraphConfig,
+  top = 999,
+): Promise<GraphTenantUser[]> {
+  const users: GraphTenantUser[] = [];
+  // Graph does not support `$filter=mail ne null` (NotEqualsMatch). Paginate and filter client-side.
+  let path = `/users?$select=id,displayName,mail,userPrincipalName,userType,accountEnabled,assignedLicenses&$top=${Math.min(top, 999)}`;
+
+  while (path && users.length < top) {
+    const page = await graphMailRequest<GraphPage<GraphTenantUser>>(config, path);
+    for (const user of page.value ?? []) {
+      if (user.mail?.trim()) users.push(user);
+      if (users.length >= top) break;
+    }
+    path = users.length >= top ? "" : (page["@odata.nextLink"] ?? "");
+  }
+  return users.slice(0, top);
+}
+
+export async function listMailboxFolders(
+  config: MicrosoftGraphConfig,
+  mailboxAddress: string,
+): Promise<GraphMailFolder[]> {
+  const page = await graphMailRequest<GraphPage<GraphMailFolder>>(
+    config,
+    `/users/${encodeURIComponent(mailboxAddress)}/mailFolders?$select=id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount`,
+  );
+  return page.value ?? [];
+}
+
+export async function listMailboxMessages(
+  config: MicrosoftGraphConfig,
+  input: {
+    mailboxAddress: string;
+    folderId?: string;
+    folderName?: string;
+    top?: number;
+    skip?: number;
+  },
+): Promise<GraphMailMessageDetail[]> {
+  const top = input.top ?? 25;
+  const folderSegment = input.folderId
+    ? `mailFolders/${input.folderId}`
+    : input.folderName
+      ? `mailFolders/${encodeURIComponent(input.folderName)}`
+      : "mailFolders/inbox";
+
+  const select =
+    "id,subject,bodyPreview,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,conversationId,internetMessageId,hasAttachments,webLink,parentFolderId";
+  const path = `/users/${encodeURIComponent(input.mailboxAddress)}/${folderSegment}/messages?$top=${top}&$orderby=receivedDateTime desc&$select=${select}${input.skip ? `&$skip=${input.skip}` : ""}`;
+  const page = await graphMailRequest<GraphPage<GraphMailMessageDetail>>(config, path);
+  return page.value ?? [];
+}
+
+export async function searchMailboxMessages(
+  config: MicrosoftGraphConfig,
+  input: {
+    mailboxAddress: string;
+    query: string;
+    folderId?: string;
+    fromDate?: string;
+    toDate?: string;
+    top?: number;
+  },
+): Promise<GraphMailMessageDetail[]> {
+  const top = input.top ?? 25;
+  const terms: string[] = [`"${input.query.replace(/"/g, "")}"`];
+  if (input.fromDate) terms.push(`received>=${input.fromDate}`);
+  if (input.toDate) terms.push(`received<=${input.toDate}`);
+
+  const searchParam = encodeURIComponent(terms.join(" AND "));
+  const folderFilter = input.folderId ? ` AND parentFolderId eq '${input.folderId}'` : "";
+  const path = `/users/${encodeURIComponent(input.mailboxAddress)}/messages?$search=${searchParam}&$top=${top}&$select=id,subject,bodyPreview,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,conversationId,internetMessageId,hasAttachments,webLink,parentFolderId&$filter=receivedDateTime ge 1900-01-01T00:00:00Z${folderFilter}`;
+
+  try {
+    const page = await graphMailRequest<GraphPage<GraphMailMessageDetail>>(config, path, {
+      headers: { ConsistencyLevel: "eventual" },
+    });
+    return page.value ?? [];
+  } catch (err) {
+    if (err instanceof MicrosoftGraphError && err.status === 400) {
+      return listMailboxMessages(config, {
+        mailboxAddress: input.mailboxAddress,
+        folderId: input.folderId,
+        top,
+      }).then((rows) =>
+        rows.filter((m) => {
+          const hay = `${m.subject ?? ""} ${m.bodyPreview ?? ""}`.toLowerCase();
+          return hay.includes(input.query.toLowerCase());
+        }),
+      );
+    }
+    throw err;
+  }
+}
+
+export async function getMailboxMessage(
+  config: MicrosoftGraphConfig,
+  mailboxAddress: string,
+  messageId: string,
+): Promise<GraphMailMessageDetail> {
+  return graphMailRequest<GraphMailMessageDetail>(
+    config,
+    `/users/${encodeURIComponent(mailboxAddress)}/messages/${encodeURIComponent(messageId)}?$select=id,subject,bodyPreview,body,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,conversationId,internetMessageId,hasAttachments,webLink,parentFolderId`,
+  );
+}
+
+export async function listConversationMessages(
+  config: MicrosoftGraphConfig,
+  mailboxAddress: string,
+  conversationId: string,
+  top = 50,
+): Promise<GraphMailMessageDetail[]> {
+  const filter = encodeURIComponent(`conversationId eq '${conversationId}'`);
+  const page = await graphMailRequest<GraphPage<GraphMailMessageDetail>>(
+    config,
+    `/users/${encodeURIComponent(mailboxAddress)}/messages?$filter=${filter}&$top=${top}&$orderby=receivedDateTime asc&$select=id,subject,bodyPreview,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,conversationId,internetMessageId,hasAttachments,webLink,parentFolderId`,
+  );
+  return page.value ?? [];
+}
+
+export async function listMessageAttachments(
+  config: MicrosoftGraphConfig,
+  mailboxAddress: string,
+  messageId: string,
+): Promise<GraphMailAttachment[]> {
+  const page = await graphMailRequest<GraphPage<GraphMailAttachment>>(
+    config,
+    `/users/${encodeURIComponent(mailboxAddress)}/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType,size,isInline`,
+  );
+  return page.value ?? [];
+}
+
+export async function getMessageAttachmentContent(
+  config: MicrosoftGraphConfig,
+  mailboxAddress: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<{ name: string; contentType: string | null; size: number; contentBytes: string | null }> {
+  const attachment = await graphMailRequest<GraphMailAttachment & { contentBytes?: string }>(
+    config,
+    `/users/${encodeURIComponent(mailboxAddress)}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+  );
+  return {
+    name: attachment.name,
+    contentType: attachment.contentType ?? null,
+    size: attachment.size ?? 0,
+    contentBytes: attachment.contentBytes ?? null,
+  };
+}
+
+/** Probe whether Mail.Read application permission is effective for a mailbox. */
+export async function probeMailboxReadAccess(
+  config: MicrosoftGraphConfig,
+  mailboxAddress: string,
+): Promise<{ ok: boolean; status: number; code: string; message: string }> {
+  try {
+    await graphMailRequest<GraphPage<GraphMailMessageDetail>>(
+      config,
+      `/users/${encodeURIComponent(mailboxAddress)}/mailFolders/inbox/messages?$top=1&$select=id,subject`,
+    );
+    return { ok: true, status: 200, code: "MAIL_READ_OK", message: "Mailbox read access confirmed" };
+  } catch (err) {
+    if (err instanceof MicrosoftGraphError) {
+      return {
+        ok: false,
+        status: err.status,
+        code: err.status === 403 ? "MAIL_READ_DENIED" : "MAIL_READ_ERROR",
+        message: err.message,
+      };
+    }
+    return { ok: false, status: 500, code: "MAIL_READ_ERROR", message: String(err) };
+  }
+}
+
+export async function probeUserReadAllAccess(
+  config: MicrosoftGraphConfig,
+): Promise<{ ok: boolean; status: number; code: string; message: string }> {
+  try {
+    await graphMailRequest<GraphPage<GraphTenantUser>>(
+      config,
+      `/users?$top=1&$select=id,displayName,mail,userPrincipalName`,
+    );
+    return { ok: true, status: 200, code: "USER_READ_ALL_OK", message: "User directory read confirmed" };
+  } catch (err) {
+    if (err instanceof MicrosoftGraphError) {
+      return {
+        ok: false,
+        status: err.status,
+        code: err.status === 403 ? "USER_READ_ALL_DENIED" : "USER_READ_ALL_ERROR",
+        message: err.message,
+      };
+    }
+    return { ok: false, status: 500, code: "USER_READ_ALL_ERROR", message: String(err) };
+  }
+}
+
+export function formatOutlookProvenance(input: {
+  mailboxAddress: string;
+  folderName?: string | null;
+  subject?: string | null;
+  messageId?: string | null;
+}): string {
+  const parts = ["Microsoft 365", "Outlook", input.mailboxAddress];
+  if (input.folderName) parts.push(input.folderName);
+  if (input.subject) parts.push(input.subject);
+  else if (input.messageId) parts.push(input.messageId);
+  return parts.filter(Boolean).join(" → ");
+}
+
+export const OUTLOOK_SUPPORTED_ATTACHMENT_TYPES = new Set([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+  "text/csv",
+]);
+
+export function isOutlookAttachmentRetrievable(contentType: string | null, name: string): boolean {
+  const mime = (contentType ?? "").toLowerCase();
+  if (OUTLOOK_SUPPORTED_ATTACHMENT_TYPES.has(mime)) return true;
+  const ext = name.includes(".") ? name.split(".").pop()?.toLowerCase() : "";
+  return ["pdf", "docx", "xlsx", "txt", "csv"].includes(ext ?? "");
+}

@@ -49,6 +49,8 @@ import {
   xeroActionForTool,
 } from "./xero-tools";
 import { executeXeroReadToolOnInfra } from "./xero-read-execution";
+import { isOutlookReadTool, outlookActionForTool } from "./microsoft-outlook-tools";
+import { executeOutlookReadTool } from "./microsoft-outlook-read";
 
 export type GatewayActor =
   | { type: "user"; user: SessionUser }
@@ -90,6 +92,9 @@ async function resolveToolAction(
 
   const xero = xeroActionForTool(toolName);
   if (xero) return xero;
+
+  const outlook = outlookActionForTool(toolName);
+  if (outlook) return { action: outlook, riskClass: "low_risk" };
 
   return { action: `mcp.${toolName}`, riskClass: "high_risk" };
 }
@@ -641,8 +646,32 @@ export async function executeGatewayRequest(
 
   const balanceBefore = await getWalletBalance(env.DB, input.companyId);
 
-  const execution =
-    isXeroToolName(input.toolName) && !isXeroWriteToolName(input.toolName)
+  const execution = isOutlookReadTool(input.toolName)
+    ? await (async () => {
+        const outlook = await executeOutlookReadTool(env, {
+          companyId: input.companyId,
+          toolName: input.toolName,
+          arguments: input.arguments ?? {},
+          actor: actorLabel,
+        });
+        if (!outlook.ok) {
+          return { status: outlook.status, error: outlook.message, code: outlook.code } as const;
+        }
+        return {
+          status: 200 as const,
+          data: {
+            correlationId,
+            mcpId: mcp.id,
+            companyId: input.companyId,
+            toolName: input.toolName,
+            latencyMs: Date.now() - started,
+            authConfigured: true,
+            riskClass,
+            result: outlook.result,
+          },
+        };
+      })()
+    : isXeroToolName(input.toolName) && !isXeroWriteToolName(input.toolName)
       ? await (async () => {
           const xero = await executeXeroReadToolOnInfra(env, {
             companyId: input.companyId,

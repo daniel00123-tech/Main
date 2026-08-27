@@ -7,6 +7,9 @@ export const BASE_AI_SERVICE_SCOPES = [
   "system.health",
 ] as const;
 
+/** Outlook shared mailbox READ scopes (included mailboxes only). */
+export const OUTLOOK_READ_SERVICE_SCOPES = ["outlook.mail.read"] as const;
+
 /** Read-only Xero actions exposed through INFRA when Xero OAuth is connected. */
 export const XERO_READ_SERVICE_SCOPES = XERO_ACTIONS.filter(
   (action) => action.productionExecutable && !action.writesSupported,

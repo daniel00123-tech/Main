@@ -953,6 +953,21 @@ connectors.post("/api/internal/cmd15/microsoft-acceptance", async (c) => {
   }
 });
 
+connectors.post("/api/internal/cmd16/outlook-alpha", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runCmd16OutlookAlphaAcceptance } = await import("../services/microsoft-acceptance-cmd16");
+    return c.json(await runCmd16OutlookAlphaAcceptance(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Acceptance failed", verdict: "ERROR" },
+      500,
+    );
+  }
+});
+
 connectors.get(
   "/api/companies/:slug/microsoft/dashboard",
   requireAuth,
@@ -988,9 +1003,20 @@ connectors.get(
     const onedrive = sources.filter((s) => s.sourceType === "onedrive");
     const sharepoint = sources.filter((s) => s.sourceType === "sharepoint");
     const outlook = sources.filter((s) => s.sourceType === "outlook_shared");
+    const { assessOutlookPermissions } = await import("../services/microsoft-outlook-permissions");
+    const { assessOutlookNotificationArchitecture } = await import(
+      "../services/microsoft-outlook-notifications"
+    );
+    const outlookPermissions = await assessOutlookPermissions(c.env, { companyId: company.id });
     return c.json({
       status: microsoftOAuthStatus(c.env),
       health,
+      outlook: {
+        permissions: outlookPermissions,
+        notifications: assessOutlookNotificationArchitecture(),
+        retrievalMode: "live_read_only",
+        indexingMode: "none_in_alpha",
+      },
       summary: {
         onedrive: {
           total: onedrive.length,
@@ -1002,7 +1028,12 @@ connectors.get(
           included: sharepoint.filter((s) => s.inclusionStatus === "included").length,
           indexed: sharepoint.reduce((n, s) => n + s.itemsIndexed, 0),
         },
-        outlook: { total: outlook.length, status: "requires_additional_permission" },
+        outlook: {
+          total: outlook.length,
+          included: outlook.filter((s) => s.inclusionStatus === "included").length,
+          sharedCandidates: outlook.filter((s) => s.mailboxType === "shared_mailbox").length,
+          personalMailboxes: outlook.filter((s) => s.mailboxType === "personal_mailbox").length,
+        },
       },
       sources: sourcesWithQueue,
     });
@@ -1046,6 +1077,79 @@ connectors.post(
       includeAllSharePoint: body.includeAllSharePoint ?? false,
     });
     return c.json({ ok: true, instanceId: instance.id, ...result });
+  },
+);
+
+connectors.get(
+  "/api/companies/:slug/microsoft/outlook/permissions",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    const probeMailbox = c.req.query("probeMailbox") ?? null;
+    const { assessOutlookPermissions } = await import("../services/microsoft-outlook-permissions");
+    const { assessOutlookNotificationArchitecture } = await import(
+      "../services/microsoft-outlook-notifications"
+    );
+    const permissions = await assessOutlookPermissions(c.env, {
+      companyId: company.id,
+      probeMailboxAddress: probeMailbox,
+    });
+    return c.json({
+      permissions,
+      notifications: assessOutlookNotificationArchitecture(),
+      stopBeforeLiveRead: permissions.adminConsentRequired,
+    });
+  },
+);
+
+connectors.post(
+  "/api/companies/:slug/microsoft/outlook/discover",
+  requireAuth,
+  async (c) => {
+    const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Access denied" }, 403);
+    }
+    const body = (await c.req.json().catch(() => ({}))) as { instanceId?: string };
+    const instances = await listConnectorInstances(c.env.DB, company.id);
+    let instance = instances.find((i) => i.id === body.instanceId);
+    if (!instance) {
+      instance = instances.find((i) => i.connectorDefinitionId === "conn_microsoft_365");
+    }
+    if (!instance) return c.json({ error: "Microsoft 365 connector not configured" }, 404);
+
+    const { discoverOutlookMailboxes } = await import("../services/microsoft-outlook-mailbox");
+    const result = await discoverOutlookMailboxes(c.env, {
+      companyId: company.id,
+      connectorInstanceId: instance.id,
+      actor: c.get("user").email,
+    });
+
+    const summary = {
+      total: result.discovered.length,
+      sharedMailboxes: result.discovered.filter((m) => m.mailboxType === "shared_mailbox").length,
+      personalMailboxes: result.discovered.filter((m) => m.mailboxType === "personal_mailbox").length,
+      roomMailboxes: result.discovered.filter((m) => m.mailboxType === "room_mailbox").length,
+      equipmentMailboxes: result.discovered.filter((m) => m.mailboxType === "equipment_mailbox").length,
+      unknown: result.discovered.filter((m) => m.mailboxType === "unknown").length,
+      defaultInclusion: "excluded",
+      ingested: 0,
+    };
+
+    return c.json({
+      ok: true,
+      instanceId: instance.id,
+      summary,
+      discovered: result.discovered,
+      permissions: result.permissions,
+      verdict: result.verdict,
+      stopBeforeLiveRead: result.permissions.adminConsentRequired,
+    });
   },
 );
 
@@ -1102,11 +1206,22 @@ connectors.patch(
     const sourceId = c.req.param("sourceId");
     if (body.inclusionStatus === "excluded") {
       const row = await c.env.DB.prepare(
-        `SELECT connector_instance_id FROM microsoft_connector_sources WHERE id = ? AND company_id = ? LIMIT 1`,
+        `SELECT connector_instance_id, source_type FROM microsoft_connector_sources WHERE id = ? AND company_id = ? LIMIT 1`,
       )
         .bind(sourceId, company.id)
-        .first<{ connector_instance_id: string }>();
+        .first<{ connector_instance_id: string; source_type: string }>();
       if (!row) return c.json({ error: "Source not found" }, 404);
+      if (row.source_type === "outlook_shared") {
+        const { setOutlookMailboxInclusion } = await import("../services/microsoft-outlook-mailbox");
+        const result = await setOutlookMailboxInclusion(c.env.DB, {
+          companyId: company.id,
+          sourceId,
+          inclusionStatus: "excluded",
+          actor: c.get("user").email,
+        });
+        if (!result.ok) return c.json({ error: result.message }, 400);
+        return c.json({ ok: true });
+      }
       const { applyMicrosoftSourceExclusion } = await import("../services/microsoft-sync");
       const result = await applyMicrosoftSourceExclusion(c.env, {
         companyId: company.id,
@@ -1115,6 +1230,25 @@ connectors.patch(
         actor: c.get("user").email,
       });
       return c.json({ ok: true, ...result });
+    }
+    const row = await c.env.DB.prepare(
+      `SELECT source_type FROM microsoft_connector_sources WHERE id = ? AND company_id = ? LIMIT 1`,
+    )
+      .bind(sourceId, company.id)
+      .first<{ source_type: string }>();
+    if (!row) return c.json({ error: "Source not found" }, 404);
+    if (row.source_type === "outlook_shared") {
+      const bodyExtra = body as { allowPersonalOverride?: boolean };
+      const { setOutlookMailboxInclusion } = await import("../services/microsoft-outlook-mailbox");
+      const result = await setOutlookMailboxInclusion(c.env.DB, {
+        companyId: company.id,
+        sourceId,
+        inclusionStatus: body.inclusionStatus,
+        actor: c.get("user").email,
+        allowPersonalOverride: bodyExtra.allowPersonalOverride === true,
+      });
+      if (!result.ok) return c.json({ error: result.message }, 400);
+      return c.json({ ok: true });
     }
     const { setMicrosoftSourceInclusion } = await import("../services/microsoft-sync");
     await setMicrosoftSourceInclusion(c.env.DB, {

@@ -41,6 +41,8 @@ import {
 import { isXeroWriteToolName } from "./xero-tools";
 import { XERO_TOOL_CONTRACTS } from "@infra/shared";
 import { withActionControlTools, isActionControlTool, actionControlToolAllowed } from "./mcp-action-tools";
+import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
+import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeActionControlTool } from "./action-engine/action-control-handler";
 
 type JsonRpcId = string | number | null;
@@ -616,8 +618,8 @@ export async function handleInfraMcpJsonRpc(
 
       const identityScopes =
         actor.type === "service" ? actor.identity.scopes : undefined;
-      const advertised = withActionControlTools(
-        withStandardKnowledgeTools(tools),
+      const advertised = withOutlookReadTools(
+        withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
         identityScopes,
       );
 
