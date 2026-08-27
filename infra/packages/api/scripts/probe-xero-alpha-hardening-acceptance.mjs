@@ -25,12 +25,22 @@ const id = `svc_probe_${randomBytes(8).toString("hex")}`;
 const now = new Date().toISOString();
 const scopes = JSON.stringify([
   "xero.organisation.read",
-  "xero.reports.pnl.read",
+  "xero.contacts.read",
+  "xero.contacts.search",
   "xero.invoices.read",
+  "xero.invoices.search",
+  "xero.invoices.get",
   "xero.payments.read",
+  "xero.accounts.read",
+  "xero.bank_transactions.read",
+  "xero.reports.pnl.read",
+  "xero.reports.balance_sheet.read",
+  "xero.reports.aged.read",
   "xero.sales.summary",
   "xero.top_customers",
-  "xero.reports.aged.read",
+  "xero.top_suppliers",
+  "xero.list_tax_rates",
+  "xero.vat.capability",
 ]);
 
 const sqlFile = join(apiDir, ".tmp-xero-alpha-acceptance.sql");
@@ -190,7 +200,9 @@ const report = {
       results.vatCapability.body?.result?.officialVatReturnAccessible,
     message: results.vatCapability.body?.result?.message,
   },
-  rawDateLeak: Object.values(results).some((r) => jsonHasRawDotNetDate(r.body?.result)),
+  rawDateLeak: Object.entries(results)
+    .filter(([_, r]) => r.status === 200)
+    .some(([_, r]) => jsonHasRawDotNetDate(r.body?.result)),
 };
 
 console.log(JSON.stringify(report, null, 2));
@@ -210,6 +222,15 @@ if (report.julyPayments.augustLeak || report.julyPayments.juneLeak) {
 }
 if (report.outstandingSales.accpayLeak || report.outstandingBills.accrecLeak) {
   failures.push("ACCREC/ACCPAY type filter leak");
+}
+if (!report.outstandingSales.ok || !report.outstandingBills.ok) {
+  failures.push("Outstanding invoice probes failed");
+}
+if (!report.topSuppliers.ok) {
+  failures.push("Supplier ranking failed");
+}
+if (!report.vatCapability.ok) {
+  failures.push("VAT capability probe failed");
 }
 if (report.rawDateLeak) {
   failures.push("Raw /Date(...)/ leak in responses");
