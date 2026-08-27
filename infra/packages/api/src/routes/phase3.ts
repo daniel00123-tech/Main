@@ -9,7 +9,6 @@ import {
 import { readSessionCookie, verifySessionToken } from "../auth/session";
 import {
   getUserById,
-  inviteCompanyUser,
   setMembershipStatus,
   setUserStatus,
   updateMembershipRole,
@@ -99,6 +98,7 @@ import {
   getUserCompanyRole,
   userHasCompanyAccess,
 } from "../permissions/service";
+import { registerCommand6Routes } from "./command6";
 import { newId, nowIso } from "../db/mappers";
 
 type AppEnv = { Bindings: Env; Variables: AuthVariables };
@@ -501,7 +501,33 @@ phase3.post(
     }
 
     const isPromotional = body.creditClass !== "paid";
-    const entryType = isPromotional ? "promotional_credit" : "manual_credit";
+    if (isPromotional) {
+      const result = await import("../services/promotional-grants").then((m) =>
+        m.grantPromotionalCredit(c.env.DB, {
+          companyId: company.id,
+          amountCents: body.amountCents!,
+          reason: body.reason!.trim(),
+          internalNote: body.internalNote,
+          grantedBy: c.get("user").email,
+          description: body.description ?? body.reason!.trim(),
+        }),
+      );
+      await recordAuditEvent(c.env.DB, {
+        companyId: company.id,
+        eventType: "wallet.credited",
+        actor: c.get("user").email,
+        resourceType: "promotional_credit_grant",
+        resourceId: result.grantId,
+        detail: {
+          amountCents: body.amountCents,
+          creditClass: "promotional",
+          reason: body.reason!.trim(),
+        },
+      });
+      return c.json({ grantId: result.grantId, ledgerEntryId: result.ledgerEntryId });
+    }
+
+    const entryType = "manual_credit";
     const entry = await appendLedgerEntry(c.env.DB, {
       companyId: company.id,
       entryType,
@@ -511,8 +537,8 @@ phase3.post(
       referenceId: newId("manual"),
       createdBy: c.get("user").email,
       metadata: {
-        creditClass: isPromotional ? "test" : "paid",
-        paid: !isPromotional,
+        creditClass: "paid",
+        paid: true,
         reason: body.reason.trim(),
         internalNote: body.internalNote?.trim() ?? null,
         grantedBy: c.get("user").email,
@@ -732,18 +758,30 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
     email?: string;
     displayName?: string;
     role?: CompanyRole;
+    teamId?: string;
+    customRoleId?: string;
   }>();
 
   if (!body.email || !body.displayName || !body.role) {
     return c.json({ error: "email, displayName, and role are required" }, 400);
   }
 
-  const invited = await inviteCompanyUser(c.env.DB, {
-    email: body.email,
-    displayName: body.displayName,
-    companyId: company.id,
-    role: body.role,
-  });
+  const origin = portalOrigin(c.env, c.req.header("Origin"));
+  const invited = await import("../services/invitations").then((m) =>
+    m.createCompanyInvitation(c.env, {
+      companyId: company.id,
+      companyName: company.name,
+      companySlug: company.slug,
+      email: body.email!,
+      displayName: body.displayName!,
+      role: body.role!,
+      invitedBy: user.email,
+      inviterName: user.displayName,
+      teamId: body.teamId,
+      customRoleId: body.customRoleId,
+      origin,
+    }),
+  );
 
   await recordAuditEvent(c.env.DB, {
     companyId: company.id,
@@ -751,10 +789,9 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
     actor: user.email,
     resourceType: "user",
     resourceId: invited.user.id,
-    detail: { role: body.role, created: invited.created },
+    detail: { role: body.role, emailSent: invited.emailSent },
   });
 
-  const origin = portalOrigin(c.env, c.req.header("Origin"));
   return c.json({
     user: {
       id: invited.user.id,
@@ -763,9 +800,10 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
       status: invited.user.status,
     },
     role: body.role,
-    setupUrl: `${origin}/setup-password?token=${encodeURIComponent(invited.setupToken)}`,
+    setupUrl: invited.setupUrl,
     setupTokenExpiresAt: invited.expiresAt,
-    // Token returned once for admin to share securely — not stored plaintext
+    emailSent: invited.emailSent,
+    emailError: invited.emailError,
     setupToken: invited.setupToken,
   });
 });
@@ -1760,5 +1798,7 @@ phase3.get(
     return c.json({ exceptions: await listFinancialExceptions(c.env.DB, status) });
   },
 );
+
+registerCommand6Routes(phase3);
 
 export default phase3;

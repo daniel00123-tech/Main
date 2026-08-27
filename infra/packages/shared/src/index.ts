@@ -14,3 +14,4 @@ export * from "./connectors/execution-plan";
 export * from "./action-engine";
 export * from "./permissions/role-presets";
 export * from "./service-identity-scopes";
+export * from "./usage-labels";

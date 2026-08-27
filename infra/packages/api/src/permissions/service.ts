@@ -91,6 +91,37 @@ export async function evaluateActionPermission(
     };
   }
 
+  const membership = user.memberships.find((m) => m.companyId === companyId);
+  const customRoleId = membership?.customRoleId;
+  if (customRoleId) {
+    const grants = await db
+      .prepare(`SELECT action, effect FROM company_custom_role_grants WHERE custom_role_id = ?`)
+      .bind(customRoleId)
+      .all();
+    const grant = (grants.results ?? []).find((g) => String(g.action) === action);
+    if (grant?.effect === "deny") {
+      return {
+        allowed: false,
+        action,
+        companyId,
+        role,
+        riskClass,
+        reason: "Custom role denies this action",
+      };
+    }
+    if (grant?.effect === "allow") {
+      return { allowed: true, action, companyId, role, riskClass };
+    }
+    return {
+      allowed: false,
+      action,
+      companyId,
+      role,
+      riskClass,
+      reason: "Custom role does not include this action",
+    };
+  }
+
   const overrides = await listRoleActionOverrides(db, companyId);
   const override = overrides.find(
     (item) => item.role === role && item.action === action,

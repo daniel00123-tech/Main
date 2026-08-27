@@ -27,7 +27,11 @@ export interface Env {
   /** Xero app credentials — Worker secrets only. Never store in D1. */
   XERO_CLIENT_ID?: string;
   XERO_CLIENT_SECRET?: string;
-  XERO_OAUTH_REDIRECT_URI?: string;
+  /** Optional email delivery via Resend */
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
+  /** Feature flag — auto top-up execution (test mode only until operator approval) */
+  AUTO_TOPUP_EXECUTION_ENABLED?: string;
   [key: string]: unknown;
 }
 

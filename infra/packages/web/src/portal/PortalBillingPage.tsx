@@ -426,6 +426,36 @@ export default function PortalBillingPage() {
                   Test mode — use Stripe test card 4242 4242 4242 4242.
                 </p>
               ) : null}
+              {paymentMethod?.hasPaymentMethod ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  style={{ marginTop: 8 }}
+                  onClick={async () => {
+                    if (!company) return;
+                    const disableAuto =
+                      autoTopUp?.enabled &&
+                      window.confirm(
+                        "Auto top-up is enabled. Remove payment method and disable auto top-up?",
+                      );
+                    if (autoTopUp?.enabled && !disableAuto) return;
+                    setBusy(true);
+                    try {
+                      await api.removePaymentMethod(company.slug, disableAuto);
+                      setPaymentMethod(await api.getPaymentMethod(company.slug).then((r) => r.paymentMethod));
+                      setMessage("Payment method removed");
+                    } catch (err) {
+                      setMessage(err instanceof Error ? err.message : "Unable to remove payment method");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  Remove payment method
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </SectionCard>
@@ -434,8 +464,8 @@ export default function PortalBillingPage() {
       {tab === "auto-topup" ? (
         <SectionCard title="Auto top-up">
           <Notice tone="info">
-            Configure automatic credit when your balance falls below a threshold. Unattended
-            charging requires a saved payment method and remains disabled until operator approval.
+            Configure automatic credit when your balance falls below a threshold. Requires a saved
+            payment method. {(autoTopUp as { canExecute?: boolean })?.canExecute ? "Active in Stripe test mode." : "Execution awaits operator enablement in test mode."}
           </Notice>
           <div className="kv-stack" style={{ marginTop: 16 }}>
             <label className="field">

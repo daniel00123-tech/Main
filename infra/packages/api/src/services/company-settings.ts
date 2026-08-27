@@ -63,7 +63,11 @@ export async function getCompanySettings(
               ppa.auto_top_up_enabled AS ppa_auto_enabled,
               ppa.auto_top_up_threshold_cents AS ppa_auto_threshold,
               ppa.auto_top_up_amount_cents AS ppa_auto_amount,
-              ppa.status AS payment_status
+              ppa.payment_method_status,
+              ppa.payment_method_brand,
+              ppa.payment_method_last4,
+              ppa.payment_method_exp_month,
+              ppa.payment_method_exp_year
        FROM companies c
        LEFT JOIN company_commercial_settings ccs ON ccs.company_id = c.id
        LEFT JOIN payment_provider_accounts ppa
@@ -103,7 +107,7 @@ export async function getCompanySettings(
           : row.ppa_auto_amount != null
             ? Number(row.ppa_auto_amount)
             : null,
-      paymentMethodReady: String(row.payment_status ?? "") === "ready",
+      paymentMethodReady: String(row.payment_method_status ?? "") === "active",
     },
     notifications: {
       lowBalanceEmail: notifications.lowBalanceEmail !== false,

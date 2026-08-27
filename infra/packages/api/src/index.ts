@@ -27,6 +27,7 @@ import {
   getCompanyByPortalSubdomain,
 } from "./services/tenant-provisioning";
 import { portalOrigin } from "./services/public-urls";
+import { queueEmail, renderPasswordResetEmail } from "./services/email-outbox";
 import {
   attachExistingCompanyMcp,
   EXISTING_PRODUCTION_COMPANY_MCPS,
@@ -252,19 +253,31 @@ app.post("/api/auth/password-reset/request", async (c) => {
   const origin = portalOrigin(c.env, c.req.header("Origin"));
   const resetUrl = `${origin}/setup-password?token=${encodeURIComponent(token)}`;
 
+  const emailContent = renderPasswordResetEmail({
+    setupUrl: resetUrl,
+    expiresAt: new Date(expiresAt).toLocaleString("en-GB"),
+  });
+  const emailResult = await queueEmail(c.env, c.env.DB, {
+    toEmail: user.email,
+    templateKey: "password_reset",
+    subject: emailContent.subject,
+    bodyText: emailContent.text,
+    bodyHtml: emailContent.html,
+  });
+
   await recordAuditEvent(c.env.DB, {
     eventType: "auth.password_reset_requested",
     actor: user.email,
     resourceType: "user",
     resourceId: user.id,
-    detail: { outcome: "link_created", expiresAt },
+    detail: { outcome: "link_created", expiresAt, emailSent: emailResult.sent },
   });
 
   return c.json({
     ok: true,
-    message: "Use this secure link to set a new password. It is single-use and expires in one hour.",
-    resetUrl,
-    expiresAt,
+    message: genericMessage,
+    emailSent: emailResult.sent,
+    ...(emailResult.sent ? {} : { resetUrl, expiresAt }),
   });
 });
 

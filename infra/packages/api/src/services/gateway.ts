@@ -10,6 +10,12 @@ import {
   recordAuditEvent,
 } from "./control-plane";
 import { appendLedgerEntry, getWalletBalance } from "./ledger";
+import { maybeTriggerAutoTopUp } from "./auto-topup";
+import { maybeNotifyWalletHealth } from "./wallet-health";
+import {
+  allocateDebitCreditClasses,
+  consumePromotionalGrants,
+} from "./promotional-grants";
 import {
   calculateChargeCents,
   resolvePricingPolicy,
@@ -621,7 +627,8 @@ export async function executeGatewayRequest(
 
       return {
         status: 402 as const,
-        error: "Insufficient company credit",
+        error:
+          "Your INFRA credit balance is empty. Add credit to continue.",
         correlationId,
         requestId,
         balanceCents: wallet.balanceCents,
@@ -812,10 +819,16 @@ export async function executeGatewayRequest(
       });
     } else {
       try {
+        const chargeCents = Math.abs(charge.customerChargeCents);
+        const allocation = await allocateDebitCreditClasses(
+          env.DB,
+          input.companyId,
+          chargeCents,
+        );
         const ledger = await appendLedgerEntry(env.DB, {
           companyId: input.companyId,
           entryType: "usage_debit",
-          amountCents: -Math.abs(charge.customerChargeCents),
+          amountCents: -chargeCents,
           referenceType: "usage",
           referenceId: usage.id,
           description: `${humanSource(sourceClient)} · ${humanAction(action)}`,
@@ -826,9 +839,15 @@ export async function executeGatewayRequest(
             isTestConfig: charge.isTestConfig,
             pricingLabel: charge.pricingLabel,
             balanceBeforeCents: latestWallet.balanceCents,
+            promotionalCentsUsed: allocation.promotionalCents,
+            paidCentsUsed: allocation.paidCents,
+            creditConsumptionOrder: "promotional_first",
           },
           createdBy: actorLabel,
         });
+        if (allocation.promotionalCents > 0) {
+          await consumePromotionalGrants(env.DB, input.companyId, allocation.promotionalCents);
+        }
         ledgerEntryId = ledger.entry.id;
         settlementStatus = "settled";
         await markUsageSettled(env.DB, usage.id, ledger.entry.id);
@@ -971,6 +990,22 @@ export async function executeGatewayRequest(
   }
 
   const balanceAfter = await getWalletBalance(env.DB, input.companyId);
+
+  if (
+    settlementStatus === "settled" &&
+    charge.customerChargeCents &&
+    charge.customerChargeCents > 0
+  ) {
+    void maybeNotifyWalletHealth(env.DB, input.companyId).catch(() => undefined);
+    const companyRow = await env.DB.prepare(`SELECT name FROM companies WHERE id = ?`)
+      .bind(input.companyId)
+      .first();
+    void maybeTriggerAutoTopUp(env, {
+      companyId: input.companyId,
+      companyName: String(companyRow?.name ?? input.companyId),
+      actorEmail: "gateway",
+    }).catch(() => undefined);
+  }
 
   return {
     status: 200 as const,

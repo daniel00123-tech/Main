@@ -25,6 +25,8 @@ export interface DbMembership {
   companyId: string;
   role: CompanyRole;
   status: "active" | "disabled";
+  teamId: string | null;
+  customRoleId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,6 +53,8 @@ function rowToMembership(row: Record<string, unknown>): DbMembership {
     companyId: String(row.company_id),
     role: row.role as CompanyRole,
     status: row.status as DbMembership["status"],
+    teamId: row.team_id ? String(row.team_id) : null,
+    customRoleId: row.custom_role_id ? String(row.custom_role_id) : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -169,6 +173,8 @@ export async function toSessionUser(
       (membership): SessionMembership => ({
         companyId: membership.companyId,
         role: membership.role,
+        customRoleId: membership.customRoleId,
+        teamId: membership.teamId,
       }),
     ),
   };

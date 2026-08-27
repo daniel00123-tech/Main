@@ -62,6 +62,14 @@ export async function getCompanyPaymentProviderStatus(
   const settings = await getCompanySettings(db, companyId);
   if (!settings) return base;
 
+  const executionEnabled = String(env.AUTO_TOPUP_EXECUTION_ENABLED ?? "").toLowerCase() === "true";
+  const canExecute =
+    executionEnabled &&
+    base.configured &&
+    base.testModeOnly &&
+    settings.autoTopUp.enabled &&
+    settings.autoTopUp.paymentMethodReady;
+
   return {
     ...base,
     autoTopUp: {
@@ -70,11 +78,13 @@ export async function getCompanyPaymentProviderStatus(
       thresholdCents: settings.autoTopUp.thresholdCents ?? 500,
       amountCents: settings.autoTopUp.amountCents ?? 2500,
       paymentMethodReady: settings.autoTopUp.paymentMethodReady,
-      canExecute: false,
+      canExecute,
       setupRequired: !settings.autoTopUp.paymentMethodReady,
       message: settings.autoTopUp.enabled
         ? settings.autoTopUp.paymentMethodReady
-          ? "Auto top-up is configured. Unattended charging awaits operator approval."
+          ? canExecute
+            ? "Auto top-up is active in Stripe test mode."
+            : "Auto top-up configured — execution awaits operator enablement."
           : "Auto top-up enabled — add a payment method to activate."
         : "Auto top-up is off.",
     },

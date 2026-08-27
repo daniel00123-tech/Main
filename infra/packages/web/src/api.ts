@@ -707,6 +707,69 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
+  removePaymentMethod: (slug: string, disableAutoTopUp?: boolean) =>
+    fetchJson<{ ok: boolean }>(`/api/companies/${slug}/wallet/payment-method`, {
+      method: "DELETE",
+      body: JSON.stringify({ disableAutoTopUp }),
+    }),
+  getNotifications: (slug: string) =>
+    fetchJson<{
+      notifications: Array<{
+        id: string;
+        title: string;
+        body: string;
+        severity: string;
+        href: string | null;
+        readAt: string | null;
+        createdAt: string;
+      }>;
+      unreadCount: number;
+    }>(`/api/companies/${slug}/notifications`),
+  markNotificationRead: (slug: string, id: string) =>
+    fetchJson<{ ok: boolean }>(`/api/companies/${slug}/notifications/${id}/read`, {
+      method: "POST",
+      body: "{}",
+    }),
+  markAllNotificationsRead: (slug: string) =>
+    fetchJson<{ ok: boolean }>(`/api/companies/${slug}/notifications/read-all`, {
+      method: "POST",
+      body: "{}",
+    }),
+  getBillingDocuments: (slug: string) =>
+    fetchJson<{ documents: Array<Record<string, unknown>> }>(
+      `/api/companies/${slug}/billing-documents`,
+    ),
+  getAddonCatalog: () => fetchJson<{ addons: Array<Record<string, unknown>> }>("/api/addons/catalog"),
+  getCompanyAddons: (slug: string) =>
+    fetchJson<{ subscriptions: Array<Record<string, unknown>> }>(`/api/companies/${slug}/addons`),
+  requestAddon: (slug: string, addonSlug: string) =>
+    fetchJson<{ id: string; status: string }>(`/api/companies/${slug}/addons/request`, {
+      method: "POST",
+      body: JSON.stringify({ addonSlug }),
+    }),
+  getTeams: (slug: string) =>
+    fetchJson<{ teams: Array<Record<string, unknown>> }>(`/api/companies/${slug}/teams`),
+  createTeam: (slug: string, input: { name: string; description?: string }) =>
+    fetchJson<{ team: Record<string, unknown> }>(`/api/companies/${slug}/teams`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  getInvitations: (slug: string) =>
+    fetchJson<{ invitations: Array<Record<string, unknown>> }>(
+      `/api/companies/${slug}/invitations`,
+    ),
+  cancelInvitation: (slug: string, id: string) =>
+    fetchJson<{ ok: boolean }>(`/api/companies/${slug}/invitations/${id}/cancel`, {
+      method: "POST",
+      body: "{}",
+    }),
+  getCustomRoles: (slug: string) =>
+    fetchJson<{ roles: Array<Record<string, unknown>> }>(`/api/companies/${slug}/custom-roles`),
+  createCustomRole: (slug: string, input: { name: string; description?: string; cloneFromRole?: string }) =>
+    fetchJson<{ role: Record<string, unknown> }>(`/api/companies/${slug}/custom-roles`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   getAiConnections: (slug: string) =>
     fetchJson<
       Array<{

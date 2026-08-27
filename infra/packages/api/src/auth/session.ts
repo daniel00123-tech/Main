@@ -4,6 +4,8 @@ import type { CompanyRole } from "@infra/shared";
 export interface SessionMembership {
   companyId: string;
   role: CompanyRole;
+  customRoleId?: string | null;
+  teamId?: string | null;
 }
 
 export interface SessionUser {

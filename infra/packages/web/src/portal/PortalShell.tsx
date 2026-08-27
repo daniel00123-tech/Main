@@ -27,6 +27,7 @@ import {
 } from "../components";
 import { humanRole } from "../lib/format";
 import { PortalCompanyProvider, usePortalCompany } from "./usePortalCompany";
+import { PortalNotificationBell } from "./PortalNotificationBell";
 
 type NavItem = {
   path: string;
@@ -147,6 +148,9 @@ function PortalShellInner() {
           <Menu size={18} />
         </Button>
         <strong>{company.name}</strong>
+        <div style={{ marginLeft: "auto" }}>
+          <PortalNotificationBell />
+        </div>
       </div>
 
       <aside className="sidebar" aria-label="Company navigation">
@@ -237,6 +241,10 @@ function PortalShellInner() {
         </nav>
 
         <div className="sidebar-spacer" />
+
+        <div style={{ padding: showLabels ? "0 16px 12px" : "0 8px 12px" }}>
+          <PortalNotificationBell />
+        </div>
 
         <div className="sidebar-footer">
           {showLabels ? (

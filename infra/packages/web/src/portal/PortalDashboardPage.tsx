@@ -23,6 +23,7 @@ import {
   humanRole,
 } from "../lib/format";
 import { CompactList, IntegrationRow, PortalPageHeader, ViewAllLink } from "./components";
+import { PortalOnboardingChecklist } from "./PortalOnboardingChecklist";
 import { ConnectorLogo } from "../components/connectors/ConnectorLogo";
 import { usePortalCompany } from "./usePortalCompany";
 
@@ -144,6 +145,8 @@ export default function PortalDashboardPage() {
       />
 
       <AttentionBanner items={attention} allClear="You're all caught up" />
+
+      <PortalOnboardingChecklist />
 
       <KpiStrip
         items={[

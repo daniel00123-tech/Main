@@ -595,6 +595,17 @@ export async function processStripeWebhookEvent(
   try {
     if (input.eventType === "checkout.session.completed") {
       const object = sessionObject(input.payload);
+      const mode = String(object.mode ?? "payment");
+
+      if (mode === "setup") {
+        const result = await handleSetupCheckoutCompleted(env, {
+          stripeEventId: input.stripeEventId,
+          object,
+        });
+        await markWebhookProcessed(env.DB, input.stripeEventId);
+        return result;
+      }
+
       const paymentStatus = String(object.payment_status ?? "");
       if (paymentStatus !== "paid") {
         await markWebhookProcessed(env.DB, input.stripeEventId, "Payment not completed");
@@ -769,11 +780,61 @@ export async function processStripeWebhookEvent(
       }
 
       await markWebhookProcessed(env.DB, input.stripeEventId);
-      return {
-        processed: true,
-        duplicate: ledger.alreadyExists,
-        message: ledger.alreadyExists ? "Refund already recorded" : "refund recorded",
-      };
+      return { processed: true, duplicate: false, message: "refund recorded" };
+    }
+
+    if (input.eventType === "payment_intent.succeeded") {
+      const object = sessionObject(input.payload);
+      const metadata = (object.metadata ?? {}) as Record<string, string>;
+      const companyId =
+        metadata.company_id ?? metadata.infra_company_id ?? metadata.infra_company_id;
+      const source = metadata.source ?? "";
+      const amountCents = Number(object.amount_received ?? object.amount ?? 0);
+      const paymentIntentId = String(object.id ?? "");
+
+      if (companyId && source === "auto_top_up" && amountCents > 0) {
+        const { creditAutoTopUpFromPaymentIntent } = await import("./auto-topup");
+        const result = await creditAutoTopUpFromPaymentIntent(env, {
+          stripeEventId: input.stripeEventId,
+          paymentIntentId,
+          companyId,
+          amountCents,
+          transactionId: metadata.auto_top_up_transaction_id,
+        });
+        await markWebhookProcessed(env.DB, input.stripeEventId);
+        return {
+          processed: true,
+          duplicate: result.duplicate,
+          message: result.credited ? "auto top-up credited" : "already credited",
+        };
+      }
+
+      await markWebhookProcessed(env.DB, input.stripeEventId);
+      return { processed: true, duplicate: false, message: "payment_intent ignored" };
+    }
+
+    if (input.eventType === "payment_intent.payment_failed") {
+      const object = sessionObject(input.payload);
+      const metadata = (object.metadata ?? {}) as Record<string, string>;
+      const companyId = metadata.company_id ?? metadata.infra_company_id;
+      const source = metadata.source ?? "";
+      const paymentIntentId = String(object.id ?? "");
+      const failureMessage =
+        (object.last_payment_error as { message?: string } | undefined)?.message ??
+        "Payment failed";
+
+      if (companyId && source === "auto_top_up") {
+        const { failAutoTopUpFromPaymentIntent } = await import("./auto-topup");
+        await failAutoTopUpFromPaymentIntent(env, {
+          paymentIntentId,
+          companyId,
+          failureReason: failureMessage,
+          stripeEventId: input.stripeEventId,
+        });
+      }
+
+      await markWebhookProcessed(env.DB, input.stripeEventId);
+      return { processed: true, duplicate: false, message: "payment failure recorded" };
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -936,7 +997,7 @@ export async function createStripePaymentMethodSetupSession(
     cancelUrl: string;
   },
 ): Promise<
-  | { configured: true; url: string; sessionId: string; customerId: string }
+  | { configured: true; url: string; sessionId: string; customerId: string; localSetupId: string }
   | { configured: false; error: string }
 > {
   if (!stripePaymentsAllowed(env)) {
@@ -976,11 +1037,21 @@ export async function createStripePaymentMethodSetupSession(
     };
   }
 
+  const localId = newId("stripe_setup");
+  await env.DB.prepare(
+    `INSERT INTO stripe_setup_sessions (
+      id, company_id, stripe_session_id, status, created_by, created_at
+    ) VALUES (?, ?, ?, 'checkout_created', ?, ?)`,
+  )
+    .bind(localId, input.companyId, body.id, input.actorEmail, nowIso())
+    .run();
+
   return {
     configured: true,
     url: body.url,
     sessionId: body.id,
     customerId: customer.customerId,
+    localSetupId: localId,
   };
 }
 
@@ -1036,6 +1107,177 @@ export async function createStripeSetupIntent(
     clientSecret: body.client_secret,
     customerId: customer.customerId,
   };
+}
+
+async function handleSetupCheckoutCompleted(
+  env: Env,
+  input: { stripeEventId: string; object: Record<string, unknown> },
+): Promise<WebhookProcessResult> {
+  const companyId =
+    metadataString(input.object, "company_id") ?? metadataString(input.object, "infra_company_id");
+  if (!companyId) {
+    return { processed: false, duplicate: false, message: "Missing company_id", code: "UNKNOWN_SETUP" };
+  }
+
+  const stripeSessionId = String(input.object.id ?? "");
+  const setupIntentId = input.object.setup_intent ? String(input.object.setup_intent) : null;
+
+  await env.DB.prepare(
+    `UPDATE stripe_setup_sessions SET status = 'completed', completed_at = ?, stripe_setup_intent_id = COALESCE(?, stripe_setup_intent_id)
+     WHERE stripe_session_id = ? AND company_id = ?`,
+  )
+    .bind(nowIso(), setupIntentId, stripeSessionId, companyId)
+    .run();
+
+  const synced = await syncDefaultPaymentMethodForCompany(env, companyId);
+  if (!synced.ok) {
+    await recordAuditEvent(env.DB, {
+      companyId,
+      eventType: "payment_method.failed",
+      actor: "stripe-webhook",
+      resourceType: "stripe_setup",
+      resourceId: stripeSessionId,
+      detail: { error: synced.error, stripeEventId: input.stripeEventId },
+    });
+    return { processed: false, duplicate: false, message: synced.error, code: "SYNC_FAILED" };
+  }
+
+  const eventType = synced.replaced ? "payment_method.replaced" : "payment_method.added";
+  await recordAuditEvent(env.DB, {
+    companyId,
+    eventType,
+    actor: "stripe-webhook",
+    resourceType: "payment_provider",
+    resourceId: companyId,
+    detail: {
+      brand: synced.brand,
+      last4: synced.last4,
+      stripeEventId: input.stripeEventId,
+    },
+  });
+
+  return { processed: true, duplicate: false, message: "payment method saved" };
+}
+
+export async function syncDefaultPaymentMethodForCompany(
+  env: Env,
+  companyId: string,
+): Promise<
+  | { ok: true; brand: string | null; last4: string | null; replaced: boolean }
+  | { ok: false; error: string }
+> {
+  const balanceRow = await env.DB.prepare(
+    `SELECT stripe_customer_id FROM credit_balances WHERE company_id = ?`,
+  )
+    .bind(companyId)
+    .first();
+  const customerId = balanceRow?.stripe_customer_id
+    ? String(balanceRow.stripe_customer_id)
+    : null;
+  if (!customerId) return { ok: false, error: "Stripe customer not found" };
+
+  const existing = await env.DB.prepare(
+    `SELECT payment_method_id FROM payment_provider_accounts WHERE company_id = ? AND provider = 'stripe'`,
+  )
+    .bind(companyId)
+    .first();
+  const hadPrevious = Boolean(existing?.payment_method_id);
+
+  const status = await getStripePaymentMethodStatus(env, {
+    companyId,
+    companyName: "",
+    actorEmail: "stripe-webhook",
+  });
+  if (!status.hasPaymentMethod) {
+    return { ok: false, error: status.message };
+  }
+
+  const customerResp = await fetch(
+    `https://api.stripe.com/v1/customers/${customerId}?expand[]=invoice_settings.default_payment_method`,
+    { headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` } },
+  );
+  const customerBody = (await customerResp.json()) as {
+    invoice_settings?: { default_payment_method?: string | { id?: string } };
+  };
+  const pmRef = customerBody.invoice_settings?.default_payment_method;
+  const paymentMethodId =
+    typeof pmRef === "string" ? pmRef : pmRef?.id ? String(pmRef.id) : null;
+
+  await env.DB.prepare(
+    `UPDATE payment_provider_accounts
+     SET payment_method_id = ?, payment_method_brand = ?, payment_method_last4 = ?,
+         payment_method_exp_month = ?, payment_method_exp_year = ?,
+         payment_method_status = 'active', status = 'ready', updated_at = ?
+     WHERE company_id = ? AND provider = 'stripe'`,
+  )
+    .bind(
+      paymentMethodId,
+      status.brand,
+      status.last4,
+      status.expMonth,
+      status.expYear,
+      nowIso(),
+      companyId,
+    )
+    .run();
+
+  return {
+    ok: true,
+    brand: status.brand,
+    last4: status.last4,
+    replaced: hadPrevious,
+  };
+}
+
+export async function detachStripePaymentMethod(
+  env: Env,
+  input: { companyId: string; actorEmail: string; disableAutoTopUp?: boolean },
+): Promise<{ ok: true } | { ok: false; error: string; code?: string }> {
+  const settings = await import("./company-settings").then((m) =>
+    m.getCompanySettings(env.DB, input.companyId),
+  );
+  if (settings?.autoTopUp.enabled && !input.disableAutoTopUp) {
+    return {
+      ok: false,
+      error: "Disable auto top-up before removing your payment method",
+      code: "AUTO_TOPUP_ENABLED",
+    };
+  }
+
+  const row = await env.DB.prepare(
+    `SELECT payment_method_id FROM payment_provider_accounts WHERE company_id = ? AND provider = 'stripe'`,
+  )
+    .bind(input.companyId)
+    .first();
+  const pmId = row?.payment_method_id ? String(row.payment_method_id) : null;
+  if (!pmId) return { ok: true };
+
+  if (stripePaymentsAllowed(env)) {
+    await fetch(`https://api.stripe.com/v1/payment_methods/${pmId}/detach`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+    });
+  }
+
+  await env.DB.prepare(
+    `UPDATE payment_provider_accounts
+     SET payment_method_id = NULL, payment_method_brand = NULL, payment_method_last4 = NULL,
+         payment_method_exp_month = NULL, payment_method_exp_year = NULL,
+         payment_method_status = 'none', updated_at = ?
+     WHERE company_id = ? AND provider = 'stripe'`,
+  )
+    .bind(nowIso(), input.companyId)
+    .run();
+
+  await recordAuditEvent(env.DB, {
+    companyId: input.companyId,
+    eventType: "payment_method.removed",
+    actor: input.actorEmail,
+    resourceType: "payment_provider",
+    resourceId: input.companyId,
+  });
+
+  return { ok: true };
 }
 
 export {
