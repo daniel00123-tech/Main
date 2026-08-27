@@ -308,7 +308,7 @@ function provenanceMetadata(
   return Object.keys(metadata).length ? metadata : undefined;
 }
 
-function extractHitList(payload: unknown): Record<string, unknown>[] {
+export function extractHitList(payload: unknown): Record<string, unknown>[] {
   const unwrapped = unwrapToolPayload(payload);
   if (Array.isArray(unwrapped)) {
     return unwrapped.filter(isRecord);
