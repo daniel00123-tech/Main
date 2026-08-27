@@ -713,6 +713,36 @@ connectors.get("/api/connectors/microsoft/health", requireAuth, async (c) => {
   return c.json(await getMicrosoftConnectorHealth(c.env));
 });
 
+connectors.post("/api/internal/cmd13/microsoft-acceptance", async (c) => {
+  const token = c.req.header("X-CMD13-Acceptance-Token")?.trim();
+  if (!token) return c.json({ error: "Missing acceptance token" }, 401);
+  const { createHash } = await import("node:crypto");
+  const hash = createHash("sha256").update(token).digest("hex");
+  await c.env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS cmd13_acceptance_tokens (
+      token_hash TEXT PRIMARY KEY,
+      expires_at TEXT NOT NULL
+    )`,
+  ).run();
+  const valid = await c.env.DB.prepare(
+    `SELECT token_hash FROM cmd13_acceptance_tokens WHERE token_hash = ? AND expires_at > datetime('now') LIMIT 1`,
+  )
+    .bind(hash)
+    .first();
+  if (!valid) return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  await c.env.DB.prepare(`DELETE FROM cmd13_acceptance_tokens WHERE token_hash = ?`).bind(hash).run();
+  const { runCmd13MicrosoftAcceptance } = await import("../services/microsoft-acceptance");
+  try {
+    const report = await runCmd13MicrosoftAcceptance(c.env);
+    return c.json(report);
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Acceptance failed", verdict: "ERROR" },
+      500,
+    );
+  }
+});
+
 connectors.get(
   "/api/companies/:slug/microsoft/dashboard",
   requireAuth,

@@ -1,0 +1,16 @@
+name = "infra-api-cmd13-acceptance"
+main = "scripts/cmd13-acceptance-worker.ts"
+compatibility_date = "2025-02-14"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "infra-control-plane"
+database_id = "adacb84d-7ee8-4b27-87ff-3d554b563d71"
+
+[[services]]
+binding = "CADDINGTON_MCP"
+service = "caddington-mcp"
+
+[vars]
+ENVIRONMENT = "production"

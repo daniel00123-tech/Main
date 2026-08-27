@@ -707,11 +707,14 @@ export async function getMicrosoftConnectorHealth(env: Env): Promise<{
   credentials: ReturnType<typeof import("./microsoft-auth").microsoftCredentialStatus>;
   graph: Awaited<ReturnType<typeof import("./microsoft-graph").probeMicrosoftGraph>> | null;
   knowledgeBridgeConfigured: boolean;
+  adminBridge: Awaited<ReturnType<typeof import("./microsoft-acceptance").probeAdminKnowledgeBridge>> | null;
 }> {
   const { microsoftCredentialStatus } = await import("./microsoft-auth");
   const { probeMicrosoftGraph } = await import("./microsoft-graph");
+  const { probeAdminKnowledgeBridge } = await import("./microsoft-acceptance");
   const credentials = microsoftCredentialStatus(env);
   let graph = null;
+  let adminBridge = null;
   if (credentials.configured) {
     const token = await acquireMicrosoftAppToken(env);
     if (token.ok) {
@@ -721,11 +724,18 @@ export async function getMicrosoftConnectorHealth(env: Env): Promise<{
       });
     }
   }
+  if (
+    typeof env.CADDINGTON_ADMIN_TOKEN === "string" &&
+    env.CADDINGTON_ADMIN_TOKEN.trim()
+  ) {
+    adminBridge = await probeAdminKnowledgeBridge(env);
+  }
   return {
     credentials,
     graph,
     knowledgeBridgeConfigured: Boolean(
       typeof env.CADDINGTON_ADMIN_TOKEN === "string" && env.CADDINGTON_ADMIN_TOKEN.trim(),
     ),
+    adminBridge,
   };
 }
