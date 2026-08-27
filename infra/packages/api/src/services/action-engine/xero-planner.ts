@@ -227,15 +227,31 @@ export async function planXeroDraftInvoice(input: {
 
   const resolvedLineItems: DraftInvoiceLineInput[] = [];
   for (const row of input.lineItems) {
-    if (row.accountCode?.trim()) {
-      resolvedLineItems.push(row);
-      continue;
+    try {
+      const account = await resolveSalesAccountCodeWithFetch(xeroConfig, {
+        accountCode: row.accountCode,
+        accountName: row.accountName ?? (row.accountCode?.trim() ? undefined : "Sales"),
+      });
+      resolvedLineItems.push({ ...row, accountCode: account.code });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const ref = row.accountCode?.trim() || row.accountName?.trim() || "account";
+      return {
+        targets: [
+          {
+            targetId: ref,
+            targetType: "draft_invoice",
+            humanRef: ref,
+            currentState: {},
+            proposedState: {},
+            validation: "not_found",
+            validationDetail: message,
+          },
+        ],
+        summary: "Draft invoice plan failed — sales account could not be resolved.",
+        financialImpact: { currencyCode: null, totalAmount: null, direction: "debit", itemCount: 0 },
+      };
     }
-    const account = await resolveSalesAccountCodeWithFetch(xeroConfig, {
-      accountCode: row.accountCode,
-      accountName: row.accountName ?? "Sales",
-    });
-    resolvedLineItems.push({ ...row, accountCode: account.code });
   }
 
   const resolved = await resolveXeroContactForDraftInvoice({

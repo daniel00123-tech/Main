@@ -23,4 +23,7 @@ VALUES
   ('map_cad_xero_bs', 'mcp_caddington_primary', 'xero_balance_sheet', 'xero.reports.balance_sheet.read', 'low_risk', datetime('now')),
   ('map_cad_xero_aged', 'mcp_caddington_primary', 'xero_aged_receivables', 'xero.reports.aged.read', 'low_risk', datetime('now')),
   ('map_cad_xero_sales', 'mcp_caddington_primary', 'xero_sales_summary', 'xero.sales.summary', 'low_risk', datetime('now')),
-  ('map_cad_xero_top', 'mcp_caddington_primary', 'xero_top_customers', 'xero.top_customers', 'low_risk', datetime('now'));
+  ('map_cad_xero_top', 'mcp_caddington_primary', 'xero_top_customers', 'xero.top_customers', 'low_risk', datetime('now')),
+  ('map_cad_xero_top_sup', 'mcp_caddington_primary', 'xero_top_suppliers', 'xero.top_suppliers', 'low_risk', datetime('now')),
+  ('map_cad_xero_tax', 'mcp_caddington_primary', 'xero_list_tax_rates', 'xero.tax_rates.read', 'low_risk', datetime('now')),
+  ('map_cad_xero_vat', 'mcp_caddington_primary', 'xero_vat_capability', 'xero.vat.capability', 'low_risk', datetime('now'));

@@ -216,6 +216,7 @@ phase3.post("/api/gateway/v1/execute", async (c) => {
     return c.json(
       {
         error: result.error,
+        code: "code" in result ? result.code : undefined,
         correlationId: result.correlationId,
         action: "action" in result ? result.action : undefined,
         riskClass: "riskClass" in result ? result.riskClass : undefined,
