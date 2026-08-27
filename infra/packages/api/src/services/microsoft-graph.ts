@@ -183,10 +183,79 @@ export async function listAllDrives(config: MicrosoftGraphConfig): Promise<Graph
 }
 
 export async function listSites(config: MicrosoftGraphConfig, search = "*"): Promise<GraphSite[]> {
-  return graphGetAll<GraphSite>(
-    config,
-    `/sites?search=${encodeURIComponent(`"${search}"`)}&$select=id,name,displayName,webUrl,hostname,siteCollection`,
-  );
+  const seen = new Set<string>();
+  const sites: GraphSite[] = [];
+
+  const queries = [
+    search,
+    "Communication",
+    "Caddington",
+  ].filter((q, i, arr) => arr.indexOf(q) === i);
+
+  for (const query of queries) {
+    const batch = await graphGetAll<GraphSite>(
+      config,
+      `/sites?search=${encodeURIComponent(query)}&$select=id,name,displayName,webUrl`,
+      10,
+    );
+    for (const site of batch) {
+      if (!seen.has(site.id)) {
+        seen.add(site.id);
+        sites.push(site);
+      }
+    }
+  }
+
+  try {
+    const root = await graphGet<GraphSite>(config, "/sites/root?$select=id,name,displayName,webUrl");
+    if (root?.id && !seen.has(root.id)) {
+      seen.add(root.id);
+      sites.push(root);
+    }
+  } catch {
+    /* root site may be unavailable */
+  }
+
+  return sites;
+}
+
+/** Enumerate personal OneDrive drives via /users when /drives omits them. */
+export async function listUserOneDrives(config: MicrosoftGraphConfig): Promise<GraphDrive[]> {
+  const drives: GraphDrive[] = [];
+  let users: Array<{ id: string; userPrincipalName?: string; displayName?: string }> = [];
+  try {
+    users = await graphGetAll(
+      config,
+      `/users?$select=id,userPrincipalName,displayName&$top=100`,
+      5,
+    );
+  } catch {
+    return drives;
+  }
+
+  for (const user of users) {
+    try {
+      const drive = await graphGet<GraphDrive>(
+        config,
+        `/users/${user.id}/drive?$select=id,name,driveType,webUrl,owner,createdBy,quota`,
+      );
+      if (drive?.id) {
+        drives.push({
+          ...drive,
+          owner: drive.owner ?? {
+            user: {
+              id: user.id,
+              email: user.userPrincipalName,
+              displayName: user.displayName,
+            },
+          },
+        });
+      }
+    } catch {
+      /* user may not have OneDrive provisioned */
+    }
+  }
+  return drives;
 }
 
 export async function listSiteDrives(

@@ -107,14 +107,15 @@ describe("CMD13 Microsoft file classification", () => {
     expect(label).toContain("Coal Search.pdf");
   });
 
-  it("builds external id without spaces", () => {
+  it("builds external id without spaces and within Vectorize limits", () => {
     const id = buildMicrosoftExternalId({
       sourceType: "onedrive",
       driveId: "drive-1",
       itemId: "item/1",
     });
     expect(id).not.toContain("/");
-    expect(id).toContain("microsoft-onedrive");
+    expect(id).toMatch(/^msod-[0-9a-f]{16}$/);
+    expect(id.length).toBeLessThanOrEqual(64);
   });
 });
 

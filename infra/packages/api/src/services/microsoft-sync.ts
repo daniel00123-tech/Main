@@ -19,6 +19,7 @@ import {
   listDriveDelta,
   listSiteDrives,
   listSites,
+  listUserOneDrives,
   type GraphDrive,
   type GraphDriveItem,
   type MicrosoftGraphConfig,
@@ -207,6 +208,13 @@ export async function discoverMicrosoftSources(
   let sharepoint = 0;
 
   const drives = await listAllDrives(config);
+  const driveIds = new Set(drives.map((d) => d.id));
+  for (const userDrive of await listUserOneDrives(config)) {
+    if (!driveIds.has(userDrive.id)) {
+      drives.push(userDrive);
+      driveIds.add(userDrive.id);
+    }
+  }
   for (const drive of drives) {
     const sourceType = driveSourceType(drive);
     const owner = driveOwner(drive);

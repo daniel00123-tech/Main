@@ -15,6 +15,7 @@ import {
   listDriveChildren,
   listSites,
   listSiteDrives,
+  listUserOneDrives,
   type GraphDrive,
   type GraphDriveItem,
   type MicrosoftGraphConfig,
@@ -191,11 +192,18 @@ export async function runCmd13MicrosoftAcceptance(env: Env): Promise<Record<stri
   };
 
   const allDrives = await listAllDrives(config);
-  const personalDrives = allDrives.filter((d) => d.driveType === "personal");
+  const driveIds = new Set(allDrives.map((d) => d.id));
+  for (const userDrive of await listUserOneDrives(config)) {
+    if (!driveIds.has(userDrive.id)) {
+      allDrives.push(userDrive);
+      driveIds.add(userDrive.id);
+    }
+  }
+  const personalDrives = allDrives.filter((d) => d.driveType === "personal" || d.driveType === "business");
   report.onedriveDiscovery = {
     totalDrivesAccessible: allDrives.length,
     personalOneDrives: personalDrives.length,
-    drives: personalDrives.slice(0, 20).map((d) => ({
+    drives: (personalDrives.length > 0 ? personalDrives : allDrives).slice(0, 20).map((d) => ({
       label: driveLabel(d),
       driveType: d.driveType,
       webUrl: d.webUrl,
@@ -207,7 +215,12 @@ export async function runCmd13MicrosoftAcceptance(env: Env): Promise<Record<stri
   let testFolder: { folder: GraphDriveItem; path: string } | null = null;
   let testOneDriveFiles: SafeFile[] = [];
 
-  for (const drive of personalDrives) {
+  const onedriveCandidates =
+    personalDrives.length > 0
+      ? personalDrives
+      : allDrives.filter((d) => d.driveType !== "documentLibrary");
+
+  for (const drive of onedriveCandidates) {
     const folder = await findFolderRecursive(config, drive.id, TEST_FOLDER);
     if (folder) {
       testOneDrive = drive;
@@ -218,7 +231,7 @@ export async function runCmd13MicrosoftAcceptance(env: Env): Promise<Record<stri
   }
 
   if (!testOneDrive) {
-    for (const drive of personalDrives) {
+    for (const drive of onedriveCandidates) {
       const owner = (drive.owner?.user?.email ?? drive.owner?.user?.displayName ?? "").toLowerCase();
       if (owner.includes("daniel") || owner.includes("dwyer")) {
         testOneDrive = drive;

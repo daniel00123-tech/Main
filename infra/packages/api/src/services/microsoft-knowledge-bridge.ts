@@ -118,10 +118,22 @@ export async function uploadMicrosoftDocumentToKnowledge(
   }
 }
 
+function fnv1aHex(input: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/** Stable external id for Vectorize upsert — must stay within 64 bytes. */
 export function buildMicrosoftExternalId(input: {
   sourceType: string;
   driveId: string;
   itemId: string;
 }): string {
-  return `microsoft-${input.sourceType}-${input.driveId}-${input.itemId}`.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const raw = `${input.sourceType}|${input.driveId}|${input.itemId}`;
+  const prefix = input.sourceType === "sharepoint" ? "mssp" : "msod";
+  return `${prefix}-${fnv1aHex(raw)}${fnv1aHex(`${raw}|salt`)}`;
 }
