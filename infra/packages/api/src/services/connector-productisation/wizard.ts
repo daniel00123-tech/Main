@@ -94,19 +94,30 @@ export function buildConnectorWizardState(input: {
       }
       case "connect": {
         const connected = input.instance?.authStatus === "connected";
+        const isMicrosoft = profile.definitionId === "conn_microsoft_365";
         steps.push(
           step(
             "connect",
             "Connect",
             profile.definitionId === "conn_xero"
               ? "Start Xero OAuth from the portal"
-              : "Open Microsoft 365 setup",
+              : "Connect Microsoft 365 with admin consent or BYO Entra app",
             connected ? "completed" : hasBlocking ? "blocked" : "available",
             {
-              actionLabel: profile.definitionId === "conn_xero" ? "Connect Xero" : "Open setup",
-              actionKind: profile.definitionId === "conn_xero" ? "oauth" : "navigate",
+              actionLabel:
+                profile.definitionId === "conn_xero"
+                  ? "Connect Xero"
+                  : isMicrosoft
+                    ? "Connect Microsoft 365"
+                    : "Open setup",
+              actionKind:
+                profile.definitionId === "conn_xero" || isMicrosoft ? "oauth" : "navigate",
               actionTarget:
-                profile.portalRoute ? `/portal/${input.companySlug}/${profile.portalRoute}` : null,
+                isMicrosoft
+                  ? null
+                  : profile.portalRoute
+                    ? `/portal/${input.companySlug}/${profile.portalRoute}`
+                    : null,
             },
           ),
         );
@@ -115,22 +126,30 @@ export function buildConnectorWizardState(input: {
       case "authorize": {
         const xero = xeroOauthStatus(input.env);
         const ms = microsoftOAuthStatus(input.env);
+        const isMicrosoft = profile.definitionId === "conn_microsoft_365";
         const ready =
           profile.definitionId === "conn_xero"
             ? xero.readyToConnect
-            : ms.appConfigured;
+            : ms.readyForConsent || ms.onboardingModes.includes("company_app");
         const done = input.instance?.authStatus === "connected";
         steps.push(
           step(
             "authorize",
             "Authorize",
-            "Sign in with the vendor and grant required permissions",
+            isMicrosoft
+              ? "Grant Microsoft admin consent for OneDrive and SharePoint application permissions"
+              : "Sign in with the vendor and grant required permissions",
             done ? "completed" : ready && !hasBlocking ? "available" : "blocked",
             {
-              actionLabel: done ? undefined : "Authorize",
-              actionKind: profile.definitionId === "conn_xero" ? "oauth" : "navigate",
+              actionLabel: done ? undefined : isMicrosoft ? "Grant admin consent" : "Authorize",
+              actionKind:
+                profile.definitionId === "conn_xero" || isMicrosoft ? "oauth" : "navigate",
               actionTarget:
-                profile.portalRoute ? `/portal/${input.companySlug}/${profile.portalRoute}` : null,
+                isMicrosoft
+                  ? null
+                  : profile.portalRoute
+                    ? `/portal/${input.companySlug}/${profile.portalRoute}`
+                    : null,
             },
           ),
         );

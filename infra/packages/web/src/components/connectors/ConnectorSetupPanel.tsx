@@ -94,8 +94,6 @@ export function ConnectorSetupPanel({
   const mcpManaged = connector.requiresCompanyMcp === true;
   const microsoft =
     connector.slug === "microsoft-365" || isMicrosoftConnectorDefinition(connector.id);
-  const microsoftView = storage?.microsoft;
-  const microsoftAppConfigured = microsoftView?.appConfigured ?? false;
   const xeroAppConfigured = storage?.xero?.appConfigured ?? false;
   const xeroReady = Boolean(storage?.xero?.readyToConnect);
   const xeroConnected = instance?.authStatus === "connected";
@@ -285,17 +283,10 @@ export function ConnectorSetupPanel({
 
       {microsoft ? (
         <div className="stack microsoft-setup-panel" style={{ gap: 12 }}>
-          {!microsoftAppConfigured ? (
-            <Notice tone="warning">
-              Microsoft 365 app credentials are not configured on INFRA. OneDrive and SharePoint use
-              app-only Graph authentication once MICROSOFT_TENANT_ID, MICROSOFT_CLIENT_ID, and
-              MICROSOFT_CLIENT_SECRET are set.
-            </Notice>
-          ) : (
-            <Notice tone="success">
-              Microsoft 365 app-only authentication is configured. Manage sources from the Microsoft 365 dashboard.
-            </Notice>
-          )}
+          <Notice tone="info">
+            Microsoft 365 supports BYO Entra app credentials and INFRA SaaS admin consent. Manage
+            connection, discovery, and source scope from the Microsoft 365 dashboard.
+          </Notice>
           <Link to={`/portal/${companySlug}/microsoft-365`} className="button button-primary">
             Open Microsoft 365 dashboard
           </Link>

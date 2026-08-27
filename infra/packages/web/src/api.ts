@@ -537,9 +537,10 @@ export const api = {
       definitionId?: string;
       instanceId?: string;
       component?: string;
+      authMode?: "platform_multitenant" | "company_app";
     },
   ) =>
-    fetchJson<{ authorizationUrl: string; state: string }>(
+    fetchJson<{ authorizationUrl: string; state: string; instanceId?: string }>(
       `/api/companies/${slug}/connectors/microsoft/oauth/start`,
       { method: "POST", body: JSON.stringify(body) },
     ),
@@ -572,7 +573,12 @@ export const api = {
   getMicrosoftDashboard: (slug: string) =>
     fetchJson<{
       status: Record<string, unknown>;
-      health: Awaited<ReturnType<typeof api.getMicrosoftHealth>>;
+      instanceId: string | null;
+      health: Awaited<ReturnType<typeof api.getMicrosoftHealth>> & {
+        authMode?: string | null;
+        tenantIdMasked?: string | null;
+        connected?: boolean;
+      };
       summary: {
         onedrive: { total: number; included: number; indexed: number };
         sharepoint: { total: number; included: number; indexed: number };
