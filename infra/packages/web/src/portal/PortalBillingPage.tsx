@@ -328,9 +328,9 @@ export default function PortalBillingPage() {
                       : "Low balance — add credit",
               },
               {
-                label: "Promotional credit",
+                label: "Non-purchased credit",
                 value: formatCurrency(wallet.wallet.testCreditCents ?? 0, wallet.wallet.currency),
-                hint: "Non-paid trial or promotional balance",
+                hint: "Promotional and Stripe sandbox credits (not live purchased funds)",
               },
               {
                 label: "Spend this month",
@@ -340,7 +340,7 @@ export default function PortalBillingPage() {
               {
                 label: "Paid credit",
                 value: formatCurrency(wallet.wallet.paidCreditCents ?? 0, wallet.wallet.currency),
-                hint: "From Stripe top-ups",
+                hint: "Live Stripe top-ups and paid wallet funds",
               },
               {
                 label: "Auto top-up",
