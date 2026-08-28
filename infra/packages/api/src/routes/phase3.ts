@@ -12,7 +12,13 @@ import {
   setMembershipStatus,
   setUserStatus,
   updateMembershipRole,
+  updateUserPassword,
 } from "../auth/users";
+import {
+  createPasswordSetupToken,
+  validateNewPassword,
+} from "../auth/password-setup";
+import { portalOrigin } from "../services/public-urls";
 import {
   getCompanyBySlug,
   listMcpEnvironments,
@@ -902,6 +908,139 @@ phase3.post("/api/companies/:slug/users/:userId/status", requireAuth, async (c) 
   });
 
   return c.json({ ok: true, userId: targetId, status: body.status });
+});
+
+phase3.post("/api/companies/:slug/users/:userId/reset-password", requireAuth, async (c) => {
+  const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  const actor = c.get("user");
+  if (!canManageCompany(actor, company.id)) {
+    return c.json({ error: "Company administrator access required" }, 403);
+  }
+
+  const targetId = c.req.param("userId");
+  if (targetId === actor.userId) {
+    return c.json({ error: "Use forgot password to change your own password" }, 400);
+  }
+
+  const target = await getUserById(c.env.DB, targetId);
+  if (!target) return c.json({ error: "User not found" }, 404);
+  if (target.isPlatformAdmin) {
+    return c.json({ error: "Platform administrator passwords cannot be reset here" }, 403);
+  }
+
+  const membership = await c.env.DB
+    .prepare(
+      `SELECT id FROM company_memberships WHERE company_id = ? AND user_id = ? AND status = 'active'`,
+    )
+    .bind(company.id, targetId)
+    .first();
+  if (!membership) {
+    return c.json({ error: "User is not an active member of this company" }, 404);
+  }
+
+  const body = await c.req.json<{ temporaryPassword?: string }>().catch(() => ({}));
+  const origin = portalOrigin(c.env, c.req.header("Origin"));
+
+  if (body.temporaryPassword) {
+    const passwordError = validateNewPassword(body.temporaryPassword);
+    if (passwordError) return c.json({ error: passwordError }, 400);
+
+    await updateUserPassword(c.env.DB, targetId, body.temporaryPassword);
+    const setup = await createPasswordSetupToken(c.env.DB, targetId, "password_setup");
+    const setupUrl = `${origin}/setup-password?token=${encodeURIComponent(setup.token)}`;
+
+    await recordAuditEvent(c.env.DB, {
+      companyId: company.id,
+      eventType: "user.password_reset",
+      actor: actor.email,
+      resourceType: "user",
+      resourceId: targetId,
+      detail: { mode: "temporary", initiatedBy: "company_admin" },
+    });
+
+    return c.json({
+      ok: true,
+      mode: "temporary" as const,
+      setupUrl,
+      expiresAt: setup.expiresAt,
+      message:
+        "Temporary password set. Share the secure setup link so the user can choose a permanent password.",
+    });
+  }
+
+  const reset = await createPasswordSetupToken(c.env.DB, targetId, "password_reset");
+  const resetUrl = `${origin}/setup-password?token=${encodeURIComponent(reset.token)}`;
+
+  await recordAuditEvent(c.env.DB, {
+    companyId: company.id,
+    eventType: "user.password_reset",
+    actor: actor.email,
+    resourceType: "user",
+    resourceId: targetId,
+    detail: { mode: "link", initiatedBy: "company_admin" },
+  });
+
+  return c.json({
+    ok: true,
+    mode: "link" as const,
+    resetUrl,
+    expiresAt: reset.expiresAt,
+    message: "Password reset link created. Share it securely with the user.",
+  });
+});
+
+phase3.post("/api/companies/:slug/users/:userId/remove", requireAuth, async (c) => {
+  const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  const actor = c.get("user");
+  if (!canManageCompany(actor, company.id)) {
+    return c.json({ error: "Company administrator access required" }, 403);
+  }
+
+  const targetId = c.req.param("userId");
+  if (targetId === actor.userId) {
+    return c.json({ error: "Cannot remove your own account" }, 400);
+  }
+
+  const guard = await assertNotLastCompanyAdmin(
+    c.env.DB,
+    company.id,
+    targetId,
+    undefined,
+    true,
+  );
+  if (!guard.ok) return c.json({ error: guard.error }, 400);
+
+  const target = await getUserById(c.env.DB, targetId);
+  if (!target) return c.json({ error: "User not found" }, 404);
+  if (target.isPlatformAdmin) {
+    return c.json({ error: "Platform administrators cannot be removed from a company portal" }, 403);
+  }
+
+  await setMembershipStatus(c.env.DB, targetId, company.id, "disabled");
+
+  const otherActive = await c.env.DB
+    .prepare(
+      `SELECT COUNT(*) AS count FROM company_memberships
+       WHERE user_id = ? AND status = 'active' AND company_id != ?`,
+    )
+    .bind(targetId, company.id)
+    .first<{ count: number }>();
+
+  if (!target.isPlatformAdmin && Number(otherActive?.count ?? 0) === 0) {
+    await setUserStatus(c.env.DB, targetId, "disabled");
+  }
+
+  await recordAuditEvent(c.env.DB, {
+    companyId: company.id,
+    eventType: "user.removed",
+    actor: actor.email,
+    resourceType: "user",
+    resourceId: targetId,
+  });
+
+  return c.json({ ok: true, userId: targetId });
 });
 
 phase3.post("/api/companies/:slug/users/:userId/role", requireAuth, async (c) => {

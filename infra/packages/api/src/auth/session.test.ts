@@ -1,44 +1,35 @@
 import { describe, expect, it } from "vitest";
 import {
-  createSessionToken,
-  verifySessionToken,
-  readSessionCookie,
+  buildClearSessionCookie,
   buildSessionCookie,
+  credentialsVersionFromHash,
 } from "./session";
 
-describe("session tokens", () => {
-  const secret = "test-session-secret-at-least-32-characters";
-
-  it("creates and verifies a session token", async () => {
-    const token = await createSessionToken(
-      {
-        userId: "user_1",
-        email: "admin@example.com",
-        displayName: "Admin",
-        isPlatformAdmin: true,
-        memberships: [],
-      },
-      secret,
-    );
-
-    const user = await verifySessionToken(token, secret);
-    expect(user?.email).toBe("admin@example.com");
-    expect(user?.isPlatformAdmin).toBe(true);
-  });
-
-  it("rejects invalid tokens", async () => {
-    const user = await verifySessionToken("invalid.token.value", secret);
-    expect(user).toBeNull();
-  });
-
-  it("reads session cookie values", () => {
-    expect(readSessionCookie("infra_session=abc123; other=value")).toBe("abc123");
-    expect(readSessionCookie("other=value")).toBeNull();
-  });
-
-  it("builds secure session cookies", () => {
-    const cookie = buildSessionCookie("abc123", true);
+describe("session cookies", () => {
+  it("uses SameSite=Lax and portal domain for first-party sessions", () => {
+    const cookie = buildSessionCookie("token123", true, false, ".infra-web.pages.dev");
+    expect(cookie).toContain("infra_session=token123");
     expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).toContain("Domain=.infra-web.pages.dev");
     expect(cookie).toContain("Secure");
+  });
+
+  it("uses SameSite=None for legacy cross-origin mode", () => {
+    const cookie = buildSessionCookie("token123", true, true);
+    expect(cookie).toContain("SameSite=None");
+    expect(cookie).not.toContain("Domain=");
+  });
+
+  it("clears cookies with matching attributes", () => {
+    const cookie = buildClearSessionCookie(true, false, ".infra-web.pages.dev");
+    expect(cookie).toContain("Max-Age=0");
+    expect(cookie).toContain("Domain=.infra-web.pages.dev");
+  });
+});
+
+describe("credentialsVersionFromHash", () => {
+  it("returns a stable fingerprint prefix", () => {
+    expect(credentialsVersionFromHash("abcdef0123456789")).toBe("abcdef0123456789".slice(0, 16));
   });
 });

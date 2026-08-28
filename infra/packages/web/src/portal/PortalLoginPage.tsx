@@ -1,10 +1,12 @@
 import { FormEvent, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function PortalLoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const successMessage = (location.state as { message?: string } | null)?.message;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -35,10 +37,8 @@ export default function PortalLoginPage() {
         <div className="brand-sub">Company portal</div>
 
         <h1>Sign in</h1>
-        <p className="muted">
-          Company administrators and staff sign in to manage connectors, team access,
-          and AI connections for their organisation only.
-        </p>
+
+        {successMessage ? <p className="info-banner">{successMessage}</p> : null}
 
         <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
           <label>
@@ -67,11 +67,6 @@ export default function PortalLoginPage() {
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
-
-        <p className="login-footer muted">
-          Platform owners use the{" "}
-          <Link to="/login">admin control plane</Link> to manage all companies.
-        </p>
       </div>
     </div>
   );

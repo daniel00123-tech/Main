@@ -46,7 +46,7 @@ export default function PasswordSetupPage() {
 
     try {
       await api.completePasswordSetup(token, password, confirmPassword);
-      navigate("/login", {
+      navigate("/portal/login", {
         replace: true,
         state: {
           message:
@@ -84,7 +84,7 @@ export default function PasswordSetupPage() {
             Links are single-use and expire after one hour.{" "}
             <Link to="/forgot-password">Request a new reset link</Link>.
           </p>
-          <Link to="/login" className="button button-secondary">
+          <Link to="/portal/login" className="button button-secondary">
             Back to sign in
           </Link>
         </div>
@@ -99,13 +99,11 @@ export default function PasswordSetupPage() {
       <div className="login-card">
         <div className="brand">INFRA</div>
         <div className="brand-sub">
-          {isReset ? "Password reset" : "Platform admin account handover"}
+          {isReset ? "Password reset" : "Set your password"}
         </div>
         <h1>{isReset ? "Set a new password" : "Set your password"}</h1>
         <p className="muted">
-          {isReset
-            ? "Choose a new password for "
-            : "Create your permanent Platform Admin password for "}
+          {isReset ? "Choose a new password for " : "Create a password for "}
           {maskedEmail ? <strong>{maskedEmail}</strong> : "your account"}.
           Your password is sent over HTTPS, hashed server-side, and never stored in plaintext.
         </p>
@@ -141,7 +139,7 @@ export default function PasswordSetupPage() {
         </form>
 
         <p className="login-footer muted">
-          Already set your password? <Link to="/login">Sign in</Link>
+          Already set your password? <Link to="/portal/login">Sign in</Link>
         </p>
       </div>
     </div>

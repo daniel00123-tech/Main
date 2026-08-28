@@ -3,6 +3,7 @@ import type { Env } from "../env";
 import {
   buildClearSessionCookie,
   buildSessionCookie,
+  credentialsVersionFromHash,
   readSessionCookie,
   verifySessionToken,
   type SessionUser,
@@ -47,6 +48,12 @@ export const requireAuth = createMiddleware<{ Bindings: Env; Variables: AuthVari
       return c.json({ error: "Account is disabled or unavailable" }, 401);
     }
 
+    const currentCredentialsVersion = credentialsVersionFromHash(dbUser.passwordHash);
+    if ((user.credentialsVersion ?? "") !== currentCredentialsVersion) {
+      clearSessionCookie(c);
+      return c.json({ error: "Invalid or expired session" }, 401);
+    }
+
     c.set("user", user);
     await next();
   },
@@ -66,30 +73,62 @@ function isCrossOriginCookies(env: { COOKIE_CROSS_ORIGIN?: string }): boolean {
   return env.COOKIE_CROSS_ORIGIN === "true";
 }
 
+function portalCookieDomain(env: {
+  PORTAL_COOKIE_DOMAIN?: string;
+  PORTAL_BASE_DOMAIN?: string;
+}): string | null {
+  const explicit = env.PORTAL_COOKIE_DOMAIN?.trim();
+  if (explicit) return explicit.startsWith(".") ? explicit : `.${explicit}`;
+  const base = env.PORTAL_BASE_DOMAIN?.trim();
+  if (base) return `.${base}`;
+  return null;
+}
+
+function sessionCookieOptions(c: {
+  req: { url: string };
+  env: { COOKIE_CROSS_ORIGIN?: string; PORTAL_COOKIE_DOMAIN?: string; PORTAL_BASE_DOMAIN?: string };
+}) {
+  const secure = isSecureRequest(new URL(c.req.url));
+  const crossOrigin = isCrossOriginCookies(c.env);
+  return {
+    secure,
+    crossOrigin,
+    cookieDomain: crossOrigin ? null : portalCookieDomain(c.env),
+  };
+}
+
 export function setSessionCookie(
   c: {
     header: (name: string, value: string) => void;
     req: { url: string };
-    env: { COOKIE_CROSS_ORIGIN?: string };
+    env: {
+      COOKIE_CROSS_ORIGIN?: string;
+      PORTAL_COOKIE_DOMAIN?: string;
+      PORTAL_BASE_DOMAIN?: string;
+    };
   },
   token: string,
 ) {
-  const secure = isSecureRequest(new URL(c.req.url));
+  const opts = sessionCookieOptions(c);
   c.header(
     "Set-Cookie",
-    buildSessionCookie(token, secure, isCrossOriginCookies(c.env)),
+    buildSessionCookie(token, opts.secure, opts.crossOrigin, opts.cookieDomain),
   );
 }
 
 export function clearSessionCookie(c: {
   header: (name: string, value: string) => void;
   req: { url: string };
-  env: { COOKIE_CROSS_ORIGIN?: string };
+  env: {
+    COOKIE_CROSS_ORIGIN?: string;
+    PORTAL_COOKIE_DOMAIN?: string;
+    PORTAL_BASE_DOMAIN?: string;
+  };
 }) {
-  const secure = isSecureRequest(new URL(c.req.url));
+  const opts = sessionCookieOptions(c);
   c.header(
     "Set-Cookie",
-    buildClearSessionCookie(secure, isCrossOriginCookies(c.env)),
+    buildClearSessionCookie(opts.secure, opts.crossOrigin, opts.cookieDomain),
   );
 }
 

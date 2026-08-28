@@ -21,6 +21,8 @@ export interface Env {
   INFRA_PUBLIC_API_URL?: string;
   /** Portal host domain for subdomain routing, e.g. infra-web.pages.dev */
   PORTAL_BASE_DOMAIN?: string;
+  /** Portal cookie domain for first-party session sharing across subdomains, e.g. .infra-web.pages.dev */
+  PORTAL_COOKIE_DOMAIN?: string;
   /** Envelope-encryption wrapping key for connector credentials. Never store in D1. */
   INFRA_CREDENTIAL_WRAPPING_KEY?: string;
   INFRA_CREDENTIAL_KEY_VERSION?: string;
@@ -62,5 +64,14 @@ export function parseAllowedOrigins(value: string): string[] {
 
 export function isOriginAllowed(origin: string | undefined, allowedOrigins: string[]): boolean {
   if (!origin) return false;
-  return allowedOrigins.includes(origin);
+  if (allowedOrigins.includes(origin)) return true;
+  try {
+    const { hostname, protocol } = new URL(origin);
+    if (protocol === "https:" && hostname.endsWith(".infra-web.pages.dev")) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }

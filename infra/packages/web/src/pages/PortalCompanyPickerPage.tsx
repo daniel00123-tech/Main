@@ -61,7 +61,7 @@ export default function PortalCompanyPickerPage() {
         <EmptyState
           icon={<Building2 size={28} />}
           title="No companies found"
-          description="Create a company from the Control Plane first."
+          description="Create a company from the Admin Control Panel first."
           action={
             <Link to="/companies" className="button button-primary">
               Go to Companies

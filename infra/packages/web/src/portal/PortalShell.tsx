@@ -306,7 +306,7 @@ function PortalShellInner() {
               <div className="sidebar-actions">
                 {user.isPlatformAdmin ? (
                   <NavLink to="/" className="button button-ghost button-small">
-                    Control plane
+                    Admin Control Panel
                   </NavLink>
                 ) : null}
                 <Button type="button" variant="secondary" size="sm" onClick={() => void logout()}>

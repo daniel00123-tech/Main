@@ -114,7 +114,7 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) return <LoadingState label="Loading control plane…" />;
+  if (loading) return <LoadingState label="Loading admin control panel…" />;
   if (error || !summary) {
     return (
       <ErrorState

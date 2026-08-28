@@ -199,7 +199,7 @@ export default function SettingsPage() {
                 </dd>
               </div>
               <Notice tone="info">
-                Stripe secret keys are never displayed in the Control Plane.
+                Stripe secret keys are never displayed in the Admin Control Panel.
               </Notice>
             </SectionCard>
           ) : null}
