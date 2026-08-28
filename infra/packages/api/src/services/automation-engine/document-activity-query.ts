@@ -25,6 +25,8 @@ export type DocumentActivityReport = {
   windowTo: string;
   sourceCounts: DocumentActivitySourceCount[];
   totalCount: number;
+  newCount: number;
+  updatedCount: number;
   newDocuments: ClassifiedActivityDocument[];
   updatedDocuments: ClassifiedActivityDocument[];
   canDistinguishNewUpdated: true;
@@ -55,6 +57,8 @@ type McpActivityDocument = {
 type McpActivityResponse = {
   ok?: boolean;
   googleDriveUniqueCount?: number;
+  googleDriveNewCount?: number;
+  googleDriveUpdatedCount?: number;
   documents?: McpActivityDocument[];
 };
 
@@ -227,10 +231,22 @@ export async function queryDocumentActivity(
     pushClassified(row.title, sourceKey, row.created_at, row.modified_at);
   }
 
+  const msNewCount = newDocuments.length;
+  const msUpdatedCount = updatedDocuments.length;
+
   for (const doc of mcpActivity?.documents ?? []) {
     if (doc.source !== "google_drive") continue;
     pushClassified(String(doc.title ?? "Untitled document"), "google_drive", doc.createdAt, doc.driveModifiedTime);
   }
+
+  const driveNewCount =
+    typeof mcpActivity?.googleDriveNewCount === "number"
+      ? mcpActivity.googleDriveNewCount
+      : newDocuments.length - msNewCount;
+  const driveUpdatedCount =
+    typeof mcpActivity?.googleDriveUpdatedCount === "number"
+      ? mcpActivity.googleDriveUpdatedCount
+      : updatedDocuments.length - msUpdatedCount;
 
   return {
     companyId,
@@ -238,6 +254,8 @@ export async function queryDocumentActivity(
     windowTo: window.to.toISOString(),
     sourceCounts,
     totalCount: sourceCounts.reduce((sum, row) => sum + row.count, 0),
+    newCount: msNewCount + driveNewCount,
+    updatedCount: msUpdatedCount + driveUpdatedCount,
     newDocuments,
     updatedDocuments,
     canDistinguishNewUpdated: true,

@@ -1134,8 +1134,25 @@ __name(handleAdminRequest, "handleAdminRequest");`;
       "SELECT COUNT(DISTINCT knowledge_document_id) AS n FROM google_drive_files WHERE knowledge_document_id IS NOT NULL"
     ).first();
     let documents = [];
+    let googleDriveNewCount = 0;
+    let googleDriveUpdatedCount = 0;
     if (since) {
       const sinceSqlite = String(since).replace("T", " ").replace(/\\.\\d+Z$/, "").replace("Z", "");
+      const newRow = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+        \`SELECT COUNT(*) AS n FROM knowledge_documents
+         WHERE COALESCE(status, '') != 'archived'
+           AND json_extract(metadata, '\$.source') = 'google_drive'
+           AND (created_at >= ? OR created_at >= ?)\`
+      ).bind(since, sinceSqlite).first();
+      googleDriveNewCount = Number(newRow?.n ?? 0);
+      const updatedRow = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+        \`SELECT COUNT(*) AS n FROM knowledge_documents
+         WHERE COALESCE(status, '') != 'archived'
+           AND json_extract(metadata, '\$.source') = 'google_drive'
+           AND created_at < ?
+           AND json_extract(metadata, '\$.driveModifiedTime') >= ?\`
+      ).bind(sinceSqlite, since).first();
+      googleDriveUpdatedCount = Number(updatedRow?.n ?? 0);
       const rows = await env22.CADDINGTON_BUSINESS_DATA.prepare(
         \`SELECT id, title, status, created_at, updated_at, indexed_at, metadata
          FROM knowledge_documents
@@ -1167,6 +1184,8 @@ __name(handleAdminRequest, "handleAdminRequest");`;
       readOnly: true,
       triggeredProviderScan: false,
       googleDriveUniqueCount: Number(driveCount?.n ?? 0),
+      googleDriveNewCount,
+      googleDriveUpdatedCount,
       documents
     });
   }

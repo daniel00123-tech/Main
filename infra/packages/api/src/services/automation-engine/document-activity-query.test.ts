@@ -73,6 +73,7 @@ describe("document activity query", () => {
     expect(report.sourceCounts.find((row) => row.key === "onedrive")?.count).toBe(1);
     expect(report.sourceCounts.find((row) => row.key === "outlook_attachments")?.count).toBe(1);
     expect(report.newDocuments.map((item) => item.title)).toEqual(["Quote.pdf"]);
+    expect(report.newCount).toBe(1);
     expect(report.sourcesUnavailable).toContain("mcp_knowledge_documents");
   });
 

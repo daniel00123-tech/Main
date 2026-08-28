@@ -84,6 +84,8 @@ describe("document activity daily email", () => {
         { key: "outlook_attachments", label: "Outlook attachments", count: 1 },
       ],
       totalCount: 725,
+      newCount: 1,
+      updatedCount: 0,
       newDocuments: [
         {
           title: "Supplier Agreement.pdf",
@@ -130,6 +132,8 @@ describe("document activity daily email", () => {
       windowTo: "2026-08-28T11:00:00.000Z",
       sourceCounts: [{ key: "google_drive", label: "Google Drive", count: 10 }],
       totalCount: 10,
+      newCount: 0,
+      updatedCount: 0,
       newDocuments: [],
       updatedDocuments: [],
       canDistinguishNewUpdated: true,
