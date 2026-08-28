@@ -209,7 +209,7 @@ export default function PortalSettingsPage() {
           <KeyValue label="Company slug" value={company.slug} />
           <KeyValue label="Company ID" value={company.id} />
           <Notice tone="info">
-            Platform-level settings are only available in the Control Plane for INFRA operators.
+            Platform-level settings are only available in the Admin Control Panel for INFRA operators.
           </Notice>
         </SectionCard>
       ) : null}

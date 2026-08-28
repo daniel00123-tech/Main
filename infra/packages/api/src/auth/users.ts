@@ -5,6 +5,7 @@ import {
   createPasswordSetupToken,
 } from "./password-setup";
 import type { SessionMembership, SessionUser } from "./session";
+import { credentialsVersionFromHash } from "./session";
 
 export interface DbUser {
   id: string;
@@ -177,6 +178,7 @@ export async function toSessionUser(
         teamId: membership.teamId,
       }),
     ),
+    credentialsVersion: credentialsVersionFromHash(user.passwordHash),
   };
 }
 

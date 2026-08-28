@@ -1071,6 +1071,27 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ role }),
     }),
+  resetCompanyUserPassword: (
+    slug: string,
+    userId: string,
+    input?: { temporaryPassword?: string },
+  ) =>
+    fetchJson<{
+      ok: boolean;
+      mode: "link" | "temporary";
+      resetUrl?: string;
+      setupUrl?: string;
+      expiresAt: string;
+      message: string;
+    }>(`/api/companies/${slug}/users/${userId}/reset-password`, {
+      method: "POST",
+      body: JSON.stringify(input ?? {}),
+    }),
+  removeCompanyUser: (slug: string, userId: string) =>
+    fetchJson<{ ok: boolean }>(`/api/companies/${slug}/users/${userId}/remove`, {
+      method: "POST",
+      body: "{}",
+    }),
   getServiceIdentities: (slug: string) =>
     fetchJson<
       Array<{

@@ -48,7 +48,7 @@ export default function ForgotPasswordPage() {
           <div className="brand-mark">IN</div>
           <div className="brand-text">
             <span className="brand-name">INFRA</span>
-            <span className="brand-context">Control Plane</span>
+            <span className="brand-context">Company portal</span>
           </div>
         </div>
         <h1>Reset password</h1>
@@ -96,7 +96,7 @@ export default function ForgotPasswordPage() {
         ) : null}
 
         <p className="muted small" style={{ marginTop: 20 }}>
-          <Link to="/login">Back to sign in</Link>
+          <Link to="/portal/login">Back to sign in</Link>
         </p>
       </div>
     </div>

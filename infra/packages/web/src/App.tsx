@@ -147,7 +147,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         </Button>
         <strong style={{ letterSpacing: "0.08em" }}>INFRA</strong>
         <span className="muted small" style={{ marginLeft: "auto" }}>
-          Control Plane
+          Admin Control Panel
         </span>
       </div>
 
@@ -159,7 +159,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           {showLabels ? (
             <div className="brand-text">
               <span className="brand-name">INFRA</span>
-              <span className="brand-context">Control Plane</span>
+              <span className="brand-context">Admin Control Panel</span>
             </div>
           ) : null}
           {!isMobile ? (

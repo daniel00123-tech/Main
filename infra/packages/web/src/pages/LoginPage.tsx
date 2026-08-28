@@ -37,12 +37,12 @@ export default function LoginPage() {
           <div className="brand-mark">IN</div>
           <div className="brand-text">
             <span className="brand-name">INFRA</span>
-            <span className="brand-context">Control Plane</span>
+            <span className="brand-context">Admin Control Panel</span>
           </div>
         </div>
         <h1>Sign in</h1>
         <p className="muted">
-          Access the INFRA control plane to manage companies, integrations, and access.
+          Access the INFRA Admin Control Panel to manage companies, integrations, and access.
         </p>
         {successMessage ? <p className="info-banner">{successMessage}</p> : null}
         <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>

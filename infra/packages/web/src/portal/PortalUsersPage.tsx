@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { UserPlus, Users } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { MoreHorizontal, UserPlus, Users } from "lucide-react";
 import { api } from "../api";
 import type { CompanyRole, InfraUser } from "@infra/shared";
 import {
@@ -18,6 +18,7 @@ import {
   formatDate,
   useIsMobile,
 } from "../components";
+import { ActionMenuPopover } from "../components/ActionMenuPopover";
 import { PermissionsEditor } from "../components/PermissionsEditor";
 import { humanRole } from "../lib/format";
 import { PortalPageHeader } from "./components";
@@ -36,6 +37,11 @@ export default function PortalUsersPage() {
   const [inviteResult, setInviteResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<InfraUser | null>(null);
+  const [actionMenuUserId, setActionMenuUserId] = useState<string | null>(null);
+  const actionMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [resetTarget, setResetTarget] = useState<InfraUser | null>(null);
+  const [tempPassword, setTempPassword] = useState("");
+  const [resetResult, setResetResult] = useState<string | null>(null);
   const [tab, setTab] = useState("users");
   const [invitations, setInvitations] = useState<Array<Record<string, unknown>>>([]);
   const isMobile = useIsMobile();
@@ -58,6 +64,13 @@ export default function PortalUsersPage() {
   }
 
   useEffect(() => {
+    if (!actionMenuUserId) return;
+    const close = () => setActionMenuUserId(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [actionMenuUserId]);
+
+  useEffect(() => {
     if (!company) return;
     void (async () => {
       try {
@@ -72,6 +85,10 @@ export default function PortalUsersPage() {
   }, [company]);
 
   const activeCount = team.filter((m) => m.status === "active").length;
+  const actionMenuMember = useMemo(
+    () => (actionMenuUserId ? team.find((member) => member.id === actionMenuUserId) ?? null : null),
+    [actionMenuUserId, team],
+  );
 
   async function onInvite(event: FormEvent) {
     event.preventDefault();
@@ -121,6 +138,96 @@ export default function PortalUsersPage() {
     if (!company) return;
     await api.setUserRole(company.slug, member.id, role);
     await refresh();
+  }
+
+  function isLastCompanyAdmin(member: InfraUser): boolean {
+    if (!company) return false;
+    const memberRole = member.memberships.find((m) => m.companyId === company.id)?.role;
+    if (memberRole !== "company_admin" || member.status !== "active") return false;
+    const activeAdmins = team.filter((m) => {
+      const role = m.memberships.find((item) => item.companyId === company.id)?.role;
+      return m.status === "active" && role === "company_admin";
+    });
+    return activeAdmins.length <= 1;
+  }
+
+  function canManageMember(member: InfraUser): boolean {
+    return Boolean(canManage && member.id !== user?.userId && !member.isPlatformAdmin);
+  }
+
+  async function resetPassword(member: InfraUser, options?: { temporaryPassword?: string }) {
+    if (!company) return;
+    setBusy(true);
+    setResetResult(null);
+    try {
+      const result = await api.resetCompanyUserPassword(company.slug, member.id, options);
+      const link = result.resetUrl ?? result.setupUrl ?? "";
+      setResetResult(
+        link
+          ? `${result.message}\n\n${link}`
+          : result.message,
+      );
+      await refresh();
+    } catch (err) {
+      setResetResult(err instanceof Error ? err.message : "Unable to reset password");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeMember(member: InfraUser) {
+    if (!company) return;
+    if (
+      !window.confirm(
+        `Remove ${member.displayName} from ${company.name}? They will lose access to this company portal.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.removeCompanyUser(company.slug, member.id);
+      setActionMenuUserId(null);
+      setSelected(null);
+      await refresh();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Unable to remove user");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function renderUserActions(member: InfraUser) {
+    if (!canManageMember(member)) return null;
+    const menuOpen = actionMenuUserId === member.id;
+
+    return (
+      <div className="user-row-actions">
+        <button
+          type="button"
+          className="button button-ghost button-small user-row-actions-trigger"
+          aria-label={`Actions for ${member.displayName}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (menuOpen) {
+              closeActionMenu();
+              return;
+            }
+            actionMenuTriggerRef.current = e.currentTarget;
+            setActionMenuUserId(member.id);
+          }}
+        >
+          <MoreHorizontal size={16} />
+        </button>
+      </div>
+    );
+  }
+
+  function closeActionMenu() {
+    setActionMenuUserId(null);
+    actionMenuTriggerRef.current = null;
   }
 
   const roleDescription = useMemo(() => {
@@ -286,6 +393,16 @@ export default function PortalUsersPage() {
                 header: "Status",
                 render: (row) => <StatusBadge status={(row.member as InfraUser).status} />,
               },
+              ...(canManage
+                ? [
+                    {
+                      key: "actions",
+                      header: "",
+                      render: (row: Record<string, unknown>) =>
+                        renderUserActions(row.member as InfraUser),
+                    },
+                  ]
+                : []),
             ]}
             onRowClick={(row) => setSelected(row.member as InfraUser)}
           />
@@ -428,10 +545,36 @@ export default function PortalUsersPage() {
         onClose={() => setSelected(null)}
         title={selected?.displayName ?? "User"}
         footer={
-          selected && canManage && selected.id !== user.userId ? (
-            <Button type="button" variant="secondary" onClick={() => void toggleStatus(selected)}>
-              {selected.status === "active" ? "Disable user" : "Reactivate user"}
-            </Button>
+          selected && canManageMember(selected) ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setResetTarget(selected);
+                  setTempPassword("");
+                  setResetResult(null);
+                }}
+              >
+                Reset password
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={isLastCompanyAdmin(selected)}
+                onClick={() => void toggleStatus(selected)}
+              >
+                {selected.status === "active" ? "Disable access" : "Enable access"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={isLastCompanyAdmin(selected)}
+                onClick={() => void removeMember(selected)}
+              >
+                Remove user
+              </Button>
+            </div>
           ) : null
         }
       >
@@ -459,6 +602,104 @@ export default function PortalUsersPage() {
           </>
         ) : null}
       </Drawer>
+
+      <Modal
+        open={Boolean(resetTarget)}
+        onClose={() => {
+          setResetTarget(null);
+          setTempPassword("");
+          setResetResult(null);
+        }}
+        title="Reset password"
+        description={
+          resetTarget
+            ? `Create a secure reset link or set a temporary password for ${resetTarget.displayName}.`
+            : undefined
+        }
+        footer={
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Button
+              type="button"
+              variant="secondary"
+              loading={busy}
+              onClick={() => resetTarget && void resetPassword(resetTarget)}
+            >
+              Send reset link
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              loading={busy}
+              disabled={!tempPassword || tempPassword.length < 12}
+              onClick={() =>
+                resetTarget &&
+                void resetPassword(resetTarget, { temporaryPassword: tempPassword })
+              }
+            >
+              Set temporary password
+            </Button>
+          </div>
+        }
+      >
+        <label className="field">
+          <span className="field-label">Temporary password (optional)</span>
+          <input
+            className="input"
+            type="password"
+            value={tempPassword}
+            onChange={(e) => setTempPassword(e.target.value)}
+            autoComplete="new-password"
+            minLength={12}
+            placeholder="Minimum 12 characters"
+          />
+        </label>
+        <p className="muted small">
+          Passwords are hashed immediately and never shown again. Share a reset link or temporary
+          password securely with the user.
+        </p>
+        {resetResult ? (
+          <code className="mono small" style={{ wordBreak: "break-all", display: "block", marginTop: 12 }}>
+            {resetResult}
+          </code>
+        ) : null}
+      </Modal>
+
+      {actionMenuMember ? (
+        <ActionMenuPopover
+          open
+          triggerRef={actionMenuTriggerRef}
+          onClose={closeActionMenu}
+          ariaLabel={`Actions for ${actionMenuMember.displayName}`}
+          items={[
+            {
+              label: "Reset password",
+              onSelect: () => {
+                setResetTarget(actionMenuMember);
+                setTempPassword("");
+                setResetResult(null);
+              },
+            },
+            {
+              label:
+                actionMenuMember.status === "active" ? "Disable access" : "Enable access",
+              disabled: isLastCompanyAdmin(actionMenuMember),
+              title: isLastCompanyAdmin(actionMenuMember)
+                ? "Cannot disable the last company administrator"
+                : undefined,
+              onSelect: () => void toggleStatus(actionMenuMember),
+            },
+            {
+              label: "Remove user",
+              danger: true,
+              disabled: isLastCompanyAdmin(actionMenuMember),
+              title: isLastCompanyAdmin(actionMenuMember)
+                ? "Cannot remove the last company administrator"
+                : undefined,
+              onSelect: () => void removeMember(actionMenuMember),
+            },
+          ]}
+        />
+      ) : null}
     </>
   );
 }

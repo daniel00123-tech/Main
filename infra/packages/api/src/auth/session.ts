@@ -14,6 +14,8 @@ export interface SessionUser {
   displayName: string;
   isPlatformAdmin: boolean;
   memberships: SessionMembership[];
+  /** Fingerprint of stored password hash — sessions invalidate when password changes. */
+  credentialsVersion?: string;
 }
 
 export interface SessionClaims extends SessionUser {
@@ -28,6 +30,10 @@ function getSecretKey(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+export function credentialsVersionFromHash(passwordHash: string): string {
+  return passwordHash.slice(0, 16);
+}
+
 export async function createSessionToken(
   user: SessionUser,
   secret: string,
@@ -38,6 +44,7 @@ export async function createSessionToken(
     displayName: user.displayName,
     isPlatformAdmin: user.isPlatformAdmin,
     memberships: user.memberships,
+    credentialsVersion: user.credentialsVersion,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -70,6 +77,10 @@ export async function verifySessionToken(
       displayName: payload.displayName,
       isPlatformAdmin: payload.isPlatformAdmin,
       memberships: payload.memberships as SessionMembership[],
+      credentialsVersion:
+        typeof payload.credentialsVersion === "string"
+          ? payload.credentialsVersion
+          : undefined,
     };
   } catch {
     return null;
@@ -84,6 +95,7 @@ export function buildSessionCookie(
   token: string,
   secure: boolean,
   crossOrigin = false,
+  cookieDomain?: string | null,
 ): string {
   const parts = [
     `${SESSION_COOKIE}=${token}`,
@@ -93,6 +105,10 @@ export function buildSessionCookie(
     `Max-Age=${SESSION_TTL_SECONDS}`,
   ];
 
+  if (cookieDomain) {
+    parts.push(`Domain=${cookieDomain}`);
+  }
+
   if (secure || crossOrigin) {
     parts.push("Secure");
   }
@@ -100,7 +116,11 @@ export function buildSessionCookie(
   return parts.join("; ");
 }
 
-export function buildClearSessionCookie(secure: boolean, crossOrigin = false): string {
+export function buildClearSessionCookie(
+  secure: boolean,
+  crossOrigin = false,
+  cookieDomain?: string | null,
+): string {
   const parts = [
     `${SESSION_COOKIE}=`,
     "HttpOnly",
@@ -108,6 +128,10 @@ export function buildClearSessionCookie(secure: boolean, crossOrigin = false): s
     crossOrigin ? "SameSite=None" : "SameSite=Lax",
     "Max-Age=0",
   ];
+
+  if (cookieDomain) {
+    parts.push(`Domain=${cookieDomain}`);
+  }
 
   if (secure || crossOrigin) {
     parts.push("Secure");
