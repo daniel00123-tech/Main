@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Building2, Plus } from "lucide-react";
 import type { CreateCompanyInput } from "@infra/shared";
 import { DEFAULT_TEST_OPENING_CREDIT_CENTS, validateCompanySlug } from "@infra/shared";
@@ -73,15 +73,27 @@ function slugify(value: string): string {
 
 export default function CompaniesPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { companySlug: scopeCompanySlug } = useAdminScope();
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const initialFilter = searchParams.get("filter");
   const [filter, setFilter] = useState<
     "all" | "active" | "onboarding" | "attention" | "disabled" | "archived" | "low_wallet" | "inactive"
-  >("all");
+  >(
+    initialFilter === "attention" ||
+      initialFilter === "active" ||
+      initialFilter === "onboarding" ||
+      initialFilter === "low_wallet" ||
+      initialFilter === "disabled" ||
+      initialFilter === "archived" ||
+      initialFilter === "inactive"
+      ? initialFilter
+      : "all",
+  );
   const [sort, setSort] = useState<"name" | "usage" | "wallet" | "last_active">("name");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [step, setStep] = useState<WizardStep>(1);

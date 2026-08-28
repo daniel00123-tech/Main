@@ -353,7 +353,7 @@ export function Tabs({
   onChange: (id: string) => void;
 }) {
   return (
-    <div className="tabs" role="tablist">
+    <div className="tabs tabs-scrollable" role="tablist" aria-label="Sections">
       {tabs.map((t) => (
         <button
           key={t.id}
