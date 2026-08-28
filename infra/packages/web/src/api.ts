@@ -202,6 +202,71 @@ export const api = {
       }>;
       checkedAt: string;
     }>("/api/platform/attention"),
+  getPlatformOperationsHealth: () =>
+    fetchJson<{
+      checkedAt: string;
+      overallState: string;
+      overallSeverity: string;
+      subsystems: Array<{
+        id: string;
+        label: string;
+        state: string;
+        severity: string;
+        summary: string;
+        detail?: string | null;
+        lastCheckedAt: string;
+        metrics?: Record<string, number | string | boolean | null>;
+      }>;
+      incidents: Array<{
+        id: string;
+        severity: string;
+        companyId: string | null;
+        companyName: string | null;
+        subsystem: string;
+        category: string;
+        title: string;
+        summary: string;
+        occurrenceCount: number;
+        firstObservedAt: string;
+        lastObservedAt: string;
+        recommendedAction: string;
+        resolved: boolean;
+        href: string | null;
+      }>;
+      companySummaries: Array<{
+        companyId: string;
+        companyName: string;
+        companySlug: string;
+        overallState: string;
+        connectorIssues: number;
+        billingIssues: number;
+        automationFailures: number;
+        knowledgeSyncIssues: number;
+        authSecuritySignals: number;
+        lastSuccessfulActivityAt: string | null;
+        attentionCount: number;
+      }>;
+      schedulerHeartbeats: Array<{
+        key: string;
+        label: string;
+        lastRunAt: string | null;
+        lastSuccessAt: string | null;
+        lastError: string | null;
+        state: string;
+      }>;
+      automationProcessingMode: "queue" | "http_fallback";
+      openFinancialExceptions: number;
+      permissionDenialsLast24h: number;
+      usageAnomalyFlags: string[];
+    }>("/api/platform/operations/health"),
+  runBillingReconciliationDiagnostic: () =>
+    fetchJson<{
+      checkedAt: string;
+      openExceptions: number;
+      healedLinks: number;
+      createdExceptions: number;
+      anomalies: string[];
+    }>("/api/platform/operations/billing-reconciliation", { method: "POST" }),
   getCompanyAttention: (slug: string) =>
     fetchJson<{
       items: Array<{

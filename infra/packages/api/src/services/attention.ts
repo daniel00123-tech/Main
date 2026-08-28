@@ -1,8 +1,13 @@
 import type { ConnectorInstance } from "@infra/shared";
+import {
+  formatIncidentOccurrenceSummary,
+  mapOperationalSeverityToAttention,
+} from "@infra/shared";
 import { listConnectorInstances, listMcpEnvironments } from "./control-plane";
 import { deriveAuthStatus } from "./connector-lifecycle";
 import { getWalletBalance } from "./ledger";
 import { listServiceIdentities } from "./service-identities";
+import { getPlatformOperationalHealth } from "./platform-operations";
 
 export type AttentionSeverity = "critical" | "warning" | "info";
 
@@ -38,6 +43,26 @@ function connectorNeedsAttention(instance: ConnectorInstance): string | null {
     return "Disconnected";
   }
   return null;
+}
+
+function incidentCategoryToAttentionCategory(
+  subsystem: string,
+): AttentionItem["category"] {
+  switch (subsystem) {
+    case "stripe":
+      return "billing";
+    case "automation":
+      return "platform";
+    case "microsoft":
+    case "google_drive":
+    case "xero":
+    case "knowledge":
+      return "connector";
+    case "outbound_email":
+      return "platform";
+    default:
+      return "platform";
+  }
 }
 
 export async function buildPlatformAttention(
@@ -171,6 +196,80 @@ export async function buildPlatformAttention(
   }
 
   return items.sort((a, b) => {
+    const rank = { critical: 0, warning: 1, info: 2 };
+    return rank[a.severity] - rank[b.severity];
+  });
+}
+
+/** Merge legacy attention items with operational incidents (deduplicated). */
+export async function buildExtendedPlatformAttention(
+  db: D1Database,
+  input?: { stripeConfigured?: boolean; env?: import("../env").Env },
+): Promise<AttentionItem[]> {
+  const base = await buildPlatformAttention(db, input);
+
+  if (!input?.env) {
+    return base;
+  }
+
+  const ops = await getPlatformOperationalHealth(input.env);
+  const existingIds = new Set(base.map((item) => item.id));
+  const companyRows = await db.prepare(`SELECT id, name, slug FROM companies`).all<{
+    id: string;
+    name: string;
+    slug: string;
+  }>();
+  const companyById = new Map(
+    (companyRows.results ?? []).map((c) => [c.id, c]),
+  );
+
+  for (const incident of ops.incidents) {
+    const dedupeId = `ops-${incident.id}`;
+    if (existingIds.has(dedupeId)) continue;
+    const co = incident.companyId ? companyById.get(incident.companyId) : null;
+    base.push({
+      id: dedupeId,
+      severity: mapOperationalSeverityToAttention(incident.severity),
+      category: incidentCategoryToAttentionCategory(incident.subsystem),
+      companyId: incident.companyId,
+      companyName: incident.companyName ?? co?.name ?? null,
+      companySlug: co?.slug ?? null,
+      title: incident.title,
+      detail: formatIncidentOccurrenceSummary(incident),
+      href: incident.href,
+    });
+    existingIds.add(dedupeId);
+  }
+
+  if (ops.usageAnomalyFlags.length > 0) {
+    base.push({
+      id: "ops-usage-anomaly",
+      severity: "warning",
+      category: "platform",
+      companyId: null,
+      companyName: null,
+      companySlug: null,
+      title: "Elevated platform usage detected",
+      detail: ops.usageAnomalyFlags[0] ?? "Review metering for runaway patterns.",
+      href: "/usage",
+    });
+  }
+
+  if (ops.automationProcessingMode === "http_fallback") {
+    base.push({
+      id: "ops-automation-http-fallback",
+      severity: "info",
+      category: "platform",
+      companyId: null,
+      companyName: null,
+      companySlug: null,
+      title: "Automation HTTP fallback active",
+      detail: "Automation runs process via HTTP fallback because the automation queue binding is unavailable.",
+      href: "/system-health",
+    });
+  }
+
+  return base.sort((a, b) => {
     const rank = { critical: 0, warning: 1, info: 2 };
     return rank[a.severity] - rank[b.severity];
   });

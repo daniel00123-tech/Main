@@ -41,6 +41,9 @@ export default function SystemHealthPage() {
   const [connectors, setConnectors] = useState<ConnectorInstance[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [stripeConfigured, setStripeConfigured] = useState<boolean | null>(null);
+  const [opsHealth, setOpsHealth] = useState<Awaited<
+    ReturnType<typeof api.getPlatformOperationsHealth>
+  > | null>(null);
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const [connectorDetail, setConnectorDetail] = useState<{
     connector: ConnectorInstance;
@@ -52,7 +55,7 @@ export default function SystemHealthPage() {
     setError(null);
     const now = new Date().toISOString();
     try {
-      const [healthResult, readyResult, gatewayResult, mcpList, connectorList, companyList] =
+      const [healthResult, readyResult, gatewayResult, mcpList, connectorList, companyList, opsResult] =
         await Promise.all([
           api.getHealth().then(
             (data) => ({ ok: true as const, data }),
@@ -72,11 +75,13 @@ export default function SystemHealthPage() {
           api.getMcpEnvironments().catch(() => [] as McpEnvironment[]),
           api.getConnectorInstances().catch(() => [] as ConnectorInstance[]),
           api.getCompanies().catch(() => [] as Company[]),
+          api.getPlatformOperationsHealth().catch(() => null),
         ]);
 
       setMcps(mcpList);
       setConnectors(connectorList);
       setCompanies(companyList);
+      setOpsHealth(opsResult);
       setCheckedAt(now);
 
       const rows: ServiceRow[] = [];
@@ -128,13 +133,20 @@ export default function SystemHealthPage() {
       if (gatewayResult.ok) {
         const configured = Boolean(gatewayResult.data.stripeConfigured);
         setStripeConfigured(configured);
+        const billingOpenExceptions = opsResult?.openFinancialExceptions ?? 0;
         rows.push({
           id: "billing",
           name: "Billing",
-          status: configured ? "degraded" : "not_configured",
-          detail: configured
-            ? "Stripe configured — live charging not approved"
-            : "Stripe not configured",
+          status: !configured
+            ? "not_configured"
+            : billingOpenExceptions > 0
+              ? "degraded"
+              : "operational",
+          detail: !configured
+            ? "Stripe not configured"
+            : billingOpenExceptions > 0
+              ? `${billingOpenExceptions} open financial exception(s) — review reconciliation`
+              : "Stripe configured — no open financial exceptions",
           lastCheck,
         });
         rows.push({
@@ -208,7 +220,17 @@ export default function SystemHealthPage() {
   const unhealthyServices = services.filter((s) =>
     ["unavailable", "degraded"].includes(s.status),
   );
-  const platformOk = unhealthyServices.length === 0;
+  const platformOk =
+    opsHealth?.overallState === "HEALTHY" ||
+    (opsHealth == null && unhealthyServices.length === 0);
+
+  function mapOpsState(state: string): string {
+    if (state === "HEALTHY") return "healthy";
+    if (state === "DEGRADED") return "warning";
+    if (state === "ATTENTION_REQUIRED") return "failed";
+    if (state === "OUTAGE") return "failed";
+    return "not_configured";
+  }
 
   function toggleCompany(companyId: string) {
     setExpandedCompanies((prev) => {
@@ -246,10 +268,17 @@ export default function SystemHealthPage() {
         <Activity size={18} aria-hidden />
         <div>
           <p className="attention-title">
-            {platformOk ? "Platform services operational" : "Platform attention required"}
+            {platformOk
+              ? "Platform operational"
+              : opsHealth?.overallState === "OUTAGE"
+                ? "Platform outage detected"
+                : "Platform attention required"}
           </p>
           <p>
             Last checked {checkedAt ? formatRelativeTime(checkedAt) : "—"}.
+            {opsHealth
+              ? ` Overall state: ${opsHealth.overallState.replace(/_/g, " ").toLowerCase()}.`
+              : ""}
             {stripeConfigured === false ? " Stripe billing is not configured." : ""}
           </p>
         </div>
@@ -287,6 +316,116 @@ export default function SystemHealthPage() {
           {services.map((s) => `${s.name}: ${s.detail}`).join(" · ")}
         </p>
       </SectionCard>
+
+      {opsHealth ? (
+        <>
+          <SectionCard title="Operational subsystems" className="mt-6">
+            <div className="table-wrap health-console">
+              <table className="table compact">
+                <thead>
+                  <tr>
+                    <th>Subsystem</th>
+                    <th>State</th>
+                    <th>Summary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {opsHealth.subsystems.map((subsystem) => (
+                    <tr key={subsystem.id}>
+                      <td>{subsystem.label}</td>
+                      <td className="status-cell">
+                        <StatusBadge
+                          status={mapOpsState(subsystem.state)}
+                          label={subsystem.state.replace(/_/g, " ")}
+                        />
+                      </td>
+                      <td className="muted">{subsystem.summary}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </SectionCard>
+
+          {opsHealth.schedulerHeartbeats.length > 0 ? (
+            <SectionCard title="Scheduled jobs" className="mt-6">
+              <div className="table-wrap health-console">
+                <table className="table compact">
+                  <thead>
+                    <tr>
+                      <th>Job</th>
+                      <th>State</th>
+                      <th>Last success</th>
+                      <th>Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {opsHealth.schedulerHeartbeats.map((hb) => (
+                      <tr key={hb.key}>
+                        <td>{hb.label}</td>
+                        <td className="status-cell">
+                          <StatusBadge
+                            status={mapOpsState(hb.state)}
+                            label={hb.state.replace(/_/g, " ")}
+                          />
+                        </td>
+                        <td className="muted">
+                          {hb.lastSuccessAt ? formatRelativeTime(hb.lastSuccessAt) : "—"}
+                        </td>
+                        <td className="muted">{hb.lastError ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="muted small" style={{ marginTop: 8 }}>
+                Automation processing: {opsHealth.automationProcessingMode.replace(/_/g, " ")}
+              </p>
+            </SectionCard>
+          ) : null}
+
+          {opsHealth.incidents.length > 0 ? (
+            <SectionCard title="Open operational incidents" className="mt-6">
+              <div className="table-wrap health-console">
+                <table className="table compact">
+                  <thead>
+                    <tr>
+                      <th>Severity</th>
+                      <th>Company</th>
+                      <th>Issue</th>
+                      <th>Occurrences</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {opsHealth.incidents.slice(0, 20).map((incident) => (
+                      <tr key={incident.id}>
+                        <td className="status-cell">
+                          <StatusBadge
+                            status={
+                              incident.severity === "CRITICAL"
+                                ? "failed"
+                                : incident.severity === "WARNING"
+                                  ? "warning"
+                                  : "healthy"
+                            }
+                            label={incident.severity}
+                          />
+                        </td>
+                        <td>{incident.companyName ?? "Platform"}</td>
+                        <td>
+                          <div>{incident.title}</div>
+                          <div className="muted small">{incident.summary}</div>
+                        </td>
+                        <td className="num">{incident.occurrenceCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
+          ) : null}
+        </>
+      ) : null}
 
       <SectionCard
         title="Customer integrations — Business MCPs"

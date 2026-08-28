@@ -400,16 +400,27 @@ app.get("/api/platform/attention", requireAuth, async (c) => {
   if (!user.isPlatformAdmin) {
     return c.json({ error: "Platform administrator access required" }, 403);
   }
-  const { buildPlatformAttention, filterAttentionDismissals } = await import("./services/attention");
+  const { buildExtendedPlatformAttention, filterAttentionDismissals } = await import("./services/attention");
   const { isStripeConfigured } = await import("./services/stripe");
   const items = await filterAttentionDismissals(
     c.env.DB,
-    await buildPlatformAttention(c.env.DB, {
+    await buildExtendedPlatformAttention(c.env.DB, {
       stripeConfigured: isStripeConfigured(c.env),
+      env: c.env,
     }),
     c.get("user").email,
   );
   return c.json({ items, checkedAt: new Date().toISOString() });
+});
+
+app.get("/api/platform/operations/health", requireAuth, requirePlatformAdmin, async (c) => {
+  const { getPlatformOperationalHealth } = await import("./services/platform-operations");
+  return c.json(await getPlatformOperationalHealth(c.env));
+});
+
+app.post("/api/platform/operations/billing-reconciliation", requireAuth, requirePlatformAdmin, async (c) => {
+  const { runBillingReconciliationDiagnostic } = await import("./services/platform-operations");
+  return c.json(await runBillingReconciliationDiagnostic(c.env.DB));
 });
 
 app.post("/api/platform/attention/dismiss", requireAuth, requirePlatformAdmin, async (c) => {
@@ -1144,9 +1155,51 @@ const worker = {
   fetch: app.fetch.bind(app),
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
     const { runMicrosoftScheduledSync } = await import("./services/microsoft-scheduler");
-    await runMicrosoftScheduledSync(env);
+    const { recordPlatformHeartbeat } = await import("./services/platform-ops-heartbeats");
+
+    let msResult;
+    try {
+      msResult = await runMicrosoftScheduledSync(env);
+      await recordPlatformHeartbeat(env.DB, {
+        key: "microsoft_scheduler",
+        label: "Microsoft scheduler",
+        success: msResult.errors.length === 0,
+        error: msResult.errors[0] ?? null,
+        detail: {
+          sourcesSynced: msResult.sourcesSynced,
+          graphRenewals: msResult.graphRenewals,
+        },
+      });
+    } catch (err) {
+      await recordPlatformHeartbeat(env.DB, {
+        key: "microsoft_scheduler",
+        label: "Microsoft scheduler",
+        success: false,
+        error: err instanceof Error ? err.message : "Scheduler failed",
+      });
+    }
+
     const { runAutomationScheduler } = await import("./services/automation-engine/scheduler");
-    await runAutomationScheduler(env);
+    try {
+      const autoResult = await runAutomationScheduler(env);
+      await recordPlatformHeartbeat(env.DB, {
+        key: "automation_scheduler",
+        label: "Automation scheduler",
+        success: autoResult.errors.length === 0,
+        error: autoResult.errors[0] ?? null,
+        detail: {
+          scanned: autoResult.scanned,
+          enqueued: autoResult.enqueued,
+        },
+      });
+    } catch (err) {
+      await recordPlatformHeartbeat(env.DB, {
+        key: "automation_scheduler",
+        label: "Automation scheduler",
+        success: false,
+        error: err instanceof Error ? err.message : "Scheduler failed",
+      });
+    }
   },
   async queue(
     batch: MessageBatch<
