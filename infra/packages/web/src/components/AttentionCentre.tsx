@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info, X } from "lucide-react";
 import { Button } from "../components";
+import { attentionReviewHeading } from "../lib/admin-present";
 
 export type AttentionCentreItem = {
   id: string;
@@ -39,6 +40,7 @@ export default function AttentionCentre({
   allClear?: string;
 }) {
   const [collapsed, setCollapsed] = useState(loadCollapsed);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -67,8 +69,7 @@ export default function AttentionCentre({
         <AlertTriangle size={16} aria-hidden />
         <div className="attention-centre-header-text">
           <h2 className="attention-title" style={{ margin: 0 }}>
-            {items.length} item{items.length === 1 ? "" : "s"} need review
-            {criticalCount > 0 ? ` · ${criticalCount} critical` : ""}
+            {attentionReviewHeading(items.length, criticalCount)}
           </h2>
         </div>
         <Button
@@ -88,27 +89,50 @@ export default function AttentionCentre({
           {items.map((item) => {
             const meta = SEVERITY_META[item.severity];
             const Icon = meta.icon;
+            const expanded = expandedId === item.id;
             return (
               <li key={item.id} className={`attention-centre-item ${meta.className}`}>
                 <div className="attention-centre-item-main">
-                  <span className="attention-severity-badge">
-                    <Icon size={14} aria-hidden />
-                    {meta.label}
-                  </span>
-                  <strong>{item.title}</strong>
-                  {item.companyName ? (
-                    <span className="muted small">{item.companyName}</span>
-                  ) : null}
-                  <p className="small" style={{ margin: "4px 0 0" }}>
-                    {item.detail}
-                  </p>
-                  {item.recommendedAction ? (
-                    <p className="muted small" style={{ margin: "2px 0 0" }}>
-                      {item.recommendedAction}
-                    </p>
+                  <div className="attention-centre-item-head">
+                    <span className="attention-severity-badge">
+                      <Icon size={14} aria-hidden />
+                      {meta.label}
+                    </span>
+                    <strong className="attention-centre-item-title">{item.title}</strong>
+                    {item.companyName ? (
+                      <span className="muted small attention-centre-item-company">{item.companyName}</span>
+                    ) : null}
+                  </div>
+                  {expanded ? (
+                    <div className="attention-centre-item-detail">
+                      <p className="small">{item.detail}</p>
+                      {item.recommendedAction ? (
+                        <p className="muted small">{item.recommendedAction}</p>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
                 <div className="attention-centre-actions">
+                  {!expanded && (item.detail || item.recommendedAction) ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-expanded={expanded}
+                      onClick={() => setExpandedId(item.id)}
+                    >
+                      Details
+                    </Button>
+                  ) : expanded ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setExpandedId(null)}
+                    >
+                      Less
+                    </Button>
+                  ) : null}
                   {item.href ? (
                     <Link to={item.href} className="button button-small button-secondary">
                       Review
