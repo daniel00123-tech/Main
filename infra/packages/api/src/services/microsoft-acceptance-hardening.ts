@@ -99,12 +99,20 @@ export async function runMicrosoftKnowledgeHardeningAcceptance(
   const arnoldDoc = reprocess.find((r) => r.documentId === 71);
   const mizzenDoc = reprocess.find((r) => r.documentId === 64);
 
-  const ocrLimited =
-    (coalDoc?.requiresOcr === true || arnoldDoc?.requiresOcr === true) &&
-    coalDoc?.documentStatus === "requires_ocr";
+  const ocrLimited = [coalDoc, arnoldDoc].some(
+    (doc) => doc?.ok === false && String(doc?.error ?? "").includes("OCR"),
+  );
+  const mizzenOk = mizzenDoc?.documentStatus === "indexed";
+  const scopeOk =
+    m365Violations === 0 && spViolations === 0 && odViolations === 0;
+  const regressionOk = regression.every((row) => row.ok && (row.hitCount as number) > 0);
+
+  let classification: "PASS" | "PARTIAL" | "FAIL" = "PASS";
+  if (!mizzenOk || !scopeOk || !regressionOk) classification = "FAIL";
+  else if (ocrLimited) classification = "PARTIAL";
 
   return {
-    classification: ocrLimited ? "PARTIAL" : "PASS",
+    classification,
     reprocess,
     acceptance: {
       coalSearch: { hitCount: coalSearch.hitCount, hits: coalSearch.hits, reindex: coalDoc },

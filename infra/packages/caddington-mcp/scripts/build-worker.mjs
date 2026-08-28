@@ -467,7 +467,19 @@ __name2(pdfRequiresOcr, "pdfRequiresOcr");`;
   const indexOcrReturnTarget = `      const ocrMessage = "PDF has little or no extractable text. Document marked as requires_ocr.";
       await completeKnowledgeImportLog(env22, logId, "failed", 0, ocrMessage);
       throw new RequiresOcrError(ocrMessage);`;
-  const indexOcrReturnReplacement = `      const ocrMessage = extracted.extractionMetrics?.extractionQuality === "heading_only"
+  const indexOcrReturnReplacement = `      const staleChunks = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+        "SELECT vector_id FROM knowledge_chunks WHERE document_id = ?"
+      ).bind(documentId).all();
+      const staleVectorIds = (staleChunks.results ?? []).map((row) => row.vector_id).filter(Boolean);
+      await env22.CADDINGTON_BUSINESS_DATA.prepare(
+        "DELETE FROM knowledge_chunks WHERE document_id = ?"
+      ).bind(documentId).run();
+      await deleteDocumentFtsRows(env22, documentId);
+      if (staleVectorIds.length > 0 && env22.CADDINGTON_KNOWLEDGE_INDEX?.deleteByIds) {
+        await env22.CADDINGTON_KNOWLEDGE_INDEX.deleteByIds(staleVectorIds);
+      }
+      clearSearchCache();
+      const ocrMessage = extracted.extractionMetrics?.extractionQuality === "heading_only"
         ? "PDF pages contain headings/page markers only; substantive text requires OCR fallback."
         : "PDF has little or no extractable text. Document marked as requires_ocr.";
       await completeKnowledgeImportLog(env22, logId, "failed", 0, ocrMessage);
