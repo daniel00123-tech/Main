@@ -52,12 +52,14 @@ class FakeD1 {
           name: "Tenant A",
           status: "active",
           archived_at: null,
+          billing_mode: "test",
         },
         {
           id: "co_b",
           name: "Tenant B",
           status: "suspended",
           archived_at: null,
+          billing_mode: "test",
         },
       ],
       stripe_checkout_sessions: [],
@@ -78,6 +80,10 @@ class FakeD1 {
     const q = sql.replace(/\s+/g, " ").trim().toLowerCase();
     if (q.includes("from companies where id = ?")) {
       return this.tables.companies.find((r) => r.id === binds[0]) ?? null;
+    }
+    if (q.includes("select billing_mode from companies")) {
+      const row = this.tables.companies.find((r) => r.id === binds[0]);
+      return row ? { billing_mode: row.billing_mode ?? "test" } : null;
     }
     if (q.includes("from stripe_checkout_sessions where id = ? and company_id = ?")) {
       return (
@@ -340,6 +346,27 @@ describe("createTopUpCheckoutIntent", () => {
     });
     expect(result.configured).toBe(true);
     if (result.configured) expect(result.mode).toBe("pending_credentials");
+  });
+
+  it("blocks live checkout for test billing company on live platform", async () => {
+    const liveEnv = {
+      ...testEnv,
+      STRIPE_SECRET_KEY: "sk_live_acceptance",
+      STRIPE_WEBHOOK_SECRET: "whsec_live",
+    } as import("../env").Env;
+    const result = await createTopUpCheckoutIntent(liveEnv, {
+      companyId: "co_a",
+      companyName: "Tenant A",
+      amountCents: 500,
+      createdBy: "user@test.com",
+      successUrl: "https://app.test/billing?topup=success",
+      cancelUrl: "https://app.test/billing?topup=cancelled",
+    });
+    expect(result.configured).toBe(false);
+    if (!result.configured) {
+      expect(result.code).toBe("BILLING_MODE_BLOCKED");
+      expect(result.error).toContain("billing mode is test");
+    }
   });
 });
 

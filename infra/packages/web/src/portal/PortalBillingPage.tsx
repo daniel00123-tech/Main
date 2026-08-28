@@ -182,8 +182,12 @@ export default function PortalBillingPage() {
   }
 
   const stripeTestMode = wallet.paymentProvider?.testModeOnly ?? false;
+  const topUpCheckoutAllowed = wallet.paymentProvider?.topUpCheckoutAllowed ?? stripeTestMode;
+  const topUpBlockedReason = wallet.paymentProvider?.topUpBlockedReason ?? null;
+  const companyBillingMode = wallet.paymentProvider?.companyBillingMode ?? "test";
   const recentTopUps = (wallet.recentTopUps ?? []) as TopUpRecord[];
-  const topUpOptions = wallet.topUpOptionsCents.filter((amount) => amount >= 1000);
+  const topUpOptions = wallet.topUpOptionsCents.filter((amount) => amount >= 500);
+  const customTopUpMinPounds = stripeTestMode ? 1 : 5;
   const autoTopUp = wallet.paymentProvider?.autoTopUp;
   const spendThisMonth =
     wallet.wallet.spendThisMonthCents ??
@@ -324,7 +328,7 @@ export default function PortalBillingPage() {
           />
 
           <SectionCard title="Add credit" description="Card details are handled securely by Stripe Checkout.">
-            {wallet.stripeConfigured && stripeTestMode ? (
+            {wallet.stripeConfigured && topUpCheckoutAllowed ? (
               <>
                 <div className="topup-grid-compact">
                   {topUpOptions.map((amount) => (
@@ -342,7 +346,7 @@ export default function PortalBillingPage() {
                 <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
                   <Input
                     type="number"
-                    min={10}
+                    min={customTopUpMinPounds}
                     step={1}
                     placeholder="Custom £"
                     value={customAmount}
@@ -356,15 +360,27 @@ export default function PortalBillingPage() {
                     disabled={busy || !customAmount}
                     onClick={() => {
                       const pounds = Number(customAmount);
-                      if (Number.isFinite(pounds) && pounds >= 10) void topUp(Math.round(pounds * 100));
+                      if (Number.isFinite(pounds) && pounds >= customTopUpMinPounds) {
+                        void topUp(Math.round(pounds * 100));
+                      }
                     }}
                   >
                     Top up custom amount
                   </Button>
                 </div>
+                {!stripeTestMode ? (
+                  <p className="muted" style={{ marginTop: 12 }}>
+                    Live billing mode ({companyBillingMode}) — card payments credit purchased wallet funds only.
+                  </p>
+                ) : null}
               </>
             ) : (
-              <p className="muted">Top-up is available when Stripe test mode is active.</p>
+              <p className="muted">
+                {topUpBlockedReason ??
+                  (wallet.stripeConfigured
+                    ? "Top-up is not available for this company billing mode."
+                    : "Online payments are not configured yet.")}
+              </p>
             )}
             {message ? <p className="info-banner" style={{ marginTop: 16 }}>{message}</p> : null}
           </SectionCard>

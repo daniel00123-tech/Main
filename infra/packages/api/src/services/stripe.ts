@@ -7,6 +7,7 @@ import {
 } from "./payment-providers";
 import type { Env } from "../env";
 import {
+  companyCanReceiveLiveWalletCredit,
   companyStripeCheckoutAllowed,
   getCompanyBillingMode,
 } from "./company-billing-mode";
@@ -505,6 +506,23 @@ async function creditCheckoutFromWebhook(
   if (input.checkout.status === "credited") {
     await markWebhookProcessed(env.DB, input.stripeEventId);
     return { processed: false, duplicate: true, message: "Checkout already credited" };
+  }
+
+  const companyBillingMode = await getCompanyBillingMode(env.DB, input.checkout.companyId);
+  const sessionStripeMode = input.checkout.stripeMode ?? getStripeMode(env);
+  if (
+    sessionStripeMode === "live" &&
+    !companyCanReceiveLiveWalletCredit(companyBillingMode)
+  ) {
+    const message =
+      "Live Stripe checkout cannot credit a company with billing_mode=test — webhook credit blocked";
+    await env.DB.prepare(
+      `UPDATE stripe_checkout_sessions SET status = 'failed', failure_reason = ? WHERE id = ? AND company_id = ?`,
+    )
+      .bind(message, input.checkout.id, input.checkout.companyId)
+      .run();
+    await markWebhookProcessed(env.DB, input.stripeEventId, message);
+    return { processed: false, duplicate: false, message };
   }
 
   const companyId = input.checkout.companyId;
