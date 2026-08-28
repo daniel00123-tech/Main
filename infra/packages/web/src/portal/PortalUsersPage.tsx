@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { MoreHorizontal, UserPlus, Users } from "lucide-react";
 import { api } from "../api";
 import type { CompanyRole, InfraUser } from "@infra/shared";
@@ -18,6 +18,7 @@ import {
   formatDate,
   useIsMobile,
 } from "../components";
+import { ActionMenuPopover } from "../components/ActionMenuPopover";
 import { PermissionsEditor } from "../components/PermissionsEditor";
 import { humanRole } from "../lib/format";
 import { PortalPageHeader } from "./components";
@@ -37,6 +38,7 @@ export default function PortalUsersPage() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<InfraUser | null>(null);
   const [actionMenuUserId, setActionMenuUserId] = useState<string | null>(null);
+  const actionMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [resetTarget, setResetTarget] = useState<InfraUser | null>(null);
   const [tempPassword, setTempPassword] = useState("");
   const [resetResult, setResetResult] = useState<string | null>(null);
@@ -82,14 +84,11 @@ export default function PortalUsersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [company]);
 
-  useEffect(() => {
-    if (!actionMenuUserId) return;
-    const close = () => setActionMenuUserId(null);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, [actionMenuUserId]);
-
   const activeCount = team.filter((m) => m.status === "active").length;
+  const actionMenuMember = useMemo(
+    () => (actionMenuUserId ? team.find((member) => member.id === actionMenuUserId) ?? null : null),
+    [actionMenuUserId, team],
+  );
 
   async function onInvite(event: FormEvent) {
     event.preventDefault();
@@ -201,7 +200,6 @@ export default function PortalUsersPage() {
   function renderUserActions(member: InfraUser) {
     if (!canManageMember(member)) return null;
     const menuOpen = actionMenuUserId === member.id;
-    const lastAdmin = isLastCompanyAdmin(member);
 
     return (
       <div className="user-row-actions">
@@ -209,59 +207,27 @@ export default function PortalUsersPage() {
           type="button"
           className="button button-ghost button-small user-row-actions-trigger"
           aria-label={`Actions for ${member.displayName}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
           onClick={(e) => {
             e.stopPropagation();
-            setActionMenuUserId(menuOpen ? null : member.id);
+            if (menuOpen) {
+              closeActionMenu();
+              return;
+            }
+            actionMenuTriggerRef.current = e.currentTarget;
+            setActionMenuUserId(member.id);
           }}
         >
           <MoreHorizontal size={16} />
         </button>
-        {menuOpen ? (
-          <div className="user-row-actions-menu" role="menu">
-            <button
-              type="button"
-              role="menuitem"
-              onClick={(e) => {
-                e.stopPropagation();
-                setActionMenuUserId(null);
-                setResetTarget(member);
-                setTempPassword("");
-                setResetResult(null);
-              }}
-            >
-              Reset password
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              disabled={lastAdmin}
-              title={lastAdmin ? "Cannot disable the last company administrator" : undefined}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActionMenuUserId(null);
-                void toggleStatus(member);
-              }}
-            >
-              {member.status === "active" ? "Disable access" : "Enable access"}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="danger"
-              disabled={lastAdmin}
-              title={lastAdmin ? "Cannot remove the last company administrator" : undefined}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActionMenuUserId(null);
-                void removeMember(member);
-              }}
-            >
-              Remove user
-            </button>
-          </div>
-        ) : null}
       </div>
     );
+  }
+
+  function closeActionMenu() {
+    setActionMenuUserId(null);
+    actionMenuTriggerRef.current = null;
   }
 
   const roleDescription = useMemo(() => {
@@ -697,6 +663,43 @@ export default function PortalUsersPage() {
           </code>
         ) : null}
       </Modal>
+
+      {actionMenuMember ? (
+        <ActionMenuPopover
+          open
+          triggerRef={actionMenuTriggerRef}
+          onClose={closeActionMenu}
+          ariaLabel={`Actions for ${actionMenuMember.displayName}`}
+          items={[
+            {
+              label: "Reset password",
+              onSelect: () => {
+                setResetTarget(actionMenuMember);
+                setTempPassword("");
+                setResetResult(null);
+              },
+            },
+            {
+              label:
+                actionMenuMember.status === "active" ? "Disable access" : "Enable access",
+              disabled: isLastCompanyAdmin(actionMenuMember),
+              title: isLastCompanyAdmin(actionMenuMember)
+                ? "Cannot disable the last company administrator"
+                : undefined,
+              onSelect: () => void toggleStatus(actionMenuMember),
+            },
+            {
+              label: "Remove user",
+              danger: true,
+              disabled: isLastCompanyAdmin(actionMenuMember),
+              title: isLastCompanyAdmin(actionMenuMember)
+                ? "Cannot remove the last company administrator"
+                : undefined,
+              onSelect: () => void removeMember(actionMenuMember),
+            },
+          ]}
+        />
+      ) : null}
     </>
   );
 }
