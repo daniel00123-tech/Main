@@ -200,9 +200,14 @@ export default function PortalBillingPage() {
   async function startPaymentMethodSetup() {
     if (!company) return;
     setBusy(true);
+    setMessage(null);
     try {
       const result = await api.startPaymentMethodSetup(company.slug);
-      if (result.url) window.location.href = result.url;
+      if (typeof result.url === "string" && result.url.startsWith("http")) {
+        window.location.href = result.url;
+        return;
+      }
+      setMessage("Stripe did not return a payment setup URL. Contact your administrator.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Unable to start payment setup");
     } finally {
@@ -275,6 +280,12 @@ export default function PortalBillingPage() {
       ) : null}
       {topupState === "cancelled" ? (
         <Notice tone="info">Top-up cancelled. No charge was made.</Notice>
+      ) : null}
+
+      {message ? (
+        <Notice tone={message.toLowerCase().includes("fail") || message.toLowerCase().includes("unable") ? "danger" : "info"}>
+          {message}
+        </Notice>
       ) : null}
 
       <Tabs
@@ -493,7 +504,12 @@ export default function PortalBillingPage() {
         <SectionCard title="Auto top-up">
           <Notice tone="info">
             Configure automatic credit when your balance falls below a threshold. Requires a saved
-            payment method. {(autoTopUp as { canExecute?: boolean })?.canExecute ? "Active in Stripe test mode." : "Execution awaits operator enablement in test mode."}
+            payment method.
+            {(autoTopUp as { liveEligible?: boolean })?.liveEligible
+              ? " Live billing is active for this company — enable auto top-up explicitly after saving a card."
+              : stripeTestMode
+                ? " Active in Stripe test mode when enabled."
+                : " Execution is limited to approved billing modes."}
           </Notice>
           <div className="kv-stack" style={{ marginTop: 16 }}>
             <label className="field">
@@ -527,7 +543,12 @@ export default function PortalBillingPage() {
               />
               <span>
                 I understand enabling auto top-up will charge my saved payment method when the
-                threshold is reached (test mode only until live approval).
+                threshold is reached.
+                {(autoTopUp as { liveEligible?: boolean })?.liveEligible
+                  ? " This uses live Stripe billing for this company."
+                  : stripeTestMode
+                    ? " This uses Stripe test mode only."
+                    : ""}
               </span>
             </label>
           </div>
@@ -562,7 +583,10 @@ export default function PortalBillingPage() {
             <div className="kv-stack" style={{ marginTop: 20 }}>
               <KeyValue
                 label="Execution gate"
-                value={autoTopUpDiag.executionEnabled ? "Enabled" : "Disabled (production safe)"}
+                value={String(
+                  autoTopUpDiag.executionGateLabel ??
+                    (autoTopUpDiag.executionEnabled ? "Enabled" : "Disabled (production safe)"),
+                )}
               />
               <KeyValue label="Status" value={String(autoTopUpDiag.portalStatus ?? "—")} />
               <KeyValue

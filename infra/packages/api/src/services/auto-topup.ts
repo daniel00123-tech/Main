@@ -4,8 +4,24 @@ import { appendLedgerEntry, getWalletBalance } from "./ledger";
 import { getCompanySettings } from "./company-settings";
 import { createNotification } from "./notifications";
 import type { Env } from "../env";
-import { stripePaymentsAllowed, ensureStripeCustomer, getStripeMode } from "./stripe";
+import {
+  stripePaymentsAllowed,
+  ensureStripeCustomer,
+  getStripeMode,
+  isStripeTestModeActive,
+  STRIPE_LIVE_MODE_ALLOWED,
+} from "./stripe";
 import { companyStripeCheckoutAllowed, getCompanyBillingMode } from "./company-billing-mode";
+
+export async function companyLiveAutoTopUpEligible(
+  env: Env,
+  companyId: string,
+): Promise<boolean> {
+  if (getStripeMode(env) !== "live" || !STRIPE_LIVE_MODE_ALLOWED) return false;
+  const companyBillingMode = await getCompanyBillingMode(env.DB, companyId);
+  const checkoutGate = companyStripeCheckoutAllowed(env, companyBillingMode);
+  return companyBillingMode === "live" && checkoutGate.allowed;
+}
 
 export const AUTO_TOPUP_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 export const AUTO_TOPUP_MAX_AMOUNT_CENTS = 10000_00; // £10,000 cap per charge
@@ -209,10 +225,11 @@ export async function createAutoTopUpTransaction(
     };
   }
 
-  if (getStripeMode(env) === "live") {
+  const liveEligible = await companyLiveAutoTopUpEligible(env, input.companyId);
+  if (getStripeMode(env) === "live" && !liveEligible) {
     return {
       ok: false,
-      error: "Off-session auto top-up is disabled in live Stripe mode",
+      error: "Live auto top-up is not enabled for this company billing mode",
       code: "LIVE_AUTO_TOPUP_BLOCKED",
     };
   }
@@ -604,6 +621,8 @@ export type AutoTopUpDiagnostics = {
   monthlyCapCents: number;
   suppressedUntil: string | null;
   failureCount: number;
+  liveEligible: boolean;
+  executionGateLabel: string;
 };
 
 export async function getAutoTopUpDiagnostics(
@@ -623,6 +642,32 @@ export async function getAutoTopUpDiagnostics(
 
   const evaluation = await evaluateAutoTopUp(env.DB, companyId);
   const portalStatus = await getAutoTopUpPortalStatus(env.DB, companyId, executionEnabled);
+  const liveEligible = await companyLiveAutoTopUpEligible(env, companyId);
+  const paymentMethodReady = Boolean(settings?.autoTopUp.paymentMethodReady);
+  const autoTopUpEnabled = Boolean(settings?.autoTopUp.enabled);
+  let executionGateLabel = "Disabled (production safe)";
+  if (liveEligible) {
+    if (!paymentMethodReady) {
+      executionGateLabel = "Ready for live auto top-up — add a payment method to activate.";
+    } else if (!autoTopUpEnabled) {
+      executionGateLabel = "Live auto top-up available — enable explicitly to activate.";
+    } else if (
+      autoTopUpEnabled &&
+      paymentMethodReady &&
+      executionEnabled &&
+      liveEligible
+    ) {
+      executionGateLabel = "Active in live billing mode";
+    } else {
+      executionGateLabel = "Configured — awaiting operator execution gate";
+    }
+  } else if (isStripeTestModeActive(env)) {
+    executionGateLabel = executionEnabled
+      ? autoTopUpEnabled && paymentMethodReady
+        ? "Active in Stripe test mode"
+        : "Available in Stripe test mode"
+      : "Disabled until operator enables test execution";
+  }
 
   const lastAttemptRow = await env.DB.prepare(
     `SELECT id, status, amount_cents, failure_reason, created_at, completed_at
@@ -711,5 +756,7 @@ export async function getAutoTopUpDiagnostics(
       ? String(commercial.auto_top_up_suppressed_until)
       : null,
     failureCount: Number(commercial?.auto_top_up_failed_count ?? 0),
+    liveEligible,
+    executionGateLabel,
   };
 }

@@ -2,7 +2,7 @@ import type { BillingMode, PaymentProviderId } from "@infra/shared";
 import { newId, nowIso } from "../db/mappers";
 import type { Env } from "../env";
 import { companyStripeCheckoutAllowed, getCompanyBillingMode } from "./company-billing-mode";
-import { getStripeMode, isStripeConfigured, isStripeTestModeActive } from "./stripe";
+import { getStripeMode, isStripeConfigured, isStripeTestModeActive, STRIPE_LIVE_MODE_ALLOWED } from "./stripe";
 import { getCompanySettings } from "./company-settings";
 
 export interface PaymentProviderStatus {
@@ -22,6 +22,7 @@ export interface PaymentProviderStatus {
     canExecute?: boolean;
     setupRequired?: boolean;
     message?: string;
+    liveEligible?: boolean;
   };
   topUpOptionsCents: number[];
   companyBillingMode?: BillingMode;
@@ -84,15 +85,45 @@ export async function getCompanyPaymentProviderStatus(
   if (!settings) return withBilling;
 
   const executionEnabled = String(env.AUTO_TOPUP_EXECUTION_ENABLED ?? "").toLowerCase() === "true";
+  const liveAutoTopUpEligible =
+    !base.testModeOnly &&
+    companyBillingMode === "live" &&
+    checkoutGate.allowed &&
+    STRIPE_LIVE_MODE_ALLOWED;
   const canExecute =
-    executionEnabled &&
-    base.configured &&
-    base.testModeOnly &&
     settings.autoTopUp.enabled &&
-    settings.autoTopUp.paymentMethodReady;
+    settings.autoTopUp.paymentMethodReady &&
+    ((base.testModeOnly && executionEnabled) || (liveAutoTopUpEligible && executionEnabled));
+
+  let autoTopUpMessage = "Auto top-up is off.";
+  if (settings.autoTopUp.enabled) {
+    if (!settings.autoTopUp.paymentMethodReady) {
+      autoTopUpMessage = liveAutoTopUpEligible
+        ? "Ready for live auto top-up — add a payment method to activate."
+        : base.testModeOnly
+          ? "Auto top-up enabled — add a payment method to activate."
+          : "Auto top-up enabled — add a payment method to activate.";
+    } else if (canExecute) {
+      autoTopUpMessage = liveAutoTopUpEligible
+        ? "Auto top-up is active in live billing mode."
+        : "Auto top-up is active in Stripe test mode.";
+    } else if (liveAutoTopUpEligible) {
+      autoTopUpMessage =
+        "Live auto top-up is configured — explicit enablement and operator execution gate required.";
+    } else {
+      autoTopUpMessage = "Auto top-up configured — execution awaits operator enablement.";
+    }
+  } else if (liveAutoTopUpEligible && !settings.autoTopUp.paymentMethodReady) {
+    autoTopUpMessage = "Ready for live auto top-up — add a payment method to activate.";
+  }
 
   return {
     ...withBilling,
+    message: base.testModeOnly
+      ? base.message
+      : liveAutoTopUpEligible
+        ? "Stripe live billing is active for this company."
+        : "Stripe is configured in live platform mode.",
     autoTopUp: {
       supported: base.configured,
       enabled: settings.autoTopUp.enabled,
@@ -101,13 +132,8 @@ export async function getCompanyPaymentProviderStatus(
       paymentMethodReady: settings.autoTopUp.paymentMethodReady,
       canExecute,
       setupRequired: !settings.autoTopUp.paymentMethodReady,
-      message: settings.autoTopUp.enabled
-        ? settings.autoTopUp.paymentMethodReady
-          ? canExecute
-            ? "Auto top-up is active in Stripe test mode."
-            : "Auto top-up configured — execution awaits operator enablement."
-          : "Auto top-up enabled — add a payment method to activate."
-        : "Auto top-up is off.",
+      message: autoTopUpMessage,
+      liveEligible: liveAutoTopUpEligible,
     },
   };
 }

@@ -424,6 +424,37 @@ export function actionCentreBucket(status: string): ActionCentreBucket {
   return "failed";
 }
 
+export function planTargetsReady(plan: { targets: Array<{ validation?: string }> }): boolean {
+  return plan.targets.length > 0 && plan.targets.every((target) => target.validation === "valid");
+}
+
+export function planIsConfirmable(plan: {
+  status: string;
+  targets: Array<{ validation?: string }>;
+}): boolean {
+  return plan.status === "awaiting_confirmation" && planTargetsReady(plan);
+}
+
+export function planIsApprovable(plan: {
+  status: string;
+  targets: Array<{ validation?: string }>;
+}): boolean {
+  return plan.status === "awaiting_approval" && planTargetsReady(plan);
+}
+
+export function planFailureDisplayReason(plan: {
+  summary?: string | null;
+  targets: Array<{ validation?: string; validationDetail?: string | null }>;
+}): string | null {
+  if (planTargetsReady(plan)) return null;
+  const invalid = plan.targets.find((target) => target.validation !== "valid");
+  if (invalid?.validationDetail) return invalid.validationDetail;
+  if (plan.summary?.includes("plan failed")) {
+    return plan.summary.replace(/^.*plan failed —\s*/i, "").replace(/\.$/, "") || plan.summary;
+  }
+  return invalid?.validation ?? "Planning failed";
+}
+
 export function humanActionStatus(status: string): string {
   const map: Record<string, string> = {
     draft: "Draft",

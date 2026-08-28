@@ -14,6 +14,7 @@ import {
   LoadingState,
   MobileRecordCard,
   MobileRecordList,
+  Notice,
   SearchInput,
   SectionCard,
   ShowMoreFooter,
@@ -32,6 +33,9 @@ import {
   humanConfirmationStatus,
   humanOperation,
   humanRiskClass,
+  planFailureDisplayReason,
+  planIsApprovable,
+  planIsConfirmable,
   type ActionCentreBucket,
 } from "../lib/format";
 import { PortalPageHeader, SegmentedControl } from "./components";
@@ -289,13 +293,21 @@ export default function PortalActionsPage() {
       {execution?.humanReference ? <KeyValue label="Result reference" value={execution.humanReference} /> : null}
       {execution?.errorMessage ? <KeyValue label="Error" value={execution.errorMessage} /> : null}
 
+      {selected.status === "failed" || !planIsConfirmable(selected) ? (
+        planFailureDisplayReason(selected) ? (
+          <Notice tone="danger">
+            Failed — {planFailureDisplayReason(selected)}
+          </Notice>
+        ) : null
+      ) : null}
+
       <div className="action-detail-actions">
-        {selected.status === "awaiting_confirmation" && canApprove ? (
+        {planIsConfirmable(selected) && canApprove ? (
           <Button type="button" variant="primary" loading={busy === "confirm"} onClick={() => void confirm(selected)}>
             Confirm action
           </Button>
         ) : null}
-        {selected.status === "awaiting_approval" && canApprove ? (
+        {planIsApprovable(selected) && canApprove ? (
           <>
             <Button type="button" variant="primary" loading={busy === "approve"} onClick={() => void approve(selected)}>
               {selected.riskClass === "delete" || selected.requestedAction.includes("void")

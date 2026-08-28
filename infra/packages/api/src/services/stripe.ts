@@ -132,6 +132,56 @@ async function getCompanyRecord(db: D1Database, companyId: string) {
     .first();
 }
 
+async function stripeCustomerExists(env: Env, customerId: string): Promise<boolean> {
+  const response = await fetch(
+    `https://api.stripe.com/v1/customers/${encodeURIComponent(customerId)}`,
+    {
+      headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
+    },
+  );
+  return response.ok;
+}
+
+async function archiveStripeCustomerReference(
+  env: Env,
+  companyId: string,
+  customerId: string,
+  archivedMode: StripeMode,
+): Promise<void> {
+  await ensurePaymentProviderAccount(env.DB, companyId, "stripe");
+  const providerRow = await env.DB.prepare(
+    `SELECT metadata_json FROM payment_provider_accounts WHERE company_id = ? AND provider = 'stripe'`,
+  )
+    .bind(companyId)
+    .first();
+  let metadata: Record<string, unknown> = {};
+  try {
+    metadata = JSON.parse(String(providerRow?.metadata_json ?? "{}")) as Record<string, unknown>;
+  } catch {
+    metadata = {};
+  }
+  const archived = Array.isArray(metadata.archivedStripeCustomers)
+    ? [...metadata.archivedStripeCustomers]
+    : [];
+  archived.push({ id: customerId, mode: archivedMode, archivedAt: nowIso() });
+  metadata.archivedStripeCustomers = archived;
+  metadata.activeStripeMode = getStripeMode(env);
+  await env.DB.prepare(
+    `UPDATE payment_provider_accounts
+     SET metadata_json = ?, external_customer_ref = NULL, updated_at = ?
+     WHERE company_id = ? AND provider = 'stripe'`,
+  )
+    .bind(JSON.stringify(metadata), nowIso(), companyId)
+    .run();
+  await env.DB.prepare(
+    `UPDATE credit_balances
+     SET stripe_customer_id = NULL, updated_at = ?
+     WHERE company_id = ? AND stripe_customer_id = ?`,
+  )
+    .bind(nowIso(), companyId, customerId)
+    .run();
+}
+
 /** Reusable Stripe Customer — one per INFRA company, stored in credit_balances + payment_provider_accounts. */
 export async function ensureStripeCustomer(
   env: Env,
@@ -161,15 +211,21 @@ export async function ensureStripeCustomer(
     (providerRow?.external_customer_ref ? String(providerRow.external_customer_ref) : null);
 
   if (existing) {
-    await ensurePaymentProviderAccount(env.DB, input.companyId, "stripe");
-    await env.DB.prepare(
-      `UPDATE payment_provider_accounts
-       SET external_customer_ref = COALESCE(external_customer_ref, ?), status = 'ready', updated_at = ?
-       WHERE company_id = ? AND provider = 'stripe'`,
-    )
-      .bind(existing, nowIso(), input.companyId)
-      .run();
-    return { ok: true, customerId: existing };
+    const validInCurrentMode = await stripeCustomerExists(env, existing);
+    if (!validInCurrentMode) {
+      const archivedMode: StripeMode = getStripeMode(env) === "live" ? "test" : "live";
+      await archiveStripeCustomerReference(env, input.companyId, existing, archivedMode);
+    } else {
+      await ensurePaymentProviderAccount(env.DB, input.companyId, "stripe");
+      await env.DB.prepare(
+        `UPDATE payment_provider_accounts
+         SET external_customer_ref = COALESCE(external_customer_ref, ?), status = 'ready', updated_at = ?
+         WHERE company_id = ? AND provider = 'stripe'`,
+      )
+        .bind(existing, nowIso(), input.companyId)
+        .run();
+      return { ok: true, customerId: existing };
+    }
   }
 
   const params = new URLSearchParams();
@@ -200,12 +256,25 @@ export async function ensureStripeCustomer(
     .run();
 
   await ensurePaymentProviderAccount(env.DB, input.companyId, "stripe");
+  const providerMetaRow = await env.DB.prepare(
+    `SELECT metadata_json FROM payment_provider_accounts WHERE company_id = ? AND provider = 'stripe'`,
+  )
+    .bind(input.companyId)
+    .first();
+  let metadata: Record<string, unknown> = {};
+  try {
+    metadata = JSON.parse(String(providerMetaRow?.metadata_json ?? "{}")) as Record<string, unknown>;
+  } catch {
+    metadata = {};
+  }
+  metadata.activeStripeMode = getStripeMode(env);
+  metadata.liveCustomerCreatedAt = now;
   await env.DB.prepare(
     `UPDATE payment_provider_accounts
-     SET external_customer_ref = ?, status = 'ready', updated_at = ?
+     SET external_customer_ref = ?, status = 'ready', updated_at = ?, metadata_json = ?
      WHERE company_id = ? AND provider = 'stripe'`,
   )
-    .bind(body.id, now, input.companyId)
+    .bind(body.id, now, JSON.stringify(metadata), input.companyId)
     .run();
 
   return { ok: true, customerId: body.id };
