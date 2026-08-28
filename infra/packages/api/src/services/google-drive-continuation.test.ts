@@ -1,11 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyGoogleDriveContinuationPatches } from "./google-drive-continuation-patch.mjs";
+import { applyGoogleDriveContinuationPatches } from "../../../caddington-mcp/scripts/google-drive-continuation-patch.mjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const basePath = path.join(__dirname, "..", "vendor/base.worker.js");
+const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const basePath = path.join(pkgRoot, "caddington-mcp/vendor/base.worker.js");
 
 describe("google drive continuation patches", () => {
   it("adds resumable scan auto-continuation helpers and queue dispatch", () => {
@@ -25,5 +25,6 @@ describe("google drive continuation patches", () => {
     const once = applyGoogleDriveContinuationPatches(base);
     const twice = applyGoogleDriveContinuationPatches(once);
     expect(twice).toBe(once);
+    expect((twice.match(/enqueueGoogleDriveScanBatch/g) ?? []).length).toBeGreaterThan(0);
   });
 });

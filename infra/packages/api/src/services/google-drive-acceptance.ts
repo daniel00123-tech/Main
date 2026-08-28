@@ -117,8 +117,36 @@ export async function runGoogleDriveWholeDriveAcceptance(env: Env) {
       error: dryRun.body?.error,
       errors: dryRun.body?.errors,
     },
-    deploymentId: "ffc65eef-f291-4e9f-b0b7-76825dd2b1ac",
+    deploymentId: "7650276e-9da8-4ad1-af6b-bbbb54e385f4",
     notes:
       "Dry-run only. No file contents logged. Live sync/index requires separate operator approval.",
+  };
+}
+
+/** Trigger one live Google Drive sync (production acceptance). */
+export async function triggerGoogleDriveLiveSync(
+  env: Env,
+  input?: {
+    dryRun?: boolean;
+    autoIndex?: boolean;
+    batchId?: number;
+    useQueue?: boolean;
+    trigger?: string;
+  },
+) {
+  const sync = await mcpAdminFetch(env, "/admin/connectors/google_drive/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dryRun: input?.dryRun ?? false,
+      autoIndex: input?.autoIndex ?? true,
+      batchId: input?.batchId,
+      useQueue: input?.useQueue,
+      trigger: input?.trigger,
+    }),
+  });
+  return {
+    httpStatus: sync.status,
+    ...sync.body,
   };
 }

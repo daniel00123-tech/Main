@@ -25,10 +25,10 @@ INFRA_MCP_ENVIRONMENT_ID = "mcp_caddington_primary"
 
 [[queues.producers]]
 binding = "GOOGLE_DRIVE_SYNC_QUEUE"
-queue = "google-drive-sync"
+queue = "caddington-gdrive-sync"
 
 [[queues.consumers]]
-queue = "google-drive-sync"
+queue = "caddington-gdrive-sync"
 max_batch_size = 1
 max_retries = 5
 

@@ -2,7 +2,12 @@
 
 export function applyGoogleDriveContinuationPatches(base) {
   const marker = "google_drive_auto_continuation";
-  if (base.includes(marker)) return base;
+  const fullyPatched =
+    base.includes(marker) &&
+    base.includes("autoIndex: body.autoIndex,\n        batchId: body.batchId") &&
+    base.includes("&& !options.batchId") &&
+    base.includes("if (options.batchId) {");
+  if (fullyPatched) return base;
 
   const helpersTarget = `async function scanAndQueueGoogleDriveChanges(env22, options = {}) {`;
   const helpersReplacement = `async function enqueueGoogleDriveScanBatch(env22, body) {
@@ -65,7 +70,7 @@ async function mergeGoogleDriveSyncJobMetadata(env22, batchId, patch) {
     marker: "${marker}"
   };
   await env22.CADDINGTON_BUSINESS_DATA.prepare(
-    "UPDATE import_log SET metadata = ?, updated_at = datetime('now') WHERE id = ?"
+    "UPDATE import_log SET metadata = ? WHERE id = ?"
   ).bind(JSON.stringify(next), batchId).run();
   return next;
 }
@@ -73,10 +78,12 @@ __name(mergeGoogleDriveSyncJobMetadata, "mergeGoogleDriveSyncJobMetadata");
 __name2(mergeGoogleDriveSyncJobMetadata, "mergeGoogleDriveSyncJobMetadata");
 async function scanAndQueueGoogleDriveChanges(env22, options = {}) {`;
 
-  if (!base.includes(helpersTarget)) {
-    throw new Error("Unable to locate scanAndQueueGoogleDriveChanges for continuation helpers");
+  if (!base.includes("enqueueGoogleDriveScanBatch")) {
+    if (!base.includes(helpersTarget)) {
+      throw new Error("Unable to locate scanAndQueueGoogleDriveChanges for continuation helpers");
+    }
+    base = base.replace(helpersTarget, helpersReplacement);
   }
-  base = base.replace(helpersTarget, helpersReplacement);
 
   const batchInsertTarget = `  const importBatch = await env22.CADDINGTON_BUSINESS_DATA.prepare(
     \`INSERT INTO import_log (source_system, import_type, status, metadata)
@@ -88,6 +95,8 @@ async function scanAndQueueGoogleDriveChanges(env22, options = {}) {`;
       trigger,
       maxFiles: options.maxFiles ?? null,
       autoIndex,
+      scopeMode: connectorConfig.scopeMode,
+      scanRootId: connectorConfig.scanRootId,
       knowledgeFolderId: connectorConfig.knowledgeFolderId,
       knowledgeFolderName: connectorConfig.knowledgeFolderName,
       phase: "metadata_scan"
@@ -98,7 +107,7 @@ async function scanAndQueueGoogleDriveChanges(env22, options = {}) {`;
   const batchInsertReplacement = `  if (options.batchId) {
     summary.batchId = Number(options.batchId);
     await env22.CADDINGTON_BUSINESS_DATA.prepare(
-      "UPDATE import_log SET status = 'started', metadata = ?, updated_at = datetime('now') WHERE id = ?"
+      "UPDATE import_log SET status = 'started', metadata = ? WHERE id = ?"
     ).bind(JSON.stringify({
       dryRun,
       trigger,
@@ -174,7 +183,7 @@ async function scanAndQueueGoogleDriveChanges(env22, options = {}) {`;
   const completionReplacement = `    summary.scanContinuation = typeof scanContinuation !== "undefined" ? scanContinuation : null;
     summary.scanComplete = !summary.scanContinuation;
     await mergeGoogleDriveSyncJobMetadata(env22, summary.batchId, summary);
-    const jobStatus = summary.scanComplete ? "completed" : "in_progress";
+    const jobStatus = summary.scanComplete ? "completed" : "started";
     const jobMeta = await env22.CADDINGTON_BUSINESS_DATA.prepare(
       "SELECT metadata FROM import_log WHERE id = ? LIMIT 1"
     ).bind(summary.batchId).first();
@@ -336,11 +345,16 @@ async function scanAndQueueGoogleDriveChanges(env22, options = {}) {`;
     }
   }`;
 
-  if (!base.includes("processGoogleDriveQueueMessage(env22")) {
+  if (!base.includes('kind: message.body?.kind ?? "file"')) {
     if (!base.includes(queueHandlerTarget)) {
       throw new Error("Unable to locate google drive queue handler");
     }
     base = base.replace(queueHandlerTarget, queueHandlerReplacement);
+  } else if (base.includes("await processGoogleDriveFileMessage(env22, message.body);")) {
+    base = base.replace(
+      /async queue\(batch, env22\) \{[\s\S]*?await processGoogleDriveFileMessage\(env22, message\.body\);[\s\S]*?\n  \}/,
+      queueHandlerReplacement.trim(),
+    );
   }
 
   const scheduledGateTarget = `async function shouldRunScheduledGoogleDriveScan(env22, scheduledTimeMs) {
@@ -376,6 +390,37 @@ async function scanAndQueueGoogleDriveChanges(env22, options = {}) {`;
       base = base.replace(scheduledCompleteTarget, scheduledCompleteReplacement);
     }
   }
+
+  const adminSyncTarget = `      const summary = await syncGoogleDriveDocuments(env22, {
+        dryRun: body.dryRun ?? false,
+        maxFiles: body.maxFiles,
+        autoIndex: body.autoIndex
+      });`;
+  const adminSyncReplacement = `      const summary = await syncGoogleDriveDocuments(env22, {
+        dryRun: body.dryRun ?? false,
+        maxFiles: body.maxFiles,
+        autoIndex: body.autoIndex,
+        batchId: body.batchId,
+        useQueue: body.useQueue,
+        trigger: body.trigger
+      });`;
+  if (!base.includes("autoIndex: body.autoIndex,\n        batchId: body.batchId")) {
+    if (!base.includes(adminSyncTarget)) {
+      throw new Error("Unable to locate admin google drive sync handler for batchId passthrough");
+    }
+    base = base.replace(adminSyncTarget, adminSyncReplacement);
+  }
+
+  const queueGateTarget = `  if (!dryRun && env22.GOOGLE_DRIVE_SYNC_QUEUE && options.useQueue !== false) {`;
+  const queueGateReplacement = `  if (!dryRun && env22.GOOGLE_DRIVE_SYNC_QUEUE && options.useQueue !== false && !options.batchId) {`;
+  if (base.includes(queueGateTarget) && !base.includes("&& !options.batchId")) {
+    base = base.replace(queueGateTarget, queueGateReplacement);
+  }
+
+  base = base.replaceAll(
+    'const jobStatus = summary.scanComplete ? "completed" : "in_progress";',
+    'const jobStatus = summary.scanComplete ? "completed" : "started";',
+  );
 
   return base;
 }

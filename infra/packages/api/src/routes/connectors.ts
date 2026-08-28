@@ -1128,6 +1128,28 @@ connectors.post("/api/internal/google-drive/whole-drive-acceptance", async (c) =
   }
 });
 
+connectors.post("/api/internal/google-drive/trigger-sync", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      dryRun?: boolean;
+      autoIndex?: boolean;
+      batchId?: number;
+      useQueue?: boolean;
+      trigger?: string;
+    };
+    const { triggerGoogleDriveLiveSync } = await import("../services/google-drive-acceptance");
+    return c.json(await triggerGoogleDriveLiveSync(c.env, body));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Sync trigger failed", classification: "FAIL" },
+      500,
+    );
+  }
+});
+
 connectors.get(
   "/api/companies/:slug/microsoft/dashboard",
   requireAuth,
