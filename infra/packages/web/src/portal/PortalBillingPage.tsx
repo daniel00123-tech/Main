@@ -270,8 +270,7 @@ export default function PortalBillingPage() {
         </Notice>
       ) : stripeTestMode ? (
         <Notice tone="info">
-          <strong>Test mode</strong> — card payments use Stripe test credentials only. No real
-          money is collected.
+          <strong>Test mode</strong> — card payments are for testing only. No real money is collected.
         </Notice>
       ) : null}
 
@@ -491,7 +490,7 @@ export default function PortalBillingPage() {
               </Button>
               {stripeTestMode ? (
                 <p className="muted small" style={{ marginTop: 8 }}>
-                  Test mode — use Stripe test card 4242 4242 4242 4242.
+                  Test mode — use test card number 4242 4242 4242 4242 when adding a card.
                 </p>
               ) : null}
               {paymentMethod?.hasPaymentMethod ? (

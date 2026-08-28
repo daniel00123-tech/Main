@@ -1,8 +1,11 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 
 export default function ForgotPasswordPage() {
+  const emailId = useId();
+  const statusId = useId();
+  const errorId = useId();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,8 +23,11 @@ export default function ForgotPasswordPage() {
     }
   }, [resetUrl]);
 
+  const completed = Boolean(message || resetUrl || error);
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (loading || (completed && resetUrl)) return;
     setLoading(true);
     setError(null);
     setResetUrl(null);
@@ -41,6 +47,16 @@ export default function ForgotPasswordPage() {
     }
   }
 
+  const statusText = loading
+    ? "Sending reset link…"
+    : error
+      ? error
+      : resetUrl
+        ? "Your password reset link is ready."
+        : message
+          ? message
+          : "";
+
   return (
     <div className="login-page">
       <div className="login-card">
@@ -52,47 +68,75 @@ export default function ForgotPasswordPage() {
           </div>
         </div>
         <h1>Reset password</h1>
-        <p className="muted">
-          Enter your account email to generate a secure single-use link. Email delivery is not
-          configured yet — copy the link shown on the next screen.
+        <p className="login-intro">
+          Enter your email address and we&apos;ll provide a secure link to choose a new password.
         </p>
 
-        {resetUrl && resetPath ? (
-          <div className="info-banner" style={{ marginBottom: 16 }}>
-            <p style={{ margin: "0 0 8px" }}>{message}</p>
-            <p className="small" style={{ margin: "0 0 8px", wordBreak: "break-all" }}>
-              {resetUrl}
+        <p id={statusId} className="status-announcer sr-only" aria-live="polite" aria-atomic="true">
+          {statusText}
+        </p>
+
+        {loading ? (
+          <p className="info-banner" role="status" aria-labelledby={statusId}>
+            Sending reset link…
+          </p>
+        ) : null}
+
+        {error && !loading ? (
+          <p id={errorId} className="error-box" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        {resetUrl && resetPath && !loading ? (
+          <div className="info-banner success-banner" role="status">
+            <p style={{ margin: "0 0 8px", fontWeight: 600 }}>Reset link ready</p>
+            <p style={{ margin: "0 0 12px" }}>
+              {message ??
+                "Use the button below to set a new password. This link is single-use and expires soon."}
             </p>
             {expiresAt ? (
-              <p className="muted small" style={{ margin: 0 }}>
+              <p className="small" style={{ margin: "0 0 12px", color: "var(--text-secondary)" }}>
                 Expires {new Date(expiresAt).toLocaleString()}
               </p>
             ) : null}
+            <Link to={resetPath} className="button button-primary">
+              Set new password
+            </Link>
+          </div>
+        ) : null}
+
+        {message && !resetUrl && !loading && !error ? (
+          <div className="info-banner success-banner" role="status">
+            <p style={{ margin: 0 }}>{message}</p>
           </div>
         ) : null}
 
         {!resetUrl ? (
-          <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
-            <label>
+          <form className="login-form" onSubmit={(e) => void handleSubmit(e)} aria-busy={loading}>
+            <label htmlFor={emailId}>
               Email
               <input
+                id={emailId}
+                name="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="username"
+                disabled={loading}
                 required
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? errorId : statusId}
               />
             </label>
-            {error ? <p className="error-text">{error}</p> : null}
-            {message && !resetUrl ? <p className="muted small">{message}</p> : null}
-            <button className="button button-primary" type="submit" disabled={loading}>
-              {loading ? "Generating link…" : "Get reset link"}
+            <button
+              className="button button-primary"
+              type="submit"
+              disabled={loading || !email.trim()}
+            >
+              {loading ? "Sending reset link…" : "Send reset link"}
             </button>
           </form>
-        ) : resetPath ? (
-          <Link to={resetPath} className="button button-primary">
-            Set new password
-          </Link>
         ) : null}
 
         <p className="muted small" style={{ marginTop: 20 }}>

@@ -253,8 +253,8 @@ export default function PortalAiConnectionsPage() {
       <CollapsibleBlock title="How to connect ChatGPT" summary="Setup steps">
         <ol className="stack" style={{ margin: 0, paddingLeft: 18, color: "var(--text-secondary)" }}>
           <li>Click <strong>Connect</strong> on the ChatGPT card and copy your token</li>
-          <li>In ChatGPT, add an MCP connection using Bearer token authentication</li>
-          <li>Use the connection URL provided — not a direct company MCP address</li>
+          <li>In ChatGPT, add a connection using Bearer token authentication</li>
+          <li>Use the connection URL provided here when prompted</li>
           <li>Start a new conversation and try a knowledge search or Xero query</li>
         </ol>
       </CollapsibleBlock>
@@ -287,7 +287,7 @@ export default function PortalAiConnectionsPage() {
             />
             <KeyValue label="Company" value={activeConn.companyName ?? company.name} />
             <AdvancedDetails label="Technical details">
-              <KeyValue label="Connection method" value={activeConn.connectionMethod ?? "INFRA secure gateway"} />
+              <KeyValue label="Connection method" value={activeConn.connectionMethod ?? "Secure INFRA connection"} />
               <KeyValue
                 label="Connection URL"
                 value={

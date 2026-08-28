@@ -82,10 +82,10 @@ export default function PortalDashboardPage() {
       id: "low-balance",
       title:
         walletHealth === "empty"
-          ? "Wallet empty"
+          ? "No credit remaining"
           : walletHealth === "critical"
-            ? "Critical wallet balance"
-            : "Low wallet balance",
+            ? "Very low credit"
+            : "Low credit",
       description: "Add credit to avoid interrupted AI usage.",
       to: `${base}/billing`,
     });
@@ -153,7 +153,7 @@ export default function PortalDashboardPage() {
           {
             label: "Connected systems",
             value: String(connectors.length),
-            hint: mcp ? `${mcp.name} healthy` : "None registered",
+            hint: mcp ? "AI connection ready" : "None connected",
           },
           {
             label: "AI connections",
@@ -171,7 +171,7 @@ export default function PortalDashboardPage() {
             hint: `${usage?.successfulThisMonth ?? 0} successful`,
           },
           {
-            label: "Wallet",
+            label: "Credit balance",
             value: wallet ? formatCurrency(wallet.balanceCents, wallet.currency) : "—",
             hint:
               walletHealth === "healthy"
@@ -218,7 +218,7 @@ export default function PortalDashboardPage() {
                   name={item.name}
                   purpose={
                     item.managedBy === "company_mcp"
-                      ? "Managed through your Business MCP"
+                      ? "Managed through your AI connection"
                       : "Connected business system"
                   }
                   status={connectorStatus(item)}
@@ -227,8 +227,8 @@ export default function PortalDashboardPage() {
               ))}
               {mcp && connectors.length === 0 ? (
                 <IntegrationRow
-                  name="Business MCP"
-                  purpose={mcp.name}
+                  name="AI connection"
+                  purpose="Connect ChatGPT or Claude to your company systems"
                   status={overview.mcpOnboardingStatus ?? mcp.status}
                 />
               ) : null}

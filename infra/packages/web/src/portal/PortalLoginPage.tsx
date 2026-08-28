@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useId, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -7,6 +7,9 @@ export default function PortalLoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const successMessage = (location.state as { message?: string } | null)?.message;
+  const emailId = useId();
+  const passwordId = useId();
+  const errorId = useId();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +21,7 @@ export default function PortalLoginPage() {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError(null);
     try {
@@ -37,34 +41,58 @@ export default function PortalLoginPage() {
         <div className="brand-sub">Company portal</div>
 
         <h1>Sign in</h1>
+        <p className="login-intro">Sign in to your company portal.</p>
 
-        {successMessage ? <p className="info-banner">{successMessage}</p> : null}
+        {successMessage ? (
+          <p className="info-banner" role="status">
+            {successMessage}
+          </p>
+        ) : null}
 
-        <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
-          <label>
+        <form
+          className="login-form"
+          onSubmit={(e) => void handleSubmit(e)}
+          aria-busy={loading}
+          noValidate
+        >
+          <label htmlFor={emailId}>
             Email
             <input
+              id={emailId}
+              name="email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={loading}
               required
             />
           </label>
-          <label>
+          <label htmlFor={passwordId}>
             Password
             <input
+              id={passwordId}
+              name="password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
               required
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? errorId : undefined}
             />
           </label>
           <p className="login-form-meta">
             <Link to="/forgot-password">Forgot password?</Link>
           </p>
-          {error ? <p className="error-text">{error}</p> : null}
+          {error ? (
+            <p id={errorId} className="error-text" role="alert">
+              {error}
+            </p>
+          ) : null}
           <button className="button button-primary" type="submit" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
       </div>

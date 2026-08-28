@@ -274,7 +274,7 @@ export default function PortalActionsPage() {
           ) : selected.approvalStatus === "denied" ? (
             <li>Rejected</li>
           ) : null}
-          {selected.status === "executing" ? <li>Execution started</li> : null}
+          {selected.status === "executing" ? <li>Processing started</li> : null}
           {execution?.xeroResourceId ? <li>Xero updated — {execution.humanReference ?? execution.xeroResourceId}</li> : null}
           {selected.status === "completed" ? <li>Completed — read-back verified</li> : null}
           {selected.status === "failed" || selected.status === "partial_failure" ? (
@@ -359,7 +359,7 @@ export default function PortalActionsPage() {
         ]}
       />
 
-      <SectionCard title="Action centre">
+      <SectionCard title="Pending approvals">
         {plansLoading ? (
           <LoadingState label="Loading actions…" />
         ) : plansError ? (
