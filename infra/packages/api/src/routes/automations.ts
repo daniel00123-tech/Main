@@ -9,10 +9,14 @@ import { getCompanyBySlug, recordAuditEvent } from "../services/control-plane";
 import {
   AUTOMATION_ACTION_TYPES,
   AUTOMATION_SCHEDULE_FREQUENCIES,
+  AUTOMATION_TEMPLATES,
   AUTOMATION_TRIGGER_TYPES,
+  automationRecipientEmailOf,
+  automationTemplateKeyOf,
+  getAutomationTemplate,
+  isValidRecipientEmail,
   type AutomationActionType,
   type AutomationSchedule,
-  type AutomationStatus,
   type AutomationTriggerType,
 } from "@infra/shared";
 import {
@@ -32,6 +36,7 @@ import {
 import { validateAutomationConfiguration } from "../services/automation-engine/actions/index";
 import { computeNextRunUtcIso, formatScheduleLabel } from "../services/automation-engine/schedule";
 import { requestAutomationRun } from "../services/automation-engine/run-request";
+import { provisionTemplateAutomation } from "../services/automation-engine/provision-template";
 
 type AppEnv = { Bindings: Env; Variables: AuthVariables };
 
@@ -76,25 +81,43 @@ function parseSchedule(input: unknown): AutomationSchedule | null {
 
 function serialiseAutomation(definition: Awaited<ReturnType<typeof getAutomationDefinition>>) {
   if (!definition) return null;
+  const templateKey = automationTemplateKeyOf(definition.configuration);
+  const template = templateKey ? getAutomationTemplate(templateKey) : null;
   return {
     ...definition,
     scheduleLabel: definition.schedule
       ? formatScheduleLabel(definition.schedule, definition.timezone)
       : null,
+    templateKey,
+    templateLabel: template?.label ?? null,
+    recipientEmail: automationRecipientEmailOf(definition.configuration),
   };
 }
 
 const authed = [loadSession, requireAuth] as const;
+
+automations.get("/api/automation-templates", ...authed, async (c) => {
+  return c.json({
+    templates: AUTOMATION_TEMPLATES.map((item) => ({
+      key: item.key,
+      type: item.type,
+      label: item.label,
+      description: item.description,
+      system: item.system,
+      defaultName: item.defaultName,
+      defaultSchedule: item.defaultSchedule,
+      defaultTimezone: item.defaultTimezone,
+      available: item.available,
+    })),
+  });
+});
 
 automations.get("/api/companies/:slug/automations", ...authed, async (c) => {
   const company = await resolveCompany(c);
   if (!company) return c.json({ error: "Company not found or access denied" }, 404);
   const items = await listAutomationDefinitions(c.env.DB, company.id);
   return c.json({
-    automations: items.map((item) => ({
-      ...item,
-      scheduleLabel: item.schedule ? formatScheduleLabel(item.schedule, item.timezone) : null,
-    })),
+    automations: items.map((item) => serialiseAutomation(item)),
   });
 });
 
@@ -182,6 +205,62 @@ automations.post("/api/companies/:slug/automations", ...authed, async (c) => {
   });
 
   return c.json({ automation: serialiseAutomation(created) }, 201);
+});
+
+automations.post("/api/companies/:slug/automations/from-template", ...authed, async (c) => {
+  const company = await resolveCompany(c);
+  if (!company) return c.json({ error: "Company not found or access denied" }, 404);
+  const user = c.get("user");
+  if (!canManageAutomations(user, company.id)) {
+    return c.json({ error: "Insufficient permissions" }, 403);
+  }
+
+  const body = await c.req.json<{
+    templateKey?: string;
+    name?: string;
+    recipientEmail?: string;
+    timezone?: string;
+    hour?: number;
+    minute?: number;
+    activate?: boolean;
+  }>();
+
+  const recipient = (body.recipientEmail ?? user.email ?? "").trim();
+  if (!isValidRecipientEmail(recipient)) {
+    return c.json({ error: "A valid recipient email is required" }, 400);
+  }
+
+  try {
+    const automation = await provisionTemplateAutomation(c.env.DB, {
+      companyId: company.id,
+      templateKey: body.templateKey ?? "",
+      recipientEmail: recipient,
+      name: body.name,
+      timezone: body.timezone,
+      hour: body.hour,
+      minute: body.minute,
+      createdBy: user.email,
+      activate: body.activate !== false,
+    });
+    await recordAuditEvent(c.env.DB, {
+      companyId: company.id,
+      eventType: "automation.created",
+      actor: user.email,
+      resourceType: "automation",
+      resourceId: automation.id,
+      detail: {
+        templateKey: body.templateKey,
+        recipientEmail: recipient,
+        name: automation.name,
+      },
+    });
+    return c.json({ automation: serialiseAutomation(automation) }, 201);
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Unable to create automation" },
+      400,
+    );
+  }
 });
 
 automations.patch("/api/companies/:slug/automations/:automationId", ...authed, async (c) => {
@@ -396,7 +475,15 @@ automations.get("/api/companies/:slug/automations/:automationId/runs", ...authed
   if (!company) return c.json({ error: "Company not found or access denied" }, 404);
   const automationId = c.req.param("automationId");
   const runs = await listAutomationRuns(c.env.DB, company.id, automationId, 100);
-  return c.json({ runs });
+  return c.json({
+    runs: runs.map((run) => ({
+      ...run,
+      customerSummary:
+        typeof run.result?.customerSummary === "string"
+          ? run.result.customerSummary
+          : run.resultSummary,
+    })),
+  });
 });
 
 automations.get("/api/companies/:slug/automation-runs/:runId", ...authed, async (c) => {
@@ -435,6 +522,56 @@ automations.post("/api/internal/automation/acceptance", async (c) => {
   const { runAutomationAcceptance } = await import("../services/automation-engine/acceptance");
   const result = await runAutomationAcceptance(c.env);
   return c.json(result, result.ok ? 200 : 500);
+});
+
+automations.post("/api/internal/automation/ensure-template", async (c) => {
+  const body = await c.req.json<{
+    companyId?: string;
+    templateKey?: string;
+    recipientEmail?: string;
+    name?: string;
+    timezone?: string;
+    hour?: number;
+    minute?: number;
+    activate?: boolean;
+    runNow?: boolean;
+  }>();
+  if (!body.companyId || !body.templateKey || !body.recipientEmail) {
+    return c.json({ error: "companyId, templateKey, recipientEmail required" }, 400);
+  }
+  try {
+    const automation = await provisionTemplateAutomation(c.env.DB, {
+      companyId: body.companyId,
+      templateKey: body.templateKey,
+      recipientEmail: body.recipientEmail,
+      name: body.name,
+      timezone: body.timezone,
+      hour: body.hour,
+      minute: body.minute,
+      createdBy: "system:automation-creation-v1",
+      activate: body.activate !== false,
+    });
+    if (!body.runNow) {
+      return c.json({ automation: serialiseAutomation(automation) });
+    }
+    const result = await requestAutomationRun(c.env, {
+      companyId: body.companyId,
+      automationId: automation.id,
+      initiatedBy: "system:automation-creation-v1",
+      triggerType: "manual",
+    });
+    const run = await getAutomationRun(c.env.DB, body.companyId, result.runId);
+    return c.json({
+      automation: serialiseAutomation(automation),
+      run,
+      created: result.created,
+    });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Unable to provision automation" },
+      400,
+    );
+  }
 });
 
 export default automations;

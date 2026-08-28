@@ -2,9 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot } from "lucide-react";
 import type { AutomationDefinitionRecord, AutomationRunRecord } from "@infra/shared";
 import {
+  automationRecipientEmailOf,
+  automationTemplateKeyOf,
   humanAutomationCustomerStatus,
+  humanAutomationNextRun,
   humanAutomationRunCustomerStatus,
+  humanAutomationRunCustomerSummary,
   humanAutomationSchedule,
+  humanAutomationWhen,
+  XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
 } from "@infra/shared";
 import { api } from "../api";
 import {
@@ -21,46 +27,51 @@ import {
   Field,
   Input,
   Select,
-  Textarea,
   toast,
   useIsMobile,
 } from "../components";
-import { formatRelativeTime } from "../lib/format";
 import { PortalPageBody, PortalPageHeader } from "./components";
 import { usePortalCompany } from "./usePortalCompany";
 
-function humanAutomationStatus(status: string): string {
-  return humanAutomationCustomerStatus(status);
-}
+type TemplateOption = {
+  key: string;
+  label: string;
+  description: string;
+  system: string;
+  defaultName: string;
+  defaultTimezone: string;
+  available: boolean;
+};
 
-function humanRunStatus(status: string): string {
-  return humanAutomationRunCustomerStatus(status);
-}
+type PortalAutomation = AutomationDefinitionRecord & {
+  templateKey?: string | null;
+  templateLabel?: string | null;
+  recipientEmail?: string | null;
+};
 
-function triggerLabel(automation: AutomationDefinitionRecord): string {
-  return humanAutomationSchedule(automation);
+function clockValue(hour: number, minute: number): string {
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 export default function PortalAutomationsPage() {
   const { company, loading, error, membership, user } = usePortalCompany();
-  const [automations, setAutomations] = useState<AutomationDefinitionRecord[]>([]);
+  const [automations, setAutomations] = useState<PortalAutomation[]>([]);
+  const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [runs, setRuns] = useState<AutomationRunRecord[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const isMobile = useIsMobile();
 
-  const [formName, setFormName] = useState("");
-  const [formDescription, setFormDescription] = useState("");
-  const [formTrigger, setFormTrigger] = useState<"manual" | "schedule">("manual");
-  const [formFrequency, setFormFrequency] = useState("daily");
-  const [formHour, setFormHour] = useState("8");
-  const [formMinute, setFormMinute] = useState("0");
+  const [templateKey, setTemplateKey] = useState<string>(XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE);
+  const [formName, setFormName] = useState("Daily month-to-date sales");
+  const [formTime, setFormTime] = useState("08:00");
   const [formTimezone, setFormTimezone] = useState("Europe/London");
-  const [formPrompt, setFormPrompt] = useState("");
+  const [formRecipient, setFormRecipient] = useState("");
 
   const canManage =
     user?.isPlatformAdmin ||
@@ -77,8 +88,12 @@ export default function PortalAutomationsPage() {
     setListLoading(true);
     setListError(null);
     try {
-      const response = await api.listCompanyAutomations(company.slug);
+      const [response, catalog] = await Promise.all([
+        api.listCompanyAutomations(company.slug),
+        api.listAutomationTemplates().catch(() => ({ templates: [] })),
+      ]);
       setAutomations(response.automations);
+      setTemplates(catalog.templates);
     } catch (err) {
       setListError(err instanceof Error ? err.message : "Failed to load automations");
     } finally {
@@ -110,39 +125,84 @@ export default function PortalAutomationsPage() {
     if (selectedId) void loadRuns(selectedId);
   }, [selectedId, loadRuns]);
 
+  function openCreate() {
+    setTemplateKey(XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE);
+    setFormName("Daily month-to-date sales");
+    setFormTime("08:00");
+    setFormTimezone(company?.timezone || "Europe/London");
+    setFormRecipient(user?.email ?? "");
+    setCreateOpen(true);
+  }
+
+  function openEdit(automation: PortalAutomation) {
+    setFormName(automation.name);
+    setFormTime(clockValue(automation.schedule?.hour ?? 8, automation.schedule?.minute ?? 0));
+    setFormTimezone(automation.timezone || "Europe/London");
+    setFormRecipient(
+      automation.recipientEmail ?? automationRecipientEmailOf(automation.configuration) ?? "",
+    );
+    setSelectedId(automation.id);
+    setEditOpen(true);
+  }
+
   async function handleCreate() {
-    if (!company || !formName.trim() || !formPrompt.trim()) {
-      toast("Name and instruction are required", "error");
+    if (!company || !formName.trim() || !formRecipient.trim()) {
+      toast("Name and recipient are required", "error");
       return;
     }
+    const [hour, minute] = formTime.split(":").map(Number);
     setBusy("create");
     try {
-      const created = await api.createCompanyAutomation(company.slug, {
+      const created = await api.createCompanyAutomationFromTemplate(company.slug, {
+        templateKey,
         name: formName.trim(),
-        description: formDescription.trim() || undefined,
-        triggerType: formTrigger,
-        schedule:
-          formTrigger === "schedule"
-            ? {
-                frequency: formFrequency,
-                hour: Number(formHour),
-                minute: Number(formMinute),
-              }
-            : undefined,
+        recipientEmail: formRecipient.trim(),
         timezone: formTimezone,
-        actionType: "ai_prompt",
-        configuration: { prompt: formPrompt.trim() },
+        hour: Number.isFinite(hour) ? hour : 8,
+        minute: Number.isFinite(minute) ? minute : 0,
+        activate: true,
       });
-      await api.activateCompanyAutomation(company.slug, created.automation.id);
-      toast("Automation created and activated");
+      toast("Automation created");
       setCreateOpen(false);
-      setFormName("");
-      setFormDescription("");
-      setFormPrompt("");
       await loadAutomations();
       setSelectedId(created.automation.id);
     } catch (err) {
       toast(err instanceof Error ? err.message : "Failed to create automation", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!company || !selected) return;
+    const [hour, minute] = formTime.split(":").map(Number);
+    const template =
+      selected.templateKey ??
+      automationTemplateKeyOf(selected.configuration) ??
+      XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE;
+    setBusy("edit");
+    try {
+      await api.updateCompanyAutomation(company.slug, selected.id, {
+        name: formName.trim(),
+        timezone: formTimezone,
+        triggerType: "schedule",
+        schedule: {
+          frequency: "daily",
+          hour: Number.isFinite(hour) ? hour : 8,
+          minute: Number.isFinite(minute) ? minute : 0,
+        },
+        actionType: "internal",
+        configuration: {
+          handler: template,
+          templateKey: template,
+          parameters: { recipientEmail: formRecipient.trim().toLowerCase() },
+        },
+      });
+      toast("Automation updated");
+      setEditOpen(false);
+      await loadAutomations();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Failed to update automation", "error");
     } finally {
       setBusy(null);
     }
@@ -157,7 +217,7 @@ export default function PortalAutomationsPage() {
     try {
       if (action === "run") {
         const result = await api.runCompanyAutomation(company.slug, automationId);
-        toast(result.run.status === "queued" ? "Run queued" : "Run started");
+        toast(result.run.status === "queued" ? "Run started" : "Run started");
       } else if (action === "pause") {
         await api.pauseCompanyAutomation(company.slug, automationId);
         toast("Automation paused");
@@ -180,14 +240,16 @@ export default function PortalAutomationsPage() {
   if (loading || !company) return <LoadingState label="Loading company…" />;
   if (error) return <ErrorState message={error} />;
 
+  const availableTemplates = templates.filter((item) => item.available);
+
   return (
     <div className="portal-page">
       <PortalPageHeader
         title="Automations"
-        description="Recurring tasks that run on a schedule or when you start them."
+        description="Recurring work INFRA can do for your company."
         actions={
           canManage ? (
-            <Button onClick={() => setCreateOpen(true)}>New automation</Button>
+            <Button onClick={openCreate}>Create automation</Button>
           ) : undefined
         }
       />
@@ -203,10 +265,10 @@ export default function PortalAutomationsPage() {
           <EmptyState
             icon={<Bot size={32} />}
             title="No automations yet"
-            description="Create an automation to run recurring INFRA tasks for your company."
+            description="Create a daily sales email to receive your current month's Xero sales each morning."
             action={
               canManage ? (
-                <Button onClick={() => setCreateOpen(true)}>Create automation</Button>
+                <Button onClick={openCreate}>Create automation</Button>
               ) : undefined
             }
           />
@@ -218,15 +280,15 @@ export default function PortalAutomationsPage() {
                   <strong>{automation.name}</strong>
                   <StatusBadge
                     status={automation.status}
-                    label={humanAutomationStatus(automation.status)}
+                    label={humanAutomationCustomerStatus(automation.status)}
                   />
                 </div>
-                <div className="muted small">{triggerLabel(automation)}</div>
-                {automation.description ? (
-                  <p className="muted small portal-automation-summary">{automation.description}</p>
-                ) : null}
-                {automation.lastRunAt ? (
-                  <div className="muted small">Last run {formatRelativeTime(automation.lastRunAt)}</div>
+                <div className="muted small">{humanAutomationSchedule(automation)}</div>
+                <div className="muted small">
+                  Next run {humanAutomationNextRun(automation.nextRunAt, automation.timezone)}
+                </div>
+                {automation.recipientEmail ? (
+                  <div className="muted small">Recipient {automation.recipientEmail}</div>
                 ) : null}
                 <div className="mobile-record-actions">
                   <Button type="button" variant="secondary" size="sm" onClick={() => setSelectedId(automation.id)}>
@@ -269,8 +331,9 @@ export default function PortalAutomationsPage() {
                     <th>Name</th>
                     <th>Status</th>
                     <th>Schedule</th>
-                    <th>Last run</th>
                     <th>Next run</th>
+                    <th>Last run</th>
+                    <th>Recipient</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -289,12 +352,17 @@ export default function PortalAutomationsPage() {
                       <td>
                         <StatusBadge
                           status={automation.status}
-                          label={humanAutomationStatus(automation.status)}
+                          label={humanAutomationCustomerStatus(automation.status)}
                         />
                       </td>
-                      <td>{triggerLabel(automation)}</td>
-                      <td>{automation.lastRunAt ? formatRelativeTime(automation.lastRunAt) : "—"}</td>
-                      <td>{automation.nextRunAt ? formatRelativeTime(automation.nextRunAt) : "—"}</td>
+                      <td>{humanAutomationSchedule(automation)}</td>
+                      <td>{humanAutomationNextRun(automation.nextRunAt, automation.timezone)}</td>
+                      <td>
+                        {automation.lastRunAt
+                          ? humanAutomationWhen(automation.lastRunAt, automation.timezone)
+                          : "—"}
+                      </td>
+                      <td>{automation.recipientEmail ?? "—"}</td>
                       <td className="table-actions">
                         {canManage ? (
                           <>
@@ -305,6 +373,14 @@ export default function PortalAutomationsPage() {
                               onClick={() => void handleAction("run", automation.id)}
                             >
                               Run now
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={busy !== null}
+                              onClick={() => openEdit(automation)}
+                            >
+                              Edit
                             </Button>
                             {automation.status === "active" ? (
                               <Button
@@ -322,7 +398,7 @@ export default function PortalAutomationsPage() {
                                 disabled={busy !== null}
                                 onClick={() => void handleAction("activate", automation.id)}
                               >
-                                Activate
+                                Resume
                               </Button>
                             ) : null}
                           </>
@@ -338,19 +414,32 @@ export default function PortalAutomationsPage() {
       </PortalPageBody>
 
       <Drawer
-        open={Boolean(selected)}
+        open={Boolean(selected) && !editOpen}
         onClose={() => setSelectedId(null)}
         title={selected?.name ?? "Automation"}
       >
         {selected ? (
           <>
-            <KeyValue label="Status" value={humanAutomationStatus(selected.status)} />
-            <KeyValue label="Trigger" value={triggerLabel(selected)} />
+            <KeyValue label="Status" value={humanAutomationCustomerStatus(selected.status)} />
+            <KeyValue label="Schedule" value={humanAutomationSchedule(selected)} />
+            <KeyValue label="Timezone" value={selected.timezone} />
             <KeyValue
-              label="Instruction"
+              label="Recipient"
               value={
-                typeof selected.configuration.prompt === "string"
-                  ? selected.configuration.prompt
+                selected.recipientEmail ??
+                automationRecipientEmailOf(selected.configuration) ??
+                "—"
+              }
+            />
+            <KeyValue
+              label="Next run"
+              value={humanAutomationNextRun(selected.nextRunAt, selected.timezone)}
+            />
+            <KeyValue
+              label="Last run"
+              value={
+                selected.lastRunAt
+                  ? humanAutomationWhen(selected.lastRunAt, selected.timezone)
                   : "—"
               }
             />
@@ -361,6 +450,9 @@ export default function PortalAutomationsPage() {
                   onClick={() => void handleAction("run", selected.id)}
                 >
                   Run now
+                </Button>
+                <Button variant="secondary" disabled={busy !== null} onClick={() => openEdit(selected)}>
+                  Edit
                 </Button>
                 {selected.status === "active" ? (
                   <Button
@@ -376,7 +468,7 @@ export default function PortalAutomationsPage() {
                     disabled={busy !== null}
                     onClick={() => void handleAction("activate", selected.id)}
                   >
-                    Activate
+                    Resume
                   </Button>
                 )}
               </div>
@@ -389,15 +481,20 @@ export default function PortalAutomationsPage() {
                 <p className="muted">No runs yet.</p>
               ) : (
                 <ul className="simple-list">
-                  {runs.slice(0, 10).map((run) => (
+                  {runs.slice(0, 12).map((run) => (
                     <li key={run.id}>
-                      <strong>{humanRunStatus(run.status)}</strong>
+                      <strong>{humanAutomationWhen(run.createdAt, selected.timezone)}</strong>
                       {" · "}
-                      {formatRelativeTime(run.createdAt)}
-                      {run.durationMs != null ? ` · ${run.durationMs}ms` : ""}
-                      {run.resultSummary ? (
-                        <div className="muted truncate">{run.resultSummary}</div>
-                      ) : null}
+                      {humanAutomationRunCustomerStatus(run.status)}
+                      <div className="muted">
+                        {humanAutomationRunCustomerSummary({
+                          status: run.status,
+                          resultSummary: run.resultSummary,
+                          errorCode: run.errorCode,
+                          errorMessage: run.errorMessage,
+                          result: run.result,
+                        })}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -408,76 +505,115 @@ export default function PortalAutomationsPage() {
       </Drawer>
 
       <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="Create automation">
-        <Field label="Name">
-          <Input className="input" value={formName} onChange={(e) => setFormName(e.target.value)} />
-        </Field>
-        <Field label="Description">
-          <Input
-            className="input"
-            value={formDescription}
-            onChange={(e) => setFormDescription(e.target.value)}
-          />
-        </Field>
-        <Field label="Trigger">
+        <p className="muted small">What would you like INFRA to do?</p>
+        <Field label="Automation">
           <Select
             className="input"
-            value={formTrigger}
-            onChange={(e) => setFormTrigger(e.target.value as "manual" | "schedule")}
+            value={templateKey}
+            onChange={(event) => {
+              const next = event.target.value;
+              setTemplateKey(next);
+              const match = availableTemplates.find((item) => item.key === next);
+              if (match) setFormName(match.defaultName);
+            }}
           >
-            <option value="manual">Manual</option>
-            <option value="schedule">Scheduled</option>
+            {(availableTemplates.length > 0 ? availableTemplates : [
+              {
+                key: XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
+                label: "Daily sales email",
+              },
+            ]).map((item) => (
+              <option key={item.key} value={item.key}>
+                {item.label}
+              </option>
+            ))}
           </Select>
         </Field>
-        {formTrigger === "schedule" ? (
-          <>
-            <Field label="Frequency">
-              <Select
-                className="input"
-                value={formFrequency}
-                onChange={(e) => setFormFrequency(e.target.value)}
-              >
-                <option value="hourly">Hourly</option>
-                <option value="daily">Daily</option>
-                <option value="weekdays">Weekdays</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </Select>
-            </Field>
-            <div className="form-row">
-              <Field label="Hour">
-                <Input className="input" value={formHour} onChange={(e) => setFormHour(e.target.value)} />
-              </Field>
-              <Field label="Minute">
-                <Input
-                  className="input"
-                  value={formMinute}
-                  onChange={(e) => setFormMinute(e.target.value)}
-                />
-              </Field>
-            </div>
-            <Field label="Timezone">
-              <Input
-                className="input"
-                value={formTimezone}
-                onChange={(e) => setFormTimezone(e.target.value)}
-              />
-            </Field>
-          </>
-        ) : null}
-        <Field label="AI instruction">
-          <Textarea
+        <p className="muted small">
+          Receive your current month's Xero sales by email every morning.
+        </p>
+        <Field label="Name">
+          <Input className="input" value={formName} onChange={(event) => setFormName(event.target.value)} />
+        </Field>
+        <Field label="System">
+          <Input className="input" value="Xero" disabled />
+        </Field>
+        <Field label="Schedule">
+          <Input className="input" value="Every day" disabled />
+        </Field>
+        <Field label="Time">
+          <Input
             className="input"
-            value={formPrompt}
-            onChange={(e) => setFormPrompt(e.target.value)}
-            rows={6}
-            placeholder="Every weekday, summarise yesterday's operational activity for leadership."
+            type="time"
+            value={formTime}
+            onChange={(event) => setFormTime(event.target.value)}
+          />
+        </Field>
+        <Field label="Timezone">
+          <Select
+            className="input"
+            value={formTimezone}
+            onChange={(event) => setFormTimezone(event.target.value)}
+          >
+            <option value="Europe/London">Europe/London</option>
+            <option value="Europe/Dublin">Europe/Dublin</option>
+            <option value="UTC">UTC</option>
+          </Select>
+        </Field>
+        <Field label="Send report to">
+          <Input
+            className="input"
+            type="email"
+            value={formRecipient}
+            onChange={(event) => setFormRecipient(event.target.value)}
           />
         </Field>
         <div className="drawer-actions">
           <Button disabled={busy === "create"} onClick={() => void handleCreate()}>
-            Create & activate
+            Create automation
           </Button>
           <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+            Cancel
+          </Button>
+        </div>
+      </Drawer>
+
+      <Drawer open={editOpen} onClose={() => setEditOpen(false)} title="Edit automation">
+        <Field label="Name">
+          <Input className="input" value={formName} onChange={(event) => setFormName(event.target.value)} />
+        </Field>
+        <Field label="Time">
+          <Input
+            className="input"
+            type="time"
+            value={formTime}
+            onChange={(event) => setFormTime(event.target.value)}
+          />
+        </Field>
+        <Field label="Timezone">
+          <Select
+            className="input"
+            value={formTimezone}
+            onChange={(event) => setFormTimezone(event.target.value)}
+          >
+            <option value="Europe/London">Europe/London</option>
+            <option value="Europe/Dublin">Europe/Dublin</option>
+            <option value="UTC">UTC</option>
+          </Select>
+        </Field>
+        <Field label="Send report to">
+          <Input
+            className="input"
+            type="email"
+            value={formRecipient}
+            onChange={(event) => setFormRecipient(event.target.value)}
+          />
+        </Field>
+        <div className="drawer-actions">
+          <Button disabled={busy === "edit"} onClick={() => void handleSaveEdit()}>
+            Save
+          </Button>
+          <Button variant="ghost" onClick={() => setEditOpen(false)}>
             Cancel
           </Button>
         </div>

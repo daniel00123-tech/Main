@@ -6,7 +6,7 @@ import type { Env } from "../../../env";
 import type { AutomationMcpToolConfiguration } from "@infra/shared";
 import { getServiceIdentity } from "../../service-identities";
 import { executeGatewayRequest } from "../../gateway";
-import type { AutomationActionResult, AutomationExecutionContext } from "../actions/index";
+import type { AutomationActionResult, AutomationExecutionContext } from "./types";
 
 export async function executeMcpToolAction(
   env: Env,

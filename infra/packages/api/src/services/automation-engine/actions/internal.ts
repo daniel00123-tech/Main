@@ -3,11 +3,19 @@
  */
 
 import type { Env } from "../../../env";
-import type { AutomationInternalConfiguration } from "@infra/shared";
+import {
+  XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
+  type AutomationInternalConfiguration,
+} from "@infra/shared";
 import { nowIso } from "../../../db/mappers";
-import type { AutomationActionResult, AutomationExecutionContext } from "../actions/index";
+import type { AutomationActionResult, AutomationExecutionContext } from "./types";
+import { executeXeroMonthToDateSalesEmail } from "./xero-sales-email";
 
-const ALLOWED_HANDLERS = new Set(["noop", "health_ping"]);
+const ALLOWED_HANDLERS = new Set([
+  "noop",
+  "health_ping",
+  XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
+]);
 
 export async function executeInternalAction(
   env: Env,
@@ -32,6 +40,10 @@ export async function executeInternalAction(
       summary: row ? "Health ping OK" : "Health ping failed",
       result: { handler, d1: Boolean(row), executedAt: nowIso() },
     };
+  }
+
+  if (handler === XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE) {
+    return executeXeroMonthToDateSalesEmail(env, ctx);
   }
 
   throw new Error("Unhandled internal action");

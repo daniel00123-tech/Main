@@ -7,7 +7,7 @@ import type { Env } from "../../../env";
 import type { AutomationAiPromptConfiguration } from "@infra/shared";
 import { nowIso } from "../../../db/mappers";
 import { getCompanyById } from "../../control-plane";
-import type { AutomationActionResult, AutomationExecutionContext } from "../actions/index";
+import type { AutomationActionResult, AutomationExecutionContext } from "./types";
 
 export async function executeAiPromptAction(
   env: Env,

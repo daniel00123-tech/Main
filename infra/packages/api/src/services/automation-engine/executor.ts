@@ -15,6 +15,7 @@ import {
   updateAutomationRunStep,
 } from "./store";
 import { executeAutomationAction } from "./actions/index";
+import { AutomationActionError } from "./actions/errors";
 import { recordAutomationExecutionMetering } from "./metering";
 import type { AutomationRunMessage } from "./queue";
 
@@ -181,14 +182,22 @@ export async function executeAutomationRun(env: Env, message: AutomationRunMessa
     const completedAt = nowIso();
     const durationMs = Date.now() - startMs;
     const messageText = err instanceof Error ? err.message : "Execution failed";
-    const retryable = err instanceof AutomationExecutionError ? err.retryable : false;
+    const retryable =
+      err instanceof AutomationExecutionError || err instanceof AutomationActionError
+        ? err.retryable
+        : false;
     const errorCode =
-      err instanceof AutomationExecutionError ? err.code ?? "EXECUTION_FAILED" : "EXECUTION_FAILED";
+      err instanceof AutomationExecutionError || err instanceof AutomationActionError
+        ? err.code ?? "EXECUTION_FAILED"
+        : "EXECUTION_FAILED";
+    const failureResult =
+      err instanceof AutomationActionError ? err.result ?? null : null;
 
     await updateAutomationRunStep(env.DB, stepId, {
       status: "failed",
       completedAt,
       errorMessage: messageText,
+      result: failureResult ?? undefined,
     });
 
     const newFailureCount = automation.failureCount + 1;
@@ -203,6 +212,7 @@ export async function executeAutomationRun(env: Env, message: AutomationRunMessa
         durationMs,
         errorCode,
         errorMessage: messageText,
+        result: failureResult,
       },
     });
 
