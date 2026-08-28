@@ -13,7 +13,7 @@ describe("humanAutomationSchedule", () => {
         schedule: { frequency: "weekdays", hour: 8, minute: 0 },
         timezone: "Europe/London",
       }),
-    ).toBe("Runs every weekday at 8am");
+        ).toBe("Every weekday at 08:00");
   });
 
   it("describes manual triggers", () => {

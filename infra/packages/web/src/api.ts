@@ -426,9 +426,46 @@ export const api = {
     fetchJson<{ plan: ActionPlanRecord }>(`/api/companies/${slug}/actions/${planId}/cancel`, {
       method: "POST",
     }),
+  listAutomationTemplates: () =>
+    fetchJson<{
+      templates: Array<{
+        key: string;
+        type: string;
+        label: string;
+        description: string;
+        system: string;
+        defaultName: string;
+        defaultSchedule: { frequency: string; hour?: number; minute?: number };
+        defaultTimezone: string;
+        available: boolean;
+      }>;
+    }>("/api/automation-templates"),
   listCompanyAutomations: (slug: string) =>
-    fetchJson<{ automations: AutomationDefinitionRecord[] }>(
-      `/api/companies/${slug}/automations`,
+    fetchJson<{
+      automations: Array<
+        AutomationDefinitionRecord & {
+          templateKey?: string | null;
+          templateLabel?: string | null;
+          recipientEmail?: string | null;
+          scheduleLabel?: string | null;
+        }
+      >;
+    }>(`/api/companies/${slug}/automations`),
+  createCompanyAutomationFromTemplate: (
+    slug: string,
+    input: {
+      templateKey: string;
+      name?: string;
+      recipientEmail?: string;
+      timezone?: string;
+      hour?: number;
+      minute?: number;
+      activate?: boolean;
+    },
+  ) =>
+    fetchJson<{ automation: AutomationDefinitionRecord }>(
+      `/api/companies/${slug}/automations/from-template`,
+      { method: "POST", body: JSON.stringify(input) },
     ),
   getCompanyAutomation: (slug: string, automationId: string) =>
     fetchJson<{ automation: AutomationDefinitionRecord & { scheduleLabel?: string | null } }>(

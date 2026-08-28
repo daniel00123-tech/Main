@@ -89,6 +89,20 @@ describe("Automation action validation", () => {
   it("requires internal handler", () => {
     expect(validateAutomationConfiguration("internal", { handler: "noop" })).toBeNull();
   });
+
+  it("requires a recipient for the daily sales email template", () => {
+    expect(
+      validateAutomationConfiguration("internal", {
+        handler: "xero_month_to_date_sales_email",
+      }),
+    ).toMatch(/recipient/i);
+    expect(
+      validateAutomationConfiguration("internal", {
+        handler: "xero_month_to_date_sales_email",
+        parameters: { recipientEmail: "ops@example.com" },
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("Automation queue architecture", () => {

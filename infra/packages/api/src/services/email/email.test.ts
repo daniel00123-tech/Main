@@ -12,6 +12,8 @@ describe("transactional email security", () => {
   it("rejects unknown email types", () => {
     expect(isTransactionalEmailType("MARKETING_BLAST")).toBe(false);
     expect(isTransactionalEmailType("PASSWORD_RESET")).toBe(true);
+    expect(isTransactionalEmailType("XERO_SALES_REPORT")).toBe(true);
+    expect(isTransactionalEmailType("DOCUMENT_ACTIVITY_REPORT")).toBe(true);
   });
 
   it("enforces approved sender allowlist", () => {
