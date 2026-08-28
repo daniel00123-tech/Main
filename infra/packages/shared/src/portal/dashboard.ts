@@ -89,23 +89,48 @@ export type GettingStartedItem = {
   complete: boolean;
 };
 
+const PROFILE_INCOMPLETE_STATUSES = new Set(["draft", "provisioning"]);
+const CONNECTED_CUSTOMER_HEALTH = new Set(["Healthy", "Attention needed"]);
+
+function readDismissedAt(overview: CompanyOverview): string | null {
+  if (typeof overview.gettingStartedDismissedAt === "string" && overview.gettingStartedDismissedAt) {
+    return overview.gettingStartedDismissedAt;
+  }
+  const fromConfig = overview.company?.config?.gettingStartedDismissedAt;
+  return typeof fromConfig === "string" && fromConfig ? fromConfig : null;
+}
+
+/** Name present and the company is past draft/provisioning. Emails are not required. */
+export function isCompanyProfileComplete(company: CompanyOverview["company"]): boolean {
+  if (!company?.name?.trim()) return false;
+  return !PROFILE_INCOMPLETE_STATUSES.has(company.status);
+}
+
+/** At least one non-draft customer connector is Healthy or Attention needed (connected). */
+export function hasConnectedCustomerSystem(
+  connectors: CompanyOverview["connectorInstances"],
+): boolean {
+  return connectors.some((connector) => {
+    if (connector.status === "draft") return false;
+    return CONNECTED_CUSTOMER_HEALTH.has(deriveConnectorCustomerHealth(connector).label);
+  });
+}
+
 export function deriveGettingStartedItems(input: {
   overview: CompanyOverview;
 }): GettingStartedItem[] {
   const { overview } = input;
   const company = overview.company;
-  const connectors = overview.connectorInstances.filter((c) => c.status !== "draft");
-  const hasConnectedSystem = connectors.some(
-    (c) => deriveConnectorCustomerHealth(c).label !== "Disconnected",
-  );
-  const hasUsage = (overview.usageSummary?.requestsThisMonth ?? 0) > 0;
-  const hasAi = (overview.activeAiIdentityCount ?? 0) > 0;
-  const hasTeam = (overview.teamCount ?? 0) > 1;
-  const hasPaidOrSavedBilling =
-    (overview.walletCredits?.paidCents ?? 0) > 0 || Boolean(overview.wallet?.stripeCustomerId);
-  const profileComplete = Boolean(company.name?.trim() && company.slug?.trim());
+  const profileComplete = isCompanyProfileComplete(company);
+  const paymentComplete = overview.paymentMethodReady === true;
+  const walletComplete = overview.walletSettingsConfigured === true;
+  const hasConnectedSystem = hasConnectedCustomerSystem(overview.connectorInstances);
+  const hasAi = overview.aiClientConfigured === true;
+  const hasTeam =
+    (overview.teamCount ?? 0) > 1 || (overview.pendingInvitationCount ?? 0) > 0;
+  const hasUsage = (overview.successfulRequestCount ?? 0) > 0;
 
-  const items: GettingStartedItem[] = [
+  return [
     {
       key: "profile",
       label: "Complete company profile",
@@ -116,7 +141,13 @@ export function deriveGettingStartedItems(input: {
       key: "payment",
       label: "Add payment method",
       path: "billing?tab=payment",
-      complete: hasPaidOrSavedBilling,
+      complete: paymentComplete,
+    },
+    {
+      key: "wallet",
+      label: "Configure wallet settings",
+      path: "billing?tab=auto-topup",
+      complete: walletComplete,
     },
     {
       key: "connector",
@@ -143,8 +174,28 @@ export function deriveGettingStartedItems(input: {
       complete: hasUsage,
     },
   ];
+}
 
-  return items.filter((item) => !item.complete);
+export function gettingStartedProgress(items: GettingStartedItem[]): {
+  completedCount: number;
+  totalCount: number;
+  allComplete: boolean;
+} {
+  const completedCount = items.filter((item) => item.complete).length;
+  return {
+    completedCount,
+    totalCount: items.length,
+    allComplete: items.length > 0 && completedCount === items.length,
+  };
+}
+
+/**
+ * Company-scoped: a company_admin or director dismissal hides Getting Started
+ * for every user of that company. It does not affect other companies.
+ * Once set, the card stays dismissed (mandatory work uses Attention, not this list).
+ */
+export function isGettingStartedDismissed(overview: CompanyOverview): boolean {
+  return readDismissedAt(overview) != null;
 }
 
 export function customerOverallHealthy(input: {

@@ -1412,8 +1412,14 @@ textarea:focus-visible {
   .portal-getting-started.card {
     padding: var(--s-3) var(--s-4);
   }
-  .portal-getting-started .card-header h3 {
+  .portal-getting-started .card-header h3,
+  .portal-getting-started .section-title {
     font-size: var(--text-base);
+  }
+  .portal-getting-started .card-header-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: var(--s-2);
   }
   .portal-panel-compact.card {
     padding: var(--s-3) var(--s-4);
@@ -2640,6 +2646,9 @@ button.mobile-record-card.selected-record {
 .portal-getting-started-intro {
   margin: 0 0 var(--s-3);
 }
+.portal-getting-started-progress {
+  margin: 0;
+}
 .portal-getting-started-list {
   margin: 0;
   padding: 0;
@@ -2647,7 +2656,8 @@ button.mobile-record-card.selected-record {
   display: grid;
   gap: var(--s-2);
 }
-.portal-getting-started-link {
+.portal-getting-started-link,
+.portal-getting-started-done {
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
@@ -2660,8 +2670,21 @@ button.mobile-record-card.selected-record {
 .portal-getting-started-link:hover {
   color: var(--accent);
 }
+.portal-getting-started-item.is-complete .portal-getting-started-done {
+  color: var(--text-muted);
+  font-weight: 500;
+  text-decoration: line-through;
+  text-decoration-color: currentColor;
+}
+.portal-getting-started-check {
+  color: var(--success, #15803d);
+  flex-shrink: 0;
+}
 .portal-getting-started-note {
   margin: var(--s-3) 0 0;
+}
+.portal-getting-started-complete.card {
+  padding-bottom: var(--s-3);
 }
 
 .integration-row-compact {
