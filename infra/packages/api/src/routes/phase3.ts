@@ -18,7 +18,6 @@ import {
   createPasswordSetupToken,
   validateNewPassword,
 } from "../auth/password-setup";
-import { portalOrigin } from "../services/public-urls";
 import { getCompanyEmailConfig } from "../services/email/company-config";
 import { sendTransactionalEmail } from "../services/email/send-transactional";
 import { renderTestEmail } from "../services/email-outbox";
