@@ -29,7 +29,10 @@ export interface PaymentProviderStatus {
   topUpBlockedReason?: string | null;
 }
 
-/** Includes £5 (500) for deliberate live acceptance top-ups. */
+/** Deliberate live acceptance top-up — Caddington £1.00 GBP (100 pence). */
+export const LIVE_ACCEPTANCE_TOP_UP_CENTS = 100;
+
+/** Standard preset top-ups (£5 minimum for non-live acceptance companies). */
 export const DEFAULT_TOP_UP_OPTIONS_CENTS = [500, 1000, 2500, 5000, 10000];
 
 export function getPlatformPaymentProviderStatus(env: Env): PaymentProviderStatus {
@@ -66,11 +69,16 @@ export async function getCompanyPaymentProviderStatus(
   const base = getPlatformPaymentProviderStatus(env);
   const companyBillingMode = await getCompanyBillingMode(db, companyId);
   const checkoutGate = companyStripeCheckoutAllowed(env, companyBillingMode);
+  const topUpOptionsCents =
+    base.testModeOnly || (companyBillingMode === "live" && checkoutGate.allowed)
+      ? [LIVE_ACCEPTANCE_TOP_UP_CENTS, ...DEFAULT_TOP_UP_OPTIONS_CENTS]
+      : [...DEFAULT_TOP_UP_OPTIONS_CENTS];
   const withBilling = {
     ...base,
     companyBillingMode,
     topUpCheckoutAllowed: checkoutGate.allowed,
     topUpBlockedReason: checkoutGate.reason ?? null,
+    topUpOptionsCents,
   };
   const settings = await getCompanySettings(db, companyId);
   if (!settings) return withBilling;

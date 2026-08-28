@@ -32,11 +32,10 @@ describe("company billing mode vs Stripe platform", () => {
     expect(result.reason).toContain("billing mode is test");
   });
 
-  it("blocks live checkout when STRIPE_LIVE_MODE_ALLOWED is false", () => {
-    expect(STRIPE_LIVE_MODE_ALLOWED).toBe(false);
+  it("allows live checkout when STRIPE_LIVE_MODE_ALLOWED is true", () => {
+    expect(STRIPE_LIVE_MODE_ALLOWED).toBe(true);
     const result = companyStripeCheckoutAllowed(liveEnv, "live");
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain("STRIPE_LIVE_MODE_ALLOWED");
+    expect(result.allowed).toBe(true);
   });
 
   it("companyCanReceiveLiveWalletCredit requires live billing mode", () => {

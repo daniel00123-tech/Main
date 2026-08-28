@@ -83,8 +83,8 @@ describe("financial integrity — auto top-up", () => {
 });
 
 describe("financial integrity — invariants", () => {
-  it("STRIPE_LIVE_MODE_ALLOWED remains false", async () => {
+  it("STRIPE_LIVE_MODE_ALLOWED is enabled for operator-approved live acceptance", async () => {
     const { STRIPE_LIVE_MODE_ALLOWED } = await import("./stripe");
-    expect(STRIPE_LIVE_MODE_ALLOWED).toBe(false);
+    expect(STRIPE_LIVE_MODE_ALLOWED).toBe(true);
   });
 });

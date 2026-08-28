@@ -3,6 +3,7 @@ import { appendLedgerEntry } from "./ledger";
 import { recordAuditEvent } from "./control-plane";
 import {
   DEFAULT_TOP_UP_OPTIONS_CENTS,
+  LIVE_ACCEPTANCE_TOP_UP_CENTS,
   ensurePaymentProviderAccount,
 } from "./payment-providers";
 import type { Env } from "../env";
@@ -25,8 +26,8 @@ export type TopUpCheckoutStatus =
   | "partially_refunded"
   | "refunded";
 
-/** Production commercial live mode is blocked until explicit operator approval. */
-export const STRIPE_LIVE_MODE_ALLOWED = false;
+/** Production commercial live mode — operator approved 2026-08-28 for Caddington £1 acceptance. */
+export const STRIPE_LIVE_MODE_ALLOWED = true;
 
 const WEBHOOK_TOLERANCE_SECONDS = 300;
 
@@ -50,12 +51,34 @@ export function stripePaymentsAllowed(env: Env): boolean {
   return mode === "live" && STRIPE_LIVE_MODE_ALLOWED;
 }
 
-export function isAllowedTopUpAmountCents(amountCents: number, env?: Env): boolean {
-  const allowed: number[] = [...DEFAULT_TOP_UP_OPTIONS_CENTS];
-  if (env && isStripeTestModeActive(env)) {
-    allowed.push(100);
+export function minimumTopUpAmountCents(
+  env: Env,
+  companyBillingMode: Awaited<ReturnType<typeof getCompanyBillingMode>>,
+): number {
+  if (isAllowedTopUpAmountCents(LIVE_ACCEPTANCE_TOP_UP_CENTS, env, companyBillingMode)) {
+    return LIVE_ACCEPTANCE_TOP_UP_CENTS;
   }
-  return allowed.includes(amountCents);
+  return 500;
+}
+
+export function isAllowedTopUpAmountCents(
+  amountCents: number,
+  env?: Env,
+  companyBillingMode?: Awaited<ReturnType<typeof getCompanyBillingMode>>,
+): boolean {
+  const allowed = new Set<number>(DEFAULT_TOP_UP_OPTIONS_CENTS);
+  if (env && isStripeTestModeActive(env)) {
+    allowed.add(LIVE_ACCEPTANCE_TOP_UP_CENTS);
+  }
+  if (
+    env &&
+    getStripeMode(env) === "live" &&
+    STRIPE_LIVE_MODE_ALLOWED &&
+    companyBillingMode === "live"
+  ) {
+    allowed.add(LIVE_ACCEPTANCE_TOP_UP_CENTS);
+  }
+  return allowed.has(amountCents);
 }
 
 type CheckoutRow = Record<string, unknown>;
@@ -209,16 +232,6 @@ export async function createTopUpCheckoutIntent(
       stripeMode: StripeMode;
     }
 > {
-  if (!isAllowedTopUpAmountCents(input.amountCents, env)) {
-    return {
-      configured: false,
-      error: isStripeTestModeActive(env)
-        ? "Invalid top-up amount. Allowed: £1 (sandbox), £5, £10, £25, £50, £100."
-        : "Invalid top-up amount. Allowed: £5, £10, £25, £50, £100.",
-      code: "INVALID_AMOUNT",
-    };
-  }
-
   const company = await getCompanyRecord(env.DB, input.companyId);
   if (!company) {
     return { configured: false, error: "Company not found", code: "COMPANY_NOT_FOUND" };
@@ -231,6 +244,17 @@ export async function createTopUpCheckoutIntent(
   }
 
   const companyBillingMode = await getCompanyBillingMode(env.DB, input.companyId);
+  if (!isAllowedTopUpAmountCents(input.amountCents, env, companyBillingMode)) {
+    return {
+      configured: false,
+      error: isStripeTestModeActive(env)
+        ? "Invalid top-up amount. Allowed: £1 (sandbox), £5, £10, £25, £50, £100."
+        : companyBillingMode === "live"
+          ? "Invalid top-up amount. Allowed: £1 (live acceptance), £5, £10, £25, £50, £100."
+          : "Invalid top-up amount. Allowed: £5, £10, £25, £50, £100.",
+      code: "INVALID_AMOUNT",
+    };
+  }
   const checkoutGate = companyStripeCheckoutAllowed(env, companyBillingMode);
   if (!checkoutGate.allowed) {
     return {
