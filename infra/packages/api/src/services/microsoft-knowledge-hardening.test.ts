@@ -182,6 +182,12 @@ describe("indexing state mapping", () => {
         documentStatus: "requires_ocr",
       }),
     ).toBe("partial");
+    expect(
+      mapKnowledgeIndexOutcomeToMicrosoftStatus({
+        indexOk: true,
+        documentStatus: "ocr_limit_exceeded",
+      }),
+    ).toBe("partial");
   });
 
   it("maps completed index to indexed", () => {

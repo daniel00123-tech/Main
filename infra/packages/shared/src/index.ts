@@ -21,6 +21,7 @@ export * from "./portal/dashboard";
 export * from "./portal/automation-present";
 export * from "./portal/usage-present";
 export * from "./operations";
+export * from "./ocr";
 export * from "./email/types";
 export * from "./email/templates";
 export * from "./action-engine";

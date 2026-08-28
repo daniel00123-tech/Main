@@ -142,7 +142,14 @@ export function mapKnowledgeIndexOutcomeToMicrosoftStatus(input: {
   documentStatus?: string;
 }): string {
   if (!input.indexOk) return "failed";
-  if (input.requiresOcr || input.documentStatus === "requires_ocr") return "partial";
+  if (
+    input.requiresOcr ||
+    input.documentStatus === "requires_ocr" ||
+    input.documentStatus === "ocr_limit_exceeded" ||
+    input.documentStatus === "ocr_failed"
+  ) {
+    return "partial";
+  }
   if (input.partial || input.documentStatus === "pending") return "indexing";
   return "indexed";
 }
@@ -216,6 +223,29 @@ export async function uploadMicrosoftDocumentToKnowledge(
       requiresOcr = indexResult.requiresOcr;
       extractionQuality = indexResult.extractionQuality;
       documentStatus = indexResult.documentStatus;
+
+      if (requiresOcr) {
+        const { applyOcrFallbackIfRequired, azureOcrReady } = await import("./ocr/knowledge-ocr");
+        if (azureOcrReady(env)) {
+          const ocrResult = await applyOcrFallbackIfRequired(env, mcp, {
+            companyId: String(input.metadata.companyId ?? ""),
+            documentId: uploadBody.documentId,
+            requiresOcr: true,
+            documentStatus: "requires_ocr",
+            extractionQuality,
+            bytes: input.bytes,
+            mimeType: input.mimeType,
+            title: input.title,
+          });
+          if (ocrResult.ok) {
+            indexed = ocrResult.indexed;
+            partial = ocrResult.partial ?? false;
+            requiresOcr = ocrResult.requiresOcr ?? false;
+            extractionQuality = ocrResult.extractionQuality ?? extractionQuality;
+            documentStatus = ocrResult.documentStatus ?? documentStatus;
+          }
+        }
+      }
     }
 
     return {

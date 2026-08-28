@@ -62,7 +62,7 @@ Each attachment stores:
 
 When an attachment finishes indexing, `refreshParentMessageAttachmentMetadata()` patches the parent document via `PATCH /admin/knowledge/{id}/metadata`.
 
-PDF attachments with insufficient text report `extractionStatus = requires_ocr` (OCR not implemented).
+PDF attachments with insufficient text report `extractionStatus = requires_ocr` and, when Azure Document Intelligence is configured, use the V1 OCR fallback (`INFRA-MICROSOFT-OCR-V1.md`).
 
 ## Remaining human tasks (Phase 1)
 
