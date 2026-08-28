@@ -365,6 +365,27 @@ async function buildSubsystemHealth(
     .first<{ count: number }>();
   const failedWebhooks = Number(failedWebhooksRow?.count ?? 0);
 
+  let ocrCompleted = 0;
+  let ocrFailed = 0;
+  let ocrPending = 0;
+  let ocrLimitExceeded = 0;
+  try {
+    const ocrRows = await db
+      .prepare(
+        `SELECT ocr_status AS status, COUNT(*) AS count FROM knowledge_ocr_jobs GROUP BY ocr_status`,
+      )
+      .all<{ status: string; count: number }>();
+    for (const row of ocrRows.results ?? []) {
+      if (row.status === "ocr_completed") ocrCompleted = Number(row.count ?? 0);
+      else if (row.status === "ocr_failed") ocrFailed = Number(row.count ?? 0);
+      else if (row.status === "ocr_pending" || row.status === "ocr_processing") {
+        ocrPending += Number(row.count ?? 0);
+      } else if (row.status === "ocr_limit_exceeded") ocrLimitExceeded = Number(row.count ?? 0);
+    }
+  } catch {
+    // Table may not exist yet on older D1 snapshots.
+  }
+
   let outboundEmailState: OperationalHealthState = "UNKNOWN";
   try {
     const emailConfig = await getCompanyEmailConfig(db, "co_caddington");
@@ -494,10 +515,11 @@ async function buildSubsystemHealth(
     {
       id: "knowledge",
       label: "Knowledge search / indexing",
-      state: deadLetters > 0 || staleMsJobs > 0 ? "DEGRADED" : "HEALTHY",
-      severity: deadLetters > 0 ? "WARNING" : "INFO",
-      summary: `Microsoft queue: ${staleMsJobs} stale, ${deadLetters} dead-letter (24h)`,
+      state: deadLetters > 0 || staleMsJobs > 0 || ocrFailed > 0 ? "DEGRADED" : "HEALTHY",
+      severity: deadLetters > 0 || ocrFailed > 0 ? "WARNING" : "INFO",
+      summary: `Microsoft queue: ${staleMsJobs} stale, ${deadLetters} dead-letter (24h); OCR ${ocrCompleted} completed / ${ocrFailed} failed / ${ocrPending} pending`,
       lastCheckedAt: checkedAt,
+      metrics: { ocrCompleted, ocrFailed, ocrPending, ocrLimitExceeded },
     },
     {
       id: "outbound_email",

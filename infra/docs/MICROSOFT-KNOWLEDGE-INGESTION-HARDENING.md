@@ -30,14 +30,13 @@ Metrics stored: `pageCount`, `pagesWithText`, `extractedCharacterCount`, `substa
 
 ## OCR / fallback policy
 
-**Status: PARTIAL**
+**Status: V1 (Azure Document Intelligence `prebuilt-read` / `2024-11-30`)**
 
-- Fallback is triggered only when normal extraction is insufficient.
-- Production Workers AI OCR for scanned PDFs is **not** enabled in this sprint.
-- Documents requiring OCR are marked `requires_ocr` with honest `fallbackOutcome: ocr_not_available`.
-- No external OCR service was introduced.
-
-Future OCR should be queue-driven, company-scoped, bounded per invocation, and observable via extraction metrics.
+- Fallback is triggered only when normal extraction is insufficient (`requires_ocr`).
+- INFRA API runs Azure OCR asynchronously from the existing Microsoft ingestion job (no new queue).
+- Successful OCR text is stored in company MCP R2 and indexed through the existing chunker.
+- Page/size guards: default 50 pages / 20MB. Over-limit → `ocr_limit_exceeded` (no Azure call).
+- See `INFRA-MICROSOFT-OCR-V1.md`.
 
 ## Outlook parent / attachment model
 

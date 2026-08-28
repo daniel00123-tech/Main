@@ -45,6 +45,11 @@ export interface Env {
   CADDINGTON_ADMIN_TOKEN?: string;
   HT_BUSINESS_MCP_ADMIN_TOKEN?: string;
   EL_BUSINESS_MCP_ADMIN_TOKEN?: string;
+  /** Azure AI Document Intelligence — OCR fallback for requires_ocr documents */
+  AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT?: string;
+  AZURE_DOCUMENT_INTELLIGENCE_KEY?: string;
+  AZURE_OCR_MAX_PAGES?: string;
+  AZURE_OCR_MAX_BYTES?: string;
   /** Cloudflare Queue for Microsoft file ingestion (one file per message) */
   MICROSOFT_KNOWLEDGE_QUEUE?: Queue<import("./services/microsoft-queue").MicrosoftFileJobMessage>;
   /** Cloudflare Queue for automation run execution */

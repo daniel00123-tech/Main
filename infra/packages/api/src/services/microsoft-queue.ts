@@ -527,7 +527,7 @@ export async function processMicrosoftFileJob(
       }),
       knowledgeDocumentId: upload.documentId,
       lastError: upload.requiresOcr
-        ? `PDF extraction insufficient (${upload.extractionQuality ?? "requires_ocr"}); OCR fallback not available in production`
+        ? `PDF extraction insufficient (${upload.extractionQuality ?? "requires_ocr"}); OCR ${upload.documentStatus === "ocr_limit_exceeded" ? "page/size limit exceeded" : upload.documentStatus === "ocr_failed" ? "failed" : "not completed"}`
         : null,
     });
     await env.DB.prepare(
@@ -794,7 +794,7 @@ async function processMicrosoftMailJob(
       }),
       knowledgeDocumentId: upload.documentId,
       lastError: upload.requiresOcr
-        ? `PDF extraction insufficient (${upload.extractionQuality ?? "requires_ocr"}); OCR fallback not available in production`
+        ? `PDF extraction insufficient (${upload.extractionQuality ?? "requires_ocr"}); OCR ${upload.documentStatus === "ocr_limit_exceeded" ? "page/size limit exceeded" : upload.documentStatus === "ocr_failed" ? "failed" : "not completed"}`
         : null,
     });
     await env.DB.prepare(

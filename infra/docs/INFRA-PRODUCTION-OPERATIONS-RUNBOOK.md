@@ -75,7 +75,9 @@ Reuses ADR 022 three-dimensional model:
 
 Microsoft: queue job stats, dead-letter counts, stale `processing`/`retrying` jobs, Graph subscription expiry.
 
-Google Drive: whole-drive continuation runs in company MCP — INFRA monitors connector/MCP health and usage anomalies; do not reindex entire Drive during routine ops checks.
+OCR V1 (Azure Document Intelligence `prebuilt-read`): only for `requires_ocr` documents. Operator status appears on System Health knowledge metrics (`ocrCompleted` / `ocrFailed` / `ocrPending`). See `INFRA-MICROSOFT-OCR-V1.md`. Do not mass-reprocess the corpus.
+
+Google Drive: whole-drive continuation runs in company MCP — INFRA monitors connector/MCP health and usage anomalies; do not reindex entire Drive during routine ops checks. Drive image exclusion is unchanged.
 
 ## Automation Engine
 

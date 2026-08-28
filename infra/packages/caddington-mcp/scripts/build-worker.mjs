@@ -1008,6 +1008,119 @@ if (!base.includes(googleDriveScopeMarker)) {
   }
 }
 
+const ocrExtractedIndexMarker = "ocr_index_extracted_v1";
+if (!base.includes(ocrExtractedIndexMarker)) {
+  const extractCallTarget = `    const extracted = await extractDocument(
+      env22,
+      bytes,
+      doc.mime_type ?? object2.httpMetadata?.contentType ?? "text/plain",
+      doc.r2_key
+    );`;
+  const extractCallReplacement = `    /* ocr_index_extracted_v1 */
+    let extracted;
+    const ocrReuseMeta = parseDocumentMetadataJson(doc.metadata);
+    if (ocrReuseMeta.ocrStatus === "ocr_completed" && ocrReuseMeta.ocrTextR2Key) {
+      const ocrObject = await env22.CADDINGTON_KNOWLEDGE.get(ocrReuseMeta.ocrTextR2Key);
+      if (ocrObject) {
+        const ocrText = await ocrObject.text();
+        extracted = {
+          format: "txt",
+          segments: plainTextToSegments(ocrText, "txt"),
+          requiresOcr: false,
+          rawTextLength: ocrText.length,
+          extractionMetrics: {
+            extractionMethod: "azure_document_intelligence_prebuilt_read",
+            extractionQuality: "good",
+            fallbackRequired: true,
+            fallbackOutcome: "azure_document_intelligence",
+            requiresOcr: false
+          }
+        };
+      }
+    }
+    if (!extracted) {
+      extracted = await extractDocument(
+        env22,
+        bytes,
+        doc.mime_type ?? object2.httpMetadata?.contentType ?? "text/plain",
+        doc.r2_key
+      );
+    }`;
+  if (!base.includes(extractCallTarget)) {
+    throw new Error("Unable to locate extractDocument call for OCR reuse patch");
+  }
+  base = base.replace(extractCallTarget, extractCallReplacement);
+
+  const ocrAdminTarget = `  return json2({ error: "Not Found" }, 404);
+}
+__name(handleAdminRequest, "handleAdminRequest");`;
+  const ocrAdminReplacement = `  const knowledgeGetMatch = url2.pathname.match(/^\\/admin\\/knowledge\\/(\\d+)$/);
+  if (knowledgeGetMatch && request.method === "GET") {
+    const documentId = Number(knowledgeGetMatch[1]);
+    const doc = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+      "SELECT id, external_id, title, status, mime_type, byte_size, metadata FROM knowledge_documents WHERE id = ?"
+    ).bind(documentId).first();
+    if (!doc) return json2({ error: "Document not found" }, 404);
+    let metadata = {};
+    try { metadata = doc.metadata ? JSON.parse(doc.metadata) : {}; } catch { metadata = {}; }
+    return json2({
+      ok: true,
+      documentId: doc.id,
+      title: doc.title ?? null,
+      status: doc.status ?? null,
+      mimeType: doc.mime_type ?? null,
+      externalId: doc.external_id ?? null,
+      byteSize: doc.byte_size ?? null,
+      metadata
+    });
+  }
+  const knowledgeContentMatch = url2.pathname.match(/^\\/admin\\/knowledge\\/(\\d+)\\/content$/);
+  if (knowledgeContentMatch && request.method === "GET") {
+    const documentId = Number(knowledgeContentMatch[1]);
+    const doc = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+      "SELECT r2_key, mime_type FROM knowledge_documents WHERE id = ?"
+    ).bind(documentId).first();
+    if (!doc) return json2({ error: "Document not found" }, 404);
+    const object2 = await env22.CADDINGTON_KNOWLEDGE.get(doc.r2_key);
+    if (!object2) return json2({ error: "Storage object missing" }, 404);
+    return new Response(object2.body, {
+      headers: { "Content-Type": doc.mime_type || "application/octet-stream" }
+    });
+  }
+  const indexExtractedMatch = url2.pathname.match(/^\\/admin\\/knowledge\\/(\\d+)\\/index-extracted$/);
+  if (indexExtractedMatch && request.method === "POST") {
+    const documentId = Number(indexExtractedMatch[1]);
+    try {
+      const body = await request.json().catch(() => ({}));
+      const text = String(body.text ?? "");
+      if (!text.trim()) return json2({ error: "Extracted text is required" }, 400);
+      const doc = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+        "SELECT id, external_id FROM knowledge_documents WHERE id = ?"
+      ).bind(documentId).first();
+      if (!doc) return json2({ error: "Document not found" }, 404);
+      const fingerprint = String(body.fingerprint ?? "ocr").replace(/[^a-zA-Z0-9._-]/g, "_");
+      const ocrKey = \`ocr/\${doc.external_id}/\${fingerprint}.txt\`;
+      await env22.CADDINGTON_KNOWLEDGE.put(ocrKey, text, {
+        httpMetadata: { contentType: "text/plain; charset=utf-8" }
+      });
+      const metaPatch = body.metadata && typeof body.metadata === "object" ? body.metadata : {};
+      await mergeDocumentMetadata(env22, documentId, { ...metaPatch, ocrTextR2Key: ocrKey, ocrStatus: metaPatch.ocrStatus ?? "ocr_completed" });
+      const result = await indexKnowledgeDocument(env22, documentId);
+      return json2({ ok: true, documentId, documentStatus: result?.partial ? "pending" : "indexed", ...result });
+    } catch (error53) {
+      const message = error53 instanceof Error ? error53.message : String(error53);
+      return json2({ error: message }, 400);
+    }
+  }
+  return json2({ error: "Not Found" }, 404);
+}
+__name(handleAdminRequest, "handleAdminRequest");`;
+  if (!base.includes(ocrAdminTarget)) {
+    throw new Error("Unable to locate handleAdminRequest footer for OCR admin routes");
+  }
+  base = base.replace(ocrAdminTarget, ocrAdminReplacement);
+}
+
 base = applyGoogleDriveContinuationPatches(base);
 
 const inlinedXero = xeroBundle
