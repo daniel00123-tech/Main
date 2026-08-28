@@ -4,7 +4,6 @@
  */
 
 import {
-  XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
   automationTemplateKeyOf,
   getAutomationTemplate,
   isValidRecipientEmail,
@@ -45,9 +44,6 @@ export async function provisionTemplateAutomation(
   const template = getAutomationTemplate(input.templateKey);
   if (!template || !template.available) {
     throw new Error("Unknown or unavailable automation template");
-  }
-  if (template.key !== XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE) {
-    throw new Error("Template is not available in V1");
   }
   const recipient = input.recipientEmail.trim().toLowerCase();
   if (!isValidRecipientEmail(recipient)) {

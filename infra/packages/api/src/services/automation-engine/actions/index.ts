@@ -6,6 +6,7 @@ import type { Env } from "../../env";
 import {
   isValidRecipientEmail,
   type AutomationActionType,
+  DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE,
   XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
 } from "@infra/shared";
 import { executeAiPromptAction } from "./ai-prompt";
@@ -50,11 +51,16 @@ export function validateAutomationConfiguration(
   if (actionType === "internal") {
     const handler = configuration.handler;
     if (typeof handler !== "string" || !handler.trim()) return "Internal action requires handler";
-    if (handler === XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE) {
+    if (
+      handler === XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE ||
+      handler === DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE
+    ) {
       const params = (configuration.parameters ?? {}) as Record<string, unknown>;
       const recipient = String(params.recipientEmail ?? configuration.recipientEmail ?? "");
       if (!isValidRecipientEmail(recipient)) {
-        return "Daily sales email requires a valid recipient email";
+        return handler === DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE
+          ? "Daily document activity requires a valid recipient email"
+          : "Daily sales email requires a valid recipient email";
       }
     }
     return null;

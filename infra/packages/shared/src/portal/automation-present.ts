@@ -65,8 +65,14 @@ export function humanAutomationRunCustomerSummary(input: {
   if (input.errorCode === "XERO_UNAVAILABLE" || /xero/i.test(input.errorMessage ?? "")) {
     return "Couldn't retrieve Xero sales data";
   }
+  if (
+    input.errorCode === "DOCUMENT_STORE_UNAVAILABLE" ||
+    /document activity/i.test(input.errorMessage ?? "")
+  ) {
+    return "Couldn't retrieve document activity";
+  }
   if (input.errorCode === "EMAIL_DELIVERY_FAILED") {
-    return "Sales report generated, email not sent";
+    return "Report generated, email not sent";
   }
   return input.errorMessage?.trim() || "Failed";
 }

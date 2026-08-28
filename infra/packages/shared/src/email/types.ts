@@ -4,6 +4,7 @@ export const TRANSACTIONAL_EMAIL_TYPES = [
   "USER_INVITATION",
   "TEST_EMAIL",
   "XERO_SALES_REPORT",
+  "DOCUMENT_ACTIVITY_REPORT",
 ] as const;
 
 export type TransactionalEmailType = (typeof TRANSACTIONAL_EMAIL_TYPES)[number];

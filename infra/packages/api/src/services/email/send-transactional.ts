@@ -38,6 +38,8 @@ function templateKeyForType(type: TransactionalEmailType): string {
       return "test_email";
     case "XERO_SALES_REPORT":
       return "xero_sales_report";
+    case "DOCUMENT_ACTIVITY_REPORT":
+      return "document_activity_report";
   }
 }
 

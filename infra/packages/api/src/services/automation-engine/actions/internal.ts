@@ -4,17 +4,20 @@
 
 import type { Env } from "../../../env";
 import {
+  DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE,
   XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
   type AutomationInternalConfiguration,
 } from "@infra/shared";
 import { nowIso } from "../../../db/mappers";
 import type { AutomationActionResult, AutomationExecutionContext } from "./types";
+import { executeDocumentActivityDailyEmail } from "./document-activity-email";
 import { executeXeroMonthToDateSalesEmail } from "./xero-sales-email";
 
 const ALLOWED_HANDLERS = new Set([
   "noop",
   "health_ping",
   XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
+  DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE,
 ]);
 
 export async function executeInternalAction(
@@ -44,6 +47,10 @@ export async function executeInternalAction(
 
   if (handler === XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE) {
     return executeXeroMonthToDateSalesEmail(env, ctx);
+  }
+
+  if (handler === DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE) {
+    return executeDocumentActivityDailyEmail(env, ctx);
   }
 
   throw new Error("Unhandled internal action");

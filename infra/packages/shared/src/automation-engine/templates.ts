@@ -7,8 +7,12 @@ import type { AutomationActionType, AutomationSchedule } from "./types";
 
 export const XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE =
   "xero_month_to_date_sales_email" as const;
+export const DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE =
+  "document_activity_daily_email" as const;
 
-export type AutomationTemplateKey = typeof XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE;
+export type AutomationTemplateKey =
+  | typeof XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE
+  | typeof DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE;
 
 export type AutomationTemplateDefinition = {
   key: string;
@@ -32,6 +36,19 @@ export const AUTOMATION_TEMPLATES: AutomationTemplateDefinition[] = [
     system: "Xero",
     defaultName: "Daily month-to-date sales",
     defaultSchedule: { frequency: "daily", hour: 8, minute: 0 },
+    defaultTimezone: "Europe/London",
+    actionType: "internal",
+    available: true,
+  },
+  {
+    key: DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE,
+    type: "DOCUMENT_ACTIVITY_DAILY_EMAIL",
+    label: "Daily document activity",
+    description:
+      "Receive a daily summary of your connected company documents and any new or updated documents from the previous 24 hours.",
+    system: "Documents",
+    defaultName: "Daily document activity",
+    defaultSchedule: { frequency: "daily", hour: 12, minute: 0 },
     defaultTimezone: "Europe/London",
     actionType: "internal",
     available: true,
@@ -82,8 +99,8 @@ export function automationTemplateKeyOf(
   if (typeof configuration.templateKey === "string" && configuration.templateKey) {
     return configuration.templateKey;
   }
-  if (configuration.handler === XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE) {
-    return XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE;
+  if (typeof configuration.handler === "string" && getAutomationTemplate(configuration.handler)) {
+    return configuration.handler;
   }
   return null;
 }

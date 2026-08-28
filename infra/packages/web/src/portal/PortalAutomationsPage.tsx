@@ -40,6 +40,7 @@ type TemplateOption = {
   system: string;
   defaultName: string;
   defaultTimezone: string;
+  defaultSchedule?: { hour?: number; minute?: number };
   available: boolean;
 };
 
@@ -241,6 +242,8 @@ export default function PortalAutomationsPage() {
   if (error) return <ErrorState message={error} />;
 
   const availableTemplates = templates.filter((item) => item.available);
+  const selectedTemplate =
+    availableTemplates.find((item) => item.key === templateKey) ?? availableTemplates[0] ?? null;
 
   return (
     <div className="portal-page">
@@ -265,7 +268,7 @@ export default function PortalAutomationsPage() {
           <EmptyState
             icon={<Bot size={32} />}
             title="No automations yet"
-            description="Create a daily sales email to receive your current month's Xero sales each morning."
+            description="Create a daily sales email or a daily document activity report."
             action={
               canManage ? (
                 <Button onClick={openCreate}>Create automation</Button>
@@ -514,7 +517,13 @@ export default function PortalAutomationsPage() {
               const next = event.target.value;
               setTemplateKey(next);
               const match = availableTemplates.find((item) => item.key === next);
-              if (match) setFormName(match.defaultName);
+              if (match) {
+                setFormName(match.defaultName);
+                setFormTime(
+                  clockValue(match.defaultSchedule?.hour ?? 8, match.defaultSchedule?.minute ?? 0),
+                );
+                setFormTimezone(match.defaultTimezone || "Europe/London");
+              }
             }}
           >
             {(availableTemplates.length > 0 ? availableTemplates : [
@@ -530,13 +539,14 @@ export default function PortalAutomationsPage() {
           </Select>
         </Field>
         <p className="muted small">
-          Receive your current month's Xero sales by email every morning.
+          {selectedTemplate?.description ??
+            "Receive your current month's Xero sales by email every morning."}
         </p>
         <Field label="Name">
           <Input className="input" value={formName} onChange={(event) => setFormName(event.target.value)} />
         </Field>
         <Field label="System">
-          <Input className="input" value="Xero" disabled />
+          <Input className="input" value={selectedTemplate?.system ?? "Xero"} disabled />
         </Field>
         <Field label="Schedule">
           <Input className="input" value="Every day" disabled />

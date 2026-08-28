@@ -1123,6 +1123,62 @@ __name(handleAdminRequest, "handleAdminRequest");`;
 
 base = applyGoogleDriveContinuationPatches(base);
 
+const knowledgeActivityMarker = "/admin/knowledge/activity";
+if (!base.includes(knowledgeActivityMarker)) {
+  const activityTarget = `  return json2({ error: "Not Found" }, 404);
+}
+__name(handleAdminRequest, "handleAdminRequest");`;
+  const activityReplacement = `  if (url2.pathname === "/admin/knowledge/activity" && request.method === "GET") {
+    const since = url2.searchParams.get("since");
+    const driveCount = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+      "SELECT COUNT(DISTINCT knowledge_document_id) AS n FROM google_drive_files WHERE knowledge_document_id IS NOT NULL"
+    ).first();
+    let documents = [];
+    if (since) {
+      const sinceSqlite = String(since).replace("T", " ").replace(/\\.\\d+Z$/, "").replace("Z", "");
+      const rows = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+        \`SELECT id, title, status, created_at, updated_at, indexed_at, metadata
+         FROM knowledge_documents
+         WHERE COALESCE(status, '') != 'archived'
+           AND json_extract(metadata, '$.source') = 'google_drive'
+           AND (
+             created_at >= ? OR created_at >= ?
+             OR json_extract(metadata, '$.driveModifiedTime') >= ?
+           )
+         ORDER BY created_at DESC
+         LIMIT 200\`
+      ).bind(since, sinceSqlite, since).all();
+      documents = (rows.results ?? []).map((row) => {
+        let metadata = {};
+        try { metadata = row.metadata ? JSON.parse(row.metadata) : {}; } catch { metadata = {}; }
+        return {
+          title: row.title ?? "Untitled document",
+          source: metadata.source ?? "google_drive",
+          category: metadata.category ?? null,
+          createdAt: row.created_at ?? null,
+          updatedAt: row.updated_at ?? null,
+          driveModifiedTime: metadata.driveModifiedTime ?? null,
+          status: row.status ?? null
+        };
+      });
+    }
+    return json2({
+      ok: true,
+      readOnly: true,
+      triggeredProviderScan: false,
+      googleDriveUniqueCount: Number(driveCount?.n ?? 0),
+      documents
+    });
+  }
+  return json2({ error: "Not Found" }, 404);
+}
+__name(handleAdminRequest, "handleAdminRequest");`;
+  if (!base.includes(activityTarget)) {
+    throw new Error("Unable to locate handleAdminRequest footer for knowledge activity route");
+  }
+  base = base.replace(activityTarget, activityReplacement);
+}
+
 const inlinedXero = xeroBundle
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*,?\s*registerXeroWriteTools\s+as\s+__registerXeroWriteTools\s*\};?\s*/g, "")
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*\};?\s*/g, "")
