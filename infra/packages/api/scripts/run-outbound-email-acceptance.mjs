@@ -23,7 +23,7 @@ execFileSync(
   { cwd: apiDir, stdio: "pipe" },
 );
 
-const res = await fetch(`${API}/api/internal/outbound-email/acceptance`, {
+const res = await fetch(`${API}/api/internal/outbound-email/acceptance${process.argv.includes("--password-reset") ? "?phase=password-reset" : ""}`, {
   method: "POST",
   headers: { "X-CMD13-Acceptance-Token": token, "Content-Type": "application/json" },
 });

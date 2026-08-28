@@ -1139,7 +1139,14 @@ connectors.post("/api/internal/outbound-email/acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
   }
+  const phase = c.req.query("phase") ?? "authorization";
   try {
+    if (phase === "password-reset") {
+      const { runPasswordResetEmailAcceptance } = await import(
+        "../services/microsoft-outbound-email-acceptance"
+      );
+      return c.json(await runPasswordResetEmailAcceptance(c.env));
+    }
     const { runOutboundEmailV1Acceptance } = await import(
       "../services/microsoft-outbound-email-acceptance"
     );
