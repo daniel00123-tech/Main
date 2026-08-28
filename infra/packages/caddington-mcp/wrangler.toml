@@ -23,6 +23,15 @@ binding = "AI"
 INFRA_API_URL = "https://infra-api.daniel-dwyer123.workers.dev"
 INFRA_MCP_ENVIRONMENT_ID = "mcp_caddington_primary"
 
+[[queues.producers]]
+binding = "GOOGLE_DRIVE_SYNC_QUEUE"
+queue = "google-drive-sync"
+
+[[queues.consumers]]
+queue = "google-drive-sync"
+max_batch_size = 1
+max_retries = 5
+
 # Secrets (names only — set via wrangler secret put, never commit values):
 # MCP_AUTH_TOKEN — must match INFRA CADDINGTON_MCP_AUTH_TOKEN for Xero bridge + MCP auth
 # CADDINGTON_ADMIN_TOKEN — existing admin routes

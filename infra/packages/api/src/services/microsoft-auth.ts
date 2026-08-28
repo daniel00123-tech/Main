@@ -4,6 +4,11 @@
  */
 
 import type { Env } from "../env";
+import {
+  allowLegacyMicrosoftTenantFallback,
+  isMicrosoftMultitenantApp,
+  microsoftPlatformAppConfigured,
+} from "./microsoft-multitenant";
 
 export type MicrosoftAuthMode = "app_only" | "delegated" | "not_configured";
 
@@ -14,6 +19,7 @@ export type MicrosoftCredentialStatus = {
   clientIdConfigured: boolean;
   clientSecretConfigured: boolean;
   tenantIdConfigured: boolean;
+  multitenantApp: boolean;
 };
 
 type CachedToken = {
@@ -35,19 +41,21 @@ export function microsoftCredentialStatus(env: Env): MicrosoftCredentialStatus {
     typeof env.MICROSOFT_CLIENT_ID === "string" ? env.MICROSOFT_CLIENT_ID.trim() : "";
   const clientSecret =
     typeof env.MICROSOFT_CLIENT_SECRET === "string" ? env.MICROSOFT_CLIENT_SECRET.trim() : "";
+  const multitenantApp = isMicrosoftMultitenantApp(env);
 
   const tenantIdConfigured = Boolean(tenantId);
   const clientIdConfigured = Boolean(clientId);
   const clientSecretConfigured = Boolean(clientSecret);
-  const configured = tenantIdConfigured && clientIdConfigured && clientSecretConfigured;
+  const configured = microsoftPlatformAppConfigured(env);
 
   return {
     configured,
     authMode: configured ? "app_only" : "not_configured",
-    tenantIdMasked: tenantId ? maskTenantId(tenantId) : null,
+    tenantIdMasked: tenantId ? maskTenantId(tenantId) : multitenantApp ? "per-company" : null,
     clientIdConfigured,
     clientSecretConfigured,
     tenantIdConfigured,
+    multitenantApp,
   };
 }
 
@@ -61,7 +69,7 @@ export type MicrosoftTokenContext = {
   tenantId?: string;
 };
 
-/** Resolve Entra tenant ID from connector instance data, falling back to Worker secret. */
+/** Resolve Entra tenant ID from connector instance; legacy global fallback only when permitted. */
 export async function resolveMicrosoftTenantId(
   env: Env,
   db: D1Database,
@@ -78,9 +86,12 @@ export async function resolveMicrosoftTenantId(
     const fromInstance = row?.microsoft_tenant_id?.trim() || row?.external_account_id?.trim();
     if (fromInstance) return fromInstance;
   }
-  const global =
-    typeof env.MICROSOFT_TENANT_ID === "string" ? env.MICROSOFT_TENANT_ID.trim() : "";
-  return global || null;
+  if (allowLegacyMicrosoftTenantFallback(env, input?.companyId)) {
+    const global =
+      typeof env.MICROSOFT_TENANT_ID === "string" ? env.MICROSOFT_TENANT_ID.trim() : "";
+    return global || null;
+  }
+  return null;
 }
 
 export async function acquireMicrosoftAppToken(
@@ -90,8 +101,7 @@ export async function acquireMicrosoftAppToken(
   | { ok: true; accessToken: string; tenantId: string; expiresAtMs: number }
   | { ok: false; code: string; message: string }
 > {
-  const status = microsoftCredentialStatus(env);
-  if (!status.configured) {
+  if (!microsoftPlatformAppConfigured(env)) {
     return {
       ok: false,
       code: "MICROSOFT_NOT_CONFIGURED",
@@ -107,14 +117,16 @@ export async function acquireMicrosoftAppToken(
         connectorInstanceId: context.connectorInstanceId,
       })) ?? undefined;
   }
-  if (!tenantId) {
+  if (!tenantId && allowLegacyMicrosoftTenantFallback(env, context?.companyId)) {
     tenantId = String(env.MICROSOFT_TENANT_ID ?? "").trim();
   }
   if (!tenantId) {
     return {
       ok: false,
       code: "MICROSOFT_TENANT_MISSING",
-      message: "Microsoft tenant ID is not configured for this company.",
+      message: isMicrosoftMultitenantApp(env)
+        ? "Microsoft tenant is not bound for this company. Complete admin consent in the portal."
+        : "Microsoft tenant ID is not configured for this company.",
     };
   }
 

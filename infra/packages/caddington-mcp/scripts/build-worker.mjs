@@ -8,6 +8,7 @@ import {
   assertNoDuplicateXeroSymbols,
   stripXeroInjection,
 } from "./strip-xero-inject.mjs";
+import { applyGoogleDriveContinuationPatches } from "./google-drive-continuation-patch.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(__dirname, "..");
@@ -993,6 +994,8 @@ if (!base.includes(googleDriveScopeMarker)) {
     base = base.replace(previewReturnTarget, previewReturnReplacement);
   }
 }
+
+base = applyGoogleDriveContinuationPatches(base);
 
 const inlinedXero = xeroBundle
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*,?\s*registerXeroWriteTools\s+as\s+__registerXeroWriteTools\s*\};?\s*/g, "")

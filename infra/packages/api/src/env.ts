@@ -37,8 +37,12 @@ export interface Env {
   MICROSOFT_CLIENT_ID?: string;
   MICROSOFT_CLIENT_SECRET?: string;
   MICROSOFT_REDIRECT_URI?: string;
-  /** Caddington MCP admin token for knowledge upload bridge */
+  /** When true, use platform multitenant Entra app; tenant ID comes from connector instance after admin consent */
+  MICROSOFT_MULTITENANT_APP?: string;
+  /** Per-company MCP admin tokens for knowledge bridge (e.g. CADDINGTON_ADMIN_TOKEN, HT_BUSINESS_MCP_ADMIN_TOKEN) */
   CADDINGTON_ADMIN_TOKEN?: string;
+  HT_BUSINESS_MCP_ADMIN_TOKEN?: string;
+  EL_BUSINESS_MCP_ADMIN_TOKEN?: string;
   /** Cloudflare Queue for Microsoft file ingestion (one file per message) */
   MICROSOFT_KNOWLEDGE_QUEUE?: Queue<import("./services/microsoft-queue").MicrosoftFileJobMessage>;
   /** Safe send UAT — requires XERO_SEND_UAT_MODE=true simultaneously */

@@ -13,6 +13,7 @@ import {
   microsoftCredentialStatus,
   type MicrosoftAuthMode,
 } from "./microsoft-auth";
+import { isMicrosoftMultitenantApp } from "./microsoft-multitenant";
 
 const MICROSOFT_AUTH_BASE = "https://login.microsoftonline.com";
 
@@ -29,14 +30,16 @@ export function microsoftOAuthStatus(env: Env): {
 } {
   const creds = microsoftCredentialStatus(env);
   const configured = creds.configured;
+  const multitenant = isMicrosoftMultitenantApp(env);
 
   return {
     appConfigured: configured,
     readyForConsent: configured,
     authMode: creds.authMode,
     tenantIdMasked: creds.tenantIdMasked,
+    multitenantApp: multitenant,
     authorizationBaseUrl: configured
-      ? `${MICROSOFT_AUTH_BASE}/${creds.tenantIdMasked ? "common" : "common"}/oauth2/v2.0/authorize`
+      ? `${MICROSOFT_AUTH_BASE}/${multitenant ? "organizations" : "common"}/v2.0/adminconsent`
       : null,
     components: [
       {
@@ -101,7 +104,7 @@ export async function startMicrosoftOAuth(
       ok: false,
       code: "MICROSOFT_APP_NOT_CONFIGURED",
       message:
-        "Microsoft 365 credentials are not configured. Set MICROSOFT_TENANT_ID, MICROSOFT_CLIENT_ID, and MICROSOFT_CLIENT_SECRET.",
+        "Microsoft 365 platform app is not configured. Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET.",
     };
   }
 
@@ -115,7 +118,7 @@ export async function startMicrosoftOAuth(
   }
 
   const clientId = String(env.MICROSOFT_CLIENT_ID);
-  const tenantId = String(env.MICROSOFT_TENANT_ID ?? "common");
+  const multitenant = isMicrosoftMultitenantApp(env);
   const redirectUri =
     typeof env.MICROSOFT_REDIRECT_URI === "string" && env.MICROSOFT_REDIRECT_URI.trim()
       ? env.MICROSOFT_REDIRECT_URI.trim()
@@ -137,6 +140,20 @@ export async function startMicrosoftOAuth(
     env as Record<string, unknown>,
   );
 
+  if (multitenant) {
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      state: oauthState.state,
+    });
+    return {
+      ok: true,
+      authorizationUrl: `${MICROSOFT_AUTH_BASE}/organizations/v2.0/adminconsent?${params.toString()}`,
+      state: oauthState.state,
+    };
+  }
+
+  const tenantId = String(env.MICROSOFT_TENANT_ID ?? "common");
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
