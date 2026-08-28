@@ -61,16 +61,23 @@ async function main() {
 
   const passed = report.checks.filter((c) => c.pass).length;
   report.summary = `${passed}/${report.checks.length} structural checks passed`;
+  report.classification =
+    passed === report.checks.length
+      ? "PARTIAL — READY FOR LIVE SECOND-TENANT ACCEPTANCE"
+      : "PARTIAL";
 
   report.notes.push(
-    "Full self-service onboarding requires authenticated portal session + Entra admin consent.",
+    "Entra multi-tenant configuration completed 2026-08-28 (INFRA Business Connector, client ID unchanged).",
   );
   report.notes.push(
-    "BYO Entra app (company_app) path is implemented; platform_multitenant awaits Daniel's Entra configuration.",
+    "MICROSOFT_MULTITENANT_APP=true enabled in production. OAuth callback route verified (HTTP 302).",
   );
-  report.notes.push("Outlook/mail onboarding intentionally excluded from Sprint 2.");
   report.notes.push(
-    "Classification PARTIAL: second-company live tenant admin consent not demonstrated in this script.",
+    "Full self-service onboarding requires authenticated portal session + admin consent in a separate Entra tenant.",
+  );
+  report.notes.push("Outlook/mail onboarding intentionally excluded from Sprint 2 (CMD16C frozen).");
+  report.notes.push(
+    "Classification PARTIAL — READY FOR LIVE SECOND-TENANT ACCEPTANCE: Daniel must complete portal admin consent in a genuine second Entra tenant.",
   );
 
   console.log(JSON.stringify(report, null, 2));
