@@ -359,7 +359,8 @@ async function buildSubsystemHealth(
 
   const failedWebhooksRow = await db
     .prepare(
-      `SELECT COUNT(*) AS count FROM stripe_webhook_events WHERE status = 'failed' AND received_at >= datetime('now', '-24 hours')`,
+      `SELECT COUNT(*) AS count FROM stripe_webhook_events
+       WHERE error_message IS NOT NULL AND received_at >= datetime('now', '-24 hours')`,
     )
     .first<{ count: number }>();
   const failedWebhooks = Number(failedWebhooksRow?.count ?? 0);
@@ -777,17 +778,14 @@ export async function runBillingReconciliationDiagnostic(db: D1Database): Promis
   const missingCredits = await db
     .prepare(
       `SELECT stripe_event_id FROM stripe_webhook_events
-       WHERE status = 'processed' AND event_type = 'checkout.session.completed'
+       WHERE processed = 1 AND event_type = 'checkout.session.completed'
          AND received_at >= datetime('now', '-30 days')
-         AND stripe_event_id NOT IN (
-           SELECT COALESCE(stripe_checkout_session_id, '') FROM wallet_topups WHERE stripe_checkout_session_id IS NOT NULL
-         )
        LIMIT 10`,
     )
     .all<{ stripe_event_id: string }>();
   if ((missingCredits.results ?? []).length > 0) {
     anomalies.push(
-      `${missingCredits.results?.length ?? 0} processed checkout webhook(s) may lack matching wallet top-up records`,
+      `${missingCredits.results?.length ?? 0} recent processed checkout webhook(s) flagged for manual wallet cross-check`,
     );
   }
 

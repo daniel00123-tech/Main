@@ -28,5 +28,6 @@ CREATE INDEX IF NOT EXISTS idx_financial_integrity_open
 CREATE INDEX IF NOT EXISTS idx_microsoft_graph_subscriptions_expiry
   ON microsoft_graph_subscriptions(status, expires_at);
 
-CREATE INDEX IF NOT EXISTS idx_stripe_webhook_failed
-  ON stripe_webhook_events(status, received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stripe_webhook_errors
+  ON stripe_webhook_events(received_at DESC)
+  WHERE error_message IS NOT NULL;
