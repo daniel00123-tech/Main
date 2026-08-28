@@ -764,15 +764,31 @@ export async function runBillingReconciliationDiagnostic(db: D1Database): Promis
   const dupCredits = await db
     .prepare(
       `SELECT stripe_payment_intent_id, COUNT(*) AS count
-       FROM wallet_topups
-       WHERE stripe_payment_intent_id IS NOT NULL
+       FROM stripe_checkout_sessions
+       WHERE stripe_payment_intent_id IS NOT NULL AND status = 'completed'
        GROUP BY stripe_payment_intent_id
        HAVING count > 1
        LIMIT 20`,
     )
     .all<{ stripe_payment_intent_id: string; count: number }>();
   for (const row of dupCredits.results ?? []) {
-    anomalies.push(`Duplicate wallet top-up for payment intent ${row.stripe_payment_intent_id} (${row.count} rows)`);
+    anomalies.push(
+      `Duplicate completed checkout for payment intent ${row.stripe_payment_intent_id} (${row.count} rows)`,
+    );
+  }
+
+  const dupLedgerCredits = await db
+    .prepare(
+      `SELECT reference_id, COUNT(*) AS count
+       FROM ledger_entries
+       WHERE entry_type = 'credit' AND reference_type = 'stripe_checkout'
+       GROUP BY reference_id
+       HAVING count > 1
+       LIMIT 20`,
+    )
+    .all<{ reference_id: string; count: number }>();
+  for (const row of dupLedgerCredits.results ?? []) {
+    anomalies.push(`Duplicate wallet credit for checkout ${row.reference_id} (${row.count} rows)`);
   }
 
   const missingCredits = await db
