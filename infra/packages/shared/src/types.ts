@@ -187,6 +187,8 @@ export interface McpEnvironment {
   capabilities: string[];
   /** Optional Worker secret binding name for Authorization header (never plaintext). */
   authSecretRef: string | null;
+  /** Optional Worker secret binding for MCP /admin/* knowledge bridge (never plaintext). */
+  adminSecretRef?: string | null;
   /**
    * Optional Cloudflare service binding name for same-account Worker MCP endpoints.
    * Required when the public workers.dev URL cannot be fetched from INFRA (error 1042).

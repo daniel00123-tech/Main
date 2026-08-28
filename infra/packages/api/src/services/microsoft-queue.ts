@@ -23,6 +23,7 @@ import {
   buildOutlookKnowledgeProvenance,
   lookupParentKnowledgeDocumentId,
   mapKnowledgeIndexOutcomeToMicrosoftStatus,
+  refreshParentMessageAttachmentMetadata,
   reactivateMicrosoftKnowledgeDocument,
   uploadMicrosoftDocumentToKnowledge,
 } from "./microsoft-knowledge-bridge";
@@ -692,7 +693,7 @@ async function processMicrosoftMailJob(
       filename = job.file_name;
     }
 
-    const provenance = buildOutlookKnowledgeProvenance({
+    let provenance = buildOutlookKnowledgeProvenance({
       companyId: job.company_id,
       tenantId,
       mailboxAddress,
@@ -704,10 +705,15 @@ async function processMicrosoftMailJob(
       to,
       receivedDateTime: message.receivedDateTime,
       sentDateTime: message.sentDateTime,
+      bodyPreview: message.bodyPreview ?? null,
       attachmentId,
       attachmentName: itemKind === "mail_attachment" ? filename : null,
+      contentType: itemKind === "mail_attachment" ? mimeType : null,
       itemKind,
       parentMessageId: itemKind === "mail_attachment" ? messageId : null,
+      parentInternetMessageId:
+        itemKind === "mail_attachment" ? message.internetMessageId ?? null : null,
+      parentSubject: itemKind === "mail_attachment" ? message.subject ?? null : null,
       parentKnowledgeDocumentId,
       hasAttachments: message.hasAttachments,
       attachments: attachmentMetadataList,
@@ -727,6 +733,20 @@ async function processMicrosoftMailJob(
       },
       autoIndex: true,
     });
+
+    if (itemKind === "mail_attachment" && upload.ok) {
+      provenance = {
+        ...provenance,
+        attachmentKnowledgeDocumentId: upload.documentId,
+        extractionStatus: upload.requiresOcr ? "requires_ocr" : upload.documentStatus ?? "indexed",
+        indexingStatus: mapKnowledgeIndexOutcomeToMicrosoftStatus({
+          indexOk: true,
+          requiresOcr: upload.requiresOcr,
+          partial: upload.partial,
+          documentStatus: upload.documentStatus,
+        }),
+      };
+    }
 
     if (!upload.ok) {
       await upsertKnowledgeItem(env.DB, {
@@ -790,6 +810,17 @@ async function processMicrosoftMailJob(
           : "indexed"
         : "indexed";
     await completeJob(env.DB, job.id, jobStatus);
+
+    if (itemKind === "mail_attachment" && messageId) {
+      await refreshParentMessageAttachmentMetadata(env, mcp, env.DB, {
+        companyId: job.company_id,
+        connectorInstanceId: job.connector_instance_id,
+        mailboxAddress,
+        messageId,
+        tenantId,
+      });
+    }
+
     await finalizeMicrosoftSyncRunIfComplete(env, job.sync_run_id, job.source_id);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Mail job failed";

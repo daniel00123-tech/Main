@@ -325,7 +325,8 @@ export function buildMailKnowledgeText(
       filename: string;
       contentType: string | null;
       attachmentId: string;
-      indexedDocumentId: number | null;
+      indexedDocumentId?: number | null;
+      knowledgeDocumentId?: number | null;
       indexingStatus: string;
     }>;
   },
@@ -345,7 +346,7 @@ export function buildMailKnowledgeText(
     lines.push("Attachments:");
     for (const attachment of attachments) {
       lines.push(
-        `- ${attachment.filename} (${attachment.contentType ?? "unknown"}) attachmentId=${attachment.attachmentId} indexedDocumentId=${attachment.indexedDocumentId ?? "pending"} status=${attachment.indexingStatus}`,
+        `- ${attachment.filename} (${attachment.contentType ?? "unknown"}) attachmentId=${attachment.attachmentId} knowledgeDocumentId=${attachment.knowledgeDocumentId ?? attachment.indexedDocumentId ?? "pending"} status=${attachment.indexingStatus}`,
       );
     }
     lines.push("");

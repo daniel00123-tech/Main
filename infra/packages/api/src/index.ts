@@ -78,6 +78,7 @@ import phase3Routes from "./routes/phase3";
 import connectorRoutes from "./routes/connectors";
 import internalMcpRoutes from "./routes/internal-mcp";
 import actionPlanRoutes from "./routes/action-plans";
+import automationRoutes from "./routes/automations";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -87,6 +88,7 @@ app.route("/", phase3Routes);
 app.route("/", connectorRoutes);
 app.route("/", internalMcpRoutes);
 app.route("/", actionPlanRoutes);
+app.route("/", automationRoutes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(
@@ -1103,15 +1105,47 @@ const worker = {
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
     const { runMicrosoftScheduledSync } = await import("./services/microsoft-scheduler");
     await runMicrosoftScheduledSync(env);
+    const { runAutomationScheduler } = await import("./services/automation-engine/scheduler");
+    await runAutomationScheduler(env);
   },
-  async queue(batch: MessageBatch<import("./services/microsoft-queue").MicrosoftFileJobMessage>, env: Env) {
-    const { processMicrosoftFileJob, MICROSOFT_KNOWLEDGE_INGEST_DLQ } = await import(
-      "./services/microsoft-queue"
-    );
+  async queue(
+    batch: MessageBatch<
+      | import("./services/microsoft-queue").MicrosoftFileJobMessage
+      | import("./services/automation-engine/queue").AutomationRunMessage
+    >,
+    env: Env,
+  ) {
+    const {
+      processMicrosoftFileJob,
+      MICROSOFT_KNOWLEDGE_INGEST_DLQ,
+    } = await import("./services/microsoft-queue");
+    const {
+      processAutomationRunJob,
+      AUTOMATION_RUN_DLQ,
+      AUTOMATION_RUN_QUEUE,
+    } = await import("./services/automation-engine/queue");
+
+    if (batch.queue === AUTOMATION_RUN_QUEUE || batch.queue === AUTOMATION_RUN_DLQ) {
+      const isDeadLetter = batch.queue === AUTOMATION_RUN_DLQ;
+      for (const message of batch.messages) {
+        try {
+          await processAutomationRunJob(env, message.body as import("./services/automation-engine/queue").AutomationRunMessage, {
+            deadLetter: isDeadLetter,
+          });
+          message.ack();
+        } catch {
+          message.retry();
+        }
+      }
+      return;
+    }
+
     const isDeadLetter = batch.queue === MICROSOFT_KNOWLEDGE_INGEST_DLQ;
     for (const message of batch.messages) {
       try {
-        await processMicrosoftFileJob(env, message.body, { deadLetter: isDeadLetter });
+        await processMicrosoftFileJob(env, message.body as import("./services/microsoft-queue").MicrosoftFileJobMessage, {
+          deadLetter: isDeadLetter,
+        });
         message.ack();
       } catch {
         message.retry();

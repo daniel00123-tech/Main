@@ -2,6 +2,9 @@ import { API_BASE, infraMcpGatewayUrl } from "./config";
 import type {
   ActionPlanRecord,
   AuditEvent,
+  AutomationDefinitionRecord,
+  AutomationRunRecord,
+  AutomationRunStepRecord,
   Company,
   CompanyOverview,
   CompanyRole,
@@ -358,6 +361,67 @@ export const api = {
     fetchJson<{ plan: ActionPlanRecord }>(`/api/companies/${slug}/actions/${planId}/cancel`, {
       method: "POST",
     }),
+  listCompanyAutomations: (slug: string) =>
+    fetchJson<{ automations: AutomationDefinitionRecord[] }>(
+      `/api/companies/${slug}/automations`,
+    ),
+  getCompanyAutomation: (slug: string, automationId: string) =>
+    fetchJson<{ automation: AutomationDefinitionRecord & { scheduleLabel?: string | null } }>(
+      `/api/companies/${slug}/automations/${automationId}`,
+    ),
+  createCompanyAutomation: (
+    slug: string,
+    input: {
+      name: string;
+      description?: string;
+      triggerType?: "manual" | "schedule";
+      schedule?: { frequency: string; hour?: number; minute?: number; dayOfWeek?: number; dayOfMonth?: number };
+      timezone?: string;
+      actionType?: "ai_prompt" | "mcp_tool" | "internal";
+      configuration?: Record<string, unknown>;
+    },
+  ) =>
+    fetchJson<{ automation: AutomationDefinitionRecord }>(`/api/companies/${slug}/automations`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateCompanyAutomation: (
+    slug: string,
+    automationId: string,
+    input: Record<string, unknown>,
+  ) =>
+    fetchJson<{ automation: AutomationDefinitionRecord }>(
+      `/api/companies/${slug}/automations/${automationId}`,
+      { method: "PATCH", body: JSON.stringify(input) },
+    ),
+  activateCompanyAutomation: (slug: string, automationId: string) =>
+    fetchJson<{ automation: AutomationDefinitionRecord }>(
+      `/api/companies/${slug}/automations/${automationId}/activate`,
+      { method: "POST" },
+    ),
+  pauseCompanyAutomation: (slug: string, automationId: string) =>
+    fetchJson<{ automation: AutomationDefinitionRecord }>(
+      `/api/companies/${slug}/automations/${automationId}/pause`,
+      { method: "POST" },
+    ),
+  disableCompanyAutomation: (slug: string, automationId: string) =>
+    fetchJson<{ automation: AutomationDefinitionRecord }>(
+      `/api/companies/${slug}/automations/${automationId}/disable`,
+      { method: "POST" },
+    ),
+  runCompanyAutomation: (slug: string, automationId: string) =>
+    fetchJson<{ run: AutomationRunRecord; created: boolean }>(
+      `/api/companies/${slug}/automations/${automationId}/run`,
+      { method: "POST" },
+    ),
+  listCompanyAutomationRuns: (slug: string, automationId: string) =>
+    fetchJson<{ runs: AutomationRunRecord[] }>(
+      `/api/companies/${slug}/automations/${automationId}/runs`,
+    ),
+  getCompanyAutomationRun: (slug: string, runId: string) =>
+    fetchJson<{ run: AutomationRunRecord; steps: AutomationRunStepRecord[] }>(
+      `/api/companies/${slug}/automation-runs/${runId}`,
+    ),
   getCompanyUsage: (slug: string, limit = 50) =>
     fetchJson<CompanyUsageResponse>(
       `/api/companies/${slug}/usage?limit=${encodeURIComponent(String(limit))}`,
@@ -432,6 +496,14 @@ export const api = {
         scopes: string[];
       };
     }>("/api/credential-storage"),
+  getConnectorProductisation: (slug: string) =>
+    fetchJson<import("@infra/shared").CompanyConnectorProductisationReport>(
+      `/api/companies/${slug}/connectors/productisation`,
+    ),
+  getConnectorWizard: (slug: string, definitionId: string) =>
+    fetchJson<{ wizard: import("@infra/shared").ConnectorWizardState; definition: import("@infra/shared").ConnectorDefinition }>(
+      `/api/companies/${slug}/connectors/${definitionId}/wizard`,
+    ),
   getConnectorCredentialMetadata: (slug: string, instanceId: string) =>
     fetchJson<{
       stored: boolean;
@@ -465,9 +537,10 @@ export const api = {
       definitionId?: string;
       instanceId?: string;
       component?: string;
+      authMode?: "platform_multitenant" | "company_app";
     },
   ) =>
-    fetchJson<{ authorizationUrl: string; state: string }>(
+    fetchJson<{ authorizationUrl: string; state: string; instanceId?: string }>(
       `/api/companies/${slug}/connectors/microsoft/oauth/start`,
       { method: "POST", body: JSON.stringify(body) },
     ),
@@ -500,7 +573,12 @@ export const api = {
   getMicrosoftDashboard: (slug: string) =>
     fetchJson<{
       status: Record<string, unknown>;
-      health: Awaited<ReturnType<typeof api.getMicrosoftHealth>>;
+      instanceId: string | null;
+      health: Awaited<ReturnType<typeof api.getMicrosoftHealth>> & {
+        authMode?: string | null;
+        tenantIdMasked?: string | null;
+        connected?: boolean;
+      };
       summary: {
         onedrive: { total: number; included: number; indexed: number };
         sharepoint: { total: number; included: number; indexed: number };

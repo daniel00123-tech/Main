@@ -148,7 +148,7 @@ describe("Outlook parent/attachment provenance", () => {
           filename: "file.pdf",
           contentType: "application/pdf",
           attachmentId: "att-1",
-          indexedDocumentId: 71,
+          knowledgeDocumentId: 71,
           indexingStatus: "indexed",
         },
       ],

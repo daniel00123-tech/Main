@@ -192,6 +192,19 @@ __name(handleAdminRequest, "handleAdminRequest");`;
       return json2({ error: message }, 400);
     }
   }
+  const metadataMatch = url2.pathname.match(/^\\/admin\\/knowledge\\/(\\d+)\\/metadata$/);
+  if (metadataMatch && request.method === "PATCH") {
+    const documentId = Number(metadataMatch[1]);
+    try {
+      const body = await request.json().catch(() => ({}));
+      const patch = body?.metadata && typeof body.metadata === "object" ? body.metadata : {};
+      await mergeDocumentMetadata(env22, documentId, patch);
+      return json2({ ok: true, documentId });
+    } catch (error53) {
+      const message = error53 instanceof Error ? error53.message : String(error53);
+      return json2({ error: message }, 400);
+    }
+  }
   return json2({ error: "Not Found" }, 404);
 }
 __name(handleAdminRequest, "handleAdminRequest");`;

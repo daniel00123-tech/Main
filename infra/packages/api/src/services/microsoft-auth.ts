@@ -5,10 +5,12 @@
 
 import type { Env } from "../env";
 import {
-  allowLegacyMicrosoftTenantFallback,
-  isMicrosoftMultitenantApp,
-  microsoftPlatformAppConfigured,
-} from "./microsoft-multitenant";
+  maskMicrosoftTenantId,
+  platformMicrosoftConfigured,
+  platformMultitenantAppEnabled,
+  resolveMicrosoftAppCredentials,
+  type MicrosoftAppCredentials,
+} from "./microsoft-credentials";
 
 export type MicrosoftAuthMode = "app_only" | "delegated" | "not_configured";
 
@@ -19,7 +21,8 @@ export type MicrosoftCredentialStatus = {
   clientIdConfigured: boolean;
   clientSecretConfigured: boolean;
   tenantIdConfigured: boolean;
-  multitenantApp: boolean;
+  multitenantAppEnabled: boolean;
+  platformConfigured: boolean;
 };
 
 type CachedToken = {
@@ -29,11 +32,6 @@ type CachedToken = {
 
 const tokenCache = new Map<string, CachedToken>();
 
-function maskTenantId(tenantId: string): string {
-  if (tenantId.length <= 8) return "****";
-  return `${tenantId.slice(0, 4)}…${tenantId.slice(-4)}`;
-}
-
 export function microsoftCredentialStatus(env: Env): MicrosoftCredentialStatus {
   const tenantId =
     typeof env.MICROSOFT_TENANT_ID === "string" ? env.MICROSOFT_TENANT_ID.trim() : "";
@@ -41,96 +39,67 @@ export function microsoftCredentialStatus(env: Env): MicrosoftCredentialStatus {
     typeof env.MICROSOFT_CLIENT_ID === "string" ? env.MICROSOFT_CLIENT_ID.trim() : "";
   const clientSecret =
     typeof env.MICROSOFT_CLIENT_SECRET === "string" ? env.MICROSOFT_CLIENT_SECRET.trim() : "";
-  const multitenantApp = isMicrosoftMultitenantApp(env);
 
   const tenantIdConfigured = Boolean(tenantId);
   const clientIdConfigured = Boolean(clientId);
   const clientSecretConfigured = Boolean(clientSecret);
-  const configured = microsoftPlatformAppConfigured(env);
+  const multitenantAppEnabled = platformMultitenantAppEnabled(env);
+  const configured =
+    clientIdConfigured &&
+    clientSecretConfigured &&
+    (multitenantAppEnabled || tenantIdConfigured);
 
   return {
     configured,
     authMode: configured ? "app_only" : "not_configured",
-    tenantIdMasked: tenantId ? maskTenantId(tenantId) : multitenantApp ? "per-company" : null,
+    tenantIdMasked: tenantId
+      ? maskMicrosoftTenantId(tenantId)
+      : multitenantAppEnabled
+        ? "per-company"
+        : null,
     clientIdConfigured,
     clientSecretConfigured,
     tenantIdConfigured,
-    multitenantApp,
+    multitenantAppEnabled,
+    platformConfigured: configured,
   };
 }
 
 export function microsoftAppConfigured(env: Env): boolean {
-  return microsoftCredentialStatus(env).configured;
+  return platformMicrosoftConfigured(env);
 }
 
 export type MicrosoftTokenContext = {
   companyId?: string;
   connectorInstanceId?: string;
   tenantId?: string;
+  actor?: string;
 };
 
-/** Resolve Entra tenant ID from connector instance; legacy global fallback only when permitted. */
+/** Resolve Entra tenant ID from connector instance data, falling back to Worker secret. */
 export async function resolveMicrosoftTenantId(
   env: Env,
   db: D1Database,
   input?: { companyId?: string; connectorInstanceId?: string },
 ): Promise<string | null> {
-  if (input?.connectorInstanceId && input?.companyId) {
-    const row = await db
-      .prepare(
-        `SELECT microsoft_tenant_id, external_account_id FROM connector_instances
-         WHERE id = ? AND company_id = ? LIMIT 1`,
-      )
-      .bind(input.connectorInstanceId, input.companyId)
-      .first<{ microsoft_tenant_id: string | null; external_account_id: string | null }>();
-    const fromInstance = row?.microsoft_tenant_id?.trim() || row?.external_account_id?.trim();
-    if (fromInstance) return fromInstance;
-  }
-  if (allowLegacyMicrosoftTenantFallback(env, input?.companyId)) {
-    const global =
-      typeof env.MICROSOFT_TENANT_ID === "string" ? env.MICROSOFT_TENANT_ID.trim() : "";
-    return global || null;
-  }
-  return null;
+  const resolved = await resolveMicrosoftAppCredentials(env, db, {
+    companyId: input?.companyId,
+    connectorInstanceId: input?.connectorInstanceId,
+  });
+  if (resolved.ok) return resolved.credentials.tenantId;
+  const global =
+    typeof env.MICROSOFT_TENANT_ID === "string" ? env.MICROSOFT_TENANT_ID.trim() : "";
+  return global || null;
 }
 
-export async function acquireMicrosoftAppToken(
-  env: Env,
-  context?: MicrosoftTokenContext,
+async function requestClientCredentialsToken(
+  credentials: MicrosoftAppCredentials,
 ): Promise<
   | { ok: true; accessToken: string; tenantId: string; expiresAtMs: number }
   | { ok: false; code: string; message: string }
 > {
-  if (!microsoftPlatformAppConfigured(env)) {
-    return {
-      ok: false,
-      code: "MICROSOFT_NOT_CONFIGURED",
-      message: "Microsoft 365 app credentials are not configured.",
-    };
-  }
-
-  let tenantId = context?.tenantId?.trim();
-  if (!tenantId && context?.companyId) {
-    tenantId =
-      (await resolveMicrosoftTenantId(env, env.DB, {
-        companyId: context.companyId,
-        connectorInstanceId: context.connectorInstanceId,
-      })) ?? undefined;
-  }
-  if (!tenantId && allowLegacyMicrosoftTenantFallback(env, context?.companyId)) {
-    tenantId = String(env.MICROSOFT_TENANT_ID ?? "").trim();
-  }
-  if (!tenantId) {
-    return {
-      ok: false,
-      code: "MICROSOFT_TENANT_MISSING",
-      message: isMicrosoftMultitenantApp(env)
-        ? "Microsoft tenant is not bound for this company. Complete admin consent in the portal."
-        : "Microsoft tenant ID is not configured for this company.",
-    };
-  }
-
-  const cacheKey = `${tenantId}:${String(env.MICROSOFT_CLIENT_ID).trim()}`;
+  const tenantId = credentials.tenantId.trim();
+  const cacheKey = `${credentials.authMode}:${tenantId}:${credentials.clientId}`;
   const cached = tokenCache.get(cacheKey);
   if (cached && cached.expiresAtMs > Date.now() + 60_000) {
     return { ok: true, accessToken: cached.accessToken, tenantId, expiresAtMs: cached.expiresAtMs };
@@ -138,8 +107,8 @@ export async function acquireMicrosoftAppToken(
 
   const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`;
   const body = new URLSearchParams({
-    client_id: String(env.MICROSOFT_CLIENT_ID).trim(),
-    client_secret: String(env.MICROSOFT_CLIENT_SECRET).trim(),
+    client_id: credentials.clientId,
+    client_secret: credentials.clientSecret,
     scope: "https://graph.microsoft.com/.default",
     grant_type: "client_credentials",
   });
@@ -184,6 +153,59 @@ export async function acquireMicrosoftAppToken(
     tenantId,
     expiresAtMs,
   };
+}
+
+export async function acquireMicrosoftAppToken(
+  env: Env,
+  context?: MicrosoftTokenContext,
+): Promise<
+  | { ok: true; accessToken: string; tenantId: string; expiresAtMs: number; authMode: string }
+  | { ok: false; code: string; message: string }
+> {
+  if (context?.companyId) {
+    const resolved = await resolveMicrosoftAppCredentials(env, env.DB, {
+      companyId: context.companyId,
+      connectorInstanceId: context.connectorInstanceId,
+      actor: context.actor,
+    });
+    if (!resolved.ok) {
+      return { ok: false, code: resolved.code, message: resolved.message };
+    }
+    const token = await requestClientCredentialsToken(resolved.credentials);
+    if (!token.ok) return token;
+    return { ...token, authMode: resolved.credentials.authMode };
+  }
+
+  const status = microsoftCredentialStatus(env);
+  if (!status.configured) {
+    return {
+      ok: false,
+      code: "MICROSOFT_NOT_CONFIGURED",
+      message: "Microsoft 365 app credentials are not configured.",
+    };
+  }
+
+  let tenantId = context?.tenantId?.trim();
+  if (!tenantId) {
+    tenantId = String(env.MICROSOFT_TENANT_ID ?? "").trim();
+  }
+  if (!tenantId) {
+    return {
+      ok: false,
+      code: "MICROSOFT_TENANT_MISSING",
+      message: "Microsoft tenant ID is not configured for this company.",
+    };
+  }
+
+  const token = await requestClientCredentialsToken({
+    tenantId,
+    clientId: String(env.MICROSOFT_CLIENT_ID).trim(),
+    clientSecret: String(env.MICROSOFT_CLIENT_SECRET).trim(),
+    authMode: "platform_legacy",
+    credentialSource: "platform",
+  });
+  if (!token.ok) return token;
+  return { ...token, authMode: "platform_legacy" };
 }
 
 /** Clear in-memory token cache (tests). */

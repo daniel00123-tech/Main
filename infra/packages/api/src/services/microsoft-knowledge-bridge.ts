@@ -6,6 +6,7 @@
 import type { Env } from "../env";
 import type { McpEnvironment } from "@infra/shared";
 import { resolveMcpFetcher } from "./mcp-client";
+import { resolveMcpAdminAuthHeader } from "./mcp-admin-bridge";
 
 export type KnowledgeUploadResult =
   | {
@@ -24,14 +25,13 @@ export type OutlookAttachmentMeta = {
   filename: string;
   contentType: string | null;
   attachmentId: string;
-  indexedDocumentId: number | null;
+  knowledgeDocumentId: number | null;
   indexingStatus: string;
+  extractionStatus?: string;
 };
 
-function adminAuthHeader(env: Env): string | null {
-  const token =
-    typeof env.CADDINGTON_ADMIN_TOKEN === "string" ? env.CADDINGTON_ADMIN_TOKEN.trim() : "";
-  return token ? `Bearer ${token}` : null;
+function adminAuthHeader(env: Env, mcp: McpEnvironment): string | null {
+  return resolveMcpAdminAuthHeader(env, mcp).authorizationHeader;
 }
 
 async function adminFetch(
@@ -40,9 +40,9 @@ async function adminFetch(
   path: string,
   init: RequestInit,
 ): Promise<Response> {
-  const auth = adminAuthHeader(env);
+  const auth = adminAuthHeader(env, mcp);
   if (!auth) {
-    throw new Error("CADDINGTON_ADMIN_TOKEN is not configured on infra-api");
+    throw new Error("MCP admin bridge token is not configured on infra-api");
   }
 
   const binding = resolveMcpFetcher(env, mcp.serviceBindingRef ?? "CADDINGTON_MCP");
@@ -295,49 +295,71 @@ export function buildOutlookKnowledgeProvenance(input: {
   companyId: string;
   tenantId: string | null;
   mailboxAddress: string;
+  folderId?: string | null;
   folderName?: string | null;
   messageId: string;
   internetMessageId?: string | null;
   subject?: string | null;
+  sender?: string | null;
   from?: string | null;
+  recipients?: string[];
   to?: string[];
   receivedDateTime?: string | null;
   sentDateTime?: string | null;
+  bodyPreview?: string | null;
   attachmentId?: string | null;
   attachmentName?: string | null;
+  attachmentFilename?: string | null;
+  contentType?: string | null;
   itemKind?: "mail_message" | "mail_attachment";
   parentMessageId?: string | null;
+  parentInternetMessageId?: string | null;
+  parentSubject?: string | null;
   parentKnowledgeDocumentId?: number | null;
   hasAttachments?: boolean;
   attachments?: OutlookAttachmentMeta[];
+  extractionStatus?: string | null;
+  indexingStatus?: string | null;
 }): Record<string, unknown> {
+  const sender = input.sender ?? input.from ?? null;
+  const recipients = input.recipients ?? input.to ?? [];
+  const attachmentFilename = input.attachmentFilename ?? input.attachmentName ?? null;
   return {
     connector: "microsoft_365",
     sourceType: "outlook_shared",
     companyId: input.companyId,
     tenantId: input.tenantId,
     mailboxAddress: input.mailboxAddress,
+    folderId: input.folderId ?? null,
     folderName: input.folderName ?? "Inbox",
     messageId: input.messageId,
     internetMessageId: input.internetMessageId ?? null,
     subject: input.subject ?? null,
-    from: input.from ?? null,
-    to: input.to ?? [],
+    sender,
+    from: sender,
+    recipients,
+    to: recipients,
     receivedDateTime: input.receivedDateTime ?? null,
     sentDateTime: input.sentDateTime ?? null,
+    bodyPreview: input.bodyPreview ?? null,
     attachmentId: input.attachmentId ?? null,
-    attachmentFilename: input.attachmentName ?? null,
+    attachmentFilename,
+    contentType: input.contentType ?? null,
     itemKind: input.itemKind ?? (input.attachmentId ? "mail_attachment" : "mail_message"),
     parentMessageId: input.parentMessageId ?? null,
+    parentInternetMessageId: input.parentInternetMessageId ?? null,
+    parentSubject: input.parentSubject ?? null,
     parentKnowledgeDocumentId: input.parentKnowledgeDocumentId ?? null,
     hasAttachments: input.hasAttachments ?? false,
     attachments: input.attachments ?? [],
+    extractionStatus: input.extractionStatus ?? null,
+    indexingStatus: input.indexingStatus ?? null,
     sourceLabel: [
       "Microsoft 365",
       "Outlook",
       input.mailboxAddress,
       input.folderName ?? "Inbox",
-      input.attachmentName ?? input.subject ?? input.messageId,
+      attachmentFilename ?? input.subject ?? input.messageId,
     ].join(" → "),
   };
 }
@@ -429,9 +451,118 @@ export async function buildOutlookAttachmentMetadata(
       filename: attachment.name,
       contentType: attachment.contentType,
       attachmentId: attachment.id,
-      indexedDocumentId: row?.knowledge_document_id ?? null,
+      knowledgeDocumentId: row?.knowledge_document_id ?? null,
       indexingStatus: row?.indexing_status ?? "discovered",
+      extractionStatus:
+        row?.indexing_status === "partial" ? "requires_ocr" : row?.indexing_status ?? "discovered",
     });
   }
   return results;
+}
+
+export async function patchKnowledgeDocumentMetadata(
+  env: Env,
+  mcp: McpEnvironment,
+  documentId: number,
+  metadataPatch: Record<string, unknown>,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const response = await adminFetch(env, mcp, `/admin/knowledge/${documentId}/metadata`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metadata: metadataPatch }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!response.ok || body.ok === false) {
+      return { ok: false, message: body.error ?? `Metadata patch HTTP ${response.status}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Metadata patch failed" };
+  }
+}
+
+/** Refresh parent message attachment array after an attachment finishes indexing. */
+export async function refreshParentMessageAttachmentMetadata(
+  env: Env,
+  mcp: McpEnvironment,
+  db: D1Database,
+  input: {
+    companyId: string;
+    connectorInstanceId: string;
+    mailboxAddress: string;
+    messageId: string;
+    tenantId: string | null;
+  },
+): Promise<{ ok: boolean; parentDocumentId: number | null }> {
+  const parentRow = await db
+    .prepare(
+      `SELECT knowledge_document_id, provenance_json FROM microsoft_knowledge_items
+       WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ? LIMIT 1`,
+    )
+    .bind(input.companyId, input.connectorInstanceId, input.messageId)
+    .first<{ knowledge_document_id: number | null; provenance_json: string | null }>();
+
+  const parentDocumentId = parentRow?.knowledge_document_id ?? null;
+  if (!parentDocumentId) return { ok: false, parentDocumentId: null };
+
+  let existingProvenance: Record<string, unknown> = {};
+  try {
+    existingProvenance = parentRow?.provenance_json ? JSON.parse(parentRow.provenance_json) : {};
+  } catch {
+    existingProvenance = {};
+  }
+
+  const attachmentRows = await db
+    .prepare(
+      `SELECT external_item_id, file_name, mime_type, knowledge_document_id, indexing_status
+       FROM microsoft_knowledge_items
+       WHERE company_id = ? AND connector_instance_id = ?
+         AND external_item_id LIKE ? || '|%'
+       ORDER BY file_name ASC`,
+    )
+    .bind(input.companyId, input.connectorInstanceId, input.messageId)
+    .all<{
+      external_item_id: string;
+      file_name: string;
+      mime_type: string | null;
+      knowledge_document_id: number | null;
+      indexing_status: string | null;
+    }>();
+
+  const attachments: OutlookAttachmentMeta[] = (attachmentRows.results ?? []).map((row) => {
+    const attachmentId = row.external_item_id.split("|")[1] ?? row.external_item_id;
+    const indexingStatus = row.indexing_status ?? "discovered";
+    return {
+      filename: row.file_name,
+      contentType: row.mime_type,
+      attachmentId,
+      knowledgeDocumentId: row.knowledge_document_id,
+      indexingStatus,
+      extractionStatus: indexingStatus === "partial" ? "requires_ocr" : indexingStatus,
+    };
+  });
+
+  const metadataPatch = {
+    ...existingProvenance,
+    hasAttachments: attachments.length > 0,
+    attachments,
+    mailboxAddress: input.mailboxAddress,
+    messageId: input.messageId,
+    tenantId: input.tenantId,
+    companyId: input.companyId,
+    itemKind: "mail_message",
+  };
+
+  const patched = await patchKnowledgeDocumentMetadata(env, mcp, parentDocumentId, metadataPatch);
+  if (patched.ok) {
+    await db
+      .prepare(
+        `UPDATE microsoft_knowledge_items SET provenance_json = ?, updated_at = ?
+         WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ?`,
+      )
+      .bind(JSON.stringify(metadataPatch), new Date().toISOString(), input.companyId, input.connectorInstanceId, input.messageId)
+      .run();
+  }
+  return { ok: patched.ok, parentDocumentId };
 }

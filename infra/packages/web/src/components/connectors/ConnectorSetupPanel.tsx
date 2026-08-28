@@ -91,10 +91,9 @@ export function ConnectorSetupPanel({
   const oauth = connector.authenticationMethod === "oauth";
   const apiKey = connector.authenticationMethod === "api_key";
   const xero = connector.slug === "xero";
+  const mcpManaged = connector.requiresCompanyMcp === true;
   const microsoft =
     connector.slug === "microsoft-365" || isMicrosoftConnectorDefinition(connector.id);
-  const microsoftView = storage?.microsoft;
-  const microsoftAppConfigured = microsoftView?.appConfigured ?? false;
   const xeroAppConfigured = storage?.xero?.appConfigured ?? false;
   const xeroReady = Boolean(storage?.xero?.readyToConnect);
   const xeroConnected = instance?.authStatus === "connected";
@@ -275,19 +274,19 @@ export function ConnectorSetupPanel({
       {error ? <Notice tone="danger">{error}</Notice> : null}
       {message ? <Notice tone="success">{message}</Notice> : null}
 
+      {mcpManaged && connector.slug === "google-drive" ? (
+        <Notice tone="info">
+          Google Drive is managed by your company Business MCP. Configure service account access on
+          that Worker — INFRA only displays health and document counts reported by the MCP.
+        </Notice>
+      ) : null}
+
       {microsoft ? (
         <div className="stack microsoft-setup-panel" style={{ gap: 12 }}>
-          {!microsoftAppConfigured ? (
-            <Notice tone="warning">
-              Microsoft 365 app credentials are not configured on INFRA. OneDrive and SharePoint use
-              app-only Graph authentication once MICROSOFT_TENANT_ID, MICROSOFT_CLIENT_ID, and
-              MICROSOFT_CLIENT_SECRET are set.
-            </Notice>
-          ) : (
-            <Notice tone="success">
-              Microsoft 365 app-only authentication is configured. Manage sources from the Microsoft 365 dashboard.
-            </Notice>
-          )}
+          <Notice tone="info">
+            Microsoft 365 supports BYO Entra app credentials and INFRA SaaS admin consent. Manage
+            connection, discovery, and source scope from the Microsoft 365 dashboard.
+          </Notice>
           <Link to={`/portal/${companySlug}/microsoft-365`} className="button button-primary">
             Open Microsoft 365 dashboard
           </Link>
@@ -438,7 +437,7 @@ export function ConnectorSetupPanel({
         </div>
       ) : null}
 
-      {showStored && !oauth ? (
+      {showStored && !oauth && !mcpManaged ? (
         <div className="stack" style={{ gap: 12 }}>
           {(metadata?.fields.length ? metadata.fields : credentialFields).map((field) => (
             <div key={field.name}>
@@ -482,7 +481,7 @@ export function ConnectorSetupPanel({
         </div>
       ) : null}
 
-      {!showStored && !oauth && (credentialFields.length > 0 || configFields.length > 0) ? (
+      {!showStored && !oauth && !mcpManaged && (credentialFields.length > 0 || configFields.length > 0) ? (
         <form className="stack" style={{ gap: 16 }} onSubmit={(event) => void onSave(event)}>
           {credentialFields.length > 0 ? (
             <fieldset style={{ border: 0, padding: 0, margin: 0 }}>

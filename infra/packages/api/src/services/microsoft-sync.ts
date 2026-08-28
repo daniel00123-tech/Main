@@ -227,7 +227,11 @@ export async function discoverMicrosoftSources(
     includeAllSharePoint?: boolean;
   },
 ): Promise<{ discovered: number; onedrive: number; sharepoint: number }> {
-  const token = await acquireMicrosoftAppToken(env);
+  const token = await acquireMicrosoftAppToken(env, {
+    companyId: input.companyId,
+    connectorInstanceId: input.connectorInstanceId,
+    actor: input.actor,
+  });
   if (!token.ok) throw new Error(token.message);
 
   const config: MicrosoftGraphConfig = {
@@ -589,7 +593,11 @@ export async function syncMicrosoftSource(
     };
   }
 
-  const token = await acquireMicrosoftAppToken(env);
+  const token = await acquireMicrosoftAppToken(env, {
+    companyId: input.companyId,
+    connectorInstanceId: input.connectorInstanceId,
+    actor: input.actor,
+  });
   if (!token.ok) throw new Error(token.message);
 
   const config: MicrosoftGraphConfig = {
@@ -997,26 +1005,57 @@ export async function applyMicrosoftSourceExclusion(
   return tombstoneMicrosoftSourceKnowledge(env, input);
 }
 
-export async function getMicrosoftConnectorHealth(env: Env): Promise<{
+export async function getMicrosoftConnectorHealth(
+  env: Env,
+  input?: { companyId?: string; connectorInstanceId?: string; actor?: string },
+): Promise<{
   credentials: ReturnType<typeof import("./microsoft-auth").microsoftCredentialStatus>;
   graph: Awaited<ReturnType<typeof import("./microsoft-graph").probeMicrosoftGraph>> | null;
   knowledgeBridgeConfigured: boolean;
   adminBridge: Awaited<ReturnType<typeof import("./microsoft-acceptance").probeAdminKnowledgeBridge>> | null;
+  authMode: string | null;
+  tenantIdMasked: string | null;
+  connected: boolean;
 }> {
   const { microsoftCredentialStatus } = await import("./microsoft-auth");
   const { probeMicrosoftGraph } = await import("./microsoft-graph");
   const { probeAdminKnowledgeBridge } = await import("./microsoft-acceptance");
+  const {
+    loadMicrosoftConnectorBinding,
+    inferMicrosoftAuthMode,
+    maskMicrosoftTenantId,
+  } = await import("./microsoft-credentials");
   const credentials = microsoftCredentialStatus(env);
   let graph = null;
   let adminBridge = null;
-  if (credentials.configured) {
-    const token = await acquireMicrosoftAppToken(env);
-    if (token.ok) {
-      graph = await probeMicrosoftGraph({
-        accessToken: token.accessToken,
-        tenantId: token.tenantId,
-      });
-    }
+  let authMode: string | null = null;
+  let tenantIdMasked: string | null = credentials.tenantIdMasked;
+  let connected = credentials.configured;
+
+  const binding =
+    input?.companyId != null
+      ? await loadMicrosoftConnectorBinding(env.DB, {
+          companyId: input.companyId,
+          connectorInstanceId: input.connectorInstanceId,
+        })
+      : null;
+  authMode = inferMicrosoftAuthMode(env, binding);
+  if (binding?.tenantId) tenantIdMasked = maskMicrosoftTenantId(binding.tenantId);
+  connected = binding?.authStatus === "connected" || connected;
+
+  const token = await acquireMicrosoftAppToken(env, {
+    companyId: input?.companyId,
+    connectorInstanceId: input?.connectorInstanceId ?? binding?.instanceId,
+    actor: input?.actor,
+  });
+  if (token.ok) {
+    graph = await probeMicrosoftGraph({
+      accessToken: token.accessToken,
+      tenantId: token.tenantId,
+    });
+    tenantIdMasked = maskMicrosoftTenantId(token.tenantId);
+    authMode = token.authMode;
+    connected = true;
   }
   if (
     typeof env.CADDINGTON_ADMIN_TOKEN === "string" &&
@@ -1031,5 +1070,8 @@ export async function getMicrosoftConnectorHealth(env: Env): Promise<{
       typeof env.CADDINGTON_ADMIN_TOKEN === "string" && env.CADDINGTON_ADMIN_TOKEN.trim(),
     ),
     adminBridge,
+    authMode,
+    tenantIdMasked,
+    connected,
   };
 }

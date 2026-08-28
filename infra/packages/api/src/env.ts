@@ -45,6 +45,8 @@ export interface Env {
   EL_BUSINESS_MCP_ADMIN_TOKEN?: string;
   /** Cloudflare Queue for Microsoft file ingestion (one file per message) */
   MICROSOFT_KNOWLEDGE_QUEUE?: Queue<import("./services/microsoft-queue").MicrosoftFileJobMessage>;
+  /** Cloudflare Queue for automation run execution */
+  AUTOMATION_RUN_QUEUE?: Queue<import("./services/automation-engine/queue").AutomationRunMessage>;
   /** Safe send UAT — requires XERO_SEND_UAT_MODE=true simultaneously */
   XERO_SEND_UAT_MODE?: string;
   XERO_SEND_TEST_RECIPIENT?: string;

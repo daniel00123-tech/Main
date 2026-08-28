@@ -70,8 +70,18 @@ export async function runGoogleDriveWholeDriveAcceptance(env: Env) {
         ? "PARTIAL"
         : "FAIL";
 
+  const continuation = {
+    architecture: "queued_auto_continuation",
+    queueBinding: "GOOGLE_DRIVE_SYNC_QUEUE",
+    checkpointField: "connector_config.config_json.scanState.pageToken",
+    jobTable: "import_log",
+    autoEnqueueOnPartialScan: true,
+    manualResyncRequired: false,
+  };
+
   return {
     classification,
+    continuation,
     adminTokenConfigured: Boolean(mcpAdminAuth(env)),
     serviceBindingConfigured: Boolean(env.CADDINGTON_MCP),
     status: {
