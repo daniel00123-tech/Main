@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot } from "lucide-react";
 import type { AutomationDefinitionRecord, AutomationRunRecord } from "@infra/shared";
+import {
+  humanAutomationCustomerStatus,
+  humanAutomationRunCustomerStatus,
+  humanAutomationSchedule,
+} from "@infra/shared";
 import { api } from "../api";
 import {
   Button,
@@ -21,51 +26,19 @@ import {
   useIsMobile,
 } from "../components";
 import { formatRelativeTime } from "../lib/format";
-import { PortalPageHeader } from "./components";
+import { PortalPageBody, PortalPageHeader } from "./components";
 import { usePortalCompany } from "./usePortalCompany";
 
 function humanAutomationStatus(status: string): string {
-  switch (status) {
-    case "active":
-      return "Active";
-    case "draft":
-      return "Draft";
-    case "paused":
-      return "Paused";
-    case "disabled":
-      return "Disabled";
-    case "error":
-      return "Error";
-    default:
-      return status;
-  }
+  return humanAutomationCustomerStatus(status);
 }
 
 function humanRunStatus(status: string): string {
-  switch (status) {
-    case "completed":
-      return "Completed";
-    case "running":
-      return "Running";
-    case "queued":
-      return "Queued";
-    case "failed":
-      return "Failed";
-    case "cancelled":
-      return "Cancelled";
-    default:
-      return status;
-  }
+  return humanAutomationRunCustomerStatus(status);
 }
 
 function triggerLabel(automation: AutomationDefinitionRecord): string {
-  if (automation.triggerType === "manual") return "Manual";
-  if (automation.schedule) {
-    const hour = String(automation.schedule.hour ?? 0).padStart(2, "0");
-    const minute = String(automation.schedule.minute ?? 0).padStart(2, "0");
-    return `${automation.schedule.frequency} at ${hour}:${minute} (${automation.timezone})`;
-  }
-  return automation.triggerType;
+  return humanAutomationSchedule(automation);
 }
 
 export default function PortalAutomationsPage() {
@@ -204,14 +177,14 @@ export default function PortalAutomationsPage() {
     }
   }
 
-  if (loading) return <LoadingState label="Loading company…" />;
-  if (error || !company) return <ErrorState message={error ?? "Company not found"} />;
+  if (loading || !company) return <LoadingState label="Loading company…" />;
+  if (error) return <ErrorState message={error} />;
 
   return (
     <div className="portal-page">
       <PortalPageHeader
         title="Automations"
-        description="Schedule AI instructions and run them on demand within your company context."
+        description="Recurring tasks that run on a schedule or when you start them."
         actions={
           canManage ? (
             <Button onClick={() => setCreateOpen(true)}>New automation</Button>
@@ -219,114 +192,150 @@ export default function PortalAutomationsPage() {
         }
       />
 
-      {listLoading ? (
-        <LoadingState label="Loading automations…" />
-      ) : listError ? (
-        <ErrorState message={listError} />
-      ) : automations.length === 0 ? (
-        <EmptyState
-          icon={<Bot size={32} />}
-          title="No automations yet"
-          description="Create a scheduled or manual AI instruction to automate recurring work."
-          action={
-            canManage ? (
-              <Button onClick={() => setCreateOpen(true)}>Create automation</Button>
-            ) : undefined
-          }
-        />
-      ) : isMobile ? (
-        <MobileRecordList>
-          {automations.map((automation) => (
-            <MobileRecordCard key={automation.id} onClick={() => setSelectedId(automation.id)}>
-              <div className="mobile-record-head">
-                <strong>{automation.name}</strong>
-                <StatusBadge
-                  status={automation.status}
-                  label={humanAutomationStatus(automation.status)}
-                />
-              </div>
-              <div className="muted small">{triggerLabel(automation)}</div>
-              {automation.lastRunAt ? (
-                <div className="muted small">Last run {formatRelativeTime(automation.lastRunAt)}</div>
-              ) : null}
-            </MobileRecordCard>
-          ))}
-        </MobileRecordList>
-      ) : (
-        <SectionCard title="Automations">
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Status</th>
-                  <th>Trigger</th>
-                  <th>Last run</th>
-                  <th>Next run</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {automations.map((automation) => (
-                  <tr key={automation.id}>
-                    <td>
-                      <button
+      <PortalPageBody
+        loading={listLoading}
+        error={listError}
+        loadingLabel="Loading automations…"
+        errorTitle="We couldn't load your automations"
+        onRetry={() => void loadAutomations()}
+      >
+        {automations.length === 0 ? (
+          <EmptyState
+            icon={<Bot size={32} />}
+            title="No automations yet"
+            description="Create an automation to run recurring INFRA tasks for your company."
+            action={
+              canManage ? (
+                <Button onClick={() => setCreateOpen(true)}>Create automation</Button>
+              ) : undefined
+            }
+          />
+        ) : isMobile ? (
+          <MobileRecordList>
+            {automations.map((automation) => (
+              <MobileRecordCard key={automation.id}>
+                <div className="mobile-record-head">
+                  <strong>{automation.name}</strong>
+                  <StatusBadge
+                    status={automation.status}
+                    label={humanAutomationStatus(automation.status)}
+                  />
+                </div>
+                <div className="muted small">{triggerLabel(automation)}</div>
+                {automation.description ? (
+                  <p className="muted small portal-automation-summary">{automation.description}</p>
+                ) : null}
+                {automation.lastRunAt ? (
+                  <div className="muted small">Last run {formatRelativeTime(automation.lastRunAt)}</div>
+                ) : null}
+                <div className="mobile-record-actions">
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setSelectedId(automation.id)}>
+                    Open
+                  </Button>
+                  {canManage ? (
+                    <>
+                      <Button
                         type="button"
-                        className="link-button"
-                        onClick={() => setSelectedId(automation.id)}
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy !== null || automation.status === "disabled"}
+                        onClick={() => void handleAction("run", automation.id)}
                       >
-                        {automation.name}
-                      </button>
-                    </td>
-                    <td>
-                      <StatusBadge
-                        status={automation.status}
-                        label={humanAutomationStatus(automation.status)}
-                      />
-                    </td>
-                    <td>{triggerLabel(automation)}</td>
-                    <td>{automation.lastRunAt ? formatRelativeTime(automation.lastRunAt) : "—"}</td>
-                    <td>{automation.nextRunAt ? formatRelativeTime(automation.nextRunAt) : "—"}</td>
-                    <td className="table-actions">
-                      {canManage ? (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={busy !== null || automation.status === "disabled"}
-                            onClick={() => void handleAction("run", automation.id)}
-                          >
-                            Run
-                          </Button>
-                          {automation.status === "active" ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={busy !== null}
-                              onClick={() => void handleAction("pause", automation.id)}
-                            >
-                              Pause
-                            </Button>
-                          ) : automation.status !== "disabled" ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={busy !== null}
-                              onClick={() => void handleAction("activate", automation.id)}
-                            >
-                              Activate
-                            </Button>
-                          ) : null}
-                        </>
+                        Run now
+                      </Button>
+                      {automation.status === "active" ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy !== null}
+                          onClick={() => void handleAction("pause", automation.id)}
+                        >
+                          Pause
+                        </Button>
                       ) : null}
-                    </td>
+                    </>
+                  ) : null}
+                </div>
+              </MobileRecordCard>
+            ))}
+          </MobileRecordList>
+        ) : (
+          <SectionCard title="Your automations">
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Schedule</th>
+                    <th>Last run</th>
+                    <th>Next run</th>
+                    <th>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </SectionCard>
-      )}
+                </thead>
+                <tbody>
+                  {automations.map((automation) => (
+                    <tr key={automation.id}>
+                      <td>
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => setSelectedId(automation.id)}
+                        >
+                          {automation.name}
+                        </button>
+                      </td>
+                      <td>
+                        <StatusBadge
+                          status={automation.status}
+                          label={humanAutomationStatus(automation.status)}
+                        />
+                      </td>
+                      <td>{triggerLabel(automation)}</td>
+                      <td>{automation.lastRunAt ? formatRelativeTime(automation.lastRunAt) : "—"}</td>
+                      <td>{automation.nextRunAt ? formatRelativeTime(automation.nextRunAt) : "—"}</td>
+                      <td className="table-actions">
+                        {canManage ? (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={busy !== null || automation.status === "disabled"}
+                              onClick={() => void handleAction("run", automation.id)}
+                            >
+                              Run now
+                            </Button>
+                            {automation.status === "active" ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={busy !== null}
+                                onClick={() => void handleAction("pause", automation.id)}
+                              >
+                                Pause
+                              </Button>
+                            ) : automation.status !== "disabled" ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={busy !== null}
+                                onClick={() => void handleAction("activate", automation.id)}
+                              >
+                                Activate
+                              </Button>
+                            ) : null}
+                          </>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </SectionCard>
+        )}
+      </PortalPageBody>
 
       <Drawer
         open={Boolean(selected)}

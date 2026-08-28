@@ -133,19 +133,43 @@ export default function PortalAiConnectionsPage() {
     }
   }
 
-  if (loading) return <LoadingState label="Loading AI connections…" />;
-  if (error || !company) {
-    return <ErrorState title="Unable to load AI connections" description={error ?? undefined} />;
+  const connectedCount = ordered.filter((c) => c.tokenStatus === "Active").length;
+  const needsAttention = ordered.some(
+    (c) => c.tokenStatus === "Revoked" || c.status === "error",
+  );
+
+  if (loading || !company) return <LoadingState label="Loading AI access…" />;
+  if (error) {
+    return <ErrorState title="Unable to load AI access" description={error} />;
   }
 
   return (
-    <>
+    <div className="portal-page">
       <PortalPageHeader
-        title="AI"
-        description={`Connect ChatGPT or Claude to ${company.name}'s business systems securely through INFRA.`}
+        title="AI Access"
+        description="Connect ChatGPT or Claude to your business systems securely."
       />
 
       {loadError ? <Notice tone="danger">{loadError}</Notice> : null}
+
+      <div className="portal-ai-summary card">
+        <div className="portal-ai-summary-row">
+          <span className="muted small">Status</span>
+          <strong>
+            {connectedCount > 0
+              ? needsAttention
+                ? "Attention needed"
+                : "Ready"
+              : "Not connected"}
+          </strong>
+        </div>
+        <div className="portal-ai-summary-row">
+          <span className="muted small">Connected</span>
+          <strong>
+            {connectedCount} of {ordered.filter((c) => c.status !== "coming_soon").length}
+          </strong>
+        </div>
+      </div>
 
       {tokenReveal ? (
         <Notice tone="success">
@@ -218,7 +242,7 @@ export default function PortalAiConnectionsPage() {
                   ) : connected ? (
                     <>
                       <Button type="button" variant="primary" size="sm" onClick={() => setManageType(conn.clientType)}>
-                        Manage connection
+                        Manage
                       </Button>
                       <Button
                         type="button"
@@ -340,6 +364,6 @@ export default function PortalAiConnectionsPage() {
           </>
         ) : null}
       </Modal>
-    </>
+    </div>
   );
 }

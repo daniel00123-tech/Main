@@ -153,7 +153,29 @@ function mapEvent(event: AuditEvent): CustomerActivityItem | null {
           ? "Action completed"
           : type === "action_plan.execution_failed"
             ? "Action failed"
-            : "Action updated",
+            : type === "action_plan.created"
+              ? "Approval requested"
+              : "Action updated",
+      createdAt: event.createdAt,
+      tone: type.includes("failed") ? "danger" : "healthy",
+    };
+  }
+  if (type.startsWith("automation.")) {
+    const name =
+      typeof event.detail?.name === "string" ? String(event.detail.name) : "Automation";
+    return {
+      id: event.id,
+      title: name,
+      description:
+        type === "automation.run_completed"
+          ? "Automation completed"
+          : type === "automation.run_failed"
+            ? "Automation failed"
+            : type === "automation.activated"
+              ? "Automation activated"
+              : type === "automation.paused"
+                ? "Automation paused"
+                : "Automation updated",
       createdAt: event.createdAt,
       tone: type.includes("failed") ? "danger" : "healthy",
     };
@@ -196,9 +218,64 @@ export function buildCustomerActivityFeed(
   events: AuditEvent[],
   limit = 5,
 ): CustomerActivityItem[] {
+  return buildCustomerActivityList(events, limit);
+}
+
+export type CustomerActivityFilter = "all" | "users" | "ai" | "connectors" | "billing" | "actions";
+
+/** Full customer activity list with noise collapsed — for Activity page. */
+export function buildCustomerActivityList(
+  events: AuditEvent[],
+  limit = 100,
+): CustomerActivityItem[] {
   const mapped = events
     .map((event) => mapEvent(event))
     .filter((item): item is CustomerActivityItem => item !== null);
 
   return collapseNearDuplicates(mapped).slice(0, limit);
+}
+
+export function filterCustomerActivity(
+  items: CustomerActivityItem[],
+  filter: CustomerActivityFilter,
+  query: string,
+): CustomerActivityItem[] {
+  const q = query.trim().toLowerCase();
+  return items.filter((item) => {
+    const category = customerActivityFilterCategory(item);
+    if (filter !== "all" && category !== filter) return false;
+    if (!q) return true;
+    return (
+      item.title.toLowerCase().includes(q) ||
+      item.description.toLowerCase().includes(q)
+    );
+  });
+}
+
+export function customerActivityFilterCategory(item: CustomerActivityItem): CustomerActivityFilter {
+  if (item.title === "Billing") return "billing";
+  if (
+    item.title === "Approvals" ||
+    item.description.includes("Automation") ||
+    item.description.includes("Approval")
+  ) {
+    return "actions";
+  }
+  if (
+    item.description === "Signed in" ||
+    item.description === "Signed out" ||
+    item.title === "Team"
+  ) {
+    return "users";
+  }
+  if (item.description.includes("AI request")) return "ai";
+  if (
+    item.description === "Synced successfully" ||
+    item.description === "Sync failed" ||
+    item.description === "Connected" ||
+    item.description === "Disconnected"
+  ) {
+    return "connectors";
+  }
+  return "all";
 }

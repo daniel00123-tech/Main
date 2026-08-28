@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
-import { PageHeader, StatusBadge } from "../components";
+import { ErrorState, LoadingState, PageHeader, StatusBadge } from "../components";
 
 export function PortalPageHeader({
   title,
@@ -28,6 +28,30 @@ export function PortalPageHeader({
       className={className}
     />
   );
+}
+
+export function PortalPageBody({
+  loading,
+  error,
+  loadingLabel = "Loading…",
+  errorTitle = "Unable to load this page",
+  onRetry,
+  children,
+}: {
+  loading?: boolean;
+  error?: string | null;
+  loadingLabel?: string;
+  errorTitle?: string;
+  onRetry?: () => void;
+  children: ReactNode;
+}) {
+  if (loading) return <LoadingState label={loadingLabel} />;
+  if (error) {
+    return (
+      <ErrorState title={errorTitle} description={error} onRetry={onRetry} />
+    );
+  }
+  return <div className="portal-page-body">{children}</div>;
 }
 
 export function IntegrationRow({
