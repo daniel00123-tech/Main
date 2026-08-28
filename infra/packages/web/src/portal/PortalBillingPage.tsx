@@ -27,6 +27,7 @@ type TopUpRecord = {
   createdAt: string;
   creditedAt?: string | null;
   failureReason?: string | null;
+  stripeMode?: string | null;
 };
 
 type BillingTab = "overview" | "payment" | "auto-topup" | "transactions" | "invoices" | "addons";
@@ -68,7 +69,7 @@ export default function PortalBillingPage() {
   const [paymentMethod, setPaymentMethod] = useState<Awaited<
     ReturnType<typeof api.getPaymentMethod>
   >["paymentMethod"] | null>(null);
-  const [autoTopUpThreshold, setAutoTopUpThreshold] = useState("10");
+  const [autoTopUpThreshold, setAutoTopUpThreshold] = useState("25");
   const [autoTopUpAmount, setAutoTopUpAmount] = useState("25");
   const [autoTopUpConfirm, setAutoTopUpConfirm] = useState(false);
   const [payments, setPayments] = useState<Array<Record<string, unknown>>>([]);
@@ -95,8 +96,19 @@ export default function PortalBillingPage() {
     if (!company) return;
     void (async () => {
       try {
-        await reloadWallet();
-        if (tab === "payment" || searchParams.get("setup") === "complete") {
+        const data = await reloadWallet();
+        const providerAutoTopUp = data?.paymentProvider?.autoTopUp;
+        if (providerAutoTopUp?.thresholdCents != null) {
+          setAutoTopUpThreshold(String(providerAutoTopUp.thresholdCents / 100));
+        }
+        if (providerAutoTopUp?.amountCents != null) {
+          setAutoTopUpAmount(String(providerAutoTopUp.amountCents / 100));
+        }
+        if (
+          tab === "payment" ||
+          searchParams.get("setup") === "complete" ||
+          searchParams.get("topup") === "success"
+        ) {
           const pm = await api.getPaymentMethod(company.slug);
           setPaymentMethod(pm.paymentMethod);
         }
@@ -412,7 +424,12 @@ export default function PortalBillingPage() {
                   <tbody>
                     {recentTopUps.slice(0, 5).map((topUp) => (
                       <tr key={topUp.id}>
-                        <td>{formatCurrency(topUp.amountCents, topUp.currency)}</td>
+                        <td>
+                          {formatCurrency(topUp.amountCents, topUp.currency)}
+                          {topUp.stripeMode === "test" ? (
+                            <span className="muted small"> (Test)</span>
+                          ) : null}
+                        </td>
                         <td>{topUp.status.replace(/_/g, " ")}</td>
                         <td>{formatDate(topUp.creditedAt ?? topUp.createdAt)}</td>
                       </tr>
@@ -427,8 +444,12 @@ export default function PortalBillingPage() {
 
       {tab === "payment" ? (
         <SectionCard title="Payment method">
-          {searchParams.get("setup") === "complete" ? (
+          {searchParams.get("setup") === "complete" && paymentMethod?.hasPaymentMethod ? (
             <Notice tone="success">Payment method setup completed in Stripe.</Notice>
+          ) : searchParams.get("setup") === "complete" && !paymentMethod?.hasPaymentMethod ? (
+            <Notice tone="info">
+              Stripe setup finished — if your card is not shown yet, refresh this page in a moment.
+            </Notice>
           ) : null}
           {paymentMethod?.hasPaymentMethod ? (
             <>
@@ -504,7 +525,8 @@ export default function PortalBillingPage() {
         <SectionCard title="Auto top-up">
           <Notice tone="info">
             Configure automatic credit when your balance falls below a threshold. Requires a saved
-            payment method.
+            payment method. Auto top-up evaluates your total spendable wallet balance (promotional,
+            purchased, and sandbox credits combined).
             {(autoTopUp as { liveEligible?: boolean })?.liveEligible
               ? " Live billing is active for this company — enable auto top-up explicitly after saving a card."
               : stripeTestMode
@@ -689,11 +711,31 @@ export default function PortalBillingPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {payments.map((p) => (
+                  {payments.map((p) => {
+                    const stripeMode = p.stripeMode ? String(p.stripeMode) : null;
+                    const isTestStripeTopUp =
+                      stripeMode === "test" ||
+                      (p.entryType === "top_up" && p.creditClass === "test");
+                    const typeLabel =
+                      p.entryType === "top_up"
+                        ? isTestStripeTopUp
+                          ? "Stripe top-up (Test)"
+                          : "Paid top-up"
+                        : p.creditClass === "test"
+                          ? "Promotional"
+                          : p.creditClass === "paid"
+                            ? "Paid top-up"
+                            : String(p.entryType);
+                    return (
                     <tr key={String(p.id)}>
                       <td className="muted small">{formatDate(String(p.date))}</td>
-                      <td>{String(p.description ?? p.entryType)}</td>
-                      <td>{String(p.creditClass === "test" ? "Promotional" : p.creditClass === "paid" ? "Paid top-up" : p.entryType)}</td>
+                      <td>
+                        {String(p.description ?? p.entryType)}
+                        {isTestStripeTopUp ? (
+                          <span className="muted small"> — sandbox</span>
+                        ) : null}
+                      </td>
+                      <td>{typeLabel}</td>
                       <td className="num">{formatCurrency(Number(p.amountCents), wallet.wallet.currency)}</td>
                       <td>
                         {p.receiptUrl ? (
@@ -705,7 +747,8 @@ export default function PortalBillingPage() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

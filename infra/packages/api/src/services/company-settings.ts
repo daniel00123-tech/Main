@@ -1,5 +1,7 @@
-import { nowIso } from "../db/mappers";
-import { syncLowBalanceThreshold } from "./wallet-metrics";
+import {
+  DEFAULT_AUTO_TOPUP_AMOUNT_CENTS,
+  DEFAULT_AUTO_TOPUP_THRESHOLD_CENTS,
+} from "./payment-providers";
 
 export type CompanySettings = {
   companyId: string;
