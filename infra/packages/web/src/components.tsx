@@ -42,6 +42,8 @@ export function PageHeader({
   breadcrumb,
   actions,
   meta,
+  hideTitleOnMobile = false,
+  className = "",
 }: {
   title: string;
   description?: string;
@@ -50,10 +52,21 @@ export function PageHeader({
   breadcrumb?: Array<{ label: string; to?: string }>;
   actions?: ReactNode;
   meta?: ReactNode;
+  /** Hides the primary page title on narrow viewports (portal shell already shows company identity). */
+  hideTitleOnMobile?: boolean;
+  className?: string;
 }) {
   const desc = description ?? subtitle;
   return (
-    <header className="page-header">
+    <header
+      className={[
+        "page-header",
+        hideTitleOnMobile ? "page-header--hide-title-mobile" : "",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <div className="page-header-copy">
         {breadcrumb && breadcrumb.length > 0 ? (
           <nav className="page-breadcrumb" aria-label="Breadcrumb">
@@ -65,7 +78,7 @@ export function PageHeader({
             ))}
           </nav>
         ) : null}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div className="page-header-title-row">
           <h1 className="page-title">{title}</h1>
           {meta}
         </div>

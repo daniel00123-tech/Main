@@ -8,14 +8,25 @@ export function PortalPageHeader({
   description,
   actions,
   meta,
+  hideTitleOnMobile,
+  className,
 }: {
   title: string;
   description?: string;
   actions?: ReactNode;
   meta?: ReactNode;
+  hideTitleOnMobile?: boolean;
+  className?: string;
 }) {
   return (
-    <PageHeader title={title} description={description} actions={actions} meta={meta} />
+    <PageHeader
+      title={title}
+      description={description}
+      actions={actions}
+      meta={meta}
+      hideTitleOnMobile={hideTitleOnMobile}
+      className={className}
+    />
   );
 }
 

@@ -30,6 +30,7 @@ import { humanRole } from "../lib/format";
 import { api } from "../api";
 import { PortalCompanyProvider, usePortalCompany } from "./usePortalCompany";
 import { PortalNotificationBell } from "./PortalNotificationBell";
+import { PortalCompanyHomeLink } from "./PortalCompanyHomeLink";
 
 type NavItem = {
   path: string;
@@ -126,6 +127,24 @@ function PortalShellInner() {
     return () => window.clearInterval(timer);
   }, [refreshPendingApprovals]);
 
+  useEffect(() => {
+    if (!isMobile || !mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobile, mobileOpen]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
+
   const role = membership?.role ?? "office_staff";
   const base = company ? `/portal/${company.slug}` : "/portal";
 
@@ -172,18 +191,35 @@ function PortalShellInner() {
 
   return (
     <div className={shellClass}>
-      <div className="mobile-nav-scrim" onClick={() => setMobileOpen(false)} aria-hidden />
+      <div
+        className="mobile-nav-scrim"
+        onClick={() => setMobileOpen(false)}
+        aria-hidden={!mobileOpen}
+      />
       <div className="mobile-topbar">
-        <Button type="button" variant="ghost" size="sm" aria-label="Open navigation" onClick={() => setMobileOpen(true)}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
+          aria-expanded={mobileOpen}
+          aria-controls="portal-company-navigation"
+          onClick={() => setMobileOpen((open) => !open)}
+        >
           <Menu size={18} />
         </Button>
-        <strong>{company.name}</strong>
-        <div style={{ marginLeft: "auto" }}>
-          <PortalNotificationBell />
+        <PortalCompanyHomeLink company={company} className="portal-company-home-link--topbar" />
+        <div className="mobile-topbar-actions">
+          <PortalNotificationBell variant="header" />
         </div>
       </div>
 
-      <aside className="sidebar" aria-label="Company navigation">
+      <aside
+        id="portal-company-navigation"
+        className="sidebar"
+        aria-label="Company navigation"
+        aria-hidden={isMobile && !mobileOpen ? true : undefined}
+      >
         <div className="brand-block">
           <div className="brand-mark" aria-hidden>
             IN
@@ -238,13 +274,8 @@ function PortalShellInner() {
             </select>
           </div>
         ) : showLabels ? (
-          <div style={{ padding: "0 16px 12px" }}>
-            <div style={{ fontWeight: 600 }}>{company.name}</div>
-            <div className="muted small">
-              {company.portalSubdomain
-                ? `${company.portalSubdomain}.infra-web.pages.dev`
-                : company.slug}
-            </div>
+          <div className="portal-sidebar-company">
+            <PortalCompanyHomeLink company={company} className="portal-company-home-link--sidebar" />
           </div>
         ) : null}
 
@@ -292,8 +323,8 @@ function PortalShellInner() {
 
         <div className="sidebar-spacer" />
 
-        <div style={{ padding: showLabels ? "0 16px 12px" : "0 8px 12px" }}>
-          <PortalNotificationBell />
+        <div className="sidebar-notifications">
+          <PortalNotificationBell variant="sidebar" />
         </div>
 
         <div className="sidebar-footer">
