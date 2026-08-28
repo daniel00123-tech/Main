@@ -983,6 +983,23 @@ connectors.post("/api/internal/cmd16b/outlook-rbac", async (c) => {
   }
 });
 
+connectors.post("/api/internal/microsoft/knowledge-hardening", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runMicrosoftKnowledgeHardeningAcceptance } = await import(
+      "../services/microsoft-acceptance-hardening"
+    );
+    return c.json(await runMicrosoftKnowledgeHardeningAcceptance(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Hardening acceptance failed" },
+      500,
+    );
+  }
+});
+
 connectors.get(
   "/api/companies/:slug/microsoft/dashboard",
   requireAuth,

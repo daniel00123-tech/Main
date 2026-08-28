@@ -236,6 +236,16 @@ describe("ChatGPT search argument + idempotency guards", () => {
     expect(strippedKeys.sort()).toEqual(["department", "topic"]);
   });
 
+  it("forwards explicit source and category filters", () => {
+    const { forwarded } = sanitizeKnowledgeSearchArguments({
+      query: "investments",
+      source: "microsoft_365",
+      category: "sharepoint",
+    });
+    expect(forwarded.source).toBe("microsoft_365");
+    expect(forwarded.category).toBe("sharepoint");
+  });
+
   it("narrows search schema so ChatGPT does not see topic filters", () => {
     const narrowed = narrowKnowledgeSearchInputSchema({
       type: "object",

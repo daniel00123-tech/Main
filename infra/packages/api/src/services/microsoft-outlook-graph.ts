@@ -317,23 +317,54 @@ export function stripHtmlToText(html: string): string {
     .trim();
 }
 
-export function buildMailKnowledgeText(message: GraphMailMessageDetail): string {
+export function buildMailKnowledgeText(
+  message: GraphMailMessageDetail,
+  options?: {
+    hasAttachments?: boolean;
+    attachments?: Array<{
+      filename: string;
+      contentType: string | null;
+      attachmentId: string;
+      indexedDocumentId: number | null;
+      indexingStatus: string;
+    }>;
+  },
+): string {
   const lines = [
     `Subject: ${message.subject ?? "(no subject)"}`,
     `From: ${message.from?.emailAddress?.address ?? message.sender?.emailAddress?.address ?? "unknown"}`,
     `To: ${(message.toRecipients ?? []).map((r) => r.emailAddress?.address).filter(Boolean).join(", ")}`,
     `Received: ${message.receivedDateTime ?? "unknown"}`,
     `Internet Message ID: ${message.internetMessageId ?? "unknown"}`,
+    `Has Attachments: ${options?.hasAttachments ?? message.hasAttachments ? "true" : "false"}`,
     "",
   ];
+
+  const attachments = options?.attachments ?? [];
+  if (attachments.length > 0) {
+    lines.push("Attachments:");
+    for (const attachment of attachments) {
+      lines.push(
+        `- ${attachment.filename} (${attachment.contentType ?? "unknown"}) attachmentId=${attachment.attachmentId} indexedDocumentId=${attachment.indexedDocumentId ?? "pending"} status=${attachment.indexingStatus}`,
+      );
+    }
+    lines.push("");
+  }
+
   if (message.body?.content) {
     const body =
       message.body.contentType?.toLowerCase() === "html"
         ? stripHtmlToText(message.body.content)
         : message.body.content;
-    lines.push(body);
-  } else if (message.bodyPreview) {
+    if (body.trim()) {
+      lines.push(body);
+    } else {
+      lines.push("(empty body)");
+    }
+  } else if (message.bodyPreview?.trim()) {
     lines.push(message.bodyPreview);
+  } else {
+    lines.push("(empty body)");
   }
   return lines.join("\n");
 }

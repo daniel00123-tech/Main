@@ -8,8 +8,25 @@ import type { McpEnvironment } from "@infra/shared";
 import { resolveMcpFetcher } from "./mcp-client";
 
 export type KnowledgeUploadResult =
-  | { ok: true; documentId: number; externalId: string; indexed: boolean }
+  | {
+      ok: true;
+      documentId: number;
+      externalId: string;
+      indexed: boolean;
+      partial?: boolean;
+      requiresOcr?: boolean;
+      extractionQuality?: string;
+      documentStatus?: string;
+    }
   | { ok: false; code: string; message: string };
+
+export type OutlookAttachmentMeta = {
+  filename: string;
+  contentType: string | null;
+  attachmentId: string;
+  indexedDocumentId: number | null;
+  indexingStatus: string;
+};
 
 function adminAuthHeader(env: Env): string | null {
   const token =
@@ -41,6 +58,95 @@ async function adminFetch(
   return fetch(`${base}${path}`, { ...init, headers });
 }
 
+const INDEX_CONTINUATION_MAX_ROUNDS = 64;
+
+type IndexResponseBody = {
+  ok?: boolean;
+  error?: string;
+  partial?: boolean;
+  continueAt?: number;
+  totalChunks?: number;
+  chunksIndexed?: number;
+  requiresOcr?: boolean;
+  extractionQuality?: string;
+  documentStatus?: string;
+};
+
+export async function indexKnowledgeDocumentUntilComplete(
+  env: Env,
+  mcp: McpEnvironment,
+  documentId: number,
+): Promise<
+  | {
+      ok: true;
+      partial: boolean;
+      requiresOcr: boolean;
+      extractionQuality?: string;
+      documentStatus?: string;
+      chunksIndexed?: number;
+    }
+  | { ok: false; code: string; message: string }
+> {
+  let lastBody: IndexResponseBody = {};
+  for (let round = 0; round < INDEX_CONTINUATION_MAX_ROUNDS; round++) {
+    const indexResponse = await adminFetch(
+      env,
+      mcp,
+      `/admin/knowledge/${documentId}/index`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+    );
+    lastBody = (await indexResponse.json().catch(() => ({}))) as IndexResponseBody;
+
+    if (!indexResponse.ok || lastBody.ok === false) {
+      return {
+        ok: false,
+        code: lastBody.requiresOcr ? "KNOWLEDGE_REQUIRES_OCR" : "KNOWLEDGE_INDEX_FAILED",
+        message: lastBody.error ?? `Index HTTP ${indexResponse.status}`,
+      };
+    }
+
+    if (lastBody.requiresOcr) {
+      return {
+        ok: true,
+        partial: true,
+        requiresOcr: true,
+        extractionQuality: lastBody.extractionQuality,
+        documentStatus: lastBody.documentStatus ?? "requires_ocr",
+        chunksIndexed: lastBody.chunksIndexed ?? 0,
+      };
+    }
+
+    if (!lastBody.partial) {
+      return {
+        ok: true,
+        partial: false,
+        requiresOcr: false,
+        extractionQuality: lastBody.extractionQuality,
+        documentStatus: lastBody.documentStatus ?? "indexed",
+        chunksIndexed: lastBody.chunksIndexed,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    code: "KNOWLEDGE_INDEX_PARTIAL_TIMEOUT",
+    message: `Indexing did not complete after ${INDEX_CONTINUATION_MAX_ROUNDS} batches (last continueAt=${lastBody.continueAt ?? "unknown"})`,
+  };
+}
+
+export function mapKnowledgeIndexOutcomeToMicrosoftStatus(input: {
+  indexOk: boolean;
+  requiresOcr?: boolean;
+  partial?: boolean;
+  documentStatus?: string;
+}): string {
+  if (!input.indexOk) return "failed";
+  if (input.requiresOcr || input.documentStatus === "requires_ocr") return "partial";
+  if (input.partial || input.documentStatus === "pending") return "indexing";
+  return "indexed";
+}
+
 export async function uploadMicrosoftDocumentToKnowledge(
   env: Env,
   mcp: McpEnvironment,
@@ -62,7 +168,8 @@ export async function uploadMicrosoftDocumentToKnowledge(
     form.append("source", "microsoft_365");
     form.append("category", String(input.metadata.sourceType ?? "document"));
     if (input.metadata.topic) form.append("topic", String(input.metadata.topic));
-    if (input.metadata.connector) form.append("company", String(input.metadata.companyId ?? ""));
+    if (input.metadata.companyId) form.append("company", String(input.metadata.companyId));
+    form.append("metadata_json", JSON.stringify(input.metadata));
 
     const uploadResponse = await adminFetch(env, mcp, "/admin/knowledge/upload", {
       method: "POST",
@@ -74,6 +181,7 @@ export async function uploadMicrosoftDocumentToKnowledge(
       documentId?: number;
       externalId?: string;
       error?: string;
+      action?: string;
     };
 
     if (!uploadResponse.ok || !uploadBody.documentId) {
@@ -85,22 +193,29 @@ export async function uploadMicrosoftDocumentToKnowledge(
     }
 
     let indexed = false;
+    let partial = false;
+    let requiresOcr = false;
+    let extractionQuality: string | undefined;
+    let documentStatus: string | undefined;
+
     if (input.autoIndex !== false) {
-      const indexResponse = await adminFetch(
+      const indexResult = await indexKnowledgeDocumentUntilComplete(
         env,
         mcp,
-        `/admin/knowledge/${uploadBody.documentId}/index`,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+        uploadBody.documentId,
       );
-      const indexBody = (await indexResponse.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      indexed = indexResponse.ok && indexBody.ok !== false;
-      if (!indexed) {
+      if (!indexResult.ok) {
         return {
           ok: false,
-          code: "KNOWLEDGE_INDEX_FAILED",
-          message: indexBody.error ?? `Index HTTP ${indexResponse.status}`,
+          code: indexResult.code,
+          message: indexResult.message,
         };
       }
+      indexed = !indexResult.requiresOcr && !indexResult.partial;
+      partial = indexResult.partial;
+      requiresOcr = indexResult.requiresOcr;
+      extractionQuality = indexResult.extractionQuality;
+      documentStatus = indexResult.documentStatus;
     }
 
     return {
@@ -108,6 +223,10 @@ export async function uploadMicrosoftDocumentToKnowledge(
       documentId: uploadBody.documentId,
       externalId: uploadBody.externalId ?? input.externalId,
       indexed,
+      partial,
+      requiresOcr,
+      extractionQuality,
+      documentStatus,
     };
   } catch (err) {
     return {
@@ -116,6 +235,27 @@ export async function uploadMicrosoftDocumentToKnowledge(
       message: err instanceof Error ? err.message : "Knowledge bridge failed",
     };
   }
+}
+
+export async function reindexMicrosoftKnowledgeDocument(
+  env: Env,
+  mcp: McpEnvironment,
+  documentId: number,
+): Promise<KnowledgeUploadResult> {
+  const indexResult = await indexKnowledgeDocumentUntilComplete(env, mcp, documentId);
+  if (!indexResult.ok) {
+    return { ok: false, code: indexResult.code, message: indexResult.message };
+  }
+  return {
+    ok: true,
+    documentId,
+    externalId: "",
+    indexed: !indexResult.requiresOcr && !indexResult.partial,
+    partial: indexResult.partial,
+    requiresOcr: indexResult.requiresOcr,
+    extractionQuality: indexResult.extractionQuality,
+    documentStatus: indexResult.documentStatus,
+  };
 }
 
 function fnv1aHex(input: string): string {
@@ -165,6 +305,11 @@ export function buildOutlookKnowledgeProvenance(input: {
   sentDateTime?: string | null;
   attachmentId?: string | null;
   attachmentName?: string | null;
+  itemKind?: "mail_message" | "mail_attachment";
+  parentMessageId?: string | null;
+  parentKnowledgeDocumentId?: number | null;
+  hasAttachments?: boolean;
+  attachments?: OutlookAttachmentMeta[];
 }): Record<string, unknown> {
   return {
     connector: "microsoft_365",
@@ -181,7 +326,12 @@ export function buildOutlookKnowledgeProvenance(input: {
     receivedDateTime: input.receivedDateTime ?? null,
     sentDateTime: input.sentDateTime ?? null,
     attachmentId: input.attachmentId ?? null,
-    attachmentName: input.attachmentName ?? null,
+    attachmentFilename: input.attachmentName ?? null,
+    itemKind: input.itemKind ?? (input.attachmentId ? "mail_attachment" : "mail_message"),
+    parentMessageId: input.parentMessageId ?? null,
+    parentKnowledgeDocumentId: input.parentKnowledgeDocumentId ?? null,
+    hasAttachments: input.hasAttachments ?? false,
+    attachments: input.attachments ?? [],
     sourceLabel: [
       "Microsoft 365",
       "Outlook",
@@ -232,4 +382,56 @@ export async function reactivateMicrosoftKnowledgeDocument(
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : "Reactivate failed" };
   }
+}
+
+export async function lookupParentKnowledgeDocumentId(
+  db: D1Database,
+  input: {
+    companyId: string;
+    connectorInstanceId: string;
+    messageId: string;
+  },
+): Promise<number | null> {
+  const row = await db
+    .prepare(
+      `SELECT knowledge_document_id FROM microsoft_knowledge_items
+       WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ? LIMIT 1`,
+    )
+    .bind(input.companyId, input.connectorInstanceId, input.messageId)
+    .first<{ knowledge_document_id: number | null }>();
+  return row?.knowledge_document_id ?? null;
+}
+
+export async function buildOutlookAttachmentMetadata(
+  db: D1Database,
+  input: {
+    companyId: string;
+    connectorInstanceId: string;
+    messageId: string;
+    attachments: Array<{
+      id: string;
+      name: string;
+      contentType: string | null;
+    }>;
+  },
+): Promise<OutlookAttachmentMeta[]> {
+  const results: OutlookAttachmentMeta[] = [];
+  for (const attachment of input.attachments) {
+    const externalItemId = `${input.messageId}|${attachment.id}`;
+    const row = await db
+      .prepare(
+        `SELECT knowledge_document_id, indexing_status FROM microsoft_knowledge_items
+         WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ? LIMIT 1`,
+      )
+      .bind(input.companyId, input.connectorInstanceId, externalItemId)
+      .first<{ knowledge_document_id: number | null; indexing_status: string | null }>();
+    results.push({
+      filename: attachment.name,
+      contentType: attachment.contentType,
+      attachmentId: attachment.id,
+      indexedDocumentId: row?.knowledge_document_id ?? null,
+      indexingStatus: row?.indexing_status ?? "discovered",
+    });
+  }
+  return results;
 }
