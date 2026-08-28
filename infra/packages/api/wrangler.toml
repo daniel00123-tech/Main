@@ -31,6 +31,7 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # MICROSOFT_TENANT_ID (Microsoft Entra tenant ID — Caddington Holdings)
 # MICROSOFT_CLIENT_ID (INFRA Microsoft 365 Connector app)
 # MICROSOFT_CLIENT_SECRET (app secret — never commit)
+# MICROSOFT_MULTITENANT_APP (set to "true" after Entra multi-tenant config — production enabled 2026-08-28)
 # CADDINGTON_ADMIN_TOKEN (matches caddington-mcp Worker secret for /admin/knowledge/* bridge)
 
 # Same-account Worker MCP access (workers.dev public fetch returns CF 1042)

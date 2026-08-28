@@ -1,7 +1,7 @@
 # MICROSOFT 365 SELF-SERVICE ONBOARDING — SPRINT 2 REPORT
 
-**Date:** 2026-08-27  
-**Classification:** **MICROSOFT 365 SELF-SERVICE: PARTIAL**
+**Date:** 2026-08-28 (updated)  
+**Classification:** **MICROSOFT 365 SELF-SERVICE: PARTIAL — READY FOR LIVE SECOND-TENANT ACCEPTANCE**
 
 ---
 
@@ -13,11 +13,37 @@ Backlog Sprint 2 productises Microsoft 365 onboarding for OneDrive and SharePoin
 |------|-------------|--------|
 | `platform_legacy` | Existing Worker secrets → Caddington tenant | **Preserved** |
 | `company_app` | BYO Entra app credentials + admin consent | **Implemented** |
-| `platform_multitenant` | INFRA SaaS app + per-company admin consent | **Implemented (awaiting Entra config)** |
+| `platform_multitenant` | INFRA Business Connector SaaS app + per-company admin consent | **Enabled — awaiting live second-tenant demo** |
 
-Portal onboarding wizard, admin consent callback, tenant binding, discovery, health test, disconnect/reconnect, audit events, and security tests are in place. A genuine second-company live tenant onboarding was **not** demonstrated end-to-end (no second Entra tenant available in this run).
+Portal onboarding wizard, admin consent callback, tenant binding, discovery, health test, disconnect/reconnect, audit events, and security tests are in place.
 
-**CMD16B / Outlook RBAC:** Not modified. Existing Caddington Outlook configuration unchanged.
+**28 August 2026:** Daniel completed manual Entra configuration. Production `MICROSOFT_MULTITENANT_APP=true` enabled. Structural acceptance and Caddington regression pass. A genuine second-company / second-Entra-tenant live onboarding remains outstanding (human admin consent required).
+
+**CMD16C / Outlook RBAC:** Not modified. Exchange Application RBAC and Mail.Read exclusion unchanged. Security probes (admin 200 / Daniel 403) pass on production after Sprint 2 deploy.
+
+**Publisher verification:** Deferred by product owner — future commercial hardening, not a Sprint 2 blocker.
+
+---
+
+## 1a. Entra configuration completed (28 August 2026)
+
+| Item | Value |
+| --- | --- |
+| App display name | **INFRA Business Connector** (rename only) |
+| Application (client) ID | `e5fd0533-ce51-43b8-999c-152f1e268246` (unchanged) |
+| Supported account types | Multiple Entra ID tenants |
+| Tenant policy | Allow all tenants |
+| Redirect URI (Web) | `https://infra-api.daniel-dwyer123.workers.dev/api/connectors/microsoft/oauth/callback` |
+| Implicit grant (access/ID tokens) | Disabled |
+| `Files.Read.All` (Application) | Granted |
+| `Sites.Read.All` (Application) | Granted |
+| `User.Read.All` (Application) | Granted |
+| `User.Read` (Delegated) | Granted |
+| `Mail.Read` | **Not configured** (removed from app registration) |
+| Publisher domain | `CaddingtonHoldings.co.uk` |
+| Publisher verification | **Deferred** — Microsoft Partner Program out of scope for Stage 1 |
+
+No replacement Entra app. No credential rotation. No Exchange service-principal relationship change.
 
 ---
 
@@ -169,36 +195,70 @@ CREATE INDEX idx_connector_instances_microsoft_auth ...;
 | Component | Status |
 |-----------|--------|
 | API Worker | Deployed |
-| Portal (Pages) | Deployed |
+| Portal (Pages) | Deployed (`37873fe6`) |
 | D1 migration 0032 | Applied |
-| `MICROSOFT_MULTITENANT_APP` | **Not set** (awaiting Daniel) |
+| `MICROSOFT_MULTITENANT_APP` | **Enabled** (`true`, 2026-08-28) |
+| API deployment (multitenant enablement) | `01b949e9-af38-4757-8db9-907453253442` |
+| Platform credentials | **PRESENT** (`MICROSOFT_TENANT_ID`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`) |
 
 ---
 
-## 15. Caddington regression results
+## 15. Caddington regression results (28 August 2026)
 
-- **CMD16B endpoint:** Present (HTTP 403 without token — unchanged)
-- **No modifications** to Outlook ingestion, Exchange RBAC, Mail.Read, graph subscriptions
-- **Discover path:** `ensureMicrosoftLegacyBinding` preserves platform secrets path
-- **Existing sync:** Uses `companyId`-scoped token resolution; falls back to platform credentials for legacy
+| Check | Result |
+| --- | --- |
+| CMD13d discovery (`co_caddington`) | **PASS** — Graph auth OK, discovery complete |
+| Admin MCP bridge | **PASS** |
+| Google Drive knowledge regression | **PASS** |
+| CMD16B security (admin 200 / Daniel 403) | **PASS** — Exchange RBAC unchanged |
+| CMD16B idempotency / ingestion | **PASS** |
+| `platform_legacy` binding | Preserved — no disconnect/reconnect |
+| Outlook / Mail.Read / Exchange RBAC | **Untouched** |
+
+Note: CMD16C search acceptance improvements (PR #331) are not on this Sprint 2 branch; production Outlook **security and ingestion** remain healthy.
 
 ---
 
-## 16. External/manual Microsoft configuration still required (Daniel)
+## 16. Structural acceptance (28 August 2026)
 
-### For platform multi-tenant SaaS (`platform_multitenant`)
+| Check | Result |
+| --- | --- |
+| OAuth callback route | **PASS** (HTTP 302) |
+| Microsoft status route | **PASS** (HTTP 401 unauthenticated) |
+| CMD16B endpoint present | **PASS** |
+| Unit tests (OAuth + productisation) | **18/18 PASS** |
+| Full API suite | **410 passed**, 2 skipped |
 
-1. **Entra app registration** (existing INFRA app OR new multi-tenant app):
-   - Supported account types: **Accounts in any organizational directory**
-   - Redirect URI: `https://infra-api.daniel-dwyer123.workers.dev/api/connectors/microsoft/oauth/callback`
-2. **Application permissions** (admin consent): `Files.Read.All`, `Sites.Read.All`, `User.Read.All` — **not Mail.Read**
-3. **Publisher verification** (recommended for customer admin consent)
-4. **Worker secret:** `MICROSOFT_MULTITENANT_APP=true`
-5. Optionally update `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` if using a new app registration
+---
 
-### For BYO path (`company_app`)
+## 17. External/manual configuration — remaining human action
 
-Customer admin creates their own Entra app — no platform Entra changes required.
+### Live second-tenant acceptance (single remaining gate for PASS)
+
+A **genuinely separate** Microsoft Entra tenant (not Caddington) is required. INFRA companies HT/EL exist but do not provide a second Entra tenant by themselves.
+
+**Daniel's next step:**
+
+1. Open INFRA portal for the target company (e.g. HT Business):  
+   `https://infra-web.pages.dev/portal/ht-business/microsoft-365`
+2. Sign in as INFRA company administrator.
+3. Click **Connect using INFRA / SaaS** (`platform_multitenant`).
+4. Complete Microsoft administrator login and **admin consent** in the customer's Entra tenant.
+5. Return via callback → verify tenant binding → discover OneDrive/SharePoint → health test → sync/search.
+
+Do **not** use Caddington as both sides of a second-tenant test.
+
+### Deferred (not blockers)
+
+- **Publisher verification** — future commercial hardening; Microsoft Partner Program out of scope for Stage 1
+- **Sprint 3** — not started
+
+### Completed (Daniel, 28 August 2026)
+
+~~Entra multi-tenant app configuration~~  
+~~`MICROSOFT_MULTITENANT_APP=true`~~  
+~~Web redirect URI~~  
+~~Application permissions (no Mail.Read)~~
 
 ---
 
@@ -229,22 +289,23 @@ https://github.com/daniel00123-tech/Main/pull/new/cursor/infra-m365-self-service
 
 ## 21. Known limitations
 
-- Platform multi-tenant onboarding blocked until `MICROSOFT_MULTITENANT_APP=true` + Entra multi-tenant config
-- No live second-company tenant demonstration in this sprint
-- Outlook/mail self-service explicitly deferred (CMD16B untouched)
-- Publisher-verified admin consent may still require manual customer IT step
+- Live second-company / second-Entra-tenant onboarding **not yet demonstrated** (human admin consent required)
+- Outlook/mail self-service explicitly deferred (CMD16C frozen baseline)
+- Publisher verification deferred — not a current blocker
 - `platform_legacy` disconnect disabled to protect Caddington production
+- CMD16C search acceptance script improvements require PR #331 merge for ALPHA PASS classification on acceptance runner
 
 ---
 
-## 22. Recommended next steps (Sprint 3+)
+## 22. Recommended next steps
 
-1. Daniel completes Entra multi-tenant configuration; set `MICROSOFT_MULTITENANT_APP=true`
-2. Demonstrate HeatTech/Elvex onboarding via BYO or platform path
-3. MCP admin bridge generalisation per company (beyond Caddington token)
-4. Scheduled sync activation post-onboarding
-5. Outlook remains separate backlog (CMD16B+), not Sprint 3 default
+1. **Daniel:** Complete live second-tenant onboarding via portal (see §17)
+2. Re-classify Sprint 2 to **PASS** after successful end-to-end demo
+3. Sprint 3 — not started until explicitly directed
+4. Outlook remains separate track (CMD16C / Exchange RBAC), not Sprint 3 default
 
 ---
 
-**STOP — Sprint 2 complete. Sprint 3 not started.**
+**Classification: MICROSOFT 365 SELF-SERVICE: PARTIAL — READY FOR LIVE SECOND-TENANT ACCEPTANCE**
+
+**STOP — Sprint 3 not started.**
