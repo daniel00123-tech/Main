@@ -38,6 +38,7 @@ export function IntegrationRow({
   statusLabel,
   action,
   onClick,
+  compact = false,
 }: {
   icon?: ReactNode;
   name: string;
@@ -46,6 +47,7 @@ export function IntegrationRow({
   statusLabel?: string;
   action?: ReactNode;
   onClick?: () => void;
+  compact?: boolean;
 }) {
   const inner = (
     <>
@@ -53,7 +55,7 @@ export function IntegrationRow({
         {icon ? <div className="integration-row-icon">{icon}</div> : null}
         <div className="integration-row-copy">
           <div className="integration-row-title">{name}</div>
-          <div className="muted small">{purpose}</div>
+          <div className="muted small integration-row-purpose">{purpose}</div>
         </div>
       </div>
       <div className="integration-row-meta">
@@ -62,18 +64,25 @@ export function IntegrationRow({
       </div>
     </>
   );
+  const className = `integration-row${compact ? " integration-row-compact" : ""}`;
   if (onClick) {
     return (
-      <button type="button" className="integration-row" onClick={onClick}>
+      <button type="button" className={className} onClick={onClick}>
         {inner}
       </button>
     );
   }
-  return <div className="integration-row">{inner}</div>;
+  return <div className={className}>{inner}</div>;
 }
 
-export function CompactList({ children }: { children: ReactNode }) {
-  return <div className="compact-list">{children}</div>;
+export function CompactList({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={["compact-list", className].filter(Boolean).join(" ")}>{children}</div>;
 }
 
 export function ViewAllLink({ to, label = "View all" }: { to: string; label?: string }) {

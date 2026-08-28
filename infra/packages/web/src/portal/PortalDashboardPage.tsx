@@ -1,10 +1,14 @@
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plug } from "lucide-react";
 import {
+  buildCustomerActivityFeed,
+  buildCustomerAttention,
   connectorOverviewDescription,
   connectorOverviewTitle,
+  customerOverallHealthy,
   deriveConnectorCustomerHealth,
+  primaryAttentionSummary,
 } from "@infra/shared";
 import {
   AttentionBanner,
@@ -16,6 +20,7 @@ import {
   SectionCard,
   StatusBadge,
   formatCurrency,
+  useMediaQuery,
 } from "../components";
 import { OnboardingChecklist } from "../components/OnboardingChecklist";
 import { api } from "../api";
@@ -23,8 +28,6 @@ import {
   actionCentreBucket,
   formatRelativeTime,
   greetingForNow,
-  humanActor,
-  humanEventLabel,
   humanRole,
 } from "../lib/format";
 import { CompactList, IntegrationRow, PortalPageHeader, ViewAllLink } from "./components";
@@ -35,6 +38,10 @@ import { usePortalCompany } from "./usePortalCompany";
 export default function PortalDashboardPage() {
   const { company, overview, loading, error, user, membership } = usePortalCompany();
   const [pendingActions, setPendingActions] = useState(0);
+  const isMobile = useMediaQuery("(max-width: 900px)");
+  const role = membership?.role ?? "office_staff";
+  const canSeeBilling =
+    role === "company_admin" || role === "director" || user?.isPlatformAdmin;
 
   useEffect(() => {
     if (!company) return;
@@ -49,69 +56,135 @@ export default function PortalDashboardPage() {
     }).catch(() => setPendingActions(0));
   }, [company]);
 
+  const base = company ? `/portal/${company.slug}` : "";
+  const mcp = overview?.mcpEnvironments[0] ?? null;
+  const usage = overview?.usageSummary;
+  const wallet = overview?.wallet;
+  const connectors = overview?.connectorInstances.filter((c) => c.status !== "draft") ?? [];
+  const testCents = overview?.walletCredits?.testCents ?? 0;
+  const paidCents = overview?.walletCredits?.paidCents ?? 0;
+  const walletHealth =
+    wallet?.walletHealthState ?? (wallet?.lowBalance ? "low" : "healthy");
+
+  const attentionItems = useMemo(() => {
+    if (!company || !overview) return [];
+    return buildCustomerAttention({
+      companyStatus: company.status,
+      basePath: base,
+      pendingActions,
+      walletHealth: walletHealth === "low" ? "low" : walletHealth,
+      lowBalance: wallet?.lowBalance ?? false,
+      onboardingProblems: overview.onboarding?.problems,
+    });
+  }, [base, company, overview, pendingActions, wallet?.lowBalance, walletHealth]);
+
+  const attentionForBanner = useMemo(
+    () =>
+      attentionItems.map(({ id, title, description, to }) => ({
+        id,
+        title,
+        description,
+        to,
+      })),
+    [attentionItems],
+  );
+
+  const attentionLead = useMemo(
+    () => primaryAttentionSummary(attentionItems),
+    [attentionItems],
+  );
+
+  const overallHealthy = useMemo(() => {
+    if (!company || !overview) return false;
+    return customerOverallHealthy({
+      companyStatus: company.status,
+      attentionItems,
+      mcpOnboardingStatus: overview.mcpOnboardingStatus,
+    });
+  }, [attentionItems, company, overview]);
+
+  const activityFeed = useMemo(
+    () => buildCustomerActivityFeed(overview?.recentAuditEvents ?? [], 5),
+    [overview?.recentAuditEvents],
+  );
+
+  const kpiItems = useMemo(() => {
+    if (!overview) return [];
+    const all = [
+      {
+        label: "Connected systems",
+        value: String(connectors.length),
+        hint: mcp ? "Ready for AI" : "None connected",
+        mobile: true,
+      },
+      {
+        label: "Spend this month",
+        value: formatCurrency(overview.spendThisMonthCents ?? 0, wallet?.currency ?? "GBP"),
+        hint: `${usage?.requestsThisMonth ?? 0} requests`,
+        mobile: true,
+      },
+      {
+        label: "Credit balance",
+        value: wallet ? formatCurrency(wallet.balanceCents, wallet.currency) : "—",
+        hint:
+          walletHealth === "healthy"
+            ? `Paid ${formatCurrency(paidCents, wallet?.currency ?? "GBP")}`
+            : walletHealth === "empty"
+              ? "Empty — add credit"
+              : "Low balance",
+        mobile: canSeeBilling,
+      },
+      {
+        label: "Users",
+        value: String(overview.teamCount ?? 0),
+        hint: "Team members",
+        mobile: true,
+      },
+      {
+        label: "AI connections",
+        value: String(overview.activeAiIdentityCount ?? 0),
+        hint: "Active ChatGPT / Claude",
+        mobile: false,
+      },
+      {
+        label: "Usage this month",
+        value: String(usage?.requestsThisMonth ?? 0),
+        hint: `${usage?.successfulThisMonth ?? 0} successful`,
+        mobile: false,
+      },
+    ];
+    return isMobile ? all.filter((item) => item.mobile) : all;
+  }, [
+    canSeeBilling,
+    connectors.length,
+    isMobile,
+    mcp,
+    overview,
+    paidCents,
+    usage,
+    wallet,
+    walletHealth,
+  ]);
+
   if (loading) return <LoadingState label="Loading your company…" />;
   if (error || !company || !overview || !user) {
     return <ErrorState title="Unable to load dashboard" description={error ?? undefined} />;
   }
 
-  const base = `/portal/${company.slug}`;
-  const mcp = overview.mcpEnvironments[0] ?? null;
-  const usage = overview.usageSummary;
-  const wallet = overview.wallet;
-  const connectors = overview.connectorInstances.filter((c) => c.status !== "draft");
-  const testCents = overview.walletCredits?.testCents ?? 0;
-  const paidCents = overview.walletCredits?.paidCents ?? 0;
-  const lowBalance = wallet?.lowBalance ?? false;
-  const spendThisMonthCents = overview.spendThisMonthCents ?? 0;
-  const walletHealth =
-    wallet?.walletHealthState ?? (wallet?.lowBalance ? "low" : "healthy");
-
-  const attention: Array<{ id: string; title: string; description?: string; to?: string }> = [];
-
-  if (company.status === "suspended") {
-    attention.push({
-      id: "suspended",
-      title: "Company is suspended",
-      description: "Paid AI operations and connector writes are blocked.",
-      to: `${base}/settings`,
-    });
-  }
-  if (lowBalance || walletHealth === "critical" || walletHealth === "empty") {
-    attention.push({
-      id: "low-balance",
-      title:
-        walletHealth === "empty"
-          ? "No credit remaining"
-          : walletHealth === "critical"
-            ? "Very low credit"
-            : "Low credit",
-      description: "Add credit to avoid interrupted AI usage.",
-      to: `${base}/billing`,
-    });
-  }
-  if (pendingActions > 0) {
-    attention.push({
-      id: "pending-actions",
-      title: `${pendingActions} action${pendingActions === 1 ? "" : "s"} need attention`,
-      description: "Review and approve planned financial actions.",
-      to: `${base}/actions`,
-    });
-  }
-  for (const item of overview.onboarding?.problems ?? []) {
-    attention.push({
-      id: item.id,
-      title: item.title,
-      description: item.detail,
-      to: item.href ?? undefined,
-    });
-  }
-
-  const overallHealthy =
-    company.status === "active" &&
-    attention.filter((a) => a.id !== "suspended").length === 0 &&
-    (overview.mcpOnboardingStatus === "healthy" || overview.mcpOnboardingStatus === "registered");
-
-  const recentEvents = overview.recentAuditEvents.slice(0, 5);
+  const primaryAction =
+    pendingActions > 0 ? (
+      <Link to={`${base}/actions`} className="button button-primary">
+        Review actions{isMobile ? "" : ` (${pendingActions})`}
+      </Link>
+    ) : connectors.length === 0 ? (
+      <Link to={`${base}/connectors`} className="button button-primary">
+        Connect a system
+      </Link>
+    ) : (
+      <Link to={`${base}/usage`} className="button button-secondary">
+        View usage
+      </Link>
+    );
 
   return (
     <div className="executive-overview">
@@ -121,82 +194,45 @@ export default function PortalDashboardPage() {
         className="portal-overview-header"
         description={`${greetingForNow(user.displayName)} · ${humanRole(membership?.role)}`}
         meta={
-          <StatusBadge
-            status={overallHealthy ? "healthy" : company.status === "suspended" ? "suspended" : "warning"}
-            label={overallHealthy ? "All systems operational" : company.status === "suspended" ? "Suspended" : "Needs attention"}
-          />
+          !isMobile || attentionItems.length === 0 ? (
+            <StatusBadge
+              status={
+                overallHealthy
+                  ? "healthy"
+                  : company.status === "suspended"
+                    ? "suspended"
+                    : "warning"
+              }
+              label={
+                overallHealthy
+                  ? "All systems operational"
+                  : company.status === "suspended"
+                    ? "Suspended"
+                    : "Needs attention"
+              }
+            />
+          ) : null
         }
-        actions={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {connectors.length === 0 ? (
-              <Link to={`${base}/connectors`} className="button button-primary">
-                Connect a system
-              </Link>
-            ) : pendingActions > 0 ? (
-              <Link to={`${base}/actions`} className="button button-primary">
-                Review actions ({pendingActions})
-              </Link>
-            ) : (
-              <Link to={`${base}/usage`} className="button button-secondary">
-                View usage
-              </Link>
-            )}
-          </div>
-        }
+        actions={!isMobile || pendingActions === 0 ? primaryAction : null}
       />
 
-      <AttentionBanner items={attention} allClear="You're all caught up" />
+      <AttentionBanner
+        items={attentionForBanner}
+        allClear="You're all caught up"
+        compact={isMobile}
+        primaryAction={
+          attentionLead?.to && attentionLead.actionLabel
+            ? { label: attentionLead.actionLabel, to: attentionLead.to }
+            : undefined
+        }
+      />
 
       <PortalOnboardingChecklist />
 
-      <KpiStrip
-        items={[
-          {
-            label: "Connected systems",
-            value: String(connectors.length),
-            hint: mcp ? "AI connection ready" : "None connected",
-          },
-          {
-            label: "AI connections",
-            value: String(overview.activeAiIdentityCount ?? 0),
-            hint: "Active ChatGPT / Claude",
-          },
-          {
-            label: "Spend this month",
-            value: formatCurrency(spendThisMonthCents, wallet?.currency ?? "GBP"),
-            hint: `${usage?.requestsThisMonth ?? 0} requests`,
-          },
-          {
-            label: "Usage this month",
-            value: String(usage?.requestsThisMonth ?? 0),
-            hint: `${usage?.successfulThisMonth ?? 0} successful`,
-          },
-          {
-            label: "Credit balance",
-            value: wallet ? formatCurrency(wallet.balanceCents, wallet.currency) : "—",
-            hint:
-              walletHealth === "healthy"
-                ? `Paid ${formatCurrency(paidCents, wallet?.currency ?? "GBP")}`
-                : walletHealth === "empty"
-                  ? "Empty — add credit"
-                  : "Low balance",
-          },
-          {
-            label: "Users",
-            value: String(overview.teamCount ?? 0),
-            hint: "Team members",
-          },
-          {
-            label: "Actions",
-            value: String(pendingActions),
-            hint: pendingActions > 0 ? "Need attention" : "None pending",
-          },
-        ]}
-      />
-
-      <div className="grid grid-2">
+      <div className="grid grid-2 portal-overview-panels">
         <SectionCard
           title="Connected systems"
+          className="portal-panel-compact"
           actions={<ViewAllLink to={`${base}/connectors`} />}
         >
           {connectors.length === 0 && !mcp ? (
@@ -211,48 +247,52 @@ export default function PortalDashboardPage() {
               }
             />
           ) : (
-            <CompactList>
+            <CompactList className="portal-integration-list">
               {connectors.slice(0, 5).map((item) => {
                 const health = deriveConnectorCustomerHealth(item);
                 return (
-                <IntegrationRow
-                  key={item.id}
-                  icon={<ConnectorLogo slug={item.connectorDefinitionId.replace("conn_", "").replace(/_/g, "-")} name={item.name} />}
-                  name={connectorOverviewTitle({
-                    connectorDefinitionId: item.connectorDefinitionId,
-                    name: item.name,
-                    displayAccountName: item.displayAccountName,
-                    companyName: company.name,
-                  })}
-                  purpose={connectorOverviewDescription(item.connectorDefinitionId)}
-                  status={health.badgeStatus}
-                  statusLabel={health.label}
-                />
-              );
+                  <IntegrationRow
+                    key={item.id}
+                    compact={isMobile}
+                    icon={
+                      <ConnectorLogo
+                        slug={item.connectorDefinitionId.replace("conn_", "").replace(/_/g, "-")}
+                        name={item.name}
+                      />
+                    }
+                    name={connectorOverviewTitle({
+                      connectorDefinitionId: item.connectorDefinitionId,
+                      name: item.name,
+                      displayAccountName: item.displayAccountName,
+                      companyName: company.name,
+                    })}
+                    purpose={connectorOverviewDescription(item.connectorDefinitionId)}
+                    status={health.badgeStatus}
+                    statusLabel={health.label}
+                  />
+                );
               })}
-              {mcp && connectors.length === 0 ? (
-                <IntegrationRow
-                  name="AI connection"
-                  purpose="Connect ChatGPT or Claude to your company systems"
-                  status={overview.mcpOnboardingStatus ?? mcp.status}
-                />
-              ) : null}
             </CompactList>
           )}
         </SectionCard>
 
-        <SectionCard title="Recent activity" actions={<ViewAllLink to={`${base}/activity`} />}>
-          {recentEvents.length === 0 ? (
-            <EmptyState title="No activity yet" description="Company changes will appear here." />
+        <SectionCard
+          title="Recent activity"
+          className="portal-panel-compact"
+          actions={<ViewAllLink to={`${base}/activity`} />}
+        >
+          {activityFeed.length === 0 ? (
+            <EmptyState title="No recent activity" description="Important company changes will appear here." />
           ) : (
-            <CompactList>
-              {recentEvents.map((event) => (
+            <CompactList className="portal-integration-list">
+              {activityFeed.map((item) => (
                 <IntegrationRow
-                  key={event.id}
-                  name={humanEventLabel(event.eventType)}
-                  purpose={humanActor(event.actor)}
-                  status="healthy"
-                  statusLabel={formatRelativeTime(event.createdAt)}
+                  key={item.id}
+                  compact={isMobile}
+                  name={item.title}
+                  purpose={item.description}
+                  status={item.tone === "danger" ? "error" : item.tone === "warning" ? "warning" : "healthy"}
+                  statusLabel={formatRelativeTime(item.createdAt)}
                 />
               ))}
             </CompactList>
@@ -260,22 +300,18 @@ export default function PortalDashboardPage() {
         </SectionCard>
       </div>
 
-      {overview.onboarding ? (
+      <KpiStrip items={kpiItems} className="portal-kpi-strip" />
+
+      {overview.onboarding && !overview.onboarding.readyForUse && !isMobile ? (
         <CollapsibleBlock
           title="Setup checklist"
-          summary={
-            overview.onboarding.readyForUse ? (
-              <StatusBadge status="healthy" label="Ready" />
-            ) : (
-              <StatusBadge status="warning" label="Incomplete" />
-            )
-          }
+          summary={<StatusBadge status="warning" label="Incomplete" />}
         >
           <OnboardingChecklist onboarding={overview.onboarding} />
         </CollapsibleBlock>
       ) : null}
 
-      {(testCents > 0 || paidCents > 0) && (
+      {canSeeBilling && (testCents > 0 || paidCents > 0) && !isMobile ? (
         <CollapsibleBlock title="Credit breakdown" summary="Wallet details">
           <div className="kv-stack">
             <div className="drawer-row">
@@ -291,7 +327,7 @@ export default function PortalDashboardPage() {
             </p>
           </div>
         </CollapsibleBlock>
-      )}
+      ) : null}
     </div>
   );
 }

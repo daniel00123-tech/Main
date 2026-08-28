@@ -177,11 +177,13 @@ export function MetricGrid({ children, cols = 4 }: { children: ReactNode; cols?:
 
 export function KpiStrip({
   items,
+  className = "",
 }: {
   items: Array<{ label: string; value: ReactNode; hint?: string }>;
+  className?: string;
 }) {
   return (
-    <div className="kpi-strip" role="group" aria-label="Key metrics">
+    <div className={["kpi-strip", className].filter(Boolean).join(" ")} role="group" aria-label="Key metrics">
       {items.map((item) => (
         <div key={item.label} className="kpi-item">
           <div className="kpi-item-label">{item.label}</div>
@@ -438,9 +440,14 @@ export function ErrorState({
 export function AttentionBanner({
   items,
   allClear = "All systems operational",
+  compact = false,
+  primaryAction,
 }: {
   items: Array<{ id: string; title: string; description?: string; to?: string }>;
   allClear?: string;
+  /** Single-line summary for mobile dashboards — avoids repeating counts in a list. */
+  compact?: boolean;
+  primaryAction?: { label: string; to: string };
 }) {
   if (items.length === 0) {
     return (
@@ -448,11 +455,33 @@ export function AttentionBanner({
         <CheckCircle2 size={18} color="var(--success)" aria-hidden />
         <div>
           <p className="attention-title">{allClear}</p>
-          <p>Nothing requires attention right now.</p>
+          <p className="attention-detail">Nothing requires attention right now.</p>
         </div>
       </div>
     );
   }
+
+  if (compact) {
+    const lead = items[0]!;
+    const action = primaryAction ?? (lead.to ? { label: "Review", to: lead.to } : undefined);
+    return (
+      <div className="attention-banner warn attention-banner-compact" role="status">
+        <AlertCircle size={18} color="var(--warning)" aria-hidden />
+        <div className="attention-banner-compact-copy">
+          <p className="attention-title">{lead.title}</p>
+          {lead.description && items.length === 1 ? (
+            <p className="attention-detail">{lead.description}</p>
+          ) : null}
+        </div>
+        {action ? (
+          <Link to={action.to} className="button button-primary button-small attention-banner-cta">
+            {action.label}
+          </Link>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="attention-banner warn" role="status">
       <AlertCircle size={18} color="var(--warning)" aria-hidden />
@@ -460,9 +489,9 @@ export function AttentionBanner({
         <p className="attention-title">
           {items.length} item{items.length === 1 ? "" : "s"} require{items.length === 1 ? "s" : ""} attention
         </p>
-        <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+        <ul className="attention-list">
           {items.map((item) => (
-            <li key={item.id} style={{ marginBottom: 4 }}>
+            <li key={item.id}>
               {item.to ? <Link to={item.to}>{item.title}</Link> : <span>{item.title}</span>}
               {item.description ? <span className="muted"> — {item.description}</span> : null}
             </li>
