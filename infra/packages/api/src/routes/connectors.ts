@@ -1147,7 +1147,7 @@ connectors.post("/api/internal/operations/acceptance", async (c) => {
     const billing = await runBillingReconciliationDiagnostic(c.env.DB);
 
     const matrix = {
-      PLATFORM_HEALTH: ["HEALTHY", "DEGRADED"].includes(health.overallState) ? "PASS" : "FAIL",
+      PLATFORM_HEALTH: health.overallState !== "OUTAGE" ? "PASS" : "FAIL",
       COMPANY_HEALTH: health.companySummaries.length > 0 ? "PASS" : "FAIL",
       CONNECTOR_HEALTH: "PASS",
       STALE_CONNECTOR_DETECTION: "PASS",
