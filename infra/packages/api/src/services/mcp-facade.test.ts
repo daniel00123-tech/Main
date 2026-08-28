@@ -9,12 +9,13 @@ import {
   wantsSse,
 } from "./mcp-gateway";
 import { ACTION_CONTROL_TOOLS } from "./mcp-action-tools";
+import { AUTOMATION_CONTROL_TOOLS } from "./mcp-automation-tools";
 import { extractServiceCredential } from "./gateway";
 import type { Env } from "../env";
 import { XERO_ACTION_SERVICE_SCOPES } from "@infra/shared";
 
 function withActionTools(names: string[]): string[] {
-  return [...new Set([...names, ...ACTION_CONTROL_TOOLS])].sort();
+  return [...new Set([...names, ...ACTION_CONTROL_TOOLS, ...AUTOMATION_CONTROL_TOOLS])].sort();
 }
 
 const ACTION_ENGINE_SCOPES = [...XERO_ACTION_SERVICE_SCOPES];

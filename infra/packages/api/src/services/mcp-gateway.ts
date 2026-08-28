@@ -44,6 +44,11 @@ import { withActionControlTools, isActionControlTool, actionControlToolAllowed }
 import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeActionControlTool } from "./action-engine/action-control-handler";
+import {
+  withAutomationControlTools,
+  isAutomationControlTool,
+  executeAutomationControlTool,
+} from "./mcp-automation-tools";
 import { applyKnowledgeSourceScopeToSearchArgs } from "./knowledge-source-scope";
 
 type JsonRpcId = string | number | null;
@@ -621,9 +626,12 @@ export async function handleInfraMcpJsonRpc(
 
       const identityScopes =
         actor.type === "service" ? actor.identity.scopes : undefined;
-      const advertised = withOutlookReadTools(
-        withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
-        identityScopes,
+      const advertised = withAutomationControlTools(
+        withOutlookReadTools(
+          withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
+          identityScopes,
+        ),
+        { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
       );
 
       await logFacadeEvent(env.DB, {
@@ -729,6 +737,37 @@ export async function handleInfraMcpJsonRpc(
 
     const clientRequestId = resolveMcpClientRequestId(request, body);
     const interactionHints = pickInteractionHints(request, body);
+
+    if (isAutomationControlTool(toolName)) {
+      const automationResult = await executeAutomationControlTool(env, {
+        companyId: resolvedCompanyId,
+        toolName,
+        arguments: args,
+        actor,
+      });
+      const payloadText = JSON.stringify(automationResult.body, null, 2);
+      await logFacadeEvent(env.DB, {
+        companyId: resolvedCompanyId,
+        actor: actorLabel,
+        method,
+        toolName,
+        status: automationResult.status === 200 ? "ok" : "denied_or_failed",
+        httpStatus: automationResult.status,
+        detail: {
+          toolName,
+          code:
+            typeof automationResult.body.code === "string"
+              ? automationResult.body.code
+              : null,
+        },
+      });
+      return {
+        payload: jsonRpcResult(id, {
+          content: [{ type: "text", text: payloadText }],
+        }),
+        httpStatus: automationResult.status === 200 ? 200 : 200,
+      };
+    }
 
     if (isActionControlTool(toolName)) {
       if (

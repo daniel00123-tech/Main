@@ -11,9 +11,11 @@ import {
   AUTOMATION_SCHEDULE_FREQUENCIES,
   AUTOMATION_TEMPLATES,
   AUTOMATION_TRIGGER_TYPES,
+  automationCreatedViaOf,
   automationRecipientEmailOf,
   automationTemplateKeyOf,
   getAutomationTemplate,
+  isArchivedAutomation,
   isValidRecipientEmail,
   type AutomationActionType,
   type AutomationSchedule,
@@ -37,6 +39,12 @@ import { validateAutomationConfiguration } from "../services/automation-engine/a
 import { computeNextRunUtcIso, formatScheduleLabel } from "../services/automation-engine/schedule";
 import { requestAutomationRun } from "../services/automation-engine/run-request";
 import { provisionTemplateAutomation } from "../services/automation-engine/provision-template";
+import {
+  archiveAutomation,
+  createAutomationFromPlan,
+  planAutomationCreation,
+  AutomationControlError,
+} from "../services/automation-engine/control";
 
 type AppEnv = { Bindings: Env; Variables: AuthVariables };
 
@@ -91,6 +99,8 @@ function serialiseAutomation(definition: Awaited<ReturnType<typeof getAutomation
     templateKey,
     templateLabel: template?.label ?? null,
     recipientEmail: automationRecipientEmailOf(definition.configuration),
+    createdVia: automationCreatedViaOf(definition.configuration),
+    archived: isArchivedAutomation(definition),
   };
 }
 
@@ -115,9 +125,12 @@ automations.get("/api/automation-templates", ...authed, async (c) => {
 automations.get("/api/companies/:slug/automations", ...authed, async (c) => {
   const company = await resolveCompany(c);
   if (!company) return c.json({ error: "Company not found or access denied" }, 404);
+  const includeArchived = c.req.query("includeArchived") === "1";
   const items = await listAutomationDefinitions(c.env.DB, company.id);
   return c.json({
-    automations: items.map((item) => serialiseAutomation(item)),
+    automations: items
+      .filter((item) => includeArchived || !isArchivedAutomation(item))
+      .map((item) => serialiseAutomation(item)),
   });
 });
 
@@ -222,7 +235,9 @@ automations.post("/api/companies/:slug/automations/from-template", ...authed, as
     timezone?: string;
     hour?: number;
     minute?: number;
+    frequency?: (typeof AUTOMATION_SCHEDULE_FREQUENCIES)[number];
     activate?: boolean;
+    allowDuplicate?: boolean;
   }>();
 
   const recipient = (body.recipientEmail ?? user.email ?? "").trim();
@@ -239,8 +254,12 @@ automations.post("/api/companies/:slug/automations/from-template", ...authed, as
       timezone: body.timezone,
       hour: body.hour,
       minute: body.minute,
+      frequency: body.frequency,
       createdBy: user.email,
       activate: body.activate !== false,
+      createdVia: user.isPlatformAdmin ? "platform_admin" : "portal",
+      allowDuplicate: body.allowDuplicate === true,
+      onExisting: "reject",
     });
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
@@ -249,6 +268,8 @@ automations.post("/api/companies/:slug/automations/from-template", ...authed, as
       resourceType: "automation",
       resourceId: automation.id,
       detail: {
+        source: user.isPlatformAdmin ? "platform_admin" : "portal",
+        createdVia: user.isPlatformAdmin ? "platform_admin" : "portal",
         templateKey: body.templateKey,
         recipientEmail: recipient,
         name: automation.name,
@@ -408,6 +429,128 @@ automations.post("/api/companies/:slug/automations/:automationId/pause", ...auth
   return c.json({ automation: serialiseAutomation(updated) });
 });
 
+automations.post("/api/companies/:slug/automations/plan", ...authed, async (c) => {
+  const company = await resolveCompany(c);
+  if (!company) return c.json({ error: "Company not found or access denied" }, 404);
+  const user = c.get("user");
+  if (!canManageAutomations(user, company.id)) {
+    return c.json({ error: "Insufficient permissions" }, 403);
+  }
+  const body = await c.req.json<Record<string, unknown>>();
+  try {
+    const plan = await planAutomationCreation(c.env, {
+      companyId: company.id,
+      actor: {
+        label: user.email,
+        source: user.isPlatformAdmin ? "platform_admin" : "portal",
+      },
+      spec: {
+        companyId: company.id,
+        name: typeof body.name === "string" ? body.name : undefined,
+        templateKey: typeof body.templateKey === "string" ? body.templateKey : undefined,
+        trigger: {
+          type: "schedule",
+          frequency:
+            typeof body.frequency === "string"
+              ? (body.frequency as (typeof AUTOMATION_SCHEDULE_FREQUENCIES)[number])
+              : "daily",
+          time: typeof body.time === "string" ? body.time : "08:00",
+          timezone: typeof body.timezone === "string" ? body.timezone : "Europe/London",
+        },
+        timezone: typeof body.timezone === "string" ? body.timezone : "Europe/London",
+        recipientEmail: typeof body.recipientEmail === "string" ? body.recipientEmail : undefined,
+        steps: Array.isArray(body.steps)
+          ? body.steps.map((step) => ({
+              type: String((step as { type?: unknown })?.type ?? ""),
+            }))
+          : undefined,
+        enabled: body.enabled !== false,
+      },
+    });
+    return c.json(plan);
+  } catch (err) {
+    const status = err instanceof AutomationControlError ? err.status : 400;
+    return c.json(
+      {
+        error: err instanceof Error ? err.message : "Unable to plan automation",
+        code: err instanceof AutomationControlError ? err.code : undefined,
+        issues: err instanceof AutomationControlError ? err.details?.issues : undefined,
+      },
+      status,
+    );
+  }
+});
+
+automations.post("/api/companies/:slug/automations/from-plan", ...authed, async (c) => {
+  const company = await resolveCompany(c);
+  if (!company) return c.json({ error: "Company not found or access denied" }, 404);
+  const user = c.get("user");
+  if (!canManageAutomations(user, company.id)) {
+    return c.json({ error: "Insufficient permissions" }, 403);
+  }
+  const body = await c.req.json<{
+    planId?: string;
+    confirmationToken?: string;
+    confirmed?: boolean;
+    allowDuplicate?: boolean;
+  }>();
+  try {
+    const result = await createAutomationFromPlan(c.env, {
+      companyId: company.id,
+      planId: body.planId ?? "",
+      confirmationToken: body.confirmationToken ?? "",
+      confirmed: body.confirmed === true,
+      allowDuplicate: body.allowDuplicate === true,
+      actor: {
+        label: user.email,
+        source: user.isPlatformAdmin ? "platform_admin" : "portal",
+      },
+    });
+    return c.json(
+      {
+        automation: serialiseAutomation(result.automation),
+        managementUrl: result.managementUrl,
+      },
+      201,
+    );
+  } catch (err) {
+    const status = err instanceof AutomationControlError ? err.status : 400;
+    return c.json(
+      {
+        error: err instanceof Error ? err.message : "Unable to create automation",
+        code: err instanceof AutomationControlError ? err.code : undefined,
+      },
+      status,
+    );
+  }
+});
+
+automations.post("/api/companies/:slug/automations/:automationId/archive", ...authed, async (c) => {
+  const company = await resolveCompany(c);
+  if (!company) return c.json({ error: "Company not found or access denied" }, 404);
+  const user = c.get("user");
+  if (!canManageAutomations(user, company.id)) {
+    return c.json({ error: "Insufficient permissions" }, 403);
+  }
+  try {
+    const updated = await archiveAutomation(c.env, {
+      companyId: company.id,
+      automationId: c.req.param("automationId"),
+      actor: {
+        label: user.email,
+        source: user.isPlatformAdmin ? "platform_admin" : "portal",
+      },
+    });
+    return c.json({ automation: serialiseAutomation(updated) });
+  } catch (err) {
+    const status = err instanceof AutomationControlError ? err.status : 400;
+    return c.json(
+      { error: err instanceof Error ? err.message : "Unable to archive automation" },
+      status,
+    );
+  }
+});
+
 automations.post("/api/companies/:slug/automations/:automationId/disable", ...authed, async (c) => {
   const company = await resolveCompany(c);
   if (!company) return c.json({ error: "Company not found or access denied" }, 404);
@@ -550,6 +693,8 @@ automations.post("/api/internal/automation/ensure-template", async (c) => {
       minute: body.minute,
       createdBy: "system:automation-creation-v1",
       activate: body.activate !== false,
+      createdVia: "api",
+      onExisting: "update",
     });
     if (!body.runNow) {
       return c.json({ automation: serialiseAutomation(automation) });

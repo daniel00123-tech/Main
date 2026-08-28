@@ -5,6 +5,8 @@ export const BASE_AI_SERVICE_SCOPES = [
   "knowledge.search",
   "knowledge.read",
   "system.health",
+  "automation.read",
+  "automation.manage",
 ] as const;
 
 /** Outlook shared mailbox READ scopes (included mailboxes only). */

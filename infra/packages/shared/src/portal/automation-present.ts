@@ -42,6 +42,8 @@ export function humanAutomationCustomerStatus(status: string): string {
       return "Draft";
     case "disabled":
       return "Disabled";
+    case "archived":
+      return "Archived";
     case "error":
       return "Needs attention";
     default:

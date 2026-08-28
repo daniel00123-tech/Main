@@ -11,6 +11,9 @@ import {
   humanAutomationSchedule,
   humanAutomationWhen,
   XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
+  createdViaLabel,
+  type AutomationCreatedVia,
+  type AutomationScheduleFrequency,
 } from "@infra/shared";
 import { api } from "../api";
 import {
@@ -40,7 +43,7 @@ type TemplateOption = {
   system: string;
   defaultName: string;
   defaultTimezone: string;
-  defaultSchedule?: { hour?: number; minute?: number };
+  defaultSchedule?: { frequency?: string; hour?: number; minute?: number };
   available: boolean;
 };
 
@@ -48,6 +51,8 @@ type PortalAutomation = AutomationDefinitionRecord & {
   templateKey?: string | null;
   templateLabel?: string | null;
   recipientEmail?: string | null;
+  createdVia?: AutomationCreatedVia | null;
+  archived?: boolean;
 };
 
 function clockValue(hour: number, minute: number): string {
@@ -73,6 +78,7 @@ export default function PortalAutomationsPage() {
   const [formTime, setFormTime] = useState("08:00");
   const [formTimezone, setFormTimezone] = useState("Europe/London");
   const [formRecipient, setFormRecipient] = useState("");
+  const [formFrequency, setFormFrequency] = useState<AutomationScheduleFrequency>("daily");
 
   const canManage =
     user?.isPlatformAdmin ||
@@ -132,6 +138,7 @@ export default function PortalAutomationsPage() {
     setFormTime("08:00");
     setFormTimezone(company?.timezone || "Europe/London");
     setFormRecipient(user?.email ?? "");
+    setFormFrequency("daily");
     setCreateOpen(true);
   }
 
@@ -142,6 +149,7 @@ export default function PortalAutomationsPage() {
     setFormRecipient(
       automation.recipientEmail ?? automationRecipientEmailOf(automation.configuration) ?? "",
     );
+    setFormFrequency(automation.schedule?.frequency ?? "daily");
     setSelectedId(automation.id);
     setEditOpen(true);
   }
@@ -161,6 +169,7 @@ export default function PortalAutomationsPage() {
         timezone: formTimezone,
         hour: Number.isFinite(hour) ? hour : 8,
         minute: Number.isFinite(minute) ? minute : 0,
+        frequency: formFrequency,
         activate: true,
       });
       toast("Automation created");
@@ -188,7 +197,7 @@ export default function PortalAutomationsPage() {
         timezone: formTimezone,
         triggerType: "schedule",
         schedule: {
-          frequency: "daily",
+          frequency: formFrequency,
           hour: Number.isFinite(hour) ? hour : 8,
           minute: Number.isFinite(minute) ? minute : 0,
         },
@@ -210,7 +219,7 @@ export default function PortalAutomationsPage() {
   }
 
   async function handleAction(
-    action: "run" | "pause" | "activate" | "disable",
+    action: "run" | "pause" | "activate" | "disable" | "archive",
     automationId: string,
   ) {
     if (!company) return;
@@ -225,6 +234,10 @@ export default function PortalAutomationsPage() {
       } else if (action === "activate") {
         await api.activateCompanyAutomation(company.slug, automationId);
         toast("Automation activated");
+      } else if (action === "archive") {
+        await api.archiveCompanyAutomation(company.slug, automationId);
+        toast("Automation archived");
+        if (selectedId === automationId) setSelectedId(null);
       } else {
         await api.disableCompanyAutomation(company.slug, automationId);
         toast("Automation disabled");
@@ -404,6 +417,18 @@ export default function PortalAutomationsPage() {
                                 Resume
                               </Button>
                             ) : null}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={busy !== null}
+                              onClick={() => {
+                                if (window.confirm(`Archive '${automation.name}'? Run history is kept.`)) {
+                                  void handleAction("archive", automation.id);
+                                }
+                              }}
+                            >
+                              Delete
+                            </Button>
                           </>
                         ) : null}
                       </td>
@@ -446,6 +471,7 @@ export default function PortalAutomationsPage() {
                   : "—"
               }
             />
+            <KeyValue label="Created from" value={createdViaLabel(selected.createdVia)} />
             {canManage ? (
               <div className="drawer-actions">
                 <Button
@@ -474,6 +500,17 @@ export default function PortalAutomationsPage() {
                     Resume
                   </Button>
                 )}
+                <Button
+                  variant="ghost"
+                  disabled={busy !== null}
+                  onClick={() => {
+                    if (window.confirm(`Archive '${selected.name}'? Run history is kept.`)) {
+                      void handleAction("archive", selected.id);
+                    }
+                  }}
+                >
+                  Delete
+                </Button>
               </div>
             ) : null}
 
@@ -523,6 +560,9 @@ export default function PortalAutomationsPage() {
                   clockValue(match.defaultSchedule?.hour ?? 8, match.defaultSchedule?.minute ?? 0),
                 );
                 setFormTimezone(match.defaultTimezone || "Europe/London");
+                setFormFrequency(
+                  (match.defaultSchedule?.frequency as AutomationScheduleFrequency) || "daily",
+                );
               }
             }}
           >
@@ -548,8 +588,19 @@ export default function PortalAutomationsPage() {
         <Field label="System">
           <Input className="input" value={selectedTemplate?.system ?? "Xero"} disabled />
         </Field>
-        <Field label="Schedule">
-          <Input className="input" value="Every day" disabled />
+        <Field label="Every">
+          <Select
+            className="input"
+            value={formFrequency}
+            onChange={(event) =>
+              setFormFrequency(event.target.value as AutomationScheduleFrequency)
+            }
+          >
+            <option value="daily">Daily</option>
+            <option value="weekdays">Weekdays</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </Select>
         </Field>
         <Field label="Time">
           <Input
@@ -591,6 +642,20 @@ export default function PortalAutomationsPage() {
       <Drawer open={editOpen} onClose={() => setEditOpen(false)} title="Edit automation">
         <Field label="Name">
           <Input className="input" value={formName} onChange={(event) => setFormName(event.target.value)} />
+        </Field>
+        <Field label="Every">
+          <Select
+            className="input"
+            value={formFrequency}
+            onChange={(event) =>
+              setFormFrequency(event.target.value as AutomationScheduleFrequency)
+            }
+          >
+            <option value="daily">Daily</option>
+            <option value="weekdays">Weekdays</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </Select>
         </Field>
         <Field label="Time">
           <Input

@@ -4,8 +4,13 @@
 
 import type { SessionUser } from "../../auth/session";
 import { getUserCompanyRole, userHasCompanyAccess } from "../../permissions/service";
-import { createServiceIdentity, getServiceIdentity } from "../service-identities";
+import {
+  createServiceIdentity,
+  getServiceIdentity,
+  type ServiceIdentityRecord,
+} from "../service-identities";
 import type { AutomationDefinitionRecord } from "@infra/shared";
+import type { GatewayActor } from "../gateway";
 
 export function canManageAutomations(user: SessionUser, companyId: string): boolean {
   if (user.isPlatformAdmin) return true;
@@ -53,4 +58,38 @@ export function assertAutomationTenant(
   if (automation.companyId !== companyId) {
     throw new Error("Automation does not belong to company");
   }
+}
+
+function serviceCanAdministerAutomations(identity: ServiceIdentityRecord, companyId: string): boolean {
+  if (identity.companyId !== companyId) return false;
+  if (identity.status !== "active") return false;
+  if (identity.identityType === "automation" || identity.identityType === "scheduled") {
+    return false;
+  }
+  return true;
+}
+
+export function canViewAutomationsAsActor(actor: GatewayActor, companyId: string): boolean {
+  if (actor.type === "user") return canViewAutomations(actor.user, companyId);
+  return serviceCanAdministerAutomations(actor.identity, companyId);
+}
+
+export function canManageAutomationsAsActor(actor: GatewayActor, companyId: string): boolean {
+  if (actor.type === "user") return canManageAutomations(actor.user, companyId);
+  return serviceCanAdministerAutomations(actor.identity, companyId);
+}
+
+export function automationActorLabel(actor: GatewayActor): string {
+  if (actor.type === "user") return actor.user.email;
+  return `${actor.identity.identityType}:${actor.identity.name}`;
+}
+
+export function automationActorSource(
+  actor: GatewayActor,
+): "chatgpt" | "portal" | "platform_admin" | "api" {
+  if (actor.type === "user") {
+    return actor.user.isPlatformAdmin ? "platform_admin" : "portal";
+  }
+  if (actor.identity.identityType === "chatgpt") return "chatgpt";
+  return "api";
 }

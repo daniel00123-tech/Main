@@ -27,6 +27,10 @@ describe("humanAutomationCustomerStatus", () => {
   it("maps error to needs attention", () => {
     expect(humanAutomationCustomerStatus("error")).toBe("Needs attention");
   });
+
+  it("maps archived status", () => {
+    expect(humanAutomationCustomerStatus("archived")).toBe("Archived");
+  });
 });
 
 describe("humanAutomationRunCustomerStatus", () => {

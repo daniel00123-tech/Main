@@ -448,6 +448,8 @@ export const api = {
           templateLabel?: string | null;
           recipientEmail?: string | null;
           scheduleLabel?: string | null;
+          createdVia?: string | null;
+          archived?: boolean;
         }
       >;
     }>(`/api/companies/${slug}/automations`),
@@ -460,7 +462,9 @@ export const api = {
       timezone?: string;
       hour?: number;
       minute?: number;
+      frequency?: "hourly" | "daily" | "weekdays" | "weekly" | "monthly";
       activate?: boolean;
+      allowDuplicate?: boolean;
     },
   ) =>
     fetchJson<{ automation: AutomationDefinitionRecord }>(
@@ -509,6 +513,11 @@ export const api = {
   disableCompanyAutomation: (slug: string, automationId: string) =>
     fetchJson<{ automation: AutomationDefinitionRecord }>(
       `/api/companies/${slug}/automations/${automationId}/disable`,
+      { method: "POST" },
+    ),
+  archiveCompanyAutomation: (slug: string, automationId: string) =>
+    fetchJson<{ automation: AutomationDefinitionRecord }>(
+      `/api/companies/${slug}/automations/${automationId}/archive`,
       { method: "POST" },
     ),
   runCompanyAutomation: (slug: string, automationId: string) =>
