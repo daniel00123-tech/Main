@@ -336,8 +336,8 @@ phase3.post("/api/companies/:slug/wallet/top-up", requireAuth, async (c) => {
     return c.json(
       {
         error: isStripeTestModeActive(c.env)
-          ? "Invalid top-up amount. Allowed: £1 (sandbox), £10, £25, £50, £100."
-          : "Invalid top-up amount. Allowed preset amounts: £10, £25, £50, £100.",
+          ? "Invalid top-up amount. Allowed: £1 (sandbox), £5, £10, £25, £50, £100."
+          : "Invalid top-up amount. Allowed preset amounts: £5, £10, £25, £50, £100.",
       },
       400,
     );

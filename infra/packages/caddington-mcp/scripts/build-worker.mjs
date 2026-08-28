@@ -587,6 +587,413 @@ if (!base.includes("return { ok: false, requiresOcr: true")) {
   }
 }
 
+const googleDriveScopeMarker = "google_drive_scope_entire_drive";
+if (!base.includes(googleDriveScopeMarker)) {
+  const loadConfigTarget = `async function loadGoogleDriveConnectorConfig(env22) {
+  const parsed = await loadConnectorConfigJson2(env22);
+  const knowledgeFolderId = env22.GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID?.trim() || (typeof parsed.knowledgeFolderId === "string" && parsed.knowledgeFolderId.trim() ? parsed.knowledgeFolderId.trim() : null);
+  return {
+    syncMode: "documents_only",
+    writeOperationsEnabled: false,
+    googlePhotosConnected: false,
+    knowledgeFolderName: typeof parsed.knowledgeFolderName === "string" && parsed.knowledgeFolderName.trim() ? parsed.knowledgeFolderName.trim() : GOOGLE_DRIVE_KNOWLEDGE_FOLDER_NAME,
+    knowledgeFolderId,
+    allowList: parseGoogleDriveAllowListConfig(parsed.allowList ?? parsed),
+    schedule: await loadGoogleDriveScheduleConfig(env22)
+  };
+}`;
+  const loadConfigReplacement = `async function loadGoogleDriveConnectorConfig(env22) {
+  const parsed = await loadConnectorConfigJson2(env22);
+  const scopeMode = parsed.scopeMode === "ENTIRE_DRIVE" ? "ENTIRE_DRIVE" : "SELECTED_FOLDERS";
+  const imageIngestionPolicy = parsed.imageIngestionPolicy === "ALLOWED" ? "ALLOWED" : "EXCLUDED";
+  const knowledgeFolderId = env22.GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID?.trim() || (typeof parsed.knowledgeFolderId === "string" && parsed.knowledgeFolderId.trim() ? parsed.knowledgeFolderId.trim() : null);
+  const scanRootId = scopeMode === "ENTIRE_DRIVE" ? "root" : knowledgeFolderId;
+  let allowList = parseGoogleDriveAllowListConfig(parsed.allowList ?? parsed);
+  if (imageIngestionPolicy === "ALLOWED") {
+    allowList = {
+      ...allowList,
+      excludedMimeTypePrefixes: allowList.excludedMimeTypePrefixes.filter((p) => p !== "image/"),
+      excludeImageExtensions: false
+    };
+  } else {
+    allowList = { ...allowList, excludeImageExtensions: true };
+  }
+  return {
+    syncMode: "documents_only",
+    writeOperationsEnabled: false,
+    googlePhotosConnected: false,
+    scopeMode,
+    imageIngestionPolicy,
+    scanRootId,
+    knowledgeFolderName: typeof parsed.knowledgeFolderName === "string" && parsed.knowledgeFolderName.trim() ? parsed.knowledgeFolderName.trim() : GOOGLE_DRIVE_KNOWLEDGE_FOLDER_NAME,
+    knowledgeFolderId,
+    allowList,
+    schedule: await loadGoogleDriveScheduleConfig(env22)
+  };
+}`;
+  if (!base.includes(loadConfigTarget)) {
+    throw new Error("Unable to locate loadGoogleDriveConnectorConfig in base worker");
+  }
+  base = base.replace(loadConfigTarget, loadConfigReplacement);
+
+  const classifyExtTarget = `  if (GOOGLE_DRIVE_EXCLUDED_EXTENSIONS.includes(extension)) {
+    return { allowed: false, reason: "excluded_extension" };
+  }`;
+  const classifyExtReplacement = `  const imageExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".bmp", ".tif", ".tiff", ".svg", ".ico", ".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".orf"];
+  const skipExtension = config3.excludeImageExtensions === false
+    ? GOOGLE_DRIVE_EXCLUDED_EXTENSIONS.filter((ext) => !imageExtensions.includes(ext)).includes(extension)
+    : GOOGLE_DRIVE_EXCLUDED_EXTENSIONS.includes(extension);
+  if (skipExtension) {
+    return { allowed: false, reason: "excluded_extension" };
+  }`;
+  if (!base.includes("excludeImageExtensions")) {
+    if (!base.includes(classifyExtTarget)) {
+      throw new Error("Unable to locate classifyGoogleDriveFile extension check in base worker");
+    }
+    base = base.replace(classifyExtTarget, classifyExtReplacement);
+  }
+
+  const listAllTarget = `  async listAllFilesInFolder(rootFolderId, pageSize = 100) {
+    const files = [];
+    const folderQueue = [rootFolderId];
+    const visitedFolders = /* @__PURE__ */ new Set();
+    while (folderQueue.length > 0) {
+      const folderId = folderQueue.shift();
+      if (!folderId || visitedFolders.has(folderId)) {
+        continue;
+      }
+      visitedFolders.add(folderId);
+      let pageToken;
+      do {
+        const page = await this.listFolderChildrenPage(folderId, pageSize, pageToken);
+        for (const item of page.files) {
+          if (item.mimeType === GOOGLE_DRIVE_FOLDER_MIME) {
+            folderQueue.push(item.id);
+          } else {
+            files.push(item);
+          }
+        }
+        pageToken = page.nextPageToken;
+      } while (pageToken);
+    }
+    return files;
+  }`;
+  const listAllReplacement = `  async listAllFilesInFolder(rootFolderId, pageSize = 100, options = {}) {
+    const myDriveOnly = options.myDriveOnly ?? rootFolderId === "root";
+    const files = [];
+    const seenFileIds = /* @__PURE__ */ new Set();
+    const folderQueue = [rootFolderId];
+    const visitedFolders = /* @__PURE__ */ new Set();
+    while (folderQueue.length > 0) {
+      const folderId = folderQueue.shift();
+      if (!folderId || visitedFolders.has(folderId)) {
+        continue;
+      }
+      visitedFolders.add(folderId);
+      let pageToken;
+      do {
+        const page = await this.listFolderChildrenPage(folderId, pageSize, pageToken, myDriveOnly);
+        for (const item of page.files) {
+          if (item.mimeType === GOOGLE_DRIVE_FOLDER_MIME) {
+            folderQueue.push(item.id);
+          } else if (item.mimeType === "application/vnd.google-apps.shortcut") {
+            continue;
+          } else if (!seenFileIds.has(item.id)) {
+            seenFileIds.add(item.id);
+            files.push(item);
+          }
+        }
+        pageToken = page.nextPageToken;
+      } while (pageToken);
+    }
+    return files;
+  }`;
+  if (!base.includes("seenFileIds")) {
+    if (!base.includes(listAllTarget)) {
+      throw new Error("Unable to locate listAllFilesInFolder in base worker");
+    }
+    base = base.replace(listAllTarget, listAllReplacement);
+  }
+
+  const listPageTarget = `  async listFolderChildrenPage(folderId, pageSize = 100, pageToken) {
+    const token = await this.getAccessToken();
+    const params = new URLSearchParams({
+      q: buildGoogleDriveFolderChildrenQuery(folderId),
+      pageSize: String(pageSize),
+      fields: "nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size,parents)",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true"
+    });`;
+  const listPageReplacement = `  async listFolderChildrenPage(folderId, pageSize = 100, pageToken, myDriveOnly = false) {
+    const token = await this.getAccessToken();
+    const params = new URLSearchParams({
+      q: buildGoogleDriveFolderChildrenQuery(folderId),
+      pageSize: String(pageSize),
+      fields: "nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size,parents,shortcutDetails)",
+      supportsAllDrives: myDriveOnly ? "false" : "true",
+      includeItemsFromAllDrives: myDriveOnly ? "false" : "true"
+    });`;
+  if (!base.includes("myDriveOnly")) {
+    if (!base.includes(listPageTarget)) {
+      throw new Error("Unable to locate listFolderChildrenPage in base worker");
+    }
+    base = base.replace(listPageTarget, listPageReplacement);
+  }
+
+  const listMyDriveFlatMarker = "listAllMyDriveFilesFlat";
+  if (!base.includes(listMyDriveFlatMarker)) {
+    const listMyDriveInsertTarget = `  classifyFiles(files, config3) {
+    return files.map((file2) => ({
+      ...file2,
+      filterDecision: classifyGoogleDriveFile(file2, config3)
+    }));
+  }`;
+    const listMyDriveInsertReplacement = `  async listAllMyDriveFilesFlat(options = {}) {
+    const pageSize = options.pageSize ?? 100;
+    const maxPages = options.maxPages ?? 15;
+    const startPageToken = options.pageToken ?? void 0;
+    const files = [];
+    const seenFileIds = /* @__PURE__ */ new Set();
+    let pageToken = startPageToken;
+    let pagesFetched = 0;
+    do {
+      const token = await this.getAccessToken();
+      const params = new URLSearchParams({
+        corpora: "user",
+        q: "trashed = false",
+        pageSize: String(pageSize),
+        fields: "nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size,parents,shortcutDetails)",
+        supportsAllDrives: "false",
+        includeItemsFromAllDrives: "false"
+      });
+      if (pageToken) params.set("pageToken", pageToken);
+      const response = await fetch(\`\${DRIVE_FILES_URL}?\${params.toString()}\`, {
+        headers: { Authorization: \`Bearer \${token}\` }
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(\`Google Drive flat list failed (\${response.status}): \${body}\`);
+      }
+      const payload = await response.json();
+      for (const item of payload.files ?? []) {
+        if (item.mimeType === GOOGLE_DRIVE_FOLDER_MIME) continue;
+        if (item.mimeType === "application/vnd.google-apps.shortcut") continue;
+        if (!seenFileIds.has(item.id)) {
+          seenFileIds.add(item.id);
+          files.push(item);
+        }
+      }
+      pageToken = payload.nextPageToken;
+      pagesFetched++;
+    } while (pageToken && pagesFetched < maxPages);
+    return { files, nextPageToken: pageToken ?? null, complete: !pageToken };
+  }
+  classifyFiles(files, config3) {
+    return files.map((file2) => ({
+      ...file2,
+      filterDecision: classifyGoogleDriveFile(file2, config3)
+    }));
+  }`;
+    if (!base.includes(listMyDriveInsertTarget)) {
+      throw new Error("Unable to locate classifyFiles for My Drive flat list insert");
+    }
+    base = base.replace(listMyDriveInsertTarget, listMyDriveInsertReplacement);
+  }
+
+  const scanListTarget = `    const listed = await client.listAllFilesInFolder(
+      connectorConfig.knowledgeFolderId
+    );`;
+  const scanListReplacement = `    let listedFiles = [];
+    let scanContinuation = null;
+    if (connectorConfig.scopeMode === "ENTIRE_DRIVE") {
+      const parsedScan = await loadConnectorConfigJson2(env22);
+      const scanState = parsedScan.scanState && typeof parsedScan.scanState === "object" ? parsedScan.scanState : {};
+      const flat = await client.listAllMyDriveFilesFlat({
+        pageToken: typeof scanState.pageToken === "string" ? scanState.pageToken : void 0,
+        maxPages: 15
+      });
+      listedFiles = flat.files;
+      scanContinuation = flat.complete ? null : flat.nextPageToken;
+      const nextConfig = {
+        ...parsedScan,
+        scanState: {
+          pageToken: scanContinuation,
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      };
+      await env22.CADDINGTON_BUSINESS_DATA.prepare(
+        \`INSERT INTO connector_config (connector_code, config_json, updated_at)
+         VALUES (?, ?, datetime('now'))
+         ON CONFLICT(connector_code) DO UPDATE SET config_json = excluded.config_json, updated_at = excluded.updated_at\`
+      ).bind(CONNECTOR_CODE2, JSON.stringify(nextConfig)).run();
+    } else {
+      listedFiles = await client.listAllFilesInFolder(
+        connectorConfig.knowledgeFolderId
+      );
+    }
+    const listed = listedFiles;`;
+  if (base.includes(scanListTarget)) {
+    base = base.replace(scanListTarget, scanListReplacement);
+  } else if (base.includes(`const listed = connectorConfig.scopeMode === "ENTIRE_DRIVE"`)) {
+    base = base.replace(
+      /const listed = connectorConfig\.scopeMode === "ENTIRE_DRIVE"[\s\S]*?\{ myDriveOnly: false \}\s*\);/,
+      scanListReplacement.trim(),
+    );
+  }
+
+  const previewSubfolderTarget = `  const subfolders = rootPage.files.filter(
+    (file2) => file2.mimeType === "application/vnd.google-apps.folder"
+  );
+  const subfolderInventories = [];
+  for (const folder of subfolders) {
+    const page = await client.listFolderChildrenPage(folder.id);
+    const children = client.classifyFiles(page.files, connectorConfig.allowList).map(
+      (file2) => ({
+        id: file2.id,
+        name: file2.name,
+        mimeType: file2.mimeType,
+        allowed: file2.filterDecision.allowed,
+        reason: file2.filterDecision.allowed ? file2.filterDecision.reason : file2.filterDecision.reason
+      })
+    );
+    subfolderInventories.push({
+      folderId: folder.id,
+      folderName: folder.name,
+      childCount: page.files.length,
+      children
+    });
+  }
+  const recursive = client.classifyFiles(
+    await client.listAllFilesInFolder(connectorConfig.knowledgeFolderId),
+    connectorConfig.allowList
+  );`;
+  const previewSubfolderReplacement = `  const subfolders = rootPage.files.filter(
+    (file2) => file2.mimeType === "application/vnd.google-apps.folder"
+  );
+  const subfolderInventories = [];
+  if (connectorConfig.scopeMode !== "ENTIRE_DRIVE") {
+    for (const folder of subfolders) {
+      const page = await client.listFolderChildrenPage(folder.id);
+      const children = client.classifyFiles(page.files, connectorConfig.allowList).map(
+        (file2) => ({
+          id: file2.id,
+          name: file2.name,
+          mimeType: file2.mimeType,
+          allowed: file2.filterDecision.allowed,
+          reason: file2.filterDecision.allowed ? file2.filterDecision.reason : file2.filterDecision.reason
+        })
+      );
+      subfolderInventories.push({
+        folderId: folder.id,
+        folderName: folder.name,
+        childCount: page.files.length,
+        children
+      });
+    }
+  }
+  const recursive = client.classifyFiles(
+    connectorConfig.scopeMode === "ENTIRE_DRIVE"
+      ? (await client.listAllMyDriveFilesFlat({ maxPages: 15 })).files
+      : await client.listAllFilesInFolder(connectorConfig.knowledgeFolderId),
+    connectorConfig.allowList
+  );`;
+  if (base.includes(previewSubfolderTarget)) {
+    base = base.replace(previewSubfolderTarget, previewSubfolderReplacement);
+  }
+
+  base = base.replaceAll(
+    "knowledgeFolderConfigured: connectorConfig.knowledgeFolderId !== null",
+    "knowledgeFolderConfigured: connectorConfig.scanRootId !== null",
+  );
+  base = base.replaceAll(
+    "if (!connectorConfig.knowledgeFolderId) {\n    throw new Error(\"Google Drive knowledge folder is not configured.\");",
+    "if (!connectorConfig.scanRootId) {\n    throw new Error(\"Google Drive scan root is not configured. Set scopeMode ENTIRE_DRIVE or connector_config.knowledgeFolderId.\");",
+  );
+  base = base.replaceAll(
+    `if (!connectorConfig.knowledgeFolderId) {
+    throw new Error(
+      \`Google Drive knowledge folder is not configured. Set GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID or connector_config.knowledgeFolderId for "\${connectorConfig.knowledgeFolderName}".\`
+    );
+  }`,
+    `if (!connectorConfig.scanRootId) {
+    throw new Error(
+      \`Google Drive scan root is not configured. Set scopeMode ENTIRE_DRIVE or GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID / connector_config.knowledgeFolderId for "\${connectorConfig.knowledgeFolderName}".\`
+    );
+  }`,
+  );
+  base = base.replaceAll(
+    "await client.listAllFilesInFolder(\n      connectorConfig.knowledgeFolderId\n    )",
+    "await client.listAllFilesInFolder(\n      connectorConfig.scanRootId,\n      100,\n      { myDriveOnly: connectorConfig.scopeMode === \"ENTIRE_DRIVE\" }\n    )",
+  );
+  base = base.replaceAll(
+    "await client.listAllFilesInFolder(connectorConfig.knowledgeFolderId)",
+    "await client.listAllFilesInFolder(connectorConfig.scanRootId, 100, { myDriveOnly: connectorConfig.scopeMode === \"ENTIRE_DRIVE\" })",
+  );
+  base = base.replaceAll(
+    "connectorConfig.knowledgeFolderId\n  );",
+    "connectorConfig.scanRootId\n  );",
+  );
+
+  const statusNotesTarget = `notes: "Documents-only sync restricted to the Caddington Knowledge folder and its subfolders. Daily metadata scan at 12:00 Europe/London with queue fan-out for per-file import/index. Personal photos, images, videos and audio are excluded via MIME allow-list before download. Google Photos is not connected. Drive OAuth uses full drive scope for future folder writes; sync remains read-only. Image ingestion is manual-upload only."`;
+  const statusNotesReplacement = `notes: "Documents-only sync with per-company scope (SELECTED_FOLDERS or ENTIRE_DRIVE My Drive). Daily metadata scan at 12:00 Europe/London with queue fan-out. Image ingestion policy is configurable per company (Caddington: EXCLUDED). Trash and Google Photos are never ingested. Shortcuts are not traversed. google_drive_scope_entire_drive"`;
+  if (base.includes(statusNotesTarget)) {
+    base = base.replace(statusNotesTarget, statusNotesReplacement);
+  }
+
+  const statusFieldsTarget = `    knowledgeFolderName: connectorConfig.knowledgeFolderName,
+    knowledgeFolderId: connectorConfig.knowledgeFolderId,
+    allowList: connectorConfig.allowList,`;
+  const statusFieldsReplacement = `    scopeMode: connectorConfig.scopeMode,
+    imageIngestionPolicy: connectorConfig.imageIngestionPolicy,
+    scanRootId: connectorConfig.scanRootId,
+    knowledgeFolderName: connectorConfig.knowledgeFolderName,
+    knowledgeFolderId: connectorConfig.knowledgeFolderId,
+    allowList: connectorConfig.allowList,`;
+  if (base.includes(statusFieldsTarget) && !base.includes("scopeMode: connectorConfig.scopeMode")) {
+    base = base.replace(statusFieldsTarget, statusFieldsReplacement);
+  }
+
+  const scanMetaTarget = `      knowledgeFolderId: connectorConfig.knowledgeFolderId,
+      knowledgeFolderName: connectorConfig.knowledgeFolderName,
+      phase: "metadata_scan"`;
+  const scanMetaReplacement = `      scopeMode: connectorConfig.scopeMode,
+      scanRootId: connectorConfig.scanRootId,
+      knowledgeFolderId: connectorConfig.knowledgeFolderId,
+      knowledgeFolderName: connectorConfig.knowledgeFolderName,
+      phase: "metadata_scan"`;
+  if (base.includes(scanMetaTarget)) {
+    base = base.replace(scanMetaTarget, scanMetaReplacement);
+  }
+
+  const docMetaTarget = `    syncMode: "documents_only",
+    knowledgeFolderId: connectorConfig.knowledgeFolderId,
+    knowledgeFolderName: connectorConfig.knowledgeFolderName
+  };`;
+  const docMetaReplacement = `    syncMode: "documents_only",
+    scopeMode: connectorConfig.scopeMode,
+    scanRootId: connectorConfig.scanRootId,
+    knowledgeFolderId: connectorConfig.knowledgeFolderId,
+    knowledgeFolderName: connectorConfig.knowledgeFolderName
+  };`;
+  if (base.includes(docMetaTarget)) {
+    base = base.replace(docMetaTarget, docMetaReplacement);
+  }
+
+  const previewReturnTarget = `  return {
+    knowledgeFolderId: connectorConfig.knowledgeFolderId,
+    knowledgeFolderName: connectorConfig.knowledgeFolderName,
+    rootChildren,`;
+  const previewReturnReplacement = `  return {
+    scopeMode: connectorConfig.scopeMode,
+    scanRootId: connectorConfig.scanRootId,
+    knowledgeFolderId: connectorConfig.knowledgeFolderId,
+    knowledgeFolderName: connectorConfig.knowledgeFolderName,
+    rootChildren,`;
+  if (base.includes(previewReturnTarget) && !base.includes("scopeMode: connectorConfig.scopeMode")) {
+    base = base.replace(previewReturnTarget, previewReturnReplacement);
+  }
+}
+
 const inlinedXero = xeroBundle
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*,?\s*registerXeroWriteTools\s+as\s+__registerXeroWriteTools\s*\};?\s*/g, "")
   .replace(/\bexport\s+\{\s*registerXeroReadTools\s+as\s+__registerXeroReadTools\s*\};?\s*/g, "")

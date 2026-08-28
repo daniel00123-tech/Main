@@ -13,6 +13,7 @@ export * from "./connectors/xero-actions";
 export * from "./connectors/execution-plan";
 export * from "./connectors/microsoft";
 export * from "./connectors/outlook";
+export * from "./connectors/google-drive-scope";
 export * from "./action-engine";
 export * from "./permissions/role-presets";
 export * from "./permissions/xero-permissions";

@@ -25,7 +25,8 @@ export interface PaymentProviderStatus {
   topUpOptionsCents: number[];
 }
 
-export const DEFAULT_TOP_UP_OPTIONS_CENTS = [1000, 2500, 5000, 10000];
+/** Includes £5 (500) for deliberate live acceptance top-ups. */
+export const DEFAULT_TOP_UP_OPTIONS_CENTS = [500, 1000, 2500, 5000, 10000];
 
 export function getPlatformPaymentProviderStatus(env: Env): PaymentProviderStatus {
   const configured = isStripeConfigured(env);

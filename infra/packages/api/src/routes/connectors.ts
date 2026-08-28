@@ -1000,6 +1000,21 @@ connectors.post("/api/internal/microsoft/knowledge-hardening", async (c) => {
   }
 });
 
+connectors.post("/api/internal/google-drive/whole-drive-acceptance", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runGoogleDriveWholeDriveAcceptance } = await import("../services/google-drive-acceptance");
+    return c.json(await runGoogleDriveWholeDriveAcceptance(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Acceptance failed", classification: "FAIL" },
+      500,
+    );
+  }
+});
+
 connectors.get(
   "/api/companies/:slug/microsoft/dashboard",
   requireAuth,

@@ -6,6 +6,10 @@ import {
   ensurePaymentProviderAccount,
 } from "./payment-providers";
 import type { Env } from "../env";
+import {
+  companyStripeCheckoutAllowed,
+  getCompanyBillingMode,
+} from "./company-billing-mode";
 
 export type StripeMode = "unconfigured" | "test" | "live";
 
@@ -109,8 +113,10 @@ export async function ensureStripeCustomer(
   env: Env,
   input: { companyId: string; companyName: string; actorEmail: string },
 ): Promise<{ ok: true; customerId: string } | { ok: false; error: string }> {
-  if (!stripePaymentsAllowed(env)) {
-    return { ok: false, error: "Stripe payments are not enabled" };
+  const companyBillingMode = await getCompanyBillingMode(env.DB, input.companyId);
+  const checkoutGate = companyStripeCheckoutAllowed(env, companyBillingMode);
+  if (!checkoutGate.allowed) {
+    return { ok: false, error: checkoutGate.reason ?? "Stripe payments are not enabled" };
   }
 
   const balanceRow = await env.DB.prepare(
@@ -206,8 +212,8 @@ export async function createTopUpCheckoutIntent(
     return {
       configured: false,
       error: isStripeTestModeActive(env)
-        ? "Invalid top-up amount. Allowed: £1 (sandbox), £10, £25, £50, £100."
-        : "Invalid top-up amount. Allowed: £10, £25, £50, £100.",
+        ? "Invalid top-up amount. Allowed: £1 (sandbox), £5, £10, £25, £50, £100."
+        : "Invalid top-up amount. Allowed: £5, £10, £25, £50, £100.",
       code: "INVALID_AMOUNT",
     };
   }
@@ -221,6 +227,16 @@ export async function createTopUpCheckoutIntent(
   }
   if (company.archived_at) {
     return { configured: false, error: "Company is archived", code: "COMPANY_ARCHIVED" };
+  }
+
+  const companyBillingMode = await getCompanyBillingMode(env.DB, input.companyId);
+  const checkoutGate = companyStripeCheckoutAllowed(env, companyBillingMode);
+  if (!checkoutGate.allowed) {
+    return {
+      configured: false,
+      error: checkoutGate.reason ?? "Stripe checkout is not allowed for this company",
+      code: "BILLING_MODE_BLOCKED",
+    };
   }
 
   const localId = newId("stripe_co");
@@ -280,16 +296,16 @@ export async function createTopUpCheckoutIntent(
     };
   }
 
-  if (!stripePaymentsAllowed(env)) {
+  if (!checkoutGate.allowed) {
     await env.DB.prepare(
       `UPDATE stripe_checkout_sessions SET status = 'failed', failure_reason = ? WHERE id = ?`,
     )
-      .bind("Live Stripe mode is not enabled", localId)
+      .bind(checkoutGate.reason ?? "Checkout not allowed", localId)
       .run();
     return {
       configured: false,
-      error: "Live Stripe mode is not enabled. Use test keys only.",
-      code: "LIVE_MODE_BLOCKED",
+      error: checkoutGate.reason ?? "Checkout not allowed",
+      code: "BILLING_MODE_BLOCKED",
     };
   }
 
