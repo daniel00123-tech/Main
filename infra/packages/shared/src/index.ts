@@ -20,6 +20,8 @@ export * from "./portal/activity";
 export * from "./portal/dashboard";
 export * from "./portal/automation-present";
 export * from "./portal/usage-present";
+export * from "./email/types";
+export * from "./email/templates";
 export * from "./action-engine";
 export * from "./automation-engine";
 export * from "./permissions/role-presets";
