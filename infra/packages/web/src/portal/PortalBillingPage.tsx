@@ -73,7 +73,6 @@ export default function PortalBillingPage() {
   const [autoTopUpAmount, setAutoTopUpAmount] = useState("25");
   const [autoTopUpConfirm, setAutoTopUpConfirm] = useState(false);
   const [payments, setPayments] = useState<Array<Record<string, unknown>>>([]);
-  const [autoTopUpDiag, setAutoTopUpDiag] = useState<Record<string, unknown> | null>(null);
 
   const topupState = searchParams.get("topup");
   const checkoutId = searchParams.get("checkout");
@@ -106,6 +105,7 @@ export default function PortalBillingPage() {
         }
         if (
           tab === "payment" ||
+          tab === "auto-topup" ||
           searchParams.get("setup") === "complete" ||
           searchParams.get("topup") === "success"
         ) {
@@ -115,10 +115,6 @@ export default function PortalBillingPage() {
         if (tab === "invoices") {
           const p = await api.getBillingPayments(company.slug);
           setPayments(p.payments);
-        }
-        if (tab === "auto-topup") {
-          const diag = await api.getAutoTopUpDiagnostics(company.slug);
-          setAutoTopUpDiag(diag.diagnostics);
         }
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "Failed to load wallet");
@@ -208,6 +204,16 @@ export default function PortalBillingPage() {
     wallet.billing?.spendThisMonthCents ??
     0;
   const walletHealth = wallet.wallet.walletHealthState ?? (wallet.wallet.lowBalance ? "low" : "healthy");
+  const savedCardLabel = paymentMethod?.hasPaymentMethod
+    ? `${paymentMethod.brand ?? "Card"} •••• ${paymentMethod.last4 ?? "****"}`
+    : null;
+  const autoTopUpThresholdPounds = Number(autoTopUpThreshold) || 25;
+  const autoTopUpAmountPounds = Number(autoTopUpAmount) || 25;
+  const topUpUnavailableMessage =
+    topUpBlockedReason &&
+    !/billing mode|stripe|operator|sandbox|execution|unconfigured/i.test(topUpBlockedReason)
+      ? topUpBlockedReason
+      : "Card top-up is not available right now. Contact support if you need help adding credit.";
 
   async function startPaymentMethodSetup() {
     if (!company) return;
@@ -219,7 +225,7 @@ export default function PortalBillingPage() {
         window.location.href = result.url;
         return;
       }
-      setMessage("Stripe did not return a payment setup URL. Contact your administrator.");
+      setMessage("Unable to start card setup. Please try again or contact support.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Unable to start payment setup");
     } finally {
@@ -243,7 +249,7 @@ export default function PortalBillingPage() {
         confirm: enabled,
       });
       await reloadWallet();
-      setMessage(enabled ? "Auto top-up configuration saved." : "Auto top-up disabled.");
+      setMessage(enabled ? "Auto top-up saved." : "Auto top-up turned off.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Unable to save auto top-up settings");
     } finally {
@@ -330,7 +336,7 @@ export default function PortalBillingPage() {
               {
                 label: "Non-purchased credit",
                 value: formatCurrency(wallet.wallet.testCreditCents ?? 0, wallet.wallet.currency),
-                hint: "Promotional and Stripe sandbox credits (not live purchased funds)",
+                hint: "Promotional and test credit",
               },
               {
                 label: "Spend this month",
@@ -340,7 +346,7 @@ export default function PortalBillingPage() {
               {
                 label: "Paid credit",
                 value: formatCurrency(wallet.wallet.paidCreditCents ?? 0, wallet.wallet.currency),
-                hint: "Live Stripe top-ups and paid wallet funds",
+                hint: "Credit you've paid for",
               },
               {
                 label: "Auto top-up",
@@ -352,7 +358,7 @@ export default function PortalBillingPage() {
             ]}
           />
 
-          <SectionCard title="Add credit" description="Card details are handled securely by Stripe Checkout.">
+          <SectionCard title="Add credit" description="Secure payment powered by Stripe.">
             {wallet.stripeConfigured && topUpCheckoutAllowed ? (
               <>
                 <div className="topup-grid-compact">
@@ -393,18 +399,12 @@ export default function PortalBillingPage() {
                     Top up custom amount
                   </Button>
                 </div>
-                {!stripeTestMode ? (
-                  <p className="muted" style={{ marginTop: 12 }}>
-                    Live billing mode ({companyBillingMode}) — card payments credit purchased wallet funds only.
-                  </p>
-                ) : null}
               </>
             ) : (
               <p className="muted">
-                {topUpBlockedReason ??
-                  (wallet.stripeConfigured
-                    ? "Top-up is not available for this company billing mode."
-                    : "Online payments are not configured yet.")}
+                {wallet.stripeConfigured
+                  ? topUpUnavailableMessage
+                  : "Online payments are not configured yet."}
               </p>
             )}
             {message ? <p className="info-banner" style={{ marginTop: 16 }}>{message}</p> : null}
@@ -430,7 +430,15 @@ export default function PortalBillingPage() {
                             <span className="muted small"> (Test)</span>
                           ) : null}
                         </td>
-                        <td>{topUp.status.replace(/_/g, " ")}</td>
+                        <td>
+                          {topUp.status === "credited"
+                            ? "Complete"
+                            : topUp.status === "pending"
+                              ? "Pending"
+                              : topUp.status === "failed"
+                                ? "Failed"
+                                : topUp.status.replace(/_/g, " ")}
+                        </td>
                         <td>{formatDate(topUp.creditedAt ?? topUp.createdAt)}</td>
                       </tr>
                     ))}
@@ -445,17 +453,17 @@ export default function PortalBillingPage() {
       {tab === "payment" ? (
         <SectionCard title="Payment method">
           {searchParams.get("setup") === "complete" && paymentMethod?.hasPaymentMethod ? (
-            <Notice tone="success">Payment method setup completed in Stripe.</Notice>
+            <Notice tone="success">Payment method saved.</Notice>
           ) : searchParams.get("setup") === "complete" && !paymentMethod?.hasPaymentMethod ? (
             <Notice tone="info">
-              Stripe setup finished — if your card is not shown yet, refresh this page in a moment.
+              Your card details were submitted. If your card is not shown yet, refresh this page.
             </Notice>
           ) : null}
           {paymentMethod?.hasPaymentMethod ? (
             <>
               <KeyValue
                 label="Card on file"
-                value={`${paymentMethod.brand ?? "Card"} ·••• ${paymentMethod.last4 ?? "****"}`}
+                value={`${paymentMethod.brand ?? "Card"} •••• ${paymentMethod.last4 ?? "****"}`}
               />
               {paymentMethod.expMonth && paymentMethod.expYear ? (
                 <KeyValue
@@ -466,8 +474,8 @@ export default function PortalBillingPage() {
             </>
           ) : (
             <Notice tone="info">
-              No saved payment method yet. Add one via Stripe — card details never touch INFRA
-              servers.
+              No saved payment method yet. Add a card to pay for credit and enable auto top-up.
+              Payments are handled securely by Stripe.
             </Notice>
           )}
           {wallet.stripeConfigured ? (
@@ -522,18 +530,30 @@ export default function PortalBillingPage() {
       ) : null}
 
       {tab === "auto-topup" ? (
-        <SectionCard title="Auto top-up">
-          <Notice tone="info">
-            Configure automatic credit when your balance falls below a threshold. Requires a saved
-            payment method. Auto top-up evaluates your total spendable wallet balance (promotional,
-            purchased, and sandbox credits combined).
-            {(autoTopUp as { liveEligible?: boolean })?.liveEligible
-              ? " Live billing is active for this company — enable auto top-up explicitly after saving a card."
-              : stripeTestMode
-                ? " Active in Stripe test mode when enabled."
-                : " Execution is limited to approved billing modes."}
-          </Notice>
-          <div className="kv-stack" style={{ marginTop: 16 }}>
+        <SectionCard
+          title="Auto top-up"
+          description="Automatically add credit when your balance falls below the amount you choose."
+        >
+          {autoTopUp?.enabled ? (
+            <div className="billing-auto-topup-status">
+              <KeyValue label="Auto top-up" value="On" />
+              <KeyValue
+                label="Settings"
+                value={`Below ${formatCurrency(autoTopUp.thresholdCents ?? autoTopUpThresholdPounds * 100, wallet.wallet.currency)} → add ${formatCurrency(autoTopUp.amountCents ?? autoTopUpAmountPounds * 100, wallet.wallet.currency)}`}
+              />
+              <KeyValue
+                label="Saved card"
+                value={savedCardLabel ?? "No card saved yet"}
+              />
+            </div>
+          ) : (
+            <Notice tone="info">
+              Turn on auto top-up to add credit automatically when your balance gets low. A saved
+              card is required.
+            </Notice>
+          )}
+
+          <div className="kv-stack billing-auto-topup-form">
             <label className="field">
               <span className="field-label">When balance falls below (£)</span>
               <Input
@@ -557,32 +577,28 @@ export default function PortalBillingPage() {
                 <option value="100">£100</option>
               </select>
             </label>
-            <label className="checkbox-row">
+            <label className="billing-consent">
               <input
                 type="checkbox"
                 checked={autoTopUpConfirm}
                 onChange={(e) => setAutoTopUpConfirm(e.target.checked)}
               />
-              <span>
-                I understand enabling auto top-up will charge my saved payment method when the
-                threshold is reached.
-                {(autoTopUp as { liveEligible?: boolean })?.liveEligible
-                  ? " This uses live Stripe billing for this company."
-                  : stripeTestMode
-                    ? " This uses Stripe test mode only."
-                    : ""}
+              <span className="billing-consent-text">
+                Automatically top up my account when my balance falls below £
+                {autoTopUpThresholdPounds}, adding £{autoTopUpAmountPounds} each time.
               </span>
             </label>
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+
+          <div className="billing-auto-topup-actions">
             <Button
               type="button"
               variant="primary"
               size="sm"
-              disabled={busy || !autoTopUp?.supported}
+              disabled={busy || !autoTopUp?.supported || !savedCardLabel}
               onClick={() => void saveAutoTopUp(true)}
             >
-              {autoTopUp?.enabled ? "Update auto top-up" : "Enable auto top-up"}
+              {autoTopUp?.enabled ? "Save changes" : "Turn on auto top-up"}
             </Button>
             {autoTopUp?.enabled ? (
               <Button
@@ -592,49 +608,15 @@ export default function PortalBillingPage() {
                 disabled={busy}
                 onClick={() => void saveAutoTopUp(false)}
               >
-                Disable
+                Turn off auto top-up
               </Button>
             ) : null}
           </div>
-          {autoTopUp?.message ? (
+
+          {!savedCardLabel ? (
             <p className="muted small" style={{ marginTop: 12 }}>
-              {autoTopUp.message}
+              Add a payment method before turning on auto top-up.
             </p>
-          ) : null}
-          {autoTopUpDiag ? (
-            <div className="kv-stack" style={{ marginTop: 20 }}>
-              <KeyValue
-                label="Execution gate"
-                value={String(
-                  autoTopUpDiag.executionGateLabel ??
-                    (autoTopUpDiag.executionEnabled ? "Enabled" : "Disabled (production safe)"),
-                )}
-              />
-              <KeyValue label="Status" value={String(autoTopUpDiag.portalStatus ?? "—")} />
-              <KeyValue
-                label="Saved card"
-                value={
-                  autoTopUpDiag.paymentMethod &&
-                  typeof autoTopUpDiag.paymentMethod === "object" &&
-                  (autoTopUpDiag.paymentMethod as { ready?: boolean }).ready
-                    ? `${String((autoTopUpDiag.paymentMethod as { brand?: string }).brand ?? "Card")} ···${String((autoTopUpDiag.paymentMethod as { last4?: string }).last4 ?? "????")}`
-                    : "None"
-                }
-              />
-              <KeyValue
-                label="Daily usage"
-                value={`£${((Number(autoTopUpDiag.dailySpentCents ?? 0)) / 100).toFixed(2)} / £${((Number(autoTopUpDiag.dailyCapCents ?? 0)) / 100).toFixed(2)}`}
-              />
-              {autoTopUpDiag.lastFailure && typeof autoTopUpDiag.lastFailure === "object" ? (
-                <KeyValue
-                  label="Last failure"
-                  value={String(
-                    (autoTopUpDiag.lastFailure as { failureReason?: string }).failureReason ??
-                      "—",
-                  )}
-                />
-              ) : null}
-            </div>
           ) : null}
         </SectionCard>
       ) : null}
@@ -692,11 +674,11 @@ export default function PortalBillingPage() {
       ) : null}
 
       {tab === "invoices" ? (
-        <SectionCard title="Payment history" description="Stripe wallet top-ups and credits. These are payment receipts, not VAT invoices.">
+        <SectionCard title="Payment history" description="Your card payments and credit added to your account.">
           {payments.length === 0 ? (
             <EmptyState
               title="No payment records yet"
-              description="Wallet top-ups and manual credits will appear here with Stripe references where available."
+              description="Your card payments and credits added to your account will appear here."
             />
           ) : (
             <div className="table-wrap">
@@ -719,31 +701,26 @@ export default function PortalBillingPage() {
                     const typeLabel =
                       p.entryType === "top_up"
                         ? isTestStripeTopUp
-                          ? "Stripe top-up (Test)"
-                          : "Paid top-up"
+                          ? "Top-up (Test)"
+                          : "Top-up"
                         : p.creditClass === "test"
-                          ? "Promotional"
+                          ? "Promotional credit"
                           : p.creditClass === "paid"
-                            ? "Paid top-up"
+                            ? "Top-up"
                             : String(p.entryType);
                     return (
                     <tr key={String(p.id)}>
                       <td className="muted small">{formatDate(String(p.date))}</td>
-                      <td>
-                        {String(p.description ?? p.entryType)}
-                        {isTestStripeTopUp ? (
-                          <span className="muted small"> — sandbox</span>
-                        ) : null}
-                      </td>
+                      <td>{String(p.description ?? p.entryType)}</td>
                       <td>{typeLabel}</td>
                       <td className="num">{formatCurrency(Number(p.amountCents), wallet.wallet.currency)}</td>
                       <td>
                         {p.receiptUrl ? (
                           <a href={String(p.receiptUrl)} target="_blank" rel="noreferrer">
-                            Stripe receipt
+                            View receipt
                           </a>
                         ) : (
-                          <span className="muted small">{p.stripePaymentIntentId ? String(p.stripePaymentIntentId) : "—"}</span>
+                          <span className="muted small">—</span>
                         )}
                       </td>
                     </tr>
