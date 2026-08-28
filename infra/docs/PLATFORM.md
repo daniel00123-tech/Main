@@ -73,6 +73,17 @@ Future **company data warehouse** direction: ADR 030 (planning only — not buil
 
 `POST /api/mcp-environments/:id/refresh-capabilities` refreshes tools via `tools/list` + `system_health` + optional `database_summary`. It does **not** run knowledge search and is not billable.
 
+### Microsoft 365 — two distinct onboarding tracks
+
+Do not merge these because both use Graph:
+
+| Track | Sources | Security | Milestone |
+| --- | --- | --- | --- |
+| **Knowledge onboarding** | SharePoint, OneDrive | OAuth; `Files.Read.All`, `Sites.Read.All`, `User.Read.All` — **no Mail.Read** | Sprint 2 (PARTIAL — held for Entra) |
+| **Outlook mailbox onboarding** | Approved shared mailboxes | Exchange Application RBAC + INFRA source inclusion | CMD16C (PASS — frozen baseline) |
+
+See [PROJECT-STATUS](./PROJECT-STATUS.md), **ADR 031**, and runbooks [Microsoft 365 knowledge](./runbooks/microsoft-365-knowledge-onboarding.md) / [Outlook mailbox](./runbooks/outlook-mailbox-onboarding.md).
+
 ## Health checks
 
 `/health` and `/ready` and MCP `system_health` are **not billable**. Connector health and capability refresh are not billable.
@@ -85,7 +96,10 @@ Derived model (`GET /api/platform/attention`, `GET /api/companies/:slug/attentio
 
 Operational guides under [`docs/runbooks/`](./runbooks/):
 
+- [PROJECT-STATUS](./PROJECT-STATUS.md) — accepted milestones (Automation Engine, Sprint 1–3, CMD16C)
 - [New company onboarding](./runbooks/new-company-onboarding.md)
+- [Microsoft 365 knowledge onboarding](./runbooks/microsoft-365-knowledge-onboarding.md) (SharePoint / OneDrive — Sprint 2)
+- [Outlook mailbox onboarding](./runbooks/outlook-mailbox-onboarding.md) (Exchange RBAC — CMD16C)
 - [MCP provisioning recommendation](./runbooks/mcp-provisioning-recommendation.md)
 - [Backup & recovery review](./runbooks/backup-recovery-review.md)
 - Incident: MCP offline, OAuth expired, AI token compromised, wallet, connector degraded, suspension, credential rotation, failed financial action, provider outage
