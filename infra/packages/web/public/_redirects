@@ -1,2 +1,0 @@
-/api/*  https://infra-api.daniel-dwyer123.workers.dev/api/:splat  200
-/health  https://infra-api.daniel-dwyer123.workers.dev/health  200
