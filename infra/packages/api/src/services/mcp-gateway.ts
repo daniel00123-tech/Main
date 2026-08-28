@@ -44,6 +44,7 @@ import { withActionControlTools, isActionControlTool, actionControlToolAllowed }
 import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeActionControlTool } from "./action-engine/action-control-handler";
+import { applyKnowledgeSourceScopeToSearchArgs } from "./knowledge-source-scope";
 
 type JsonRpcId = string | number | null;
 
@@ -306,6 +307,8 @@ export const KNOWLEDGE_SEARCH_FORWARD_KEYS = [
   "includeDiagnostics",
   "title",
   "filename",
+  "source",
+  "category",
 ] as const;
 
 /**
@@ -684,6 +687,7 @@ export async function handleInfraMcpJsonRpc(
     }
 
     let strippedKeys: string[] = [];
+    let sourceScopeApplied = false;
     if (toolName === "search") {
       const sanitized = sanitizeStandardSearchArguments(args);
       if ("error" in sanitized) {
@@ -692,7 +696,9 @@ export async function handleInfraMcpJsonRpc(
           httpStatus: 400,
         };
       }
-      args = { query: sanitized.query };
+      const scoped = applyKnowledgeSourceScopeToSearchArgs({ query: sanitized.query });
+      args = scoped.args;
+      sourceScopeApplied = scoped.scopeApplied;
     } else if (toolName === "fetch") {
       const sanitized = sanitizeStandardFetchArguments(args);
       if ("error" in sanitized) {
@@ -706,6 +712,9 @@ export async function handleInfraMcpJsonRpc(
       const sanitized = sanitizeKnowledgeSearchArguments(args);
       args = sanitized.forwarded;
       strippedKeys = sanitized.strippedKeys;
+      const scoped = applyKnowledgeSourceScopeToSearchArgs(args);
+      args = scoped.args;
+      sourceScopeApplied = scoped.scopeApplied;
       if (typeof args.query !== "string" || !String(args.query).trim()) {
         return {
           payload: jsonRpcError(

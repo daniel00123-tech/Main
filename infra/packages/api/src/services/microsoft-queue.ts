@@ -19,10 +19,14 @@ import {
 import {
   buildMicrosoftExternalId,
   buildMicrosoftMailExternalId,
+  buildOutlookAttachmentMetadata,
   buildOutlookKnowledgeProvenance,
+  lookupParentKnowledgeDocumentId,
+  mapKnowledgeIndexOutcomeToMicrosoftStatus,
   reactivateMicrosoftKnowledgeDocument,
   uploadMicrosoftDocumentToKnowledge,
 } from "./microsoft-knowledge-bridge";
+import { listMessageAttachments } from "./microsoft-outlook-graph";
 import { upsertKnowledgeItem } from "./microsoft-sync-internals";
 import {
   buildMailKnowledgeText,
@@ -514,8 +518,16 @@ export async function processMicrosoftFileJob(
       sizeBytes: download.contentLength,
       eTag: job.e_tag,
       provenance,
-      indexingStatus: "indexed",
+      indexingStatus: mapKnowledgeIndexOutcomeToMicrosoftStatus({
+        indexOk: true,
+        requiresOcr: upload.requiresOcr,
+        partial: upload.partial,
+        documentStatus: upload.documentStatus,
+      }),
       knowledgeDocumentId: upload.documentId,
+      lastError: upload.requiresOcr
+        ? `PDF extraction insufficient (${upload.extractionQuality ?? "requires_ocr"}); OCR fallback not available in production`
+        : null,
     });
     await env.DB.prepare(
       `UPDATE microsoft_knowledge_items SET visibility_status = 'active', updated_at = ? WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ?`,
@@ -523,7 +535,11 @@ export async function processMicrosoftFileJob(
       .bind(nowIso(), job.company_id, job.connector_instance_id, job.external_item_id)
       .run();
 
-    await completeJob(env.DB, job.id, "indexed");
+    const jobStatus =
+      upload.requiresOcr
+        ? "failed"
+        : "indexed";
+    await completeJob(env.DB, job.id, jobStatus);
     await finalizeMicrosoftSyncRunIfComplete(env, job.sync_run_id, job.source_id);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
@@ -627,6 +643,30 @@ async function processMicrosoftMailJob(
     let title: string;
     let filename: string;
 
+    const parentKnowledgeDocumentId =
+      itemKind === "mail_attachment"
+        ? await lookupParentKnowledgeDocumentId(env.DB, {
+            companyId: job.company_id,
+            connectorInstanceId: job.connector_instance_id,
+            messageId: messageId!,
+          })
+        : null;
+
+    let attachmentMetadataList: Awaited<ReturnType<typeof buildOutlookAttachmentMetadata>> = [];
+    if (itemKind === "mail_message" && message.hasAttachments) {
+      const attachments = await listMessageAttachments(config, mailboxAddress, message.id);
+      attachmentMetadataList = await buildOutlookAttachmentMetadata(env.DB, {
+        companyId: job.company_id,
+        connectorInstanceId: job.connector_instance_id,
+        messageId: message.id,
+        attachments: attachments.map((a) => ({
+          id: a.id,
+          name: a.name,
+          contentType: a.contentType,
+        })),
+      });
+    }
+
     if (itemKind === "mail_attachment") {
       if (!attachmentId) throw new Error("Attachment ID missing on mail attachment job");
       const attachment = await getMessageAttachmentContent(
@@ -642,7 +682,10 @@ async function processMicrosoftMailJob(
       title = attachment.name;
       filename = attachment.name;
     } else {
-      const text = buildMailKnowledgeText(message);
+      const text = buildMailKnowledgeText(message, {
+        hasAttachments: message.hasAttachments,
+        attachments: attachmentMetadataList,
+      });
       bytes = new TextEncoder().encode(text).buffer;
       mimeType = "text/plain";
       title = message.subject ?? job.file_name;
@@ -653,7 +696,7 @@ async function processMicrosoftMailJob(
       companyId: job.company_id,
       tenantId,
       mailboxAddress,
-      folderName: "Inbox",
+      folderName: job.relative_path?.split("/")[0] ?? "Inbox",
       messageId: message.id,
       internetMessageId: message.internetMessageId,
       subject: message.subject,
@@ -663,6 +706,11 @@ async function processMicrosoftMailJob(
       sentDateTime: message.sentDateTime,
       attachmentId,
       attachmentName: itemKind === "mail_attachment" ? filename : null,
+      itemKind,
+      parentMessageId: itemKind === "mail_attachment" ? messageId : null,
+      parentKnowledgeDocumentId,
+      hasAttachments: message.hasAttachments,
+      attachments: attachmentMetadataList,
     });
 
     const upload = await uploadMicrosoftDocumentToKnowledge(env, mcp, {
@@ -718,8 +766,16 @@ async function processMicrosoftMailJob(
       sizeBytes: bytes.byteLength,
       eTag: job.e_tag,
       provenance,
-      indexingStatus: "indexed",
+      indexingStatus: mapKnowledgeIndexOutcomeToMicrosoftStatus({
+        indexOk: true,
+        requiresOcr: upload.requiresOcr,
+        partial: upload.partial,
+        documentStatus: upload.documentStatus,
+      }),
       knowledgeDocumentId: upload.documentId,
+      lastError: upload.requiresOcr
+        ? `PDF extraction insufficient (${upload.extractionQuality ?? "requires_ocr"}); OCR fallback not available in production`
+        : null,
     });
     await env.DB.prepare(
       `UPDATE microsoft_knowledge_items SET visibility_status = 'active', updated_at = ? WHERE company_id = ? AND connector_instance_id = ? AND external_item_id = ?`,
@@ -727,7 +783,13 @@ async function processMicrosoftMailJob(
       .bind(nowIso(), job.company_id, job.connector_instance_id, job.external_item_id)
       .run();
 
-    await completeJob(env.DB, job.id, "indexed");
+    const jobStatus =
+      upload.requiresOcr || upload.partial
+        ? upload.requiresOcr
+          ? "failed"
+          : "indexed"
+        : "indexed";
+    await completeJob(env.DB, job.id, jobStatus);
     await finalizeMicrosoftSyncRunIfComplete(env, job.sync_run_id, job.source_id);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Mail job failed";
