@@ -37,40 +37,40 @@ type NavItem = {
   label: string;
   icon: React.ReactNode;
   roles?: string[];
-  section?: "main" | "manage" | "account";
+  section?: "overview" | "work" | "company" | "account";
   badgeCount?: number;
 };
 
 const ALL_NAV: NavItem[] = [
-  { path: "dashboard", label: "Overview", icon: <LayoutDashboard size={18} />, section: "main" },
-  { path: "connectors", label: "Systems", icon: <Plug size={18} />, section: "main" },
-  { path: "ai-connections", label: "AI Access", icon: <Bot size={18} />, section: "main" },
-  {
-    path: "actions",
-    label: "Approvals",
-    icon: <ClipboardList size={18} />,
-    section: "main",
-    roles: ["company_admin", "director", "manager", "supervisor"],
-  },
+  { path: "dashboard", label: "Overview", icon: <LayoutDashboard size={18} />, section: "overview" },
+  { path: "ai-connections", label: "AI", icon: <Bot size={18} />, section: "work" },
   {
     path: "automations",
     label: "Automations",
     icon: <Clock size={18} />,
-    section: "main",
+    section: "work",
     roles: ["company_admin", "director", "manager", "supervisor"],
   },
+  {
+    path: "actions",
+    label: "Approvals",
+    icon: <ClipboardList size={18} />,
+    section: "work",
+    roles: ["company_admin", "director", "manager", "supervisor"],
+  },
+  { path: "connectors", label: "Connections", icon: <Plug size={18} />, section: "company" },
   {
     path: "users",
     label: "Users",
     icon: <Users size={18} />,
-    section: "manage",
+    section: "company",
     roles: ["company_admin", "director", "manager", "supervisor"],
   },
   {
     path: "usage",
     label: "Usage",
     icon: <ChartColumn size={18} />,
-    section: "manage",
+    section: "account",
     roles: ["company_admin", "director", "manager", "supervisor", "office_staff"],
   },
   {
@@ -97,7 +97,8 @@ const ALL_NAV: NavItem[] = [
 ];
 
 const SECTION_LABELS: Record<string, string> = {
-  manage: "Manage",
+  work: "Work",
+  company: "Company",
   account: "Account",
 };
 
@@ -164,7 +165,7 @@ function PortalShellInner() {
     const sections: Array<{ key: string; items: NavItem[] }> = [];
     let current = "";
     for (const item of nav) {
-      const section = item.section ?? "main";
+      const section = item.section ?? "overview";
       if (section !== current) {
         sections.push({ key: section, items: [] });
         current = section;
@@ -282,7 +283,7 @@ function PortalShellInner() {
         <nav>
           {navSections.map((section) => (
             <div key={section.key}>
-              {showLabels && section.key !== "main" ? (
+              {showLabels && section.key !== "overview" ? (
                 <div className="nav-section-label">{SECTION_LABELS[section.key] ?? section.key}</div>
               ) : null}
               {section.items.map((item) => (

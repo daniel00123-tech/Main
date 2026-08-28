@@ -130,10 +130,10 @@ export default function PortalConnectorsPage() {
   });
 
   return (
-    <>
+    <div className="portal-page">
       <PortalPageHeader
         title="Connections"
-        description={`Business systems connected to ${company.name}. AI clients are managed under AI.`}
+        description="Business systems linked to your company."
       />
 
       {xeroReturn === "connected" ? (
@@ -173,14 +173,14 @@ export default function PortalConnectorsPage() {
       <SectionCard
         title={
           view === "connected"
-            ? "Connected systems"
+            ? "Your systems"
             : view === "attention"
               ? "Needs attention"
-              : "Available integrations"
+              : "Add another system"
         }
         description={
           view === "available"
-            ? "Browse integrations by category. Select one to connect or view setup."
+            ? "Browse integrations by category. Select one to connect."
             : undefined
         }
       >
@@ -198,7 +198,21 @@ export default function PortalConnectorsPage() {
         ) : view === "attention" && filteredAttention.length === 0 ? (
           <EmptyState title="Nothing needs attention" description="All connected systems look healthy." />
         ) : view === "available" && filteredAvailable.length === 0 ? (
-          <EmptyState title="No matching integrations" description="Try a different search or category." />
+          <EmptyState
+            title="No integrations match your search"
+            description="Try a different search term or category."
+            action={
+              query ? (
+                <Button type="button" variant="secondary" size="sm" onClick={() => setQuery("")}>
+                  Clear search
+                </Button>
+              ) : (
+                <Button type="button" variant="secondary" size="sm" onClick={() => setCategory("all")}>
+                  Show all categories
+                </Button>
+              )
+            }
+          />
         ) : view === "connected" ? (
           <CompactList>
             {filteredConnected.map(({ instance, definition }) => (
@@ -383,6 +397,6 @@ export default function PortalConnectorsPage() {
           </>
         ) : null}
       </Modal>
-    </>
+    </div>
   );
 }

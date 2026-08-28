@@ -38,7 +38,7 @@ import {
   planIsConfirmable,
   type ActionCentreBucket,
 } from "../lib/format";
-import { PortalPageHeader, SegmentedControl } from "./components";
+import { PortalPageBody, PortalPageHeader, SegmentedControl } from "./components";
 import { usePortalCompany } from "./usePortalCompany";
 
 type DryRunReport = {
@@ -68,6 +68,28 @@ function planTitle(plan: ActionPlanRecord): string {
   if (amount != null && contact) {
     return `${humanOperation(plan.requestedAction)} for ${contact} — ${formatActionAmount(amount, currency)}`;
   }
+  return humanOperation(plan.requestedAction);
+}
+
+function actionBucketTitle(bucket: ActionCentreBucket): string {
+  switch (bucket) {
+    case "needs_approval":
+      return "Waiting for your approval";
+    case "in_progress":
+      return "In progress";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Failed";
+  }
+}
+
+function planCustomerLabel(plan: ActionPlanRecord): string | null {
+  return plan.targets[0]?.humanRef ?? null;
+}
+
+function planWhatWillHappen(plan: ActionPlanRecord): string {
+  if (plan.summary) return plan.summary;
   return humanOperation(plan.requestedAction);
 }
 
@@ -338,10 +360,10 @@ export default function PortalActionsPage() {
   ) : null;
 
   return (
-    <>
+    <div className="portal-page">
       <PortalPageHeader
         title="Approvals"
-        description={`Review and approve planned accounting actions for ${company.name}.`}
+        description="Review planned accounting actions before they run."
       />
 
       <FilterBar>
@@ -352,32 +374,37 @@ export default function PortalActionsPage() {
         value={bucket}
         onChange={setBucket}
         options={[
-          { id: "needs_approval", label: "Needs approval", count: bucketCounts.needs_approval },
+          { id: "needs_approval", label: "Waiting for approval", count: bucketCounts.needs_approval },
           { id: "in_progress", label: "In progress", count: bucketCounts.in_progress },
           { id: "completed", label: "Completed", count: bucketCounts.completed },
           { id: "failed", label: "Failed", count: bucketCounts.failed },
         ]}
       />
 
-      <SectionCard title="Pending approvals">
-        {plansLoading ? (
-          <LoadingState label="Loading actions…" />
-        ) : plansError ? (
-          <ErrorState title="Unable to load actions" description={plansError} onRetry={() => void loadPlans()} />
-        ) : filtered.length === 0 ? (
+      <PortalPageBody
+        loading={plansLoading}
+        error={plansError}
+        loadingLabel="Loading approvals…"
+        errorTitle="We couldn't load your approvals"
+        onRetry={() => void loadPlans()}
+      >
+      <SectionCard title={actionBucketTitle(bucket)}>
+        {filtered.length === 0 ? (
           <EmptyState
             icon={<ClipboardList size={28} />}
             title={
               bucket === "needs_approval"
-                ? "No actions requiring approval"
+                ? "No actions need your approval"
                 : bucket === "completed"
                   ? "No completed actions yet"
-                  : "Nothing in this view"
+                  : bucket === "failed"
+                    ? "No failed actions"
+                    : "Nothing in progress"
             }
             description={
               bucket === "needs_approval"
                 ? "You're all caught up."
-                : "When AI plans a financial action, it appears here for review."
+                : "When a financial action is planned, it appears here for review."
             }
           />
         ) : isMobile ? (
@@ -386,21 +413,30 @@ export default function PortalActionsPage() {
               {visible.map((plan) => (
                 <MobileRecordCard key={plan.id} onClick={() => setSelectedId(plan.id)}>
                   <div className="mobile-record-header">
-                    <div className="mobile-record-title">{planTitle(plan)}</div>
+                    <div className="mobile-record-title">{humanOperation(plan.requestedAction)}</div>
                     <StatusBadge status={plan.status} label={humanActionStatus(plan.status)} />
                   </div>
                   <dl className="mobile-record-meta">
+                    {planCustomerLabel(plan) ? (
+                      <div>
+                        <dt>Customer</dt>
+                        <dd>{planCustomerLabel(plan)}</dd>
+                      </div>
+                    ) : null}
+                    {plan.financialImpact?.totalAmount != null ? (
+                      <div>
+                        <dt>Amount</dt>
+                        <dd>
+                          {formatActionAmount(
+                            plan.financialImpact.totalAmount,
+                            plan.financialImpact.currencyCode ?? "GBP",
+                          )}
+                        </dd>
+                      </div>
+                    ) : null}
                     <div>
-                      <dt>Source</dt>
-                      <dd>{humanClient(plan.sourceClient)}</dd>
-                    </div>
-                    <div>
-                      <dt>System</dt>
-                      <dd>{systemLabel(plan)}</dd>
-                    </div>
-                    <div>
-                      <dt>When</dt>
-                      <dd>{formatRelativeTime(plan.createdAt)}</dd>
+                      <dt>What will happen</dt>
+                      <dd>{planWhatWillHappen(plan)}</dd>
                     </div>
                   </dl>
                 </MobileRecordCard>
@@ -440,6 +476,7 @@ export default function PortalActionsPage() {
           onShowMore={() => setDisplayLimit((n) => n + 20)}
         />
       ) : null}
+      </PortalPageBody>
 
       <ConfirmDangerModal
         open={rejectOpen}
@@ -450,7 +487,7 @@ export default function PortalActionsPage() {
         confirmLabel="Reject action"
         loading={busy === "reject"}
       />
-    </>
+    </div>
   );
 }
 

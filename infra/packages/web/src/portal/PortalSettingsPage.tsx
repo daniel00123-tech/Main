@@ -15,13 +15,11 @@ import { humanRole } from "../lib/format";
 import { PortalPageHeader } from "./components";
 import { usePortalCompany } from "./usePortalCompany";
 
-type SettingsTab = "general" | "security" | "billing" | "integrations" | "advanced";
+type SettingsTab = "general" | "security" | "advanced";
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
-  { id: "general", label: "General" },
-  { id: "security", label: "Security" },
-  { id: "billing", label: "Billing" },
-  { id: "integrations", label: "AI & integrations" },
+  { id: "general", label: "Company" },
+  { id: "security", label: "Security & access" },
   { id: "advanced", label: "Advanced" },
 ];
 
@@ -100,8 +98,8 @@ export default function PortalSettingsPage() {
   const base = `/portal/${company.slug}`;
 
   return (
-    <>
-      <PortalPageHeader title="Settings" description="Company profile and preferences." />
+    <div className="portal-page">
+      <PortalPageHeader title="Settings" description="Company profile, security, and preferences." />
 
       <nav className="settings-tab-nav" aria-label="Settings sections">
         {TABS.map((item) => (
@@ -121,7 +119,7 @@ export default function PortalSettingsPage() {
       {tab === "general" ? (
         <SectionCard title="Company profile">
           {canManage ? (
-            <form onSubmit={(e) => void onSaveGeneral(e)} className="form-stack">
+            <form onSubmit={(e) => void onSaveGeneral(e)} className="form-stack portal-settings-form">
               <label className="field">
                 <span className="field-label">Company name</span>
                 <Input value={name} onChange={(e) => setName(e.target.value)} required />
@@ -163,56 +161,45 @@ export default function PortalSettingsPage() {
           ) : (
             <>
               <KeyValue label="Company" value={company.name} />
-              <KeyValue label="Domain" value={company.primaryDomain ?? "—"} />
               <KeyValue label="Status" value={<StatusBadge status={company.status} />} />
               <KeyValue label="Your role" value={humanRole(membership?.role)} />
             </>
           )}
+          <div className="portal-settings-links">
+            <p className="muted small">
+              Manage users from <Link to={`${base}/users`}>Users</Link>, connected systems from{" "}
+              <Link to={`${base}/connectors`}>Connections</Link>, AI from{" "}
+              <Link to={`${base}/ai-connections`}>AI Access</Link>, and billing from{" "}
+              <Link to={`${base}/billing`}>Billing</Link>.
+            </p>
+          </div>
         </SectionCard>
       ) : null}
 
       {tab === "security" ? (
-        <SectionCard title="Security">
+        <SectionCard title="Security & access">
           <KeyValue label="Access control" value="Role-based permissions per user" />
-          <KeyValue label="AI connections" value="Bearer tokens — revocable from AI Access" />
-          <KeyValue label="Financial actions" value="Approval required for sensitive writes" />
+          <KeyValue label="AI connections" value="Revocable from AI Access" />
+          <KeyValue label="Financial actions" value="Approval required before writes" />
+          <KeyValue
+            label="Low balance alert"
+            value={`£${lowBalanceThreshold}`}
+          />
           <Notice tone="info">
             SSO and MFA enforcement are planned for a future release.
           </Notice>
         </SectionCard>
       ) : null}
 
-      {tab === "billing" ? (
-        <SectionCard title="Billing preferences">
-          <p className="muted small">
-            Manage wallet balance, top-ups, and auto top-up from{" "}
-            <Link to={`${base}/billing`}>Billing</Link>.
-          </p>
-          <KeyValue
-            label="Low balance threshold"
-            value={`£${lowBalanceThreshold}`}
-          />
-        </SectionCard>
-      ) : null}
-
-      {tab === "integrations" ? (
-        <SectionCard title="AI & integrations">
-          <p className="muted small">
-            Connect business systems from <Link to={`${base}/connectors`}>Systems</Link> and manage
-            AI clients from <Link to={`${base}/ai-connections`}>AI Access</Link>.
-          </p>
-        </SectionCard>
-      ) : null}
-
       {tab === "advanced" ? (
         <SectionCard title="Advanced">
+          <Notice tone="info">
+            Technical identifiers are for support and operator troubleshooting only.
+          </Notice>
           <KeyValue label="Company slug" value={company.slug} />
           <KeyValue label="Company ID" value={company.id} />
-          <Notice tone="info">
-            Platform-level settings are only available in the Admin Control Panel for INFRA operators.
-          </Notice>
         </SectionCard>
       ) : null}
-    </>
+    </div>
   );
 }

@@ -1,13 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { ChartColumn } from "lucide-react";
 import type { UsageInteraction, UsageRecord } from "@infra/shared";
+import { buildUsageSpendSummary } from "@infra/shared";
 import {
   CollapsibleBlock,
   Drawer,
   EmptyState,
-  ErrorState,
   FilterBar,
-  KpiStrip,
   LoadingState,
   MobileRecordCard,
   MobileRecordList,
@@ -23,13 +22,14 @@ import {
 import { usePortalCompany } from "./usePortalCompany";
 import { api, type CompanyUsageResponse } from "../api";
 import {
+  formatNumber,
   humanActor,
   humanClient,
   humanOperation,
   integrationLabel,
   usageSuccessRate,
 } from "../lib/format";
-import { PortalPageHeader } from "./components";
+import { PortalPageBody, PortalPageHeader } from "./components";
 
 export default function PortalUsagePage() {
   const { company, loading: companyLoading, error: companyError } = usePortalCompany();
@@ -84,48 +84,59 @@ export default function PortalUsagePage() {
     setDisplayLimit(25);
   }, [query, sourceFilter, statusFilter]);
 
-  if (companyLoading || loading) return <LoadingState />;
-  if (companyError || error || !company || !usage) {
-    return (
-      <ErrorState title="Unable to load usage" description={companyError ?? error ?? undefined} />
-    );
-  }
+  if (companyLoading || !company) return <LoadingState label="Loading usage…" />;
 
-  const { summary } = usage;
-  const successRate = usageSuccessRate(summary.successfulThisMonth, summary.requestsThisMonth);
+  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
+  const spendSummary = buildUsageSpendSummary(interactions, monthStart);
+  const summary = usage?.summary;
+  const successRate = summary
+    ? usageSuccessRate(summary.successfulThisMonth, summary.requestsThisMonth)
+    : "—";
 
   return (
-    <>
+    <div className="portal-page">
       <PortalPageHeader
         title="Usage"
-        description="What your company used, who used it, and what it cost."
+        description="What your company used and what it cost this month."
       />
 
-      <KpiStrip
-        items={[
-          { label: "Requests today", value: summary.requestsToday },
-          {
-            label: "This month",
-            value: summary.requestsThisMonth,
-            hint: `${summary.successfulThisMonth} successful · ${summary.failedThisMonth} failed`,
-          },
-          { label: "Success rate", value: successRate, hint: "Successful requests this month" },
-          {
-            label: "Failed",
-            value: summary.failedThisMonth,
-            hint: summary.failedThisMonth > 0 ? "Review failed requests below" : "No failures",
-          },
-        ]}
-      />
+      <PortalPageBody
+        loading={loading}
+        error={error ?? companyError}
+        loadingLabel="Loading usage…"
+        errorTitle="We couldn't load your usage"
+      >
+        <div className="portal-usage-summary card">
+          <div className="portal-usage-summary-row portal-usage-summary-total">
+            <span className="muted small">This month</span>
+            <strong>{formatCurrency(spendSummary.totalCents)}</strong>
+          </div>
+          <div className="portal-usage-summary-grid">
+            <div className="portal-usage-summary-row">
+              <span className="muted small">AI</span>
+              <strong>{formatCurrency(spendSummary.aiCents)}</strong>
+            </div>
+            <div className="portal-usage-summary-row">
+              <span className="muted small">Automations</span>
+              <strong>{formatCurrency(spendSummary.automationsCents)}</strong>
+            </div>
+            <div className="portal-usage-summary-row">
+              <span className="muted small">Other services</span>
+              <strong>{formatCurrency(spendSummary.otherCents)}</strong>
+            </div>
+          </div>
+          <p className="muted small portal-usage-summary-meta">
+            {formatNumber(summary?.requestsThisMonth ?? 0)} requests · {successRate} success rate
+          </p>
+        </div>
 
-      <CollapsibleBlock title="Understanding your usage" summary="What these numbers mean">
-        <p className="muted small" style={{ margin: 0 }}>
-          AI and integration activity naturally generates many requests — searches, reads, and
-          connection checks all count. A high request count is normal when ChatGPT is actively
-          working with your connected systems. Focus on failed requests if the success rate drops
-          unexpectedly.
-        </p>
-      </CollapsibleBlock>
+        <CollapsibleBlock title="Understanding your usage" summary="What these numbers mean">
+          <p className="muted small" style={{ margin: 0 }}>
+            Charges reflect INFRA usage recorded against your company balance. AI activity through
+            ChatGPT or Claude is usually the largest category. Focus on failed requests if the
+            success rate drops unexpectedly.
+          </p>
+        </CollapsibleBlock>
 
       <FilterBar>
         <SearchInput value={query} onChange={setQuery} placeholder="Search activity…" />
@@ -259,6 +270,7 @@ export default function PortalUsagePage() {
           onShowMore={() => setDisplayLimit((n) => n + 25)}
         />
       </SectionCard>
+      </PortalPageBody>
 
       <Drawer
         open={Boolean(detailItem)}
@@ -300,7 +312,7 @@ export default function PortalUsagePage() {
           </>
         ) : null}
       </Drawer>
-    </>
+    </div>
   );
 }
 
