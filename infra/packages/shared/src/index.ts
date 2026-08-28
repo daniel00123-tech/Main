@@ -15,6 +15,7 @@ export * from "./connectors/microsoft";
 export * from "./connectors/outlook";
 export * from "./connectors/google-drive-scope";
 export * from "./connectors/onboarding";
+export * from "./connectors/customer-health";
 export * from "./action-engine";
 export * from "./automation-engine";
 export * from "./permissions/role-presets";
