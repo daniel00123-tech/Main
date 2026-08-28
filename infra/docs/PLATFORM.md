@@ -61,11 +61,23 @@ Definitions live in shared catalogue. Instances are per-company (ADR 018). Auth,
 
 Xero OAuth is reusable for every company (ADR 027, ADR 028). Application credentials are Worker secrets `XERO_CLIENT_ID` / `XERO_CLIENT_SECRET`. Per-company tokens are envelope-encrypted. Accounting data stays on Xero and the company Business MCP.
 
-Initial OAuth uses **granular read scopes** (apps created after March 2026). Write scopes require admin scope upgrade + re-consent. Production financial writes stay disabled (`FINANCIAL_WRITES_ENABLED = false`) until operator approval.
+Initial OAuth uses **granular read scopes** (apps created after March 2026). Write scopes require admin scope upgrade + re-consent.
+
+**Two-layer Xero write model (production, 2026-08-28):**
+
+| Layer | Setting | Effect |
+| --- | --- | --- |
+| Global Action Engine gate | `FINANCIAL_WRITES_ENABLED = true` | Approved action plans may execute via the controlled path |
+| Direct MCP / gateway | `DIRECT_MCP_FINANCIAL_WRITES_BLOCKED = true` | All `xero_create_*` / mutating MCP tools return `ACTION_ENGINE_REQUIRED` |
+| Per-company mode | `co_caddington` → `CONTROLLED_WRITE` | Draft/low-risk writes via Action Engine only |
+| Per-company mode | New / other companies → `READ_ONLY` (default) | All Xero mutations blocked (`XERO_COMPANY_READ_ONLY`) |
+| Per-company mode | `FULL_APPROVED_WRITE` | **Not enabled** |
+
+See **XERO-READ-WRITE-SECURITY-MODEL.md** and **ADR 029** for the Action Engine flow (plan → confirm → approve → execute). Automations cannot invoke mutating Xero tools or `plan_xero_*` / `execute_action_plan`.
 
 Company MCP resolves Xero credentials via internal bridge `POST /api/internal/mcp/:mcpId/xero/context` (server-to-server only). Reusable execution logic lives in `@infra/xero-core`.
 
-Multi-step financial actions use `execution_plans` (migrations 0015, 0016) with idempotency keys, confirmation tokens, plan fingerprints, and per-item targets. See **ADR 029** for the Action Engine (plan → confirm → approve → execute, stale-state protection, write feature flags). Production financial writes remain disabled (`FINANCIAL_WRITES_ENABLED = false`).
+Multi-step financial actions use `execution_plans` (migrations 0015, 0016) with idempotency keys, confirmation tokens, plan fingerprints, and per-item targets.
 
 Company portal **Actions** page (`/portal/:slug/actions`) lists pending and completed action plans.
 

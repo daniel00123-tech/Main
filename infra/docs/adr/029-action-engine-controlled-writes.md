@@ -104,9 +104,9 @@ Migration `0016_action_engine.sql` extends `execution_plans` with risk class, pe
 
 ---
 
-## Out of scope (this phase)
+## Out of scope (original ADR phase — superseded for Caddington)
 
-- Live production financial writes (`FINANCIAL_WRITES_ENABLED = false`)
+- ~~Live production financial writes (`FINANCIAL_WRITES_ENABLED = false`)~~ — **Superseded 2026-08-28:** global `FINANCIAL_WRITES_ENABLED = true` with per-company write modes and direct MCP writes still blocked. See `XERO-READ-WRITE-SECURITY-MODEL.md`.
 - Full staff approval UX
 - HT / EL activation
 - 60% pricing / Stripe live
