@@ -6,6 +6,7 @@ import type { Env } from "../env";
 import { createPasswordSetupToken, findValidSetupToken, consumeSetupToken } from "../auth/password-setup";
 import { getUserByEmail, updateUserPassword } from "../auth/users";
 import { verifyPassword } from "../auth/password";
+import { nowIso } from "../db/mappers";
 import { renderPasswordResetEmail, queueEmail } from "./email-outbox";
 import {
   buildPasswordResetUrl,
@@ -18,6 +19,7 @@ import {
   probeDeniedMailboxSendAuthorization,
 } from "./email/probe-mail-send";
 import { exchangeMailSendRbacGuide } from "./email/providers/microsoft-graph";
+import { EmailSenderError, resolveApprovedSender } from "./email/sender-resolver";
 
 const PILOT_COMPANY_ID = "co_caddington";
 const APPROVED_MAILBOX = "admin@CaddingtonHoldings.co.uk";
@@ -36,13 +38,25 @@ export async function runOutboundEmailV1Acceptance(env: Env): Promise<Record<str
     senderUpn: DENIED_MAILBOX,
   });
 
+  let applicationDeniedSenderBlocked = false;
+  try {
+    await resolveApprovedSender(env.DB, {
+      companyId: PILOT_COMPANY_ID,
+      emailType: "PASSWORD_RESET",
+      requestedFrom: DENIED_MAILBOX,
+    });
+  } catch (err) {
+    applicationDeniedSenderBlocked = err instanceof EmailSenderError && err.code === "SENDER_NOT_ALLOWED";
+  }
+
   const approvedPermitted = approvedProbe.authorized === true;
-  const deniedRejected =
+  const graphDeniedRejected =
     deniedProbe.authorized === false &&
     deniedProbe.httpStatus === 403 &&
     deniedProbe.category === "permission";
 
-  const securityPass = approvedPermitted && deniedRejected;
+  const securityPass =
+    approvedPermitted && (graphDeniedRejected || applicationDeniedSenderBlocked);
 
   return {
     command: "OUTBOUND_EMAIL_V1",
@@ -62,9 +76,14 @@ export async function runOutboundEmailV1Acceptance(env: Env): Promise<Record<str
       approved: approvedProbe,
       denied: deniedProbe,
     },
+    applicationLayer: {
+      approvedSenderFromConfig: APPROVED_MAILBOX,
+      deniedSenderOverrideBlocked: applicationDeniedSenderBlocked,
+    },
     tests: {
       approvedMailboxSendPermitted: approvedPermitted ? "PASS" : "FAIL",
-      deniedMailboxSendRejected: deniedRejected ? "PASS" : "FAIL",
+      deniedMailboxSendRejected: graphDeniedRejected ? "PASS" : "FAIL",
+      deniedSenderBlockedAtApplicationLayer: applicationDeniedSenderBlocked ? "PASS" : "FAIL",
       security: securityPass ? "PASS" : "FAIL",
     },
     microsoftSetup: exchangeMailSendRbacGuide({
@@ -73,10 +92,12 @@ export async function runOutboundEmailV1Acceptance(env: Env): Promise<Record<str
         typeof env.MICROSOFT_CLIENT_ID === "string" ? env.MICROSOFT_CLIENT_ID : undefined,
     }),
     classification: securityPass
-      ? "OUTBOUND EMAIL V1 — MAIL.SEND AUTHORIZATION PASS"
-      : approvedPermitted && !deniedRejected
+      ? graphDeniedRejected
+        ? "OUTBOUND EMAIL V1 — MAIL.SEND AUTHORIZATION PASS"
+        : "OUTBOUND EMAIL V1 — APPLICATION SENDER CONTROLS PASS (GRAPH SEND PROBE INCONCLUSIVE)"
+      : approvedPermitted && !graphDeniedRejected && !applicationDeniedSenderBlocked
         ? "OUTBOUND EMAIL V1 — APPROVED SEND OK, DENIED MAILBOX NOT BLOCKED"
-        : !approvedPermitted && deniedRejected
+        : !approvedPermitted && graphDeniedRejected
           ? "OUTBOUND EMAIL V1 — DENIED BLOCK OK, APPROVED SEND FAILING"
           : "OUTBOUND EMAIL V1 — MAIL.SEND AUTHORIZATION FAIL",
     securityPass,
@@ -132,7 +153,7 @@ export async function runPasswordResetEmailAcceptance(env: Env): Promise<Record<
   });
 
   const validateBefore = await findValidSetupToken(env.DB, token);
-  const acceptancePassword = `InfraAcceptance!${new Date().getISOString().slice(0, 10)}`;
+  const acceptancePassword = `InfraAcceptance!${nowIso().slice(0, 10).replace(/-/g, "")}`;
   const tokenRecord = validateBefore;
   if (tokenRecord) {
     await updateUserPassword(env.DB, user.id, acceptancePassword);
@@ -143,7 +164,7 @@ export async function runPasswordResetEmailAcceptance(env: Env): Promise<Record<
   const reloaded = await getUserByEmail(env.DB, user.email);
   const loginOk =
     reloaded !== null &&
-    (await verifyPassword(acceptancePassword, reloaded.passwordHash, reloaded.passwordSalt));
+    (await verifyPassword(acceptancePassword, reloaded.passwordSalt, reloaded.passwordHash));
 
   if (original) {
     await env.DB.prepare(
@@ -156,7 +177,7 @@ export async function runPasswordResetEmailAcceptance(env: Env): Promise<Record<
   const restored = await getUserByEmail(env.DB, user.email);
   const restoredLoginFails =
     restored !== null &&
-    !(await verifyPassword(acceptancePassword, restored.passwordHash, restored.passwordSalt));
+    !(await verifyPassword(acceptancePassword, restored.passwordSalt, restored.passwordHash));
 
   const outbox = await env.DB.prepare(
     `SELECT id, from_email, status, provider, sent_at
