@@ -276,11 +276,6 @@ function PortalShellInner() {
         ) : showLabels ? (
           <div className="portal-sidebar-company">
             <PortalCompanyHomeLink company={company} className="portal-company-home-link--sidebar" />
-            <div className="muted small portal-sidebar-company-meta">
-              {company.portalSubdomain
-                ? `${company.portalSubdomain}.infra-web.pages.dev`
-                : company.slug}
-            </div>
           </div>
         ) : null}
 

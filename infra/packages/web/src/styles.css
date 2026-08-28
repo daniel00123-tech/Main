@@ -1381,8 +1381,12 @@ textarea:focus-visible {
   background: var(--sidebar);
   position: sticky;
   top: 0;
-  z-index: 30;
+  z-index: 40;
   min-height: 52px;
+}
+.mobile-topbar .button {
+  min-width: 44px;
+  min-height: 44px;
 }
 .mobile-topbar-actions {
   margin-left: auto;
@@ -2202,6 +2206,9 @@ button.mobile-record-card.selected-record {
   flex: 1 1 auto;
   font-size: var(--text-sm);
   line-height: 1.3;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
 }
 .portal-company-home-link--sidebar {
   display: block;
@@ -2318,6 +2325,7 @@ button.mobile-record-card.selected-record {
   }
   .portal-company-home-link--topbar {
     font-size: var(--text-xs);
+    max-width: calc(100vw - 132px);
   }
 }
 
