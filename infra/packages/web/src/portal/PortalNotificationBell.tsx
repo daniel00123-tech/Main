@@ -14,7 +14,7 @@ type NotificationItem = {
   createdAt: string;
 };
 
-export function PortalNotificationBell() {
+export function PortalNotificationBell({ variant = "sidebar" }: { variant?: "header" | "sidebar" }) {
   const { company } = usePortalCompany();
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -40,13 +40,20 @@ export function PortalNotificationBell() {
 
   useEffect(() => {
     if (!open) return;
-    function onClick(e: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+    function onClick(event: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
     document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
   async function markRead(id: string) {
@@ -64,67 +71,34 @@ export function PortalNotificationBell() {
   if (!company) return null;
 
   return (
-    <div className="notification-bell" ref={panelRef} style={{ position: "relative" }}>
+    <div
+      className={[
+        "notification-bell",
+        variant === "header" ? "notification-bell--header" : "notification-bell--sidebar",
+      ].join(" ")}
+      ref={panelRef}
+    >
       <button
         type="button"
-        className="button button-ghost button-small"
+        className="button button-ghost button-small notification-bell-trigger"
         aria-label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : ""}`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
         onClick={() => {
-          setOpen((v) => !v);
+          setOpen((value) => !value);
           if (!open) void refresh();
         }}
       >
         <Bell size={18} />
         {unreadCount > 0 ? (
-          <span
-            className="notification-badge"
-            style={{
-              position: "absolute",
-              top: 2,
-              right: 2,
-              background: "var(--danger)",
-              color: "#fff",
-              borderRadius: 999,
-              fontSize: 10,
-              minWidth: 16,
-              height: 16,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "0 4px",
-            }}
-          >
+          <span className="notification-badge" aria-hidden>
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         ) : null}
       </button>
       {open ? (
-        <div
-          className="notification-panel"
-          style={{
-            position: "absolute",
-            right: 0,
-            top: "100%",
-            marginTop: 8,
-            width: 320,
-            maxHeight: 400,
-            overflow: "auto",
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-            zIndex: 100,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "12px 16px",
-              borderBottom: "1px solid var(--border)",
-            }}
-          >
+        <div className="notification-panel" role="dialog" aria-label="Notifications">
+          <div className="notification-panel-header">
             <strong>Notifications</strong>
             {unreadCount > 0 ? (
               <Button type="button" variant="ghost" size="sm" onClick={() => void markAllRead()}>
@@ -133,32 +107,20 @@ export function PortalNotificationBell() {
             ) : null}
           </div>
           {items.length === 0 ? (
-            <p className="muted small" style={{ padding: 16 }}>
-              No notifications yet.
-            </p>
+            <p className="muted small notification-panel-empty">No notifications yet.</p>
           ) : (
             items.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                className="notification-item"
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "12px 16px",
-                  border: "none",
-                  borderBottom: "1px solid var(--border)",
-                  background: item.readAt ? "transparent" : "var(--surface-muted)",
-                  cursor: "pointer",
-                }}
+                className={`notification-item${item.readAt ? "" : " unread"}`}
                 onClick={() => {
                   void markRead(item.id);
                   if (item.href) window.location.href = item.href;
                   setOpen(false);
                 }}
               >
-                <div style={{ fontWeight: item.readAt ? 400 : 600 }}>{item.title}</div>
+                <div className="notification-item-title">{item.title}</div>
                 <div className="muted small">{item.body}</div>
                 <div className="muted small">{formatRelativeTime(item.createdAt)}</div>
               </button>

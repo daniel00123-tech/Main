@@ -364,6 +364,12 @@ textarea {
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
+.page-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
 .page-subtitle {
   margin: var(--s-2) 0 0;
   color: var(--text-secondary);
@@ -1349,6 +1355,21 @@ textarea:focus-visible {
   .page-header {
     flex-direction: column;
   }
+  .page-header--hide-title-mobile {
+    margin-bottom: var(--s-4);
+  }
+  .page-header--hide-title-mobile .page-title {
+    display: none;
+  }
+  .page-header--hide-title-mobile .page-header-title-row {
+    gap: var(--s-2);
+  }
+  .portal-overview-header .page-subtitle {
+    margin-top: var(--s-1);
+  }
+  .sidebar-notifications {
+    display: none;
+  }
 }
 
 .mobile-topbar {
@@ -1361,6 +1382,11 @@ textarea:focus-visible {
   position: sticky;
   top: 0;
   z-index: 30;
+  min-height: 52px;
+}
+.mobile-topbar-actions {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 @media (max-width: 720px) {
@@ -2150,6 +2176,149 @@ button.mobile-record-card.selected-record {
 
 .portal-shell .main {
   max-width: 1200px;
+}
+
+.portal-company-home-link {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 650;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--r-sm);
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+.portal-company-home-link:hover {
+  color: var(--accent-text);
+  background: rgba(255, 255, 255, 0.06);
+}
+.portal-company-home-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.portal-company-home-link--topbar {
+  flex: 1 1 auto;
+  font-size: var(--text-sm);
+  line-height: 1.3;
+}
+.portal-company-home-link--sidebar {
+  display: block;
+  font-size: var(--text-md);
+  margin-bottom: 2px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+.portal-sidebar-company {
+  padding: 0 var(--s-4) var(--s-3);
+}
+.portal-sidebar-company-meta {
+  word-break: break-word;
+}
+
+.notification-bell {
+  position: relative;
+}
+.notification-bell-trigger {
+  position: relative;
+  min-width: 40px;
+  min-height: 40px;
+}
+.notification-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: var(--danger);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 10px;
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  pointer-events: none;
+}
+.notification-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(400px, calc(100vh - 96px));
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-md);
+  z-index: 120;
+}
+.notification-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+.notification-panel-empty {
+  padding: var(--s-4);
+  margin: 0;
+}
+.notification-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--s-3) var(--s-4);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.notification-item:last-child {
+  border-bottom: none;
+}
+.notification-item.unread {
+  background: var(--surface-muted);
+}
+.notification-item:hover {
+  background: var(--surface-elevated);
+}
+.notification-item-title {
+  font-weight: 600;
+}
+.notification-item.unread .notification-item-title {
+  font-weight: 650;
+}
+
+@media (max-width: 900px) {
+  .notification-bell--header .notification-panel {
+    position: fixed;
+    top: calc(52px + var(--s-2));
+    right: var(--s-3);
+    left: var(--s-3);
+    width: auto;
+  }
+  .portal-shell .main {
+    padding-top: var(--s-4);
+  }
+}
+
+@media (max-width: 420px) {
+  .mobile-topbar {
+    padding-inline: var(--s-3);
+    gap: var(--s-2);
+  }
+  .portal-company-home-link--topbar {
+    font-size: var(--text-xs);
+  }
 }
 
 .nav-section-label {
