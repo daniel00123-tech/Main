@@ -1,6 +1,7 @@
-import type { PaymentProviderId } from "@infra/shared";
+import type { BillingMode, PaymentProviderId } from "@infra/shared";
 import { newId, nowIso } from "../db/mappers";
 import type { Env } from "../env";
+import { companyStripeCheckoutAllowed, getCompanyBillingMode } from "./company-billing-mode";
 import { getStripeMode, isStripeConfigured, isStripeTestModeActive } from "./stripe";
 import { getCompanySettings } from "./company-settings";
 
@@ -23,6 +24,9 @@ export interface PaymentProviderStatus {
     message?: string;
   };
   topUpOptionsCents: number[];
+  companyBillingMode?: BillingMode;
+  topUpCheckoutAllowed?: boolean;
+  topUpBlockedReason?: string | null;
 }
 
 /** Includes £5 (500) for deliberate live acceptance top-ups. */
@@ -60,8 +64,16 @@ export async function getCompanyPaymentProviderStatus(
   companyId: string,
 ): Promise<PaymentProviderStatus> {
   const base = getPlatformPaymentProviderStatus(env);
+  const companyBillingMode = await getCompanyBillingMode(db, companyId);
+  const checkoutGate = companyStripeCheckoutAllowed(env, companyBillingMode);
+  const withBilling = {
+    ...base,
+    companyBillingMode,
+    topUpCheckoutAllowed: checkoutGate.allowed,
+    topUpBlockedReason: checkoutGate.reason ?? null,
+  };
   const settings = await getCompanySettings(db, companyId);
-  if (!settings) return base;
+  if (!settings) return withBilling;
 
   const executionEnabled = String(env.AUTO_TOPUP_EXECUTION_ENABLED ?? "").toLowerCase() === "true";
   const canExecute =
@@ -72,7 +84,7 @@ export async function getCompanyPaymentProviderStatus(
     settings.autoTopUp.paymentMethodReady;
 
   return {
-    ...base,
+    ...withBilling,
     autoTopUp: {
       supported: base.configured,
       enabled: settings.autoTopUp.enabled,

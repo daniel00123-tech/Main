@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  companyCanReceiveLiveWalletCredit,
   companyStripeCheckoutAllowed,
   stripeCheckoutAllowedForCompany,
 } from "./company-billing-mode";
@@ -36,5 +37,10 @@ describe("company billing mode vs Stripe platform", () => {
     const result = companyStripeCheckoutAllowed(liveEnv, "live");
     expect(result.allowed).toBe(false);
     expect(result.reason).toContain("STRIPE_LIVE_MODE_ALLOWED");
+  });
+
+  it("companyCanReceiveLiveWalletCredit requires live billing mode", () => {
+    expect(companyCanReceiveLiveWalletCredit("live")).toBe(true);
+    expect(companyCanReceiveLiveWalletCredit("test")).toBe(false);
   });
 });

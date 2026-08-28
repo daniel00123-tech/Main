@@ -4,7 +4,8 @@ import { appendLedgerEntry, getWalletBalance } from "./ledger";
 import { getCompanySettings } from "./company-settings";
 import { createNotification } from "./notifications";
 import type { Env } from "../env";
-import { stripePaymentsAllowed, ensureStripeCustomer } from "./stripe";
+import { stripePaymentsAllowed, ensureStripeCustomer, getStripeMode } from "./stripe";
+import { companyStripeCheckoutAllowed, getCompanyBillingMode } from "./company-billing-mode";
 
 export const AUTO_TOPUP_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 export const AUTO_TOPUP_MAX_AMOUNT_CENTS = 10000_00; // £10,000 cap per charge
@@ -196,6 +197,24 @@ export async function createAutoTopUpTransaction(
 > {
   if (!stripePaymentsAllowed(env)) {
     return { ok: false, error: "Stripe payments not enabled", code: "PAYMENTS_BLOCKED" };
+  }
+
+  const companyBillingMode = await getCompanyBillingMode(env.DB, input.companyId);
+  const checkoutGate = companyStripeCheckoutAllowed(env, companyBillingMode);
+  if (!checkoutGate.allowed) {
+    return {
+      ok: false,
+      error: checkoutGate.reason ?? "Auto top-up blocked for this company billing mode",
+      code: "BILLING_MODE_BLOCKED",
+    };
+  }
+
+  if (getStripeMode(env) === "live") {
+    return {
+      ok: false,
+      error: "Off-session auto top-up is disabled in live Stripe mode",
+      code: "LIVE_AUTO_TOPUP_BLOCKED",
+    };
   }
 
   const idempotencyKey = `autotopup_${input.companyId}_${input.amountCents}_${Math.floor(Date.now() / AUTO_TOPUP_COOLDOWN_MS)}`;

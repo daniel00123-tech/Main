@@ -814,6 +814,9 @@ export const api = {
         message: string;
         stripeMode?: string;
         testModeOnly?: boolean;
+        companyBillingMode?: "test" | "live";
+        topUpCheckoutAllowed?: boolean;
+        topUpBlockedReason?: string | null;
         topUpOptionsCents: number[];
         autoTopUp: {
           supported: boolean;
