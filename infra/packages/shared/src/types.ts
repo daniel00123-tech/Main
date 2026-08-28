@@ -82,7 +82,16 @@ export type AuditEventType =
   | "connector.disconnected"
   | "connector.credentials_rotated"
   | "connector.health_checked"
-  | "connector.authentication_expired";
+  | "connector.authentication_expired"
+  | "auth.password_reset_requested"
+  | "email.send_started"
+  | "email.sent"
+  | "email.failed"
+  | "email.password_reset_requested"
+  | "invitation.sent"
+  | "invitation.queued"
+  | "invitation.resent"
+  | "invitation.cancelled";
 
 export type UserStatus = "active" | "disabled";
 

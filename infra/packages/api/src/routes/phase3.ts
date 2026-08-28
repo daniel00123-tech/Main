@@ -18,7 +18,10 @@ import {
   createPasswordSetupToken,
   validateNewPassword,
 } from "../auth/password-setup";
-import { portalOrigin } from "../services/public-urls";
+import { getCompanyEmailConfig } from "../services/email/company-config";
+import { sendTransactionalEmail } from "../services/email/send-transactional";
+import { renderTestEmail } from "../services/email-outbox";
+import { exchangeMailSendRbacGuide } from "../services/email/providers/microsoft-graph";
 import {
   getCompanyBySlug,
   listMcpEnvironments,
@@ -1986,5 +1989,67 @@ phase3.get(
 );
 
 registerCommand6Routes(phase3);
+
+phase3.get("/api/companies/:slug/email/config", requireAuth, async (c) => {
+  const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!canManageCompany(c.get("user"), company.id)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const config = await getCompanyEmailConfig(c.env.DB, company.id);
+  if (!config) {
+    return c.json({
+      enabled: false,
+      provider: null,
+      sender: null,
+      healthStatus: "configuration_required",
+    });
+  }
+
+  return c.json({
+    enabled: config.enabled,
+    provider: config.provider === "microsoft365" ? "Microsoft 365" : config.provider,
+    sender: `${config.senderDisplayName} <${config.senderAddress}>`,
+    healthStatus: config.healthStatus,
+    allowedTypes: config.allowedTypes,
+    lastSentAt: config.lastSentAt,
+    lastErrorCategory: config.lastErrorCategory,
+  });
+});
+
+phase3.post("/api/companies/:slug/email/test", requireAuth, async (c) => {
+  const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  const user = c.get("user");
+  if (!canManageCompany(user, company.id) && !user.isPlatformAdmin) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const body = await c.req.json<{ recipient?: string }>().catch(() => ({ recipient: undefined }));
+  const recipient = (body.recipient ?? user.email).trim().toLowerCase();
+  const content = renderTestEmail({
+    companyName: company.name,
+    sentAtLabel: new Date().toLocaleString("en-GB"),
+  });
+
+  const result = await sendTransactionalEmail(c.env, c.env.DB, {
+    companyId: company.id,
+    type: "TEST_EMAIL",
+    recipient,
+    subject: content.subject,
+    bodyText: content.text,
+    bodyHtml: content.html,
+    actor: user.email,
+  });
+
+  return c.json({
+    ok: result.sent,
+    emailId: result.id,
+    provider: result.provider,
+    error: result.error,
+    microsoftSetup: result.failureCategory === "permission" ? exchangeMailSendRbacGuide() : undefined,
+  });
+});
 
 export default phase3;

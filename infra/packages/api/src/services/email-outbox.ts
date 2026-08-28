@@ -1,10 +1,23 @@
-import { newId, nowIso } from "../db/mappers";
-import type { Env } from "../env";
+import type { TransactionalEmailType } from "@infra/shared";
+import {
+  renderUserInvitationEmail as renderSharedInvitationEmail,
+  renderPasswordResetEmail as renderSharedPasswordResetEmail,
+  renderTestEmail as renderSharedTestEmail,
+} from "@infra/shared";
+import { sendTransactionalEmail } from "./email/send-transactional";
 
 export type EmailTemplate = "user_invitation" | "password_reset" | "low_balance" | "auto_topup_failure";
 
+const LEGACY_TO_TYPE: Record<EmailTemplate, TransactionalEmailType | null> = {
+  user_invitation: "USER_INVITATION",
+  password_reset: "PASSWORD_RESET",
+  low_balance: null,
+  auto_topup_failure: null,
+};
+
+/** @deprecated Use sendTransactionalEmail directly. */
 export async function queueEmail(
-  env: Pick<Env, "RESEND_API_KEY" | "EMAIL_FROM">,
+  env: import("../env").Env,
   db: D1Database,
   input: {
     companyId?: string | null;
@@ -13,121 +26,59 @@ export async function queueEmail(
     subject: string;
     bodyText: string;
     bodyHtml?: string;
+    actor?: string;
   },
 ): Promise<{ id: string; sent: boolean; error?: string }> {
-  const id = newId("email");
-  const now = nowIso();
-  await db
-    .prepare(
-      `INSERT INTO email_outbox (
-        id, company_id, to_email, template_key, subject, body_text, body_html, status, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?)`,
-    )
-    .bind(
-      id,
-      input.companyId ?? null,
-      input.toEmail,
-      input.templateKey,
-      input.subject,
-      input.bodyText,
-      input.bodyHtml ?? null,
-      now,
-    )
-    .run();
+  const emailType = LEGACY_TO_TYPE[input.templateKey];
+  if (!emailType || !input.companyId) {
+    return {
+      id: "email_skipped",
+      sent: false,
+      error: input.companyId ? "Template not supported by transactional email service" : "companyId required",
+    };
+  }
 
-  const sendResult = await trySendEmail(env, {
-    to: input.toEmail,
+  const result = await sendTransactionalEmail(env, db, {
+    companyId: input.companyId,
+    type: emailType,
+    recipient: input.toEmail,
     subject: input.subject,
-    text: input.bodyText,
-    html: input.bodyHtml,
+    bodyText: input.bodyText,
+    bodyHtml: input.bodyHtml ?? input.bodyText,
+    actor: input.actor,
   });
 
-  if (sendResult.sent) {
-    await db
-      .prepare(
-        `UPDATE email_outbox SET status = 'sent', provider = ?, provider_message_id = ?, sent_at = ? WHERE id = ?`,
-      )
-      .bind(sendResult.provider ?? "none", sendResult.messageId ?? null, nowIso(), id)
-      .run();
-    return { id, sent: true };
-  }
-
-  await db
-    .prepare(
-      `UPDATE email_outbox SET status = 'queued', error_message = ? WHERE id = ?`,
-    )
-    .bind(sendResult.error ?? "No email provider configured", id)
-    .run();
-
-  return { id, sent: false, error: sendResult.error };
-}
-
-export async function trySendEmail(
-  env: Pick<Env, "RESEND_API_KEY" | "EMAIL_FROM">,
-  input: { to: string; subject: string; text: string; html?: string },
-): Promise<{ sent: boolean; provider?: string; messageId?: string; error?: string }> {
-  const apiKey = env.RESEND_API_KEY;
-  const from = env.EMAIL_FROM ?? "INFRA <noreply@infra.local>";
-  if (!apiKey) {
-    return { sent: false, error: "RESEND_API_KEY not configured" };
-  }
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: [input.to],
-      subject: input.subject,
-      text: input.text,
-      html: input.html ?? undefined,
-    }),
-  });
-
-  const body = (await response.json()) as { id?: string; message?: string };
-  if (!response.ok) {
-    return { sent: false, error: body.message ?? "Email send failed" };
-  }
-  return { sent: true, provider: "resend", messageId: body.id };
+  return { id: result.id, sent: result.sent, error: result.error };
 }
 
 export function renderInvitationEmail(input: {
   companyName: string;
-  inviterName: string;
+  inviterName?: string;
   setupUrl: string;
   expiresAt: string;
-}): { subject: string; text: string; html: string } {
-  const subject = `You're invited to ${input.companyName} on INFRA`;
-  const text = [
-    `Hello,`,
-    ``,
-    `${input.inviterName} has invited you to join ${input.companyName} on INFRA.`,
-    ``,
-    `Set up your account (link expires ${input.expiresAt}):`,
-    input.setupUrl,
-    ``,
-    `If you did not expect this invitation, you can ignore this email.`,
-  ].join("\n");
-  const html = `<p>Hello,</p><p><strong>${input.inviterName}</strong> has invited you to join <strong>${input.companyName}</strong> on INFRA.</p><p><a href="${input.setupUrl}">Set up your account</a></p><p><small>Link expires ${input.expiresAt}. If you did not expect this invitation, ignore this email.</small></p>`;
-  return { subject, text, html };
+}) {
+  return renderSharedInvitationEmail({
+    companyDisplayName: input.companyName,
+    setupUrl: input.setupUrl,
+    expiresLabel: input.expiresAt,
+  });
 }
 
 export function renderPasswordResetEmail(input: {
+  companyName: string;
   setupUrl: string;
   expiresAt: string;
-}): { subject: string; text: string; html: string } {
-  const subject = "Reset your INFRA password";
-  const text = [
-    `We received a request to reset your INFRA password.`,
-    ``,
-    `Reset your password (link expires ${input.expiresAt}):`,
-    input.setupUrl,
-    ``,
-    `If you did not request this, you can ignore this email.`,
-  ].join("\n");
-  const html = `<p>We received a request to reset your INFRA password.</p><p><a href="${input.setupUrl}">Reset password</a></p><p><small>Link expires ${input.expiresAt}.</small></p>`;
-  return { subject, text, html };
+}) {
+  return renderSharedPasswordResetEmail({
+    companyDisplayName: input.companyName,
+    resetUrl: input.setupUrl,
+    expiresLabel: input.expiresAt,
+  });
+}
+
+export function renderTestEmail(input: { companyName: string; sentAtLabel: string }) {
+  return renderSharedTestEmail({
+    companyDisplayName: input.companyName,
+    sentAtLabel: input.sentAtLabel,
+  });
 }
