@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   CONNECTOR_CATALOGUE,
+  connectorOverviewDescription,
+  deriveConnectorCustomerHealth,
   taxonomyForConnector,
 } from "@infra/shared";
 import { Plug } from "lucide-react";
@@ -33,17 +35,17 @@ import { usePortalCompany } from "./usePortalCompany";
 
 type ViewFilter = "connected" | "available" | "attention";
 
-function instanceStatus(instance: { status: string; authStatus?: string | null; healthStatus?: string | null }) {
-  if (instance.status === "draft") return "not_configured";
-  if (instance.healthStatus === "healthy" || instance.status === "healthy") return "healthy";
-  if (instance.authStatus === "connected") return "connected";
-  if (instance.status === "error" || instance.status === "failed") return "failed";
-  return instance.status;
+function instanceStatus(instance: Parameters<typeof deriveConnectorCustomerHealth>[0]) {
+  return deriveConnectorCustomerHealth(instance).badgeStatus;
 }
 
-function needsAttention(instance: { status: string; authStatus?: string | null; healthStatus?: string | null }) {
-  const status = instanceStatus(instance);
-  return status === "failed" || status === "degraded" || status === "warning" || instance.authStatus === "expired";
+function instanceStatusLabel(instance: Parameters<typeof deriveConnectorCustomerHealth>[0]) {
+  return deriveConnectorCustomerHealth(instance).label;
+}
+
+function needsAttention(instance: Parameters<typeof deriveConnectorCustomerHealth>[0]) {
+  const label = deriveConnectorCustomerHealth(instance).label;
+  return label === "Attention needed" || label === "Error";
 }
 
 export default function PortalConnectorsPage() {
@@ -208,8 +210,9 @@ export default function PortalConnectorsPage() {
                   ) : undefined
                 }
                 name={instance.name}
-                purpose={humanConnectorPurpose(definition?.slug ?? "", definition?.description)}
+                purpose={connectorOverviewDescription(instance.connectorDefinitionId)}
                 status={instanceStatus(instance)}
+                statusLabel={instanceStatusLabel(instance)}
                 onClick={() => definition && setSelectedSlug(definition.slug)}
                 action={
                   <Button type="button" variant="secondary" size="sm" onClick={() => definition && setSelectedSlug(definition.slug)}>

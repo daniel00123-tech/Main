@@ -312,6 +312,41 @@ export async function ensureMicrosoftLegacyBinding(
     )
     .bind(platformTenant, platformTenant, now, input.actor, now, input.connectorInstanceId, input.companyId)
     .run();
+
+  const { testMicrosoftConnection } = await import("./microsoft-oauth");
+  await testMicrosoftConnection({
+    env,
+    companyId: input.companyId,
+    instanceId: input.connectorInstanceId,
+    actor: input.actor,
+  }).catch(() => undefined);
+}
+
+/** Persist Graph probe results when legacy Microsoft rows stayed at unknown health. */
+export async function refreshStaleMicrosoftInstanceHealth(
+  env: Env,
+  input: { companyId: string; instances: import("@infra/shared").ConnectorInstance[]; actor: string },
+): Promise<import("@infra/shared").ConnectorInstance[]> {
+  const stale = input.instances.find(
+    (instance) =>
+      instance.connectorDefinitionId === "conn_microsoft_365" &&
+      instance.authStatus === "connected" &&
+      instance.healthStatus === "unknown",
+  );
+  if (!stale) return input.instances;
+
+  const { testMicrosoftConnection } = await import("./microsoft-oauth");
+  const { getConnectorInstance } = await import("./control-plane");
+  await testMicrosoftConnection({
+    env,
+    companyId: input.companyId,
+    instanceId: stale.id,
+    actor: input.actor,
+  }).catch(() => undefined);
+
+  const refreshed = await getConnectorInstance(env.DB, stale.id);
+  if (!refreshed) return input.instances;
+  return input.instances.map((instance) => (instance.id === stale.id ? refreshed : instance));
 }
 
 export function parseStoredMicrosoftCredentialFields(

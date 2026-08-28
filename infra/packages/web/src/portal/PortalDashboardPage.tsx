@@ -2,6 +2,11 @@ import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Plug } from "lucide-react";
 import {
+  connectorOverviewDescription,
+  connectorOverviewTitle,
+  deriveConnectorCustomerHealth,
+} from "@infra/shared";
+import {
   AttentionBanner,
   CollapsibleBlock,
   EmptyState,
@@ -26,12 +31,6 @@ import { CompactList, IntegrationRow, PortalPageHeader, ViewAllLink } from "./co
 import { PortalOnboardingChecklist } from "./PortalOnboardingChecklist";
 import { ConnectorLogo } from "../components/connectors/ConnectorLogo";
 import { usePortalCompany } from "./usePortalCompany";
-
-function connectorStatus(instance: { status: string; healthStatus?: string | null }): string {
-  if (instance.status === "draft") return "not_configured";
-  if (instance.healthStatus === "healthy") return "healthy";
-  return instance.status;
-}
 
 export default function PortalDashboardPage() {
   const { company, overview, loading, error, user, membership } = usePortalCompany();
@@ -211,20 +210,24 @@ export default function PortalDashboardPage() {
             />
           ) : (
             <CompactList>
-              {connectors.slice(0, 5).map((item) => (
+              {connectors.slice(0, 5).map((item) => {
+                const health = deriveConnectorCustomerHealth(item);
+                return (
                 <IntegrationRow
                   key={item.id}
                   icon={<ConnectorLogo slug={item.connectorDefinitionId.replace("conn_", "").replace(/_/g, "-")} name={item.name} />}
-                  name={item.name}
-                  purpose={
-                    item.managedBy === "company_mcp"
-                      ? "Managed through your AI connection"
-                      : "Connected business system"
-                  }
-                  status={connectorStatus(item)}
-                  statusLabel={item.status === "healthy" ? "Healthy" : undefined}
+                  name={connectorOverviewTitle({
+                    connectorDefinitionId: item.connectorDefinitionId,
+                    name: item.name,
+                    displayAccountName: item.displayAccountName,
+                    companyName: company.name,
+                  })}
+                  purpose={connectorOverviewDescription(item.connectorDefinitionId)}
+                  status={health.badgeStatus}
+                  statusLabel={health.label}
                 />
-              ))}
+              );
+              })}
               {mcp && connectors.length === 0 ? (
                 <IntegrationRow
                   name="AI connection"

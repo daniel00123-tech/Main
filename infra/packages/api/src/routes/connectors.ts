@@ -826,6 +826,45 @@ connectors.get("/api/connectors/microsoft/health", requireAuth, async (c) => {
   return c.json(await getMicrosoftConnectorHealth(c.env));
 });
 
+connectors.post("/api/internal/microsoft/backfill-stale-health", async (c) => {
+  const token = c.req.header("X-CMD13-Acceptance-Token")?.trim();
+  if (!token) return c.json({ error: "Missing acceptance token" }, 401);
+  const { createHash } = await import("node:crypto");
+  const hash = createHash("sha256").update(token).digest("hex");
+  await c.env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS cmd13_acceptance_tokens (
+      token_hash TEXT PRIMARY KEY,
+      expires_at TEXT NOT NULL
+    )`,
+  ).run();
+  const valid = await c.env.DB.prepare(
+    `SELECT token_hash FROM cmd13_acceptance_tokens WHERE token_hash = ? AND expires_at > datetime('now') LIMIT 1`,
+  )
+    .bind(hash)
+    .first();
+  if (!valid) return c.json({ error: "Invalid or expired acceptance token" }, 403);
+
+  const companyId = String(c.req.query("companyId") ?? "co_caddington");
+  const instances = await listConnectorInstances(c.env.DB, companyId);
+  const { refreshStaleMicrosoftInstanceHealth } = await import("../services/microsoft-credentials");
+  const refreshed = await refreshStaleMicrosoftInstanceHealth(c.env, {
+    companyId,
+    instances,
+    actor: "internal-health-backfill",
+  });
+  const microsoft = refreshed.find((row) => row.connectorDefinitionId === "conn_microsoft_365") ?? null;
+  return c.json({
+    ok: true,
+    microsoft: microsoft
+      ? {
+          healthStatus: microsoft.healthStatus,
+          providerHealth: microsoft.providerHealth ?? null,
+          status: microsoft.status,
+        }
+      : null,
+  });
+});
+
 connectors.post("/api/internal/cmd13/microsoft-acceptance", async (c) => {
   const token = c.req.header("X-CMD13-Acceptance-Token")?.trim();
   if (!token) return c.json({ error: "Missing acceptance token" }, 401);

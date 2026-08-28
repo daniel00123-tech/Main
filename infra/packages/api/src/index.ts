@@ -668,7 +668,16 @@ app.get("/api/companies/:slug/overview", requireAuth, async (c) => {
   }
 
   const overview = await getCompanyOverview(c.env.DB, company.id);
-  return c.json(overview);
+  if (!overview) return c.json({ error: "Company not found" }, 404);
+
+  const { refreshStaleMicrosoftInstanceHealth } = await import("./services/microsoft-credentials");
+  const connectorInstances = await refreshStaleMicrosoftInstanceHealth(c.env, {
+    companyId: company.id,
+    instances: overview.connectorInstances,
+    actor: c.get("user").email,
+  });
+
+  return c.json({ ...overview, connectorInstances });
 });
 
 app.get("/api/companies/:slug/onboarding", requireAuth, async (c) => {
