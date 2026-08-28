@@ -246,7 +246,7 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
       .sort()
       .at(-1) ?? null;
 
-  const [adminRow, usageCountRow, ledger, teamRow] = await Promise.all([
+  const [adminRow, usageCountRow, ledger, teamRow, gettingStarted] = await Promise.all([
     db
       .prepare(
         `SELECT COUNT(*) AS count FROM company_memberships
@@ -266,6 +266,7 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
       )
       .bind(companyId)
       .first(),
+    loadGettingStartedSignals(db, companyId),
   ]);
 
   const onboarding = buildCompanyOnboarding({
@@ -310,6 +311,102 @@ export async function getCompanyOverview(db: D1Database, companyId: string) {
     capabilitySnapshot: mcp?.capabilitySnapshot ?? null,
     walletCredits,
     spendThisMonthCents,
+    gettingStartedDismissedAt:
+      typeof company.config?.gettingStartedDismissedAt === "string"
+        ? company.config.gettingStartedDismissedAt
+        : null,
+    paymentMethodReady: gettingStarted.paymentMethodReady,
+    walletSettingsConfigured: gettingStarted.walletSettingsConfigured,
+    successfulRequestCount: gettingStarted.successfulRequestCount,
+    pendingInvitationCount: gettingStarted.pendingInvitationCount,
+    aiClientConfigured: gettingStarted.aiClientConfigured,
+  };
+}
+
+async function loadGettingStartedSignals(db: D1Database, companyId: string) {
+  const [payment, commercial, invitations, successful, aiConnected, aiUsed, aiUsage] =
+    await Promise.all([
+      db
+        .prepare(
+          `SELECT payment_method_status, auto_top_up_enabled,
+                  auto_top_up_threshold_cents, auto_top_up_amount_cents
+           FROM payment_provider_accounts
+           WHERE company_id = ? AND provider = 'stripe' LIMIT 1`,
+        )
+        .bind(companyId)
+        .first(),
+      db
+        .prepare(
+          `SELECT auto_top_up_enabled, auto_top_up_threshold_cents, auto_top_up_amount_cents
+           FROM company_commercial_settings WHERE company_id = ?`,
+        )
+        .bind(companyId)
+        .first(),
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM user_invitations
+           WHERE company_id = ? AND status IN ('pending', 'accepted')`,
+        )
+        .bind(companyId)
+        .first(),
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM usage_records WHERE company_id = ? AND success = 1`,
+        )
+        .bind(companyId)
+        .first(),
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM ai_client_connections
+           WHERE company_id = ? AND client_type IN ('chatgpt', 'claude')
+             AND status = 'connected'`,
+        )
+        .bind(companyId)
+        .first(),
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM service_identities
+           WHERE company_id = ? AND identity_type IN ('chatgpt', 'claude')
+             AND status = 'active'
+             AND (last_used_at IS NOT NULL OR IFNULL(request_count, 0) > 0)`,
+        )
+        .bind(companyId)
+        .first(),
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM usage_records
+           WHERE company_id = ? AND success = 1
+             AND source_client IN ('chatgpt', 'claude')`,
+        )
+        .bind(companyId)
+        .first(),
+    ]);
+
+  const thresholdCents =
+    commercial?.auto_top_up_threshold_cents != null
+      ? Number(commercial.auto_top_up_threshold_cents)
+      : payment?.auto_top_up_threshold_cents != null
+        ? Number(payment.auto_top_up_threshold_cents)
+        : 0;
+  const amountCents =
+    commercial?.auto_top_up_amount_cents != null
+      ? Number(commercial.auto_top_up_amount_cents)
+      : payment?.auto_top_up_amount_cents != null
+        ? Number(payment.auto_top_up_amount_cents)
+        : 0;
+  const enabled = Boolean(
+    Number(commercial?.auto_top_up_enabled ?? payment?.auto_top_up_enabled ?? 0),
+  );
+
+  return {
+    paymentMethodReady: String(payment?.payment_method_status ?? "") === "active",
+    walletSettingsConfigured: enabled && thresholdCents > 0 && amountCents > 0,
+    pendingInvitationCount: Number(invitations?.count ?? 0),
+    successfulRequestCount: Number(successful?.count ?? 0),
+    aiClientConfigured:
+      Number(aiConnected?.count ?? 0) > 0 ||
+      Number(aiUsed?.count ?? 0) > 0 ||
+      Number(aiUsage?.count ?? 0) > 0,
   };
 }
 

@@ -614,6 +614,21 @@ export interface CompanyOverview {
   capabilitySnapshot?: CapabilitySnapshot | null;
   walletCredits?: { testCents: number; paidCents: number };
   spendThisMonthCents?: number;
+  /** Company-scoped Getting Started dismissal timestamp (companies.config_json). */
+  gettingStartedDismissedAt?: string | null;
+  /** Saved Stripe (or provider) payment method is active and usable. */
+  paymentMethodReady?: boolean;
+  /** Wallet/auto-top-up settings required for normal operation are configured. */
+  walletSettingsConfigured?: boolean;
+  /** Lifetime successful company requests / tool executions. */
+  successfulRequestCount?: number;
+  /** Pending or accepted additional-user invitations. */
+  pendingInvitationCount?: number;
+  /**
+   * Authoritative ChatGPT/Claude access: a connected AI client, a used
+   * chatgpt/claude service identity, or a successful request from those clients.
+   */
+  aiClientConfigured?: boolean;
 }
 
 export type ReadinessApplicability = "required" | "optional" | "not_applicable";

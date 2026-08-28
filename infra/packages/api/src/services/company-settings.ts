@@ -1,7 +1,5 @@
-import {
-  DEFAULT_AUTO_TOPUP_AMOUNT_CENTS,
-  DEFAULT_AUTO_TOPUP_THRESHOLD_CENTS,
-} from "./payment-providers";
+import { nowIso } from "../db/mappers";
+import { syncLowBalanceThreshold } from "./wallet-metrics";
 
 export type CompanySettings = {
   companyId: string;
@@ -24,6 +22,12 @@ export type CompanySettings = {
     lowBalanceEmail: boolean;
     usageAlerts: boolean;
   };
+  /**
+   * Company-scoped Getting Started dismissal. A company_admin or director
+   * dismisses the checklist for every user of this company only.
+   * Once set it is not resurrected.
+   */
+  gettingStartedDismissedAt: string | null;
 };
 
 export type CompanySettingsPatch = {
@@ -39,6 +43,8 @@ export type CompanySettingsPatch = {
     lowBalanceEmail?: boolean;
     usageAlerts?: boolean;
   };
+  /** Persist company-scoped Getting Started dismissal. `false` is ignored. */
+  gettingStartedDismissed?: boolean;
 };
 
 function parseConfigJson(raw: unknown): Record<string, unknown> {
@@ -48,6 +54,31 @@ function parseConfigJson(raw: unknown): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+/**
+ * Merge settings patches into companies.config_json.
+ * Getting Started dismissal is company-scoped, idempotent, and never cleared here.
+ */
+export function applyCompanySettingsConfigPatch(
+  config: Record<string, unknown>,
+  patch: CompanySettingsPatch,
+  now: string,
+): Record<string, unknown> {
+  const next = { ...config };
+  if (patch.notifications) {
+    next.notifications = {
+      ...(next.notifications as Record<string, unknown> | undefined),
+      ...patch.notifications,
+    };
+  }
+  if (
+    patch.gettingStartedDismissed === true &&
+    typeof next.gettingStartedDismissedAt !== "string"
+  ) {
+    next.gettingStartedDismissedAt = now;
+  }
+  return next;
 }
 
 export async function getCompanySettings(
@@ -83,6 +114,10 @@ export async function getCompanySettings(
 
   const config = parseConfigJson(row.config_json);
   const notifications = (config.notifications ?? {}) as Record<string, unknown>;
+  const dismissedAt =
+    typeof config.gettingStartedDismissedAt === "string"
+      ? config.gettingStartedDismissedAt
+      : null;
 
   return {
     companyId: String(row.id),
@@ -115,6 +150,7 @@ export async function getCompanySettings(
       lowBalanceEmail: notifications.lowBalanceEmail !== false,
       usageAlerts: notifications.usageAlerts !== false,
     },
+    gettingStartedDismissedAt: dismissedAt,
   };
 }
 
@@ -129,13 +165,11 @@ export async function updateCompanySettings(
     .first();
   if (!existing) throw new Error("COMPANY_NOT_FOUND");
 
-  const config = parseConfigJson(existing.config_json);
-  if (patch.notifications) {
-    config.notifications = {
-      ...(config.notifications as Record<string, unknown> | undefined),
-      ...patch.notifications,
-    };
-  }
+  const config = applyCompanySettingsConfigPatch(
+    parseConfigJson(existing.config_json),
+    patch,
+    nowIso(),
+  );
 
   const sets: string[] = ["updated_at = ?"];
   const binds: unknown[] = [nowIso()];
