@@ -808,8 +808,8 @@ export async function runBillingReconciliationDiagnostic(db: D1Database): Promis
   return {
     checkedAt: nowIso(),
     openExceptions: after,
-    healedLinks: result.healedLinks.length,
-    createdExceptions: result.created.length,
+    healedLinks: result.healedLinks,
+    createdExceptions: result.exceptionsCreated,
     anomalies,
   };
 }
