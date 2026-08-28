@@ -78,7 +78,7 @@ import {
   stripePaymentsAllowed,
   verifyStripeWebhookSignature,
 } from "../services/stripe";
-import { getPlatformPaymentProviderStatus, getCompanyPaymentProviderStatus } from "../services/payment-providers";
+import { getPlatformPaymentProviderStatus, getCompanyPaymentProviderStatus, DEFAULT_AUTO_TOPUP_AMOUNT_CENTS, DEFAULT_AUTO_TOPUP_THRESHOLD_CENTS } from "../services/payment-providers";
 import { classifyLedgerCredit } from "../services/wallet-credits";
 import {
   getCompanySettings,
@@ -443,8 +443,10 @@ phase3.put("/api/companies/:slug/wallet/auto-topup", requireAuth, async (c) => {
   const current = await getCompanySettings(c.env.DB, company.id);
   const patch = {
     enabled: Boolean(body.enabled),
-    thresholdCents: body.thresholdCents ?? current?.autoTopUp.thresholdCents ?? 500,
-    amountCents: body.amountCents ?? current?.autoTopUp.amountCents ?? 2500,
+    thresholdCents:
+      body.thresholdCents ?? current?.autoTopUp.thresholdCents ?? DEFAULT_AUTO_TOPUP_THRESHOLD_CENTS,
+    amountCents:
+      body.amountCents ?? current?.autoTopUp.amountCents ?? DEFAULT_AUTO_TOPUP_AMOUNT_CENTS,
   };
   const updated = await updateAutoTopUpSettings(c.env.DB, company.id, patch);
   await recordAuditEvent(c.env.DB, {

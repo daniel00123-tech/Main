@@ -434,6 +434,10 @@ export async function createTopUpCheckoutIntent(
   params.set("line_items[0][price_data][unit_amount]", String(input.amountCents));
   params.set("line_items[0][price_data][product_data][name]", "INFRA prepaid credit");
 
+  if (stripeMode === "live" && companyBillingMode === "live") {
+    params.set("payment_intent_data[setup_future_usage]", "off_session");
+  }
+
   const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
     headers: {
@@ -621,6 +625,10 @@ async function creditCheckoutFromWebhook(
   const companyId = input.checkout.companyId;
   const amountCents = input.checkout.amountCents;
   const now = nowIso();
+  const creditClass =
+    sessionStripeMode === "live" && companyCanReceiveLiveWalletCredit(companyBillingMode)
+      ? "paid"
+      : "test";
 
   await env.DB.prepare(
     `UPDATE stripe_checkout_sessions SET status = 'paid' WHERE id = ? AND company_id = ?`,
@@ -636,7 +644,7 @@ async function creditCheckoutFromWebhook(
     referenceId: input.checkout.id,
     description: `Stripe top-up £${(amountCents / 100).toFixed(2)}`,
     metadata: {
-      creditClass: "paid",
+      creditClass,
       stripeSessionId: input.stripeSessionId,
       stripeEventId: input.stripeEventId,
       stripePaymentIntentId: input.stripePaymentIntentId,
@@ -682,8 +690,24 @@ async function creditCheckoutFromWebhook(
       actor: "stripe-webhook",
       resourceType: "ledger",
       resourceId: ledger.entry.id,
-      detail: { amountCents, entryType: "top_up", creditClass: "paid" },
+      detail: { amountCents, entryType: "top_up", creditClass },
     });
+  }
+
+  if (input.stripePaymentIntentId && creditClass === "paid") {
+    const sync = await syncDefaultPaymentMethodForCompany(env, companyId, {
+      paymentIntentId: input.stripePaymentIntentId,
+    });
+    if (!sync.ok) {
+      await recordAuditEvent(env.DB, {
+        companyId,
+        eventType: "payment_method.sync_deferred",
+        actor: "stripe-webhook",
+        resourceType: "stripe_checkout",
+        resourceId: input.checkout.id,
+        detail: { reason: sync.error, paymentIntentId: input.stripePaymentIntentId },
+      });
+    }
   }
 
   return {
@@ -1041,6 +1065,147 @@ export type StripePaymentMethodSummary = {
   message: string;
 };
 
+type ResolvedStripePaymentMethod = {
+  paymentMethodId: string;
+  brand: string | null;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+};
+
+async function stripeApiRequest(
+  env: Env,
+  path: string,
+  init?: { method?: string; body?: URLSearchParams },
+): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
+  const response = await fetch(`https://api.stripe.com${path}`, {
+    method: init?.method ?? "GET",
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+      ...(init?.body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
+    },
+    body: init?.body?.toString(),
+  });
+  const data = (await response.json()) as Record<string, unknown>;
+  return { ok: response.ok, status: response.status, data };
+}
+
+function resolvedFromPaymentMethodObject(
+  paymentMethod: Record<string, unknown>,
+): ResolvedStripePaymentMethod | null {
+  const id = paymentMethod.id ? String(paymentMethod.id) : null;
+  if (!id) return null;
+  const card = (paymentMethod.card ?? {}) as Record<string, unknown>;
+  return {
+    paymentMethodId: id,
+    brand: card.brand ? String(card.brand) : null,
+    last4: card.last4 ? String(card.last4) : null,
+    expMonth: card.exp_month != null ? Number(card.exp_month) : null,
+    expYear: card.exp_year != null ? Number(card.exp_year) : null,
+  };
+}
+
+async function fetchPaymentMethodById(
+  env: Env,
+  paymentMethodId: string,
+): Promise<ResolvedStripePaymentMethod | null> {
+  const response = await stripeApiRequest(env, `/v1/payment_methods/${encodeURIComponent(paymentMethodId)}`);
+  if (!response.ok) return null;
+  return resolvedFromPaymentMethodObject(response.data);
+}
+
+async function resolveCustomerPaymentMethod(
+  env: Env,
+  input: {
+    customerId: string;
+    paymentIntentId?: string | null;
+    setupIntentId?: string | null;
+  },
+): Promise<ResolvedStripePaymentMethod | null> {
+  if (input.setupIntentId) {
+    const setup = await stripeApiRequest(
+      env,
+      `/v1/setup_intents/${encodeURIComponent(input.setupIntentId)}?expand[]=payment_method`,
+    );
+    if (setup.ok) {
+      const pm = setup.data.payment_method;
+      if (pm && typeof pm === "object") {
+        const resolved = resolvedFromPaymentMethodObject(pm as Record<string, unknown>);
+        if (resolved) return resolved;
+      }
+      if (typeof pm === "string") {
+        const byId = await fetchPaymentMethodById(env, pm);
+        if (byId) return byId;
+      }
+    }
+  }
+
+  if (input.paymentIntentId) {
+    const intent = await stripeApiRequest(
+      env,
+      `/v1/payment_intents/${encodeURIComponent(input.paymentIntentId)}?expand[]=payment_method`,
+    );
+    if (intent.ok) {
+      const pm = intent.data.payment_method;
+      if (pm && typeof pm === "object") {
+        const resolved = resolvedFromPaymentMethodObject(pm as Record<string, unknown>);
+        if (resolved) return resolved;
+      }
+      if (typeof pm === "string") {
+        const byId = await fetchPaymentMethodById(env, pm);
+        if (byId) return byId;
+      }
+    }
+  }
+
+  const customer = await stripeApiRequest(
+    env,
+    `/v1/customers/${encodeURIComponent(input.customerId)}?expand[]=invoice_settings.default_payment_method`,
+  );
+  if (customer.ok) {
+    const defaultPm = customer.data.invoice_settings as
+      | { default_payment_method?: Record<string, unknown> | string | null }
+      | undefined;
+    const pmRef = defaultPm?.default_payment_method;
+    if (pmRef && typeof pmRef === "object") {
+      const resolved = resolvedFromPaymentMethodObject(pmRef);
+      if (resolved) return resolved;
+    }
+    if (typeof pmRef === "string") {
+      const byId = await fetchPaymentMethodById(env, pmRef);
+      if (byId) return byId;
+    }
+  }
+
+  const listed = await stripeApiRequest(
+    env,
+    `/v1/customers/${encodeURIComponent(input.customerId)}/payment_methods?type=card&limit=1`,
+  );
+  if (listed.ok) {
+    const data = listed.data.data;
+    if (Array.isArray(data) && data.length > 0 && typeof data[0] === "object") {
+      const resolved = resolvedFromPaymentMethodObject(data[0] as Record<string, unknown>);
+      if (resolved) return resolved;
+    }
+  }
+
+  return null;
+}
+
+async function setCustomerDefaultPaymentMethod(
+  env: Env,
+  customerId: string,
+  paymentMethodId: string,
+): Promise<boolean> {
+  const params = new URLSearchParams();
+  params.set("invoice_settings[default_payment_method]", paymentMethodId);
+  const response = await stripeApiRequest(env, `/v1/customers/${encodeURIComponent(customerId)}`, {
+    method: "POST",
+    body: params,
+  });
+  return response.ok;
+}
+
 /** Read saved payment method summary from Stripe Customer (never returns full PAN). */
 export async function getStripePaymentMethodStatus(
   env: Env,
@@ -1073,36 +1238,8 @@ export async function getStripePaymentMethodStatus(
     };
   }
 
-  const response = await fetch(
-    `https://api.stripe.com/v1/customers/${customer.customerId}?expand[]=invoice_settings.default_payment_method`,
-    {
-      headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` },
-    },
-  );
-  const body = (await response.json()) as {
-    invoice_settings?: {
-      default_payment_method?: {
-        card?: { brand?: string; last4?: string; exp_month?: number; exp_year?: number };
-      } | null;
-    };
-    error?: { message?: string };
-  };
-
-  if (!response.ok) {
-    return {
-      configured: true,
-      hasPaymentMethod: false,
-      brand: null,
-      last4: null,
-      expMonth: null,
-      expYear: null,
-      setupRequired: true,
-      message: body.error?.message ?? "Unable to load payment method",
-    };
-  }
-
-  const pm = body.invoice_settings?.default_payment_method?.card;
-  if (!pm) {
+  const resolved = await resolveCustomerPaymentMethod(env, { customerId: customer.customerId });
+  if (!resolved) {
     return {
       configured: true,
       hasPaymentMethod: false,
@@ -1118,10 +1255,10 @@ export async function getStripePaymentMethodStatus(
   return {
     configured: true,
     hasPaymentMethod: true,
-    brand: pm.brand ?? null,
-    last4: pm.last4 ?? null,
-    expMonth: pm.exp_month ?? null,
-    expYear: pm.exp_year ?? null,
+    brand: resolved.brand,
+    last4: resolved.last4,
+    expMonth: resolved.expMonth,
+    expYear: resolved.expYear,
     setupRequired: false,
     message: "Payment method saved",
   };
@@ -1285,7 +1422,9 @@ async function handleSetupCheckoutCompleted(
     .bind(nowIso(), setupIntentId, stripeSessionId, companyId)
     .run();
 
-  const synced = await syncDefaultPaymentMethodForCompany(env, companyId);
+  const synced = await syncDefaultPaymentMethodForCompany(env, companyId, {
+    setupIntentId,
+  });
   if (!synced.ok) {
     await recordAuditEvent(env.DB, {
       companyId,
@@ -1318,6 +1457,7 @@ async function handleSetupCheckoutCompleted(
 export async function syncDefaultPaymentMethodForCompany(
   env: Env,
   companyId: string,
+  hints?: { paymentIntentId?: string | null; setupIntentId?: string | null },
 ): Promise<
   | { ok: true; brand: string | null; last4: string | null; replaced: boolean }
   | { ok: false; error: string }
@@ -1348,25 +1488,16 @@ export async function syncDefaultPaymentMethodForCompany(
     .first();
   const hadPrevious = Boolean(existing?.payment_method_id);
 
-  const status = await getStripePaymentMethodStatus(env, {
-    companyId,
-    companyName: "",
-    actorEmail: "stripe-webhook",
+  const resolved = await resolveCustomerPaymentMethod(env, {
+    customerId,
+    paymentIntentId: hints?.paymentIntentId,
+    setupIntentId: hints?.setupIntentId,
   });
-  if (!status.hasPaymentMethod) {
-    return { ok: false, error: status.message };
+  if (!resolved) {
+    return { ok: false, error: "No payment method on file" };
   }
 
-  const customerResp = await fetch(
-    `https://api.stripe.com/v1/customers/${customerId}?expand[]=invoice_settings.default_payment_method`,
-    { headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}` } },
-  );
-  const customerBody = (await customerResp.json()) as {
-    invoice_settings?: { default_payment_method?: string | { id?: string } };
-  };
-  const pmRef = customerBody.invoice_settings?.default_payment_method;
-  const paymentMethodId =
-    typeof pmRef === "string" ? pmRef : pmRef?.id ? String(pmRef.id) : null;
+  await setCustomerDefaultPaymentMethod(env, customerId, resolved.paymentMethodId);
 
   await env.DB.prepare(
     `UPDATE payment_provider_accounts
@@ -1376,11 +1507,11 @@ export async function syncDefaultPaymentMethodForCompany(
      WHERE company_id = ? AND provider = 'stripe'`,
   )
     .bind(
-      paymentMethodId,
-      status.brand,
-      status.last4,
-      status.expMonth,
-      status.expYear,
+      resolved.paymentMethodId,
+      resolved.brand,
+      resolved.last4,
+      resolved.expMonth,
+      resolved.expYear,
       nowIso(),
       companyId,
     )
@@ -1388,8 +1519,8 @@ export async function syncDefaultPaymentMethodForCompany(
 
   return {
     ok: true,
-    brand: status.brand,
-    last4: status.last4,
+    brand: resolved.brand,
+    last4: resolved.last4,
     replaced: hadPrevious,
   };
 }

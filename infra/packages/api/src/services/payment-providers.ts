@@ -33,6 +33,10 @@ export interface PaymentProviderStatus {
 /** Deliberate live acceptance top-up — Caddington £1.00 GBP (100 pence). */
 export const LIVE_ACCEPTANCE_TOP_UP_CENTS = 100;
 
+/** Standard recommended auto top-up for live billing companies (£25). */
+export const DEFAULT_AUTO_TOPUP_THRESHOLD_CENTS = 2500;
+export const DEFAULT_AUTO_TOPUP_AMOUNT_CENTS = 2500;
+
 /** Standard preset top-ups (£5 minimum for non-live acceptance companies). */
 export const DEFAULT_TOP_UP_OPTIONS_CENTS = [500, 1000, 2500, 5000, 10000];
 
@@ -55,8 +59,8 @@ export function getPlatformPaymentProviderStatus(env: Env): PaymentProviderStatu
     autoTopUp: {
       supported: true,
       enabled: false,
-      thresholdCents: 500,
-      amountCents: 2500,
+      thresholdCents: DEFAULT_AUTO_TOPUP_THRESHOLD_CENTS,
+      amountCents: DEFAULT_AUTO_TOPUP_AMOUNT_CENTS,
     },
     topUpOptionsCents: DEFAULT_TOP_UP_OPTIONS_CENTS,
   };
@@ -127,8 +131,8 @@ export async function getCompanyPaymentProviderStatus(
     autoTopUp: {
       supported: base.configured,
       enabled: settings.autoTopUp.enabled,
-      thresholdCents: settings.autoTopUp.thresholdCents ?? 500,
-      amountCents: settings.autoTopUp.amountCents ?? 2500,
+      thresholdCents: settings.autoTopUp.thresholdCents ?? DEFAULT_AUTO_TOPUP_THRESHOLD_CENTS,
+      amountCents: settings.autoTopUp.amountCents ?? DEFAULT_AUTO_TOPUP_AMOUNT_CENTS,
       paymentMethodReady: settings.autoTopUp.paymentMethodReady,
       canExecute,
       setupRequired: !settings.autoTopUp.paymentMethodReady,

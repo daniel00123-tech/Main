@@ -3,6 +3,9 @@ import type { LedgerEntry } from "./ledger";
 
 export function creditClassForEntry(entry: LedgerEntry): CreditClass | null {
   const meta = entry.metadata ?? {};
+  if (entry.entryType === "top_up" && meta.stripeMode === "test") {
+    return "test";
+  }
   if (meta.creditClass === "paid" || meta.creditClass === "test") {
     return meta.creditClass;
   }
