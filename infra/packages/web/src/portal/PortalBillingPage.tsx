@@ -186,8 +186,10 @@ export default function PortalBillingPage() {
   const topUpBlockedReason = wallet.paymentProvider?.topUpBlockedReason ?? null;
   const companyBillingMode = wallet.paymentProvider?.companyBillingMode ?? "test";
   const recentTopUps = (wallet.recentTopUps ?? []) as TopUpRecord[];
-  const topUpOptions = wallet.topUpOptionsCents.filter((amount) => amount >= 500);
-  const customTopUpMinPounds = stripeTestMode ? 1 : 5;
+  const minTopUpCents =
+    companyBillingMode === "live" && !stripeTestMode ? 100 : stripeTestMode ? 100 : 500;
+  const topUpOptions = wallet.topUpOptionsCents.filter((amount) => amount >= minTopUpCents);
+  const customTopUpMinPounds = minTopUpCents / 100;
   const autoTopUp = wallet.paymentProvider?.autoTopUp;
   const spendThisMonth =
     wallet.wallet.spendThisMonthCents ??

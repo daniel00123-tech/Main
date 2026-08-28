@@ -64,6 +64,7 @@ import {
   type ServiceIdentityType,
 } from "../services/service-identities";
 import { resolveServiceIdentityScopesForCompany } from "../services/service-identity-scopes";
+import { getCompanyBillingMode } from "../services/company-billing-mode";
 import {
   createTopUpCheckoutIntent,
   getTopUpCheckoutStatus,
@@ -72,6 +73,7 @@ import {
   isStripeConfigured,
   isStripeTestModeActive,
   listRecentTopUps,
+  minimumTopUpAmountCents,
   processStripeWebhookEvent,
   stripePaymentsAllowed,
   verifyStripeWebhookSignature,
@@ -329,15 +331,24 @@ phase3.post("/api/companies/:slug/wallet/top-up", requireAuth, async (c) => {
     cancelUrl?: string;
   }>();
 
-  if (!body.amountCents || body.amountCents < 500) {
-    return c.json({ error: "amountCents must be at least 500 (£5)" }, 400);
+  const companyBillingMode = await getCompanyBillingMode(c.env.DB, company.id);
+  const minAmountCents = minimumTopUpAmountCents(c.env, companyBillingMode);
+  if (!body.amountCents || body.amountCents < minAmountCents) {
+    return c.json(
+      {
+        error: `amountCents must be at least ${minAmountCents} (£${(minAmountCents / 100).toFixed(2)})`,
+      },
+      400,
+    );
   }
-  if (!isAllowedTopUpAmountCents(body.amountCents, c.env)) {
+  if (!isAllowedTopUpAmountCents(body.amountCents, c.env, companyBillingMode)) {
     return c.json(
       {
         error: isStripeTestModeActive(c.env)
           ? "Invalid top-up amount. Allowed: £1 (sandbox), £5, £10, £25, £50, £100."
-          : "Invalid top-up amount. Allowed preset amounts: £5, £10, £25, £50, £100.",
+          : companyBillingMode === "live"
+            ? "Invalid top-up amount. Allowed: £1 (live acceptance), £5, £10, £25, £50, £100."
+            : "Invalid top-up amount. Allowed preset amounts: £5, £10, £25, £50, £100.",
       },
       400,
     );

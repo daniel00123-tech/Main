@@ -279,11 +279,11 @@ describe("stripe mode detection", () => {
     expect(stripePaymentsAllowed(testEnv)).toBe(true);
   });
 
-  it("blocks live mode when not allowed", () => {
+  it("allows live mode when operator approved", () => {
     const liveEnv = { ...testEnv, STRIPE_SECRET_KEY: "sk_live_fake" };
     expect(getStripeMode(liveEnv)).toBe("live");
-    expect(STRIPE_LIVE_MODE_ALLOWED).toBe(false);
-    expect(stripePaymentsAllowed(liveEnv)).toBe(false);
+    expect(STRIPE_LIVE_MODE_ALLOWED).toBe(true);
+    expect(stripePaymentsAllowed(liveEnv)).toBe(true);
   });
 });
 
@@ -297,9 +297,15 @@ describe("top-up amount whitelist", () => {
   });
 
   it("allows £1 sandbox amount in Stripe test mode", () => {
-    expect(isAllowedTopUpAmountCents(100, testEnv)).toBe(true);
+    expect(isAllowedTopUpAmountCents(100, testEnv, "test")).toBe(true);
     const liveEnv = { ...testEnv, STRIPE_SECRET_KEY: "sk_live_fake" } as import("../env").Env;
-    expect(isAllowedTopUpAmountCents(100, liveEnv)).toBe(false);
+    expect(isAllowedTopUpAmountCents(100, liveEnv, "test")).toBe(false);
+  });
+
+  it("allows £1 live acceptance amount for live billing companies on live platform", () => {
+    const liveEnv = { ...testEnv, STRIPE_SECRET_KEY: "sk_live_fake" } as import("../env").Env;
+    expect(isAllowedTopUpAmountCents(100, liveEnv, "live")).toBe(true);
+    expect(isAllowedTopUpAmountCents(500, liveEnv, "live")).toBe(true);
   });
 });
 
