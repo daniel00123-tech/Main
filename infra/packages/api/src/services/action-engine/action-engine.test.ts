@@ -274,6 +274,47 @@ describe("action plan fingerprint", () => {
 });
 
 describe("action plan lifecycle", () => {
+  it("creates failed plan when targets fail preflight", async () => {
+    const db = new FakeD1() as unknown as D1Database;
+    const invalidTarget: ActionTarget = {
+      ...validTarget,
+      validation: "invalid",
+      validationDetail: "Contact could not be resolved.",
+    };
+    const { plan, confirmationToken } = await createActionPlan(db, {
+      companyId: "co_test",
+      requestedAction: "xero.invoices.create",
+      actor: "user@test.com",
+      targets: [invalidTarget],
+      permissionDecision: basePermission,
+      riskClass: "financial_action",
+      summary: "Draft invoice plan failed — contact not found.",
+    });
+    expect(plan.status).toBe("failed");
+    expect(plan.confirmationStatus).toBe("not_required");
+    expect(confirmationToken).toBeNull();
+  });
+
+  it("rejects confirmation for failed planning plan", async () => {
+    const db = new FakeD1() as unknown as D1Database;
+    const { plan } = await createActionPlan(db, {
+      companyId: "co_test",
+      requestedAction: "xero.invoices.create",
+      actor: "user@test.com",
+      targets: [{ ...validTarget, validation: "invalid", validationDetail: "Contact not found" }],
+      permissionDecision: basePermission,
+      riskClass: "financial_action",
+      summary: "Draft invoice plan failed — contact not found.",
+    });
+    const result = await confirmActionPlan(db, {
+      companyId: "co_test",
+      planId: plan.id,
+      actor: "user@test.com",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("PLAN_NOT_EXECUTABLE");
+  });
+
   it("creates plan with confirmation token", async () => {
     const db = new FakeD1() as unknown as D1Database;
     const { plan, confirmationToken } = await createActionPlan(db, {

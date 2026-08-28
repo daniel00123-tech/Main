@@ -8,6 +8,7 @@ import {
   listActionPlans,
   isPlanStale,
   markPlanStale,
+  planTargetsReady,
 } from "./action-engine";
 import { evaluateActionPermission } from "./permission-engine";
 import {
@@ -116,6 +117,17 @@ export async function executeActionControlTool(
     const planId = String(input.arguments.planId ?? "");
     const plan = await getActionPlan(env.DB, input.companyId, planId);
     if (!plan) return { status: 404, body: { error: "Action plan not found", code: "PLAN_NOT_FOUND" } };
+
+    if (plan.status === "failed" || !planTargetsReady(plan.targets)) {
+      return {
+        status: 409,
+        body: {
+          error: "Action plan failed during planning and cannot be executed.",
+          code: "PLAN_NOT_EXECUTABLE",
+          plan: sanitizePlanForClient(plan),
+        },
+      };
+    }
 
     if (plan.status === "completed") {
       const execution = await getExecutionEvidence(env, input.companyId, planId);

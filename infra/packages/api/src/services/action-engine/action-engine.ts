@@ -40,6 +40,21 @@ export function generateConfirmationToken(): string {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** True when every target passed planning/preflight and may enter confirmation workflow. */
+export function planTargetsReady(targets: ActionTarget[]): boolean {
+  return targets.length > 0 && targets.every((target) => target.validation === "valid");
+}
+
+export function planFailureReason(targets: ActionTarget[], summary?: string | null): string | null {
+  if (planTargetsReady(targets)) return null;
+  const invalid = targets.find((target) => target.validation !== "valid");
+  if (invalid?.validationDetail) return invalid.validationDetail;
+  if (summary?.includes("plan failed")) {
+    return summary.replace(/^.*plan failed —\s*/i, "").replace(/\.$/, "") || summary;
+  }
+  return invalid?.validation ?? "Planning failed";
+}
+
 export async function findActionPlanByIdempotency(
   db: D1Database,
   companyId: string,
@@ -103,20 +118,28 @@ export async function createActionPlan(
     Date.now() + (input.expiresInMinutes ?? ACTION_PLAN_DEFAULT_TTL_MINUTES) * 60_000,
   ).toISOString();
   const planFingerprint = await fingerprintTargets(input.targets);
-  const confirmationToken = input.permissionDecision.requiresConfirmation
-    ? generateConfirmationToken()
-    : null;
-  const confirmationStatus: ConfirmationStatus = input.permissionDecision.requiresConfirmation
-    ? "awaiting"
-    : "not_required";
-  const approvalStatus: ApprovalStatus = input.permissionDecision.requiresApproval
-    ? "pending"
-    : "not_required";
-  const initialStatus: ActionPlanStatus = input.permissionDecision.requiresConfirmation
-    ? "awaiting_confirmation"
+  const planningReady = planTargetsReady(input.targets);
+  const confirmationToken =
+    planningReady && input.permissionDecision.requiresConfirmation
+      ? generateConfirmationToken()
+      : null;
+  const confirmationStatus: ConfirmationStatus = !planningReady
+    ? "not_required"
+    : input.permissionDecision.requiresConfirmation
+      ? "awaiting"
+      : "not_required";
+  const approvalStatus: ApprovalStatus = !planningReady
+    ? "not_required"
     : input.permissionDecision.requiresApproval
-      ? "awaiting_approval"
-      : "validated";
+      ? "pending"
+      : "not_required";
+  const initialStatus: ActionPlanStatus = !planningReady
+    ? "failed"
+    : input.permissionDecision.requiresConfirmation
+      ? "awaiting_confirmation"
+      : input.permissionDecision.requiresApproval
+        ? "awaiting_approval"
+        : "validated";
 
   const payload = {
     targets: input.targets,
@@ -165,7 +188,7 @@ export async function createActionPlan(
 
   await recordAuditEvent(db, {
     companyId: input.companyId,
-    eventType: "action_plan.created",
+    eventType: planningReady ? "action_plan.created" : "action_plan.planning_failed",
     actor: input.actor,
     resourceType: "action_plan",
     resourceId: id,
@@ -176,6 +199,7 @@ export async function createActionPlan(
       status: initialStatus,
       permission: input.permissionDecision.reasonCode,
       idempotencyKey: input.idempotencyKey ?? null,
+      failureReason: planningReady ? null : planFailureReason(input.targets, input.summary),
     },
   });
 
@@ -198,6 +222,15 @@ export async function confirmActionPlan(
 > {
   const plan = await getActionPlan(db, input.companyId, input.planId);
   if (!plan) return { ok: false, code: "PLAN_NOT_FOUND", message: "Action plan not found." };
+  if (plan.status === "failed" || !planTargetsReady(plan.targets)) {
+    return {
+      ok: false,
+      code: "PLAN_NOT_EXECUTABLE",
+      message:
+        planFailureReason(plan.targets, plan.summary) ??
+        "This action failed during planning and cannot be confirmed.",
+    };
+  }
   if (plan.status === "cancelled") {
     return { ok: false, code: "PLAN_CANCELLED", message: "Action plan was cancelled." };
   }
@@ -292,6 +325,15 @@ export async function approveActionPlan(
 > {
   const plan = await getActionPlan(db, input.companyId, input.planId);
   if (!plan) return { ok: false, code: "PLAN_NOT_FOUND", message: "Action plan not found." };
+  if (plan.status === "failed" || !planTargetsReady(plan.targets)) {
+    return {
+      ok: false,
+      code: "PLAN_NOT_EXECUTABLE",
+      message:
+        planFailureReason(plan.targets, plan.summary) ??
+        "This action failed during planning and cannot be approved.",
+    };
+  }
   if (plan.approvalStatus !== "pending" && plan.status !== "awaiting_approval") {
     return { ok: false, code: "APPROVAL_NOT_REQUIRED", message: "Plan does not require approval." };
   }
@@ -400,6 +442,143 @@ export async function updateActionPlanStatus(
 function isExpired(plan: ActionPlanRecord): boolean {
   if (!plan.expiresAt) return false;
   return Date.parse(plan.expiresAt) <= Date.now();
+}
+
+type ActionCentreBucketCount = "needs_approval" | "in_progress" | "completed" | "failed";
+
+export async function repairStaleFailedActionPlans(
+  db: D1Database,
+  input?: { companyId?: string; dryRun?: boolean },
+): Promise<{
+  scanned: number;
+  repaired: number;
+  skipped: number;
+  before: Record<ActionCentreBucketCount, number>;
+  after: Record<ActionCentreBucketCount, number>;
+  repairedIds: string[];
+}> {
+  type Bucket = "needs_approval" | "in_progress" | "completed" | "failed";
+  const bucketFor = (status: string): Bucket => {
+    if (status === "awaiting_approval") return "needs_approval";
+    if (
+      ["awaiting_confirmation", "validated", "approved", "executing", "draft"].includes(status)
+    ) {
+      return "in_progress";
+    }
+    if (status === "completed") return "completed";
+    return "failed";
+  };
+
+  const rows = await db
+    .prepare(
+      input?.companyId
+        ? `SELECT * FROM execution_plans WHERE company_id = ? ORDER BY created_at DESC`
+        : `SELECT * FROM execution_plans ORDER BY created_at DESC`,
+    )
+    .bind(...(input?.companyId ? [input.companyId] : []))
+    .all();
+
+  const plans = (rows.results ?? []).map((row) => rowToActionPlan(row as Record<string, unknown>));
+  const before: Record<Bucket, number> = {
+    needs_approval: 0,
+    in_progress: 0,
+    completed: 0,
+    failed: 0,
+  };
+  for (const plan of plans) {
+    before[bucketFor(plan.status)] += 1;
+  }
+
+  const actionableStatuses = new Set([
+    "awaiting_confirmation",
+    "awaiting_approval",
+    "validated",
+    "approved",
+    "executing",
+    "draft",
+  ]);
+  const repairedIds: string[] = [];
+  let skipped = 0;
+
+  for (const plan of plans) {
+    if (!actionableStatuses.has(plan.status)) {
+      skipped += 1;
+      continue;
+    }
+    if (planTargetsReady(plan.targets)) {
+      skipped += 1;
+      continue;
+    }
+    const failureReason = planFailureReason(plan.targets, plan.summary);
+    if (!failureReason) {
+      skipped += 1;
+      continue;
+    }
+    repairedIds.push(plan.id);
+    if (!input?.dryRun) {
+      await db
+        .prepare(
+          `UPDATE execution_plans
+           SET status = 'failed', confirmation_status = 'not_required', approval_status = 'not_required',
+               confirmation_token_hash = NULL, updated_at = ?
+           WHERE id = ? AND company_id = ?`,
+        )
+        .bind(nowIso(), plan.id, plan.companyId)
+        .run();
+      await recordAuditEvent(db, {
+        companyId: plan.companyId,
+        eventType: "action_plan.repaired_to_failed",
+        actor: "data-repair",
+        resourceType: "action_plan",
+        resourceId: plan.id,
+        detail: {
+          previousStatus: plan.status,
+          failureReason,
+        },
+      });
+    }
+  }
+
+  const afterPlans = input?.dryRun
+    ? plans.map((plan) =>
+        repairedIds.includes(plan.id)
+          ? {
+              ...plan,
+              status: "failed" as ActionPlanStatus,
+              confirmationStatus: "not_required" as ConfirmationStatus,
+              approvalStatus: "not_required" as ApprovalStatus,
+            }
+          : plan,
+      )
+    : ((
+        await db
+          .prepare(
+            input?.companyId
+              ? `SELECT * FROM execution_plans WHERE company_id = ?`
+              : `SELECT * FROM execution_plans`,
+          )
+          .bind(...(input?.companyId ? [input.companyId] : []))
+          .all()
+      ).results ?? []).map((row) => rowToActionPlan(row as Record<string, unknown>));
+
+  const after: Record<Bucket, number> = {
+    needs_approval: 0,
+    in_progress: 0,
+    completed: 0,
+    failed: 0,
+  };
+  for (const plan of afterPlans) {
+    after[bucketFor(plan.status)] += 1;
+  }
+
+  return {
+    scanned: plans.length,
+    repaired: repairedIds.length,
+    skipped,
+    before,
+    after,
+    repairedIds,
+  };
 }
 
 function rowToActionPlan(row: Record<string, unknown>): ActionPlanRecord {

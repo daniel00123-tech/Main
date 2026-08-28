@@ -14,6 +14,10 @@ vi.mock("./control-plane", () => ({
   recordAuditEvent: vi.fn(async () => undefined),
 }));
 
+vi.mock("./company-settings", () => ({
+  getCompanySettings: vi.fn(async () => null),
+}));
+
 type Row = Record<string, unknown>;
 
 class FakeStatement {
@@ -725,5 +729,108 @@ describe("verifyStripeWebhookSignature", () => {
     expect(
       await verifyStripeWebhookSignature(testEnv, payload, `t=${timestamp},v1=${sig}`),
     ).toBe(true);
+  });
+});
+
+describe("ensureStripeCustomer live/test identity", () => {
+  it("archives invalid test customer and creates live customer", async () => {
+    vi.restoreAllMocks();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL, init?: RequestInit) => {
+        const href = String(url);
+        if (href.includes("/customers/cus_test_mode_only") && (!init || init.method === "GET")) {
+          return new Response(JSON.stringify({ error: { message: "No such customer" } }), {
+            status: 404,
+          });
+        }
+        if (href.endsWith("/v1/customers") && init?.method === "POST") {
+          return new Response(JSON.stringify({ id: "cus_live_new" }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: { message: "unexpected" } }), { status: 500 });
+      }),
+    );
+
+    const db = new FakeD1({
+      companies: [
+        {
+          id: "co_caddington",
+          name: "Caddington",
+          status: "active",
+          archived_at: null,
+          billing_mode: "live",
+        },
+      ],
+      credit_balances: [
+        {
+          company_id: "co_caddington",
+          balance_cents: 2807,
+          currency: "GBP",
+          stripe_customer_id: "cus_test_mode_only",
+        },
+      ],
+      payment_provider_accounts: [
+        {
+          id: "pay_1",
+          company_id: "co_caddington",
+          provider: "stripe",
+          external_customer_ref: "cus_test_mode_only",
+          metadata_json: "{}",
+        },
+      ],
+    }) as unknown as D1Database;
+
+    const liveEnv = {
+      STRIPE_SECRET_KEY: "sk_live_test_key",
+      STRIPE_WEBHOOK_SECRET: "whsec_test",
+      DB: db,
+    };
+
+    const { ensureStripeCustomer } = await import("./stripe");
+    const result = await ensureStripeCustomer(liveEnv as never, {
+      companyId: "co_caddington",
+      companyName: "Caddington",
+      actorEmail: "daniel@example.com",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.customerId).toBe("cus_live_new");
+  });
+});
+
+describe("payment provider auto top-up gating", () => {
+  it("marks Caddington live-eligible with missing payment method message", async () => {
+    const { getCompanyPaymentProviderStatus } = await import("./payment-providers");
+    const { getCompanySettings } = await import("./company-settings");
+    vi.mocked(getCompanySettings).mockResolvedValueOnce({
+      companyId: "co_caddington",
+      name: "Caddington",
+      autoTopUp: {
+        enabled: false,
+        thresholdCents: 1000,
+        amountCents: 2500,
+        paymentMethodReady: false,
+      },
+    } as never);
+    const db = new FakeD1({
+      companies: [
+        {
+          id: "co_caddington",
+          name: "Caddington",
+          status: "active",
+          archived_at: null,
+          billing_mode: "live",
+        },
+      ],
+    }) as unknown as D1Database;
+    const env = {
+      STRIPE_SECRET_KEY: "sk_live_test_key",
+      STRIPE_WEBHOOK_SECRET: "whsec_test",
+      AUTO_TOPUP_EXECUTION_ENABLED: "true",
+      DB: db,
+    };
+    const status = await getCompanyPaymentProviderStatus(env as never, db, "co_caddington");
+    expect(status.autoTopUp.liveEligible).toBe(true);
+    expect(status.autoTopUp.message).toContain("add a payment method");
+    expect(status.autoTopUp.canExecute).toBe(false);
   });
 });

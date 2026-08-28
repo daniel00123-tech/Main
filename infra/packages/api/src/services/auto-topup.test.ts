@@ -98,3 +98,34 @@ describe("evaluateAutoTopUp", () => {
     expect(AUTO_TOPUP_MAX_AMOUNT_CENTS).toBe(10000_00);
   });
 });
+
+describe("companyLiveAutoTopUpEligible", () => {
+  it("allows live auto top-up only for live billing companies on live platform", async () => {
+    const { companyLiveAutoTopUpEligible } = await import("./auto-topup");
+    const db = {
+      prepare: () => ({
+        bind: () => ({
+          first: async () => ({ billing_mode: "live" }),
+        }),
+      }),
+    } as unknown as D1Database;
+    const liveEnv = {
+      STRIPE_SECRET_KEY: "sk_live_x",
+      STRIPE_WEBHOOK_SECRET: "whsec_x",
+      DB: db,
+    };
+    const testEnv = {
+      STRIPE_SECRET_KEY: "sk_test_x",
+      STRIPE_WEBHOOK_SECRET: "whsec_x",
+      DB: {
+        prepare: () => ({
+          bind: () => ({
+            first: async () => ({ billing_mode: "test" }),
+          }),
+        }),
+      } as unknown as D1Database,
+    };
+    expect(await companyLiveAutoTopUpEligible(liveEnv as never, "co_caddington")).toBe(true);
+    expect(await companyLiveAutoTopUpEligible(testEnv as never, "co_ht")).toBe(false);
+  });
+});
