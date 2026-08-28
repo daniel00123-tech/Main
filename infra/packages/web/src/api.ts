@@ -448,7 +448,7 @@ export const api = {
           templateLabel?: string | null;
           recipientEmail?: string | null;
           scheduleLabel?: string | null;
-          createdVia?: string | null;
+          createdVia?: import("@infra/shared").AutomationCreatedVia | null;
           archived?: boolean;
         }
       >;

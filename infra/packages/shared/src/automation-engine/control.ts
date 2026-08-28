@@ -248,7 +248,7 @@ export function resolveTemplateFromSpec(
 
   const resolved = steps.map((step) => resolveCatalogueAction(step.type));
   if (resolved.some((item) => item === null)) {
-    const unknown = steps.find((step, index) => resolved[index] === null);
+    const unknown = steps.find((_, index) => resolved[index] === null);
     return {
       ok: false,
       issue: {
