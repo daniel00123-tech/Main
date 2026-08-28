@@ -32,12 +32,14 @@ import {
 } from "./xero-planner-beta";
 import { searchXeroTestArtefacts } from "./xero-test-artefacts";
 import { humanReadablePlanPreview, humanReadableExecutionSummary } from "./human-readable";
-import { actionRiskProfile } from "@infra/shared";
+import { actionRiskProfile, assertXeroActionAllowedInContext } from "@infra/shared";
 import { FINANCIAL_WRITES_ENABLED } from "../approvals";
 import { xeroToolContract } from "../xero-tools";
 import { missingScopesForTier, XERO_SCOPES_DRAFT_INVOICE } from "@infra/shared";
 import { buildActionDryRunReport } from "./dry-run";
 import { getExecutionEvidence, executeApprovedActionPlan } from "./action-executor";
+import { resolveCompanyXeroWriteMode } from "../xero-company-write-mode";
+import { recordAuditEvent } from "../control-plane";
 import { actionControlToolAllowed } from "../mcp-action-tools";
 import { draftInvoiceReviewFromPlan } from "./draft-invoice-plan";
 
@@ -94,6 +96,34 @@ export async function executeActionControlTool(
         code: "INSUFFICIENT_SCOPE",
       },
     };
+  }
+
+  if (
+    input.toolName.startsWith("plan_xero_") ||
+    input.toolName === "execute_action_plan"
+  ) {
+    const writeMode = await resolveCompanyXeroWriteMode(env.DB, input.companyId);
+    if (writeMode.mode === "READ_ONLY") {
+      await recordAuditEvent(env.DB, {
+        companyId: input.companyId,
+        eventType: "permission.denied",
+        actor,
+        resourceType: "action_control",
+        resourceId: input.toolName,
+        detail: {
+          code: "XERO_COMPANY_READ_ONLY",
+          companyWriteMode: writeMode.mode,
+          correlationId: input.correlationId ?? null,
+        },
+      });
+      return {
+        status: 403,
+        body: {
+          error: "Xero writes are disabled for this company (READ_ONLY mode).",
+          code: "XERO_COMPANY_READ_ONLY",
+        },
+      };
+    }
   }
 
   if (input.toolName === "get_action_plan") {

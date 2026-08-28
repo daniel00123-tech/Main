@@ -1,8 +1,11 @@
 import type { ActionPlanRecord } from "@infra/shared";
+import { assertXeroToolAllowedInContext } from "@infra/shared";
 import type { Env } from "../../env";
 import { listMcpEnvironments } from "../control-plane";
+import { recordAuditEvent } from "../control-plane";
 import { mcpRequest } from "../mcp-client";
 import { getValidXeroAccessToken } from "../xero";
+import { resolveCompanyXeroWriteMode } from "../xero-company-write-mode";
 import { XERO_AUTH } from "@infra/shared";
 import {
   extractInvoiceIdFromMcpResult,
@@ -60,6 +63,33 @@ export async function executeXeroMcpTool(
   }
   if (!input.plan.connectorInstanceId) {
     return { ok: false, code: "CONNECTOR_MISSING", message: "Plan has no connector instance." };
+  }
+
+  const writeMode = await resolveCompanyXeroWriteMode(
+    env.DB,
+    input.plan.companyId,
+    input.plan.connectorInstanceId,
+  );
+  const gate = assertXeroToolAllowedInContext({
+    executionMode: "action_engine_execute",
+    toolName: input.toolName,
+    companyWriteMode: writeMode.mode,
+  });
+  if (!gate.allowed) {
+    await recordAuditEvent(env.DB, {
+      companyId: input.plan.companyId,
+      eventType: "permission.denied",
+      actor: input.actor,
+      resourceType: "xero_mcp_write",
+      resourceId: input.plan.id,
+      detail: {
+        toolName: input.toolName,
+        executionId: input.executionId,
+        code: gate.code,
+        companyWriteMode: writeMode.mode,
+      },
+    });
+    return { ok: false, code: gate.code, message: gate.message };
   }
 
   const token = await getValidXeroAccessToken({

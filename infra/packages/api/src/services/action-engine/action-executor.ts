@@ -4,11 +4,12 @@
  */
 
 import type { ActionPlanRecord } from "@infra/shared";
-import { xeroActionDefinition } from "@infra/shared";
+import { assertXeroActionAllowedInContext, xeroActionDefinition } from "@infra/shared";
 import type { Env } from "../../env";
 import { recordAuditEvent } from "../control-plane";
 import { recordUsageEvent } from "../usage";
 import { FINANCIAL_WRITES_ENABLED } from "../approvals";
+import { resolveCompanyXeroWriteMode } from "../xero-company-write-mode";
 import { updateActionPlanStatus } from "./action-engine";
 import { runActionPreflight } from "./action-preflight";
 import {
@@ -59,6 +60,34 @@ export async function executeApprovedActionPlan(
   }
 
   const { plan, actor } = input;
+
+  const writeMode = await resolveCompanyXeroWriteMode(env.DB, plan.companyId, plan.connectorInstanceId);
+  const actionGate = assertXeroActionAllowedInContext({
+    executionMode: "action_engine_execute",
+    action: plan.requestedAction,
+    companyWriteMode: writeMode.mode,
+  });
+  if (!actionGate.allowed) {
+    await recordAuditEvent(env.DB, {
+      companyId: plan.companyId,
+      eventType: "permission.denied",
+      actor,
+      resourceType: "action_plan",
+      resourceId: plan.id,
+      detail: {
+        stage: "xero_write_gate",
+        code: actionGate.code,
+        requestedAction: plan.requestedAction,
+        companyWriteMode: writeMode.mode,
+      },
+    });
+    return {
+      ok: false,
+      status: "blocked",
+      error: actionGate.message,
+      code: actionGate.code,
+    };
+  }
 
   const preflight = await runActionPreflight(env, { plan, actor, requireApproved: true });
   if (!preflight.ok) {

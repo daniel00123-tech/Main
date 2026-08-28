@@ -4,8 +4,11 @@
  * Creates a reversible £1 DRAFT invoice via Action Engine (plan → confirm → approve → execute).
  * Requires FINANCIAL_WRITES_ENABLED=true and live Xero OAuth for co_caddington.
  *
- * Set EXECUTE=true to run the full write path (default: dry-run only).
+ * REQUIRES: ALLOW_XERO_PRODUCTION_WRITE=true or EXECUTE=true or --allow-production-write
  */
+import { assertProductionWriteAllowed } from "./lib/xero-script-guard.mjs";
+assertProductionWriteAllowed();
+
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { writeFileSync, unlinkSync } from "node:fs";

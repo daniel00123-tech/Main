@@ -4,8 +4,10 @@
 
 import type { Env } from "../../../env";
 import type { AutomationMcpToolConfiguration } from "@infra/shared";
+import { isXeroMutationToolName } from "@infra/shared";
 import { getServiceIdentity } from "../../service-identities";
 import { executeGatewayRequest } from "../../gateway";
+import { isActionControlTool } from "../../mcp-action-tools";
 import type { AutomationActionResult, AutomationExecutionContext } from "../actions/index";
 
 export async function executeMcpToolAction(
@@ -24,6 +26,16 @@ export async function executeMcpToolAction(
   const config = ctx.automation.configuration as AutomationMcpToolConfiguration;
   const toolName = config.toolName.trim();
   if (!toolName) throw new Error("MCP tool name is required");
+
+  if (isXeroMutationToolName(toolName)) {
+    throw new Error("Automations cannot invoke mutating Xero MCP tools");
+  }
+  if (
+    isActionControlTool(toolName) &&
+    (toolName === "execute_action_plan" || toolName.startsWith("plan_xero_"))
+  ) {
+    throw new Error("Automations cannot plan or execute Xero write actions");
+  }
 
   const result = await executeGatewayRequest(env, {
     actor: { type: "service", identity },

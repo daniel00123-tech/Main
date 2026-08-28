@@ -3,7 +3,12 @@
  * Xero WRITE Alpha — 20 controlled live tests against Caddington Holdings.
  * DRAFT ACCREC invoices only via Action Engine (plan → confirm → execute).
  * References: INFRA-ALPHA-WRITE-XX-20260827
+ *
+ * REQUIRES: ALLOW_XERO_PRODUCTION_WRITE=true or --allow-production-write
  */
+import { assertProductionWriteAllowed } from "./lib/xero-script-guard.mjs";
+assertProductionWriteAllowed();
+
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { writeFileSync, unlinkSync } from "node:fs";
