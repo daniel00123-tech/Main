@@ -1,10 +1,10 @@
 import type { TransactionalEmailType } from "@infra/shared";
 import {
-  renderInvitationEmail as renderSharedInvitationEmail,
+  renderUserInvitationEmail as renderSharedInvitationEmail,
   renderPasswordResetEmail as renderSharedPasswordResetEmail,
   renderTestEmail as renderSharedTestEmail,
 } from "@infra/shared";
-import { sendTransactionalEmail } from "./send-transactional";
+import { sendTransactionalEmail } from "./email/send-transactional";
 
 export type EmailTemplate = "user_invitation" | "password_reset" | "low_balance" | "auto_topup_failure";
 
