@@ -61,6 +61,9 @@ export const MICROSOFT_APP_PERMISSIONS = [
   "User.Read.All",
 ] as const;
 
+/** Application permission for outbound transactional email via Graph sendMail. */
+export const MICROSOFT_OUTBOUND_APP_PERMISSION = "Mail.Send" as const;
+
 /**
  * How a company authenticates to Microsoft Graph.
  * - platform_legacy: shared Worker secrets (Caddington production path)

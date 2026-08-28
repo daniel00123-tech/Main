@@ -18,6 +18,8 @@ export * from "./connectors/onboarding";
 export * from "./connectors/customer-health";
 export * from "./portal/activity";
 export * from "./portal/dashboard";
+export * from "./email/types";
+export * from "./email/templates";
 export * from "./action-engine";
 export * from "./automation-engine";
 export * from "./permissions/role-presets";

@@ -29,6 +29,12 @@ import {
 import { portalOrigin } from "./services/public-urls";
 import { queueEmail, renderPasswordResetEmail } from "./services/email-outbox";
 import {
+  buildPasswordResetUrl,
+  companyDisplayNameForEmail,
+  resolvePasswordResetCompanyId,
+} from "./services/email/resolve-company";
+import { checkPasswordResetRateLimit } from "./services/email/rate-limit";
+import {
   attachExistingCompanyMcp,
   EXISTING_PRODUCTION_COMPANY_MCPS,
   registerExistingMcpEnvironment,
@@ -237,7 +243,16 @@ app.post("/api/auth/password-reset/request", async (c) => {
   }
 
   const genericMessage =
-    "If an account exists for that email, use the secure link to set a new password. Links expire after one hour.";
+    "If an account exists for that email address, we've sent a password reset link. Links expire after one hour.";
+
+  const clientIp =
+    c.req.header("CF-Connecting-IP") ??
+    c.req.header("X-Forwarded-For")?.split(",")[0]?.trim() ??
+    "unknown";
+  const rateLimit = await checkPasswordResetRateLimit(c.env.DB, { ip: clientIp, email });
+  if (!rateLimit.allowed) {
+    return c.json({ ok: true, message: genericMessage });
+  }
 
   const user = await getUserByEmail(c.env.DB, email);
   if (!user || user.status !== "active") {
@@ -249,40 +264,56 @@ app.post("/api/auth/password-reset/request", async (c) => {
     return c.json({ ok: true, message: genericMessage });
   }
 
+  const origin = portalOrigin(c.env, c.req.header("Origin"));
+  const companyId = await resolvePasswordResetCompanyId(c.env, c.env.DB, {
+    userId: user.id,
+    origin,
+  });
+
+  if (!companyId) {
+    await recordAuditEvent(c.env.DB, {
+      eventType: "auth.password_reset_requested",
+      actor: user.email,
+      resourceType: "user",
+      resourceId: user.id,
+      detail: { outcome: "no_email_config" },
+    });
+    return c.json({ ok: true, message: genericMessage });
+  }
+
   const { token, expiresAt } = await createPasswordSetupToken(
     c.env.DB,
     user.id,
     "password_reset",
   );
-  const origin = portalOrigin(c.env, c.req.header("Origin"));
-  const resetUrl = `${origin}/setup-password?token=${encodeURIComponent(token)}`;
+  const resetUrl = buildPasswordResetUrl(origin, token);
+  const companyName = await companyDisplayNameForEmail(c.env.DB, companyId);
 
   const emailContent = renderPasswordResetEmail({
+    companyName,
     setupUrl: resetUrl,
     expiresAt: new Date(expiresAt).toLocaleString("en-GB"),
   });
   const emailResult = await queueEmail(c.env, c.env.DB, {
+    companyId,
     toEmail: user.email,
     templateKey: "password_reset",
     subject: emailContent.subject,
     bodyText: emailContent.text,
     bodyHtml: emailContent.html,
+    actor: user.email,
   });
 
   await recordAuditEvent(c.env.DB, {
-    eventType: "auth.password_reset_requested",
+    companyId,
+    eventType: "email.password_reset_requested",
     actor: user.email,
     resourceType: "user",
     resourceId: user.id,
     detail: { outcome: "link_created", expiresAt, emailSent: emailResult.sent },
   });
 
-  return c.json({
-    ok: true,
-    message: genericMessage,
-    emailSent: emailResult.sent,
-    ...(emailResult.sent ? {} : { resetUrl, expiresAt }),
-  });
+  return c.json({ ok: true, message: genericMessage });
 });
 
 app.post("/api/auth/login", async (c) => {
