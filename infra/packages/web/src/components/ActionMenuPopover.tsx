@@ -75,6 +75,8 @@ export function ActionMenuPopover({
     };
 
     reposition();
+    const firstItem = menuRef.current?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)');
+    firstItem?.focus();
     window.addEventListener("resize", reposition);
     window.addEventListener("scroll", reposition, true);
     return () => {
@@ -130,6 +132,14 @@ export function ActionMenuPopover({
             if (item.disabled) return;
             onClose();
             item.onSelect();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              if (item.disabled) return;
+              onClose();
+              item.onSelect();
+            }
           }}
         >
           {item.label}
