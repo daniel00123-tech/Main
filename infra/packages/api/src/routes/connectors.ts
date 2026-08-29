@@ -968,8 +968,20 @@ connectors.post("/api/webhooks/microsoft/graph", async (c) => {
   }
   const payload = (await c.req.json().catch(() => ({}))) as import("../services/microsoft-graph-subscriptions").GraphNotificationPayload;
   const { handleMicrosoftGraphNotification } = await import("../services/microsoft-graph-subscriptions");
-  const result = await handleMicrosoftGraphNotification(c.env, payload);
-  return c.json({ ok: true, ...result });
+  const env = c.env;
+  c.executionCtx.waitUntil(
+    handleMicrosoftGraphNotification(env, payload).catch((err) => {
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          service: "infra-api",
+          event: "microsoft.graph_notification_failed",
+          message: err instanceof Error ? err.message : "Graph notification failed",
+        }),
+      );
+    }),
+  );
+  return c.json({ ok: true, accepted: true }, 202);
 });
 
 connectors.post("/api/internal/microsoft/process-next-job", async (c) => {
