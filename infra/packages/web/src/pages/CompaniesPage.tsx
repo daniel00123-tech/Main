@@ -573,41 +573,28 @@ export default function CompaniesPage() {
                     {company.name}
                   </Link>
                   {company.needsAttention ? (
-                    <div className="warning-text small">Needs attention</div>
+                    <div className="warning-text small">
+                      {company.walletLowBalance
+                        ? "Low credit — review billing"
+                        : "Needs attention"}
+                    </div>
                   ) : null}
                 </div>
                 <StatusBadge status={company.status} />
               </div>
               <dl className="mobile-record-meta">
                 <div>
-                  <dt>Wallet</dt>
+                  <dt>Billing</dt>
                   <dd>
                     {formatCharge(company.walletBalanceCents)}
                     {company.walletLowBalance ? " · Low" : ""}
                   </dd>
                 </div>
                 <div>
-                  <dt>Usage (mo)</dt>
-                  <dd>{formatNumber(company.usageThisMonth)}</dd>
-                </div>
-                <div>
-                  <dt>Last active</dt>
-                  <dd>{formatRelativeTime(company.lastActivityAt)}</dd>
-                </div>
-                <div>
-                  <dt>Systems</dt>
+                  <dt>Connectors</dt>
                   <dd>
-                    {company.connectedConnectors}/{company.connectorCount}
-                  </dd>
-                </div>
-                <div>
-                  <dt>AI gateway</dt>
-                  <dd>
-                    {company.mcpStatus ? (
-                      <StatusBadge status={company.mcpStatus} />
-                    ) : (
-                      "None"
-                    )}
+                    {company.connectedConnectors} connected
+                    {company.mcpStatus ? ` · ${company.mcpStatus}` : ""}
                   </dd>
                 </div>
               </dl>
@@ -617,12 +604,6 @@ export default function CompaniesPage() {
                   className="button button-secondary button-small"
                 >
                   Open
-                </Link>
-                <Link
-                  to={`/portal/${company.slug}/dashboard`}
-                  className="button button-secondary button-small"
-                >
-                  Portal
                 </Link>
               </div>
             </MobileRecordCard>

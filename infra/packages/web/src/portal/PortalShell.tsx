@@ -32,6 +32,7 @@ import { PortalCompanyProvider, usePortalCompany } from "./usePortalCompany";
 import { PortalNotificationBell } from "./PortalNotificationBell";
 import { PortalCompanyHomeLink } from "./PortalCompanyHomeLink";
 import { InfraBrand } from "../components/InfraBrand";
+import { filterCustomerActions } from "../lib/customer-visibility";
 
 type NavItem = {
   path: string;
@@ -116,12 +117,13 @@ function PortalShellInner() {
     if (!company) return;
     try {
       const response = await api.listCompanyActions(company.slug);
-      const count = response.plans.filter((p) => p.status === "awaiting_approval").length;
+      const visible = filterCustomerActions(response.plans, Boolean(user?.isPlatformAdmin));
+      const count = visible.filter((p) => p.status === "awaiting_approval").length;
       setPendingApprovals(count);
     } catch {
       /* non-blocking */
     }
-  }, [company]);
+  }, [company, user?.isPlatformAdmin]);
 
   useEffect(() => {
     void refreshPendingApprovals();
@@ -176,7 +178,7 @@ function PortalShellInner() {
     return sections;
   }, [nav]);
 
-  if (loading) return <LoadingState label="Opening company portal…" />;
+  if (loading) return <LoadingState label="Opening your company…" />;
   if (error || !company || !user) {
     return <ErrorState title="Portal unavailable" description={error ?? undefined} />;
   }

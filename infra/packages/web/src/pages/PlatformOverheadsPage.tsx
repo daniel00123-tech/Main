@@ -2,9 +2,11 @@ import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api";
 import {
   Button,
+  DataCard,
   EmptyState,
   ErrorState,
   LoadingState,
+  MobileRecordList,
   Notice,
   PageHeader,
   SectionCard,
@@ -87,18 +89,32 @@ export default function PlatformOverheadsPage() {
   return (
     <>
       <PageHeader
-        title="Platform Overheads"
-        description="Fixed software and tooling costs. These are not allocated to customers in V1."
+        title="Platform overheads"
+        description="Shared operating costs. These are not allocated to customer margins."
       />
       <Notice tone="info">
-        Magnific, Cursor, and other development subscriptions belong here. Customer economics stay
-        on the Economics page and are not mixed with these figures.
+        Shared overheads stay here and are not included in customer gross profit. Use Economics for
+        customer revenue minus direct serving cost.
       </Notice>
       <SectionCard title={`Active monthly total · ${formatCurrency(monthly)}`}>
         {items.length === 0 ? (
-          <EmptyState title="No overheads recorded" description="Add a fixed monthly cost below." />
+          <EmptyState title="No overheads recorded" description="Add a fixed monthly cost below. These figures stay off customer margins." />
         ) : (
-          <div className="table-wrap">
+          <>
+          <div className="mobile-cards">
+            <MobileRecordList>
+              {items.map((item) => (
+                <DataCard
+                  key={item.id}
+                  title={item.provider}
+                  subtitle={item.description}
+                  metric={formatCurrency(item.monthlyCostCents, item.currency)}
+                  timestamp={`${item.startDate.slice(0, 10)}${item.endDate ? ` → ${item.endDate.slice(0, 10)}` : ""}`}
+                />
+              ))}
+            </MobileRecordList>
+          </div>
+          <div className="desktop-table table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -140,6 +156,7 @@ export default function PlatformOverheadsPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </SectionCard>
       <SectionCard title="Record overhead">

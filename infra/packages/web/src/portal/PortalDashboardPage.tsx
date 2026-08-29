@@ -34,6 +34,7 @@ import { CompactList, IntegrationRow, PortalPageHeader, ViewAllLink } from "./co
 import { PortalOnboardingChecklist } from "./PortalOnboardingChecklist";
 import { ConnectorLogo } from "../components/connectors/ConnectorLogo";
 import { usePortalCompany } from "./usePortalCompany";
+import { filterCustomerActions } from "../lib/customer-visibility";
 
 export default function PortalDashboardPage() {
   const { company, overview, loading, error, user, membership } = usePortalCompany();
@@ -46,15 +47,16 @@ export default function PortalDashboardPage() {
   useEffect(() => {
     if (!company) return;
     void api.listCompanyActions(company.slug).then((response) => {
+      const visible = filterCustomerActions(response.plans, Boolean(user?.isPlatformAdmin));
       setPendingActions(
-        response.plans.filter(
+        visible.filter(
           (plan) =>
             actionCentreBucket(plan.status) === "needs_approval" ||
             actionCentreBucket(plan.status) === "in_progress",
         ).length,
       );
     }).catch(() => setPendingActions(0));
-  }, [company]);
+  }, [company, user?.isPlatformAdmin]);
 
   const base = company ? `/portal/${company.slug}` : "";
   const mcp = overview?.mcpEnvironments[0] ?? null;
@@ -128,7 +130,7 @@ export default function PortalDashboardPage() {
         value: wallet ? formatCurrency(wallet.balanceCents, wallet.currency) : "—",
         hint:
           walletHealth === "healthy"
-            ? `Paid ${formatCurrency(paidCents, wallet?.currency ?? "GBP")}`
+            ? `Purchased ${formatCurrency(paidCents, wallet?.currency ?? "GBP")}`
             : walletHealth === "empty"
               ? "Empty — add credit"
               : "Low balance",
