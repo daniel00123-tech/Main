@@ -15,11 +15,12 @@ vi.mock("./gateway", async (importOriginal) => {
 
 import { handleInfraMcpJsonRpc } from "./mcp-gateway";
 import { ACTION_CONTROL_TOOLS } from "./mcp-action-tools";
+import { AUTOMATION_CONTROL_TOOLS } from "./mcp-automation-tools";
 import { READ_ONLY_TOOL_ANNOTATIONS } from "./mcp-knowledge-standard";
 import { XERO_ACTION_SERVICE_SCOPES } from "@infra/shared";
 
 function withActionTools(names: string[]): string[] {
-  return [...new Set([...names, ...ACTION_CONTROL_TOOLS])].sort();
+  return [...new Set([...names, ...ACTION_CONTROL_TOOLS, ...AUTOMATION_CONTROL_TOOLS])].sort();
 }
 
 type Row = Record<string, unknown>;
