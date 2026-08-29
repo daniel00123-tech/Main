@@ -182,6 +182,30 @@ describe("OCR quality and limits", () => {
 });
 
 describe("OCR idempotency and isolation", () => {
+  it("stops retrying a failed document version after the job attempt limit", async () => {
+    const { db, jobs } = memoryDb();
+    const provider = mockProvider({
+      async analyze() {
+        throw new AzureOcrError({ retryable: true, category: "TIMEOUT", message: "timed out" });
+      },
+    });
+    const input = {
+      companyId: "co_caddington",
+      documentId: 54,
+      bytes: sampleBytes,
+      mimeType: "application/pdf" as const,
+    };
+    for (let i = 0; i < 5; i += 1) {
+      const result = await ocrDocument(db, input, { provider });
+      expect(result.status).toBe("ocr_failed");
+      expect(result.providerCalled).toBe(true);
+    }
+    const blocked = await ocrDocument(db, input, { provider });
+    expect(blocked.providerCalled).toBe(false);
+    expect(blocked.message).toMatch(/retry limit/i);
+    expect(jobs[0]?.ocr_attempt_count).toBe(5);
+  });
+
   it("does not call the provider twice for the same document version", async () => {
     const { db } = memoryDb();
     const provider = mockProvider();
@@ -344,6 +368,41 @@ describe("OCR images and timeouts", () => {
     );
     expect(result.status).toBe("ocr_completed");
     expect(provider.calls).toBe(1);
+  });
+
+  it("calls Cloudflare fetch without an illegal this binding", async () => {
+    let calls = 0;
+    function workersFetch(this: unknown, url: string | URL, init?: RequestInit) {
+      if (this != null && this !== globalThis) {
+        throw new TypeError("Illegal invocation: function called with incorrect `this` reference.");
+      }
+      calls += 1;
+      if (init?.method === "POST") {
+        return Promise.resolve(
+          new Response(null, {
+            status: 202,
+            headers: { "Operation-Location": "https://ocr.example/ops/1" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        Response.json({
+          status: "succeeded",
+          analyzeResult: { content: "Scanned Coal Search borehole log", pages: [{}] },
+        }),
+      );
+    }
+    const provider = new AzureDocumentIntelligenceOcrProvider(
+      { endpoint: "https://ocr.example", key: "test-key" },
+      workersFetch as unknown as typeof fetch,
+    );
+    const result = await provider.analyze({
+      bytes: sampleBytes,
+      mimeType: "application/pdf",
+      maxPages: 50,
+    });
+    expect(result.pageCount).toBe(1);
+    expect(calls).toBe(2);
   });
 
   it("times out when Azure never reaches succeeded", async () => {

@@ -1,6 +1,7 @@
 import {
   AZURE_READ_USD_PER_PAGE,
   DEFAULT_MAX_OCR_BYTES,
+  DEFAULT_MAX_OCR_JOB_ATTEMPTS,
   DEFAULT_MAX_OCR_PAGES_PER_DOCUMENT,
   OCR_API_VERSION,
   OCR_MODEL_ID,
@@ -192,6 +193,22 @@ export async function ocrDocument(
       pageCount: existing.ocr_page_count,
       contentFingerprint: fingerprint,
       message: "OCR already completed for this document version",
+    };
+  }
+
+  if (
+    existing &&
+    existing.ocr_status === "ocr_failed" &&
+    existing.ocr_attempt_count >= DEFAULT_MAX_OCR_JOB_ATTEMPTS
+  ) {
+    return {
+      status: "ocr_failed",
+      providerCalled: false,
+      attemptCount: existing.ocr_attempt_count,
+      failureCategory: existing.ocr_failure_category ?? "PROVIDER",
+      contentFingerprint: fingerprint,
+      pageCount: existing.ocr_page_count,
+      message: "OCR retry limit reached for this document version",
     };
   }
 

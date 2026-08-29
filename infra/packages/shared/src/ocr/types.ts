@@ -17,6 +17,7 @@ export const OCR_API_VERSION = "2024-11-30" as const;
 export const DEFAULT_MAX_OCR_PAGES_PER_DOCUMENT = 50;
 export const DEFAULT_MAX_OCR_BYTES = 20 * 1024 * 1024;
 export const DEFAULT_MAX_OCR_PROVIDER_ATTEMPTS = 3;
+export const DEFAULT_MAX_OCR_JOB_ATTEMPTS = 5;
 /** Azure Document Intelligence Read S0 list price, USD per page. Operator metering only. */
 export const AZURE_READ_USD_PER_PAGE = 0.0015;
 

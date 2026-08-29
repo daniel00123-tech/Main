@@ -98,15 +98,23 @@ export function contentTypeForOcr(mimeType: string | null | undefined): string {
   return normalized;
 }
 
+function workerSafeFetch(fetchImpl?: typeof fetch): typeof fetch {
+  const impl = fetchImpl ?? globalThis.fetch.bind(globalThis);
+  return ((input: RequestInfo | URL, init?: RequestInit) => impl(input, init)) as typeof fetch;
+}
+
 export class AzureDocumentIntelligenceOcrProvider implements OcrProvider {
   readonly id = OCR_PROVIDER_ID;
   readonly model = OCR_MODEL_ID;
   readonly apiVersion = OCR_API_VERSION;
+  private readonly fetchImpl: typeof fetch;
 
   constructor(
     private readonly config: { endpoint: string; key: string; maxPolls?: number },
-    private readonly fetchImpl: typeof fetch = fetch,
-  ) {}
+    fetchImpl?: typeof fetch,
+  ) {
+    this.fetchImpl = workerSafeFetch(fetchImpl);
+  }
 
   async analyze(input: {
     bytes: ArrayBuffer;
@@ -154,10 +162,12 @@ export class AzureDocumentIntelligenceOcrProvider implements OcrProvider {
           }
           throw err;
         }
+        const message = err instanceof Error ? err.message : "Azure OCR request failed";
+        const illegalInvocation = /illegal invocation/i.test(message);
         lastError = new AzureOcrError({
-          retryable: true,
-          category: "TIMEOUT",
-          message: err instanceof Error ? err.message : "Azure OCR request failed",
+          retryable: !illegalInvocation,
+          category: illegalInvocation ? "INTERNAL" : "TIMEOUT",
+          message: illegalInvocation ? "Azure OCR fetch binding failed" : message,
         });
         if (attempt < DEFAULT_MAX_OCR_PROVIDER_ATTEMPTS) {
           await sleep(400 * 2 ** (attempt - 1));
