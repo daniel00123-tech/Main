@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createUser, inviteCompanyUser, setUserMobileE164 } from "./users";
+import { createUser, inviteCompanyUser, setUserMobileE164, updateUserProfile } from "./users";
 import { MobileCollisionError, MobileValidationError } from "../services/phone";
 
 type Row = Record<string, unknown>;
@@ -29,6 +29,15 @@ function mockDb(existing: Row[] = []) {
                 return users[users.length - 1] ?? null;
               },
               async run() {
+                if (sql.includes("UPDATE users") && sql.includes("display_name")) {
+                  const target = users.find((row) => row.id === values[3]);
+                  if (target) {
+                    target.email = values[0];
+                    target.display_name = values[1];
+                    target.updated_at = values[2];
+                  }
+                  return { success: true };
+                }
                 if (sql.includes("UPDATE users") && sql.includes("mobile_e164")) {
                   const target = users.find((row) => row.id === values[2]);
                   if (target) {
@@ -133,5 +142,37 @@ describe("user mobile identity", () => {
     const updated = await setUserMobileE164(db, user.id, "07700900123");
     expect(updated.mobileE164).toBe("+447700900123");
     expect(updated.mobileVerificationRequired).toBe(false);
+  });
+
+  it("updates display name and email for an existing user", async () => {
+    const { db } = mockDb();
+    const user = await createUser(db, {
+      email: "legacy@example.com",
+      displayName: "Legacy",
+      password: "Password123!",
+    });
+    const updated = await updateUserProfile(db, user.id, {
+      displayName: "Dan Hold",
+      email: "dan@example.com",
+    });
+    expect(updated.displayName).toBe("Dan Hold");
+    expect(updated.email).toBe("dan@example.com");
+  });
+
+  it("rejects an email that already belongs to another user", async () => {
+    const { db } = mockDb();
+    await createUser(db, {
+      email: "taken@example.com",
+      displayName: "Taken",
+      password: "Password123!",
+    });
+    const other = await createUser(db, {
+      email: "other@example.com",
+      displayName: "Other",
+      password: "Password123!",
+    });
+    await expect(
+      updateUserProfile(db, other.id, { email: "taken@example.com" }),
+    ).rejects.toThrow("already used by another Infra user");
   });
 });

@@ -3092,6 +3092,9 @@ button.action-list-row.selected {
   position: relative;
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .user-row-actions-trigger {

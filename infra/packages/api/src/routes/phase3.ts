@@ -874,6 +874,9 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
     if (err instanceof Error && (err as Error & { code?: string }).code === "MOBILE_COLLISION") {
       return c.json({ error: err.message, code: "MOBILE_COLLISION" }, 409);
     }
+    if (err instanceof Error && (err as Error & { code?: string }).code === "USER_ALREADY_MEMBER") {
+      return c.json({ error: err.message, code: "USER_ALREADY_MEMBER" }, 409);
+    }
     throw err;
   }
 });
