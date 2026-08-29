@@ -179,6 +179,7 @@ async function seedUser(
       "2026-01-01T00:00:00.000Z",
     )
     .run();
+  return { passwordHash };
 }
 
 function env(db: MockD1) {
@@ -276,8 +277,70 @@ describe("auth-protected API routes", () => {
       env(db),
     );
     expect(meResponse.status).toBe(200);
-    const body = (await meResponse.json()) as { email: string };
+    const body = (await meResponse.json()) as {
+      email: string;
+      session?: { idleTimeoutSeconds: number; absoluteTimeoutSeconds: number };
+    };
     expect(body.email).toBe("admin@example.com");
+    expect(body.session?.idleTimeoutSeconds).toBe(30 * 60);
+    expect(body.session?.absoluteTimeoutSeconds).toBe(12 * 60 * 60);
+    expect(cookie).toContain("Max-Age=1800");
+  });
+
+  it("rejects an idle session and accepts a user-activity touch", async () => {
+    const seeded = await seedUser(db, {
+      id: "user_admin",
+      email: "admin@example.com",
+      password: "StrongPassword123!",
+      isPlatformAdmin: true,
+    });
+
+    const { createSessionToken, credentialsVersionFromHash } = await import("./session");
+    const credentialsVersion = credentialsVersionFromHash(seeded.passwordHash);
+    const now = Math.floor(Date.now() / 1000);
+    const sessionUser = {
+      userId: "user_admin",
+      email: "admin@example.com",
+      displayName: "Admin",
+      isPlatformAdmin: true,
+      memberships: [],
+      credentialsVersion,
+    };
+    const stale = await createSessionToken(
+      sessionUser,
+      "test-session-secret-at-least-32-characters",
+      {
+        now: now - 31 * 60,
+        authTime: now - 31 * 60,
+        lastActivity: now - 31 * 60,
+      },
+    );
+
+    const expired = await app.request(
+      "/api/auth/me",
+      { headers: { Cookie: `infra_session=${stale}`, Origin: "http://localhost:5173" } },
+      env(db),
+    );
+    expect(expired.status).toBe(401);
+
+    const fresh = await createSessionToken(
+      sessionUser,
+      "test-session-secret-at-least-32-characters",
+      { now: now - 120, authTime: now - 120, lastActivity: now - 120 },
+    );
+    const touched = await app.request(
+      "/api/auth/activity",
+      {
+        method: "POST",
+        headers: {
+          Cookie: `infra_session=${fresh}`,
+          Origin: "http://localhost:5173",
+        },
+      },
+      env(db),
+    );
+    expect(touched.status).toBe(200);
+    expect(touched.headers.get("Set-Cookie") ?? "").toContain("infra_session=");
   });
 
   it("rejects invalid login", async () => {

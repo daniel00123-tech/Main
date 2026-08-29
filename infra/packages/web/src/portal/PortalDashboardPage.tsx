@@ -189,8 +189,7 @@ export default function PortalDashboardPage() {
   return (
     <div className="executive-overview">
       <PortalPageHeader
-        title={company.name}
-        hideTitleOnMobile
+        title="Overview"
         className="portal-overview-header"
         description={`${greetingForNow(user.displayName)} · ${humanRole(membership?.role)}`}
         meta={

@@ -579,6 +579,14 @@ textarea {
   border-color: transparent;
   color: var(--text-secondary);
 }
+.button-ghost:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: transparent;
+}
+.button-ghost:active:not(:disabled) {
+  background: var(--surface-2);
+}
 .button-small {
   min-height: 28px;
   padding: 0 var(--s-2);
@@ -992,6 +1000,35 @@ textarea:focus-visible {
   padding: var(--s-6);
   overflow: auto;
   box-shadow: var(--shadow-lg);
+}
+.drawer-header {
+  position: sticky;
+  top: calc(-1 * var(--s-6));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: calc(-1 * var(--s-6)) calc(-1 * var(--s-6)) var(--s-4);
+  padding: var(--s-4) var(--s-5);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.drawer-header h2 {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-lg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drawer-nav-btn {
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+.drawer-back-label {
+  font-size: var(--text-sm);
 }
 .drawer h2 {
   margin: 0 0 var(--s-4);
@@ -2390,6 +2427,9 @@ button.mobile-record-card.selected-record {
     border-radius: var(--r-lg) var(--r-lg) 0 0;
     max-height: 92vh;
   }
+  .drawer-header {
+    top: 0;
+  }
   .settings-layout {
     grid-template-columns: 1fr;
   }
@@ -2444,6 +2484,69 @@ button.mobile-record-card.selected-record {
   max-width: 1200px;
 }
 
+.company-avatar {
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+}
+.company-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.company-avatar-fallback {
+  display: inline-grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+.company-avatar-fallback[hidden] {
+  display: none;
+}
+.company-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  max-width: 100%;
+}
+.company-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.company-brand-name {
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.company-brand-infra {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.nav-collapsed .company-brand-text {
+  display: none;
+}
+.action-detail-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-2);
+  margin: calc(-1 * var(--s-2)) 0 var(--s-3);
+}
 .portal-company-home-link {
   color: inherit;
   text-decoration: none;
@@ -2471,6 +2574,13 @@ button.mobile-record-card.selected-record {
   min-height: 44px;
   display: flex;
   align-items: center;
+}
+.portal-company-home-link--brand,
+.portal-company-home-link--brand-collapsed {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 .portal-company-home-link--sidebar {
   display: block;

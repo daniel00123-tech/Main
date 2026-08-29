@@ -1,4 +1,5 @@
 import { API_BASE, infraMcpGatewayUrl } from "./config";
+import { SESSION_ACTIVITY_HEADER } from "./lib/session-policy";
 import type {
   ActionPlanRecord,
   AuditEvent,
@@ -35,6 +36,12 @@ export interface SessionUser {
     companyId: string;
     role: CompanyRole;
   }>;
+  session?: {
+    idleTimeoutSeconds: number;
+    absoluteTimeoutSeconds: number;
+    expiresAt: string;
+    idleExpiresAt: string;
+  };
 }
 
 export interface PlatformSummary {
@@ -95,6 +102,18 @@ export class ApiError extends Error {
 type UnauthorizedHandler = () => void;
 let unauthorizedHandler: UnauthorizedHandler | null = null;
 let authStateGetter: () => boolean = () => false;
+let pendingUserActivity = false;
+
+/** Mark real user input so the next API call can slide the server idle window. */
+export function markUserActivity() {
+  pendingUserActivity = true;
+}
+
+function consumeUserActivity(): boolean {
+  const flagged = pendingUserActivity;
+  pendingUserActivity = false;
+  return flagged;
+}
 
 /** Central 401 handler — wired from AuthProvider. */
 export function configureApiAuth(options: {
@@ -109,11 +128,13 @@ async function fetchJson<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  const activity = consumeUserActivity();
   const response = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(activity ? { [SESSION_ACTIVITY_HEADER]: "1" } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -168,6 +189,10 @@ export const api = {
   logout: () =>
     fetchJson<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   getSession: () => fetchJson<SessionUser>("/api/auth/me"),
+  touchSession: () =>
+    fetchJson<{ ok: boolean; session?: SessionUser["session"] }>("/api/auth/activity", {
+      method: "POST",
+    }),
   validatePasswordSetupToken: (token: string) =>
     fetchJson<{
       valid: boolean;

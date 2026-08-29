@@ -1,17 +1,26 @@
 import { createMiddleware } from "hono/factory";
 import type { Env } from "../env";
 import {
+  USER_ACTIVITY_HEADER,
   buildClearSessionCookie,
   buildSessionCookie,
+  createSessionToken,
   credentialsVersionFromHash,
+  nowUnixSeconds,
   readSessionCookie,
+  sessionPublicMeta,
+  shouldTouchSession,
   verifySessionToken,
+  type SessionPublicMeta,
   type SessionUser,
+  type VerifiedSession,
 } from "./session";
 import { getUserById } from "./users";
 
 export type AuthVariables = {
   user: SessionUser;
+  session: VerifiedSession;
+  sessionMeta: SessionPublicMeta;
 };
 
 function isSecureRequest(url: URL): boolean {
@@ -22,9 +31,11 @@ export const loadSession = createMiddleware<{ Bindings: Env; Variables: Partial<
   async (c, next) => {
     const token = readSessionCookie(c.req.header("Cookie") ?? null);
     if (token) {
-      const user = await verifySessionToken(token, c.env.SESSION_SECRET);
-      if (user) {
-        c.set("user", user);
+      const verified = await verifySessionToken(token, c.env.SESSION_SECRET);
+      if (verified) {
+        c.set("user", verified.user);
+        c.set("session", verified);
+        c.set("sessionMeta", sessionPublicMeta(verified));
       }
     }
     await next();
@@ -38,26 +49,52 @@ export const requireAuth = createMiddleware<{ Bindings: Env; Variables: AuthVari
       return c.json({ error: "Authentication required" }, 401);
     }
 
-    const user = await verifySessionToken(token, c.env.SESSION_SECRET);
-    if (!user) {
+    const verified = await verifySessionToken(token, c.env.SESSION_SECRET);
+    if (!verified) {
+      clearSessionCookie(c);
       return c.json({ error: "Invalid or expired session" }, 401);
     }
 
-    const dbUser = await getUserById(c.env.DB, user.userId);
+    const dbUser = await getUserById(c.env.DB, verified.user.userId);
     if (!dbUser || dbUser.status !== "active") {
       return c.json({ error: "Account is disabled or unavailable" }, 401);
     }
 
     const currentCredentialsVersion = credentialsVersionFromHash(dbUser.passwordHash);
-    if ((user.credentialsVersion ?? "") !== currentCredentialsVersion) {
+    if ((verified.user.credentialsVersion ?? "") !== currentCredentialsVersion) {
       clearSessionCookie(c);
       return c.json({ error: "Invalid or expired session" }, 401);
     }
 
-    c.set("user", user);
+    const now = nowUnixSeconds();
+    const touched =
+      requestCountsAsUserActivity(c.req.path, c.req.header(USER_ACTIVITY_HEADER)) &&
+      shouldTouchSession(verified.lastActivity, now)
+        ? await createSessionToken(verified.user, c.env.SESSION_SECRET, {
+            authTime: verified.authTime,
+            lastActivity: now,
+            now,
+          })
+        : null;
+    if (touched) {
+      setSessionCookie(c, touched);
+      verified.lastActivity = now;
+    }
+
+    c.set("user", verified.user);
+    c.set("session", verified);
+    c.set("sessionMeta", sessionPublicMeta(verified));
     await next();
   },
 );
+
+export function requestCountsAsUserActivity(
+  path: string,
+  activityHeader: string | undefined,
+): boolean {
+  if (activityHeader === "1") return true;
+  return path === "/api/auth/me" || path === "/api/auth/activity";
+}
 
 export const requirePlatformAdmin = createMiddleware<{ Bindings: Env; Variables: AuthVariables }>(
   async (c, next) => {

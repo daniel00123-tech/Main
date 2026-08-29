@@ -209,7 +209,11 @@ function PortalShellInner() {
         >
           <Menu size={18} />
         </Button>
-        <PortalCompanyHomeLink company={company} className="portal-company-home-link--topbar" />
+        <PortalCompanyHomeLink
+          company={company}
+          compact
+          className="portal-company-home-link--topbar"
+        />
         <div className="mobile-topbar-actions">
           <PortalNotificationBell variant="header" />
         </div>
@@ -222,15 +226,15 @@ function PortalShellInner() {
         aria-hidden={isMobile && !mobileOpen ? true : undefined}
       >
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden>
-            IN
-          </div>
           {showLabels ? (
-            <div className="brand-text">
-              <span className="brand-name">INFRA</span>
-              <span className="brand-context">Company portal</span>
-            </div>
-          ) : null}
+            <PortalCompanyHomeLink company={company} className="portal-company-home-link--brand" />
+          ) : (
+            <PortalCompanyHomeLink
+              company={company}
+              compact
+              className="portal-company-home-link--brand-collapsed"
+            />
+          )}
           {!isMobile ? (
             <button
               type="button"
@@ -273,10 +277,6 @@ function PortalShellInner() {
                 </option>
               ))}
             </select>
-          </div>
-        ) : showLabels ? (
-          <div className="portal-sidebar-company">
-            <PortalCompanyHomeLink company={company} className="portal-company-home-link--sidebar" />
           </div>
         ) : null}
 

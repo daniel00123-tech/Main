@@ -3,12 +3,14 @@ import type { ToolAction, CompanyRole } from "@infra/shared";
 import { CONNECTOR_CATALOGUE } from "@infra/shared";
 import {
   clearSessionCookie,
+  loadSession,
   requireAuth,
   requirePlatformAdmin,
   setSessionCookie,
 } from "./auth/middleware";
 import {
   createSessionToken,
+  sessionPublicMeta,
 } from "./auth/session";
 import {
   bootstrapPlatformAdminIfNeeded,
@@ -360,14 +362,16 @@ app.post("/api/auth/login", async (c) => {
   return c.json(sessionUser);
 });
 
-app.post("/api/auth/logout", requireAuth, async (c) => {
+app.post("/api/auth/logout", loadSession, async (c) => {
   const user = c.get("user");
   clearSessionCookie(c);
-  await recordAuditEvent(c.env.DB, {
-    eventType: "auth.logout",
-    actor: user.email,
-    detail: { userId: user.userId },
-  });
+  if (user) {
+    await recordAuditEvent(c.env.DB, {
+      eventType: "auth.logout",
+      actor: user.email,
+      detail: { userId: user.userId },
+    });
+  }
   return c.json({ ok: true });
 });
 
@@ -375,15 +379,26 @@ app.get("/api/auth/me", requireAuth, async (c) => {
   // Reload memberships from DB so portal access is not stuck on a stale JWT
   // (e.g. membership created after the current login).
   const session = c.get("user");
+  const verified = c.get("session");
   const dbUser = await getUserById(c.env.DB, session.userId);
   if (!dbUser || dbUser.status !== "active") {
     clearSessionCookie(c);
     return c.json({ error: "Invalid or expired session" }, 401);
   }
   const fresh = await toSessionUser(c.env.DB, dbUser);
-  const token = await createSessionToken(fresh, c.env.SESSION_SECRET);
+  const token = await createSessionToken(fresh, c.env.SESSION_SECRET, {
+    authTime: verified.authTime,
+    lastActivity: verified.lastActivity,
+  });
   setSessionCookie(c, token);
-  return c.json(fresh);
+  return c.json({
+    ...fresh,
+    session: sessionPublicMeta(verified),
+  });
+});
+
+app.post("/api/auth/activity", requireAuth, async (c) => {
+  return c.json({ ok: true, session: c.get("sessionMeta") });
 });
 
 app.get("/api/summary", requireAuth, async (c) => {

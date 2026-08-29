@@ -24,7 +24,7 @@ const TABS: Array<{ id: SettingsTab; label: string }> = [
 ];
 
 export default function PortalSettingsPage() {
-  const { company, membership, loading, error } = usePortalCompany();
+  const { company, membership, loading, error, refresh } = usePortalCompany();
   const [tab, setTab] = useState<SettingsTab>("general");
   const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -32,6 +32,7 @@ export default function PortalSettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [name, setName] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
   const [primaryContact, setPrimaryContact] = useState("");
   const [primaryEmail, setPrimaryEmail] = useState("");
   const [billingEmail, setBillingEmail] = useState("");
@@ -50,6 +51,7 @@ export default function PortalSettingsPage() {
         const result = await api.getCompanySettings(company.slug);
         setSettings(result.settings);
         setName(String(result.settings.name ?? company.name));
+        setLogoUrl(String(result.settings.logoUrl ?? company.logoUrl ?? ""));
         setPrimaryContact(String(result.settings.primaryContactName ?? ""));
         setPrimaryEmail(String(result.settings.primaryEmail ?? ""));
         setBillingEmail(String(result.settings.billingEmail ?? ""));
@@ -72,6 +74,7 @@ export default function PortalSettingsPage() {
     try {
       const result = await api.updateCompanySettings(company.slug, {
         name,
+        logoUrl: logoUrl.trim() || null,
         primaryContactName: primaryContact || null,
         primaryEmail: primaryEmail || null,
         billingEmail: billingEmail || null,
@@ -81,6 +84,7 @@ export default function PortalSettingsPage() {
       });
       setSettings(result.settings);
       setMessage("Settings saved.");
+      await refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Unable to save settings");
     } finally {
@@ -123,6 +127,18 @@ export default function PortalSettingsPage() {
               <label className="field">
                 <span className="field-label">Company name</span>
                 <Input value={name} onChange={(e) => setName(e.target.value)} required />
+              </label>
+              <label className="field">
+                <span className="field-label">Logo URL</span>
+                <Input
+                  type="url"
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  placeholder="https://…"
+                />
+                <span className="muted small">
+                  Optional HTTPS image. If empty, the portal shows company initials.
+                </span>
               </label>
               <label className="field">
                 <span className="field-label">Primary contact</span>

@@ -1,12 +1,19 @@
 import { FormEvent, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { SESSION_EXPIRED_STORAGE_KEY } from "../lib/session-policy";
 
 export default function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const successMessage = (location.state as { message?: string } | null)?.message;
+  let sessionExpired = Boolean((location.state as { sessionExpired?: boolean } | null)?.sessionExpired);
+  try {
+    sessionExpired = sessionExpired || sessionStorage.getItem(SESSION_EXPIRED_STORAGE_KEY) === "1";
+  } catch {
+    /* ignore */
+  }
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +51,13 @@ export default function LoginPage() {
         <p className="muted">
           Access the INFRA Admin Control Panel to manage companies, integrations, and access.
         </p>
-        {successMessage ? <p className="info-banner">{successMessage}</p> : null}
+        {sessionExpired ? (
+          <p className="info-banner" role="status">
+            Your session expired after 30 minutes of inactivity. Sign in again.
+          </p>
+        ) : successMessage ? (
+          <p className="info-banner">{successMessage}</p>
+        ) : null}
         <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
           <label>
             Email

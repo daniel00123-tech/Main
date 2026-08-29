@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardList } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { ArrowLeft, ClipboardList, X } from "lucide-react";
 import type { ActionPlanRecord } from "@infra/shared";
 import { api } from "../api";
 import {
@@ -98,14 +99,29 @@ function systemLabel(plan: ActionPlanRecord): string {
   return plan.provider ?? "INFRA";
 }
 
+const ACTION_BUCKETS: ActionCentreBucket[] = [
+  "needs_approval",
+  "in_progress",
+  "completed",
+  "failed",
+];
+
+function parseActionBucket(value: string | null): ActionCentreBucket | null {
+  if (value && ACTION_BUCKETS.includes(value as ActionCentreBucket)) {
+    return value as ActionCentreBucket;
+  }
+  return null;
+}
+
 export default function PortalActionsPage() {
   const { company, loading, error, membership, user } = usePortalCompany();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [plans, setPlans] = useState<ActionPlanRecord[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState<string | null>(null);
-  const [bucket, setBucket] = useState<ActionCentreBucket>("needs_approval");
-  const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const bucket = parseActionBucket(searchParams.get("bucket")) ?? "needs_approval";
+  const query = searchParams.get("q") ?? "";
+  const selectedId = searchParams.get("action");
   const [dryRun, setDryRun] = useState<DryRunReport | null>(null);
   const [execution, setExecution] = useState<ExecutionEvidence | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -163,11 +179,37 @@ export default function PortalActionsPage() {
   }, [plans, bucket, query]);
 
   const visible = filtered.slice(0, displayLimit);
-  const selected = plans.find((plan) => plan.id === selectedId) ?? visible[0] ?? null;
+  const selected = selectedId
+    ? plans.find((plan) => plan.id === selectedId) ?? null
+    : null;
+
+  const updateParams = useCallback(
+    (
+      next: { bucket?: ActionCentreBucket; q?: string; action?: string | null },
+      history: "push" | "replace" = "replace",
+    ) => {
+      const params = new URLSearchParams();
+      const nextBucket = next.bucket ?? bucket;
+      const nextQuery = next.q !== undefined ? next.q : query;
+      const nextAction = next.action !== undefined ? next.action : selectedId;
+      if (nextBucket !== "needs_approval") params.set("bucket", nextBucket);
+      if (nextQuery.trim()) params.set("q", nextQuery);
+      if (nextAction) params.set("action", nextAction);
+      setSearchParams(params, { replace: history === "replace" });
+    },
+    [bucket, query, selectedId, setSearchParams],
+  );
 
   useEffect(() => {
     setDisplayLimit(20);
   }, [bucket, query]);
+
+  useEffect(() => {
+    if (plansLoading || !selectedId) return;
+    if (!plans.some((plan) => plan.id === selectedId)) {
+      updateParams({ action: null });
+    }
+  }, [plans, plansLoading, selectedId, updateParams]);
 
   useEffect(() => {
     if (!company || !selected) {
@@ -232,7 +274,7 @@ export default function PortalActionsPage() {
       await api.rejectCompanyAction(company.slug, plan.id);
       toast("Action rejected");
       setRejectOpen(false);
-      setSelectedId(null);
+      updateParams({ action: null });
       await loadPlans();
     } catch (err) {
       toast(err instanceof Error ? err.message : "Rejection failed", "error");
@@ -367,12 +409,17 @@ export default function PortalActionsPage() {
       />
 
       <FilterBar>
-        <SearchInput value={query} onChange={setQuery} placeholder="Search actions…" className="filter-grow" />
+        <SearchInput
+          value={query}
+          onChange={(value) => updateParams({ q: value, action: selectedId })}
+          placeholder="Search actions…"
+          className="filter-grow"
+        />
       </FilterBar>
 
       <SegmentedControl
         value={bucket}
-        onChange={setBucket}
+        onChange={(next) => updateParams({ bucket: next, action: null })}
         options={[
           { id: "needs_approval", label: "Waiting for approval", count: bucketCounts.needs_approval },
           { id: "in_progress", label: "In progress", count: bucketCounts.in_progress },
@@ -411,7 +458,10 @@ export default function PortalActionsPage() {
           <>
             <MobileRecordList>
               {visible.map((plan) => (
-                <MobileRecordCard key={plan.id} onClick={() => setSelectedId(plan.id)}>
+                <MobileRecordCard
+                  key={plan.id}
+                  onClick={() => updateParams({ action: plan.id }, "push")}
+                >
                   <div className="mobile-record-header">
                     <div className="mobile-record-title">{humanOperation(plan.requestedAction)}</div>
                     <StatusBadge status={plan.status} label={humanActionStatus(plan.status)} />
@@ -448,9 +498,10 @@ export default function PortalActionsPage() {
               onShowMore={() => setDisplayLimit((n) => n + 20)}
             />
             <Drawer
-              open={Boolean(selected)}
-              onClose={() => setSelectedId(null)}
+              open={Boolean(selectedId)}
+              onClose={() => updateParams({ action: null }, "push")}
               title="Action details"
+              showBack
             >
               {detailPanel}
             </Drawer>
@@ -460,10 +511,35 @@ export default function PortalActionsPage() {
             <CompactActionList
               plans={visible}
               selectedId={selected?.id ?? null}
-              onSelect={setSelectedId}
+              onSelect={(id) => updateParams({ action: id }, "push")}
             />
-            <div className="card" style={{ padding: "var(--s-4)" }}>
-              {detailPanel ?? <p className="muted">Select an action to view details.</p>}
+            <div className="card action-detail-card" style={{ padding: "var(--s-4)" }}>
+              {selected ? (
+                <>
+                  <div className="action-detail-toolbar">
+                    <button
+                      type="button"
+                      className="button button-ghost button-small drawer-nav-btn"
+                      onClick={() => updateParams({ action: null }, "push")}
+                      aria-label="Back to list"
+                    >
+                      <ArrowLeft size={16} />
+                      <span>Back</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-ghost button-small drawer-nav-btn"
+                      onClick={() => updateParams({ action: null }, "push")}
+                      aria-label="Close details"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  {detailPanel}
+                </>
+              ) : (
+                <p className="muted">Select an action to view details.</p>
+              )}
             </div>
           </div>
         )}
