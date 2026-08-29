@@ -44,7 +44,7 @@ Migration: `infra/migrations/0030_automation_engine.sql`
 
 - Queue: `automation-runs` with DLQ `automation-runs-dlq`.
 - Message shape: `{ runId, companyId, automationId }` — identifiers only, no secrets.
-- Fallback: `POST /api/internal/automation/process-run` when queue binding unavailable.
+- Fallback: in-request `processAutomationRunJob` when the queue binding is unavailable (do not self-fetch `workers.dev`). Operator route: `POST /api/internal/automation/process-run`.
 
 ## Execution lifecycle
 

@@ -21,7 +21,7 @@ import {
 import {
   enqueueAutomationRun,
   hasAutomationRunQueue,
-  kickAutomationRunProcessor,
+  processAutomationRunJob,
 } from "./queue";
 
 export type AutomationEngineTrigger = AutomationRunTrigger;
@@ -189,11 +189,9 @@ async function afterCreate(
     : false;
 
   if (!enqueued) {
-    await kickAutomationRunProcessor(
-      env,
-      input.runId,
-      input.companyId,
-      input.automationId,
-    );
+    // The automation-runs queue is not bound in production. Public
+    // workers.dev self-fetch is blocked (Cloudflare 1042), so process
+    // in-request through the same executor the queue consumer uses.
+    await processAutomationRunJob(env, message);
   }
 }

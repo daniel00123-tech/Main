@@ -105,6 +105,8 @@ Example utterance: “Show me whether that manual run completed.”
 
 Portal double-clicks are additionally guarded in the UI (in-flight ref + disabled button) and send one `Idempotency-Key` per confirmed click.
 
+When `AUTOMATION_RUN_QUEUE` is not bound, the engine runs the job in-request via `processAutomationRunJob`. A public `workers.dev` self-fetch is not used (Cloudflare 1042). Operators can still call `POST /api/internal/automation/process-run`.
+
 ## Run history
 
 Every attempt writes `automation_runs` with:

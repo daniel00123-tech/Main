@@ -15,7 +15,7 @@ const controlPlane = vi.hoisted(() => ({
 const queue = vi.hoisted(() => ({
   enqueueAutomationRun: vi.fn(),
   hasAutomationRunQueue: vi.fn(() => false),
-  kickAutomationRunProcessor: vi.fn(),
+  processAutomationRunJob: vi.fn(),
 }));
 
 vi.mock("./store", () => store);
@@ -62,7 +62,7 @@ describe("requestAutomationRun", () => {
     store.createAutomationRun.mockResolvedValue({ run: run(), created: true });
     store.recordAutomationEvent.mockResolvedValue(undefined);
     controlPlane.recordAuditEvent.mockResolvedValue(undefined);
-    queue.kickAutomationRunProcessor.mockResolvedValue(undefined);
+    queue.processAutomationRunJob.mockResolvedValue(undefined);
   });
 
   it("A: runs an active scheduled automation immediately", async () => {
@@ -86,7 +86,7 @@ describe("requestAutomationRun", () => {
         idempotencyKey: "click-1",
       }),
     );
-    expect(queue.kickAutomationRunProcessor).toHaveBeenCalled();
+    expect(queue.processAutomationRunJob).toHaveBeenCalled();
   });
 
   it("B: never mutates schedule, timezone, enabled state or next run", async () => {
@@ -136,7 +136,7 @@ describe("requestAutomationRun", () => {
     expect(result.created).toBe(false);
     expect(result.reusedExisting).toBe(true);
     expect(store.createAutomationRun).not.toHaveBeenCalled();
-    expect(queue.kickAutomationRunProcessor).not.toHaveBeenCalled();
+    expect(queue.processAutomationRunJob).not.toHaveBeenCalled();
   });
 
   it("K: portal double-click reuses the active run instead of creating a second", async () => {

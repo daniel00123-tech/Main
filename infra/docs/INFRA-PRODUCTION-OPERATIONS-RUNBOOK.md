@@ -142,7 +142,7 @@ Not allowed during routine ops:
 ## Known limitations
 
 - Google Drive continuation state lives in company MCP — INFRA shows connector-level health, not per-page token detail
-- Automation queue binding may be unavailable — HTTP fallback is used and surfaced to operators
+- Automation queue binding may be unavailable — runs process in-request via `processAutomationRunJob`. Do not rely on workers.dev self-fetch.
 - Cloudflare invoice cost is not available inside INFRA — usage anomaly flags only
 - Outbound email operator alerts are not auto-enabled — integration point exists for future typed notifications
 
