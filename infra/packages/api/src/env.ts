@@ -16,7 +16,13 @@ export interface Env {
   EL_BUSINESS_MCP?: Fetcher;
   /** Stripe secrets — set via wrangler secret put when ready */
   STRIPE_SECRET_KEY?: string;
+  /** Signing secret for the existing workers.dev Stripe webhook. */
   STRIPE_WEBHOOK_SECRET?: string;
+  /**
+   * Signing secret for the canonical api.infrastack.app Stripe webhook.
+   * Optional during cutover so both endpoints can verify.
+   */
+  STRIPE_WEBHOOK_SECRET_INFRASTACK?: string;
   /** Public API base URL for generated links and OAuth defaults (no trailing slash) */
   INFRA_PUBLIC_API_URL?: string;
   /** Public MCP hostname (no trailing slash). Canonical: https://mcp.infrastack.app */
