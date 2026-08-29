@@ -870,6 +870,88 @@ textarea:focus-visible {
   place-items: center;
   padding: var(--s-6);
 }
+
+.login-page-admin {
+  padding: 0;
+  place-items: stretch;
+  overflow-x: hidden;
+  background:
+    radial-gradient(ellipse 70% 55% at 78% 42%, rgba(56, 189, 248, 0.1), transparent 58%),
+    var(--bg);
+}
+.login-admin-shell {
+  min-height: 100vh;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(360px, 460px) minmax(0, 1fr);
+}
+.login-admin-form-pane {
+  display: grid;
+  place-items: center;
+  padding: var(--s-8) var(--s-6);
+  background: rgba(12, 18, 32, 0.92);
+  border-right: 1px solid var(--border);
+}
+.login-page-admin .login-card {
+  box-shadow: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.login-admin-visual-pane {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: var(--s-8);
+}
+.login-admin-visual-frame {
+  width: min(100%, 760px);
+  max-height: calc(100vh - 64px);
+  display: grid;
+  place-items: center;
+  padding: var(--s-5);
+  border-radius: var(--r-xl);
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(56, 189, 248, 0.12), transparent 62%),
+    rgba(8, 12, 22, 0.45);
+  box-shadow: var(--shadow-lg);
+}
+.login-admin-visual {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: calc(100vh - 104px);
+  object-fit: contain;
+}
+
+@media (max-width: 960px) {
+  .login-page-admin {
+    place-items: center;
+    padding: var(--s-6);
+    background: var(--bg);
+  }
+  .login-admin-shell {
+    min-height: auto;
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+  .login-admin-form-pane {
+    padding: 0;
+    background: transparent;
+    border-right: 0;
+  }
+  .login-page-admin .login-card {
+    width: min(420px, 100%);
+    padding: var(--s-8);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+  }
+  .login-admin-visual-pane {
+    display: none;
+  }
+}
 .login-card {
   width: min(420px, 100%);
   padding: var(--s-8);
