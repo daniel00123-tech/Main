@@ -3,6 +3,8 @@ import {
   DEFAULT_COMPANY_CURRENCY,
   DEFAULT_TEST_OPENING_CREDIT_CENTS,
   GATEWAY_ALLOWED_STATUSES,
+  LEGACY_PORTAL_BASE_DOMAIN,
+  isReservedProductionHost,
   slugifyCompanyName as sharedSlugify,
   validateCompanySlug,
 } from "@infra/shared";
@@ -13,7 +15,7 @@ import { appendLedgerEntry } from "./ledger";
 import { recordAuditEvent } from "./control-plane";
 import { ensurePaymentProviderAccount } from "./payment-providers";
 
-const DEFAULT_PORTAL_BASE_DOMAIN = "infra-web.pages.dev";
+const DEFAULT_PORTAL_BASE_DOMAIN = LEGACY_PORTAL_BASE_DOMAIN;
 
 const DEFAULT_MODULES = ["knowledge", "chatgpt", "claude", "whatsapp"] as const;
 
@@ -39,9 +41,10 @@ export async function getCompanyByPortalHostname(
     .first();
   if (row) return rowToCompany(row);
 
-  // Support {subdomain}.infra-web.pages.dev style hosts even if hostname column lags
+  // Support {subdomain}.infra-web.pages.dev style hosts even if hostname column lags.
+  // Never treat app/api/mcp/root infrastack.app hosts as a company subdomain.
   const parts = host.split(".");
-  if (parts.length >= 3) {
+  if (parts.length >= 3 && !isReservedProductionHost(host)) {
     const subdomain = parts[0];
     const bySub = await db
       .prepare("SELECT * FROM companies WHERE lower(portal_subdomain) = ?")

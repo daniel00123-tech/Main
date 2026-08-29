@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { ToolAction, CompanyRole } from "@infra/shared";
-import { CONNECTOR_CATALOGUE } from "@infra/shared";
+import { CONNECTOR_CATALOGUE, LEGACY_PORTAL_BASE_DOMAIN } from "@infra/shared";
 import {
   clearSessionCookie,
   requireAuth,
@@ -580,7 +580,7 @@ app.post("/api/companies", requireAuth, requirePlatformAdmin, async (c) => {
       portalBaseDomain:
         typeof c.env.PORTAL_BASE_DOMAIN === "string"
           ? c.env.PORTAL_BASE_DOMAIN
-          : "infra-web.pages.dev",
+          : LEGACY_PORTAL_BASE_DOMAIN,
     });
     return c.json(
       {

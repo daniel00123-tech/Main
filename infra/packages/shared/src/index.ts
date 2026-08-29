@@ -30,3 +30,4 @@ export * from "./permissions/role-presets";
 export * from "./permissions/xero-permissions";
 export * from "./service-identity-scopes";
 export * from "./usage-labels";
+export * from "./platform/urls";

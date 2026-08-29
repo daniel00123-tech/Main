@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Building2, Plus } from "lucide-react";
 import type { CreateCompanyInput } from "@infra/shared";
-import { DEFAULT_TEST_OPENING_CREDIT_CENTS, validateCompanySlug } from "@infra/shared";
+import {
+  DEFAULT_TEST_OPENING_CREDIT_CENTS,
+  INFRA_PORTAL_ORIGIN,
+  LEGACY_PORTAL_BASE_DOMAIN,
+  validateCompanySlug,
+} from "@infra/shared";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { useAdminScope } from "../context/AdminScopeContext";
@@ -822,10 +827,16 @@ export default function CompaniesPage() {
                   <div className="muted small">Portal path</div>
                   <code className="mono">/portal/{effectiveSlug || "…"}/dashboard</code>
                   <div className="muted small" style={{ marginTop: 8 }}>
-                    Hostname
+                    Portal URL
                   </div>
                   <code className="mono">
-                    {effectiveSubdomain || "…"}.infra-web.pages.dev
+                    {INFRA_PORTAL_ORIGIN}/portal/{effectiveSlug || "…"}/dashboard
+                  </code>
+                  <div className="muted small" style={{ marginTop: 8 }}>
+                    Legacy hostname (temporary)
+                  </div>
+                  <code className="mono">
+                    {effectiveSubdomain || "…"}.{LEGACY_PORTAL_BASE_DOMAIN}
                   </code>
                 </div>
               </div>
@@ -894,8 +905,13 @@ export default function CompaniesPage() {
                 <ReviewRow label="Telephone" value={form.telephone.trim() || "—"} />
                 <ReviewRow label="Slug" value={effectiveSlug || "—"} mono />
                 <ReviewRow
-                  label="Portal subdomain"
-                  value={`${effectiveSubdomain || "—"}.infra-web.pages.dev`}
+                  label="Portal URL"
+                  value={`${INFRA_PORTAL_ORIGIN}/portal/${effectiveSlug || "—"}/dashboard`}
+                  mono
+                />
+                <ReviewRow
+                  label="Legacy hostname"
+                  value={`${effectiveSubdomain || "—"}.${LEGACY_PORTAL_BASE_DOMAIN}`}
                   mono
                 />
                 <ReviewRow

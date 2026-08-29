@@ -5,6 +5,7 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Env } from "../env";
+import { infraPublicApiBase } from "./public-urls";
 import { newId, nowIso } from "../db/mappers";
 import { acquireMicrosoftAppToken, resolveMicrosoftTenantId } from "./microsoft-auth";
 import {
@@ -32,11 +33,7 @@ export type GraphNotificationPayload = {
 };
 
 export function microsoftGraphNotificationUrl(env: Env): string {
-  const base = (env.INFRA_PUBLIC_API_URL ?? "https://infra-api.daniel-dwyer123.workers.dev").replace(
-    /\/$/,
-    "",
-  );
-  return `${base}${MICROSOFT_GRAPH_WEBHOOK_PATH}`;
+  return `${infraPublicApiBase(env)}${MICROSOFT_GRAPH_WEBHOOK_PATH}`;
 }
 
 export function buildMicrosoftSubscriptionClientState(

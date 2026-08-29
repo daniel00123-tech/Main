@@ -5,8 +5,15 @@
  * Broad `accounting.transactions` / `accounting.reports.read` are rejected.
  */
 
-export const XERO_DEFAULT_REDIRECT_URI =
-  "https://infra-api.daniel-dwyer123.workers.dev/api/connectors/xero/oauth/callback";
+import { XERO_LEGACY_REDIRECT_URI } from "../platform/urls";
+
+/**
+ * Redirect URI currently registered in Xero Developer.
+ * New connects keep using this until the canonical
+ * `https://api.infrastack.app/api/connectors/xero/oauth/callback` URI is
+ * added in Xero and `XERO_OAUTH_REDIRECT_URI` is set.
+ */
+export const XERO_DEFAULT_REDIRECT_URI = XERO_LEGACY_REDIRECT_URI;
 
 export type XeroScopeTier = "read" | "write";
 
