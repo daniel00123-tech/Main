@@ -1486,12 +1486,6 @@ textarea:focus-visible {
   .admin-toolbar {
     padding-bottom: var(--s-3);
   }
-  .admin-company-switcher {
-    max-width: 100%;
-  }
-  .admin-company-switcher-trigger {
-    max-width: 100%;
-  }
   .connector-grid {
     grid-template-columns: 1fr;
   }
@@ -1604,6 +1598,11 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+@media (max-width: 720px) {
+  .scope-banner {
+    display: none;
+  }
 }
 .admin-company-switcher-panel {
   position: absolute;
