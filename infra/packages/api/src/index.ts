@@ -418,6 +418,11 @@ app.get("/api/platform/operations/health", requireAuth, requirePlatformAdmin, as
   return c.json(await getPlatformOperationalHealth(c.env));
 });
 
+app.get("/api/platform/operations/usage", requireAuth, requirePlatformAdmin, async (c) => {
+  const { getCachedPlatformInfrastructureUsage } = await import("./services/platform-operations");
+  return c.json(await getCachedPlatformInfrastructureUsage(c.env));
+});
+
 app.post("/api/platform/operations/billing-reconciliation", requireAuth, requirePlatformAdmin, async (c) => {
   const { runBillingReconciliationDiagnostic } = await import("./services/platform-operations");
   return c.json(await runBillingReconciliationDiagnostic(c.env.DB));
@@ -1153,53 +1158,67 @@ app.post("/api/permissions/check", requireAuth, async (c) => {
 
 const worker = {
   fetch: app.fetch.bind(app),
-  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
-    const { runMicrosoftScheduledSync } = await import("./services/microsoft-scheduler");
+  async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
     const { recordPlatformHeartbeat } = await import("./services/platform-ops-heartbeats");
+    const { logInfraEvent } = await import("./services/observability/structured-log");
+    const cron = event.cron;
+    const runAutomation = cron !== "0 */6 * * *";
+    const runMicrosoft = cron !== "*/15 * * * *";
+    const started = Date.now();
 
-    let msResult;
-    try {
-      msResult = await runMicrosoftScheduledSync(env);
-      await recordPlatformHeartbeat(env.DB, {
-        key: "microsoft_scheduler",
-        label: "Microsoft scheduler",
-        success: msResult.errors.length === 0,
-        error: msResult.errors[0] ?? null,
-        detail: {
-          sourcesSynced: msResult.sourcesSynced,
-          graphRenewals: msResult.graphRenewals,
-        },
-      });
-    } catch (err) {
-      await recordPlatformHeartbeat(env.DB, {
-        key: "microsoft_scheduler",
-        label: "Microsoft scheduler",
-        success: false,
-        error: err instanceof Error ? err.message : "Scheduler failed",
-      });
+    if (runMicrosoft) {
+      const { runMicrosoftScheduledSync } = await import("./services/microsoft-scheduler");
+      try {
+        const msResult = await runMicrosoftScheduledSync(env);
+        await recordPlatformHeartbeat(env.DB, {
+          key: "microsoft_scheduler",
+          label: "Microsoft scheduler",
+          success: msResult.errors.length === 0,
+          error: msResult.errors[0] ?? null,
+          detail: {
+            sourcesSynced: msResult.sourcesSynced,
+            graphRenewals: msResult.graphRenewals,
+          },
+        });
+      } catch (err) {
+        await recordPlatformHeartbeat(env.DB, {
+          key: "microsoft_scheduler",
+          label: "Microsoft scheduler",
+          success: false,
+          error: err instanceof Error ? err.message : "Scheduler failed",
+        });
+      }
     }
 
-    const { runAutomationScheduler } = await import("./services/automation-engine/scheduler");
-    try {
-      const autoResult = await runAutomationScheduler(env);
-      await recordPlatformHeartbeat(env.DB, {
-        key: "automation_scheduler",
-        label: "Automation scheduler",
-        success: autoResult.errors.length === 0,
-        error: autoResult.errors[0] ?? null,
-        detail: {
-          scanned: autoResult.scanned,
-          enqueued: autoResult.enqueued,
-        },
-      });
-    } catch (err) {
-      await recordPlatformHeartbeat(env.DB, {
-        key: "automation_scheduler",
-        label: "Automation scheduler",
-        success: false,
-        error: err instanceof Error ? err.message : "Scheduler failed",
-      });
+    if (runAutomation) {
+      const { runAutomationScheduler } = await import("./services/automation-engine/scheduler");
+      try {
+        const autoResult = await runAutomationScheduler(env);
+        await recordPlatformHeartbeat(env.DB, {
+          key: "automation_scheduler",
+          label: "Automation scheduler",
+          success: autoResult.errors.length === 0,
+          error: autoResult.errors[0] ?? null,
+          detail: {
+            scanned: autoResult.scanned,
+            enqueued: autoResult.enqueued,
+          },
+        });
+      } catch (err) {
+        await recordPlatformHeartbeat(env.DB, {
+          key: "automation_scheduler",
+          label: "Automation scheduler",
+          success: false,
+          error: err instanceof Error ? err.message : "Scheduler failed",
+        });
+      }
     }
+
+    logInfraEvent({
+      event: "scheduler.tick",
+      status: cron || "unknown",
+      durationMs: Date.now() - started,
+    });
   },
   async queue(
     batch: MessageBatch<
@@ -1222,8 +1241,19 @@ const worker = {
       const isDeadLetter = batch.queue === AUTOMATION_RUN_DLQ;
       for (const message of batch.messages) {
         try {
-          await processAutomationRunJob(env, message.body as import("./services/automation-engine/queue").AutomationRunMessage, {
+          const started = Date.now();
+          const body = message.body as import("./services/automation-engine/queue").AutomationRunMessage;
+          await processAutomationRunJob(env, body, {
             deadLetter: isDeadLetter,
+          });
+          const { logInfraEvent } = await import("./services/observability/structured-log");
+          logInfraEvent({
+            event: "automation.queue_consumed",
+            companyId: body.companyId,
+            automationId: body.automationId,
+            runId: body.runId,
+            durationMs: Date.now() - started,
+            status: isDeadLetter ? "dead_letter" : "processed",
           });
           message.ack();
         } catch {
