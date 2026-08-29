@@ -136,6 +136,8 @@ export default function ForgotPasswordPage() {
 
         <p className="muted small" style={{ marginTop: 20 }}>
           <Link to="/portal/login">Back to sign in</Link>
+          {" · "}
+          <Link to="/privacy">Privacy Policy</Link>
         </p>
       </div>
     </div>

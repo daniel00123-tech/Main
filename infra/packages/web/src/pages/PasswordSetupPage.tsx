@@ -142,6 +142,8 @@ export default function PasswordSetupPage() {
 
         <p className="login-footer muted">
           Already set your password? <Link to="/portal/login">Sign in</Link>
+          {" · "}
+          <Link to="/privacy">Privacy Policy</Link>
         </p>
       </div>
     </div>

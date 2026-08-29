@@ -72,6 +72,9 @@ export default function LoginPage() {
         <p className="muted small" style={{ marginTop: 20 }}>
           Company users: <Link to="/portal/login">sign in to your company portal</Link>
         </p>
+        <p className="muted small legal-footer-link">
+          <Link to="/privacy">Privacy Policy</Link>
+        </p>
       </div>
     </div>
   );
