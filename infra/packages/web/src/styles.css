@@ -899,17 +899,18 @@ textarea:focus-visible {
   padding: 0;
 }
 .login-admin-visual-pane {
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
-  padding: var(--s-8);
+  height: 100vh;
+  padding: var(--s-6);
 }
 .login-admin-visual-frame {
-  width: min(100%, 760px);
-  max-height: calc(100vh - 64px);
-  display: grid;
-  place-items: center;
-  padding: var(--s-5);
+  box-sizing: border-box;
+  position: relative;
+  width: min(100%, 680px);
+  height: calc(100vh - 48px);
   border-radius: var(--r-xl);
   border: 1px solid var(--border);
   background:
@@ -918,10 +919,13 @@ textarea:focus-visible {
   box-shadow: var(--shadow-lg);
 }
 .login-admin-visual {
-  display: block;
-  width: 100%;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  bottom: 20px;
+  left: 20px;
+  width: auto;
   height: auto;
-  max-height: calc(100vh - 104px);
   object-fit: contain;
 }
 
