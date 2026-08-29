@@ -736,7 +736,10 @@ phase3.post("/api/stripe/webhook", async (c) => {
     return c.json(
       {
         error: "Stripe is not configured",
-        requiredSecrets: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
+        requiredSecrets: [
+          "STRIPE_SECRET_KEY",
+          "STRIPE_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET_INFRASTACK",
+        ],
       },
       503,
     );

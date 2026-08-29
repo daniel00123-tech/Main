@@ -16,12 +16,25 @@ export interface Env {
   EL_BUSINESS_MCP?: Fetcher;
   /** Stripe secrets — set via wrangler secret put when ready */
   STRIPE_SECRET_KEY?: string;
+  /** Signing secret for the existing workers.dev Stripe webhook. */
   STRIPE_WEBHOOK_SECRET?: string;
-  /** Public API base URL for gateway/MCP endpoints returned to clients (no trailing slash) */
+  /**
+   * Signing secret for the canonical api.infrastack.app Stripe webhook.
+   * Optional during cutover so both endpoints can verify.
+   */
+  STRIPE_WEBHOOK_SECRET_INFRASTACK?: string;
+  /** Public API base URL for generated links and OAuth defaults (no trailing slash) */
   INFRA_PUBLIC_API_URL?: string;
-  /** Portal host domain for subdomain routing, e.g. infra-web.pages.dev */
+  /** Public MCP hostname (no trailing slash). Canonical: https://mcp.infrastack.app */
+  INFRA_PUBLIC_MCP_URL?: string;
+  /** Canonical customer/admin portal origin, e.g. https://app.infrastack.app */
+  PORTAL_PUBLIC_ORIGIN?: string;
+  /** Portal host domain for legacy company subdomains, e.g. infra-web.pages.dev */
   PORTAL_BASE_DOMAIN?: string;
-  /** Portal cookie domain for first-party session sharing across subdomains, e.g. .infra-web.pages.dev */
+  /**
+   * Optional cookie Domain for legacy pages.dev company subdomains only.
+   * Do not set .infrastack.app — app.infrastack.app uses host-only cookies.
+   */
   PORTAL_COOKIE_DOMAIN?: string;
   /** Envelope-encryption wrapping key for connector credentials. Never store in D1. */
   INFRA_CREDENTIAL_WRAPPING_KEY?: string;
@@ -72,6 +85,7 @@ export function isOriginAllowed(origin: string | undefined, allowedOrigins: stri
   if (allowedOrigins.includes(origin)) return true;
   try {
     const { hostname, protocol } = new URL(origin);
+    // Temporary company-subdomain fallback on Pages. Not a production wildcard.
     if (protocol === "https:" && hostname.endsWith(".infra-web.pages.dev")) {
       return true;
     }

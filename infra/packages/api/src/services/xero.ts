@@ -1,9 +1,9 @@
 import {
   CONNECTOR_ERROR_CODES,
   XERO_AUTH,
+  XERO_CANONICAL_REDIRECT_URI,
   XERO_CLIENT_ID_SECRET,
   XERO_CLIENT_SECRET_SECRET,
-  XERO_DEFAULT_REDIRECT_URI,
   XERO_REDIRECT_URI_SECRET,
   XERO_SCOPE_REASONS,
   XERO_WRITE_ACTIVATION,
@@ -12,6 +12,7 @@ import {
   scopesForTier,
   tierFromGrantedScopes,
 } from "@infra/shared";
+import { portalOrigin as canonicalPortalOrigin } from "./public-urls";
 import type { Env } from "../env";
 import { newId, nowIso } from "../db/mappers";
 import {
@@ -93,7 +94,11 @@ export function xeroOauthStatus(env: Env): {
 export function xeroRedirectUri(env: Env): string {
   const override = env[XERO_REDIRECT_URI_SECRET];
   if (typeof override === "string" && override.trim()) return override.trim();
-  return XERO_DEFAULT_REDIRECT_URI;
+  return XERO_CANONICAL_REDIRECT_URI;
+}
+
+export function xeroCanonicalRedirectUri(): string {
+  return XERO_CANONICAL_REDIRECT_URI;
 }
 
 function xeroClientId(env: Env): string {
@@ -112,21 +117,13 @@ function xeroClientSecret(env: Env): string {
   return value.trim();
 }
 
-function portalOrigin(env: Env): string {
-  const allowed = (env.ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.startsWith("https://"));
-  return allowed[0] || "https://infra-web.pages.dev";
-}
-
 export function portalXeroReturnUrl(
   env: Env,
   slug: string,
   query: Record<string, string>,
 ): string {
   const params = new URLSearchParams(query);
-  return `${portalOrigin(env)}/portal/${encodeURIComponent(slug)}/connectors?${params}`;
+  return `${canonicalPortalOrigin(env)}/portal/${encodeURIComponent(slug)}/connectors?${params}`;
 }
 
 function basicAuth(env: Env): string {
