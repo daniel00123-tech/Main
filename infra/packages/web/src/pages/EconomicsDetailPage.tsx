@@ -2,12 +2,16 @@ import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import {
+  DataCard,
   ErrorState,
+  HelpHint,
   LoadingState,
   MetricCard,
   MetricGrid,
+  MobileRecordList,
   Notice,
   PageHeader,
+  RatioBar,
   SectionCard,
   formatCurrency,
 } from "../components";
@@ -42,12 +46,22 @@ export default function EconomicsDetailPage() {
   }
 
   const company = data.company;
+  const costPerUser =
+    company.activeUsers > 0 ? Math.round(company.directCostCents / company.activeUsers) : null;
 
   return (
     <>
       <PageHeader
         title={company.companyName}
-        description="Direct customer economics. Unattributed cost stays at company level."
+        description={
+          <>
+            Customer revenue minus direct serving cost.
+            <HelpHint label="Cash vs recognised revenue">
+              Cash collected is money received. Recognised revenue is the usage Infra billed in this
+              period.
+            </HelpHint>
+          </>
+        }
         actions={
           <Link to="/economics" className="muted small">
             ← All customers
@@ -63,17 +77,38 @@ export default function EconomicsDetailPage() {
           label="Gross margin"
           value={company.grossMarginPercent == null ? "—" : `${company.grossMarginPercent}%`}
         />
-        <MetricCard label="Cash collected" value={formatCurrency(company.cashCollectedCents)} />
         <MetricCard label="Active users" value={String(company.activeUsers)} />
-        <MetricCard label="OCR cost" value={formatCurrency(company.ocrCostCents)} />
-        <MetricCard label="Stripe fees (est.)" value={formatCurrency(company.stripeFeeCents)} />
+        <MetricCard
+          label="Cost / user"
+          value={costPerUser == null ? "—" : formatCurrency(costPerUser)}
+        />
       </MetricGrid>
+      <RatioBar
+        left={company.revenueCents}
+        right={company.directCostCents}
+        leftLabel={`Revenue ${formatCurrency(company.revenueCents)}`}
+        rightLabel={`Direct cost ${formatCurrency(company.directCostCents)}`}
+      />
 
       <SectionCard title="Cost by provider">
         {data.providers.length === 0 ? (
           <p className="muted">No attributable provider cost in this period.</p>
         ) : (
-          <div className="table-wrap">
+          <>
+          <div className="mobile-cards">
+            <MobileRecordList>
+              {data.providers.map((row) => (
+                <DataCard
+                  key={`${row.provider}-${row.service}`}
+                  title={row.provider}
+                  subtitle={row.service}
+                  metric={row.costCents > 0 ? formatCurrency(row.costCents) : "Unknown"}
+                  timestamp={`${row.eventCount} events`}
+                />
+              ))}
+            </MobileRecordList>
+          </div>
+          <div className="desktop-table table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -91,12 +126,13 @@ export default function EconomicsDetailPage() {
                     <td>{row.service}</td>
                     <td>{row.costBasis}</td>
                     <td>{row.eventCount}</td>
-                    <td>{formatCurrency(row.costCents)}</td>
+                    <td>{row.costCents > 0 ? formatCurrency(row.costCents) : "Unknown"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          </>
         )}
       </SectionCard>
 

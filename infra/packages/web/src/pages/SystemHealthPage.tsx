@@ -4,9 +4,12 @@ import type { Company, ConnectorInstance, McpEnvironment } from "@infra/shared";
 import { api } from "../api";
 import {
   Button,
+  CollapsibleBlock,
+  DataCard,
   Drawer,
   ErrorState,
   LoadingState,
+  MobileRecordList,
   PageHeader,
   SectionCard,
   StatusBadge,
@@ -255,8 +258,8 @@ export default function SystemHealthPage() {
   return (
     <>
       <PageHeader
-        title="System Health"
-        description="Platform services vs customer integration health."
+        title="System health"
+        description="Operational summary first, diagnostics second."
         actions={
           <Button variant="secondary" onClick={() => void load()}>
             Refresh
@@ -276,16 +279,79 @@ export default function SystemHealthPage() {
           </p>
           <p>
             Last checked {checkedAt ? formatRelativeTime(checkedAt) : "—"}.
-            {opsHealth
-              ? ` Overall state: ${opsHealth.overallState.replace(/_/g, " ").toLowerCase()}.`
-              : ""}
             {stripeConfigured === false ? " Stripe billing is not configured." : ""}
           </p>
         </div>
       </div>
 
-      <SectionCard title="Platform health">
-        <div className="table-wrap health-console">
+      {(() => {
+        const healthy = services.filter((s) => s.status === "operational").length;
+        const degraded = services.filter((s) => s.status === "degraded").length;
+        const failing = services.filter((s) => s.status === "unavailable").length;
+        return (
+          <div className="health-summary">
+            <div>
+              <span className="muted small">Healthy</span>
+              <strong>{healthy}</strong>
+            </div>
+            <div>
+              <span className="muted small">Degraded</span>
+              <strong>{degraded}</strong>
+            </div>
+            <div>
+              <span className="muted small">Failing</span>
+              <strong>{failing}</strong>
+            </div>
+            <div>
+              <span className="muted small">Services</span>
+              <strong>{services.length}</strong>
+            </div>
+          </div>
+        );
+      })()}
+
+      {unhealthyServices.length > 0 ? (
+        <SectionCard title="Needs attention" description="Resolve these before treating the platform as healthy.">
+          <MobileRecordList>
+            {unhealthyServices.map((service) => (
+              <DataCard
+                key={`attn-${service.id}`}
+                title={service.name}
+                subtitle={service.detail}
+                status={
+                  <StatusBadge
+                    status={mapServiceStatus(service.status)}
+                    label={humanStatus(mapServiceStatus(service.status))}
+                  />
+                }
+                timestamp={service.lastCheck}
+              />
+            ))}
+          </MobileRecordList>
+        </SectionCard>
+      ) : null}
+
+      <SectionCard title="Platform services">
+        <div className="mobile-cards">
+          <MobileRecordList>
+            {services.map((service) => (
+              <DataCard
+                key={service.id}
+                title={service.name}
+                subtitle={service.detail}
+                status={
+                  <StatusBadge
+                    status={mapServiceStatus(service.status)}
+                    label={humanStatus(mapServiceStatus(service.status))}
+                  />
+                }
+                metric={service.latency ?? undefined}
+                timestamp={service.lastCheck}
+              />
+            ))}
+          </MobileRecordList>
+        </div>
+        <div className="desktop-table table-wrap health-console">
           <table className="table compact">
             <thead>
               <tr>
@@ -312,15 +378,29 @@ export default function SystemHealthPage() {
             </tbody>
           </table>
         </div>
-        <p className="muted small" style={{ marginTop: 8 }}>
-          {services.map((s) => `${s.name}: ${s.detail}`).join(" · ")}
-        </p>
       </SectionCard>
 
       {opsHealth ? (
         <>
           <SectionCard title="Operational subsystems" className="mt-6">
-            <div className="table-wrap health-console">
+            <div className="mobile-cards">
+              <MobileRecordList>
+                {opsHealth.subsystems.map((subsystem) => (
+                  <DataCard
+                    key={subsystem.id}
+                    title={subsystem.label}
+                    subtitle={subsystem.summary}
+                    status={
+                      <StatusBadge
+                        status={mapOpsState(subsystem.state)}
+                        label={subsystem.state.replace(/_/g, " ")}
+                      />
+                    }
+                  />
+                ))}
+              </MobileRecordList>
+            </div>
+            <div className="desktop-table table-wrap health-console">
               <table className="table compact">
                 <thead>
                   <tr>
@@ -587,10 +667,12 @@ export default function SystemHealthPage() {
                   : "—"}
               </dd>
             </div>
-            <div className="drawer-row">
-              <dt>Connector ID</dt>
-              <dd className="mono small">{connectorDetail.connector.id}</dd>
-            </div>
+            <CollapsibleBlock title="Technical details">
+              <div className="drawer-row">
+                <dt>Connector ID</dt>
+                <dd className="mono small">{connectorDetail.connector.id}</dd>
+              </div>
+            </CollapsibleBlock>
             <p className="muted small" style={{ marginTop: 12 }}>
               Detailed connector request logs are available from Usage and Audit Log filtered by
               company and integration. Credentials are never shown here.

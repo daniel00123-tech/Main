@@ -3223,3 +3223,282 @@ button.action-list-row.selected {
   max-width: 100%;
   overflow-x: hidden;
 }
+
+/* ─── UX hardening: overflow, cards, nav, commercial ─── */
+
+html,
+body,
+#root {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.main,
+.app-shell,
+.card,
+.table-wrap {
+  min-width: 0;
+}
+
+.button,
+.tab,
+.nav-link {
+  min-height: 40px;
+}
+
+.data-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-2);
+}
+
+.data-card-identity {
+  min-width: 0;
+}
+
+.data-card-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.data-card-metric {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--s-3) var(--s-3) var(--s-1);
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  min-height: 36px;
+  text-align: left;
+}
+
+.nav-section-toggle:hover,
+.nav-section-toggle:focus-visible {
+  color: var(--text);
+}
+
+.nav-section-toggle[aria-expanded="false"] + .nav-section-items {
+  display: none;
+}
+
+.nav-collapsed .nav-section-toggle {
+  display: none;
+}
+
+.nav-collapsed .nav-section-items {
+  display: flex !important;
+  flex-direction: column;
+}
+
+.help-hint {
+  position: relative;
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.help-hint-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.help-hint-pop {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  top: calc(100% + 6px);
+  width: min(280px, 70vw);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.help-hint:hover .help-hint-pop,
+.help-hint:focus-within .help-hint-pop {
+  display: block;
+}
+
+.ratio-bar {
+  margin: var(--s-3) 0;
+}
+
+.ratio-bar-track {
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+
+.ratio-bar-left {
+  background: var(--accent);
+}
+
+.ratio-bar-right {
+  background: var(--warning);
+}
+
+.ratio-bar-legend {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.econ-rank-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr));
+  gap: var(--s-3);
+  align-items: center;
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.econ-rank-row strong {
+  display: block;
+}
+
+.health-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin: 0 0 var(--s-4);
+}
+
+.health-summary > div {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.health-summary strong {
+  display: block;
+  font-size: 1.25rem;
+  margin-top: 4px;
+}
+
+.permissions-editor-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+
+.permissions-editor-controls label {
+  min-width: min(100%, 220px);
+  flex: 1;
+}
+
+.wizard-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+}
+
+.wizard-step {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.wizard-step.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.loading-brand-pulse {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 12px;
+  border-radius: 10px;
+  background: var(--accent);
+  animation: infra-pulse 1s ease-in-out infinite;
+}
+
+@keyframes infra-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.empty-state-good h3 {
+  color: var(--text);
+}
+
+.permission-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+
+.high-risk-flag {
+  color: var(--warning);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .health-summary,
+  .econ-rank-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .desktop-table {
+    display: none;
+  }
+
+  .help-hint-pop {
+    left: auto;
+    right: 0;
+  }
+}
+
+@media (min-width: 769px) {
+  .mobile-cards {
+    display: none;
+  }
+}

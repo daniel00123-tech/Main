@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { CircleAlert } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { api } from "../api";
 import { useAdminScope } from "../context/AdminScopeContext";
 import {
+  DataCard,
   EmptyState,
   ErrorState,
   FilterBar,
   LoadingState,
+  MobileRecordList,
   PageHeader,
   Select,
   StatusBadge,
@@ -16,6 +17,7 @@ import {
 } from "../components";
 
 const STATUSES = ["new", "investigating", "accepted", "fixed", "dismissed"];
+const SEVERITY_ORDER = ["critical", "high", "medium", "low"];
 
 export default function QualityIssuesPage() {
   const { companyId: scopeCompanyId } = useAdminScope();
@@ -57,13 +59,17 @@ export default function QualityIssuesPage() {
   if (loading) return <LoadingState label="Loading quality issues…" />;
   if (error) return <ErrorState title="Unable to load quality issues" description={error} onRetry={() => void load()} />;
 
+  const sorted = [...items].sort(
+    (a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity),
+  );
+
   return (
     <>
       <PageHeader
-        title="Quality / Issues"
-        description="Evidence-backed post-run signals. This queue never changes production code, prompts, or integrations."
+        title="Quality"
+        description="Evidence-backed issues from conversations. This queue never changes production automatically."
       />
-      <FilterBar>
+      <FilterBar className="filter-bar-mobile-stack">
         <Select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">All statuses</option>
           {STATUSES.map((value) => (
@@ -73,68 +79,86 @@ export default function QualityIssuesPage() {
           ))}
         </Select>
       </FilterBar>
-      {items.length === 0 ? (
+      {sorted.length === 0 ? (
         <EmptyState
-          icon={<CircleAlert size={28} />}
-          title="No quality issues"
-          description="Failed tools, timeouts, permission errors, and retries will group here."
+          icon={<CheckCircle2 size={28} />}
+          tone="good"
+          title="No quality issues detected in this period"
+          description="Infra reviews a sample of interactions after they complete. An empty queue means no evidence-backed failures, retries, or permission errors were grouped for review."
         />
       ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Issue</th>
-                <th>Company</th>
-                <th>User</th>
-                <th>Count</th>
-                <th>First / last</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <strong>{row.category}</strong>
-                    <div className="muted small">
-                      {row.severity} · {Math.round(row.confidence * 100)}% · {row.suggestedInvestigation}
-                    </div>
-                    {row.interactionId ? (
-                      <Link to="/interactions" className="table-link small">
-                        {row.interactionId}
-                      </Link>
-                    ) : null}
-                  </td>
-                  <td>{row.companyName ?? "—"}</td>
-                  <td>{row.userEmail ?? row.userName ?? "—"}</td>
-                  <td>{row.occurrenceCount}</td>
-                  <td className="muted small">
-                    {formatDate(row.firstSeenAt)}
-                    <br />
-                    {formatDate(row.lastSeenAt)}
-                  </td>
-                  <td>
-                    <StatusBadge status={row.status} />
-                  </td>
-                  <td>
-                    <Select
-                      value={row.status}
-                      onChange={(e) => void setIssueStatus(row.id, e.target.value)}
-                    >
-                      {STATUSES.map((value) => (
-                        <option key={value} value={value}>
-                          {value}
-                        </option>
-                      ))}
-                    </Select>
-                  </td>
-                </tr>
+        <>
+          <div className="mobile-cards">
+            <MobileRecordList>
+              {sorted.map((row) => (
+                <DataCard
+                  key={row.id}
+                  title={row.category.replace(/_/g, " ")}
+                  subtitle={[row.companyName, row.userEmail].filter(Boolean).join(" · ")}
+                  status={<StatusBadge status={row.severity} />}
+                  metric={`Seen ${row.occurrenceCount}×`}
+                  timestamp={`Last ${formatDate(row.lastSeenAt)}`}
+                >
+                  <p className="muted small">{row.suggestedInvestigation}</p>
+                  <Select
+                    value={row.status}
+                    aria-label={`Status for ${row.category}`}
+                    onChange={(e) => void setIssueStatus(row.id, e.target.value)}
+                  >
+                    {STATUSES.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </Select>
+                </DataCard>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </MobileRecordList>
+          </div>
+          <div className="table-wrap desktop-table">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Issue</th>
+                  <th>Company</th>
+                  <th>User</th>
+                  <th>Count</th>
+                  <th>Last seen</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <strong>{row.category.replace(/_/g, " ")}</strong>
+                      <div className="muted small">
+                        {row.severity} · {row.suggestedInvestigation}
+                      </div>
+                    </td>
+                    <td>{row.companyName ?? "—"}</td>
+                    <td>{row.userEmail ?? row.userName ?? "—"}</td>
+                    <td>{row.occurrenceCount}</td>
+                    <td className="muted small">{formatDate(row.lastSeenAt)}</td>
+                    <td>
+                      <Select
+                        value={row.status}
+                        aria-label={`Status for ${row.category}`}
+                        onChange={(e) => void setIssueStatus(row.id, e.target.value)}
+                      >
+                        {STATUSES.map((value) => (
+                          <option key={value} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </Select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </>
   );

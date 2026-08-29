@@ -37,6 +37,7 @@ import {
 } from "../components";
 import { PortalPageBody, PortalPageHeader } from "./components";
 import { usePortalCompany } from "./usePortalCompany";
+import { automationSchedulePreview, filterCustomerAutomations } from "../lib/customer-visibility";
 
 type TemplateOption = {
   key: string;
@@ -82,6 +83,7 @@ export default function PortalAutomationsPage() {
   const [formTimezone, setFormTimezone] = useState("Europe/London");
   const [formRecipient, setFormRecipient] = useState("");
   const [formFrequency, setFormFrequency] = useState<AutomationScheduleFrequency>("daily");
+  const [createStep, setCreateStep] = useState(1);
 
   const canManage =
     user?.isPlatformAdmin ||
@@ -102,14 +104,14 @@ export default function PortalAutomationsPage() {
         api.listCompanyAutomations(company.slug),
         api.listAutomationTemplates().catch(() => ({ templates: [] })),
       ]);
-      setAutomations(response.automations);
+      setAutomations(filterCustomerAutomations(response.automations, Boolean(user?.isPlatformAdmin)));
       setTemplates(catalog.templates);
     } catch (err) {
       setListError(err instanceof Error ? err.message : "Failed to load automations");
     } finally {
       setListLoading(false);
     }
-  }, [company]);
+  }, [company, user?.isPlatformAdmin]);
 
   const loadRuns = useCallback(
     async (automationId: string) => {
@@ -142,6 +144,7 @@ export default function PortalAutomationsPage() {
     setFormTimezone(company?.timezone || "Europe/London");
     setFormRecipient(user?.email ?? "");
     setFormFrequency("daily");
+    setCreateStep(1);
     setCreateOpen(true);
   }
 
@@ -242,8 +245,8 @@ export default function PortalAutomationsPage() {
       const label = humanAutomationRunCustomerStatus(result.status);
       toast(
         result.scheduleChanged === false
-          ? `${label}. Run ID ${result.runId}. Schedule unchanged.`
-          : `${label}. Run ID ${result.runId}`,
+          ? `${label}. The saved schedule is unchanged.`
+          : label,
       );
       await loadAutomations();
       setSelectedId(automation.id);
@@ -316,7 +319,7 @@ export default function PortalAutomationsPage() {
           <EmptyState
             icon={<Bot size={32} />}
             title="No automations yet"
-            description="Create a daily sales email or a daily document activity report."
+            description="Automations send recurring reports for you. Create one if you want Infra to email sales or activity on a schedule."
             action={
               canManage ? (
                 <Button onClick={openCreate}>Create automation</Button>
@@ -334,7 +337,13 @@ export default function PortalAutomationsPage() {
                     label={humanAutomationCustomerStatus(automation.status)}
                   />
                 </div>
-                <div className="muted small">{humanAutomationSchedule(automation)}</div>
+                <div className="muted small">
+                  {automationSchedulePreview({
+                    frequency: automation.schedule?.frequency ?? "daily",
+                    time: clockValue(automation.schedule?.hour ?? 8, automation.schedule?.minute ?? 0),
+                    timezone: automation.timezone || "Europe/London",
+                  })}
+                </div>
                 <div className="muted small">
                   Next run {humanAutomationNextRun(automation.nextRunAt, automation.timezone)}
                 </div>
@@ -579,9 +588,9 @@ export default function PortalAutomationsPage() {
                       {humanAutomationRunCustomerStatus(run.status)}
                       {" · "}
                       {humanAutomationRunTrigger(run.triggerType)}
-                      <div className="muted">
-                        Run ID {run.id}
-                      </div>
+                      {user?.isPlatformAdmin ? (
+                        <div className="muted small">Run ID {run.id}</div>
+                      ) : null}
                       <div className="muted">
                         {humanAutomationRunCustomerSummary({
                           status: run.status,
@@ -601,97 +610,161 @@ export default function PortalAutomationsPage() {
       </Drawer>
 
       <Drawer open={createOpen} onClose={() => setCreateOpen(false)} title="Create automation">
-        <p className="muted small">What would you like INFRA to do?</p>
-        <Field label="Automation">
-          <Select
-            className="input"
-            value={templateKey}
-            onChange={(event) => {
-              const next = event.target.value;
-              setTemplateKey(next);
-              const match = availableTemplates.find((item) => item.key === next);
-              if (match) {
-                setFormName(match.defaultName);
-                setFormTime(
-                  clockValue(match.defaultSchedule?.hour ?? 8, match.defaultSchedule?.minute ?? 0),
-                );
-                setFormTimezone(match.defaultTimezone || "Europe/London");
-                setFormFrequency(
-                  (match.defaultSchedule?.frequency as AutomationScheduleFrequency) || "daily",
-                );
-              }
-            }}
-          >
-            {(availableTemplates.length > 0 ? availableTemplates : [
-              {
-                key: XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
-                label: "Daily sales email",
-              },
-            ]).map((item) => (
-              <option key={item.key} value={item.key}>
-                {item.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <p className="muted small">
-          {selectedTemplate?.description ??
-            "Receive your current month's Xero sales by email every morning."}
-        </p>
-        <Field label="Name">
-          <Input className="input" value={formName} onChange={(event) => setFormName(event.target.value)} />
-        </Field>
-        <Field label="System">
-          <Input className="input" value={selectedTemplate?.system ?? "Xero"} disabled />
-        </Field>
-        <Field label="Every">
-          <Select
-            className="input"
-            value={formFrequency}
-            onChange={(event) =>
-              setFormFrequency(event.target.value as AutomationScheduleFrequency)
-            }
-          >
-            <option value="daily">Daily</option>
-            <option value="weekdays">Weekdays</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </Select>
-        </Field>
-        <Field label="Time">
-          <Input
-            className="input"
-            type="time"
-            value={formTime}
-            onChange={(event) => setFormTime(event.target.value)}
-          />
-        </Field>
-        <Field label="Timezone">
-          <Select
-            className="input"
-            value={formTimezone}
-            onChange={(event) => setFormTimezone(event.target.value)}
-          >
-            <option value="Europe/London">Europe/London</option>
-            <option value="Europe/Dublin">Europe/Dublin</option>
-            <option value="UTC">UTC</option>
-          </Select>
-        </Field>
-        <Field label="Send report to">
-          <Input
-            className="input"
-            type="email"
-            value={formRecipient}
-            onChange={(event) => setFormRecipient(event.target.value)}
-          />
-        </Field>
+        <ol className="wizard-steps" aria-label="Create automation steps">
+          {["What", "How often", "When", "Who", "Review"].map((label, index) => (
+            <li key={label} className={`wizard-step${createStep === index + 1 ? " active" : ""}`}>
+              {index + 1}. {label}
+            </li>
+          ))}
+        </ol>
+
+        {createStep === 1 ? (
+          <>
+            <p className="muted small">What do you want Infra to do?</p>
+            <Field label="Automation">
+              <Select
+                className="input"
+                value={templateKey}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setTemplateKey(next);
+                  const match = availableTemplates.find((item) => item.key === next);
+                  if (match) {
+                    setFormName(match.defaultName);
+                    setFormTime(
+                      clockValue(match.defaultSchedule?.hour ?? 8, match.defaultSchedule?.minute ?? 0),
+                    );
+                    setFormTimezone(match.defaultTimezone || "Europe/London");
+                    setFormFrequency(
+                      (match.defaultSchedule?.frequency as AutomationScheduleFrequency) || "daily",
+                    );
+                  }
+                }}
+              >
+                {(availableTemplates.length > 0
+                  ? availableTemplates
+                  : [{ key: XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE, label: "Daily sales email" }]
+                ).map((item) => (
+                  <option key={item.key} value={item.key}>
+                    {item.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <p className="muted small">
+              {selectedTemplate?.description ??
+                "Receive your current month's Xero sales by email every morning."}
+            </p>
+            <Field label="Name">
+              <Input className="input" value={formName} onChange={(event) => setFormName(event.target.value)} />
+            </Field>
+          </>
+        ) : null}
+
+        {createStep === 2 ? (
+          <>
+            <p className="muted small">How often should this run?</p>
+            <Field label="Frequency">
+              <Select
+                className="input"
+                value={formFrequency}
+                onChange={(event) =>
+                  setFormFrequency(event.target.value as AutomationScheduleFrequency)
+                }
+              >
+                <option value="daily">Daily — every day, including weekends</option>
+                <option value="weekdays">Weekdays — Monday to Friday</option>
+                <option value="weekly">Weekly — once a week</option>
+                <option value="monthly">Monthly — once a month</option>
+              </Select>
+            </Field>
+          </>
+        ) : null}
+
+        {createStep === 3 ? (
+          <>
+            <p className="muted small">What time should it run?</p>
+            <Field label="Time">
+              <Input
+                className="input"
+                type="time"
+                value={formTime}
+                onChange={(event) => setFormTime(event.target.value)}
+              />
+            </Field>
+            <Field label="Timezone">
+              <Select
+                className="input"
+                value={formTimezone}
+                onChange={(event) => setFormTimezone(event.target.value)}
+              >
+                <option value="Europe/London">Europe/London</option>
+                <option value="Europe/Dublin">Europe/Dublin</option>
+                <option value="UTC">UTC</option>
+              </Select>
+            </Field>
+            <p className="muted small">
+              {automationSchedulePreview({
+                frequency: formFrequency,
+                time: formTime,
+                timezone: formTimezone,
+              })}
+            </p>
+          </>
+        ) : null}
+
+        {createStep === 4 ? (
+          <>
+            <p className="muted small">Who should receive it?</p>
+            <Field label="Send report to">
+              <Input
+                className="input"
+                type="email"
+                value={formRecipient}
+                onChange={(event) => setFormRecipient(event.target.value)}
+              />
+            </Field>
+          </>
+        ) : null}
+
+        {createStep === 5 ? (
+          <>
+            <p className="muted small">Review and create</p>
+            <KeyValue label="Automation" value={formName || selectedTemplate?.label || "—"} />
+            <KeyValue
+              label="Schedule"
+              value={automationSchedulePreview({
+                frequency: formFrequency,
+                time: formTime,
+                timezone: formTimezone,
+              })}
+            />
+            <KeyValue label="Recipient" value={formRecipient || "—"} />
+          </>
+        ) : null}
+
         <div className="drawer-actions">
-          <Button disabled={busy === "create"} onClick={() => void handleCreate()}>
-            Create automation
-          </Button>
-          <Button variant="ghost" onClick={() => setCreateOpen(false)}>
-            Cancel
-          </Button>
+          {createStep > 1 ? (
+            <Button variant="ghost" onClick={() => setCreateStep((step) => Math.max(1, step - 1))}>
+              Back
+            </Button>
+          ) : (
+            <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+          )}
+          {createStep < 5 ? (
+            <Button
+              onClick={() => setCreateStep((step) => Math.min(5, step + 1))}
+              disabled={createStep === 4 && !formRecipient.trim()}
+            >
+              Continue
+            </Button>
+          ) : (
+            <Button disabled={busy === "create"} onClick={() => void handleCreate()}>
+              Create
+            </Button>
+          )}
         </div>
       </Drawer>
 
@@ -740,6 +813,13 @@ export default function PortalAutomationsPage() {
             onChange={(event) => setFormRecipient(event.target.value)}
           />
         </Field>
+        <p className="muted small">
+          {automationSchedulePreview({
+            frequency: formFrequency,
+            time: formTime,
+            timezone: formTimezone,
+          })}
+        </p>
         <div className="drawer-actions">
           <Button disabled={busy === "edit"} onClick={() => void handleSaveEdit()}>
             Save

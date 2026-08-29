@@ -1,19 +1,20 @@
-import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
   Bot,
   Building2,
   ChartColumn,
+  ChevronDown,
   ChevronsLeft,
   ChevronsRight,
+  CircleAlert,
   Globe,
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageSquare,
   Network,
   Plug,
-  CircleAlert,
-  MessageSquare,
   PoundSterling,
   Receipt,
   Settings,
@@ -77,7 +78,7 @@ import AdminCompanySwitcher from "./components/AdminCompanySwitcher";
 import ScopeBanner from "./components/ScopeBanner";
 import { AdminScopeProvider } from "./context/AdminScopeContext";
 import PortalCompanyPickerPage from "./pages/PortalCompanyPickerPage";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type NavItem = {
   to: string;
@@ -94,7 +95,6 @@ const ADMIN_NAV: NavGroup[] = [
     items: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard size={18} />, end: true },
       { to: "/companies", label: "Companies", icon: <Building2 size={18} /> },
-      { to: "/portal", label: "Company portal", icon: <Globe size={18} /> },
     ],
   },
   {
@@ -113,33 +113,57 @@ const ADMIN_NAV: NavGroup[] = [
   {
     label: "Commercial",
     items: [
-      { to: "/usage", label: "Usage", icon: <ChartColumn size={18} /> },
       { to: "/economics", label: "Economics", icon: <PoundSterling size={18} /> },
       { to: "/billing", label: "Billing", icon: <Wallet size={18} /> },
-      { to: "/commercial/provider-costs", label: "Provider Costs", icon: <Receipt size={18} /> },
-      { to: "/commercial/pricing-rules", label: "Pricing Rules", icon: <Tags size={18} /> },
+      { to: "/commercial/provider-costs", label: "Provider costs", icon: <Receipt size={18} /> },
+      { to: "/commercial/pricing-rules", label: "Pricing", icon: <Tags size={18} /> },
       { to: "/commercial/overheads", label: "Overheads", icon: <Receipt size={18} /> },
+      { to: "/usage", label: "Usage", icon: <ChartColumn size={18} /> },
     ],
   },
   {
-    label: "Platform",
+    label: "Operations",
     items: [
-      { to: "/system-health", label: "System Health", icon: <Activity size={18} /> },
-      { to: "/failed-requests", label: "Failed Requests", icon: <Activity size={18} /> },
-      { to: "/interactions", label: "Interactions", icon: <MessageSquare size={18} /> },
-      { to: "/quality", label: "Quality", icon: <CircleAlert size={18} /> },
-      { to: "/audit-log", label: "Audit Log", icon: <Shield size={18} /> },
-      { to: "/settings", label: "Settings", icon: <Settings size={18} /> },
+      { to: "/system-health", label: "System health", icon: <Activity size={18} /> },
+      { to: "/failed-requests", label: "Failed requests", icon: <Activity size={18} /> },
     ],
   },
+  {
+    label: "Audit & Quality",
+    items: [
+      { to: "/interactions", label: "Interactions", icon: <MessageSquare size={18} /> },
+      { to: "/quality", label: "Quality", icon: <CircleAlert size={18} /> },
+      { to: "/audit-log", label: "Audit log", icon: <Shield size={18} /> },
+    ],
+  },
+  {
+    label: "Settings",
+    items: [{ to: "/settings", label: "Settings", icon: <Settings size={18} /> }],
+  },
 ];
+
+function groupContainsPath(group: NavGroup, pathname: string): boolean {
+  return group.items.some((item) =>
+    item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`),
+  );
+}
 
 function AdminShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [collapsed, setCollapsed] = useSidebarCollapsed();
   const isMobile = useMediaQuery("(max-width: 900px)");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const activeGroup = useMemo(
+    () => ADMIN_NAV.find((group) => groupContainsPath(group, location.pathname))?.label ?? "Overview",
+    [location.pathname],
+  );
+  const [openGroups, setOpenGroups] = useState<string[]>([activeGroup]);
+
+  useEffect(() => {
+    setOpenGroups((current) => (current.includes(activeGroup) ? current : [...current, activeGroup]));
+  }, [activeGroup]);
 
   const shellClass = [
     "app-shell",
@@ -194,24 +218,45 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav>
-          {ADMIN_NAV.map((group) => (
-            <div key={group.label} className="nav-section">
-              {showLabels ? <div className="nav-section-label">{group.label}</div> : null}
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  className="nav-link"
-                  to={item.to}
-                  end={item.end}
-                  title={!showLabels ? item.label : undefined}
-                  onClick={() => setMobileOpen(false)}
-                >
-                  {item.icon}
-                  <span className="label">{item.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          ))}
+          {ADMIN_NAV.map((group) => {
+            const expanded = openGroups.includes(group.label);
+            return (
+              <div key={group.label} className="nav-section">
+                {showLabels ? (
+                  <button
+                    type="button"
+                    className="nav-section-toggle"
+                    aria-expanded={expanded}
+                    onClick={() =>
+                      setOpenGroups((current) =>
+                        current.includes(group.label)
+                          ? current.filter((label) => label !== group.label)
+                          : [...current, group.label],
+                      )
+                    }
+                  >
+                    {group.label}
+                    <ChevronDown size={14} style={{ transform: expanded ? "rotate(180deg)" : undefined }} />
+                  </button>
+                ) : null}
+                <div className="nav-section-items">
+                  {group.items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      className="nav-link"
+                      to={item.to}
+                      end={item.end}
+                      title={!showLabels ? item.label : undefined}
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      {item.icon}
+                      <span className="label">{item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sidebar-spacer" />

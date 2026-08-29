@@ -3,9 +3,11 @@ import { Cloud, RefreshCw } from "lucide-react";
 import { api } from "../api";
 import {
   Button,
+  DataCard,
   EmptyState,
   ErrorState,
   LoadingState,
+  MobileRecordList,
   Notice,
   PageHeader,
   SectionCard,
@@ -183,7 +185,7 @@ export default function ProviderCostsPage() {
               : active
                 ? "Not configured"
                 : "Not currently used",
-        currentSpend: "—" as const,
+        currentSpend: hasRates ? "Configured" : "Unknown",
       };
     });
   }, [cards, reviews]);
@@ -214,7 +216,38 @@ export default function ProviderCostsPage() {
       </Notice>
 
       <SectionCard title="Cost overview" className="mt-6">
-        <div className="table-wrap">
+        <div className="mobile-cards">
+          <MobileRecordList>
+            {tableRows.map((row) => (
+              <DataCard
+                key={row.provider}
+                title={row.meta.label}
+                subtitle={row.meta.category}
+                status={
+                  <StatusBadge
+                    status={
+                      row.provider === "cursor"
+                        ? "configured"
+                        : row.hasRates
+                          ? "healthy"
+                          : "not_configured"
+                    }
+                    label={row.costStatus}
+                  />
+                }
+                metric={row.currentSpend}
+                timestamp={row.lastReview ? `Reviewed ${formatDate(row.lastReview)}` : "Not reviewed"}
+              >
+                <p className="muted small" style={{ margin: "8px 0 0" }}>
+                  {row.meta.customerAttributable === "No"
+                    ? "Not allocated to customer margins."
+                    : `Customer attributable: ${row.meta.customerAttributable}.`}
+                </p>
+              </DataCard>
+            ))}
+          </MobileRecordList>
+        </div>
+        <div className="desktop-table table-wrap">
           <table className="table compact">
             <thead>
               <tr>
@@ -250,7 +283,7 @@ export default function ProviderCostsPage() {
                         label={row.costStatus}
                       />
                     </td>
-                    <td className="num muted">{row.currentSpend}</td>
+                    <td className="num muted">{row.currentSpend === "—" ? "Unknown" : row.currentSpend}</td>
                     <td className="muted">{row.meta.customerAttributable}</td>
                     <td>{row.lastReview ? formatDate(row.lastReview) : "—"}</td>
                     <td>{formatDate(row.nextReview)}</td>
