@@ -23,7 +23,10 @@ export interface Env {
    * Optional during cutover so both endpoints can verify.
    */
   STRIPE_WEBHOOK_SECRET_INFRASTACK?: string;
-  /** Public API base URL for generated links and OAuth defaults (no trailing slash) */
+  /**
+   * Public API base URL for generated links, OAuth defaults, and Microsoft Graph
+   * notification URLs (no trailing slash). There is no MICROSOFT_GRAPH_NOTIFICATION_URL secret.
+   */
   INFRA_PUBLIC_API_URL?: string;
   /** Public MCP hostname (no trailing slash). Canonical: https://mcp.infrastack.app */
   INFRA_PUBLIC_MCP_URL?: string;
