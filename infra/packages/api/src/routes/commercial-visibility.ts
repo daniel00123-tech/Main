@@ -268,7 +268,16 @@ routes.patch("/api/platform/users/:id", requireAuth, requirePlatformAdmin, async
     status?: "active" | "disabled";
     companyId?: string;
     role?: import("@infra/shared").CompanyRole;
-  }>().catch(() => ({}));
+  }>().catch(
+    (): {
+      displayName?: string;
+      email?: string;
+      mobile?: string | null;
+      status?: "active" | "disabled";
+      companyId?: string;
+      role?: import("@infra/shared").CompanyRole;
+    } => ({}),
+  );
 
   try {
     if (body.displayName !== undefined || body.email !== undefined) {
