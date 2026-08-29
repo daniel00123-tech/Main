@@ -224,5 +224,5 @@ No new deploy. UAT ran against already-live production:
 ## Git
 
 - Branch: `cursor/infra-caddington-phase1-uat-d3d8`
-- Commit: `2818473328b8dc896efd352888023d006fd5fca4`
-- PR: opened from this branch onto `cursor/infra-connectors-mobile-ux-d3d8`
+- Commit: `10eeca2801ffa81914118be4111539384c7fdf1a`
+- PR: https://github.com/daniel00123-tech/Main/pull/358
