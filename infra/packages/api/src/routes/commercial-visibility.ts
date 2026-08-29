@@ -35,6 +35,11 @@ import {
   getWhatsAppChannelConfig,
   resolveWhatsAppIdentity,
 } from "../services/whatsapp-identity";
+import {
+  WHATSAPP_WEBHOOK_PATH,
+  whatsappOutboundAiEnabled,
+  whatsappVerifyConfigured,
+} from "../services/whatsapp-webhook";
 
 const routes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -209,7 +214,11 @@ routes.get("/api/platform/whatsapp/foundation", requireAuth, requirePlatformAdmi
   const config = await getWhatsAppChannelConfig(c.env.DB);
   return c.json({
     ...config,
-    productionChannel: "NOT_ENABLED",
+    productionChannel: "WEBHOOK_ONLY",
+    webhookPath: WHATSAPP_WEBHOOK_PATH,
+    webhookUrl: "https://api.infrastack.app/api/webhooks/whatsapp",
+    verifyConfigured: whatsappVerifyConfigured(c.env),
+    outboundAiEnabled: whatsappOutboundAiEnabled(c.env),
   });
 });
 

@@ -9,7 +9,7 @@ export const WHATSAPP_CHANNEL = "whatsapp" as const;
 
 export const FUTURE_WHATSAPP_RUNTIME_PATH = [
   "WhatsApp Business Platform",
-  "INFRA webhook (not registered in V1)",
+  "INFRA webhook /api/webhooks/whatsapp",
   "user identity lookup (E.164 → user → company → permissions)",
   "AI gateway / orchestration on infra-api",
   "company MCP / tools / knowledge",
@@ -23,7 +23,7 @@ export const WHATSAPP_FOUNDATION_CONSTRAINTS = {
   productionMessagingEnabled: false,
   metaAppRequired: false,
   dedicatedNumberRequired: false,
-  webhookRegistered: false,
+  webhookRegistered: true,
   verificationSmsEnabled: false,
   welcomeTemplateRegistered: false,
   cursorInRuntimePath: false,
@@ -165,7 +165,7 @@ export async function getWhatsAppChannelConfig(db: D1Database) {
       "Hi [Name], welcome to Infra. You can message this number whenever you need help with your connected business systems.",
     notes:
       row?.notes ??
-      "Foundation only. Do not send. Production WhatsApp is not enabled.",
+      "Inbound webhook is registered. Outbound AI replies stay disabled until Meta send credentials are set.",
     runtimePath: FUTURE_WHATSAPP_RUNTIME_PATH,
     constraints: WHATSAPP_FOUNDATION_CONSTRAINTS,
   };
