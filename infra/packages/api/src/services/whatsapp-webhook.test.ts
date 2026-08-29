@@ -142,16 +142,16 @@ describe("WhatsApp inbound parse and outbound gate", () => {
     expect(
       whatsappOutboundAiEnabled(
         env({
-          WHATSAPP_ACCESS_TOKEN: "EAAG",
-          META_APP_SECRET: "secret",
+          WHATSAPP_ACCESS_TOKEN: "EAAG-test-token-not-real",
+          META_APP_SECRET: "secret-value-present",
         }),
       ),
     ).toBe(false);
     expect(
       whatsappOutboundAiEnabled(
         env({
-          WHATSAPP_ACCESS_TOKEN: "EAAG",
-          META_APP_SECRET: "secret",
+          WHATSAPP_ACCESS_TOKEN: "EAAG-test-token-not-real",
+          META_APP_SECRET: "secret-value-present",
           WHATSAPP_OUTBOUND_AI_ENABLED: "true",
         }),
       ),

@@ -170,6 +170,9 @@ export function classifyUsageResource(input: {
   if (hay.includes("stripe")) {
     return { classification: "stripe_fees", provider: "stripe", service: "payments" };
   }
+  if (resource === "whatsapp" || hay.includes("whatsapp")) {
+    return { classification: "other", provider: "meta", service: "whatsapp" };
+  }
   return { classification: "other", provider: resource || "unknown", service: tool || action || resource || "usage" };
 }
 

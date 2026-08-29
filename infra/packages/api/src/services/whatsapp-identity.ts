@@ -1,9 +1,11 @@
 import type { CompanyRole } from "@infra/shared";
+import type { Env } from "../env";
 import {
   UNKNOWN_WHATSAPP_ACCOUNT_MESSAGE,
   normalizeE164,
   tryNormalizeE164,
 } from "./phone";
+import { inspectWhatsAppAssets, outboundAiEnabled, secretPresence } from "./whatsapp-assets";
 
 export const WHATSAPP_CHANNEL = "whatsapp" as const;
 
@@ -20,9 +22,9 @@ export const FUTURE_WHATSAPP_RUNTIME_PATH = [
 ] as const;
 
 export const WHATSAPP_FOUNDATION_CONSTRAINTS = {
-  productionMessagingEnabled: false,
-  metaAppRequired: false,
-  dedicatedNumberRequired: false,
+  productionMessagingEnabled: true,
+  metaAppRequired: true,
+  dedicatedNumberRequired: true,
   webhookRegistered: true,
   verificationSmsEnabled: false,
   welcomeTemplateRegistered: false,
@@ -144,7 +146,7 @@ export async function resolveWhatsAppIdentity(
   };
 }
 
-export async function getWhatsAppChannelConfig(db: D1Database) {
+export async function getWhatsAppChannelConfig(db: D1Database, env?: Env) {
   const row = await db
     .prepare(`SELECT * FROM channel_config WHERE channel = 'whatsapp' LIMIT 1`)
     .first<{
@@ -155,18 +157,39 @@ export async function getWhatsAppChannelConfig(db: D1Database) {
       notes: string | null;
       config_json: string;
     }>();
+  const outbound = env ? outboundAiEnabled(env) : false;
+  const assets = env ? inspectWhatsAppAssets(env) : null;
+  const secrets = env ? secretPresence(env) : null;
 
   return {
     channel: WHATSAPP_CHANNEL,
-    enabled: false,
-    productionEnabled: false,
+    enabled: outbound,
+    productionEnabled: outbound && Boolean(assets?.ok),
     welcomeMessageTemplate:
       row?.welcome_message_template ??
       "Hi [Name], welcome to Infra. You can message this number whenever you need help with your connected business systems.",
     notes:
       row?.notes ??
-      "Inbound webhook is registered. Outbound AI replies stay disabled until Meta send credentials are set.",
+      "Production WhatsApp uses the INFRA webhook, identity, gateway, MCP, audit, and metering path. Cursor is not in the runtime.",
     runtimePath: FUTURE_WHATSAPP_RUNTIME_PATH,
-    constraints: WHATSAPP_FOUNDATION_CONSTRAINTS,
+    constraints: {
+      ...WHATSAPP_FOUNDATION_CONSTRAINTS,
+      productionMessagingEnabled: outbound && Boolean(assets?.ok),
+    },
+    assets: assets
+      ? {
+          ok: assets.ok,
+          phoneMatchesProduction: assets.phoneMatchesProduction,
+          wabaMatchesProduction: assets.wabaMatchesProduction,
+          looksLikeSandbox: assets.looksLikeSandbox,
+        }
+      : undefined,
+    secrets: secrets
+      ? {
+          WHATSAPP_WEBHOOK_VERIFY_TOKEN: secrets.verifyToken ? "present" : "missing",
+          WHATSAPP_ACCESS_TOKEN: secrets.accessToken ? "present" : "missing",
+          META_APP_SECRET: secrets.appSecret ? "present" : "missing",
+        }
+      : undefined,
   };
 }

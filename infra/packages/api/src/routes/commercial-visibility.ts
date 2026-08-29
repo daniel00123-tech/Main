@@ -5,7 +5,9 @@ import {
   requirePlatformAdmin,
   type AuthVariables,
 } from "../auth/middleware";
+import { getUserById, setUserMobileE164 } from "../auth/users";
 import { recordAuditEvent } from "../services/control-plane";
+import { MobileCollisionError, MobileValidationError, maskMobileE164 } from "../services/phone";
 import {
   getCompanyEconomicsDetail,
   listCustomerEconomics,
@@ -35,11 +37,14 @@ import {
   getWhatsAppChannelConfig,
   resolveWhatsAppIdentity,
 } from "../services/whatsapp-identity";
+import { inspectWhatsAppAssets, secretPresence } from "../services/whatsapp-assets";
+import { inspectWhatsAppMessageSubscription } from "../services/whatsapp-subscription";
 import {
   WHATSAPP_WEBHOOK_PATH,
   whatsappOutboundAiEnabled,
   whatsappVerifyConfigured,
 } from "../services/whatsapp-webhook";
+import { WHATSAPP_AI_MODEL, WHATSAPP_AI_PROVIDER } from "../services/whatsapp-orchestrator";
 
 const routes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -211,14 +216,28 @@ routes.post("/api/platform/quality-issues/:id/status", requireAuth, requirePlatf
 });
 
 routes.get("/api/platform/whatsapp/foundation", requireAuth, requirePlatformAdmin, async (c) => {
-  const config = await getWhatsAppChannelConfig(c.env.DB);
+  const config = await getWhatsAppChannelConfig(c.env.DB, c.env);
+  const assets = inspectWhatsAppAssets(c.env);
+  const secrets = secretPresence(c.env);
+  const subscription = await inspectWhatsAppMessageSubscription(c.env);
   return c.json({
     ...config,
-    productionChannel: "WEBHOOK_ONLY",
+    productionChannel: whatsappOutboundAiEnabled(c.env) && assets.ok ? "ACTIVE" : "WEBHOOK_ONLY",
     webhookPath: WHATSAPP_WEBHOOK_PATH,
     webhookUrl: "https://api.infrastack.app/api/webhooks/whatsapp",
     verifyConfigured: whatsappVerifyConfigured(c.env),
     outboundAiEnabled: whatsappOutboundAiEnabled(c.env),
+    aiRouting: {
+      provider: WHATSAPP_AI_PROVIDER,
+      model: WHATSAPP_AI_MODEL,
+      cursorInRuntime: false,
+    },
+    secretStatus: {
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: secrets.verifyToken ? "present" : "missing",
+      WHATSAPP_ACCESS_TOKEN: secrets.accessToken ? "present" : "missing",
+      META_APP_SECRET: secrets.appSecret ? "present" : "missing",
+    },
+    subscription,
   });
 });
 
@@ -227,6 +246,34 @@ routes.post("/api/platform/whatsapp/lookup", requireAuth, requirePlatformAdmin, 
   if (!body.number) return c.json({ error: "number is required" }, 400);
   const result = await resolveWhatsAppIdentity(c.env.DB, body.number);
   return c.json(result);
+});
+
+routes.post("/api/platform/users/:id/mobile", requireAuth, requirePlatformAdmin, async (c) => {
+  const body = await c.req.json<{ mobile?: string }>();
+  if (!body.mobile) return c.json({ error: "mobile is required" }, 400);
+  const existing = await getUserById(c.env.DB, c.req.param("id"));
+  if (!existing) return c.json({ error: "User not found" }, 404);
+  try {
+    const user = await setUserMobileE164(c.env.DB, existing.id, body.mobile);
+    await recordAuditEvent(c.env.DB, {
+      companyId: null,
+      eventType: "user.mobile_updated",
+      actor: c.get("user").email,
+      resourceType: "user",
+      resourceId: user.id,
+      detail: { mobileMasked: maskMobileE164(user.mobileE164), channel: "whatsapp" },
+    });
+    return c.json({
+      ok: true,
+      userId: user.id,
+      mobileMasked: maskMobileE164(user.mobileE164),
+    });
+  } catch (err) {
+    if (err instanceof MobileValidationError || err instanceof MobileCollisionError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
 });
 
 export default routes;

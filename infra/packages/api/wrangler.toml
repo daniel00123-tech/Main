@@ -44,10 +44,11 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # AZURE_OCR_MAX_PAGES (optional, default 50)
 # AZURE_OCR_MAX_BYTES (optional, default 20971520)
 # WHATSAPP_WEBHOOK_VERIFY_TOKEN (Meta hub.verify_token — wrangler secret put)
-# WHATSAPP_ACCESS_TOKEN (Cloud API user token — set later; outbound AI stays off until present)
-# META_APP_SECRET (X-Hub-Signature-256 — set later if required)
+# WHATSAPP_ACCESS_TOKEN (Cloud API user token — wrangler secret put)
+# META_APP_SECRET (X-Hub-Signature-256 — wrangler secret put)
 WHATSAPP_PHONE_NUMBER_ID = "1338434179351224"
 WHATSAPP_BUSINESS_ACCOUNT_ID = "1629422285251338"
+WHATSAPP_OUTBOUND_AI_ENABLED = "true"
 
 # Same-account Worker MCP access (workers.dev public fetch returns CF 1042)
 [[services]]
