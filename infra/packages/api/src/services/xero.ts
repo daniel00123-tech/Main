@@ -4,7 +4,6 @@ import {
   XERO_CANONICAL_REDIRECT_URI,
   XERO_CLIENT_ID_SECRET,
   XERO_CLIENT_SECRET_SECRET,
-  XERO_DEFAULT_REDIRECT_URI,
   XERO_REDIRECT_URI_SECRET,
   XERO_SCOPE_REASONS,
   XERO_WRITE_ACTIVATION,
@@ -95,9 +94,7 @@ export function xeroOauthStatus(env: Env): {
 export function xeroRedirectUri(env: Env): string {
   const override = env[XERO_REDIRECT_URI_SECRET];
   if (typeof override === "string" && override.trim()) return override.trim();
-  // Keep the currently registered workers.dev URI until Xero Developer
-  // lists the canonical api.infrastack.app callback. Both routes hit this Worker.
-  return XERO_DEFAULT_REDIRECT_URI;
+  return XERO_CANONICAL_REDIRECT_URI;
 }
 
 export function xeroCanonicalRedirectUri(): string {

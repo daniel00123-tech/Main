@@ -31,7 +31,7 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # INFRA_CREDENTIAL_KEY_VERSION (optional, default v1)
 # XERO_CLIENT_ID (Xero Web App client id; never put in D1)
 # XERO_CLIENT_SECRET (Xero Web App client secret; never put in D1)
-# XERO_OAUTH_REDIRECT_URI (optional; keep workers.dev until the api.infrastack.app URI is added in Xero Developer)
+# XERO_OAUTH_REDIRECT_URI (canonical: https://api.infrastack.app/api/connectors/xero/oauth/callback)
 # INFRA_PUBLIC_MCP_URL (canonical MCP host — https://mcp.infrastack.app)
 # PORTAL_PUBLIC_ORIGIN (canonical portal — https://app.infrastack.app)
 # MICROSOFT_TENANT_ID (Microsoft Entra tenant ID — Caddington Holdings)

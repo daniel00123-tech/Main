@@ -8,10 +8,8 @@
 import { XERO_LEGACY_REDIRECT_URI } from "../platform/urls";
 
 /**
- * Redirect URI currently registered in Xero Developer.
- * New connects keep using this until the canonical
- * `https://api.infrastack.app/api/connectors/xero/oauth/callback` URI is
- * added in Xero and `XERO_OAUTH_REDIRECT_URI` is set.
+ * Legacy workers.dev redirect URI. New authorisations use
+ * XERO_CANONICAL_REDIRECT_URI unless XERO_OAUTH_REDIRECT_URI overrides.
  */
 export const XERO_DEFAULT_REDIRECT_URI = XERO_LEGACY_REDIRECT_URI;
 
