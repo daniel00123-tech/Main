@@ -1150,6 +1150,34 @@ connectors.post("/api/internal/ocr/acceptance", async (c) => {
   }
 });
 
+connectors.post("/api/internal/ocr/backfill", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    companyId?: string;
+    limit?: number;
+    afterId?: number;
+    dryRun?: boolean;
+  };
+  try {
+    const { runOcrBackfill } = await import("../services/ocr/backfill");
+    return c.json(
+      await runOcrBackfill(c.env, {
+        companyId: body.companyId ?? "co_caddington",
+        limit: body.limit,
+        afterId: body.afterId,
+        dryRun: body.dryRun === true,
+      }),
+    );
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "OCR backfill failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/operations/acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

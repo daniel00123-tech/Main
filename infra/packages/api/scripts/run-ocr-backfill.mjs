@@ -6,8 +6,11 @@ import { fileURLToPath } from "node:url";
 
 const API = process.env.INFRA_API_URL ?? "https://api.infrastack.app";
 const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+const dryRun = process.argv.includes("--dry-run");
+const limit = Number(process.env.OCR_BACKFILL_LIMIT ?? 3);
+const afterId = Number(process.env.OCR_BACKFILL_AFTER_ID ?? 0);
 
-const token = `ocr_v1_${randomBytes(24).toString("hex")}`;
+const token = `ocr_bf_${randomBytes(24).toString("hex")}`;
 const hash = createHash("sha256").update(token).digest("hex");
 execFileSync(
   "npx",
@@ -23,8 +26,14 @@ execFileSync(
   { cwd: apiDir, stdio: "pipe" },
 );
 
-const res = await fetch(`${API}/api/internal/ocr/acceptance`, {
+const res = await fetch(`${API}/api/internal/ocr/backfill`, {
   method: "POST",
   headers: { "X-CMD13-Acceptance-Token": token, "Content-Type": "application/json" },
+  body: JSON.stringify({
+    companyId: "co_caddington",
+    limit,
+    afterId,
+    dryRun,
+  }),
 });
 console.log(JSON.stringify({ httpStatus: res.status, body: await res.json() }, null, 2));
