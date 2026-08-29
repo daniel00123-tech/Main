@@ -13,7 +13,7 @@ flowchart TD
   Control --> Shared
   Sched --> Shared
   Shared --> History["automation_runs + audit"]
-  Shared --> Queue["Queue or process-run fallback"]
+  Shared --> Queue["Queue or in-request executor"]
   Queue --> Worker["Existing action handlers"]
 ```
 
@@ -158,3 +158,14 @@ Expected tool sequence:
 3. Optional `automation_get_run` with the returned `runId`
 
 The assistant should return the run id / status and explicitly confirm that the 08:00 Europe/London schedule and enabled state were not changed.
+
+## Caddington live acceptance (2026-08-29)
+
+One controlled MCP Run now of **Daily month-to-date sales**:
+
+- Before: `active`, Daily 08:00 Europe/London, `next_run_at` `2026-08-30T07:00:00.000Z`
+- Run `aur_2956c0b4-d34f-4ca1-b0c4-67e94f690d28`, trigger `mcp_manual`, status `completed`, result “Sales report sent”
+- After: same schedule, timezone, enabled state, and next run
+- Same idempotency key reused that run id and did not send a second email
+- Production `tools/list` includes `automation_list`, `automation_run_now`, `automation_get_run`
+- A never-started 08:00 scheduled row (`aur_e8fd7bb0-…`) was cancelled first so concurrency would not reuse a stuck queued job. The in-request executor fix is the lasting remedy.
