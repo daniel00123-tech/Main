@@ -64,25 +64,37 @@ export default function CataloguePage() {
     <>
       <PageHeader
         title="Connectors"
-        description="Connect your business systems to INFRA — and manage the AI channels staff use to reach them."
+        description="Connect business systems and the AI channels staff use."
       />
 
       <div className="connector-marketplace-stats">
         <div className="connector-stat">
           <span className="connector-stat-value">{CONNECTOR_CATALOGUE.length}</span>
-          <span className="connector-stat-label">Integrations</span>
+          <span className="connector-stat-label">
+            <span className="stat-label-full">Integrations</span>
+            <span className="stat-label-short">Apps</span>
+          </span>
         </div>
         <div className="connector-stat">
           <span className="connector-stat-value">{businessCount}</span>
-          <span className="connector-stat-label">Business systems</span>
+          <span className="connector-stat-label">
+            <span className="stat-label-full">Business systems</span>
+            <span className="stat-label-short">Systems</span>
+          </span>
         </div>
         <div className="connector-stat">
           <span className="connector-stat-value">{channelCount}</span>
-          <span className="connector-stat-label">AI &amp; channels</span>
+          <span className="connector-stat-label">
+            <span className="stat-label-full">AI &amp; channels</span>
+            <span className="stat-label-short">Channels</span>
+          </span>
         </div>
         <div className="connector-stat">
           <span className="connector-stat-value">{activeCount}</span>
-          <span className="connector-stat-label">Product-ready</span>
+          <span className="connector-stat-label">
+            <span className="stat-label-full">Product-ready</span>
+            <span className="stat-label-short">Ready</span>
+          </span>
         </div>
       </div>
 
@@ -150,13 +162,6 @@ export default function CataloguePage() {
           ))}
         </div>
       )}
-
-      <div className="card" style={{ marginTop: 16 }}>
-        <p className="muted" style={{ margin: 0 }}>
-          Staff permissions are enforced by INFRA for every AI channel. Personal email and personal
-          calendars are out of scope.
-        </p>
-      </div>
 
       <ConnectorDetailModal connector={selected} onClose={() => setSelected(null)} />
     </>
