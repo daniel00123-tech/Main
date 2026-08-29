@@ -43,6 +43,11 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # AZURE_DOCUMENT_INTELLIGENCE_KEY (Azure AI Document Intelligence key — never commit)
 # AZURE_OCR_MAX_PAGES (optional, default 50)
 # AZURE_OCR_MAX_BYTES (optional, default 20971520)
+# WHATSAPP_WEBHOOK_VERIFY_TOKEN (Meta hub.verify_token — wrangler secret put)
+# WHATSAPP_ACCESS_TOKEN (Cloud API user token — set later; outbound AI stays off until present)
+# META_APP_SECRET (X-Hub-Signature-256 — set later if required)
+WHATSAPP_PHONE_NUMBER_ID = "1338434179351224"
+WHATSAPP_BUSINESS_ACCOUNT_ID = "1629422285251338"
 
 # Same-account Worker MCP access (workers.dev public fetch returns CF 1042)
 [[services]]
@@ -89,5 +94,20 @@ dead_letter_queue = "microsoft-knowledge-ingest-dlq"
 
 [[queues.consumers]]
 queue = "microsoft-knowledge-ingest-dlq"
+max_batch_size = 10
+
+# WhatsApp inbound webhook — ack Meta immediately, process off-request.
+[[queues.producers]]
+binding = "WHATSAPP_INBOUND_QUEUE"
+queue = "whatsapp-inbound"
+
+[[queues.consumers]]
+queue = "whatsapp-inbound"
+max_batch_size = 1
+max_retries = 5
+dead_letter_queue = "whatsapp-inbound-dlq"
+
+[[queues.consumers]]
+queue = "whatsapp-inbound-dlq"
 max_batch_size = 10
 

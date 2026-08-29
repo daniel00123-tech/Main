@@ -84,6 +84,6 @@ describe("WhatsApp identity foundation", () => {
 
   it("does not enable production messaging in V1", () => {
     expect(WHATSAPP_FOUNDATION_CONSTRAINTS.productionMessagingEnabled).toBe(false);
-    expect(WHATSAPP_FOUNDATION_CONSTRAINTS.webhookRegistered).toBe(false);
+    expect(WHATSAPP_FOUNDATION_CONSTRAINTS.webhookRegistered).toBe(true);
   });
 });

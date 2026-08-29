@@ -86,6 +86,7 @@ import internalMcpRoutes from "./routes/internal-mcp";
 import actionPlanRoutes from "./routes/action-plans";
 import automationRoutes from "./routes/automations";
 import commercialVisibilityRoutes from "./routes/commercial-visibility";
+import whatsappRoutes from "./routes/whatsapp";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -97,6 +98,7 @@ app.route("/", internalMcpRoutes);
 app.route("/", actionPlanRoutes);
 app.route("/", automationRoutes);
 app.route("/", commercialVisibilityRoutes);
+app.route("/", whatsappRoutes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(
@@ -1226,6 +1228,7 @@ const worker = {
     batch: MessageBatch<
       | import("./services/microsoft-queue").MicrosoftFileJobMessage
       | import("./services/automation-engine/queue").AutomationRunMessage
+      | import("./services/whatsapp-webhook").WhatsAppInboundMessage
     >,
     env: Env,
   ) {
@@ -1238,6 +1241,28 @@ const worker = {
       AUTOMATION_RUN_DLQ,
       AUTOMATION_RUN_QUEUE,
     } = await import("./services/automation-engine/queue");
+    const {
+      processWhatsAppInboundJob,
+      WHATSAPP_INBOUND_DLQ,
+      WHATSAPP_INBOUND_QUEUE,
+    } = await import("./services/whatsapp-webhook");
+
+    if (batch.queue === WHATSAPP_INBOUND_QUEUE || batch.queue === WHATSAPP_INBOUND_DLQ) {
+      const isDeadLetter = batch.queue === WHATSAPP_INBOUND_DLQ;
+      for (const message of batch.messages) {
+        try {
+          await processWhatsAppInboundJob(
+            env,
+            message.body as import("./services/whatsapp-webhook").WhatsAppInboundMessage,
+            { deadLetter: isDeadLetter },
+          );
+          message.ack();
+        } catch {
+          message.retry();
+        }
+      }
+      return;
+    }
 
     if (batch.queue === AUTOMATION_RUN_QUEUE || batch.queue === AUTOMATION_RUN_DLQ) {
       const isDeadLetter = batch.queue === AUTOMATION_RUN_DLQ;

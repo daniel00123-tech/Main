@@ -74,6 +74,20 @@ export interface Env {
   MICROSOFT_KNOWLEDGE_QUEUE?: Queue<import("./services/microsoft-queue").MicrosoftFileJobMessage>;
   /** Cloudflare Queue for automation run execution */
   AUTOMATION_RUN_QUEUE?: Queue<import("./services/automation-engine/queue").AutomationRunMessage>;
+  /** Cloudflare Queue for inbound WhatsApp webhook processing */
+  WHATSAPP_INBOUND_QUEUE?: Queue<import("./services/whatsapp-webhook").WhatsAppInboundMessage>;
+  /** Meta WhatsApp Cloud API — webhook verify token (secret) */
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN?: string;
+  /** WhatsApp Cloud API phone number ID */
+  WHATSAPP_PHONE_NUMBER_ID?: string;
+  /** WhatsApp Business Account ID */
+  WHATSAPP_BUSINESS_ACCOUNT_ID?: string;
+  /** WhatsApp Cloud API access token — required before outbound send */
+  WHATSAPP_ACCESS_TOKEN?: string;
+  /** Meta app secret — used for X-Hub-Signature-256 */
+  META_APP_SECRET?: string;
+  /** Explicit outbound AI flag. Default off even if send credentials exist. */
+  WHATSAPP_OUTBOUND_AI_ENABLED?: string;
   /** Safe send UAT — requires XERO_SEND_UAT_MODE=true simultaneously */
   XERO_SEND_UAT_MODE?: string;
   XERO_SEND_TEST_RECIPIENT?: string;
