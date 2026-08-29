@@ -105,22 +105,19 @@ export function resolveExtractionOperatorState(input: {
     return "unsupported";
   }
 
+  const azureMissing = input.azureConfigured === false;
+  if (azureMissing || input.fallbackOutcome === "ocr_not_available") {
+    return "ocr_not_available";
+  }
+
   if (
-    input.fallbackOutcome === "ocr_not_available" ||
-    input.azureConfigured === false ||
-    (input.requiresOcr && input.azureConfigured === false)
+    quality === "poor" ||
+    quality === "heading_only" ||
+    quality === "requires_ocr" ||
+    input.requiresOcr ||
+    documentStatus === "requires_ocr"
   ) {
-    if (input.azureConfigured === false || input.fallbackOutcome === "ocr_not_available") {
-      return "ocr_not_available";
-    }
-  }
-
-  if (quality === "poor" || quality === "heading_only" || quality === "requires_ocr") {
-    return input.azureConfigured === false ? "ocr_not_available" : "low_text_warning";
-  }
-
-  if (input.requiresOcr || documentStatus === "requires_ocr") {
-    return input.azureConfigured === false ? "ocr_not_available" : "low_text_warning";
+    return "low_text_warning";
   }
 
   return "native_text_success";
