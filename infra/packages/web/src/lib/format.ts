@@ -574,7 +574,7 @@ export function humanConnectorPurpose(slug: string, fallback?: string): string {
     commusoft: "Customers, jobs and service history",
     chatgpt: "Use ChatGPT securely with your connected systems",
     claude: "Use Claude securely with your connected systems",
-    whatsapp: "Business messaging through INFRA",
+    whatsapp: "Business messaging through the INFRA WhatsApp channel",
   };
   return map[slug] ?? fallback ?? "Connect this system to INFRA";
 }

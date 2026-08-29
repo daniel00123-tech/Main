@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
+import { inboundSignatureRequired } from "../services/whatsapp-assets";
 import {
   enqueueWhatsAppInbound,
   persistWhatsAppInboundEvent,
@@ -35,7 +36,14 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
     c.req.header("X-Hub-Signature-256") ?? c.req.header("x-hub-signature-256") ?? null,
   );
 
-  if (signature.configured && !signature.valid) {
+  if (inboundSignatureRequired(c.env)) {
+    if (!signature.configured) {
+      return c.json({ error: "Webhook signature secret is not configured" }, 503);
+    }
+    if (!signature.valid) {
+      return c.json({ error: "Invalid webhook signature" }, 403);
+    }
+  } else if (signature.configured && !signature.valid) {
     return c.json({ error: "Invalid webhook signature" }, 403);
   }
 
@@ -44,6 +52,19 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
     signatureValid: signature.valid,
     signatureConfigured: signature.configured,
   });
+
+  if (stored.duplicate) {
+    return c.json(
+      {
+        ok: true,
+        accepted: true,
+        queued: false,
+        duplicate: true,
+        verifyConfigured: whatsappVerifyConfigured(c.env),
+      },
+      200,
+    );
+  }
 
   const job: WhatsAppInboundMessage = {
     kind: "whatsapp_inbound",

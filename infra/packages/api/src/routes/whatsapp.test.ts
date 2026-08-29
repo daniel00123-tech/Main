@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 import type { Env } from "../env";
@@ -101,5 +102,53 @@ describe("WhatsApp webhook routes", () => {
       testEnv({ META_APP_SECRET: "configured-secret" }),
     );
     expect(response.status).toBe(403);
+  });
+
+  it("rejects unsigned POST in production even if the app secret is missing", async () => {
+    const response = await app().request(
+      "/api/webhooks/whatsapp",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      },
+      testEnv({ ENVIRONMENT: "production", META_APP_SECRET: "" }),
+    );
+    expect(response.status).toBe(503);
+  });
+
+  it("rejects missing signature when enforcement applies", async () => {
+    const response = await app().request(
+      "/api/webhooks/whatsapp",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      },
+      testEnv({ META_APP_SECRET: "configured-secret" }),
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("accepts a valid signed POST quickly", async () => {
+    const secret = "configured-secret";
+    const body = JSON.stringify({ object: "whatsapp_business_account", entry: [] });
+    const digest = createHmac("sha256", secret).update(body, "utf8").digest("hex");
+    const response = await app().request(
+      "/api/webhooks/whatsapp",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Hub-Signature-256": `sha256=${digest}`,
+        },
+        body,
+      },
+      testEnv({ META_APP_SECRET: secret }),
+    );
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as { ok: boolean; accepted: boolean };
+    expect(json.ok).toBe(true);
+    expect(json.accepted).toBe(true);
   });
 });

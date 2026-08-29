@@ -1,8 +1,7 @@
 import type { Env } from "../env";
 import { newId, nowIso } from "../db/mappers";
-import { recordAuditEvent } from "./control-plane";
-import { tryNormalizeE164 } from "./phone";
-import { resolveWhatsAppIdentity } from "./whatsapp-identity";
+import { inspectWhatsAppAssets, outboundAiEnabled } from "./whatsapp-assets";
+import { handleWhatsAppInboundMessage } from "./whatsapp-orchestrator";
 
 export const WHATSAPP_WEBHOOK_PATH = "/api/webhooks/whatsapp";
 export const WHATSAPP_INBOUND_QUEUE = "whatsapp-inbound";
@@ -39,14 +38,9 @@ export function whatsappVerifyConfigured(env: Env): boolean {
   return whatsappVerifyToken(env).length >= 16;
 }
 
-/** Outbound AI stays off unless Meta send credentials are present. */
+/** Outbound AI stays off unless Meta send credentials and production IDs are present. */
 export function whatsappOutboundAiEnabled(env: Env): boolean {
-  return Boolean(
-    whatsappAccessToken(env) &&
-      metaAppSecret(env) &&
-      whatsappPhoneNumberId(env) &&
-      env.WHATSAPP_OUTBOUND_AI_ENABLED === "true",
-  );
+  return outboundAiEnabled(env);
 }
 
 export function hasWhatsAppInboundQueue(env: Env): boolean {
@@ -160,15 +154,41 @@ export async function persistWhatsAppInboundEvent(
   const eventId = newId("wa_evt");
   const receivedAt = nowIso();
   await ensureWhatsAppInboundTable(env);
+  let inbound: ReturnType<typeof parseWhatsAppInboundMessages> = [];
+  try {
+    inbound = parseWhatsAppInboundMessages(JSON.parse(input.rawBody || "{}"));
+  } catch {
+    inbound = [];
+  }
+  const first = inbound[0] ?? null;
+  if (first?.wamid) {
+    const existing = await env.DB.prepare(
+      `SELECT id FROM whatsapp_inbound_events WHERE wamid = ? LIMIT 1`,
+    )
+      .bind(first.wamid)
+      .first<{ id: string }>();
+    if (existing) {
+      return { eventId: existing.id, duplicate: true };
+    }
+  }
   try {
     await env.DB.prepare(
       `INSERT INTO whatsapp_inbound_events (
          id, wamid, phone_number_id, business_account_id, sender_e164, message_type,
          identity_found, user_id, company_id, signature_valid, processed,
          payload_json, error, received_at, processed_at
-       ) VALUES (?, NULL, NULL, NULL, NULL, 'webhook', 0, NULL, NULL, ?, 0, ?, NULL, ?, NULL)`,
+       ) VALUES (?, ?, ?, ?, NULL, ?, 0, NULL, NULL, ?, 0, ?, NULL, ?, NULL)`,
     )
-      .bind(eventId, input.signatureValid ? 1 : 0, input.rawBody.slice(0, 16_384), receivedAt)
+      .bind(
+        eventId,
+        first?.wamid ?? null,
+        first?.phoneNumberId ?? null,
+        first?.businessAccountId ?? null,
+        first?.type ?? "webhook",
+        input.signatureValid ? 1 : 0,
+        input.rawBody.slice(0, 16_384),
+        receivedAt,
+      )
       .run();
     return { eventId, duplicate: false };
   } catch (err) {
@@ -192,7 +212,7 @@ export async function enqueueWhatsAppInbound(
 export async function processWhatsAppInboundJob(
   env: Env,
   message: WhatsAppInboundMessage,
-  options?: { deadLetter?: boolean },
+  options?: { deadLetter?: boolean; waitUntil?: (promise: Promise<unknown>) => void },
 ): Promise<void> {
   await ensureWhatsAppInboundTable(env);
   const row = await env.DB.prepare(`SELECT * FROM whatsapp_inbound_events WHERE id = ?`)
@@ -223,69 +243,47 @@ export async function processWhatsAppInboundJob(
   }
 
   const inbound = parseWhatsAppInboundMessages(payload);
-  const expectedPhone = whatsappPhoneNumberId(env);
+  const assets = inspectWhatsAppAssets(env);
   const trusted = message.signatureValid && Number(row.signature_valid) === 1;
+  const pending: Promise<unknown>[] = [];
+  const waitUntil = (promise: Promise<unknown>) => {
+    pending.push(promise);
+    options?.waitUntil?.(promise);
+  };
+
+  if (!assets.ok) {
+    await env.DB.prepare(
+      `UPDATE whatsapp_inbound_events SET processed = 1, error = ?, processed_at = ? WHERE id = ?`,
+    )
+      .bind(assets.reason ?? "invalid_whatsapp_assets", nowIso(), message.eventId)
+      .run();
+    return;
+  }
+
+  let lastCompanyId: string | null = null;
+  let lastUserId: string | null = null;
+  let lastFound = 0;
 
   for (const item of inbound) {
-    if (expectedPhone && item.phoneNumberId && item.phoneNumberId !== expectedPhone) {
-      continue;
-    }
-    const parsed = tryNormalizeE164(item.from);
-    const sender = parsed.ok ? parsed.e164 : null;
-    const identity = sender ? await resolveWhatsAppIdentity(env.DB, sender) : null;
-    const found = Boolean(identity?.found);
-    const companyId = identity?.found ? identity.memberships[0]?.companyId ?? null : null;
-    const userId = identity?.found ? identity.user.id : null;
-
-    await env.DB.prepare(
-      `INSERT OR IGNORE INTO whatsapp_inbound_events (
-         id, wamid, phone_number_id, business_account_id, sender_e164, message_type,
-         identity_found, user_id, company_id, signature_valid, processed,
-         payload_json, error, received_at, processed_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?)`,
-    )
-      .bind(
-        newId("wa_msg"),
-        item.wamid,
-        item.phoneNumberId,
-        item.businessAccountId,
-        sender,
-        item.type,
-        found ? 1 : 0,
-        userId,
-        companyId,
-        trusted ? 1 : 0,
-        JSON.stringify({
-          wamid: item.wamid,
-          type: item.type,
-          preview: item.text ? item.text.slice(0, 240) : null,
-        }),
-        nowIso(),
-        nowIso(),
-      )
-      .run();
-
-    await recordAuditEvent(env.DB, {
-      companyId: found ? companyId : null,
-      eventType: found ? "whatsapp.inbound_identified" : "whatsapp.inbound_unknown",
-      actor: "whatsapp-webhook",
-      resourceType: "whatsapp_message",
-      resourceId: item.wamid,
-      detail: {
-        channel: "whatsapp",
-        identityFound: found,
-        messageType: item.type,
-        trusted,
-        outboundAi: false,
-      },
+    const result = await handleWhatsAppInboundMessage(env, item, {
+      signatureValid: trusted,
+      waitUntil,
     });
+    lastCompanyId = result.companyId;
+    lastUserId = result.userId;
+    lastFound = result.identityFound ? 1 : 0;
   }
 
   await env.DB.prepare(
-    `UPDATE whatsapp_inbound_events SET processed = 1, processed_at = ? WHERE id = ?`,
+    `UPDATE whatsapp_inbound_events
+     SET processed = 1, processed_at = ?, identity_found = ?, user_id = ?, company_id = ?,
+         error = NULL
+     WHERE id = ?`,
   )
-    .bind(nowIso(), message.eventId)
+    .bind(nowIso(), lastFound, lastUserId, lastCompanyId, message.eventId)
     .run();
+
+  await Promise.allSettled(pending);
 }
 
 async function ensureWhatsAppInboundTable(env: Env): Promise<void> {

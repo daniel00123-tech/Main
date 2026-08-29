@@ -1231,6 +1231,7 @@ const worker = {
       | import("./services/whatsapp-webhook").WhatsAppInboundMessage
     >,
     env: Env,
+    ctx: ExecutionContext,
   ) {
     const {
       processMicrosoftFileJob,
@@ -1254,7 +1255,7 @@ const worker = {
           await processWhatsAppInboundJob(
             env,
             message.body as import("./services/whatsapp-webhook").WhatsAppInboundMessage,
-            { deadLetter: isDeadLetter },
+            { deadLetter: isDeadLetter, waitUntil: (promise) => ctx.waitUntil(promise) },
           );
           message.ack();
         } catch {
