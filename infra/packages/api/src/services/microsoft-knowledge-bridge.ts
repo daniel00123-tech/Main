@@ -18,6 +18,7 @@ export type KnowledgeUploadResult =
       requiresOcr?: boolean;
       extractionQuality?: string;
       documentStatus?: string;
+      extractionState?: string;
     }
   | { ok: false; code: string; message: string };
 
@@ -204,6 +205,7 @@ export async function uploadMicrosoftDocumentToKnowledge(
     let requiresOcr = false;
     let extractionQuality: string | undefined;
     let documentStatus: string | undefined;
+    let extractionState: string | undefined;
 
     if (input.autoIndex !== false) {
       const indexResult = await indexKnowledgeDocumentUntilComplete(
@@ -243,8 +245,13 @@ export async function uploadMicrosoftDocumentToKnowledge(
             requiresOcr = ocrResult.requiresOcr ?? false;
             extractionQuality = ocrResult.extractionQuality ?? extractionQuality;
             documentStatus = ocrResult.documentStatus ?? documentStatus;
+            extractionState = ocrResult.extractionState ?? extractionState;
           }
+        } else {
+          extractionState = "ocr_not_available";
         }
+      } else {
+        extractionState = "native_text_success";
       }
     }
 
@@ -257,6 +264,7 @@ export async function uploadMicrosoftDocumentToKnowledge(
       requiresOcr,
       extractionQuality,
       documentStatus,
+      extractionState,
     };
   } catch (err) {
     return {
@@ -276,15 +284,43 @@ export async function reindexMicrosoftKnowledgeDocument(
   if (!indexResult.ok) {
     return { ok: false, code: indexResult.code, message: indexResult.message };
   }
+
+  if (indexResult.requiresOcr) {
+    const { applyOcrFallbackIfRequired, azureOcrReady } = await import("./ocr/knowledge-ocr");
+    if (azureOcrReady(env)) {
+      const ocrResult = await applyOcrFallbackIfRequired(env, mcp, {
+        companyId: mcp.companyId,
+        documentId,
+        requiresOcr: true,
+        documentStatus: indexResult.documentStatus,
+        extractionQuality: indexResult.extractionQuality,
+      });
+      if (ocrResult.ok) return ocrResult;
+      return { ok: false, code: ocrResult.code, message: ocrResult.message };
+    }
+    return {
+      ok: true,
+      documentId,
+      externalId: "",
+      indexed: false,
+      partial: true,
+      requiresOcr: true,
+      extractionQuality: indexResult.extractionQuality,
+      documentStatus: indexResult.documentStatus ?? "requires_ocr",
+      extractionState: "ocr_not_available",
+    };
+  }
+
   return {
     ok: true,
     documentId,
     externalId: "",
-    indexed: !indexResult.requiresOcr && !indexResult.partial,
+    indexed: !indexResult.partial,
     partial: indexResult.partial,
-    requiresOcr: indexResult.requiresOcr,
+    requiresOcr: false,
     extractionQuality: indexResult.extractionQuality,
     documentStatus: indexResult.documentStatus,
+    extractionState: "native_text_success",
   };
 }
 

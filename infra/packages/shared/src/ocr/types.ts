@@ -70,6 +70,62 @@ export function shouldInvokeOcr(input: {
   return false;
 }
 
+/** Operator-facing extraction outcome. Distinct from customer wording. */
+export const EXTRACTION_OPERATOR_STATES = [
+  "native_text_success",
+  "ocr_success",
+  "low_text_warning",
+  "ocr_failed",
+  "ocr_not_available",
+  "unsupported",
+] as const;
+
+export type ExtractionOperatorState = (typeof EXTRACTION_OPERATOR_STATES)[number];
+
+export function resolveExtractionOperatorState(input: {
+  mimeType?: string | null;
+  requiresOcr?: boolean;
+  documentStatus?: string | null;
+  extractionQuality?: string | null;
+  ocrStatus?: string | null;
+  fallbackOutcome?: string | null;
+  azureConfigured?: boolean;
+}): ExtractionOperatorState {
+  const ocrStatus = input.ocrStatus ?? "";
+  const documentStatus = input.documentStatus ?? "";
+  const quality = input.extractionQuality ?? "";
+
+  if (ocrStatus === "ocr_completed") return "ocr_success";
+  if (ocrStatus === "ocr_failed" || ocrStatus === "ocr_limit_exceeded" || documentStatus === "ocr_failed") {
+    return "ocr_failed";
+  }
+  if (documentStatus === "ocr_limit_exceeded") return "ocr_failed";
+
+  if (input.requiresOcr && input.mimeType && !isOcrSupportedMimeType(input.mimeType)) {
+    return "unsupported";
+  }
+
+  if (
+    input.fallbackOutcome === "ocr_not_available" ||
+    input.azureConfigured === false ||
+    (input.requiresOcr && input.azureConfigured === false)
+  ) {
+    if (input.azureConfigured === false || input.fallbackOutcome === "ocr_not_available") {
+      return "ocr_not_available";
+    }
+  }
+
+  if (quality === "poor" || quality === "heading_only" || quality === "requires_ocr") {
+    return input.azureConfigured === false ? "ocr_not_available" : "low_text_warning";
+  }
+
+  if (input.requiresOcr || documentStatus === "requires_ocr") {
+    return input.azureConfigured === false ? "ocr_not_available" : "low_text_warning";
+  }
+
+  return "native_text_success";
+}
+
 export function presentCustomerOcrStatus(status: OcrStatus | string | null | undefined): string {
   switch (status) {
     case "ocr_pending":

@@ -65,10 +65,7 @@ export function assessPdfExtractionQuality(
     requiresOcr = true;
     extractionQuality = "heading_only";
     fallbackRequired = true;
-  } else if (
-    substantiveCharacterCount < SUBSTANTIVE_MIN_CHARS &&
-    pageCount >= 2
-  ) {
+  } else if (substantiveCharacterCount < SUBSTANTIVE_MIN_CHARS) {
     requiresOcr = true;
     extractionQuality = "poor";
     fallbackRequired = true;

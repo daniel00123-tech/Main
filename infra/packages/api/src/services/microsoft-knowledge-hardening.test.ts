@@ -109,6 +109,20 @@ describe("PDF extraction quality", () => {
       "Actual content here",
     );
   });
+
+  it("routes single-page low-text PDFs to OCR", () => {
+    const assessment = assessPdfExtractionQuality([
+      {
+        text: "# Page 1\nScanned site plan showing plot boundaries and access.",
+        metadata: { page: 1 },
+      },
+    ]);
+    expect(assessment.pageCount).toBe(1);
+    expect(assessment.substantiveCharacterCount).toBeGreaterThanOrEqual(40);
+    expect(assessment.substantiveCharacterCount).toBeLessThan(80);
+    expect(assessment.requiresOcr).toBe(true);
+    expect(assessment.extractionQuality).toBe("poor");
+  });
 });
 
 describe("Outlook parent/attachment provenance", () => {
