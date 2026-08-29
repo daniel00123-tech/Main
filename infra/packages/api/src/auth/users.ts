@@ -6,6 +6,7 @@ import {
 } from "./password-setup";
 import type { SessionMembership, SessionUser } from "./session";
 import { credentialsVersionFromHash } from "./session";
+import { MobileCollisionError, MobileValidationError, normalizeE164 } from "../services/phone";
 
 export interface DbUser {
   id: string;
@@ -18,6 +19,10 @@ export interface DbUser {
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
+  mobileE164: string | null;
+  mobileVerified: boolean;
+  mobileVerifiedAt: string | null;
+  mobileVerificationRequired: boolean;
 }
 
 export interface DbMembership {
@@ -44,6 +49,10 @@ function rowToUser(row: Record<string, unknown>): DbUser {
     lastLoginAt: row.last_login_at ? String(row.last_login_at) : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+    mobileE164: row.mobile_e164 ? String(row.mobile_e164) : null,
+    mobileVerified: Number(row.mobile_verified ?? 0) === 1,
+    mobileVerifiedAt: row.mobile_verified_at ? String(row.mobile_verified_at) : null,
+    mobileVerificationRequired: Number(row.mobile_verification_required ?? (row.mobile_e164 ? 0 : 1)) === 1,
   };
 }
 
@@ -113,6 +122,9 @@ export async function listUsers(
     isPlatformAdmin: boolean;
     status: string;
     lastLoginAt: string | null;
+    mobileE164: string | null;
+    mobileVerified: boolean;
+    mobileVerificationRequired: boolean;
     memberships: Array<{ companyId: string; role: CompanyRole; status: string }>;
   }>
 > {
@@ -146,6 +158,9 @@ export async function listUsers(
       isPlatformAdmin: user.isPlatformAdmin,
       status: user.status,
       lastLoginAt: user.lastLoginAt,
+      mobileE164: user.mobileE164,
+      mobileVerified: user.mobileVerified,
+      mobileVerificationRequired: user.mobileVerificationRequired,
       memberships: (membershipByUser.get(user.id) ?? []).map((membership) => ({
         companyId: membership.companyId,
         role: membership.role,
@@ -182,6 +197,17 @@ export async function toSessionUser(
   };
 }
 
+export async function getUserByMobileE164(
+  db: D1Database,
+  mobileE164: string,
+): Promise<DbUser | null> {
+  const row = await db
+    .prepare("SELECT * FROM users WHERE mobile_e164 = ?")
+    .bind(mobileE164)
+    .first();
+  return row ? rowToUser(row) : null;
+}
+
 export async function createUser(
   db: D1Database,
   input: {
@@ -189,18 +215,33 @@ export async function createUser(
     displayName: string;
     password: string;
     isPlatformAdmin?: boolean;
+    mobile?: string | null;
+    requireMobile?: boolean;
   },
 ): Promise<DbUser> {
   const id = newId("user");
   const createdAt = nowIso();
   const salt = generateSalt();
   const passwordHash = await hashPassword(input.password, salt);
+  const mobileE164 = input.requireMobile
+    ? normalizeE164(input.mobile)
+    : input.mobile
+      ? normalizeE164(input.mobile)
+      : null;
+
+  if (mobileE164) {
+    const existingMobile = await getUserByMobileE164(db, mobileE164);
+    if (existingMobile) {
+      throw new MobileCollisionError();
+    }
+  }
 
   await db
     .prepare(
       `INSERT INTO users
-        (id, email, display_name, password_hash, password_salt, is_platform_admin, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+        (id, email, display_name, password_hash, password_salt, is_platform_admin, status, created_at, updated_at,
+         mobile_e164, mobile_verified, mobile_verified_at, mobile_verification_required)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, 0, NULL, ?)`,
     )
     .bind(
       id,
@@ -211,6 +252,8 @@ export async function createUser(
       input.isPlatformAdmin ? 1 : 0,
       createdAt,
       createdAt,
+      mobileE164,
+      mobileE164 ? 0 : 1,
     )
     .run();
 
@@ -339,6 +382,7 @@ export async function inviteCompanyUser(
     displayName: string;
     companyId: string;
     role: CompanyRole;
+    mobile?: string | null;
   },
 ): Promise<{ user: DbUser; setupToken: string; expiresAt: string; created: boolean }> {
   const existing = await getUserByEmail(db, input.email);
@@ -346,13 +390,19 @@ export async function inviteCompanyUser(
   let created = false;
 
   if (!user) {
-    // Temporary random password — user must complete setup token flow
+    if (!input.mobile) {
+      throw new MobileValidationError(
+        "Mobile number is required when creating a new user. Use international E.164 format, for example +447700900123",
+      );
+    }
     const tempPassword = `tmp_${crypto.randomUUID()}`;
     user = await createUser(db, {
       email: input.email,
       displayName: input.displayName,
       password: tempPassword,
       isPlatformAdmin: false,
+      mobile: input.mobile,
+      requireMobile: true,
     });
     created = true;
   }

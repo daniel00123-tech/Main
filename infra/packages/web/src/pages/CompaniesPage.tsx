@@ -63,6 +63,7 @@ const INITIAL_FORM = {
   currency: "GBP",
   adminEmail: "",
   adminDisplayName: "",
+  adminMobile: "",
 };
 
 function slugify(value: string): string {
@@ -236,6 +237,9 @@ export default function CompaniesPage() {
       if (form.adminEmail.trim() && !form.adminDisplayName.trim()) {
         return "Admin display name is required when inviting an admin";
       }
+      if (form.adminEmail.trim() && !form.adminMobile.trim()) {
+        return "Admin mobile number is required when inviting a new admin (E.164, e.g. +447700900123)";
+      }
     }
     return null;
   }
@@ -289,6 +293,7 @@ export default function CompaniesPage() {
       currency: form.currency || "GBP",
       adminEmail: form.adminEmail.trim() || null,
       adminDisplayName: form.adminDisplayName.trim() || null,
+      adminMobile: form.adminMobile.trim() || null,
     };
 
     setSubmitting(true);
@@ -886,6 +891,14 @@ export default function CompaniesPage() {
                     onChange={(e) => updateField("adminDisplayName", e.target.value)}
                   />
                 </label>
+                <label>
+                  Admin mobile
+                  <input
+                    value={form.adminMobile}
+                    onChange={(e) => updateField("adminMobile", e.target.value)}
+                    placeholder="+447700900123"
+                  />
+                </label>
               </div>
             ) : null}
 
@@ -926,7 +939,7 @@ export default function CompaniesPage() {
                   label="Admin invite"
                   value={
                     form.adminEmail.trim()
-                      ? `${form.adminDisplayName.trim() || "Admin"} <${form.adminEmail.trim()}>`
+                      ? `${form.adminDisplayName.trim() || "Admin"} <${form.adminEmail.trim()}> ${form.adminMobile.trim() || ""}`.trim()
                       : "Skipped"
                   }
                 />

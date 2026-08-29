@@ -178,6 +178,8 @@ export interface CreateCompanyInput {
   modules?: string[];
   adminEmail?: string | null;
   adminDisplayName?: string | null;
+  /** Required when creating a new first admin. International E.164, e.g. +447700900123 */
+  adminMobile?: string | null;
 }
 
 export interface McpEnvironment {
@@ -225,6 +227,9 @@ export interface InfraUser {
   isPlatformAdmin: boolean;
   status: UserStatus;
   lastLoginAt?: string | null;
+  mobileE164?: string | null;
+  mobileVerified?: boolean;
+  mobileVerificationRequired?: boolean;
   memberships: Array<{
     companyId: string;
     role: CompanyRole;

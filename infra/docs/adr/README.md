@@ -34,5 +34,6 @@ Authoritative decisions that future INFRA / Business MCP work must follow.
 | [028](./028-xero-full-capability-architecture.md) | Xero full capability architecture | **Accepted** |
 | [029](./029-action-engine-controlled-writes.md) | Action Engine and controlled financial writes | **Accepted** |
 | [030](./030-company-data-platform-warehouse.md) | Company data platform / warehouse (planning) | **Proposed** |
+| [031](./031-customer-economics-and-interaction-audit.md) | Customer economics and interaction audit | **Accepted** |
 
 **Core principle:** Company MCPs own company knowledge, business data and business capabilities. INFRA owns identity, authorisation, routing, metering, billing and audit.
