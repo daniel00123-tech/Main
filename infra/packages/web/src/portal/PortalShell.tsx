@@ -31,6 +31,7 @@ import { api } from "../api";
 import { PortalCompanyProvider, usePortalCompany } from "./usePortalCompany";
 import { PortalNotificationBell } from "./PortalNotificationBell";
 import { PortalCompanyHomeLink } from "./PortalCompanyHomeLink";
+import { InfraBrand } from "../components/InfraBrand";
 
 type NavItem = {
   path: string;
@@ -222,15 +223,7 @@ function PortalShellInner() {
         aria-hidden={isMobile && !mobileOpen ? true : undefined}
       >
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden>
-            IN
-          </div>
-          {showLabels ? (
-            <div className="brand-text">
-              <span className="brand-name">INFRA</span>
-              <span className="brand-context">Company portal</span>
-            </div>
-          ) : null}
+          {showLabels ? <InfraBrand context="Portal" /> : <InfraBrand compact />}
           {!isMobile ? (
             <button
               type="button"
@@ -297,24 +290,7 @@ function PortalShellInner() {
                   {item.icon}
                   <span className="label">{item.label}</span>
                   {item.badgeCount && item.badgeCount > 0 ? (
-                    <span
-                      className="nav-badge"
-                      style={{
-                        marginLeft: "auto",
-                        background: "var(--danger)",
-                        color: "#fff",
-                        borderRadius: 999,
-                        fontSize: 10,
-                        minWidth: 18,
-                        height: 18,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: "0 5px",
-                      }}
-                    >
-                      {item.badgeCount > 9 ? "9+" : item.badgeCount}
-                    </span>
+                    <span className="nav-badge">{item.badgeCount > 9 ? "9+" : item.badgeCount}</span>
                   ) : null}
                 </NavLink>
               ))}

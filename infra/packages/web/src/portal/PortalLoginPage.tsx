@@ -1,6 +1,7 @@
 import { FormEvent, useId, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { InfraBrand } from "../components/InfraBrand";
 
 export default function PortalLoginPage() {
   const { user, login } = useAuth();
@@ -37,8 +38,7 @@ export default function PortalLoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="brand">INFRA</div>
-        <div className="brand-sub">Company portal</div>
+        <InfraBrand showStack context="Company portal" size={36} />
 
         <h1>Sign in</h1>
         <p className="login-intro">Sign in to your company portal.</p>
