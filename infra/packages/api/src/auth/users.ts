@@ -197,6 +197,33 @@ export async function toSessionUser(
   };
 }
 
+export async function setUserMobileE164(
+  db: D1Database,
+  userId: string,
+  mobile: string,
+): Promise<DbUser> {
+  const mobileE164 = normalizeE164(mobile);
+  const existingMobile = await getUserByMobileE164(db, mobileE164);
+  if (existingMobile && existingMobile.id !== userId) {
+    throw new MobileCollisionError();
+  }
+  const now = nowIso();
+  await db
+    .prepare(
+      `UPDATE users
+       SET mobile_e164 = ?, mobile_verified = 0, mobile_verified_at = NULL,
+           mobile_verification_required = 0, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(mobileE164, now, userId)
+    .run();
+  const user = await getUserById(db, userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+  return user;
+}
+
 export async function getUserByMobileE164(
   db: D1Database,
   mobileE164: string,

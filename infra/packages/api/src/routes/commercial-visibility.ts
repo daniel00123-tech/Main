@@ -5,7 +5,9 @@ import {
   requirePlatformAdmin,
   type AuthVariables,
 } from "../auth/middleware";
+import { getUserById, setUserMobileE164 } from "../auth/users";
 import { recordAuditEvent } from "../services/control-plane";
+import { MobileCollisionError, MobileValidationError, maskMobileE164 } from "../services/phone";
 import {
   getCompanyEconomicsDetail,
   listCustomerEconomics,
@@ -244,6 +246,34 @@ routes.post("/api/platform/whatsapp/lookup", requireAuth, requirePlatformAdmin, 
   if (!body.number) return c.json({ error: "number is required" }, 400);
   const result = await resolveWhatsAppIdentity(c.env.DB, body.number);
   return c.json(result);
+});
+
+routes.post("/api/platform/users/:id/mobile", requireAuth, requirePlatformAdmin, async (c) => {
+  const body = await c.req.json<{ mobile?: string }>();
+  if (!body.mobile) return c.json({ error: "mobile is required" }, 400);
+  const existing = await getUserById(c.env.DB, c.req.param("id"));
+  if (!existing) return c.json({ error: "User not found" }, 404);
+  try {
+    const user = await setUserMobileE164(c.env.DB, existing.id, body.mobile);
+    await recordAuditEvent(c.env.DB, {
+      companyId: null,
+      eventType: "user.mobile_updated",
+      actor: c.get("user").email,
+      resourceType: "user",
+      resourceId: user.id,
+      detail: { mobileMasked: maskMobileE164(user.mobileE164), channel: "whatsapp" },
+    });
+    return c.json({
+      ok: true,
+      userId: user.id,
+      mobileMasked: maskMobileE164(user.mobileE164),
+    });
+  } catch (err) {
+    if (err instanceof MobileValidationError || err instanceof MobileCollisionError) {
+      return c.json({ error: err.message }, 400);
+    }
+    throw err;
+  }
 });
 
 export default routes;

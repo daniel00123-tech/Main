@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createUser, inviteCompanyUser } from "./users";
+import { createUser, inviteCompanyUser, setUserMobileE164 } from "./users";
 import { MobileCollisionError, MobileValidationError } from "../services/phone";
 
 type Row = Record<string, unknown>;
@@ -29,6 +29,17 @@ function mockDb(existing: Row[] = []) {
                 return users[users.length - 1] ?? null;
               },
               async run() {
+                if (sql.includes("UPDATE users") && sql.includes("mobile_e164")) {
+                  const target = users.find((row) => row.id === values[2]);
+                  if (target) {
+                    target.mobile_e164 = values[0];
+                    target.mobile_verified = 0;
+                    target.mobile_verified_at = null;
+                    target.mobile_verification_required = 0;
+                    target.updated_at = values[1];
+                  }
+                  return { success: true };
+                }
                 if (sql.includes("INSERT INTO users")) {
                   users.push({
                     id: values[0],
@@ -110,5 +121,17 @@ describe("user mobile identity", () => {
     expect(user.mobileVerificationRequired).toBe(true);
     expect(user.status).toBe("active");
     expect(users[0]?.mobile_verification_required).toBe(1);
+  });
+
+  it("attaches an E.164 mobile to an existing user", async () => {
+    const { db } = mockDb();
+    const user = await createUser(db, {
+      email: "legacy@example.com",
+      displayName: "Legacy",
+      password: "Password123!",
+    });
+    const updated = await setUserMobileE164(db, user.id, "07700900123");
+    expect(updated.mobileE164).toBe("+447700900123");
+    expect(updated.mobileVerificationRequired).toBe(false);
   });
 });
