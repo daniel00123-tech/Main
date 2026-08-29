@@ -421,6 +421,9 @@ describe("INFRA MCP facade tool catalogue consistency", () => {
       openWorldHint: false,
     });
     expect(search?.annotations?.readOnlyHint).toBe(true);
+    expect(tools?.some((t) => t.name === "automation_list")).toBe(true);
+    expect(tools?.some((t) => t.name === "automation_run_now")).toBe(true);
+    expect(tools?.some((t) => t.name === "automation_get_run")).toBe(true);
   });
 });
 

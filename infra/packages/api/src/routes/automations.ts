@@ -597,14 +597,31 @@ automations.post("/api/companies/:slug/automations/:automationId/run", ...authed
   }
 
   try {
+    const idempotencyKey =
+      c.req.header("Idempotency-Key")?.trim() ||
+      c.req.header("idempotency-key")?.trim() ||
+      null;
     const result = await requestAutomationRun(c.env, {
       companyId: company.id,
       automationId,
       initiatedBy: user.email,
-      triggerType: "manual",
+      triggerType: "portal_manual",
+      idempotencyKey,
     });
     const run = await getAutomationRun(c.env.DB, company.id, result.runId);
-    return c.json({ run, created: result.created });
+    return c.json({
+      success: true,
+      automationId: result.automationId,
+      automationName: result.automationName,
+      runId: result.runId,
+      status: result.status,
+      trigger: result.trigger,
+      scheduledFor: null,
+      scheduleChanged: false,
+      reusedExisting: result.reusedExisting,
+      created: result.created,
+      run,
+    });
   } catch (err) {
     return c.json(
       { error: err instanceof Error ? err.message : "Failed to start run" },

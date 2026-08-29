@@ -17,7 +17,13 @@ import {
 import type { Env } from "../env";
 import type { GatewayActor } from "./gateway";
 import { getCompanyById } from "./control-plane";
-import { getAutomationDefinition, getAutomationRun, listAutomationDefinitions } from "./automation-engine/store";
+import {
+  findAutomationsByName,
+  getAutomationDefinition,
+  getAutomationRun,
+  listAutomationDefinitions,
+  listLatestAutomationRuns,
+} from "./automation-engine/store";
 import { formatScheduleLabel } from "./automation-engine/schedule";
 import {
   applyValidatedUpdate,
@@ -41,6 +47,7 @@ import {
 export const AUTOMATION_CONTROL_TOOLS = [
   "automation_list",
   "automation_get",
+  "automation_get_run",
   "automation_plan",
   "automation_create",
   "automation_plan_update",
@@ -53,7 +60,11 @@ export const AUTOMATION_CONTROL_TOOLS = [
 
 export type AutomationControlTool = (typeof AUTOMATION_CONTROL_TOOLS)[number];
 
-export const AUTOMATION_READ_TOOLS = ["automation_list", "automation_get"] as const;
+export const AUTOMATION_READ_TOOLS = [
+  "automation_list",
+  "automation_get",
+  "automation_get_run",
+] as const;
 
 export function isAutomationControlTool(name: string): name is AutomationControlTool {
   return (AUTOMATION_CONTROL_TOOLS as readonly string[]).includes(name);
@@ -70,13 +81,18 @@ export const AUTOMATION_CONTROL_TOOL_SCHEMAS: Record<
   automation_list: {
     readOnlyHint: true,
     description:
-      "List this company's INFRA automations (name, status, schedule, next run, recipient). Read-only. Does not create or change automations. Use when the user asks 'show my automations' or to identify which automation to update.",
+      "List this company's INFRA automations. Read-only. Use for 'Show me my active automations', 'list paused automations', or to find an automation before Run now. Returns id, name, description, enabled/paused state, schedule, timezone, next run, last run, and whether manual execution is supported. Tenant comes from the authenticated ChatGPT/Claude connection — do not pass another company.",
     inputSchema: {
       type: "object",
       properties: {
         includeArchived: {
           type: "boolean",
           description: "If true, include archived automations. Default false.",
+        },
+        status: {
+          type: "string",
+          enum: ["active", "paused", "all"],
+          description: "Filter by enabled state. Default all (except archived).",
         },
       },
       additionalProperties: false,
@@ -229,13 +245,48 @@ export const AUTOMATION_CONTROL_TOOL_SCHEMAS: Record<
   automation_run_now: {
     readOnlyHint: false,
     description:
-      "Run an existing automation immediately without changing its recurring schedule. Records a manual trigger. Use when the user says 'run my sales report now'. This is a write.",
+      "Run a saved INFRA automation immediately (mcp_manual). Does NOT change its schedule, timezone, enabled/paused state, next scheduled run, recipients, or instructions. Paused automations may still be run once. Use for 'Run my Daily month-to-date sales automation now', 'Run it once now but do not change its normal 8:00 a.m. schedule', or 'Run the paused document activity automation once'. Identify by automationId or unique name. This is a write.",
     inputSchema: {
       type: "object",
       properties: {
-        automationId: { type: "string", minLength: 1 },
+        automationId: {
+          type: "string",
+          description: "Automation id (aut_…). Optional if a unique name is supplied.",
+        },
+        automation_id: {
+          type: "string",
+          description: "Alias of automationId.",
+        },
+        name: {
+          type: "string",
+          description: "Unique automation name, case-insensitive. Optional if an id is supplied.",
+        },
+        automation_name: {
+          type: "string",
+          description: "Alias of name.",
+        },
+        idempotencyKey: {
+          type: "string",
+          description: "Optional. Same key returns the same run and does not start a second execution.",
+        },
+        idempotency_key: {
+          type: "string",
+          description: "Alias of idempotencyKey.",
+        },
       },
-      required: ["automationId"],
+      additionalProperties: false,
+    },
+  },
+  automation_get_run: {
+    readOnlyHint: true,
+    description:
+      "Get the current or final status of an automation run by run ID. Use for 'Show me whether that manual run completed' or after automation_run_now. Read-only. Returns status, trigger source, times, and a concise failure reason when failed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", minLength: 1, description: "Run id (aur_…)." },
+        run_id: { type: "string", description: "Alias of runId." },
+      },
       additionalProperties: false,
     },
   },
@@ -289,25 +340,90 @@ function asString(value: unknown): string {
 
 function presentAutomation(
   item: NonNullable<Awaited<ReturnType<typeof getAutomationDefinition>>>,
+  latestRun?: { status: string; triggerType: string; createdAt: string } | null,
 ) {
   const templateKey = automationTemplateKeyOf(item.configuration);
   const template = templateKey ? getAutomationTemplate(templateKey) : null;
+  const archived = isArchivedAutomation(item);
   return {
     automationId: item.id,
     name: item.name,
-    status: isArchivedAutomation(item) ? "archived" : item.status,
+    description: item.description,
+    status: archived ? "archived" : item.status,
+    enabled: item.status === "active",
+    paused: item.status === "paused",
     schedule: item.schedule
       ? formatScheduleLabel(item.schedule, item.timezone)
       : null,
     timezone: item.timezone,
     nextRun: item.nextRunAt,
     lastRun: item.lastRunAt,
+    lastRunStatus: latestRun?.status ?? null,
+    lastRunTrigger: latestRun?.triggerType ?? null,
+    lastRunAt: latestRun?.createdAt ?? item.lastRunAt,
     recipient: automationRecipientEmailOf(item.configuration),
     templateKey,
     templateLabel: template?.label ?? null,
     createdVia: automationCreatedViaOf(item.configuration),
-    enabled: item.status === "active",
+    manualRunSupported: !archived && item.status !== "disabled",
   };
+}
+
+export async function resolveAutomationForManualRun(
+  env: Env,
+  companyId: string,
+  args: Record<string, unknown>,
+) {
+  const id = asString(args.automationId) || asString(args.automation_id);
+  const name = asString(args.name) || asString(args.automation_name);
+  if (id) {
+    const item = await getAutomationDefinition(env.DB, companyId, id);
+    if (!item || isArchivedAutomation(item)) {
+      return { error: { status: 404 as const, body: { error: "Automation not found", code: "NOT_FOUND" } } };
+    }
+    return { automation: item };
+  }
+  if (!name) {
+    return {
+      error: {
+        status: 400 as const,
+        body: {
+          error: "Provide automationId or a unique automation name.",
+          code: "IDENTIFICATION_REQUIRED",
+        },
+      },
+    };
+  }
+  const matches = await findAutomationsByName(env.DB, companyId, name);
+  const live = matches.filter((item) => !isArchivedAutomation(item));
+  if (live.length === 0) {
+    return {
+      error: {
+        status: 404 as const,
+        body: {
+          error: `No automation named '${name}' was found for this company.`,
+          code: "NOT_FOUND",
+        },
+      },
+    };
+  }
+  if (live.length > 1) {
+    return {
+      error: {
+        status: 409 as const,
+        body: {
+          error: `More than one automation is named '${name}'. Specify automationId.`,
+          code: "AMBIGUOUS_NAME",
+          candidates: live.map((item) => ({
+            automationId: item.id,
+            name: item.name,
+            status: item.status,
+          })),
+        },
+      },
+    };
+  }
+  return { automation: live[0] };
 }
 
 function controlErrorBody(err: unknown): {
@@ -380,10 +496,17 @@ export async function executeAutomationControlTool(
   try {
     if (toolName === "automation_list") {
       const includeArchived = args.includeArchived === true;
+      const statusFilter = asString(args.status) || "all";
       const items = await listAutomationDefinitions(env.DB, companyId);
+      const latest = await listLatestAutomationRuns(env.DB, companyId);
       const automations = items
         .filter((item) => includeArchived || !isArchivedAutomation(item))
-        .map(presentAutomation);
+        .filter((item) => {
+          if (statusFilter === "active") return item.status === "active";
+          if (statusFilter === "paused") return item.status === "paused";
+          return true;
+        })
+        .map((item) => presentAutomation(item, latest.get(item.id) ?? null));
       return { status: 200, body: { automations, managementUrl: manageUrl } };
     }
 
@@ -586,28 +709,57 @@ export async function executeAutomationControlTool(
       };
     }
 
+    if (toolName === "automation_get_run") {
+      const runId = asString(args.runId) || asString(args.run_id);
+      const run = await getAutomationRun(env.DB, companyId, runId);
+      if (!run) {
+        return { status: 404, body: { error: "Run not found", code: "NOT_FOUND" } };
+      }
+      return {
+        status: 200,
+        body: {
+          runId: run.id,
+          automationId: run.automationId,
+          status: run.status,
+          trigger: run.triggerType,
+          initiatedBy: run.initiatedBy,
+          createdAt: run.createdAt,
+          startedAt: run.startedAt,
+          completedAt: run.completedAt,
+          resultSummary: run.resultSummary,
+          errorCode: run.errorCode,
+          errorMessage: run.errorMessage,
+        },
+      };
+    }
+
     if (toolName === "automation_run_now") {
+      const resolved = await resolveAutomationForManualRun(env, companyId, args);
+      if ("error" in resolved) return resolved.error;
       const result = await runAutomationNow(env, {
         companyId,
-        automationId: asString(args.automationId),
+        automationId: resolved.automation.id,
         actor: ctx,
+        triggerType: "mcp_manual",
+        idempotencyKey: asString(args.idempotencyKey) || asString(args.idempotency_key) || null,
       });
       const run = await getAutomationRun(env.DB, companyId, result.runId);
       return {
         status: 200,
         body: {
+          success: true,
+          automationId: result.automationId,
+          automationName: result.automationName,
           runId: result.runId,
-          created: result.created,
           status: result.status,
+          trigger: result.trigger,
+          startedAt: run?.startedAt ?? run?.createdAt ?? null,
+          scheduledFor: null,
+          scheduleChanged: false,
           scheduleUnchanged: true,
-          run: run
-            ? {
-                id: run.id,
-                status: run.status,
-                triggerType: run.triggerType,
-                initiatedBy: run.initiatedBy,
-              }
-            : null,
+          preserved: result.preserved,
+          reusedExisting: result.reusedExisting,
+          customerMessage: `Started '${result.automationName}' now (${result.status}). Its normal schedule and enabled/paused state were not changed.`,
         },
       };
     }

@@ -7,10 +7,12 @@ import type {
   AutomationDefinitionRecord,
   AutomationRunRecord,
   AutomationRunStepRecord,
+  AutomationRunTrigger,
   AutomationSchedule,
   AutomationStatus,
   AutomationTriggerType,
 } from "@infra/shared";
+import { normalizeAutomationRunTrigger } from "@infra/shared";
 import { newId, nowIso } from "../../db/mappers";
 import { parseAutomationSchedule } from "./schedule";
 
@@ -43,7 +45,7 @@ function mapRun(row: Record<string, unknown>): AutomationRunRecord {
     companyId: String(row.company_id),
     automationId: String(row.automation_id),
     status: String(row.status) as AutomationRunRecord["status"],
-    triggerType: String(row.trigger_type) as AutomationTriggerType,
+    triggerType: normalizeAutomationRunTrigger(String(row.trigger_type)),
     idempotencyKey: row.idempotency_key ? String(row.idempotency_key) : null,
     attempt: Number(row.attempt ?? 1),
     initiatedBy: row.initiated_by ? String(row.initiated_by) : null,
@@ -257,7 +259,7 @@ export async function createAutomationRun(
   input: {
     companyId: string;
     automationId: string;
-    triggerType: AutomationTriggerType;
+    triggerType: AutomationRunTrigger;
     idempotencyKey?: string | null;
     initiatedBy?: string | null;
     attempt?: number;
@@ -316,6 +318,76 @@ export async function createAutomationRun(
   const run = await getAutomationRun(db, input.companyId, id);
   if (!run) throw new Error("Failed to create automation run");
   return { run, created: true };
+}
+
+export async function findAutomationRunByIdempotencyKey(
+  db: D1Database,
+  companyId: string,
+  automationId: string,
+  idempotencyKey: string,
+): Promise<AutomationRunRecord | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM automation_runs
+       WHERE company_id = ? AND automation_id = ? AND idempotency_key = ?
+       LIMIT 1`,
+    )
+    .bind(companyId, automationId, idempotencyKey)
+    .first();
+  return row ? mapRun(row as Record<string, unknown>) : null;
+}
+
+export async function findActiveAutomationRun(
+  db: D1Database,
+  companyId: string,
+  automationId: string,
+): Promise<AutomationRunRecord | null> {
+  const row = await db
+    .prepare(
+      `SELECT * FROM automation_runs
+       WHERE company_id = ? AND automation_id = ? AND status IN ('queued', 'running')
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .bind(companyId, automationId)
+    .first();
+  return row ? mapRun(row as Record<string, unknown>) : null;
+}
+
+export async function listLatestAutomationRuns(
+  db: D1Database,
+  companyId: string,
+): Promise<Map<string, AutomationRunRecord>> {
+  const rows = await db
+    .prepare(
+      `SELECT r.* FROM automation_runs r
+       INNER JOIN (
+         SELECT automation_id, MAX(created_at) AS max_created
+         FROM automation_runs
+         WHERE company_id = ?
+         GROUP BY automation_id
+       ) latest
+         ON latest.automation_id = r.automation_id AND latest.max_created = r.created_at
+       WHERE r.company_id = ?`,
+    )
+    .bind(companyId, companyId)
+    .all();
+  const map = new Map<string, AutomationRunRecord>();
+  for (const row of rows.results ?? []) {
+    const run = mapRun(row as Record<string, unknown>);
+    map.set(run.automationId, run);
+  }
+  return map;
+}
+
+export async function findAutomationsByName(
+  db: D1Database,
+  companyId: string,
+  name: string,
+): Promise<AutomationDefinitionRecord[]> {
+  const needle = name.trim().toLowerCase();
+  if (!needle) return [];
+  const items = await listAutomationDefinitions(db, companyId);
+  return items.filter((item) => item.name.trim().toLowerCase() === needle);
 }
 
 export async function updateAutomationRun(

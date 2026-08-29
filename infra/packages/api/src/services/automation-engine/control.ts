@@ -777,6 +777,8 @@ export async function runAutomationNow(
     companyId: string;
     automationId: string;
     actor: AutomationControlActor;
+    triggerType?: "portal_manual" | "mcp_manual" | "manual";
+    idempotencyKey?: string | null;
   },
 ) {
   const existing = await getAutomationDefinition(env.DB, input.companyId, input.automationId);
@@ -786,10 +788,28 @@ export async function runAutomationNow(
   if (existing.status === "disabled") {
     throw new AutomationControlError("Automation is disabled", "DISABLED", 409);
   }
-  return requestAutomationRun(env, {
+  const snapshot = {
+    status: existing.status,
+    timezone: existing.timezone,
+    nextRunAt: existing.nextRunAt,
+    schedule: existing.schedule,
+  };
+  const result = await requestAutomationRun(env, {
     companyId: input.companyId,
     automationId: existing.id,
     initiatedBy: input.actor.label,
-    triggerType: "manual",
+    triggerType: input.triggerType ?? "mcp_manual",
+    idempotencyKey: input.idempotencyKey ?? null,
   });
+  const after = await getAutomationDefinition(env.DB, input.companyId, existing.id);
+  return {
+    ...result,
+    scheduleUnchanged: true,
+    preserved: {
+      status: after?.status ?? snapshot.status,
+      timezone: after?.timezone ?? snapshot.timezone,
+      nextRunAt: after?.nextRunAt ?? snapshot.nextRunAt,
+      schedule: after?.schedule ?? snapshot.schedule,
+    },
+  };
 }

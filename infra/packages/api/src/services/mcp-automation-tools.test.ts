@@ -44,7 +44,18 @@ describe("automation MCP catalogue", () => {
     const runner = withAutomationControlTools(base, { identityType: "automation" });
     expect(runner.map((tool) => tool.name)).toEqual(["system_health"]);
     expect(isAutomationControlTool("automation_run_now")).toBe(true);
+    expect(isAutomationControlTool("automation_get_run")).toBe(true);
+    expect(isAutomationWriteTool("automation_get_run")).toBe(false);
     expect(isAutomationControlTool("execute_action_plan")).toBe(false);
+    expect(AUTOMATION_CONTROL_TOOL_SCHEMAS.automation_run_now.description).toMatch(
+      /Daily month-to-date sales/i,
+    );
+    expect(AUTOMATION_CONTROL_TOOL_SCHEMAS.automation_list.description).toMatch(
+      /Show me my active automations/i,
+    );
+    expect(AUTOMATION_CONTROL_TOOL_SCHEMAS.automation_get_run.description).toMatch(
+      /whether that manual run completed/i,
+    );
   });
 });
 

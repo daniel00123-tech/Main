@@ -42,6 +42,7 @@ import {
   createAutomationFromPlan,
   findDuplicateAutomation,
   planAutomationCreation,
+  runAutomationNow,
   setAutomationPaused,
 } from "./control";
 import type { Env } from "../../env";
@@ -333,6 +334,41 @@ describe("automation control service", () => {
       expect.anything(),
       expect.objectContaining({ eventType: "automation.archived" }),
     );
+  });
+
+  it("runs now without changing schedule or paused state", async () => {
+    const existing = definition({ status: "paused" });
+    store.getAutomationDefinition.mockResolvedValue(existing);
+    runRequest.requestAutomationRun.mockResolvedValue({
+      runId: "aur_now",
+      created: true,
+      status: "queued",
+      trigger: "mcp_manual",
+      automationId: "aut_sales",
+      automationName: "Daily month-to-date sales",
+      scheduledFor: null,
+      scheduleChanged: false,
+      reusedExisting: false,
+    });
+    const result = await runAutomationNow(envWithPlans(new Map()), {
+      companyId: "co_a",
+      automationId: "aut_sales",
+      actor: { label: "chatgpt:Acme", source: "chatgpt" },
+      triggerType: "mcp_manual",
+    });
+    expect(result.runId).toBe("aur_now");
+    expect(result.scheduleUnchanged).toBe(true);
+    expect(result.preserved.status).toBe("paused");
+    expect(result.preserved.nextRunAt).toBe("2026-08-29T07:00:00.000Z");
+    expect(result.preserved.timezone).toBe("Europe/London");
+    expect(runRequest.requestAutomationRun).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        triggerType: "mcp_manual",
+        automationId: "aut_sales",
+      }),
+    );
+    expect(store.updateAutomationDefinition).not.toHaveBeenCalled();
   });
 
   it("treats portal-created and ChatGPT-created specs as the same engine configuration", async () => {

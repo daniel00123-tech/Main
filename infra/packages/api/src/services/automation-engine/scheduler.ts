@@ -9,18 +9,8 @@ import {
   computeNextRunUtcIso,
   currentScheduleSlotUtcIso,
 } from "./schedule";
-import {
-  claimDueAutomation,
-  createAutomationRun,
-  listDueAutomations,
-  recordAutomationEvent,
-} from "./store";
-import {
-  enqueueAutomationRun,
-  hasAutomationRunQueue,
-  kickAutomationRunProcessor,
-  type AutomationRunMessage,
-} from "./queue";
+import { claimDueAutomation, findActiveAutomationRun, listDueAutomations } from "./store";
+import { requestAutomationRun } from "./run-request";
 
 export type AutomationSchedulerResult = {
   scanned: number;
@@ -65,6 +55,12 @@ export async function runAutomationScheduler(
         new Date(slotUtc),
       );
 
+      const active = await findActiveAutomationRun(env.DB, automation.companyId, automation.id);
+      if (active) {
+        result.skippedDuplicate++;
+        continue;
+      }
+
       const claimed = await claimDueAutomation(env.DB, {
         automationId: automation.id,
         companyId: automation.companyId,
@@ -79,7 +75,7 @@ export async function runAutomationScheduler(
 
       result.claimed++;
 
-      const { run, created } = await createAutomationRun(env.DB, {
+      const requested = await requestAutomationRun(env, {
         companyId: automation.companyId,
         automationId: automation.id,
         triggerType: "schedule",
@@ -87,40 +83,12 @@ export async function runAutomationScheduler(
         initiatedBy: "system:automation-scheduler",
       });
 
-      if (!created) {
+      if (!requested.created) {
         result.skippedDuplicate++;
         continue;
       }
 
-      await recordAutomationEvent(env.DB, {
-        companyId: automation.companyId,
-        automationId: automation.id,
-        runId: run.id,
-        eventType: "scheduler.enqueued",
-        detail: { slotUtc, idempotencyKey },
-      });
-
-      const message: AutomationRunMessage = {
-        runId: run.id,
-        companyId: automation.companyId,
-        automationId: automation.id,
-      };
-
-      const enqueued = hasAutomationRunQueue(env)
-        ? await enqueueAutomationRun(env, message)
-        : false;
-
-      if (enqueued) {
-        result.enqueued++;
-      } else {
-        await kickAutomationRunProcessor(
-          env,
-          run.id,
-          automation.companyId,
-          automation.id,
-        );
-        result.enqueued++;
-      }
+      result.enqueued++;
     } catch (err) {
       result.errors.push(
         `${automation.id}: ${err instanceof Error ? err.message : "scheduler error"}`,

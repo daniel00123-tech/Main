@@ -520,11 +520,29 @@ export const api = {
       `/api/companies/${slug}/automations/${automationId}/archive`,
       { method: "POST" },
     ),
-  runCompanyAutomation: (slug: string, automationId: string) =>
-    fetchJson<{ run: AutomationRunRecord; created: boolean }>(
-      `/api/companies/${slug}/automations/${automationId}/run`,
-      { method: "POST" },
-    ),
+  runCompanyAutomation: (
+    slug: string,
+    automationId: string,
+    options?: { idempotencyKey?: string },
+  ) =>
+    fetchJson<{
+      success: boolean;
+      automationId: string;
+      automationName: string;
+      runId: string;
+      status: string;
+      trigger: string;
+      scheduledFor: null;
+      scheduleChanged: false;
+      reusedExisting?: boolean;
+      created: boolean;
+      run: AutomationRunRecord;
+    }>(`/api/companies/${slug}/automations/${automationId}/run`, {
+      method: "POST",
+      headers: options?.idempotencyKey
+        ? { "Idempotency-Key": options.idempotencyKey }
+        : undefined,
+    }),
   listCompanyAutomationRuns: (slug: string, automationId: string) =>
     fetchJson<{ runs: AutomationRunRecord[] }>(
       `/api/companies/${slug}/automations/${automationId}/runs`,

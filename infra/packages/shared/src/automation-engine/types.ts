@@ -35,6 +35,29 @@ export const AUTOMATION_RUN_STATUSES = [
 ] as const;
 export type AutomationRunStatus = (typeof AUTOMATION_RUN_STATUSES)[number];
 
+/** How a specific run was started — distinct from the automation's stored trigger. */
+export const AUTOMATION_RUN_TRIGGERS = [
+  "schedule",
+  "manual",
+  "portal_manual",
+  "mcp_manual",
+] as const;
+export type AutomationRunTrigger = (typeof AUTOMATION_RUN_TRIGGERS)[number];
+
+export function isManualAutomationRunTrigger(trigger: string): boolean {
+  return trigger === "manual" || trigger === "portal_manual" || trigger === "mcp_manual";
+}
+
+export function normalizeAutomationRunTrigger(
+  trigger: string | undefined | null,
+): AutomationRunTrigger {
+  if (trigger === "portal_manual" || trigger === "mcp_manual" || trigger === "schedule") {
+    return trigger;
+  }
+  if (trigger === "manual") return "manual";
+  return "manual";
+}
+
 export const AUTOMATION_SCHEDULE_FREQUENCIES = [
   "hourly",
   "daily",
@@ -93,7 +116,7 @@ export type AutomationRunRecord = {
   companyId: string;
   automationId: string;
   status: AutomationRunStatus;
-  triggerType: AutomationTriggerType;
+  triggerType: AutomationRunTrigger;
   idempotencyKey: string | null;
   attempt: number;
   initiatedBy: string | null;

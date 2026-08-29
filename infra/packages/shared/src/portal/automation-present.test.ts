@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  automationRunNowNeedsConfirmation,
   humanAutomationCustomerStatus,
   humanAutomationRunCustomerStatus,
+  humanAutomationRunTrigger,
   humanAutomationSchedule,
 } from "./automation-present";
 
@@ -34,7 +36,29 @@ describe("humanAutomationCustomerStatus", () => {
 });
 
 describe("humanAutomationRunCustomerStatus", () => {
-  it("maps queued to running for customers", () => {
-    expect(humanAutomationRunCustomerStatus("queued")).toBe("Running");
+  it("maps queued, running, completed and failed distinctly", () => {
+    expect(humanAutomationRunCustomerStatus("queued")).toBe("Queued");
+    expect(humanAutomationRunCustomerStatus("running")).toBe("Running");
+    expect(humanAutomationRunCustomerStatus("completed")).toBe("Completed");
+    expect(humanAutomationRunCustomerStatus("failed")).toBe("Failed");
+  });
+});
+
+describe("humanAutomationRunTrigger", () => {
+  it("distinguishes scheduled, portal and MCP manual runs", () => {
+    expect(humanAutomationRunTrigger("schedule")).toBe("Scheduled");
+    expect(humanAutomationRunTrigger("portal_manual")).toBe("Run now (portal)");
+    expect(humanAutomationRunTrigger("mcp_manual")).toBe("Run now (ChatGPT)");
+  });
+});
+
+describe("automationRunNowNeedsConfirmation", () => {
+  it("requires confirmation when a report email will be sent", () => {
+    expect(
+      automationRunNowNeedsConfirmation({
+        recipientEmail: "ops@example.com",
+        actionType: "internal",
+      }),
+    ).toBe(true);
   });
 });

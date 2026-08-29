@@ -89,7 +89,11 @@ async function resolveToolAction(
   if (toolName === "system_health") {
     return { action: "system.health", riskClass: "low_risk" };
   }
-  if (toolName === "automation_list" || toolName === "automation_get") {
+  if (
+    toolName === "automation_list" ||
+    toolName === "automation_get" ||
+    toolName === "automation_get_run"
+  ) {
     return { action: "automation.read", riskClass: "low_risk" };
   }
   if (toolName.startsWith("automation_")) {

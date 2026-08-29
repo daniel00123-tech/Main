@@ -8,9 +8,11 @@ Multi-tenant scheduled and manual automations for company administrators.
 flowchart TD
   Cron["Cloudflare Cron */15"] --> Scheduler
   Scheduler --> Claim["Atomic claim next_run_at"]
-  Claim --> RunRecord["automation_runs + idempotency_key"]
+  Claim --> Shared["requestAutomationRun"]
+  Portal["Portal / MCP Run now"] --> Shared
+  ManualAPI["POST .../automations/:id/run"] --> Shared
+  Shared --> RunRecord["automation_runs + idempotency_key"]
   RunRecord --> Queue["automation-runs queue"]
-  ManualAPI["POST .../automations/:id/run"] --> RunRecord
   Queue --> Worker["Automation worker"]
   Worker --> Permissions["Company + service identity"]
   Permissions --> Actions["Action handlers"]
@@ -101,7 +103,7 @@ Migration: `infra/migrations/0030_automation_engine.sql`
 | POST | `/api/companies/:slug/automations/:id/activate` | Activate |
 | POST | `/api/companies/:slug/automations/:id/pause` | Pause |
 | POST | `/api/companies/:slug/automations/:id/disable` | Disable |
-| POST | `/api/companies/:slug/automations/:id/run` | Manual run |
+| POST | `/api/companies/:slug/automations/:id/run` | Run now (`portal_manual`). Accepts `Idempotency-Key`. Does not change schedule or enabled state. |
 | GET | `/api/companies/:slug/automations/:id/runs` | Run history |
 | GET | `/api/companies/:slug/automation-runs/:runId` | Run detail |
 
@@ -111,8 +113,9 @@ Company portal → **Automations** (`/portal/:slug/automations`):
 
 - List with status, trigger, last/next run
 - Create scheduled or manual AI instruction
-- Run now, pause, activate
-- Recent run history drawer
+- Run now (active and paused), pause, resume
+- Recent run history drawer with trigger source and run id
+- See [INFRA-AUTOMATION-RUN-NOW.md](./INFRA-AUTOMATION-RUN-NOW.md) for MCP tools, concurrency, and ChatGPT/Claude refresh.
 
 ## Audit events
 

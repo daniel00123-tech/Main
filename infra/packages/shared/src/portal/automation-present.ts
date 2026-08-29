@@ -1,3 +1,4 @@
+import { automationRecipientEmailOf } from "../automation-engine/templates";
 import type { AutomationDefinitionRecord } from "../automation-engine/types";
 
 function formatScheduleTime(hour: number, minute: number): string {
@@ -144,7 +145,7 @@ export function humanAutomationRunCustomerStatus(status: string): string {
     case "running":
       return "Running";
     case "queued":
-      return "Running";
+      return "Queued";
     case "failed":
       return "Failed";
     case "cancelled":
@@ -152,4 +153,30 @@ export function humanAutomationRunCustomerStatus(status: string): string {
     default:
       return status.replace(/_/g, " ");
   }
+}
+
+export function humanAutomationRunTrigger(trigger: string): string {
+  switch (trigger) {
+    case "schedule":
+      return "Scheduled";
+    case "portal_manual":
+      return "Run now (portal)";
+    case "mcp_manual":
+      return "Run now (ChatGPT)";
+    case "manual":
+      return "Run now";
+    default:
+      return trigger.replace(/_/g, " ");
+  }
+}
+
+/** True when Run now sends an email or other chargeable/external work. */
+export function automationRunNowNeedsConfirmation(automation: {
+  recipientEmail?: string | null;
+  configuration?: Record<string, unknown> | null;
+  actionType?: string | null;
+}): boolean {
+  if (automation.recipientEmail) return true;
+  if (automationRecipientEmailOf(automation.configuration ?? {})) return true;
+  return automation.actionType === "mcp_tool" || automation.actionType === "internal";
 }

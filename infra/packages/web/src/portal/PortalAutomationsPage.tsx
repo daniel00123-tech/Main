@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot } from "lucide-react";
 import type { AutomationDefinitionRecord, AutomationRunRecord } from "@infra/shared";
 import {
   automationRecipientEmailOf,
+  automationRunNowNeedsConfirmation,
   automationTemplateKeyOf,
   humanAutomationCustomerStatus,
   humanAutomationNextRun,
   humanAutomationRunCustomerStatus,
   humanAutomationRunCustomerSummary,
+  humanAutomationRunTrigger,
   humanAutomationSchedule,
   humanAutomationWhen,
   XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
@@ -71,6 +73,7 @@ export default function PortalAutomationsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const runInFlight = useRef(false);
   const isMobile = useIsMobile();
 
   const [templateKey, setTemplateKey] = useState<string>(XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE);
@@ -218,17 +221,49 @@ export default function PortalAutomationsPage() {
     }
   }
 
+  async function handleRunNow(automation: PortalAutomation) {
+    if (!company || runInFlight.current) return;
+    if (automationRunNowNeedsConfirmation(automation)) {
+      const confirmed = window.confirm(
+        `Run '${automation.name}' now? This sends the report email and may use billable usage. The saved schedule and enabled/paused state will not change.`,
+      );
+      if (!confirmed) return;
+    }
+    runInFlight.current = true;
+    setBusy(`run-${automation.id}`);
+    try {
+      const idempotencyKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? `portal|${automation.id}|${crypto.randomUUID()}`
+          : `portal|${automation.id}|${Date.now()}`;
+      const result = await api.runCompanyAutomation(company.slug, automation.id, {
+        idempotencyKey,
+      });
+      const label = humanAutomationRunCustomerStatus(result.status);
+      toast(
+        result.scheduleChanged === false
+          ? `${label}. Run ID ${result.runId}. Schedule unchanged.`
+          : `${label}. Run ID ${result.runId}`,
+      );
+      await loadAutomations();
+      setSelectedId(automation.id);
+      await loadRuns(automation.id);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Run now failed", "error");
+    } finally {
+      runInFlight.current = false;
+      setBusy(null);
+    }
+  }
+
   async function handleAction(
-    action: "run" | "pause" | "activate" | "disable" | "archive",
+    action: "pause" | "activate" | "disable" | "archive",
     automationId: string,
   ) {
     if (!company) return;
     setBusy(`${action}-${automationId}`);
     try {
-      if (action === "run") {
-        const result = await api.runCompanyAutomation(company.slug, automationId);
-        toast(result.run.status === "queued" ? "Run started" : "Run started");
-      } else if (action === "pause") {
+      if (action === "pause") {
         await api.pauseCompanyAutomation(company.slug, automationId);
         toast("Automation paused");
       } else if (action === "activate") {
@@ -314,10 +349,12 @@ export default function PortalAutomationsPage() {
                     <>
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="secondary"
                         size="sm"
+                        title="Run now"
+                        aria-label="Run now"
                         disabled={busy !== null || automation.status === "disabled"}
-                        onClick={() => void handleAction("run", automation.id)}
+                        onClick={() => void handleRunNow(automation)}
                       >
                         Run now
                       </Button>
@@ -330,6 +367,16 @@ export default function PortalAutomationsPage() {
                           onClick={() => void handleAction("pause", automation.id)}
                         >
                           Pause
+                        </Button>
+                      ) : automation.status !== "disabled" ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy !== null}
+                          onClick={() => void handleAction("activate", automation.id)}
+                        >
+                          Resume
                         </Button>
                       ) : null}
                     </>
@@ -385,8 +432,10 @@ export default function PortalAutomationsPage() {
                             <Button
                               size="sm"
                               variant="secondary"
+                              title="Run now"
+                              aria-label="Run now"
                               disabled={busy !== null || automation.status === "disabled"}
-                              onClick={() => void handleAction("run", automation.id)}
+                              onClick={() => void handleRunNow(automation)}
                             >
                               Run now
                             </Button>
@@ -475,8 +524,10 @@ export default function PortalAutomationsPage() {
             {canManage ? (
               <div className="drawer-actions">
                 <Button
+                  title="Run now"
+                  aria-label="Run now"
                   disabled={busy !== null || selected.status === "disabled"}
-                  onClick={() => void handleAction("run", selected.id)}
+                  onClick={() => void handleRunNow(selected)}
                 >
                   Run now
                 </Button>
@@ -526,6 +577,11 @@ export default function PortalAutomationsPage() {
                       <strong>{humanAutomationWhen(run.createdAt, selected.timezone)}</strong>
                       {" · "}
                       {humanAutomationRunCustomerStatus(run.status)}
+                      {" · "}
+                      {humanAutomationRunTrigger(run.triggerType)}
+                      <div className="muted">
+                        Run ID {run.id}
+                      </div>
                       <div className="muted">
                         {humanAutomationRunCustomerSummary({
                           status: run.status,
