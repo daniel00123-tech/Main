@@ -39,7 +39,7 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # MICROSOFT_CLIENT_ID (INFRA Microsoft 365 Connector app)
 # MICROSOFT_CLIENT_SECRET (app secret — never commit)
 # CADDINGTON_ADMIN_TOKEN (matches caddington-mcp Worker secret for /admin/knowledge/* bridge)
-# AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT (Azure AI Document Intelligence resource endpoint)
+# AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT (https://infra-document-intelligence-prod.cognitiveservices.azure.com)
 # AZURE_DOCUMENT_INTELLIGENCE_KEY (Azure AI Document Intelligence key — never commit)
 # AZURE_OCR_MAX_PAGES (optional, default 50)
 # AZURE_OCR_MAX_BYTES (optional, default 20971520)

@@ -17,6 +17,8 @@ export const OCR_API_VERSION = "2024-11-30" as const;
 export const DEFAULT_MAX_OCR_PAGES_PER_DOCUMENT = 50;
 export const DEFAULT_MAX_OCR_BYTES = 20 * 1024 * 1024;
 export const DEFAULT_MAX_OCR_PROVIDER_ATTEMPTS = 3;
+/** Azure Document Intelligence Read S0 list price, USD per page. Operator metering only. */
+export const AZURE_READ_USD_PER_PAGE = 0.0015;
 
 export const OCR_SUPPORTED_MIME_TYPES = [
   "application/pdf",
@@ -90,9 +92,13 @@ export function presentCustomerOcrStatus(status: OcrStatus | string | null | und
 export function presentOperatorOcrStatus(status: OcrStatus | string | null | undefined): string {
   switch (status) {
     case "not_required":
+    case "native_text_success":
       return "OCR not required";
     case "requires_ocr":
+    case "low_text_warning":
       return "Requires OCR";
+    case "unsupported":
+      return "Document type not supported";
     case "ocr_pending":
       return "OCR pending";
     case "ocr_processing":

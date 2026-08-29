@@ -64,6 +64,8 @@ export interface Env {
   /** Azure AI Document Intelligence — OCR fallback for requires_ocr documents */
   AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT?: string;
   AZURE_DOCUMENT_INTELLIGENCE_KEY?: string;
+  /** Optional OCR quality threshold (default 40 substantive characters). */
+  AZURE_OCR_MIN_SUBSTANTIVE_CHARS?: string;
   AZURE_OCR_MAX_PAGES?: string;
   AZURE_OCR_MAX_BYTES?: string;
   /** Cloudflare Queue for Microsoft file ingestion (one file per message) */

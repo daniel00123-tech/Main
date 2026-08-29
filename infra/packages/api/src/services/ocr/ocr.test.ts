@@ -5,7 +5,8 @@ import {
 } from "@infra/shared";
 import { AzureDocumentIntelligenceOcrProvider, AzureOcrError } from "./azure-document-intelligence";
 import { applyOcrFallbackIfRequired } from "./knowledge-ocr";
-import { assessOcrTextQuality, estimatePdfPageCount, ocrDocument, sha256Hex } from "./service";
+import { assessOcrTextQuality, estimateAzureReadCostUsd, estimatePdfPageCount, ocrDocument, sha256Hex } from "./service";
+import { selectBackfillCandidates } from "./backfill";
 import type { OcrProvider } from "./types";
 
 type JobRow = Record<string, unknown>;
@@ -324,6 +325,59 @@ describe("OCR fallback orchestration", () => {
     expect(merged.itemKind).toBe("mail_attachment");
     expect(merged.sourceType).toBe("outlook_shared");
     expect(merged.ocrStatus).toBe("ocr_completed");
+  });
+});
+
+describe("OCR images and timeouts", () => {
+  it("invokes Azure for image/jpeg requires_ocr", async () => {
+    const { db } = memoryDb();
+    const provider = mockProvider();
+    const result = await ocrDocument(
+      db,
+      {
+        companyId: "co_caddington",
+        documentId: 80,
+        bytes: sampleBytes,
+        mimeType: "image/jpeg",
+      },
+      { provider },
+    );
+    expect(result.status).toBe("ocr_completed");
+    expect(provider.calls).toBe(1);
+  });
+
+  it("times out when Azure never reaches succeeded", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return new Response(null, {
+          status: 202,
+          headers: { "Operation-Location": "https://ocr.example/ops/hang" },
+        });
+      }
+      return Response.json({ status: "running" });
+    });
+    const provider = new AzureDocumentIntelligenceOcrProvider(
+      { endpoint: "https://ocr.example", key: "test-key", maxPolls: 1 },
+      fetchImpl as unknown as typeof fetch,
+    );
+    await expect(
+      provider.analyze({ bytes: sampleBytes, mimeType: "application/pdf", maxPages: 50 }),
+    ).rejects.toMatchObject({ category: "TIMEOUT" });
+  });
+
+  it("estimates Azure Read cost for operator metering only", () => {
+    expect(estimateAzureReadCostUsd(2)).toBe(0.003);
+    expect(estimateAzureReadCostUsd(0)).toBe(0);
+  });
+});
+
+describe("OCR backfill selection", () => {
+  it("skips completed jobs and keeps metadata-only candidates", () => {
+    const selected = selectBackfillCandidates([
+      { documentId: 1, title: "10818.pdf", status: "requires_ocr", mimeType: "application/pdf", source: "sharepoint", extractionQuality: "requires_ocr", ocrStatus: null, substantiveCharacterCount: 0 },
+      { documentId: 2, title: "ok.pdf", status: "indexed", mimeType: "application/pdf", source: "google_drive", extractionQuality: "good", ocrStatus: "ocr_completed", substantiveCharacterCount: 900 },
+    ]);
+    expect(selected.map((row) => row.documentId)).toEqual([1]);
   });
 });
 

@@ -145,8 +145,16 @@ export async function triggerGoogleDriveLiveSync(
       trigger: input?.trigger,
     }),
   });
+  let ocrBackfill: unknown = null;
+  try {
+    const { runOcrBackfill } = await import("./ocr/backfill");
+    ocrBackfill = await runOcrBackfill(env, { companyId: "co_caddington", limit: 2 });
+  } catch {
+    ocrBackfill = { skipped: true };
+  }
   return {
     httpStatus: sync.status,
     ...sync.body,
+    ocrBackfill,
   };
 }

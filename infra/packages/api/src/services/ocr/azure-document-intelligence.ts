@@ -104,7 +104,7 @@ export class AzureDocumentIntelligenceOcrProvider implements OcrProvider {
   readonly apiVersion = OCR_API_VERSION;
 
   constructor(
-    private readonly config: { endpoint: string; key: string },
+    private readonly config: { endpoint: string; key: string; maxPolls?: number },
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
@@ -171,7 +171,7 @@ export class AzureDocumentIntelligenceOcrProvider implements OcrProvider {
   }
 
   private async pollOperation(operationLocation: string): Promise<{ text: string; pageCount: number }> {
-    const maxPolls = 20;
+    const maxPolls = this.config.maxPolls ?? 20;
     for (let poll = 0; poll < maxPolls; poll++) {
       if (poll > 0) await sleep(Math.min(1500 * poll, 4000));
       const response = await this.fetchImpl(operationLocation, {
