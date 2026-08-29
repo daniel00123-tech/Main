@@ -32,6 +32,7 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # XERO_CLIENT_ID (Xero Web App client id; never put in D1)
 # XERO_CLIENT_SECRET (Xero Web App client secret; never put in D1)
 # XERO_OAUTH_REDIRECT_URI (canonical: https://api.infrastack.app/api/connectors/xero/oauth/callback)
+# Graph webhook URL is derived from INFRA_PUBLIC_API_URL — do not add MICROSOFT_GRAPH_NOTIFICATION_URL
 # INFRA_PUBLIC_MCP_URL (canonical MCP host — https://mcp.infrastack.app)
 # PORTAL_PUBLIC_ORIGIN (canonical portal — https://app.infrastack.app)
 # MICROSOFT_TENANT_ID (Microsoft Entra tenant ID — Caddington Holdings)
