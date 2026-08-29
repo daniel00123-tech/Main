@@ -1,12 +1,23 @@
 import { FormEvent, useId, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { SESSION_EXPIRED_STORAGE_KEY } from "../lib/session-policy";
+
+function readExpiredFlag(state: { sessionExpired?: boolean } | null): boolean {
+  if (state?.sessionExpired) return true;
+  try {
+    return sessionStorage.getItem(SESSION_EXPIRED_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 export default function PortalLoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const successMessage = (location.state as { message?: string } | null)?.message;
+  const sessionExpired = readExpiredFlag(location.state as { sessionExpired?: boolean } | null);
   const emailId = useId();
   const passwordId = useId();
   const errorId = useId();
@@ -43,7 +54,11 @@ export default function PortalLoginPage() {
         <h1>Sign in</h1>
         <p className="login-intro">Sign in to your company portal.</p>
 
-        {successMessage ? (
+        {sessionExpired ? (
+          <p className="info-banner" role="status">
+            Your session expired after 30 minutes of inactivity. Sign in again.
+          </p>
+        ) : successMessage ? (
           <p className="info-banner" role="status">
             {successMessage}
           </p>

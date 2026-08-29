@@ -1,8 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
   applyCompanySettingsConfigPatch,
+  normalizeLogoUrl,
   updateCompanySettings,
 } from "./company-settings";
+
+describe("normalizeLogoUrl", () => {
+  it("accepts https URLs and clears blanks", () => {
+    expect(normalizeLogoUrl("https://cdn.example.com/logo.png")).toBe(
+      "https://cdn.example.com/logo.png",
+    );
+    expect(normalizeLogoUrl("")).toBeNull();
+    expect(normalizeLogoUrl(null)).toBeNull();
+  });
+
+  it("rejects non-https URLs", () => {
+    expect(() => normalizeLogoUrl("http://cdn.example.com/logo.png")).toThrow("LOGO_URL_MUST_BE_HTTPS");
+    expect(() => normalizeLogoUrl("not-a-url")).toThrow("LOGO_URL_INVALID");
+  });
+});
 
 describe("applyCompanySettingsConfigPatch", () => {
   it("persists company-scoped Getting Started dismissal once", () => {
@@ -106,9 +122,18 @@ class SettingsD1 {
       const companyId = binds[binds.length - 1];
       const row = this.companies.find((item) => item.id === companyId);
       if (!row) return;
-      // last bind before company id is config_json
-      row.config_json = binds[binds.length - 2];
       row.updated_at = binds[0];
+      let bindIndex = 1;
+      if (q.includes("name = ?")) {
+        row.name = binds[bindIndex++];
+      }
+      if (q.includes("logo_url = ?")) {
+        row.logo_url = binds[bindIndex++];
+      }
+      if (q.includes("trading_name = ?")) {
+        row.trading_name = binds[bindIndex++];
+      }
+      row.config_json = binds[binds.length - 2];
     }
   }
 }
@@ -151,5 +176,29 @@ describe("updateCompanySettings getting started dismissal", () => {
     const beta = JSON.parse(String(db.companies[1]!.config_json)) as Record<string, unknown>;
     expect(alpha.gettingStartedDismissedAt).toBe(updated.gettingStartedDismissedAt);
     expect(beta.gettingStartedDismissedAt).toBeUndefined();
+  });
+
+  it("persists a tenant logo URL", async () => {
+    const db = new SettingsD1([
+      {
+        id: "co_a",
+        name: "Alpha",
+        config_json: "{}",
+        trading_name: null,
+        logo_url: null,
+        primary_contact_name: null,
+        primary_email: null,
+        billing_email: null,
+        telephone: null,
+        timezone: "Europe/London",
+        country: null,
+      },
+    ]);
+
+    const updated = await updateCompanySettings(db as unknown as D1Database, "co_a", {
+      logoUrl: "https://cdn.example.com/alpha.png",
+    });
+    expect(updated.logoUrl).toBe("https://cdn.example.com/alpha.png");
+    expect(db.companies[0]!.logo_url).toBe("https://cdn.example.com/alpha.png");
   });
 });

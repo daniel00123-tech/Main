@@ -5,6 +5,7 @@ export type CompanySettings = {
   companyId: string;
   name: string;
   tradingName: string | null;
+  logoUrl: string | null;
   primaryContactName: string | null;
   primaryEmail: string | null;
   billingEmail: string | null;
@@ -33,6 +34,7 @@ export type CompanySettings = {
 export type CompanySettingsPatch = {
   name?: string;
   tradingName?: string | null;
+  logoUrl?: string | null;
   primaryContactName?: string | null;
   primaryEmail?: string | null;
   billingEmail?: string | null;
@@ -46,6 +48,25 @@ export type CompanySettingsPatch = {
   /** Persist company-scoped Getting Started dismissal. `false` is ignored. */
   gettingStartedDismissed?: boolean;
 };
+
+export function normalizeLogoUrl(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || !value.trim()) return null;
+  const trimmed = value.trim();
+  if (trimmed.length > 2048) {
+    throw new Error("LOGO_URL_TOO_LONG");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error("LOGO_URL_INVALID");
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error("LOGO_URL_MUST_BE_HTTPS");
+  }
+  return trimmed;
+}
 
 function parseConfigJson(raw: unknown): Record<string, unknown> {
   if (!raw) return {};
@@ -87,7 +108,7 @@ export async function getCompanySettings(
 ): Promise<CompanySettings | null> {
   const row = await db
     .prepare(
-      `SELECT c.id, c.name, c.trading_name, c.primary_contact_name, c.primary_email,
+      `SELECT c.id, c.name, c.trading_name, c.logo_url, c.primary_contact_name, c.primary_email,
               c.billing_email, c.telephone, c.timezone, c.country, c.config_json,
               COALESCE(ccs.low_balance_threshold_cents, 500) AS low_balance_threshold_cents,
               COALESCE(ccs.auto_top_up_enabled, 0) AS auto_top_up_enabled,
@@ -123,6 +144,7 @@ export async function getCompanySettings(
     companyId: String(row.id),
     name: String(row.name),
     tradingName: row.trading_name ? String(row.trading_name) : null,
+    logoUrl: row.logo_url ? String(row.logo_url) : null,
     primaryContactName: row.primary_contact_name ? String(row.primary_contact_name) : null,
     primaryEmail: row.primary_email ? String(row.primary_email) : null,
     billingEmail: row.billing_email ? String(row.billing_email) : null,
@@ -177,6 +199,10 @@ export async function updateCompanySettings(
   if (patch.name != null) {
     sets.push("name = ?");
     binds.push(patch.name.trim());
+  }
+  if (patch.logoUrl !== undefined) {
+    sets.push("logo_url = ?");
+    binds.push(normalizeLogoUrl(patch.logoUrl) ?? null);
   }
   if (patch.tradingName !== undefined) {
     sets.push("trading_name = ?");

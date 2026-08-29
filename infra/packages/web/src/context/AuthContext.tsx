@@ -4,10 +4,16 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { api, configureApiAuth, type SessionUser } from "../api";
+import { api, configureApiAuth, markUserActivity, type SessionUser } from "../api";
+import {
+  SESSION_EXPIRED_STORAGE_KEY,
+  loginPathForLocation,
+  sessionPolicyFromUser,
+} from "../lib/session-policy";
 
 interface AuthContextValue {
   user: SessionUser | null;
@@ -19,9 +25,19 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function rememberExpiredSession() {
+  try {
+    sessionStorage.setItem(SESSION_EXPIRED_STORAGE_KEY, "1");
+  } catch {
+    /* private mode */
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const userRef = useRef<SessionUser | null>(null);
+  userRef.current = user;
 
   const refresh = useCallback(async () => {
     try {
@@ -34,24 +50,102 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const logout = useCallback(async () => {
+    try {
+      await api.logout();
+    } catch {
+      /* cookie may already be gone */
+    }
+    setUser(null);
+  }, []);
+
+  const expireSession = useCallback(async () => {
+    if (!userRef.current) return;
+    rememberExpiredSession();
+    await logout();
+  }, [logout]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   useEffect(() => {
     configureApiAuth({
-      isAuthenticated: () => user !== null,
+      isAuthenticated: () => userRef.current !== null,
       onUnauthorized: () => {
+        rememberExpiredSession();
         setUser(null);
       },
     });
     return () => configureApiAuth({ isAuthenticated: () => false, onUnauthorized: null });
-  }, [user]);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const policy = sessionPolicyFromUser(user.session);
+    const idleMs = policy.idleTimeoutSeconds * 1000;
+    let lastActivity = Date.now();
+
+    const mark = () => {
+      lastActivity = Date.now();
+      markUserActivity();
+    };
+
+    const events: Array<keyof WindowEventMap> = [
+      "pointerdown",
+      "keydown",
+      "scroll",
+      "touchstart",
+    ];
+    for (const event of events) {
+      window.addEventListener(event, mark, { passive: true });
+    }
+
+    const idleTimer = window.setInterval(() => {
+      if (Date.now() - lastActivity >= idleMs) {
+        void expireSession();
+      }
+    }, 15_000);
+
+    const heartbeat = window.setInterval(() => {
+      if (Date.now() - lastActivity >= 60_000) return;
+      void api.touchSession().catch(() => {
+        /* next request or idle timer will reconcile */
+      });
+    }, 60_000);
+
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastActivity >= idleMs) {
+        void expireSession();
+        return;
+      }
+      mark();
+      void api.getSession().then(setUser).catch(() => {
+        void expireSession();
+      });
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      for (const event of events) {
+        window.removeEventListener(event, mark);
+      }
+      window.clearInterval(idleTimer);
+      window.clearInterval(heartbeat);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [user, expireSession]);
 
   const login = useCallback(async (email: string, password: string) => {
     await api.login(email, password);
     try {
       const session = await api.getSession();
+      try {
+        sessionStorage.removeItem(SESSION_EXPIRED_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
       setUser(session);
     } catch {
       setUser(null);
@@ -59,11 +153,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         "Sign-in succeeded but the session cookie was not stored. Allow cookies for this site, or try a non-private window.",
       );
     }
-  }, []);
-
-  const logout = useCallback(async () => {
-    await api.logout();
-    setUser(null);
   }, []);
 
   const value = useMemo(
@@ -91,7 +180,19 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    let sessionExpired = false;
+    try {
+      sessionExpired = sessionStorage.getItem(SESSION_EXPIRED_STORAGE_KEY) === "1";
+    } catch {
+      sessionExpired = false;
+    }
+    return (
+      <Navigate
+        to={loginPathForLocation(location.pathname)}
+        replace
+        state={{ from: location.pathname, sessionExpired }}
+      />
+    );
   }
 
   return <>{children}</>;

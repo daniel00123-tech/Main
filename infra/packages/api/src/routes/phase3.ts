@@ -172,7 +172,7 @@ async function assertNotLastCompanyAdmin(
 phase3.post("/api/gateway/v1/execute", async (c) => {
   const token = readSessionCookie(c.req.header("Cookie") ?? null);
   const sessionUser = token
-    ? await verifySessionToken(token, c.env.SESSION_SECRET)
+    ? (await verifySessionToken(token, c.env.SESSION_SECRET))?.user ?? null
     : null;
 
   const actorResult = await resolveGatewayActor(c.env, c.req.raw, sessionUser);
@@ -246,7 +246,7 @@ phase3.post("/api/gateway/v1/execute", async (c) => {
 phase3.all("/api/gateway/v1/mcp", async (c) => {
   const token = readSessionCookie(c.req.header("Cookie") ?? null);
   const sessionUser = token
-    ? await verifySessionToken(token, c.env.SESSION_SECRET)
+    ? (await verifySessionToken(token, c.env.SESSION_SECRET))?.user ?? null
     : null;
   return handleInfraMcpHttp(c.env, c.req.raw, sessionUser);
 });

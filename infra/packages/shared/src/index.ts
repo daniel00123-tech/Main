@@ -17,6 +17,7 @@ export * from "./connectors/google-drive-scope";
 export * from "./connectors/onboarding";
 export * from "./connectors/customer-health";
 export * from "./portal/activity";
+export * from "./portal/brand";
 export * from "./portal/dashboard";
 export * from "./portal/automation-present";
 export * from "./portal/usage-present";

@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, CheckCircle2, Info, Search, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2, Info, Search, X } from "lucide-react";
 import {
   formatMoney,
   formatRelativeTime,
@@ -581,20 +581,24 @@ export function Drawer({
   title,
   children,
   footer,
+  showBack = true,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  showBack?: boolean;
 }) {
   const titleId = useId();
+  const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
+    closeRef.current?.focus();
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
@@ -603,10 +607,27 @@ export function Drawer({
     <>
       <div className="drawer-backdrop" onClick={onClose} role="presentation" />
       <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+        <div className="drawer-header">
+          {showBack ? (
+            <button
+              type="button"
+              className="button button-ghost button-small drawer-nav-btn"
+              onClick={onClose}
+              aria-label="Back"
+            >
+              <ArrowLeft size={18} />
+              <span className="drawer-back-label">Back</span>
+            </button>
+          ) : null}
           <h2 id={titleId}>{title}</h2>
-          <button type="button" className="button button-ghost button-small" onClick={onClose} aria-label="Close">
-            <X size={16} />
+          <button
+            ref={closeRef}
+            type="button"
+            className="button button-ghost button-small drawer-nav-btn"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <X size={18} />
           </button>
         </div>
         {children}
