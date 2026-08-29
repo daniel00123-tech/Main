@@ -74,3 +74,8 @@ Do not recreate. Artefacts already exist:
 ## V2 is out of scope
 
 Do not open send / void / allocate / credit-invoice gates as part of V1.
+
+## Deployment (this close-out)
+
+- `infra-api` version `858b3e2d-f6b9-45b9-b387-2d3a7d30ab12`
+- `caddington-mcp` version `726c6188-cafd-48ae-a830-adba9b244342` (single-page OCR threshold only)
