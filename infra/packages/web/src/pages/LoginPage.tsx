@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { InfraBrand } from "../components/InfraBrand";
 
 export default function LoginPage() {
   const { user, login } = useAuth();
@@ -33,16 +34,10 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="brand-block" style={{ padding: 0 }}>
-          <div className="brand-mark">IN</div>
-          <div className="brand-text">
-            <span className="brand-name">INFRA</span>
-            <span className="brand-context">Admin Control Panel</span>
-          </div>
-        </div>
+        <InfraBrand showStack context="Admin" size={36} />
         <h1>Sign in</h1>
         <p className="muted">
-          Access the INFRA Admin Control Panel to manage companies, integrations, and access.
+          Access the Infra admin control panel to manage companies, integrations, and access.
         </p>
         {successMessage ? <p className="info-banner">{successMessage}</p> : null}
         <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>

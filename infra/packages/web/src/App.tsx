@@ -31,6 +31,7 @@ import {
   useMediaQuery,
   useSidebarCollapsed,
 } from "./components";
+import { InfraBrand } from "./components/InfraBrand";
 import AiClientsPage from "./pages/AiClientsPage";
 import AuditLogPage from "./pages/AuditLogPage";
 import BillingPage from "./pages/BillingPage";
@@ -145,23 +146,19 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         <Button type="button" variant="ghost" size="sm" aria-label="Open navigation" onClick={() => setMobileOpen(true)}>
           <Menu size={18} />
         </Button>
-        <strong style={{ letterSpacing: "0.08em" }}>INFRA</strong>
+        <InfraBrand context="Admin" size={28} />
         <span className="muted small" style={{ marginLeft: "auto" }}>
-          Admin Control Panel
+          Control panel
         </span>
       </div>
 
       <aside className="sidebar" aria-label="Platform navigation">
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden>
-            IN
-          </div>
           {showLabels ? (
-            <div className="brand-text">
-              <span className="brand-name">INFRA</span>
-              <span className="brand-context">Admin Control Panel</span>
-            </div>
-          ) : null}
+            <InfraBrand context="Admin" />
+          ) : (
+            <InfraBrand compact />
+          )}
           {!isMobile ? (
             <button
               type="button"
