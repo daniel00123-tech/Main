@@ -38,6 +38,7 @@ export async function createCompanyInvitation(
     teamId?: string | null;
     customRoleId?: string | null;
     origin: string;
+    mobile?: string | null;
   },
 ) {
   const existingInvite = await findActiveInvitation(env.DB, input.companyId, input.email);
@@ -56,6 +57,7 @@ export async function createCompanyInvitation(
     displayName: input.displayName,
     companyId: input.companyId,
     role: input.role,
+    mobile: input.mobile,
   });
 
   const inviteId = newId("inv");

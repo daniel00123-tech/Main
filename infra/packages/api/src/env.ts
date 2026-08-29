@@ -68,6 +68,8 @@ export interface Env {
   AZURE_OCR_MIN_SUBSTANTIVE_CHARS?: string;
   AZURE_OCR_MAX_PAGES?: string;
   AZURE_OCR_MAX_BYTES?: string;
+  /** Quality auditor sample rate 0–1. Default 1. Does not block user responses. */
+  QUALITY_AUDIT_SAMPLE_RATE?: string;
   /** Cloudflare Queue for Microsoft file ingestion (one file per message) */
   MICROSOFT_KNOWLEDGE_QUEUE?: Queue<import("./services/microsoft-queue").MicrosoftFileJobMessage>;
   /** Cloudflare Queue for automation run execution */

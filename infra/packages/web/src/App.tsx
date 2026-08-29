@@ -12,6 +12,9 @@ import {
   Menu,
   Network,
   Plug,
+  CircleAlert,
+  MessageSquare,
+  PoundSterling,
   Receipt,
   Settings,
   Shield,
@@ -51,6 +54,11 @@ import SettingsPage from "./pages/SettingsPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
 import UsagePage from "./pages/UsagePage";
 import UsersPermissionsPage from "./pages/UsersPermissionsPage";
+import EconomicsPage from "./pages/EconomicsPage";
+import EconomicsDetailPage from "./pages/EconomicsDetailPage";
+import InteractionsPage from "./pages/InteractionsPage";
+import QualityIssuesPage from "./pages/QualityIssuesPage";
+import PlatformOverheadsPage from "./pages/PlatformOverheadsPage";
 import PortalShell from "./portal/PortalShell";
 import PortalEntryRedirect from "./portal/PortalEntryRedirect";
 import PortalLoginPage from "./portal/PortalLoginPage";
@@ -106,9 +114,11 @@ const ADMIN_NAV: NavGroup[] = [
     label: "Commercial",
     items: [
       { to: "/usage", label: "Usage", icon: <ChartColumn size={18} /> },
+      { to: "/economics", label: "Economics", icon: <PoundSterling size={18} /> },
       { to: "/billing", label: "Billing", icon: <Wallet size={18} /> },
       { to: "/commercial/provider-costs", label: "Provider Costs", icon: <Receipt size={18} /> },
       { to: "/commercial/pricing-rules", label: "Pricing Rules", icon: <Tags size={18} /> },
+      { to: "/commercial/overheads", label: "Overheads", icon: <Receipt size={18} /> },
     ],
   },
   {
@@ -116,6 +126,8 @@ const ADMIN_NAV: NavGroup[] = [
     items: [
       { to: "/system-health", label: "System Health", icon: <Activity size={18} /> },
       { to: "/failed-requests", label: "Failed Requests", icon: <Activity size={18} /> },
+      { to: "/interactions", label: "Interactions", icon: <MessageSquare size={18} /> },
+      { to: "/quality", label: "Quality", icon: <CircleAlert size={18} /> },
       { to: "/audit-log", label: "Audit Log", icon: <Shield size={18} /> },
       { to: "/settings", label: "Settings", icon: <Settings size={18} /> },
     ],
@@ -331,7 +343,12 @@ export default function App() {
                 <Route path="/ai-clients" element={<AiClientsPage />} />
                 <Route path="/users" element={<UsersPermissionsPage />} />
                 <Route path="/usage" element={<UsagePage />} />
+                <Route path="/economics" element={<EconomicsPage />} />
+                <Route path="/economics/:companyId" element={<EconomicsDetailPage />} />
+                <Route path="/interactions" element={<InteractionsPage />} />
+                <Route path="/quality" element={<QualityIssuesPage />} />
                 <Route path="/billing" element={<BillingPage />} />
+                <Route path="/commercial/overheads" element={<PlatformOverheadsPage />} />
                 <Route path="/commercial/provider-costs" element={<ProviderCostsPage />} />
                 <Route path="/commercial/pricing-rules" element={<PricingRulesPage />} />
                 <Route path="/system-health" element={<SystemHealthPage />} />

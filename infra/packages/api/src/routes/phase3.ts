@@ -207,6 +207,7 @@ phase3.post("/api/gateway/v1/execute", async (c) => {
   const result = await executeGatewayRequest(c.env, {
     actor: actorResult,
     companyId,
+    waitUntil: (promise) => c.executionCtx.waitUntil(promise),
     toolName: body.toolName,
     arguments: body.arguments,
     mcpEnvironmentId: body.mcpEnvironmentId,
@@ -248,7 +249,9 @@ phase3.all("/api/gateway/v1/mcp", async (c) => {
   const sessionUser = token
     ? await verifySessionToken(token, c.env.SESSION_SECRET)
     : null;
-  return handleInfraMcpHttp(c.env, c.req.raw, sessionUser);
+  return handleInfraMcpHttp(c.env, c.req.raw, sessionUser, (promise) =>
+    c.executionCtx.waitUntil(promise),
+  );
 });
 
 phase3.get("/api/gateway/v1/health", (c) =>
@@ -796,6 +799,7 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
     role?: CompanyRole;
     teamId?: string;
     customRoleId?: string;
+    mobile?: string;
   }>();
 
   if (!body.email || !body.displayName || !body.role) {
@@ -817,6 +821,7 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
         teamId: body.teamId,
         customRoleId: body.customRoleId,
         origin,
+        mobile: body.mobile,
       }),
     );
 
@@ -862,6 +867,12 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
         },
         409,
       );
+    }
+    if (err instanceof Error && (err as Error & { code?: string }).code === "INVALID_MOBILE") {
+      return c.json({ error: err.message, code: "INVALID_MOBILE" }, 400);
+    }
+    if (err instanceof Error && (err as Error & { code?: string }).code === "MOBILE_COLLISION") {
+      return c.json({ error: err.message, code: "MOBILE_COLLISION" }, 409);
     }
     throw err;
   }

@@ -345,13 +345,14 @@ export async function provisionCompany(
     const email = input.adminEmail.trim().toLowerCase();
     let user = await getUserByEmail(db, email);
     if (!user) {
-      // Temporary random password — admin completes setup via invite token
       const temp = `Tmp_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}!`;
       user = await createUser(db, {
         email,
         displayName: input.adminDisplayName?.trim() || tradingName,
         password: temp,
         isPlatformAdmin: false,
+        mobile: input.adminMobile,
+        requireMobile: true,
       });
     }
     const existingMembership = await db

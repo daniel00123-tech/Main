@@ -34,6 +34,7 @@ export default function UsersPermissionsPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteCompany, setInviteCompany] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteMobile, setInviteMobile] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<CompanyRole>("office_staff");
   const [inviting, setInviting] = useState(false);
@@ -101,8 +102,8 @@ export default function UsersPermissionsPage() {
   }
 
   async function submitInvite() {
-    if (!inviteCompany || !inviteEmail.trim() || !inviteName.trim()) {
-      toast("Company, email, and display name are required", "error");
+    if (!inviteCompany || !inviteEmail.trim() || !inviteName.trim() || !inviteMobile.trim()) {
+      toast("Company, email, display name, and mobile number are required", "error");
       return;
     }
     setInviting(true);
@@ -111,10 +112,12 @@ export default function UsersPermissionsPage() {
         email: inviteEmail.trim(),
         displayName: inviteName.trim(),
         role: inviteRole,
+        mobile: inviteMobile.trim(),
       });
       toast(`Invitation sent to ${inviteEmail.trim()}`);
       setInviteOpen(false);
       setInviteEmail("");
+      setInviteMobile("");
       setInviteName("");
       await load();
     } catch (err) {
@@ -290,6 +293,16 @@ export default function UsersPermissionsPage() {
             <input value={inviteName} onChange={(e) => setInviteName(e.target.value)} required />
           </label>
           <label>
+            Mobile number
+            <input
+              value={inviteMobile}
+              onChange={(e) => setInviteMobile(e.target.value)}
+              placeholder="+447700900123"
+              required
+            />
+            <span className="muted small">International E.164 format, for example +447700900123</span>
+          </label>
+          <label>
             Role
             <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as CompanyRole)}>
               {roles.map((role) => (
@@ -322,6 +335,14 @@ export default function UsersPermissionsPage() {
             <div className="drawer-row">
               <dt>Last active</dt>
               <dd>{selected.lastLoginAt ? formatDate(selected.lastLoginAt) : "—"}</dd>
+            </div>
+            <div className="drawer-row">
+              <dt>Mobile</dt>
+              <dd>
+                {selected.mobileE164 ?? "Not set"}
+                {selected.mobileVerificationRequired ? " · verification required" : ""}
+                {selected.mobileVerified ? " · verified" : ""}
+              </dd>
             </div>
             <h3 style={{ marginTop: 20, fontSize: "var(--text-md)" }}>Memberships</h3>
             {selected.memberships.length === 0 ? (
