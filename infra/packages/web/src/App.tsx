@@ -47,6 +47,7 @@ import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import PasswordSetupPage from "./pages/PasswordSetupPage";
+import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import McpEnvironmentsPage from "./pages/McpEnvironmentsPage";
 import PricingRulesPage from "./pages/PricingRulesPage";
 import ProviderCostsPage from "./pages/ProviderCostsPage";
@@ -340,6 +341,7 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/setup-password" element={<PasswordSetupPage />} />
       <Route path="/portal/login" element={<PortalLoginPage />} />
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
 
       <Route element={<PortalAuthShell />}>
         <Route path="/portal" element={<PortalEntryRedirect />} />

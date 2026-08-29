@@ -95,6 +95,9 @@ export default function PortalLoginPage() {
             {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
+        <p className="muted small legal-footer-link">
+          <Link to="/privacy">Privacy Policy</Link>
+        </p>
       </div>
     </div>
   );
