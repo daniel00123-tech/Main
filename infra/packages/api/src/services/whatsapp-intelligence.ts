@@ -3,16 +3,20 @@ import type { Env } from "../env";
 import { executeGatewayRequest } from "./gateway";
 import {
   GATEWAY_TOOL_ALIASES,
+  SYSTEM_META_TOOLS,
   buildConversationState,
+  executeSystemMetaTool,
   permittedToolsForConnectors,
   runIntelligenceTurn,
   type IntelligenceCompleter,
   type IntelligenceDocumentRef,
   type IntelligenceRuntime,
+  type IntelligenceScope,
   type IntelligenceToolCall,
   type IntelligenceToolResult,
   type IntelligenceTurnResult,
 } from "./intelligence/index";
+import { recordUsageEvent } from "./usage";
 import { collectQualityFlags } from "./intelligence/quality.js";
 import {
   COMPANY_KNOWLEDGE_READ_TOOL,
@@ -128,6 +132,15 @@ export async function executeWhatsAppIntelligence(
     lastToolName: input.memory.lastTool,
     lastToolSummary: input.memory.lastAnswerText ? input.memory.lastAnswerText.slice(0, 240) : null,
     userCorrection,
+    recentDocuments: (input.memory.recentDocuments ?? [])
+      .map((doc) => documentRefFromEntity(doc))
+      .filter((doc): doc is IntelligenceDocumentRef => Boolean(doc)),
+    currentScope: (input.memory.currentScope as IntelligenceScope | undefined) ?? null,
+    currentBusinessSystem: input.memory.currentBusinessSystem ?? null,
+    lastSuccessfulTool: input.memory.lastSuccessfulTool ?? input.memory.lastTool ?? null,
+    lastAnswerTopic: input.memory.lastAnswerTopic ?? null,
+    lastUserIntent: input.memory.lastUserIntent ?? null,
+    lastAnswerText: input.memory.lastAnswerText ?? null,
   });
   let result = await runIntelligenceTurn({
     env,
@@ -157,7 +170,16 @@ export async function executeWhatsAppIntelligence(
     qualityFlags: collectQualityFlags({
       result,
       userCorrection,
-      expectedStayOnDocument: Boolean(input.memory.lastDocument && !/\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file))\b/i.test(originalText)),
+      expectedStayOnDocument:
+        result.scope === "CURRENT_DOCUMENT" &&
+        Boolean(input.memory.lastDocument) &&
+        !/\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file)|whole system|all documents)\b/i.test(
+          originalText,
+        ),
+      scope: result.scope,
+      connectors,
+      scopeSwitch: Boolean(result.scope && result.scope !== "CURRENT_DOCUMENT" && input.memory.lastDocument),
+      rephrase: result.lastUserIntent === "rephrase",
       previousAnswer: input.memory.lastAnswerText,
     }),
   };
@@ -282,6 +304,37 @@ export function planFromIntelligence(
   const discovered =
     result.toolCalls.some((call) => call.name === "search_company_knowledge") &&
     result.toolCalls.some((call) => call.name === "get_knowledge_document" || call.name === "fetch");
+  const usedSystemMeta = result.toolCalls.some((call) => SYSTEM_META_TOOLS.has(call.name));
+  if (usedSystemMeta || result.scope === "SYSTEM_META" || result.scope === "CONNECTOR_CAPABILITY") {
+    return {
+      action: result.scope === "CONNECTOR_CAPABILITY" ? "capabilities" : "system_meta",
+      intent: result.lastUserIntent || (result.scope === "CONNECTOR_CAPABILITY" ? "capabilities" : "system_meta"),
+      tool: result.toolCalls[0]?.name ?? null,
+      query: text,
+      fetch: false,
+      skipTools: false,
+      useMemory: true,
+      needsGuidance: false,
+      clarification: null,
+      fact: null,
+      draftKind: null,
+    };
+  }
+  if (result.scope === "GENERAL_CONVERSATION" && result.toolCalls.length === 0) {
+    return {
+      action: "chat",
+      intent: result.lastUserIntent || "conversation",
+      tool: null,
+      query: text,
+      fetch: false,
+      skipTools: true,
+      useMemory: true,
+      needsGuidance: false,
+      clarification: null,
+      fact: result.lastUserIntent === "rephrase" ? "explain" : null,
+      draftKind: null,
+    };
+  }
   if (usedXero) {
     return {
       action: "xero",
@@ -336,7 +389,7 @@ function polishIntelligenceReply(
   if (result.kind === "failed" && !text) {
     text = "I couldn't complete that just now. Try again in a moment.";
   }
-  if (result.confidence === "none" && result.currentDocument) {
+  if (result.confidence === "none" && result.currentDocument && result.scope === "CURRENT_DOCUMENT") {
     if (!text.includes(NONE_IN_DOCUMENT_REPLY)) {
       text = `${NONE_IN_DOCUMENT_REPLY} ${SEARCH_OTHER_DOCS_HINT}`;
     } else if (result.offerSearchOther && !/search other/i.test(text)) {
@@ -381,6 +434,18 @@ function mergeEntitiesFromIntelligence(
     lastSearchQuery: question,
     lastSourceUrl: lastDocument?.url ?? prior.lastSourceUrl,
     lastSourceSystem: lastDocument?.sourceSystem ?? prior.lastSourceSystem,
+    currentScope: result.scope ?? prior.currentScope ?? null,
+    currentBusinessSystem:
+      result.scope === "BUSINESS_SYSTEM"
+        ? result.lastAnswerTopic === "email"
+          ? "email"
+          : "xero"
+        : result.scope === "SYSTEM_META" || result.scope === "GENERAL_CONVERSATION"
+          ? prior.currentBusinessSystem ?? null
+          : prior.currentBusinessSystem ?? null,
+    lastSuccessfulTool: result.toolCalls.find((call) => call.ok)?.name ?? prior.lastSuccessfulTool ?? null,
+    lastAnswerTopic: result.lastAnswerTopic ?? prior.lastAnswerTopic ?? null,
+    lastUserIntent: result.lastUserIntent ?? prior.lastUserIntent ?? null,
   });
 }
 
@@ -399,7 +464,15 @@ async function recoverFailedIntelligenceTurn(
   const toolCalls = [...failed.toolCalls];
   let current = failed.currentDocument ?? documentRefFromEntity(input.memory.lastDocument);
   const evidenceDocumentIds = [...failed.evidenceDocumentIds];
-  if (/\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover)\b/i.test(input.originalText)) {
+  if (
+    failed.scope === "SYSTEM_META" ||
+    failed.scope === "CONNECTOR_CAPABILITY" ||
+    failed.scope === "GENERAL_CONVERSATION" ||
+    failed.scope === "AMBIGUOUS"
+  ) {
+    return failed;
+  }
+  if (/\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover)\b/i.test(input.originalText) || failed.scope === "BUSINESS_SYSTEM") {
     const xero = await runtime.executeTool({ name: "xero_sales_summary", arguments: {} });
     toolCalls.push(xero);
     return {
@@ -440,7 +513,11 @@ async function recoverFailedIntelligenceTurn(
       toolCalls.push(fetched);
       current = documentFromLoose(fetched.data) ?? first;
     }
-  } else if (current && !toolCalls.some((call) => call.name === "search_document")) {
+  } else if (
+    current &&
+    failed.scope === "CURRENT_DOCUMENT" &&
+    !toolCalls.some((call) => call.name === "search_document")
+  ) {
     const scoped = await runtime.executeTool({
       name: "search_document",
       arguments: { document_id: current.id, query: input.originalText },
@@ -535,6 +612,77 @@ function documentRefFromEntity(doc?: WhatsAppDocumentEntity | null): Intelligenc
   return { id: doc.id, title: doc.title, url: doc.url, source: doc.sourceSystem };
 }
 
+async function runSystemMetaTool(
+  env: Env,
+  input: {
+    companyId: string;
+    sessionUser: SessionUser;
+    interactionId: string;
+  },
+  call: IntelligenceToolCall,
+  started: number,
+): Promise<IntelligenceToolResult> {
+  const membership = input.sessionUser.memberships.find((row) => row.companyId === input.companyId);
+  try {
+    const data = await executeSystemMetaTool(env, {
+      name: call.name,
+      companyId: input.companyId,
+      actor: {
+        role: membership?.role ?? null,
+        isPlatformAdmin: Boolean(input.sessionUser.isPlatformAdmin),
+        canReadKnowledge: true,
+        canReadUsers: Boolean(input.sessionUser.isPlatformAdmin || membership?.role === "company_admin" || membership?.role === "director"),
+        canReadAutomations: true,
+      },
+      companyName: null,
+    });
+    await Promise.resolve(
+      recordUsageEvent(env.DB, {
+        companyId: input.companyId,
+        userId: input.sessionUser.userId,
+        actorEmail: input.sessionUser.email,
+        resourceType: "intelligence_system_meta",
+        resourceId: call.name,
+        toolName: call.name,
+        action: "intelligence.system_meta",
+        success: true,
+        durationMs: Date.now() - started,
+        sourceClient: "whatsapp",
+        requestId: `intel_meta_${input.interactionId}_${call.name}`,
+        interactionId: input.interactionId,
+        charge: {
+          billable: false,
+          customerChargeCents: null,
+          calculatedSellingCents: null,
+          minimumChargeApplied: false,
+          underlyingCostCents: 0,
+          underlyingCostMicros: 0,
+          estimatedCostMicros: 0,
+          costBasis: "unknown",
+          targetMarginBps: null,
+          actualMarginBps: null,
+          grossProfitCents: null,
+          pricingLabel: "intelligence_system_meta_cheap",
+          pricingRuleId: null,
+          rateCardId: null,
+          rateCardVersion: null,
+          isTestConfig: false,
+        },
+        metadata: { lane: "system_meta", cheap: true },
+      }),
+    ).catch(() => undefined);
+    return { name: call.name, ok: true, latencyMs: Date.now() - started, data };
+  } catch (error) {
+    return {
+      name: call.name,
+      ok: false,
+      latencyMs: Date.now() - started,
+      data: null,
+      error: error instanceof Error ? error.message : "system_meta_failed",
+    };
+  }
+}
+
 function createWhatsAppIntelligenceRuntime(
   env: Env,
   input: {
@@ -549,6 +697,9 @@ function createWhatsAppIntelligenceRuntime(
   return {
     async executeTool(call: IntelligenceToolCall): Promise<IntelligenceToolResult> {
       const started = Date.now();
+      if (SYSTEM_META_TOOLS.has(call.name)) {
+        return runSystemMetaTool(env, input, call, started);
+      }
       if (call.name === "search_document") {
         return runSearchDocument(env, input, call, started);
       }

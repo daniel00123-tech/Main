@@ -888,7 +888,12 @@ async function handleWhatsAppInboundMessageInner(
     };
   }
 
-  const fastLocal = !inboundResolved.buttonAction && (Boolean(matchFastPath(text)) || isInstantLocalTurn(text));
+  const fastLocal =
+    !inboundResolved.buttonAction &&
+    (Boolean(matchFastPath(text)) ||
+      isInstantLocalTurn(text) ||
+      intent === "help" ||
+      intent === "capabilities");
   if (fastLocal) {
     let capabilities: string | null = null;
     if (intent === "help" || intent === "capabilities") {
@@ -2314,6 +2319,12 @@ function buttonsForAnswer(input: {
   if (input.outcome === "tool_failed" || input.plan.action === "write_blocked") return [];
   if (/couldn’t find that/i.test(input.reply)) {
     return suggestionButtons({ kind: "no_result" });
+  }
+  if (input.plan.action === "system_meta") {
+    return suggestionButtons({ kind: "index_stats" });
+  }
+  if (input.plan.action === "capabilities") {
+    return suggestionButtons({ kind: "help", hasXero });
   }
   if (input.plan.action === "xero" && hasXero && !/permission/i.test(input.reply)) {
     return suggestionButtons({ kind: "finance", hasXero });

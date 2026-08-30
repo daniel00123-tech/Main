@@ -86,6 +86,59 @@ export function mockedToolRuntime(): IntelligenceRuntime {
       if (call.name === "outlook_search_mailbox") {
         return { name: call.name, ok: true, latencyMs: started, data: { messages: [{ subject: "Invoice scan" }] } };
       }
+      if (call.name === "get_document_index_stats") {
+        return {
+          name: call.name,
+          ok: true,
+          latencyMs: started,
+          data: {
+            totalIndexed: 12,
+            bySource: [
+              { source: "SharePoint", count: 7 },
+              { source: "Google Drive", count: 5 },
+            ],
+            byType: [{ type: "PDF", count: 8 }],
+            lastSyncAt: "2026-08-30T10:00:00Z",
+            permissionScope: "visible_to_you",
+          },
+        };
+      }
+      if (call.name === "get_connector_status") {
+        return { name: call.name, ok: true, latencyMs: started, data: { connected: ["Google Drive files", "SharePoint", "permitted Xero information"] } };
+      }
+      if (call.name === "get_user_capabilities") {
+        return {
+          name: call.name,
+          ok: true,
+          latencyMs: started,
+          data: {
+            canHelpWith: ["search documents you can access", "check permitted finance figures"],
+            connectedSystems: ["Google Drive files", "SharePoint", "permitted Xero information"],
+            permittedReads: ["search_company_knowledge", "xero_sales_summary"],
+          },
+        };
+      }
+      if (call.name === "get_company_system_summary") {
+        return {
+          name: call.name,
+          ok: true,
+          latencyMs: started,
+          data: {
+            company: "Eval Co",
+            indexed: { totalIndexed: 12, bySource: [{ source: "SharePoint", count: 7 }], byType: [], lastSyncAt: "2026-08-30T10:00:00Z" },
+            connectors: ["SharePoint", "permitted Xero information"],
+            automations: { active: ["Morning sales"], paused: [] },
+            users: { count: 3 },
+            lastSyncAt: "2026-08-30T10:00:00Z",
+          },
+        };
+      }
+      if (call.name === "get_active_automations") {
+        return { name: call.name, ok: true, latencyMs: started, data: { active: ["Morning sales"], paused: [] } };
+      }
+      if (call.name === "get_recent_sync_status") {
+        return { name: call.name, ok: true, latencyMs: started, data: { lastSyncAt: "2026-08-30T10:00:00Z", bySource: [{ source: "SharePoint", count: 7 }] } };
+      }
       return { name: call.name, ok: true, latencyMs: started, data: { ok: true } };
     },
   };
@@ -331,6 +384,17 @@ function matchesIntent(expect: EvalExpectation, result: IntelligenceTurnResult, 
       return result.toolCalls.some((call) => call.name.startsWith("xero_"));
     case "mailbox":
       return result.toolCalls.some((call) => call.name === "outlook_search_mailbox");
+    case "meta":
+      return result.toolCalls.some((call) =>
+        [
+          "get_document_index_stats",
+          "get_company_system_summary",
+          "get_recent_sync_status",
+          "get_active_automations",
+        ].includes(call.name),
+      );
+    case "capability":
+      return result.toolCalls.some((call) => call.name === "get_user_capabilities" || call.name === "get_connector_status");
     case "none":
       return result.kind === "fast_path" || result.kind === "answer" || result.kind === "clarify";
     default:

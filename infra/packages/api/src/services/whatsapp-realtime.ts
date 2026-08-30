@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { isCorpusInventoryAsk } from "./intelligence/scope.js";
 import { classifyWhatsAppIntent, focusSearchTerms, softenSearchQuery } from "./whatsapp-intent";
 import { sleepMs } from "./whatsapp-latency";
 import { isWhatsAppTerminalState } from "./whatsapp-lifecycle";
@@ -127,6 +128,7 @@ export function isGenericDocumentAsk(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
   if (isInstantLocalTurn(trimmed)) return false;
+  if (isCorpusInventoryAsk(trimmed)) return false;
   const mentionsDoc = /\b(document|documents|docs?|file|files|folder|sharepoint|onedrive|shared folder)\b/i.test(
     trimmed,
   );

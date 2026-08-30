@@ -21,7 +21,8 @@ export type WhatsAppPlanAction =
   | "draft"
   | "price"
   | "guidance"
-  | "write_blocked";
+  | "write_blocked"
+  | "system_meta";
 
 export type WhatsAppPlan = {
   action: WhatsAppPlanAction;

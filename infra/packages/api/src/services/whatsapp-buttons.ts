@@ -29,6 +29,9 @@ export const ACTION_TO_TEXT: Record<string, string> = {
   check_finance: "what were sales this month?",
   what_else: "what can you do?",
   capabilities: "what can you do?",
+  by_source: "where are most of them from?",
+  by_file_type: "how many of each file type?",
+  recent_files: "what were the most recent files?",
 };
 
 const WRITE_BUTTON = /\b(send invoice|approve|create quote|write|delete|void)\b/i;
@@ -93,6 +96,7 @@ export function suggestionButtons(input: {
     | "help"
     | "clarify_docs"
     | "company"
+    | "index_stats"
     | "none";
   variant?: "find" | "grounded" | "none";
   hasSourceUrl?: boolean;
@@ -155,6 +159,13 @@ export function suggestionButtons(input: {
       { id: "summarise", title: "Summarise" },
       { id: "draft_reply", title: "Draft reply" },
       { id: "find_related", title: "Find related" },
+    ];
+  }
+  if (input.kind === "index_stats") {
+    return [
+      { id: "by_source", title: "By source" },
+      { id: "by_file_type", title: "By file type" },
+      { id: "recent_files", title: "Recent files" },
     ];
   }
   if (input.kind === "help") {

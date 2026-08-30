@@ -1,5 +1,7 @@
-export { INTELLIGENCE_TOOLS, INTELLIGENCE_TOOL_NAMES, GATEWAY_TOOL_ALIASES, describeToolCatalogue, permittedToolsForConnectors } from "./catalogue.js";
+export { INTELLIGENCE_TOOLS, INTELLIGENCE_TOOL_NAMES, GATEWAY_TOOL_ALIASES, SYSTEM_META_TOOLS, describeToolCatalogue, permittedToolsForConnectors } from "./catalogue.js";
 export { matchFastPath, isFastPathTurn, matchOpenSourceFastPath } from "./fast-path.js";
+export { classifyScope, isCorpusInventoryAsk } from "./scope.js";
+export { verbaliseSystemMeta, isSystemMetaTool, executeSystemMetaTool } from "./system-meta.js";
 export {
   runIntelligenceTurn,
   parseIntelligenceDecision,
@@ -25,6 +27,7 @@ export {
   resolveModelRoute,
 } from "./models.js";
 export { evaluationCases } from "./eval/cases.js";
+export { scopeEvaluationCases } from "./eval/scope-cases.js";
 export { runEvaluationSuite, policyCompleter, v1FragileCompleter } from "./eval/harness.js";
 export { runOfflineBenchmarks, probeWorkersAiModels, selectWinningModel } from "./eval/benchmark.js";
 export type {
@@ -40,5 +43,6 @@ export type {
   IntelligenceTurnResult,
   IntelligenceQualityFlag,
   IntelligenceRoute,
+  IntelligenceScope,
 } from "./types.js";
 export type { IntelligenceCompleter } from "./provider.js";

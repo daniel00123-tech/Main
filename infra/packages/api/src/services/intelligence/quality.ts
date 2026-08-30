@@ -1,10 +1,16 @@
-import type { IntelligenceQualityFlag, IntelligenceTurnResult } from "./types.js";
+import type { IntelligenceQualityFlag, IntelligenceScope, IntelligenceTurnResult } from "./types.js";
+import { advertisedMissingConnector, inventedCount } from "./system-meta.js";
+import { SYSTEM_META_TOOLS } from "./catalogue.js";
 
 export function collectQualityFlags(input: {
   result: IntelligenceTurnResult;
   userCorrection?: boolean;
   expectedStayOnDocument?: boolean;
   previousAnswer?: string | null;
+  scope?: IntelligenceScope | null;
+  connectors?: string[];
+  scopeSwitch?: boolean;
+  rephrase?: boolean;
 }): IntelligenceQualityFlag[] {
   const flags = new Set<IntelligenceQualityFlag>(input.result.qualityFlags ?? []);
   if (input.userCorrection) flags.add("user_correction");
@@ -27,6 +33,35 @@ export function collectQualityFlags(input: {
     normalise(input.result.text) === normalise(input.previousAnswer)
   ) {
     flags.add("repeated_answer");
+  }
+
+  const tools = input.result.toolCalls.map((call) => call.name);
+  const scope = input.scope ?? input.result.scope;
+  if (scope === "SYSTEM_META" && tools.some((name) => name === "search_document")) {
+    flags.add("system_question_as_current_doc");
+  }
+  if (scope === "GENERAL_CONVERSATION" && tools.length > 0) {
+    flags.add("general_conversation_used_tool");
+  }
+  if (input.rephrase && tools.some((name) => name === "search_document" || name === "search_company_knowledge")) {
+    flags.add("unnecessary_search_after_rephrase");
+  }
+  if (scope === "AMBIGUOUS" && input.result.kind === "answer" && !input.result.clarification) {
+    flags.add("ambiguous_answered_without_clarify");
+  }
+  if (input.scopeSwitch && tools.includes("search_document")) {
+    flags.add("scope_switch_ignored");
+    flags.add("current_doc_retained_after_switch");
+  }
+  if (input.userCorrection && tools.includes("search_document") && scope !== "CURRENT_DOCUMENT") {
+    flags.add("correction_ignored");
+  }
+  if (advertisedMissingConnector(input.result.text, input.connectors ?? [])) {
+    flags.add("connector_hallucinated");
+  }
+  const meta = input.result.toolCalls.find((call) => SYSTEM_META_TOOLS.has(call.name));
+  if (meta?.data && inventedCount(input.result.text, meta.data)) {
+    flags.add("count_invented");
   }
   return [...flags];
 }

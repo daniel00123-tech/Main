@@ -110,10 +110,10 @@ function genericBusinessCompleter(): IntelligenceCompleter {
 }
 
 describe("intelligence fast path", () => {
-  it("handles greetings, thanks, and simple help locally", () => {
+  it("handles greetings and thanks locally, but not capability questions", () => {
     expect(matchFastPath("Hi")).toMatch(/Hi/i);
     expect(matchFastPath("thanks")).toMatch(/welcome/i);
-    expect(matchFastPath("what can you do")).toMatch(/document|invoice|policy/i);
+    expect(matchFastPath("what can you do")).toBeNull();
     expect(isFastPathTurn("find my CV from 2015")).toBe(false);
     expect(isFastPathTurn("what's our policy on returning damaged stock?")).toBe(false);
   });
