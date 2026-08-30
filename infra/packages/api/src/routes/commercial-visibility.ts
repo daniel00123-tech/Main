@@ -48,6 +48,11 @@ import {
   resolveWhatsAppIdentity,
 } from "../services/whatsapp-identity";
 import { inspectWhatsAppAssets, secretPresence } from "../services/whatsapp-assets";
+import {
+  inspectWhatsAppCloudRegistration,
+  registerWhatsAppCloudPhoneNumber,
+  resolveWhatsAppRegistrationPin,
+} from "../services/whatsapp-register";
 import { inspectWhatsAppMessageSubscription } from "../services/whatsapp-subscription";
 import {
   WHATSAPP_WEBHOOK_PATH,
@@ -230,6 +235,7 @@ routes.get("/api/platform/whatsapp/foundation", requireAuth, requirePlatformAdmi
   const assets = inspectWhatsAppAssets(c.env);
   const secrets = secretPresence(c.env);
   const subscription = await inspectWhatsAppMessageSubscription(c.env);
+  const registration = await inspectWhatsAppCloudRegistration(c.env);
   return c.json({
     ...config,
     productionChannel: whatsappOutboundAiEnabled(c.env) && assets.ok ? "ACTIVE" : "WEBHOOK_ONLY",
@@ -246,9 +252,73 @@ routes.get("/api/platform/whatsapp/foundation", requireAuth, requirePlatformAdmi
       WHATSAPP_WEBHOOK_VERIFY_TOKEN: secrets.verifyToken ? "present" : "missing",
       WHATSAPP_ACCESS_TOKEN: secrets.accessToken ? "present" : "missing",
       META_APP_SECRET: secrets.appSecret ? "present" : "missing",
+      WHATSAPP_REGISTRATION_PIN: secrets.registrationPin ? "present" : "missing",
     },
     subscription,
+    registration,
   });
+});
+
+function whatsappMetaProbeAuthorized(env: Env, request: { header(name: string): string | undefined }): boolean {
+  const key = String(env.WHATSAPP_META_PROBE_KEY ?? "").trim();
+  return key.length >= 24 && request.header("x-infra-whatsapp-probe") === key;
+}
+
+routes.get("/api/internal/whatsapp-meta-inspect", async (c) => {
+  if (!whatsappMetaProbeAuthorized(c.env, c.req)) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json(await inspectWhatsAppCloudRegistration(c.env));
+});
+
+routes.post("/api/internal/whatsapp-meta-register", async (c) => {
+  if (!whatsappMetaProbeAuthorized(c.env, c.req)) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  const pin = resolveWhatsAppRegistrationPin(c.env);
+  if (!pin.ok || !pin.pin) {
+    return c.json(
+      {
+        attempted: false,
+        success: false,
+        pinRequired: true,
+        userActionRequired: pin.userActionRequired,
+        inspect: await inspectWhatsAppCloudRegistration(c.env),
+      },
+      409,
+    );
+  }
+  const result = await registerWhatsAppCloudPhoneNumber(c.env, pin.pin);
+  return c.json(result, result.success ? 200 : 409);
+});
+
+routes.get("/api/platform/whatsapp/registration", requireAuth, requirePlatformAdmin, async (c) => {
+  return c.json(await inspectWhatsAppCloudRegistration(c.env));
+});
+
+routes.post("/api/platform/whatsapp/register", requireAuth, requirePlatformAdmin, async (c) => {
+  let supplied: string | undefined;
+  try {
+    const body = await c.req.json<{ pin?: string }>();
+    supplied = body.pin;
+  } catch {
+    supplied = undefined;
+  }
+  const pin = resolveWhatsAppRegistrationPin(c.env, supplied);
+  if (!pin.ok || !pin.pin) {
+    return c.json(
+      {
+        attempted: false,
+        success: false,
+        pinRequired: true,
+        userActionRequired: pin.userActionRequired,
+        inspect: await inspectWhatsAppCloudRegistration(c.env),
+      },
+      409,
+    );
+  }
+  const result = await registerWhatsAppCloudPhoneNumber(c.env, pin.pin);
+  return c.json(result, result.success ? 200 : 409);
 });
 
 routes.post("/api/platform/whatsapp/lookup", requireAuth, requirePlatformAdmin, async (c) => {
