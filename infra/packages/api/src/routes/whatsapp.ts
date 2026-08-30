@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { inboundSignatureRequired } from "../services/whatsapp-assets";
-import { tryWhatsAppFastLane } from "../services/whatsapp-fast-lane";
+import { tryWhatsAppEarlyVisible, tryWhatsAppFastLane } from "../services/whatsapp-fast-lane";
 import { stampWhatsAppLifecycle } from "../services/whatsapp-lifecycle";
 import {
   enqueueWhatsAppInbound,
@@ -74,6 +74,24 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
     return c.json({ error: "Invalid webhook signature" }, 403);
   }
 
+  const inbound = parseWhatsAppInboundMessages(safeParse(rawBody));
+  let fastLaneSent = 0;
+  let earlyVisibleSent = 0;
+  const visibleWamids: string[] = [];
+  for (const item of inbound) {
+    const lane = await tryWhatsAppFastLane(c.env, item).catch(() => null);
+    if (lane?.sent) {
+      fastLaneSent += 1;
+      visibleWamids.push(item.wamid);
+      continue;
+    }
+    const early = await tryWhatsAppEarlyVisible(c.env, item).catch(() => null);
+    if (early?.sent) {
+      earlyVisibleSent += 1;
+      visibleWamids.push(item.wamid);
+    }
+  }
+
   const stored = await persistWhatsAppInboundEvent(c.env, {
     rawBody: rawBody || "{}",
     signatureValid: signature.valid,
@@ -81,14 +99,14 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
     webhookStatus: 200,
   });
 
-  const inbound = parseWhatsAppInboundMessages(safeParse(rawBody));
-  let fastLaneSent = 0;
-  for (const item of inbound) {
-    const lane = await tryWhatsAppFastLane(c.env, item).catch(() => null);
-    if (lane?.sent) {
-      fastLaneSent += 1;
-      await stampWhatsAppLifecycle(c.env, item.wamid, { state: "reply_sent", terminal: "reply_sent" });
-    }
+  const nowVisible = new Date().toISOString();
+  for (const wamid of visibleWamids) {
+    await stampWhatsAppLifecycle(c.env, wamid, {
+      state: fastLaneSent > 0 ? "reply_sent" : "acknowledged",
+      terminal: fastLaneSent > 0 ? "reply_sent" : null,
+      firstVisibleAt: nowVisible,
+      replySentAt: fastLaneSent > 0 ? nowVisible : undefined,
+    }).catch(() => undefined);
   }
 
   const job: WhatsAppInboundMessage = {
@@ -102,22 +120,20 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
 
   const queued = stored.duplicate ? true : await enqueueWhatsAppInbound(c.env, job);
   if (!stored.duplicate) {
-    await enqueueWhatsAppInbound(c.env, {
-      kind: "whatsapp_watchdog",
-      eventId: stored.eventId,
-      receivedAt: job.receivedAt,
-      signatureValid: signature.valid,
-      wamid: inbound[0]?.wamid,
-      stage: "t10",
-    }).catch(() => false);
-    await enqueueWhatsAppInbound(c.env, {
-      kind: "whatsapp_watchdog",
-      eventId: stored.eventId,
-      receivedAt: job.receivedAt,
-      signatureValid: signature.valid,
-      wamid: inbound[0]?.wamid,
-      stage: "t30",
-    }).catch(() => false);
+    for (const stage of ["t5", "t10", "t30"] as const) {
+      await enqueueWhatsAppInbound(
+        c.env,
+        {
+          kind: "whatsapp_watchdog",
+          eventId: stored.eventId,
+          receivedAt: job.receivedAt,
+          signatureValid: signature.valid,
+          wamid: inbound[0]?.wamid,
+          stage,
+        },
+        { delaySeconds: stage === "t5" ? 5 : stage === "t10" ? 10 : 30 },
+      ).catch(() => false);
+    }
   }
 
   // Only run the full consumer on this isolate when the queue is unavailable.
@@ -149,6 +165,7 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
       persistError: stored.error,
       duplicate: stored.duplicate,
       fastLaneSent,
+      earlyVisibleSent,
       verifyConfigured: whatsappVerifyConfigured(c.env),
     },
     200,

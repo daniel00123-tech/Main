@@ -68,7 +68,7 @@ binding = "EL_BUSINESS_MCP"
 service = "el-business-mcp"
 
 [triggers]
-crons = ["0 */6 * * *", "*/15 * * * *"]
+crons = ["0 */6 * * *", "*/15 * * * *", "* * * * *"]
 
 # Microsoft knowledge ingestion queue (CMD15 — production bound).
 # Self-fetch job processor remains fallback when binding is unavailable.
@@ -109,12 +109,29 @@ queue = "whatsapp-inbound"
 [[queues.consumers]]
 queue = "whatsapp-inbound"
 max_batch_size = 1
+max_concurrency = 8
 max_retries = 5
 dead_letter_queue = "whatsapp-inbound-dlq"
 
 [[queues.consumers]]
 queue = "whatsapp-inbound-dlq"
 max_batch_size = 10
+
+# Independent WhatsApp watchdog — delayed messages, never sleeps in the inbound consumer.
+[[queues.producers]]
+binding = "WHATSAPP_WATCHDOG_QUEUE"
+queue = "whatsapp-watchdog"
+
+[[queues.consumers]]
+queue = "whatsapp-watchdog"
+max_batch_size = 1
+max_concurrency = 5
+max_retries = 3
+dead_letter_queue = "whatsapp-watchdog-dlq"
+
+[[queues.consumers]]
+queue = "whatsapp-watchdog-dlq"
+max_batch_size = 5
 
 # Workers AI — WhatsApp inbound voice-note transcription (Whisper).
 [ai]

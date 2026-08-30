@@ -406,6 +406,8 @@ export default function SystemHealthPage() {
             <DataCard title="DLQ / persist fail" metric={`${whatsappUx.metrics.dlqEvents ?? 0} / ${whatsappUx.metrics.persistFailures ?? 0}`} />
             <DataCard title="Failed outbound" metric={String(whatsappUx.metrics.failedOutbound)} />
             <DataCard title="Queue p50" metric={whatsappUx.metrics.queueLatencyP50Ms == null ? "—" : `${whatsappUx.metrics.queueLatencyP50Ms} ms`} />
+            <DataCard title="Queue oldest" metric={whatsappUx.metrics.queueOldestMs == null ? "—" : `${whatsappUx.metrics.queueOldestMs} ms`} />
+            <DataCard title="Live Meta inbound" metric={String(whatsappUx.metrics.liveMetaInbound ?? 0)} />
             <DataCard title="Typing / read" metric={`${whatsappUx.metrics.typingSuccessRate ?? "—"}% / ${whatsappUx.metrics.readStatusSuccessRate ?? "—"}%`} />
           </div>
         </SectionCard>

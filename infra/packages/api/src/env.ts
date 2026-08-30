@@ -95,6 +95,8 @@ export interface Env {
   AUTOMATION_RUN_QUEUE?: Queue<import("./services/automation-engine/queue").AutomationRunMessage>;
   /** Cloudflare Queue for inbound WhatsApp webhook processing */
   WHATSAPP_INBOUND_QUEUE?: Queue<import("./services/whatsapp-webhook").WhatsAppInboundMessage>;
+  /** Independent WhatsApp watchdog — delayed 5s/10s/30s, separate from the inbound consumer */
+  WHATSAPP_WATCHDOG_QUEUE?: Queue<import("./services/whatsapp-webhook").WhatsAppInboundMessage>;
   /** Meta WhatsApp Cloud API — webhook verify token (secret) */
   WHATSAPP_WEBHOOK_VERIFY_TOKEN?: string;
   /** WhatsApp Cloud API phone number ID */

@@ -1,14 +1,30 @@
 import type { Env } from "../env";
 import { recordAuditEvent } from "./control-plane";
+import { acknowledgementMessage } from "./whatsapp-conversation";
 import { resolveWhatsAppIdentity } from "./whatsapp-identity";
 import { stampWhatsAppLifecycle } from "./whatsapp-lifecycle";
 import { tryNormalizeE164 } from "./phone";
 import { outboundAiEnabled } from "./whatsapp-assets";
 import { instantLocalReply, isInstantLocalTurn } from "./whatsapp-realtime";
-import { sendWhatsAppText, type WhatsAppSendResult } from "./whatsapp-send";
+import {
+  sendWhatsAppReadStatus,
+  sendWhatsAppText,
+  sendWhatsAppTypingIndicator,
+  type WhatsAppSendResult,
+} from "./whatsapp-send";
 import type { WhatsAppParsedInbound } from "./whatsapp-webhook";
 
 export const FIRST_RESPONSE_FAILSAFE_COPY = "Got it 👍 I’m looking at that now.";
+export const WATCHDOG_STILL_WORKING_COPY = "Got it 👍 I’m still working on that.";
+
+async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    work.then((value) => value).catch(() => null),
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), ms);
+    }),
+  ]);
+}
 
 export function isWhatsAppFastLaneText(text: string): boolean {
   return isInstantLocalTurn(text);
@@ -40,7 +56,9 @@ export async function tryWhatsAppFastLane(
   }
   const parsed = tryNormalizeE164(item.from);
   const sender = parsed.ok ? parsed.e164 : null;
-  const identity = sender ? await resolveWhatsAppIdentity(env.DB, sender).catch(() => null) : null;
+  const identity = sender
+    ? await withTimeout(resolveWhatsAppIdentity(env.DB, sender), 400)
+    : null;
   if (!sender || !identity?.found) {
     return {
       attempted: true,
@@ -88,6 +106,10 @@ export async function tryWhatsAppFastLane(
     replySentAt: send.ok ? now : undefined,
     finalSentAt: send.ok ? now : undefined,
     finalSendOk: send.ok ? 1 : 0,
+    fastLane: send.ok ? 1 : 0,
+    outboundHttpStatus: send.httpStatus ?? null,
+    outboundMetaMessageId: send.ok ? send.messageId : null,
+    outboundAttempts: send.attempts,
     outboundError: send.ok ? null : send.error,
     lastError: send.ok ? null : send.error,
   });
@@ -146,4 +168,70 @@ export async function sendFirstResponseFailsafe(
     });
   }
   return { sent: send.ok, timedOut: true };
+}
+
+/** Recognised business turns: read/typing/ack on the webhook isolate before queue/MCP. */
+export async function tryWhatsAppEarlyVisible(
+  env: Env,
+  item: WhatsAppParsedInbound,
+): Promise<{ attempted: boolean; sent: boolean; identityFound: boolean }> {
+  const text = (item.text ?? "").trim();
+  if (!text || isWhatsAppFastLaneText(text)) {
+    return { attempted: false, sent: false, identityFound: false };
+  }
+  const parsed = tryNormalizeE164(item.from);
+  const sender = parsed.ok ? parsed.e164 : null;
+  const identity = sender
+    ? await withTimeout(resolveWhatsAppIdentity(env.DB, sender), 400)
+    : null;
+  if (!sender || !identity?.found) {
+    return { attempted: true, sent: false, identityFound: false };
+  }
+  const now = new Date().toISOString();
+  await stampWhatsAppLifecycle(env, item.wamid, {
+    state: "validated",
+    identityFound: 1,
+    userId: identity.user.id,
+    companyId: identity.memberships[0]?.companyId ?? null,
+    senderE164: sender,
+    inboundText: text.slice(0, 500),
+    identityResolvedAt: now,
+    validatedAt: now,
+  });
+  const read = await sendWhatsAppReadStatus(env, { messageId: item.wamid }).catch(() => ({
+    ok: false,
+    error: "read_failed",
+  }));
+  await sendWhatsAppTypingIndicator(env, { messageId: item.wamid }).catch(() => undefined);
+  if (!outboundAiEnabled(env)) {
+    return { attempted: true, sent: false, identityFound: true };
+  }
+  const reply = acknowledgementMessage(item.wamid + text);
+  const send = await sendWhatsAppText(env, {
+    toE164: sender,
+    body: reply,
+    inCustomerServiceWindow: true,
+  }).catch((err): WhatsAppSendResult => ({
+    ok: false,
+    kind: "customer_service_reply",
+    error: err instanceof Error ? err.message : "send_failed",
+    retryable: true,
+    attempts: 0,
+    httpStatus: null,
+    rawAccepted: false,
+  }));
+  if (send.ok) {
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      state: "acknowledged",
+      firstVisibleAt: now,
+      acknowledgementSentAt: now,
+      readStatusSentAt: now,
+      readStatusOk: read.ok ? 1 : 0,
+      ackSendOk: 1,
+      outboundHttpStatus: send.httpStatus ?? 200,
+      outboundMetaMessageId: send.messageId,
+      outboundAttempts: send.attempts,
+    });
+  }
+  return { attempted: true, sent: send.ok, identityFound: true };
 }

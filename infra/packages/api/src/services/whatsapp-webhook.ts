@@ -9,6 +9,8 @@ import { sweepStuckWhatsAppTurns } from "./whatsapp-reaper";
 export const WHATSAPP_WEBHOOK_PATH = "/api/webhooks/whatsapp";
 export const WHATSAPP_INBOUND_QUEUE = "whatsapp-inbound";
 export const WHATSAPP_INBOUND_DLQ = "whatsapp-inbound-dlq";
+export const WHATSAPP_WATCHDOG_QUEUE = "whatsapp-watchdog";
+export const WHATSAPP_WATCHDOG_DLQ = "whatsapp-watchdog-dlq";
 
 export type WhatsAppInboundMessage = {
   kind: "whatsapp_inbound" | "whatsapp_watchdog";
@@ -17,7 +19,7 @@ export type WhatsAppInboundMessage = {
   signatureValid: boolean;
   rawPayload?: string;
   wamid?: string;
-  stage?: "t10" | "t30";
+  stage?: "t5" | "t10" | "t30";
 };
 
 export function whatsappPhoneNumberId(env: Env): string {
@@ -51,6 +53,10 @@ export function whatsappOutboundAiEnabled(env: Env): boolean {
 
 export function hasWhatsAppInboundQueue(env: Env): boolean {
   return typeof env.WHATSAPP_INBOUND_QUEUE !== "undefined" && env.WHATSAPP_INBOUND_QUEUE !== null;
+}
+
+export function hasWhatsAppWatchdogQueue(env: Env): boolean {
+  return typeof env.WHATSAPP_WATCHDOG_QUEUE !== "undefined" && env.WHATSAPP_WATCHDOG_QUEUE !== null;
 }
 
 export function verifyWhatsAppHubChallenge(
@@ -276,9 +282,18 @@ export async function persistWhatsAppInboundEvent(
 export async function enqueueWhatsAppInbound(
   env: Env,
   message: WhatsAppInboundMessage,
+  options?: { delaySeconds?: number },
 ): Promise<boolean> {
-  if (!hasWhatsAppInboundQueue(env)) return false;
-  await env.WHATSAPP_INBOUND_QUEUE!.send(message);
+  const queue =
+    message.kind === "whatsapp_watchdog" && hasWhatsAppWatchdogQueue(env)
+      ? env.WHATSAPP_WATCHDOG_QUEUE
+      : env.WHATSAPP_INBOUND_QUEUE;
+  if (!queue) return false;
+  if (options?.delaySeconds && options.delaySeconds > 0) {
+    await queue.send(message, { delaySeconds: options.delaySeconds });
+  } else {
+    await queue.send(message);
+  }
   return true;
 }
 
@@ -289,7 +304,7 @@ export async function processWhatsAppInboundJob(
 ): Promise<void> {
   if (message.kind === "whatsapp_watchdog") {
     const { recoverStuckWhatsAppTurn, applyWhatsAppWatchdogStage } = await import("./whatsapp-reaper");
-    if (message.stage === "t10" || message.stage === "t30") {
+    if (message.stage === "t5" || message.stage === "t10" || message.stage === "t30") {
       await applyWhatsAppWatchdogStage(env, {
         eventId: message.eventId,
         wamid: message.wamid ?? null,
@@ -441,7 +456,10 @@ async function claimWhatsAppInboundEvent(
   }
 }
 
+let inboundTableReady = false;
+
 export async function ensureWhatsAppInboundTable(env: Env): Promise<void> {
+  if (inboundTableReady) return;
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS whatsapp_inbound_events (
        id TEXT PRIMARY KEY,
@@ -503,6 +521,7 @@ export async function ensureWhatsAppInboundTable(env: Env): Promise<void> {
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN outbound_http_status INTEGER",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN outbound_meta_message_id TEXT",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN outbound_attempts INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN watchdog_5s_at TEXT",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN watchdog_10s_at TEXT",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN watchdog_30s_at TEXT",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN dlq_at TEXT",
@@ -511,6 +530,7 @@ export async function ensureWhatsAppInboundTable(env: Env): Promise<void> {
   for (const sql of alters) {
     await env.DB.prepare(sql).run().catch(() => undefined);
   }
+  inboundTableReady = true;
 }
 
 function safeJson(raw: string | null | undefined): unknown {

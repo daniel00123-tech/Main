@@ -1,13 +1,11 @@
 import type { Env } from "../env";
 import { outboundAiEnabled } from "./whatsapp-assets";
+import { FIRST_RESPONSE_FAILSAFE_COPY, WATCHDOG_STILL_WORKING_COPY } from "./whatsapp-fast-lane";
 import { stampWhatsAppLifecycle } from "./whatsapp-lifecycle";
 import { STUCK_INCIDENT_MS } from "./whatsapp-latency";
-import { FIRST_RESPONSE_FAILSAFE_COPY } from "./whatsapp-fast-lane";
-import { FIRST_RESPONSE_FAILSAFE_COPY } from "./whatsapp-fast-lane";
 import { STUCK_RECOVERY_REPLY } from "./whatsapp-realtime";
 import { sendWhatsAppText } from "./whatsapp-send";
 import { ensureWhatsAppInboundTable } from "./whatsapp-webhook";
-import { outboundAiEnabled } from "./whatsapp-assets";
 
 const RECOVERY_COPY = STUCK_RECOVERY_REPLY;
 
@@ -130,15 +128,27 @@ export async function sweepStuckWhatsAppTurns(env: Env): Promise<{ scanned: numb
 
 export async function applyWhatsAppWatchdogStage(
   env: Env,
-  input: { eventId: string; wamid: string | null; stage: "t10" | "t30"; receivedAt: string },
+  input: { eventId: string; wamid: string | null; stage: "t5" | "t10" | "t30"; receivedAt: string },
 ): Promise<{ acted: boolean; reason: string }> {
-  const targetMs = input.stage === "t10" ? 10_000 : 30_000;
+  const targetMs = input.stage === "t5" ? 5_000 : input.stage === "t10" ? 10_000 : 30_000;
   const received = Date.parse(input.receivedAt);
   const age = Number.isFinite(received) ? Date.now() - received : targetMs;
-  if (age < targetMs) {
-    await new Promise((resolve) => {
-      setTimeout(resolve, targetMs - age);
-    });
+  if (age + 250 < targetMs) {
+    const delaySeconds = Math.max(1, Math.ceil((targetMs - age) / 1000));
+    const { enqueueWhatsAppInbound } = await import("./whatsapp-webhook");
+    await enqueueWhatsAppInbound(
+      env,
+      {
+        kind: "whatsapp_watchdog",
+        eventId: input.eventId,
+        receivedAt: input.receivedAt,
+        signatureValid: true,
+        wamid: input.wamid ?? undefined,
+        stage: input.stage,
+      },
+      { delaySeconds },
+    ).catch(() => false);
+    return { acted: false, reason: "requeued" };
   }
   const wamid = input.wamid;
   if (!wamid) return { acted: false, reason: "missing_wamid" };
@@ -147,13 +157,16 @@ export async function applyWhatsAppWatchdogStage(
     sender_e164: string | null;
     first_visible_at: string | null;
     reply_sent_at: string | null;
+    acknowledgement_sent_at?: string | null;
     terminal_state: string | null;
     identity_found: number;
+    inbound_text?: string | null;
     payload_json?: string | null;
   } | null = null;
   try {
     row = await env.DB.prepare(
-      `SELECT sender_e164, first_visible_at, reply_sent_at, terminal_state, identity_found, payload_json
+      `SELECT sender_e164, first_visible_at, reply_sent_at, acknowledgement_sent_at,
+              terminal_state, identity_found, inbound_text, payload_json
        FROM whatsapp_inbound_events WHERE wamid = ? OR id = ? LIMIT 1`,
     )
       .bind(wamid, input.eventId)
@@ -165,10 +178,13 @@ export async function applyWhatsAppWatchdogStage(
   if (row?.terminal_state && /reply_sent|clarification_sent|permission_denied|no_result|failed_notified/.test(row.terminal_state)) {
     return { acted: false, reason: "already_terminal" };
   }
-  const visible = Boolean(row?.first_visible_at || row?.reply_sent_at);
-  if (input.stage === "t10") {
+  const visible = Boolean(row?.first_visible_at || row?.reply_sent_at || row?.acknowledgement_sent_at);
+  const sender = row?.sender_e164 || senderFromPayload(row?.payload_json);
+  const now = new Date().toISOString();
+
+  if (input.stage === "t5") {
+    await stampWhatsAppLifecycle(env, wamid, { watchdog5sAt: now });
     if (visible) return { acted: false, reason: "already_visible" };
-    const sender = row?.sender_e164 || senderFromPayload(row?.payload_json);
     if (sender && outboundAiEnabled(env)) {
       await sendWhatsAppText(env, {
         toE164: sender,
@@ -176,7 +192,25 @@ export async function applyWhatsAppWatchdogStage(
         inCustomerServiceWindow: true,
       }).catch(() => undefined);
     }
-    const now = new Date().toISOString();
+    await stampWhatsAppLifecycle(env, wamid, {
+      state: "acknowledged",
+      firstVisibleAt: now,
+      acknowledgementSentAt: now,
+      ackSendOk: sender ? 1 : 0,
+      lastError: "watchdog_t5",
+    });
+    return { acted: true, reason: "t5_recovery" };
+  }
+
+  if (input.stage === "t10") {
+    if (visible) return { acted: false, reason: "already_visible" };
+    if (sender && outboundAiEnabled(env)) {
+      await sendWhatsAppText(env, {
+        toE164: sender,
+        body: WATCHDOG_STILL_WORKING_COPY,
+        inCustomerServiceWindow: true,
+      }).catch(() => undefined);
+    }
     await stampWhatsAppLifecycle(env, wamid, {
       state: "acknowledged",
       firstVisibleAt: now,
@@ -187,6 +221,7 @@ export async function applyWhatsAppWatchdogStage(
     });
     return { acted: true, reason: "t10_failsafe" };
   }
+
   if (visible && row?.terminal_state) return { acted: false, reason: "already_final" };
   return recoverStuckWhatsAppTurn(env, wamid).then((result) => {
     void stampWhatsAppLifecycle(env, wamid, { watchdog30sAt: new Date().toISOString() });

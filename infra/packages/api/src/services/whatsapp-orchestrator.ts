@@ -91,6 +91,7 @@ import {
   maybeCoalesceBurst,
 } from "./whatsapp-realtime";
 import { sendFirstResponseFailsafe } from "./whatsapp-fast-lane";
+import { acquireWhatsAppChatLock, releaseWhatsAppChatLock } from "./whatsapp-chat-lock";
 import { scheduleStuckTurnWatch } from "./whatsapp-reaper";
 import { TYPING_MAX_REFRESHES } from "./whatsapp-latency";
 import {
@@ -357,13 +358,26 @@ async function handleWhatsAppInboundMessageInner(
     };
   }
 
+  const previewText = (item.text ?? "").trim();
+  const instantPreview = Boolean(previewText && isInstantLocalTurn(previewText) && !item.mediaId);
+  const lock = await acquireWhatsAppChatLock(env, {
+    chatKey: sender,
+    wamid: item.wamid,
+    failOpen: instantPreview,
+  });
   let conversation: Awaited<ReturnType<typeof loadWhatsAppConversation>> = null;
   try {
-    conversation = await loadWhatsAppConversation(env, identity.user.id);
+    if (!instantPreview) {
+      conversation = await loadWhatsAppConversation(env, identity.user.id);
+    }
   } catch {
     conversation = null;
   }
   const nowIso = () => new Date().toISOString();
+  if (!lock.acquired && !lock.failOpen) {
+    await stampWhatsAppLifecycle(env, item.wamid, { lastError: "chat_lock_held_failopen" });
+  }
+  try {
   await stampWhatsAppLifecycle(env, item.wamid, {
     state: "validated",
     validatedAt: nowIso(),
@@ -1123,6 +1137,9 @@ async function handleWhatsAppInboundMessageInner(
       intent,
       acknowledgementSent,
     };
+  }
+  } finally {
+    await releaseWhatsAppChatLock(env, { chatKey: sender, wamid: item.wamid });
   }
 }
 

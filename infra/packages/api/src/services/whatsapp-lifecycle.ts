@@ -91,6 +91,7 @@ export async function stampWhatsAppLifecycle(
     persistError?: string | null;
     webhookStatus?: number | null;
     fastLane?: number;
+    watchdog5sAt?: string;
     watchdog10sAt?: string;
     watchdog30sAt?: string;
     dlqAt?: string;
@@ -142,6 +143,7 @@ export async function stampWhatsAppLifecycle(
   if (patch.persistError !== undefined) add("persist_error = ?", patch.persistError);
   if (patch.webhookStatus !== undefined) add("webhook_status = ?", patch.webhookStatus);
   if (patch.fastLane != null) add("fast_lane = ?", patch.fastLane);
+  if (patch.watchdog5sAt) add("watchdog_5s_at = COALESCE(watchdog_5s_at, ?)", patch.watchdog5sAt);
   if (patch.watchdog10sAt) add("watchdog_10s_at = COALESCE(watchdog_10s_at, ?)", patch.watchdog10sAt);
   if (patch.watchdog30sAt) add("watchdog_30s_at = COALESCE(watchdog_30s_at, ?)", patch.watchdog30sAt);
   if (patch.dlqAt) add("dlq_at = COALESCE(dlq_at, ?)", patch.dlqAt);
