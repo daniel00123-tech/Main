@@ -106,6 +106,8 @@ export interface Env {
    * Required by POST /{PHONE_NUMBER_ID}/register. Never guess this value.
    */
   WHATSAPP_REGISTRATION_PIN?: string;
+  /** Optional one-shot inspect/register gate. Unset in normal production. */
+  WHATSAPP_META_PROBE_KEY?: string;
   /** Meta app secret — used for X-Hub-Signature-256 */
   META_APP_SECRET?: string;
   /** Explicit outbound AI flag. Default off even if send credentials exist. */
