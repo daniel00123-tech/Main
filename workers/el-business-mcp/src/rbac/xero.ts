@@ -7,6 +7,8 @@ import type { ElvexCapability } from "./capabilities";
 export const XERO_TOOL_CAPABILITIES: Record<string, ElvexCapability> = {
   search_xero_invoices: "xero.sales.read",
   analyse_xero_sales: "xero.sales.read",
+  analyse_xero_invoice_activity: "xero.sales.read",
+  analyse_xero_cash_received: "xero.sales.read",
   analyse_xero_customers: "xero.sales.read",
   search_xero_contacts: "xero.sales.read",
   get_xero_invoice: "xero.sales.read",

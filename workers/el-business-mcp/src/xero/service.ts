@@ -1,6 +1,5 @@
 import type { XeroClient } from "./client";
 import {
-  previousMonthRange,
   resolveEffectiveDate,
   rollingRange,
   startOfMonth,
@@ -16,8 +15,9 @@ import {
   parseNamedReport,
   parseProfitAndLoss,
   qualifiesAsPostedSales,
-  salesContribution,
 } from "./reports";
+import { analyseCashReceived, analyseManagementSales } from "./sales";
+import { outstandingHeadline } from "./presentation";
 
 function whereAnd(parts: Array<string | null | undefined>): string | undefined {
   const cleaned = parts.filter(Boolean) as string[];
@@ -171,7 +171,14 @@ export async function getReport(
       paymentsOnly: false,
       ...(input.periods ? { periods: input.periods, timeframe: "MONTH" } : {}),
     });
-    return { kind: "profit_and_loss", from, to, parsed: parseProfitAndLoss(body), source: body };
+    return {
+      kind: "profit_and_loss",
+      from,
+      to,
+      vatBasis: "excluding_vat",
+      parsed: parseProfitAndLoss(body),
+      source: body,
+    };
   }
   if (report === "balancesheet") {
     const body = await client.get<{ Reports?: never[] }>("/Reports/BalanceSheet", { date: to });
@@ -214,67 +221,12 @@ export async function getReport(
   );
 }
 
-export async function analyseSales(client: XeroClient, months = 6) {
-  const today = todayIso();
-  const mtd = { from: startOfMonth(today), to: today };
-  const prev = previousMonthRange(today);
-  const rolling = rollingRange(months, today);
-  const [invoices, credits, pnl] = await Promise.all([
-    client.getAll<Record<string, unknown>>(
-      "/Invoices",
-      "Invoices",
-      { where: `Type=="ACCREC" AND Date>=${toXeroDateTimeClause(rolling.from)}` },
-      400
-    ),
-    client.getAll<Record<string, unknown>>(
-      "/CreditNotes",
-      "CreditNotes",
-      { where: `Type=="ACCRECCREDIT" AND Date>=${toXeroDateTimeClause(rolling.from)}` },
-      200
-    ).catch(() => [] as Record<string, unknown>[]),
-    getReport(client, { report: "profitandloss", from: mtd.from, to: mtd.to }).catch(() => null),
-  ]);
-
-  const docs: Array<Record<string, unknown>> = [
-    ...invoices.map((row) => ({ ...row, _kind: "invoice" })),
-    ...credits.map((row) => ({ ...row, _kind: "credit_note", Type: row.Type ?? "ACCRECCREDIT" })),
-  ];
-
-  const sumRange = (from: string, to: string) => {
-    let invoiced = 0;
-    let count = 0;
-    for (const row of docs) {
-      const status = String(row.Status ?? "");
-      const type = String(row.Type ?? "");
-      const date = normalizeXeroDate(row.Date);
-      if (!date || date < from || date > to) continue;
-      if (!qualifiesAsPostedSales(type, status)) continue;
-      invoiced += salesContribution(type, Number(row.Total ?? 0));
-      count += 1;
-    }
-    return { from, to, invoicedSales: Number(invoiced.toFixed(2)), documentCount: count };
-  };
-
-  const thisMonth = sumRange(mtd.from, mtd.to);
-  const lastMonth = sumRange(prev.from, prev.to);
-  const change = lastMonth.invoicedSales === 0
-    ? null
-    : Number((((thisMonth.invoicedSales - lastMonth.invoicedSales) / lastMonth.invoicedSales) * 100).toFixed(1));
-
-  return {
-    semantics:
-      "invoicedSales is posted ACCREC invoices minus ACCRECCREDIT credit notes in the date range. Draft/void/deleted documents are excluded. P&L revenue can differ when lines post to non-sales accounts.",
-    monthToDate: thisMonth,
-    previousMonth: lastMonth,
-    monthOnMonthPercent: change,
-    rolling: sumRange(rolling.from, rolling.to),
-    pnl: pnl && "parsed" in pnl ? pnl.parsed : null,
-    largestInvoices: invoices
-      .filter((row) => qualifiesAsPostedSales(String(row.Type ?? ""), String(row.Status ?? "")))
-      .sort((a, b) => Number(b.Total ?? 0) - Number(a.Total ?? 0))
-      .slice(0, 8)
-      .map((row) => formatInvoice(row)),
-  };
+export async function analyseSales(
+  client: XeroClient,
+  months = 6,
+  input: { from?: string; to?: string; question?: string } = {}
+) {
+  return analyseManagementSales(client, { months, from: input.from, to: input.to, question: input.question });
 }
 
 export async function analyseCustomers(client: XeroClient, months = 6, top = 8) {
@@ -304,7 +256,7 @@ export async function analyseCustomers(client: XeroClient, months = 6, top = 8) 
       due: 0,
       count: 0,
     };
-    current.invoiced += salesContribution(type, Number(row.Total ?? 0));
+    current.invoiced += Number(row.SubTotal ?? row.Total ?? 0) * (type === "ACCRECCREDIT" ? -1 : 1);
     if (type === "ACCREC") {
       current.due += Number(row.AmountDue ?? 0);
       current.count += 1;
@@ -319,7 +271,9 @@ export async function analyseCustomers(client: XeroClient, months = 6, top = 8) 
     from: range.from,
     to: range.to,
     topCustomers: customers.slice(0, top),
+    outstandingDebtIncludingVat: Number(customers.reduce((sum, row) => sum + row.due, 0).toFixed(2)),
     outstandingDebt: Number(customers.reduce((sum, row) => sum + row.due, 0).toFixed(2)),
+    vatNote: "Outstanding customer debt (AmountDue) includes VAT.",
   };
 }
 
@@ -359,8 +313,9 @@ export async function analyseSuppliers(client: XeroClient, months = 6, top = 8) 
 
 export async function financialSummary(client: XeroClient) {
   const today = resolveEffectiveDate();
-  const [sales, customers, suppliers, pnl, bank, receivables, payables, accounts] = await Promise.all([
-    analyseSales(client, 6),
+  const [sales, cash, customers, suppliers, pnl, bank, receivables, payables, accounts] = await Promise.all([
+    analyseManagementSales(client, {}),
+    analyseCashReceived(client, {}).catch((error) => ({ error: error instanceof Error ? error.message : String(error) })),
     analyseCustomers(client, 6, 5),
     analyseSuppliers(client, 6, 5),
     getReport(client, { report: "profitandloss", from: startOfMonth(today), to: today }).catch((error) => ({ error: String(error) })),
@@ -370,10 +325,27 @@ export async function financialSummary(client: XeroClient) {
     client.get<{ Accounts?: Array<Record<string, unknown>> }>("/Accounts").catch(() => ({ Accounts: [] })),
   ]);
   const bankAccounts = (accounts.Accounts ?? []).filter((row) => String(row.Type ?? "") === "BANK");
+  const outstandingIncVat = Number(
+    receivables.reduce((sum, row) => sum + Number(row.amountDue ?? 0), 0).toFixed(2)
+  );
   return {
     organisationName: client.organisationName,
     tenantId: client.tenantId,
     asAt: today,
+    managementSales: {
+      headline: sales.headline,
+      salesExVat: sales.salesExVat,
+      vatBasis: "excluding_vat",
+      period: sales.period,
+      incomeAccounts: sales.incomeAccounts,
+    },
+    invoiceActivity: sales.invoiceActivity,
+    cashReceived: cash,
+    outstandingReceivables: {
+      headline: outstandingHeadline(outstandingIncVat),
+      amountDueIncludingVat: outstandingIncVat,
+      vatNote: "Receivable balances include VAT.",
+    },
     sales,
     customers,
     suppliers,

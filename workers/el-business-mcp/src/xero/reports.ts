@@ -7,6 +7,12 @@ export type XeroReportRow = {
   Rows?: XeroReportRow[];
 };
 
+export type PnlIncomeLine = {
+  section: string;
+  label: string;
+  amount: number;
+};
+
 export type ParsedPnlPeriod = {
   columnTitle: string | null;
   revenue: number | null;
@@ -14,6 +20,7 @@ export type ParsedPnlPeriod = {
   grossProfit: number | null;
   operatingExpenses: number | null;
   netProfit: number | null;
+  incomeAccounts: PnlIncomeLine[];
 };
 
 function parseAmount(value: string | undefined): number | null {
@@ -46,27 +53,53 @@ function assignMetric(target: ParsedPnlPeriod, label: string, amount: number | n
   }
 }
 
-function walk(rows: XeroReportRow[] | undefined, periods: ParsedPnlPeriod[]): void {
+function isIncomeSection(title: string): boolean {
+  const text = title.toLowerCase();
+  if (!text) return false;
+  if (text.includes("cost of sales") || text.includes("direct cost") || text.includes("expense")) return false;
+  return text.includes("income") || text.includes("revenue") || text === "sales" || text.includes("trading");
+}
+
+function walk(rows: XeroReportRow[] | undefined, periods: ParsedPnlPeriod[], section = ""): void {
   if (!rows) return;
   for (const row of rows) {
     if (row.RowType === "Section") {
-      walk(row.Rows, periods);
+      walk(row.Rows, periods, row.Title ?? section);
       continue;
     }
     if (row.RowType !== "SummaryRow" && row.RowType !== "Row") continue;
     const label = row.Cells?.[0]?.Value ?? "";
     const values = row.Cells?.slice(1) ?? [];
-    for (let i = 0; i < periods.length; i += 1) assignMetric(periods[i]!, label, parseAmount(values[i]?.Value));
+    for (let i = 0; i < periods.length; i += 1) {
+      const amount = parseAmount(values[i]?.Value);
+      assignMetric(periods[i]!, label, amount);
+      if (row.RowType === "Row" && isIncomeSection(section) && amount != null) {
+        periods[i]!.incomeAccounts.push({ section, label, amount });
+      }
+    }
   }
 }
 
 export function parseProfitAndLoss(body: { Reports?: Array<{ ReportName?: string; ReportDate?: string; ReportTitles?: string[]; Rows?: XeroReportRow[] }> }): {
   reportName: string | null;
   reportDate: string | null;
+  reportTitles: string[];
+  vatBasis: "excluding_vat";
+  vatBasisNote: string;
   periods: ParsedPnlPeriod[];
 } {
   const report = body.Reports?.[0];
-  if (!report) return { reportName: null, reportDate: null, periods: [] };
+  if (!report) {
+    return {
+      reportName: null,
+      reportDate: null,
+      reportTitles: [],
+      vatBasis: "excluding_vat",
+      vatBasisNote:
+        "Xero Profit and Loss amounts are exclusive of VAT/GST. Do not divide by 1.2.",
+      periods: [],
+    };
+  }
   const header = report.Rows?.find((row) => row.RowType === "Header");
   const titles = header?.Cells?.slice(1).map((cell, i) => cell.Value?.trim() || `Column ${i + 1}`) ?? ["Total"];
   const periods = titles.map((title) => ({
@@ -76,9 +109,18 @@ export function parseProfitAndLoss(body: { Reports?: Array<{ ReportName?: string
     grossProfit: null,
     operatingExpenses: null,
     netProfit: null,
+    incomeAccounts: [] as PnlIncomeLine[],
   }));
   walk(report.Rows, periods);
-  return { reportName: report.ReportName ?? null, reportDate: report.ReportDate ?? null, periods };
+  return {
+    reportName: report.ReportName ?? null,
+    reportDate: report.ReportDate ?? null,
+    reportTitles: report.ReportTitles ?? [],
+    vatBasis: "excluding_vat",
+    vatBasisNote:
+      "Xero Profit and Loss amounts are exclusive of VAT/GST. This is the authoritative net sales figure. Do not divide by 1.2.",
+    periods,
+  };
 }
 
 export function parseNamedReport(body: { Reports?: Array<{ ReportName?: string; ReportDate?: string; Rows?: XeroReportRow[] }> }): unknown {
@@ -112,6 +154,8 @@ export function formatInvoice(invoice: Record<string, unknown>, effectiveDate?: 
     date: normalizeXeroDate(invoice.Date),
     dueDate,
     status: invoice.Status ? String(invoice.Status) : null,
+    subTotal: invoice.SubTotal != null ? Number(invoice.SubTotal) : null,
+    totalTax: invoice.TotalTax != null ? Number(invoice.TotalTax) : null,
     total: invoice.Total != null ? Number(invoice.Total) : null,
     amountPaid: invoice.AmountPaid != null ? Number(invoice.AmountPaid) : null,
     amountDue,
@@ -176,6 +220,16 @@ export function salesContribution(type: string, total: number): number {
   if (type === "ACCREC") return total;
   if (type === "ACCRECCREDIT") return -Math.abs(total);
   return 0;
+}
+
+export function invoiceDocumentContribution(
+  type: string,
+  amounts: { subTotal?: number | null; total?: number | null }
+): { exVat: number; incVat: number } {
+  const incVat = salesContribution(type, Number(amounts.total ?? 0));
+  const exVatRaw = amounts.subTotal;
+  const exVat = exVatRaw == null ? incVat : salesContribution(type, Number(exVatRaw));
+  return { exVat, incVat };
 }
 
 export function qualifiesAsPostedSales(type: string, status: string): boolean {
