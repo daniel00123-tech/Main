@@ -11,6 +11,9 @@ import {
 } from "./mcp-knowledge-standard";
 import { UNKNOWN_WHATSAPP_ACCOUNT_MESSAGE, tryNormalizeE164 } from "./phone";
 import { scheduleQualityAudit } from "./quality-auditor";
+import { resolveActiveWhatsAppRuntime } from "./quality-loop";
+import { DEFAULT_QUALITY_RUNTIME } from "./quality-loop/runtime-config";
+import type { QualityRuntimeConfig } from "./quality-loop/types";
 import { recordUsageEvent } from "./usage";
 import { inspectWhatsAppAssets, outboundAiEnabled } from "./whatsapp-assets";
 import { capabilityReplyForCompany, formatPricingCapabilityReply, listConnectedCapabilityLabels, listConnectedConnectorIds } from "./whatsapp-capabilities";
@@ -378,15 +381,20 @@ export async function handleWhatsAppInboundMessage(
   const text = inboundResolved.text.trim();
   const inputKind = inboundResolved.inputKind;
   const connectors = await listConnectedConnectorIds(env, companyDecision.companyId);
-  const plan = planWhatsAppTurn({ text, memory: entities, connectors });
+  const qualityRuntime = await resolveActiveWhatsAppRuntime(env, {
+    companyId: companyDecision.companyId,
+    userId: identity.user.id,
+  }).catch(() => DEFAULT_QUALITY_RUNTIME);
+  const plan = planWhatsAppTurn({ text, memory: entities, connectors }, qualityRuntime);
   const intent = plan.intent || classifyWhatsAppIntent(text, { hasPriorTurns: priorTurns.length > 0 });
   marks.intentClassifiedAt = Date.now();
 
   if (!text) {
     const reply = applyCustomerTone(
       "I can answer questions about your connected business systems. Send a short message or a voice note.",
+      { maxEmojis: qualityRuntime.responseRules.maxEmojis },
     );
-    const sent = await maybeSendReply(env, sender, reply);
+    const sent = await maybeSendReply(env, sender, reply, { qualityRuntime });
     return {
       handled: true,
       duplicate: false,
@@ -405,7 +413,7 @@ export async function handleWhatsAppInboundMessage(
 
   if (plan.action === "write_blocked" || intent === "write_action" || looksLikeWriteIntent(text)) {
     const reply = writeIntentWhatsAppMessage();
-    const sent = await maybeSendReply(env, sender, reply);
+    const sent = await maybeSendReply(env, sender, reply, { qualityRuntime });
     await rememberTurn(env, identity.user.id, companyDecision.companyId, conversation?.turns ?? [], text, reply, entities);
     await recordAuditEvent(env.DB, {
       companyId: companyDecision.companyId,
@@ -435,6 +443,7 @@ export async function handleWhatsAppInboundMessage(
       plan.clarification ?? "Can you give me a little more detail so I look in the right place?",
     );
     const sent = await maybeSendReply(env, sender, reply, {
+      qualityRuntime,
       buttons: suggestionButtons({
         kind: "clarify_docs",
         documentTitles: recentDocumentTitles(entities),
@@ -482,6 +491,7 @@ export async function handleWhatsAppInboundMessage(
         conversationalReply("greeting", { text })!,
     );
     const sent = await maybeSendReply(env, sender, reply, {
+      qualityRuntime,
       buttons:
         intent === "help" || intent === "capabilities"
           ? suggestionButtons({ kind: "help", hasXero: connectors.includes("conn_xero") })
@@ -566,7 +576,7 @@ export async function handleWhatsAppInboundMessage(
       waitUntil: options?.waitUntil,
     });
     const watched = await raceWithWhatsAppWatchdog(work, async (kind, body) => {
-      const sent = await maybeSendReply(env, sender, body);
+      const sent = await maybeSendReply(env, sender, body, { qualityRuntime });
       if (!sent.ok) return false;
       if (kind === "ack") {
         acknowledgementSent = true;
@@ -638,7 +648,7 @@ export async function handleWhatsAppInboundMessage(
     }
     if (watched.error || !watched.result) {
       const reply = aiFailureWhatsAppMessage();
-      const sent = await maybeSendReply(env, sender, reply);
+      const sent = await maybeSendReply(env, sender, reply, { qualityRuntime });
       await stampWhatsAppLifecycle(env, item.wamid, {
         state: "failed_notified",
         terminal: "failed_notified",
@@ -687,6 +697,7 @@ export async function handleWhatsAppInboundMessage(
       outcome: answered.outcome,
     });
     const sent = await maybeSendReply(env, sender, polished, {
+      qualityRuntime,
       previewUrl: /^https?:\/\//m.test(polished),
       buttons,
     });
@@ -819,7 +830,7 @@ export async function handleWhatsAppInboundMessage(
     };
   } catch {
     const reply = aiFailureWhatsAppMessage();
-    const sent = await maybeSendReply(env, sender, reply);
+    const sent = await maybeSendReply(env, sender, reply, { qualityRuntime });
     await stampWhatsAppLifecycle(env, item.wamid, {
       state: "failed_notified",
       terminal: "failed_notified",
@@ -1365,6 +1376,7 @@ async function maybeSendReply(
     previewUrl?: boolean;
     buttons?: WhatsAppReplyButton[];
     list?: { buttonLabel: string; rows: ReturnType<typeof listRowsFromCompanies> };
+    qualityRuntime?: QualityRuntimeConfig;
   },
 ): Promise<WhatsAppSendResult & { buttonsSent?: number; buttonFailed?: boolean }> {
   if (!toE164 || !outboundAiEnabled(env)) {
@@ -1376,7 +1388,10 @@ async function maybeSendReply(
       attempts: 0,
     };
   }
-  const text = applyCustomerTone(body);
+  const formatted = options?.qualityRuntime
+    ? formatWhatsAppReply(body, { maxChars: options.qualityRuntime.responseRules.maxChars })
+    : body;
+  const text = applyCustomerTone(formatted, { maxEmojis: options?.qualityRuntime?.responseRules.maxEmojis });
   if (options?.list?.rows.length) {
     const sent = await sendWhatsAppInteractiveList(env, {
       toE164,

@@ -77,7 +77,10 @@ export function looksLikeSourceLinkAsk(text: string): boolean {
   return LINK.test(text);
 }
 
-export function planWhatsAppTurn(input: WhatsAppPlanInput): WhatsAppPlan {
+export function planWhatsAppTurn(
+  input: WhatsAppPlanInput,
+  runtime?: { planner?: { skipToolsOnCheapIntents?: boolean; preferMemoryOnFollowUp?: boolean; blockWriteIntents?: boolean } },
+): WhatsAppPlan {
   const text = input.text.trim().replace(/[\u2018\u2019]/g, "'");
   const query = focusSearchTerms(softenSearchQuery(text));
   const memory = input.memory;
@@ -99,9 +102,10 @@ export function planWhatsAppTurn(input: WhatsAppPlanInput): WhatsAppPlan {
   });
 
   if (
-    looksLikeWriteIntent(text) ||
-    /\b(send that invoice|approve that action|approve it)\b/i.test(text) ||
-    /\bcreate a quote\b/i.test(text)
+    runtime?.planner?.blockWriteIntents !== false &&
+    (looksLikeWriteIntent(text) ||
+      /\b(send that invoice|approve that action|approve it)\b/i.test(text) ||
+      /\bcreate a quote\b/i.test(text))
   ) {
     return { ...base(), action: "write_blocked", intent: "write_action", tool: null, skipTools: true };
   }
@@ -315,11 +319,18 @@ export function planWhatsAppTurn(input: WhatsAppPlanInput): WhatsAppPlan {
   if (EMAIL.test(text)) {
     return { ...base(), action: "knowledge", intent: "knowledge_search", fetch: true, query: query || text };
   }
-  return {
+  const planned = {
     ...base(),
-    action: "knowledge",
+    action: "knowledge" as const,
     intent: "knowledge_search",
     fetch: true,
     query: query || text,
   };
+  if (
+    runtime?.planner?.skipToolsOnCheapIntents !== false &&
+    (planned.intent === "greeting" || planned.intent === "capabilities" || planned.intent === "casual")
+  ) {
+    return { ...planned, skipTools: true, tool: null };
+  }
+  return planned;
 }

@@ -89,6 +89,7 @@ import commercialVisibilityRoutes from "./routes/commercial-visibility";
 import emailLiveTestRoutes from "./routes/email-live-test";
 import whatsappRoutes from "./routes/whatsapp";
 import whatsappUxUatRoutes from "./routes/whatsapp-ux-uat";
+import qualityLoopRoutes from "./routes/quality-loop";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -103,6 +104,7 @@ app.route("/", commercialVisibilityRoutes);
 app.route("/", emailLiveTestRoutes);
 app.route("/", whatsappRoutes);
 app.route("/", whatsappUxUatRoutes);
+app.route("/", qualityLoopRoutes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(
@@ -1199,6 +1201,25 @@ const worker = {
     }
 
     if (runAutomation) {
+      try {
+        const { maybeRunQualityLoop } = await import("./services/quality-loop");
+        const quality = await maybeRunQualityLoop(env);
+        await recordPlatformHeartbeat(env.DB, {
+          key: "quality_loop",
+          label: "Quality loop",
+          success: !quality.reason || quality.reason === "completed" || quality.reason.startsWith("Cadence"),
+          error: quality.ran && quality.reason !== "completed" ? quality.reason : null,
+          detail: { ran: quality.ran, runId: quality.runId ?? null, kind: quality.kind ?? null, reason: quality.reason },
+        });
+      } catch (err) {
+        await recordPlatformHeartbeat(env.DB, {
+          key: "quality_loop",
+          label: "Quality loop",
+          success: false,
+          error: err instanceof Error ? err.message : "Quality loop failed",
+        });
+      }
+
       const { runAutomationScheduler } = await import("./services/automation-engine/scheduler");
       try {
         const autoResult = await runAutomationScheduler(env);

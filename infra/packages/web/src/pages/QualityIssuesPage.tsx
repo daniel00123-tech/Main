@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { CheckCircle2 } from "lucide-react";
 import { api } from "../api";
 import { useAdminScope } from "../context/AdminScopeContext";
@@ -67,7 +68,12 @@ export default function QualityIssuesPage() {
     <>
       <PageHeader
         title="Quality"
-        description="Evidence-backed issues from conversations. This queue never changes production automatically."
+        description="Evidence-backed issues from conversations. Improvement Reviews can auto-apply LOW/MEDIUM WhatsApp config only after you approve."
+        actions={
+          <Link className="button button-secondary button-small" to="/quality/improvements">
+            Improvement Reviews
+          </Link>
+        }
       />
       <FilterBar className="filter-bar-mobile-stack">
         <Select value={status} onChange={(e) => setStatus(e.target.value)}>

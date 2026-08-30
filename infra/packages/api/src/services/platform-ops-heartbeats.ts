@@ -4,7 +4,8 @@ export type PlatformHeartbeatKey =
   | "microsoft_scheduler"
   | "automation_scheduler"
   | "microsoft_queue"
-  | "automation_queue";
+  | "automation_queue"
+  | "quality_loop";
 
 export async function recordPlatformHeartbeat(
   db: D1Database,
