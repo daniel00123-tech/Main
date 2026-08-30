@@ -61,6 +61,10 @@ export function randomUrlToken(bytes = 32): string {
   return toBase64Url(crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
+export function randomHexToken(bytes = 32): string {
+  return [...crypto.getRandomValues(new Uint8Array(bytes))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export async function pkceChallenge(verifier: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
   return toBase64Url(new Uint8Array(digest));

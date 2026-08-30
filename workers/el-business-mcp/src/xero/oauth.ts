@@ -8,7 +8,7 @@ import {
   XERO_TOKEN_URL,
   type ElXeroConfig,
 } from "./config";
-import { pkceChallenge, randomUrlToken, sha256Hex } from "./crypto";
+import { pkceChallenge, randomHexToken, randomUrlToken, sha256Hex } from "./crypto";
 import { ElXeroError, sanitizeErrorMessage } from "./errors";
 import {
   consumeOauthState,
@@ -53,11 +53,11 @@ export async function startXeroConnect(env: Env): Promise<{ authorizeUrl: string
   if (!config) {
     throw new ElXeroError("Xero client credentials are not configured.", "EL_XERO_NOT_CONFIGURED", 503);
   }
-  const state = randomUrlToken(32);
+  const state = randomHexToken(32);
   const verifier = randomUrlToken(48);
   const challenge = await pkceChallenge(verifier);
-  await insertOauthState(env.EL_BUSINESS_DATA, config, await sha256Hex(state), verifier);
-  return { authorizeUrl: buildAuthorizeUrl(config, state, challenge), expiresInSeconds: 600 };
+  await insertOauthState(env.EL_BUSINESS_DATA, config, await sha256Hex(state), verifier, 2 * 60 * 60 * 1000);
+  return { authorizeUrl: buildAuthorizeUrl(config, state, challenge), expiresInSeconds: 7200 };
 }
 
 async function exchangeToken(
