@@ -389,7 +389,7 @@ function polishIntelligenceReply(
   if (result.kind === "failed" && !text) {
     text = "I couldn't complete that just now. Try again in a moment.";
   }
-  if (result.confidence === "none" && result.currentDocument) {
+  if (result.confidence === "none" && result.currentDocument && result.scope === "CURRENT_DOCUMENT") {
     if (!text.includes(NONE_IN_DOCUMENT_REPLY)) {
       text = `${NONE_IN_DOCUMENT_REPLY} ${SEARCH_OTHER_DOCS_HINT}`;
     } else if (result.offerSearchOther && !/search other/i.test(text)) {
@@ -464,7 +464,15 @@ async function recoverFailedIntelligenceTurn(
   const toolCalls = [...failed.toolCalls];
   let current = failed.currentDocument ?? documentRefFromEntity(input.memory.lastDocument);
   const evidenceDocumentIds = [...failed.evidenceDocumentIds];
-  if (/\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover)\b/i.test(input.originalText)) {
+  if (
+    failed.scope === "SYSTEM_META" ||
+    failed.scope === "CONNECTOR_CAPABILITY" ||
+    failed.scope === "GENERAL_CONVERSATION" ||
+    failed.scope === "AMBIGUOUS"
+  ) {
+    return failed;
+  }
+  if (/\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover)\b/i.test(input.originalText) || failed.scope === "BUSINESS_SYSTEM") {
     const xero = await runtime.executeTool({ name: "xero_sales_summary", arguments: {} });
     toolCalls.push(xero);
     return {
@@ -505,7 +513,11 @@ async function recoverFailedIntelligenceTurn(
       toolCalls.push(fetched);
       current = documentFromLoose(fetched.data) ?? first;
     }
-  } else if (current && !toolCalls.some((call) => call.name === "search_document")) {
+  } else if (
+    current &&
+    failed.scope === "CURRENT_DOCUMENT" &&
+    !toolCalls.some((call) => call.name === "search_document")
+  ) {
     const scoped = await runtime.executeTool({
       name: "search_document",
       arguments: { document_id: current.id, query: input.originalText },

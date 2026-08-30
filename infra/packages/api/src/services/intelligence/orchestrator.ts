@@ -106,6 +106,20 @@ export async function runIntelligenceTurn(input: {
     });
   }
 
+  if (scoped.scope === "RECENT_ENTITY" && scoped.restoreRecentDocument && currentDocument) {
+    return emptyResult({
+      kind: "answer",
+      text: `I've gone back to ${currentDocument.title}. What do you want from it?`,
+      confidence: "strong",
+      offerSearchOther: false,
+      route: "INTELLIGENT",
+      scope: "RECENT_ENTITY",
+      lastAnswerTopic: "document",
+      lastUserIntent: scoped.lastUserIntent,
+      currentDocument,
+    });
+  }
+
   if (scoped.scope === "GENERAL_CONVERSATION" && scoped.noTool) {
     return emptyResult({
       kind: "answer",
@@ -135,6 +149,47 @@ export async function runIntelligenceTurn(input: {
     currentScope: persistableScope(scoped.scope) ?? input.state.currentScope,
     lastUserIntent: scoped.lastUserIntent,
   };
+
+  if (scoped.scope === "COMPANY_KNOWLEDGE" && (scoped.clearCurrentDocument || input.state.userCorrection)) {
+    const priorUser =
+      [...input.state.recentTurns].reverse().find((turn) => turn.role === "user")?.text ||
+      input.state.lastAnswerTopic ||
+      input.text;
+    const search = await input.runtime.executeTool({
+      name: "search_company_knowledge",
+      arguments: { query: priorUser },
+    });
+    toolCalls.push(search);
+    const hits = searchHits(search.data);
+    const first =
+      hits[0] && typeof hits[0] === "object"
+        ? documentFromToolResult({ name: "search_company_knowledge", ok: true, latencyMs: 0, data: { document_id: (hits[0] as { id?: string }).id, title: (hits[0] as { title?: string }).title, url: (hits[0] as { url?: string }).url } })
+        : null;
+    if (first) currentDocument = first;
+    const titles = hits
+      .slice(0, 3)
+      .map((hit) => (hit && typeof hit === "object" ? String((hit as { title?: string }).title ?? "") : ""))
+      .filter(Boolean);
+    return finish({
+      kind: titles.length ? "answer" : "clarify",
+      text: titles.length
+        ? `Across your documents I can see: ${titles.join("; ")}. Which should I open?`
+        : "I searched across your documents and didn't find a clear match. Which file should I use?",
+      confidence: titles.length ? "partial" : "none",
+      offerSearchOther: true,
+      toolCalls,
+      currentDocument,
+      evidenceDocumentIds: first ? [first.id] : [],
+      clarification: titles.length === 0,
+      modelRounds: [],
+      route: "INTELLIGENT",
+      scope: "COMPANY_KNOWLEDGE",
+      lastAnswerTopic: "company_knowledge",
+      lastUserIntent: scoped.lastUserIntent,
+      qualityFlags: [...qualityFlags],
+      repaired: false,
+    });
+  }
 
   if (shouldRunDeterministicMeta(scoped)) {
     const meta = await runDeterministicMeta(input.runtime, scoped, input.text, completer, permitted, qualityFlags);
