@@ -1,4 +1,4 @@
-const API_ORIGIN = "https://infra-api.daniel-dwyer123.workers.dev";
+import { API_ORIGIN } from "./_lib/urls.js";
 
 /** Forward a Pages request to the INFRA API worker, keeping first-party cookies. */
 export async function proxyToInfraApi(context) {
@@ -8,6 +8,7 @@ export async function proxyToInfraApi(context) {
   headers.delete("host");
   headers.set("X-Forwarded-Host", url.host);
   headers.set("X-Forwarded-Proto", url.protocol.replace(":", "") || "https");
+  headers.set("X-Forwarded-Origin", url.origin);
 
   const init = {
     method: context.request.method,

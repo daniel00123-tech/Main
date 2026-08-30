@@ -151,7 +151,7 @@ export function getDevelopmentStatusMessage(
     return "ChatGPT is live through the single INFRA MCP gateway. Create a company AI connection and use the INFRA URL — never a company MCP URL.";
   }
   if (connector.integrationType === "ai_channel") {
-    return "AI and messaging channels resolve to identity, company, permissions, interaction, usage, and audit. WhatsApp is designed, not activated.";
+    return "AI and messaging channels resolve to identity, company, permissions, interaction, usage, and audit. WhatsApp uses the production INFRA webhook and gateway.";
   }
   return "This integration is on the roadmap. Capabilities and sync modes shown reflect the intended design.";
 }

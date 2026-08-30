@@ -131,7 +131,7 @@ export function AdminScopeProvider({ children }: { children: React.ReactNode }) 
   );
 
   const scopeLabel =
-    scope.mode === "platform" ? "INFRA Platform" : scope.companyName;
+    scope.mode === "platform" ? "Infra platform" : scope.companyName;
   const scopeSublabel =
     scope.mode === "platform" ? "All companies" : scope.companySlug;
 

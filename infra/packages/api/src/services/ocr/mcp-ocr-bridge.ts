@@ -44,6 +44,44 @@ export type KnowledgeDocumentAdminView = {
   metadata: Record<string, unknown>;
 };
 
+export type OcrCandidate = {
+  documentId: number;
+  title: string | null;
+  status: string | null;
+  mimeType: string | null;
+  source: string | null;
+  extractionQuality: string | null;
+  ocrStatus: string | null;
+  substantiveCharacterCount: number | null;
+};
+
+export async function listOcrCandidates(
+  env: Env,
+  mcp: McpEnvironment,
+  input?: { limit?: number; afterId?: number },
+): Promise<{ candidates: OcrCandidate[]; nextAfterId: number }> {
+  const limit = Math.min(50, Math.max(1, input?.limit ?? 10));
+  const afterId = Math.max(0, input?.afterId ?? 0);
+  const response = await adminFetch(
+    env,
+    mcp,
+    `/admin/knowledge/ocr-candidates?limit=${limit}&afterId=${afterId}`,
+    { method: "GET" },
+  );
+  const body = (await response.json().catch(() => ({}))) as {
+    ok?: boolean;
+    candidates?: OcrCandidate[];
+    nextAfterId?: number;
+  };
+  if (!response.ok || body.ok === false) {
+    return { candidates: [], nextAfterId: afterId };
+  }
+  return {
+    candidates: body.candidates ?? [],
+    nextAfterId: Number(body.nextAfterId ?? afterId),
+  };
+}
+
 export async function getKnowledgeDocumentAdmin(
   env: Env,
   mcp: McpEnvironment,

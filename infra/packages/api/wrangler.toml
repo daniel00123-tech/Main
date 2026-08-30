@@ -2,6 +2,9 @@ name = "infra-api"
 main = "src/index.ts"
 compatibility_date = "2025-02-14"
 compatibility_flags = ["nodejs_compat"]
+# SOURCE OF TRUTH for production infra-api:
+# cursor/infra-whatsapp-oauth-ca09 (WhatsApp V5 + INFRA OAuth #398).
+# Do not deploy origin/main, OAuth-only, or WhatsApp-only branches over this worker.
 
 [[d1_databases]]
 binding = "DB"
@@ -11,11 +14,14 @@ migrations_dir = "../../migrations"
 
 [vars]
 ENVIRONMENT = "production"
-ALLOWED_ORIGINS = "https://app.infrastack.app,https://infra-web.pages.dev,http://localhost:5173,http://127.0.0.1:5173,https://chatgpt.com,https://chat.openai.com,https://claude.ai"
+ALLOWED_ORIGINS = "https://app.infrastack.app,https://infrastack.app,https://infra-web.pages.dev,http://localhost:5173,http://127.0.0.1:5173,https://chatgpt.com,https://chat.openai.com,https://claude.ai"
 COOKIE_CROSS_ORIGIN = "false"
-PORTAL_COOKIE_DOMAIN = ".infra-web.pages.dev"
-INFRA_PUBLIC_API_URL = "https://infra-api.daniel-dwyer123.workers.dev"
+# Host-only cookies on app.infrastack.app. Legacy pages.dev company subdomains still use .infra-web.pages.dev when the request Origin is that host.
+PORTAL_PUBLIC_ORIGIN = "https://app.infrastack.app"
+INFRA_PUBLIC_API_URL = "https://api.infrastack.app"
+INFRA_PUBLIC_MCP_URL = "https://mcp.infrastack.app"
 PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
+INFRA_API_LINEAGE = "whatsapp-v5+oauth-398"
 
 # Secrets (set via `wrangler secret put` — never commit):
 # SESSION_SECRET
@@ -23,20 +29,34 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # HT_MCP_AUTH_TOKEN (downstream auth for existing ht-business-mcp — same value as that Worker's MCP_AUTH_TOKEN)
 # EL_MCP_AUTH_TOKEN (downstream auth for existing el-business-mcp — same value as that Worker's MCP_AUTH_TOKEN)
 # STRIPE_SECRET_KEY (optional — prepaid top-ups)
-# STRIPE_WEBHOOK_SECRET (optional — webhook verification)
+# STRIPE_WEBHOOK_SECRET (legacy workers.dev webhook signing secret)
+# STRIPE_WEBHOOK_SECRET_INFRASTACK (canonical api.infrastack.app webhook signing secret)
 # INFRA_CREDENTIAL_WRAPPING_KEY (32-byte AES-256 wrapping key; never put in D1)
 # INFRA_CREDENTIAL_KEY_VERSION (optional, default v1)
 # XERO_CLIENT_ID (Xero Web App client id; never put in D1)
 # XERO_CLIENT_SECRET (Xero Web App client secret; never put in D1)
-# XERO_OAUTH_REDIRECT_URI (optional override; default is the registered Xero callback)
+# XERO_OAUTH_REDIRECT_URI (canonical: https://api.infrastack.app/api/connectors/xero/oauth/callback)
+# Graph webhook URL is derived from INFRA_PUBLIC_API_URL — do not add MICROSOFT_GRAPH_NOTIFICATION_URL
+# INFRA_PUBLIC_MCP_URL (canonical MCP host — https://mcp.infrastack.app)
+# PORTAL_PUBLIC_ORIGIN (canonical portal — https://app.infrastack.app)
 # MICROSOFT_TENANT_ID (Microsoft Entra tenant ID — Caddington Holdings)
 # MICROSOFT_CLIENT_ID (INFRA Microsoft 365 Connector app)
 # MICROSOFT_CLIENT_SECRET (app secret — never commit)
 # CADDINGTON_ADMIN_TOKEN (matches caddington-mcp Worker secret for /admin/knowledge/* bridge)
-# AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT (Azure AI Document Intelligence resource endpoint)
+# AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT (https://infra-document-intelligence-prod.cognitiveservices.azure.com)
 # AZURE_DOCUMENT_INTELLIGENCE_KEY (Azure AI Document Intelligence key — never commit)
 # AZURE_OCR_MAX_PAGES (optional, default 50)
 # AZURE_OCR_MAX_BYTES (optional, default 20971520)
+# WHATSAPP_WEBHOOK_VERIFY_TOKEN (Meta hub.verify_token — wrangler secret put)
+# WHATSAPP_ACCESS_TOKEN (Cloud API user token — wrangler secret put)
+# WHATSAPP_REGISTRATION_PIN (optional 6-digit Cloud API two-step PIN — wrangler secret put)
+# META_APP_SECRET (X-Hub-Signature-256 — wrangler secret put)
+# OPENAI_API_KEY (optional Whisper fallback if Workers AI is unavailable — wrangler secret put)
+EMAIL_FROM_NAME = "Infra"
+EMAIL_FROM_ADDRESS = "noreply@infrastack.app"
+WHATSAPP_PHONE_NUMBER_ID = "1338434179351224"
+WHATSAPP_BUSINESS_ACCOUNT_ID = "1629422285251338"
+WHATSAPP_OUTBOUND_AI_ENABLED = "true"
 
 # Same-account Worker MCP access (workers.dev public fetch returns CF 1042)
 [[services]]
@@ -52,7 +72,7 @@ binding = "EL_BUSINESS_MCP"
 service = "el-business-mcp"
 
 [triggers]
-crons = ["0 */6 * * *", "*/15 * * * *"]
+crons = ["0 */6 * * *", "*/15 * * * *", "* * * * *"]
 
 # Microsoft knowledge ingestion queue (CMD15 — production bound).
 # Self-fetch job processor remains fallback when binding is unavailable.
@@ -60,21 +80,20 @@ crons = ["0 */6 * * *", "*/15 * * * *"]
 binding = "MICROSOFT_KNOWLEDGE_QUEUE"
 queue = "microsoft-knowledge-ingest"
 
-# Automation run queue — uncomment after `wrangler queues create automation-runs` (+ dlq).
-# Account may need quota increase (3 queues currently provisioned).
-# [[queues.producers]]
-# binding = "AUTOMATION_RUN_QUEUE"
-# queue = "automation-runs"
-#
-# [[queues.consumers]]
-# queue = "automation-runs"
-# max_batch_size = 1
-# max_retries = 5
-# dead_letter_queue = "automation-runs-dlq"
-#
-# [[queues.consumers]]
-# queue = "automation-runs-dlq"
-# max_batch_size = 10
+# Automation run queue — Workers Paid quota now covers this plus Microsoft ingest.
+[[queues.producers]]
+binding = "AUTOMATION_RUN_QUEUE"
+queue = "automation-runs"
+
+[[queues.consumers]]
+queue = "automation-runs"
+max_batch_size = 1
+max_retries = 5
+dead_letter_queue = "automation-runs-dlq"
+
+[[queues.consumers]]
+queue = "automation-runs-dlq"
+max_batch_size = 10
 
 [[queues.consumers]]
 queue = "microsoft-knowledge-ingest"
@@ -85,4 +104,45 @@ dead_letter_queue = "microsoft-knowledge-ingest-dlq"
 [[queues.consumers]]
 queue = "microsoft-knowledge-ingest-dlq"
 max_batch_size = 10
+
+# WhatsApp inbound webhook — ack Meta immediately, process off-request.
+[[queues.producers]]
+binding = "WHATSAPP_INBOUND_QUEUE"
+queue = "whatsapp-inbound"
+
+[[queues.consumers]]
+queue = "whatsapp-inbound"
+max_batch_size = 1
+max_concurrency = 8
+max_retries = 5
+dead_letter_queue = "whatsapp-inbound-dlq"
+
+[[queues.consumers]]
+queue = "whatsapp-inbound-dlq"
+max_batch_size = 10
+
+# Independent WhatsApp watchdog — delayed messages, never sleeps in the inbound consumer.
+[[queues.producers]]
+binding = "WHATSAPP_WATCHDOG_QUEUE"
+queue = "whatsapp-watchdog"
+
+[[queues.consumers]]
+queue = "whatsapp-watchdog"
+max_batch_size = 1
+max_concurrency = 5
+max_retries = 3
+dead_letter_queue = "whatsapp-watchdog-dlq"
+
+[[queues.consumers]]
+queue = "whatsapp-watchdog-dlq"
+max_batch_size = 5
+
+# Workers AI — WhatsApp voice transcription and document-grounded text generation.
+# Optional override: wrangler secret/var WHATSAPP_GROUNDED_MODEL (never invent keys).
+[ai]
+binding = "AI"
+
+# Cloudflare Email Service — transactional send from Infra <noreply@infrastack.app>
+[[send_email]]
+name = "EMAIL"
 

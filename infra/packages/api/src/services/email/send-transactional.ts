@@ -4,7 +4,7 @@ import type { Env } from "../../env";
 import { recordAuditEvent } from "../control-plane";
 import { updateCompanyEmailHealth } from "./company-config";
 import { EmailSenderError, resolveApprovedSender } from "./sender-resolver";
-import { sendMicrosoftGraphMail } from "./providers/microsoft-graph";
+import { sendCloudflareEmail } from "./providers/cloudflare-email";
 import { sendResendEmail } from "./providers/resend";
 
 export type SendTransactionalEmailInput = {
@@ -54,7 +54,7 @@ export async function sendTransactionalEmail(
 
   let sender;
   try {
-    sender = await resolveApprovedSender(db, {
+    sender = resolveApprovedSender(env, {
       companyId: input.companyId,
       emailType: input.type,
     });
@@ -62,6 +62,8 @@ export async function sendTransactionalEmail(
     const code = err instanceof EmailSenderError ? err.code : "EMAIL_REJECTED";
     return { id, sent: false, failureCategory: code, error: err instanceof Error ? err.message : "Rejected" };
   }
+
+  const provider = env.RESEND_API_KEY ? "resend" : "cloudflare";
 
   await db
     .prepare(
@@ -93,29 +95,25 @@ export async function sendTransactionalEmail(
     detail: {
       emailType: input.type,
       recipientDomain: recipient.split("@")[1] ?? "unknown",
-      provider: sender.provider,
+      provider,
     },
   });
 
-  const delivery =
-    sender.provider === "microsoft365"
-      ? await sendMicrosoftGraphMail(env, {
-          companyId: input.companyId,
-          fromEmail: sender.fromEmail,
-          fromDisplayName: sender.fromDisplayName,
-          toEmail: recipient,
-          subject: input.subject,
-          bodyText: input.bodyText,
-          bodyHtml: input.bodyHtml,
-        })
-      : await sendResendEmail(env, {
-          fromDisplayName: sender.fromDisplayName,
-          fromEmail: sender.fromEmail,
-          toEmail: recipient,
-          subject: input.subject,
-          bodyText: input.bodyText,
-          bodyHtml: input.bodyHtml,
-        });
+  const delivery = env.RESEND_API_KEY
+    ? await sendResendEmail(env, {
+        fromDisplayName: sender.fromDisplayName,
+        fromEmail: sender.fromEmail,
+        toEmail: recipient,
+        subject: input.subject,
+        bodyText: input.bodyText,
+        bodyHtml: input.bodyHtml,
+      })
+    : await sendCloudflareEmail(env, {
+        toEmail: recipient,
+        subject: input.subject,
+        bodyText: input.bodyText,
+        bodyHtml: input.bodyHtml,
+      });
 
   if (delivery.ok) {
     const sentAt = nowIso();
@@ -125,7 +123,7 @@ export async function sendTransactionalEmail(
          SET status = 'sent', provider = ?, provider_message_id = ?, sent_at = ?, failure_category = NULL, error_message = NULL
          WHERE id = ?`,
       )
-      .bind(sender.provider, delivery.providerMessageId ?? null, sentAt, id)
+      .bind(provider, delivery.providerMessageId ?? null, sentAt, id)
       .run();
 
     await updateCompanyEmailHealth(db, input.companyId, {
@@ -142,14 +140,14 @@ export async function sendTransactionalEmail(
       resourceId: id,
       detail: {
         emailType: input.type,
-        provider: sender.provider,
+        provider,
       },
     });
 
     return {
       id,
       sent: true,
-      provider: sender.provider,
+      provider,
       providerMessageId: delivery.providerMessageId,
     };
   }
@@ -161,7 +159,7 @@ export async function sendTransactionalEmail(
        SET status = 'failed', provider = ?, failure_category = ?, error_message = ?, retry_count = retry_count + 1
        WHERE id = ?`,
     )
-    .bind(sender.provider, failureCategory, delivery.message, id)
+      .bind(provider, failureCategory, delivery.message, id)
     .run();
 
   await updateCompanyEmailHealth(db, input.companyId, {
@@ -177,7 +175,7 @@ export async function sendTransactionalEmail(
     resourceId: id,
     detail: {
       emailType: input.type,
-      provider: sender.provider,
+      provider,
       failureCategory,
     },
   });
@@ -185,7 +183,7 @@ export async function sendTransactionalEmail(
   return {
     id,
     sent: false,
-    provider: sender.provider,
+    provider,
     failureCategory,
     error: delivery.message,
   };

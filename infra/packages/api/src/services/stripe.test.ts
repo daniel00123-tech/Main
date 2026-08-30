@@ -5,6 +5,7 @@ import {
   isAllowedTopUpAmountCents,
   processStripeWebhookEvent,
   stripePaymentsAllowed,
+  stripeWebhookSecrets,
   verifyStripeWebhookSignature,
   STRIPE_LIVE_MODE_ALLOWED,
 } from "./stripe";
@@ -728,6 +729,63 @@ describe("verifyStripeWebhookSignature", () => {
       .join("");
     expect(
       await verifyStripeWebhookSignature(testEnv, payload, `t=${timestamp},v1=${sig}`),
+    ).toBe(true);
+  });
+
+  it("accepts a signature from the canonical infrastack webhook secret", async () => {
+    const payload = '{"id":"evt_infrastack"}';
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const env = {
+      ...testEnv,
+      STRIPE_WEBHOOK_SECRET: "whsec_legacy",
+      STRIPE_WEBHOOK_SECRET_INFRASTACK: "whsec_infrastack",
+    } as typeof testEnv;
+    expect(stripeWebhookSecrets(env as never)).toEqual(["whsec_legacy", "whsec_infrastack"]);
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode("whsec_infrastack"),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const mac = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(`${timestamp}.${payload}`),
+    );
+    const sig = Array.from(new Uint8Array(mac))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    expect(
+      await verifyStripeWebhookSignature(env as never, payload, `t=${timestamp},v1=${sig}`),
+    ).toBe(true);
+  });
+
+  it("still accepts the legacy secret while the infrastack secret is also set", async () => {
+    const payload = '{"id":"evt_legacy"}';
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const env = {
+      ...testEnv,
+      STRIPE_WEBHOOK_SECRET: "whsec_legacy",
+      STRIPE_WEBHOOK_SECRET_INFRASTACK: "whsec_infrastack",
+    };
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode("whsec_legacy"),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const mac = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(`${timestamp}.${payload}`),
+    );
+    const sig = Array.from(new Uint8Array(mac))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    expect(
+      await verifyStripeWebhookSignature(env as never, payload, `t=${timestamp},v1=${sig}`),
     ).toBe(true);
   });
 });

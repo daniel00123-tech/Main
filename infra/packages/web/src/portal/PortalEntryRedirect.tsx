@@ -40,9 +40,9 @@ export default function PortalEntryRedirect() {
     };
   }, [user, loading]);
 
-  if (loading) return <LoadingState label="Opening company portal…" />;
+  if (loading) return <LoadingState label="Opening your company…" />;
   if (!user) return <Navigate to="/portal/login" replace />;
   if (failed) return <ErrorState title="Portal unavailable" description={failed} />;
-  if (!target) return <LoadingState label="Opening company portal…" />;
+  if (!target) return <LoadingState label="Opening your company…" />;
   return <Navigate to={target} replace />;
 }
