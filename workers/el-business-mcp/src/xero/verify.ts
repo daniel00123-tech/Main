@@ -41,12 +41,15 @@ export async function runXeroVerification(env: Env) {
   }
 
   const row = await loadConnectionRow(env.EL_BUSINESS_DATA).catch(() => null);
+  const oauthLog = await env.EL_BUSINESS_DATA.prepare("SELECT * FROM xero_oauth_log WHERE id = 1")
+    .first()
+    .catch(() => null);
   checks.push({
     name: "connection_persisted",
     ok: true,
     detail: row
       ? { connected: true, organisationName: row.organisation_name, tenantId: row.tenant_id }
-      : { connected: false, note: "OAuth consent has not been completed yet." },
+      : { connected: false, note: "OAuth consent has not been completed yet.", lastCallback: oauthLog },
   });
 
   if (row) {

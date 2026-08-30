@@ -43,6 +43,26 @@ export async function insertOauthState(
     .run();
 }
 
+export async function recordOauthCallback(
+  db: D1Database,
+  input: { ok: boolean; error?: string | null; hasCode?: boolean; hasState?: boolean }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO xero_oauth_log (id, last_callback_at, last_callback_ok, last_error, last_has_code, last_has_state)
+       VALUES (1, datetime('now'), ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         last_callback_at = datetime('now'),
+         last_callback_ok = excluded.last_callback_ok,
+         last_error = excluded.last_error,
+         last_has_code = excluded.last_has_code,
+         last_has_state = excluded.last_has_state`
+    )
+    .bind(input.ok ? 1 : 0, input.error ?? null, input.hasCode ? 1 : 0, input.hasState ? 1 : 0)
+    .run()
+    .catch(() => undefined);
+}
+
 export async function consumeOauthState(
   db: D1Database,
   config: ElXeroConfig,
@@ -50,13 +70,14 @@ export async function consumeOauthState(
 ): Promise<string> {
   const row = await db
     .prepare(
-      `SELECT code_verifier_nonce, code_verifier_ciphertext, expires_at, consumed_at
+      `SELECT code_verifier_nonce, code_verifier_ciphertext, created_at, expires_at, consumed_at
        FROM xero_oauth_states WHERE state_hash = ?`
     )
     .bind(stateHash)
     .first<{
       code_verifier_nonce: string;
       code_verifier_ciphertext: string;
+      created_at: string;
       expires_at: string;
       consumed_at: string | null;
     }>();
@@ -66,7 +87,9 @@ export async function consumeOauthState(
   if (row.consumed_at) {
     throw new ElXeroError("OAuth state has already been used.", "EL_XERO_OAUTH_STATE", 400);
   }
-  if (Date.parse(row.expires_at) < Date.now()) {
+  const createdMs = Date.parse(row.created_at.replace(" ", "T") + (row.created_at.includes("Z") ? "" : "Z"));
+  const hardLimitMs = 2 * 60 * 60 * 1000;
+  if (Number.isFinite(createdMs) && Date.now() - createdMs > hardLimitMs) {
     throw new ElXeroError("OAuth state has expired. Start connect again.", "EL_XERO_OAUTH_STATE", 400);
   }
   const consumed = await db
