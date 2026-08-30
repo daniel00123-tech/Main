@@ -5,6 +5,7 @@ import { newId, nowIso } from "../db/mappers";
 import {
   executeRegisteredMcpTool,
   ensureDefaultToolAllowlist,
+  getCompanyById,
   getMcpEnvironment,
   listMcpEnvironments,
   recordAuditEvent,
@@ -460,8 +461,10 @@ export async function executeGatewayRequest(
     permissionAllowed = decision.allowed;
     permissionReason = decision.reason;
   } else if (input.actor.identity.boundUserId) {
+    const company = await getCompanyById(env.DB, input.companyId);
     const decision = await evaluateBoundUserGatewayPermission(env.DB, {
       companyId: input.companyId,
+      companySlug: company?.slug,
       identity: input.actor.identity,
       action,
       toolName: input.toolName,

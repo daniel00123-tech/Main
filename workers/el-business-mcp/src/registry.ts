@@ -54,7 +54,11 @@ export async function elPlatformRegistrySnapshot(env: Env): Promise<{
       enabled: definition.enabled,
       status: connected || (isXero && xero.configured) ? "configured" : definition.status,
       health: healthFromStatus(definition.status, connected || (isXero && Boolean(xero.connected))),
-      lastVerified: connected || (isXero && xero.lastApiAt) ? xero.lastApiAt ?? now : null,
+      lastVerified: isXero
+        ? xero.lastApiAt ?? (connected ? now : null)
+        : connected
+          ? now
+          : null,
       label: definition.label,
       category: definition.category,
       authenticationConfigured: definition.authenticationConfigured,
