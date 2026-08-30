@@ -1117,7 +1117,46 @@ export const api = {
       };
     }>(`/api/companies/${slug}/wallet/health`),
   getFailedRequests: () =>
-    fetchJson<{ failures: Array<Record<string, unknown>> }>("/api/platform/failed-requests"),
+    fetchJson<{
+      failures: Array<Record<string, unknown>>;
+      whatsapp?: {
+        stuckCount: number;
+        processingCount: number;
+        failedCount: number;
+        consecutiveFailedReplies: number;
+        incidents: Array<Record<string, unknown>>;
+        metrics?: Record<string, number | string | string[] | null | undefined>;
+      };
+    }>("/api/platform/failed-requests"),
+  getWhatsAppInbox: () =>
+    fetchJson<{
+      items: Array<Record<string, unknown>>;
+      stuckCount: number;
+      processingCount: number;
+      failedCount: number;
+      metrics?: {
+        recognisedMessages: number;
+        firstVisibleP50Ms: number | null;
+        firstVisibleP95Ms: number | null;
+        finalP50Ms: number | null;
+        finalP95Ms: number | null;
+        silentOver3s: number;
+        silentOver10s: number;
+        stuckOver30s: number;
+        failedOutbound: number;
+        queueLatencyP50Ms: number | null;
+        typingSuccessRate: number | null;
+        readStatusSuccessRate: number | null;
+        greetingSilentOver3s?: number;
+        queueOldestMs?: number | null;
+        dlqEvents?: number;
+        signatureRejects?: number;
+        liveMetaInbound?: number;
+        persistFailures?: number;
+        healthState?: "GREEN" | "AMBER" | "RED";
+        redReasons?: string[];
+      };
+    }>("/api/platform/whatsapp/inbox"),
   getWeeklyReview: () =>
     fetchJson<{ summary: Array<Record<string, unknown>>; generatedAt: string }>(
       "/api/platform/weekly-review",
@@ -1175,9 +1214,33 @@ export const api = {
       `/api/companies/${slug}/ai-connections/${clientType}/test`,
       { method: "POST", body: "{}" },
     ),
+  updatePlatformUser: (
+    userId: string,
+    input: {
+      displayName?: string;
+      email?: string;
+      mobile?: string;
+      status?: "active" | "disabled";
+      companyId?: string;
+      role?: CompanyRole;
+    },
+  ) =>
+    fetchJson<{ ok: boolean; userId: string }>(`/api/platform/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  deletePlatformUser: (userId: string) =>
+    fetchJson<{ ok: boolean; userId: string; status: string }>(`/api/platform/users/${userId}`, {
+      method: "DELETE",
+    }),
+  cancelPlatformUserInvitations: (userId: string) =>
+    fetchJson<{ ok: boolean; cancelled: number }>(
+      `/api/platform/users/${userId}/cancel-invitations`,
+      { method: "POST", body: "{}" },
+    ),
   inviteUser: (
     slug: string,
-    input: { email: string; displayName: string; role: CompanyRole },
+    input: { email: string; displayName: string; role: CompanyRole; mobile?: string },
   ) =>
     fetchJson<{
       user: { id: string; email: string; displayName: string };
@@ -1525,5 +1588,287 @@ export const api = {
         detectedAt: string;
       }>;
     }>(`/api/commercial/reconciliation/exceptions?status=${encodeURIComponent(status)}`),
+  getCustomerEconomics: (query?: {
+    companyId?: string;
+    preset?: string;
+    from?: string;
+    to?: string;
+    provider?: string;
+    service?: string;
+  }) =>
+    fetchJson<{
+      period: { from: string; to: string; preset: string };
+      companies: Array<{
+        companyId: string;
+        companyName: string;
+        companySlug: string;
+        cashCollectedCents: number;
+        usageChargeCents: number;
+        creditsRefundsCents: number;
+        revenueCents: number;
+        revenueBasis: string;
+        cashBasisNote: string;
+        directCostCents: number;
+        directCostKnown: boolean;
+        grossProfitCents: number | null;
+        grossMarginPercent: number | null;
+        activeUsers: number;
+        costPerActiveUserCents: number | null;
+        revenuePerActiveUserCents: number | null;
+        ocrCostCents: number;
+        aiModelCostCents: number;
+        cloudflareCostCents: number;
+        stripeFeeCents: number;
+        otherAttributableCostCents: number;
+        unattributedCostCents: number;
+      }>;
+      platformOverheads: {
+        allocatedToCustomers: boolean;
+        monthlyCostCents: number;
+        activeCount: number;
+        currency: string;
+      };
+      coverage: Array<{ provider: string; service: string; coverage: string; notes: string }>;
+    }>(`/api/platform/economics${toQuery(query)}`),
+  getCompanyEconomics: (
+    companyId: string,
+    query?: { preset?: string; from?: string; to?: string; provider?: string; service?: string },
+  ) =>
+    fetchJson<{
+      period: { from: string; to: string; preset: string };
+      company: {
+        companyId: string;
+        companyName: string;
+        companySlug: string;
+        cashCollectedCents: number;
+        usageChargeCents: number;
+        creditsRefundsCents: number;
+        revenueCents: number;
+        cashBasisNote: string;
+        directCostCents: number;
+        grossProfitCents: number | null;
+        grossMarginPercent: number | null;
+        activeUsers: number;
+        costPerActiveUserCents: number | null;
+        revenuePerActiveUserCents: number | null;
+        ocrCostCents: number;
+        aiModelCostCents: number;
+        stripeFeeCents: number;
+        otherAttributableCostCents: number;
+        unattributedCostCents: number;
+      };
+      providers: Array<{
+        provider: string;
+        service: string;
+        classification: string;
+        costBasis: string;
+        usageQuantity: number;
+        usageUnit: string;
+        costCents: number;
+        eventCount: number;
+      }>;
+      users: Array<{
+        userId: string | null;
+        actorLabel: string;
+        attributed: boolean;
+        usageCount: number;
+        interactionCount: number;
+        usageChargeCents: number;
+        directCostCents: number;
+        providers: string[];
+        features: string[];
+      }>;
+      trend: Array<{ day: string; revenueCents: number; directCostCents: number }>;
+    }>(`/api/platform/economics/${encodeURIComponent(companyId)}${toQuery(query)}`),
+  getPlatformOverheads: () =>
+    fetchJson<{
+      items: Array<{
+        id: string;
+        provider: string;
+        description: string;
+        monthlyCostCents: number;
+        currency: string;
+        startDate: string;
+        endDate: string | null;
+        category: string;
+      }>;
+      categories: string[];
+      allocatedToCustomers: boolean;
+    }>("/api/platform/overheads"),
+  createPlatformOverhead: (input: {
+    provider: string;
+    description: string;
+    monthlyCostCents: number;
+    currency?: string;
+    startDate: string;
+    endDate?: string | null;
+    category: string;
+  }) =>
+    fetchJson<Record<string, unknown>>("/api/platform/overheads", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  deletePlatformOverhead: (id: string) =>
+    fetchJson<{ ok: boolean }>(`/api/platform/overheads/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+  getInteractionHistory: (query?: {
+    companyId?: string;
+    userId?: string;
+    channel?: string;
+    provider?: string;
+    tool?: string;
+    success?: string;
+    from?: string;
+    to?: string;
+  }) =>
+    fetchJson<{
+      items: Array<{
+        id: string;
+        companyId: string;
+        companyName: string | null;
+        userId: string | null;
+        userEmail: string | null;
+        userName: string;
+        channel: string;
+        label: string;
+        status: string;
+        success: boolean;
+        createdAt: string;
+        operationCount: number;
+        customerChargeCents: number;
+        providerCostCents: number | null;
+        tools: string[];
+        latencyMs: number | null;
+        inputType?: string | null;
+        originatedAsVoice?: boolean;
+      }>;
+    }>(`/api/platform/interactions${toQuery(query)}`),
+  getInteractionDetail: (id: string) =>
+    fetchJson<{
+      id: string;
+      companyName: string | null;
+      userEmail: string | null;
+      userName: string | null;
+      channel: string;
+      label: string;
+      status: string;
+      inputType?: string | null;
+      originatedAsVoice?: boolean;
+      transcript?: string | null;
+      createdAt: string;
+      request: unknown;
+      response: unknown;
+      tools: Array<{ name: string | null; action: string | null; success: boolean; resultMetadata: unknown }>;
+      timing: { latencyMs: number | null };
+      providerCost: { customerChargeCents: number; providerCostCents: number | null; known: boolean };
+      traceIds: { interactionId: string; mcpSessionId: string | null; requestIds: string[]; correlationIds: string[] };
+      qualityFlags: Array<{ id: string; category: string; severity: string; confidence: number; status: string; occurrenceCount: number }>;
+      operations: Array<Record<string, unknown>>;
+      gateway: Array<Record<string, unknown>>;
+    }>(`/api/platform/interactions/${encodeURIComponent(id)}`),
+  getQualityIssues: (query?: { companyId?: string; status?: string; category?: string }) =>
+    fetchJson<{
+      items: Array<{
+        id: string;
+        companyId: string | null;
+        companyName: string | null;
+        userEmail: string | null;
+        userName: string | null;
+        interactionId: string | null;
+        channel: string | null;
+        category: string;
+        severity: string;
+        confidence: number;
+        evidence: unknown[];
+        suggestedInvestigation: string | null;
+        occurrenceCount: number;
+        firstSeenAt: string;
+        lastSeenAt: string;
+        status: string;
+      }>;
+      statuses: string[];
+    }>(`/api/platform/quality-issues${toQuery(query)}`),
+  setQualityIssueStatus: (id: string, status: string) =>
+    fetchJson<{ ok: boolean }>(`/api/platform/quality-issues/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    }),
+  getQualityLoop: () =>
+    fetchJson<{
+      config: {
+        activatedAt: string;
+        phase: string;
+        lastRunAt: string | null;
+        baselineCompletedAt: string | null;
+      };
+      cadence: string;
+      latestRun: { id: string; kind: string; phase: string; periodFrom: string; periodTo: string; status: string; metrics: Record<string, number>; createdAt: string } | null;
+      runs: Array<Record<string, unknown>>;
+      proposalCounts: Record<string, number>;
+      kpis: { conversationsAnalysed: number; qualityAverage: number; failedRate: number };
+      history: Array<{
+        id: string;
+        proposalId: string;
+        action: string;
+        actor: string | null;
+        runtimeVersion: number | null;
+        createdAt: string;
+      }>;
+      latest: {
+        run: { id: string; kind: string; metrics: Record<string, number>; periodFrom: string; periodTo: string };
+        failedConversations: Array<{
+          id: string;
+          companyId: string;
+          interactionId: string | null;
+          conversationKey: string;
+          overallScore: number;
+          failed: boolean;
+          flags: unknown;
+        }>;
+        patterns: Array<{
+          id: string;
+          companyId: string | null;
+          title: string;
+          rootCause: string | null;
+          occurrenceCount: number;
+          severity: string;
+        }>;
+        proposals: Array<{
+          id: string;
+          title: string;
+          summary: string;
+          risk: string;
+          autoApplyable: boolean;
+          engineeringRequired: boolean;
+          status: string;
+          pretest: unknown;
+        }>;
+      } | null;
+    }>("/api/platform/quality-loop"),
+  resolveQualityLoopToken: (token: string) =>
+    fetchJson<{ runId: string; executesChanges: boolean }>(
+      `/api/platform/quality-loop/resolve-token?token=${encodeURIComponent(token)}`,
+    ),
+  approveQualityLoopRecommended: (runId: string) =>
+    fetchJson<{ ok: boolean }>(`/api/platform/quality-loop/reviews/${encodeURIComponent(runId)}/approve-recommended`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  decideQualityLoopProposal: (id: string, decision: "approve" | "reject" | "defer", runId?: string) =>
+    fetchJson<{ ok: boolean; status: string }>(`/api/platform/quality-loop/proposals/${encodeURIComponent(id)}/decide`, {
+      method: "POST",
+      body: JSON.stringify({ decision, runId }),
+    }),
 };
+
+function toQuery(query?: Record<string, string | undefined>) {
+  if (!query) return "";
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value) params.set(key, value);
+  }
+  const text = params.toString();
+  return text ? `?${text}` : "";
+}
 

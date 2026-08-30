@@ -1,4 +1,30 @@
+# Required local vars (Cloud Agent / wrangler dev). Placeholder values only.
 SESSION_SECRET=local-dev-session-secret-change-before-production
 ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 INITIAL_PLATFORM_ADMIN_EMAIL=admin@infra.local
 INITIAL_PLATFORM_ADMIN_PASSWORD=ChangeMeBeforeProduction!
+ENVIRONMENT=development
+# Leave the cookie domain unset for local dev so the session cookie is scoped to
+# localhost. wrangler.toml pins these to the production portal domain, which would
+# otherwise make the cookie unusable on localhost and break browser login.
+PORTAL_COOKIE_DOMAIN=
+PORTAL_BASE_DOMAIN=
+
+# Optional local integrations — uncomment only when testing that path.
+# Production-only secrets stay in `wrangler secret put`, never in this file.
+# See ../../../docs/PRODUCTION_SERVICES.md and ../../../.env.example
+# RESEND_API_KEY=
+# OPENAI_API_KEY=
+# CADDINGTON_MCP_AUTH_TOKEN=
+# XERO_CLIENT_ID=
+# XERO_CLIENT_SECRET=
+# MICROSOFT_TENANT_ID=
+# MICROSOFT_CLIENT_ID=
+# MICROSOFT_CLIENT_SECRET=
+# AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=
+# AZURE_DOCUMENT_INTELLIGENCE_KEY=
+# WHATSAPP_WEBHOOK_VERIFY_TOKEN=
+# WHATSAPP_ACCESS_TOKEN=
+# META_APP_SECRET=
+# STRIPE_SECRET_KEY=
+# STRIPE_WEBHOOK_SECRET=

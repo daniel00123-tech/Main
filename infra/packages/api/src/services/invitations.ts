@@ -1,6 +1,6 @@
 import { newId, nowIso } from "../db/mappers";
 import type { CompanyRole } from "@infra/shared";
-import { inviteCompanyUser } from "../auth/users";
+import { getUserByEmail, inviteCompanyUser } from "../auth/users";
 import { queueEmail, renderInvitationEmail } from "./email-outbox";
 import { recordAuditEvent } from "./control-plane";
 import type { Env } from "../env";
@@ -38,6 +38,7 @@ export async function createCompanyInvitation(
     teamId?: string | null;
     customRoleId?: string | null;
     origin: string;
+    mobile?: string | null;
   },
 ) {
   const existingInvite = await findActiveInvitation(env.DB, input.companyId, input.email);
@@ -51,11 +52,28 @@ export async function createCompanyInvitation(
     throw err;
   }
 
+  const existingUser = await getUserByEmail(env.DB, input.email);
+  if (existingUser) {
+    const membership = await env.DB.prepare(
+      `SELECT id FROM company_memberships WHERE user_id = ? AND company_id = ?`,
+    )
+      .bind(existingUser.id, input.companyId)
+      .first();
+    if (membership) {
+      const err = new Error(
+        "This person already has an account in this company. Edit their details instead of sending another invitation email.",
+      ) as Error & { code: string };
+      err.code = "USER_ALREADY_MEMBER";
+      throw err;
+    }
+  }
+
   const invited = await inviteCompanyUser(env.DB, {
     email: input.email,
     displayName: input.displayName,
     companyId: input.companyId,
     role: input.role,
+    mobile: input.mobile,
   });
 
   const inviteId = newId("inv");

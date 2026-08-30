@@ -32,6 +32,7 @@ export default function PortalUsersPage() {
   const [teamError, setTeamError] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteMobile, setInviteMobile] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<CompanyRole>("office_staff");
   const [inviteResult, setInviteResult] = useState<string | null>(null);
@@ -100,6 +101,7 @@ export default function PortalUsersPage() {
         email: inviteEmail,
         displayName: inviteName,
         role: inviteRole,
+        mobile: inviteMobile,
       });
       setInviteResult(
         result.emailSent
@@ -107,6 +109,7 @@ export default function PortalUsersPage() {
           : result.setupUrl ?? "Invitation created",
       );
       setInviteEmail("");
+      setInviteMobile("");
       setInviteName("");
       await refresh();
     } catch (err) {
@@ -510,6 +513,16 @@ export default function PortalUsersPage() {
               onChange={(e) => setInviteEmail(e.target.value)}
               required
             />
+          </label>
+          <label>
+            Mobile number
+            <input
+              value={inviteMobile}
+              onChange={(e) => setInviteMobile(e.target.value)}
+              placeholder="+447700900123"
+              required
+            />
+            <span className="muted small">Required for new users. Example UK format +447…</span>
           </label>
           <label>
             Role

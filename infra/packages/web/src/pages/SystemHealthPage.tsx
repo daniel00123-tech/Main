@@ -4,9 +4,12 @@ import type { Company, ConnectorInstance, McpEnvironment } from "@infra/shared";
 import { api } from "../api";
 import {
   Button,
+  CollapsibleBlock,
+  DataCard,
   Drawer,
   ErrorState,
   LoadingState,
+  MobileRecordList,
   PageHeader,
   SectionCard,
   StatusBadge,
@@ -44,6 +47,7 @@ export default function SystemHealthPage() {
   const [opsHealth, setOpsHealth] = useState<Awaited<
     ReturnType<typeof api.getPlatformOperationsHealth>
   > | null>(null);
+  const [whatsappUx, setWhatsappUx] = useState<Awaited<ReturnType<typeof api.getWhatsAppInbox>> | null>(null);
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const [connectorDetail, setConnectorDetail] = useState<{
     connector: ConnectorInstance;
@@ -55,7 +59,7 @@ export default function SystemHealthPage() {
     setError(null);
     const now = new Date().toISOString();
     try {
-      const [healthResult, readyResult, gatewayResult, mcpList, connectorList, companyList, opsResult] =
+      const [healthResult, readyResult, gatewayResult, mcpList, connectorList, companyList, opsResult, inbox] =
         await Promise.all([
           api.getHealth().then(
             (data) => ({ ok: true as const, data }),
@@ -76,8 +80,10 @@ export default function SystemHealthPage() {
           api.getConnectorInstances().catch(() => [] as ConnectorInstance[]),
           api.getCompanies().catch(() => [] as Company[]),
           api.getPlatformOperationsHealth().catch(() => null),
+          api.getWhatsAppInbox().catch(() => null),
         ]);
 
+      setWhatsappUx(inbox);
       setMcps(mcpList);
       setConnectors(connectorList);
       setCompanies(companyList);
@@ -255,8 +261,8 @@ export default function SystemHealthPage() {
   return (
     <>
       <PageHeader
-        title="System Health"
-        description="Platform services vs customer integration health."
+        title="System health"
+        description="Operational summary first, diagnostics second."
         actions={
           <Button variant="secondary" onClick={() => void load()}>
             Refresh
@@ -276,16 +282,79 @@ export default function SystemHealthPage() {
           </p>
           <p>
             Last checked {checkedAt ? formatRelativeTime(checkedAt) : "—"}.
-            {opsHealth
-              ? ` Overall state: ${opsHealth.overallState.replace(/_/g, " ").toLowerCase()}.`
-              : ""}
             {stripeConfigured === false ? " Stripe billing is not configured." : ""}
           </p>
         </div>
       </div>
 
-      <SectionCard title="Platform health">
-        <div className="table-wrap health-console">
+      {(() => {
+        const healthy = services.filter((s) => s.status === "operational").length;
+        const degraded = services.filter((s) => s.status === "degraded").length;
+        const failing = services.filter((s) => s.status === "unavailable").length;
+        return (
+          <div className="health-summary">
+            <div>
+              <span className="muted small">Healthy</span>
+              <strong>{healthy}</strong>
+            </div>
+            <div>
+              <span className="muted small">Degraded</span>
+              <strong>{degraded}</strong>
+            </div>
+            <div>
+              <span className="muted small">Failing</span>
+              <strong>{failing}</strong>
+            </div>
+            <div>
+              <span className="muted small">Services</span>
+              <strong>{services.length}</strong>
+            </div>
+          </div>
+        );
+      })()}
+
+      {unhealthyServices.length > 0 ? (
+        <SectionCard title="Needs attention" description="Resolve these before treating the platform as healthy.">
+          <MobileRecordList>
+            {unhealthyServices.map((service) => (
+              <DataCard
+                key={`attn-${service.id}`}
+                title={service.name}
+                subtitle={service.detail}
+                status={
+                  <StatusBadge
+                    status={mapServiceStatus(service.status)}
+                    label={humanStatus(mapServiceStatus(service.status))}
+                  />
+                }
+                timestamp={service.lastCheck}
+              />
+            ))}
+          </MobileRecordList>
+        </SectionCard>
+      ) : null}
+
+      <SectionCard title="Platform services">
+        <div className="mobile-cards">
+          <MobileRecordList>
+            {services.map((service) => (
+              <DataCard
+                key={service.id}
+                title={service.name}
+                subtitle={service.detail}
+                status={
+                  <StatusBadge
+                    status={mapServiceStatus(service.status)}
+                    label={humanStatus(mapServiceStatus(service.status))}
+                  />
+                }
+                metric={service.latency ?? undefined}
+                timestamp={service.lastCheck}
+              />
+            ))}
+          </MobileRecordList>
+        </div>
+        <div className="desktop-table table-wrap health-console">
           <table className="table compact">
             <thead>
               <tr>
@@ -312,15 +381,57 @@ export default function SystemHealthPage() {
             </tbody>
           </table>
         </div>
-        <p className="muted small" style={{ marginTop: 8 }}>
-          {services.map((s) => `${s.name}: ${s.detail}`).join(" · ")}
-        </p>
       </SectionCard>
+
+      {whatsappUx?.metrics ? (
+        <SectionCard
+          title="WhatsApp realtime UX"
+          description="Recognised-user first-visible and final latency, silent/stuck counts, read and typing success."
+          className="mt-6"
+        >
+          {whatsappUx.metrics.healthState === "RED" ? (
+            <div className="attention-banner warn" style={{ marginBottom: 12 }}>
+              <p className="attention-title">WhatsApp UX RED</p>
+              <p className="muted small">{(whatsappUx.metrics.redReasons ?? []).join(" · ") || "Greeting or recognised-user first visible exceeded 3s, queue oldest >10s, or a WhatsApp DLQ event."}</p>
+            </div>
+          ) : null}
+          <div className="metric-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+            <DataCard title="Recognised" metric={String(whatsappUx.metrics.recognisedMessages)} />
+            <DataCard title="First visible p50/p95" metric={`${whatsappUx.metrics.firstVisibleP50Ms ?? "—"} / ${whatsappUx.metrics.firstVisibleP95Ms ?? "—"} ms`} />
+            <DataCard title="Final p50/p95" metric={`${whatsappUx.metrics.finalP50Ms ?? "—"} / ${whatsappUx.metrics.finalP95Ms ?? "—"} ms`} />
+            <DataCard title="Health" metric={whatsappUx.metrics.healthState ?? "—"} />
+            <DataCard title="Silent >3s / >10s" metric={`${whatsappUx.metrics.silentOver3s} / ${whatsappUx.metrics.silentOver10s}`} />
+            <DataCard title="Greeting silent >3s" metric={String(whatsappUx.metrics.greetingSilentOver3s ?? 0)} />
+            <DataCard title="Stuck >30s" metric={String(whatsappUx.metrics.stuckOver30s)} />
+            <DataCard title="DLQ / persist fail" metric={`${whatsappUx.metrics.dlqEvents ?? 0} / ${whatsappUx.metrics.persistFailures ?? 0}`} />
+            <DataCard title="Failed outbound" metric={String(whatsappUx.metrics.failedOutbound)} />
+            <DataCard title="Queue p50" metric={whatsappUx.metrics.queueLatencyP50Ms == null ? "—" : `${whatsappUx.metrics.queueLatencyP50Ms} ms`} />
+            <DataCard title="Typing / read" metric={`${whatsappUx.metrics.typingSuccessRate ?? "—"}% / ${whatsappUx.metrics.readStatusSuccessRate ?? "—"}%`} />
+          </div>
+        </SectionCard>
+      ) : null}
 
       {opsHealth ? (
         <>
           <SectionCard title="Operational subsystems" className="mt-6">
-            <div className="table-wrap health-console">
+            <div className="mobile-cards">
+              <MobileRecordList>
+                {opsHealth.subsystems.map((subsystem) => (
+                  <DataCard
+                    key={subsystem.id}
+                    title={subsystem.label}
+                    subtitle={subsystem.summary}
+                    status={
+                      <StatusBadge
+                        status={mapOpsState(subsystem.state)}
+                        label={subsystem.state.replace(/_/g, " ")}
+                      />
+                    }
+                  />
+                ))}
+              </MobileRecordList>
+            </div>
+            <div className="desktop-table table-wrap health-console">
               <table className="table compact">
                 <thead>
                   <tr>
@@ -587,10 +698,12 @@ export default function SystemHealthPage() {
                   : "—"}
               </dd>
             </div>
-            <div className="drawer-row">
-              <dt>Connector ID</dt>
-              <dd className="mono small">{connectorDetail.connector.id}</dd>
-            </div>
+            <CollapsibleBlock title="Technical details">
+              <div className="drawer-row">
+                <dt>Connector ID</dt>
+                <dd className="mono small">{connectorDetail.connector.id}</dd>
+              </div>
+            </CollapsibleBlock>
             <p className="muted small" style={{ marginTop: 12 }}>
               Detailed connector request logs are available from Usage and Audit Log filtered by
               company and integration. Credentials are never shown here.

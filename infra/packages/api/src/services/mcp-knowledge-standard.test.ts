@@ -149,6 +149,9 @@ describe("Company Knowledge response adaptors", () => {
 
   it("does not invent citation URLs", () => {
     expect(firstHttpUrl("drive:file/abc", "not-a-url")).toBe("");
+    expect(firstHttpUrl("webUrl-missing", { not: "a string" }, "https://onedrive.live.com/redir")).toBe(
+      "https://onedrive.live.com/redir",
+    );
     const payload = toStandardSearchPayload({
       results: [
         {

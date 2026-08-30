@@ -1,5 +1,7 @@
 # INFRA — Setup & Go-Live Guide
 
+> **Historical go-live notes.** Current commands and domains: [`../../docs/DEVELOPMENT_RUNBOOK.md`](../../docs/DEVELOPMENT_RUNBOOK.md) and [`../../docs/PRODUCTION_SERVICES.md`](../../docs/PRODUCTION_SERVICES.md). Canonical hosts are `*.infrastack.app`, not the workers.dev examples in this file.
+
 Use this document step-by-step (including with ChatGPT) to host INFRA on Cloudflare, attach a domain, and bring the platform live. It assumes you are starting from the `infra/` monorepo in the **Main** GitHub repository.
 
 **Estimated components:** Cloudflare account, domain, GitHub, Stripe (test mode), optional Cursor for development.

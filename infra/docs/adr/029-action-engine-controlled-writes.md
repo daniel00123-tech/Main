@@ -79,6 +79,8 @@ destructiveWritesEnabled: false
 
 Production financial writes stay **disabled** until operator explicitly enables `FINANCIAL_WRITES_ENABLED`.
 
+> **Code update:** `infra/packages/api/src/services/approvals.ts` now sets `FINANCIAL_WRITES_ENABLED = true`. Direct MCP write tools remain blocked (`DIRECT_MCP_FINANCIAL_WRITES_BLOCKED`). See [`../../../docs/TENANCY_AND_SECURITY.md`](../../../docs/TENANCY_AND_SECURITY.md).
+
 ### Xero write scopes (granular, post–March 2026)
 
 | Capability | Scope | Action | Risk |

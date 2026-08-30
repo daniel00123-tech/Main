@@ -1,17 +1,21 @@
-import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
   Bot,
   Building2,
   ChartColumn,
+  ChevronDown,
   ChevronsLeft,
   ChevronsRight,
+  CircleAlert,
   Globe,
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageSquare,
   Network,
   Plug,
+  PoundSterling,
   Receipt,
   Settings,
   Shield,
@@ -31,6 +35,7 @@ import {
   useMediaQuery,
   useSidebarCollapsed,
 } from "./components";
+import { InfraBrand } from "./components/InfraBrand";
 import AiClientsPage from "./pages/AiClientsPage";
 import AuditLogPage from "./pages/AuditLogPage";
 import BillingPage from "./pages/BillingPage";
@@ -42,6 +47,7 @@ import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import PasswordSetupPage from "./pages/PasswordSetupPage";
+import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import McpEnvironmentsPage from "./pages/McpEnvironmentsPage";
 import PricingRulesPage from "./pages/PricingRulesPage";
 import ProviderCostsPage from "./pages/ProviderCostsPage";
@@ -50,6 +56,12 @@ import SettingsPage from "./pages/SettingsPage";
 import SystemHealthPage from "./pages/SystemHealthPage";
 import UsagePage from "./pages/UsagePage";
 import UsersPermissionsPage from "./pages/UsersPermissionsPage";
+import EconomicsPage from "./pages/EconomicsPage";
+import EconomicsDetailPage from "./pages/EconomicsDetailPage";
+import InteractionsPage from "./pages/InteractionsPage";
+import QualityIssuesPage from "./pages/QualityIssuesPage";
+import QualityImprovementsPage from "./pages/QualityImprovementsPage";
+import PlatformOverheadsPage from "./pages/PlatformOverheadsPage";
 import PortalShell from "./portal/PortalShell";
 import PortalEntryRedirect from "./portal/PortalEntryRedirect";
 import PortalLoginPage from "./portal/PortalLoginPage";
@@ -68,7 +80,7 @@ import AdminCompanySwitcher from "./components/AdminCompanySwitcher";
 import ScopeBanner from "./components/ScopeBanner";
 import { AdminScopeProvider } from "./context/AdminScopeContext";
 import PortalCompanyPickerPage from "./pages/PortalCompanyPickerPage";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type NavItem = {
   to: string;
@@ -85,7 +97,6 @@ const ADMIN_NAV: NavGroup[] = [
     items: [
       { to: "/", label: "Dashboard", icon: <LayoutDashboard size={18} />, end: true },
       { to: "/companies", label: "Companies", icon: <Building2 size={18} /> },
-      { to: "/portal", label: "Company portal", icon: <Globe size={18} /> },
     ],
   },
   {
@@ -104,29 +115,58 @@ const ADMIN_NAV: NavGroup[] = [
   {
     label: "Commercial",
     items: [
-      { to: "/usage", label: "Usage", icon: <ChartColumn size={18} /> },
+      { to: "/economics", label: "Economics", icon: <PoundSterling size={18} /> },
       { to: "/billing", label: "Billing", icon: <Wallet size={18} /> },
-      { to: "/commercial/provider-costs", label: "Provider Costs", icon: <Receipt size={18} /> },
-      { to: "/commercial/pricing-rules", label: "Pricing Rules", icon: <Tags size={18} /> },
+      { to: "/commercial/provider-costs", label: "Provider costs", icon: <Receipt size={18} /> },
+      { to: "/commercial/pricing-rules", label: "Pricing", icon: <Tags size={18} /> },
+      { to: "/commercial/overheads", label: "Overheads", icon: <Receipt size={18} /> },
+      { to: "/usage", label: "Usage", icon: <ChartColumn size={18} /> },
     ],
   },
   {
-    label: "Platform",
+    label: "Operations",
     items: [
-      { to: "/system-health", label: "System Health", icon: <Activity size={18} /> },
-      { to: "/failed-requests", label: "Failed Requests", icon: <Activity size={18} /> },
-      { to: "/audit-log", label: "Audit Log", icon: <Shield size={18} /> },
-      { to: "/settings", label: "Settings", icon: <Settings size={18} /> },
+      { to: "/system-health", label: "System health", icon: <Activity size={18} /> },
+      { to: "/failed-requests", label: "Failed requests", icon: <Activity size={18} /> },
     ],
   },
+  {
+    label: "Audit & Quality",
+    items: [
+      { to: "/interactions", label: "Interactions", icon: <MessageSquare size={18} /> },
+      { to: "/quality", label: "Quality", icon: <CircleAlert size={18} /> },
+      { to: "/quality/improvements", label: "Improvement Reviews", icon: <CircleAlert size={18} /> },
+      { to: "/audit-log", label: "Audit log", icon: <Shield size={18} /> },
+    ],
+  },
+  {
+    label: "Settings",
+    items: [{ to: "/settings", label: "Settings", icon: <Settings size={18} /> }],
+  },
 ];
+
+function groupContainsPath(group: NavGroup, pathname: string): boolean {
+  return group.items.some((item) =>
+    item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`),
+  );
+}
 
 function AdminShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [collapsed, setCollapsed] = useSidebarCollapsed();
   const isMobile = useMediaQuery("(max-width: 900px)");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const activeGroup = useMemo(
+    () => ADMIN_NAV.find((group) => groupContainsPath(group, location.pathname))?.label ?? "Overview",
+    [location.pathname],
+  );
+  const [openGroups, setOpenGroups] = useState<string[]>([activeGroup]);
+
+  useEffect(() => {
+    setOpenGroups((current) => (current.includes(activeGroup) ? current : [...current, activeGroup]));
+  }, [activeGroup]);
 
   const shellClass = [
     "app-shell",
@@ -145,23 +185,19 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         <Button type="button" variant="ghost" size="sm" aria-label="Open navigation" onClick={() => setMobileOpen(true)}>
           <Menu size={18} />
         </Button>
-        <strong style={{ letterSpacing: "0.08em" }}>INFRA</strong>
+        <InfraBrand context="Admin" size={28} />
         <span className="muted small" style={{ marginLeft: "auto" }}>
-          Admin Control Panel
+          Control panel
         </span>
       </div>
 
       <aside className="sidebar" aria-label="Platform navigation">
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden>
-            IN
-          </div>
           {showLabels ? (
-            <div className="brand-text">
-              <span className="brand-name">INFRA</span>
-              <span className="brand-context">Admin Control Panel</span>
-            </div>
-          ) : null}
+            <InfraBrand context="Admin" />
+          ) : (
+            <InfraBrand compact />
+          )}
           {!isMobile ? (
             <button
               type="button"
@@ -185,24 +221,45 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav>
-          {ADMIN_NAV.map((group) => (
-            <div key={group.label} className="nav-section">
-              {showLabels ? <div className="nav-section-label">{group.label}</div> : null}
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  className="nav-link"
-                  to={item.to}
-                  end={item.end}
-                  title={!showLabels ? item.label : undefined}
-                  onClick={() => setMobileOpen(false)}
-                >
-                  {item.icon}
-                  <span className="label">{item.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          ))}
+          {ADMIN_NAV.map((group) => {
+            const expanded = openGroups.includes(group.label);
+            return (
+              <div key={group.label} className="nav-section">
+                {showLabels ? (
+                  <button
+                    type="button"
+                    className="nav-section-toggle"
+                    aria-expanded={expanded}
+                    onClick={() =>
+                      setOpenGroups((current) =>
+                        current.includes(group.label)
+                          ? current.filter((label) => label !== group.label)
+                          : [...current, group.label],
+                      )
+                    }
+                  >
+                    {group.label}
+                    <ChevronDown size={14} style={{ transform: expanded ? "rotate(180deg)" : undefined }} />
+                  </button>
+                ) : null}
+                <div className="nav-section-items">
+                  {group.items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      className="nav-link"
+                      to={item.to}
+                      end={item.end}
+                      title={!showLabels ? item.label : undefined}
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      {item.icon}
+                      <span className="label">{item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sidebar-spacer" />
@@ -286,6 +343,7 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/setup-password" element={<PasswordSetupPage />} />
       <Route path="/portal/login" element={<PortalLoginPage />} />
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
 
       <Route element={<PortalAuthShell />}>
         <Route path="/portal" element={<PortalEntryRedirect />} />
@@ -334,7 +392,13 @@ export default function App() {
                 <Route path="/ai-clients" element={<AiClientsPage />} />
                 <Route path="/users" element={<UsersPermissionsPage />} />
                 <Route path="/usage" element={<UsagePage />} />
+                <Route path="/economics" element={<EconomicsPage />} />
+                <Route path="/economics/:companyId" element={<EconomicsDetailPage />} />
+                <Route path="/interactions" element={<InteractionsPage />} />
+                <Route path="/quality" element={<QualityIssuesPage />} />
+                <Route path="/quality/improvements" element={<QualityImprovementsPage />} />
                 <Route path="/billing" element={<BillingPage />} />
+                <Route path="/commercial/overheads" element={<PlatformOverheadsPage />} />
                 <Route path="/commercial/provider-costs" element={<ProviderCostsPage />} />
                 <Route path="/commercial/pricing-rules" element={<PricingRulesPage />} />
                 <Route path="/system-health" element={<SystemHealthPage />} />

@@ -1,5 +1,9 @@
 # INFRA — Architecture & Design (v0.1)
 
+> **Historical.** Written before connectors, WhatsApp, automations, and `infrastack.app` shipped.
+> Current architecture: [`../../docs/architecture/CURRENT_ARCHITECTURE.md`](../../docs/architecture/CURRENT_ARCHITECTURE.md).
+> Current capabilities: [`../../docs/CAPABILITY_MATRIX.md`](../../docs/CAPABILITY_MATRIX.md).
+
 This document fulfils the design-first requirement before substantial implementation. It describes architecture, data models, security boundaries, and a phased delivery plan. No external systems are connected.
 
 ---

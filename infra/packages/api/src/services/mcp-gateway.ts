@@ -438,6 +438,7 @@ export async function handleInfraMcpJsonRpc(
     method?: string;
     params?: Record<string, unknown>;
   },
+  waitUntil?: (promise: Promise<unknown>) => void,
 ) {
   const id = body.id ?? null;
   const method = body.method ?? "";
@@ -821,6 +822,7 @@ export async function handleInfraMcpJsonRpc(
     const result = await executeGatewayRequest(env, {
       actor,
       companyId: resolvedCompanyId,
+      waitUntil,
       toolName,
       arguments: args,
       sourceClient:
@@ -983,6 +985,7 @@ export async function handleInfraMcpHttp(
   env: Env,
   request: Request,
   sessionUser: import("../auth/session").SessionUser | null,
+  waitUntil?: (promise: Promise<unknown>) => void,
 ) {
   const existingSession = request.headers.get("Mcp-Session-Id");
   const sessionId = existingSession?.trim() || newId("mcpsess");
@@ -1115,6 +1118,7 @@ export async function handleInfraMcpHttp(
     request,
     actorResult,
     body,
+    waitUntil,
   );
 
   if (httpStatus === 202 && payload == null) {

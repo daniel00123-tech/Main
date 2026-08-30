@@ -20,7 +20,7 @@ bucket_name = "caddington-knowledge"
 binding = "AI"
 
 [vars]
-INFRA_API_URL = "https://infra-api.daniel-dwyer123.workers.dev"
+INFRA_API_URL = "https://api.infrastack.app"
 INFRA_MCP_ENVIRONMENT_ID = "mcp_caddington_primary"
 
 [[queues.producers]]

@@ -1,9 +1,12 @@
 # INFRA Deployment Pack — Start Here
 
+> **Historical v0.1 pack.** Do not follow this as the current platform guide.
+> Start at [`../../AGENTS.md`](../../AGENTS.md) and [`../../docs/DEVELOPMENT_RUNBOOK.md`](../../docs/DEVELOPMENT_RUNBOOK.md).
+
 **Version:** v0.1  
 **Date:** August 2026  
 **Repository:** `Main` → `infra/` folder  
-**Branch:** `cursor/infra-platform-v0-1-d3d8`
+**Branch:** `cursor/infra-platform-v0-1-d3d8` (obsolete)
 
 ---
 

@@ -1,5 +1,8 @@
 # INFRA platform map (for future sessions)
 
+> **Current source of truth:** [`../../AGENTS.md`](../../AGENTS.md) and [`../../docs/architecture/CURRENT_ARCHITECTURE.md`](../../docs/architecture/CURRENT_ARCHITECTURE.md).
+> This file is still useful for metering/readiness notes. Where it conflicts (especially `FINANCIAL_WRITES_ENABLED` and “Stripe not live”), **trust the code and the root `docs/`**.
+
 Read this plus [ADR 001](./adr/001-company-mcp-vs-infra-boundary.md) before changing control-plane code.
 
 INFRA is a **company-agnostic** multi-tenant control plane. Caddington, HT, and EL are the first three configuration records — not three applications. A fourth company is created from Platform Admin without new React routes, billing code, or permission code.
@@ -61,11 +64,11 @@ Definitions live in shared catalogue. Instances are per-company (ADR 018). Auth,
 
 Xero OAuth is reusable for every company (ADR 027, ADR 028). Application credentials are Worker secrets `XERO_CLIENT_ID` / `XERO_CLIENT_SECRET`. Per-company tokens are envelope-encrypted. Accounting data stays on Xero and the company Business MCP.
 
-Initial OAuth uses **granular read scopes** (apps created after March 2026). Write scopes require admin scope upgrade + re-consent. Production financial writes stay disabled (`FINANCIAL_WRITES_ENABLED = false`) until operator approval.
+Initial OAuth uses **granular read scopes** (apps created after March 2026). Write scopes require admin scope upgrade + re-consent. Action Engine financial execution is enabled in code (`FINANCIAL_WRITES_ENABLED = true` in `approvals.ts`). Direct MCP `xero_create_*` tools remain blocked.
 
 Company MCP resolves Xero credentials via internal bridge `POST /api/internal/mcp/:mcpId/xero/context` (server-to-server only). Reusable execution logic lives in `@infra/xero-core`.
 
-Multi-step financial actions use `execution_plans` (migrations 0015, 0016) with idempotency keys, confirmation tokens, plan fingerprints, and per-item targets. See **ADR 029** for the Action Engine (plan → confirm → approve → execute, stale-state protection, write feature flags). Production financial writes remain disabled (`FINANCIAL_WRITES_ENABLED = false`).
+Multi-step financial actions use `execution_plans` (migrations 0015, 0016) with idempotency keys, confirmation tokens, plan fingerprints, and per-item targets. See **ADR 029** for the Action Engine (plan → confirm → approve → execute, stale-state protection, write feature flags). Direct MCP writes stay blocked; Action Engine execution follows `FINANCIAL_WRITES_ENABLED` in `approvals.ts` (currently `true`).
 
 Company portal **Actions** page (`/portal/:slug/actions`) lists pending and completed action plans.
 
@@ -92,11 +95,25 @@ Operational guides under [`docs/runbooks/`](./runbooks/):
 
 ## Public URLs
 
+Canonical production hosts (Cloudflare custom domains):
+
+- Portal: `https://app.infrastack.app`
+- API: `https://api.infrastack.app`
+- MCP: `https://mcp.infrastack.app/api/gateway/v1/mcp`
+- Public/root: `https://infrastack.app` (product site — not the admin portal)
+
 Configure per environment (not tenant-specific):
 
-- `INFRA_PUBLIC_API_URL` — API Worker (e.g. `https://infra-api.<account>.workers.dev`)
-- `PORTAL_BASE_DOMAIN` — Pages host for portal subdomains (e.g. `infra-web.pages.dev`)
-- Web build: `VITE_API_BASE` optional override; dev uses Vite proxy
+- `INFRA_PUBLIC_API_URL` — `https://api.infrastack.app`
+- `INFRA_PUBLIC_MCP_URL` — `https://mcp.infrastack.app`
+- `PORTAL_PUBLIC_ORIGIN` — `https://app.infrastack.app`
+- `PORTAL_BASE_DOMAIN` — legacy Pages host for company subdomains (`infra-web.pages.dev`)
+- Web build: `VITE_API_BASE` empty in production (same-origin `/api` proxy)
+
+Legacy fallbacks remain live during cutover:
+
+- `https://infra-web.pages.dev`
+- `https://infra-api.daniel-dwyer123.workers.dev`
 
 ## Scale notes (conceptual)
 
