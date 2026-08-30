@@ -153,6 +153,8 @@ export async function listInteractionHistory(
         tools: usage?.tools ?? [],
         providers: usage?.providers ?? [],
         latencyMs: usage?.latencyMs ?? null,
+        inputType: usage?.inputType ?? (mapChannel(String(row.client_kind)) === "whatsapp" ? "text" : null),
+        originatedAsVoice: usage?.inputType === "voice",
       };
     })
     .filter(Boolean);
@@ -232,6 +234,9 @@ export async function getInteractionDetail(
     channel: mapChannel(String(row.client_kind)),
     label: String(row.label),
     status: String(row.status),
+    inputType: whatsappInputType(operations.map((item) => item.metadata)),
+    originatedAsVoice: whatsappInputType(operations.map((item) => item.metadata)) === "voice",
+    transcript: whatsappTranscript(operations.map((item) => item.metadata)),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     customerChargeCents: Number(row.customer_charge_cents ?? 0),
@@ -301,13 +306,13 @@ async function loadUsageSummaries(
 ) {
   const map = new Map<
     string,
-    { tools: string[]; providers: string[]; latencyMs: number | null }
+    { tools: string[]; providers: string[]; latencyMs: number | null; inputType: string | null }
   >();
   if (interactionIds.length === 0) return map;
   const placeholders = interactionIds.map(() => "?").join(",");
   const result = await db
     .prepare(
-      `SELECT interaction_id, tool_name, resource_type, duration_ms
+      `SELECT interaction_id, tool_name, resource_type, duration_ms, metadata_json
        FROM usage_records
        WHERE interaction_id IN (${placeholders})`,
     )
@@ -317,6 +322,7 @@ async function loadUsageSummaries(
       tool_name: string | null;
       resource_type: string | null;
       duration_ms: number | null;
+      metadata_json?: string | null;
     }>();
 
   for (const row of result.results ?? []) {
@@ -324,6 +330,7 @@ async function loadUsageSummaries(
       tools: [],
       providers: [],
       latencyMs: null,
+      inputType: null,
     };
     if (row.tool_name && !current.tools.includes(row.tool_name)) current.tools.push(row.tool_name);
     if (row.resource_type && !current.providers.includes(row.resource_type)) {
@@ -333,6 +340,9 @@ async function loadUsageSummaries(
     if (duration != null) {
       current.latencyMs = Math.max(current.latencyMs ?? 0, duration);
     }
+    const meta = parseJson(row.metadata_json ?? null);
+    const kind = typeof meta?.inputType === "string" ? meta.inputType : typeof meta?.inputKind === "string" ? meta.inputKind : null;
+    if (kind && !current.inputType) current.inputType = kind;
     map.set(row.interaction_id, current);
   }
   void filters;
@@ -358,4 +368,26 @@ function parseJson(raw: unknown): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function asMeta(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function whatsappInputType(metadatas: unknown[]): string | null {
+  for (const item of metadatas) {
+    const meta = asMeta(item);
+    const kind = meta.inputType ?? meta.inputKind;
+    if (kind === "voice" || kind === "button" || kind === "text") return String(kind);
+  }
+  return null;
+}
+
+function whatsappTranscript(metadatas: unknown[]): string | null {
+  for (const item of metadatas) {
+    const meta = asMeta(item);
+    const transcript = meta.transcript;
+    if (typeof transcript === "string" && transcript.trim()) return transcript.slice(0, 4000);
+  }
+  return null;
 }

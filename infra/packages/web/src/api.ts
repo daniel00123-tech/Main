@@ -1717,6 +1717,8 @@ export const api = {
         providerCostCents: number | null;
         tools: string[];
         latencyMs: number | null;
+        inputType?: string | null;
+        originatedAsVoice?: boolean;
       }>;
     }>(`/api/platform/interactions${toQuery(query)}`),
   getInteractionDetail: (id: string) =>
@@ -1728,6 +1730,9 @@ export const api = {
       channel: string;
       label: string;
       status: string;
+      inputType?: string | null;
+      originatedAsVoice?: boolean;
+      transcript?: string | null;
       createdAt: string;
       request: unknown;
       response: unknown;

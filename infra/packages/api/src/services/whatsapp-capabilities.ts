@@ -59,14 +59,16 @@ export async function listConnectedCapabilityLabels(env: Env, companyId: string)
 }
 
 export function formatCapabilityReply(labels: string[]): string {
+  const intro =
+    "I can help you search documents and emails, check business information, summarise things and work with your connected systems.";
   if (!labels.length) {
-    return "I can search the business knowledge I already have for your company and help with supported tasks. I will only use systems that are connected and that you are allowed to access. What would you like me to look into?";
+    return `${intro} I will only use systems that are connected and that you are allowed to access.`;
   }
   const listed =
     labels.length === 1
       ? labels[0]
       : `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
-  return `I can help you find information in ${listed}, search documents and knowledge, and help with supported business tasks and automations. Ask me what you’d like to know and I’ll work out where to look.`;
+  return `${intro}\nI currently have access to ${listed}.`;
 }
 
 export function formatPricingCapabilityReply(labels: string[]): string {

@@ -37,7 +37,17 @@ export type QualityCategory =
   | "whatsapp_silent"
   | "whatsapp_consecutive_failures"
   | "whatsapp_meta_unavailable"
-  | "whatsapp_queue_backlog";
+  | "whatsapp_queue_backlog"
+  | "whatsapp_button_failed"
+  | "whatsapp_button_context_lost"
+  | "whatsapp_voice_download_failed"
+  | "whatsapp_transcription_failed"
+  | "whatsapp_transcription_low_confidence"
+  | "whatsapp_transcription_slow"
+  | "whatsapp_voice_no_response"
+  | "whatsapp_excessive_emojis"
+  | "whatsapp_oversized_reply"
+  | "whatsapp_unsupported_suggestion";
 
 export interface QualitySignal {
   category: QualityCategory;
@@ -404,6 +414,96 @@ function detectWhatsAppUxSignals(input: QualityAuditInput): QualitySignal[] {
       confidence: 0.9,
       evidence: { planAction: meta.planAction },
       suggestedInvestigation: "Raw tool or document dump leaked into a WhatsApp reply.",
+    });
+  }
+  if (meta.buttonFailed) {
+    signals.push({
+      category: "whatsapp_button_failed",
+      severity: "medium",
+      confidence: 0.85,
+      evidence: { buttonAction: meta.buttonAction },
+      suggestedInvestigation: "WhatsApp interactive reply could not be sent or was rejected by Meta.",
+    });
+  }
+  if (meta.buttonContextLost || (meta.inputKind === "button" && meta.contextLost)) {
+    signals.push({
+      category: "whatsapp_button_context_lost",
+      severity: "high",
+      confidence: 0.8,
+      evidence: { buttonAction: meta.buttonAction },
+      suggestedInvestigation: "A WhatsApp button tap could not reuse the current conversation entity.",
+    });
+  }
+  if (meta.voiceDownloadFailed) {
+    signals.push({
+      category: "whatsapp_voice_download_failed",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { reason: meta.voiceDownloadReason },
+      suggestedInvestigation: "Authenticated Meta media download failed for a WhatsApp voice note.",
+    });
+  }
+  if (meta.transcriptionFailed) {
+    signals.push({
+      category: "whatsapp_transcription_failed",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { reason: meta.transcriptionReason, provider: meta.transcriptionProvider },
+      suggestedInvestigation: "WhatsApp voice-note transcription failed or returned an empty transcript.",
+    });
+  }
+  if (Number(meta.transcriptionConfidence ?? 1) > 0 && Number(meta.transcriptionConfidence ?? 1) < 0.45) {
+    signals.push({
+      category: "whatsapp_transcription_low_confidence",
+      severity: "medium",
+      confidence: 0.7,
+      evidence: { confidence: meta.transcriptionConfidence },
+      suggestedInvestigation: "Speech-to-text confidence was low; do not treat the transcript as certain.",
+    });
+  }
+  if (Number(meta.transcriptionMs ?? 0) > 15_000) {
+    signals.push({
+      category: "whatsapp_transcription_slow",
+      severity: "medium",
+      confidence: 0.8,
+      evidence: { transcriptionMs: meta.transcriptionMs },
+      suggestedInvestigation: "WhatsApp voice transcription took more than 15 seconds.",
+    });
+  }
+  if (meta.inputKind === "voice" && ackSent && !finalSent) {
+    signals.push({
+      category: "whatsapp_voice_no_response",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { intent },
+      suggestedInvestigation: "A voice note was acknowledged but no WhatsApp reply was recorded.",
+    });
+  }
+  if (Number(meta.emojiCount ?? 0) > 2) {
+    signals.push({
+      category: "whatsapp_excessive_emojis",
+      severity: "low",
+      confidence: 0.8,
+      evidence: { emojiCount: meta.emojiCount },
+      suggestedInvestigation: "WhatsApp reply exceeded the 0–2 emoji default.",
+    });
+  }
+  if (Number(meta.replyLength ?? 0) > 1024) {
+    signals.push({
+      category: "whatsapp_oversized_reply",
+      severity: "medium",
+      confidence: 0.75,
+      evidence: { replyLength: meta.replyLength },
+      suggestedInvestigation: "WhatsApp reply exceeded Meta interactive/body comfort limits.",
+    });
+  }
+  if (meta.suggestionUnsupported) {
+    signals.push({
+      category: "whatsapp_unsupported_suggestion",
+      severity: "medium",
+      confidence: 0.8,
+      evidence: { suggestion: meta.suggestionUnsupported },
+      suggestedInvestigation: "A suggested WhatsApp action was not permitted for this user or company.",
     });
   }
   return signals;

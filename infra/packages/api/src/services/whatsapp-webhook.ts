@@ -82,7 +82,7 @@ export async function verifyWhatsAppSignature(
   return { configured: true, valid: safeEqualHex(provided, expected) };
 }
 
-export function parseWhatsAppInboundMessages(payload: unknown): Array<{
+export type WhatsAppParsedInbound = {
   wamid: string;
   from: string;
   type: string;
@@ -90,7 +90,14 @@ export function parseWhatsAppInboundMessages(payload: unknown): Array<{
   phoneNumberId: string | null;
   businessAccountId: string | null;
   timestamp: string | null;
-}> {
+  inputKind?: "text" | "voice" | "button";
+  mediaId?: string | null;
+  mimeType?: string | null;
+  buttonId?: string | null;
+  buttonTitle?: string | null;
+};
+
+export function parseWhatsAppInboundMessages(payload: unknown): WhatsAppParsedInbound[] {
   if (!payload || typeof payload !== "object") return [];
   const root = payload as {
     object?: string;
@@ -106,6 +113,13 @@ export function parseWhatsAppInboundMessages(payload: unknown): Array<{
             type?: string;
             timestamp?: string;
             text?: { body?: string };
+            audio?: { id?: string; mime_type?: string; voice?: boolean };
+            voice?: { id?: string; mime_type?: string };
+            interactive?: {
+              type?: string;
+              button_reply?: { id?: string; title?: string };
+              list_reply?: { id?: string; title?: string };
+            };
           }>;
         };
       }>;
@@ -113,21 +127,17 @@ export function parseWhatsAppInboundMessages(payload: unknown): Array<{
   };
   if (root.object && root.object !== "whatsapp_business_account") return [];
 
-  const messages: Array<{
-    wamid: string;
-    from: string;
-    type: string;
-    text: string | null;
-    phoneNumberId: string | null;
-    businessAccountId: string | null;
-    timestamp: string | null;
-  }> = [];
+  const messages: WhatsAppParsedInbound[] = [];
 
   for (const entry of root.entry ?? []) {
     for (const change of entry.changes ?? []) {
       if (change.field && change.field !== "messages") continue;
       for (const message of change.value?.messages ?? []) {
         if (!message.id || !message.from) continue;
+        const button = message.interactive?.button_reply ?? message.interactive?.list_reply;
+        const audio = message.audio ?? message.voice;
+        const isVoice = message.type === "audio" || message.type === "voice" || Boolean(audio?.id);
+        const isButton = message.type === "interactive" && Boolean(button?.id);
         messages.push({
           wamid: message.id,
           from: message.from,
@@ -136,6 +146,11 @@ export function parseWhatsAppInboundMessages(payload: unknown): Array<{
           phoneNumberId: change.value?.metadata?.phone_number_id ?? null,
           businessAccountId: entry.id ?? null,
           timestamp: message.timestamp ?? null,
+          inputKind: isButton ? "button" : isVoice ? "voice" : "text",
+          mediaId: audio?.id ?? null,
+          mimeType: audio?.mime_type ?? null,
+          buttonId: button?.id ?? null,
+          buttonTitle: button?.title ?? null,
         });
       }
     }

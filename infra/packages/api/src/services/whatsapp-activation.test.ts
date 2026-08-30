@@ -35,6 +35,20 @@ vi.mock("./whatsapp-send", async () => {
   return {
     ...actual,
     sendWhatsAppText: sendWhatsAppTextMock,
+    sendWhatsAppInteractiveButtons: vi.fn().mockResolvedValue({
+      ok: false,
+      kind: "customer_service_reply",
+      error: "interactive_fallback",
+      retryable: false,
+      attempts: 1,
+    }),
+    sendWhatsAppInteractiveList: vi.fn().mockResolvedValue({
+      ok: false,
+      kind: "customer_service_reply",
+      error: "interactive_fallback",
+      retryable: false,
+      attempts: 1,
+    }),
     sendWhatsAppTypingIndicator: vi.fn().mockResolvedValue({ ok: true, supported: true }),
   };
 });

@@ -48,9 +48,10 @@ export function conversationalReply(
 }
 
 export const ACK_VARIANTS = [
-  "Got it — I’m checking that now.",
-  "Thanks — I’m looking into that for you.",
-  "Understood — I’m checking your connected systems now.",
+  "Got it 👍 I’m checking now.",
+  "No problem — I’m looking into that.",
+  "Thanks — I’ll check that for you.",
+  "Understood. Let me look into it.",
 ];
 
 export const PROGRESS_VARIANTS = [
