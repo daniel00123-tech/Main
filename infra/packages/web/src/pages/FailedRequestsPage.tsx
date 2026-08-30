@@ -83,7 +83,7 @@ export default function FailedRequestsPage() {
     failedCount: number;
     consecutiveFailedReplies: number;
     incidents: WhatsAppIncident[];
-    metrics?: Record<string, number | null>;
+    metrics?: Record<string, number | string | string[] | null | undefined>;
   } | null>(null);
   const [weekly, setWeekly] = useState<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useState(true);
@@ -144,8 +144,9 @@ export default function FailedRequestsPage() {
           title="WhatsApp channel"
           description="Received, processing, stuck, failed and replied inbound messages. Stuck means received more than 30 seconds ago with no user-visible response."
         >
-          <div className={`attention-banner ${whatsapp.stuckCount > 0 ? "warn" : ""}`}>
+          <div className={`attention-banner ${whatsapp.stuckCount > 0 || whatsapp.metrics?.healthState === "RED" ? "warn" : ""}`}>
             <p className="attention-title">
+              {whatsapp.metrics?.healthState === "RED" ? "RED · " : ""}
               {whatsapp.stuckCount} stuck · {whatsapp.processingCount} processing · {whatsapp.failedCount} failed
               {whatsapp.metrics
                 ? ` · first visible p50 ${whatsapp.metrics.firstVisibleP50Ms ?? "—"}ms · silent>3s ${whatsapp.metrics.silentOver3s ?? 0}`

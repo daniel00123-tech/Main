@@ -135,6 +135,14 @@ export type WhatsAppUxMetrics = {
   queueLatencyP50Ms: number | null;
   typingSuccessRate: number | null;
   readStatusSuccessRate: number | null;
+  greetingSilentOver3s: number;
+  queueOldestMs: number | null;
+  dlqEvents: number;
+  signatureRejects: number;
+  liveMetaInbound: number;
+  persistFailures: number;
+  healthState: "GREEN" | "AMBER" | "RED";
+  redReasons: string[];
 };
 
 function emptyWhatsAppUxMetrics(): WhatsAppUxMetrics {
@@ -151,6 +159,14 @@ function emptyWhatsAppUxMetrics(): WhatsAppUxMetrics {
     queueLatencyP50Ms: null,
     typingSuccessRate: null,
     readStatusSuccessRate: null,
+    greetingSilentOver3s: 0,
+    queueOldestMs: null,
+    dlqEvents: 0,
+    signatureRejects: 0,
+    liveMetaInbound: 0,
+    persistFailures: 0,
+    healthState: "AMBER",
+    redReasons: [],
   };
 }
 
@@ -168,7 +184,8 @@ export async function computeWhatsAppUxMetrics(env: Env): Promise<WhatsAppUxMetr
     const result = await env.DB.prepare(
       `SELECT identity_found, received_at, first_visible_at, reply_sent_at, final_sent_at,
               time_to_first_visible_ms, queue_accepted_at, typing_ok, read_status_ok,
-              final_send_ok, terminal_state, last_error
+              final_send_ok, terminal_state, last_error, inbound_text, wamid, processed,
+              error, persist_ok, persist_error, signature_error, webhook_status, dlq_at
        FROM whatsapp_inbound_events
        WHERE received_at >= datetime('now', '-7 days')
        ORDER BY received_at DESC
@@ -226,6 +243,44 @@ export async function computeWhatsAppUxMetrics(env: Env): Promise<WhatsAppUxMetr
       if (Number(row.read_status_ok) === 1) readOk += 1;
     }
   }
+  const recentCutoff = Date.now() - 15 * 60_000;
+  let greetingSilentOver3s = 0;
+  let queueOldestMs: number | null = null;
+  let dlqEvents = 0;
+  let signatureRejects = 0;
+  let liveMetaInbound = 0;
+  let persistFailures = 0;
+  for (const row of rows) {
+    const received = Date.parse(String(row.received_at ?? ""));
+    const age = Number.isFinite(received) ? Date.now() - received : 0;
+    const wamid = String(row.wamid ?? "");
+    if (wamid && !wamid.startsWith("wamid.uat.") && !wamid.startsWith("wamid.v42persist.")) {
+      liveMetaInbound += 1;
+    }
+    const recent = Number.isFinite(received) && received >= recentCutoff;
+    if (!recent) continue;
+    const visible = Boolean(row.first_visible_at || row.reply_sent_at);
+    const greeting = /^(hi+|hello+|hey+|morning|thanks)\b/i.test(String(row.inbound_text ?? "").trim());
+    if (Number(row.identity_found) === 1 && greeting && !visible && age >= 3_000) greetingSilentOver3s += 1;
+    if (Number(row.processed) === 0 && age > 0) {
+      queueOldestMs = queueOldestMs == null ? age : Math.max(queueOldestMs, age);
+    }
+    if (row.dlq_at || String(row.error ?? "") === "DEAD_LETTER") dlqEvents += 1;
+    if (row.signature_error || Number(row.webhook_status) === 403) signatureRejects += 1;
+    if (Number(row.persist_ok) === 0 || row.persist_error) persistFailures += 1;
+  }
+  const health = classifyHealth({
+    greetingSilentOver3s,
+    silentOver3s: recognised.filter((row) => {
+      const received = Date.parse(String(row.received_at ?? ""));
+      if (!Number.isFinite(received) || received < recentCutoff) return false;
+      return !row.first_visible_at && !row.reply_sent_at && Date.now() - received >= 3_000;
+    }).length,
+    queueOldestMs,
+    dlqEvents,
+    signatureRejects,
+    persistFailures,
+  });
   return {
     recognisedMessages: recognised.length,
     firstVisibleP50Ms: percentile(firstVisible, 50),
@@ -239,7 +294,34 @@ export async function computeWhatsAppUxMetrics(env: Env): Promise<WhatsAppUxMetr
     queueLatencyP50Ms: percentile(queue, 50),
     typingSuccessRate: typingN ? Math.round((typingOk / typingN) * 100) : null,
     readStatusSuccessRate: readN ? Math.round((readOk / readN) * 100) : null,
+    greetingSilentOver3s,
+    queueOldestMs,
+    dlqEvents,
+    signatureRejects,
+    liveMetaInbound,
+    persistFailures,
+    healthState: health.healthState,
+    redReasons: health.redReasons,
   };
+}
+
+function classifyHealth(input: {
+  greetingSilentOver3s: number;
+  silentOver3s: number;
+  queueOldestMs: number | null;
+  dlqEvents: number;
+  signatureRejects: number;
+  persistFailures: number;
+}): { healthState: "GREEN" | "AMBER" | "RED"; redReasons: string[] } {
+  const redReasons: string[] = [];
+  if (input.greetingSilentOver3s > 0) redReasons.push("greeting_no_reply_over_3s");
+  if (input.silentOver3s > 0) redReasons.push("recognised_no_first_visible_over_3s");
+  if ((input.queueOldestMs ?? 0) > 10_000) redReasons.push("queue_oldest_over_10s");
+  if (input.dlqEvents > 0) redReasons.push("whatsapp_dlq_event");
+  if (input.signatureRejects > 0) redReasons.push("webhook_signature_rejected");
+  if (input.persistFailures > 0) redReasons.push("inbound_persist_failed");
+  if (redReasons.length) return { healthState: "RED", redReasons };
+  return { healthState: "GREEN", redReasons };
 }
 
 export function whatsappAlertSignals(inbox: Awaited<ReturnType<typeof listWhatsAppInbox>>): Array<{
@@ -260,6 +342,14 @@ export function whatsappAlertSignals(inbox: Awaited<ReturnType<typeof listWhatsA
       category: "whatsapp_stuck",
       severity: "high",
       evidence: { stuckCount: inbox.stuckCount },
+    });
+  }
+  const metrics = inbox.metrics;
+  if (metrics?.healthState === "RED") {
+    signals.push({
+      category: "whatsapp_health_red",
+      severity: "high",
+      evidence: { reasons: metrics.redReasons, silentOver3s: metrics.silentOver3s, dlqEvents: metrics.dlqEvents },
     });
   }
   return signals;

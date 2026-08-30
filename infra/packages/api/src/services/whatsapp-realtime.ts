@@ -70,7 +70,7 @@ export function isGenericDocumentAsk(text: string): boolean {
 export function looksLikeBurstCompanion(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed || isInstantLocalTurn(trimmed)) return false;
-  return isGenericDocumentAsk(trimmed) || trimmed.split(/\s+/).length >= 3;
+  return isGenericDocumentAsk(trimmed);
 }
 
 export type SiblingInbound = {
