@@ -9,6 +9,7 @@ import { capabilitiesForRole, ELVEX_ROLE_LABELS, ELVEX_ROLES, isElvexRole } from
 import { can } from "./authorize";
 import { getRequestActor } from "./context";
 import { recordPermissionAudit, listPermissionAudit } from "./audit";
+import { verifyUserSync } from "./identity";
 import {
   listClassifications,
   listCompanyUsers,
@@ -50,6 +51,39 @@ export async function handleRbacAdminRequest(
   if (!url.pathname.startsWith("/admin/rbac")) return null;
 
   try {
+    if (url.pathname === "/admin/rbac/sync-user" && request.method === "POST") {
+      const body = (await request.json()) as Record<string, unknown>;
+      const verified = await verifyUserSync(env, body);
+      if (!verified || !isElvexRole(verified.role)) {
+        return json({ error: "Signed INFRA user sync is required. Caller-supplied roles are ignored." }, 403);
+      }
+      const user = await upsertCompanyUser(env.EL_BUSINESS_DATA, {
+        externalId: verified.externalId,
+        email: verified.email,
+        displayName: verified.displayName,
+        role: verified.role,
+        status: verified.status,
+      });
+      await recordPermissionAudit(
+        env.EL_BUSINESS_DATA,
+        {
+          allowed: true,
+          decision: "allow",
+          capability: "admin.roles.manage",
+          role: "company_admin",
+          actorId: "infra_control_plane",
+          principalType: "service",
+          identityBound: true,
+          confirmationRequired: true,
+          reason: "INFRA signed membership sync",
+          resource: user.id,
+          companyId: ELVEX_COMPANY_ID,
+        },
+        { eventType: "role.changed", force: true }
+      );
+      return json({ ok: true, user, audit: "role.changed" });
+    }
+
     if (url.pathname === "/admin/rbac" && request.method === "GET") {
       await requireAdminCapability(env, "admin.portal.access");
       return json(await buildRbacSnapshot(env));

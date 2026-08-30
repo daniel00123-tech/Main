@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { can } from "../src/rbac/authorize";
-import { actorFromAssignment, extractUntrustedRole, signIdentityHeaders, unboundActor } from "../src/rbac/identity";
+import {
+  actorFromAssignment,
+  extractUntrustedRole,
+  signIdentityHeaders,
+  signUserSync,
+  verifyUserSync,
+} from "../src/rbac/identity";
+import { unboundActor } from "../src/rbac/actor";
+import { recordPermissionAudit } from "../src/rbac/audit";
 import { ELVEX_ROLES, type ElvexRole } from "../src/rbac/roles";
 import type { ElvexCapability } from "../src/rbac/capabilities";
 import { mailboxCapabilities } from "../src/rbac/mailbox";
@@ -11,6 +19,25 @@ import { AccessPolicy } from "../src/microsoft/policy";
 import { loadMicrosoftConfig } from "../src/microsoft/config";
 import type { Env } from "../src/env";
 import type { ElvexActor } from "../src/rbac/actor";
+
+function memoryAuditDb() {
+  const rows: Array<{ sql: string; args: unknown[] }> = [];
+  return {
+    rows,
+    prepare(sql: string) {
+      return {
+        bind(...args: unknown[]) {
+          return {
+            async run() {
+              rows.push({ sql, args });
+              return { meta: { changes: 1 } };
+            },
+          };
+        },
+      };
+    },
+  };
+}
 
 function user(role: ElvexRole, id = `user_${role}`): ElvexActor {
   return actorFromAssignment({
@@ -178,19 +205,49 @@ describe("security invariants", () => {
     expect(can(unboundActor(), "knowledge.restricted.read").reason).toMatch(/identity/i);
   });
 
-  it("58 role change requires company_admin and is not self-service", () => {
+  it("58 role change requires company_admin and is not self-service", async () => {
     expect(can(user("director"), "admin.roles.manage").allowed).toBe(false);
     expect(can(user("company_admin"), "admin.roles.manage").allowed).toBe(true);
     const self = user("company_admin", "self");
     expect(self.actorId).toBe("self");
+    const db = memoryAuditDb();
+    const decision = can(user("company_admin"), "admin.roles.manage", { resource: "user_2" });
+    await recordPermissionAudit(db as unknown as D1Database, decision, {
+      eventType: "role.changed",
+      force: true,
+      correlationId: "corr_role",
+    });
+    expect(db.rows).toHaveLength(1);
+    expect(db.rows[0].args).toContain("admin.roles.manage");
+    expect(JSON.stringify(db.rows[0].args)).toContain("role.changed");
   });
 
-  it("59 denied sensitive request is structured for audit", () => {
+  it("59 denied sensitive request creates an audit event", async () => {
     const decision = can(user("office_staff"), "mail.finance.read", { mailbox: "finance@elvexpropertyservices.com" });
     expect(decision.allowed).toBe(false);
     expect(decision.capability).toBe("mail.finance.read");
     expect(decision.resource).toBe("finance@elvexpropertyservices.com");
     expect(decision.decision).toBe("deny");
+    const db = memoryAuditDb();
+    await recordPermissionAudit(db as unknown as D1Database, decision, { correlationId: "corr_deny" });
+    expect(db.rows).toHaveLength(1);
+    expect(db.rows[0].args).toContain("deny");
+    expect(db.rows[0].args).toContain("mail.finance.read");
+    expect(db.rows[0].args).toContain("corr_deny");
+  });
+
+  it("signed INFRA user sync cannot be forged by changing the role after signing", async () => {
+    const signed = await signUserSync("sync-secret", {
+      externalId: "user_1",
+      email: "engineer@elvexpropertyservices.com",
+      role: "engineer",
+    });
+    const env = { EL_RBAC_IDENTITY_SECRET: "sync-secret" } as Env;
+    expect((await verifyUserSync(env, signed))?.role).toBe("engineer");
+    expect(
+      await verifyUserSync(env, { ...signed, role: "company_admin" })
+    ).toBeNull();
+    expect(await verifyUserSync({} as Env, signed)).toBeNull();
   });
 
   it("deny beats allow and unknown capability fails closed", () => {

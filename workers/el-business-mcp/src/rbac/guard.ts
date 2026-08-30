@@ -61,14 +61,20 @@ export async function requireMailbox(
 ): Promise<AuthorizationDecision> {
   const capability = mailboxCapabilities(mailbox, action);
   if (!capability) {
-    const decision = await authorize(env, "mail.info.read", { mailbox });
-    throw new AuthorizationError(
-      `Mailbox '${mailbox}' is not an approved EL shared mailbox and cannot be used to bypass RBAC.`,
-      "EL_RBAC_MAILBOX_DENIED",
-      403,
-      "mail.info.read",
-      mailbox
+    const actor = getRequestActor();
+    const reason = `Mailbox '${mailbox}' is not an approved EL shared mailbox and cannot be used to bypass RBAC.`;
+    await recordPermissionAudit(
+      env.EL_BUSINESS_DATA,
+      {
+        ...can(actor, "mail.info.read", { mailbox }),
+        allowed: false,
+        decision: "deny",
+        reason,
+        resource: mailbox,
+      },
+      { force: true, eventType: "mailbox.denied", correlationId: actor.correlationId }
     );
+    throw new AuthorizationError(reason, "EL_RBAC_MAILBOX_DENIED", 403, "mail.info.read", mailbox);
   }
   return requireCapability(env, capability, { mailbox });
 }

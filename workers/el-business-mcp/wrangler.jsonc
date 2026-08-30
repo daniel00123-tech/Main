@@ -1,4 +1,7 @@
 {
+  // Secrets (wrangler secret put — never commit):
+  // MCP_AUTH_TOKEN, EL_ADMIN_TOKEN, EL_MS_CLIENT_SECRET, EL_XERO_CLIENT_SECRET,
+  // EL_RBAC_IDENTITY_SECRET (must match infra-api)
   "name": "el-business-mcp",
   "main": "src/index.ts",
   "compatibility_date": "2025-08-24",

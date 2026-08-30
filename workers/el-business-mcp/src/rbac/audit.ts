@@ -28,8 +28,8 @@ export async function recordPermissionAudit(
       .prepare(
         `INSERT INTO permission_audit_log (
            id, company_id, actor_id, actor_role, principal_type, capability, resource,
-           decision, reason, correlation_id, detail_json, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           decision, reason, correlation_id, detail_json
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         crypto.randomUUID(),

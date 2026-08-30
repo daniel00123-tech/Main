@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { CompanyRole } from "@infra/shared";
+import { isElvexCompany, type CompanyRole } from "@infra/shared";
 import type { Env } from "../env";
 import {
   requireAuth,
@@ -27,6 +27,7 @@ import {
   listMcpEnvironments,
   recordAuditEvent,
 } from "../services/control-plane";
+import { syncElvexCompanyUser } from "../services/elvex-identity";
 import {
   executeGatewayRequest,
   resolveGatewayActor,
@@ -791,8 +792,15 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
   const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
   if (!company) return c.json({ error: "Company not found" }, 404);
   const user = c.get("user");
-  if (!canManageCompany(user, company.id)) {
-    return c.json({ error: "Company administrator access required" }, 403);
+  if (isElvexCompany(company) ? !canManageElvexRoles(user, company) : !canManageCompany(user, company.id)) {
+    return c.json(
+      {
+        error: isElvexCompany(company)
+          ? "Only Company Admin may assign Elvex roles"
+          : "Company administrator access required",
+      },
+      403,
+    );
   }
 
   const body = await c.req.json<{
@@ -833,6 +841,14 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
       resourceId: invited.user.id,
       detail: { role: body.role, emailSent: invited.emailSent },
     });
+    if (isElvexCompany(company)) {
+      await syncElvexCompanyUser(c.env, {
+        externalId: invited.user.id,
+        email: invited.user.email,
+        displayName: invited.user.displayName,
+        role: body.role!,
+      });
+    }
 
     return c.json({
       user: {
@@ -1102,6 +1118,19 @@ phase3.post("/api/companies/:slug/users/:userId/role", requireAuth, async (c) =>
     resourceId: c.req.param("userId"),
     detail: { role: body.role },
   });
+
+  if (isElvexCompany(company)) {
+    const target = await getUserById(c.env.DB, targetId);
+    if (target) {
+      await syncElvexCompanyUser(c.env, {
+        externalId: target.id,
+        email: target.email,
+        displayName: target.displayName,
+        role: body.role,
+        status: target.status === "disabled" ? "disabled" : "active",
+      });
+    }
+  }
 
   return c.json({ ok: true, membership });
 });
