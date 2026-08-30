@@ -4,6 +4,13 @@
   "compatibility_date": "2025-08-24",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "el-business-mcp.infrastack.app",
+      "custom_domain": true,
+      "zone_name": "infrastack.app"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "EL_BUSINESS_DATA",
@@ -18,6 +25,9 @@
     "EL_MS_PROTECTED_USERS": "William,Ella",
     "EL_MS_SHAREPOINT_HOSTNAME": "elvexpropertyservicesltd.sharepoint.com",
     "EL_MS_GRAPH_BASE_URL": "https://graph.microsoft.com/v1.0",
-    "EL_MS_MAIL_DOMAIN": "elvexpropertyservices.com"
+    "EL_MS_MAIL_DOMAIN": "elvexpropertyservices.com",
+    "EL_XERO_CLIENT_ID": "454479535E074399A4D9A61AF4BD255F",
+    "EL_XERO_REDIRECT_URI": "https://el-business-mcp.infrastack.app/oauth/xero/callback",
+    "EL_XERO_EXPECTED_ORG": "Elvex Property Services Ltd"
   }
 }

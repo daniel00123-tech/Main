@@ -31,6 +31,8 @@ import {
   registerMicrosoftTools,
   searchCompanyKnowledgeViaMicrosoft,
 } from "./microsoft/tools";
+import { registerXeroTools } from "./xero/tools";
+import { xeroPublicStatus } from "./xero/verify";
 import { toolErrorPayload } from "./microsoft/errors";
 
 const logger = createLogger(MCP_NAME);
@@ -42,12 +44,14 @@ export function createElBusinessMcpServer(env: Env): McpServer {
     description:
       `${EL_IDENTITY.company} (Elvex Property Services Ltd) is the authoritative internal business source when explicitly requested. ` +
       "Microsoft 365 access is limited to approved shared mailboxes (finance@ and info@) plus company SharePoint and eligible employee OneDrives. " +
+      "Xero accounting is limited to the Elvex Property Services Ltd organisation. Draft writes require explicit confirmation. " +
       "Protected-user OneDrive content is never searchable or returnable. " +
       "Personal staff mailboxes and personal calendars are not exposed. " +
       "Do not invent company documents or policies.",
   });
 
   registerMicrosoftTools(server, env);
+  registerXeroTools(server, env);
 
   server.registerTool(
     "system_health",
@@ -92,6 +96,7 @@ export function createElBusinessMcpServer(env: Env): McpServer {
           tables,
         }),
         microsoft: publicMicrosoftPolicy(loadMicrosoftConfig(env)),
+        xero: await xeroPublicStatus(env),
       };
 
       if (database.connected) {

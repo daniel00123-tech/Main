@@ -12,6 +12,7 @@ import {
 import type { Env } from "./env";
 import { createElBusinessMcpServer } from "./mcp-server";
 import { MCP_NAME } from "./constants";
+import { handleXeroOAuthCallback } from "./xero/http";
 
 const logger = createLogger(MCP_NAME);
 
@@ -34,6 +35,10 @@ export default {
 
     if (url.pathname === "/status") {
       return buildPublicStatus(env);
+    }
+
+    if (url.pathname === "/oauth/xero/callback") {
+      return handleXeroOAuthCallback(request, env);
     }
 
     if (url.pathname.startsWith("/admin")) {
