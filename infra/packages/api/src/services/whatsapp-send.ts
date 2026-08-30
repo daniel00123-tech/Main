@@ -59,30 +59,71 @@ export async function sendWhatsAppText(
  * POST /{PHONE_NUMBER_ID}/messages with status=read and typing_indicator.type=text.
  * Shown for ~25 seconds. Safe no-op if Meta rejects it.
  */
+export type WhatsAppReceiptResult = {
+  ok: boolean;
+  supported: boolean;
+  error?: string | null;
+  status?: number | null;
+};
+
+export async function sendWhatsAppReadStatus(
+  env: Env,
+  input: { messageId: string },
+): Promise<WhatsAppReceiptResult> {
+  return postWhatsAppReceipt(env, {
+    messageId: input.messageId,
+    typing: false,
+  });
+}
+
 export async function sendWhatsAppTypingIndicator(
   env: Env,
   input: { messageId: string },
-): Promise<{ ok: boolean; supported: boolean }> {
+): Promise<WhatsAppReceiptResult> {
+  return postWhatsAppReceipt(env, {
+    messageId: input.messageId,
+    typing: true,
+  });
+}
+
+async function postWhatsAppReceipt(
+  env: Env,
+  input: { messageId: string; typing: boolean },
+): Promise<WhatsAppReceiptResult> {
   const token = whatsappAccessToken(env);
   const phoneNumberId = whatsappPhoneNumberId(env);
-  if (!token || !phoneNumberId || !input.messageId) return { ok: false, supported: false };
+  if (!token || !phoneNumberId || !input.messageId) {
+    return { ok: false, supported: false, error: "not_configured", status: null };
+  }
   try {
+    const body: Record<string, unknown> = {
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id: input.messageId,
+    };
+    if (input.typing) body.typing_indicator = { type: "text" };
     const response = await fetch(`${GRAPH_BASE}/${phoneNumberId}/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        status: "read",
-        message_id: input.messageId,
-        typing_indicator: { type: "text" },
-      }),
+      body: JSON.stringify(body),
     });
-    return { ok: response.ok, supported: response.ok || response.status !== 400 };
-  } catch {
-    return { ok: false, supported: false };
+    const error = response.ok ? null : `HTTP ${response.status}`;
+    return {
+      ok: response.ok,
+      supported: response.ok || response.status !== 400,
+      error,
+      status: response.status,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      supported: false,
+      error: err instanceof Error ? err.message : "network_error",
+      status: null,
+    };
   }
 }
 
@@ -227,7 +268,7 @@ async function postWhatsAppMessage(
   }
 
   let lastError = "WhatsApp send failed";
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       const response = await fetch(`${GRAPH_BASE}/${phoneNumberId}/messages`, {
         method: "POST",
@@ -257,11 +298,19 @@ async function postWhatsAppMessage(
       if (!retryable) {
         return { ok: false, kind: input.kind, error: lastError, retryable: false, attempts: attempt };
       }
+      if (attempt < 3) await delay(200 * attempt);
     } catch (err) {
       lastError = publicSendError(err instanceof Error ? err.message : "network_error");
+      if (attempt < 3) await delay(200 * attempt);
     }
   }
-  return { ok: false, kind: input.kind, error: lastError, retryable: true, attempts: 2 };
+  return { ok: false, kind: input.kind, error: lastError, retryable: true, attempts: 3 };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function digitsOnly(value: string): string {

@@ -15,12 +15,23 @@ export const SLOW_ACK_QUALITY_MS = 3_000;
 export const SLOW_READ_QUALITY_MS = 30_000;
 export const SLOW_TOTAL_QUALITY_MS = 60_000;
 
+export const GREETING_TARGET_MS = 750;
+export const FIRST_VISIBLE_TARGET_MS = 1_000;
+export const FIRST_VISIBLE_HARD_MS = 2_000;
+export const COALESCE_WINDOW_MS = 400;
+export const TYPING_REFRESH_MS = 20_000;
+export const TYPING_MAX_REFRESHES = 2;
+
 export type WhatsAppLatencyMarks = {
+  inboundReceivedAt?: number;
   webhookReceivedAt?: number;
   signatureVerifiedAt?: number;
+  validatedAt?: number;
   queueAcceptedAt?: number;
   processingStartedAt: number;
   identityResolvedAt?: number;
+  readSentAt?: number;
+  typingSentAt?: number;
   intentClassifiedAt?: number;
   acknowledgementSentAt?: number;
   firstVisibleAt?: number;
@@ -28,6 +39,7 @@ export type WhatsAppLatencyMarks = {
   toolStartedAt?: number;
   toolCompletedAt?: number;
   finalGeneratedAt?: number;
+  finalSentAt?: number;
   outboundStartedAt?: number;
   outboundAcceptedAt?: number;
 };
@@ -35,12 +47,16 @@ export type WhatsAppLatencyMarks = {
 export type WhatsAppLatencyReport = {
   acknowledgementMs: number | null;
   firstVisibleMs: number | null;
+  timeToFirstVisibleResponseMs: number | null;
+  readMs: number | null;
+  typingMs: number | null;
   queueMs: number | null;
   identityMs: number | null;
   planningMs: number | null;
   toolMs: number | null;
   generationMs: number | null;
   outboundMs: number | null;
+  finalMs: number | null;
   totalMs: number;
 };
 
@@ -49,18 +65,21 @@ export function createWhatsAppLatencyMarks(now = Date.now()): WhatsAppLatencyMar
 }
 
 export function summariseWhatsAppLatency(marks: WhatsAppLatencyMarks, now = Date.now()): WhatsAppLatencyReport {
-  const start = marks.webhookReceivedAt ?? marks.processingStartedAt;
-  const firstVisible = marks.firstVisibleAt ?? marks.acknowledgementSentAt;
+  const start = marks.inboundReceivedAt ?? marks.webhookReceivedAt ?? marks.processingStartedAt;
+  const firstVisible = marks.firstVisibleAt ?? marks.acknowledgementSentAt ?? marks.readSentAt;
   return {
     acknowledgementMs:
       marks.acknowledgementSentAt != null ? marks.acknowledgementSentAt - start : null,
     firstVisibleMs: firstVisible != null ? firstVisible - start : null,
+    timeToFirstVisibleResponseMs: firstVisible != null ? firstVisible - start : null,
+    readMs: marks.readSentAt != null ? marks.readSentAt - start : null,
+    typingMs: marks.typingSentAt != null ? marks.typingSentAt - start : null,
     queueMs:
       marks.queueAcceptedAt != null && marks.webhookReceivedAt != null
         ? marks.queueAcceptedAt - marks.webhookReceivedAt
         : null,
     identityMs:
-      marks.identityResolvedAt != null ? marks.identityResolvedAt - marks.processingStartedAt : null,
+      marks.identityResolvedAt != null ? marks.identityResolvedAt - (marks.validatedAt ?? marks.processingStartedAt) : null,
     planningMs:
       marks.planningStartedAt != null && marks.intentClassifiedAt != null
         ? marks.planningStartedAt - marks.intentClassifiedAt
@@ -77,6 +96,7 @@ export function summariseWhatsAppLatency(marks: WhatsAppLatencyMarks, now = Date
       marks.outboundStartedAt != null && marks.outboundAcceptedAt != null
         ? marks.outboundAcceptedAt - marks.outboundStartedAt
         : null,
+    finalMs: marks.finalSentAt != null ? marks.finalSentAt - start : null,
     totalMs: now - start,
   };
 }

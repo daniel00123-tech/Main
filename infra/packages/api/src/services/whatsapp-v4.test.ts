@@ -51,6 +51,7 @@ vi.mock("./whatsapp-send", async () => {
       attempts: 0,
     }),
     sendWhatsAppTypingIndicator: vi.fn().mockResolvedValue({ ok: true, supported: true }),
+    sendWhatsAppReadStatus: vi.fn().mockResolvedValue({ ok: true, supported: true }),
   };
 });
 vi.mock("../auth/users", () => ({ getUserByMobileE164, toSessionUser }));

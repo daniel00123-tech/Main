@@ -19,6 +19,8 @@ routes.post("/api/internal/whatsapp-ux-uat", async (c) => {
       buttonId?: string;
       buttonTitle?: string;
       mediaId?: string;
+      simulate?: "mcp_timeout" | string;
+      coalesceMs?: number;
     }>()
     .catch(() => ({} as Record<string, string>));
 
@@ -58,6 +60,8 @@ routes.post("/api/internal/whatsapp-ux-uat", async (c) => {
     {
       signatureValid: true,
       alreadyRecorded: true,
+      simulateMcpTimeout: body.simulate === "mcp_timeout",
+      coalesceMs: Number.isFinite(Number(body.coalesceMs)) ? Math.min(500, Math.max(0, Number(body.coalesceMs))) : 0,
       waitUntil: (promise) => {
         try {
           c.executionCtx.waitUntil(promise);

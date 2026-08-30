@@ -1,5 +1,6 @@
 import { hasDocumentMemory, recentDocumentTitles, type WhatsAppEntityMemory } from "./whatsapp-entities";
 import { looksLikeWriteIntent, softenSearchQuery, focusSearchTerms } from "./whatsapp-intent";
+import { DOCUMENT_CLARIFY_REPLY, isGenericDocumentAsk } from "./whatsapp-realtime";
 
 export type WhatsAppPlanAction =
   | "chat"
@@ -115,7 +116,6 @@ export function planWhatsAppTurn(
   if (CAPABILITIES.test(text) || (/^(can you|could you)\b/i.test(text) && PRICE.test(text))) {
     return { ...base(), action: "capabilities", intent: "capabilities", tool: null, skipTools: true };
   }
-
   if (LINK.test(text)) {
     if (titles.length >= 2 && /other one|that one|second|which/i.test(text)) {
       return {
@@ -318,6 +318,16 @@ export function planWhatsAppTurn(
   }
   if (EMAIL.test(text)) {
     return { ...base(), action: "knowledge", intent: "knowledge_search", fetch: true, query: query || text };
+  }
+  if (isGenericDocumentAsk(text) && !remembered) {
+    return {
+      ...base(),
+      action: "clarify",
+      intent: "clarification",
+      tool: null,
+      skipTools: true,
+      clarification: DOCUMENT_CLARIFY_REPLY,
+    };
   }
   const planned = {
     ...base(),

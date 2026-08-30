@@ -4,9 +4,9 @@ import type { WhatsAppIntent } from "./whatsapp-intent";
 export const WHATSAPP_ENGAGEMENT_DISABLED = true;
 
 const GREETING_REPLIES = [
-  "Hi — I’m Infra. What can I help you with today?",
-  "Hello — I’m Infra. What do you need?",
-  "Hi. What can I help you with?",
+  "Hi 👋 What can I help you with?",
+  "Hi 👋 What can I help you with?",
+  "Hi 👋 What can I help you with?",
 ];
 
 const THANKS_REPLIES = [

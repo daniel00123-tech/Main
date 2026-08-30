@@ -1200,6 +1200,25 @@ const worker = {
       }
     }
 
+    try {
+      const { sweepStuckWhatsAppTurns } = await import("./services/whatsapp-reaper");
+      const swept = await sweepStuckWhatsAppTurns(env);
+      await recordPlatformHeartbeat(env.DB, {
+        key: "whatsapp_stuck_reaper",
+        label: "WhatsApp stuck-turn reaper",
+        success: true,
+        error: null,
+        detail: swept,
+      });
+    } catch (err) {
+      await recordPlatformHeartbeat(env.DB, {
+        key: "whatsapp_stuck_reaper",
+        label: "WhatsApp stuck-turn reaper",
+        success: false,
+        error: err instanceof Error ? err.message : "Reaper failed",
+      });
+    }
+
     if (runAutomation) {
       try {
         const { maybeRunQualityLoop } = await import("./services/quality-loop");

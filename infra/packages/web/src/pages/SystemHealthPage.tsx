@@ -47,6 +47,7 @@ export default function SystemHealthPage() {
   const [opsHealth, setOpsHealth] = useState<Awaited<
     ReturnType<typeof api.getPlatformOperationsHealth>
   > | null>(null);
+  const [whatsappUx, setWhatsappUx] = useState<Awaited<ReturnType<typeof api.getWhatsAppInbox>> | null>(null);
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const [connectorDetail, setConnectorDetail] = useState<{
     connector: ConnectorInstance;
@@ -58,7 +59,7 @@ export default function SystemHealthPage() {
     setError(null);
     const now = new Date().toISOString();
     try {
-      const [healthResult, readyResult, gatewayResult, mcpList, connectorList, companyList, opsResult] =
+      const [healthResult, readyResult, gatewayResult, mcpList, connectorList, companyList, opsResult, inbox] =
         await Promise.all([
           api.getHealth().then(
             (data) => ({ ok: true as const, data }),
@@ -79,8 +80,10 @@ export default function SystemHealthPage() {
           api.getConnectorInstances().catch(() => [] as ConnectorInstance[]),
           api.getCompanies().catch(() => [] as Company[]),
           api.getPlatformOperationsHealth().catch(() => null),
+          api.getWhatsAppInbox().catch(() => null),
         ]);
 
+      setWhatsappUx(inbox);
       setMcps(mcpList);
       setConnectors(connectorList);
       setCompanies(companyList);
@@ -379,6 +382,25 @@ export default function SystemHealthPage() {
           </table>
         </div>
       </SectionCard>
+
+      {whatsappUx?.metrics ? (
+        <SectionCard
+          title="WhatsApp realtime UX"
+          description="Recognised-user first-visible and final latency, silent/stuck counts, read and typing success."
+          className="mt-6"
+        >
+          <div className="metric-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+            <DataCard title="Recognised" metric={String(whatsappUx.metrics.recognisedMessages)} />
+            <DataCard title="First visible p50/p95" metric={`${whatsappUx.metrics.firstVisibleP50Ms ?? "—"} / ${whatsappUx.metrics.firstVisibleP95Ms ?? "—"} ms`} />
+            <DataCard title="Final p50/p95" metric={`${whatsappUx.metrics.finalP50Ms ?? "—"} / ${whatsappUx.metrics.finalP95Ms ?? "—"} ms`} />
+            <DataCard title="Silent >3s / >10s" metric={`${whatsappUx.metrics.silentOver3s} / ${whatsappUx.metrics.silentOver10s}`} />
+            <DataCard title="Stuck >30s" metric={String(whatsappUx.metrics.stuckOver30s)} />
+            <DataCard title="Failed outbound" metric={String(whatsappUx.metrics.failedOutbound)} />
+            <DataCard title="Queue p50" metric={whatsappUx.metrics.queueLatencyP50Ms == null ? "—" : `${whatsappUx.metrics.queueLatencyP50Ms} ms`} />
+            <DataCard title="Typing / read" metric={`${whatsappUx.metrics.typingSuccessRate ?? "—"}% / ${whatsappUx.metrics.readStatusSuccessRate ?? "—"}%`} />
+          </div>
+        </SectionCard>
+      ) : null}
 
       {opsHealth ? (
         <>
