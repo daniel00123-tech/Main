@@ -86,6 +86,7 @@ import internalMcpRoutes from "./routes/internal-mcp";
 import actionPlanRoutes from "./routes/action-plans";
 import automationRoutes from "./routes/automations";
 import commercialVisibilityRoutes from "./routes/commercial-visibility";
+import emailLiveTestRoutes from "./routes/email-live-test";
 import whatsappRoutes from "./routes/whatsapp";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -98,6 +99,7 @@ app.route("/", internalMcpRoutes);
 app.route("/", actionPlanRoutes);
 app.route("/", automationRoutes);
 app.route("/", commercialVisibilityRoutes);
+app.route("/", emailLiveTestRoutes);
 app.route("/", whatsappRoutes);
 
 app.use("*", async (c, next) => {
