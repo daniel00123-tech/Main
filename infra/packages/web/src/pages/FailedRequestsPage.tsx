@@ -83,6 +83,7 @@ export default function FailedRequestsPage() {
     failedCount: number;
     consecutiveFailedReplies: number;
     incidents: WhatsAppIncident[];
+    metrics?: Record<string, number | null>;
   } | null>(null);
   const [weekly, setWeekly] = useState<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useState(true);
@@ -105,6 +106,7 @@ export default function FailedRequestsPage() {
               failedCount: Number(failed.whatsapp.failedCount ?? 0),
               consecutiveFailedReplies: Number(failed.whatsapp.consecutiveFailedReplies ?? 0),
               incidents: (failed.whatsapp.incidents ?? []) as WhatsAppIncident[],
+              metrics: failed.whatsapp.metrics,
             }
           : null,
       );
@@ -137,7 +139,7 @@ export default function FailedRequestsPage() {
         description="Last 7 days, grouped by company and error. Recurring patterns are shown first. WhatsApp messages with no user-visible reply after 30 seconds are treated as incidents."
       />
 
-      {whatsapp && (whatsapp.stuckCount > 0 || whatsapp.failedCount > 0 || whatsapp.incidents.length > 0) ? (
+      {whatsapp && (whatsapp.stuckCount > 0 || whatsapp.failedCount > 0 || whatsapp.incidents.length > 0 || whatsapp.metrics) ? (
         <SectionCard
           title="WhatsApp channel"
           description="Received, processing, stuck, failed and replied inbound messages. Stuck means received more than 30 seconds ago with no user-visible response."
@@ -145,6 +147,9 @@ export default function FailedRequestsPage() {
           <div className={`attention-banner ${whatsapp.stuckCount > 0 ? "warn" : ""}`}>
             <p className="attention-title">
               {whatsapp.stuckCount} stuck · {whatsapp.processingCount} processing · {whatsapp.failedCount} failed
+              {whatsapp.metrics
+                ? ` · first visible p50 ${whatsapp.metrics.firstVisibleP50Ms ?? "—"}ms · silent>3s ${whatsapp.metrics.silentOver3s ?? 0}`
+                : ""}
             </p>
             <p className="muted small">
               {whatsapp.consecutiveFailedReplies >= 3

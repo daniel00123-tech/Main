@@ -47,7 +47,12 @@ export type QualityCategory =
   | "whatsapp_voice_no_response"
   | "whatsapp_excessive_emojis"
   | "whatsapp_oversized_reply"
-  | "whatsapp_unsupported_suggestion";
+  | "whatsapp_unsupported_suggestion"
+  | "whatsapp_greeting_slow"
+  | "whatsapp_no_typing_ack_slow"
+  | "whatsapp_first_visible_slow"
+  | "whatsapp_rephrase_before_answer"
+  | "whatsapp_outbound_meta_failure";
 
 export interface QualitySignal {
   category: QualityCategory;
@@ -346,6 +351,51 @@ function detectWhatsAppUxSignals(input: QualityAuditInput): QualitySignal[] {
       confidence: 0.8,
       evidence: { intent },
       suggestedInvestigation: "A greeting or basic conversation called company tools.",
+    });
+  }
+  if (cheap && firstVisibleMs >= 2_000) {
+    signals.push({
+      category: "whatsapp_greeting_slow",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { firstVisibleMs, intent },
+      suggestedInvestigation: "Greeting or cheap conversation exceeded 2 seconds.",
+    });
+  }
+  if (!cheap && !ackSent && !meta.typingSent && firstVisibleMs >= 3_000) {
+    signals.push({
+      category: "whatsapp_no_typing_ack_slow",
+      severity: "high",
+      confidence: 0.85,
+      evidence: { firstVisibleMs },
+      suggestedInvestigation: "Slow tool turn had no typing indicator or text acknowledgement.",
+    });
+  }
+  if (firstVisibleMs >= 3_000) {
+    signals.push({
+      category: "whatsapp_first_visible_slow",
+      severity: "high",
+      confidence: 0.85,
+      evidence: { firstVisibleMs },
+      suggestedInvestigation: "First user-visible WhatsApp response exceeded 3 seconds.",
+    });
+  }
+  if (meta.rephraseBeforeAnswer || meta.secondMessageBeforeFirstAnswer) {
+    signals.push({
+      category: "whatsapp_rephrase_before_answer",
+      severity: "high",
+      confidence: 0.8,
+      evidence: {},
+      suggestedInvestigation: "User sent a second or rephrased message before the first answer arrived.",
+    });
+  }
+  if (meta.outboundMetaFailure || (meta.finalSent === false && /send_failed|meta/i.test(String(meta.lastError ?? "")))) {
+    signals.push({
+      category: "whatsapp_outbound_meta_failure",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { error: meta.lastError ?? meta.outboundError ?? null },
+      suggestedInvestigation: "Meta Cloud API rejected or failed an outbound WhatsApp text send.",
     });
   }
   if (ackSent && !finalSent) {

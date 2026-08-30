@@ -532,6 +532,7 @@ export function registerCommand6Routes(app: Hono<AppEnv>) {
       processingCount: 0,
       failedCount: 0,
       consecutiveFailedReplies: 0,
+      metrics: undefined,
     }));
 
     return c.json({
@@ -541,6 +542,7 @@ export function registerCommand6Routes(app: Hono<AppEnv>) {
         failedCount: whatsappInbox.failedCount,
         consecutiveFailedReplies: whatsappInbox.consecutiveFailedReplies,
         incidents: whatsappInbox.items.filter((item) => item.stuck || item.status === "failed").slice(0, 40),
+        metrics: "metrics" in whatsappInbox ? whatsappInbox.metrics : undefined,
       },
       failures: (rows.results ?? []).map((row) => {
         const companyId = String(row.company_id);

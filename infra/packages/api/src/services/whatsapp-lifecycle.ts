@@ -64,64 +64,76 @@ export async function stampWhatsAppLifecycle(
     state?: WhatsAppLifecycleState;
     terminal?: WhatsAppTerminalState | null;
     validatedAt?: string;
+    identityResolvedAt?: string;
     acknowledgedAt?: string;
     planningAt?: string;
     toolRunningAt?: string;
     synthesisingAt?: string;
     replySentAt?: string;
     firstVisibleAt?: string;
+    readStatusSentAt?: string;
+    typingSentAt?: string;
+    acknowledgementSentAt?: string;
+    finalSentAt?: string;
+    recoverSentAt?: string;
+    queueAcceptedAt?: string;
+    timeToFirstVisibleMs?: number | null;
+    readStatusOk?: number;
+    typingOk?: number;
+    ackSendOk?: number;
+    finalSendOk?: number;
+    outboundError?: string | null;
     lastError?: string | null;
+    senderE164?: string | null;
+    inboundText?: string | null;
+    identityFound?: number;
+    userId?: string | null;
+    companyId?: string | null;
   },
 ): Promise<void> {
   if (!wamid) return;
   const sets: string[] = [];
   const values: unknown[] = [];
-  if (patch.state) {
-    sets.push("lifecycle_state = ?");
-    values.push(patch.state);
+  const add = (sql: string, value: unknown) => {
+    sets.push(sql);
+    values.push(value);
+  };
+  if (patch.state) add("lifecycle_state = ?", patch.state);
+  if (patch.terminal) add("terminal_state = ?", patch.terminal);
+  if (patch.validatedAt) add("validated_at = COALESCE(validated_at, ?)", patch.validatedAt);
+  if (patch.identityResolvedAt) add("identity_resolved_at = COALESCE(identity_resolved_at, ?)", patch.identityResolvedAt);
+  if (patch.acknowledgedAt) add("acknowledged_at = COALESCE(acknowledged_at, ?)", patch.acknowledgedAt);
+  if (patch.planningAt) add("planning_at = COALESCE(planning_at, ?)", patch.planningAt);
+  if (patch.toolRunningAt) add("tool_running_at = COALESCE(tool_running_at, ?)", patch.toolRunningAt);
+  if (patch.synthesisingAt) add("synthesising_at = COALESCE(synthesising_at, ?)", patch.synthesisingAt);
+  if (patch.replySentAt) add("reply_sent_at = COALESCE(reply_sent_at, ?)", patch.replySentAt);
+  if (patch.firstVisibleAt) add("first_visible_at = COALESCE(first_visible_at, ?)", patch.firstVisibleAt);
+  if (patch.readStatusSentAt) add("read_status_sent_at = COALESCE(read_status_sent_at, ?)", patch.readStatusSentAt);
+  if (patch.typingSentAt) add("typing_sent_at = COALESCE(typing_sent_at, ?)", patch.typingSentAt);
+  if (patch.acknowledgementSentAt) {
+    add("acknowledgement_sent_at = COALESCE(acknowledgement_sent_at, ?)", patch.acknowledgementSentAt);
   }
-  if (patch.terminal) {
-    sets.push("terminal_state = ?");
-    values.push(patch.terminal);
+  if (patch.finalSentAt) add("final_sent_at = COALESCE(final_sent_at, ?)", patch.finalSentAt);
+  if (patch.recoverSentAt) add("recover_sent_at = COALESCE(recover_sent_at, ?)", patch.recoverSentAt);
+  if (patch.queueAcceptedAt) add("queue_accepted_at = COALESCE(queue_accepted_at, ?)", patch.queueAcceptedAt);
+  if (patch.timeToFirstVisibleMs != null) {
+    add("time_to_first_visible_ms = COALESCE(time_to_first_visible_ms, ?)", patch.timeToFirstVisibleMs);
   }
-  if (patch.validatedAt) {
-    sets.push("validated_at = COALESCE(validated_at, ?)");
-    values.push(patch.validatedAt);
-  }
-  if (patch.acknowledgedAt) {
-    sets.push("acknowledged_at = COALESCE(acknowledged_at, ?)");
-    values.push(patch.acknowledgedAt);
-  }
-  if (patch.planningAt) {
-    sets.push("planning_at = COALESCE(planning_at, ?)");
-    values.push(patch.planningAt);
-  }
-  if (patch.toolRunningAt) {
-    sets.push("tool_running_at = COALESCE(tool_running_at, ?)");
-    values.push(patch.toolRunningAt);
-  }
-  if (patch.synthesisingAt) {
-    sets.push("synthesising_at = COALESCE(synthesising_at, ?)");
-    values.push(patch.synthesisingAt);
-  }
-  if (patch.replySentAt) {
-    sets.push("reply_sent_at = COALESCE(reply_sent_at, ?)");
-    values.push(patch.replySentAt);
-  }
-  if (patch.firstVisibleAt) {
-    sets.push("first_visible_at = COALESCE(first_visible_at, ?)");
-    values.push(patch.firstVisibleAt);
-  }
-  if (patch.lastError !== undefined) {
-    sets.push("last_error = ?");
-    values.push(patch.lastError);
-  }
+  if (patch.readStatusOk != null) add("read_status_ok = ?", patch.readStatusOk);
+  if (patch.typingOk != null) add("typing_ok = ?", patch.typingOk);
+  if (patch.ackSendOk != null) add("ack_send_ok = ?", patch.ackSendOk);
+  if (patch.finalSendOk != null) add("final_send_ok = ?", patch.finalSendOk);
+  if (patch.outboundError !== undefined) add("outbound_error = ?", patch.outboundError);
+  if (patch.lastError !== undefined) add("last_error = ?", patch.lastError);
+  if (patch.senderE164) add("sender_e164 = COALESCE(sender_e164, ?)", patch.senderE164);
+  if (patch.inboundText) add("inbound_text = COALESCE(inbound_text, ?)", patch.inboundText.slice(0, 500));
+  if (patch.identityFound != null) add("identity_found = ?", patch.identityFound);
+  if (patch.userId) add("user_id = COALESCE(user_id, ?)", patch.userId);
+  if (patch.companyId) add("company_id = COALESCE(company_id, ?)", patch.companyId);
   if (!sets.length) return;
   values.push(wamid);
   try {
-    await env.DB.prepare(
-      `UPDATE whatsapp_inbound_events SET ${sets.join(", ")} WHERE wamid = ?`,
-    )
+    await env.DB.prepare(`UPDATE whatsapp_inbound_events SET ${sets.join(", ")} WHERE wamid = ?`)
       .bind(...values)
       .run();
   } catch {

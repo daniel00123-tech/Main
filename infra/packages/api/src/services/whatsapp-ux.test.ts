@@ -45,6 +45,7 @@ vi.mock("./whatsapp-send", async () => {
       attempts: 1,
     }),
     sendWhatsAppTypingIndicator: vi.fn().mockResolvedValue({ ok: true, supported: true }),
+    sendWhatsAppReadStatus: vi.fn().mockResolvedValue({ ok: true, supported: true }),
   };
 });
 vi.mock("../auth/users", () => ({ getUserByMobileE164, toSessionUser }));
@@ -177,7 +178,7 @@ describe("WhatsApp intent and typo handling", () => {
 
 describe("WhatsApp conversation and capabilities", () => {
   it("answers greetings locally with Infra identity", () => {
-    expect(conversationalReply("greeting", { text: "Hi" })).toMatch(/Infra/i);
+    expect(conversationalReply("greeting", { text: "Hi" })).toMatch(/What can I help/i);
     expect(conversationalReply("casual", { text: "How are you?" })).toMatch(/help/i);
     expect(acknowledgementMessage("a")).not.toBe(acknowledgementMessage("bbbb"));
   });

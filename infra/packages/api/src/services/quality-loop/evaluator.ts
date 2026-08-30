@@ -89,6 +89,27 @@ export function evaluateWhatsAppConversation(thread: ConversationThread): Conver
   } else if (thread.assistantMessages.length === 0) {
     dimensions.completeness.evidence.push("Final send recorded; reply body is only in authenticated Interaction detail.");
   }
+  const greeting = thread.userMessages.some((text) => /^(hi+|hello+|hey+|thanks|morning|afternoon|evening)\b/i.test(text.trim()));
+  if (greeting && (thread.firstVisibleMs ?? thread.totalMs ?? 0) >= 2_000) {
+    penalise(dimensions, "latency", 25, "Greeting took more than 2 seconds.");
+    flags.push(neg("greeting_slow", "high", 0.95, "Greeting exceeded the 2s WhatsApp UX budget."));
+  }
+  if (!thread.acknowledgementSent && (thread.firstVisibleMs ?? 0) >= 3_000 && thread.toolNames.length > 0) {
+    penalise(dimensions, "ux", 20, "Slow tool turn had no typing or text acknowledgement.");
+    flags.push(neg("no_ack_on_slow_turn", "high", 0.85, "No ack/typing on a slow recognised-user turn."));
+  }
+  if ((thread.firstVisibleMs ?? 0) >= 3_000) {
+    penalise(dimensions, "latency", 15, "First visible response exceeded 3 seconds.");
+    flags.push(neg("first_visible_slow", "high", 0.85, `First visible ${thread.firstVisibleMs}ms.`));
+  }
+  if (thread.qualitySignals.includes("whatsapp_rephrase_before_answer")) {
+    penalise(dimensions, "ux", 20, "User rephrased or sent a second message before the first answer.");
+    flags.push(neg("rephrase_before_answer", "high", 0.8, "Second message arrived before the first answer."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_outbound_meta_failure") || thread.qualitySignals.includes("whatsapp_meta_unavailable")) {
+    penalise(dimensions, "reliability", 25, "Meta outbound send failed.");
+    flags.push(neg("outbound_meta_failure", "high", 0.9, "Outbound Meta send failed."));
+  }
   if (thread.qualitySignals.includes("whatsapp_stuck") || ((thread.totalMs ?? 0) >= 60_000 && !thread.finalSent)) {
     penalise(dimensions, "reliability", 35, "Conversation stayed processing without a terminal reply.");
     flags.push(neg("stuck", "high", 0.9, "WhatsApp turn remained stuck."));

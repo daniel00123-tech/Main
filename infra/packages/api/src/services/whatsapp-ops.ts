@@ -111,12 +111,134 @@ export async function listWhatsAppInbox(
   });
 
   const recentFailed = items.filter((item) => item.status === "failed").slice(0, 3);
+  const metrics = await computeWhatsAppUxMetrics(env).catch(() => emptyWhatsAppUxMetrics());
   return {
     items,
     stuckCount: items.filter((item) => item.stuck).length,
     processingCount: items.filter((item) => item.status === "processing").length,
     failedCount: items.filter((item) => item.status === "failed").length,
     consecutiveFailedReplies: recentFailed.length === 3 ? 3 : 0,
+    metrics,
+  };
+}
+
+export type WhatsAppUxMetrics = {
+  recognisedMessages: number;
+  firstVisibleP50Ms: number | null;
+  firstVisibleP95Ms: number | null;
+  finalP50Ms: number | null;
+  finalP95Ms: number | null;
+  silentOver3s: number;
+  silentOver10s: number;
+  stuckOver30s: number;
+  failedOutbound: number;
+  queueLatencyP50Ms: number | null;
+  typingSuccessRate: number | null;
+  readStatusSuccessRate: number | null;
+};
+
+function emptyWhatsAppUxMetrics(): WhatsAppUxMetrics {
+  return {
+    recognisedMessages: 0,
+    firstVisibleP50Ms: null,
+    firstVisibleP95Ms: null,
+    finalP50Ms: null,
+    finalP95Ms: null,
+    silentOver3s: 0,
+    silentOver10s: 0,
+    stuckOver30s: 0,
+    failedOutbound: 0,
+    queueLatencyP50Ms: null,
+    typingSuccessRate: null,
+    readStatusSuccessRate: null,
+  };
+}
+
+function percentile(values: number[], p: number): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[index] ?? null;
+}
+
+export async function computeWhatsAppUxMetrics(env: Env): Promise<WhatsAppUxMetrics> {
+  await ensureWhatsAppInboundTable(env);
+  let rows: Array<Record<string, unknown>> = [];
+  try {
+    const result = await env.DB.prepare(
+      `SELECT identity_found, received_at, first_visible_at, reply_sent_at, final_sent_at,
+              time_to_first_visible_ms, queue_accepted_at, typing_ok, read_status_ok,
+              final_send_ok, terminal_state, last_error
+       FROM whatsapp_inbound_events
+       WHERE received_at >= datetime('now', '-7 days')
+       ORDER BY received_at DESC
+       LIMIT 400`,
+    ).all();
+    rows = (result.results ?? []) as Array<Record<string, unknown>>;
+  } catch {
+    return emptyWhatsAppUxMetrics();
+  }
+  const recognised = rows.filter((row) => Number(row.identity_found) === 1);
+  const firstVisible: number[] = [];
+  const finals: number[] = [];
+  const queue: number[] = [];
+  let silent3 = 0;
+  let silent10 = 0;
+  let stuck30 = 0;
+  let failedOutbound = 0;
+  let typingOk = 0;
+  let typingN = 0;
+  let readOk = 0;
+  let readN = 0;
+  for (const row of recognised) {
+    const received = Date.parse(String(row.received_at ?? ""));
+    const visibleAt = row.first_visible_at || row.reply_sent_at;
+    const finalAt = row.final_sent_at || row.reply_sent_at;
+    const stored = row.time_to_first_visible_ms != null ? Number(row.time_to_first_visible_ms) : null;
+    const firstMs =
+      stored ??
+      (visibleAt && Number.isFinite(received) ? Date.parse(String(visibleAt)) - received : null);
+    if (firstMs != null && Number.isFinite(firstMs) && firstMs >= 0) firstVisible.push(firstMs);
+    if (finalAt && Number.isFinite(received)) {
+      const finalMs = Date.parse(String(finalAt)) - received;
+      if (Number.isFinite(finalMs) && finalMs >= 0) finals.push(finalMs);
+    }
+    if (row.queue_accepted_at && Number.isFinite(received)) {
+      const q = Date.parse(String(row.queue_accepted_at)) - received;
+      if (Number.isFinite(q) && q >= 0) queue.push(q);
+    }
+    const age = Number.isFinite(received) ? Date.now() - received : 0;
+    const visible = Boolean(visibleAt);
+    if (!visible && age >= 3_000) silent3 += 1;
+    if (!visible && age >= 10_000) silent10 += 1;
+    if (!visible && age >= 30_000 && !isWhatsAppTerminalState(row.terminal_state ? String(row.terminal_state) : null)) {
+      stuck30 += 1;
+    }
+    if (Number(row.final_send_ok) === 0 || /send_failed|outbound/i.test(String(row.last_error ?? ""))) {
+      failedOutbound += 1;
+    }
+    if (row.typing_ok != null) {
+      typingN += 1;
+      if (Number(row.typing_ok) === 1) typingOk += 1;
+    }
+    if (row.read_status_ok != null) {
+      readN += 1;
+      if (Number(row.read_status_ok) === 1) readOk += 1;
+    }
+  }
+  return {
+    recognisedMessages: recognised.length,
+    firstVisibleP50Ms: percentile(firstVisible, 50),
+    firstVisibleP95Ms: percentile(firstVisible, 95),
+    finalP50Ms: percentile(finals, 50),
+    finalP95Ms: percentile(finals, 95),
+    silentOver3s: silent3,
+    silentOver10s: silent10,
+    stuckOver30s: stuck30,
+    failedOutbound,
+    queueLatencyP50Ms: percentile(queue, 50),
+    typingSuccessRate: typingN ? Math.round((typingOk / typingN) * 100) : null,
+    readStatusSuccessRate: readN ? Math.round((readOk / readN) * 100) : null,
   };
 }
 

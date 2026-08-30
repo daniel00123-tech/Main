@@ -68,7 +68,12 @@ export type QualityFlagCategory =
   | "repeated_acks"
   | "button_context_lost"
   | "voice_failure"
-  | "connector_error";
+  | "connector_error"
+  | "greeting_slow"
+  | "no_ack_on_slow_turn"
+  | "first_visible_slow"
+  | "rephrase_before_answer"
+  | "outbound_meta_failure";
 
 export interface QualityFlag {
   category: QualityFlagCategory;

@@ -103,6 +103,16 @@ function titleFor(category: QualityFlagCategory): string {
       return "Users rephrasing unanswered asks";
     case "repeated_acks":
       return "Repeated acknowledgements";
+    case "greeting_slow":
+      return "Slow WhatsApp greetings";
+    case "no_ack_on_slow_turn":
+      return "No typing or ack on a slow turn";
+    case "first_visible_slow":
+      return "Slow first visible WhatsApp reply";
+    case "rephrase_before_answer":
+      return "Second message before first answer";
+    case "outbound_meta_failure":
+      return "Meta outbound send failures";
     case "wrong_tool":
       return "Wrong or unnecessary tool";
     case "permission_ux":
@@ -128,6 +138,16 @@ function rootCauseFor(category: QualityFlagCategory): string {
       return "First answer was empty, ungrounded, or did not match the ask.";
     case "repeated_acks":
       return "Progress/ack policy fired more than once before a useful final.";
+    case "greeting_slow":
+      return "Greeting path still waited on connectors, MCP, or queue before sending text.";
+    case "no_ack_on_slow_turn":
+      return "Tool turn exceeded 3s without a typing indicator or text acknowledgement.";
+    case "first_visible_slow":
+      return "First user-visible WhatsApp response exceeded 3 seconds.";
+    case "rephrase_before_answer":
+      return "User sent a second or rephrased message before the first answer arrived.";
+    case "outbound_meta_failure":
+      return "Meta Cloud API failed an outbound text send.";
     case "wrong_tool":
       return "Planner ranking selected an unnecessary or incorrect tool.";
     case "permission_ux":

@@ -78,10 +78,20 @@ import {
 import {
   sendWhatsAppInteractiveButtons,
   sendWhatsAppInteractiveList,
+  sendWhatsAppReadStatus,
   sendWhatsAppText,
   sendWhatsAppTypingIndicator,
   type WhatsAppSendResult,
 } from "./whatsapp-send";
+import {
+  COMBINED_GREETING_DOCUMENT_REPLY,
+  instantLocalReply,
+  isGenericDocumentAsk,
+  isInstantLocalTurn,
+  maybeCoalesceBurst,
+} from "./whatsapp-realtime";
+import { scheduleStuckTurnWatch } from "./whatsapp-reaper";
+import { TYPING_MAX_REFRESHES } from "./whatsapp-latency";
 import {
   listRowsFromCompanies,
   mapButtonToUserText,
@@ -201,7 +211,72 @@ export async function handleWhatsAppInboundMessage(
     signatureValid?: boolean;
     waitUntil?: (promise: Promise<unknown>) => void;
     alreadyRecorded?: boolean;
+    coalesceMs?: number;
+    simulateMcpTimeout?: boolean;
+    inboundReceivedAt?: number;
   },
+): Promise<WhatsAppOrchestratorResult> {
+  const marks = createWhatsAppLatencyMarks();
+  marks.inboundReceivedAt = options?.inboundReceivedAt ?? Date.now();
+  marks.webhookReceivedAt = marks.inboundReceivedAt;
+  const shared = { sender: null as string | null };
+  try {
+    return await handleWhatsAppInboundMessageInner(env, item, options, marks, shared);
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        service: "infra-api",
+        event: "whatsapp.inbound_unhandled",
+        wamid: item.wamid,
+        message: err instanceof Error ? err.message : "unhandled inbound exception",
+      }),
+    );
+    const reply = aiFailureWhatsAppMessage();
+    const sent = await maybeSendReply(env, shared.sender, reply).catch(() => ({
+      ok: false as const,
+      kind: "customer_service_reply" as const,
+      error: "send_failed",
+      retryable: false,
+      attempts: 0,
+    }));
+    const now = new Date().toISOString();
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      state: "failed_notified",
+      terminal: "failed_notified",
+      replySentAt: now,
+      firstVisibleAt: now,
+      lastError: "unhandled_exception",
+      finalSendOk: sent.ok ? 1 : 0,
+    });
+    return {
+      handled: true,
+      duplicate: false,
+      identityFound: Boolean(catchSender),
+      companyId: null,
+      userId: null,
+      replySent: sent.ok,
+      publicReply: reply,
+      toolName: null,
+      interactionId: null,
+      outcome: "ai_failed",
+    };
+  }
+}
+
+async function handleWhatsAppInboundMessageInner(
+  env: Env,
+  item: WhatsAppInboundItem,
+  options: {
+    signatureValid?: boolean;
+    waitUntil?: (promise: Promise<unknown>) => void;
+    alreadyRecorded?: boolean;
+    coalesceMs?: number;
+    simulateMcpTimeout?: boolean;
+    inboundReceivedAt?: number;
+  } | undefined,
+  marks: ReturnType<typeof createWhatsAppLatencyMarks>,
+  shared: { sender: string | null },
 ): Promise<WhatsAppOrchestratorResult> {
   const assets = inspectWhatsAppAssets(env);
   const expectedPhone = assets.phoneNumberId;
@@ -233,8 +308,11 @@ export async function handleWhatsAppInboundMessage(
 
   const parsed = tryNormalizeE164(item.from);
   const sender = parsed.ok ? parsed.e164 : null;
+  shared.sender = sender;
   const identity = sender ? await resolveWhatsAppIdentity(env.DB, sender) : null;
   const found = Boolean(identity?.found);
+  marks.validatedAt = Date.now();
+  marks.identityResolvedAt = Date.now();
 
   if (!found || !identity?.found || !sender) {
     const reply = UNKNOWN_WHATSAPP_ACCOUNT_MESSAGE;
@@ -267,9 +345,27 @@ export async function handleWhatsAppInboundMessage(
   } catch {
     conversation = null;
   }
+  const nowIso = () => new Date().toISOString();
   await stampWhatsAppLifecycle(env, item.wamid, {
     state: "validated",
-    validatedAt: new Date().toISOString(),
+    validatedAt: nowIso(),
+    identityResolvedAt: nowIso(),
+    identityFound: 1,
+    userId: identity.user.id,
+    senderE164: sender,
+    inboundText: (item.text ?? "").slice(0, 500) || null,
+  });
+  scheduleStuckTurnWatch(options?.waitUntil, env, item.wamid);
+  const readResult = await sendWhatsAppReadStatus(env, { messageId: item.wamid }).catch(() => ({
+    ok: false,
+    supported: false,
+    error: "read_failed",
+  }));
+  marks.readSentAt = Date.now();
+  await stampWhatsAppLifecycle(env, item.wamid, {
+    readStatusSentAt: nowIso(),
+    readStatusOk: readResult.ok ? 1 : 0,
+    outboundError: readResult.ok ? null : readResult.error ?? "read_failed",
   });
 
   const inboundResolved = await resolveInboundUserInput(env, {
@@ -318,6 +414,104 @@ export async function handleWhatsAppInboundMessage(
     };
   }
 
+  const earlyText = inboundResolved.text.trim();
+  if (earlyText && isInstantLocalTurn(earlyText)) {
+    const sibling = await maybeCoalesceBurst(env, {
+      senderE164: sender,
+      wamid: item.wamid,
+      coalesceMs: options?.coalesceMs ?? 0,
+    });
+    if (sibling && isGenericDocumentAsk(sibling.text)) {
+      const reply = COMBINED_GREETING_DOCUMENT_REPLY;
+      const sent = await maybeSendReply(env, sender, reply);
+      marks.firstVisibleAt = Date.now();
+      marks.finalSentAt = Date.now();
+      await rememberTurn(
+        env,
+        identity.user.id,
+        conversation?.companyId ?? identity.memberships[0]?.companyId ?? "unknown",
+        conversation?.turns ?? [],
+        `${earlyText}\n${sibling.text}`,
+        reply,
+      );
+      const visibleAt = nowIso();
+      await stampWhatsAppLifecycle(env, item.wamid, {
+        state: "clarification_sent",
+        terminal: "clarification_sent",
+        replySentAt: visibleAt,
+        firstVisibleAt: visibleAt,
+        finalSentAt: visibleAt,
+        timeToFirstVisibleMs: summariseWhatsAppLatency(marks).timeToFirstVisibleResponseMs,
+        finalSendOk: sent.ok ? 1 : 0,
+      });
+      await stampWhatsAppLifecycle(env, sibling.wamid, {
+        state: "clarification_sent",
+        terminal: "clarification_sent",
+        replySentAt: visibleAt,
+        firstVisibleAt: visibleAt,
+        finalSentAt: visibleAt,
+        finalSendOk: sent.ok ? 1 : 0,
+      });
+      return {
+        handled: true,
+        duplicate: false,
+        identityFound: true,
+        companyId: conversation?.companyId ?? identity.memberships[0]?.companyId ?? null,
+        userId: identity.user.id,
+        replySent: sent.ok,
+        publicReply: reply,
+        toolName: null,
+        interactionId: null,
+        outcome: "clarification_requested",
+        intent: "greeting",
+        acknowledgementSent: false,
+        planAction: "clarify",
+        inputKind: inboundResolved.inputKind,
+      };
+    }
+    const reply = instantLocalReply(earlyText);
+    const sent = await maybeSendReply(env, sender, reply);
+    marks.firstVisibleAt = Date.now();
+    marks.finalSentAt = Date.now();
+    const companyId = conversation?.companyId ?? identity.memberships[0]?.companyId ?? "unknown";
+    if (companyId !== "unknown") {
+      await rememberTurn(env, identity.user.id, companyId, conversation?.turns ?? [], earlyText, reply);
+    }
+    await recordAuditEvent(env.DB, {
+      companyId: companyId === "unknown" ? null : companyId,
+      eventType: "whatsapp.conversation",
+      actor: identity.user.email,
+      resourceType: "whatsapp_message",
+      resourceId: item.wamid,
+      detail: { channel: "whatsapp", intent: "greeting", cheapPath: true, costLane: "whatsapp_conversation", localGreeting: true },
+    }).catch(() => undefined);
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      state: "reply_sent",
+      terminal: "reply_sent",
+      replySentAt: nowIso(),
+      firstVisibleAt: nowIso(),
+      finalSentAt: nowIso(),
+      timeToFirstVisibleMs: summariseWhatsAppLatency(marks).timeToFirstVisibleResponseMs,
+      finalSendOk: sent.ok ? 1 : 0,
+    });
+    return {
+      handled: true,
+      duplicate: false,
+      identityFound: true,
+      companyId: companyId === "unknown" ? null : companyId,
+      userId: identity.user.id,
+      replySent: sent.ok,
+      publicReply: reply,
+      toolName: null,
+      interactionId: null,
+      outcome: "answered",
+      intent: "greeting",
+      acknowledgementSent: false,
+      planAction: "chat",
+      inputKind: inboundResolved.inputKind,
+    };
+  }
+
   const companyDecision = resolveWhatsAppCompany({
     memberships: identity.memberships.map((membership) => ({
       companyId: membership.companyId,
@@ -346,6 +540,14 @@ export async function handleWhatsAppInboundMessage(
       pendingCompanySelection: true,
       turns: [],
     });
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      state: "clarification_sent",
+      terminal: "clarification_sent",
+      replySentAt: new Date().toISOString(),
+      firstVisibleAt: new Date().toISOString(),
+      finalSentAt: new Date().toISOString(),
+      finalSendOk: sent.ok ? 1 : 0,
+    });
     await recordAuditEvent(env.DB, {
       companyId: null,
       eventType: "whatsapp.company_selection",
@@ -370,7 +572,6 @@ export async function handleWhatsAppInboundMessage(
     };
   }
 
-  const marks = createWhatsAppLatencyMarks();
   marks.identityResolvedAt = Date.now();
   const sameCompany = conversation?.companyId === companyDecision.companyId;
   const priorTurns = sameCompany ? conversation?.turns ?? [] : [];
@@ -415,6 +616,14 @@ export async function handleWhatsAppInboundMessage(
     const reply = writeIntentWhatsAppMessage();
     const sent = await maybeSendReply(env, sender, reply, { qualityRuntime });
     await rememberTurn(env, identity.user.id, companyDecision.companyId, conversation?.turns ?? [], text, reply, entities);
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      state: "permission_denied",
+      terminal: "permission_denied",
+      replySentAt: new Date().toISOString(),
+      firstVisibleAt: new Date().toISOString(),
+      finalSentAt: new Date().toISOString(),
+      finalSendOk: sent.ok ? 1 : 0,
+    });
     await recordAuditEvent(env.DB, {
       companyId: companyDecision.companyId,
       eventType: "whatsapp.write_blocked",
@@ -511,6 +720,8 @@ export async function handleWhatsAppInboundMessage(
       terminal: "reply_sent",
       replySentAt: new Date().toISOString(),
       firstVisibleAt: new Date().toISOString(),
+      finalSentAt: new Date().toISOString(),
+      finalSendOk: sent.ok ? 1 : 0,
     });
     return {
       handled: true,
@@ -554,9 +765,19 @@ export async function handleWhatsAppInboundMessage(
   let acknowledgementSent = Boolean(inboundResolved.acknowledgementSent);
   let progressSent = false;
   let fallbackSent = false;
+  let typingRefreshes = 0;
 
   if (needsWork) {
-    void sendWhatsAppTypingIndicator(env, { messageId: item.wamid });
+    const typed = await sendWhatsAppTypingIndicator(env, { messageId: item.wamid }).catch(() => ({
+      ok: false,
+      supported: false,
+      error: "typing_failed",
+    }));
+    marks.typingSentAt = Date.now();
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      typingSentAt: nowIso(),
+      typingOk: typed.ok ? 1 : 0,
+    });
   }
   await stampWhatsAppLifecycle(env, item.wamid, {
     state: needsWork ? "planning" : "synthesising",
@@ -566,15 +787,17 @@ export async function handleWhatsAppInboundMessage(
   try {
     marks.planningStartedAt = Date.now();
     marks.toolStartedAt = Date.now();
-    const work = executeWhatsAppPlan(env, {
-      companyId: companyDecision.companyId,
-      sessionUser,
-      plan,
-      originalText: text,
-      memory: entities,
-      interactionId,
-      waitUntil: options?.waitUntil,
-    });
+    const work = options?.simulateMcpTimeout
+      ? new Promise<never>(() => undefined)
+      : executeWhatsAppPlan(env, {
+          companyId: companyDecision.companyId,
+          sessionUser,
+          plan,
+          originalText: text,
+          memory: entities,
+          interactionId,
+          waitUntil: options?.waitUntil,
+        });
     const watched = await raceWithWhatsAppWatchdog(work, async (kind, body) => {
       const sent = await maybeSendReply(env, sender, body, { qualityRuntime });
       if (!sent.ok) return false;
@@ -585,7 +808,10 @@ export async function handleWhatsAppInboundMessage(
         await stampWhatsAppLifecycle(env, item.wamid, {
           state: "acknowledged",
           acknowledgedAt: new Date().toISOString(),
+          acknowledgementSentAt: new Date().toISOString(),
           firstVisibleAt: new Date().toISOString(),
+          ackSendOk: 1,
+          timeToFirstVisibleMs: summariseWhatsAppLatency(marks).timeToFirstVisibleResponseMs,
         });
         void recordWhatsAppUxUsage(env, {
           companyId: companyDecision.companyId,
@@ -598,6 +824,10 @@ export async function handleWhatsAppInboundMessage(
         });
       } else if (kind === "progress") {
         progressSent = true;
+        if (typingRefreshes < TYPING_MAX_REFRESHES) {
+          typingRefreshes += 1;
+          void sendWhatsAppTypingIndicator(env, { messageId: item.wamid });
+        }
         void recordWhatsAppUxUsage(env, {
           companyId: companyDecision.companyId,
           userId: identity.user.id,
@@ -702,6 +932,7 @@ export async function handleWhatsAppInboundMessage(
       buttons,
     });
     marks.outboundAcceptedAt = Date.now();
+    marks.finalSentAt = Date.now();
     marks.firstVisibleAt ??= Date.now();
     await rememberTurn(
       env,
@@ -743,6 +974,9 @@ export async function handleWhatsAppInboundMessage(
         costLane: plan.skipTools ? "whatsapp_conversation" : "whatsapp_tool_mcp",
         transportCostLane: "whatsapp_transport",
         firstVisibleMs: latency.firstVisibleMs,
+        timeToFirstVisibleResponseMs: latency.timeToFirstVisibleResponseMs,
+        readMs: latency.readMs,
+        typingMs: latency.typingMs,
         inputKind,
         inputType: inputKind,
         buttonAction: inboundResolved.buttonAction ?? null,
@@ -769,6 +1003,10 @@ export async function handleWhatsAppInboundMessage(
       }),
       replySentAt: new Date().toISOString(),
       firstVisibleAt: new Date().toISOString(),
+      finalSentAt: new Date().toISOString(),
+      timeToFirstVisibleMs: latency.timeToFirstVisibleResponseMs,
+      finalSendOk: sent.ok ? 1 : 0,
+      outboundError: sent.ok ? null : sent.ok === false ? sent.error : "send_failed",
       lastError: sent.ok ? null : "send_failed",
     });
     if (inputKind === "voice") {
