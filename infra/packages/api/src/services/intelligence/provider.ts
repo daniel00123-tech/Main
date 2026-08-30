@@ -144,17 +144,21 @@ async function runWorkersAi(
   system: string,
   user: string,
 ): Promise<{ text: string; usage?: { promptTokens?: number | null; completionTokens?: number | null } } | null> {
-  const raw = await ai.run(model, {
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-    max_tokens: 520,
-    temperature: 0.1,
-  });
-  const text = extractModelText(raw);
-  if (!text) return null;
-  return { text, usage: extractUsage(raw) };
+  try {
+    const raw = await ai.run(model, {
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      max_tokens: 520,
+      temperature: 0.1,
+    });
+    const text = extractModelText(raw);
+    if (!text) return null;
+    return { text, usage: extractUsage(raw) };
+  } catch {
+    return null;
+  }
 }
 
 async function runOpenAi(
@@ -221,9 +225,20 @@ export function extractModelText(raw: unknown): string | null {
   if (typeof record.response === "string" && record.response.trim()) return record.response.trim();
   if (typeof record.text === "string" && record.text.trim()) return record.text.trim();
   if (typeof record.content === "string" && record.content.trim()) return record.content.trim();
+  if (record.result && typeof record.result === "object" && !Array.isArray(record.result)) {
+    const nested = extractModelText(record.result);
+    if (nested) return nested;
+  }
   if (Array.isArray(record.result)) {
     const joined = record.result
       .map((row) => (row && typeof row === "object" && "generated_text" in row ? String(row.generated_text ?? "") : ""))
+      .join("\n")
+      .trim();
+    if (joined) return joined;
+  }
+  if (Array.isArray(record.output)) {
+    const joined = record.output
+      .map((row) => (typeof row === "string" ? row : extractModelText(row) ?? ""))
       .join("\n")
       .trim();
     if (joined) return joined;

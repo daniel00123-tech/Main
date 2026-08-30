@@ -436,6 +436,36 @@ describe("document-grounded multi-turn behaviour", () => {
   });
 });
 
+describe("model-empty retrieval bootstrap", () => {
+  it("still searches with the raw user text when the model returns nothing", async () => {
+    const unseen = "what's our policy on returning damaged stock?";
+    const { runtime, calls } = recordingRuntime(() => ({
+      results: [{ id: "doc_policy", title: "Returns policy", url: "https://example.test/returns" }],
+    }));
+    const result = await runIntelligenceTurn({
+      text: unseen,
+      state: buildConversationState({ userText: unseen }),
+      runtime,
+      completer: async () => ({
+        text: "",
+        usage: {
+          provider: "workers-ai",
+          model: "@cf/meta/llama-3.1-8b-instruct",
+          latencyMs: 5,
+          promptTokens: 10,
+          completionTokens: 0,
+          estimatedCostUsd: 0,
+        },
+      }),
+    });
+    expect(calls[0]).toEqual({
+      name: "search_company_knowledge",
+      arguments: { query: unseen },
+    });
+    expect(result.toolCalls.length).toBeGreaterThan(0);
+  });
+});
+
 describe("whatsapp plan mapping and provider boundary", () => {
   it("maps document-grounded intelligence to entity-bound WhatsApp buttons", () => {
     const plan = planFromIntelligence(

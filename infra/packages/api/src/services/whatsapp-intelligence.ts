@@ -26,6 +26,7 @@ import {
   NONE_IN_DOCUMENT_REPLY,
   redactUnsolicitedPii,
   rejectWeakSearchHits,
+  runGroundedQa,
   SEARCH_OTHER_DOCS_HINT,
   searchDocument,
   type GroundedConfidence,
@@ -107,7 +108,7 @@ export async function executeWhatsAppIntelligence(
       .filter((doc): doc is IntelligenceDocumentRef => Boolean(doc)),
     recentTurns: input.priorTurns,
   });
-  const result = await runIntelligenceTurn({
+  let result = await runIntelligenceTurn({
     env,
     text: input.originalText,
     state,
@@ -116,6 +117,9 @@ export async function executeWhatsAppIntelligence(
     buttonHint: input.buttonAction ?? null,
     completer: input.completer,
   });
+  if (result.kind === "failed") {
+    result = await recoverFailedIntelligenceTurn(env, runtime, input, result, fetchCache);
+  }
 
   const nextEntities = mergeEntitiesFromIntelligence(input.memory, result, input.originalText, fetchCache);
   const polished = polishIntelligenceReply(result, nextEntities, input.originalText);
@@ -314,6 +318,127 @@ function mergeEntitiesFromIntelligence(
     lastSourceUrl: lastDocument?.url ?? prior.lastSourceUrl,
     lastSourceSystem: lastDocument?.sourceSystem ?? prior.lastSourceSystem,
   });
+}
+
+async function recoverFailedIntelligenceTurn(
+  env: Env,
+  runtime: IntelligenceRuntime,
+  input: {
+    originalText: string;
+    memory: WhatsAppEntityMemory;
+    buttonAction?: string | null;
+    companyId: string;
+  },
+  failed: IntelligenceTurnResult,
+  fetchCache: Map<string, ReturnType<typeof toStandardFetchPayload>>,
+): Promise<IntelligenceTurnResult> {
+  const toolCalls = [...failed.toolCalls];
+  let current = failed.currentDocument ?? documentRefFromEntity(input.memory.lastDocument);
+  const evidenceDocumentIds = [...failed.evidenceDocumentIds];
+  const broaden = input.buttonAction === "search_other_docs" || !current;
+  if (broaden && !toolCalls.some((call) => call.name === "search_company_knowledge")) {
+    const search = await runtime.executeTool({
+      name: "search_company_knowledge",
+      arguments: { query: input.originalText },
+    });
+    toolCalls.push(search);
+    const first = firstSearchHit(search.data);
+    if (first) {
+      const fetched = await runtime.executeTool({
+        name: "get_knowledge_document",
+        arguments: { document_id: first.id },
+      });
+      toolCalls.push(fetched);
+      current = documentFromLoose(fetched.data) ?? first;
+    }
+  } else if (current && !toolCalls.some((call) => call.name === "search_document")) {
+    const scoped = await runtime.executeTool({
+      name: "search_document",
+      arguments: { document_id: current.id, query: input.originalText },
+    });
+    toolCalls.push(scoped);
+    current = documentFromLoose(scoped.data) ?? current;
+  }
+  if (current && !evidenceDocumentIds.includes(current.id)) evidenceDocumentIds.push(current.id);
+  const payload = current ? fetchCache.get(current.id) : null;
+  if (current && payload) {
+    const grounded = await runGroundedQa(env, {
+      question: input.originalText,
+      documentId: current.id,
+      title: current.title || payload.title,
+      fetch: payload,
+      mode:
+        input.buttonAction === "more_on_this" || input.buttonAction === "more_detail"
+          ? "more_detail"
+          : input.buttonAction === "summarise"
+            ? "summarise"
+            : "answer",
+      previousAnswer: input.memory.lastAnswerText,
+      path: input.memory.lastDocument?.path,
+      tenantId: input.companyId,
+    });
+    return {
+      ...failed,
+      kind: "answer",
+      text: grounded.reply,
+      confidence: grounded.confidence,
+      offerSearchOther: grounded.confidence === "none",
+      toolCalls,
+      currentDocument: current,
+      evidenceDocumentIds,
+      clarification: false,
+      citeSource: Boolean(current.url),
+    };
+  }
+  const search = toolCalls.find((call) => call.name === "search_company_knowledge");
+  const first = firstSearchHit(search?.data);
+  if (first) {
+    return {
+      ...failed,
+      kind: "answer",
+      text: `I found ${first.title}.${first.url ? `\n${first.url}` : ""}`,
+      confidence: "partial",
+      offerSearchOther: true,
+      toolCalls,
+      currentDocument: first,
+      evidenceDocumentIds: first.id ? [...evidenceDocumentIds, first.id] : evidenceDocumentIds,
+      clarification: false,
+      citeSource: Boolean(first.url),
+    };
+  }
+  return {
+    ...failed,
+    kind: "answer",
+    text: "I couldn't find a company document that answers that. Tell me the name of the file, or I can search again.",
+    confidence: "none",
+    offerSearchOther: true,
+    toolCalls,
+    currentDocument: current,
+    evidenceDocumentIds,
+    clarification: false,
+  };
+}
+
+function firstSearchHit(data: unknown): IntelligenceDocumentRef | null {
+  if (!data || typeof data !== "object") return null;
+  const results = (data as { results?: unknown }).results;
+  if (!Array.isArray(results) || !results[0] || typeof results[0] !== "object") return null;
+  const row = results[0] as Record<string, unknown>;
+  const id = String(row.id ?? "").trim();
+  const title = String(row.title ?? "").trim();
+  if (!id || !title) return null;
+  const url = typeof row.url === "string" && /^https?:\/\//i.test(row.url) ? row.url : null;
+  return { id, title, url };
+}
+
+function documentFromLoose(data: unknown): IntelligenceDocumentRef | null {
+  if (!data || typeof data !== "object") return null;
+  const row = data as Record<string, unknown>;
+  const id = String(row.document_id ?? row.documentId ?? row.id ?? "").trim();
+  const title = String(row.title ?? "").trim();
+  if (!id || !title) return null;
+  const url = typeof row.url === "string" && /^https?:\/\//i.test(row.url) ? row.url : null;
+  return { id, title, url };
 }
 
 function documentRefFromEntity(doc?: WhatsAppDocumentEntity | null): IntelligenceDocumentRef | null {

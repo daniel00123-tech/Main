@@ -104,6 +104,33 @@ export async function runIntelligenceTurn(input: {
       decision = parseIntelligenceDecision(retry.text);
     }
 
+    if (decision.action === "invalid" && !completion.text.trim() && toolCalls.length === 0) {
+      const bootstrap = await bootstrapRetrieval(input.runtime, input.state, input.text, input.buttonHint);
+      if (bootstrap) {
+        toolCalls.push(bootstrap);
+        const doc = documentFromToolResult(bootstrap);
+        if (doc && shouldAdoptDocument(bootstrap.name, currentDocument, doc, input.buttonHint)) {
+          currentDocument = doc;
+        }
+        if (doc && !evidenceDocumentIds.includes(doc.id)) evidenceDocumentIds.push(doc.id);
+        transcript.push(formatToolTranscript(bootstrap));
+        continue;
+      }
+    }
+    if (decision.action === "invalid" && completion.text.trim() && toolCalls.length > 0 && !completion.text.includes("{")) {
+      return finish({
+        kind: "answer",
+        text: completion.text.trim(),
+        confidence: "partial",
+        offerSearchOther: Boolean(currentDocument),
+        toolCalls,
+        currentDocument,
+        evidenceDocumentIds,
+        clarification: false,
+        modelRounds,
+      });
+    }
+
     if (decision.action === "call_tool") {
       if (!INTELLIGENCE_TOOL_NAMES.has(decision.name)) {
         transcript.push(`Rejected tool ${decision.name}: not in the controlled catalogue.`);
@@ -265,6 +292,21 @@ function shouldAdoptDocument(
   void buttonHint;
   // Adopt only when the model selected a specific document. Search hits stay candidates.
   return toolName === "get_knowledge_document" || toolName === "fetch" || toolName === "search_document";
+}
+
+async function bootstrapRetrieval(
+  runtime: IntelligenceRuntime,
+  state: IntelligenceConversationState,
+  text: string,
+  buttonHint?: string | null,
+): Promise<IntelligenceToolResult | null> {
+  if (buttonHint === "search_other_docs" || !state.currentDocument) {
+    return runtime.executeTool({ name: "search_company_knowledge", arguments: { query: text } });
+  }
+  return runtime.executeTool({
+    name: "search_document",
+    arguments: { document_id: state.currentDocument.id, query: text },
+  });
 }
 
 function formatToolTranscript(result: IntelligenceToolResult): string {
