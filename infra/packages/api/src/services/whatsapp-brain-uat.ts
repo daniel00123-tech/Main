@@ -12,6 +12,7 @@ export type WhatsAppUatCase = {
     action?: WhatsAppPlan["action"];
     skipTools?: boolean;
     tool?: string | null;
+    useMemory?: boolean;
     noWrite?: boolean;
     mustRespond?: boolean;
   };
@@ -73,7 +74,7 @@ export const WHATSAPP_BRAIN_UAT_CASES: WhatsAppUatCase[] = [
   { id: 20, group: "document", prompt: "Find Arnold Crescent", expect: { action: "knowledge" } },
   { id: 21, group: "document", prompt: "Summarise Arnold Crescent", expect: { action: "knowledge" } },
   { id: 22, group: "document", prompt: "Compare those two documents", memory: twoDocs, expect: { action: "knowledge" } },
-  { id: 23, group: "document", prompt: "Find another document like it", memory: coalDoc, expect: { action: "memory_fact" } },
+  { id: 23, group: "document", prompt: "Find another document like it", memory: coalDoc, expect: { action: "knowledge", useMemory: true } },
   { id: 24, group: "source", prompt: "Open the document", memory: coalDoc, expect: { action: "memory_link", skipTools: true } },
   { id: 25, group: "source", prompt: "Give me the URL", memory: coalDoc, expect: { action: "memory_link", skipTools: true } },
   { id: 26, group: "source", prompt: "Where is this stored?", memory: coalDoc, expect: { action: "memory_source", skipTools: true } },
@@ -186,6 +187,9 @@ export function evaluateWhatsAppUatCase(testCase: WhatsAppUatCase): {
   }
   if (testCase.expect.tool && plan.tool !== testCase.expect.tool) {
     failures.push(`tool ${plan.tool} != ${testCase.expect.tool}`);
+  }
+  if (testCase.expect.useMemory != null && plan.useMemory !== testCase.expect.useMemory) {
+    failures.push(`useMemory ${plan.useMemory} != ${testCase.expect.useMemory}`);
   }
   if (testCase.expect.noWrite && plan.action !== "write_blocked") {
     failures.push("write was not blocked");

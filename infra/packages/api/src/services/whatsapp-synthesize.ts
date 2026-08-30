@@ -2,8 +2,13 @@ import { wantsFullDetail, wantsSummary, sanitizeWhatsAppSource, compressDocument
 import type { WhatsAppDocumentEntity, WhatsAppEntityMemory } from "./whatsapp-entities";
 import type { WhatsAppPlan } from "./whatsapp-plan";
 
-const NO_LINK =
-  "I found the document, but I don’t currently have a direct source link for it.";
+export function missingSourceLinkReply(title?: string | null): string {
+  const trimmed = String(title ?? "").trim();
+  if (!trimmed) {
+    return "I found the document, but I don’t currently have a direct source link for it.";
+  }
+  return `I found “${trimmed}”, but I don’t currently have a direct source link for it.`;
+}
 
 export function sourceLinkReply(doc: WhatsAppDocumentEntity | null | undefined): string {
   if (!doc) {
@@ -12,7 +17,7 @@ export function sourceLinkReply(doc: WhatsAppDocumentEntity | null | undefined):
   if (doc.url && /^https?:\/\//i.test(doc.url)) {
     return `Here’s the source link:\n${doc.url}`;
   }
-  return NO_LINK;
+  return missingSourceLinkReply(doc.title);
 }
 
 export function sourceAttributionReply(doc: WhatsAppDocumentEntity | null | undefined): string {

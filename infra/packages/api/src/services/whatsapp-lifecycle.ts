@@ -190,3 +190,32 @@ export async function stampWhatsAppLifecycle(
     // Lifecycle columns are added at runtime; never fail the user path.
   }
 }
+
+/** First writer wins. Prevents failsafe + watchdog + early-visible from sending two acks. */
+export async function claimWhatsAppAck(env: Env, wamid: string | null | undefined): Promise<boolean> {
+  if (!wamid) return true;
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(
+      `UPDATE whatsapp_inbound_events
+       SET acknowledgement_sent_at = COALESCE(acknowledgement_sent_at, ?),
+           first_visible_at = COALESCE(first_visible_at, ?)
+       WHERE wamid = ?
+         AND acknowledgement_sent_at IS NULL
+         AND (terminal_state IS NULL OR terminal_state = '')`,
+    )
+      .bind(now, now, wamid)
+      .run();
+    const changes = Number((result as { meta?: { changes?: number } })?.meta?.changes ?? 0);
+    if (changes > 0) return true;
+    const row = await env.DB.prepare(
+      `SELECT acknowledgement_sent_at, terminal_state FROM whatsapp_inbound_events WHERE wamid = ? LIMIT 1`,
+    )
+      .bind(wamid)
+      .first<{ acknowledgement_sent_at?: string | null; terminal_state?: string | null }>();
+    if (!row) return true;
+    return !row.acknowledgement_sent_at;
+  } catch {
+    return true;
+  }
+}

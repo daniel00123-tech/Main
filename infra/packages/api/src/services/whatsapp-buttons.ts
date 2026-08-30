@@ -9,7 +9,7 @@ export type WhatsAppListRow = {
   description?: string;
 };
 
-const ACTION_TO_TEXT: Record<string, string> = {
+export const ACTION_TO_TEXT: Record<string, string> = {
   summarise: "summarise it",
   more_detail: "give me more detail",
   open_source: "send me the link",
@@ -31,9 +31,16 @@ const ACTION_TO_TEXT: Record<string, string> = {
 
 const WRITE_BUTTON = /\b(send invoice|approve|create quote|write|delete|void)\b/i;
 
+const BOUND_BUTTON_ID = /^ctx_[a-z0-9]{8,16}:[a-z0-9_]{1,40}$/i;
+
 export function isSafeButtonId(id: string): boolean {
-  if (!id || id.length > 80) return false;
+  if (!id || id.length > 256) return false;
   if (WRITE_BUTTON.test(id)) return false;
+  if (BOUND_BUTTON_ID.test(id)) {
+    const action = id.split(":")[1] ?? "";
+    return Boolean(ACTION_TO_TEXT[action]);
+  }
+  if (id.length > 80) return false;
   if (ACTION_TO_TEXT[id]) return true;
   if (/^co_[a-z0-9-]{1,60}$/i.test(id)) return true;
   if (/^doc:[A-Za-z0-9 ._-]{1,40}$/.test(id)) return true;
@@ -43,22 +50,30 @@ export function isSafeButtonId(id: string): boolean {
 export function mapButtonToUserText(
   id: string,
   title?: string | null,
-): { text: string; action: string; supported: boolean } {
+): { text: string; action: string; supported: boolean; contextToken: string | null } {
   const trimmed = String(id ?? "").trim();
   if (!isSafeButtonId(trimmed)) {
-    return { text: title?.trim() || "", action: "unsupported", supported: false };
+    return { text: title?.trim() || "", action: "unsupported", supported: false, contextToken: null };
   }
-  if (ACTION_TO_TEXT[trimmed]) {
-    return { text: ACTION_TO_TEXT[trimmed]!, action: trimmed, supported: true };
+  const bound = trimmed.match(/^(ctx_[a-z0-9]{8,16}):([a-z0-9_]+)$/i);
+  const actionKey = bound ? bound[2]!.toLowerCase() : trimmed;
+  const contextToken = bound ? bound[1]!.toLowerCase() : null;
+  if (ACTION_TO_TEXT[actionKey]) {
+    return {
+      text: ACTION_TO_TEXT[actionKey]!,
+      action: actionKey,
+      supported: true,
+      contextToken,
+    };
   }
   if (trimmed.startsWith("co_")) {
-    return { text: trimmed, action: "company_select", supported: true };
+    return { text: trimmed, action: "company_select", supported: true, contextToken: null };
   }
   if (trimmed.startsWith("doc:")) {
     const titlePart = trimmed.slice(4).trim();
-    return { text: `find ${titlePart}`, action: "document_select", supported: true };
+    return { text: `find ${titlePart}`, action: "document_select", supported: true, contextToken: null };
   }
-  return { text: title?.trim() || trimmed, action: "unknown", supported: false };
+  return { text: title?.trim() || trimmed, action: "unknown", supported: false, contextToken: null };
 }
 
 export function clipButtonTitle(title: string): string {
@@ -81,14 +96,18 @@ export function suggestionButtons(input: {
   hasXero?: boolean;
   documentTitles?: string[];
   companies?: Array<{ companyId: string; companyName: string }>;
+  contextToken?: string | null;
 }): WhatsAppReplyButton[] {
   if (input.kind === "document") {
-    const buttons: WhatsAppReplyButton[] = [
-      { id: "summarise", title: "Summarise" },
-      input.hasSourceUrl ? { id: "open_source", title: "Open source" } : { id: "find_similar", title: "Find similar" },
-      { id: "more_detail", title: "More detail" },
-    ];
-    return buttons.slice(0, 3);
+    if (input.contextToken && /^ctx_[a-z0-9]{8,16}$/i.test(input.contextToken)) {
+      const token = input.contextToken.toLowerCase();
+      return [
+        { id: `${token}:summarise`, title: "Summarise" },
+        input.hasSourceUrl ? { id: `${token}:open_source`, title: "Open source" } : { id: `${token}:find_similar`, title: "Find similar" },
+        { id: `${token}:more_detail`, title: "More detail" },
+      ].slice(0, 3);
+    }
+    return [];
   }
   if (input.kind === "no_result") {
     return [

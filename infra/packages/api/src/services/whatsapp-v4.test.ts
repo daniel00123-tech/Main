@@ -201,7 +201,12 @@ describe("WhatsApp V4 buttons", () => {
     expect(mapButtonToUserText("open_source").text).toBe("send me the link");
     expect(isSafeButtonId("send invoice")).toBe(false);
     expect(mapButtonToUserText("send_invoice", "Send invoice").supported).toBe(false);
-    expect(shouldAttachButtons("short", suggestionButtons({ kind: "document", hasSourceUrl: true }))).toBe(true);
+    expect(
+      shouldAttachButtons(
+        "short",
+        suggestionButtons({ kind: "document", hasSourceUrl: true, contextToken: "ctx_ab12cd34ef56" }),
+      ),
+    ).toBe(true);
   });
 
   it("does not advertise finance without Xero or write actions", () => {
@@ -210,9 +215,11 @@ describe("WhatsApp V4 buttons", () => {
       "find_document",
       "what_else",
     ]);
-    expect(suggestionButtons({ kind: "document", hasSourceUrl: true }).some((button) => /invoice|write/i.test(button.id))).toBe(
-      false,
-    );
+    expect(
+      suggestionButtons({ kind: "document", hasSourceUrl: true, contextToken: "ctx_ab12cd34ef56" }).some((button) =>
+        /invoice|write/i.test(button.id),
+      ),
+    ).toBe(false);
   });
 });
 

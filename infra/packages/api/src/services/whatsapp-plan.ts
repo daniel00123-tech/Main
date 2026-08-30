@@ -1,4 +1,10 @@
-import { hasDocumentMemory, recentDocumentTitles, type WhatsAppEntityMemory } from "./whatsapp-entities";
+import {
+  hasDocumentMemory,
+  namesDifferentDocument,
+  recentDocumentTitles,
+  resolveRememberedDocument,
+  type WhatsAppEntityMemory,
+} from "./whatsapp-entities";
 import { looksLikeWriteIntent, softenSearchQuery, focusSearchTerms } from "./whatsapp-intent";
 import { DOCUMENT_CLARIFY_REPLY, isGenericDocumentAsk } from "./whatsapp-realtime";
 
@@ -117,6 +123,12 @@ export function planWhatsAppTurn(
     return { ...base(), action: "capabilities", intent: "capabilities", tool: null, skipTools: true };
   }
   if (LINK.test(text)) {
+    const askingForNewNamedDoc =
+      /\b(find|search|look(?:ing)? (for|up)|anything about)\b/i.test(text) &&
+      namesDifferentDocument(text, memory);
+    if (askingForNewNamedDoc) {
+      return { ...base(), action: "knowledge", intent: "knowledge_search", fetch: true, query: query || text };
+    }
     if (titles.length >= 2 && /other one|that one|second|which/i.test(text)) {
       return {
         ...base(),
@@ -200,6 +212,7 @@ export function planWhatsAppTurn(
       ASKED_FOR.test(text) ||
       ALTERNATIVES.test(text))
   ) {
+    const resolved = resolveRememberedDocument(memory, text) ?? memory.lastDocument;
     const fact = AMOUNT.test(text)
       ? "amount"
       : WHO.test(text)
@@ -215,11 +228,22 @@ export function planWhatsAppTurn(
                 : ALTERNATIVES.test(text)
                   ? "alternatives"
                   : "summary";
+    if (fact === "alternatives" && resolved?.title) {
+      return {
+        ...base(),
+        action: "knowledge",
+        intent: "knowledge_search",
+        fetch: false,
+        useMemory: true,
+        query: resolved.title,
+        fact,
+      };
+    }
     return {
       ...base(),
       action: "memory_fact",
       intent: "clarification",
-      tool: fact === "alternatives" || fact === "detail" || fact === "summary" ? "get_knowledge_document" : null,
+      tool: fact === "detail" || fact === "summary" ? "get_knowledge_document" : null,
       skipTools: fact === "amount" || fact === "who" || fact === "reference" || fact === "shorter" || fact === "explain",
       useMemory: true,
       fetch: fact === "detail" || fact === "summary",
