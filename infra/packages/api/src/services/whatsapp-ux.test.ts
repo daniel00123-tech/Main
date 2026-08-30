@@ -7,7 +7,7 @@ import { acknowledgementMessage, conversationalReply, progressMessage, STILL_WOR
 import { classifyWhatsAppIntent, needsToolWork, softenSearchQuery } from "./whatsapp-intent";
 import { createWhatsAppLatencyMarks, summariseWhatsAppLatency } from "./whatsapp-latency";
 import { detectQualitySignals } from "./quality-auditor";
-import { compactConversationPrompt } from "./whatsapp-context";
+import { searchQueryFromContext } from "./whatsapp-context";
 
 const { executeGatewayRequest, sendWhatsAppTextMock, getUserByMobileE164, toSessionUser, recordUsageEvent } = vi.hoisted(
   () => ({
@@ -138,6 +138,10 @@ describe("WhatsApp intent and typo handling", () => {
     expect(classifyWhatsAppIntent("Can you find the Coal Search document")).toBe("knowledge_search");
     expect(classifyWhatsAppIntent("create an invoice")).toBe("write_action");
     expect(classifyWhatsAppIntent("summarise that", { hasPriorTurns: true })).toBe("clarification");
+    expect(classifyWhatsAppIntent("find cold serch doc", { hasPriorTurns: true })).toBe("knowledge_search");
+    expect(classifyWhatsAppIntent("What about the rental information in Arnold Crescent?", { hasPriorTurns: true })).toBe(
+      "knowledge_search",
+    );
     expect(needsToolWork(classifyWhatsAppIntent("find coal search doc"))).toBe(true);
     expect(needsToolWork(classifyWhatsAppIntent("hi"))).toBe(false);
   });
@@ -233,15 +237,19 @@ describe("WhatsApp UX orchestration", () => {
   });
 
   it("keeps follow-up context on the same company", () => {
-    const prompt = compactConversationPrompt(
+    const prompt = searchQueryFromContext(
       [
         { role: "user", text: "What were sales this month?" },
         { role: "assistant", text: "About 12k" },
       ],
       "What about last month?",
+      true,
     );
     expect(prompt).toContain("last month");
     expect(prompt).toContain("sales this month");
+    expect(searchQueryFromContext([{ role: "user", text: "Hi" }], "Find the Coal Search document", false)).toBe(
+      "Find the Coal Search document",
+    );
   });
 
   it("sends only the unknown-number message", async () => {

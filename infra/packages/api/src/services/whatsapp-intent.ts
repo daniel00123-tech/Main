@@ -34,7 +34,7 @@ const AUTOMATION = /\b(automations?|scheduled (report|email)|run now)\b/i;
 const SEARCH =
   /\b(find|search|look(?:ing)? (for|up)|open|read|show|fetch|summarise|summarize|what does|what is|tell me|relates? to|document|doc|file|email|sharepoint|onedrive|coal|rental|arnold)\b/i;
 const CLARIFICATION =
-  /^(what about|and (the |last |this )?|that one|summarise that|summarize that|more detail|the previous|last month|this month)\b/i;
+  /^(what about last|what about this|and (last|this)|that one|summarise that|summarize that|more detail|the previous|last month|this month)\b/i;
 
 export function looksLikeWriteIntent(text: string): boolean {
   return WRITE_INTENT.test(text);
@@ -69,9 +69,9 @@ export function classifyWhatsAppIntent(
   if (CAN_YOU.test(trimmed) && !ACTION_REQUEST.test(trimmed) && !FINANCE.test(trimmed)) {
     return "capabilities";
   }
-  if (options?.hasPriorTurns && (CLARIFICATION.test(trimmed) || trimmed.split(/\s+/).length <= 6)) {
+  if (options?.hasPriorTurns && CLARIFICATION.test(trimmed)) {
     if (FINANCE.test(trimmed)) return "finance_read";
-    if (SEARCH.test(trimmed) || CLARIFICATION.test(trimmed)) return "clarification";
+    return "clarification";
   }
   if (AUTOMATION.test(trimmed)) return "automation_query";
   if (FINANCE.test(trimmed)) return "finance_read";

@@ -5,6 +5,8 @@ export function formatWhatsAppReply(text: string, options?: { maxChars?: number 
   const maxChars = options?.maxChars ?? 1400;
   let next = String(text ?? "").replace(/\r\n/g, "\n").trim();
   next = next.replace(UUID_RE, "");
+  next = next.replace(/^#{1,6}\s+/gm, "");
+  next = next.replace(/\\#/g, "");
   next = next.replace(/```[\s\S]*?```/g, (block) => {
     const inner = block.replace(/```[a-zA-Z]*\n?/, "").replace(/```$/, "").trim();
     if (inner.startsWith("{") || inner.startsWith("[")) {

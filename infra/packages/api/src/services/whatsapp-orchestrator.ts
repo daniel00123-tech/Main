@@ -15,9 +15,9 @@ import { recordUsageEvent } from "./usage";
 import { inspectWhatsAppAssets, outboundAiEnabled } from "./whatsapp-assets";
 import { capabilityReplyForCompany, formatPricingCapabilityReply, listConnectedCapabilityLabels } from "./whatsapp-capabilities";
 import {
-  compactConversationPrompt,
   loadWhatsAppConversation,
   saveWhatsAppConversation,
+  searchQueryFromContext,
   type WhatsAppTurn,
 } from "./whatsapp-context";
 import {
@@ -363,7 +363,7 @@ export async function handleWhatsAppInboundMessage(
   const sessionUser = await toSessionUser(env.DB, dbUser);
   const interactionId = newId("int");
   const searchText = softenSearchQuery(text);
-  const query = compactConversationPrompt(priorTurns, searchText);
+  const query = searchQueryFromContext(priorTurns, searchText, intent === "clarification");
   let acknowledgementSent = false;
   let progressSent = false;
   let fallbackSent = false;
