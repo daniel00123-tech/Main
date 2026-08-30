@@ -2,6 +2,7 @@ import type { Env } from "../env";
 import { handleAuthorize, handleMicrosoftCallback } from "./authorize";
 import { oauthJson, oauthOptions, withOauthCors } from "./cors";
 import { OAuthRequestError, dcrResponse, issuerForDcr, registerOAuthClient } from "./dcr";
+import { infraRegisterUrl } from "./config";
 import {
   oauthAuthorizationServerMetadata,
   oauthProtectedResourceMetadata,
@@ -58,6 +59,16 @@ export async function handleMcpOAuthRequest(
     return oauthJson(request, openIdConfiguration(env));
   }
   if (url.pathname === "/oauth/register" && request.method === "POST") {
+    const infraRegister = infraRegisterUrl(env);
+    if (infraRegister) {
+      const body = await request.clone().arrayBuffer();
+      const proxied = await fetch(infraRegister, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body,
+      });
+      return oauthJson(request, await proxied.json().catch(() => ({ error: "server_error" })), proxied.status);
+    }
     try {
       const body = (await request.json()) as Record<string, unknown>;
       const { client, clientIdIssuedAt } = await registerOAuthClient(env, body);

@@ -1,12 +1,14 @@
 import { FormEvent, useId, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { safeNextPath } from "../lib/next-path";
 
 export default function PortalLoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const successMessage = (location.state as { message?: string } | null)?.message;
+  const next = safeNextPath(new URLSearchParams(location.search).get("next"));
   const emailId = useId();
   const passwordId = useId();
   const errorId = useId();
@@ -16,7 +18,7 @@ export default function PortalLoginPage() {
   const [loading, setLoading] = useState(false);
 
   if (user) {
-    return <Navigate to="/portal" replace />;
+    return <Navigate to={next ?? "/portal"} replace />;
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -26,7 +28,11 @@ export default function PortalLoginPage() {
     setError(null);
     try {
       await login(email, password);
-      navigate("/portal");
+      if (next && next.startsWith("http")) {
+        window.location.assign(next);
+        return;
+      }
+      navigate(next ?? "/portal");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
     } finally {

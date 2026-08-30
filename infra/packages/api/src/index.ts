@@ -92,6 +92,7 @@ import connectorRoutes from "./routes/connectors";
 import internalMcpRoutes from "./routes/internal-mcp";
 import actionPlanRoutes from "./routes/action-plans";
 import automationRoutes from "./routes/automations";
+import mcpOAuthRoutes from "./routes/mcp-oauth";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -102,6 +103,7 @@ app.route("/", connectorRoutes);
 app.route("/", internalMcpRoutes);
 app.route("/", actionPlanRoutes);
 app.route("/", automationRoutes);
+app.route("/", mcpOAuthRoutes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(

@@ -1,5 +1,5 @@
 import type { Env } from "../env";
-import { mcpIssuer, mcpResourceUrl } from "./config";
+import { infraTokenUrl, mcpIssuer, mcpResourceUrl } from "./config";
 import { oauthJson } from "./cors";
 import { OAuthRequestError, resolveOAuthClient } from "./dcr";
 import { sha256Base64Url, sha256Hex, timingSafeEqual } from "./crypto";
@@ -12,6 +12,19 @@ import {
 } from "./store";
 
 export async function handleToken(request: Request, env: Env): Promise<Response> {
+  const infra = infraTokenUrl(env);
+  if (infra) {
+    const body = await request.clone().arrayBuffer();
+    const proxied = await fetch(infra, {
+      method: "POST",
+      headers: {
+        "Content-Type": request.headers.get("Content-Type") ?? "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body,
+    });
+    return oauthJson(request, await proxied.json().catch(() => ({ error: "server_error" })), proxied.status);
+  }
   const form = await readForm(request);
   const grantType = form.get("grant_type") ?? "";
   try {
@@ -45,10 +58,12 @@ export async function handleUserinfo(request: Request, env: Env): Promise<Respon
     return oauthJson(request, { error: "invalid_token", error_description: "Access token is invalid or expired." }, 401);
   }
   return oauthJson(request, {
-    sub: claims.oid,
-    oid: claims.oid,
+    sub: claims.sub,
     email: claims.email ?? null,
     name: claims.name ?? null,
+    company_id: claims.company_id,
+    company_slug: claims.company_slug,
+    client: claims.client,
     email_verified: Boolean(claims.email),
     iss: mcpIssuer(env),
   });
@@ -95,7 +110,7 @@ async function exchangeAuthorizationCode(env: Env, form: URLSearchParams): Promi
     throw new OAuthRequestError("invalid_grant", "PKCE verification failed.");
   }
   return issueTokenSet(env, {
-    oid: stored.oid,
+    userId: stored.oid,
     email: stored.email,
     name: stored.displayName,
     resource,
@@ -117,7 +132,7 @@ async function exchangeRefreshToken(env: Env, form: URLSearchParams): Promise<Re
   const client = await getOAuthClient(env, clientId);
   if (client) await assertClientAuth(form, client);
   return issueTokenSet(env, {
-    oid: stored.oid,
+    userId: stored.oid,
     email: stored.email,
     name: stored.displayName,
     resource: stored.resource || form.get("resource") || mcpResourceUrl(env),
@@ -129,7 +144,7 @@ async function exchangeRefreshToken(env: Env, form: URLSearchParams): Promise<Re
 async function issueTokenSet(
   env: Env,
   input: {
-    oid: string;
+    userId: string;
     email: string | null;
     name: string | null;
     resource: string;
@@ -138,7 +153,7 @@ async function issueTokenSet(
   }
 ): Promise<Record<string, unknown>> {
   const issued = await issueMcpAccessToken(env, {
-    oid: input.oid,
+    userId: input.userId,
     email: input.email,
     name: input.name,
     resource: input.resource,
@@ -149,7 +164,7 @@ async function issueTokenSet(
   }
   const refreshToken = await issueRefreshToken(env, {
     clientId: input.clientId,
-    oid: input.oid,
+    oid: input.userId,
     email: input.email,
     displayName: input.name,
     resource: input.resource,

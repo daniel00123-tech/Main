@@ -5,6 +5,7 @@ export type PrincipalType = "user" | "service";
 export type IdentitySource =
   | "d1"
   | "signed_infra"
+  | "infra_oauth"
   | "microsoft_oidc"
   | "service_token"
   | "injected"

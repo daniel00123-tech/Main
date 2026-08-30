@@ -2,6 +2,8 @@ import type { Env } from "../env";
 import {
   ACCESS_TOKEN_TTL_SECONDS,
   CLOCK_SKEW_SECONDS,
+  ELVEX_COMPANY_ID,
+  ELVEX_COMPANY_SLUG,
   loadMcpOAuthConfig,
   mcpIssuer,
   mcpResourceUrl,
@@ -12,10 +14,12 @@ export type McpAccessClaims = {
   iss: string;
   aud: string;
   sub: string;
-  oid: string;
+  company_id: string;
+  company_slug: string;
+  client: string;
   email?: string;
   name?: string;
-  typ: "mcp_access";
+  typ: "infra_mcp_access";
   jti: string;
   iat: number;
   nbf: number;
@@ -60,7 +64,10 @@ export async function verifyHs256Jwt(
 export async function issueMcpAccessToken(
   env: Env,
   input: {
-    oid: string;
+    userId: string;
+    companyId?: string | null;
+    companySlug?: string | null;
+    client?: string | null;
     email?: string | null;
     name?: string | null;
     resource?: string | null;
@@ -75,11 +82,13 @@ export async function issueMcpAccessToken(
   const claims: McpAccessClaims = {
     iss: mcpIssuer(env),
     aud: input.resource?.trim() || mcpResourceUrl(env),
-    sub: input.oid,
-    oid: input.oid,
+    sub: input.userId,
+    company_id: input.companyId?.trim() || ELVEX_COMPANY_ID,
+    company_slug: input.companySlug?.trim() || ELVEX_COMPANY_SLUG,
+    client: input.client?.trim() || "chatgpt",
     email: input.email?.trim() || undefined,
     name: input.name?.trim() || undefined,
-    typ: "mcp_access",
+    typ: "infra_mcp_access",
     jti: randomUrlToken(16),
     iat: now,
     nbf: now,
@@ -98,12 +107,24 @@ export async function verifyMcpAccessToken(env: Env, token: string): Promise<Mcp
   if (!config) return null;
   const payload = await verifyHs256Jwt(config.tokenSecret, token);
   if (!payload) return null;
-  if (payload.typ !== "mcp_access") return null;
-  if (payload.iss !== config.issuer) return null;
-  const aud = payload.aud;
-  if (aud !== config.resource && aud !== config.issuer && aud !== `${config.issuer}/`) return null;
-  const oid = typeof payload.oid === "string" ? payload.oid : typeof payload.sub === "string" ? payload.sub : "";
-  if (!oid) return null;
+  if (payload.typ !== "infra_mcp_access") return null;
+  if (typeof payload.role === "string") return null;
+  const allowedIssuers = new Set([config.issuer, config.publicOrigin, mcpIssuer(env)]);
+  if (config.infraIssuer) allowedIssuers.add(config.infraIssuer);
+  if (!allowedIssuers.has(String(payload.iss))) return null;
+  const aud = String(payload.aud ?? "");
+  const allowedAud = new Set([
+    config.resource,
+    config.issuer,
+    `${config.issuer}/`,
+    mcpResourceUrl(env),
+    config.infraIssuer ? `${config.infraIssuer}/api/gateway/v1/mcp` : "",
+  ]);
+  if (aud && !allowedAud.has(aud)) return null;
+  const sub = typeof payload.sub === "string" ? payload.sub : "";
+  const companyId = typeof payload.company_id === "string" ? payload.company_id : "";
+  const companySlug = typeof payload.company_slug === "string" ? payload.company_slug : "";
+  if (!sub || !companyId || !companySlug) return null;
   const now = Math.floor(Date.now() / 1000);
   const exp = Number(payload.exp);
   const nbf = Number(payload.nbf ?? payload.iat ?? 0);
@@ -111,16 +132,22 @@ export async function verifyMcpAccessToken(env: Env, token: string): Promise<Mcp
   if (Number.isFinite(nbf) && now + CLOCK_SKEW_SECONDS < nbf) return null;
   return {
     iss: String(payload.iss),
-    aud: String(payload.aud),
-    sub: String(payload.sub ?? oid),
-    oid,
+    aud,
+    sub,
+    company_id: companyId,
+    company_slug: companySlug,
+    client: typeof payload.client === "string" ? payload.client : "chatgpt",
     email: typeof payload.email === "string" ? payload.email : undefined,
     name: typeof payload.name === "string" ? payload.name : undefined,
-    typ: "mcp_access",
+    typ: "infra_mcp_access",
     jti: String(payload.jti ?? ""),
     iat: Number(payload.iat ?? 0),
     nbf: Number(payload.nbf ?? 0),
     exp,
     scope: typeof payload.scope === "string" ? payload.scope : undefined,
   };
+}
+
+export function tokenCompanyIsElvex(claims: { company_id: string; company_slug: string }): boolean {
+  return claims.company_id === ELVEX_COMPANY_ID || claims.company_slug === ELVEX_COMPANY_SLUG;
 }

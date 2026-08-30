@@ -3,8 +3,8 @@
   // MCP_AUTH_TOKEN (machine/service transport only — never a human identity),
   // EL_ADMIN_TOKEN, EL_MS_CLIENT_SECRET, EL_XERO_CLIENT_SECRET,
   // EL_RBAC_IDENTITY_SECRET (must match infra-api),
-  // EL_MCP_TOKEN_SECRET (MCP JWT signing; may reuse EL_RBAC_IDENTITY_SECRET),
-  // EL_MS_OIDC_CLIENT_SECRET (if a dedicated Entra OIDC app is used)
+  // EL_MCP_TOKEN_SECRET / INFRA_MCP_OAUTH_SECRET (verify INFRA MCP JWTs; match infra-api MCP_OAUTH_SECRET),
+  // INFRA_PUBLIC_API_URL (INFRA OAuth AS + usage/introspect),
   "name": "el-business-mcp",
   "main": "src/index.ts",
   "compatibility_date": "2025-08-24",

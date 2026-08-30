@@ -8,8 +8,14 @@ export interface Env {
   EL_RBAC_IDENTITY_SECRET?: string;
   /** Public origin advertised in OAuth/OIDC metadata. Defaults to the custom domain. */
   EL_MCP_PUBLIC_ORIGIN?: string;
-  /** HS256 secret for MCP access tokens issued after Microsoft sign-in. Falls back to EL_RBAC_IDENTITY_SECRET. */
+  /** HS256 secret for verifying INFRA MCP access tokens. Falls back to EL_RBAC_IDENTITY_SECRET. */
   EL_MCP_TOKEN_SECRET?: string;
+  /** Same value as INFRA MCP_OAUTH_SECRET when tokens are verified locally. */
+  INFRA_MCP_OAUTH_SECRET?: string;
+  /** INFRA public API origin — OAuth AS, introspect, and usage reporting. */
+  INFRA_PUBLIC_API_URL?: string;
+  INFRA_OAUTH_ISSUER?: string;
+  INFRA_MCP_INTERNAL_SECRET?: string;
   /** Optional dedicated Entra OIDC web app. Falls back to EL_MS_CLIENT_ID / EL_MS_CLIENT_SECRET. */
   EL_MS_OIDC_CLIENT_ID?: string;
   EL_MS_OIDC_CLIENT_SECRET?: string;

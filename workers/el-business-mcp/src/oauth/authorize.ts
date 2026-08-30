@@ -1,20 +1,14 @@
 import type { Env } from "../env";
-import { loadMcpOAuthConfig, mcpIssuer, mcpResourceUrl } from "./config";
+import { ELVEX_COMPANY_SLUG, infraAuthorizeUrl, mcpIssuer, mcpResourceUrl } from "./config";
 import { withOauthCors } from "./cors";
-import { OAuthRequestError, resolveOAuthClient } from "./dcr";
-import { EntraOidcError, buildEntraAuthorizeUrl, exchangeEntraAuthorizationCode } from "./entra";
-import { createAuthorizeState, consumeAuthorizeState, issueAuthorizationCode } from "./store";
 
 export async function handleAuthorize(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const responseType = url.searchParams.get("response_type") ?? "";
-  const clientId = url.searchParams.get("client_id") ?? "";
   const redirectUri = url.searchParams.get("redirect_uri") ?? "";
   const state = url.searchParams.get("state");
   const codeChallenge = url.searchParams.get("code_challenge") ?? "";
   const codeChallengeMethod = url.searchParams.get("code_challenge_method") ?? "";
-  const scope = url.searchParams.get("scope");
-  const resource = url.searchParams.get("resource") || mcpResourceUrl(env);
 
   if (responseType !== "code") {
     return authorizeError(env, redirectUri, state, "unsupported_response_type", "Only response_type=code is supported.");
@@ -22,83 +16,25 @@ export async function handleAuthorize(request: Request, env: Env): Promise<Respo
   if (codeChallengeMethod !== "S256" || !codeChallenge) {
     return authorizeError(env, redirectUri, state, "invalid_request", "PKCE S256 code_challenge is required.");
   }
-  const client = await resolveOAuthClient(env, clientId, redirectUri);
-  if (!client) {
-    return oauthHtmlError("Unknown or unregistered OAuth client, or redirect_uri mismatch.", 400);
+
+  const infra = infraAuthorizeUrl(env);
+  if (!infra) {
+    return oauthHtmlError("INFRA is the OAuth authority for Elvex Business MCP. INFRA_PUBLIC_API_URL is not configured.", 503);
   }
-  const config = loadMcpOAuthConfig(env);
-  if (!config) {
-    return oauthHtmlError("Microsoft Entra OIDC is not configured on this Worker.", 503);
-  }
-  const stateId = await createAuthorizeState(env, {
-    clientId,
-    redirectUri,
-    clientState: state,
-    codeChallenge,
-    codeChallengeMethod,
-    scope,
-    resource,
-  });
-  return withOauthCors(request, Response.redirect(buildEntraAuthorizeUrl(config, stateId), 302));
+
+  const target = new URL(infra);
+  url.searchParams.forEach((value, key) => target.searchParams.set(key, value));
+  if (!target.searchParams.get("company")) target.searchParams.set("company", ELVEX_COMPANY_SLUG);
+  if (!target.searchParams.get("client")) target.searchParams.set("client", "chatgpt");
+  if (!target.searchParams.get("resource")) target.searchParams.set("resource", mcpResourceUrl(env));
+  return withOauthCors(request, Response.redirect(target.toString(), 302));
 }
 
-export async function handleMicrosoftCallback(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const code = url.searchParams.get("code");
-  const stateId = url.searchParams.get("state") ?? "";
-  const entraError = url.searchParams.get("error");
-  const stored = stateId ? await consumeAuthorizeState(env, stateId) : null;
-  if (!stored) {
-    return oauthHtmlError("Authorization state is missing or expired. Restart the ChatGPT connection.", 400);
-  }
-  if (entraError || !code) {
-    return redirectWithParams(env, stored.redirectUri, {
-      error: entraError || "access_denied",
-      error_description: url.searchParams.get("error_description") || "Microsoft sign-in was cancelled.",
-      state: stored.clientState,
-    });
-  }
-  try {
-    const identity = await exchangeEntraAuthorizationCode(env, code);
-    const authCode = await issueAuthorizationCode(env, {
-      clientId: stored.clientId,
-      redirectUri: stored.redirectUri,
-      codeChallenge: stored.codeChallenge,
-      codeChallengeMethod: stored.codeChallengeMethod,
-      oid: identity.oid,
-      email: identity.email,
-      displayName: identity.name,
-      resource: stored.resource,
-      scope: stored.scope,
-    });
-    return redirectWithParams(env, stored.redirectUri, {
-      code: authCode,
-      state: stored.clientState,
-    });
-  } catch (error) {
-    const description =
-      error instanceof EntraOidcError || error instanceof OAuthRequestError
-        ? error.message
-        : "Microsoft identity validation failed.";
-    return redirectWithParams(env, stored.redirectUri, {
-      error: "access_denied",
-      error_description: description,
-      state: stored.clientState,
-    });
-  }
-}
-
-function redirectWithParams(
-  env: Env,
-  redirectUri: string,
-  params: Record<string, string | null | undefined>
-): Response {
-  const target = new URL(redirectUri);
-  for (const [key, value] of Object.entries(params)) {
-    if (value) target.searchParams.set(key, value);
-  }
-  target.searchParams.set("iss", mcpIssuer(env));
-  return Response.redirect(target.toString(), 302);
+export async function handleMicrosoftCallback(_request: Request, _env: Env): Promise<Response> {
+  return oauthHtmlError(
+    "Microsoft sign-in is not used for INFRA MCP access. Connect ChatGPT through INFRA, then use Microsoft 365 only as a company data connector.",
+    410
+  );
 }
 
 function authorizeError(
@@ -110,7 +46,12 @@ function authorizeError(
 ): Response {
   if (!redirectUri) return oauthHtmlError(description, 400);
   try {
-    return redirectWithParams(env, redirectUri, { error, error_description: description, state });
+    const target = new URL(redirectUri);
+    target.searchParams.set("error", error);
+    target.searchParams.set("error_description", description);
+    if (state) target.searchParams.set("state", state);
+    target.searchParams.set("iss", mcpIssuer(env));
+    return Response.redirect(target.toString(), 302);
   } catch {
     return oauthHtmlError(description, 400);
   }

@@ -51,9 +51,8 @@ export default function PortalAiConnectionsPage() {
   const [manageType, setManageType] = useState<string | null>(null);
   const [tokenReveal, setTokenReveal] = useState<{
     clientType: string;
-    token: string;
-    endpoint: string;
     mcpEndpoint: string;
+    authorizationEndpoint?: string;
   } | null>(null);
   const isMobile = useIsMobile();
 
@@ -91,11 +90,14 @@ export default function PortalAiConnectionsPage() {
       const result = await api.connectAiClient(company.slug, clientType);
       setTokenReveal({
         clientType,
-        token: result.token,
-        endpoint: result.gatewayEndpoint,
         mcpEndpoint: result.mcpEndpoint ?? DEFAULT_MCP_URL,
+        authorizationEndpoint: result.authorizationEndpoint,
       });
-      toast("Connection ready — copy your token now");
+      toast(
+        result.authMethod === "infra_oauth"
+          ? "INFRA OAuth connection ready"
+          : "Connection ready — copy your token now",
+      );
       await refresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Connection failed";
@@ -147,7 +149,7 @@ export default function PortalAiConnectionsPage() {
     <div className="portal-page">
       <PortalPageHeader
         title="AI Access"
-        description="Connect ChatGPT or Claude to your business systems securely."
+        description="Connect your own ChatGPT account through INFRA. Company Admin controls roles and policy — you do not need to be an administrator to connect."
       />
 
       {loadError ? <Notice tone="danger">{loadError}</Notice> : null}
@@ -173,29 +175,35 @@ export default function PortalAiConnectionsPage() {
 
       {tokenReveal ? (
         <Notice tone="success">
-          <strong>{humanClient(tokenReveal.clientType)} connection ready</strong>
+          <strong>{humanClient(tokenReveal.clientType)} INFRA connection ready</strong>
           <p style={{ margin: "8px 0" }}>
-            Copy this token now. For security, INFRA will not show it again.
+            In ChatGPT, add a custom MCP connector using OAuth. Sign in with your INFRA
+            account (or continue an existing portal session) and click Allow. Microsoft
+            sign-in is not required.
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
             <Button
               type="button"
               variant="primary"
               size="sm"
-              onClick={() => void handleCopy("token", tokenReveal.token, "Bearer token")}
-            >
-              {copiedKey === "token" ? <Check size={14} /> : <Copy size={14} />}
-              Copy token
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
               onClick={() => void handleCopy("mcp-token", tokenReveal.mcpEndpoint, "Connection URL")}
             >
               {copiedKey === "mcp-token" ? <Check size={14} /> : <Copy size={14} />}
-              Copy connection URL
+              Copy MCP URL
             </Button>
+            {tokenReveal.authorizationEndpoint ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  void handleCopy("oauth", tokenReveal.authorizationEndpoint ?? "", "OAuth URL")
+                }
+              >
+                {copiedKey === "oauth" ? <Check size={14} /> : <Copy size={14} />}
+                Copy INFRA OAuth URL
+              </Button>
+            ) : null}
           </div>
         </Notice>
       ) : null}
@@ -252,7 +260,7 @@ export default function PortalAiConnectionsPage() {
                         loading={busyType === conn.clientType}
                         onClick={() => void connect(conn.clientType)}
                       >
-                        New token
+                        Reconnect
                       </Button>
                     </>
                   ) : (
@@ -276,10 +284,11 @@ export default function PortalAiConnectionsPage() {
 
       <CollapsibleBlock title="How to connect ChatGPT" summary="Setup steps">
         <ol className="stack" style={{ margin: 0, paddingLeft: 18, color: "var(--text-secondary)" }}>
-          <li>Click <strong>Connect</strong> on the ChatGPT card and copy your token</li>
-          <li>In ChatGPT, add a connection using Bearer token authentication</li>
-          <li>Use the connection URL provided here when prompted</li>
-          <li>Start a new conversation and try a knowledge search or Xero query</li>
+          <li>Click <strong>Connect</strong> on the ChatGPT card and copy the MCP URL</li>
+          <li>In ChatGPT, add a custom MCP connector and choose <strong>OAuth</strong></li>
+          <li>Sign in with your INFRA company account, or continue if you are already signed in, then click Allow</li>
+          <li>Do not sign in with Microsoft to use INFRA. Microsoft 365 stays a company data connector only</li>
+          <li>Start a new conversation and try a knowledge search. Usage is attributed to you and this company</li>
         </ol>
       </CollapsibleBlock>
 
@@ -356,7 +365,7 @@ export default function PortalAiConnectionsPage() {
                     loading={busyType === activeConn.clientType}
                     onClick={() => void connect(activeConn.clientType)}
                   >
-                    Generate new token
+                    Show connection details
                   </Button>
                 ) : null}
               </div>

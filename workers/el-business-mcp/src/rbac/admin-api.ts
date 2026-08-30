@@ -259,7 +259,7 @@ export async function buildRbacSnapshot(env: Env): Promise<Record<string, unknow
       bound: actor.identityBound,
       limitation: actor.identityBound
         ? null
-        : "Employee ChatGPT access uses Microsoft Entra ID. Privileged tools require a verified Entra object ID bound to an active company_users row. The shared MCP bearer token is machine/service transport only and never grants a human Company Admin role.",
+        : "Employee ChatGPT access uses INFRA authentication. Privileged tools require an active INFRA company membership. Role is resolved live from INFRA and is never taken from the MCP token. The shared MCP bearer token is machine/service transport only and never grants a human Company Admin role.",
     },
     roles: ELVEX_ROLES.map((role) => ({
       role,

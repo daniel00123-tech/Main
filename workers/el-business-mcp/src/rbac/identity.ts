@@ -1,11 +1,11 @@
 import type { Env } from "../env";
 import { ELVEX_COMPANY_ID, unboundActor, type ElvexActor, type PrincipalType } from "./actor";
-import { verifyMcpAccessToken } from "../oauth/jwt";
-import { isMicrosoftOid } from "../oauth/crypto";
+import { tokenCompanyIsElvex, verifyMcpAccessToken } from "../oauth/jwt";
+import { introspectInfraMcpToken } from "../infra/introspect";
 
 export { unboundActor };
 import { isElvexRole, type ElvexRole } from "./roles";
-import { getServicePrincipal, getUserByExternalId, getUserByEmail, getUserByMicrosoftOid } from "./store";
+import { getServicePrincipal, getUserByExternalId, getUserByEmail, getUserByMicrosoftOid, upsertCompanyUser } from "./store";
 
 const IDENTITY_MAX_AGE_MS = 5 * 60 * 1000;
 
@@ -41,11 +41,7 @@ export async function resolveActor(env: Env, request: Request | null): Promise<E
   if (bearer) {
     const mcp = await verifyMcpAccessToken(env, bearer);
     if (mcp) {
-      return resolveMicrosoftOidActor(env, mcp.oid, {
-        email: mcp.email ?? null,
-        name: mcp.name ?? null,
-        correlationId,
-      });
+      return resolveInfraOAuthActor(env, mcp, { correlationId, token: bearer });
     }
   }
 
@@ -110,8 +106,92 @@ export async function resolveActor(env: Env, request: Request | null): Promise<E
 }
 
 /**
- * ChatGPT / employee path: bind only by verified Entra object ID.
- * Email and display name are metadata. Unknown or disabled users stay unbound.
+ * ChatGPT / employee path: INFRA user id + company from the access token.
+ * Role is never taken from the token. Live membership comes from INFRA
+ * introspect when configured, otherwise from D1 company_users.external_id.
+ */
+export async function resolveInfraOAuthActor(
+  env: Env,
+  claims: {
+    sub: string;
+    company_id: string;
+    company_slug: string;
+    email?: string;
+    name?: string;
+    client?: string;
+  },
+  meta: { correlationId?: string | null; token?: string | null } = {}
+): Promise<ElvexActor> {
+  const correlationId = meta.correlationId ?? null;
+  if (!tokenCompanyIsElvex({
+    company_id: claims.company_id,
+    company_slug: claims.company_slug,
+  })) {
+    return unboundActor(correlationId, {
+      identitySource: "infra_oauth",
+      email: claims.email ?? null,
+      displayName: claims.name ?? null,
+      actorId: claims.sub,
+    });
+  }
+
+  const live = await introspectInfraMcpToken(env, {
+    token: meta.token,
+    userId: claims.sub,
+    companyId: claims.company_id,
+  });
+  if (live && live.active === false) {
+    return unboundActor(correlationId, {
+      identitySource: "infra_oauth",
+      actorId: claims.sub,
+      email: claims.email ?? null,
+      displayName: claims.name ?? null,
+    });
+  }
+
+  if (!env.EL_BUSINESS_DATA) {
+    return unboundActor(correlationId, { identitySource: "infra_oauth", actorId: claims.sub });
+  }
+
+  let user = await getUserByExternalId(env.EL_BUSINESS_DATA, claims.sub);
+  if (live?.active && live.role && isElvexRole(live.role) && user) {
+    if (user.role !== live.role || user.status !== "active") {
+      user = await upsertCompanyUser(env.EL_BUSINESS_DATA, {
+        externalId: claims.sub,
+        email: live.email || user.email,
+        displayName: live.display_name || user.displayName,
+        role: live.role,
+        status: "active",
+      });
+    }
+  }
+
+  if (!user || user.status !== "active" || !isElvexRole(user.role)) {
+    return unboundActor(correlationId, {
+      actorId: user?.id ?? claims.sub,
+      identitySource: "infra_oauth",
+      email: user?.email ?? claims.email ?? null,
+      displayName: user?.displayName ?? claims.name ?? null,
+    });
+  }
+
+  return {
+    principalType: "user",
+    actorId: user.externalId ?? user.id,
+    email: user.email,
+    displayName: user.displayName,
+    role: live?.role && isElvexRole(live.role) ? live.role : user.role,
+    identityBound: true,
+    identitySource: "infra_oauth",
+    companyId: ELVEX_COMPANY_ID,
+    correlationId,
+    microsoftOid: user.microsoftOid,
+  };
+}
+
+/**
+ * Legacy helper retained for Microsoft Graph / protected-user binding only.
+ * Human MCP access no longer requires microsoft_oid.
  */
 export async function resolveMicrosoftOidActor(
   env: Env,

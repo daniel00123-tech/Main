@@ -1168,16 +1168,24 @@ export const api = {
         tokenStatus?: string;
         tokenPrefix?: string | null;
         requestCount?: number;
+        authMethod?: string;
+        employeeCanConnect?: boolean;
+        oauthGrantCount?: number;
       }>
     >(`/api/companies/${slug}/ai-connections`),
   connectAiClient: (slug: string, clientType: string) =>
     fetchJson<{
-      token: string;
+      token?: string | null;
+      authMethod?: string;
       gatewayEndpoint: string;
       mcpEndpoint?: string;
+      authorizationEndpoint?: string;
+      tokenEndpoint?: string;
+      authorizeUrl?: string;
+      companySlug?: string;
       setup: Record<string, unknown>;
       warning: string;
-      identity: { id: string; name: string; tokenPrefix: string | null };
+      identity: { id: string; name: string; tokenPrefix: string | null } | null;
     }>(`/api/companies/${slug}/ai-connections/${clientType}/connect`, {
       method: "POST",
       body: JSON.stringify({}),

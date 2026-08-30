@@ -46,7 +46,7 @@ export function isMcpDiscoveryMethod(method: string | null): boolean {
 }
 
 /**
- * Employee ChatGPT access uses a verified MCP JWT (Entra oid).
+ * Employee ChatGPT access uses a verified INFRA MCP JWT (user + company, no role).
  * Shared MCP_AUTH_TOKEN is machine/service transport only — never a human admin.
  * Unauthenticated tool calls fail closed with an OAuth challenge.
  * Discovery methods may proceed without a token so ChatGPT can list tools after
@@ -64,7 +64,7 @@ export async function gateMcpRequest(request: Request, env: Env): Promise<McpAut
   if (bearer) {
     const mcpJwt = await verifyMcpAccessToken(env, bearer);
     if (mcpJwt) {
-      return { allowed: true, actor, challenge: false, reason: "microsoft_oidc_unbound" };
+      return { allowed: true, actor, challenge: false, reason: "infra_oauth_unbound" };
     }
     if (env.MCP_AUTH_TOKEN?.trim() && bearer === env.MCP_AUTH_TOKEN.trim()) {
       return { allowed: true, actor, challenge: false, reason: "service_token_unbound" };

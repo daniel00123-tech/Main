@@ -1,11 +1,19 @@
 import type { Env } from "../env";
-import { MCP_OAUTH_SCOPES, loadMcpOAuthConfig, mcpIssuer, mcpPublicOrigin, mcpResourceUrl } from "./config";
+import {
+  MCP_OAUTH_SCOPES,
+  infraOAuthIssuer,
+  loadMcpOAuthConfig,
+  mcpIssuer,
+  mcpPublicOrigin,
+  mcpResourceUrl,
+} from "./config";
 
 export function oauthProtectedResourceMetadata(env: Env): Record<string, unknown> {
   const origin = mcpPublicOrigin(env);
+  const infra = infraOAuthIssuer(env);
   return {
     resource: mcpResourceUrl(env),
-    authorization_servers: [mcpIssuer(env)],
+    authorization_servers: infra ? [infra, origin] : [origin],
     bearer_methods_supported: ["header"],
     scopes_supported: [...MCP_OAUTH_SCOPES],
     resource_documentation: `${origin}/status`,
@@ -14,14 +22,20 @@ export function oauthProtectedResourceMetadata(env: Env): Record<string, unknown
 
 export function oauthAuthorizationServerMetadata(env: Env): Record<string, unknown> {
   const origin = mcpPublicOrigin(env);
+  const infra = infraOAuthIssuer(env);
   const issuer = mcpIssuer(env);
+  const authorize = infra ? `${infra}/oauth/mcp/authorize` : `${origin}/oauth/authorize`;
+  const token = infra ? `${infra}/oauth/mcp/token` : `${origin}/oauth/token`;
+  const register = infra ? `${infra}/oauth/mcp/register` : `${origin}/oauth/register`;
+  const userinfo = infra ? `${infra}/oauth/mcp/userinfo` : `${origin}/oauth/userinfo`;
+  const revoke = infra ? `${infra}/oauth/mcp/revoke` : `${origin}/oauth/revoke`;
   return {
     issuer,
-    authorization_endpoint: `${origin}/oauth/authorize`,
-    token_endpoint: `${origin}/oauth/token`,
-    registration_endpoint: `${origin}/oauth/register`,
-    userinfo_endpoint: `${origin}/oauth/userinfo`,
-    revocation_endpoint: `${origin}/oauth/revoke`,
+    authorization_endpoint: authorize,
+    token_endpoint: token,
+    registration_endpoint: register,
+    userinfo_endpoint: userinfo,
+    revocation_endpoint: revoke,
     scopes_supported: [...MCP_OAUTH_SCOPES],
     response_types_supported: ["code"],
     response_modes_supported: ["query"],
@@ -34,15 +48,17 @@ export function oauthAuthorizationServerMetadata(env: Env): Record<string, unkno
     client_id_metadata_document_supported: true,
     require_pkce: true,
     service_documentation:
-      "ChatGPT custom MCP app: choose OAuth. Discovery uses this authorization server. Employees sign in with Microsoft Entra ID.",
+      "ChatGPT custom MCP app: choose OAuth. Employees authenticate with their existing INFRA company account. Microsoft 365 is a downstream data connector only.",
   };
 }
 
 export function openIdConfiguration(env: Env): Record<string, unknown> {
+  const infra = infraOAuthIssuer(env);
+  const origin = mcpPublicOrigin(env);
   return {
     ...oauthAuthorizationServerMetadata(env),
-    userinfo_endpoint: `${mcpPublicOrigin(env)}/oauth/userinfo`,
-    claims_supported: ["sub", "oid", "email", "name", "email_verified"],
+    userinfo_endpoint: infra ? `${infra}/oauth/mcp/userinfo` : `${origin}/oauth/userinfo`,
+    claims_supported: ["sub", "email", "name", "company_id", "company_slug", "client"],
   };
 }
 
@@ -53,9 +69,8 @@ export function oauthMetadataStatus(env: Env): Record<string, unknown> {
       configured: Boolean(config),
       issuer: mcpIssuer(env),
       resource: mcpResourceUrl(env),
-      entraTenantConfigured: Boolean(config?.tenantId),
-      entraClientConfigured: Boolean(config?.entraClientId),
-      entraSecretConfigured: Boolean(config?.entraClientSecret),
+      infraIssuer: config?.infraIssuer ?? null,
+      identityAuthority: "infra",
       tokenSigningConfigured: Boolean(config?.tokenSecret),
     },
   };

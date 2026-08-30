@@ -16,6 +16,7 @@ import {
   isMcpOAuthPath,
   mcpOAuthUnauthorizedResponse,
 } from "./oauth";
+import { peekToolsCall, reportInfraMcpUsage, usageSuccessFromMcpResponse } from "./infra/usage";
 
 const logger = createLogger(MCP_NAME);
 
@@ -54,7 +55,9 @@ export default {
         return mcpOAuthUnauthorizedResponse(env, gate.reason);
       }
 
-      return runWithRbacContext(
+      const call = await peekToolsCall(request);
+      const started = Date.now();
+      const response = await runWithRbacContext(
         env,
         request,
         () => {
@@ -66,6 +69,28 @@ export default {
         },
         gate.actor
       );
+      if (call.method === "tools/call" && call.toolName) {
+        ctx.waitUntil(
+          (async () => {
+            let parsed: unknown = null;
+            try {
+              parsed = await response.clone().json();
+            } catch {
+              parsed = null;
+            }
+            await reportInfraMcpUsage(env, {
+              actor: gate.actor,
+              toolName: call.toolName!,
+              success: usageSuccessFromMcpResponse(response.status, parsed),
+              durationMs: Date.now() - started,
+              correlationId: gate.actor.correlationId,
+              requestId: request.headers.get("x-request-id"),
+              client: "chatgpt",
+            });
+          })()
+        );
+      }
+      return response;
     }
 
     return new Response("Not Found", { status: 404 });
