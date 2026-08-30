@@ -81,11 +81,13 @@ export function evaluateWhatsAppConversation(thread: ConversationThread): Conver
     evaluatorVersion: QUALITY_LOOP_EVALUATOR_VERSION,
   };
 
-  if (!thread.finalSent || thread.assistantMessages.length === 0) {
+  if (!thread.finalSent) {
     penalise(dimensions, "completeness", 40, "No final WhatsApp reply was recorded.");
     if ((thread.totalMs ?? 0) >= 30_000 || thread.qualitySignals.includes("whatsapp_silent")) {
       flags.push(neg("silence", "high", 0.95, "Recognised user had no user-visible final reply."));
     }
+  } else if (thread.assistantMessages.length === 0) {
+    dimensions.completeness.evidence.push("Final send recorded; reply body is only in authenticated Interaction detail.");
   }
   if (thread.qualitySignals.includes("whatsapp_stuck") || ((thread.totalMs ?? 0) >= 60_000 && !thread.finalSent)) {
     penalise(dimensions, "reliability", 35, "Conversation stayed processing without a terminal reply.");

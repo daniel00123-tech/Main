@@ -223,6 +223,22 @@ const goodThread = () =>
   });
 
 describe("quality evaluator signals", () => {
+  it("does not treat a delivered reply with no stored body as silence", () => {
+    const evaluation = evaluateWhatsAppConversation(
+      buildThreadFromFixture({
+        companyId: "co_caddington",
+        conversationKey: "int_bodyless",
+        userMessages: ["Find Coal Search"],
+        assistantMessages: [],
+        finalSent: true,
+        totalMs: 1400,
+      }),
+    );
+    expect(evaluation.failed).toBe(false);
+    expect(evaluation.flags.some((flag) => flag.category === "silence")).toBe(false);
+    expect(evaluation.overallQualityScore).toBeGreaterThanOrEqual(90);
+  });
+
   it("does not flag a successful conversation", () => {
     const evaluation = evaluateWhatsAppConversation(goodThread());
     expect(evaluation.failed).toBe(false);

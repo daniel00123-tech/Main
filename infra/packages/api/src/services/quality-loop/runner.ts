@@ -370,7 +370,15 @@ export async function loadWhatsAppThreads(
         metadata: parseMeta(row.metadata_json),
       })),
     };
-    const meta = audit.usage.map((row) => row.metadata ?? {}).find((row) => row.channel === "whatsapp") ?? {};
+    const meta = mergeWhatsAppMeta(audit.usage.map((row) => row.metadata ?? {}));
+    const issues = await db
+      .prepare(`SELECT category FROM quality_issues WHERE last_interaction_id = ?`)
+      .bind(interaction.id)
+      .all<{ category: string }>()
+      .catch(() => ({ results: [] as Array<{ category: string }> }));
+    audit.usage.forEach((row) => {
+      row.metadata = { ...meta, ...(row.metadata ?? {}) };
+    });
     threads.push(
       threadFromAudit({
         companyId: interaction.company_id,
@@ -378,10 +386,28 @@ export async function loadWhatsAppThreads(
         interactionId: interaction.id,
         userId: interaction.actor_id,
         userMessages: typeof meta.userText === "string" ? [meta.userText] : interaction.label ? [interaction.label] : [],
-        assistantMessages: typeof meta.reply === "string" ? [meta.reply] : typeof meta.publicReply === "string" ? [meta.publicReply] : [],
-        audit,
+        assistantMessages: typeof meta.reply === "string"
+          ? [meta.reply]
+          : typeof meta.publicReply === "string"
+            ? [meta.publicReply]
+            : [],
+        sourceUrls: typeof meta.sourceUrl === "string" ? [meta.sourceUrl] : [],
+        audit: {
+          ...audit,
+          usage: audit.usage.map((row) => ({
+            ...row,
+            metadata: {
+              ...meta,
+              qualitySignals: (issues.results ?? []).map((item) => item.category),
+              ...(row.metadata ?? {}),
+            },
+          })),
+        },
       }),
     );
+    const last = threads[threads.length - 1]!;
+    last.qualitySignals = [...new Set([...last.qualitySignals, ...(issues.results ?? []).map((item) => item.category)])];
+    if (meta.finalSent === true || meta.success === true) last.finalSent = true;
   }
   return threads;
 }
@@ -466,6 +492,16 @@ function parseMeta(raw: string | null): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function mergeWhatsAppMeta(rows: Array<Record<string, unknown>>): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  for (const row of rows) {
+    if (row.channel && row.channel !== "whatsapp") continue;
+    Object.assign(merged, row);
+  }
+  const whatsapp = rows.find((row) => row.channel === "whatsapp");
+  return { ...merged, ...(whatsapp ?? {}) };
 }
 
 export type { QualityProposalDraft };
