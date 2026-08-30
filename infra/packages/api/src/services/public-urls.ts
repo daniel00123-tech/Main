@@ -67,6 +67,27 @@ export function infraBrowserPublicBase(
   return infraPublicApiBase(env, requestUrl);
 }
 
+export function oauthAuthorizeContinueUrl(
+  env: Env,
+  request: Request,
+): string {
+  const incoming = new URL(request.url);
+  const browserBase = infraBrowserPublicBase(env, request.url, request);
+  return `${browserBase}${incoming.pathname}${incoming.search}`;
+}
+
+/** Login URL used when /oauth/authorize has no INFRA session. */
+export function oauthLoginRedirectUrl(env: Env, request: Request): string {
+  const browserBase = infraBrowserPublicBase(env, request.url, request);
+  const loginOrigin =
+    browserBase.includes("infrastack.app") || browserBase.includes("pages.dev")
+      ? browserBase
+      : "https://app.infrastack.app";
+  const login = new URL("/portal/login", `${loginOrigin}/`);
+  login.searchParams.set("next", oauthAuthorizeContinueUrl(env, request));
+  return login.toString();
+}
+
 export function infraMcpGatewayUrl(
   env: Env,
   requestUrl?: string | URL | null,
