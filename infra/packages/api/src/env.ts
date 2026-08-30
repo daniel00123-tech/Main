@@ -10,6 +10,12 @@ export interface Env {
   CADDINGTON_MCP_AUTH_TOKEN?: string;
   HT_MCP_AUTH_TOKEN?: string;
   EL_MCP_AUTH_TOKEN?: string;
+  /** HMAC secret for signed identity headers to el-business-mcp. */
+  EL_RBAC_IDENTITY_SECRET?: string;
+  /** HS256 secret for INFRA MCP OAuth access tokens. Falls back to SESSION_SECRET. */
+  MCP_OAUTH_SECRET?: string;
+  /** Optional shared secret for company MCP → INFRA introspect/usage calls. */
+  INFRA_MCP_INTERNAL_SECRET?: string;
   /** Optional service bindings for same-account company MCP Workers */
   CADDINGTON_MCP?: Fetcher;
   HT_BUSINESS_MCP?: Fetcher;

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { CompanyRole } from "@infra/shared";
+import { isElvexCompany, type CompanyRole } from "@infra/shared";
 import type { Env } from "../env";
 import {
   requireAuth,
@@ -27,6 +27,7 @@ import {
   listMcpEnvironments,
   recordAuditEvent,
 } from "../services/control-plane";
+import { syncElvexCompanyUser } from "../services/elvex-identity";
 import {
   executeGatewayRequest,
   resolveGatewayActor,
@@ -105,6 +106,8 @@ import {
   portalOrigin,
   infraPublicApiBase,
 } from "../services/public-urls";
+import { mcpOAuthPublicUrls } from "../services/mcp-oauth/metadata";
+import { listActiveMcpOAuthGrants, revokeMcpOAuthGrants } from "../services/mcp-oauth/store";
 import {
   getUserCompanyRole,
   userHasCompanyAccess,
@@ -124,6 +127,14 @@ function canManageCompany(user: AuthVariables["user"], companyId: string) {
   if (user.isPlatformAdmin) return true;
   const role = getUserCompanyRole(user, companyId);
   return role === "company_admin" || role === "director";
+}
+
+function canManageElvexRoles(user: AuthVariables["user"], company: { id: string; slug: string }) {
+  if (user.isPlatformAdmin) return true;
+  if (company.slug !== "el-business" && company.id !== "co_el") {
+    return canManageCompany(user, company.id);
+  }
+  return getUserCompanyRole(user, company.id) === "company_admin";
 }
 
 async function countActiveCompanyAdmins(db: D1Database, companyId: string): Promise<number> {
@@ -783,8 +794,15 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
   const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
   if (!company) return c.json({ error: "Company not found" }, 404);
   const user = c.get("user");
-  if (!canManageCompany(user, company.id)) {
-    return c.json({ error: "Company administrator access required" }, 403);
+  if (isElvexCompany(company) ? !canManageElvexRoles(user, company) : !canManageCompany(user, company.id)) {
+    return c.json(
+      {
+        error: isElvexCompany(company)
+          ? "Only Company Admin may assign Elvex roles"
+          : "Company administrator access required",
+      },
+      403,
+    );
   }
 
   const body = await c.req.json<{
@@ -793,6 +811,7 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
     role?: CompanyRole;
     teamId?: string;
     customRoleId?: string;
+    microsoftOid?: string;
   }>();
 
   if (!body.email || !body.displayName || !body.role) {
@@ -825,6 +844,15 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
       resourceId: invited.user.id,
       detail: { role: body.role, emailSent: invited.emailSent },
     });
+    if (isElvexCompany(company)) {
+      await syncElvexCompanyUser(c.env, {
+        externalId: invited.user.id,
+        email: invited.user.email,
+        displayName: invited.user.displayName,
+        role: body.role!,
+        microsoftOid: body.microsoftOid,
+      });
+    }
 
     return c.json({
       user: {
@@ -909,6 +937,24 @@ phase3.post("/api/companies/:slug/users/:userId/status", requireAuth, async (c) 
     resourceId: targetId,
     detail: { status: body.status },
   });
+
+  if (isElvexCompany(company) && target) {
+    const membership = await c.env.DB
+      .prepare(
+        `SELECT role FROM company_memberships WHERE company_id = ? AND user_id = ?`,
+      )
+      .bind(company.id, targetId)
+      .first<{ role: string }>();
+    if (membership) {
+      await syncElvexCompanyUser(c.env, {
+        externalId: target.id,
+        email: target.email,
+        displayName: target.displayName,
+        role: membership.role,
+        status: body.status,
+      });
+    }
+  }
 
   return c.json({ ok: true, userId: targetId, status: body.status });
 });
@@ -1050,14 +1096,17 @@ phase3.post("/api/companies/:slug/users/:userId/role", requireAuth, async (c) =>
   const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
   if (!company) return c.json({ error: "Company not found" }, 404);
   const actor = c.get("user");
-  if (!canManageCompany(actor, company.id)) {
-    return c.json({ error: "Company administrator access required" }, 403);
+  if (!canManageElvexRoles(actor, company)) {
+    return c.json({ error: "Only Company Admin may change Elvex user roles" }, 403);
   }
 
   const body = await c.req.json<{ role?: CompanyRole }>();
   if (!body.role) return c.json({ error: "role is required" }, 400);
 
   const targetId = c.req.param("userId");
+  if (targetId === actor.userId) {
+    return c.json({ error: "A user cannot change their own role" }, 403);
+  }
   if (targetId === actor.userId && body.role !== "company_admin") {
     const guard = await assertNotLastCompanyAdmin(
       c.env.DB,
@@ -1092,7 +1141,64 @@ phase3.post("/api/companies/:slug/users/:userId/role", requireAuth, async (c) =>
     detail: { role: body.role },
   });
 
+  if (isElvexCompany(company)) {
+    const target = await getUserById(c.env.DB, targetId);
+    if (target) {
+      await syncElvexCompanyUser(c.env, {
+        externalId: target.id,
+        email: target.email,
+        displayName: target.displayName,
+        role: body.role,
+        status: target.status === "disabled" ? "disabled" : "active",
+      });
+    }
+  }
+
   return c.json({ ok: true, membership });
+});
+
+phase3.post("/api/companies/:slug/users/:userId/microsoft-oid", requireAuth, async (c) => {
+  const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  const actor = c.get("user");
+  if (!isElvexCompany(company)) {
+    return c.json({ error: "Microsoft identity binding is only defined for EL Business" }, 404);
+  }
+  if (!canManageElvexRoles(actor, company)) {
+    return c.json({ error: "Only Company Admin may bind Microsoft identities" }, 403);
+  }
+  const body = await c.req.json<{ microsoftOid?: string }>();
+  const microsoftOid = body.microsoftOid?.trim() ?? "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(microsoftOid)) {
+    return c.json({ error: "microsoftOid must be a Microsoft Entra object ID (GUID)" }, 400);
+  }
+  const targetId = c.req.param("userId");
+  const target = await getUserById(c.env.DB, targetId);
+  if (!target) return c.json({ error: "User not found" }, 404);
+  const membership = await c.env.DB
+    .prepare(
+      `SELECT role, status FROM company_memberships WHERE company_id = ? AND user_id = ?`,
+    )
+    .bind(company.id, targetId)
+    .first<{ role: string; status: string }>();
+  if (!membership) return c.json({ error: "User is not a member of this company" }, 404);
+  const synced = await syncElvexCompanyUser(c.env, {
+    externalId: target.id,
+    email: target.email,
+    displayName: target.displayName,
+    role: membership.role,
+    status: membership.status === "disabled" || target.status === "disabled" ? "disabled" : "active",
+    microsoftOid,
+  });
+  await recordAuditEvent(c.env.DB, {
+    companyId: company.id,
+    eventType: "user.updated",
+    actor: actor.email,
+    resourceType: "user",
+    resourceId: targetId,
+    detail: { microsoftOidBound: true },
+  });
+  return c.json({ ok: true, microsoftOid, sync: synced });
 });
 
 // ---------- Service identities ----------
@@ -1295,6 +1401,12 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
   const executeUrl = infraGatewayExecuteUrl(c.env, c.req.url);
   const identities = await listServiceIdentities(c.env.DB, company.id);
   const identityById = new Map(identities.map((item) => [item.id, item]));
+  const oauthGrants = await listActiveMcpOAuthGrants(c.env.DB, company.id);
+  const grantsByClient = new Map<string, number>();
+  for (const grant of oauthGrants) {
+    const type = String(grant.client_type ?? "");
+    grantsByClient.set(type, (grantsByClient.get(type) ?? 0) + 1);
+  }
 
   return c.json(
     (rows.results ?? []).map((row) => {
@@ -1303,10 +1415,12 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
         : null;
       const identity = identityId ? identityById.get(identityId) : null;
       const status = String(row.status);
+      const oauthCount = grantsByClient.get(String(row.client_type)) ?? 0;
       let tokenStatus = "Not Generated";
-      if (identity?.status === "active" && identity.hasToken) tokenStatus = "Active";
+      if (oauthCount > 0) tokenStatus = "Active";
+      else if (identity?.status === "active" && identity.hasToken) tokenStatus = "Active";
       else if (identity?.status === "disabled") tokenStatus = "Revoked";
-      else if (status === "connected" && !identity) tokenStatus = "Rotation Required";
+      else if (status === "connected" && !identity) tokenStatus = "Ready to connect";
 
       return {
         id: String(row.id),
@@ -1321,7 +1435,10 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
         scopes: identity?.scopes ?? [],
         tokenStatus,
         tokenPrefix: identity?.tokenPrefix ?? null,
-        connectionMethod: "INFRA MCP Gateway",
+        authMethod: "infra_oauth",
+        connectionMethod: "INFRA OAuth + MCP Gateway",
+        employeeCanConnect: true,
+        oauthGrantCount: oauthCount,
         gatewayEndpoint: executeUrl,
         mcpEndpoint: mcpUrl,
         gatewayPath: row.gateway_path ? String(row.gateway_path) : null,
@@ -1348,8 +1465,8 @@ phase3.post(
   async (c) => {
     const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
     if (!company) return c.json({ error: "Company not found" }, 404);
-    if (!canManageCompany(c.get("user"), company.id)) {
-      return c.json({ error: "Company administrator access required" }, 403);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access to this company is denied" }, 403);
     }
 
     const clientType = c.req.param("clientType");
@@ -1362,96 +1479,66 @@ phase3.post(
 
     await ensureDefaultAiConnections(c.env.DB, company.id);
 
-    const mcps = await listMcpEnvironments(c.env.DB, company.id);
     const mcpEndpoint = infraMcpGatewayUrl(c.env, c.req.url);
     const gatewayEndpoint = infraGatewayExecuteUrl(c.env, c.req.url);
-
-    // Disable any previous identity for this AI connection before issuing a new token.
-    const existing = await c.env.DB.prepare(
-      `SELECT service_identity_id FROM ai_client_connections
-       WHERE company_id = ? AND client_type = ?`,
-    )
-      .bind(company.id, clientType)
-      .first();
-    if (existing?.service_identity_id) {
-      await setServiceIdentityStatus(
-        c.env.DB,
-        String(existing.service_identity_id),
-        "disabled",
-      );
-    }
-
-    const aiScopes = await resolveServiceIdentityScopesForCompany(
-      c.env.DB,
-      company.id,
-    );
-
-    const created = await createServiceIdentity(c.env.DB, {
-      companyId: company.id,
-      name: `${company.name} ${clientType === "chatgpt" ? "ChatGPT" : "Claude"}`,
-      identityType: clientType,
-      scopes: aiScopes,
-      mcpEnvironmentId: mcps[0]?.id ?? null,
-    });
+    const oauth = mcpOAuthPublicUrls(c.env, c.req.url);
+    const authorizeUrl = `${oauth.authorizationEndpoint}?company=${encodeURIComponent(company.slug)}&client=${encodeURIComponent(clientType)}&resource=${encodeURIComponent(mcpEndpoint)}`;
 
     const setupNotes =
-      `REQUIRED: Connect ${clientType === "chatgpt" ? "ChatGPT" : "Claude"} to ${mcpEndpoint} with Authorization: Bearer <token>. ` +
-      `Direct company MCP URLs are blocked (401 Unauthorized) and will not work. ` +
-      `Remove any company MCP connector from the AI client.`;
+      `Connect ${clientType === "chatgpt" ? "ChatGPT" : "Claude"} with OAuth to ${mcpEndpoint}. ` +
+      `Sign in with your INFRA account. Microsoft sign-in is not required. ` +
+      `Company Admin controls roles and policy; each employee connects their own AI client.`;
 
     await c.env.DB.prepare(
       `UPDATE ai_client_connections
-       SET status = 'connected', service_identity_id = ?, setup_notes = ?,
+       SET status = 'connected', setup_notes = ?,
            gateway_path = ?, updated_at = ?
        WHERE company_id = ? AND client_type = ?`,
     )
-      .bind(
-        created.identity.id,
-        setupNotes,
-        "/api/gateway/v1/mcp",
-        nowIso(),
-        company.id,
-        clientType,
-      )
+      .bind(setupNotes, "/api/gateway/v1/mcp", nowIso(), company.id, clientType)
       .run();
 
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
-      eventType: "ai_connection.created",
+      eventType: "ai_connection.oauth_started",
       actor: c.get("user").email,
       resourceType: "ai_connection",
       resourceId: clientType,
       detail: {
-        stage: "ai_connection.token_issued",
+        stage: "ai_connection.infra_oauth",
         mcpEndpoint,
-        identityId: created.identity.id,
-        previousIdentityDisabled: Boolean(existing?.service_identity_id),
+        userId: c.get("user").userId,
+        authMethod: "infra_oauth",
       },
     });
 
     return c.json({
       clientType,
       status: "connected",
-      identity: created.identity,
-      token: created.token,
+      authMethod: "infra_oauth",
+      identity: null,
+      token: null,
       gatewayEndpoint,
       mcpEndpoint,
+      companyId: company.id,
+      companySlug: company.slug,
+      authorizationEndpoint: oauth.authorizationEndpoint,
+      tokenEndpoint: oauth.tokenEndpoint,
+      registrationEndpoint: oauth.registrationEndpoint,
+      authorizeUrl,
       setup: {
-        preferred: "Connect ChatGPT/Claude MCP ONLY to mcpEndpoint with Bearer token",
-        auth: "Authorization: Bearer <token>",
+        preferred: "Connect ChatGPT with OAuth to the INFRA MCP gateway. Sign in with your INFRA account.",
+        auth: "OAuth 2.1 + PKCE S256 via INFRA",
         mcpUrl: mcpEndpoint,
-        removeDirectCompanyMcp: true,
-        restBody: {
-          companyId: company.id,
-          toolName: "search_company_knowledge",
-          arguments: { query: "..." },
-          clientRequestId: "unique-per-logical-request",
-        },
+        authorizationEndpoint: oauth.authorizationEndpoint,
+        company: company.slug,
+        client: clientType,
+        removeSharedBearerToken: true,
         critical:
-          "Company MCP public access is locked. ChatGPT MUST use the INFRA MCP facade.",
+          "Do not paste a shared MCP bearer token. Each employee authorises ChatGPT through INFRA. Microsoft 365 remains a data connector only.",
       },
       warning:
-        "Copy this token now. You will not be able to view it again.",
+        "You will sign in to INFRA (or continue an existing portal session) and click Allow. No shared employee token is issued.",
     });
   },
 );
@@ -1462,10 +1549,17 @@ phase3.post(
   async (c) => {
     const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
     if (!company) return c.json({ error: "Company not found" }, 404);
-    if (!canManageCompany(c.get("user"), company.id)) {
-      return c.json({ error: "Company administrator access required" }, 403);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access to this company is denied" }, 403);
     }
     const clientType = c.req.param("clientType");
+    const actor = c.get("user");
+    const revokeAll = canManageCompany(actor, company.id);
+    await revokeMcpOAuthGrants(c.env.DB, {
+      companyId: company.id,
+      clientType,
+      userId: revokeAll ? null : actor.userId,
+    });
     const row = await c.env.DB.prepare(
       `SELECT * FROM ai_client_connections WHERE company_id = ? AND client_type = ?`,
     )
@@ -1473,31 +1567,35 @@ phase3.post(
       .first();
     if (!row) return c.json({ error: "AI connection not found" }, 404);
 
-    if (row.service_identity_id) {
+    if (revokeAll && row.service_identity_id) {
       await setServiceIdentityStatus(
         c.env.DB,
         String(row.service_identity_id),
         "disabled",
       );
+      await c.env.DB.prepare(
+        `UPDATE ai_client_connections
+         SET status = 'ready_to_connect', service_identity_id = NULL, updated_at = ?
+         WHERE company_id = ? AND client_type = ?`,
+      )
+        .bind(nowIso(), company.id, clientType)
+        .run();
     }
-    await c.env.DB.prepare(
-      `UPDATE ai_client_connections
-       SET status = 'ready_to_connect', service_identity_id = NULL, updated_at = ?
-       WHERE company_id = ? AND client_type = ?`,
-    )
-      .bind(nowIso(), company.id, clientType)
-      .run();
 
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
       eventType: "ai_connection.revoked",
-      actor: c.get("user").email,
+      actor: actor.email,
       resourceType: "ai_connection",
       resourceId: clientType,
-      detail: { stage: "ai_connection.revoked" },
+      detail: {
+        stage: "ai_connection.revoked",
+        scope: revokeAll ? "company" : "self",
+        userId: actor.userId,
+      },
     });
 
-    return c.json({ ok: true, status: "ready_to_connect", clientType });
+    return c.json({ ok: true, status: "ready_to_connect", clientType, scope: revokeAll ? "company" : "self" });
   },
 );
 

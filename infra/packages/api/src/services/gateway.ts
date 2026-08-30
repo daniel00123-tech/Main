@@ -51,10 +51,21 @@ import {
 import { executeXeroReadToolOnInfra } from "./xero-read-execution";
 import { isOutlookReadTool, outlookActionForTool } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
+import { resolveMcpUserFromBearer } from "./mcp-oauth/resolve-actor";
 
 export type GatewayActor =
-  | { type: "user"; user: SessionUser }
+  | {
+      type: "user";
+      user: SessionUser;
+      mcp?: { client: string; jti: string; companyId: string };
+    }
   | { type: "service"; identity: ServiceIdentityRecord };
+
+export function gatewaySourceClient(actor: GatewayActor, fallback = "infra-mcp"): string {
+  if (actor.type === "service") return actor.identity.identityType;
+  if (actor.mcp?.client) return actor.mcp.client;
+  return fallback;
+}
 
 async function resolveToolAction(
   db: D1Database,
@@ -130,6 +141,21 @@ export async function resolveGatewayActor(
 ): Promise<GatewayActor | { error: string; status: 401 | 403 }> {
   const token = extractServiceCredential(request);
   if (token) {
+    const mcpUser = await resolveMcpUserFromBearer(env, token, request.url);
+    if (mcpUser.ok) {
+      return {
+        type: "user",
+        user: mcpUser.value.user,
+        mcp: {
+          client: mcpUser.value.client,
+          jti: mcpUser.value.jti,
+          companyId: mcpUser.value.companyId,
+        },
+      };
+    }
+    if (mcpUser.isMcpToken) {
+      return { error: mcpUser.error, status: mcpUser.status };
+    }
     const identity = await authenticateServiceToken(env.DB, token);
     if (!identity) {
       return { error: "Invalid or revoked service token", status: 401 };
@@ -225,11 +251,7 @@ export async function executeGatewayRequest(
     input.actor.type === "user"
       ? input.actor.user.userId
       : input.actor.identity.id;
-  const sourceClient =
-    input.sourceClient ??
-    (input.actor.type === "service"
-      ? input.actor.identity.identityType
-      : "infra-gateway");
+  const sourceClient = input.sourceClient ?? gatewaySourceClient(input.actor, "infra-gateway");
 
   await recordAuditEvent(env.DB, {
     companyId: input.companyId,

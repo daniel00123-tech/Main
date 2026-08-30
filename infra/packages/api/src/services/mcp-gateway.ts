@@ -13,6 +13,7 @@ import type { Env } from "../env";
 import { listMcpTools } from "./mcp-client";
 import {
   executeGatewayRequest,
+  gatewaySourceClient,
   resolveGatewayActor,
   type GatewayActor,
 } from "./gateway";
@@ -443,7 +444,10 @@ export async function handleInfraMcpJsonRpc(
   const method = body.method ?? "";
   const actorLabel =
     actor.type === "service" ? actor.identity.name : actor.user.email;
-  const companyId = actor.type === "service" ? actor.identity.companyId : null;
+  const companyId =
+    actor.type === "service"
+      ? actor.identity.companyId
+      : actor.mcp?.companyId ?? null;
 
   if (!companyId && actor.type === "service") {
     return {
@@ -487,6 +491,24 @@ export async function handleInfraMcpJsonRpc(
         httpStatus: 403,
       };
     }
+  }
+
+  if (actor.type === "user" && actor.mcp && requestedCompanyId && requestedCompanyId !== actor.mcp.companyId) {
+    await logFacadeEvent(env.DB, {
+      companyId: actor.mcp.companyId,
+      actor: actorLabel,
+      method,
+      status: "denied",
+      httpStatus: 403,
+      detail: {
+        reason: "mcp_user_tenant_spoof",
+        attemptedCompanyId: requestedCompanyId,
+      },
+    });
+    return {
+      payload: jsonRpcError(id, -32003, "MCP token does not belong to this company"),
+      httpStatus: 403,
+    };
   }
 
   const resolvedCompanyId = companyId ?? requestedCompanyId ?? null;
@@ -804,8 +826,7 @@ export async function handleInfraMcpJsonRpc(
         toolName,
         arguments: args,
         actor,
-        sourceClient:
-          actor.type === "service" ? actor.identity.identityType : "infra-mcp",
+        sourceClient: gatewaySourceClient(actor),
         correlationId: clientRequestId ?? undefined,
         interactionId: interactionHints.interactionId ?? undefined,
       });
@@ -823,8 +844,7 @@ export async function handleInfraMcpJsonRpc(
       companyId: resolvedCompanyId,
       toolName,
       arguments: args,
-      sourceClient:
-        actor.type === "service" ? actor.identity.identityType : "infra-mcp",
+      sourceClient: gatewaySourceClient(actor),
       clientRequestId,
       interactionId: interactionHints.interactionId,
       parentRequestId: interactionHints.parentRequestId,
@@ -1010,7 +1030,7 @@ export async function handleInfraMcpHttp(
       httpStatus: actorResult.status,
       hint:
         actorResult.status === 401
-          ? "Send Authorization: Bearer <INFRA service token> from Company Portal → AI Connections."
+          ? "Send an INFRA MCP OAuth access token from Company Portal → AI Access → Connect ChatGPT. Shared service tokens are machine transport only."
           : undefined,
     });
 

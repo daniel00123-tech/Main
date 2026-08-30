@@ -1,19 +1,21 @@
 import { FormEvent, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { safeNextPath } from "../lib/next-path";
 
 export default function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const successMessage = (location.state as { message?: string } | null)?.message;
+  const next = safeNextPath(new URLSearchParams(location.search).get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   if (user?.isPlatformAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={next ?? "/"} replace />;
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -22,7 +24,11 @@ export default function LoginPage() {
     setError(null);
     try {
       await login(email, password);
-      navigate("/");
+      if (next && next.startsWith("http")) {
+        window.location.assign(next);
+        return;
+      }
+      navigate(next ?? "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
     } finally {
