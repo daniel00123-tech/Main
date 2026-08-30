@@ -63,7 +63,16 @@ export type QualityCategory =
   | "whatsapp_tool_timeout"
   | "whatsapp_user_wait_over_60s"
   | "whatsapp_broad_search_without_terms"
-  | "whatsapp_repeat_while_unresolved";
+  | "whatsapp_repeat_while_unresolved"
+  | "whatsapp_current_document_global_search"
+  | "whatsapp_unrelated_document_after_context"
+  | "whatsapp_answer_repeated_excerpt"
+  | "whatsapp_more_detail_identical"
+  | "whatsapp_malformed_extraction"
+  | "whatsapp_unsolicited_pii"
+  | "whatsapp_weak_result_confident"
+  | "whatsapp_negative_result_feedback"
+  | "whatsapp_topic_correction";
 
 export interface QualitySignal {
   category: QualityCategory;
@@ -676,6 +685,87 @@ function detectWhatsAppUxSignals(input: QualityAuditInput): QualitySignal[] {
       confidence: 0.8,
       evidence: { suggestion: meta.suggestionUnsupported },
       suggestedInvestigation: "A suggested WhatsApp action was not permitted for this user or company.",
+    });
+  }
+  if (meta.currentDocumentGlobalSearch) {
+    signals.push({
+      category: "whatsapp_current_document_global_search",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { planAction: meta.planAction, toolName: input.usage[0]?.toolName ?? null },
+      suggestedInvestigation: "A current-document question launched company-wide search instead of document-scoped retrieval.",
+    });
+  }
+  if (meta.unrelatedDocumentAfterContext) {
+    signals.push({
+      category: "whatsapp_unrelated_document_after_context",
+      severity: "high",
+      confidence: 0.85,
+      evidence: { boundEntityId: meta.boundEntityId, operatedEntityId: meta.operatedEntityId },
+      suggestedInvestigation: "Follow-up about the open document returned a different document.",
+    });
+  }
+  if (meta.answerRepeatedExcerpt) {
+    signals.push({
+      category: "whatsapp_answer_repeated_excerpt",
+      severity: "medium",
+      confidence: 0.8,
+      evidence: { planAction: meta.planAction },
+      suggestedInvestigation: "Grounded answer repeated the original search excerpt.",
+    });
+  }
+  if (meta.moreDetailIdentical) {
+    signals.push({
+      category: "whatsapp_more_detail_identical",
+      severity: "high",
+      confidence: 0.85,
+      evidence: { planAction: meta.planAction },
+      suggestedInvestigation: "More detail did not add information beyond the previous answer.",
+    });
+  }
+  if (meta.malformedExtraction) {
+    signals.push({
+      category: "whatsapp_malformed_extraction",
+      severity: "medium",
+      confidence: 0.8,
+      evidence: { planAction: meta.planAction },
+      suggestedInvestigation: "Invoice-style extraction was applied to a non-financial document.",
+    });
+  }
+  if (meta.unsolicitedPii) {
+    signals.push({
+      category: "whatsapp_unsolicited_pii",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { planAction: meta.planAction },
+      suggestedInvestigation: "A CV/resume answer surfaced phone or email without an explicit request.",
+    });
+  }
+  if (meta.weakResultConfident) {
+    signals.push({
+      category: "whatsapp_weak_result_confident",
+      severity: "medium",
+      confidence: 0.7,
+      evidence: { planAction: meta.planAction },
+      suggestedInvestigation: "A weak search hit was presented as a confident match.",
+    });
+  }
+  if (meta.negativeResultFeedback) {
+    signals.push({
+      category: "whatsapp_negative_result_feedback",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { precedingAnswerText: meta.precedingAnswerText ?? null },
+      suggestedInvestigation: "User rejected the immediately preceding Infra answer. Do not reply defensively; correct course.",
+    });
+  }
+  if (meta.topicCorrected) {
+    signals.push({
+      category: "whatsapp_topic_correction",
+      severity: "high",
+      confidence: 0.85,
+      evidence: { precedingAnswerText: meta.precedingAnswerText ?? null },
+      suggestedInvestigation: "User corrected the topic after an Infra answer.",
     });
   }
   return signals;

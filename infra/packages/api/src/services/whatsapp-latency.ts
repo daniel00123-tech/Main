@@ -10,7 +10,8 @@ export const MULTI_TOOL_TARGET_MS = 45_000;
 export const PROGRESS_AFTER_MS = 60_000;
 /** Second status line stays outside the same minute as the first progress. */
 export const DELAY_NOTICE_MS = 120_000;
-export const HARD_TIMEOUT_MS = 60_000;
+/** Terminal / safe-failure budget. First progress stays at 60s. */
+export const HARD_TIMEOUT_MS = 120_000;
 /** Shared cadence: at most one progress/status message per minute per chat. */
 export const PROGRESS_MIN_INTERVAL_MS = 60_000;
 export const HARD_SILENCE_MS = HARD_TIMEOUT_MS;

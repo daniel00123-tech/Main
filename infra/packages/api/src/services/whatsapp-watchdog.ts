@@ -88,7 +88,7 @@ export type WhatsAppWatchdogResult<T> = {
 /**
  * Awaited watchdog — not fire-and-forget setTimeout.
  * If work finishes before ACK_DECISION_MS, the final answer replaces the ack.
- * Otherwise one ack is sent, then optional 20s/45s progress, then a 60s hard stop.
+ * Otherwise one ack is sent, then optional 60s progress, then a ~120s hard stop.
  */
 export async function raceWithWhatsAppWatchdog<T>(
   work: Promise<T>,

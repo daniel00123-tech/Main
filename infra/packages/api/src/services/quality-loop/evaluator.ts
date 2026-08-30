@@ -180,6 +180,42 @@ export function evaluateWhatsAppConversation(thread: ConversationThread): Conver
     penalise(dimensions, "reliability", 15, "Connector or gateway error.");
     flags.push(neg("connector_error", "medium", 0.8, thread.connectorErrors[0] ?? "connector error"));
   }
+  if (thread.qualitySignals.includes("whatsapp_current_document_global_search")) {
+    penalise(dimensions, "tool_correctness", 30, "Current-document question triggered global search.");
+    flags.push(neg("current_document_global_search", "high", 0.9, "Current-document question used company-wide search."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_unrelated_document_after_context")) {
+    penalise(dimensions, "context", 30, "Contextual question returned an unrelated document.");
+    flags.push(neg("unrelated_document_after_context", "high", 0.85, "Unrelated document after a current-document question."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_answer_repeated_excerpt")) {
+    penalise(dimensions, "grounding", 20, "Answer repeated the original excerpt.");
+    flags.push(neg("answer_repeated_excerpt", "medium", 0.8, "Answer restated the search preview."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_more_detail_identical")) {
+    penalise(dimensions, "completeness", 25, "More detail did not add information.");
+    flags.push(neg("more_detail_identical", "high", 0.85, "More detail matched the original excerpt."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_malformed_extraction")) {
+    penalise(dimensions, "grounding", 20, "Type-inappropriate extraction.");
+    flags.push(neg("malformed_extraction", "medium", 0.8, "Invoice facts extracted from a non-invoice document."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_unsolicited_pii")) {
+    penalise(dimensions, "permission_safety", 25, "Unsolicited contact details from a CV.");
+    flags.push(neg("unsolicited_pii", "high", 0.9, "Phone or email surfaced without an explicit request."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_weak_result_confident")) {
+    penalise(dimensions, "grounding", 20, "Weak search result presented confidently.");
+    flags.push(neg("weak_result_confident", "medium", 0.75, "Low-confidence hit shown as a confident answer."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_negative_result_feedback")) {
+    penalise(dimensions, "ux", 20, "User rejected the preceding answer.");
+    flags.push(neg("negative_result_feedback", "high", 0.9, "Explicit negative feedback on the previous Infra answer."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_topic_correction")) {
+    penalise(dimensions, "context", 20, "User corrected the topic.");
+    flags.push(neg("topic_correction", "high", 0.85, "User said the previous answer was the wrong topic."));
+  }
 
   if (/\b(thanks|thank you|cheers|perfect|great)\b/i.test(lastUser)) {
     flags.push(pos("thanks", "low", 0.55, "User thanked Infra. Missing thanks is not treated as failure."));

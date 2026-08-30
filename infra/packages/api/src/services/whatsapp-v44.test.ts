@@ -88,7 +88,7 @@ describe("WhatsApp V4.4 timeouts and search budget", () => {
     expect(SEARCH_CANDIDATE_LIMIT).toBeLessThanOrEqual(10);
     expect(FETCH_TOP_LIMIT).toBeGreaterThanOrEqual(1);
     expect(FETCH_TOP_LIMIT).toBeLessThanOrEqual(3);
-    expect(HARD_TIMEOUT_MS).toBe(60_000);
+    expect(HARD_TIMEOUT_MS).toBe(120_000);
     expect(PROGRESS_AFTER_MS).toBeGreaterThanOrEqual(60_000);
     expect(DELAY_NOTICE_MS).toBeGreaterThanOrEqual(60_000);
   });
@@ -151,7 +151,7 @@ describe("WhatsApp V4.4 independent post-ack watchdog", () => {
     void sent;
   });
 
-  it("force-terminates at t60 when ACK is still the only visible reply", async () => {
+  it("sends progress at t60 when the turn is still under the 120s terminal budget", async () => {
     const env = {
       WHATSAPP_ACCESS_TOKEN: "token",
       WHATSAPP_PHONE_NUMBER_ID: "1338434179351224",
@@ -188,9 +188,49 @@ describe("WhatsApp V4.4 independent post-ack watchdog", () => {
       stage: "t60",
       receivedAt: new Date(Date.now() - 61_000).toISOString(),
     });
+    expect(result.reason).toMatch(/t60_progress|too_soon_after_ack|progress_min_interval|requeued/);
+    expect(WATCHDOG_TIMEOUT_COPY).toMatch(/took longer than expected/i);
+  });
+
+  it("force-terminates at t60 once the turn has reached the 120s terminal budget", async () => {
+    const env = {
+      WHATSAPP_ACCESS_TOKEN: "token",
+      WHATSAPP_PHONE_NUMBER_ID: "1338434179351224",
+      WHATSAPP_OUTBOUND_AI_ENABLED: "true",
+      DB: {
+        prepare() {
+          return {
+            bind() {
+              return this;
+            },
+            async first() {
+              return {
+                sender_e164: "+447932609444",
+                first_visible_at: new Date(Date.now() - 121_000).toISOString(),
+                acknowledgement_sent_at: new Date(Date.now() - 121_000).toISOString(),
+                reply_sent_at: null,
+                terminal_state: null,
+                identity_found: 1,
+                received_at: new Date(Date.now() - 121_000).toISOString(),
+                processed: 1,
+                payload_json: null,
+              };
+            },
+            async run() {
+              return { success: true, meta: { changes: 1 } };
+            },
+          };
+        },
+      },
+    } as unknown as Env;
+    const result = await applyWhatsAppWatchdogStage(env, {
+      eventId: "wa_evt_t120",
+      wamid: "wamid.HBgM12_120",
+      stage: "t60",
+      receivedAt: new Date(Date.now() - 121_000).toISOString(),
+    });
     expect(result.acted).toBe(true);
     expect(result.reason).toBe("t60_force_terminal");
-    expect(WATCHDOG_TIMEOUT_COPY).toMatch(/took longer than expected/i);
   });
 
   it("recoverStuck after ACK waits until 60s then force-terminates", async () => {

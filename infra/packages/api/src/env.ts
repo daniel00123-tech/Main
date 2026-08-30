@@ -118,8 +118,10 @@ export interface Env {
   WHATSAPP_OUTBOUND_AI_ENABLED?: string;
   /** Cloudflare Workers AI binding — preferred WhatsApp voice transcription. */
   AI?: { run: (model: string, inputs: Record<string, unknown>) => Promise<unknown> };
-  /** Optional OpenAI Whisper fallback. Set via wrangler secret put — never commit. */
+  /** Optional OpenAI Whisper / grounded-QA fallback. Set via wrangler secret put — never commit. */
   OPENAI_API_KEY?: string;
+  /** Optional Workers AI / OpenAI text model for document-grounded WhatsApp answers. */
+  WHATSAPP_GROUNDED_MODEL?: string;
   /** Safe send UAT — requires XERO_SEND_UAT_MODE=true simultaneously */
   XERO_SEND_UAT_MODE?: string;
   XERO_SEND_TEST_RECIPIENT?: string;

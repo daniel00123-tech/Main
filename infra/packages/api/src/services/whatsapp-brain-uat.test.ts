@@ -23,7 +23,7 @@ describe("WhatsApp conversational brain UAT suite", () => {
       sourceLabel: "Coal Search.pdf",
     });
     expect(withUrl).toContain("https://contoso.sharepoint.com/CoalSearch.pdf");
-    expect(withUrl).toMatch(/source link/i);
+    expect(withUrl).toMatch(/here’s the document|source/i);
     const without = sourceLinkReply({
       id: "doc_coal",
       title: "Coal Search.pdf",

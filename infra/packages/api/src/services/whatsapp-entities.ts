@@ -1,3 +1,13 @@
+import { classifyDocument, extractTypedFacts } from "./whatsapp-grounded-qa";
+
+export type WhatsAppDocumentClass =
+  | "cv_resume"
+  | "policy_procedure"
+  | "invoice_payment"
+  | "spreadsheet"
+  | "email"
+  | "general";
+
 export type WhatsAppDocumentEntity = {
   id: string;
   title: string;
@@ -10,6 +20,7 @@ export type WhatsAppDocumentEntity = {
   providerItemId?: string | null;
   sourceKey?: string | null;
   path?: string | null;
+  documentClass?: WhatsAppDocumentClass | null;
 };
 
 export type WhatsAppEntityMemory = {
@@ -25,6 +36,8 @@ export type WhatsAppEntityMemory = {
   lastSourceUrl?: string | null;
   lastSourceSystem?: string | null;
   lastSearchQuery?: string | null;
+  lastUserQuestion?: string | null;
+  lastAnswerText?: string | null;
 };
 
 const EMPTY: WhatsAppEntityMemory = {};
@@ -59,6 +72,8 @@ export function serializeEntityMemory(memory: WhatsAppEntityMemory): string {
     lastSourceUrl: memory.lastSourceUrl ?? memory.lastDocument?.url ?? null,
     lastSourceSystem: memory.lastSourceSystem ?? memory.lastDocument?.sourceSystem ?? null,
     lastSearchQuery: memory.lastSearchQuery ?? null,
+    lastUserQuestion: memory.lastUserQuestion ?? null,
+    lastAnswerText: memory.lastAnswerText ?? null,
   });
 }
 
@@ -75,6 +90,7 @@ function compactDocument(doc: WhatsAppDocumentEntity): WhatsAppDocumentEntity {
     providerItemId: doc.providerItemId ?? null,
     sourceKey: doc.sourceKey ?? null,
     path: doc.path ?? null,
+    documentClass: doc.documentClass ?? null,
   };
 }
 
@@ -115,18 +131,21 @@ export function documentEntityFromHit(input: {
   path?: string | null;
 }): WhatsAppDocumentEntity {
   const body = String(input.text || input.snippet || "");
+  const documentClass = classifyDocument({ title: input.title, text: body, path: input.path });
+  const typed = extractTypedFacts(body, documentClass);
   return {
     id: input.id,
     title: input.title,
     url: input.url && /^https?:\/\//i.test(input.url) ? input.url : null,
     excerpt: body.replace(/\s+/g, " ").trim().slice(0, 400),
-    amount: extractAmount(body),
-    reference: extractReference(body),
+    amount: typed.amount ?? (documentClass === "invoice_payment" ? extractAmount(body) : null) ?? null,
+    reference: typed.reference ?? (documentClass === "invoice_payment" ? extractReference(body) : null) ?? null,
     sourceLabel: input.sourceLabel ?? input.title,
     sourceSystem: input.sourceSystem ?? null,
     providerItemId: input.providerItemId ?? null,
     sourceKey: input.sourceKey ?? null,
     path: input.path ?? null,
+    documentClass,
   };
 }
 
@@ -190,6 +209,8 @@ export function mergeEntityMemory(
         ? next.lastSourceSystem
         : lastDocument?.sourceSystem ?? prior.lastSourceSystem ?? null,
     lastSearchQuery: next.lastSearchQuery !== undefined ? next.lastSearchQuery : prior.lastSearchQuery,
+    lastUserQuestion: next.lastUserQuestion !== undefined ? next.lastUserQuestion : prior.lastUserQuestion,
+    lastAnswerText: next.lastAnswerText !== undefined ? next.lastAnswerText : prior.lastAnswerText,
   };
 }
 

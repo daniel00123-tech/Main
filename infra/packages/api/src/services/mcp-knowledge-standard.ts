@@ -117,12 +117,20 @@ export type StandardSearchPayload = {
   results: StandardSearchResult[];
 };
 
+export type StandardDocumentChunk = {
+  id?: string;
+  text: string;
+  heading?: string;
+  index?: number;
+};
+
 export type StandardFetchPayload = {
   id: string;
   title: string;
   text: string;
   url: string;
   metadata?: Record<string, unknown>;
+  chunks?: StandardDocumentChunk[];
 };
 
 export function sanitizeStandardSearchArguments(
@@ -418,11 +426,46 @@ export function toStandardSearchPayload(payload: unknown): StandardSearchPayload
   return { results };
 }
 
+export function collectDocumentChunks(
+  payload: unknown,
+  documentId?: string,
+): StandardDocumentChunk[] {
+  const unwrapped = unwrapToolPayload(payload);
+  const nestedRaw = isRecord(unwrapped) ? unwrapped.document : undefined;
+  const nested = parseMaybeJsonRecord(nestedRaw) ?? (isRecord(nestedRaw) ? nestedRaw : {});
+  const doc = isRecord(unwrapped) ? { ...unwrapped, ...nested } : {};
+  const rawChunks = Array.isArray(doc.chunks)
+    ? doc.chunks
+    : isRecord(unwrapped) && Array.isArray(unwrapped.chunks)
+      ? unwrapped.chunks
+      : [];
+  const id = documentId || pickId(doc) || "document";
+  const chunks: StandardDocumentChunk[] = [];
+  rawChunks.forEach((chunk, index) => {
+    if (typeof chunk === "string") {
+      const text = chunk.trim();
+      if (text) chunks.push({ id: `${id}:c${index}`, text, index });
+      return;
+    }
+    if (!isRecord(chunk)) return;
+    const text = asNonEmptyString(chunk.text ?? chunk.content ?? chunk.excerpt ?? chunk.body);
+    if (!text) return;
+    const heading = asNonEmptyString(chunk.heading ?? chunk.title ?? chunk.section);
+    const chunkId = asNonEmptyString(chunk.id ?? chunk.chunk_id ?? chunk.chunkId) || `${id}:c${index}`;
+    chunks.push({
+      id: chunkId,
+      text,
+      heading: heading || undefined,
+      index: typeof chunk.index === "number" ? chunk.index : index,
+    });
+  });
+  return chunks;
+}
+
 function collectDocumentText(doc: Record<string, unknown>): string {
   const direct = asNonEmptyString(
     doc.text ?? doc.content ?? doc.body ?? doc.fullText ?? doc.full_text,
   );
-  if (direct) return direct;
 
   if (Array.isArray(doc.chunks)) {
     const joined = doc.chunks
@@ -433,8 +476,10 @@ function collectDocumentText(doc: Record<string, unknown>): string {
       })
       .filter(Boolean)
       .join("\n\n");
-    if (joined) return joined;
+    if (joined && joined.length >= (direct?.length ?? 0)) return joined;
   }
+
+  if (direct) return direct;
 
   if (Array.isArray(doc.pages)) {
     const joined = doc.pages
@@ -484,8 +529,10 @@ export function toStandardFetchPayload(
     ...(parsedDocMetadata ?? {}),
   });
 
+  const chunks = collectDocumentChunks(payload, id);
   const result: StandardFetchPayload = { id, title, text, url };
   if (metadata) result.metadata = metadata;
+  if (chunks.length) result.chunks = chunks;
   return result;
 }
 

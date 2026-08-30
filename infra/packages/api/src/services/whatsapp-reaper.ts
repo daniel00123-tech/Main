@@ -111,7 +111,7 @@ export async function sweepStuckWhatsAppTurns(env: Env): Promise<{ scanned: numb
          AND (recover_sent_at IS NULL OR recover_sent_at = '')
          AND (
            (first_visible_at IS NULL AND reply_sent_at IS NULL)
-           OR received_at <= datetime('now', '-60 seconds')
+           OR received_at <= datetime('now', '-120 seconds')
          )
        ORDER BY received_at ASC
        LIMIT 20`,
@@ -316,6 +316,38 @@ export async function applyWhatsAppWatchdogStage(
   }
 
   await stampWhatsAppLifecycle(env, wamid, { watchdog60sAt: now });
+  if (age + 250 < HARD_TIMEOUT_MS) {
+    const blocked = await conversationBlocksProgress(env, sender, wamid, Date.now(), input.receivedAt);
+    if (blocked) {
+      await requeueWatchdog(env, input, HARD_TIMEOUT_MS - age);
+      return { acted: false, reason: blocked };
+    }
+    const gate = evaluateWatchdogProgressGate({
+      terminalState: row?.terminal_state,
+      replySentAt: row?.reply_sent_at,
+      acknowledgementSentAt: row?.acknowledgement_sent_at,
+      firstVisibleAt: row?.first_visible_at,
+      progressSentAt: row?.progress_sent_at,
+      delaySentAt: row?.delay_sent_at,
+    });
+    if (gate.reason === "too_soon_after_ack" || gate.reason === "progress_min_interval") {
+      await requeueWatchdog(env, input, Math.max(2_000, PROGRESS_MIN_INTERVAL_MS - 58_000));
+      return { acted: false, reason: gate.reason };
+    }
+    if (gate.allow && sender && outboundAiEnabled(env)) {
+      await sendWhatsAppText(env, {
+        toE164: sender,
+        body: WATCHDOG_PROGRESS_COPY,
+        inCustomerServiceWindow: true,
+      }).catch(() => undefined);
+      await stampWhatsAppLifecycle(env, wamid, {
+        progressSentAt: now,
+        userStage: "searching_documents",
+      });
+    }
+    await requeueWatchdog(env, input, HARD_TIMEOUT_MS - age);
+    return { acted: Boolean(gate.allow), reason: gate.allow ? "t60_progress" : gate.reason };
+  }
   if (sender && outboundAiEnabled(env)) {
     await sendWhatsAppText(env, {
       toE164: sender,
@@ -345,6 +377,27 @@ export async function applyWhatsAppWatchdogStage(
     // processed flag is best-effort
   }
   return { acted: true, reason: "t60_force_terminal" };
+}
+
+async function requeueWatchdog(
+  env: Env,
+  input: { eventId: string; wamid: string | null; stage: "t5" | "t10" | "t15" | "t30" | "t60"; receivedAt: string },
+  remainingMs: number,
+): Promise<void> {
+  const delaySeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+  const { enqueueWhatsAppInbound } = await import("./whatsapp-webhook");
+  await enqueueWhatsAppInbound(
+    env,
+    {
+      kind: "whatsapp_watchdog",
+      eventId: input.eventId,
+      receivedAt: input.receivedAt,
+      signatureValid: true,
+      wamid: input.wamid ?? undefined,
+      stage: input.stage,
+    },
+    { delaySeconds },
+  ).catch(() => false);
 }
 
 export function scheduleStuckTurnWatch(

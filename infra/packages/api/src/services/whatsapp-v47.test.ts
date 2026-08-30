@@ -50,8 +50,8 @@ describe("WhatsApp V4.7 progress cadence", () => {
     expect(PROGRESS_MIN_INTERVAL_MS).toBe(60_000);
     expect(PROGRESS_AFTER_MS).toBeGreaterThanOrEqual(60_000);
     expect(DELAY_NOTICE_MS).toBeGreaterThanOrEqual(60_000);
-    expect(HARD_TIMEOUT_MS).toBe(60_000);
-    expect(PROGRESS_AFTER_MS).toBeGreaterThanOrEqual(HARD_TIMEOUT_MS);
+    expect(HARD_TIMEOUT_MS).toBe(120_000);
+    expect(PROGRESS_AFTER_MS).toBeLessThan(HARD_TIMEOUT_MS);
   });
 
   it("blocks progress immediately after ACK, after a result, and within 60s of a prior status", () => {

@@ -133,7 +133,8 @@ dead_letter_queue = "whatsapp-watchdog-dlq"
 queue = "whatsapp-watchdog-dlq"
 max_batch_size = 5
 
-# Workers AI — WhatsApp inbound voice-note transcription (Whisper).
+# Workers AI — WhatsApp voice transcription and document-grounded text generation.
+# Optional override: wrangler secret/var WHATSAPP_GROUNDED_MODEL (never invent keys).
 [ai]
 binding = "AI"
 
