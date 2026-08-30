@@ -116,6 +116,7 @@ import {
   revokeRefreshTokensForUser,
   setAiChannelEnabled,
 } from "../auth/mcp-oauth";
+import { listCompanyAiChannels, setCompanyAiChannelApproved } from "../services/ai-channel-policy";
 import { registerCommand6Routes } from "./command6";
 import { newId, nowIso } from "../db/mappers";
 
@@ -1306,6 +1307,13 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
   const viewerCanManage = canManageCompany(viewer, company.id);
   const issuer = oauthIssuer(apiBase);
   const authorizeBase = `${issuer}/oauth/authorize`;
+  const policy = await listCompanyAiChannels(c.env.DB, {
+    companyId: company.id,
+    companySlug: company.slug,
+    user: viewer,
+    apiBase,
+  });
+  const policyByChannel = new Map(policy.map((item) => [item.channel, item]));
 
   return c.json(
     await Promise.all(
@@ -1323,8 +1331,10 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
         viewer.userId,
         clientType,
       );
+      const channelPolicy = policyByChannel.get(clientType);
       let tokenStatus = "Not Generated";
-      if (identity?.status === "active" && identity.hasToken) tokenStatus = "Active";
+      if (channelPolicy?.userConnection?.status === "connected") tokenStatus = "Active";
+      else if (identity?.status === "active" && identity.hasToken) tokenStatus = "Active";
       else if (identity?.status === "disabled") tokenStatus = "Revoked";
       else if (status === "connected" && !identity) tokenStatus = "Rotation Required";
       const userConnected = String(userConnection?.status ?? "") === "connected";
@@ -1337,6 +1347,15 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
         displayName: String(row.display_name),
         status: channelEnabled ? (userConnected ? "connected" : "ready_to_connect") : status,
         channelEnabled,
+        companyApproved: channelPolicy?.companyApproved ?? channelEnabled,
+        approvedBy: channelPolicy?.approvedBy ?? null,
+        approvedAt: channelPolicy?.approvedAt ?? null,
+        connectedUserCount: channelPolicy?.connectedUserCount ?? 0,
+        userConnection: channelPolicy?.userConnection ?? null,
+        canApprove: channelPolicy?.canApprove ?? viewerCanManage,
+        canConnect: channelPolicy?.canConnect ?? userHasCompanyAccess(viewer, company.id),
+        canDisableCompany: channelPolicy?.canDisableCompany ?? viewerCanManage,
+        authorizationUrl: channelPolicy?.authorizationUrl ?? `${authorizeBase}?company=${encodeURIComponent(company.slug)}&channel=${encodeURIComponent(clientType)}`,
         authMode: "oauth",
         viewerCanManageChannel: viewerCanManage,
         viewerCanConnect: userHasCompanyAccess(viewer, company.id),
@@ -1346,7 +1365,7 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
         serviceIdentityId: viewerCanManage ? identityId : null,
         serviceIdentityName: viewerCanManage ? identity?.name ?? null : null,
         serviceIdentityStatus: viewerCanManage ? identity?.status ?? null : null,
-        scopes: identity?.scopes ?? [],
+        scopes: viewerCanManage ? identity?.scopes ?? [] : [],
         tokenStatus: viewerCanManage ? tokenStatus : userConnected ? "Active" : "Not Generated",
         tokenPrefix: viewerCanManage ? identity?.tokenPrefix ?? null : null,
         connectionMethod: "INFRA OAuth",
@@ -1389,7 +1408,7 @@ phase3.post(
       return c.json({ error: "Unsupported AI client" }, 400);
     }
     await ensureDefaultAiConnections(c.env.DB, company.id);
-    await setAiChannelEnabled(c.env.DB, company.id, clientType, true);
+    await setAiChannelEnabled(c.env.DB, company.id, clientType, true, c.get("user").email);
     await c.env.DB.prepare(
       `UPDATE ai_client_connections SET status = 'ready_to_connect', updated_at = ?
        WHERE company_id = ? AND client_type = ? AND status != 'connected'`,
@@ -1418,7 +1437,13 @@ phase3.post(
       return c.json({ error: "Company administrator access required" }, 403);
     }
     const clientType = c.req.param("clientType");
-    await setAiChannelEnabled(c.env.DB, company.id, clientType, false);
+    const disabled = await setCompanyAiChannelApproved(c.env.DB, {
+      companyId: company.id,
+      channel: clientType,
+      approved: false,
+      actor: c.get("user"),
+    });
+    if (!disabled.ok) return c.json({ error: disabled.error }, disabled.status);
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
       eventType: "ai_connection.disabled",
@@ -1427,7 +1452,41 @@ phase3.post(
       resourceId: clientType,
       detail: { stage: "ai_channel.disabled" },
     });
-    return c.json({ ok: true, clientType, channelEnabled: false });
+    return c.json({ ok: true, clientType, channelEnabled: false, approved: false });
+  },
+);
+
+phase3.post(
+  "/api/companies/:slug/ai-channels/:channel/approve",
+  requireAuth,
+  async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    const result = await setCompanyAiChannelApproved(c.env.DB, {
+      companyId: company.id,
+      channel: c.req.param("channel"),
+      approved: true,
+      actor: c.get("user"),
+    });
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ ok: true, channel: c.req.param("channel"), approved: true });
+  },
+);
+
+phase3.post(
+  "/api/companies/:slug/ai-channels/:channel/revoke-company",
+  requireAuth,
+  async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    const result = await setCompanyAiChannelApproved(c.env.DB, {
+      companyId: company.id,
+      channel: c.req.param("channel"),
+      approved: false,
+      actor: c.get("user"),
+    });
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ ok: true, channel: c.req.param("channel"), approved: false });
   },
 );
 

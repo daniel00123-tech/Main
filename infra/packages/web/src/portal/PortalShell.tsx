@@ -148,17 +148,21 @@ function PortalShellInner() {
 
   const role = membership?.role ?? "office_staff";
   const base = company ? `/portal/${company.slug}` : "/portal";
+  const isElvex = company?.slug === "el-business" || company?.id === "co_el";
 
   const nav = useMemo(
     () =>
       ALL_NAV.filter((item) => {
         if (!item.roles) return true;
         if (user?.isPlatformAdmin) return true;
+        if (isElvex && (item.path === "users" || item.path === "settings" || item.path === "billing")) {
+          return role === "company_admin" || role === "director";
+        }
         return item.roles.includes(role);
       }).map((item) =>
         item.path === "actions" ? { ...item, badgeCount: pendingApprovals } : item,
       ),
-    [role, user?.isPlatformAdmin, pendingApprovals],
+    [role, user?.isPlatformAdmin, pendingApprovals, isElvex],
   );
 
   const navSections = useMemo(() => {

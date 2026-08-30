@@ -26,6 +26,8 @@ import { classifyLedgerCredit } from "./wallet-credits";
 import { evaluateApprovalRequirement } from "./approvals";
 import { resolveCompanyMcpToolName } from "./mcp-knowledge-standard";
 import { redactSecretFields } from "./secrets";
+import { elvexIdentityHeaders, isElvexMcpCompany, syncElvexCompanyUser } from "./elvex-identity";
+import { isElvexRole } from "@infra/shared";
 
 export async function listCompanies(
   db: D1Database,
@@ -992,7 +994,34 @@ export async function executeRegisteredMcpTool(
 
   try {
     let forwardArgs = input.arguments ?? {};
-    let internalHeaders: Record<string, string> | undefined;
+    let internalHeaders: Record<string, string> = {};
+    if (company && isElvexMcpCompany(company)) {
+      const membership = await env.DB.prepare(
+        `SELECT role FROM company_memberships
+         WHERE company_id = ? AND user_id = ? AND status = 'active'`,
+      )
+        .bind(company.id, input.actorUserId)
+        .first<{ role: string }>();
+      if (membership && isElvexRole(membership.role)) {
+        await syncElvexCompanyUser(env, {
+          externalId: input.actorUserId,
+          email: input.actorEmail,
+          role: membership.role,
+        });
+      }
+      Object.assign(
+        internalHeaders,
+        await elvexIdentityHeaders(
+          typeof env.EL_RBAC_IDENTITY_SECRET === "string" ? env.EL_RBAC_IDENTITY_SECRET : undefined,
+          {
+            actorId: input.actorUserId,
+            email: input.actorEmail,
+            principalType: "user",
+            correlationId,
+          },
+        ),
+      );
+    }
     if (isXeroToolName(input.toolName)) {
       const prepared = await prepareXeroMcpExecution({
         env,
@@ -1009,6 +1038,7 @@ export async function executeRegisteredMcpTool(
         });
         if (token.ok) {
           internalHeaders = {
+            ...internalHeaders,
             "X-Infra-Xero-Context": btoa(
               JSON.stringify({
                 tenantId: token.tenantId,
@@ -1030,7 +1060,7 @@ export async function executeRegisteredMcpTool(
       serviceBindingRef: mcp.serviceBindingRef,
       toolName: companyToolName,
       arguments: forwardArgs,
-      internalHeaders,
+      internalHeaders: Object.keys(internalHeaders).length ? internalHeaders : undefined,
     });
 
     const checkedAt = nowIso();

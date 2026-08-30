@@ -174,6 +174,9 @@ export function rowToConnectorInstance(
       ? (row.managed_by as ConnectorManagedBy)
       : undefined,
     lastHealthAt: row.last_health_at ? String(row.last_health_at) : null,
+    lastVerifiedAt: row.last_verified_at ? String(row.last_verified_at) : null,
+    sourceMcpId: row.source_mcp_id ? String(row.source_mcp_id) : null,
+    sourceConnectorCode: row.source_connector_code ? String(row.source_connector_code) : null,
     capabilitiesEnabled: parseJson<string[]>(
       row.capabilities_enabled_json
         ? String(row.capabilities_enabled_json)

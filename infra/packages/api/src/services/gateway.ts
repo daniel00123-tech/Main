@@ -16,6 +16,7 @@ import { newId, nowIso } from "../db/mappers";
 import {
   executeRegisteredMcpTool,
   ensureDefaultToolAllowlist,
+  getCompanyById,
   getMcpEnvironment,
   listMcpEnvironments,
   recordAuditEvent,
@@ -261,11 +262,11 @@ export async function executeGatewayRequest(
   const started = Date.now();
   const gatewayRequestId = newId("gw");
 
-  const actorLabel =
+  let actorLabel =
     input.actor.type === "user"
       ? input.actor.user.email
       : input.actor.identity.name;
-  const actorId =
+  let actorId =
     input.actor.type === "user"
       ? input.actor.user.userId
       : input.actor.identity.id;

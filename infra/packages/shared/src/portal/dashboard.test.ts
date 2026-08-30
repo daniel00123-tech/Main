@@ -175,7 +175,7 @@ describe("deriveGettingStartedItems", () => {
     expect(complete.find((item) => item.key === "wallet")?.complete).toBe(true);
   });
 
-  it("completes first system only for Healthy or Attention needed connectors", () => {
+  it("completes first system only for Connected or Needs attention connectors", () => {
     const disconnected = deriveGettingStartedItems({
       overview: overview({
         connectorInstances: [connector({ status: "disabled", healthStatus: "unknown" })],

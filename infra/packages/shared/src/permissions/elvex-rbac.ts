@@ -94,6 +94,18 @@ export const ELVEX_ROLE_GRANTS: Record<ElvexRole, ReadonlySet<ElvexCapability>> 
 export const ELVEX_INFO_MAILBOXES = ["info@elvexpropertyservices.com"];
 export const ELVEX_FINANCE_MAILBOXES = ["finance@elvexpropertyservices.com"];
 
+export const ELVEX_DATA_CLASSIFICATIONS = [
+  { id: "engineer_knowledge", label: "Engineer Knowledge" },
+  { id: "company_general", label: "General Company" },
+  { id: "finance", label: "Finance" },
+  { id: "restricted_management", label: "Restricted Management" },
+] as const;
+
+export const ELVEX_PROTECTED_MICROSOFT_USERS = [
+  { hint: "William", label: "William Stone" },
+  { hint: "Ella", label: "Ella May" },
+] as const;
+
 export function isElvexRole(role: string | null | undefined): role is ElvexRole {
   return Boolean(role && (ELVEX_CANONICAL_ROLES as readonly string[]).includes(role));
 }
