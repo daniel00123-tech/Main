@@ -56,6 +56,28 @@ describe("WhatsApp V4.4 planner — broad vs specific", () => {
     expect(coal.action).toBe("knowledge");
     expect(coal.query.toLowerCase()).toMatch(/coal search/);
   });
+
+  it("searches a newly named document plus URL instead of reusing last_document", () => {
+    const prior = {
+      lastDocument: {
+        id: "doc_prior",
+        title: "Company Van Policy.docx",
+        url: null,
+        excerpt: "fleet vehicles",
+        amount: null,
+        reference: null,
+        sourceLabel: "Company Van Policy.docx",
+      },
+    };
+    const plan = planWhatsAppTurn({
+      text: "can you find anything about my CV 2015 and the URL where to find that doc",
+      memory: prior,
+      connectors: ["conn_microsoft_365"],
+    });
+    expect(plan.action).toBe("knowledge");
+    expect(plan.skipTools).toBe(false);
+    expect(plan.useMemory).toBe(false);
+  });
 });
 
 describe("WhatsApp V4.4 timeouts and search budget", () => {

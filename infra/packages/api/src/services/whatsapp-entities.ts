@@ -6,6 +6,10 @@ export type WhatsAppDocumentEntity = {
   amount: string | null;
   reference: string | null;
   sourceLabel: string | null;
+  sourceSystem?: string | null;
+  providerItemId?: string | null;
+  sourceKey?: string | null;
+  path?: string | null;
 };
 
 export type WhatsAppEntityMemory = {
@@ -20,9 +24,11 @@ export type WhatsAppEntityMemory = {
   lastSource?: string | null;
   lastSourceUrl?: string | null;
   lastSourceSystem?: string | null;
+  lastSearchQuery?: string | null;
 };
 
 const EMPTY: WhatsAppEntityMemory = {};
+const RECENT_LIMIT = 5;
 
 export function emptyEntityMemory(): WhatsAppEntityMemory {
   return {};
@@ -42,7 +48,7 @@ export function parseEntityMemory(raw: string | null | undefined): WhatsAppEntit
 export function serializeEntityMemory(memory: WhatsAppEntityMemory): string {
   return JSON.stringify({
     lastDocument: memory.lastDocument ? compactDocument(memory.lastDocument) : null,
-    recentDocuments: (memory.recentDocuments ?? []).slice(0, 3).map(compactDocument),
+    recentDocuments: (memory.recentDocuments ?? []).slice(0, RECENT_LIMIT).map(compactDocument),
     lastEmail: memory.lastEmail ?? null,
     lastInvoice: memory.lastInvoice ?? null,
     lastCustomer: memory.lastCustomer ?? null,
@@ -51,7 +57,8 @@ export function serializeEntityMemory(memory: WhatsAppEntityMemory): string {
     lastTool: memory.lastTool ?? null,
     lastSource: memory.lastSource ?? null,
     lastSourceUrl: memory.lastSourceUrl ?? memory.lastDocument?.url ?? null,
-    lastSourceSystem: memory.lastSourceSystem ?? null,
+    lastSourceSystem: memory.lastSourceSystem ?? memory.lastDocument?.sourceSystem ?? null,
+    lastSearchQuery: memory.lastSearchQuery ?? null,
   });
 }
 
@@ -64,6 +71,10 @@ function compactDocument(doc: WhatsAppDocumentEntity): WhatsAppDocumentEntity {
     amount: doc.amount,
     reference: doc.reference,
     sourceLabel: doc.sourceLabel,
+    sourceSystem: doc.sourceSystem ?? null,
+    providerItemId: doc.providerItemId ?? null,
+    sourceKey: doc.sourceKey ?? null,
+    path: doc.path ?? null,
   };
 }
 
@@ -82,6 +93,10 @@ export function documentEntityFromHit(input: {
   text?: string | null;
   snippet?: string | null;
   sourceLabel?: string | null;
+  sourceSystem?: string | null;
+  providerItemId?: string | null;
+  sourceKey?: string | null;
+  path?: string | null;
 }): WhatsAppDocumentEntity {
   const body = String(input.text || input.snippet || "");
   return {
@@ -92,15 +107,54 @@ export function documentEntityFromHit(input: {
     amount: extractAmount(body),
     reference: extractReference(body),
     sourceLabel: input.sourceLabel ?? input.title,
+    sourceSystem: input.sourceSystem ?? null,
+    providerItemId: input.providerItemId ?? null,
+    sourceKey: input.sourceKey ?? null,
+    path: input.path ?? null,
   };
+}
+
+export function sameDocument(
+  left: WhatsAppDocumentEntity | null | undefined,
+  right: WhatsAppDocumentEntity | null | undefined,
+): boolean {
+  if (!left || !right) return false;
+  if (left.id && right.id && left.id === right.id) return true;
+  if (left.providerItemId && right.providerItemId && left.providerItemId === right.providerItemId) {
+    return true;
+  }
+  const a = normalizeTitle(left.title);
+  const b = normalizeTitle(right.title);
+  return Boolean(a && b && a === b);
+}
+
+function normalizeTitle(title: string | null | undefined): string {
+  return String(title ?? "")
+    .toLowerCase()
+    .replace(/\.(pdf|docx?|xlsx?|pptx?)$/i, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 export function mergeEntityMemory(
   prior: WhatsAppEntityMemory,
   next: Partial<WhatsAppEntityMemory>,
 ): WhatsAppEntityMemory {
-  const lastDocument = next.lastDocument !== undefined ? next.lastDocument : prior.lastDocument;
-  const recent = mergeRecentDocuments(prior.recentDocuments, lastDocument, next.recentDocuments);
+  const incoming = next.lastDocument;
+  const lastDocument = incoming !== undefined ? incoming : prior.lastDocument;
+  const displaced =
+    incoming !== undefined &&
+    incoming &&
+    prior.lastDocument &&
+    !sameDocument(incoming, prior.lastDocument)
+      ? prior.lastDocument
+      : null;
+  const recent = mergeRecentDocuments({
+    prior: prior.recentDocuments,
+    last: lastDocument,
+    displaced,
+    extra: next.recentDocuments,
+  });
   return {
     lastDocument,
     recentDocuments: recent,
@@ -115,26 +169,38 @@ export function mergeEntityMemory(
       next.lastSourceUrl !== undefined
         ? next.lastSourceUrl
         : lastDocument?.url ?? prior.lastSourceUrl ?? null,
-    lastSourceSystem: next.lastSourceSystem !== undefined ? next.lastSourceSystem : prior.lastSourceSystem,
+    lastSourceSystem:
+      next.lastSourceSystem !== undefined
+        ? next.lastSourceSystem
+        : lastDocument?.sourceSystem ?? prior.lastSourceSystem ?? null,
+    lastSearchQuery: next.lastSearchQuery !== undefined ? next.lastSearchQuery : prior.lastSearchQuery,
   };
 }
 
-function mergeRecentDocuments(
-  prior: WhatsAppDocumentEntity[] | undefined,
-  last: WhatsAppDocumentEntity | null | undefined,
-  extra?: WhatsAppDocumentEntity[],
-): WhatsAppDocumentEntity[] {
+function mergeRecentDocuments(input: {
+  prior: WhatsAppDocumentEntity[] | undefined;
+  last: WhatsAppDocumentEntity | null | undefined;
+  displaced?: WhatsAppDocumentEntity | null;
+  extra?: WhatsAppDocumentEntity[];
+}): WhatsAppDocumentEntity[] {
   const out: WhatsAppDocumentEntity[] = [];
   const seen = new Set<string>();
-  for (const doc of [last, ...(extra ?? []), ...(prior ?? [])]) {
+  const skip = input.last ? documentKey(input.last) : "";
+  for (const doc of [input.displaced, ...(input.extra ?? []), ...(input.prior ?? [])]) {
     if (!doc?.title && !doc?.id) continue;
-    const key = `${doc.id}|${doc.title}`.toLowerCase();
-    if (seen.has(key)) continue;
+    const key = documentKey(doc);
+    if (!key || key === skip || seen.has(key)) continue;
     seen.add(key);
     out.push(doc);
-    if (out.length >= 3) break;
+    if (out.length >= RECENT_LIMIT) break;
   }
   return out;
+}
+
+function documentKey(doc: WhatsAppDocumentEntity): string {
+  if (doc.id) return `id:${doc.id.toLowerCase()}`;
+  if (doc.providerItemId) return `prov:${doc.providerItemId.toLowerCase()}`;
+  return `title:${normalizeTitle(doc.title)}`;
 }
 
 export function hasDocumentMemory(memory: WhatsAppEntityMemory | null | undefined): boolean {
@@ -147,6 +213,53 @@ export function recentDocumentTitles(memory: WhatsAppEntityMemory | null | undef
     ...(memory?.recentDocuments ?? []).map((doc) => doc.title),
   ].filter((title): title is string => Boolean(title));
   return [...new Set(titles)];
+}
+
+export function rememberedDocuments(memory: WhatsAppEntityMemory | null | undefined): WhatsAppDocumentEntity[] {
+  const out: WhatsAppDocumentEntity[] = [];
+  const seen = new Set<string>();
+  for (const doc of [memory?.lastDocument, ...(memory?.recentDocuments ?? [])]) {
+    if (!doc) continue;
+    const key = documentKey(doc);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(doc);
+  }
+  return out;
+}
+
+const PREVIOUS_REF =
+  /\b(the previous (one|document|file)|the last one|the other (one|document)|that first (one|document))\b/i;
+
+export function resolveRememberedDocument(
+  memory: WhatsAppEntityMemory | null | undefined,
+  text: string,
+): WhatsAppDocumentEntity | null {
+  if (!memory) return null;
+  if (PREVIOUS_REF.test(text)) {
+    return memory.recentDocuments?.[0] ?? memory.lastDocument ?? null;
+  }
+  const terms = String(text ?? "")
+    .toLowerCase()
+    .replace(/[?.!,]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z0-9]/g, ""))
+    .filter((token) => token.length >= 2 && !["the", "and", "for", "that", "this", "document", "doc", "file"].includes(token));
+  if (terms.length) {
+    const docs = rememberedDocuments(memory);
+    const scored = docs
+      .map((doc) => {
+        const hay = normalizeTitle(doc.title);
+        const hits = terms.filter((term) => hay.includes(term)).length;
+        return { doc, hits };
+      })
+      .filter((row) => row.hits > 0)
+      .sort((left, right) => right.hits - left.hits);
+    if (scored[0] && (scored.length === 1 || scored[0].hits > (scored[1]?.hits ?? 0))) {
+      return scored[0].doc;
+    }
+  }
+  return memory.lastDocument ?? null;
 }
 
 const KNOWN_TITLES = [
@@ -182,3 +295,44 @@ export function inferEntitiesFromTurns(
     recentDocuments: docs,
   });
 }
+
+export function namesDifferentDocument(text: string, memory: WhatsAppEntityMemory | null | undefined): boolean {
+  const terms = String(text ?? "")
+    .toLowerCase()
+    .replace(/[?.!,]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z0-9]/g, ""))
+    .filter((token) => token.length >= 3 && !GENERIC_REF_STOP.has(token));
+  if (!terms.length) return false;
+  const last = normalizeTitle(memory?.lastDocument?.title ?? "");
+  if (!last) return true;
+  return terms.some((term) => !last.includes(term));
+}
+
+const GENERIC_REF_STOP = new Set([
+  "the",
+  "and",
+  "for",
+  "that",
+  "this",
+  "document",
+  "documents",
+  "doc",
+  "docs",
+  "file",
+  "files",
+  "find",
+  "search",
+  "look",
+  "url",
+  "link",
+  "source",
+  "where",
+  "about",
+  "anything",
+  "something",
+  "please",
+  "can",
+  "you",
+  "me",
+]);

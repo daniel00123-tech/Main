@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import { recordAuditEvent } from "./control-plane";
 import { acknowledgementMessage } from "./whatsapp-conversation";
 import { resolveWhatsAppIdentity } from "./whatsapp-identity";
-import { stampWhatsAppLifecycle } from "./whatsapp-lifecycle";
+import { claimWhatsAppAck, stampWhatsAppLifecycle } from "./whatsapp-lifecycle";
 import { tryNormalizeE164 } from "./phone";
 import { outboundAiEnabled } from "./whatsapp-assets";
 import { DOCUMENT_CLARIFY_REPLY, instantLocalReply, isGenericDocumentAsk, isInstantLocalTurn } from "./whatsapp-realtime";
@@ -71,6 +71,7 @@ export async function tryWhatsAppFastLane(
     };
   }
   const reply = instantLocalReply(text);
+  void sendWhatsAppReadStatus(env, { messageId: item.wamid }).catch(() => undefined);
   const send = outboundAiEnabled(env)
     ? await sendWhatsAppText(env, {
         toE164: sender,
@@ -153,6 +154,8 @@ export async function sendFirstResponseFailsafe(
   });
   if (input.alreadyVisible()) return { sent: false, timedOut: false };
   if (!outboundAiEnabled(env)) return { sent: false, timedOut: true };
+  const claimed = await claimWhatsAppAck(env, input.wamid);
+  if (!claimed || input.alreadyVisible()) return { sent: false, timedOut: false };
   const send = await sendWhatsAppText(env, {
     toE164: input.toE164,
     body: FIRST_RESPONSE_FAILSAFE_COPY,
@@ -209,6 +212,12 @@ export async function tryWhatsAppEarlyVisible(
     return { attempted: true, sent: false, identityFound: true };
   }
   const reply = clarify ? DOCUMENT_CLARIFY_REPLY : acknowledgementMessage(item.wamid + text);
+  if (!clarify) {
+    const claimed = await claimWhatsAppAck(env, item.wamid);
+    if (!claimed) {
+      return { attempted: true, sent: false, identityFound: true, kind: "ack", terminal: false };
+    }
+  }
   const send = await sendWhatsAppText(env, {
     toE164: sender,
     body: reply,

@@ -40,6 +40,11 @@ export type QualityCategory =
   | "whatsapp_queue_backlog"
   | "whatsapp_button_failed"
   | "whatsapp_button_context_lost"
+  | "whatsapp_wrong_entity"
+  | "whatsapp_button_entity_mismatch"
+  | "whatsapp_stale_last_document_fallback"
+  | "whatsapp_user_corrected_after_button"
+  | "whatsapp_source_url_missing_with_provider_metadata"
   | "whatsapp_voice_download_failed"
   | "whatsapp_transcription_failed"
   | "whatsapp_transcription_low_confidence"
@@ -542,6 +547,63 @@ function detectWhatsAppUxSignals(input: QualityAuditInput): QualitySignal[] {
       confidence: 0.8,
       evidence: { buttonAction: meta.buttonAction },
       suggestedInvestigation: "A WhatsApp button tap could not reuse the current conversation entity.",
+    });
+  }
+  if (meta.wrongEntity || meta.operatedWrongDocument) {
+    signals.push({
+      category: "whatsapp_wrong_entity",
+      severity: "high",
+      confidence: 0.9,
+      evidence: {
+        operatedEntityId: meta.operatedEntityId ?? null,
+        boundEntityId: meta.boundEntityId ?? null,
+      },
+      suggestedInvestigation: "WhatsApp operated on a different document than the selected or displayed entity.",
+    });
+  }
+  if (
+    meta.buttonEntityMismatch ||
+    (meta.inputKind === "button" &&
+      meta.buttonDisplayedEntityId &&
+      meta.operatedEntityId &&
+      meta.buttonDisplayedEntityId !== meta.operatedEntityId)
+  ) {
+    signals.push({
+      category: "whatsapp_button_entity_mismatch",
+      severity: "high",
+      confidence: 0.9,
+      evidence: {
+        buttonDisplayedEntityId: meta.buttonDisplayedEntityId ?? null,
+        operatedEntityId: meta.operatedEntityId ?? null,
+      },
+      suggestedInvestigation: "A WhatsApp button action did not match the document shown on that card.",
+    });
+  }
+  if (meta.usedStaleLastDocument || meta.fallbackToStaleLastDocument) {
+    signals.push({
+      category: "whatsapp_stale_last_document_fallback",
+      severity: "high",
+      confidence: 0.95,
+      evidence: { buttonAction: meta.buttonAction ?? null },
+      suggestedInvestigation: "A button callback silently reused an older last_document instead of its bound entity.",
+    });
+  }
+  if (meta.userCorrectedAfterButton) {
+    signals.push({
+      category: "whatsapp_user_corrected_after_button",
+      severity: "medium",
+      confidence: 0.75,
+      evidence: { buttonAction: meta.buttonAction ?? null },
+      suggestedInvestigation: "The user corrected the assistant after a WhatsApp button tap, suggesting the wrong entity was used.",
+    });
+  }
+  if (meta.sourceUrlMissingWithProviderMetadata) {
+    signals.push({
+      category: "whatsapp_source_url_missing_with_provider_metadata",
+      severity: "medium",
+      confidence: 0.8,
+      evidence: { boundEntityId: meta.boundEntityId ?? meta.operatedEntityId ?? null },
+      suggestedInvestigation: "A document result had provider identity but no source URL was preserved or backfilled.",
     });
   }
   if (meta.voiceDownloadFailed) {

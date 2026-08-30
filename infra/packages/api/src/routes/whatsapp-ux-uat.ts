@@ -64,7 +64,17 @@ routes.post("/api/internal/whatsapp-ux-uat", async (c) => {
                   from,
                   type,
                   timestamp: String(Math.floor(started / 1000)),
-                  text: text ? { body: text } : undefined,
+                  text: inputKind === "text" && text ? { body: text } : undefined,
+                  interactive:
+                    inputKind === "button"
+                      ? {
+                          type: "button_reply",
+                          button_reply: {
+                            id: buttonId || "summarise",
+                            title: String(body.buttonTitle ?? "Summarise"),
+                          },
+                        }
+                      : undefined,
                 },
               ],
             },

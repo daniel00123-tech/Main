@@ -28,9 +28,17 @@ import {
   inferEntitiesFromTurns,
   mergeEntityMemory,
   recentDocumentTitles,
+  resolveRememberedDocument,
+  sameDocument,
+  type WhatsAppDocumentEntity,
   type WhatsAppEntityMemory,
 } from "./whatsapp-entities";
-import { isWhatsAppTerminalState, stampWhatsAppLifecycle, terminalStateForOutcome } from "./whatsapp-lifecycle";
+import {
+  claimWhatsAppAck,
+  isWhatsAppTerminalState,
+  stampWhatsAppLifecycle,
+  terminalStateForOutcome,
+} from "./whatsapp-lifecycle";
 import {
   FETCH_TIMEOUT_MS,
   FETCH_TOP_LIMIT,
@@ -45,10 +53,18 @@ import {
   recordKnowledgeSuccess,
   recordKnowledgeTimeout,
 } from "./whatsapp-knowledge-breaker";
-import { lookupKnowledgeSourceUrl } from "./whatsapp-source-urls";
+import { enrichUrlFromHit, identityFromMetadata, lookupKnowledgeSourceUrl } from "./whatsapp-source-urls";
 import { raceWithWhatsAppWatchdog } from "./whatsapp-watchdog";
 import { guidanceInfluenceNote, guidanceSearchQuery, isGuidanceHit } from "./whatsapp-guidance";
 import { planWhatsAppTurn, type WhatsAppPlan } from "./whatsapp-plan";
+import {
+  claimButtonIdempotency,
+  createWhatsAppInteractionContext,
+  deniedButtonReply,
+  entityFromContext,
+  expiredButtonReply,
+  resolveWhatsAppInteractionContext,
+} from "./whatsapp-interaction-context";
 import {
   draftFromMemory,
   memoryFactReply,
@@ -171,6 +187,9 @@ export type WhatsAppOrchestratorResult = {
   planAction?: string | null;
   inputKind?: "text" | "voice" | "button";
   buttonsSent?: number;
+  boundEntityTitle?: string | null;
+  interactionContextId?: string | null;
+  usedStaleLastDocument?: boolean;
 };
 
 export function looksLikeWriteIntent(text: string): boolean {
@@ -635,7 +654,7 @@ async function handleWhatsAppInboundMessageInner(
   marks.identityResolvedAt = Date.now();
   const sameCompany = conversation?.companyId === companyDecision.companyId;
   const priorTurns = sameCompany ? conversation?.turns ?? [] : [];
-  const entities = inferEntitiesFromTurns(
+  let entities = inferEntitiesFromTurns(
     priorTurns,
     sameCompany ? conversation?.entities ?? emptyEntityMemory() : emptyEntityMemory(),
   );
@@ -647,7 +666,88 @@ async function handleWhatsAppInboundMessageInner(
     userId: identity.user.id,
   }).catch(() => DEFAULT_QUALITY_RUNTIME);
   marks.planningStartedAt = Date.now();
-  const plan = planWhatsAppTurn({ text, memory: entities, connectors }, qualityRuntime);
+
+  let boundEntityTitle: string | null = null;
+  let interactionContextId: string | null = null;
+  let usedStaleLastDocument = false;
+  let boundDocument: WhatsAppDocumentEntity | null = null;
+  if (inputKind === "button" && inboundResolved.contextToken) {
+    const resolvedCtx = await resolveWhatsAppInteractionContext(env, {
+      token: inboundResolved.contextToken,
+      userId: identity.user.id,
+      companyId: companyDecision.companyId,
+    });
+    if (resolvedCtx.status !== "ok") {
+      const reply = applyCustomerTone(
+        resolvedCtx.status === "denied"
+          ? deniedButtonReply()
+          : expiredButtonReply(inboundResolved.buttonAction),
+      );
+      const sent = await maybeSendReply(env, sender, reply, { qualityRuntime });
+      await stampWhatsAppLifecycle(env, item.wamid, {
+        state: "clarification_sent",
+        terminal: "clarification_sent",
+        replySentAt: new Date().toISOString(),
+        firstVisibleAt: new Date().toISOString(),
+        finalSentAt: new Date().toISOString(),
+        finalSendOk: sent.ok ? 1 : 0,
+      });
+      return {
+        handled: true,
+        duplicate: false,
+        identityFound: true,
+        companyId: companyDecision.companyId,
+        userId: identity.user.id,
+        replySent: sent.ok,
+        publicReply: reply,
+        toolName: null,
+        interactionId: null,
+        outcome: resolvedCtx.status === "denied" ? "write_blocked" : "clarification_requested",
+        intent: "clarification",
+        acknowledgementSent: false,
+        planAction: "clarify",
+        inputKind,
+        usedStaleLastDocument: false,
+      };
+    }
+    const idem = await claimButtonIdempotency(env, {
+      wamid: item.wamid,
+      token: resolvedCtx.context.token,
+      action: inboundResolved.buttonAction ?? "unknown",
+    });
+    if (idem.duplicate && idem.priorReply) {
+      const sent = await maybeSendReply(env, sender, idem.priorReply, { qualityRuntime });
+      return {
+        handled: true,
+        duplicate: true,
+        identityFound: true,
+        companyId: companyDecision.companyId,
+        userId: identity.user.id,
+        replySent: sent.ok,
+        publicReply: idem.priorReply,
+        toolName: null,
+        interactionId: null,
+        outcome: "answered",
+        inputKind,
+        boundEntityTitle: resolvedCtx.context.title,
+        interactionContextId: resolvedCtx.context.interactionContextId,
+        usedStaleLastDocument: false,
+      };
+    }
+    boundDocument = entityFromContext(resolvedCtx.context);
+    boundEntityTitle = boundDocument.title;
+    interactionContextId = resolvedCtx.context.interactionContextId;
+    entities = mergeEntityMemory(entities, { lastDocument: boundDocument });
+  } else if (inputKind !== "button") {
+    const mentioned = resolveRememberedDocument(entities, text);
+    if (mentioned && !sameDocument(mentioned, entities.lastDocument)) {
+      entities = mergeEntityMemory(entities, { lastDocument: mentioned });
+    }
+  }
+
+  const plan = inboundResolved.buttonAction && boundDocument
+    ? planBoundButton(inboundResolved.buttonAction, boundDocument, text)
+    : planWhatsAppTurn({ text, memory: entities, connectors }, qualityRuntime);
   const intent = plan.intent || classifyWhatsAppIntent(text, { hasPriorTurns: priorTurns.length > 0 });
   marks.intentClassifiedAt = Date.now();
   marks.planningCompletedAt = Date.now();
@@ -865,6 +965,10 @@ async function handleWhatsAppInboundMessageInner(
           wamid: item.wamid,
         });
     const watched = await raceWithWhatsAppWatchdog(work, async (kind, body) => {
+      if (kind === "ack") {
+        const claimed = await claimWhatsAppAck(env, item.wamid);
+        if (!claimed) return false;
+      }
       const sent = await maybeSendReply(env, sender, body, { qualityRuntime });
       if (!sent.ok) return false;
       if (kind === "ack") {
@@ -993,12 +1097,28 @@ async function handleWhatsAppInboundMessageInner(
     const polished = applyCustomerTone(answered.reply, {
       restrained: plan.action === "xero" || answered.outcome === "tool_failed",
     });
+    const primaryDoc = answered.entities.lastDocument ?? boundDocument;
+    const createdContext =
+      primaryDoc && (plan.action === "knowledge" || plan.action === "memory_fact" || plan.action === "memory_link" || plan.action === "guidance")
+        ? await createWhatsAppInteractionContext(env, {
+            companyId: companyDecision.companyId,
+            userId: identity.user.id,
+            conversationId: identity.user.id,
+            sourceMessageId: item.wamid,
+            entity: primaryDoc,
+          })
+        : null;
+    if (createdContext) {
+      interactionContextId = createdContext.interactionContextId;
+      boundEntityTitle = createdContext.title;
+    }
     const buttons = buttonsForAnswer({
       plan,
       reply: polished,
       entities: answered.entities,
       connectors,
       outcome: answered.outcome,
+      contextToken: createdContext?.token ?? null,
     });
     const sent = await maybeSendReply(env, sender, polished, {
       qualityRuntime,
@@ -1064,6 +1184,19 @@ async function handleWhatsAppInboundMessageInner(
         inputType: inputKind,
         buttonAction: inboundResolved.buttonAction ?? null,
         buttonsSent: sent.buttonsSent ?? buttons.length,
+        boundEntityId: primaryDoc?.id ?? null,
+        boundEntityTitle: primaryDoc?.title ?? boundEntityTitle,
+        interactionContextId,
+        usedStaleLastDocument,
+        buttonDisplayedEntityId: createdContext?.entityId ?? boundDocument?.id ?? null,
+        operatedEntityId: primaryDoc?.id ?? null,
+        wrongEntity: Boolean(
+          boundDocument && primaryDoc && !sameDocument(boundDocument, primaryDoc),
+        ),
+        sourceUrlMissingWithProviderMetadata: Boolean(
+          primaryDoc && !primaryDoc.url && (primaryDoc.providerItemId || primaryDoc.sourceKey),
+        ),
+        fallbackToStaleLastDocument: usedStaleLastDocument,
         buttonFailed: Boolean(sent.buttonFailed),
         transcript: inboundResolved.transcript ?? null,
         transcriptionProvider: inboundResolved.transcriptionProvider ?? null,
@@ -1157,8 +1290,18 @@ async function handleWhatsAppInboundMessageInner(
       planAction: plan.action,
       inputKind,
       buttonsSent: sent.buttonsSent ?? buttons.length,
+      boundEntityTitle: primaryDoc?.title ?? boundEntityTitle,
+      interactionContextId,
+      usedStaleLastDocument,
     };
-  } catch {
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        event: "whatsapp.plan_handler_exception",
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : null,
+      }),
+    );
     const reply = aiFailureWhatsAppMessage();
     const sent = await maybeSendReply(env, sender, reply, { qualityRuntime });
     await stampWhatsAppLifecycle(env, item.wamid, {
@@ -1212,11 +1355,17 @@ async function executeWhatsAppPlan(
   const plan = input.plan;
   if (plan.action === "memory_link") {
     let memory = input.memory;
-    if (!memory.lastDocument?.url && memory.lastDocument?.title) {
-      const hit = await lookupKnowledgeSourceUrl(env, input.companyId, memory.lastDocument.title);
-      if (hit?.url) {
+    if (!memory.lastDocument?.url && (memory.lastDocument?.title || memory.lastDocument?.id)) {
+      const hit = await lookupKnowledgeSourceUrl(env, input.companyId, {
+        title: memory.lastDocument?.title,
+        entityId: memory.lastDocument?.id,
+        externalItemId: memory.lastDocument?.providerItemId,
+        sourceKey: memory.lastDocument?.sourceKey,
+        path: memory.lastDocument?.path,
+      });
+      if (hit?.url && memory.lastDocument) {
         memory = mergeEntityMemory(memory, {
-          lastDocument: { ...memory.lastDocument, url: hit.url },
+          lastDocument: { ...memory.lastDocument, url: hit.url, sourceSystem: hit.sourceType },
           lastSourceUrl: hit.url,
           lastSourceSystem: hit.sourceType,
         });
@@ -1257,6 +1406,30 @@ async function executeWhatsAppPlan(
       entities: input.memory,
     };
   }
+  if (plan.action === "memory_fact" && plan.fact === "alternatives" && input.memory.lastDocument?.title) {
+    const similar = await answerWithCompanyMcp(env, {
+      companyId: input.companyId,
+      sessionUser: input.sessionUser,
+      query: input.memory.lastDocument.title,
+      originalText: input.originalText,
+      interactionId: input.interactionId,
+      waitUntil: input.waitUntil,
+      fetch: false,
+      marks: input.marks,
+      wamid: input.wamid,
+    });
+    return {
+      reply: similar.reply,
+      toolName: similar.toolName,
+      outcome: similar.outcome,
+      latencyMs: similar.latencyMs,
+      entities: mergeEntityMemory(input.memory, {
+        lastDocument: similar.entity ?? input.memory.lastDocument,
+        lastTool: similar.toolName,
+        lastSearchQuery: input.memory.lastDocument.title,
+      }),
+    };
+  }
   if (plan.action === "memory_fact" && input.memory.lastDocument?.id) {
     const fetched = await executeWhatsAppGateway(
       env,
@@ -1274,11 +1447,27 @@ async function executeWhatsAppPlan(
     );
     if (fetched && fetched.status === 200) {
       const doc = toStandardFetchPayload(fetched.result, input.memory.lastDocument.id);
+      const identity = identityFromMetadata(doc.metadata ?? null);
+      let url = doc.url || input.memory.lastDocument.url || "";
+      if (!url) {
+        const backfill = await lookupKnowledgeSourceUrl(env, input.companyId, {
+          title: doc.title || input.memory.lastDocument.title,
+          entityId: doc.id || input.memory.lastDocument.id,
+          externalItemId: identity.providerItemId ?? input.memory.lastDocument.providerItemId,
+          sourceKey: identity.sourceKey ?? input.memory.lastDocument.sourceKey,
+          path: identity.path ?? input.memory.lastDocument.path,
+        });
+        url = backfill?.url ?? "";
+      }
       const nextDoc = documentEntityFromHit({
         id: doc.id || input.memory.lastDocument.id,
         title: doc.title || input.memory.lastDocument.title,
-        url: doc.url || input.memory.lastDocument.url,
+        url,
         text: doc.text,
+        sourceSystem: identity.sourceSystem ?? input.memory.lastDocument.sourceSystem,
+        providerItemId: identity.providerItemId ?? input.memory.lastDocument.providerItemId,
+        sourceKey: identity.sourceKey ?? input.memory.lastDocument.sourceKey,
+        path: identity.path ?? input.memory.lastDocument.path,
       });
       return {
         reply: memoryFactReply(plan, { ...input.memory, lastDocument: nextDoc }, doc.text),
@@ -1286,6 +1475,29 @@ async function executeWhatsAppPlan(
         outcome: "answered",
         latencyMs: Date.now() - started,
         entities: mergeEntityMemory(input.memory, { lastDocument: nextDoc, lastTool: COMPANY_KNOWLEDGE_READ_TOOL }),
+      };
+    }
+    if (input.memory.lastDocument.title) {
+      const fallback = await answerWithCompanyMcp(env, {
+        companyId: input.companyId,
+        sessionUser: input.sessionUser,
+        query: input.memory.lastDocument.title,
+        originalText: input.originalText,
+        interactionId: input.interactionId,
+        waitUntil: input.waitUntil,
+        fetch: true,
+        marks: input.marks,
+        wamid: input.wamid,
+      });
+      return {
+        reply: fallback.reply,
+        toolName: fallback.toolName,
+        outcome: fallback.outcome,
+        latencyMs: fallback.latencyMs,
+        entities: mergeEntityMemory(input.memory, {
+          lastDocument: fallback.entity ?? input.memory.lastDocument,
+          lastTool: fallback.toolName,
+        }),
       };
     }
   }
@@ -1576,8 +1788,15 @@ async function answerWithCompanyMcp(
         ? `${fetchedDoc.title}\n\nThis looks like a spreadsheet. I can give you the useful rows if you want.`
         : compressDocumentAnswer({ title: fetchedDoc.title, text: fetchedDoc.text, question: input.originalText });
       let url = fetchedDoc.url;
+      const identity = identityFromMetadata((hits[0] as { metadata?: Record<string, unknown> } | undefined)?.metadata ?? null);
       if (!url) {
-        const backfill = await lookupKnowledgeSourceUrl(env, input.companyId, fetchedDoc.title);
+        const backfill = await lookupKnowledgeSourceUrl(env, input.companyId, {
+          title: fetchedDoc.title,
+          entityId: fetchedDoc.id,
+          externalItemId: identity.providerItemId,
+          sourceKey: identity.sourceKey,
+          path: identity.path,
+        });
         url = backfill?.url ?? "";
       }
       const entity = documentEntityFromHit({
@@ -1587,6 +1806,10 @@ async function answerWithCompanyMcp(
         text: fetchedDoc.text,
         snippet: fetchedDoc.snippet,
         sourceLabel: fetchedDoc.title,
+        sourceSystem: identity.sourceSystem,
+        providerItemId: identity.providerItemId,
+        sourceKey: identity.sourceKey,
+        path: identity.path,
       });
       if (input.marks) input.marks.synthesisCompletedAt = Date.now();
       if (input.marks) input.marks.mcpCompletedAt = Date.now();
@@ -1634,9 +1857,16 @@ async function answerWithCompanyMcp(
   if (input.marks) input.marks.synthesisCompletedAt = Date.now();
   if (input.marks) input.marks.mcpCompletedAt = Date.now();
   const top = hits[0];
-  let topUrl = top?.url ?? "";
+  const topIdentity = identityFromMetadata(top?.metadata ?? null);
+  let topUrl = enrichUrlFromHit(top?.url ?? "", top?.metadata ?? null);
   if (top && !topUrl) {
-    const backfill = await lookupKnowledgeSourceUrl(env, input.companyId, top.title);
+    const backfill = await lookupKnowledgeSourceUrl(env, input.companyId, {
+      title: top.title,
+      entityId: top.id,
+      externalItemId: topIdentity.providerItemId,
+      sourceKey: topIdentity.sourceKey,
+      path: topIdentity.path,
+    });
     topUrl = backfill?.url ?? "";
   }
   return {
@@ -1651,6 +1881,10 @@ async function answerWithCompanyMcp(
           url: topUrl,
           snippet: top.snippet,
           sourceLabel: top.title,
+          sourceSystem: topIdentity.sourceSystem,
+          providerItemId: topIdentity.providerItemId,
+          sourceKey: topIdentity.sourceKey,
+          path: topIdentity.path,
         })
       : null,
     guidanceTitle: top && isGuidanceHit(top) ? top.title : null,
@@ -1698,6 +1932,7 @@ async function resolveInboundUserInput(
   outcome?: WhatsAppOrchestratorResult["outcome"];
   interactionId?: string | null;
   buttonAction?: string | null;
+  contextToken?: string | null;
   transcript?: string | null;
   transcriptionProvider?: string | null;
   transcriptionMs?: number | null;
@@ -1716,10 +1951,21 @@ async function resolveInboundUserInput(
   if (kind === "button" || input.item.type === "interactive") {
     const mapped = mapButtonToUserText(input.item.buttonId ?? "", input.item.buttonTitle);
     if (!mapped.supported || !mapped.text) {
-      return { text: "", inputKind: "button", terminalReply: UNSUPPORTED_BUTTON, buttonAction: mapped.action };
+      return {
+        text: "",
+        inputKind: "button",
+        terminalReply: UNSUPPORTED_BUTTON,
+        buttonAction: mapped.action,
+        contextToken: mapped.contextToken,
+      };
     }
     const text = mapped.action === "try_again" ? input.lastUserText || mapped.text : mapped.text;
-    return { text, inputKind: "button", buttonAction: mapped.action };
+    return {
+      text,
+      inputKind: "button",
+      buttonAction: mapped.action,
+      contextToken: mapped.contextToken,
+    };
   }
 
   if (kind === "voice" || input.item.type === "audio" || input.item.type === "voice") {
@@ -1788,6 +2034,7 @@ function buttonsForAnswer(input: {
   entities: WhatsAppEntityMemory;
   connectors: string[];
   outcome: string;
+  contextToken?: string | null;
 }): WhatsAppReplyButton[] {
   const hasXero = input.connectors.includes("conn_xero");
   if (input.outcome === "tool_failed" || input.plan.action === "write_blocked") return [];
@@ -1801,17 +2048,54 @@ function buttonsForAnswer(input: {
     return suggestionButtons({
       kind: "document",
       hasSourceUrl: /^https?:\/\//m.test(input.reply) || Boolean(input.entities.lastDocument?.url),
+      contextToken: input.contextToken,
     });
   }
   if (input.plan.action === "knowledge" || input.plan.action === "memory_fact" || input.plan.action === "guidance") {
-    if (input.reply.length > 520) return suggestionButtons({ kind: "long" });
+    if (input.reply.length > 520 && !input.contextToken) return suggestionButtons({ kind: "long" });
     return suggestionButtons({
       kind: /email|outlook|inbox/i.test(input.plan.query) ? "email" : "document",
       hasSourceUrl: Boolean(input.entities.lastDocument?.url),
+      contextToken: input.contextToken,
     });
   }
   if (input.plan.action === "draft") return suggestionButtons({ kind: "long" });
   return [];
+}
+
+function planBoundButton(action: string, entity: WhatsAppDocumentEntity, fallbackText: string): WhatsAppPlan {
+  const base: WhatsAppPlan = {
+    action: "memory_fact",
+    intent: "clarification",
+    tool: "get_knowledge_document",
+    query: entity.title || fallbackText,
+    fetch: true,
+    skipTools: false,
+    useMemory: true,
+    needsGuidance: false,
+    clarification: null,
+    fact: "summary",
+    draftKind: null,
+  };
+  if (action === "open_source") {
+    return { ...base, action: "memory_link", intent: "source_link", tool: null, skipTools: true, fetch: false, fact: null };
+  }
+  if (action === "more_detail") {
+    return { ...base, fact: "detail", fetch: true };
+  }
+  if (action === "find_similar") {
+    return {
+      ...base,
+      action: "knowledge",
+      intent: "knowledge_search",
+      tool: "search_company_knowledge",
+      query: entity.title,
+      fetch: false,
+      skipTools: false,
+      fact: "alternatives",
+    };
+  }
+  return { ...base, fact: "summary", fetch: true };
 }
 
 async function maybeSendReply(
@@ -1975,7 +2259,7 @@ async function recordWhatsAppUxUsage(
     metadata: Record<string, unknown>;
   },
 ): Promise<void> {
-  await recordUsageEvent(env.DB, {
+  await Promise.resolve(recordUsageEvent(env.DB, {
     companyId: input.companyId,
     userId: input.userId,
     actorEmail: input.actorEmail,
@@ -2007,7 +2291,7 @@ async function recordWhatsAppUxUsage(
       isTestConfig: false,
     },
     metadata: input.metadata,
-  }).catch(() => undefined);
+  })).catch(() => undefined);
 }
 
 async function recordWhatsAppTranscriptionUsage(
@@ -2023,7 +2307,7 @@ async function recordWhatsAppTranscriptionUsage(
   },
 ): Promise<void> {
   if (input.companyId === "unknown") return;
-  await recordUsageEvent(env.DB, {
+  await Promise.resolve(recordUsageEvent(env.DB, {
     companyId: input.companyId,
     userId: input.userId,
     actorEmail: input.actorEmail,
@@ -2055,7 +2339,7 @@ async function recordWhatsAppTranscriptionUsage(
       isTestConfig: false,
     },
     metadata: input.metadata,
-  }).catch(() => undefined);
+  })).catch(() => undefined);
 }
 
 async function recordWhatsAppChannelUsage(
@@ -2072,7 +2356,7 @@ async function recordWhatsAppChannelUsage(
     metadata?: Record<string, unknown>;
   },
 ): Promise<void> {
-  await recordUsageEvent(env.DB, {
+  await Promise.resolve(recordUsageEvent(env.DB, {
     companyId: input.companyId,
     userId: input.userId,
     actorEmail: input.actorEmail,
@@ -2115,7 +2399,7 @@ async function recordWhatsAppChannelUsage(
       cursorInRuntime: false,
       ...(input.metadata ?? {}),
     },
-  }).catch(() => undefined);
+  })).catch(() => undefined);
 }
 
 function skipped(
