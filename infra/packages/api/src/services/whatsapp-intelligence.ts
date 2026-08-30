@@ -40,7 +40,7 @@ import {
 } from "./whatsapp-entities";
 import { identityFromMetadata, lookupKnowledgeSourceUrl, persistDiscoveredSourceUrl } from "./whatsapp-source-urls";
 import { FETCH_TIMEOUT_MS, KNOWLEDGE_SEARCH_TIMEOUT_MS, MCP_TIMEOUT_MS, withBoundedTimeout } from "./whatsapp-timeouts";
-import type { WhatsAppPlan } from "./whatsapp-plan";
+import { isNegativeResultFeedback, type WhatsAppPlan } from "./whatsapp-plan";
 import type { WhatsAppTurn } from "./whatsapp-context";
 
 const ALLOWED_GATEWAY_TOOLS = new Set([
@@ -96,6 +96,62 @@ export async function executeWhatsAppIntelligence(
     input.buttonAction === "search_other_docs"
       ? input.memory.lastUserQuestion || input.memory.lastSearchQuery || input.originalText
       : input.originalText;
+  if (isNegativeResultFeedback(input.originalText) && input.buttonAction !== "search_other_docs") {
+    const reply =
+      "Sorry that wasn’t what you needed. I have noted the feedback. Ask about the current document, or name a different one.";
+    return {
+      reply,
+      toolName: null,
+      outcome: "answered",
+      latencyMs: Date.now() - started,
+      entities: mergeEntityMemory(input.memory, { lastAnswerText: reply, lastUserQuestion: input.originalText }),
+      groundedConfidence: "partial",
+      groundedScoped: Boolean(input.memory.lastDocument),
+      synthesisProvider: "none",
+      moreDetailNovel: false,
+      repeatedExcerpt: false,
+      unsolicitedPii: false,
+      malformedExtraction: false,
+      intelligence: {
+        kind: "answer",
+        text: reply,
+        confidence: "partial",
+        offerSearchOther: true,
+        toolCalls: [],
+        currentDocument: documentRefFromEntity(input.memory.lastDocument),
+        evidenceDocumentIds: input.memory.lastDocument?.id ? [input.memory.lastDocument.id] : [],
+        clarification: false,
+        citeSource: false,
+        modelRounds: [],
+        totalModelMs: 0,
+        totalToolMs: 0,
+        provider: "none",
+        model: null,
+        estimatedCostUsd: 0,
+      },
+      plan: planFromIntelligence(
+        {
+          kind: "answer",
+          text: reply,
+          confidence: "partial",
+          offerSearchOther: true,
+          toolCalls: [],
+          currentDocument: documentRefFromEntity(input.memory.lastDocument),
+          evidenceDocumentIds: [],
+          clarification: false,
+          citeSource: false,
+          modelRounds: [],
+          totalModelMs: 0,
+          totalToolMs: 0,
+          provider: "none",
+          model: null,
+          estimatedCostUsd: 0,
+        },
+        input.originalText,
+        input.buttonAction,
+      ),
+    };
+  }
   const fetchCache = new Map<string, ReturnType<typeof toStandardFetchPayload>>();
   const runtime = createWhatsAppIntelligenceRuntime(env, {
     companyId: input.companyId,
@@ -156,7 +212,7 @@ export async function executeWhatsAppIntelligence(
           ? "clarification_requested"
           : "answered",
     latencyMs: Date.now() - started,
-    entities: mergeEntityMemory(nextEntities, { lastAnswerText: pii.text, lastUserQuestion: input.originalText }),
+    entities: mergeEntityMemory(nextEntities, { lastAnswerText: pii.text, lastUserQuestion: originalText }),
     groundedConfidence: result.confidence,
     groundedScoped: result.toolCalls.some((call) => call.name === "search_document" || call.name === "get_knowledge_document"),
     synthesisProvider: result.provider,
