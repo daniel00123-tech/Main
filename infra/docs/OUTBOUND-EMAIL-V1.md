@@ -1,5 +1,7 @@
 # INFRA Outbound Transactional Email
 
+> Current sender and provider: Cloudflare Email, `Infra <noreply@infrastack.app>`. See [`../../docs/PRODUCTION_SERVICES.md`](../../docs/PRODUCTION_SERVICES.md).
+
 All INFRA-generated customer email is sent as:
 
 **Infra &lt;noreply@infrastack.app&gt;**

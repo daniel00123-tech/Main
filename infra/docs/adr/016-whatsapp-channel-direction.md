@@ -1,8 +1,9 @@
 # ADR 016 — WhatsApp as an AI channel
 
-- **Status:** Accepted (architecture only)
+- **Status:** Accepted (channel model still correct; “messaging disabled” is **historical**)
 - **Date:** 2026-08-25
 - **Depends on:** ADR 001, ADR 013
+- **Current runtime:** [WhatsApp V4.2](../../../docs/channels/WHATSAPP.md) — do not implement a second gateway from this ADR.
 
 ---
 

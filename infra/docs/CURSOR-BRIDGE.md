@@ -1,5 +1,8 @@
 # INFRA ↔ Cursor Knowledge Bridge
 
+> **Not a production runtime path.** Cursor is development tooling only. WhatsApp, MCP, automations, and the quality loop must not call Cursor.
+> Current agent entry: [`../../AGENTS.md`](../../AGENTS.md).
+
 When ChatGPT, Claude, or an MCP tool is **unsure how to call an API** or interpret business-system behaviour, INFRA can escalate to **Cursor** as a developer-knowledge layer — then return the answer (or an approved runbook) to the AI client.
 
 This is **not** Cursor in every request path. It is an **escalation channel** for unknown or failed operations.

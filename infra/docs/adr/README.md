@@ -1,5 +1,7 @@
 # Architecture Decision Records (ADRs)
 
+Concise current log: [`../../../docs/DECISIONS.md`](../../../docs/DECISIONS.md). If an ADR and running code disagree, trust the code and update the ADR.
+
 Authoritative decisions that future INFRA / Business MCP work must follow.
 
 | ADR | Title | Status |
