@@ -156,6 +156,7 @@ describe("WhatsApp V4.7 document cards and extracts", () => {
     expect(relates).not.toMatch(/mobile:\s*0793/i);
     expect(relates).not.toMatch(/email:\s*full clean/i);
     expect(relates).not.toMatch(/reference:\s*erences/i);
+    expect(relates).not.toMatch(/relates to from /i);
   });
 
   it("summarise is a real extract, not the same contact dump as the found card", () => {

@@ -137,7 +137,9 @@ export function inferRelatesTo(title: string, text: string): string {
   const first = firstUsefulSentences(text, 1);
   if (first && !isFieldNoise(first) && !/^(mobile|email|tel|phone|reference)\b/i.test(first)) {
     const clipped = first.replace(/^this (document|file) /i, "");
-    return /^it relates/i.test(clipped) ? clipped : `It relates to ${clipped.charAt(0).toLowerCase()}${clipped.slice(1)}`;
+    if (/^it relates/i.test(clipped)) return clipped;
+    if (/^(from|after|during|before|with)\b/i.test(clipped)) return clipped;
+    return `It relates to ${clipped.charAt(0).toLowerCase()}${clipped.slice(1)}`;
   }
   return `This is ${cleanTitle(title)} from your connected files.`;
 }
