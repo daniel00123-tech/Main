@@ -6,6 +6,7 @@ export interface SessionMembership {
   role: CompanyRole;
   customRoleId?: string | null;
   teamId?: string | null;
+  membershipId?: string | null;
 }
 
 export interface SessionUser {

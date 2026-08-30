@@ -85,11 +85,13 @@ import connectorRoutes from "./routes/connectors";
 import internalMcpRoutes from "./routes/internal-mcp";
 import actionPlanRoutes from "./routes/action-plans";
 import automationRoutes from "./routes/automations";
+import oauthRoutes from "./routes/oauth";
 
 const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", createCorsMiddleware());
 
+app.route("/", oauthRoutes);
 app.route("/", phase3Routes);
 app.route("/", connectorRoutes);
 app.route("/", internalMcpRoutes);

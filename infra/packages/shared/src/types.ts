@@ -457,11 +457,31 @@ export interface UsageRecord {
   mcpSessionId?: string | null;
 }
 
+export interface UsageBreakdownRow {
+  key: string;
+  label: string;
+  requests: number;
+  successful: number;
+  failed: number;
+  denied: number;
+  billable: number;
+  nonBillable: number;
+  chargeCents: number;
+}
+
 export interface UsageSummary {
   requestsToday: number;
   requestsThisMonth: number;
   successfulThisMonth: number;
   failedThisMonth: number;
+  deniedThisMonth?: number;
+  billableThisMonth?: number;
+  nonBillableThisMonth?: number;
+  chargeCentsThisMonth?: number;
+  byUser?: UsageBreakdownRow[];
+  byChannel?: UsageBreakdownRow[];
+  byConnector?: UsageBreakdownRow[];
+  byTool?: UsageBreakdownRow[];
 }
 
 /** Customer-facing rollup of one or more usage operations that share interaction_id. */
@@ -570,6 +590,9 @@ export type CompanyRole =
   | "engineer"
   | "junior_office"
   | "office_staff"
+  | "finance_team"
+  | "operations_manager"
+  | "finance_manager"
   | "supervisor"
   | "manager"
   | "director"

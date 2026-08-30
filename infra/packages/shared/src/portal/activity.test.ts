@@ -67,13 +67,41 @@ describe("buildCustomerActivityFeed", () => {
     expect(feed[0]?.description).toBe("Connected");
   });
 
-  it("hides routine company.accessed and execution success noise", () => {
+  it("hides routine company.accessed and health-check success noise", () => {
     const feed = buildCustomerActivityFeed([
       event({ eventType: "company.accessed", actor: "user@example.com" }),
-      event({ eventType: "mcp.execution_succeeded", actor: "ChatGPT" }),
+      event({
+        eventType: "mcp.execution_succeeded",
+        actor: "EL probe",
+        resourceId: "system_health",
+        detail: { tool: "system_health" },
+      }),
       event({ eventType: "auth.login", actor: "morghan@caddington.com" }),
     ]);
     expect(feed).toHaveLength(1);
     expect(feed[0]?.description).toBe("Signed in");
+  });
+
+  it("shows later successful MCP activity instead of stale probe failures", () => {
+    const feed = buildCustomerActivityFeed([
+      event({
+        id: "ok",
+        eventType: "mcp.execution_succeeded",
+        actor: "william@elvexpropertyservices.com",
+        resourceId: "search_company_knowledge",
+        detail: { toolName: "search_company_knowledge" },
+        createdAt: "2026-08-30T12:00:00.000Z",
+      }),
+      event({
+        id: "probe-fail",
+        eventType: "mcp.execution_failed",
+        actor: "INFRA EL routing probe",
+        resourceId: "system_health",
+        detail: { tool: "system_health", reason: "routing-probe" },
+        createdAt: "2026-08-30T10:00:00.000Z",
+      }),
+    ]);
+    expect(feed[0]?.description).toBe("AI request completed");
+    expect(feed.some((item) => item.description === "AI request failed")).toBe(false);
   });
 });

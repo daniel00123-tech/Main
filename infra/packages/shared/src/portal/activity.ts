@@ -28,9 +28,16 @@ const HIDDEN_EVENTS = new Set([
   "mcp.tools_listed",
   "mcp.health_checked",
   "connector.health_checked",
-  "mcp.execution_succeeded",
   "connector.sync_started",
 ]);
+
+function isRoutineMcpSuccess(event: AuditEvent): boolean {
+  if (event.eventType !== "mcp.execution_succeeded") return false;
+  if (PROBE_ACTOR.test(event.actor ?? "")) return true;
+  const detail = event.detail ?? {};
+  const tool = String(detail.tool ?? detail.toolName ?? event.resourceId ?? "");
+  return PROBE_TOOLS.has(tool);
+}
 
 function providerFromEvent(event: AuditEvent): string | null {
   const detail = event.detail ?? {};
@@ -66,6 +73,7 @@ function mapEvent(event: AuditEvent): CustomerActivityItem | null {
   const type = event.eventType as string;
 
   if (HIDDEN_EVENTS.has(type)) return null;
+  if (isRoutineMcpSuccess(event)) return null;
   if (
     INTERNAL_ACTOR.test(actor) &&
     type !== "connector.sync_completed" &&
@@ -195,6 +203,15 @@ function mapEvent(event: AuditEvent): CustomerActivityItem | null {
                 : "Automation updated",
       createdAt: event.createdAt,
       tone: type.includes("failed") ? "danger" : "healthy",
+    };
+  }
+  if (type === "mcp.execution_succeeded") {
+    return {
+      id: event.id,
+      title: humanActorName(actor),
+      description: "AI request completed",
+      createdAt: event.createdAt,
+      tone: "healthy",
     };
   }
   if (type === "mcp.execution_failed") {

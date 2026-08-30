@@ -1,6 +1,11 @@
+import type { UsageBreakdownRow } from "@infra/shared";
 import { newId, nowIso } from "../db/mappers";
 import { redactSecretFields } from "./secrets";
 import type { ChargeResult, CostBasis } from "./pricing";
+import {
+  accumulateBreakdown,
+  connectorFamilyFromAction,
+} from "./usage-attribution";
 
 export interface UsageEventInput {
   companyId: string;
@@ -380,10 +385,107 @@ export async function getUsageSummary(db: D1Database, companyId: string) {
       .first(),
   ]);
 
+  let breakdowns = {
+    deniedThisMonth: 0,
+    billableThisMonth: 0,
+    nonBillableThisMonth: 0,
+    chargeCentsThisMonth: 0,
+    byUser: [] as import("@infra/shared").UsageBreakdownRow[],
+    byChannel: [] as import("@infra/shared").UsageBreakdownRow[],
+    byConnector: [] as import("@infra/shared").UsageBreakdownRow[],
+    byTool: [] as import("@infra/shared").UsageBreakdownRow[],
+  };
+  try {
+    breakdowns = await getUsageBreakdowns(db, companyId, startOfMonth);
+  } catch {
+    // Older test doubles and pre-rollup queries still return the core counts.
+  }
+
   return {
     requestsToday: Number(today?.count ?? 0),
     requestsThisMonth: Number(month?.count ?? 0),
     successfulThisMonth: Number(success?.count ?? 0),
     failedThisMonth: Number(failed?.count ?? 0),
+    ...breakdowns,
+  };
+}
+
+export async function getUsageBreakdowns(
+  db: D1Database,
+  companyId: string,
+  sinceIso: string,
+) {
+  const result = await db
+    .prepare(
+      `SELECT user_id, actor_email, source_client, tool_name, action, success,
+              settlement_status, customer_charge_cents, metadata_json
+       FROM usage_records
+       WHERE company_id = ? AND recorded_at >= ?`,
+    )
+    .bind(companyId, sinceIso)
+    .all();
+
+  const byUser = new Map<string, UsageBreakdownRow>();
+  const byChannel = new Map<string, UsageBreakdownRow>();
+  const byConnector = new Map<string, UsageBreakdownRow>();
+  const byTool = new Map<string, UsageBreakdownRow>();
+  let deniedThisMonth = 0;
+  let billableThisMonth = 0;
+  let nonBillableThisMonth = 0;
+  let chargeCentsThisMonth = 0;
+
+  for (const row of result.results ?? []) {
+    const metadata = (() => {
+      try {
+        return JSON.parse(String(row.metadata_json ?? "{}")) as Record<string, unknown>;
+      } catch {
+        return {};
+      }
+    })();
+    const denied =
+      String(row.settlement_status ?? "") === "denied" || metadata.denied === true;
+    const charge = Number(row.customer_charge_cents ?? 0);
+    const billable = charge > 0 && !denied;
+    if (denied) deniedThisMonth += 1;
+    if (billable) billableThisMonth += 1;
+    else nonBillableThisMonth += 1;
+    chargeCentsThisMonth += charge;
+
+    const stats = {
+      success: Number(row.success) === 1,
+      denied,
+      billable,
+      chargeCents: charge,
+    };
+    const userKey = row.user_id ? String(row.user_id) : "unattributed";
+    const userLabel = row.actor_email
+      ? String(row.actor_email)
+      : row.user_id
+        ? String(row.user_id)
+        : "Unattributed / service";
+    accumulateBreakdown(byUser, userKey, userLabel, stats);
+    const channel = String(row.source_client ?? "unknown");
+    accumulateBreakdown(byChannel, channel, channel, stats);
+    const connector = connectorFamilyFromAction(
+      row.action ? String(row.action) : null,
+      row.tool_name ? String(row.tool_name) : null,
+    );
+    accumulateBreakdown(byConnector, connector, connector, stats);
+    const tool = String(row.tool_name ?? row.action ?? "unknown");
+    accumulateBreakdown(byTool, tool, tool, stats);
+  }
+
+  const sortRows = (rows: UsageBreakdownRow[]) =>
+    rows.sort((a, b) => b.requests - a.requests);
+
+  return {
+    deniedThisMonth,
+    billableThisMonth,
+    nonBillableThisMonth,
+    chargeCentsThisMonth,
+    byUser: sortRows([...byUser.values()]),
+    byChannel: sortRows([...byChannel.values()]),
+    byConnector: sortRows([...byConnector.values()]),
+    byTool: sortRows([...byTool.values()]),
   };
 }

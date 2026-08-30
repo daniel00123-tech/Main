@@ -69,6 +69,9 @@ export default function PortalUsagePage() {
       if (sourceFilter && item.clientKind !== sourceFilter) return false;
       if (statusFilter === "success" && item.status === "error") return false;
       if (statusFilter === "failed" && item.status !== "error") return false;
+      if (statusFilter === "denied" && !item.operations.some((op) => op.settlementStatus === "denied")) {
+        return false;
+      }
       if (!q) return true;
       return (
         item.label.toLowerCase().includes(q) ||
@@ -127,8 +130,51 @@ export default function PortalUsagePage() {
           </div>
           <p className="muted small portal-usage-summary-meta">
             {formatNumber(summary?.requestsThisMonth ?? 0)} requests · {successRate} success rate
+            {summary?.deniedThisMonth
+              ? ` · ${formatNumber(summary.deniedThisMonth)} denied`
+              : ""}
+            {summary?.billableThisMonth != null
+              ? ` · ${formatNumber(summary.billableThisMonth)} billable`
+              : ""}
           </p>
         </div>
+
+        {summary?.byUser?.length || summary?.byChannel?.length || summary?.byConnector?.length ? (
+          <div className="portal-usage-summary card" style={{ marginTop: 12 }}>
+            <div className="portal-usage-summary-grid">
+              <div>
+                <span className="muted small">By user</span>
+                <ul className="plain-list small" style={{ margin: "8px 0 0" }}>
+                  {(summary.byUser ?? []).slice(0, 6).map((row) => (
+                    <li key={row.key}>
+                      {humanActor(row.label)} · {formatNumber(row.requests)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <span className="muted small">By channel</span>
+                <ul className="plain-list small" style={{ margin: "8px 0 0" }}>
+                  {(summary.byChannel ?? []).slice(0, 6).map((row) => (
+                    <li key={row.key}>
+                      {humanClient(row.label)} · {formatNumber(row.requests)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <span className="muted small">By connector</span>
+                <ul className="plain-list small" style={{ margin: "8px 0 0" }}>
+                  {(summary.byConnector ?? []).slice(0, 6).map((row) => (
+                    <li key={row.key}>
+                      {row.label} · {formatNumber(row.requests)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <CollapsibleBlock title="Understanding your usage" summary="What these numbers mean">
           <p className="muted small" style={{ margin: 0 }}>
@@ -150,6 +196,7 @@ export default function PortalUsagePage() {
           <option value="">All results</option>
           <option value="success">Successful</option>
           <option value="failed">Failed</option>
+          <option value="denied">Denied</option>
         </Select>
       </FilterBar>
 

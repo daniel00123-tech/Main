@@ -28,6 +28,8 @@ export * from "./email/templates";
 export * from "./action-engine";
 export * from "./automation-engine";
 export * from "./permissions/role-presets";
+export * from "./permissions/elvex-rbac";
+export * from "./permissions/billable-events";
 export * from "./permissions/xero-permissions";
 export * from "./service-identity-scopes";
 export * from "./usage-labels";

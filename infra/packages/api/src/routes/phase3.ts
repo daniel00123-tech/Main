@@ -109,6 +109,13 @@ import {
   getUserCompanyRole,
   userHasCompanyAccess,
 } from "../permissions/service";
+import {
+  getAiUserConnection,
+  isAiChannelEnabled,
+  oauthIssuer,
+  revokeRefreshTokensForUser,
+  setAiChannelEnabled,
+} from "../auth/mcp-oauth";
 import { registerCommand6Routes } from "./command6";
 import { newId, nowIso } from "../db/mappers";
 
@@ -1295,42 +1302,67 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
   const executeUrl = infraGatewayExecuteUrl(c.env, c.req.url);
   const identities = await listServiceIdentities(c.env.DB, company.id);
   const identityById = new Map(identities.map((item) => [item.id, item]));
+  const viewer = c.get("user");
+  const viewerCanManage = canManageCompany(viewer, company.id);
+  const issuer = oauthIssuer(apiBase);
+  const authorizeBase = `${issuer}/oauth/authorize`;
 
   return c.json(
-    (rows.results ?? []).map((row) => {
+    await Promise.all(
+      (rows.results ?? []).map(async (row) => {
       const identityId = row.service_identity_id
         ? String(row.service_identity_id)
         : null;
       const identity = identityId ? identityById.get(identityId) : null;
       const status = String(row.status);
+      const clientType = String(row.client_type);
+      const channelEnabled = await isAiChannelEnabled(c.env.DB, company.id, clientType);
+      const userConnection = await getAiUserConnection(
+        c.env.DB,
+        company.id,
+        viewer.userId,
+        clientType,
+      );
       let tokenStatus = "Not Generated";
       if (identity?.status === "active" && identity.hasToken) tokenStatus = "Active";
       else if (identity?.status === "disabled") tokenStatus = "Revoked";
       else if (status === "connected" && !identity) tokenStatus = "Rotation Required";
+      const userConnected = String(userConnection?.status ?? "") === "connected";
 
       return {
         id: String(row.id),
         companyId: String(row.company_id),
         companyName: company.name,
-        clientType: String(row.client_type),
+        clientType,
         displayName: String(row.display_name),
-        status,
-        serviceIdentityId: identityId,
-        serviceIdentityName: identity?.name ?? null,
-        serviceIdentityStatus: identity?.status ?? null,
+        status: channelEnabled ? (userConnected ? "connected" : "ready_to_connect") : status,
+        channelEnabled,
+        authMode: "oauth",
+        viewerCanManageChannel: viewerCanManage,
+        viewerCanConnect: userHasCompanyAccess(viewer, company.id),
+        userConnectionStatus: userConnection
+          ? String(userConnection.status)
+          : "not_connected",
+        serviceIdentityId: viewerCanManage ? identityId : null,
+        serviceIdentityName: viewerCanManage ? identity?.name ?? null : null,
+        serviceIdentityStatus: viewerCanManage ? identity?.status ?? null : null,
         scopes: identity?.scopes ?? [],
-        tokenStatus,
-        tokenPrefix: identity?.tokenPrefix ?? null,
-        connectionMethod: "INFRA MCP Gateway",
+        tokenStatus: viewerCanManage ? tokenStatus : userConnected ? "Active" : "Not Generated",
+        tokenPrefix: viewerCanManage ? identity?.tokenPrefix ?? null : null,
+        connectionMethod: "INFRA OAuth",
         gatewayEndpoint: executeUrl,
         mcpEndpoint: mcpUrl,
+        authorizationServer: issuer,
+        oauthAuthorizeUrl: `${authorizeBase}?company=${encodeURIComponent(company.slug)}&channel=${encodeURIComponent(clientType)}`,
         gatewayPath: row.gateway_path ? String(row.gateway_path) : null,
         setupNotes: row.setup_notes ? String(row.setup_notes) : null,
-        lastUsedAt: identity?.lastUsedAt
-          ? String(identity.lastUsedAt)
-          : row.last_used_at
-            ? String(row.last_used_at)
-            : null,
+        lastUsedAt: userConnection?.last_used_at
+          ? String(userConnection.last_used_at)
+          : identity?.lastUsedAt
+            ? String(identity.lastUsedAt)
+            : row.last_used_at
+              ? String(row.last_used_at)
+              : null,
         lastSuccessfulRequestAt: identity?.lastUsedAt
           ? String(identity.lastUsedAt)
           : null,
@@ -1338,9 +1370,66 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
         createdAt: String(row.created_at),
         updatedAt: String(row.updated_at),
       };
-    }),
+      }),
+    ),
   );
 });
+
+phase3.post(
+  "/api/companies/:slug/ai-connections/:clientType/enable",
+  requireAuth,
+  async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+    const clientType = c.req.param("clientType");
+    if (clientType !== "chatgpt" && clientType !== "claude") {
+      return c.json({ error: "Unsupported AI client" }, 400);
+    }
+    await ensureDefaultAiConnections(c.env.DB, company.id);
+    await setAiChannelEnabled(c.env.DB, company.id, clientType, true);
+    await c.env.DB.prepare(
+      `UPDATE ai_client_connections SET status = 'ready_to_connect', updated_at = ?
+       WHERE company_id = ? AND client_type = ? AND status != 'connected'`,
+    )
+      .bind(nowIso(), company.id, clientType)
+      .run();
+    await recordAuditEvent(c.env.DB, {
+      companyId: company.id,
+      eventType: "ai_connection.enabled",
+      actor: c.get("user").email,
+      resourceType: "ai_connection",
+      resourceId: clientType,
+      detail: { stage: "ai_channel.enabled" },
+    });
+    return c.json({ ok: true, clientType, channelEnabled: true });
+  },
+);
+
+phase3.post(
+  "/api/companies/:slug/ai-connections/:clientType/disable",
+  requireAuth,
+  async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+    const clientType = c.req.param("clientType");
+    await setAiChannelEnabled(c.env.DB, company.id, clientType, false);
+    await recordAuditEvent(c.env.DB, {
+      companyId: company.id,
+      eventType: "ai_connection.disabled",
+      actor: c.get("user").email,
+      resourceType: "ai_connection",
+      resourceId: clientType,
+      detail: { stage: "ai_channel.disabled" },
+    });
+    return c.json({ ok: true, clientType, channelEnabled: false });
+  },
+);
 
 phase3.post(
   "/api/companies/:slug/ai-connections/:clientType/connect",
@@ -1348,8 +1437,8 @@ phase3.post(
   async (c) => {
     const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
     if (!company) return c.json({ error: "Company not found" }, 404);
-    if (!canManageCompany(c.get("user"), company.id)) {
-      return c.json({ error: "Company administrator access required" }, 403);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access to this company is denied" }, 403);
     }
 
     const clientType = c.req.param("clientType");
@@ -1360,11 +1449,50 @@ phase3.post(
       return c.json({ error: "Unsupported AI client" }, 400);
     }
 
+    const body = (await c.req.json().catch(() => ({}))) as { mode?: string };
+    const mode = body.mode === "service_token" ? "service_token" : "oauth";
     await ensureDefaultAiConnections(c.env.DB, company.id);
-
-    const mcps = await listMcpEnvironments(c.env.DB, company.id);
     const mcpEndpoint = infraMcpGatewayUrl(c.env, c.req.url);
     const gatewayEndpoint = infraGatewayExecuteUrl(c.env, c.req.url);
+    const issuer = oauthIssuer(infraPublicApiBase(c.env, c.req.url));
+
+    if (mode === "oauth") {
+      const enabled = await isAiChannelEnabled(c.env.DB, company.id, clientType);
+      if (!enabled) {
+        return c.json(
+          {
+            error:
+              "ChatGPT is not enabled for this company yet. Ask a company administrator to enable it.",
+            code: "channel_not_enabled",
+          },
+          403,
+        );
+      }
+      return c.json({
+        clientType,
+        status: "ready_to_connect",
+        authMode: "oauth",
+        token: null,
+        gatewayEndpoint,
+        mcpEndpoint,
+        authorizationServer: issuer,
+        oauthAuthorizeUrl: `${issuer}/oauth/authorize?company=${encodeURIComponent(company.slug)}&channel=${encodeURIComponent(clientType)}`,
+        setup: {
+          preferred: "In ChatGPT, add an MCP app using OAuth. INFRA is the authorization authority. Do not use a bearer token or Microsoft login.",
+          auth: "OAuth",
+          mcpUrl: mcpEndpoint,
+          authentication: "oauth",
+          identityProvider: "infra",
+        },
+        warning: null,
+      });
+    }
+
+    if (!canManageCompany(c.get("user"), company.id)) {
+      return c.json({ error: "Company administrator access required" }, 403);
+    }
+
+    const mcps = await listMcpEnvironments(c.env.DB, company.id);
 
     // Disable any previous identity for this AI connection before issuing a new token.
     const existing = await c.env.DB.prepare(
@@ -1457,6 +1585,29 @@ phase3.post(
 );
 
 phase3.post(
+  "/api/companies/:slug/ai-connections/:clientType/revoke-self",
+  requireAuth,
+  async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access to this company is denied" }, 403);
+    }
+    const clientType = c.req.param("clientType");
+    const user = c.get("user");
+    await revokeRefreshTokensForUser(c.env.DB, user.userId, company.id);
+    await c.env.DB.prepare(
+      `UPDATE ai_user_connections
+       SET status = 'revoked', updated_at = ?
+       WHERE company_id = ? AND user_id = ? AND client_type = ?`,
+    )
+      .bind(nowIso(), company.id, user.userId, clientType)
+      .run();
+    return c.json({ ok: true, status: "revoked", clientType, scope: "self" });
+  },
+);
+
+phase3.post(
   "/api/companies/:slug/ai-connections/:clientType/revoke",
   requireAuth,
   async (c) => {
@@ -1507,8 +1658,8 @@ phase3.post(
   async (c) => {
     const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
     if (!company) return c.json({ error: "Company not found" }, 404);
-    if (!canManageCompany(c.get("user"), company.id)) {
-      return c.json({ error: "Company administrator access required" }, 403);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access to this company is denied" }, 403);
     }
     const clientType = c.req.param("clientType");
     const row = await c.env.DB.prepare(
@@ -1518,42 +1669,8 @@ phase3.post(
       .first();
     if (!row) return c.json({ error: "AI connection not found" }, 404);
 
-    const identityId = row.service_identity_id
-      ? String(row.service_identity_id)
-      : null;
-    if (!identityId) {
-      return c.json({
-        status: "FAILED",
-        message: "No active service identity — generate a token first",
-        checks: {
-          authentication: "failed",
-          tenantResolution: "skipped",
-          wallet: "skipped",
-          gateway: "skipped",
-          mcp: "skipped",
-          knowledgeSearch: "skipped",
-        },
-      });
-    }
-
-    const identity = await getServiceIdentity(c.env.DB, identityId);
-    if (!identity || identity.status !== "active") {
-      return c.json({
-        status: "FAILED",
-        message: "Service identity is missing or revoked",
-        checks: {
-          authentication: "failed",
-          tenantResolution: "skipped",
-          wallet: "skipped",
-          gateway: "skipped",
-          mcp: "skipped",
-          knowledgeSearch: "skipped",
-        },
-      });
-    }
-
     const health = await executeGatewayRequest(c.env, {
-      actor: { type: "service", identity },
+      actor: { type: "user", user: c.get("user"), channel: "portal" },
       companyId: company.id,
       toolName: "system_health",
       sourceClient: `${clientType}-test`,
@@ -1585,7 +1702,7 @@ phase3.post(
           ? "Authentication, tenant resolution, gateway, and MCP health succeeded"
           : health.error ?? "Connection test failed",
       checks: {
-        authentication: identity.status === "active" ? "passed" : "failed",
+        authentication: "passed",
         tenantResolution: "passed",
         permissions: "passed",
         wallet: health.status === 402 ? "failed" : "passed",

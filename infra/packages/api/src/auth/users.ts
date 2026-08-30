@@ -176,6 +176,7 @@ export async function toSessionUser(
         role: membership.role,
         customRoleId: membership.customRoleId,
         teamId: membership.teamId,
+        membershipId: membership.id,
       }),
     ),
     credentialsVersion: credentialsVersionFromHash(user.passwordHash),
