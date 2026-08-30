@@ -19,7 +19,8 @@ export CI=1
 
 echo "==> Installing infra workspace dependencies"
 cd "$INFRA_DIR"
-npm install
+# Prefer the lockfile cache. Do not download Caddington production artifacts.
+npm install --prefer-offline --no-audit --no-fund
 
 echo "==> Ensuring local dev vars (packages/api/.dev.vars)"
 if [ ! -f "$API_DIR/.dev.vars" ]; then
