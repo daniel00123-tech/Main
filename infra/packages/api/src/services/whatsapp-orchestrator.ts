@@ -21,6 +21,11 @@ import {
   type WhatsAppTurn,
 } from "./whatsapp-context";
 import {
+  compressDocumentAnswer,
+  compressSearchAnswer,
+  compressToolResult,
+} from "./whatsapp-compress";
+import {
   acknowledgementMessage,
   conversationalReply,
   progressMessage,
@@ -46,6 +51,7 @@ import {
   softenSearchQuery,
 } from "./whatsapp-intent";
 import {
+  ACK_AFTER_MS,
   createWhatsAppLatencyMarks,
   HARD_SILENCE_MS,
   PROGRESS_AFTER_MS,
@@ -56,7 +62,8 @@ import { sendWhatsAppText, sendWhatsAppTypingIndicator, type WhatsAppSendResult 
 export const WHATSAPP_AI_PROVIDER = "infra-gateway";
 export const WHATSAPP_AI_MODEL = "company-mcp-knowledge";
 
-const FETCH_INTENT = /\b(find|open|read|what does|what is|tell me what|relates? to|summarise|summarize)\b/i;
+const FETCH_INTENT =
+  /\b(find|open|read|what does|what is|tell me what|relates? to|summarise|summarize|full detail|give me the full)\b/i;
 const FINANCIAL_READ = /\b(sales|revenue|profit|p&l|invoices?|aged|balance|contacts?)\b/i;
 
 const ALLOWED_WHATSAPP_TOOLS = new Set([
@@ -366,7 +373,9 @@ export async function handleWhatsAppInboundMessage(
   const searchText = focusSearchTerms(softenSearchQuery(text));
   const lastBusinessUser = [...priorTurns].reverse().find((turn) => turn.role === "user" && turn.text.trim().length > 8);
   const query =
-    intent === "clarification" && /summarise that|summarize that|more detail/i.test(text) && lastBusinessUser
+    intent === "clarification" &&
+    /summarise (that|it|this)|summarize (that|it|this)|more detail|full detail|give me the full/i.test(text) &&
+    lastBusinessUser
       ? focusSearchTerms(softenSearchQuery(lastBusinessUser.text))
       : searchQueryFromContext(priorTurns, searchText, intent === "clarification");
   let acknowledgementSent = false;
@@ -376,24 +385,32 @@ export async function handleWhatsAppInboundMessage(
 
   if (needsToolWork(intent)) {
     void sendWhatsAppTypingIndicator(env, { messageId: item.wamid });
-    const ack = acknowledgementMessage(item.wamid + text);
-    const ackSend = await maybeSendReply(env, sender, ack);
-    acknowledgementSent = ackSend.ok;
-    marks.acknowledgementSentAt = Date.now();
-    await recordWhatsAppUxUsage(env, {
-      companyId: companyDecision.companyId,
-      userId: identity.user.id,
-      actorEmail: identity.user.email,
-      interactionId,
-      action: "whatsapp.ack",
-      durationMs: summariseWhatsAppLatency(marks).acknowledgementMs ?? 0,
-      metadata: { channel: "whatsapp", intent, acknowledgementSent, kind: "ack" },
-    });
   }
+
+  const ackTimer = needsToolWork(intent)
+    ? setTimeout(() => {
+        if (finished || acknowledgementSent) return;
+        const ack = acknowledgementMessage(item.wamid + text);
+        void maybeSendReply(env, sender, ack).then((ackSend) => {
+          if (finished || acknowledgementSent) return;
+          acknowledgementSent = ackSend.ok;
+          marks.acknowledgementSentAt = Date.now();
+          void recordWhatsAppUxUsage(env, {
+            companyId: companyDecision.companyId,
+            userId: identity.user.id,
+            actorEmail: identity.user.email,
+            interactionId,
+            action: "whatsapp.ack",
+            durationMs: summariseWhatsAppLatency(marks).acknowledgementMs ?? 0,
+            metadata: { channel: "whatsapp", intent, acknowledgementSent, kind: "ack" },
+          });
+        });
+      }, ACK_AFTER_MS)
+    : null;
 
   const progressTimer = needsToolWork(intent)
     ? setTimeout(() => {
-        if (finished || progressSent) return;
+        if (finished || progressSent || !acknowledgementSent) return;
         progressSent = true;
         void maybeSendReply(env, sender, progressMessage(item.wamid)).then((sent) => {
           if (sent.ok) {
@@ -432,6 +449,7 @@ export async function handleWhatsAppInboundMessage(
     marks.toolCompletedAt = Date.now();
     marks.finalGeneratedAt = Date.now();
     finished = true;
+    if (ackTimer) clearTimeout(ackTimer);
     if (progressTimer) clearTimeout(progressTimer);
     if (fallbackTimer) clearTimeout(fallbackTimer);
 
@@ -499,6 +517,7 @@ export async function handleWhatsAppInboundMessage(
     };
   } catch {
     finished = true;
+    if (ackTimer) clearTimeout(ackTimer);
     if (progressTimer) clearTimeout(progressTimer);
     if (fallbackTimer) clearTimeout(fallbackTimer);
     const reply = aiFailureWhatsAppMessage();
@@ -577,7 +596,7 @@ async function answerWithCompanyMcp(
         });
         if (xero.status === 200) {
           return {
-            reply: formatWhatsAppReply(summariseToolResult(xero.result, input.originalText)),
+            reply: formatWhatsAppReply(compressToolResult(xero.result, input.originalText)),
             toolName: xeroTool,
             outcome: "answered",
             latencyMs: Date.now() - started,
@@ -605,7 +624,7 @@ async function answerWithCompanyMcp(
   let body = formatSearchHits(hits, input.originalText);
 
   if (
-    (FETCH_INTENT.test(input.originalText) || FETCH_INTENT.test(input.query) || /summarise|summarize|more detail/i.test(input.originalText)) &&
+    (FETCH_INTENT.test(input.originalText) || FETCH_INTENT.test(input.query) || /summarise|summarize|more detail|full detail/i.test(input.originalText)) &&
     hits[0]?.id &&
     ALLOWED_WHATSAPP_TOOLS.has(COMPANY_KNOWLEDGE_READ_TOOL)
   ) {
@@ -620,11 +639,11 @@ async function answerWithCompanyMcp(
     });
     if (fetched.status === 200) {
       const doc = toStandardFetchPayload(fetched.result, hits[0].id);
-      const raw = doc.text || hits[0].snippet || "This document is in your connected business systems.";
-      const bodyText = /__EMPTY/.test(raw)
-        ? `${doc.title}\n\nThis looks like a spreadsheet. I can give you the useful rows if you want.`
-        : raw;
-      const excerpt = formatWhatsAppReply(`${doc.title}\n\n${bodyText}`);
+      const raw = doc.text || hits[0].snippet || "";
+      const title = doc.title && doc.title !== "Untitled document" ? doc.title : hits[0].title;
+      const excerpt = /__EMPTY/.test(raw)
+        ? `${title}\n\nThis looks like a spreadsheet. I can give you the useful rows if you want.`
+        : compressDocumentAnswer({ title, text: raw, question: input.originalText });
       return {
         reply: excerpt,
         toolName: COMPANY_KNOWLEDGE_READ_TOOL,
@@ -646,7 +665,7 @@ async function answerWithCompanyMcp(
       waitUntil: input.waitUntil,
     });
     if (xero.status === 200) {
-      body = formatWhatsAppReply(summariseToolResult(xero.result, input.originalText));
+      body = formatWhatsAppReply(compressToolResult(xero.result, input.originalText));
       return { reply: body, toolName: xeroTool, outcome: "answered", latencyMs: Date.now() - started };
     }
   }
@@ -682,28 +701,11 @@ function formatSearchHits(
   if (!hits.length) {
     return noResultWhatsAppMessage();
   }
-  const top = hits[0]!;
-  const extras = hits.slice(1, 3).map((hit) => `• ${hit.title}`);
-  const head = top.snippet
-    ? `${top.title}\n\n${top.snippet}`
-    : `${top.title} looks like the closest match for “${question.slice(0, 80)}”.`;
-  return extras.length ? `${head}\n\nAlso found:\n${extras.join("\n")}` : head;
-}
-
-function summariseToolResult(result: unknown, question: string): string {
-  if (result == null) {
-    return `I looked this up for “${question.slice(0, 80)}” but did not get a usable summary.`;
-  }
-  if (typeof result === "string") return result;
-  if (typeof result === "object") {
-    const record = result as Record<string, unknown>;
-    const summary =
-      (typeof record.summary === "string" && record.summary) ||
-      (typeof record.text === "string" && record.text) ||
-      (typeof record.message === "string" && record.message);
-    if (summary) return summary;
-  }
-  return "I found matching business data. Ask a more specific follow-up if you need a narrower figure.";
+  return compressSearchAnswer({
+    title: hits[0]!.title,
+    snippet: hits[0]!.snippet,
+    question,
+  });
 }
 
 async function maybeSendReply(

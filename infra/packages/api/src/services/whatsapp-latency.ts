@@ -1,4 +1,5 @@
 export const ACK_TARGET_MS = 2_000;
+export const ACK_AFTER_MS = 3_000;
 export const SIMPLE_CONVERSATION_TARGET_MS = 3_000;
 export const SIMPLE_READ_TARGET_MS = 20_000;
 export const MULTI_TOOL_TARGET_MS = 45_000;

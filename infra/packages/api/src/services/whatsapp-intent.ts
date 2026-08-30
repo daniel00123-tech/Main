@@ -34,7 +34,7 @@ const AUTOMATION = /\b(automations?|scheduled (report|email)|run now)\b/i;
 const SEARCH =
   /\b(find|search|look(?:ing)? (for|up)|open|read|show|fetch|summarise|summarize|what does|what is|tell me|relates? to|document|doc|file|email|sharepoint|onedrive|coal|rental|arnold)\b/i;
 const CLARIFICATION =
-  /^(what about last|what about this|and (last|this)|that one|summarise that|summarize that|more detail|the previous|last month|this month)\b/i;
+  /^(what about last|what about this|and (last|this)|that one|summarise (that|it|this)|summarize (that|it|this)|more detail|full detail|give me the full|the previous|last month|this month)\b/i;
 
 export function looksLikeWriteIntent(text: string): boolean {
   return WRITE_INTENT.test(text);

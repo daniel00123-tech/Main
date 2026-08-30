@@ -3,6 +3,11 @@ import type { Env } from "../env";
 import { UNKNOWN_WHATSAPP_ACCOUNT_MESSAGE } from "./phone";
 import { INFRA_WHATSAPP_BUSINESS_ACCOUNT_ID, INFRA_WHATSAPP_PHONE_NUMBER_ID } from "./whatsapp-assets";
 import { capabilityReplyForCompany, formatCapabilityReply } from "./whatsapp-capabilities";
+import {
+  compressDocumentAnswer,
+  looksLikeRawToolDump,
+  wantsFullDetail,
+} from "./whatsapp-compress";
 import { acknowledgementMessage, conversationalReply, progressMessage, STILL_WORKING_MESSAGE } from "./whatsapp-conversation";
 import { classifyWhatsAppIntent, focusSearchTerms, needsToolWork, softenSearchQuery } from "./whatsapp-intent";
 import { createWhatsAppLatencyMarks, summariseWhatsAppLatency } from "./whatsapp-latency";
@@ -138,6 +143,8 @@ describe("WhatsApp intent and typo handling", () => {
     expect(classifyWhatsAppIntent("Can you find the Coal Search document")).toBe("knowledge_search");
     expect(classifyWhatsAppIntent("create an invoice")).toBe("write_action");
     expect(classifyWhatsAppIntent("summarise that", { hasPriorTurns: true })).toBe("clarification");
+    expect(classifyWhatsAppIntent("summarise it", { hasPriorTurns: true })).toBe("clarification");
+    expect(classifyWhatsAppIntent("give me the full detail", { hasPriorTurns: true })).toBe("clarification");
     expect(classifyWhatsAppIntent("find cold serch doc", { hasPriorTurns: true })).toBe("knowledge_search");
     expect(classifyWhatsAppIntent("What about the rental information in Arnold Crescent?", { hasPriorTurns: true })).toBe(
       "knowledge_search",
@@ -216,18 +223,16 @@ describe("WhatsApp UX orchestration", () => {
     },
   );
 
-  it("acks a knowledge query then answers without duplicate ack", async () => {
+  it("skips acknowledgement when the final answer is ready quickly", async () => {
     executeGatewayRequest.mockResolvedValue({
       status: 200,
       result: { results: [{ id: "doc_coal", title: "Coal Search", snippet: "Mineral rights search." }] },
     });
     const result = await handleWhatsAppInboundMessage(env(), inbound("Find the Coal Search document"));
-    expect(result.acknowledgementSent).toBe(true);
-    expect(sendWhatsAppTextMock.mock.calls.length).toBeGreaterThanOrEqual(2);
-    const bodies = sendWhatsAppTextMock.mock.calls.map((call) => call[1]?.body as string);
-    expect(bodies.some((body) => /checking|looking|On it/i.test(body))).toBe(true);
-    expect(bodies.filter((body) => /checking|looking|On it/i.test(body))).toHaveLength(1);
-    expect(result.publicReply).toMatch(/Coal Search|Mineral/i);
+    expect(result.acknowledgementSent).not.toBe(true);
+    expect(sendWhatsAppTextMock).toHaveBeenCalledTimes(1);
+    expect(result.publicReply).toMatch(/Coal Search/i);
+    expect(result.publicReply).not.toMatch(/Got it|On it|Understood/i);
   });
 
   it("softens a typo search before the gateway", async () => {
@@ -379,8 +384,8 @@ describe("WhatsApp UX orchestration", () => {
     });
     const result = await handleWhatsAppInboundMessage(env(), inbound("Find the Coal Search document"));
     const bodies = sendWhatsAppTextMock.mock.calls.map((call) => String(call[1]?.body ?? ""));
-    expect(result.acknowledgementSent).toBe(true);
-    expect(sendWhatsAppTextMock).toHaveBeenCalledTimes(2);
+    expect(result.acknowledgementSent).not.toBe(true);
+    expect(sendWhatsAppTextMock).toHaveBeenCalledTimes(1);
     expect(bodies.some((body) => body === STILL_WORKING_MESSAGE)).toBe(false);
     expect(bodies.filter((body) => /found the relevant source|pulling the details together/i.test(body))).toHaveLength(0);
   });
@@ -468,5 +473,104 @@ describe("WhatsApp capability lookup", () => {
     const reply = await capabilityReplyForCompany(env(), "co_a");
     expect(reply).toMatch(/emails|Xero/i);
     expect(reply).not.toMatch(/Caddington/i);
+  });
+});
+
+const COAL_RAW = `# Coal Search.pdf
+Confirmation | Internet Payment Gateway
+Thank you, Your payment was successful.
+Amount £ 49.92 GBP
+Order id: CAD021/01 coal
+https://www.ipg-online.com/connect/payment/confirmation/success;jsessionid=ABC
+Also found:
+• Copy of Search-pimlico.xlsx
+\`\`\`json
+{"id":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"}
+\`\`\`
+`;
+
+describe("WhatsApp response compression", () => {
+  beforeEach(() => {
+    executeGatewayRequest.mockReset();
+    sendWhatsAppTextMock.mockReset().mockResolvedValue({
+      ok: true,
+      kind: "customer_service_reply",
+      messageId: "wamid.OUT",
+      attempts: 1,
+    });
+    recordUsageEvent.mockReset().mockResolvedValue({ id: "usage_1" });
+    getUserByMobileE164.mockResolvedValue({
+      id: "user_1",
+      email: "sam@example.com",
+      displayName: "Sam",
+      status: "active",
+    });
+    toSessionUser.mockResolvedValue({
+      userId: "user_1",
+      email: "sam@example.com",
+      displayName: "Sam",
+      isPlatformAdmin: false,
+      memberships: [{ companyId: "co_a", role: "admin", customRoleId: null, teamId: null }],
+      credentialsVersion: 1,
+    });
+  });
+
+  it("keeps Hi to one short greeting without a capability dump", async () => {
+    const result = await handleWhatsAppInboundMessage(env(), inbound("Hi"));
+    expect(executeGatewayRequest).not.toHaveBeenCalled();
+    expect(result.publicReply).toMatch(/Infra|help/i);
+    expect(result.publicReply).not.toMatch(/Xero|SharePoint|OneDrive|connector/i);
+    expect((result.publicReply ?? "").split(/[.!?]/).filter((part) => part.trim()).length).toBeLessThanOrEqual(2);
+  });
+
+  it("compresses Find the Coal Search document and tell me what it relates to", () => {
+    const reply = compressDocumentAnswer({
+      title: "Coal Search.pdf",
+      text: COAL_RAW,
+      question: "Find the Coal Search document and tell me what it relates to",
+    });
+    expect(reply).toMatch(/Coal Search/i);
+    expect(reply).toMatch(/relates to a coal-search|coal search/i);
+    expect(reply).toMatch(/Want me to summarise the full document/i);
+    expect(reply).not.toMatch(/Also found|jsessionid|```|aaaaaaaa-bbbb/i);
+    expect(reply.length).toBeLessThan(520);
+    expect(looksLikeRawToolDump(reply)).toBe(false);
+  });
+
+  it("compresses the typo variant to the same concise coal-search answer", async () => {
+    executeGatewayRequest.mockImplementation(async (_env: unknown, input: { toolName?: string }) => {
+      if (String(input.toolName ?? "").includes("document")) {
+        return { status: 200, result: { title: "Coal Search.pdf", text: COAL_RAW } };
+      }
+      return { status: 200, result: { results: [{ id: "coal", title: "Coal Search.pdf", snippet: "coal search payment" }] } };
+    });
+    const result = await handleWhatsAppInboundMessage(env(), inbound("find cold serch doc"));
+    expect(result.publicReply).toMatch(/Coal Search/i);
+    expect(result.publicReply).not.toMatch(/Also found|jsessionid|Payment Gateway/i);
+    expect((result.publicReply ?? "").length).toBeLessThan(520);
+  });
+
+  it("summarise it stays concise and does not dump the source", () => {
+    const reply = compressDocumentAnswer({
+      title: "Coal Search.pdf",
+      text: COAL_RAW,
+      question: "summarise it",
+    });
+    expect(reply).toMatch(/Coal Search/i);
+    expect(reply).not.toMatch(/Want me to summarise the full document/i);
+    expect(reply).not.toMatch(/Also found|jsessionid/i);
+    expect(reply.length).toBeLessThan(520);
+  });
+
+  it("give me the full detail may be longer but still blocks raw tool output", () => {
+    expect(wantsFullDetail("give me the full detail")).toBe(true);
+    const reply = compressDocumentAnswer({
+      title: "Coal Search.pdf",
+      text: COAL_RAW,
+      question: "give me the full detail",
+    });
+    expect(reply.length).toBeGreaterThan(80);
+    expect(reply).not.toMatch(/Also found|jsessionid|```|aaaaaaaa-bbbb/i);
+    expect(looksLikeRawToolDump(reply)).toBe(false);
   });
 });

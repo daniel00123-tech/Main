@@ -5,8 +5,8 @@ export const WHATSAPP_ENGAGEMENT_DISABLED = true;
 
 const GREETING_REPLIES = [
   "Hi — I’m Infra. What can I help you with today?",
-  "Hello — I’m Infra. Ask me what you’d like to look up.",
-  "Hi. I’m Infra, your business assistant. What do you need?",
+  "Hello — I’m Infra. What do you need?",
+  "Hi. What can I help you with?",
 ];
 
 const THANKS_REPLIES = [
@@ -53,7 +53,6 @@ export const ACK_VARIANTS = [
 
 export const PROGRESS_VARIANTS = [
   "I’ve found the relevant source — I’m pulling the details together now.",
-  "I’m checking your connected systems now.",
 ];
 
 export const STILL_WORKING_MESSAGE =
