@@ -5,7 +5,14 @@ import { isWhatsAppTerminalState, stampWhatsAppLifecycle } from "./whatsapp-life
 import { HARD_TIMEOUT_MS, STUCK_INCIDENT_MS } from "./whatsapp-latency";
 import { STUCK_RECOVERY_REPLY } from "./whatsapp-realtime";
 import { sendWhatsAppText } from "./whatsapp-send";
-import { WATCHDOG_DELAY_COPY, WATCHDOG_PROGRESS_COPY, WATCHDOG_TIMEOUT_COPY } from "./whatsapp-watchdog";
+import {
+  evaluateWatchdogProgressGate,
+  latestTimestampMs,
+  WATCHDOG_DELAY_COPY,
+  WATCHDOG_PROGRESS_COPY,
+  WATCHDOG_TIMEOUT_COPY,
+} from "./whatsapp-watchdog";
+import { PROGRESS_MIN_INTERVAL_MS } from "./whatsapp-latency";
 import { ensureWhatsAppInboundTable } from "./whatsapp-webhook";
 
 const RECOVERY_COPY = STUCK_RECOVERY_REPLY;
@@ -250,7 +257,17 @@ export async function applyWhatsAppWatchdogStage(
   if (input.stage === "t15") {
     await stampWhatsAppLifecycle(env, wamid, { watchdog15sAt: now });
     if (!visible) return { acted: false, reason: "not_acked" };
-    if (row?.progress_sent_at) return { acted: false, reason: "progress_already_sent" };
+    const blocked = await conversationBlocksProgress(env, sender, wamid, Date.now(), input.receivedAt);
+    if (blocked) return { acted: false, reason: blocked };
+    const gate = evaluateWatchdogProgressGate({
+      terminalState: row?.terminal_state,
+      replySentAt: row?.reply_sent_at,
+      acknowledgementSentAt: row?.acknowledgement_sent_at,
+      firstVisibleAt: row?.first_visible_at,
+      progressSentAt: row?.progress_sent_at,
+      delaySentAt: row?.delay_sent_at,
+    });
+    if (!gate.allow) return { acted: false, reason: gate.reason };
     if (sender && outboundAiEnabled(env)) {
       await sendWhatsAppText(env, {
         toE164: sender,
@@ -273,7 +290,17 @@ export async function applyWhatsAppWatchdogStage(
         reason: result.reason,
       }));
     }
-    if (row?.delay_sent_at) return { acted: false, reason: "delay_already_sent" };
+    const blocked = await conversationBlocksProgress(env, sender, wamid, Date.now(), input.receivedAt);
+    if (blocked) return { acted: false, reason: blocked };
+    const gate = evaluateWatchdogProgressGate({
+      terminalState: row?.terminal_state,
+      replySentAt: row?.reply_sent_at,
+      acknowledgementSentAt: row?.acknowledgement_sent_at,
+      firstVisibleAt: row?.first_visible_at,
+      progressSentAt: row?.progress_sent_at,
+      delaySentAt: row?.delay_sent_at,
+    });
+    if (!gate.allow) return { acted: false, reason: gate.reason };
     if (sender && outboundAiEnabled(env)) {
       await sendWhatsAppText(env, {
         toE164: sender,
@@ -339,6 +366,53 @@ async function sleepThenRecover(env: Env, wamid: string): Promise<void> {
     setTimeout(resolve, STUCK_INCIDENT_MS + 1_000);
   });
   await recoverStuckWhatsAppTurn(env, wamid).catch(() => undefined);
+}
+
+async function conversationBlocksProgress(
+  env: Env,
+  sender: string | null,
+  wamid: string,
+  nowMs: number,
+  receivedAt?: string,
+): Promise<string | null> {
+  if (!sender) return null;
+  const selfReceived = receivedAt ? Date.parse(receivedAt) : 0;
+  try {
+    const result = await env.DB.prepare(
+      `SELECT wamid, reply_sent_at, terminal_state, progress_sent_at, delay_sent_at,
+              acknowledgement_sent_at, first_visible_at, received_at
+       FROM whatsapp_inbound_events
+       WHERE sender_e164 = ? AND received_at >= ?
+       ORDER BY received_at DESC
+       LIMIT 8`,
+    )
+      .bind(sender, new Date(nowMs - 180_000).toISOString())
+      .all<{
+        wamid: string | null;
+        reply_sent_at: string | null;
+        terminal_state: string | null;
+        progress_sent_at: string | null;
+        delay_sent_at: string | null;
+        acknowledgement_sent_at: string | null;
+        first_visible_at: string | null;
+        received_at: string | null;
+      }>();
+    for (const other of result.results ?? []) {
+      if (!other.wamid || other.wamid === wamid) continue;
+      const otherReceived = other.received_at ? Date.parse(other.received_at) : 0;
+      const newer = Number.isFinite(otherReceived) && Number.isFinite(selfReceived) && otherReceived > selfReceived;
+      if (newer && (other.reply_sent_at || (other.terminal_state && String(other.terminal_state).trim()))) {
+        return "superseded_by_newer_result";
+      }
+      const last = latestTimestampMs(other.progress_sent_at, other.delay_sent_at);
+      if (last != null && nowMs - last < PROGRESS_MIN_INTERVAL_MS) {
+        return "conversation_progress_interval";
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function senderFromPayload(raw: string | null | undefined): string | null {

@@ -79,11 +79,27 @@ function compactDocument(doc: WhatsAppDocumentEntity): WhatsAppDocumentEntity {
 }
 
 export function extractAmount(text: string): string | null {
-  return text.match(/£\s?[\d,]+(?:\.\d{2})?(?:\s*GBP)?/i)?.[0]?.replace(/\s+/g, " ") ?? null;
+  if (!/\b(invoice|payment confirmation|order id|paid|amount due|total due|payment was successful)\b/i.test(text)) {
+    return null;
+  }
+  for (const match of text.matchAll(/£\s?[\d,]+(?:\.\d{2})?(?:\s*GBP)?/gi)) {
+    const idx = match.index ?? 0;
+    const window = text.slice(Math.max(0, idx - 48), idx + match[0].length + 24);
+    if (/\b(amount|total|paid|payment|invoice|order id|fee)\b/i.test(window)) {
+      return match[0].replace(/\s+/g, " ");
+    }
+  }
+  return null;
 }
 
 export function extractReference(text: string): string | null {
-  return text.match(/\b(?:order id|ref(?:\.? no)?\.?)\s*[:.]?\s*([A-Z0-9][A-Z0-9/_-]{3,})/i)?.[1] ?? null;
+  const match = text.match(
+    /\b(?:order[ -]?id|ref(?:erence)?(?:\s*(?:no\.?|number|#))?)\s*[:.#-]\s*([A-Z0-9][A-Z0-9/_-]{2,})\b/i,
+  );
+  const token = match?.[1]?.trim() ?? "";
+  if (!token || /^(references?|erences|email|mobile|phone|amount)$/i.test(token)) return null;
+  if (!/\d/.test(token) && !/^[A-Z]{2,}[-/][A-Z0-9]+$/i.test(token)) return null;
+  return token;
 }
 
 export function documentEntityFromHit(input: {

@@ -89,9 +89,8 @@ describe("WhatsApp V4.4 timeouts and search budget", () => {
     expect(FETCH_TOP_LIMIT).toBeGreaterThanOrEqual(1);
     expect(FETCH_TOP_LIMIT).toBeLessThanOrEqual(3);
     expect(HARD_TIMEOUT_MS).toBe(60_000);
-    expect(PROGRESS_AFTER_MS).toBeGreaterThanOrEqual(10_000);
-    expect(PROGRESS_AFTER_MS).toBeLessThanOrEqual(15_000);
-    expect(DELAY_NOTICE_MS).toBe(30_000);
+    expect(PROGRESS_AFTER_MS).toBeGreaterThanOrEqual(60_000);
+    expect(DELAY_NOTICE_MS).toBeGreaterThanOrEqual(60_000);
   });
 
   it("withBoundedTimeout resolves instead of hanging", async () => {
@@ -103,7 +102,7 @@ describe("WhatsApp V4.4 timeouts and search budget", () => {
 });
 
 describe("WhatsApp V4.4 independent post-ack watchdog", () => {
-  it("sends truthful progress at t15 when ACK exists and turn is not terminal", async () => {
+  it("does not send a progress line at t15 when ACK was less than a minute ago", async () => {
     const sent: string[] = [];
     const env = {
       WHATSAPP_ACCESS_TOKEN: "token",
@@ -146,7 +145,8 @@ describe("WhatsApp V4.4 independent post-ack watchdog", () => {
       stage: "t15",
       receivedAt: new Date(Date.now() - 16_000).toISOString(),
     });
-    expect(result.reason === "t15_progress" || result.reason === "progress_already_sent").toBe(true);
+    expect(result.acted).toBe(false);
+    expect(result.reason).toBe("too_soon_after_ack");
     expect(WATCHDOG_PROGRESS_COPY).not.toMatch(/found \d+ files|Vectorize|MCP|D1/i);
     void sent;
   });
