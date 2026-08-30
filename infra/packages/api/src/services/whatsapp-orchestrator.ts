@@ -39,6 +39,7 @@ import {
 import { resolveWhatsAppIdentity } from "./whatsapp-identity";
 import {
   classifyWhatsAppIntent,
+  focusSearchTerms,
   isCheapConversationalIntent,
   looksLikeWriteIntent as looksLikeWriteIntentFromClassifier,
   needsToolWork,
@@ -362,8 +363,12 @@ export async function handleWhatsAppInboundMessage(
 
   const sessionUser = await toSessionUser(env.DB, dbUser);
   const interactionId = newId("int");
-  const searchText = softenSearchQuery(text);
-  const query = searchQueryFromContext(priorTurns, searchText, intent === "clarification");
+  const searchText = focusSearchTerms(softenSearchQuery(text));
+  const lastBusinessUser = [...priorTurns].reverse().find((turn) => turn.role === "user" && turn.text.trim().length > 8);
+  const query =
+    intent === "clarification" && /summarise that|summarize that|more detail/i.test(text) && lastBusinessUser
+      ? focusSearchTerms(softenSearchQuery(lastBusinessUser.text))
+      : searchQueryFromContext(priorTurns, searchText, intent === "clarification");
   let acknowledgementSent = false;
   let progressSent = false;
   let fallbackSent = false;

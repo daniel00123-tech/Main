@@ -4,7 +4,7 @@ import { UNKNOWN_WHATSAPP_ACCOUNT_MESSAGE } from "./phone";
 import { INFRA_WHATSAPP_BUSINESS_ACCOUNT_ID, INFRA_WHATSAPP_PHONE_NUMBER_ID } from "./whatsapp-assets";
 import { capabilityReplyForCompany, formatCapabilityReply } from "./whatsapp-capabilities";
 import { acknowledgementMessage, conversationalReply, progressMessage, STILL_WORKING_MESSAGE } from "./whatsapp-conversation";
-import { classifyWhatsAppIntent, needsToolWork, softenSearchQuery } from "./whatsapp-intent";
+import { classifyWhatsAppIntent, focusSearchTerms, needsToolWork, softenSearchQuery } from "./whatsapp-intent";
 import { createWhatsAppLatencyMarks, summariseWhatsAppLatency } from "./whatsapp-latency";
 import { detectQualitySignals } from "./quality-auditor";
 import { searchQueryFromContext } from "./whatsapp-context";
@@ -148,6 +148,7 @@ describe("WhatsApp intent and typo handling", () => {
 
   it("softens ordinary search typos without inventing write actions", () => {
     expect(softenSearchQuery("find cold serch doc")).toMatch(/coal search/i);
+    expect(focusSearchTerms(softenSearchQuery("find cold serch doc"))).toMatch(/^coal search$/i);
     expect(softenSearchQuery("create an invoice")).toBe("create an invoice");
   });
 });

@@ -93,3 +93,16 @@ export function softenSearchQuery(text: string): string {
   next = next.replace(/\barno+ld\b/gi, "Arnold");
   return next;
 }
+
+/** Drop filler verbs so knowledge search ranks the distinctive nouns. */
+export function focusSearchTerms(text: string): string {
+  const stripped = text
+    .replace(
+      /\b(find|look(?:ing)? (for|up)|please|can you|could you|open|read|show me|show|fetch|tell me|what does|what is|relates? to|and tell me|document|documents|docs?|file)\b/gi,
+      " ",
+    )
+    .replace(/[?.!,]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return stripped.length >= 3 ? stripped : text;
+}
