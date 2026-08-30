@@ -77,6 +77,46 @@ describe("document switch while another file is open", () => {
     expect(detectNamedDocumentSwitch("Open the source", state)).toBeNull();
     expect(classifyScope("Open the source", state).scope).toBe("CURRENT_DOCUMENT");
   });
+
+  it("treats a short named find as company search even without a current file", () => {
+    const bare = buildConversationState({ userText: "Find North Yard" });
+    const decision = classifyScope("Find North Yard", bare);
+    expect(decision.scope).toBe("COMPANY_KNOWLEDGE");
+    expect(decision.tool).toBe("search_company_knowledge");
+    expect(decision.clarify).toBe(false);
+    expect(classifyScope("Find the document", bare).scope).toBe("AMBIGUOUS");
+  });
+
+  it("searches a short named title instead of letting the model ask what it means", async () => {
+    const { runtime, calls } = recordingRuntime((name) => {
+      if (name === "search_company_knowledge") {
+        return {
+          results: [{ id: "doc_ny", title: "North Yard induction pack", url: "https://files.example.test/ny" }],
+        };
+      }
+    });
+    const result = await runIntelligenceTurn({
+      text: "Find North Yard",
+      state: buildConversationState({ userText: "Find North Yard" }),
+      runtime,
+      completer: async () => ({
+        text: JSON.stringify({ action: "clarify", text: "What do you mean by North Yard?" }),
+        usage: {
+          provider: "workers-ai",
+          model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+          latencyMs: 4,
+          promptTokens: 8,
+          completionTokens: 8,
+          estimatedCostUsd: 0,
+        },
+      }),
+    });
+    expect(calls[0]?.name).toBe("search_company_knowledge");
+    expect(String(calls[0]?.arguments.query ?? "")).toMatch(/north yard/i);
+    expect(result.kind).toBe("answer");
+    expect(result.text).toMatch(/North Yard induction pack/i);
+    expect(result.text).not.toMatch(/What do you mean/i);
+  });
 });
 
 describe("Xero natural periods", () => {
@@ -129,6 +169,26 @@ describe("Xero natural periods", () => {
     expect(String(calls[0]?.arguments.toDate ?? "")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(calls[0]?.arguments.fromDate).not.toBe("");
     expect(calls[0]?.arguments.toDate).not.toBe("");
+  });
+
+  it("keeps a period follow-up on Xero after a finance turn", async () => {
+    const state = buildConversationState({
+      userText: "What about last month?",
+      lastAnswerTopic: "finance",
+      currentScope: "BUSINESS_SYSTEM",
+      currentBusinessSystem: "xero",
+      lastSuccessfulTool: "xero_sales_summary",
+      connectors: ["conn_xero"],
+    });
+    expect(classifyScope("What about last month?", state)).toMatchObject({
+      scope: "BUSINESS_SYSTEM",
+      tool: "xero_sales_summary",
+    });
+    const { runtime, calls } = recordingRuntime();
+    await runIntelligenceTurn({ text: "What about last month?", state, runtime });
+    expect(calls[0]?.name).toBe("xero_sales_summary");
+    expect(calls[0]?.arguments.fromDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(calls[0]?.arguments.toDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
 

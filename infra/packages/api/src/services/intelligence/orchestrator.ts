@@ -152,12 +152,23 @@ export async function runIntelligenceTurn(input: {
     lastUserIntent: scoped.lastUserIntent,
   };
 
-  if (scoped.scope === "COMPANY_KNOWLEDGE" && (scoped.clearCurrentDocument || input.state.userCorrection)) {
+  if (
+    scoped.scope === "COMPANY_KNOWLEDGE" &&
+    scoped.tool === "search_company_knowledge" &&
+    (scoped.clearCurrentDocument ||
+      input.state.userCorrection ||
+      scoped.lastUserIntent === "find_document" ||
+      scoped.lastUserIntent === "named_document_switch" ||
+      scoped.features.findDocument)
+  ) {
     const priorUser =
       [...input.state.recentTurns].reverse().find((turn) => turn.role === "user")?.text ||
       input.state.lastAnswerTopic ||
       input.text;
-    const query = [input.state.currentDocument?.title, priorUser].filter(Boolean).join(" — ") || input.text;
+    const query =
+      scoped.clearCurrentDocument && input.state.currentDocument
+        ? [input.state.currentDocument.title, priorUser].filter(Boolean).join(" — ") || input.text
+        : stripFindVerb(input.text);
     const search = await input.runtime.executeTool({
       name: "search_company_knowledge",
       arguments: { query },
@@ -329,6 +340,24 @@ export async function runIntelligenceTurn(input: {
     }
 
     if (decision.action === "clarify") {
+      if (toolCalls.length === 0 && shouldForceScopedTool(scoped)) {
+        const bootstrap = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+        if (bootstrap) {
+          toolCalls.push(bootstrap);
+          adoptFromTool(
+            bootstrap,
+            toolCalls,
+            () => currentDocument,
+            (doc) => {
+              currentDocument = doc;
+            },
+            evidenceDocumentIds,
+            input.buttonHint,
+          );
+          transcript.push(formatToolTranscript(bootstrap));
+          continue;
+        }
+      }
       if (shouldHaveClarified(input.state, toolCalls) === false && looksLikeGuess(decision.text)) {
         qualityFlags.add("bad_clarification");
       }
@@ -561,6 +590,24 @@ function looksLikeNewDocumentSearch(text: string): boolean {
   );
 }
 
+function stripFindVerb(text: string): string {
+  const cleaned = text
+    .replace(
+      /^(?:can you |could you |please )?(?:open|find|search|look(?:ing)? (?:for|up)|pull up|show|get|go to|switch to)\s+/i,
+      "",
+    )
+    .replace(/^(me |us |the |a |an |that |this |our |my )/i, "")
+    .trim();
+  return cleaned || text.trim();
+}
+
+function shouldForceScopedTool(scoped: ScopeDecision): boolean {
+  if (scoped.scope === "AMBIGUOUS" || scoped.scope === "GENERAL_CONVERSATION" || scoped.scope === "CONTROLLED_ACTION") {
+    return false;
+  }
+  return Boolean(scoped.tool);
+}
+
 function looksLikeFinanceRead(text: string): boolean {
   return /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables)\b/i.test(text);
 }
@@ -616,6 +663,10 @@ function prepareToolArguments(
   let next = { ...args };
   if (needsBusinessDates(name)) {
     next = withResolvedBusinessDates(name, next, text);
+  }
+  if (name === "search_company_knowledge") {
+    const cleaned = stripFindVerb(String(next.query ?? text));
+    next.query = cleaned || text;
   }
   if (name === "search_document") {
     const enriched = enrichDocumentQuery(String(next.query ?? text), {

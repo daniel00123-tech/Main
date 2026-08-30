@@ -30,6 +30,8 @@ function withDoc(text: string, extra?: Partial<IntelligenceConversationState>): 
     lastAnswerText: extra?.lastAnswerText ?? "The open file covers the requested point.",
     lastUserIntent: extra?.lastUserIntent ?? "current_document",
     currentScope: extra?.currentScope ?? "CURRENT_DOCUMENT",
+    lastSuccessfulTool: extra?.lastSuccessfulTool,
+    currentBusinessSystem: extra?.currentBusinessSystem,
     userCorrection: extra?.userCorrection,
     connectors: ["conn_microsoft_365", "conn_xero", "conn_google_drive"],
     companyId: "co_eval",
@@ -45,6 +47,8 @@ function bare(text: string, extra?: Partial<IntelligenceConversationState>): Int
     lastAnswerText: extra?.lastAnswerText,
     currentScope: extra?.currentScope,
     userCorrection: extra?.userCorrection,
+    lastSuccessfulTool: extra?.lastSuccessfulTool,
+    currentBusinessSystem: extra?.currentBusinessSystem,
     connectors: ["conn_microsoft_365", "conn_xero", "conn_google_drive"],
     companyId: "co_eval",
     role: "member",
@@ -59,6 +63,9 @@ type Seed = {
   withDoc?: boolean;
   lastTopic?: string;
   correction?: boolean;
+  currentScope?: IntelligenceConversationState["currentScope"];
+  lastSuccessfulTool?: string;
+  currentBusinessSystem?: string;
 };
 
 const SEEDS: Seed[] = [
@@ -213,6 +220,27 @@ const SEEDS: Seed[] = [
   { text: "What about him?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
   { text: "When was that?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
   { text: "And the amount again?", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "Find North Yard", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Open Merrow Pack", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Show Lydney crane", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  {
+    text: "What about last month?",
+    scope: "BUSINESS_SYSTEM",
+    tool: "xero_sales_summary",
+    lastTopic: "finance",
+    currentScope: "BUSINESS_SYSTEM",
+    currentBusinessSystem: "xero",
+    lastSuccessfulTool: "xero_sales_summary",
+  },
+  {
+    text: "And yesterday?",
+    scope: "BUSINESS_SYSTEM",
+    tool: "xero_sales_summary",
+    lastTopic: "finance",
+    currentScope: "BUSINESS_SYSTEM",
+    currentBusinessSystem: "xero",
+    lastSuccessfulTool: "xero_sales_summary",
+  },
 ];
 
 export function scopeEvaluationCases(): ScopeEvalCase[] {
@@ -221,12 +249,16 @@ export function scopeEvaluationCases(): ScopeEvalCase[] {
       ? withDoc(seed.text, {
           lastAnswerTopic: seed.lastTopic,
           userCorrection: seed.correction,
-          currentScope: seed.lastTopic === "index_stats" ? "SYSTEM_META" : undefined,
+          currentScope: seed.currentScope ?? (seed.lastTopic === "index_stats" ? "SYSTEM_META" : undefined),
+          lastSuccessfulTool: seed.lastSuccessfulTool,
+          currentBusinessSystem: seed.currentBusinessSystem,
         })
       : bare(seed.text, {
           lastAnswerTopic: seed.lastTopic,
           userCorrection: seed.correction,
-          currentScope: seed.lastTopic === "index_stats" ? "SYSTEM_META" : undefined,
+          currentScope: seed.currentScope ?? (seed.lastTopic === "index_stats" ? "SYSTEM_META" : undefined),
+          lastSuccessfulTool: seed.lastSuccessfulTool,
+          currentBusinessSystem: seed.currentBusinessSystem,
         });
     return {
       id: `sc-${String(index + 1).padStart(3, "0")}`,

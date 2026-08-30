@@ -103,6 +103,55 @@ const GENERIC_FIND =
   /^(please )?(can you )?(find|search|look(?:ing)? (for|up)|pull up|open|have we got) (me )?(the |a |that )?(document|file|policy)[.?!]*$/i;
 const UNDERSPECIFIED_QUANTITY = /^(how many( are there)?|and (the )?total|the count)\b[.?!]*$/i;
 
+function namedFindTopic(text: string): string {
+  return text
+    .replace(NAMED_SWITCH_VERB, "")
+    .replace(FIND, "")
+    .replace(/[.?!]+$/g, "")
+    .replace(/^(me |us |the |a |an |that |this |our |my )/i, "")
+    .trim();
+}
+
+function isNamedDocumentFind(trimmed: string): boolean {
+  if (GENERIC_FIND.test(trimmed) || SOURCE_OR_URL.test(trimmed) || NOT_A_DOCUMENT_TOPIC.test(trimmed)) {
+    return false;
+  }
+  const wantsFind = FIND.test(trimmed) || NAMED_SWITCH_VERB.test(trimmed);
+  if (!wantsFind) return false;
+  if (NAMED_FILE.test(trimmed) || COMPANY_LOCUS.test(trimmed) || trimmed.split(/\s+/).length >= 5) {
+    return true;
+  }
+  return distinctiveTopicTokens(namedFindTopic(trimmed)).length >= 1;
+}
+
+const PERIOD_FOLLOW =
+  /\b(today|yesterday|(this|last|past|previous)( \d+)? (days?|weeks?|months?|quarters?|years?))\b|\b(what about|how about|and) (this|last|yesterday|today|it)\b|\b(compare|versus|\bvs\.?\b) (them|that|this|last|the)\b/i;
+
+function isFinancePeriodFollowUp(
+  text: string,
+  state: Pick<IntelligenceConversationState, "lastAnswerTopic" | "currentScope" | "currentBusinessSystem">,
+  features: ScopeFeatures,
+): boolean {
+  const onFinance =
+    state.lastAnswerTopic === "finance" ||
+    state.currentScope === "BUSINESS_SYSTEM" ||
+    state.currentBusinessSystem === "xero";
+  if (!onFinance) return false;
+  if (features.findDocument || features.emailAsk || features.quantityAsk || features.writeIntent || features.capabilityAsk) {
+    return false;
+  }
+  return features.financeAsk || PERIOD_FOLLOW.test(text);
+}
+
+function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): string {
+  if (/overdue|owes/i.test(text)) return "xero_list_overdue_invoices";
+  if (/p&l|pnl|profit/i.test(text)) return "xero_profit_and_loss";
+  if (/aged/i.test(text)) return "xero_aged_receivables";
+  if (/INV-|\binvoice\b.*\d/i.test(text)) return "xero_get_invoice";
+  if (lastSuccessfulTool && /^xero_/.test(lastSuccessfulTool)) return lastSuccessfulTool;
+  return "xero_sales_summary";
+}
+
 function extractFeatures(text: string): ScopeFeatures {
   const trimmed = text.trim();
   return {
@@ -120,10 +169,7 @@ function extractFeatures(text: string): ScopeFeatures {
     financeAsk: FINANCE.test(trimmed),
     emailAsk: EMAIL.test(trimmed) && !CORPUS.test(trimmed),
     writeIntent: WRITE.test(trimmed),
-    findDocument:
-      FIND.test(trimmed) &&
-      !GENERIC_FIND.test(trimmed) &&
-      (NAMED_FILE.test(trimmed) || COMPANY_LOCUS.test(trimmed) || trimmed.split(/\s+/).length >= 5),
+    findDocument: isNamedDocumentFind(trimmed),
     underspecifiedQuantity: UNDERSPECIFIED_QUANTITY.test(trimmed),
     sourceBreakdown: SOURCE_BREAKDOWN.test(trimmed),
     typeBreakdown: TYPE_BREAKDOWN.test(trimmed),
@@ -233,6 +279,7 @@ export function classifyScope(
     | "userCorrection"
     | "recentDocuments"
     | "currentBusinessSystem"
+    | "lastSuccessfulTool"
   >,
 ): ScopeDecision {
   const features = extractFeatures(text);
@@ -240,6 +287,7 @@ export function classifyScope(
   const lastTopic = state.lastAnswerTopic ?? null;
   const switchTo = features.scopeSwitch;
   const namedSwitch = detectNamedDocumentSwitch(text, state);
+  const financeFollowUp = isFinancePeriodFollowUp(text, state, features);
 
   if (features.writeIntent) {
     return decide("CONTROLLED_ACTION", features, {
@@ -477,17 +525,13 @@ export function classifyScope(
     });
   }
 
-  if (switchTo === "business" || (features.financeAsk && (!features.corpusNoun || /\bxero\b/i.test(text)) && (!features.currentLocus || /\bxero\b/i.test(text) || switchTo === "business"))) {
+  if (
+    switchTo === "business" ||
+    financeFollowUp ||
+    (features.financeAsk && (!features.corpusNoun || /\bxero\b/i.test(text)) && (!features.currentLocus || /\bxero\b/i.test(text) || switchTo === "business"))
+  ) {
     return decide("BUSINESS_SYSTEM", features, {
-        tool: /overdue|owes/i.test(text)
-        ? "xero_list_overdue_invoices"
-        : /p&l|pnl|profit/i.test(text)
-          ? "xero_profit_and_loss"
-          : /aged/i.test(text)
-            ? "xero_aged_receivables"
-          : /INV-|\binvoice\b.*\d/i.test(text)
-            ? "xero_get_invoice"
-            : "xero_sales_summary",
+      tool: pickBusinessTool(text, state.lastSuccessfulTool),
       lastAnswerTopic: "finance",
       lastUserIntent: "finance",
     });
