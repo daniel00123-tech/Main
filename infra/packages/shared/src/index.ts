@@ -16,6 +16,7 @@ export * from "./connectors/outlook";
 export * from "./connectors/google-drive-scope";
 export * from "./connectors/onboarding";
 export * from "./connectors/customer-health";
+export * from "./connectors/mcp-registry";
 export * from "./portal/activity";
 export * from "./portal/dashboard";
 export * from "./portal/automation-present";

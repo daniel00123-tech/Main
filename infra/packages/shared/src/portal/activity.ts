@@ -10,6 +10,18 @@ export type CustomerActivityItem = {
 
 const INTERNAL_ACTOR =
   /^(system:|svc_|internal-|probe|microsoft-scheduler|microsoft-queue|stripe-webhook)/i;
+const PROBE_ACTOR = /\b(probe|routing[-_ ]?probe)\b/i;
+const PROBE_TOOLS = new Set(["system_health", "initialize", "tools/list", "tools/call"]);
+
+function isRoutingProbeFailure(event: AuditEvent): boolean {
+  if (event.eventType !== "mcp.execution_failed") return false;
+  if (PROBE_ACTOR.test(event.actor ?? "")) return true;
+  const detail = event.detail ?? {};
+  const blob = `${event.resourceId ?? ""} ${JSON.stringify(detail)}`;
+  if (PROBE_ACTOR.test(blob)) return true;
+  const tool = String(detail.tool ?? detail.toolName ?? event.resourceId ?? "");
+  return PROBE_TOOLS.has(tool);
+}
 
 const HIDDEN_EVENTS = new Set([
   "company.accessed",
@@ -54,7 +66,12 @@ function mapEvent(event: AuditEvent): CustomerActivityItem | null {
   const type = event.eventType as string;
 
   if (HIDDEN_EVENTS.has(type)) return null;
-  if (INTERNAL_ACTOR.test(actor) && type !== "connector.sync_completed" && type !== "connector.sync_failed") {
+  if (
+    INTERNAL_ACTOR.test(actor) &&
+    type !== "connector.sync_completed" &&
+    type !== "connector.sync_failed" &&
+    type !== "connector.connected"
+  ) {
     return null;
   }
 
@@ -181,6 +198,7 @@ function mapEvent(event: AuditEvent): CustomerActivityItem | null {
     };
   }
   if (type === "mcp.execution_failed") {
+    if (isRoutingProbeFailure(event)) return null;
     return {
       id: event.id,
       title: humanActorName(actor),

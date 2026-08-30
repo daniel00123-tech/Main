@@ -80,6 +80,12 @@ describe("connector overview copy", () => {
     expect(connectorOverviewDescription("conn_microsoft_365")).toBe(
       "OneDrive, SharePoint and email",
     );
+    expect(connectorOverviewDescription("conn_sharepoint")).toBe(
+      "SharePoint document libraries",
+    );
+    expect(connectorOverviewDescription("conn_bigchange")).toBe(
+      "Field service jobs and engineers",
+    );
   });
 
   it("includes Xero organisation in the title when available", () => {

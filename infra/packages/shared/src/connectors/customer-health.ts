@@ -26,6 +26,11 @@ const OVERVIEW_DESCRIPTIONS: Record<string, string> = {
   conn_google_drive: "Files and company knowledge",
   conn_xero: "Accounting and financial data",
   conn_microsoft_365: "OneDrive, SharePoint and email",
+  conn_sharepoint: "SharePoint document libraries",
+  conn_onedrive: "Company OneDrive files",
+  conn_outlook_shared: "Approved shared mailboxes",
+  conn_bigchange: "Field service jobs and engineers",
+  conn_freshdesk: "Support tickets and customers",
 };
 
 /**

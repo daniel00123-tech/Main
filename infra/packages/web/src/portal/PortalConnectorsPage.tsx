@@ -4,6 +4,7 @@ import {
   CONNECTOR_CATALOGUE,
   connectorOverviewDescription,
   deriveConnectorCustomerHealth,
+  isCustomerConnectedConnector,
   taxonomyForConnector,
 } from "@infra/shared";
 import { Plug } from "lucide-react";
@@ -79,7 +80,7 @@ export default function PortalConnectorsPage() {
   );
 
   const connectedItems = useMemo(() => {
-    return instances.map((instance) => {
+    return instances.filter(isCustomerConnectedConnector).map((instance) => {
       const definition = catalogueById.get(instance.connectorDefinitionId);
       return { instance, definition, kind: "instance" as const };
     });

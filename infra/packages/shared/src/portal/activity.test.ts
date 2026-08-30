@@ -45,6 +45,28 @@ describe("buildCustomerActivityFeed", () => {
     expect(feed[0]?.description).toBe("Synced successfully");
   });
 
+  it("hides stale routing-probe failures once later connector success exists", () => {
+    const feed = buildCustomerActivityFeed([
+      event({
+        id: "ok",
+        eventType: "connector.connected",
+        actor: "system:connector-mirror",
+        detail: { provider: "xero", source: "company_mcp_registry" },
+        createdAt: "2026-08-30T12:20:00.000Z",
+      }),
+      event({
+        id: "probe-fail",
+        eventType: "mcp.execution_failed",
+        actor: "EL probe",
+        resourceId: "system_health",
+        detail: { tool: "system_health", reason: "routing-probe" },
+        createdAt: "2026-08-30T10:00:00.000Z",
+      }),
+    ]);
+    expect(feed.some((item) => item.description === "AI request failed")).toBe(false);
+    expect(feed[0]?.description).toBe("Connected");
+  });
+
   it("hides routine company.accessed and execution success noise", () => {
     const feed = buildCustomerActivityFeed([
       event({ eventType: "company.accessed", actor: "user@example.com" }),

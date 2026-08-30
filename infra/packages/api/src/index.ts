@@ -712,12 +712,32 @@ app.get("/api/companies/:slug/overview", requireAuth, async (c) => {
   const overview = await getCompanyOverview(c.env.DB, company.id);
   if (!overview) return c.json({ error: "Company not found" }, 404);
 
+  const { syncConnectorMirrorFromCompanyMcp } = await import("./services/mcp-connector-mirror");
+  const mirrored = await syncConnectorMirrorFromCompanyMcp(c.env, {
+    companyId: company.id,
+    actor: c.get("user").email,
+    instances: overview.connectorInstances,
+    mcp: overview.mcpEnvironments[0] ?? null,
+  }).catch(() => overview.connectorInstances);
+
   const { refreshStaleMicrosoftInstanceHealth } = await import("./services/microsoft-credentials");
   const connectorInstances = await refreshStaleMicrosoftInstanceHealth(c.env, {
     companyId: company.id,
-    instances: overview.connectorInstances,
+    instances: mirrored,
     actor: c.get("user").email,
   });
+
+  const signature = (rows: typeof connectorInstances) =>
+    rows
+      .map((row) => `${row.id}:${row.status}:${row.healthStatus}:${row.authStatus}`)
+      .sort()
+      .join("|");
+  if (signature(connectorInstances) !== signature(overview.connectorInstances)) {
+    const refreshed = await getCompanyOverview(c.env.DB, company.id);
+    if (refreshed) {
+      return c.json({ ...refreshed, connectorInstances });
+    }
+  }
 
   return c.json({ ...overview, connectorInstances });
 });
@@ -729,7 +749,16 @@ app.get("/api/companies/:slug/onboarding", requireAuth, async (c) => {
     return c.json({ error: "Access to this company is denied" }, 403);
   }
   const overview = await getCompanyOverview(c.env.DB, company.id);
-  return c.json(overview?.onboarding ?? { companyId: company.id, readyForUse: false, items: [], problems: [] });
+  if (!overview) return c.json({ companyId: company.id, readyForUse: false, items: [], problems: [] });
+  const { syncConnectorMirrorFromCompanyMcp } = await import("./services/mcp-connector-mirror");
+  await syncConnectorMirrorFromCompanyMcp(c.env, {
+    companyId: company.id,
+    actor: c.get("user").email,
+    instances: overview.connectorInstances,
+    mcp: overview.mcpEnvironments[0] ?? null,
+  }).catch(() => undefined);
+  const refreshed = await getCompanyOverview(c.env.DB, company.id);
+  return c.json(refreshed?.onboarding ?? overview.onboarding);
 });
 
 app.get("/api/mcp-environments", requireAuth, async (c) => {

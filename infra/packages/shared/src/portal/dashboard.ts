@@ -106,14 +106,19 @@ export function isCompanyProfileComplete(company: CompanyOverview["company"]): b
   return !PROFILE_INCOMPLETE_STATUSES.has(company.status);
 }
 
+/** A connector the customer should treat as connected (not a draft placeholder). */
+export function isCustomerConnectedConnector(
+  connector: CompanyOverview["connectorInstances"][number],
+): boolean {
+  if (connector.status === "draft") return false;
+  return CONNECTED_CUSTOMER_HEALTH.has(deriveConnectorCustomerHealth(connector).label);
+}
+
 /** At least one non-draft customer connector is Healthy or Attention needed (connected). */
 export function hasConnectedCustomerSystem(
   connectors: CompanyOverview["connectorInstances"],
 ): boolean {
-  return connectors.some((connector) => {
-    if (connector.status === "draft") return false;
-    return CONNECTED_CUSTOMER_HEALTH.has(deriveConnectorCustomerHealth(connector).label);
-  });
+  return connectors.some(isCustomerConnectedConnector);
 }
 
 export function deriveGettingStartedItems(input: {
