@@ -362,6 +362,8 @@ export async function handleWhatsAppInboundMessage(
       toolName: null,
       interactionId: null,
       outcome: "company_selection",
+      inputKind: inboundResolved.inputKind,
+      buttonsSent: sent.buttonsSent ?? 0,
     };
   }
 
@@ -459,6 +461,8 @@ export async function handleWhatsAppInboundMessage(
       intent,
       acknowledgementSent: false,
       planAction: plan.action,
+      inputKind,
+      buttonsSent: sent.buttonsSent ?? 0,
     };
   }
 
@@ -511,6 +515,8 @@ export async function handleWhatsAppInboundMessage(
       outcome: "answered",
       intent,
       acknowledgementSent: false,
+      inputKind,
+      buttonsSent: sent.buttonsSent ?? 0,
     };
   }
 
