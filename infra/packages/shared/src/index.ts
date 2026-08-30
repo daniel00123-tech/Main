@@ -23,6 +23,7 @@ export * from "./portal/usage-present";
 export * from "./operations";
 export * from "./ocr";
 export * from "./email/types";
+export * from "./email/identity";
 export * from "./email/templates";
 export * from "./action-engine";
 export * from "./automation-engine";

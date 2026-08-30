@@ -1,4 +1,5 @@
 import type { Env } from "../../../env";
+import { resolvePlatformEmailIdentity } from "../platform-identity";
 
 export type ResendSendResult =
   | { ok: true; providerMessageId: string | null }
@@ -21,9 +22,7 @@ export async function sendResendEmail(
     return { ok: false, category: "auth", message: "RESEND_API_KEY not configured" };
   }
 
-  const from =
-    env.EMAIL_FROM?.trim() ||
-    `${input.fromDisplayName} <${input.fromEmail}>`;
+  const from = resolvePlatformEmailIdentity(env).formatted;
 
   let response: Response;
   try {

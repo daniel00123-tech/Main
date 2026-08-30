@@ -46,6 +46,8 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # WHATSAPP_WEBHOOK_VERIFY_TOKEN (Meta hub.verify_token — wrangler secret put)
 # WHATSAPP_ACCESS_TOKEN (Cloud API user token — wrangler secret put)
 # META_APP_SECRET (X-Hub-Signature-256 — wrangler secret put)
+EMAIL_FROM_NAME = "Infra"
+EMAIL_FROM_ADDRESS = "noreply@infrastack.app"
 WHATSAPP_PHONE_NUMBER_ID = "1338434179351224"
 WHATSAPP_BUSINESS_ACCOUNT_ID = "1629422285251338"
 WHATSAPP_OUTBOUND_AI_ENABLED = "true"
@@ -111,4 +113,8 @@ dead_letter_queue = "whatsapp-inbound-dlq"
 [[queues.consumers]]
 queue = "whatsapp-inbound-dlq"
 max_batch_size = 10
+
+# Cloudflare Email Service — transactional send from Infra <noreply@infrastack.app>
+[[send_email]]
+name = "EMAIL"
 

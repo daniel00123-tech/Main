@@ -529,7 +529,7 @@ async function buildSubsystemHealth(
       summary:
         outboundEmailState === "UNKNOWN"
           ? "Not configured for this tenant"
-          : `Caddington sender health: ${outboundEmailState.replace(/_/g, " ").toLowerCase()}`,
+          : `Infra sender health: ${outboundEmailState.replace(/_/g, " ").toLowerCase()}`,
       lastCheckedAt: checkedAt,
     },
   ];

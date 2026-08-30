@@ -280,7 +280,7 @@ app.post("/api/auth/password-reset/request", async (c) => {
       actor: user.email,
       resourceType: "user",
       resourceId: user.id,
-      detail: { outcome: "no_email_config" },
+      detail: { outcome: "no_company_membership" },
     });
     return c.json({ ok: true, message: genericMessage });
   }
