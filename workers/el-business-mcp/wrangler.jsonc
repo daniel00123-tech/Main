@@ -4,6 +4,13 @@
   "compatibility_date": "2025-08-24",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "el-business-mcp.infrastack.app",
+      "custom_domain": true,
+      "zone_name": "infrastack.app"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "EL_BUSINESS_DATA",
