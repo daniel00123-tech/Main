@@ -56,6 +56,19 @@ describe("scope classifier", () => {
     expect(isCorpusInventoryAsk("How many files are there on the system?")).toBe(true);
     expect(isCorpusInventoryAsk("find the vehicle policy")).toBe(false);
   });
+
+  it("switches away from the open file when a different named title is requested", () => {
+    const open = buildConversationState({
+      userText: "Open the vehicle handbook",
+      currentDocument: { id: "doc_cv", title: "Staff profile" },
+      lastAnswerTopic: "document",
+      currentScope: "CURRENT_DOCUMENT",
+    });
+    const decision = classifyScope("Open the vehicle handbook", open);
+    expect(decision.scope).toBe("COMPANY_KNOWLEDGE");
+    expect(decision.clearCurrentDocument).toBe(true);
+    expect(classifyScope("What about him?", open).scope).toBe("CURRENT_DOCUMENT");
+  });
 });
 
 describe("system meta intelligence", () => {

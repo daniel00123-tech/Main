@@ -272,10 +272,9 @@ describe("document-grounded multi-turn behaviour", () => {
         };
       },
     });
-    expect(calls[0]).toEqual({
-      name: "search_document",
-      arguments: { document_id: "doc_cv", query: "what exactly did I do?" },
-    });
+    expect(calls[0]?.name).toBe("search_document");
+    expect(calls[0]?.arguments.document_id).toBe("doc_cv");
+    expect(String(calls[0]?.arguments.query ?? "")).toContain("what exactly did I do?");
     expect(calls.some((call) => call.name === "search_company_knowledge")).toBe(false);
     expect(result.text).toMatch(/field sales/i);
     expect(result.currentDocument?.id).toBe("doc_cv");

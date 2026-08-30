@@ -1,4 +1,5 @@
-import type { IntelligenceConversationState, IntelligenceScope } from "./types.js";
+import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "./types.js";
+import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
 
 export type ScopeSwitch =
   | "company"
@@ -47,12 +48,13 @@ export type ScopeDecision = {
   restoreRecentDocument: boolean;
   lastAnswerTopic: string | null;
   lastUserIntent: string;
+  matchedDocument: IntelligenceDocumentRef | null;
 };
 
 const QUANTITY =
   /\b(how many|how much|how large|number of|count of|totals?|stocktake|headcount|inventory|volume of|numerically|dozens|hundreds|what(?:'s| is) the (total|count|number|volume)|quantity of|more \w+ or)\b/i;
 const CORPUS =
-  /\b(files?|documents?|docs?|items?( indexed)?|indexed (files?|documents?|items?|records?)|pdfs?|library|corpus|records?)\b/i;
+  /\b(files?|documents?|docs?|items?( indexed)?|indexed (files?|documents?|items?|records?)|pdfs?|library|corpus|records?|index)\b/i;
 const CONTENT_MENTION =
   /\b(mention|mentions|mentioned|about|contain|contains|containing|say|says|talk(?:s|ing)? about|cover(?:s|ing)?|refer(?:s|ring)? to)\b/i;
 const CURRENT_LOCUS =
@@ -70,14 +72,21 @@ const MEMORY =
 const CAPABILITY =
   /^(help)\b|\b(what can you do|what can i ask|what (data|information) (can you|are you allowed to) (access|see|use|read)|what else (can|are) you (do|help|able)|what are you able to|who are you|what is infra|what information are you)\b/i;
 const CONNECTOR =
-  /\b(what systems? (are )?(connected|linked)|which (live )?systems?|what(?:'s| is) connected|connectors?|(is|are) (xero|sharepoint|drive|email|outlook) connected|do (we|i|you) have (xero|sharepoint|drive|email) connected|systems can you (actually )?use)\b/i;
+  /\b(what systems? (are )?(connected|linked)|which (live )?systems?|what(?:'s| is) connected|connectors?|(is|are) (xero|sharepoint|drive|email|outlook) (connected|linked)|do (we|i|you) have (xero|sharepoint|drive|email) connected|systems can you (actually )?use)\b/i;
 const FINANCE =
   /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables|who owes)\b/i;
-const EMAIL = /\b(emails?|mailbox|outlook|inbox)\b/i;
+const EMAIL = /\b(emails?|mailbox|outlook|inbox|any mail)\b/i;
 const WRITE =
   /\b(create (an? )?(invoice|bill|credit)|approve |send(?: this| the)? invoice|delete |void |allocate |raise an invoice|write to|update (the )?(invoice|bill|contact)|credit note)\b/i;
 const FIND =
   /\b((can you |could you |please )?(find|search|look(?:ing)? (for|up)|pull up)|have we got|where is)\b/i;
+const NAMED_SWITCH_VERB =
+  /^(?:can you |could you |please )?(?:open|find|search|look(?:ing)? (?:for|up)|pull up|show|get|go to|switch to)\b/i;
+const SOURCE_OR_URL = /\b(source( url| link)?|the (url|link)|send me the (link|url))\b/i;
+const GENERIC_SWITCH_TOPIC =
+  /^(me |us )?(the |a |an |that |this |our |my )?(document|file|policy|one|it|that)s?[.?!]*$/i;
+const FOLLOWUP_FILLER = /^(me )?(more )?(detail|details|info|information|summary|that|this|it)[.?!]*$/i;
+const NOT_A_DOCUMENT_TOPIC = /\b(example|how you answer|more detail|the source|connected|unhealthy)\b/i;
 const SOURCE_BREAKDOWN =
   /\b(where (are|do) (most|they|those)|by source|which source|most of them from|how many from|versus|sharepoint or|drive versus)\b/i;
 const TYPE_BREAKDOWN = /\b(by (file )?type|what types?|how many (pdfs?|spreadsheets?|emails?))\b/i;
@@ -93,6 +102,55 @@ const NAMED_FILE = /\b\w+\.(pdf|docx?|xlsx?|pptx?)\b/i;
 const GENERIC_FIND =
   /^(please )?(can you )?(find|search|look(?:ing)? (for|up)|pull up|open|have we got) (me )?(the |a |that )?(document|file|policy)[.?!]*$/i;
 const UNDERSPECIFIED_QUANTITY = /^(how many( are there)?|and (the )?total|the count)\b[.?!]*$/i;
+
+function namedFindTopic(text: string): string {
+  return text
+    .replace(NAMED_SWITCH_VERB, "")
+    .replace(FIND, "")
+    .replace(/[.?!]+$/g, "")
+    .replace(/^(me |us |the |a |an |that |this |our |my )/i, "")
+    .trim();
+}
+
+function isNamedDocumentFind(trimmed: string): boolean {
+  if (GENERIC_FIND.test(trimmed) || SOURCE_OR_URL.test(trimmed) || NOT_A_DOCUMENT_TOPIC.test(trimmed)) {
+    return false;
+  }
+  const wantsFind = FIND.test(trimmed) || NAMED_SWITCH_VERB.test(trimmed);
+  if (!wantsFind) return false;
+  if (NAMED_FILE.test(trimmed) || COMPANY_LOCUS.test(trimmed) || trimmed.split(/\s+/).length >= 5) {
+    return true;
+  }
+  return distinctiveTopicTokens(namedFindTopic(trimmed)).length >= 1;
+}
+
+const PERIOD_FOLLOW =
+  /\b(today|yesterday|(this|last|past|previous)( \d+)? (days?|weeks?|months?|quarters?|years?))\b|\b(what about|how about|and) (this|last|yesterday|today|it)\b|\b(compare|versus|\bvs\.?\b) (them|that|this|last|the)\b/i;
+
+function isFinancePeriodFollowUp(
+  text: string,
+  state: Pick<IntelligenceConversationState, "lastAnswerTopic" | "currentScope" | "currentBusinessSystem">,
+  features: ScopeFeatures,
+): boolean {
+  const onFinance =
+    state.lastAnswerTopic === "finance" ||
+    state.currentScope === "BUSINESS_SYSTEM" ||
+    state.currentBusinessSystem === "xero";
+  if (!onFinance) return false;
+  if (features.findDocument || features.emailAsk || features.quantityAsk || features.writeIntent || features.capabilityAsk) {
+    return false;
+  }
+  return features.financeAsk || PERIOD_FOLLOW.test(text);
+}
+
+function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): string {
+  if (/overdue|owes/i.test(text)) return "xero_list_overdue_invoices";
+  if (/p&l|pnl|profit/i.test(text)) return "xero_profit_and_loss";
+  if (/aged/i.test(text)) return "xero_aged_receivables";
+  if (/INV-|\binvoice\b.*\d/i.test(text)) return "xero_get_invoice";
+  if (lastSuccessfulTool && /^xero_/.test(lastSuccessfulTool)) return lastSuccessfulTool;
+  return "xero_sales_summary";
+}
 
 function extractFeatures(text: string): ScopeFeatures {
   const trimmed = text.trim();
@@ -111,10 +169,7 @@ function extractFeatures(text: string): ScopeFeatures {
     financeAsk: FINANCE.test(trimmed),
     emailAsk: EMAIL.test(trimmed) && !CORPUS.test(trimmed),
     writeIntent: WRITE.test(trimmed),
-    findDocument:
-      FIND.test(trimmed) &&
-      !GENERIC_FIND.test(trimmed) &&
-      (NAMED_FILE.test(trimmed) || COMPANY_LOCUS.test(trimmed) || trimmed.split(/\s+/).length >= 5),
+    findDocument: isNamedDocumentFind(trimmed),
     underspecifiedQuantity: UNDERSPECIFIED_QUANTITY.test(trimmed),
     sourceBreakdown: SOURCE_BREAKDOWN.test(trimmed),
     typeBreakdown: TYPE_BREAKDOWN.test(trimmed),
@@ -161,6 +216,53 @@ function detectScopeSwitch(text: string): ScopeSwitch {
   return null;
 }
 
+function rememberedDocuments(
+  state: Pick<IntelligenceConversationState, "currentDocument" | "recentDocuments" | "entities">,
+): IntelligenceDocumentRef[] {
+  const seen = new Set<string>();
+  const docs: IntelligenceDocumentRef[] = [];
+  for (const doc of [...(state.recentDocuments ?? []), ...(state.entities ?? []).map((entity) => ({
+    id: entity.id,
+    title: entity.title,
+    url: entity.url,
+  }))]) {
+    if (!doc?.id || !doc.title || seen.has(doc.id)) continue;
+    seen.add(doc.id);
+    docs.push(doc);
+  }
+  return docs;
+}
+
+export function detectNamedDocumentSwitch(
+  text: string,
+  state: Pick<IntelligenceConversationState, "currentDocument" | "recentDocuments" | "entities">,
+): { target: "company" | "recent"; matchedDocument: IntelligenceDocumentRef | null } | null {
+  const trimmed = text.trim();
+  if (!NAMED_SWITCH_VERB.test(trimmed)) return null;
+  if (SOURCE_OR_URL.test(trimmed) && !/\b(find|search|look(?:ing)? (?:for|up)|pull up|go to|switch to)\b/i.test(trimmed)) {
+    return null;
+  }
+  const topic = trimmed
+    .replace(NAMED_SWITCH_VERB, "")
+    .replace(/[.?!]+$/g, "")
+    .replace(/^(me |us |the |a |an |that |this |our |my )/i, "")
+    .trim();
+  if (!topic || GENERIC_SWITCH_TOPIC.test(topic) || FOLLOWUP_FILLER.test(topic) || NOT_A_DOCUMENT_TOPIC.test(topic)) {
+    return null;
+  }
+  const strong = distinctiveTopicTokens(topic);
+  if (!strong.length) return null;
+  const currentTitle = state.currentDocument?.title ?? "";
+  const currentHits = titleTokenOverlap(topic, currentTitle);
+  if (state.currentDocument && (currentHits >= 2 || (strong.length === 1 && titleTokens(currentTitle).includes(strong[0]!)))) {
+    return null;
+  }
+  const remembered = rememberedDocuments(state).filter((doc) => doc.id !== state.currentDocument?.id);
+  const matched = remembered.find((doc) => titleTokenOverlap(topic, doc.title) >= 2) ?? null;
+  if (matched) return { target: "recent", matchedDocument: matched };
+  return { target: "company", matchedDocument: null };
+}
+
 export function isCorpusInventoryAsk(text: string): boolean {
   const features = extractFeatures(text);
   return features.quantityAsk && features.corpusNoun && !features.contentMention;
@@ -177,18 +279,29 @@ export function classifyScope(
     | "userCorrection"
     | "recentDocuments"
     | "currentBusinessSystem"
+    | "lastSuccessfulTool"
   >,
 ): ScopeDecision {
   const features = extractFeatures(text);
   const hasCurrent = Boolean(state.currentDocument);
   const lastTopic = state.lastAnswerTopic ?? null;
   const switchTo = features.scopeSwitch;
+  const namedSwitch = detectNamedDocumentSwitch(text, state);
+  const financeFollowUp = isFinancePeriodFollowUp(text, state, features);
 
   if (features.writeIntent) {
     return decide("CONTROLLED_ACTION", features, {
       tool: null,
       noTool: true,
       lastUserIntent: "controlled_action",
+    });
+  }
+
+  if (features.adminOpsAsk) {
+    return decide("SYSTEM_META", features, {
+      tool: "get_company_system_summary",
+      lastAnswerTopic: "admin_ops",
+      lastUserIntent: "admin_ops",
     });
   }
 
@@ -208,10 +321,46 @@ export function classifyScope(
     });
   }
 
-  if (switchTo === "recent") {
+  const allowNamedSwitch =
+    hasCurrent &&
+    Boolean(namedSwitch) &&
+    !features.financeAsk &&
+    !features.emailAsk &&
+    !features.quantityAsk &&
+    !features.capabilityAsk &&
+    !features.connectorAsk &&
+    !features.writeIntent;
+
+  if (allowNamedSwitch && namedSwitch?.target === "recent" && namedSwitch.matchedDocument) {
     return decide("RECENT_ENTITY", features, {
       tool: "get_knowledge_document",
       restoreRecentDocument: true,
+      matchedDocument: namedSwitch.matchedDocument,
+      lastAnswerTopic: "document",
+      lastUserIntent: "named_recent_document",
+    });
+  }
+
+  if (allowNamedSwitch && namedSwitch?.target === "company") {
+    return decide("COMPANY_KNOWLEDGE", features, {
+      tool: "search_company_knowledge",
+      clearCurrentDocument: hasCurrent,
+      lastAnswerTopic: "company_knowledge",
+      lastUserIntent: "named_document_switch",
+    });
+  }
+
+  if (switchTo === "recent") {
+    const remembered = rememberedDocuments(state);
+    const namedRecent =
+      remembered.find((doc) => titleTokenOverlap(text, doc.title) >= 2) ??
+      remembered.find((doc) => doc.id !== state.currentDocument?.id) ??
+      remembered[0] ??
+      null;
+    return decide("RECENT_ENTITY", features, {
+      tool: "get_knowledge_document",
+      restoreRecentDocument: true,
+      matchedDocument: namedRecent,
       lastAnswerTopic: "document",
       lastUserIntent: "restore_recent",
     });
@@ -240,14 +389,6 @@ export function classifyScope(
       tool: null,
       noTool: true,
       lastUserIntent: "conversation",
-    });
-  }
-
-  if (features.adminOpsAsk) {
-    return decide("SYSTEM_META", features, {
-      tool: "get_company_system_summary",
-      lastAnswerTopic: "admin_ops",
-      lastUserIntent: "admin_ops",
     });
   }
 
@@ -384,17 +525,13 @@ export function classifyScope(
     });
   }
 
-  if (features.financeAsk && !features.corpusNoun && (!features.currentLocus || /\bxero\b/i.test(text) || switchTo === "business")) {
+  if (
+    switchTo === "business" ||
+    financeFollowUp ||
+    (features.financeAsk && (!features.corpusNoun || /\bxero\b/i.test(text)) && (!features.currentLocus || /\bxero\b/i.test(text) || switchTo === "business"))
+  ) {
     return decide("BUSINESS_SYSTEM", features, {
-        tool: /overdue|owes/i.test(text)
-        ? "xero_list_overdue_invoices"
-        : /p&l|pnl|profit/i.test(text)
-          ? "xero_profit_and_loss"
-          : /aged/i.test(text)
-            ? "xero_aged_receivables"
-          : /INV-|\binvoice\b.*\d/i.test(text)
-            ? "xero_get_invoice"
-            : "xero_sales_summary",
+      tool: pickBusinessTool(text, state.lastSuccessfulTool),
       lastAnswerTopic: "finance",
       lastUserIntent: "finance",
     });
@@ -411,6 +548,7 @@ export function classifyScope(
   if (features.findDocument && (!hasCurrent || !features.currentLocus || /\banother\b/i.test(text))) {
     return decide("COMPANY_KNOWLEDGE", features, {
       tool: "search_company_knowledge",
+      clearCurrentDocument: Boolean(hasCurrent && !features.currentLocus),
       lastAnswerTopic: "company_knowledge",
       lastUserIntent: "find_document",
     });
@@ -439,7 +577,14 @@ export function classifyScope(
     });
   }
 
-  if (!hasCurrent && /\b(the policy|that file|the document|the other one)\b/i.test(text) && !NAMED_FILE.test(text) && !features.quantityAsk) {
+  if (
+    !hasCurrent &&
+    !features.findDocument &&
+    !NAMED_FILE.test(text) &&
+    !features.quantityAsk &&
+    (/\b(the policy|that file|the document|the other one)\b/i.test(text) ||
+      /\b((send me )?(the )?(url|link)|download it|copy of it)\b/i.test(text))
+  ) {
     return decide("AMBIGUOUS", features, {
       tool: null,
       noTool: true,
@@ -481,6 +626,7 @@ function decide(
     restoreRecentDocument: Boolean(extra.restoreRecentDocument),
     lastAnswerTopic: extra.lastAnswerTopic ?? null,
     lastUserIntent: extra.lastUserIntent ?? scope.toLowerCase(),
+    matchedDocument: extra.matchedDocument ?? null,
   };
 }
 

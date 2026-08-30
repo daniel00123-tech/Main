@@ -11,6 +11,10 @@ export type DocumentIndexStats = {
   byType: IndexTypeCount[];
   lastSyncAt: string | null;
   permissionScope: "visible_to_you";
+  microsoftOnly?: boolean;
+  driveConnected?: boolean;
+  driveCountReliable?: boolean;
+  connectedSystems?: string[];
 };
 
 export type ConnectorStatusView = {
@@ -163,6 +167,9 @@ function mergeDriveCount(stats: DocumentIndexStats, driveIndexed: number): Docum
     ...stats,
     totalIndexed: msTotal + driveIndexed,
     bySource,
+    driveCountReliable: true,
+    microsoftOnly: false,
+    driveConnected: true,
   };
 }
 
@@ -256,21 +263,28 @@ export async function loadDocumentIndexStats(
     // connector source aggregates are a fallback, not required.
   }
 
-  if (typeof driveIndexed === "number" && Number.isFinite(driveIndexed) && driveIndexed >= 0) {
+  const driveReliable = typeof driveIndexed === "number" && Number.isFinite(driveIndexed) && driveIndexed >= 0;
+  if (driveReliable) {
     bySource.set("Google Drive", driveIndexed);
-    total += driveIndexed;
   }
 
+  const bySourceRows = [...bySource.entries()]
+    .map(([source, count]) => ({ source, count }))
+    .sort((a, b) => b.count - a.count);
+  const microsoftTotal = bySourceRows
+    .filter((row) => !/google drive/i.test(row.source))
+    .reduce((sum, row) => sum + row.count, 0);
+
   return {
-    totalIndexed: total,
-    bySource: [...bySource.entries()]
-      .map(([source, count]) => ({ source, count }))
-      .sort((a, b) => b.count - a.count),
+    totalIndexed: driveReliable ? microsoftTotal + driveIndexed : microsoftTotal,
+    bySource: bySourceRows,
     byType: [...byType.entries()]
       .map(([type, count]) => ({ type, count }))
       .sort((a, b) => b.count - a.count),
     lastSyncAt,
     permissionScope: "visible_to_you",
+    microsoftOnly: !driveReliable,
+    driveCountReliable: driveReliable,
   };
 }
 
@@ -374,7 +388,9 @@ export async function executeSystemMetaTool(
     driveIndexed: input.driveIndexed,
     companyName: input.companyName,
   });
-  if (input.name === "get_document_index_stats") return summary.indexed;
+  if (input.name === "get_document_index_stats") {
+    return attachIndexHonesty(summary.indexed, summary.connectors, input.connectors);
+  }
   if (input.name === "get_connector_status") return { connected: summary.connectors };
   if (input.name === "get_active_automations") return summary.automations;
   if (input.name === "get_recent_sync_status") {
@@ -398,7 +414,30 @@ export async function executeSystemMetaTool(
       permittedReads: (input.permittedReads ?? []).filter((name) => !name.startsWith("xero_") || connected.some((label) => /Xero/i.test(label))),
     } satisfies UserCapabilitiesView;
   }
-  return summary;
+  return {
+    ...summary,
+    indexed: attachIndexHonesty(summary.indexed, summary.connectors, input.connectors),
+  };
+}
+
+function attachIndexHonesty(
+  indexed: DocumentIndexStats,
+  summaryConnectors: string[],
+  extraConnectors?: string[],
+): DocumentIndexStats {
+  const connected = [...new Set([...(extraConnectors ?? []), ...summaryConnectors])];
+  const driveConnected =
+    connected.some((row) => /google drive|drive files|conn_google_drive/i.test(row)) ||
+    indexed.bySource.some((row) => /google drive/i.test(row.source));
+  return {
+    ...indexed,
+    connectedSystems: connected,
+    driveConnected,
+    driveCountReliable:
+      indexed.driveCountReliable === true || indexed.bySource.some((row) => /google drive/i.test(row.source)),
+    microsoftOnly:
+      indexed.driveCountReliable !== true && !indexed.bySource.some((row) => /google drive/i.test(row.source)),
+  };
 }
 
 export function verbaliseSystemMeta(name: string, data: unknown, question?: string): string {
@@ -420,22 +459,52 @@ function verbaliseIndexStats(data: unknown, question?: string): string {
     string,
     unknown
   >;
-  const total = Number(indexed.totalIndexed ?? 0);
   const bySource = Array.isArray(indexed.bySource) ? (indexed.bySource as IndexSourceCount[]) : [];
-  if (!Number.isFinite(total)) {
+  const connected = Array.isArray(indexed.connectedSystems)
+    ? (indexed.connectedSystems as string[])
+    : Array.isArray(record.connectors)
+      ? (record.connectors as string[])
+      : [];
+  const driveRow = bySource.find((row) => /google drive/i.test(row.source));
+  const msSources = bySource.filter((row) => !/google drive/i.test(row.source));
+  const msTotal = msSources.reduce((sum, row) => sum + row.count, 0);
+  const driveConnected =
+    indexed.driveConnected === true ||
+    Boolean(driveRow) ||
+    connected.some((row) => /google drive|drive files|conn_google_drive/i.test(row));
+  const driveReliable =
+    driveRow != null && Number.isFinite(driveRow.count) && indexed.driveCountReliable !== false;
+  const q = String(question ?? "").toLowerCase();
+
+  if (!Number.isFinite(msTotal)) {
     return "I can see your indexed files, but I don't have a reliable count right now.";
   }
-  const q = String(question ?? "").toLowerCase();
-  const sourceAsk = bySource.find((row) => q.includes(row.source.toLowerCase()));
+
+  if (/\b(google )?drive\b/.test(q) && !/versus|vs|sharepoint or|or drive/.test(q)) {
+    if (driveReliable && driveRow) {
+      return `There are ${driveRow.count} indexed Google Drive ${driveRow.count === 1 ? "document" : "documents"} I can count.`;
+    }
+    if (driveConnected) {
+      return `Google Drive is connected, but I don't have a reliable Drive file count in this index yet. I can see ${msTotal} indexed document${msTotal === 1 ? "" : "s"} from ${sourceList(msSources)}.`;
+    }
+    return `I don't have a Google Drive count in the index I can see. I can see ${msTotal} indexed document${msTotal === 1 ? "" : "s"} from ${sourceList(msSources)}.`;
+  }
+
+  const sourceAsk = bySource.find((row) => q.includes(row.source.toLowerCase()) && !/google drive/i.test(row.source));
   if (sourceAsk) {
     return `There are ${sourceAsk.count} indexed ${sourceAsk.source} ${sourceAsk.count === 1 ? "document" : "documents"} you can see.`;
   }
-  if (/\bwhere|most|from\b/.test(q) && bySource[0]) {
-    const rest = bySource
+  if (/\bwhere|most|from\b/.test(q) && msSources[0]) {
+    const rest = msSources
       .slice(1, 4)
       .map((row) => `${row.source} (${row.count})`)
       .join(", ");
-    return `Most are from ${bySource[0].source} (${bySource[0].count})${rest ? `. Also ${rest}` : ""}.`;
+    const driveNote = driveReliable && driveRow
+      ? ` Google Drive is ${driveRow.count}.`
+      : driveConnected
+        ? " Google Drive is connected, but I don't have a reliable Drive count yet."
+        : "";
+    return `Most are from ${msSources[0].source} (${msSources[0].count})${rest ? `. Also ${rest}` : ""}.${driveNote}`;
   }
   if (/\btype\b/.test(q) && Array.isArray(indexed.byType) && (indexed.byType as IndexTypeCount[]).length) {
     const types = (indexed.byType as IndexTypeCount[])
@@ -444,10 +513,27 @@ function verbaliseIndexStats(data: unknown, question?: string): string {
       .join(", ");
     return `By file type: ${types}.`;
   }
-  const breakdown = bySource.slice(0, 4).map((row) => `${row.source} ${row.count}`).join(", ");
-  return `You currently have ${total} document${total === 1 ? "" : "s"} indexed that you can see${
+  const breakdown = msSources.slice(0, 4).map((row) => `${row.source} ${row.count}`).join(", ");
+  if (driveReliable && driveRow) {
+    const combined = msTotal + driveRow.count;
+    return `You currently have ${msTotal} indexed document${msTotal === 1 ? "" : "s"} from ${
+      breakdown || "Microsoft sources"
+    }, plus ${driveRow.count} from Google Drive — ${combined} in total that I can count.`;
+  }
+  if (driveConnected) {
+    return `You currently have ${msTotal} document${msTotal === 1 ? "" : "s"} indexed that I can count${
+      breakdown ? ` — ${breakdown}` : ""
+    }. Google Drive is connected, but I don't have a reliable Drive file count yet, so I won't guess a combined total.`;
+  }
+  return `You currently have ${msTotal} document${msTotal === 1 ? "" : "s"} indexed that you can see${
     breakdown ? ` — ${breakdown}` : ""
   }.`;
+}
+
+function sourceList(rows: IndexSourceCount[]): string {
+  if (!rows.length) return "the Microsoft index";
+  if (rows.length === 1) return rows[0]!.source;
+  return `${rows.slice(0, -1).map((row) => row.source).join(", ")} and ${rows[rows.length - 1]!.source}`;
 }
 
 function verbaliseSummary(data: unknown, question?: string): string {

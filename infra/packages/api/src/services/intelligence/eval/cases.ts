@@ -171,6 +171,172 @@ const TOOL_NONE = [
   "thanks a lot",
 ];
 
+const QUALITY_SWITCH = [
+  "Open the north yard induction pack",
+  "Pull up the frost damage checklist",
+  "Show the temporary works note",
+  "Get the crane lift plan",
+  "Go to the asbestos register",
+  "Switch to the welfare cabin rota",
+  "Find the night-shift briefing",
+  "Look up the spill response card",
+  "Can you open the scaffold tag log",
+  "Please pull up the visitor signing sheet",
+  "Show me the plant maintenance card",
+  "Get the COSHH assessment for solvents",
+  "Open last week's toolbox talk",
+  "Find the temporary fencing spec",
+  "Pull up the delivery booking form",
+];
+
+const QUALITY_FOLLOWUPS = [
+  "What about that?",
+  "And him?",
+  "When?",
+  "Who signed it?",
+  "Is that allowed?",
+  "Any exceptions?",
+  "What happens next?",
+  "Does it mention weekends?",
+  "Who is responsible?",
+  "Can they refuse?",
+  "What if it rains?",
+  "How often?",
+  "Is there a fine?",
+  "Who approves that?",
+  "What is the deadline?",
+];
+
+const QUALITY_XERO = [
+  "Sales today",
+  "What were sales yesterday?",
+  "Revenue this week",
+  "Turnover last month",
+  "Sales this quarter",
+  "What were sales last quarter?",
+  "This year's sales so far",
+  "Sales last year",
+  "Past 7 days sales",
+  "Past 30 days revenue",
+  "Past 90 days turnover",
+  "Compare this quarter's sales with last quarter",
+  "P&L this month",
+  "Profit last month",
+  "Show this year's P&L",
+];
+
+const QUALITY_CHAT = [
+  "Hiya",
+  "Thanks",
+  "that's useful",
+  "great thanks",
+  "Appreciate it",
+  "Morning",
+  "How are you?",
+  "What do you mean?",
+  "Can you give me an example?",
+  "Remind me what you told me",
+];
+
+const QUALITY_META = [
+  "How many files are indexed right now?",
+  "What's the document count on the system?",
+  "How many indexed items are there?",
+  "Give me a count of indexed files",
+  "How many documents are indexed?",
+  "What's the system document count?",
+  "How large is the indexed library?",
+  "Stocktake of indexed files please",
+  "How many indexed records are there?",
+  "Company-wide document total please",
+];
+
+const QUALITY_AMBIGUOUS = [
+  "What's the policy?",
+  "Find the document",
+  "Open that file",
+  "The other one",
+  "Have we got a policy on this?",
+  "pull up the policy please",
+  "How many are there?",
+  "and the total?",
+];
+
+const QUALITY_CAPABILITY = [
+  "What can you do?",
+  "What data can you access?",
+  "What systems are connected?",
+  "Which live systems can you actually use?",
+  "Is Xero connected?",
+  "Do you have email connected?",
+  "What else can you help with?",
+  "Who are you?",
+];
+
+const QUALITY_MAIL = [
+  "Search the mailbox for delivery notes",
+  "Any unread in Outlook?",
+  "Check the inbox for permits",
+  "Look in emails for the survey",
+  "Search shared mailbox for invoices",
+];
+
+const QUALITY_WRITE = [
+  "Create an invoice for that",
+  "Send this invoice now",
+  "Approve that invoice",
+  "Delete that contact in Xero",
+  "Raise an invoice for Elvex",
+  "Void that bill",
+  "Allocate that payment",
+];
+
+const QUALITY_MORE_SWITCH = [
+  "Open the flood risk note",
+  "Pull up the traffic management plan",
+  "Show the confinement register",
+  "Get the lone-worker card",
+  "Go to the hot-works permit",
+  "Switch to the banksman briefing",
+  "Find the concrete pour record",
+  "Look up the setting-out sheet",
+];
+
+const QUALITY_MORE_FOLLOWUPS = [
+  "Tell me more",
+  "What else?",
+  "Any dates in there?",
+  "Who wrote it?",
+  "Is it still current?",
+  "What's the first rule?",
+  "Summarise the duties",
+  "Does it mention contractors?",
+];
+
+const QUALITY_ARBITRARY = [
+  "Find the Elvex delivery docket",
+  "Look up the Merrow method statement",
+  "Have we got a Brindle lift plan?",
+  "Search for the Oakmere permit",
+  "Where is the Keswick RAMS pack?",
+  "Find the Hale water test",
+  "Look for a Pewsey drainage drawing",
+  "Open the Tadcaster welfare rota if we have it",
+  "Find the Lydney crane checklist",
+  "Search the library for a Frome noise survey",
+  "Have we got the Alnwick induction?",
+  "Find the Crediton spill kit list",
+  "Look up the Newry temporary works file",
+  "Search for the Oban booking sheet",
+  "Find the Truro plant card",
+  "Look up the Selby welfare rota",
+  "Search for the Ripon setting-out file",
+  "Have we got a Thirsk noise survey?",
+  "Find the Skipton temporary works note",
+  "Open the Harrogate induction pack if we have it",
+  "Search the library for a Scarborough lift plan",
+];
+
 export function evaluationCases(): EvalCase[] {
   const cases: EvalCase[] = [];
   let n = 0;
@@ -247,7 +413,7 @@ export function evaluationCases(): EvalCase[] {
     { text: "What happens if someone leaves?", current: VAN },
     { text: "Explain that more simply", current: VAN, expect: { intent: "chat" as const, tool: null, allowNoTool: true, grounded: true, noHallucination: true } },
     { text: "What about fuel?", current: VAN },
-    { text: "Now go back to the staff profile", current: VAN, expect: { intent: "search" as const, tool: "search_company_knowledge", grounded: true, noHallucination: true } },
+    { text: "Now go back to the staff profile", current: VAN, expect: { intent: "none" as const, allowNoTool: true, grounded: true, noHallucination: true } },
   ];
   for (const row of sequences) {
     add(
@@ -392,6 +558,91 @@ export function evaluationCases(): EvalCase[] {
     },
   );
   add("natural_conversation", "thanks that's useful", { intent: "chat", tool: null, allowNoTool: true, grounded: true, noHallucination: true });
+
+  add(
+    "multi_turn_context",
+    "Open the vehicle handbook",
+    { intent: "search", tool: "search_company_knowledge", grounded: true, noHallucination: true },
+    { state: state({ text: "Open the vehicle handbook", current: CV }) },
+  );
+  add(
+    "multi_turn_context",
+    "Switch to the site survey report",
+    { intent: "none", allowNoTool: true, grounded: true, noHallucination: true },
+    { state: state({ text: "Switch to the site survey report", current: CV }) },
+  );
+  add(
+    "document_reasoning",
+    "What about him?",
+    { intent: "scoped", tool: "search_document", stayOnDocument: true, grounded: true, noHallucination: true },
+    { state: state({ text: "What about him?", current: CV }) },
+  );
+  add("xero", "What were sales yesterday?", { intent: "xero", tool: "xero_sales_summary", grounded: true, noHallucination: true });
+  add("xero", "Sales last week please", { intent: "xero", tool: "xero_sales_summary", grounded: true, noHallucination: true });
+  add("xero", "Compare this month with last month", { intent: "xero", tool: "xero_sales_summary", grounded: true, noHallucination: true });
+  add("tool_reasoning", "How many Drive files are indexed?", { intent: "meta", tool: "get_document_index_stats", grounded: true, noHallucination: true });
+
+  for (const text of QUALITY_SWITCH) {
+    add(
+      "document_discovery",
+      text,
+      { intent: "search", tool: "search_company_knowledge", grounded: true, noHallucination: true },
+      { state: state({ text, current: CV }) },
+    );
+  }
+  for (const text of QUALITY_FOLLOWUPS) {
+    add(
+      "document_reasoning",
+      text,
+      { intent: "scoped", tool: "search_document", stayOnDocument: true, grounded: true, noHallucination: true },
+      { state: state({ text, current: VAN }) },
+    );
+  }
+  for (const text of QUALITY_XERO) {
+    add("xero", text, { intent: "xero", tool: /p&l|profit/i.test(text) ? "xero_profit_and_loss" : "xero_sales_summary", grounded: true, noHallucination: true });
+  }
+  for (const text of QUALITY_CHAT) {
+    add("natural_conversation", text, { intent: "chat", tool: null, allowNoTool: true, grounded: true, noHallucination: true });
+  }
+  for (const text of QUALITY_META) {
+    add(
+      "tool_reasoning",
+      text,
+      { intent: "meta", tool: "get_document_index_stats", grounded: true, noHallucination: true },
+      { state: state({ text, current: CV }) },
+    );
+  }
+  for (const text of QUALITY_ARBITRARY) {
+    add("document_discovery", text, { intent: "search", tool: "search_company_knowledge", grounded: true, noHallucination: true });
+  }
+  for (const text of QUALITY_AMBIGUOUS) {
+    add("ambiguity", text, { intent: "clarify", clarify: true, allowNoTool: true, noHallucination: true });
+  }
+  for (const text of QUALITY_CAPABILITY) {
+    add("tool_reasoning", text, { intent: "capability", tool: /connected|systems/.test(text) ? "get_connector_status" : "get_user_capabilities", grounded: true, noHallucination: true });
+  }
+  for (const text of QUALITY_MAIL) {
+    add("mailbox", text, { intent: "mailbox", tool: "outlook_search_mailbox", grounded: true, noHallucination: true });
+  }
+  for (const text of QUALITY_WRITE) {
+    add("tool_reasoning", text, { intent: "none", allowNoTool: true, grounded: true, noHallucination: true });
+  }
+  for (const text of QUALITY_MORE_SWITCH) {
+    add(
+      "document_discovery",
+      text,
+      { intent: "search", tool: "search_company_knowledge", grounded: true, noHallucination: true },
+      { state: state({ text, current: VAN }) },
+    );
+  }
+  for (const text of QUALITY_MORE_FOLLOWUPS) {
+    add(
+      "document_reasoning",
+      text,
+      { intent: "scoped", tool: "search_document", stayOnDocument: true, grounded: true, noHallucination: true },
+      { state: state({ text, current: SITE }) },
+    );
+  }
 
   return cases;
 }
