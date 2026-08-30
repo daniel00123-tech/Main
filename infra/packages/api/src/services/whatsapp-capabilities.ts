@@ -19,6 +19,23 @@ const CAPABILITY_BY_CONNECTOR: Record<string, string> = {
   conn_freshdesk: "Freshdesk tickets",
 };
 
+export async function listConnectedConnectorIds(env: Env, companyId: string): Promise<string[]> {
+  try {
+    const rows = await env.DB.prepare(
+      `SELECT connector_definition_id
+       FROM connector_instances
+       WHERE company_id = ?
+         AND auth_status = 'connected'
+         AND COALESCE(status, '') NOT IN ('disabled', 'draft', 'archived')`,
+    )
+      .bind(companyId)
+      .all<{ connector_definition_id: string }>();
+    return (rows.results ?? []).map((row) => row.connector_definition_id);
+  } catch {
+    return [];
+  }
+}
+
 export async function listConnectedCapabilityLabels(env: Env, companyId: string): Promise<string[]> {
   try {
     const rows = await env.DB.prepare(

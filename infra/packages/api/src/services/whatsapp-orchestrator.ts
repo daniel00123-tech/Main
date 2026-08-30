@@ -13,13 +13,28 @@ import { UNKNOWN_WHATSAPP_ACCOUNT_MESSAGE, tryNormalizeE164 } from "./phone";
 import { scheduleQualityAudit } from "./quality-auditor";
 import { recordUsageEvent } from "./usage";
 import { inspectWhatsAppAssets, outboundAiEnabled } from "./whatsapp-assets";
-import { capabilityReplyForCompany, formatPricingCapabilityReply, listConnectedCapabilityLabels } from "./whatsapp-capabilities";
+import { capabilityReplyForCompany, formatPricingCapabilityReply, listConnectedCapabilityLabels, listConnectedConnectorIds } from "./whatsapp-capabilities";
 import {
   loadWhatsAppConversation,
   saveWhatsAppConversation,
-  searchQueryFromContext,
   type WhatsAppTurn,
 } from "./whatsapp-context";
+import {
+  documentEntityFromHit,
+  emptyEntityMemory,
+  mergeEntityMemory,
+  type WhatsAppEntityMemory,
+} from "./whatsapp-entities";
+import { guidanceInfluenceNote, guidanceSearchQuery, isGuidanceHit } from "./whatsapp-guidance";
+import { planWhatsAppTurn, type WhatsAppPlan } from "./whatsapp-plan";
+import {
+  draftFromMemory,
+  memoryFactReply,
+  priceAdviceReply,
+  sourceAttributionReply,
+  sourceLinkReply,
+  withOptionalSource,
+} from "./whatsapp-synthesize";
 import {
   compressDocumentAnswer,
   compressSearchAnswer,
@@ -79,6 +94,8 @@ const ALLOWED_WHATSAPP_TOOLS = new Set([
   "xero_profit_and_loss",
   "xero_get_invoice",
   "xero_search_contacts",
+  "xero_list_overdue_invoices",
+  "xero_aged_receivables",
 ]);
 
 export type WhatsAppInboundItem = {
@@ -104,6 +121,7 @@ export type WhatsAppOrchestratorResult = {
   outcome: "unknown" | "company_selection" | "write_blocked" | "answered" | "tool_failed" | "ai_failed" | "send_failed" | "skipped";
   intent?: string | null;
   acknowledgementSent?: boolean;
+  planAction?: string | null;
 };
 
 export function looksLikeWriteIntent(text: string): boolean {
@@ -262,9 +280,13 @@ export async function handleWhatsAppInboundMessage(
 
   const marks = createWhatsAppLatencyMarks();
   marks.identityResolvedAt = Date.now();
-  const priorTurns = conversation?.companyId === companyDecision.companyId ? conversation?.turns ?? [] : [];
+  const sameCompany = conversation?.companyId === companyDecision.companyId;
+  const priorTurns = sameCompany ? conversation?.turns ?? [] : [];
+  const entities = sameCompany ? conversation?.entities ?? emptyEntityMemory() : emptyEntityMemory();
   const text = (item.text ?? "").trim();
-  const intent = classifyWhatsAppIntent(text, { hasPriorTurns: priorTurns.length > 0 });
+  const connectors = await listConnectedConnectorIds(env, companyDecision.companyId);
+  const plan = planWhatsAppTurn({ text, memory: entities, connectors });
+  const intent = plan.intent || classifyWhatsAppIntent(text, { hasPriorTurns: priorTurns.length > 0 });
   marks.intentClassifiedAt = Date.now();
 
   if (!text || item.type !== "text") {
@@ -285,10 +307,10 @@ export async function handleWhatsAppInboundMessage(
     };
   }
 
-  if (intent === "write_action" || looksLikeWriteIntent(text)) {
+  if (plan.action === "write_blocked" || intent === "write_action" || looksLikeWriteIntent(text)) {
     const reply = writeIntentWhatsAppMessage();
     const sent = await maybeSendReply(env, sender, reply);
-    await rememberTurn(env, identity.user.id, companyDecision.companyId, conversation?.turns ?? [], text, reply);
+    await rememberTurn(env, identity.user.id, companyDecision.companyId, conversation?.turns ?? [], text, reply, entities);
     await recordAuditEvent(env.DB, {
       companyId: companyDecision.companyId,
       eventType: "whatsapp.write_blocked",
@@ -312,7 +334,27 @@ export async function handleWhatsAppInboundMessage(
     };
   }
 
-  if (isCheapConversationalIntent(intent)) {
+  if (plan.action === "clarify") {
+    const reply = plan.clarification ?? "Can you give me a little more detail so I look in the right place?";
+    const sent = await maybeSendReply(env, sender, reply);
+    await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, reply, entities);
+    return {
+      handled: true,
+      duplicate: false,
+      identityFound: true,
+      companyId: companyDecision.companyId,
+      userId: identity.user.id,
+      replySent: sent.ok,
+      publicReply: reply,
+      toolName: null,
+      interactionId: null,
+      outcome: "answered",
+      intent,
+      acknowledgementSent: false,
+    };
+  }
+
+  if (plan.action === "chat" || plan.action === "capabilities" || isCheapConversationalIntent(intent)) {
     let capabilities: string | null = null;
     if (intent === "help" || intent === "capabilities") {
       if (/\b(price|pricing|quote|rates?)\b/i.test(text)) {
@@ -325,7 +367,7 @@ export async function handleWhatsAppInboundMessage(
     }
     const reply = conversationalReply(intent, { text, capabilities }) ?? conversationalReply("greeting", { text })!;
     const sent = await maybeSendReply(env, sender, reply);
-    await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, reply);
+    await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, reply, entities);
     await recordAuditEvent(env.DB, {
       companyId: companyDecision.companyId,
       eventType: "whatsapp.conversation",
@@ -370,24 +412,17 @@ export async function handleWhatsAppInboundMessage(
 
   const sessionUser = await toSessionUser(env.DB, dbUser);
   const interactionId = newId("int");
-  const searchText = focusSearchTerms(softenSearchQuery(text));
-  const lastBusinessUser = [...priorTurns].reverse().find((turn) => turn.role === "user" && turn.text.trim().length > 8);
-  const query =
-    intent === "clarification" &&
-    /summarise (that|it|this)|summarize (that|it|this)|more detail|full detail|give me the full/i.test(text) &&
-    lastBusinessUser
-      ? focusSearchTerms(softenSearchQuery(lastBusinessUser.text))
-      : searchQueryFromContext(priorTurns, searchText, intent === "clarification");
+  const needsWork = !plan.skipTools;
   let acknowledgementSent = false;
   let progressSent = false;
   let fallbackSent = false;
   let finished = false;
 
-  if (needsToolWork(intent)) {
+  if (needsWork) {
     void sendWhatsAppTypingIndicator(env, { messageId: item.wamid });
   }
 
-  const ackTimer = needsToolWork(intent)
+  const ackTimer = needsWork
     ? setTimeout(() => {
         if (finished || acknowledgementSent) return;
         const ack = acknowledgementMessage(item.wamid + text);
@@ -408,7 +443,7 @@ export async function handleWhatsAppInboundMessage(
       }, ACK_AFTER_MS)
     : null;
 
-  const progressTimer = needsToolWork(intent)
+  const progressTimer = needsWork
     ? setTimeout(() => {
         if (finished || progressSent || !acknowledgementSent) return;
         progressSent = true;
@@ -427,7 +462,7 @@ export async function handleWhatsAppInboundMessage(
         });
       }, PROGRESS_AFTER_MS)
     : null;
-  const fallbackTimer = needsToolWork(intent)
+  const fallbackTimer = needsWork
     ? setTimeout(() => {
         if (finished || fallbackSent) return;
         fallbackSent = true;
@@ -438,11 +473,12 @@ export async function handleWhatsAppInboundMessage(
   try {
     marks.planningStartedAt = Date.now();
     marks.toolStartedAt = Date.now();
-    const answered = await answerWithCompanyMcp(env, {
+    const answered = await executeWhatsAppPlan(env, {
       companyId: companyDecision.companyId,
       sessionUser,
-      query,
+      plan,
       originalText: text,
+      memory: entities,
       interactionId,
       waitUntil: options?.waitUntil,
     });
@@ -456,7 +492,15 @@ export async function handleWhatsAppInboundMessage(
     marks.outboundStartedAt = Date.now();
     const sent = await maybeSendReply(env, sender, answered.reply);
     marks.outboundAcceptedAt = Date.now();
-    await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, answered.reply);
+    await rememberTurn(
+      env,
+      identity.user.id,
+      companyDecision.companyId,
+      priorTurns,
+      text,
+      answered.reply,
+      answered.entities,
+    );
     const latency = summariseWhatsAppLatency(marks);
     await recordWhatsAppChannelUsage(env, {
       companyId: companyDecision.companyId,
@@ -478,6 +522,13 @@ export async function handleWhatsAppInboundMessage(
         progressSent,
         finalSent: sent.ok,
         cheapPath: false,
+        planAction: plan.action,
+        usedMemory: plan.useMemory,
+        askedLink: plan.action === "memory_link",
+        linkReturned: Boolean(answered.entities.lastDocument?.url) && plan.action === "memory_link",
+        replyLength: answered.reply.length,
+        rawLeak: /```|__EMPTY|jsessionid=/i.test(answered.reply),
+        conversationKind: plan.skipTools ? "conversation" : "business_tool",
       },
     });
     scheduleQualityAudit(env, options?.waitUntil, interactionId);
@@ -514,6 +565,7 @@ export async function handleWhatsAppInboundMessage(
       outcome: sent.ok ? answered.outcome : "send_failed",
       intent,
       acknowledgementSent,
+      planAction: plan.action,
     };
   } catch {
     finished = true;
@@ -539,6 +591,171 @@ export async function handleWhatsAppInboundMessage(
   }
 }
 
+async function executeWhatsAppPlan(
+  env: Env,
+  input: {
+    companyId: string;
+    sessionUser: Awaited<ReturnType<typeof toSessionUser>>;
+    plan: WhatsAppPlan;
+    originalText: string;
+    memory: WhatsAppEntityMemory;
+    interactionId: string;
+    waitUntil?: (promise: Promise<unknown>) => void;
+  },
+): Promise<{
+  reply: string;
+  toolName: string | null;
+  outcome: "answered" | "tool_failed" | "ai_failed";
+  latencyMs: number;
+  entities: WhatsAppEntityMemory;
+}> {
+  const started = Date.now();
+  const plan = input.plan;
+  if (plan.action === "memory_link") {
+    return {
+      reply: sourceLinkReply(input.memory.lastDocument),
+      toolName: null,
+      outcome: "answered",
+      latencyMs: Date.now() - started,
+      entities: input.memory,
+    };
+  }
+  if (plan.action === "memory_source") {
+    return {
+      reply: sourceAttributionReply(input.memory.lastDocument),
+      toolName: null,
+      outcome: "answered",
+      latencyMs: Date.now() - started,
+      entities: input.memory,
+    };
+  }
+  if (plan.action === "memory_fact" && plan.skipTools) {
+    return {
+      reply: memoryFactReply(plan, input.memory),
+      toolName: null,
+      outcome: "answered",
+      latencyMs: Date.now() - started,
+      entities: input.memory,
+    };
+  }
+  if (plan.action === "draft" && plan.skipTools) {
+    return {
+      reply: draftFromMemory(plan.draftKind ?? "reply", input.memory),
+      toolName: null,
+      outcome: "answered",
+      latencyMs: Date.now() - started,
+      entities: input.memory,
+    };
+  }
+  if (plan.action === "memory_fact" && input.memory.lastDocument?.id) {
+    const fetched = await executeGatewayRequest(env, {
+      actor: { type: "user", user: input.sessionUser },
+      companyId: input.companyId,
+      toolName: COMPANY_KNOWLEDGE_READ_TOOL,
+      arguments: { documentRef: input.memory.lastDocument.id, id: input.memory.lastDocument.id },
+      sourceClient: "whatsapp",
+      interactionId: input.interactionId,
+      waitUntil: input.waitUntil,
+    });
+    if (fetched.status === 200) {
+      const doc = toStandardFetchPayload(fetched.result, input.memory.lastDocument.id);
+      const nextDoc = documentEntityFromHit({
+        id: doc.id || input.memory.lastDocument.id,
+        title: doc.title || input.memory.lastDocument.title,
+        url: doc.url || input.memory.lastDocument.url,
+        text: doc.text,
+      });
+      return {
+        reply: memoryFactReply(plan, { ...input.memory, lastDocument: nextDoc }, doc.text),
+        toolName: COMPANY_KNOWLEDGE_READ_TOOL,
+        outcome: "answered",
+        latencyMs: Date.now() - started,
+        entities: mergeEntityMemory(input.memory, { lastDocument: nextDoc, lastTool: COMPANY_KNOWLEDGE_READ_TOOL }),
+      };
+    }
+  }
+
+  if (plan.action === "xero" && plan.tool && ALLOWED_WHATSAPP_TOOLS.has(plan.tool)) {
+    const xero = await executeGatewayRequest(env, {
+      actor: { type: "user", user: input.sessionUser },
+      companyId: input.companyId,
+      toolName: plan.tool,
+      arguments: { query: plan.query || input.originalText },
+      sourceClient: "whatsapp",
+      interactionId: input.interactionId,
+      waitUntil: input.waitUntil,
+    });
+    if (xero.status === 401 || xero.status === 403) {
+      return {
+        reply: permissionBlockedWhatsAppMessage(),
+        toolName: plan.tool,
+        outcome: "tool_failed",
+        latencyMs: Date.now() - started,
+        entities: input.memory,
+      };
+    }
+    if (xero.status === 200) {
+      const reply = formatWhatsAppReply(compressToolResult(xero.result, input.originalText));
+      return {
+        reply,
+        toolName: plan.tool,
+        outcome: "answered",
+        latencyMs: Date.now() - started,
+        entities: mergeEntityMemory(input.memory, {
+          lastTool: plan.tool,
+          lastDateRange: /last month|this month/i.test(input.originalText)
+            ? { label: /last month/i.test(input.originalText) ? "last_month" : "this_month" }
+            : input.memory.lastDateRange,
+        }),
+      };
+    }
+    return {
+      reply: toolFailureWhatsAppMessage(),
+      toolName: plan.tool,
+      outcome: "tool_failed",
+      latencyMs: Date.now() - started,
+      entities: input.memory,
+    };
+  }
+
+  const knowledge = await answerWithCompanyMcp(env, {
+    companyId: input.companyId,
+    sessionUser: input.sessionUser,
+    query: plan.needsGuidance ? guidanceSearchQuery(plan.query || input.originalText) : plan.query || input.originalText,
+    originalText: input.originalText,
+    interactionId: input.interactionId,
+    waitUntil: input.waitUntil,
+    fetch: plan.fetch,
+    guidanceOnly: plan.needsGuidance && plan.action === "guidance",
+  });
+
+  let reply = knowledge.reply;
+  if (plan.action === "price") {
+    reply = priceAdviceReply({
+      title: knowledge.entity?.title,
+      text: knowledge.entity?.excerpt,
+      found: knowledge.outcome === "answered" && Boolean(knowledge.entity?.title),
+    });
+  } else if (plan.action === "draft") {
+    const memory = mergeEntityMemory(input.memory, { lastDocument: knowledge.entity, lastTool: knowledge.toolName });
+    reply = draftFromMemory(plan.draftKind ?? "reply", memory, knowledge.guidanceTitle ? guidanceInfluenceNote(knowledge.guidanceTitle) : null);
+  } else {
+    reply = withOptionalSource(reply, knowledge.entity?.title ?? null, input.originalText);
+  }
+
+  return {
+    reply,
+    toolName: knowledge.toolName,
+    outcome: knowledge.outcome,
+    latencyMs: knowledge.latencyMs,
+    entities: mergeEntityMemory(input.memory, {
+      lastDocument: knowledge.entity,
+      lastTool: knowledge.toolName,
+      lastSource: knowledge.entity?.sourceLabel ?? knowledge.entity?.title,
+    }),
+  };
+}
+
 async function answerWithCompanyMcp(
   env: Env,
   input: {
@@ -548,12 +765,16 @@ async function answerWithCompanyMcp(
     originalText: string;
     interactionId: string;
     waitUntil?: (promise: Promise<unknown>) => void;
+    fetch?: boolean;
+    guidanceOnly?: boolean;
   },
 ): Promise<{
   reply: string;
   toolName: string;
   outcome: "answered" | "tool_failed" | "ai_failed";
   latencyMs: number;
+  entity?: ReturnType<typeof documentEntityFromHit> | null;
+  guidanceTitle?: string | null;
 }> {
   const started = Date.now();
   const searchTool = COMPANY_KNOWLEDGE_SEARCH_TOOL;
@@ -620,14 +841,20 @@ async function answerWithCompanyMcp(
     };
   }
 
-  const hits = pickBestKnowledgeHits(toStandardSearchPayload(search.result).results, input.query);
+  let hits = pickBestKnowledgeHits(toStandardSearchPayload(search.result).results, input.query);
+  if (input.guidanceOnly) {
+    const guided = hits.filter((hit) => isGuidanceHit(hit));
+    if (guided.length) hits = guided;
+  }
   let body = formatSearchHits(hits, input.originalText);
+  const shouldFetch =
+    input.fetch !== false &&
+    (input.fetch ||
+      FETCH_INTENT.test(input.originalText) ||
+      FETCH_INTENT.test(input.query) ||
+      /summarise|summarize|more detail|full detail/i.test(input.originalText));
 
-  if (
-    (FETCH_INTENT.test(input.originalText) || FETCH_INTENT.test(input.query) || /summarise|summarize|more detail|full detail/i.test(input.originalText)) &&
-    hits[0]?.id &&
-    ALLOWED_WHATSAPP_TOOLS.has(COMPANY_KNOWLEDGE_READ_TOOL)
-  ) {
+  if (shouldFetch && hits[0]?.id && ALLOWED_WHATSAPP_TOOLS.has(COMPANY_KNOWLEDGE_READ_TOOL)) {
     const fetched = await executeGatewayRequest(env, {
       actor: { type: "user", user: input.sessionUser },
       companyId: input.companyId,
@@ -644,11 +871,21 @@ async function answerWithCompanyMcp(
       const excerpt = /__EMPTY/.test(raw)
         ? `${title}\n\nThis looks like a spreadsheet. I can give you the useful rows if you want.`
         : compressDocumentAnswer({ title, text: raw, question: input.originalText });
+      const entity = documentEntityFromHit({
+        id: hits[0].id,
+        title,
+        url: doc.url || hits[0].url,
+        text: raw,
+        snippet: hits[0].snippet,
+        sourceLabel: title,
+      });
       return {
         reply: excerpt,
         toolName: COMPANY_KNOWLEDGE_READ_TOOL,
         outcome: "answered",
         latencyMs: Date.now() - started,
+        entity,
+        guidanceTitle: isGuidanceHit(hits[0]) ? title : null,
       };
     }
   }
@@ -670,11 +907,22 @@ async function answerWithCompanyMcp(
     }
   }
 
+  const top = hits[0];
   return {
     reply: formatWhatsAppReply(body),
     toolName: searchTool,
     outcome: "answered",
     latencyMs: Date.now() - started,
+    entity: top
+      ? documentEntityFromHit({
+          id: top.id,
+          title: top.title,
+          url: top.url,
+          snippet: top.snippet,
+          sourceLabel: top.title,
+        })
+      : null,
+    guidanceTitle: top && isGuidanceHit(top) ? top.title : null,
   };
 }
 
@@ -736,6 +984,7 @@ async function rememberTurn(
   prior: WhatsAppTurn[],
   userText: string,
   assistantText: string,
+  entities?: WhatsAppEntityMemory,
 ): Promise<void> {
   await saveWhatsAppConversation(env, {
     userId,
@@ -746,6 +995,7 @@ async function rememberTurn(
       { role: "user", text: userText.slice(0, 500) },
       { role: "assistant", text: assistantText.slice(0, 500) },
     ],
+    entities,
   });
 }
 

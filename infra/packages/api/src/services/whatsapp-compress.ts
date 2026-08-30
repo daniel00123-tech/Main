@@ -19,7 +19,7 @@ export function wantsAlternatives(text: string): boolean {
   return /\b(alternatives?|other (results?|matches|documents?)|what else|more results)\b/i.test(text);
 }
 
-export function sanitizeWhatsAppSource(text: string): string {
+export function sanitizeWhatsAppSource(text: string, options?: { keepUrls?: boolean }): string {
   let next = String(text ?? "").replace(/\r\n/g, "\n");
   next = next.replace(UUID_RE, "");
   next = next.replace(EMAIL_RE, "");
@@ -29,7 +29,9 @@ export function sanitizeWhatsAppSource(text: string): string {
   next = next.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
   next = next.replace(/```[\s\S]*?```/g, "");
   next = next.replace(/^\s*\|.+\|\s*$/gm, "");
-  next = next.replace(/https?:\/\/\S+/gi, "");
+  if (!options?.keepUrls) {
+    next = next.replace(/https?:\/\/\S+/gi, "");
+  }
   next = next.replace(/jsessionid=\S+/gi, "");
   next = next.replace(/__EMPTY(_\d+)?/g, "");
   next = next.replace(/\b(PDFFormatVersion|IsLinearized|IsAcroFormPresent|IsXFAPresent|IsCollectionPresent|IsSignaturesPresent|CreationDate|ModDate|Producer|PDFFormat)\b[^\n]*/gi, "");

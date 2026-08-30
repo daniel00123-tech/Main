@@ -51,6 +51,7 @@ routes.post("/api/internal/whatsapp-ux-uat", async (c) => {
     ok: result.handled,
     outcome: result.outcome,
     intent: result.intent ?? null,
+    planAction: result.planAction ?? null,
     acknowledgementSent: Boolean(result.acknowledgementSent),
     replySent: result.replySent,
     publicReply: result.publicReply,

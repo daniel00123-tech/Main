@@ -104,7 +104,8 @@ function env(overrides: Partial<Env> = {}): Env {
                   company_id: args[1],
                   pending_company_selection: args[2],
                   turns_json: args[3],
-                  updated_at: args[4],
+                  entities_json: args[4],
+                  updated_at: args[5] ?? args[4],
                 });
               }
               if (sql.includes("INSERT INTO whatsapp_inbound_events") && args[1]) {

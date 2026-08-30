@@ -1,4 +1,10 @@
 import type { Env } from "../env";
+import {
+  emptyEntityMemory,
+  parseEntityMemory,
+  serializeEntityMemory,
+  type WhatsAppEntityMemory,
+} from "./whatsapp-entities";
 
 const MAX_TURNS = 6;
 const CONTEXT_TTL_MS = 6 * 60 * 60 * 1000;
@@ -13,6 +19,7 @@ export type WhatsAppConversationState = {
   companyId: string | null;
   pendingCompanySelection: boolean;
   turns: WhatsAppTurn[];
+  entities: WhatsAppEntityMemory;
   updatedAt: string;
 };
 
@@ -43,9 +50,11 @@ export async function ensureWhatsAppConversationsTable(env: Env): Promise<void> 
        company_id TEXT,
        pending_company_selection INTEGER NOT NULL DEFAULT 0,
        turns_json TEXT NOT NULL DEFAULT '[]',
+       entities_json TEXT NOT NULL DEFAULT '{}',
        updated_at TEXT NOT NULL
      )`,
   ).run();
+  await env.DB.prepare(`ALTER TABLE whatsapp_conversations ADD COLUMN entities_json TEXT`).run().catch(() => undefined);
 }
 
 export async function loadWhatsAppConversation(
@@ -54,7 +63,7 @@ export async function loadWhatsAppConversation(
 ): Promise<WhatsAppConversationState | null> {
   await ensureWhatsAppConversationsTable(env);
   const row = await env.DB.prepare(
-    `SELECT user_id, company_id, pending_company_selection, turns_json, updated_at
+    `SELECT user_id, company_id, pending_company_selection, turns_json, entities_json, updated_at
      FROM whatsapp_conversations
      WHERE user_id = ?`
   )
@@ -64,6 +73,7 @@ export async function loadWhatsAppConversation(
       company_id: string | null;
       pending_company_selection: number;
       turns_json: string | null;
+      entities_json: string | null;
       updated_at: string;
     }>();
   if (!row) return null;
@@ -73,6 +83,7 @@ export async function loadWhatsAppConversation(
       companyId: row.company_id,
       pendingCompanySelection: false,
       turns: [],
+      entities: emptyEntityMemory(),
       updatedAt: row.updated_at,
     };
   }
@@ -81,6 +92,7 @@ export async function loadWhatsAppConversation(
     companyId: row.company_id,
     pendingCompanySelection: row.pending_company_selection === 1,
     turns: parseTurns(row.turns_json),
+    entities: parseEntityMemory(row.entities_json),
     updatedAt: row.updated_at,
   };
 }
@@ -92,18 +104,20 @@ export async function saveWhatsAppConversation(
     companyId: string | null;
     pendingCompanySelection?: boolean;
     turns: WhatsAppTurn[];
+    entities?: WhatsAppEntityMemory;
   }
 ): Promise<void> {
   await ensureWhatsAppConversationsTable(env);
   const now = new Date().toISOString();
   await env.DB.prepare(
     `INSERT INTO whatsapp_conversations (
-       user_id, company_id, pending_company_selection, turns_json, updated_at
-     ) VALUES (?, ?, ?, ?, ?)
+       user_id, company_id, pending_company_selection, turns_json, entities_json, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET
        company_id = excluded.company_id,
        pending_company_selection = excluded.pending_company_selection,
        turns_json = excluded.turns_json,
+       entities_json = excluded.entities_json,
        updated_at = excluded.updated_at`
   )
     .bind(
@@ -111,6 +125,7 @@ export async function saveWhatsAppConversation(
       input.companyId,
       input.pendingCompanySelection ? 1 : 0,
       JSON.stringify(input.turns.slice(-MAX_TURNS)),
+      serializeEntityMemory(input.entities ?? emptyEntityMemory()),
       now
     )
     .run();

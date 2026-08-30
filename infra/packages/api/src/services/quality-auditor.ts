@@ -26,7 +26,13 @@ export type QualityCategory =
   | "whatsapp_unnecessary_tool"
   | "whatsapp_no_final_after_ack"
   | "whatsapp_progress_abandoned"
-  | "whatsapp_repeated_connector_timeout";
+  | "whatsapp_repeated_connector_timeout"
+  | "whatsapp_missing_link"
+  | "whatsapp_context_lost"
+  | "whatsapp_wrong_tool"
+  | "whatsapp_excessive_length"
+  | "whatsapp_raw_output"
+  | "whatsapp_capability_overpromise";
 
 export interface QualitySignal {
   category: QualityCategory;
@@ -311,6 +317,42 @@ function detectWhatsAppUxSignals(input: QualityAuditInput): QualitySignal[] {
       confidence: 0.8,
       evidence: { toolName: timeoutTool, priorCount: priorTimeouts.length },
       suggestedInvestigation: "The same connector timed out more than once on WhatsApp.",
+    });
+  }
+  if (meta.askedLink && !meta.linkReturned) {
+    signals.push({
+      category: "whatsapp_missing_link",
+      severity: "medium",
+      confidence: 0.8,
+      evidence: { planAction: meta.planAction },
+      suggestedInvestigation: "User asked for a source link and no usable URL was returned.",
+    });
+  }
+  if (meta.followUp && meta.contextLost) {
+    signals.push({
+      category: "whatsapp_context_lost",
+      severity: "high",
+      confidence: 0.75,
+      evidence: { intent },
+      suggestedInvestigation: "Follow-up could not resolve the previous document or invoice.",
+    });
+  }
+  if (Number(meta.replyLength ?? 0) > 800) {
+    signals.push({
+      category: "whatsapp_excessive_length",
+      severity: "low",
+      confidence: 0.7,
+      evidence: { replyLength: meta.replyLength },
+      suggestedInvestigation: "WhatsApp reply was longer than the concise default.",
+    });
+  }
+  if (meta.rawLeak) {
+    signals.push({
+      category: "whatsapp_raw_output",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { planAction: meta.planAction },
+      suggestedInvestigation: "Raw tool or document dump leaked into a WhatsApp reply.",
     });
   }
   return signals;
