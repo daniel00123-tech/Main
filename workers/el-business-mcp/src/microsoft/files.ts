@@ -256,6 +256,8 @@ export async function searchFiles(
 ): Promise<{
   results: FileHit[];
   sharePointSite: GraphSite | null;
+  sharePointDriveCount: number;
+  eligibleOneDriveCount: number;
   excludedProtectedCount: number;
 }> {
   const query = (input.filename || input.query || "").trim();
@@ -304,9 +306,27 @@ export async function searchFiles(
   for (const hit of results) {
     unique.set(`${hit.driveId}:${hit.id}`, hit);
   }
+  if (unique.size === 0) {
+    for (const drive of sharePointDrives.slice(0, 8)) {
+      try {
+        const page = await graph.get<{ value?: GraphItem[] }>(
+          `/drives/${drive.id}/root/children?$top=15&$select=id,name,webUrl,size,lastModifiedDateTime,folder,file,parentReference,createdBy,lastModifiedBy`
+        );
+        for (const item of page.value ?? []) {
+          const hit = toHit(item, "sharepoint", site?.id ?? null, drive.owner);
+          if (hit && allowHit(policy, hit)) unique.set(`${hit.driveId}:${hit.id}`, hit);
+        }
+      } catch {
+        /* Sites.Selected may not include this library yet */
+      }
+    }
+  }
+
   return {
     results: [...unique.values()].slice(0, input.top ?? 20),
     sharePointSite: site,
+    sharePointDriveCount: sharePointDrives.length,
+    eligibleOneDriveCount: oneDrives.eligible.length,
     excludedProtectedCount,
   };
 }

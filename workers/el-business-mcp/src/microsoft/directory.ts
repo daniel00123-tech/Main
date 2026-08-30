@@ -43,10 +43,24 @@ export async function listUsers(
   top = 25
 ): Promise<DirectoryUser[]> {
   if (query?.trim()) {
-    const search = encodeURIComponent(`"${query.trim()}"`);
+    const q = query.trim().replace(/"/g, "");
+    const search = encodeURIComponent(`"displayName:${q}" OR "mail:${q}" OR "userPrincipalName:${q}"`);
+    try {
+      const page = await graph.get<{ value?: Array<Partial<DirectoryUser>> }>(
+        `/users?$search=${search}&$select=${USER_SELECT}&$top=${Math.min(top, 50)}`,
+        { headers: { ConsistencyLevel: "eventual" } }
+      );
+      const found = (page.value ?? []).map(asUser).filter((user): user is DirectoryUser => Boolean(user));
+      if (found.length) return found;
+    } catch {
+      /* fall through to startswith filter */
+    }
+    const escaped = q.replace(/'/g, "''");
+    const filter = encodeURIComponent(
+      `startswith(displayName,'${escaped}') or startswith(givenName,'${escaped}') or startswith(mail,'${escaped}')`
+    );
     const page = await graph.get<{ value?: Array<Partial<DirectoryUser>> }>(
-      `/users?$search=${search}&$select=${USER_SELECT}&$top=${Math.min(top, 50)}`,
-      { headers: { ConsistencyLevel: "eventual" } }
+      `/users?$filter=${filter}&$select=${USER_SELECT}&$top=${Math.min(top, 50)}`
     );
     return (page.value ?? []).map(asUser).filter((user): user is DirectoryUser => Boolean(user));
   }
@@ -70,7 +84,7 @@ export async function getUser(graph: GraphClient, idOrMail: string): Promise<Dir
 
 export async function listGroups(graph: GraphClient, query?: string): Promise<DirectoryGroup[]> {
   const path = query?.trim()
-    ? `/groups?$search=${encodeURIComponent(`"displayName:${query.trim()}"`)}&$select=id,displayName,mail,description&$top=25`
+    ? `/groups?$search=${encodeURIComponent(`"displayName:${query.trim().replace(/"/g, "")}"`)}&$select=id,displayName,mail,description&$top=25`
     : `/groups?$select=id,displayName,mail,description&$top=50`;
   const page = await graph.get<{ value?: DirectoryGroup[] }>(path, {
     headers: { ConsistencyLevel: "eventual" },

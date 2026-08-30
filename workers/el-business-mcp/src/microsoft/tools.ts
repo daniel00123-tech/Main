@@ -270,6 +270,8 @@ export function registerMicrosoftTools(server: McpServer, env: Env): void {
         }
         return jsonTool({
           sharePoint: result.sharePointSite,
+          sharePointDriveCount: result.sharePointDriveCount,
+          eligibleOneDriveCount: result.eligibleOneDriveCount,
           excludedProtectedCount: result.excludedProtectedCount,
           results: result.results,
         });
