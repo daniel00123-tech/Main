@@ -368,7 +368,10 @@ async function loadGettingStartedSignals(db: D1Database, companyId: string) {
           `SELECT COUNT(*) AS count FROM service_identities
            WHERE company_id = ? AND identity_type IN ('chatgpt', 'claude')
              AND status = 'active'
-             AND (last_used_at IS NOT NULL OR IFNULL(request_count, 0) > 0)`,
+             AND (last_used_at IS NOT NULL OR IFNULL(request_count, 0) > 0)
+             AND lower(name) NOT LIKE '%probe%'
+             AND lower(name) NOT LIKE '%routing%'
+             AND lower(IFNULL(description, '')) NOT LIKE '%probe%'`,
         )
         .bind(companyId)
         .first(),
@@ -376,7 +379,9 @@ async function loadGettingStartedSignals(db: D1Database, companyId: string) {
         .prepare(
           `SELECT COUNT(*) AS count FROM usage_records
            WHERE company_id = ? AND success = 1
-             AND source_client IN ('chatgpt', 'claude')`,
+             AND source_client IN ('chatgpt', 'claude')
+             AND lower(IFNULL(actor_email, '')) NOT LIKE '%probe%'
+             AND lower(IFNULL(actor_email, '')) NOT LIKE '%routing%'`,
         )
         .bind(companyId)
         .first(),
@@ -678,6 +683,22 @@ export async function runMcpHealthCheck(
         if (parsed.mcp?.version) mcpVersion = parsed.mcp.version;
         if (parsed.mcp?.coreVersion) coreVersion = parsed.mcp.coreVersion;
         transportMessage = `MCP healthy · ${toolNames.length} tools`;
+        try {
+          const { parseMcpConnectorSnapshot } = await import("@infra/shared");
+          const { syncConnectorMirrorFromCompanyMcp } = await import("./mcp-connector-mirror");
+          const snapshot = parseMcpConnectorSnapshot(parsed);
+          if (snapshot) {
+            await syncConnectorMirrorFromCompanyMcp(env, {
+              companyId: mcp.companyId,
+              actor,
+              mcp,
+              snapshot,
+              force: true,
+            });
+          }
+        } catch {
+          // Mirror is best-effort; transport health still stands.
+        }
       }
     } catch {
       transportMessage = `MCP healthy · ${toolNames.length} tools`;

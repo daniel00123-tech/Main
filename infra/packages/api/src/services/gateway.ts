@@ -1,6 +1,17 @@
 import type { ToolAction } from "@infra/shared";
 import type { Env } from "../env";
 import type { SessionUser } from "../auth/session";
+import { liveActorToSessionUser, loadLiveCompanyActor } from "../auth/live-identity";
+import {
+  isAccessJtiRevoked,
+  isInfraServiceToken,
+  looksLikeJwt,
+  verifyMcpAccessToken,
+} from "../auth/mcp-oauth";
+import {
+  normalizeSourceClient,
+  resolveConnectorInstanceId,
+} from "./usage-attribution";
 import { newId, nowIso } from "../db/mappers";
 import {
   executeRegisteredMcpTool,
@@ -54,7 +65,13 @@ import { isOutlookReadTool, outlookActionForTool } from "./microsoft-outlook-too
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 
 export type GatewayActor =
-  | { type: "user"; user: SessionUser }
+  | {
+      type: "user";
+      user: SessionUser;
+      boundCompanyId?: string;
+      membershipId?: string;
+      channel?: string;
+    }
   | { type: "service"; identity: ServiceIdentityRecord };
 
 async function resolveToolAction(
@@ -131,6 +148,33 @@ export async function resolveGatewayActor(
 ): Promise<GatewayActor | { error: string; status: 401 | 403 }> {
   const token = extractServiceCredential(request);
   if (token) {
+    if (looksLikeJwt(token) && !isInfraServiceToken(token)) {
+      const claims = await verifyMcpAccessToken(token, env.SESSION_SECRET);
+      if (!claims) {
+        return { error: "Invalid or expired INFRA user credential", status: 401 };
+      }
+      if (await isAccessJtiRevoked(env.DB, claims.jti)) {
+        return { error: "INFRA user credential has been revoked", status: 401 };
+      }
+      const live = await loadLiveCompanyActor(env.DB, claims.sub, claims.company_id);
+      if (!live) {
+        return { error: "Unknown or deleted company user", status: 403 };
+      }
+      if (!live.active) {
+        return { error: live.denyReason ?? "User is disabled", status: 403 };
+      }
+      if (live.membershipId !== claims.membership_id && claims.membership_id) {
+        // Membership id is a bind hint only; live row is authoritative.
+      }
+      return {
+        type: "user",
+        user: liveActorToSessionUser(live),
+        boundCompanyId: live.companyId,
+        membershipId: live.membershipId,
+        channel: claims.channel || "chatgpt",
+      };
+    }
+
     const identity = await authenticateServiceToken(env.DB, token);
     if (!identity) {
       return { error: "Invalid or revoked service token", status: 401 };
@@ -142,7 +186,7 @@ export async function resolveGatewayActor(
   }
 
   if (sessionUser) {
-    return { type: "user", user: sessionUser };
+    return { type: "user", user: sessionUser, channel: "portal" };
   }
 
   return { error: "Authentication required", status: 401 };
@@ -227,11 +271,13 @@ export async function executeGatewayRequest(
     input.actor.type === "user"
       ? input.actor.user.userId
       : input.actor.identity.id;
-  const sourceClient =
+  const sourceClient = normalizeSourceClient(
     input.sourceClient ??
-    (input.actor.type === "service"
-      ? input.actor.identity.identityType
-      : "infra-gateway");
+      (input.actor.type === "service"
+        ? input.actor.identity.identityType
+        : input.actor.channel ?? "infra-gateway"),
+    input.actor.type === "user" ? "portal" : "service",
+  );
 
   await recordAuditEvent(env.DB, {
     companyId: input.companyId,
@@ -452,11 +498,18 @@ export async function executeGatewayRequest(
   let permissionReason: string | undefined;
 
   if (input.actor.type === "user") {
+    const mailbox =
+      typeof input.arguments?.mailboxAddress === "string"
+        ? input.arguments.mailboxAddress
+        : typeof input.arguments?.mailbox === "string"
+          ? input.arguments.mailbox
+          : null;
     const decision = await evaluateActionPermission(
       env.DB,
       input.actor.user,
       input.companyId,
       action as ToolAction,
+      { toolName: input.toolName, mailboxAddress: mailbox },
     );
     permissionAllowed = decision.allowed;
     permissionReason = decision.reason;
@@ -519,6 +572,41 @@ export async function executeGatewayRequest(
       )
       .run();
 
+    const connectorInstanceId = await resolveConnectorInstanceId(
+      env.DB,
+      input.companyId,
+      action,
+      input.toolName,
+    );
+    await recordUsageEvent(env.DB, {
+      companyId: input.companyId,
+      userId: input.actor.type === "user" ? actorId : null,
+      actorEmail: actorLabel,
+      resourceType: "gateway",
+      resourceId: input.toolName,
+      mcpEnvironmentId: mcp.id,
+      connectorInstanceId,
+      toolName: input.toolName,
+      action,
+      riskClass,
+      success: false,
+      durationMs: Date.now() - started,
+      sourceClient,
+      correlationId,
+      requestId,
+      interactionId: interaction.interactionId,
+      parentRequestId: interaction.parentRequestId,
+      mcpSessionId: interaction.mcpSessionId,
+      metadata: {
+        denied: true,
+        billingStatus: "denied",
+        actorType: input.actor.type,
+        membershipId:
+          input.actor.type === "user" ? input.actor.membershipId ?? null : null,
+        reason: permissionReason,
+      },
+      settlementStatus: "denied",
+    });
     scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
     return {
       status: 403 as const,
@@ -771,6 +859,12 @@ export async function executeGatewayRequest(
   let ledgerEntryId: string | null = null;
   let settlementStatus = "zero_charge";
 
+  const connectorInstanceId = await resolveConnectorInstanceId(
+    env.DB,
+    input.companyId,
+    action,
+    input.toolName,
+  );
   const usage = await recordUsageEvent(env.DB, {
     companyId: input.companyId,
     userId: input.actor.type === "user" ? actorId : null,
@@ -778,6 +872,7 @@ export async function executeGatewayRequest(
     resourceType: "gateway",
     resourceId: input.toolName,
     mcpEnvironmentId: mcp.id,
+    connectorInstanceId,
     toolName: input.toolName,
     action,
     riskClass,
@@ -794,6 +889,8 @@ export async function executeGatewayRequest(
       pricingLabel: charge.pricingLabel,
       isTestConfig: charge.isTestConfig,
       actorType: input.actor.type,
+      membershipId:
+        input.actor.type === "user" ? input.actor.membershipId ?? null : null,
       balanceBeforeCents: balanceBefore.balanceCents,
       interactionId: interaction.interactionId,
       interactionSourcedFrom: interaction.sourcedFrom,

@@ -1,12 +1,15 @@
 import { FormEvent, useId, useState } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { InfraBrand } from "../components/InfraBrand";
+import { safeOauthContinueUrl } from "../lib/oauth-continue";
 
 export default function PortalLoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const continueUrl = safeOauthContinueUrl(searchParams.get("next"));
   const successMessage = (location.state as { message?: string } | null)?.message;
   const emailId = useId();
   const passwordId = useId();
@@ -15,6 +18,11 @@ export default function PortalLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  if (user && continueUrl) {
+    window.location.assign(continueUrl);
+    return <div className="card muted">Continuing ChatGPT connection…</div>;
+  }
 
   if (user) {
     return <Navigate to="/portal" replace />;
@@ -27,6 +35,10 @@ export default function PortalLoginPage() {
     setError(null);
     try {
       await login(email, password);
+      if (continueUrl) {
+        window.location.assign(continueUrl);
+        return;
+      }
       navigate("/portal");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");

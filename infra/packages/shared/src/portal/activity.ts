@@ -10,15 +10,34 @@ export type CustomerActivityItem = {
 
 const INTERNAL_ACTOR =
   /^(system:|svc_|internal-|probe|microsoft-scheduler|microsoft-queue|stripe-webhook)/i;
+const PROBE_ACTOR = /\b(probe|routing[-_ ]?probe)\b/i;
+const PROBE_TOOLS = new Set(["system_health", "initialize", "tools/list", "tools/call"]);
+
+function isRoutingProbeFailure(event: AuditEvent): boolean {
+  if (event.eventType !== "mcp.execution_failed") return false;
+  if (PROBE_ACTOR.test(event.actor ?? "")) return true;
+  const detail = event.detail ?? {};
+  const blob = `${event.resourceId ?? ""} ${JSON.stringify(detail)}`;
+  if (PROBE_ACTOR.test(blob)) return true;
+  const tool = String(detail.tool ?? detail.toolName ?? event.resourceId ?? "");
+  return PROBE_TOOLS.has(tool);
+}
 
 const HIDDEN_EVENTS = new Set([
   "company.accessed",
   "mcp.tools_listed",
   "mcp.health_checked",
   "connector.health_checked",
-  "mcp.execution_succeeded",
   "connector.sync_started",
 ]);
+
+function isRoutineMcpSuccess(event: AuditEvent): boolean {
+  if (event.eventType !== "mcp.execution_succeeded") return false;
+  if (PROBE_ACTOR.test(event.actor ?? "")) return true;
+  const detail = event.detail ?? {};
+  const tool = String(detail.tool ?? detail.toolName ?? event.resourceId ?? "");
+  return PROBE_TOOLS.has(tool);
+}
 
 function providerFromEvent(event: AuditEvent): string | null {
   const detail = event.detail ?? {};
@@ -54,7 +73,13 @@ function mapEvent(event: AuditEvent): CustomerActivityItem | null {
   const type = event.eventType as string;
 
   if (HIDDEN_EVENTS.has(type)) return null;
-  if (INTERNAL_ACTOR.test(actor) && type !== "connector.sync_completed" && type !== "connector.sync_failed") {
+  if (isRoutineMcpSuccess(event)) return null;
+  if (
+    INTERNAL_ACTOR.test(actor) &&
+    type !== "connector.sync_completed" &&
+    type !== "connector.sync_failed" &&
+    type !== "connector.connected"
+  ) {
     return null;
   }
 
@@ -180,7 +205,17 @@ function mapEvent(event: AuditEvent): CustomerActivityItem | null {
       tone: type.includes("failed") ? "danger" : "healthy",
     };
   }
+  if (type === "mcp.execution_succeeded") {
+    return {
+      id: event.id,
+      title: humanActorName(actor),
+      description: "AI request completed",
+      createdAt: event.createdAt,
+      tone: "healthy",
+    };
+  }
   if (type === "mcp.execution_failed") {
+    if (isRoutingProbeFailure(event)) return null;
     return {
       id: event.id,
       title: humanActorName(actor),

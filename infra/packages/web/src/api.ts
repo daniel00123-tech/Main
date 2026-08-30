@@ -1192,23 +1192,48 @@ export const api = {
         tokenStatus?: string;
         tokenPrefix?: string | null;
         requestCount?: number;
+        channelEnabled?: boolean;
+        authMode?: string;
+        viewerCanManageChannel?: boolean;
+        viewerCanConnect?: boolean;
+        userConnectionStatus?: string;
+        authorizationServer?: string;
+        oauthAuthorizeUrl?: string;
       }>
     >(`/api/companies/${slug}/ai-connections`),
-  connectAiClient: (slug: string, clientType: string) =>
+  connectAiClient: (slug: string, clientType: string, mode: "oauth" | "service_token" = "oauth") =>
     fetchJson<{
-      token: string;
+      token: string | null;
+      authMode?: string;
       gatewayEndpoint: string;
       mcpEndpoint?: string;
+      authorizationServer?: string;
+      oauthAuthorizeUrl?: string;
       setup: Record<string, unknown>;
-      warning: string;
-      identity: { id: string; name: string; tokenPrefix: string | null };
+      warning: string | null;
+      identity?: { id: string; name: string; tokenPrefix: string | null };
     }>(`/api/companies/${slug}/ai-connections/${clientType}/connect`, {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify({ mode }),
     }),
+  enableAiChannel: (slug: string, clientType: string) =>
+    fetchJson<{ ok: boolean; channelEnabled: boolean }>(
+      `/api/companies/${slug}/ai-connections/${clientType}/enable`,
+      { method: "POST", body: "{}" },
+    ),
+  disableAiChannel: (slug: string, clientType: string) =>
+    fetchJson<{ ok: boolean; channelEnabled: boolean }>(
+      `/api/companies/${slug}/ai-connections/${clientType}/disable`,
+      { method: "POST", body: "{}" },
+    ),
   revokeAiClient: (slug: string, clientType: string) =>
     fetchJson<{ ok: boolean; status: string; clientType: string }>(
       `/api/companies/${slug}/ai-connections/${clientType}/revoke`,
+      { method: "POST", body: "{}" },
+    ),
+  revokeOwnAiClient: (slug: string, clientType: string) =>
+    fetchJson<{ ok: boolean; status: string; clientType: string }>(
+      `/api/companies/${slug}/ai-connections/${clientType}/revoke-self`,
       { method: "POST", body: "{}" },
     ),
   testAiClient: (slug: string, clientType: string) =>

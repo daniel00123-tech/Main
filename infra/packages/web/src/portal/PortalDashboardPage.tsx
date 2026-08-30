@@ -8,6 +8,7 @@ import {
   connectorOverviewTitle,
   customerOverallHealthy,
   deriveConnectorCustomerHealth,
+  isCustomerConnectedConnector,
   primaryAttentionSummary,
 } from "@infra/shared";
 import {
@@ -62,7 +63,7 @@ export default function PortalDashboardPage() {
   const mcp = overview?.mcpEnvironments[0] ?? null;
   const usage = overview?.usageSummary;
   const wallet = overview?.wallet;
-  const connectors = overview?.connectorInstances.filter((c) => c.status !== "draft") ?? [];
+  const connectors = overview?.connectorInstances.filter(isCustomerConnectedConnector) ?? [];
   const testCents = overview?.walletCredits?.testCents ?? 0;
   const paidCents = overview?.walletCredits?.paidCents ?? 0;
   const walletHealth =
@@ -237,7 +238,7 @@ export default function PortalDashboardPage() {
           className="portal-panel-compact"
           actions={<ViewAllLink to={`${base}/connectors`} />}
         >
-          {connectors.length === 0 && !mcp ? (
+          {connectors.length === 0 ? (
             <EmptyState
               icon={<Plug size={24} />}
               title="Connect your first business system"

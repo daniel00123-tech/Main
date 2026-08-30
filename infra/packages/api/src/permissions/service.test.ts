@@ -27,9 +27,18 @@ const mockDb = {
   prepare: () => ({
     bind: () => ({
       all: async () => ({ results: [] }),
+      first: async () => null,
     }),
   }),
 } as unknown as D1Database;
+
+const william: SessionUser = {
+  userId: "user_william",
+  email: "william@elvexpropertyservices.com",
+  displayName: "William",
+  isPlatformAdmin: false,
+  memberships: [{ companyId: "co_el", role: "office_staff" }],
+};
 
 describe("permission service", () => {
   it("denies cross-company access", () => {
@@ -76,5 +85,30 @@ describe("permission service", () => {
   it("protects company_admin role from override editing", () => {
     expect(isRolePermissionEditable("company_admin")).toBe(false);
     expect(isRolePermissionEditable("engineer")).toBe(true);
+  });
+
+  it("enforces Elvex office_staff matrix from live INFRA role", async () => {
+    expect((await evaluateActionPermission(mockDb, william, "co_el", "knowledge.search")).allowed).toBe(true);
+    expect((await evaluateActionPermission(mockDb, william, "co_el", "knowledge.read")).allowed).toBe(true);
+    expect((await evaluateActionPermission(mockDb, william, "co_el", "xero.invoices.read")).allowed).toBe(false);
+    expect((await evaluateActionPermission(mockDb, william, "co_el", "xero.reports.profit_and_loss")).allowed).toBe(false);
+    expect(
+      (
+        await evaluateActionPermission(mockDb, william, "co_el", "knowledge.search", {
+          mailboxAddress: "info@elvexpropertyservices.com",
+        })
+      ).allowed,
+    ).toBe(true);
+  });
+
+  it("denies finance mailbox for office_staff", async () => {
+    const decision = await evaluateActionPermission(
+      mockDb,
+      william,
+      "co_el",
+      "outlook.search" as never,
+      { mailboxAddress: "finance@elvexpropertyservices.com" },
+    );
+    expect(decision.allowed).toBe(false);
   });
 });

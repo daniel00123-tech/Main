@@ -28,6 +28,9 @@ import {
   serviceHasActionScope,
 } from "./service-identities";
 import { newId, nowIso } from "../db/mappers";
+import { userHasCompanyAccess } from "../permissions/service";
+import { mcpOauthWwwAuthenticate } from "../auth/mcp-oauth";
+import { infraBrowserPublicBase, infraMcpGatewayUrl } from "./public-urls";
 import { publicToolErrorMessage } from "./public-errors";
 import {
   mapFetchArgumentsForCompanyMcp,
@@ -444,7 +447,11 @@ export async function handleInfraMcpJsonRpc(
   const method = body.method ?? "";
   const actorLabel =
     actor.type === "service" ? actor.identity.name : actor.user.email;
-  const companyId = actor.type === "service" ? actor.identity.companyId : null;
+  const companyId =
+    actor.type === "service"
+      ? actor.identity.companyId
+      : actor.boundCompanyId ??
+        (actor.user.memberships.length === 1 ? actor.user.memberships[0]?.companyId : null);
 
   if (!companyId && actor.type === "service") {
     return {
@@ -460,10 +467,11 @@ export async function handleInfraMcpJsonRpc(
       : headerCompany;
   // Service identities are bound to one company. Never honour a prompt/header
   // company override — tenant routing comes only from the authenticated identity.
-  if (actor.type === "service" && companyId) {
+  if (companyId && (actor.type === "service" || actor.boundCompanyId)) {
     const spoof = await detectTenantSpoof(env.DB, request, body, {
       companyId,
-      mcpEnvironmentId: actor.identity.mcpEnvironmentId,
+      mcpEnvironmentId:
+        actor.type === "service" ? actor.identity.mcpEnvironmentId : null,
     });
     if (spoof) {
       await logFacadeEvent(env.DB, {
@@ -500,6 +508,13 @@ export async function handleInfraMcpJsonRpc(
         "companyId is required for INFRA MCP gateway",
       ),
       httpStatus: 400,
+    };
+  }
+
+  if (actor.type === "user" && !userHasCompanyAccess(actor.user, resolvedCompanyId)) {
+    return {
+      payload: jsonRpcError(id, -32003, "User is not a member of this company"),
+      httpStatus: 403,
     };
   }
 
@@ -806,7 +821,9 @@ export async function handleInfraMcpJsonRpc(
         arguments: args,
         actor,
         sourceClient:
-          actor.type === "service" ? actor.identity.identityType : "infra-mcp",
+          actor.type === "service"
+            ? actor.identity.identityType
+            : actor.channel ?? "infra-mcp",
         correlationId: clientRequestId ?? undefined,
         interactionId: interactionHints.interactionId ?? undefined,
       });
@@ -826,7 +843,9 @@ export async function handleInfraMcpJsonRpc(
       toolName,
       arguments: args,
       sourceClient:
-        actor.type === "service" ? actor.identity.identityType : "infra-mcp",
+        actor.type === "service"
+          ? actor.identity.identityType
+          : actor.channel ?? "infra-mcp",
       clientRequestId,
       interactionId: interactionHints.interactionId,
       parentRequestId: interactionHints.parentRequestId,
@@ -1013,7 +1032,7 @@ export async function handleInfraMcpHttp(
       httpStatus: actorResult.status,
       hint:
         actorResult.status === 401
-          ? "Send Authorization: Bearer <INFRA service token> from Company Portal → AI Connections."
+          ? "Human ChatGPT connections must use INFRA OAuth. Machine clients may send a service token."
           : undefined,
     });
 
@@ -1053,7 +1072,10 @@ export async function handleInfraMcpHttp(
       sessionId,
       wwwAuthenticate:
         actorResult.status === 401
-          ? 'Bearer realm="infra-mcp", error="invalid_token", error_description="INFRA service token required"'
+          ? mcpOauthWwwAuthenticate(
+              infraBrowserPublicBase(env, request.url, request),
+              infraMcpGatewayUrl(env, request.url, request),
+            )
           : undefined,
     });
   }

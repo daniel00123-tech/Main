@@ -1,11 +1,14 @@
 import {
   COMPANY_ROLE_PRESETS,
   TOOL_ACTION_RISK,
+  elvexAllowsAction,
   isActionAllowed,
+  isElvexCompany,
   type CompanyRole,
   type ToolAction,
 } from "@infra/shared";
 import type { SessionUser } from "../auth/session";
+import { loadLiveCompanyActor } from "../auth/live-identity";
 
 export interface PermissionDecision {
   allowed: boolean;
@@ -60,16 +63,34 @@ export function resolvePresetPermissions(role: CompanyRole): ToolAction[] {
   return preset?.allowedActions ?? [];
 }
 
+export type PermissionContext = {
+  toolName?: string | null;
+  mailboxAddress?: string | null;
+};
+
 export async function evaluateActionPermission(
   db: D1Database,
   user: SessionUser,
   companyId: string,
   action: ToolAction,
+  context: PermissionContext = {},
 ): Promise<PermissionDecision> {
-  const role = getUserCompanyRole(user, companyId);
+  const live = await loadLiveCompanyActor(db, user.userId, companyId);
+  const role = live?.role ?? getUserCompanyRole(user, companyId);
   const riskClass = TOOL_ACTION_RISK[action]?.riskClass ?? "high_risk";
 
-  if (!userHasCompanyAccess(user, companyId)) {
+  if (live && !live.active) {
+    return {
+      allowed: false,
+      action,
+      companyId,
+      role,
+      riskClass,
+      reason: live.denyReason ?? "User is disabled",
+    };
+  }
+
+  if (!live && !user.isPlatformAdmin && !userHasCompanyAccess(user, companyId)) {
     return {
       allowed: false,
       action,
@@ -77,6 +98,17 @@ export async function evaluateActionPermission(
       role,
       riskClass,
       reason: "User is not a member of this company",
+    };
+  }
+
+  if (!live && !userHasCompanyAccess(user, companyId) && !user.isPlatformAdmin) {
+    return {
+      allowed: false,
+      action,
+      companyId,
+      role,
+      riskClass,
+      reason: "Unknown or deleted company user",
     };
   }
 
@@ -91,8 +123,22 @@ export async function evaluateActionPermission(
     };
   }
 
+  if (isElvexCompany({ id: companyId })) {
+    const elvex = elvexAllowsAction(role, action, context);
+    if (elvex.capability || elvex.reason !== "unmapped") {
+      return {
+        allowed: elvex.allowed,
+        action,
+        companyId,
+        role,
+        riskClass,
+        reason: elvex.reason,
+      };
+    }
+  }
+
   const membership = user.memberships.find((m) => m.companyId === companyId);
-  const customRoleId = membership?.customRoleId;
+  const customRoleId = live?.customRoleId ?? membership?.customRoleId;
   if (customRoleId) {
     const grants = await db
       .prepare(`SELECT action, effect FROM company_custom_role_grants WHERE custom_role_id = ?`)

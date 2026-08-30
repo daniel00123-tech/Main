@@ -36,6 +36,8 @@ async function copyText(value: string, label: string) {
 
 function connectionStatus(conn: AiConnection): { status: string; label: string } {
   if (conn.status === "coming_soon") return { status: "coming_soon", label: "Coming soon" };
+  if (conn.channelEnabled === false) return { status: "not_configured", label: "Not enabled" };
+  if (conn.userConnectionStatus === "connected") return { status: "connected", label: "Connected" };
   if (conn.tokenStatus === "Active") return { status: "connected", label: "Connected" };
   if (conn.tokenStatus === "Revoked") return { status: "warning", label: "Needs reconnection" };
   if (conn.status === "error") return { status: "failed", label: "Error" };
@@ -51,9 +53,11 @@ export default function PortalAiConnectionsPage() {
   const [manageType, setManageType] = useState<string | null>(null);
   const [tokenReveal, setTokenReveal] = useState<{
     clientType: string;
-    token: string;
+    token: string | null;
     endpoint: string;
     mcpEndpoint: string;
+    authMode: string;
+    oauthAuthorizeUrl?: string;
   } | null>(null);
   const isMobile = useIsMobile();
 
@@ -82,23 +86,45 @@ export default function PortalAiConnectionsPage() {
 
   const activeConn = ordered.find((c) => c.clientType === manageType) ?? null;
 
-  async function connect(clientType: string) {
+  async function connect(clientType: string, mode: "oauth" | "service_token" = "oauth") {
     if (!company) return;
     setBusyType(clientType);
     setTokenReveal(null);
     setLoadError(null);
     try {
-      const result = await api.connectAiClient(company.slug, clientType);
+      const result = await api.connectAiClient(company.slug, clientType, mode);
       setTokenReveal({
         clientType,
         token: result.token,
         endpoint: result.gatewayEndpoint,
         mcpEndpoint: result.mcpEndpoint ?? DEFAULT_MCP_URL,
+        authMode: result.authMode ?? mode,
+        oauthAuthorizeUrl: result.oauthAuthorizeUrl,
       });
-      toast("Connection ready — copy your token now");
+      toast(
+        mode === "oauth"
+          ? "ChatGPT can now connect with your INFRA sign-in"
+          : "Machine token ready — copy it now",
+      );
       await refresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Connection failed";
+      setLoadError(message);
+      toast(message, "error");
+    } finally {
+      setBusyType(null);
+    }
+  }
+
+  async function enableChannel(clientType: string) {
+    if (!company) return;
+    setBusyType(`enable-${clientType}`);
+    try {
+      await api.enableAiChannel(company.slug, clientType);
+      toast("ChatGPT enabled for this company");
+      await refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to enable";
       setLoadError(message);
       toast(message, "error");
     } finally {
@@ -174,19 +200,28 @@ export default function PortalAiConnectionsPage() {
       {tokenReveal ? (
         <Notice tone="success">
           <strong>{humanClient(tokenReveal.clientType)} connection ready</strong>
-          <p style={{ margin: "8px 0" }}>
-            Copy this token now. For security, INFRA will not show it again.
-          </p>
+          {tokenReveal.authMode === "oauth" || !tokenReveal.token ? (
+            <p style={{ margin: "8px 0" }}>
+              ChatGPT will sign in with your existing INFRA session. No API key and no Microsoft
+              login.
+            </p>
+          ) : (
+            <p style={{ margin: "8px 0" }}>
+              Copy this machine token now. For security, INFRA will not show it again.
+            </p>
+          )}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={() => void handleCopy("token", tokenReveal.token, "Bearer token")}
-            >
-              {copiedKey === "token" ? <Check size={14} /> : <Copy size={14} />}
-              Copy token
-            </Button>
+            {tokenReveal.token ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => void handleCopy("token", tokenReveal.token ?? "", "Bearer token")}
+              >
+                {copiedKey === "token" ? <Check size={14} /> : <Copy size={14} />}
+                Copy token
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="secondary"
@@ -216,7 +251,11 @@ export default function PortalAiConnectionsPage() {
           {ordered.map((conn) => {
             const { status, label } = connectionStatus(conn);
             const comingSoon = conn.status === "coming_soon";
-            const connected = conn.tokenStatus === "Active";
+            const channelEnabled = conn.channelEnabled !== false || conn.tokenStatus === "Active";
+            const connected =
+              conn.userConnectionStatus === "connected" ||
+              (conn.authMode !== "oauth" && conn.tokenStatus === "Active");
+            const canManage = Boolean(conn.viewerCanManageChannel);
             return (
               <article
                 key={conn.id}
@@ -239,20 +278,24 @@ export default function PortalAiConnectionsPage() {
                     <Button type="button" variant="secondary" size="sm" disabled>
                       Coming soon
                     </Button>
+                  ) : !channelEnabled && canManage ? (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      loading={busyType === `enable-${conn.clientType}`}
+                      onClick={() => void enableChannel(conn.clientType)}
+                    >
+                      Enable for company
+                    </Button>
+                  ) : !channelEnabled ? (
+                    <Button type="button" variant="secondary" size="sm" disabled>
+                      Waiting for company enable
+                    </Button>
                   ) : connected ? (
                     <>
                       <Button type="button" variant="primary" size="sm" onClick={() => setManageType(conn.clientType)}>
                         Manage
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        disabled={busyType === conn.clientType}
-                        loading={busyType === conn.clientType}
-                        onClick={() => void connect(conn.clientType)}
-                      >
-                        New token
                       </Button>
                     </>
                   ) : (
@@ -262,7 +305,7 @@ export default function PortalAiConnectionsPage() {
                       size="sm"
                       disabled={busyType === conn.clientType}
                       loading={busyType === conn.clientType}
-                      onClick={() => void connect(conn.clientType)}
+                      onClick={() => void connect(conn.clientType, "oauth")}
                     >
                       Connect
                     </Button>
@@ -276,10 +319,11 @@ export default function PortalAiConnectionsPage() {
 
       <CollapsibleBlock title="How to connect ChatGPT" summary="Setup steps">
         <ol className="stack" style={{ margin: 0, paddingLeft: 18, color: "var(--text-secondary)" }}>
-          <li>Click <strong>Connect</strong> on the ChatGPT card and copy your token</li>
-          <li>In ChatGPT, add a connection using Bearer token authentication</li>
-          <li>Use the connection URL provided here when prompted</li>
-          <li>Start a new conversation and try a knowledge search or Xero query</li>
+          <li>A company administrator enables ChatGPT for the company once</li>
+          <li>Click <strong>Connect</strong> on your own account — no admin role required</li>
+          <li>In ChatGPT, add the MCP app with <strong>OAuth</strong> and the INFRA connection URL</li>
+          <li>ChatGPT opens INFRA. If you are already signed in, you are not asked to log in again</li>
+          <li>Do not use a shared bearer token or Microsoft sign-in for employee access</li>
         </ol>
       </CollapsibleBlock>
 
@@ -348,15 +392,15 @@ export default function PortalAiConnectionsPage() {
                 >
                   Copy connection URL
                 </Button>
-                {!isMobile ? (
+                {activeConn.viewerCanManageChannel && !isMobile ? (
                   <Button
                     type="button"
                     variant="secondary"
                     size="sm"
                     loading={busyType === activeConn.clientType}
-                    onClick={() => void connect(activeConn.clientType)}
+                    onClick={() => void connect(activeConn.clientType, "service_token")}
                   >
-                    Generate new token
+                    Machine token
                   </Button>
                 ) : null}
               </div>
