@@ -17,6 +17,8 @@ import {
   searchContacts,
   searchInvoices,
 } from "./service";
+import { analyseCashReceived, analyseInvoiceActivity } from "./sales";
+import { classifyXeroQuestion, recommendedXeroTool } from "./intent";
 import { requireCapability, requireXeroTool } from "../rbac/guard";
 
 const lineItemSchema = z.object({
@@ -58,7 +60,7 @@ export function registerXeroTools(server: McpServer, env: Env): void {
     "search_xero_invoices",
     {
       description:
-        "Search Elvex Xero sales invoices. Use for outstanding/overdue invoices, invoice numbers, customer invoices, or date-range sales documents.",
+        "Search Elvex Xero sales invoice documents. Use for invoice numbers, a named customer's invoices, overdue invoices, or outstanding debtors. Outstanding AmountDue includes VAT. Do NOT use this for generic 'what are our sales/revenue' questions — use analyse_xero_sales (P&L revenue excluding VAT). For 'how much have we invoiced' use analyse_xero_invoice_activity.",
       inputSchema: {
         query: z.string().optional().describe("Invoice number, customer, or reference."),
         status: z.string().optional(),
@@ -87,7 +89,8 @@ export function registerXeroTools(server: McpServer, env: Env): void {
   server.registerTool(
     "get_xero_invoice",
     {
-      description: "Get one Elvex Xero invoice or bill by InvoiceID, including line items.",
+      description:
+        "Get one Elvex Xero invoice or bill by InvoiceID, including line items. Total is including VAT; SubTotal is excluding VAT. Not a company-wide sales total.",
       inputSchema: { invoice_id: z.string() },
     },
     async ({ invoice_id }) => {
@@ -140,7 +143,7 @@ export function registerXeroTools(server: McpServer, env: Env): void {
     "get_xero_financial_summary",
     {
       description:
-        "Elvex management snapshot: month-to-date sales vs last month, top customers/suppliers, outstanding invoices/bills, P&L and bank summary. Use for 'how much have we sold' or 'current bank position'.",
+        "Elvex management snapshot. Primary sales figure is P&L revenue excluding VAT. Also includes net invoice activity, cash received (includes VAT), outstanding receivables (includes VAT), P&L and bank. Use for a full pack — not as a substitute that mixes those metrics.",
     },
     async () => {
       try {
@@ -157,9 +160,9 @@ export function registerXeroTools(server: McpServer, env: Env): void {
     "get_xero_report",
     {
       description:
-        "Fetch an Elvex Xero report: profitandloss, balancesheet, trialbalance, banksummary, executivesummary, agedreceivables, agedpayables. Also returns organisation/settings when report=organisation.",
+        "Fetch an Elvex Xero report. profitandloss is the authoritative source for management sales/revenue and is exclusive of VAT. agedreceivables is outstanding customer debt and includes VAT. banksummary is cash movement, not sales.",
       inputSchema: {
-        report: z.string().describe("profitandloss | balancesheet | trialbalance | banksummary | executivesummary | agedreceivables | agedpayables | organisation | settings"),
+        report: z.string().describe("profitandloss (sales/revenue ex VAT) | balancesheet | trialbalance | banksummary (cash) | executivesummary | agedreceivables (outstanding inc VAT) | agedpayables | organisation | settings"),
         from: z.string().optional(),
         to: z.string().optional(),
         date: z.string().optional(),
@@ -184,14 +187,82 @@ export function registerXeroTools(server: McpServer, env: Env): void {
     "analyse_xero_sales",
     {
       description:
-        "Analyse Elvex invoiced sales: month-to-date, previous month, month-on-month change, rolling period, largest invoices. Credit notes are subtracted; drafts/voids excluded.",
-      inputSchema: { months: z.number().int().min(1).max(12).optional() },
+        "DEFAULT tool for 'What are our sales?', 'How much have we sold?', 'What was revenue?', or 'How are sales looking?'. Returns management/accounting revenue from the Xero Profit and Loss for the requested period, EXCLUDING VAT. Do not use invoice totals or divide by 1.2. Not for invoices raised, cash received, or outstanding debt.",
+      inputSchema: {
+        months: z.number().int().min(1).max(12).optional(),
+        from: z.string().optional().describe("ISO date YYYY-MM-DD. Defaults to the first day of the current month."),
+        to: z.string().optional().describe("ISO date YYYY-MM-DD. Defaults to today."),
+        question: z.string().optional().describe("Original user question, used only to confirm this is a sales/revenue ask."),
+      },
     },
-    async ({ months }) => {
+    async ({ months, from, to, question }) => {
       try {
         await requireXeroTool(env, "analyse_xero_sales");
         const ctx = await createXeroContext(env);
-        return jsonTool({ organisation: ctx.organisationName, ...(await analyseSales(ctx.client, months ?? 6)) });
+        const routing = classifyXeroQuestion(question);
+        if (question && routing.metric !== "sales_revenue") {
+          return jsonTool({
+            organisation: ctx.organisationName,
+            wrongTool: true,
+            metric: routing.metric,
+            useTool: recommendedXeroTool(routing.metric),
+            reason: routing.reason,
+            note: "analyse_xero_sales is reserved for management sales/revenue excluding VAT.",
+          });
+        }
+        return jsonTool({
+          organisation: ctx.organisationName,
+          ...(await analyseSales(ctx.client, months ?? 6, { from, to, question })),
+        });
+      } catch (error) {
+        return jsonTool(toolErrorPayload(error), true);
+      }
+    }
+  );
+
+  server.registerTool(
+    "analyse_xero_invoice_activity",
+    {
+      description:
+        "Net invoices raised (posted sales invoices minus sales credit notes) by document date. Use for 'How much have we invoiced?', 'What invoices have we raised?', 'Net invoicing this month', or 'How many invoices/credit notes were raised?'. Returns both excluding-VAT (SubTotal) and including-VAT (Total). This is NOT management sales/revenue — use analyse_xero_sales for that.",
+      inputSchema: {
+        months: z.number().int().min(1).max(12).optional(),
+        from: z.string().optional(),
+        to: z.string().optional(),
+      },
+    },
+    async ({ months, from, to }) => {
+      try {
+        await requireXeroTool(env, "analyse_xero_invoice_activity");
+        const ctx = await createXeroContext(env);
+        return jsonTool({
+          organisation: ctx.organisationName,
+          ...(await analyseInvoiceActivity(ctx.client, { months, from, to })),
+        });
+      } catch (error) {
+        return jsonTool(toolErrorPayload(error), true);
+      }
+    }
+  );
+
+  server.registerTool(
+    "analyse_xero_cash_received",
+    {
+      description:
+        "Customer cash received (Xero ACCRECPAYMENT) in a period. Use for 'How much cash have we received?' or 'What receipts came in?'. Cash includes VAT where invoices were taxable. This is NOT sales/revenue and NOT invoices raised.",
+      inputSchema: {
+        from: z.string().optional(),
+        to: z.string().optional(),
+      },
+    },
+    async ({ from, to }) => {
+      try {
+        await requireXeroTool(env, "analyse_xero_cash_received");
+        const ctx = await createXeroContext(env);
+        return jsonTool({
+          organisation: ctx.organisationName,
+          ...(await analyseCashReceived(ctx.client, { from, to })),
+        });
       } catch (error) {
         return jsonTool(toolErrorPayload(error), true);
       }
@@ -202,7 +273,7 @@ export function registerXeroTools(server: McpServer, env: Env): void {
     "analyse_xero_customers",
     {
       description:
-        "Rank Elvex customers by spend over a period and show outstanding debt. Use for biggest customers or how much customer X spent.",
+        "Rank Elvex customers by invoiced spend (excluding VAT where SubTotal is present) and show outstanding debt. Outstanding debt includes VAT. Not the tool for company-wide sales/revenue.",
       inputSchema: {
         months: z.number().int().min(1).max(12).optional(),
         top: z.number().int().min(1).max(20).optional(),

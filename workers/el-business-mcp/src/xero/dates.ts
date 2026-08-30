@@ -66,3 +66,47 @@ export function previousMonthRange(iso = todayIso()): { from: string; to: string
 export function rollingRange(months: number, iso = todayIso()): { from: string; to: string } {
   return { from: addMonths(startOfMonth(iso), -(months - 1)), to: iso };
 }
+
+export function endOfMonth(iso = todayIso()): string {
+  const nextMonthStart = addMonths(startOfMonth(iso), 1);
+  const last = new Date(`${nextMonthStart}T00:00:00.000Z`);
+  last.setUTCDate(last.getUTCDate() - 1);
+  return last.toISOString().slice(0, 10);
+}
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+export function monthLabel(iso: string): string {
+  const month = Number(iso.slice(5, 7));
+  const year = iso.slice(0, 4);
+  return `${MONTH_NAMES[month - 1] ?? iso.slice(0, 7)} ${year}`;
+}
+
+export function managementPeriod(
+  from?: string | null,
+  to?: string | null,
+  today = todayIso()
+): { from: string; to: string; label: string; isMonthToDate: boolean } {
+  const end = normalizeXeroDate(to) ?? today;
+  const start = normalizeXeroDate(from) ?? startOfMonth(end);
+  const monthEnd = endOfMonth(end);
+  const isMonthToDate = start === startOfMonth(end) && end < monthEnd;
+  const label =
+    start === startOfMonth(end) && (end === monthEnd || isMonthToDate)
+      ? `${monthLabel(end)}${isMonthToDate ? " month-to-date" : ""}`
+      : `${start} to ${end}`;
+  return { from: start, to: end, label, isMonthToDate };
+}

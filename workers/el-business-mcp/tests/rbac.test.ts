@@ -190,6 +190,9 @@ describe("security invariants", () => {
 
   it("56 generic Xero tool cannot bypass Xero RBAC", () => {
     expect(xeroCapabilityForTool("search_xero_invoices")).toBe("xero.sales.read");
+    expect(xeroCapabilityForTool("analyse_xero_sales")).toBe("xero.sales.read");
+    expect(xeroCapabilityForTool("analyse_xero_invoice_activity")).toBe("xero.sales.read");
+    expect(xeroCapabilityForTool("analyse_xero_cash_received")).toBe("xero.sales.read");
     expect(xeroCapabilityForTool("search_xero_bills")).toBe("xero.finance.read");
     expect(xeroCapabilityForTool("get_xero_report", { report: "profitandloss" })).toBe("xero.finance.read");
     expect(xeroCapabilityForTool("get_xero_report", { report: "agedreceivables" })).toBe("xero.sales.read");
