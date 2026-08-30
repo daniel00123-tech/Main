@@ -40,7 +40,7 @@ export async function runOutboundEmailV1Acceptance(env: Env): Promise<Record<str
 
   let applicationDeniedSenderBlocked = false;
   try {
-    await resolveApprovedSender(env.DB, {
+    await resolveApprovedSender(env, {
       companyId: PILOT_COMPANY_ID,
       emailType: "PASSWORD_RESET",
       requestedFrom: DENIED_MAILBOX,

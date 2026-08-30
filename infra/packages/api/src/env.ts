@@ -45,9 +45,26 @@ export interface Env {
   /** Xero app credentials — Worker secrets only. Never store in D1. */
   XERO_CLIENT_ID?: string;
   XERO_CLIENT_SECRET?: string;
-  /** Optional email delivery via Resend */
+  /** Optional email delivery via Resend (dev fallback only) */
   RESEND_API_KEY?: string;
+  /** Legacy combined From header. Prefer EMAIL_FROM_NAME + EMAIL_FROM_ADDRESS. */
   EMAIL_FROM?: string;
+  EMAIL_FROM_NAME?: string;
+  EMAIL_FROM_ADDRESS?: string;
+  /** Cloudflare Email Service Workers binding */
+  EMAIL?: {
+    send(input: {
+      to: string | string[];
+      from: string | { name?: string; address: string };
+      replyTo?: string | { name?: string; address: string };
+      subject: string;
+      html?: string;
+      text?: string;
+    }): Promise<{ messageId?: string }>;
+  };
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  CLOUDFLARE_API_TOKEN?: string;
+  EMAIL_SENDING_API_TOKEN?: string;
   /** Feature flag — auto top-up execution (test mode only until operator approval) */
   AUTO_TOPUP_EXECUTION_ENABLED?: string;
   /** Microsoft 365 app registration — Worker secrets only */

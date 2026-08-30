@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { CompanyRole } from "@infra/shared";
+import { RESERVED_INFRA_EMAIL_ALIASES, type CompanyRole } from "@infra/shared";
 import type { Env } from "../env";
 import {
   requireAuth,
@@ -19,9 +19,9 @@ import {
   validateNewPassword,
 } from "../auth/password-setup";
 import { getCompanyEmailConfig } from "../services/email/company-config";
+import { resolvePlatformEmailIdentity } from "../services/email/platform-identity";
 import { sendTransactionalEmail } from "../services/email/send-transactional";
 import { renderTestEmail } from "../services/email-outbox";
-import { exchangeMailSendRbacGuide } from "../services/email/providers/microsoft-graph";
 import {
   getCompanyBySlug,
   listMcpEnvironments,
@@ -2015,23 +2015,24 @@ phase3.get("/api/companies/:slug/email/config", requireAuth, async (c) => {
   }
 
   const config = await getCompanyEmailConfig(c.env.DB, company.id);
-  if (!config) {
-    return c.json({
-      enabled: false,
-      provider: null,
-      sender: null,
-      healthStatus: "configuration_required",
-    });
-  }
+  const identity = resolvePlatformEmailIdentity(c.env);
 
   return c.json({
-    enabled: config.enabled,
-    provider: config.provider === "microsoft365" ? "Microsoft 365" : config.provider,
-    sender: `${config.senderDisplayName} <${config.senderAddress}>`,
-    healthStatus: config.healthStatus,
-    allowedTypes: config.allowedTypes,
-    lastSentAt: config.lastSentAt,
-    lastErrorCategory: config.lastErrorCategory,
+    enabled: true,
+    provider: "Cloudflare Email Service",
+    sender: identity.formatted,
+    healthStatus: config?.healthStatus ?? "healthy",
+    allowedTypes: config?.allowedTypes ?? [
+      "PASSWORD_RESET",
+      "USER_INVITATION",
+      "TEST_EMAIL",
+      "XERO_SALES_REPORT",
+      "DOCUMENT_ACTIVITY_REPORT",
+    ],
+    lastSentAt: config?.lastSentAt ?? null,
+    lastErrorCategory: config?.lastErrorCategory ?? null,
+    reservedAliases: RESERVED_INFRA_EMAIL_ALIASES,
+    noReply: true,
   });
 });
 
@@ -2065,7 +2066,7 @@ phase3.post("/api/companies/:slug/email/test", requireAuth, async (c) => {
     emailId: result.id,
     provider: result.provider,
     error: result.error,
-    microsoftSetup: result.failureCategory === "permission" ? exchangeMailSendRbacGuide() : undefined,
+    sender: resolvePlatformEmailIdentity(c.env).formatted,
   });
 });
 
