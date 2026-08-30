@@ -16,13 +16,14 @@ export type EvalCategory =
   | "mailbox";
 
 export type EvalExpectation = {
-  intent: "chat" | "search" | "scoped" | "fetch" | "clarify" | "xero" | "mailbox" | "none" | "source" | "replan";
+  intent: "chat" | "search" | "scoped" | "fetch" | "clarify" | "xero" | "mailbox" | "none" | "source" | "replan" | "meta" | "capability";
   tool?: string | null;
   stayOnDocument?: boolean;
   clarify?: boolean;
   grounded?: boolean;
   noHallucination?: boolean;
   allowNoTool?: boolean;
+  scope?: string;
 };
 
 export type EvalCase = {
@@ -138,7 +139,7 @@ const TYPOS = [
   "serch othr documents pls",
 ];
 
-const CHAT = ["Hi", "Thanks", "Hey", "Morning", "Cheers", "What can you do"];
+const CHAT = ["Hi", "Thanks", "Hey", "Morning", "Cheers"];
 
 const AMBIGUOUS = [
   "What's the policy?",
@@ -195,10 +196,13 @@ export function evaluationCases(): EvalCase[] {
   }
 
   for (const text of REASONING_ON_CV) {
+    const rephrase = /explain that more simply/i.test(text);
     add(
       "document_reasoning",
       text,
-      { intent: "scoped", tool: "search_document", stayOnDocument: true, grounded: true, noHallucination: true },
+      rephrase
+        ? { intent: "chat", tool: null, allowNoTool: true, grounded: true, noHallucination: true, scope: "GENERAL_CONVERSATION" }
+        : { intent: "scoped", tool: "search_document", stayOnDocument: true, grounded: true, noHallucination: true },
       {
         state: state({
           text,
@@ -241,7 +245,7 @@ export function evaluationCases(): EvalCase[] {
     { text: "Find the vehicle use policy", current: CV, expect: { intent: "search" as const, tool: "search_company_knowledge", grounded: true, noHallucination: true } },
     { text: "What are the main rules?", current: VAN },
     { text: "What happens if someone leaves?", current: VAN },
-    { text: "Explain that more simply", current: VAN },
+    { text: "Explain that more simply", current: VAN, expect: { intent: "chat" as const, tool: null, allowNoTool: true, grounded: true, noHallucination: true } },
     { text: "What about fuel?", current: VAN },
     { text: "Now go back to the staff profile", current: VAN, expect: { intent: "search" as const, tool: "search_company_knowledge", grounded: true, noHallucination: true } },
   ];
@@ -273,6 +277,8 @@ export function evaluationCases(): EvalCase[] {
   );
   add("tool_reasoning", "What were sales this month?", { intent: "xero", tool: "xero_sales_summary", grounded: true, noHallucination: true });
   add("tool_reasoning", "Search the shared mailbox for invoices", { intent: "mailbox", tool: "outlook_search_mailbox", grounded: true, noHallucination: true });
+  add("tool_reasoning", "What can you do", { intent: "capability", tool: "get_user_capabilities", grounded: true, noHallucination: true });
+  add("tool_reasoning", "How many files are indexed?", { intent: "meta", tool: "get_document_index_stats", grounded: true, noHallucination: true }, { state: state({ text: "How many files are indexed?", current: CV }) });
   add("tool_reasoning", "Hi", { intent: "chat", tool: null, allowNoTool: true, grounded: true, noHallucination: true });
   add("tool_reasoning", "What's the policy?", { intent: "clarify", clarify: true, allowNoTool: true, noHallucination: true });
 
@@ -367,6 +373,25 @@ export function evaluationCases(): EvalCase[] {
   add("ambiguity", "pull up the policy please", { intent: "clarify", clarify: true, allowNoTool: true, noHallucination: true });
   add("xero", "What's our P&L?", { intent: "xero", tool: "xero_profit_and_loss", grounded: true, noHallucination: true });
   add("mailbox", "Check outlook for the survey email", { intent: "mailbox", tool: "outlook_search_mailbox", grounded: true, noHallucination: true });
+  add(
+    "document_reasoning",
+    "What about fuel?",
+    { intent: "scoped", tool: "search_document", stayOnDocument: true, grounded: true, noHallucination: true },
+    { state: state({ text: "What about fuel?", current: VAN }) },
+  );
+  add(
+    "natural_conversation",
+    "what do you mean by personal use",
+    { intent: "chat", tool: null, allowNoTool: true, grounded: true, noHallucination: true },
+    {
+      state: state({
+        text: "what do you mean by personal use",
+        current: VAN,
+        turns: [{ role: "assistant", text: "Personal use is limited under the vehicle policy." }],
+      }),
+    },
+  );
+  add("natural_conversation", "thanks that's useful", { intent: "chat", tool: null, allowNoTool: true, grounded: true, noHallucination: true });
 
   return cases;
 }

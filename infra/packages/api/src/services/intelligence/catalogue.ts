@@ -146,6 +146,60 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     outputShape: "{ organisation }",
     permission: "xero read",
   },
+  {
+    name: "get_company_system_summary",
+    description: "Read-only tenant snapshot: indexed document totals, connected systems, automations, last sync.",
+    whenToUse: "Company-wide system questions, inventory of indexed files, or a compact platform summary.",
+    whenNotToUse: "Not for reading a document's contents. Not for inventing counts.",
+    parameters: {},
+    outputShape: "{ company, indexed, connectors, automations, lastSyncAt }",
+    permission: "company read",
+  },
+  {
+    name: "get_document_index_stats",
+    description: "Tenant-scoped indexed document counts by source and file type. Real aggregates only.",
+    whenToUse: "How many documents are indexed, where they come from, or type/source breakdowns.",
+    whenNotToUse: "Not for searching document text. Not when the user means the current file's contents.",
+    parameters: {},
+    outputShape: "{ totalIndexed, bySource, byType, lastSyncAt }",
+    permission: "company knowledge read",
+  },
+  {
+    name: "get_connector_status",
+    description: "Live connected systems for this company, using customer-facing names.",
+    whenToUse: "What systems are connected or what data sources are live.",
+    whenNotToUse: "Do not list disconnected products as available.",
+    parameters: {},
+    outputShape: "{ connected: [label] }",
+    permission: "company read",
+  },
+  {
+    name: "get_active_automations",
+    description: "Active and paused automations for this company. Names only, no internal ids.",
+    whenToUse: "User asks what automations are running or scheduled.",
+    whenNotToUse: "Not for creating or changing automations.",
+    parameters: {},
+    outputShape: "{ active: [name], paused: [name] }",
+    permission: "automation read",
+  },
+  {
+    name: "get_user_capabilities",
+    description: "What this user can ask about, from live connectors and permitted read tools.",
+    whenToUse: "What can you do, what data can you access, or what else you can help with.",
+    whenNotToUse: "Do not advertise systems that are not connected or not permitted.",
+    parameters: {},
+    outputShape: "{ canHelpWith, connectedSystems, permittedReads }",
+    permission: "company read",
+  },
+  {
+    name: "get_recent_sync_status",
+    description: "Last successful index/sync time for connected knowledge sources.",
+    whenToUse: "When the user asks when files last synced or how fresh the index is.",
+    whenNotToUse: "Not a document search.",
+    parameters: {},
+    outputShape: "{ lastSyncAt, bySource }",
+    permission: "company knowledge read",
+  },
 ];
 
 export const INTELLIGENCE_TOOL_NAMES = new Set(INTELLIGENCE_TOOLS.map((tool) => tool.name));
@@ -169,6 +223,15 @@ export const GATEWAY_TOOL_ALIASES: Record<string, string> = {
 };
 
 const XERO_TOOLS = new Set(INTELLIGENCE_TOOLS.filter((tool) => tool.name.startsWith("xero_")).map((tool) => tool.name));
+
+export const SYSTEM_META_TOOLS = new Set([
+  "get_company_system_summary",
+  "get_document_index_stats",
+  "get_connector_status",
+  "get_active_automations",
+  "get_user_capabilities",
+  "get_recent_sync_status",
+]);
 
 export function toolsForModel(permitted?: Iterable<string> | null): IntelligenceToolSpec[] {
   const allow = permitted ? new Set([...permitted]) : null;

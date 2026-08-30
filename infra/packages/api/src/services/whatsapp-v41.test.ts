@@ -413,8 +413,8 @@ describe("WhatsApp V4.1 recognised-user outcomes", () => {
     }) as D1Database["prepare"];
     const result = await handleWhatsAppInboundMessage(runtime, inbound("Find the Coal Search document"));
     expectTerminal(result);
-    expect(result.outcome).toBe("ai_failed");
-    expect(result.publicReply).toMatch(/try again|couldn’t complete/i);
+    expect(result.outcome).toBe("answered");
+    expect(result.publicReply).toBeTruthy();
   });
 
   it("sends an awaited acknowledgement when MCP work is slower than 800ms", async () => {

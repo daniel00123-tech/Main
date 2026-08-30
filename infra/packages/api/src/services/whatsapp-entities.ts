@@ -38,6 +38,11 @@ export type WhatsAppEntityMemory = {
   lastSearchQuery?: string | null;
   lastUserQuestion?: string | null;
   lastAnswerText?: string | null;
+  currentScope?: string | null;
+  currentBusinessSystem?: string | null;
+  lastSuccessfulTool?: string | null;
+  lastAnswerTopic?: string | null;
+  lastUserIntent?: string | null;
 };
 
 const EMPTY: WhatsAppEntityMemory = {};
@@ -74,6 +79,11 @@ export function serializeEntityMemory(memory: WhatsAppEntityMemory): string {
     lastSearchQuery: memory.lastSearchQuery ?? null,
     lastUserQuestion: memory.lastUserQuestion ?? null,
     lastAnswerText: memory.lastAnswerText ?? null,
+    currentScope: memory.currentScope ?? null,
+    currentBusinessSystem: memory.currentBusinessSystem ?? null,
+    lastSuccessfulTool: memory.lastSuccessfulTool ?? memory.lastTool ?? null,
+    lastAnswerTopic: memory.lastAnswerTopic ?? null,
+    lastUserIntent: memory.lastUserIntent ?? null,
   });
 }
 
@@ -211,6 +221,12 @@ export function mergeEntityMemory(
     lastSearchQuery: next.lastSearchQuery !== undefined ? next.lastSearchQuery : prior.lastSearchQuery,
     lastUserQuestion: next.lastUserQuestion !== undefined ? next.lastUserQuestion : prior.lastUserQuestion,
     lastAnswerText: next.lastAnswerText !== undefined ? next.lastAnswerText : prior.lastAnswerText,
+    currentScope: next.currentScope !== undefined ? next.currentScope : prior.currentScope,
+    currentBusinessSystem:
+      next.currentBusinessSystem !== undefined ? next.currentBusinessSystem : prior.currentBusinessSystem,
+    lastSuccessfulTool: next.lastSuccessfulTool !== undefined ? next.lastSuccessfulTool : prior.lastSuccessfulTool,
+    lastAnswerTopic: next.lastAnswerTopic !== undefined ? next.lastAnswerTopic : prior.lastAnswerTopic,
+    lastUserIntent: next.lastUserIntent !== undefined ? next.lastUserIntent : prior.lastUserIntent,
   };
 }
 

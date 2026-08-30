@@ -6,6 +6,17 @@ export type IntelligenceConfidence = "strong" | "partial" | "none";
 
 export type IntelligenceRoute = "FAST_LOCAL" | "INTELLIGENT" | "CONTROLLED_ACTION";
 
+export type IntelligenceScope =
+  | "GENERAL_CONVERSATION"
+  | "CURRENT_DOCUMENT"
+  | "RECENT_ENTITY"
+  | "COMPANY_KNOWLEDGE"
+  | "SYSTEM_META"
+  | "CONNECTOR_CAPABILITY"
+  | "BUSINESS_SYSTEM"
+  | "CONTROLLED_ACTION"
+  | "AMBIGUOUS";
+
 export type IntelligenceQualityFlag =
   | "malformed_model_response"
   | "fallback"
@@ -17,7 +28,16 @@ export type IntelligenceQualityFlag =
   | "lost_context"
   | "unnecessary_company_wide_search"
   | "bad_clarification"
-  | "missing_clarification";
+  | "missing_clarification"
+  | "system_question_as_current_doc"
+  | "general_conversation_used_tool"
+  | "scope_switch_ignored"
+  | "correction_ignored"
+  | "connector_hallucinated"
+  | "count_invented"
+  | "unnecessary_search_after_rephrase"
+  | "ambiguous_answered_without_clarify"
+  | "current_doc_retained_after_switch";
 
 export type IntelligenceToolCall = {
   name: string;
@@ -52,6 +72,13 @@ export type IntelligenceConversationState = {
     url?: string | null;
   }>;
   currentDocument: IntelligenceDocumentRef | null;
+  recentDocuments: IntelligenceDocumentRef[];
+  currentScope?: IntelligenceScope | null;
+  currentBusinessSystem?: string | null;
+  lastSuccessfulTool?: string | null;
+  lastAnswerTopic?: string | null;
+  lastUserIntent?: string | null;
+  lastAnswerText?: string | null;
   recentTurns: Array<{ role: "user" | "assistant"; text: string }>;
   lastUserText: string;
   lastToolName?: string | null;
@@ -87,6 +114,9 @@ export type IntelligenceTurnResult = {
   model: string | null;
   estimatedCostUsd: number;
   route?: IntelligenceRoute;
+  scope?: IntelligenceScope;
+  lastAnswerTopic?: string | null;
+  lastUserIntent?: string | null;
   qualityFlags?: IntelligenceQualityFlag[];
   repaired?: boolean;
   fallbackUsed?: boolean;
