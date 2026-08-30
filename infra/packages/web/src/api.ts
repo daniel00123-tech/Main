@@ -587,7 +587,24 @@ export const api = {
     const query = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
     return fetchJson<InfraUser[]>(`/api/users${query}`);
   },
-  getRolePresets: () => fetchJson<RolePresetResponse[]>("/api/roles/presets"),
+  getRolePresets: (companySlug?: string) =>
+    fetchJson<RolePresetResponse[]>(
+      `/api/roles/presets${companySlug ? `?company=${encodeURIComponent(companySlug)}` : ""}`,
+    ),
+  getElvexRbac: (slug: string) =>
+    fetchJson<{
+      companyId: string;
+      companySlug: string;
+      identityLimitation: string;
+      roles: Array<{
+        role: string;
+        label: string;
+        capabilities: Array<{ capability: string; access: "read" | "write" }>;
+      }>;
+      classifications: Array<{ id: string; label: string }>;
+      protectedMicrosoftUsers: Array<{ hint: string; label: string }>;
+      canManageRoles: boolean;
+    }>(`/api/companies/${encodeURIComponent(slug)}/elvex-rbac`),
   getCompanyRolePermissions: (slug: string) =>
     fetchJson<{
       companyId: string;

@@ -126,6 +126,14 @@ function canManageCompany(user: AuthVariables["user"], companyId: string) {
   return role === "company_admin" || role === "director";
 }
 
+function canManageElvexRoles(user: AuthVariables["user"], company: { id: string; slug: string }) {
+  if (user.isPlatformAdmin) return true;
+  if (company.slug !== "el-business" && company.id !== "co_el") {
+    return canManageCompany(user, company.id);
+  }
+  return getUserCompanyRole(user, company.id) === "company_admin";
+}
+
 async function countActiveCompanyAdmins(db: D1Database, companyId: string): Promise<number> {
   const row = await db
     .prepare(
@@ -1050,14 +1058,17 @@ phase3.post("/api/companies/:slug/users/:userId/role", requireAuth, async (c) =>
   const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
   if (!company) return c.json({ error: "Company not found" }, 404);
   const actor = c.get("user");
-  if (!canManageCompany(actor, company.id)) {
-    return c.json({ error: "Company administrator access required" }, 403);
+  if (!canManageElvexRoles(actor, company)) {
+    return c.json({ error: "Only Company Admin may change Elvex user roles" }, 403);
   }
 
   const body = await c.req.json<{ role?: CompanyRole }>();
   if (!body.role) return c.json({ error: "role is required" }, 400);
 
   const targetId = c.req.param("userId");
+  if (targetId === actor.userId) {
+    return c.json({ error: "A user cannot change their own role" }, 403);
+  }
   if (targetId === actor.userId && body.role !== "company_admin") {
     const guard = await assertNotLastCompanyAdmin(
       c.env.DB,
