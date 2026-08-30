@@ -116,18 +116,20 @@ function testEnv(db: FakeD1): Env {
   };
 }
 
-const william = {
-  id: "user_william",
-  email: "william@elvexpropertyservices.com",
-  display_name: "William Stone",
-  password_hash: "hash",
-  password_salt: "salt",
-  is_platform_admin: 0,
-  status: "active",
-  last_login_at: null,
-  created_at: "2026-01-01T00:00:00.000Z",
-  updated_at: "2026-01-01T00:00:00.000Z",
-};
+function williamUser(status = "active") {
+  return {
+    id: "user_william",
+    email: "william@elvexpropertyservices.com",
+    display_name: "William Stone",
+    password_hash: "hash",
+    password_salt: "salt",
+    is_platform_admin: 0,
+    status,
+    last_login_at: null,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+  };
+}
 
 const company = {
   id: "co_el",
@@ -146,7 +148,7 @@ describe("INFRA MCP OAuth tokens", () => {
       companyId: "co_el",
       companySlug: "el-business",
       client: "chatgpt",
-      email: william.email,
+      email: "william@elvexpropertyservices.com",
       name: "William Stone",
     });
     expect(issued).toBeTruthy();
@@ -191,7 +193,7 @@ describe("INFRA MCP OAuth tokens", () => {
 describe("live INFRA membership", () => {
   it("resolves William as office_staff and fails closed when disabled or unknown", async () => {
     const db = new FakeD1({
-      users: [william],
+      users: [williamUser()],
       companies: [company],
       company_memberships: [
         {
@@ -231,7 +233,7 @@ describe("live INFRA membership", () => {
 
   it("role changes take effect without a new token", async () => {
     const db = new FakeD1({
-      users: [william],
+      users: [williamUser()],
       companies: [company],
       company_memberships: [
         { user_id: "user_william", company_id: "co_el", role: "office_staff", status: "active" },
@@ -242,7 +244,8 @@ describe("live INFRA membership", () => {
       userId: "user_william",
       companyId: "co_el",
     });
-    expect(first.ok && first.principal.role).toBe("office_staff");
+    expect(first.ok).toBe(true);
+    if (first.ok) expect(first.principal.role).toBe("office_staff");
     db.tables.company_memberships[0].role = "finance_team";
     const second = await resolveLiveMcpPrincipal(db as unknown as D1Database, {
       userId: "user_william",
@@ -262,7 +265,7 @@ describe("PKCE and usage attribution", () => {
 
   it("records generic company MCP usage for William + ChatGPT without payloads", async () => {
     const db = new FakeD1({
-      users: [william],
+      users: [williamUser()],
       companies: [company],
       company_memberships: [],
       usage_records: [],
@@ -274,7 +277,7 @@ describe("PKCE and usage attribution", () => {
     const recorded = await recordCompanyMcpUsage(env, {
       companyId: "co_el",
       userId: "user_william",
-      actorEmail: william.email,
+      actorEmail: "william@elvexpropertyservices.com",
       sourceClient: "chatgpt",
       toolName: "search_company_knowledge",
       success: true,
@@ -285,7 +288,7 @@ describe("PKCE and usage attribution", () => {
     expect(db.tables.usage_records[0]).toMatchObject({
       company_id: "co_el",
       user_id: "user_william",
-      actor_email: william.email,
+      actor_email: "william@elvexpropertyservices.com",
       tool_name: "search_company_knowledge",
       source_client: "chatgpt",
     });

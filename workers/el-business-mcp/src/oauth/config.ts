@@ -21,6 +21,7 @@ export type McpOAuthConfig = {
   resource: string;
   tokenSecret: string;
   infraIssuer: string | null;
+  tenantId: string;
   entraClientId: string;
   entraClientSecret: string;
   entraRedirectUri: string;
@@ -63,6 +64,7 @@ export function loadMcpOAuthConfig(env: Env): McpOAuthConfig | null {
     resource: `${publicOrigin}/mcp`,
     tokenSecret,
     infraIssuer: infraOAuthIssuer(env),
+    tenantId,
     entraClientId,
     entraClientSecret,
     entraRedirectUri: env.EL_MS_OIDC_REDIRECT_URI?.trim() || `${publicOrigin}/oauth/microsoft/callback`,

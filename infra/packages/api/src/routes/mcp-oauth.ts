@@ -113,7 +113,7 @@ oauth.post("/oauth/mcp/register", async (c) => {
     return c.json(dcrResponse(client, clientIdIssuedAt, mcpOAuthIssuer(c.env, c.req.url)), 201);
   } catch (error) {
     if (error instanceof McpOAuthRequestError) {
-      return c.json({ error: error.error, error_description: error.message }, error.status);
+      return c.json({ error: error.error, error_description: error.message }, error.status as 400);
     }
     return c.json({ error: "server_error", error_description: "Registration failed." }, 500);
   }
@@ -147,7 +147,7 @@ oauth.post("/oauth/mcp/token", async (c) => {
     );
   } catch (error) {
     if (error instanceof McpOAuthRequestError) {
-      return c.json({ error: error.error, error_description: error.message }, error.status);
+      return c.json({ error: error.error, error_description: error.message }, error.status as 400);
     }
     return c.json({ error: "server_error", error_description: "Token endpoint failed." }, 500);
   }
@@ -217,7 +217,7 @@ async function handleAuthorize(env: Env, request: Request, url: URL): Promise<Re
     const email = String(incoming.get("email") ?? "");
     const password = String(incoming.get("password") ?? "");
     const user = await getUserByEmail(env.DB, email);
-    if (!user || user.status !== "active" || !(await verifyPassword(password, user.passwordHash))) {
+    if (!user || user.status !== "active" || !(await verifyPassword(password, user.passwordSalt, user.passwordHash))) {
       return html(mcpOAuthLoginPage(params, "Email or password is incorrect."), 401);
     }
     const sessionUser = await toSessionUser(env.DB, user);

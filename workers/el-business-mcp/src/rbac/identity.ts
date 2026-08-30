@@ -1,6 +1,7 @@
 import type { Env } from "../env";
 import { ELVEX_COMPANY_ID, unboundActor, type ElvexActor, type PrincipalType } from "./actor";
 import { tokenCompanyIsElvex, verifyMcpAccessToken } from "../oauth/jwt";
+import { isMicrosoftOid } from "../oauth/crypto";
 import { introspectInfraMcpToken } from "../infra/introspect";
 
 export { unboundActor };

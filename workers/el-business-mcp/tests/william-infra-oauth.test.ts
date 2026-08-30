@@ -173,9 +173,7 @@ describe("William INFRA office_staff end-to-end", () => {
   });
 
   it("usage is attributed to William + EL Business + ChatGPT without logging payloads", async () => {
-    const testEnv = env({
-      INFRA_PUBLIC_API_URL: "https://infra-api.example.test",
-    });
+    const testEnv = env();
     await upsertCompanyUser(testEnv.EL_BUSINESS_DATA, {
       externalId: WILLIAM_ID,
       email: WILLIAM_EMAIL,
@@ -186,6 +184,7 @@ describe("William INFRA office_staff end-to-end", () => {
       testEnv,
       new Request(`${ORIGIN}/mcp`, { headers: { Authorization: `Bearer ${accessToken}` } })
     );
+    testEnv.INFRA_PUBLIC_API_URL = "https://infra-api.example.test";
     const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
     const original = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
