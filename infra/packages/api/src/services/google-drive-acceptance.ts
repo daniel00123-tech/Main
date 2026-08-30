@@ -158,3 +158,18 @@ export async function triggerGoogleDriveLiveSync(
     ocrBackfill,
   };
 }
+
+/** Persist genuine Drive webViewLink/webContentLink onto existing knowledge docs. */
+export async function backfillGoogleDriveProviderUrls(
+  env: Env,
+  input?: { externalId?: string; limit?: number },
+) {
+  return mcpAdminFetch(env, "/admin/knowledge/backfill-provider-urls", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      externalId: input?.externalId ?? "",
+      limit: input?.limit ?? 20,
+    }),
+  });
+}

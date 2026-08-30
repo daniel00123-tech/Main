@@ -6,6 +6,7 @@ import { executeGatewayRequest } from "./gateway";
 import {
   COMPANY_KNOWLEDGE_READ_TOOL,
   COMPANY_KNOWLEDGE_SEARCH_TOOL,
+  firstHttpUrl,
   toStandardFetchPayload,
   toStandardSearchPayload,
 } from "./mcp-knowledge-standard";
@@ -1383,9 +1384,48 @@ async function executeWhatsAppPlan(
         });
       }
     }
+    if (!memory.lastDocument?.url && memory.lastDocument?.id) {
+      const fetched = await executeWhatsAppGateway(
+        env,
+        {
+          actor: { type: "user", user: input.sessionUser },
+          companyId: input.companyId,
+          toolName: COMPANY_KNOWLEDGE_READ_TOOL,
+          arguments: { documentRef: memory.lastDocument.id, id: memory.lastDocument.id },
+          sourceClient: "whatsapp",
+          interactionId: input.interactionId,
+          waitUntil: input.waitUntil,
+        },
+        FETCH_TIMEOUT_MS,
+        "knowledge_fetch",
+      );
+      if (fetched && fetched.status === 200) {
+        const doc = toStandardFetchPayload(fetched.result, memory.lastDocument.id);
+        const url = firstHttpUrl(doc.url, enrichUrlFromHit("", doc.metadata ?? null));
+        if (url) {
+          const identity = identityFromMetadata(doc.metadata ?? null);
+          memory = mergeEntityMemory(memory, {
+            lastDocument: {
+              ...memory.lastDocument,
+              url,
+              sourceSystem: identity.sourceSystem ?? memory.lastDocument.sourceSystem,
+              providerItemId: identity.providerItemId ?? memory.lastDocument.providerItemId,
+            },
+            lastSourceUrl: url,
+            lastSourceSystem: identity.sourceSystem ?? memory.lastDocument.sourceSystem,
+          });
+          await persistDiscoveredSourceUrl(env, input.companyId, {
+            url,
+            title: doc.title || memory.lastDocument.title,
+            entityId: doc.id || memory.lastDocument.id,
+            externalItemId: identity.providerItemId ?? memory.lastDocument.providerItemId,
+          });
+        }
+      }
+    }
     return {
       reply: sourceLinkReply(memory.lastDocument),
-      toolName: null,
+      toolName: memory.lastDocument?.url ? COMPANY_KNOWLEDGE_READ_TOOL : null,
       outcome: "answered",
       latencyMs: Date.now() - started,
       entities: memory,
