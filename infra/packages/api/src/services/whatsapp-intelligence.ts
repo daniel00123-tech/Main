@@ -210,7 +210,7 @@ export function planFromIntelligence(
   const fact =
     buttonAction === "more_on_this" || buttonAction === "more_detail"
       ? "detail"
-      : buttonAction === "summarise"
+      : buttonAction === "summarise" || /\bsummaris/i.test(text)
         ? "summary"
         : "answer";
   if (result.kind === "controlled_action") {
@@ -273,6 +273,9 @@ export function planFromIntelligence(
       draftKind: null,
     };
   }
+  const discovered =
+    result.toolCalls.some((call) => call.name === "search_company_knowledge") &&
+    result.toolCalls.some((call) => call.name === "get_knowledge_document" || call.name === "fetch");
   if (usedXero) {
     return {
       action: "xero",
@@ -288,7 +291,7 @@ export function planFromIntelligence(
       draftKind: null,
     };
   }
-  if (usedDocument && result.currentDocument) {
+  if (usedDocument && result.currentDocument && !discovered) {
     return {
       action: "memory_fact",
       intent: "knowledge_search",
@@ -387,7 +390,12 @@ async function recoverFailedIntelligenceTurn(
   const toolCalls = [...failed.toolCalls];
   let current = failed.currentDocument ?? documentRefFromEntity(input.memory.lastDocument);
   const evidenceDocumentIds = [...failed.evidenceDocumentIds];
-  const broaden = input.buttonAction === "search_other_docs" || !current;
+  const broaden =
+    input.buttonAction === "search_other_docs" ||
+    !current ||
+    /\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file)|broaden)\b/i.test(
+      input.originalText,
+    );
   if (broaden) {
     let search = toolCalls.find((call) => call.name === "search_company_knowledge");
     if (!search) {
@@ -425,7 +433,7 @@ async function recoverFailedIntelligenceTurn(
       mode:
         input.buttonAction === "more_on_this" || input.buttonAction === "more_detail"
           ? "more_detail"
-          : input.buttonAction === "summarise"
+          : input.buttonAction === "summarise" || /\bsummaris/i.test(input.originalText)
             ? "summarise"
             : "answer",
       previousAnswer: input.memory.lastAnswerText,

@@ -4,7 +4,19 @@ import type { IntelligenceConfidence, IntelligenceDecision } from "./types.js";
 export type RecoveredDecision = IntelligenceDecision & { recovered?: boolean; source?: string };
 
 export function parseIntelligenceDecision(raw: string): IntelligenceDecision {
-  return recoverDecision({ text: raw }).decision;
+  const { decision } = recoverDecision({ text: raw });
+  if (decision.action === "invalid") return { action: "invalid", reason: decision.reason };
+  if (decision.action === "call_tool") {
+    return { action: "call_tool", name: decision.name, arguments: decision.arguments };
+  }
+  if (decision.action === "clarify") return { action: "clarify", text: decision.text };
+  return {
+    action: "answer",
+    text: decision.text,
+    confidence: decision.confidence,
+    offer_search_other: decision.offer_search_other,
+    cite_source: decision.cite_source,
+  };
 }
 
 export function recoverDecision(input: {

@@ -232,7 +232,7 @@ export async function runIntelligenceTurn(input: {
 
   if (toolCalls.length > 0) {
     return finish({
-      kind: "answer",
+      kind: "failed",
       text: fallbackFromEvidence(toolCalls, currentDocument),
       confidence: "partial",
       offerSearchOther: Boolean(currentDocument),
@@ -373,13 +373,17 @@ function adoptFromTool(
   if (doc && !evidenceDocumentIds.includes(doc.id)) evidenceDocumentIds.push(doc.id);
 }
 
+function looksLikeNewDocumentSearch(text: string): boolean {
+  return /\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file)|broaden)\b/i.test(text);
+}
+
 async function bootstrapRetrieval(
   runtime: IntelligenceRuntime,
   state: IntelligenceConversationState,
   text: string,
   buttonHint?: string | null,
 ): Promise<IntelligenceToolResult | null> {
-  if (buttonHint === "search_other_docs" || !state.currentDocument) {
+  if (buttonHint === "search_other_docs" || !state.currentDocument || looksLikeNewDocumentSearch(text)) {
     return runtime.executeTool({ name: "search_company_knowledge", arguments: { query: text } });
   }
   return runtime.executeTool({

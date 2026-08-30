@@ -136,6 +136,7 @@ import {
 } from "./whatsapp-send";
 import {
   COMBINED_GREETING_DOCUMENT_REPLY,
+  DOCUMENT_CLARIFY_REPLY,
   instantLocalReply,
   isGenericDocumentAsk,
   isInstantLocalTurn,
@@ -767,7 +768,8 @@ async function handleWhatsAppInboundMessageInner(
   }
 
   const deterministicSource =
-    inboundResolved.buttonAction === "open_source" && boundDocument
+    (inboundResolved.buttonAction === "open_source" || inboundResolved.buttonAction === "find_similar") &&
+    boundDocument
       ? planBoundButton(inboundResolved.buttonAction, boundDocument, text, entities)
       : null;
   let plan: WhatsAppPlan = deterministicSource ?? {
@@ -851,6 +853,41 @@ async function handleWhatsAppInboundMessageInner(
     };
   }
 
+  if (
+    !inboundResolved.buttonAction &&
+    isGenericDocumentAsk(text) &&
+    !entities.lastDocument &&
+    !boundDocument
+  ) {
+    const reply = applyCustomerTone(DOCUMENT_CLARIFY_REPLY);
+    const sent = await maybeSendReply(env, sender, reply, { qualityRuntime });
+    await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, reply, entities);
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      state: "clarification_sent",
+      terminal: "clarification_sent",
+      replySentAt: new Date().toISOString(),
+      firstVisibleAt: new Date().toISOString(),
+      finalSentAt: new Date().toISOString(),
+      finalSendOk: sent.ok ? 1 : 0,
+    });
+    return {
+      handled: true,
+      duplicate: false,
+      identityFound: true,
+      companyId: companyDecision.companyId,
+      userId: identity.user.id,
+      replySent: sent.ok,
+      publicReply: reply,
+      toolName: null,
+      interactionId: null,
+      outcome: "clarification_requested",
+      intent: "clarification",
+      acknowledgementSent: false,
+      inputKind,
+      buttonsSent: sent.buttonsSent ?? 0,
+    };
+  }
+
   const fastLocal = !inboundResolved.buttonAction && (Boolean(matchFastPath(text)) || isInstantLocalTurn(text));
   if (fastLocal) {
     let capabilities: string | null = null;
@@ -858,9 +895,13 @@ async function handleWhatsAppInboundMessageInner(
       capabilities = await capabilityReplyForCompany(env, companyDecision.companyId);
     }
     const reply = applyCustomerTone(
-      matchFastPath(text) ??
-        instantLocalReply(text) ??
-        conversationalReply(intent as WhatsAppIntent, { text, capabilities }) ??
+      (intent === "help" || intent === "capabilities"
+        ? conversationalReply(intent as WhatsAppIntent, { text, capabilities }) ?? matchFastPath(text)
+        : intent === "greeting" || intent === "thanks" || intent === "casual"
+          ? instantLocalReply(text) ?? conversationalReply(intent as WhatsAppIntent, { text, capabilities })
+          : matchFastPath(text) ??
+            instantLocalReply(text) ??
+            conversationalReply(intent as WhatsAppIntent, { text, capabilities })) ??
         conversationalReply("greeting", { text })!,
     );
     const sent = await maybeSendReply(env, sender, reply, {
