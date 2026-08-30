@@ -92,6 +92,10 @@ export async function executeWhatsAppIntelligence(
   },
 ): Promise<WhatsAppIntelligenceAnswer> {
   const started = Date.now();
+  const originalText =
+    input.buttonAction === "search_other_docs"
+      ? input.memory.lastUserQuestion || input.memory.lastSearchQuery || input.originalText
+      : input.originalText;
   const fetchCache = new Map<string, ReturnType<typeof toStandardFetchPayload>>();
   const runtime = createWhatsAppIntelligenceRuntime(env, {
     companyId: input.companyId,
@@ -102,7 +106,7 @@ export async function executeWhatsAppIntelligence(
     fetchCache,
   });
   const state = buildConversationState({
-    userText: input.originalText,
+    userText: originalText,
     currentDocument: documentRefFromEntity(input.memory.lastDocument),
     entities: (input.memory.recentDocuments ?? [])
       .map((doc) => documentRefFromEntity(doc))
@@ -111,7 +115,7 @@ export async function executeWhatsAppIntelligence(
   });
   let result = await runIntelligenceTurn({
     env,
-    text: input.originalText,
+    text: originalText,
     state,
     runtime,
     channel: "whatsapp",
@@ -119,12 +123,18 @@ export async function executeWhatsAppIntelligence(
     completer: input.completer,
   });
   if (result.kind === "failed") {
-    result = await recoverFailedIntelligenceTurn(env, runtime, input, result, fetchCache);
+    result = await recoverFailedIntelligenceTurn(
+      env,
+      runtime,
+      { ...input, originalText },
+      result,
+      fetchCache,
+    );
   }
 
-  const nextEntities = mergeEntitiesFromIntelligence(input.memory, result, input.originalText, fetchCache);
-  const polished = polishIntelligenceReply(result, nextEntities, input.originalText);
-  const plan = planFromIntelligence(result, input.originalText, input.buttonAction);
+  const nextEntities = mergeEntitiesFromIntelligence(input.memory, result, originalText, fetchCache);
+  const polished = polishIntelligenceReply(result, nextEntities, originalText);
+  const plan = planFromIntelligence(result, originalText, input.buttonAction);
   const documentClass = nextEntities.lastDocument
     ? classifyDocument({
         title: nextEntities.lastDocument.title,
