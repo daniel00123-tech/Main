@@ -31,6 +31,8 @@ import { api } from "../api";
 import { PortalCompanyProvider, usePortalCompany } from "./usePortalCompany";
 import { PortalNotificationBell } from "./PortalNotificationBell";
 import { PortalCompanyHomeLink } from "./PortalCompanyHomeLink";
+import { InfraBrand } from "../components/InfraBrand";
+import { filterCustomerActions } from "../lib/customer-visibility";
 
 type NavItem = {
   path: string;
@@ -115,12 +117,13 @@ function PortalShellInner() {
     if (!company) return;
     try {
       const response = await api.listCompanyActions(company.slug);
-      const count = response.plans.filter((p) => p.status === "awaiting_approval").length;
+      const visible = filterCustomerActions(response.plans, Boolean(user?.isPlatformAdmin));
+      const count = visible.filter((p) => p.status === "awaiting_approval").length;
       setPendingApprovals(count);
     } catch {
       /* non-blocking */
     }
-  }, [company]);
+  }, [company, user?.isPlatformAdmin]);
 
   useEffect(() => {
     void refreshPendingApprovals();
@@ -175,7 +178,7 @@ function PortalShellInner() {
     return sections;
   }, [nav]);
 
-  if (loading) return <LoadingState label="Opening company portal…" />;
+  if (loading) return <LoadingState label="Opening your company…" />;
   if (error || !company || !user) {
     return <ErrorState title="Portal unavailable" description={error ?? undefined} />;
   }
@@ -222,15 +225,7 @@ function PortalShellInner() {
         aria-hidden={isMobile && !mobileOpen ? true : undefined}
       >
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden>
-            IN
-          </div>
-          {showLabels ? (
-            <div className="brand-text">
-              <span className="brand-name">INFRA</span>
-              <span className="brand-context">Company portal</span>
-            </div>
-          ) : null}
+          {showLabels ? <InfraBrand context="Portal" /> : <InfraBrand compact />}
           {!isMobile ? (
             <button
               type="button"
@@ -297,24 +292,7 @@ function PortalShellInner() {
                   {item.icon}
                   <span className="label">{item.label}</span>
                   {item.badgeCount && item.badgeCount > 0 ? (
-                    <span
-                      className="nav-badge"
-                      style={{
-                        marginLeft: "auto",
-                        background: "var(--danger)",
-                        color: "#fff",
-                        borderRadius: 999,
-                        fontSize: 10,
-                        minWidth: 18,
-                        height: 18,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: "0 5px",
-                      }}
-                    >
-                      {item.badgeCount > 9 ? "9+" : item.badgeCount}
-                    </span>
+                    <span className="nav-badge">{item.badgeCount > 9 ? "9+" : item.badgeCount}</span>
                   ) : null}
                 </NavLink>
               ))}

@@ -968,8 +968,20 @@ connectors.post("/api/webhooks/microsoft/graph", async (c) => {
   }
   const payload = (await c.req.json().catch(() => ({}))) as import("../services/microsoft-graph-subscriptions").GraphNotificationPayload;
   const { handleMicrosoftGraphNotification } = await import("../services/microsoft-graph-subscriptions");
-  const result = await handleMicrosoftGraphNotification(c.env, payload);
-  return c.json({ ok: true, ...result });
+  const env = c.env;
+  c.executionCtx.waitUntil(
+    handleMicrosoftGraphNotification(env, payload).catch((err) => {
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          service: "infra-api",
+          event: "microsoft.graph_notification_failed",
+          message: err instanceof Error ? err.message : "Graph notification failed",
+        }),
+      );
+    }),
+  );
+  return c.json({ ok: true, accepted: true }, 202);
 });
 
 connectors.post("/api/internal/microsoft/process-next-job", async (c) => {
@@ -1150,6 +1162,34 @@ connectors.post("/api/internal/ocr/acceptance", async (c) => {
   }
 });
 
+connectors.post("/api/internal/ocr/backfill", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    companyId?: string;
+    limit?: number;
+    afterId?: number;
+    dryRun?: boolean;
+  };
+  try {
+    const { runOcrBackfill } = await import("../services/ocr/backfill");
+    return c.json(
+      await runOcrBackfill(c.env, {
+        companyId: body.companyId ?? "co_caddington",
+        limit: body.limit,
+        afterId: body.afterId,
+        dryRun: body.dryRun === true,
+      }),
+    );
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "OCR backfill failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/operations/acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
@@ -1261,6 +1301,23 @@ connectors.post("/api/internal/google-drive/whole-drive-acceptance", async (c) =
   } catch (err) {
     return c.json(
       { error: err instanceof Error ? err.message : "Acceptance failed", classification: "FAIL" },
+      500,
+    );
+  }
+});
+
+connectors.post("/api/internal/google-drive/backfill-provider-urls", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as { externalId?: string; limit?: number };
+    const { backfillGoogleDriveProviderUrls } = await import("../services/google-drive-acceptance");
+    const result = await backfillGoogleDriveProviderUrls(c.env, body);
+    return c.json({ httpStatus: result.status, ...result.body }, result.status >= 400 ? 400 : 200);
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Provider URL backfill failed" },
       500,
     );
   }

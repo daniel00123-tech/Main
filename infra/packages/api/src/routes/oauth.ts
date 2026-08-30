@@ -25,7 +25,6 @@ import {
 import { getCompanyById, getCompanyBySlug } from "../services/control-plane";
 import {
   infraBrowserPublicBase,
-  infraBrowserPublicBase,
   infraMcpGatewayUrl,
 } from "../services/public-urls";
 
