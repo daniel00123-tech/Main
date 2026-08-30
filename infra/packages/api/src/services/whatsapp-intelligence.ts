@@ -336,14 +336,17 @@ async function recoverFailedIntelligenceTurn(
   let current = failed.currentDocument ?? documentRefFromEntity(input.memory.lastDocument);
   const evidenceDocumentIds = [...failed.evidenceDocumentIds];
   const broaden = input.buttonAction === "search_other_docs" || !current;
-  if (broaden && !toolCalls.some((call) => call.name === "search_company_knowledge")) {
-    const search = await runtime.executeTool({
-      name: "search_company_knowledge",
-      arguments: { query: input.originalText },
-    });
-    toolCalls.push(search);
+  if (broaden) {
+    let search = toolCalls.find((call) => call.name === "search_company_knowledge");
+    if (!search) {
+      search = await runtime.executeTool({
+        name: "search_company_knowledge",
+        arguments: { query: input.originalText },
+      });
+      toolCalls.push(search);
+    }
     const first = firstSearchHit(search.data);
-    if (first) {
+    if (first && !toolCalls.some((call) => call.name === "get_knowledge_document" || call.name === "fetch")) {
       const fetched = await runtime.executeTool({
         name: "get_knowledge_document",
         arguments: { document_id: first.id },
