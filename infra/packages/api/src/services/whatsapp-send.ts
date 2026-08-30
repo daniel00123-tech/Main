@@ -51,6 +51,41 @@ export async function sendWhatsAppText(
   });
 }
 
+/**
+ * Meta Cloud API typing indicator (Graph v21+).
+ * POST /{PHONE_NUMBER_ID}/messages with status=read and typing_indicator.type=text.
+ * Shown for ~25 seconds. Safe no-op if Meta rejects it.
+ */
+export async function sendWhatsAppTypingIndicator(
+  env: Env,
+  input: { messageId: string },
+): Promise<{ ok: boolean; supported: boolean }> {
+  const token = whatsappAccessToken(env);
+  const phoneNumberId = whatsappPhoneNumberId(env);
+  if (!token || !phoneNumberId || !input.messageId) return { ok: false, supported: false };
+  try {
+    const response = await fetch(`${GRAPH_BASE}/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: input.messageId,
+        typing_indicator: { type: "text" },
+      }),
+    });
+    return { ok: response.ok, supported: response.ok || response.status !== 400 };
+  } catch {
+    return { ok: false, supported: false };
+  }
+}
+
+export const WHATSAPP_TYPING_INDICATOR_SUPPORT =
+  "Meta Cloud API supports a short typing indicator via POST /{PHONE_NUMBER_ID}/messages with status=read and typing_indicator.type=text (shown ~25s). Text acknowledgements remain the primary UX.";
+
 export async function sendWhatsAppTemplate(
   env: Env,
   input: { toE164: string; templateName: string; language?: string },

@@ -124,3 +124,22 @@ export function compactConversationPrompt(turns: WhatsAppTurn[], currentMessage:
   if (!recent) return currentMessage;
   return `Recent WhatsApp conversation (same company only):\n${recent}\n\nCurrent question:\n${currentMessage}`;
 }
+
+const CHEAP_TURN = /^(hi+|hello+|hey+|thanks|thank you|how are you|what can you do|who are you)\b/i;
+
+/** Search query for MCP: current message, plus last business turn only when this is a follow-up. */
+export function searchQueryFromContext(
+  turns: WhatsAppTurn[],
+  currentMessage: string,
+  followUp: boolean,
+): string {
+  const current = currentMessage.trim();
+  if (!followUp) return current;
+  const lastBusiness = [...turns].reverse().find((turn) => {
+    if (turn.role !== "user") return false;
+    const text = turn.text.trim();
+    return text.length > 8 && !CHEAP_TURN.test(text);
+  });
+  if (!lastBusiness) return current;
+  return `${current}\n\nPrevious request: ${lastBusiness.text.slice(0, 160)}`;
+}

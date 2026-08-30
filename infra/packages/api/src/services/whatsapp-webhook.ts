@@ -222,9 +222,19 @@ export async function processWhatsAppInboundJob(
       payload_json: string;
       signature_valid: number;
       processed: number;
+      received_at?: string;
+      error?: string | null;
     }>();
   if (!row) return;
   if (Number(row.processed) === 1) return;
+  const claimed = await claimWhatsAppInboundEvent(env, message.eventId, row.received_at);
+  if (!claimed) {
+    const again = await env.DB.prepare(`SELECT processed FROM whatsapp_inbound_events WHERE id = ?`)
+      .bind(message.eventId)
+      .first<{ processed: number }>();
+    if (Number(again?.processed) === 1) return;
+    throw new Error("WHATSAPP_CLAIM_BUSY");
+  }
 
   if (options?.deadLetter) {
     await env.DB.prepare(
@@ -284,6 +294,35 @@ export async function processWhatsAppInboundJob(
     .run();
 
   await Promise.allSettled(pending);
+}
+
+async function claimWhatsAppInboundEvent(
+  env: Env,
+  eventId: string,
+  receivedAt?: string,
+): Promise<boolean> {
+  try {
+    const fresh = await env.DB.prepare(
+      `UPDATE whatsapp_inbound_events
+       SET error = 'PROCESSING'
+       WHERE id = ? AND processed = 0 AND (error IS NULL OR error != 'PROCESSING')`,
+    )
+      .bind(eventId)
+      .run();
+    if ((fresh.meta?.changes ?? 1) > 0) return true;
+    const staleCutoff = new Date(Date.now() - 60_000).toISOString();
+    if (receivedAt && receivedAt > staleCutoff) return false;
+    const stale = await env.DB.prepare(
+      `UPDATE whatsapp_inbound_events
+       SET error = 'PROCESSING'
+       WHERE id = ? AND processed = 0 AND error = 'PROCESSING'`,
+    )
+      .bind(eventId)
+      .run();
+    return (stale.meta?.changes ?? 0) > 0;
+  } catch {
+    return true;
+  }
 }
 
 async function ensureWhatsAppInboundTable(env: Env): Promise<void> {

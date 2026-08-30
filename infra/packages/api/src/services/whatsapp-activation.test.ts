@@ -32,7 +32,11 @@ const { executeGatewayRequest, sendWhatsAppTextMock, getUserByMobileE164, toSess
 vi.mock("./gateway", () => ({ executeGatewayRequest }));
 vi.mock("./whatsapp-send", async () => {
   const actual = await vi.importActual<typeof import("./whatsapp-send")>("./whatsapp-send");
-  return { ...actual, sendWhatsAppText: sendWhatsAppTextMock };
+  return {
+    ...actual,
+    sendWhatsAppText: sendWhatsAppTextMock,
+    sendWhatsAppTypingIndicator: vi.fn().mockResolvedValue({ ok: true, supported: true }),
+  };
 });
 vi.mock("../auth/users", () => ({ getUserByMobileE164, toSessionUser }));
 vi.mock("./usage", () => ({ recordUsageEvent }));
@@ -305,7 +309,7 @@ describe("WhatsApp inbound orchestration", () => {
 
     const result = await handleWhatsAppInboundMessage(runtime, inbound({ text: "What were sales this month?" }));
     expect(result.outcome).toBe("company_selection");
-    expect(result.publicReply).toMatch(/more than one company/i);
+    expect(result.publicReply).toMatch(/Which company would you like me to use/i);
     expect(executeGatewayRequest).not.toHaveBeenCalled();
   });
 
@@ -355,7 +359,7 @@ describe("WhatsApp inbound orchestration", () => {
 
   it("returns a safe AI-failure reply", async () => {
     executeGatewayRequest.mockRejectedValue(new Error("model exploded EAAG-test-token-not-real"));
-    const result = await handleWhatsAppInboundMessage(env(), inbound({ text: "hello" }));
+    const result = await handleWhatsAppInboundMessage(env(), inbound({ text: "Find the rental document" }));
     expect(result.outcome).toBe("ai_failed");
     expect(JSON.stringify(result)).not.toContain(TOKEN);
   });

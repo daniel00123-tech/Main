@@ -74,21 +74,21 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
   };
 
   const queued = await enqueueWhatsAppInbound(c.env, job);
-  if (!queued) {
-    const work = processWhatsAppInboundJob(c.env, job).catch((err) => {
-      console.error(
-        JSON.stringify({
-          ts: new Date().toISOString(),
-          service: "infra-api",
-          event: "whatsapp.inbound_failed",
-          message: err instanceof Error ? err.message : "WhatsApp inbound failed",
-        }),
-      );
-    });
-    try {
-      c.executionCtx.waitUntil(work);
-    } catch {
-      /* test / non-Worker runtimes have no ExecutionContext */
+  const work = processWhatsAppInboundJob(c.env, job).catch((err) => {
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        service: "infra-api",
+        event: "whatsapp.inbound_failed",
+        message: err instanceof Error ? err.message : "WhatsApp inbound failed",
+      }),
+    );
+  });
+  try {
+    c.executionCtx.waitUntil(work);
+  } catch {
+    if (!queued) {
+      await work;
     }
   }
 
