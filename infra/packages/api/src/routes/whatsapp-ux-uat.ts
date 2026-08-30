@@ -34,11 +34,15 @@ routes.post("/api/internal/whatsapp-ux-uat", async (c) => {
   if (inputKind === "button" && !buttonId && !text) return c.json({ error: "buttonId required" }, 400);
   if (inputKind === "voice" && !mediaId) return c.json({ error: "mediaId required for live voice" }, 400);
 
+  const LIVE_UAT_E164 = "+447932609444";
   const user = await c.env.DB.prepare(
     `SELECT mobile_e164 FROM users
-     WHERE status = 'active' AND mobile_e164 IS NOT NULL AND mobile_e164 != ''
-     ORDER BY updated_at DESC LIMIT 1`,
-  ).first<{ mobile_e164: string }>();
+     WHERE status = 'active'
+       AND (mobile_e164 = ? OR mobile_e164 = ?)
+     LIMIT 1`,
+  )
+    .bind(LIVE_UAT_E164, LIVE_UAT_E164.replace(/^\+/, ""))
+    .first<{ mobile_e164: string }>();
   if (!user?.mobile_e164) return c.json({ error: "no_linked_user" }, 409);
 
   const started = Date.now();

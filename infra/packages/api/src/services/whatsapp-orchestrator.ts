@@ -1530,7 +1530,7 @@ async function executeWhatsAppPlan(
         path: identity.path ?? input.memory.lastDocument.path,
       });
       return {
-        reply: memoryFactReply(plan, { ...input.memory, lastDocument: nextDoc }, doc.text),
+        reply: memoryFactReply(plan, { ...input.memory, lastDocument: nextDoc }, doc.text, input.originalText),
         toolName: COMPANY_KNOWLEDGE_READ_TOOL,
         outcome: "answered",
         latencyMs: Date.now() - started,
@@ -1549,8 +1549,12 @@ async function executeWhatsAppPlan(
         marks: input.marks,
         wamid: input.wamid,
       });
+      const fallbackText = fallback.entity?.excerpt ?? input.memory.lastDocument.excerpt;
       return {
-        reply: fallback.reply,
+        reply:
+          plan.fact === "answer"
+            ? memoryFactReply(plan, { ...input.memory, lastDocument: fallback.entity ?? input.memory.lastDocument }, fallbackText, input.originalText)
+            : fallback.reply,
         toolName: fallback.toolName,
         outcome: fallback.outcome,
         latencyMs: fallback.latencyMs,
@@ -1560,6 +1564,16 @@ async function executeWhatsAppPlan(
         }),
       };
     }
+  }
+
+  if (plan.action === "memory_fact" && input.memory.lastDocument) {
+    return {
+      reply: memoryFactReply(plan, input.memory, input.memory.lastDocument.excerpt, input.originalText),
+      toolName: null,
+      outcome: "answered",
+      latencyMs: Date.now() - started,
+      entities: input.memory,
+    };
   }
 
   if (plan.action === "xero" && plan.tool && ALLOWED_WHATSAPP_TOOLS.has(plan.tool)) {
@@ -2109,6 +2123,13 @@ async function resolveInboundUserInput(
   return { text: (input.item.text ?? "").trim(), inputKind: "text" };
 }
 
+function completedDocumentAction(plan: WhatsAppPlan): string | null {
+  if (plan.fact === "summary") return "summarise";
+  if (plan.fact === "detail") return "more_detail";
+  if (plan.action === "memory_link") return "open_source";
+  return null;
+}
+
 function buttonsForAnswer(input: {
   plan: WhatsAppPlan;
   reply: string;
@@ -2118,6 +2139,7 @@ function buttonsForAnswer(input: {
   contextToken?: string | null;
 }): WhatsAppReplyButton[] {
   const hasXero = input.connectors.includes("conn_xero");
+  const completedAction = completedDocumentAction(input.plan);
   if (input.outcome === "tool_failed" || input.plan.action === "write_blocked") return [];
   if (/couldn’t find that/i.test(input.reply)) {
     return suggestionButtons({ kind: "no_result" });
@@ -2130,6 +2152,7 @@ function buttonsForAnswer(input: {
       kind: "document",
       hasSourceUrl: /^https?:\/\//m.test(input.reply) || Boolean(input.entities.lastDocument?.url),
       contextToken: input.contextToken,
+      completedAction,
     });
   }
   if (input.plan.action === "knowledge" || input.plan.action === "memory_fact" || input.plan.action === "guidance") {
@@ -2138,6 +2161,7 @@ function buttonsForAnswer(input: {
       kind: /email|outlook|inbox/i.test(input.plan.query) ? "email" : "document",
       hasSourceUrl: Boolean(input.entities.lastDocument?.url),
       contextToken: input.contextToken,
+      completedAction,
     });
   }
   if (input.plan.action === "draft") return suggestionButtons({ kind: "long" });

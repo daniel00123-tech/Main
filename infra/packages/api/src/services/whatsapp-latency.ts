@@ -6,9 +6,13 @@ export const ACK_HARD_WARNING_MS = 3_000;
 export const SIMPLE_CONVERSATION_TARGET_MS = 3_000;
 export const SIMPLE_READ_TARGET_MS = 20_000;
 export const MULTI_TOOL_TARGET_MS = 45_000;
-export const PROGRESS_AFTER_MS = 12_000;
-export const DELAY_NOTICE_MS = 30_000;
+/** First user-visible progress is never earlier than one minute after ACK. */
+export const PROGRESS_AFTER_MS = 60_000;
+/** Second status line stays outside the same minute as the first progress. */
+export const DELAY_NOTICE_MS = 120_000;
 export const HARD_TIMEOUT_MS = 60_000;
+/** Shared cadence: at most one progress/status message per minute per chat. */
+export const PROGRESS_MIN_INTERVAL_MS = 60_000;
 export const HARD_SILENCE_MS = HARD_TIMEOUT_MS;
 export const STUCK_INCIDENT_MS = 30_000;
 export const SLOW_ACK_QUALITY_MS = 3_000;

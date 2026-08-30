@@ -3,8 +3,10 @@ import {
   DELAY_NOTICE_MS,
   HARD_TIMEOUT_MS,
   PROGRESS_AFTER_MS,
+  PROGRESS_MIN_INTERVAL_MS,
   sleepMs,
 } from "./whatsapp-latency";
+import { isWhatsAppTerminalState } from "./whatsapp-lifecycle";
 
 export const WATCHDOG_ACK_COPY = [
   "Got it 👍 I’m checking now.",
@@ -22,6 +24,57 @@ export const WATCHDOG_TIMEOUT_COPY =
   "That took longer than expected and I couldn’t complete it this time. Please try again.";
 
 export type WhatsAppWatchdogKind = "ack" | "progress" | "delay" | "timeout";
+
+export type WatchdogProgressGateInput = {
+  terminalState?: string | null;
+  replySentAt?: string | null;
+  acknowledgementSentAt?: string | null;
+  firstVisibleAt?: string | null;
+  progressSentAt?: string | null;
+  delaySentAt?: string | null;
+  nowMs?: number;
+};
+
+/**
+ * At most one progress/status line per minute. Never immediately after ACK
+ * or after a document/result has already been sent.
+ */
+export function evaluateWatchdogProgressGate(input: WatchdogProgressGateInput): {
+  allow: boolean;
+  reason: string;
+} {
+  if (isWhatsAppTerminalState(input.terminalState)) {
+    return { allow: false, reason: "already_terminal" };
+  }
+  if (hasTimestamp(input.replySentAt)) {
+    return { allow: false, reason: "result_already_sent" };
+  }
+  const now = input.nowMs ?? Date.now();
+  const lastStatus = latestTimestampMs(input.progressSentAt, input.delaySentAt);
+  if (lastStatus != null && now - lastStatus < PROGRESS_MIN_INTERVAL_MS) {
+    return { allow: false, reason: "progress_min_interval" };
+  }
+  const ackAt = latestTimestampMs(input.acknowledgementSentAt, input.firstVisibleAt);
+  if (ackAt != null && now - ackAt < PROGRESS_MIN_INTERVAL_MS) {
+    return { allow: false, reason: "too_soon_after_ack" };
+  }
+  return { allow: true, reason: "ok" };
+}
+
+function hasTimestamp(value: string | null | undefined): boolean {
+  return Boolean(value && String(value).trim());
+}
+
+export function latestTimestampMs(...values: Array<string | null | undefined>): number | null {
+  let latest: number | null = null;
+  for (const value of values) {
+    if (!hasTimestamp(value)) continue;
+    const ms = Date.parse(String(value));
+    if (!Number.isFinite(ms)) continue;
+    if (latest == null || ms > latest) latest = ms;
+  }
+  return latest;
+}
 
 export type WhatsAppWatchdogResult<T> = {
   result: T | null;
@@ -58,19 +111,41 @@ export async function raceWithWhatsAppWatchdog<T>(
     });
 
   const runTails = async (alreadyAcked: boolean) => {
-    const untilProgress = alreadyAcked ? PROGRESS_AFTER_MS : Math.max(0, PROGRESS_AFTER_MS - ACK_DECISION_MS);
-    await sleepMs(untilProgress);
-    if (!settled) {
-      progressSent = await send("progress", WATCHDOG_PROGRESS_COPY);
+    const offset = alreadyAcked ? 0 : ACK_DECISION_MS;
+    const ticks: Array<{ at: number; kind: WhatsAppWatchdogKind; body: string }> = [];
+    if (PROGRESS_AFTER_MS < HARD_TIMEOUT_MS) {
+      ticks.push({
+        at: Math.max(0, PROGRESS_AFTER_MS - offset),
+        kind: "progress",
+        body: WATCHDOG_PROGRESS_COPY,
+      });
     }
-    await sleepMs(Math.max(0, DELAY_NOTICE_MS - PROGRESS_AFTER_MS));
-    if (!settled) {
-      delaySent = await send("delay", WATCHDOG_DELAY_COPY);
+    if (DELAY_NOTICE_MS < HARD_TIMEOUT_MS) {
+      ticks.push({
+        at: Math.max(0, DELAY_NOTICE_MS - offset),
+        kind: "delay",
+        body: WATCHDOG_DELAY_COPY,
+      });
     }
-    await sleepMs(Math.max(0, HARD_TIMEOUT_MS - DELAY_NOTICE_MS));
-    if (!settled) {
-      await send("timeout", WATCHDOG_TIMEOUT_COPY);
-      return { timeout: true as const };
+    ticks.push({
+      at: Math.max(0, HARD_TIMEOUT_MS - offset),
+      kind: "timeout",
+      body: WATCHDOG_TIMEOUT_COPY,
+    });
+    ticks.sort((left, right) => left.at - right.at);
+    let elapsed = 0;
+    for (const tick of ticks) {
+      await sleepMs(Math.max(0, tick.at - elapsed));
+      elapsed = tick.at;
+      if (settled) return wrapped;
+      if (tick.kind === "progress") {
+        progressSent = await send("progress", tick.body);
+      } else if (tick.kind === "delay") {
+        delaySent = await send("delay", tick.body);
+      } else {
+        await send("timeout", tick.body);
+        return { timeout: true as const };
+      }
     }
     return wrapped;
   };

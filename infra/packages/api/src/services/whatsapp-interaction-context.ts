@@ -108,15 +108,24 @@ export function entityFromContext(context: WhatsAppInteractionContext): WhatsApp
 export function documentButtonsForContext(input: {
   token: string;
   hasSourceUrl?: boolean;
+  completedAction?: string | null;
 }): WhatsAppReplyButton[] {
   const token = input.token;
-  const buttons: WhatsAppReplyButton[] = [
-    { id: encodeBoundButtonId(token, "summarise"), title: clipButtonTitle("Summarise") },
+  const completed = String(input.completedAction ?? "").toLowerCase();
+  const hideSummarise = completed === "summarise" || completed === "summary";
+  const hideDetail = completed === "more_detail" || completed === "detail";
+  const buttons: WhatsAppReplyButton[] = [];
+  if (!hideSummarise) {
+    buttons.push({ id: encodeBoundButtonId(token, "summarise"), title: clipButtonTitle("Summarise") });
+  }
+  buttons.push(
     input.hasSourceUrl
       ? { id: encodeBoundButtonId(token, "open_source"), title: clipButtonTitle("Open source") }
       : { id: encodeBoundButtonId(token, "find_similar"), title: clipButtonTitle("Find similar") },
-    { id: encodeBoundButtonId(token, "more_detail"), title: clipButtonTitle("More detail") },
-  ];
+  );
+  if (!hideDetail) {
+    buttons.push({ id: encodeBoundButtonId(token, "more_detail"), title: clipButtonTitle("More detail") });
+  }
   return buttons.slice(0, 3);
 }
 

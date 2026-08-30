@@ -1,4 +1,10 @@
-import { wantsFullDetail, wantsSummary, sanitizeWhatsAppSource, compressDocumentAnswer } from "./whatsapp-compress";
+import {
+  wantsFullDetail,
+  wantsSummary,
+  sanitizeWhatsAppSource,
+  compressDocumentAnswer,
+  answerFromDocument,
+} from "./whatsapp-compress";
 import type { WhatsAppDocumentEntity, WhatsAppEntityMemory } from "./whatsapp-entities";
 import type { WhatsAppPlan } from "./whatsapp-plan";
 
@@ -43,9 +49,17 @@ export function memoryFactReply(
   plan: WhatsAppPlan,
   memory: WhatsAppEntityMemory,
   fetchedText?: string | null,
+  question?: string,
 ): string {
   const doc = memory.lastDocument;
   if (!doc) return "I don’t have that from the earlier message. Tell me which document you mean.";
+  if (plan.fact === "answer") {
+    return answerFromDocument({
+      title: doc.title,
+      text: fetchedText || doc.excerpt,
+      question: question || plan.query || "what does this document say",
+    });
+  }
   if (plan.fact === "amount") {
     return doc.amount
       ? `${doc.title}: the amount was ${doc.amount}.`

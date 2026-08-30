@@ -32,7 +32,7 @@ export type WhatsAppPlan = {
   useMemory: boolean;
   needsGuidance: boolean;
   clarification: string | null;
-  fact: "amount" | "who" | "summary" | "detail" | "alternatives" | "shorter" | "explain" | "reference" | null;
+  fact: "amount" | "who" | "summary" | "detail" | "alternatives" | "shorter" | "explain" | "reference" | "answer" | null;
   draftKind: "reply" | "quote" | "method" | "professional" | "customer_update" | null;
 };
 
@@ -75,7 +75,39 @@ const ASKED_FOR = /\b(what did they (ask|say|want)|assumptions? did you use)\b/i
 const DRAFT_UPDATE = /\b(customer update|draft a customer update)\b/i;
 const EMAIL = /\b(email|mailbox|outlook|inbox)\b/i;
 const THAT_DOC = /^(show me )?(that|the) document\b|\bwhich one was first\b|\bfind the document\b|\bshow me that one\b/i;
+const CURRENT_DOCUMENT_REF =
+  /\b(in (this|that) (document|doc|file)|in the (document|doc|file)|this document|that document|the current (document|file)|from (this|that) (document|file|one))\b/i;
+const CURRENT_DOCUMENT_QUESTION =
+  /\b(was |were |did |does |what did |who (is|was|did)|is (he|she|they|this))\b/i;
+const NEW_CORPUS_SEARCH = /\b(find|search|look(?:ing)? (for|up)|another document|different (file|document|one))\b/i;
+const NEGATIVE_RESULT =
+  /\b(poor (response|answer|reply|result)|bad (response|answer|reply)|not (really |very )?(good|helpful|useful|right|relevant)|not what i (asked|wanted|meant)|that'?s not (what|it|right|helpful)|wrong (doc|document|file|one|answer)|something else|nothing to do with|unrelated|not to do with it)\b/i;
 const OPERATIONS = /\b(jobs? (due|today)|engineers? (working|busy)|operational information)\b/i;
+
+export function refersToCurrentDocument(text: string): boolean {
+  return CURRENT_DOCUMENT_REF.test(text);
+}
+
+export function isNegativeResultFeedback(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (NEW_CORPUS_SEARCH.test(trimmed) || SUMMARY.test(trimmed) || DETAIL.test(trimmed)) return false;
+  return NEGATIVE_RESULT.test(trimmed) || /^(no|nope|nah)[,.]?\s+(that'?s |this is )?(not|wrong)/i.test(trimmed);
+}
+
+export function looksLikeCurrentDocumentQuestion(text: string): boolean {
+  if (refersToCurrentDocument(text)) return true;
+  if (NEW_CORPUS_SEARCH.test(text) || FINANCE.test(text)) return false;
+  return CURRENT_DOCUMENT_QUESTION.test(text);
+}
+
+export function resultFeedbackReply(title?: string | null): string {
+  const doc = String(title ?? "").trim();
+  if (doc) {
+    return `Sorry that wasn’t what you needed. I still have “${doc}” open — ask about that file, or name a different one if you want me to look elsewhere.`;
+  }
+  return "Sorry that wasn’t what you needed. Tell me what you actually want and I’ll look that up.";
+}
 
 function hasXero(connectors: string[]): boolean {
   return connectors.some((id) => id === "conn_xero");
@@ -116,6 +148,17 @@ export function planWhatsAppTurn(
       /\bcreate a quote\b/i.test(text))
   ) {
     return { ...base(), action: "write_blocked", intent: "write_action", tool: null, skipTools: true };
+  }
+  if (isNegativeResultFeedback(text)) {
+    return {
+      ...base(),
+      action: "clarify",
+      intent: "clarification",
+      tool: null,
+      skipTools: true,
+      useMemory: remembered,
+      clarification: resultFeedbackReply(memory.lastDocument?.title),
+    };
   }
   if (CHAT.test(text)) {
     return { ...base(), action: "chat", intent: "greeting", tool: null, skipTools: true };
@@ -211,7 +254,8 @@ export function planWhatsAppTurn(
       SHORTER.test(text) ||
       EXPLAIN.test(text) ||
       ASKED_FOR.test(text) ||
-      ALTERNATIVES.test(text))
+      ALTERNATIVES.test(text) ||
+      looksLikeCurrentDocumentQuestion(text))
   ) {
     const resolved = resolveRememberedDocument(memory, text) ?? memory.lastDocument;
     const fact = AMOUNT.test(text)
@@ -228,7 +272,9 @@ export function planWhatsAppTurn(
                 ? "explain"
                 : ALTERNATIVES.test(text)
                   ? "alternatives"
-                  : "summary";
+                  : SUMMARY.test(text) || ASKED_FOR.test(text)
+                    ? "summary"
+                    : "answer";
     if (fact === "alternatives" && resolved?.title) {
       return {
         ...base(),
@@ -244,10 +290,10 @@ export function planWhatsAppTurn(
       ...base(),
       action: "memory_fact",
       intent: "clarification",
-      tool: fact === "detail" || fact === "summary" ? "get_knowledge_document" : null,
+      tool: fact === "detail" || fact === "summary" || fact === "answer" ? "get_knowledge_document" : null,
       skipTools: fact === "amount" || fact === "who" || fact === "reference" || fact === "shorter" || fact === "explain",
       useMemory: true,
-      fetch: fact === "detail" || fact === "summary",
+      fetch: fact === "detail" || fact === "summary" || fact === "answer",
       fact,
     };
   }

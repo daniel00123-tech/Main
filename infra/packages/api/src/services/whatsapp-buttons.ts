@@ -97,15 +97,23 @@ export function suggestionButtons(input: {
   documentTitles?: string[];
   companies?: Array<{ companyId: string; companyName: string }>;
   contextToken?: string | null;
+  completedAction?: string | null;
 }): WhatsAppReplyButton[] {
   if (input.kind === "document") {
     if (input.contextToken && /^ctx_[a-z0-9]{8,16}$/i.test(input.contextToken)) {
       const token = input.contextToken.toLowerCase();
-      return [
-        { id: `${token}:summarise`, title: "Summarise" },
-        input.hasSourceUrl ? { id: `${token}:open_source`, title: "Open source" } : { id: `${token}:find_similar`, title: "Find similar" },
-        { id: `${token}:more_detail`, title: "More detail" },
-      ].slice(0, 3);
+      const completed = String(input.completedAction ?? "").toLowerCase();
+      const hideSummarise = completed === "summarise" || completed === "summary";
+      const hideDetail = completed === "more_detail" || completed === "detail";
+      const buttons: WhatsAppReplyButton[] = [];
+      if (!hideSummarise) buttons.push({ id: `${token}:summarise`, title: "Summarise" });
+      buttons.push(
+        input.hasSourceUrl
+          ? { id: `${token}:open_source`, title: "Open source" }
+          : { id: `${token}:find_similar`, title: "Find similar" },
+      );
+      if (!hideDetail) buttons.push({ id: `${token}:more_detail`, title: "More detail" });
+      return buttons.slice(0, 3);
     }
     return [];
   }
