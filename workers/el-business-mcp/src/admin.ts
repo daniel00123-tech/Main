@@ -19,6 +19,8 @@ import {
   loadConnectorRegistryRows,
 } from "./connectors";
 import { MCP_NAME } from "./constants";
+import { loadMicrosoftConfig, publicMicrosoftPolicy } from "./microsoft/config";
+import { runMicrosoftVerification } from "./microsoft/verify";
 
 const logger = createLogger(`${MCP_NAME}-admin`);
 
@@ -46,10 +48,23 @@ export async function handleAdminRequest(
   if (url.pathname === "/admin/connectors") {
     return json({
       company: EL_IDENTITY.company,
-      connectors: elConnectorDefinitions(),
+      connectors: elConnectorDefinitions(env),
       capabilityCatalog: elConnectorCapabilitiesCatalog(),
       registry: await loadConnectorRegistryRows(env.EL_BUSINESS_DATA),
+      microsoft: publicMicrosoftPolicy(loadMicrosoftConfig(env)),
     });
+  }
+
+  if (url.pathname === "/admin/microsoft") {
+    return json({
+      company: EL_IDENTITY.company,
+      microsoft: publicMicrosoftPolicy(loadMicrosoftConfig(env)),
+    });
+  }
+
+  if (url.pathname === "/admin/microsoft/verify") {
+    const verification = await runMicrosoftVerification(env);
+    return json(verification, verification.overall === "FAIL" ? 503 : 200);
   }
 
   return json({ error: "Not Found" }, 404);
@@ -63,34 +78,37 @@ export async function buildPublicStatus(env: Env): Promise<Response> {
   );
   const totalRecords = tables.reduce((sum, t) => sum + t.recordCount, 0);
 
-  const payload = buildExtendedHealthResponse({
-    identity: EL_IDENTITY,
-    versions: EL_VERSIONS,
-    status: database.connected ? "healthy" : "degraded",
-    database,
-    knowledge: {
-      status: EL_KNOWLEDGE_CONFIGURED ? "configured" : "not_configured",
-      documents: 0,
-      indexed: 0,
-      lastIndexedAt: null,
-    },
-    structuredData: {
-      status: "configured",
-      mode: "warehouse",
-      tables: tables.length,
-      records: totalRecords,
-    },
-    connectors: elConnectorDefinitions().map((c) => ({
-      type: c.connectorType,
-      status: c.status,
-      enabled: c.enabled,
-      version: c.connectorVersion,
-    })),
-    queues: { status: "not_configured" },
-    capabilities: ["READ", "SEARCH"],
-    recentErrors: [],
-    tables,
-  });
+  const payload = {
+    ...buildExtendedHealthResponse({
+      identity: EL_IDENTITY,
+      versions: EL_VERSIONS,
+      status: database.connected ? "healthy" : "degraded",
+      database,
+      knowledge: {
+        status: EL_KNOWLEDGE_CONFIGURED ? "healthy" : "not_configured",
+        documents: 0,
+        indexed: 0,
+        lastIndexedAt: null,
+      },
+      structuredData: {
+        status: "healthy",
+        mode: "warehouse",
+        tables: tables.length,
+        records: totalRecords,
+      },
+      connectors: elConnectorDefinitions(env).map((c) => ({
+        type: c.connectorType,
+        status: c.status,
+        enabled: c.enabled,
+        version: c.connectorVersion,
+      })),
+      queues: { status: "not_configured" },
+      capabilities: ["READ", "SEARCH", "SEND"],
+      recentErrors: [],
+      tables,
+    }),
+    microsoft: publicMicrosoftPolicy(loadMicrosoftConfig(env)),
+  };
 
   return json(payload);
 }

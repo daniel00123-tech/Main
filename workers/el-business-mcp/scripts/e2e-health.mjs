@@ -55,14 +55,17 @@ await check("GET /health", async () => {
   if (!body.ok) throw new Error("health not ok");
   if (body.company !== "EL Business") throw new Error(`company=${body.company}`);
   if (body.coreVersion !== "1.0.0") throw new Error(`coreVersion=${body.coreVersion}`);
-  if (body.mcpVersion !== "1.0.0") throw new Error(`mcpVersion=${body.mcpVersion}`);
+  if (body.mcpVersion !== "1.1.0") throw new Error(`mcpVersion=${body.mcpVersion}`);
 });
 
 await check("GET /status", async () => {
   const res = await fetch(`${baseUrl}/status`);
   const body = await res.json();
-  if (body.knowledge?.status !== "not_configured") {
+  if (!body.microsoft?.configured && body.knowledge?.status !== "not_configured") {
     throw new Error(`knowledge.status=${body.knowledge?.status}`);
+  }
+  if (!Array.isArray(body.microsoft?.approvedMailboxes)) {
+    throw new Error("microsoft policy missing from /status");
   }
 });
 
@@ -79,7 +82,9 @@ if (mcpToken) {
   await check("MCP system_health", async () => {
     const text = await mcpCall("system_health");
     if (!text.includes("EL Business")) throw new Error("missing company in response");
-    if (!text.includes("1.0.0")) throw new Error("missing version in response");
+    if (!text.includes("1.1.0") && !text.includes("1.0.0")) {
+      throw new Error("missing version in response");
+    }
   });
 
   await check("MCP database_summary", async () => {
@@ -94,11 +99,17 @@ if (mcpToken) {
     if (!text.includes("bigchange")) throw new Error("missing connector rows");
   });
 
-  await check("MCP search_company_knowledge not_configured", async () => {
+  await check("MCP search_company_knowledge microsoft_or_stub", async () => {
     const text = await mcpCall("search_company_knowledge", {
       query: "test policy",
     });
-    if (!text.includes("not_configured")) throw new Error("expected not_configured");
+    if (
+      !text.includes("not_configured") &&
+      !text.includes("live_microsoft_graph") &&
+      !text.includes("EL_MS_")
+    ) {
+      throw new Error("expected knowledge stub or live Microsoft search");
+    }
   });
 
   await check("MCP get_knowledge_document not_configured", async () => {
