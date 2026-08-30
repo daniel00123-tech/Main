@@ -6,6 +6,16 @@ export interface Env {
   EL_ADMIN_TOKEN?: string;
   /** HMAC secret for signed INFRA → EL identity headers. Privileged MCP tools fail closed without it. */
   EL_RBAC_IDENTITY_SECRET?: string;
+  /** Public origin advertised in OAuth/OIDC metadata. Defaults to the custom domain. */
+  EL_MCP_PUBLIC_ORIGIN?: string;
+  /** HS256 secret for MCP access tokens issued after Microsoft sign-in. Falls back to EL_RBAC_IDENTITY_SECRET. */
+  EL_MCP_TOKEN_SECRET?: string;
+  /** Optional dedicated Entra OIDC web app. Falls back to EL_MS_CLIENT_ID / EL_MS_CLIENT_SECRET. */
+  EL_MS_OIDC_CLIENT_ID?: string;
+  EL_MS_OIDC_CLIENT_SECRET?: string;
+  EL_MS_OIDC_REDIRECT_URI?: string;
+  /** Test-only JWKS override for Entra ID token validation. */
+  EL_MS_OIDC_JWKS_URL?: string;
   /** Elvex Microsoft Entra tenant (plain var, already on Worker). */
   EL_MS_TENANT_ID?: string;
   EL_MS_CLIENT_ID?: string;

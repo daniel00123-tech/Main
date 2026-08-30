@@ -809,6 +809,7 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
     role?: CompanyRole;
     teamId?: string;
     customRoleId?: string;
+    microsoftOid?: string;
   }>();
 
   if (!body.email || !body.displayName || !body.role) {
@@ -847,6 +848,7 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
         email: invited.user.email,
         displayName: invited.user.displayName,
         role: body.role!,
+        microsoftOid: body.microsoftOid,
       });
     }
 
@@ -933,6 +935,24 @@ phase3.post("/api/companies/:slug/users/:userId/status", requireAuth, async (c) 
     resourceId: targetId,
     detail: { status: body.status },
   });
+
+  if (isElvexCompany(company) && target) {
+    const membership = await c.env.DB
+      .prepare(
+        `SELECT role FROM company_memberships WHERE company_id = ? AND user_id = ?`,
+      )
+      .bind(company.id, targetId)
+      .first<{ role: string }>();
+    if (membership) {
+      await syncElvexCompanyUser(c.env, {
+        externalId: target.id,
+        email: target.email,
+        displayName: target.displayName,
+        role: membership.role,
+        status: body.status,
+      });
+    }
+  }
 
   return c.json({ ok: true, userId: targetId, status: body.status });
 });
@@ -1133,6 +1153,50 @@ phase3.post("/api/companies/:slug/users/:userId/role", requireAuth, async (c) =>
   }
 
   return c.json({ ok: true, membership });
+});
+
+phase3.post("/api/companies/:slug/users/:userId/microsoft-oid", requireAuth, async (c) => {
+  const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  const actor = c.get("user");
+  if (!isElvexCompany(company)) {
+    return c.json({ error: "Microsoft identity binding is only defined for EL Business" }, 404);
+  }
+  if (!canManageElvexRoles(actor, company)) {
+    return c.json({ error: "Only Company Admin may bind Microsoft identities" }, 403);
+  }
+  const body = await c.req.json<{ microsoftOid?: string }>();
+  const microsoftOid = body.microsoftOid?.trim() ?? "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(microsoftOid)) {
+    return c.json({ error: "microsoftOid must be a Microsoft Entra object ID (GUID)" }, 400);
+  }
+  const targetId = c.req.param("userId");
+  const target = await getUserById(c.env.DB, targetId);
+  if (!target) return c.json({ error: "User not found" }, 404);
+  const membership = await c.env.DB
+    .prepare(
+      `SELECT role, status FROM company_memberships WHERE company_id = ? AND user_id = ?`,
+    )
+    .bind(company.id, targetId)
+    .first<{ role: string; status: string }>();
+  if (!membership) return c.json({ error: "User is not a member of this company" }, 404);
+  const synced = await syncElvexCompanyUser(c.env, {
+    externalId: target.id,
+    email: target.email,
+    displayName: target.displayName,
+    role: membership.role,
+    status: membership.status === "disabled" || target.status === "disabled" ? "disabled" : "active",
+    microsoftOid,
+  });
+  await recordAuditEvent(c.env.DB, {
+    companyId: company.id,
+    eventType: "user.updated",
+    actor: actor.email,
+    resourceType: "user",
+    resourceId: targetId,
+    detail: { microsoftOidBound: true },
+  });
+  return c.json({ ok: true, microsoftOid, sync: synced });
 });
 
 // ---------- Service identities ----------

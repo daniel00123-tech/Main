@@ -34,7 +34,10 @@ export default function PortalUsersPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<CompanyRole>("office_staff");
+  const [inviteMicrosoftOid, setInviteMicrosoftOid] = useState("");
   const [inviteResult, setInviteResult] = useState<string | null>(null);
+  const [bindOid, setBindOid] = useState("");
+  const [bindResult, setBindResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<InfraUser | null>(null);
   const [actionMenuUserId, setActionMenuUserId] = useState<string | null>(null);
@@ -106,6 +109,7 @@ export default function PortalUsersPage() {
         email: inviteEmail,
         displayName: inviteName,
         role: inviteRole,
+        microsoftOid: isElvex && inviteMicrosoftOid.trim() ? inviteMicrosoftOid.trim() : undefined,
       });
       setInviteResult(
         result.emailSent
@@ -598,6 +602,16 @@ export default function PortalUsersPage() {
               ))}
             </select>
           </label>
+          {isElvex && canManageRoles ? (
+            <label>
+              Microsoft Entra object ID (optional)
+              <input
+                value={inviteMicrosoftOid}
+                onChange={(e) => setInviteMicrosoftOid(e.target.value)}
+                placeholder="716e49a7-d69b-48de-8213-2fc1afdab288"
+              />
+            </label>
+          ) : null}
         </form>
         <Notice tone="info">
           Invitation email is not sent automatically. Copy the setup link below and share it with
@@ -672,6 +686,38 @@ export default function PortalUsersPage() {
             />
             {roleDescription ? (
               <KeyValue label="Permissions" value={roleDescription} />
+            ) : null}
+            {isElvex && canManageRoles ? (
+              <form
+                className="login-form"
+                style={{ marginTop: 16 }}
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  setBindResult(null);
+                  try {
+                    await api.bindMicrosoftOid(company.slug, selected.id, bindOid.trim());
+                    setBindResult("Microsoft identity bound. Role changes now apply to this Entra sign-in without a new token.");
+                    setBindOid("");
+                    await refresh();
+                  } catch (err) {
+                    setBindResult(err instanceof Error ? err.message : "Bind failed");
+                  }
+                }}
+              >
+                <label>
+                  Microsoft Entra object ID
+                  <input
+                    value={bindOid}
+                    onChange={(e) => setBindOid(e.target.value)}
+                    placeholder="Entra user/object ID"
+                    required
+                  />
+                </label>
+                <Button type="submit" variant="secondary" size="sm" disabled={!bindOid.trim()}>
+                  Bind Microsoft identity
+                </Button>
+                {bindResult ? <p className="muted small">{bindResult}</p> : null}
+              </form>
             ) : null}
           </>
         ) : null}

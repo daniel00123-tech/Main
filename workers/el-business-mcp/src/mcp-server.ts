@@ -38,6 +38,13 @@ import { requireCapability } from "./rbac/guard";
 
 const logger = createLogger(MCP_NAME);
 
+export const COMPANY_KNOWLEDGE_TOOLS = [
+  "search",
+  "fetch",
+  "search_company_knowledge",
+  "get_knowledge_document",
+] as const;
+
 export function createElBusinessMcpServer(env: Env): McpServer {
   const server = new McpServer({
     name: MCP_NAME,
@@ -224,6 +231,110 @@ export function createElBusinessMcpServer(env: Env): McpServer {
         const message = error instanceof Error ? error.message : String(error);
         return {
           content: [{ type: "text", text: JSON.stringify({ error: message }, null, 2) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.registerTool(
+    "search",
+    {
+      description:
+        "Search Elvex company knowledge for ChatGPT Company Knowledge. RBAC still applies: engineers only see engineer_knowledge; unknown or disabled users receive no results.",
+      inputSchema: {
+        query: z.string().describe("Natural language search query."),
+      },
+    },
+    async ({ query }) => {
+      try {
+        const live = (await searchCompanyKnowledgeViaMicrosoft(env, query, 8)) as {
+          results?: Array<{ id?: string; name?: string; title?: string; webUrl?: string; path?: string }>;
+        };
+        const results = (live.results ?? []).map((item, index) => ({
+          id: item.id ?? item.path ?? `result-${index}`,
+          title: item.title ?? item.name ?? "Elvex document",
+          url: item.webUrl ?? item.path ?? undefined,
+        }));
+        return {
+          content: [{ type: "text", text: JSON.stringify({ results }, null, 2) }],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ results: [], error: error instanceof Error ? error.message : String(error) }, null, 2),
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.registerTool(
+    "fetch",
+    {
+      description:
+        "Fetch one Elvex company knowledge item by id for ChatGPT Company Knowledge. RBAC and Microsoft protected-user denies still apply.",
+      inputSchema: {
+        id: z.string().describe("Document or catalogue item id from search."),
+      },
+    },
+    async ({ id }) => {
+      try {
+        const live = (await searchCompanyKnowledgeViaMicrosoft(env, id, 8)) as {
+          results?: Array<{
+            id?: string;
+            name?: string;
+            title?: string;
+            webUrl?: string;
+            path?: string;
+            text?: string;
+            snippet?: string;
+          }>;
+        };
+        const match =
+          (live.results ?? []).find((item) => item.id === id) ??
+          (live.results ?? [])[0] ??
+          null;
+        if (!match) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ id, title: "", text: "", error: "Not found or not permitted for this role." }, null, 2),
+              },
+            ],
+            isError: true,
+          };
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  id: match.id ?? id,
+                  title: match.title ?? match.name ?? "Elvex document",
+                  text: match.text ?? match.snippet ?? match.path ?? "",
+                  url: match.webUrl ?? match.path ?? undefined,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ id, error: error instanceof Error ? error.message : String(error) }, null, 2),
+            },
+          ],
           isError: true,
         };
       }

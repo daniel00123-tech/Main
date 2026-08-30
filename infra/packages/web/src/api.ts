@@ -1194,7 +1194,7 @@ export const api = {
     ),
   inviteUser: (
     slug: string,
-    input: { email: string; displayName: string; role: CompanyRole },
+    input: { email: string; displayName: string; role: CompanyRole; microsoftOid?: string },
   ) =>
     fetchJson<{
       user: { id: string; email: string; displayName: string };
@@ -1216,6 +1216,11 @@ export const api = {
     fetchJson<{ ok: boolean }>(`/api/companies/${slug}/users/${userId}/role`, {
       method: "POST",
       body: JSON.stringify({ role }),
+    }),
+  bindMicrosoftOid: (slug: string, userId: string, microsoftOid: string) =>
+    fetchJson<{ ok: boolean; microsoftOid: string }>(`/api/companies/${slug}/users/${userId}/microsoft-oid`, {
+      method: "POST",
+      body: JSON.stringify({ microsoftOid }),
     }),
   resetCompanyUserPassword: (
     slug: string,

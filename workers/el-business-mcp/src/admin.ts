@@ -28,6 +28,7 @@ import { handleXeroConnect, handleXeroDisconnect } from "./xero/http";
 import { runXeroVerification, xeroPublicStatus } from "./xero/verify";
 import { ElXeroError } from "./xero/errors";
 import { handleRbacAdminRequest } from "./rbac/admin-api";
+import { oauthMetadataStatus } from "./oauth/metadata";
 
 const logger = createLogger(`${MCP_NAME}-admin`);
 
@@ -163,6 +164,7 @@ export async function buildPublicStatus(env: Env): Promise<Response> {
     }),
     microsoft: publicMicrosoftPolicy(loadMicrosoftConfig(env)),
     xero: await xeroPublicStatus(env),
+    oauth: oauthMetadataStatus(env).oauth,
   };
 
   return json(payload);

@@ -1,9 +1,11 @@
 import type { Env } from "../env";
 import { ELVEX_COMPANY_ID, unboundActor, type ElvexActor, type PrincipalType } from "./actor";
+import { verifyMcpAccessToken } from "../oauth/jwt";
+import { isMicrosoftOid } from "../oauth/crypto";
 
 export { unboundActor };
 import { isElvexRole, type ElvexRole } from "./roles";
-import { getServicePrincipal, getUserByExternalId, getUserByEmail } from "./store";
+import { getServicePrincipal, getUserByExternalId, getUserByEmail, getUserByMicrosoftOid } from "./store";
 
 const IDENTITY_MAX_AGE_MS = 5 * 60 * 1000;
 
@@ -35,40 +37,106 @@ export async function resolveActor(env: Env, request: Request | null): Promise<E
 
   if (!request) return unboundActor(correlationId);
 
-  const verified = await verifySignedIdentity(env, request);
-  if (!verified) return unboundActor(correlationId);
-
-  if (verified.principalType === "service") {
-    const principal = env.EL_BUSINESS_DATA
-      ? await getServicePrincipal(env.EL_BUSINESS_DATA, verified.actorId)
-      : null;
-    if (!principal || principal.status !== "active") {
-      return unboundActor(correlationId);
+  const bearer = extractBearer(request);
+  if (bearer) {
+    const mcp = await verifyMcpAccessToken(env, bearer);
+    if (mcp) {
+      return resolveMicrosoftOidActor(env, mcp.oid, {
+        email: mcp.email ?? null,
+        name: mcp.name ?? null,
+        correlationId,
+      });
     }
+  }
+
+  const verified = await verifySignedIdentity(env, request);
+  if (verified) {
+    if (verified.principalType === "service") {
+      const principal = env.EL_BUSINESS_DATA
+        ? await getServicePrincipal(env.EL_BUSINESS_DATA, verified.actorId)
+        : null;
+      if (!principal || principal.status !== "active") {
+        return unboundActor(correlationId);
+      }
+      return {
+        principalType: "service",
+        actorId: principal.id,
+        email: principal.email,
+        displayName: principal.displayName,
+        role: null,
+        serviceCapabilities: principal.capabilities,
+        identityBound: true,
+        identitySource: "d1",
+        companyId: ELVEX_COMPANY_ID,
+        correlationId: verified.correlationId,
+      };
+    }
+
+    const db = env.EL_BUSINESS_DATA;
+    if (!db) return unboundActor(correlationId);
+
+    const byExternal = await getUserByExternalId(db, verified.actorId);
+    const byEmail = verified.email ? await getUserByEmail(db, verified.email) : null;
+    const user = byExternal ?? byEmail;
+    if (!user || user.status !== "active" || !isElvexRole(user.role)) {
+      return unboundActor(verified.correlationId, {
+        email: verified.email || null,
+        identitySource: "signed_infra",
+      });
+    }
+
     return {
-      principalType: "service",
-      actorId: principal.id,
-      email: principal.email,
-      displayName: principal.displayName,
-      role: null,
-      serviceCapabilities: principal.capabilities,
+      principalType: "user",
+      actorId: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      role: user.role,
       identityBound: true,
       identitySource: "d1",
       companyId: ELVEX_COMPANY_ID,
       correlationId: verified.correlationId,
+      microsoftOid: user.microsoftOid,
     };
   }
 
-  const db = env.EL_BUSINESS_DATA;
-  if (!db) return unboundActor(correlationId);
-
-  const byExternal = await getUserByExternalId(db, verified.actorId);
-  const byEmail = verified.email ? await getUserByEmail(db, verified.email) : null;
-  const user = byExternal ?? byEmail;
-  if (!user || user.status !== "active" || !isElvexRole(user.role)) {
-    return unboundActor(verified.correlationId);
+  if (bearer && env.MCP_AUTH_TOKEN?.trim() && bearer === env.MCP_AUTH_TOKEN.trim()) {
+    return unboundActor(correlationId, {
+      actorId: "service_token",
+      identitySource: "service_token",
+    });
   }
 
+  return unboundActor(correlationId);
+}
+
+/**
+ * ChatGPT / employee path: bind only by verified Entra object ID.
+ * Email and display name are metadata. Unknown or disabled users stay unbound.
+ */
+export async function resolveMicrosoftOidActor(
+  env: Env,
+  oid: string,
+  meta: { email?: string | null; name?: string | null; correlationId?: string | null } = {}
+): Promise<ElvexActor> {
+  const correlationId = meta.correlationId ?? null;
+  if (!isMicrosoftOid(oid) || !env.EL_BUSINESS_DATA) {
+    return unboundActor(correlationId, {
+      identitySource: "microsoft_oidc",
+      microsoftOid: oid,
+      email: meta.email ?? null,
+      displayName: meta.name ?? null,
+    });
+  }
+  const user = await getUserByMicrosoftOid(env.EL_BUSINESS_DATA, oid);
+  if (!user || user.status !== "active" || !isElvexRole(user.role)) {
+    return unboundActor(correlationId, {
+      actorId: user?.id ?? `oid:${oid}`,
+      identitySource: "microsoft_oidc",
+      microsoftOid: oid,
+      email: user?.email ?? meta.email ?? null,
+      displayName: user?.displayName ?? meta.name ?? null,
+    });
+  }
   return {
     principalType: "user",
     actorId: user.id,
@@ -76,10 +144,18 @@ export async function resolveActor(env: Env, request: Request | null): Promise<E
     displayName: user.displayName,
     role: user.role,
     identityBound: true,
-    identitySource: "d1",
+    identitySource: "microsoft_oidc",
     companyId: ELVEX_COMPANY_ID,
-    correlationId: verified.correlationId,
+    correlationId,
+    microsoftOid: user.microsoftOid ?? oid,
   };
+}
+
+function extractBearer(request: Request): string | null {
+  const header = request.headers.get("Authorization");
+  if (!header?.startsWith("Bearer ")) return null;
+  const token = header.slice("Bearer ".length).trim();
+  return token || null;
 }
 
 export function injectActor(actor: ElvexActor): ElvexActor {
@@ -201,6 +277,7 @@ export type UserSyncPayload = {
   displayName?: string | null;
   role: string;
   status?: "active" | "disabled";
+  microsoftOid?: string | null;
   timestamp: string;
   signature: string;
 };
@@ -213,11 +290,13 @@ export async function signUserSync(
     displayName?: string | null;
     role: string;
     status?: "active" | "disabled";
+    microsoftOid?: string | null;
     timestamp?: string;
   }
 ): Promise<UserSyncPayload> {
   const timestamp = input.timestamp ?? new Date().toISOString();
   const status = input.status ?? "active";
+  const microsoftOid = input.microsoftOid?.trim() || null;
   const signature = await hmacHex(
     secret,
     canonicalUserSyncPayload({
@@ -226,6 +305,7 @@ export async function signUserSync(
       role: input.role,
       status,
       timestamp,
+      microsoftOid,
     })
   );
   return {
@@ -234,6 +314,7 @@ export async function signUserSync(
     displayName: input.displayName ?? null,
     role: input.role,
     status,
+    microsoftOid,
     timestamp,
     signature,
   };
@@ -252,15 +333,32 @@ export async function verifyUserSync(
   const timestamp = typeof body.timestamp === "string" ? body.timestamp.trim() : "";
   const signature = typeof body.signature === "string" ? body.signature.trim() : "";
   const displayName = typeof body.displayName === "string" ? body.displayName : null;
+  const microsoftOid = typeof body.microsoftOid === "string" ? body.microsoftOid.trim() : "";
   if (!externalId || !email || !role || !timestamp || !signature) return null;
   const age = Math.abs(Date.now() - Date.parse(timestamp));
   if (!Number.isFinite(age) || age > IDENTITY_MAX_AGE_MS) return null;
   const expected = await hmacHex(
     secret,
-    canonicalUserSyncPayload({ externalId, email, role, status, timestamp })
+    canonicalUserSyncPayload({
+      externalId,
+      email,
+      role,
+      status,
+      timestamp,
+      microsoftOid: microsoftOid || null,
+    })
   );
   if (!timingSafeEqual(expected, signature)) return null;
-  return { externalId, email, displayName, role, status, timestamp, signature };
+  return {
+    externalId,
+    email,
+    displayName,
+    role,
+    status,
+    microsoftOid: microsoftOid || null,
+    timestamp,
+    signature,
+  };
 }
 
 function canonicalUserSyncPayload(input: {
@@ -269,10 +367,11 @@ function canonicalUserSyncPayload(input: {
   role: string;
   status: string;
   timestamp: string;
+  microsoftOid?: string | null;
 }): string {
-  return ["user-sync", input.externalId, input.email.toLowerCase(), input.role, input.status, input.timestamp].join(
-    "\n"
-  );
+  const parts = ["user-sync", input.externalId, input.email.toLowerCase(), input.role, input.status, input.timestamp];
+  if (input.microsoftOid) parts.push(input.microsoftOid);
+  return parts.join("\n");
 }
 
 export function actorFromAssignment(input: {

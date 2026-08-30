@@ -1,9 +1,5 @@
 import { createMcpHandler } from "agents/mcp/server";
-import {
-  checkMcpAuth,
-  createLogger,
-  mcpUnauthorizedResponse,
-} from "@business-mcp/core";
+import { createLogger } from "@business-mcp/core";
 import {
   buildLivenessHealth,
   buildPublicStatus,
@@ -14,13 +10,14 @@ import { createElBusinessMcpServer } from "./mcp-server";
 import { MCP_NAME } from "./constants";
 import { handleXeroOAuthCallback } from "./xero/http";
 import { runWithRbacContext } from "./rbac/context";
+import {
+  gateMcpRequest,
+  handleMcpOAuthRequest,
+  isMcpOAuthPath,
+  mcpOAuthUnauthorizedResponse,
+} from "./oauth";
 
 const logger = createLogger(MCP_NAME);
-
-/** Production MCP always fails closed when MCP_AUTH_TOKEN is missing. */
-function checkElMcpAuth(request: Request, env: Env): boolean {
-  return checkMcpAuth(request, env.MCP_AUTH_TOKEN, { requireToken: true });
-}
 
 export default {
   async fetch(
@@ -42,23 +39,33 @@ export default {
       return handleXeroOAuthCallback(request, env);
     }
 
+    if (isMcpOAuthPath(url.pathname)) {
+      return handleMcpOAuthRequest(request, env, url);
+    }
+
     if (url.pathname.startsWith("/admin")) {
       return runWithRbacContext(env, request, () => handleAdminRequest(request, env, url));
     }
 
     if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
-      if (!checkElMcpAuth(request, env)) {
-        logger.warn("mcp_auth_failed", { path: url.pathname });
-        return mcpUnauthorizedResponse();
+      const gate = await gateMcpRequest(request, env);
+      if (!gate.allowed) {
+        logger.warn("mcp_auth_failed", { path: url.pathname, reason: gate.reason });
+        return mcpOAuthUnauthorizedResponse(env, gate.reason);
       }
 
-      return runWithRbacContext(env, request, () => {
-        const handler = createMcpHandler(
-          () => createElBusinessMcpServer(env),
-          { route: "/mcp", legacy: "stateless" }
-        );
-        return handler(request, env, ctx);
-      });
+      return runWithRbacContext(
+        env,
+        request,
+        () => {
+          const handler = createMcpHandler(
+            () => createElBusinessMcpServer(env),
+            { route: "/mcp", legacy: "stateless" }
+          );
+          return handler(request, env, ctx);
+        },
+        gate.actor
+      );
     }
 
     return new Response("Not Found", { status: 404 });

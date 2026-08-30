@@ -1,7 +1,10 @@
 {
   // Secrets (wrangler secret put — never commit):
-  // MCP_AUTH_TOKEN, EL_ADMIN_TOKEN, EL_MS_CLIENT_SECRET, EL_XERO_CLIENT_SECRET,
-  // EL_RBAC_IDENTITY_SECRET (must match infra-api)
+  // MCP_AUTH_TOKEN (machine/service transport only — never a human identity),
+  // EL_ADMIN_TOKEN, EL_MS_CLIENT_SECRET, EL_XERO_CLIENT_SECRET,
+  // EL_RBAC_IDENTITY_SECRET (must match infra-api),
+  // EL_MCP_TOKEN_SECRET (MCP JWT signing; may reuse EL_RBAC_IDENTITY_SECRET),
+  // EL_MS_OIDC_CLIENT_SECRET (if a dedicated Entra OIDC app is used)
   "name": "el-business-mcp",
   "main": "src/index.ts",
   "compatibility_date": "2025-08-24",

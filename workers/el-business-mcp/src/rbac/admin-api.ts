@@ -11,12 +11,17 @@ import { getRequestActor } from "./context";
 import { recordPermissionAudit, listPermissionAudit } from "./audit";
 import { verifyUserSync } from "./identity";
 import {
+  bindUserMicrosoftOid,
+  getUserByEmail,
+  getUserById,
   listClassifications,
   listCompanyUsers,
   updateUserRole,
+  updateUserStatus,
   upsertClassification,
   upsertCompanyUser,
 } from "./store";
+import { isMicrosoftOid } from "../oauth/crypto";
 import { DEFAULT_PROTECTED_USER_HINTS, publicMicrosoftPolicy, loadMicrosoftConfig } from "../microsoft/config";
 import { xeroPublicStatus } from "../xero/verify";
 import type { Env } from "../env";
@@ -59,6 +64,7 @@ export async function handleRbacAdminRequest(
       }
       const user = await upsertCompanyUser(env.EL_BUSINESS_DATA, {
         externalId: verified.externalId,
+        microsoftOid: verified.microsoftOid,
         email: verified.email,
         displayName: verified.displayName,
         role: verified.role,
@@ -101,6 +107,8 @@ export async function handleRbacAdminRequest(
         displayName?: string;
         role?: string;
         externalId?: string;
+        microsoftOid?: string;
+        status?: "active" | "disabled";
       };
       if (!body.email || !isElvexRole(body.role ?? "")) {
         return json({ error: "email and a canonical Elvex role are required" }, 400);
@@ -108,13 +116,44 @@ export async function handleRbacAdminRequest(
       if (!can(actor, "admin.roles.manage").allowed) {
         return json({ error: "Only Company Admin may assign roles" }, 403);
       }
+      if (body.microsoftOid && !isMicrosoftOid(body.microsoftOid)) {
+        return json({ error: "microsoftOid must be a Microsoft Entra object ID (GUID)" }, 400);
+      }
       const user = await upsertCompanyUser(env.EL_BUSINESS_DATA, {
         email: body.email,
         displayName: body.displayName,
         role: body.role as "engineer",
         externalId: body.externalId,
+        microsoftOid: body.microsoftOid,
+        status: body.status,
       });
       return json({ ok: true, user });
+    }
+
+    if (url.pathname === "/admin/rbac/users/bind-microsoft" && request.method === "POST") {
+      await requireAdminCapability(env, "admin.users.manage");
+      const body = (await request.json()) as {
+        userId?: string;
+        email?: string;
+        microsoftOid?: string;
+      };
+      if (!isMicrosoftOid(body.microsoftOid ?? "")) {
+        return json({ error: "microsoftOid must be a Microsoft Entra object ID (GUID)" }, 400);
+      }
+      const existing = body.userId
+        ? await getUserById(env.EL_BUSINESS_DATA, body.userId)
+        : body.email
+          ? await getUserByEmail(env.EL_BUSINESS_DATA, body.email)
+          : null;
+      if (!existing) {
+        return json({ error: "EL company user not found. Provision the user before binding Microsoft identity." }, 404);
+      }
+      try {
+        const user = await bindUserMicrosoftOid(env.EL_BUSINESS_DATA, existing.id, body.microsoftOid!.trim());
+        return json({ ok: true, user });
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : String(error) }, 409);
+      }
     }
 
     if (url.pathname.startsWith("/admin/rbac/users/") && url.pathname.endsWith("/role") && request.method === "POST") {
@@ -135,6 +174,32 @@ export async function handleRbacAdminRequest(
         correlationId: actor.correlationId,
       });
       return json({ ok: true, user: updated, audit: "role.changed" });
+    }
+
+    if (url.pathname.startsWith("/admin/rbac/users/") && url.pathname.endsWith("/bind") && request.method === "POST") {
+      await requireAdminCapability(env, "admin.users.manage");
+      const userId = url.pathname.split("/")[4];
+      const body = (await request.json()) as { microsoftOid?: string };
+      if (!isMicrosoftOid(body.microsoftOid ?? "")) {
+        return json({ error: "microsoftOid must be a Microsoft Entra object ID (GUID)" }, 400);
+      }
+      try {
+        const user = await bindUserMicrosoftOid(env.EL_BUSINESS_DATA, userId, body.microsoftOid!.trim());
+        return json({ ok: true, user });
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : String(error) }, 409);
+      }
+    }
+
+    if (url.pathname.startsWith("/admin/rbac/users/") && url.pathname.endsWith("/status") && request.method === "POST") {
+      await requireAdminCapability(env, "admin.users.manage");
+      const userId = url.pathname.split("/")[4];
+      const body = (await request.json()) as { status?: string };
+      if (body.status !== "active" && body.status !== "disabled") {
+        return json({ error: "status must be active or disabled" }, 400);
+      }
+      const updated = await updateUserStatus(env.EL_BUSINESS_DATA, userId, body.status);
+      return json({ ok: true, user: updated });
     }
 
     if (url.pathname === "/admin/rbac/classifications" && request.method === "GET") {
@@ -194,7 +259,7 @@ export async function buildRbacSnapshot(env: Env): Promise<Record<string, unknow
       bound: actor.identityBound,
       limitation: actor.identityBound
         ? null
-        : "MCP shared tokens do not identify ChatGPT/Claude users. Privileged capabilities fail closed until a signed INFRA identity is present and the user has an EL role in D1.",
+        : "Employee ChatGPT access uses Microsoft Entra ID. Privileged tools require a verified Entra object ID bound to an active company_users row. The shared MCP bearer token is machine/service transport only and never grants a human Company Admin role.",
     },
     roles: ELVEX_ROLES.map((role) => ({
       role,

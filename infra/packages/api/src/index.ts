@@ -1121,7 +1121,7 @@ app.get("/api/companies/:slug/elvex-rbac", requireAuth, async (c) => {
     companyId: company.id,
     companySlug: company.slug,
     identityLimitation:
-      "ChatGPT/Claude MCP tokens do not identify the individual caller. Privileged EL MCP tools fail closed until a signed INFRA identity is bound to a company_users row.",
+      "Employee ChatGPT access uses Microsoft Entra ID. Privileged tools require a verified Entra object ID bound to an active EL company user. The shared MCP bearer token is machine/service transport only and never grants a human Company Admin role.",
     roles: ELVEX_CANONICAL_ROLES.map((item) => ({
       role: item,
       label: ELVEX_ROLE_LABELS[item],

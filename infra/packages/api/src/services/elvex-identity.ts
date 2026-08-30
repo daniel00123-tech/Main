@@ -47,6 +47,7 @@ export async function syncElvexCompanyUser(
     displayName?: string | null;
     role: string;
     status?: "active" | "disabled";
+    microsoftOid?: string | null;
   },
 ): Promise<{ ok: boolean; skipped?: string; error?: string }> {
   const secret = typeof env.EL_RBAC_IDENTITY_SECRET === "string" ? env.EL_RBAC_IDENTITY_SECRET.trim() : "";
@@ -60,10 +61,10 @@ export async function syncElvexCompanyUser(
   }
   const timestamp = new Date().toISOString();
   const status = input.status ?? "active";
-  const signature = await hmacHex(
-    secret,
-    ["user-sync", input.externalId, input.email.toLowerCase(), input.role, status, timestamp].join("\n"),
-  );
+  const microsoftOid = input.microsoftOid?.trim() || "";
+  const signatureParts = ["user-sync", input.externalId, input.email.toLowerCase(), input.role, status, timestamp];
+  if (microsoftOid) signatureParts.push(microsoftOid);
+  const signature = await hmacHex(secret, signatureParts.join("\n"));
   const headers = {
     Authorization: `Bearer ${adminToken}`,
     "Content-Type": "application/json",
@@ -74,6 +75,7 @@ export async function syncElvexCompanyUser(
     displayName: input.displayName ?? null,
     role: input.role,
     status,
+    microsoftOid: microsoftOid || null,
     timestamp,
     signature,
   });
