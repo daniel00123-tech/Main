@@ -126,6 +126,17 @@ connectors.post(
   },
 );
 
+connectors.post("/api/companies/:slug/connectors/sync-from-mcp", requireAuth, async (c) => {
+  const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  if (!userHasCompanyAccess(c.get("user"), company.id)) {
+    return c.json({ error: "Access to this company is denied" }, 403);
+  }
+  const { syncCompanyMcpConnectorRegistry } = await import("../services/company-mcp-connector-sync");
+  const result = await syncCompanyMcpConnectorRegistry(c.env, company.id, c.get("user").email);
+  return c.json(result, result.error ? 503 : 200);
+});
+
 connectors.get("/api/companies/:slug/readiness", requireAuth, async (c) => {
   const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
   if (!company) return c.json({ error: "Company not found" }, 404);

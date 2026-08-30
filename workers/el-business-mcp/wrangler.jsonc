@@ -1,0 +1,36 @@
+{
+  // Secrets (wrangler secret put — never commit):
+  // MCP_AUTH_TOKEN, EL_ADMIN_TOKEN, EL_MS_CLIENT_SECRET, EL_XERO_CLIENT_SECRET,
+  // EL_RBAC_IDENTITY_SECRET (must match infra-api)
+  "name": "el-business-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "el-business-mcp.infrastack.app",
+      "custom_domain": true,
+      "zone_name": "infrastack.app"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "EL_BUSINESS_DATA",
+      "database_name": "el-business-data",
+      "database_id": "df4c2b7c-62f6-42a6-9e26-59e7836fd1a7"
+    }
+  ],
+  "vars": {
+    "EL_MS_TENANT_ID": "af32e619-3647-44a2-85d9-1c45457c0e91",
+    "EL_MS_CLIENT_ID": "f8ec6a91-f043-4f63-8800-64135af48c4e",
+    "EL_MS_APPROVED_MAILBOXES": "finance@elvexpropertyservices.com,info@elvexpropertyservices.com",
+    "EL_MS_PROTECTED_USERS": "William,Ella",
+    "EL_MS_SHAREPOINT_HOSTNAME": "elvexpropertyservicesltd.sharepoint.com",
+    "EL_MS_GRAPH_BASE_URL": "https://graph.microsoft.com/v1.0",
+    "EL_MS_MAIL_DOMAIN": "elvexpropertyservices.com",
+    "EL_XERO_CLIENT_ID": "454479535E074399A4D9A61AF4BD255F",
+    "EL_XERO_REDIRECT_URI": "https://el-business-mcp.infrastack.app/oauth/xero/callback",
+    "EL_XERO_EXPECTED_ORG": "Elvex Property Services Ltd"
+  }
+}

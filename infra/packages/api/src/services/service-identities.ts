@@ -22,6 +22,7 @@ export interface ServiceIdentityRecord {
   hasToken: boolean;
   scopes: string[];
   mcpEnvironmentId: string | null;
+  boundUserId?: string | null;
   lastUsedAt: string | null;
   requestCount: number;
   createdAt: string;
@@ -49,6 +50,7 @@ function rowToIdentity(row: Record<string, unknown>): ServiceIdentityRecord {
     mcpEnvironmentId: row.mcp_environment_id
       ? String(row.mcp_environment_id)
       : null,
+    boundUserId: row.bound_user_id ? String(row.bound_user_id) : null,
     lastUsedAt: row.last_used_at ? String(row.last_used_at) : null,
     requestCount: Number(row.request_count ?? 0),
     createdAt: String(row.created_at),
@@ -115,6 +117,7 @@ export async function createServiceIdentity(
     identityType: ServiceIdentityType;
     scopes?: string[];
     mcpEnvironmentId?: string | null;
+    boundUserId?: string | null;
   },
 ): Promise<{ identity: ServiceIdentityRecord; token: string }> {
   const id = newId("svc");
