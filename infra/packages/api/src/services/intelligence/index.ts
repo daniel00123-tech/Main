@@ -1,7 +1,9 @@
 export { INTELLIGENCE_TOOLS, INTELLIGENCE_TOOL_NAMES, GATEWAY_TOOL_ALIASES, SYSTEM_META_TOOLS, describeToolCatalogue, permittedToolsForConnectors } from "./catalogue.js";
 export { matchFastPath, isFastPathTurn, matchOpenSourceFastPath } from "./fast-path.js";
-export { classifyScope, isCorpusInventoryAsk } from "./scope.js";
+export { classifyScope, isCorpusInventoryAsk, detectNamedDocumentSwitch } from "./scope.js";
 export { verbaliseSystemMeta, isSystemMetaTool, executeSystemMetaTool } from "./system-meta.js";
+export { resolveBusinessPeriod, withResolvedBusinessDates, businessSystemArgs } from "./periods.js";
+export { enrichDocumentQuery } from "./query-enrichment.js";
 export {
   runIntelligenceTurn,
   parseIntelligenceDecision,

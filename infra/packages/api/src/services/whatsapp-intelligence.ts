@@ -8,6 +8,8 @@ import {
   executeSystemMetaTool,
   permittedToolsForConnectors,
   runIntelligenceTurn,
+  withResolvedBusinessDates,
+  enrichDocumentQuery,
   type IntelligenceCompleter,
   type IntelligenceDocumentRef,
   type IntelligenceRuntime,
@@ -115,6 +117,7 @@ export async function executeWhatsAppIntelligence(
     waitUntil: input.waitUntil,
     memory: input.memory,
     fetchCache,
+    connectors: input.connectors ?? [],
   });
   const connectors = input.connectors ?? [];
   const membership = input.sessionUser.memberships.find((row) => row.companyId === input.companyId);
@@ -432,6 +435,7 @@ function mergeEntitiesFromIntelligence(
     lastDocument,
     lastTool: result.toolCalls.at(-1)?.name ?? prior.lastTool,
     lastSearchQuery: question,
+    lastUserQuestion: question,
     lastSourceUrl: lastDocument?.url ?? prior.lastSourceUrl,
     lastSourceSystem: lastDocument?.sourceSystem ?? prior.lastSourceSystem,
     currentScope: result.scope ?? prior.currentScope ?? null,
@@ -473,7 +477,10 @@ async function recoverFailedIntelligenceTurn(
     return failed;
   }
   if (/\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover)\b/i.test(input.originalText) || failed.scope === "BUSINESS_SYSTEM") {
-    const xero = await runtime.executeTool({ name: "xero_sales_summary", arguments: {} });
+    const xero = await runtime.executeTool({
+      name: "xero_sales_summary",
+      arguments: withResolvedBusinessDates("xero_sales_summary", {}, input.originalText),
+    });
     toolCalls.push(xero);
     return {
       ...failed,
@@ -492,7 +499,7 @@ async function recoverFailedIntelligenceTurn(
   const broaden =
     input.buttonAction === "search_other_docs" ||
     !current ||
-    /\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file)|broaden|search other)\b/i.test(
+    /\b(find|search|look(?:ing)? (for|up)|pull up|open|switch to|go to|another|different|other (doc|document|file)|broaden|search other)\b/i.test(
       input.originalText,
     );
   if (broaden) {
@@ -618,6 +625,7 @@ async function runSystemMetaTool(
     companyId: string;
     sessionUser: SessionUser;
     interactionId: string;
+    connectors?: string[];
   },
   call: IntelligenceToolCall,
   started: number,
@@ -635,6 +643,7 @@ async function runSystemMetaTool(
         canReadAutomations: true,
       },
       companyName: null,
+      connectors: input.connectors ?? [],
     });
     await Promise.resolve(
       recordUsageEvent(env.DB, {
@@ -692,6 +701,7 @@ function createWhatsAppIntelligenceRuntime(
     waitUntil?: (promise: Promise<unknown>) => void;
     memory: WhatsAppEntityMemory;
     fetchCache: Map<string, ReturnType<typeof toStandardFetchPayload>>;
+    connectors?: string[];
   },
 ): IntelligenceRuntime {
   return {
@@ -873,13 +883,18 @@ async function runSearchDocument(
     input.fetchCache.set(documentId, payload);
   }
   const chunks = chunksFromFetchPayload(payload, documentId);
-  let ranked = searchDocument(documentId, query || payload.title, chunks);
-  if (
-    !ranked.length &&
-    queryTerms(query).length === 0 &&
-    input.memory.lastUserQuestion &&
-    input.memory.lastUserQuestion !== query
-  ) {
+  const enriched = enrichDocumentQuery(query || payload.title, {
+    scope: "CURRENT_DOCUMENT",
+    currentTitle: payload.title,
+    previousUserText: input.memory.lastUserQuestion && input.memory.lastUserQuestion !== query
+      ? input.memory.lastUserQuestion
+      : null,
+    lastAnswerTopic: input.memory.lastAnswerTopic ?? "document",
+    userCorrection: false,
+    documentChanged: Boolean(input.memory.lastDocument && input.memory.lastDocument.id !== documentId),
+  });
+  let ranked = searchDocument(documentId, enriched.query, chunks);
+  if (!ranked.length && queryTerms(query).length < 2 && input.memory.lastUserQuestion && input.memory.lastUserQuestion !== query) {
     ranked = searchDocument(documentId, input.memory.lastUserQuestion, chunks);
   }
   const hits = ranked.length ? ranked : [];

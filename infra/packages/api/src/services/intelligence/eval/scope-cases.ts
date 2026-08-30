@@ -205,6 +205,14 @@ const SEEDS: Seed[] = [
   { text: "Is SharePoint actually linked?", scope: "CONNECTOR_CAPABILITY", tool: "get_connector_status" },
   { text: "Aged receivables please", scope: "BUSINESS_SYSTEM", tool: "xero_aged_receivables" },
   { text: "Any mail about invoices?", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox" },
+  { text: "Open the vehicle handbook", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Pull up the site inspection notes", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Switch to the rental agreement", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Show the skip-hire quote", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Go to the onboarding pack", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "What about him?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "When was that?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "And the amount again?", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
 ];
 
 export function scopeEvaluationCases(): ScopeEvalCase[] {

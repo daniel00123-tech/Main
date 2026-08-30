@@ -73,6 +73,11 @@ const STOP = new Set([
   "please",
   "find",
   "search",
+  "just",
+  "also",
+  "some",
+  "any",
+  "something",
 ]);
 
 const KEEP_SHORT = new Set(["cv", "uk", "hr", "qa", "it"]);
@@ -249,9 +254,11 @@ export function scoreGlobalSearchHit(
   const queryNorm = query.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   let score = 0;
   if (queryNorm && (title.includes(queryNorm) || filename.includes(queryNorm))) score += 8;
+  const generic = new Set(["policy", "document", "documents", "file", "files", "report", "profile", "summary"]);
   for (const term of terms) {
-    if (title.includes(term)) score += 4;
-    else if (filename.includes(term)) score += 3;
+    const weight = generic.has(term) ? 1 : 4;
+    if (title.includes(term)) score += weight;
+    else if (filename.includes(term)) score += Math.max(1, weight - 1);
     else if (path.includes(term)) score += 2;
     else if (snippet.includes(term)) score += 1;
     else if (expandTerm(term).some((alt) => title.includes(alt) || snippet.includes(alt))) score += 1;

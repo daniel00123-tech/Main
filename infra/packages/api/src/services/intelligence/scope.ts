@@ -1,4 +1,5 @@
-import type { IntelligenceConversationState, IntelligenceScope } from "./types.js";
+import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "./types.js";
+import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
 
 export type ScopeSwitch =
   | "company"
@@ -47,6 +48,7 @@ export type ScopeDecision = {
   restoreRecentDocument: boolean;
   lastAnswerTopic: string | null;
   lastUserIntent: string;
+  matchedDocument: IntelligenceDocumentRef | null;
 };
 
 const QUANTITY =
@@ -77,7 +79,13 @@ const EMAIL = /\b(emails?|mailbox|outlook|inbox)\b/i;
 const WRITE =
   /\b(create (an? )?(invoice|bill|credit)|approve |send(?: this| the)? invoice|delete |void |allocate |raise an invoice|write to|update (the )?(invoice|bill|contact)|credit note)\b/i;
 const FIND =
-  /\b((can you |could you |please )?(find|search|look(?:ing)? (for|up)|pull up)|have we got|where is)\b/i;
+  /\b((can you |could you |please )?(find|search|look(?:ing)? (for|up)|pull up|open|show|get|go to|switch to)|have we got|where is)\b/i;
+const NAMED_SWITCH_VERB =
+  /\b((can you |could you |please )?(open|find|search|look(?:ing)? (?:for|up)|pull up|show|get|go to|switch to))\b/i;
+const SOURCE_OR_URL = /\b(source( url| link)?|the (url|link)|send me the (link|url))\b/i;
+const GENERIC_SWITCH_TOPIC =
+  /^(me |us )?(the |a |an |that |this |our |my )?(document|file|policy|one|it|that)s?[.?!]*$/i;
+const FOLLOWUP_FILLER = /^(me )?(more )?(detail|details|info|information|summary|that|this|it)[.?!]*$/i;
 const SOURCE_BREAKDOWN =
   /\b(where (are|do) (most|they|those)|by source|which source|most of them from|how many from|versus|sharepoint or|drive versus)\b/i;
 const TYPE_BREAKDOWN = /\b(by (file )?type|what types?|how many (pdfs?|spreadsheets?|emails?))\b/i;
@@ -161,6 +169,51 @@ function detectScopeSwitch(text: string): ScopeSwitch {
   return null;
 }
 
+function rememberedDocuments(
+  state: Pick<IntelligenceConversationState, "currentDocument" | "recentDocuments" | "entities">,
+): IntelligenceDocumentRef[] {
+  const seen = new Set<string>();
+  const docs: IntelligenceDocumentRef[] = [];
+  for (const doc of [...(state.recentDocuments ?? []), ...(state.entities ?? []).map((entity) => ({
+    id: entity.id,
+    title: entity.title,
+    url: entity.url,
+  }))]) {
+    if (!doc?.id || !doc.title || seen.has(doc.id)) continue;
+    seen.add(doc.id);
+    docs.push(doc);
+  }
+  return docs;
+}
+
+export function detectNamedDocumentSwitch(
+  text: string,
+  state: Pick<IntelligenceConversationState, "currentDocument" | "recentDocuments" | "entities">,
+): { target: "company" | "recent"; matchedDocument: IntelligenceDocumentRef | null } | null {
+  const trimmed = text.trim();
+  if (!NAMED_SWITCH_VERB.test(trimmed)) return null;
+  if (SOURCE_OR_URL.test(trimmed) && !/\b(find|search|look(?:ing)? (?:for|up)|pull up|go to|switch to)\b/i.test(trimmed)) {
+    return null;
+  }
+  const topic = trimmed
+    .replace(NAMED_SWITCH_VERB, "")
+    .replace(/[.?!]+$/g, "")
+    .replace(/^(me |us |the |a |an |that |this |our |my )/i, "")
+    .trim();
+  if (!topic || GENERIC_SWITCH_TOPIC.test(topic) || FOLLOWUP_FILLER.test(topic)) return null;
+  const strong = distinctiveTopicTokens(topic);
+  if (!strong.length) return null;
+  const currentTitle = state.currentDocument?.title ?? "";
+  const currentHits = titleTokenOverlap(topic, currentTitle);
+  if (state.currentDocument && (currentHits >= 2 || (strong.length === 1 && titleTokens(currentTitle).includes(strong[0]!)))) {
+    return null;
+  }
+  const remembered = rememberedDocuments(state).filter((doc) => doc.id !== state.currentDocument?.id);
+  const matched = remembered.find((doc) => titleTokenOverlap(topic, doc.title) >= 2) ?? null;
+  if (matched) return { target: "recent", matchedDocument: matched };
+  return { target: "company", matchedDocument: null };
+}
+
 export function isCorpusInventoryAsk(text: string): boolean {
   const features = extractFeatures(text);
   return features.quantityAsk && features.corpusNoun && !features.contentMention;
@@ -183,6 +236,7 @@ export function classifyScope(
   const hasCurrent = Boolean(state.currentDocument);
   const lastTopic = state.lastAnswerTopic ?? null;
   const switchTo = features.scopeSwitch;
+  const namedSwitch = detectNamedDocumentSwitch(text, state);
 
   if (features.writeIntent) {
     return decide("CONTROLLED_ACTION", features, {
@@ -208,10 +262,45 @@ export function classifyScope(
     });
   }
 
-  if (switchTo === "recent") {
+  const allowNamedSwitch =
+    Boolean(namedSwitch) &&
+    !features.financeAsk &&
+    !features.emailAsk &&
+    !features.quantityAsk &&
+    !features.capabilityAsk &&
+    !features.connectorAsk &&
+    !features.writeIntent;
+
+  if (allowNamedSwitch && namedSwitch?.target === "recent" && namedSwitch.matchedDocument) {
     return decide("RECENT_ENTITY", features, {
       tool: "get_knowledge_document",
       restoreRecentDocument: true,
+      matchedDocument: namedSwitch.matchedDocument,
+      lastAnswerTopic: "document",
+      lastUserIntent: "named_recent_document",
+    });
+  }
+
+  if (allowNamedSwitch && namedSwitch?.target === "company") {
+    return decide("COMPANY_KNOWLEDGE", features, {
+      tool: "search_company_knowledge",
+      clearCurrentDocument: true,
+      lastAnswerTopic: "company_knowledge",
+      lastUserIntent: "named_document_switch",
+    });
+  }
+
+  if (switchTo === "recent") {
+    const remembered = rememberedDocuments(state);
+    const namedRecent =
+      remembered.find((doc) => titleTokenOverlap(text, doc.title) >= 2) ??
+      remembered.find((doc) => doc.id !== state.currentDocument?.id) ??
+      remembered[0] ??
+      null;
+    return decide("RECENT_ENTITY", features, {
+      tool: "get_knowledge_document",
+      restoreRecentDocument: true,
+      matchedDocument: namedRecent,
       lastAnswerTopic: "document",
       lastUserIntent: "restore_recent",
     });
@@ -411,6 +500,7 @@ export function classifyScope(
   if (features.findDocument && (!hasCurrent || !features.currentLocus || /\banother\b/i.test(text))) {
     return decide("COMPANY_KNOWLEDGE", features, {
       tool: "search_company_knowledge",
+      clearCurrentDocument: Boolean(hasCurrent && !features.currentLocus),
       lastAnswerTopic: "company_knowledge",
       lastUserIntent: "find_document",
     });
@@ -481,6 +571,7 @@ function decide(
     restoreRecentDocument: Boolean(extra.restoreRecentDocument),
     lastAnswerTopic: extra.lastAnswerTopic ?? null,
     lastUserIntent: extra.lastUserIntent ?? scope.toLowerCase(),
+    matchedDocument: extra.matchedDocument ?? null,
   };
 }
 

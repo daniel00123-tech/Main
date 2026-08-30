@@ -6,6 +6,8 @@ import { routeIntelligenceTurn } from "./router.js";
 import { classifyScope, persistableScope, type ScopeDecision } from "./scope.js";
 import { formatConversationState } from "./state.js";
 import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "./system-meta.js";
+import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
+import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
 import type {
   IntelligenceChannel,
   IntelligenceConfidence,
@@ -78,8 +80,8 @@ export async function runIntelligenceTurn(input: {
   if (scoped.clearCurrentDocument && currentDocument) {
     currentDocument = null;
   }
-  if (scoped.restoreRecentDocument && input.state.recentDocuments[0]) {
-    currentDocument = input.state.recentDocuments[0];
+  if (scoped.restoreRecentDocument) {
+    currentDocument = scoped.matchedDocument ?? input.state.recentDocuments[0] ?? currentDocument;
   }
 
   if (scoped.scope === "CONTROLLED_ACTION") {
@@ -308,7 +310,10 @@ export async function runIntelligenceTurn(input: {
       }
       if (scoped.scope === "GENERAL_CONVERSATION") qualityFlags.add("general_conversation_used_tool");
       if (scoped.lastUserIntent === "rephrase") qualityFlags.add("unnecessary_search_after_rephrase");
-      const call: IntelligenceToolCall = { name: validated.name, arguments: validated.arguments };
+      const call: IntelligenceToolCall = {
+        name: validated.name,
+        arguments: prepareToolArguments(validated.name, validated.arguments, input.text, workingState, scoped.scope),
+      };
       const result = await input.runtime.executeTool(call);
       toolCalls.push(result);
       const doc = documentFromToolResult(result);
@@ -551,7 +556,7 @@ function adoptFromTool(
 }
 
 function looksLikeNewDocumentSearch(text: string): boolean {
-  return /\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file)|broaden|search other)\b/i.test(
+  return /\b(find|search|look(?:ing)? (for|up)|pull up|open|switch to|go to|another|different|other (doc|document|file)|broaden|search other)\b/i.test(
     text,
   );
 }
@@ -572,7 +577,11 @@ async function bootstrapRetrieval(
     return runtime.executeTool({ name: scoped.tool || "get_company_system_summary", arguments: {} });
   }
   if (looksLikeFinanceRead(text) || scoped?.scope === "BUSINESS_SYSTEM") {
-    return runtime.executeTool({ name: scoped?.tool || "xero_sales_summary", arguments: {} });
+    const toolName = scoped?.tool || "xero_sales_summary";
+    return runtime.executeTool({
+      name: toolName,
+      arguments: prepareToolArguments(toolName, {}, text, state, scoped?.scope),
+    });
   }
   if (
     buttonHint === "search_other_docs" ||
@@ -587,8 +596,43 @@ async function bootstrapRetrieval(
   }
   return runtime.executeTool({
     name: "search_document",
-    arguments: { document_id: state.currentDocument.id, query: text },
+    arguments: prepareToolArguments(
+      "search_document",
+      { document_id: state.currentDocument.id, query: text },
+      text,
+      state,
+      scoped?.scope ?? "CURRENT_DOCUMENT",
+    ),
   });
+}
+
+function prepareToolArguments(
+  name: string,
+  args: Record<string, unknown>,
+  text: string,
+  state: IntelligenceConversationState,
+  scope?: IntelligenceScope | null,
+): Record<string, unknown> {
+  let next = { ...args };
+  if (needsBusinessDates(name)) {
+    next = withResolvedBusinessDates(name, next, text);
+  }
+  if (name === "search_document") {
+    const enriched = enrichDocumentQuery(String(next.query ?? text), {
+      scope: scope ?? "CURRENT_DOCUMENT",
+      currentTitle: state.currentDocument?.title ?? null,
+      previousUserText: previousUserText(state, text),
+      lastAnswerTopic: state.lastAnswerTopic ?? null,
+      userCorrection: Boolean(state.userCorrection),
+      documentChanged: false,
+      scopeChanged: Boolean(state.currentScope && scope && state.currentScope !== scope),
+    });
+    next.query = enriched.query;
+    if (state.currentDocument && !String(next.document_id ?? "").trim()) {
+      next.document_id = state.currentDocument.id;
+    }
+  }
+  return next;
 }
 
 function shouldRunDeterministicMeta(scoped: ScopeDecision): boolean {

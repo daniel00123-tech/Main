@@ -192,7 +192,7 @@ export function policyCompleter(): IntelligenceCompleter {
     if (/what's the policy|find the document|open that file|the other one|policy on this|pull up the policy/i.test(userLine) && !hasCurrent) {
       return json({ action: "clarify", text: "Which document do you mean?" });
     }
-    if (hasCurrent && !/\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file)|broaden|return to)\b/i.test(userLine)) {
+    if (hasCurrent && !/\b(find|search|look(?:ing)? (for|up)|pull up|open|switch to|go to|another|different|other (doc|document|file)|broaden|return to)\b/i.test(userLine)) {
       return json({
         action: "call_tool",
         name: "search_document",
@@ -396,7 +396,12 @@ function matchesIntent(expect: EvalExpectation, result: IntelligenceTurnResult, 
     case "capability":
       return result.toolCalls.some((call) => call.name === "get_user_capabilities" || call.name === "get_connector_status");
     case "none":
-      return result.kind === "fast_path" || result.kind === "answer" || result.kind === "clarify";
+      return (
+        result.kind === "fast_path" ||
+        result.kind === "answer" ||
+        result.kind === "clarify" ||
+        result.kind === "controlled_action"
+      );
     default:
       return true;
   }
