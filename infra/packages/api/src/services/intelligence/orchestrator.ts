@@ -155,9 +155,10 @@ export async function runIntelligenceTurn(input: {
       [...input.state.recentTurns].reverse().find((turn) => turn.role === "user")?.text ||
       input.state.lastAnswerTopic ||
       input.text;
+    const query = [input.state.currentDocument?.title, priorUser].filter(Boolean).join(" — ") || input.text;
     const search = await input.runtime.executeTool({
       name: "search_company_knowledge",
-      arguments: { query: priorUser },
+      arguments: { query },
     });
     toolCalls.push(search);
     const hits = searchHits(search.data);
