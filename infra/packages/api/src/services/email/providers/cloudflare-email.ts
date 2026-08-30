@@ -24,10 +24,10 @@ export async function sendCloudflareEmail(
   },
 ): Promise<CloudflareEmailSendResult> {
   const identity = resolvePlatformEmailIdentity(env);
+  const fromBinding = { name: identity.name, email: identity.address };
+  const fromRest = { name: identity.name, address: identity.address };
   const payload = {
     to: input.toEmail,
-    from: { name: identity.name, address: identity.address },
-    reply_to: { name: identity.name, address: identity.address },
     subject: input.subject,
     text: input.bodyText,
     html: input.bodyHtml,
@@ -38,8 +38,8 @@ export async function sendCloudflareEmail(
     try {
       const response = await binding.send({
         to: payload.to,
-        from: payload.from,
-        replyTo: payload.reply_to,
+        from: fromBinding,
+        replyTo: fromBinding,
         subject: payload.subject,
         text: payload.text,
         html: payload.html,
@@ -74,8 +74,8 @@ export async function sendCloudflareEmail(
         },
         body: JSON.stringify({
           to: payload.to,
-          from: payload.from,
-          reply_to: payload.reply_to,
+          from: fromRest,
+          reply_to: fromRest,
           subject: payload.subject,
           text: payload.text,
           html: payload.html,

@@ -55,8 +55,8 @@ export interface Env {
   EMAIL?: {
     send(input: {
       to: string | string[];
-      from: string | { name?: string; address: string };
-      replyTo?: string | { name?: string; address: string };
+      from: string | { name?: string; email?: string; address?: string };
+      replyTo?: string | { name?: string; email?: string; address?: string };
       subject: string;
       html?: string;
       text?: string;
@@ -65,6 +65,8 @@ export interface Env {
   CLOUDFLARE_ACCOUNT_ID?: string;
   CLOUDFLARE_API_TOKEN?: string;
   EMAIL_SENDING_API_TOKEN?: string;
+  /** Optional one-shot live email test gate. Unset in normal production. */
+  EMAIL_LIVE_TEST_KEY?: string;
   /** Feature flag — auto top-up execution (test mode only until operator approval) */
   AUTO_TOPUP_EXECUTION_ENABLED?: string;
   /** Microsoft 365 app registration — Worker secrets only */
