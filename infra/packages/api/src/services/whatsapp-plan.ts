@@ -319,7 +319,7 @@ export function planWhatsAppTurn(
   if (EMAIL.test(text)) {
     return { ...base(), action: "knowledge", intent: "knowledge_search", fetch: true, query: query || text };
   }
-  if (isGenericDocumentAsk(text) && !remembered) {
+  if (isGenericDocumentAsk(text)) {
     return {
       ...base(),
       action: "clarify",
