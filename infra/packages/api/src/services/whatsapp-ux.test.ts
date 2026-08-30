@@ -237,6 +237,29 @@ describe("WhatsApp UX orchestration", () => {
     expect(String(args?.arguments?.query ?? "")).toMatch(/coal search/i);
   });
 
+  it("prefers a title that matches the distinctive search terms", async () => {
+    executeGatewayRequest.mockImplementation(async (_env: unknown, input: { toolName?: string; arguments?: { id?: string } }) => {
+      if (String(input.toolName ?? "").includes("document") || String(input.toolName ?? "").includes("fetch")) {
+        return { status: 200, result: { title: "Coal Search.pdf", text: "Mineral rights search for the property." } };
+      }
+      return {
+        status: 200,
+        result: {
+          results: [
+            { id: "pimlico", title: "Copy of Search-pimlico.xlsx", snippet: "search export" },
+            { id: "coal", title: "Coal Search.pdf", snippet: "mineral rights" },
+          ],
+        },
+      };
+    });
+    const result = await handleWhatsAppInboundMessage(env(), inbound("find cold serch doc"));
+    expect(result.publicReply).toMatch(/Coal Search|Mineral/i);
+    const fetched = executeGatewayRequest.mock.calls.find((call) =>
+      String((call[1] as { arguments?: { id?: string } })?.arguments?.id ?? "").includes("coal"),
+    );
+    expect(fetched).toBeTruthy();
+  });
+
   it("keeps follow-up context on the same company", () => {
     const prompt = searchQueryFromContext(
       [

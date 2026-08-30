@@ -425,7 +425,7 @@ export async function handleWhatsAppInboundMessage(
       companyId: companyDecision.companyId,
       sessionUser,
       query,
-      originalText: searchText,
+      originalText: text,
       interactionId,
       waitUntil: options?.waitUntil,
     });
@@ -601,10 +601,14 @@ async function answerWithCompanyMcp(
     };
   }
 
-  const hits = toStandardSearchPayload(search.result).results;
+  const hits = pickBestKnowledgeHits(toStandardSearchPayload(search.result).results, input.query);
   let body = formatSearchHits(hits, input.originalText);
 
-  if (FETCH_INTENT.test(input.originalText) && hits[0]?.id && ALLOWED_WHATSAPP_TOOLS.has(COMPANY_KNOWLEDGE_READ_TOOL)) {
+  if (
+    (FETCH_INTENT.test(input.originalText) || FETCH_INTENT.test(input.query) || /summarise|summarize|more detail/i.test(input.originalText)) &&
+    hits[0]?.id &&
+    ALLOWED_WHATSAPP_TOOLS.has(COMPANY_KNOWLEDGE_READ_TOOL)
+  ) {
     const fetched = await executeGatewayRequest(env, {
       actor: { type: "user", user: input.sessionUser },
       companyId: input.companyId,
@@ -616,9 +620,11 @@ async function answerWithCompanyMcp(
     });
     if (fetched.status === 200) {
       const doc = toStandardFetchPayload(fetched.result, hits[0].id);
-      const excerpt = formatWhatsAppReply(
-        `${doc.title}\n\n${doc.text || hits[0].snippet || "This document is in your connected business systems."}`,
-      );
+      const raw = doc.text || hits[0].snippet || "This document is in your connected business systems.";
+      const bodyText = /__EMPTY/.test(raw)
+        ? `${doc.title}\n\nThis looks like a spreadsheet. I can give you the useful rows if you want.`
+        : raw;
+      const excerpt = formatWhatsAppReply(`${doc.title}\n\n${bodyText}`);
       return {
         reply: excerpt,
         toolName: COMPANY_KNOWLEDGE_READ_TOOL,
@@ -651,6 +657,22 @@ async function answerWithCompanyMcp(
     outcome: "answered",
     latencyMs: Date.now() - started,
   };
+}
+
+function pickBestKnowledgeHits<T extends { title: string; snippet?: string }>(hits: T[], query: string): T[] {
+  if (hits.length <= 1) return hits;
+  const tokens = query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z0-9]/g, ""))
+    .filter((token) => token.length > 2 && !["the", "and", "for", "what", "about"].includes(token));
+  if (!tokens.length) return hits;
+  return [...hits].sort((left, right) => scoreHit(right, tokens) - scoreHit(left, tokens));
+}
+
+function scoreHit(hit: { title: string; snippet?: string }, tokens: string[]): number {
+  const hay = `${hit.title} ${hit.snippet ?? ""}`.toLowerCase();
+  return tokens.reduce((score, token) => score + (hay.includes(token) ? (hit.title.toLowerCase().includes(token) ? 3 : 1) : 0), 0);
 }
 
 function formatSearchHits(
