@@ -60,6 +60,7 @@ import EconomicsPage from "./pages/EconomicsPage";
 import EconomicsDetailPage from "./pages/EconomicsDetailPage";
 import InteractionsPage from "./pages/InteractionsPage";
 import QualityIssuesPage from "./pages/QualityIssuesPage";
+import QualityImprovementsPage from "./pages/QualityImprovementsPage";
 import PlatformOverheadsPage from "./pages/PlatformOverheadsPage";
 import PortalShell from "./portal/PortalShell";
 import PortalEntryRedirect from "./portal/PortalEntryRedirect";
@@ -134,6 +135,7 @@ const ADMIN_NAV: NavGroup[] = [
     items: [
       { to: "/interactions", label: "Interactions", icon: <MessageSquare size={18} /> },
       { to: "/quality", label: "Quality", icon: <CircleAlert size={18} /> },
+      { to: "/quality/improvements", label: "Improvement Reviews", icon: <CircleAlert size={18} /> },
       { to: "/audit-log", label: "Audit log", icon: <Shield size={18} /> },
     ],
   },
@@ -394,6 +396,7 @@ export default function App() {
                 <Route path="/economics/:companyId" element={<EconomicsDetailPage />} />
                 <Route path="/interactions" element={<InteractionsPage />} />
                 <Route path="/quality" element={<QualityIssuesPage />} />
+                <Route path="/quality/improvements" element={<QualityImprovementsPage />} />
                 <Route path="/billing" element={<BillingPage />} />
                 <Route path="/commercial/overheads" element={<PlatformOverheadsPage />} />
                 <Route path="/commercial/provider-costs" element={<ProviderCostsPage />} />
