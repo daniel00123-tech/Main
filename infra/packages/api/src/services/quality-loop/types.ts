@@ -77,7 +77,16 @@ export type QualityFlagCategory =
   | "ack_no_final"
   | "tool_timeout"
   | "broad_search"
-  | "user_wait_over_60s";
+  | "user_wait_over_60s"
+  | "current_document_global_search"
+  | "unrelated_document_after_context"
+  | "answer_repeated_excerpt"
+  | "more_detail_identical"
+  | "malformed_extraction"
+  | "unsolicited_pii"
+  | "weak_result_confident"
+  | "negative_result_feedback"
+  | "topic_correction";
 
 export interface QualityFlag {
   category: QualityFlagCategory;

@@ -3,7 +3,7 @@ export const KNOWLEDGE_SEARCH_TIMEOUT_MS = 15_000;
 export const FETCH_TIMEOUT_MS = 15_000;
 export const SYNTHESIS_TIMEOUT_MS = 10_000;
 export const D1_TIMEOUT_MS = 10_000;
-export const OVERALL_TURN_TIMEOUT_MS = 60_000;
+export const OVERALL_TURN_TIMEOUT_MS = 120_000;
 export const SEARCH_CANDIDATE_LIMIT = 8;
 export const FETCH_TOP_LIMIT = 2;
 

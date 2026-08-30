@@ -7,6 +7,7 @@ import {
 } from "./whatsapp-entities";
 import { looksLikeWriteIntent, softenSearchQuery, focusSearchTerms } from "./whatsapp-intent";
 import { DOCUMENT_CLARIFY_REPLY, isGenericDocumentAsk } from "./whatsapp-realtime";
+import { classifyDocument } from "./whatsapp-grounded-qa";
 
 export type WhatsAppPlanAction =
   | "chat"
@@ -51,7 +52,7 @@ export const DOCUMENT_URL_ASK =
 const LINK = DOCUMENT_URL_ASK;
 const SOURCE_ASK =
   /\b(where did you (get|find)|what('s| is) the source|source (for|of) that|where is this stored|is it in sharepoint|where is it stored)\b/i;
-const AMOUNT = /\b(what was the (amount|figure)|how much|the amount|the figure again)\b/i;
+const AMOUNT = /\b(what was the (amount|figure)|the amount|the figure again|how much (was|is|did) (it|the|that) (invoice|payment|fee|amount|cost)?)\b/i;
 const WHO = /\b(who sent|who from|who wrote|who is it from)\b/i;
 const REFERENCE = /\b(what was the reference|the reference|ref(erence)? (was|is|again))\b/i;
 const SUMMARY =
@@ -78,8 +79,9 @@ const THAT_DOC = /^(show me )?(that|the) document\b|\bwhich one was first\b|\bfi
 const CURRENT_DOCUMENT_REF =
   /\b(in (this|that) (document|doc|file)|in the (document|doc|file)|this document|that document|the current (document|file)|from (this|that) (document|file|one))\b/i;
 const CURRENT_DOCUMENT_QUESTION =
-  /\b(was |were |did |does |what did |who (is|was|did)|is (he|she|they|this))\b/i;
+  /\b(was |were |did |does it mention|does (it|the|this|he|she|they)|what does it say|what did (he|she|they) do|tell me more about that|what (did|does|is|are|was|were)|what experience|what responsibilities|why |when |who |how much|is (he|she|they|this))\b/i;
 const NEW_CORPUS_SEARCH = /\b(find|search|look(?:ing)? (for|up)|another document|different (file|document|one))\b/i;
+const SEARCH_OTHER_DOCS = /\bsearch other (docs?|documents?)\b/i;
 const NEGATIVE_RESULT =
   /\b(poor (response|answer|reply|result)|bad (response|answer|reply)|not (really |very )?(good|helpful|useful|right|relevant)|not what i (asked|wanted|meant)|that'?s not (what|it|right|helpful)|wrong (doc|document|file|one|answer)|something else|nothing to do with|unrelated|not to do with it)\b/i;
 const OPERATIONS = /\b(jobs? (due|today)|engineers? (working|busy)|operational information)\b/i;
@@ -96,9 +98,20 @@ export function isNegativeResultFeedback(text: string): boolean {
 }
 
 export function looksLikeCurrentDocumentQuestion(text: string): boolean {
+  if (SEARCH_OTHER_DOCS.test(text)) return false;
   if (refersToCurrentDocument(text)) return true;
   if (NEW_CORPUS_SEARCH.test(text) || FINANCE.test(text)) return false;
   return CURRENT_DOCUMENT_QUESTION.test(text);
+}
+
+export function looksLikeSearchOtherDocs(text: string): boolean {
+  return SEARCH_OTHER_DOCS.test(text);
+}
+
+export function looksLikePronounFollowUp(text: string): boolean {
+  if (FINANCE.test(text) || /\b(this|last) (month|week|year|quarter)\b/i.test(text)) return false;
+  if (refersToCurrentDocument(text)) return true;
+  return /\b(he|she|they|him|her|them)\b/i.test(text) && CURRENT_DOCUMENT_QUESTION.test(text);
 }
 
 export function resultFeedbackReply(title?: string | null): string {
@@ -196,6 +209,28 @@ export function planWhatsAppTurn(
     };
   }
 
+  if (SEARCH_OTHER_DOCS.test(text)) {
+    return {
+      ...base(),
+      action: "knowledge",
+      intent: "knowledge_search",
+      fetch: false,
+      useMemory: false,
+      query: memory.lastUserQuestion || memory.lastSearchQuery || query || text,
+    };
+  }
+
+  if (!remembered && looksLikePronounFollowUp(text) && !NEW_CORPUS_SEARCH.test(text)) {
+    return {
+      ...base(),
+      action: "clarify",
+      intent: "clarification",
+      tool: null,
+      skipTools: true,
+      clarification: "Which document are you asking about?",
+    };
+  }
+
   if (SOURCE_ASK.test(text) && remembered) {
     return { ...base(), action: "memory_source", intent: "source_attribution", tool: null, skipTools: true, useMemory: true };
   }
@@ -286,14 +321,23 @@ export function planWhatsAppTurn(
         fact,
       };
     }
+    const invoiceFacts =
+      resolved?.documentClass === "invoice_payment" ||
+      classifyDocument({ title: resolved?.title, text: resolved?.excerpt }) === "invoice_payment" ||
+      Boolean(resolved?.amount || resolved?.reference);
+    const skipStoredFact =
+      invoiceFacts && (fact === "amount" || fact === "who" || fact === "reference");
     return {
       ...base(),
       action: "memory_fact",
       intent: "clarification",
-      tool: fact === "detail" || fact === "summary" || fact === "answer" ? "get_knowledge_document" : null,
-      skipTools: fact === "amount" || fact === "who" || fact === "reference" || fact === "shorter" || fact === "explain",
+      tool:
+        fact === "detail" || fact === "summary" || fact === "answer" || !skipStoredFact
+          ? "get_knowledge_document"
+          : null,
+      skipTools: skipStoredFact || fact === "shorter" || fact === "explain",
       useMemory: true,
-      fetch: fact === "detail" || fact === "summary" || fact === "answer",
+      fetch: fact === "detail" || fact === "summary" || fact === "answer" || !skipStoredFact,
       fact,
     };
   }

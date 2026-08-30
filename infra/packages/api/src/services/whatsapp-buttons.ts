@@ -12,7 +12,9 @@ export type WhatsAppListRow = {
 export const ACTION_TO_TEXT: Record<string, string> = {
   summarise: "summarise it",
   more_detail: "give me more detail",
+  more_on_this: "give me more detail",
   open_source: "send me the link",
+  search_other_docs: "search other documents",
   try_again: "try again",
   search_emails: "find the latest email about it",
   search_documents: "find the document",
@@ -92,6 +94,7 @@ export function suggestionButtons(input: {
     | "clarify_docs"
     | "company"
     | "none";
+  variant?: "find" | "grounded" | "none";
   hasSourceUrl?: boolean;
   hasXero?: boolean;
   documentTitles?: string[];
@@ -103,15 +106,25 @@ export function suggestionButtons(input: {
     if (input.contextToken && /^ctx_[a-z0-9]{8,16}$/i.test(input.contextToken)) {
       const token = input.contextToken.toLowerCase();
       const completed = String(input.completedAction ?? "").toLowerCase();
+      const source = input.hasSourceUrl
+        ? { id: `${token}:open_source`, title: "Open source" }
+        : { id: `${token}:find_similar`, title: "Find similar" };
+      if (input.variant === "none") {
+        return [{ id: `${token}:search_other_docs`, title: "Search other docs" }, source].slice(0, 3);
+      }
+      if (input.variant === "grounded") {
+        const hideDetail = completed === "more_detail" || completed === "detail" || completed === "more_on_this";
+        const buttons: WhatsAppReplyButton[] = [];
+        if (!hideDetail) buttons.push({ id: `${token}:more_on_this`, title: "More on this" });
+        else buttons.push({ id: `${token}:summarise`, title: "Summarise" });
+        buttons.push({ id: `${token}:search_other_docs`, title: "Search other docs" }, source);
+        return buttons.slice(0, 3);
+      }
       const hideSummarise = completed === "summarise" || completed === "summary";
       const hideDetail = completed === "more_detail" || completed === "detail";
       const buttons: WhatsAppReplyButton[] = [];
       if (!hideSummarise) buttons.push({ id: `${token}:summarise`, title: "Summarise" });
-      buttons.push(
-        input.hasSourceUrl
-          ? { id: `${token}:open_source`, title: "Open source" }
-          : { id: `${token}:find_similar`, title: "Find similar" },
-      );
+      buttons.push(source);
       if (!hideDetail) buttons.push({ id: `${token}:more_detail`, title: "More detail" });
       return buttons.slice(0, 3);
     }

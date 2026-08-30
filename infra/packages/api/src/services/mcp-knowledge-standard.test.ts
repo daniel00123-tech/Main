@@ -263,6 +263,7 @@ describe("Company Knowledge response adaptors", () => {
       "doc_chunks",
     );
     expect(fetched.text).toBe("Part one.\n\nPart two.");
+    expect(fetched.chunks?.map((chunk) => chunk.text)).toEqual(["Part one.", "Part two."]);
   });
 
   it("wraps standard results as a single MCP text content item plus structuredContent", () => {

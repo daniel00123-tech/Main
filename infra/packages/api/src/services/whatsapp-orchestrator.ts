@@ -62,7 +62,23 @@ import {
 } from "./whatsapp-source-urls";
 import { raceWithWhatsAppWatchdog } from "./whatsapp-watchdog";
 import { guidanceInfluenceNote, guidanceSearchQuery, isGuidanceHit } from "./whatsapp-guidance";
-import { DOCUMENT_URL_ASK, planWhatsAppTurn, type WhatsAppPlan } from "./whatsapp-plan";
+import {
+  DOCUMENT_URL_ASK,
+  isNegativeResultFeedback,
+  looksLikeCurrentDocumentQuestion,
+  looksLikeSearchOtherDocs,
+  planWhatsAppTurn,
+  type WhatsAppPlan,
+} from "./whatsapp-plan";
+import {
+  NONE_IN_DOCUMENT_REPLY,
+  SEARCH_OTHER_DOCS_HINT,
+  rejectWeakSearchHits,
+  runGroundedQa,
+  scoreGlobalSearchHit,
+  type GroundedConfidence,
+  type GroundedMode,
+} from "./whatsapp-grounded-qa";
 import {
   claimButtonIdempotency,
   createWhatsAppInteractionContext,
@@ -753,7 +769,7 @@ async function handleWhatsAppInboundMessageInner(
   }
 
   const plan = inboundResolved.buttonAction && boundDocument
-    ? planBoundButton(inboundResolved.buttonAction, boundDocument, text)
+    ? planBoundButton(inboundResolved.buttonAction, boundDocument, text, entities)
     : planWhatsAppTurn({ text, memory: entities, connectors }, qualityRuntime);
   const intent = plan.intent || classifyWhatsAppIntent(text, { hasPriorTurns: priorTurns.length > 0 });
   marks.intentClassifiedAt = Date.now();
@@ -823,12 +839,37 @@ async function handleWhatsAppInboundMessageInner(
     );
     const sent = await maybeSendReply(env, sender, reply, {
       qualityRuntime,
-      buttons: suggestionButtons({
-        kind: "clarify_docs",
-        documentTitles: recentDocumentTitles(entities),
-      }),
+      buttons: isNegativeResultFeedback(text)
+        ? [
+            { id: "search_other_docs", title: "Search other docs" },
+            { id: "search_documents", title: "Search documents" },
+          ]
+        : suggestionButtons({
+            kind: "clarify_docs",
+            documentTitles: recentDocumentTitles(entities),
+          }),
     });
     await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, reply, entities);
+    if (isNegativeResultFeedback(text)) {
+      await recordWhatsAppChannelUsage(env, {
+        companyId: companyDecision.companyId,
+        userId: identity.user.id,
+        actorEmail: identity.user.email,
+        interactionId: item.wamid || newId("wa"),
+        success: sent.ok,
+        durationMs: Date.now() - marks.processingStartedAt,
+        toolName: null,
+        send: sent,
+        metadata: {
+          channel: "whatsapp",
+          intent,
+          planAction: plan.action,
+          negativeResultFeedback: true,
+          precedingAnswerText: conversation?.turns?.filter((turn) => turn.role === "assistant").at(-1)?.text ?? null,
+          topicCorrected: /\b(not (about|to do with)|something else|wrong (doc|document|topic)|unrelated)\b/i.test(text),
+        },
+      });
+    }
     await stampWhatsAppLifecycle(env, item.wamid, {
       state: "clarification_sent",
       terminal: "clarification_sent",
@@ -1126,6 +1167,7 @@ async function handleWhatsAppInboundMessageInner(
       connectors,
       outcome: answered.outcome,
       contextToken: createdContext?.token ?? null,
+      groundedConfidence: answered.groundedConfidence,
     });
     const sent = await maybeSendReply(env, sender, polished, {
       qualityRuntime,
@@ -1211,6 +1253,33 @@ async function handleWhatsAppInboundMessageInner(
         transcriptionFailed: Boolean(inboundResolved.transcriptionFailed),
         voiceDownloadFailed: Boolean(inboundResolved.voiceDownloadFailed),
         emojiCount: (polished.match(/\p{Extended_Pictographic}/gu) ?? []).length,
+        currentDocumentGlobalSearch: Boolean(
+          looksLikeCurrentDocumentQuestion(text) &&
+            plan.action === "knowledge" &&
+            plan.useMemory === false &&
+            !looksLikeSearchOtherDocs(text) &&
+            Boolean(entities.lastDocument?.id),
+        ),
+        unrelatedDocumentAfterContext: Boolean(
+          boundDocument &&
+            primaryDoc &&
+            !sameDocument(boundDocument, primaryDoc) &&
+            looksLikeCurrentDocumentQuestion(text),
+        ),
+        answerRepeatedExcerpt: Boolean(answered.repeatedExcerpt),
+        moreDetailIdentical: plan.fact === "detail" && answered.moreDetailNovel === false,
+        malformedExtraction: Boolean(answered.malformedExtraction),
+        unsolicitedPii: Boolean(answered.unsolicitedPii),
+        weakResultConfident: Boolean(
+          plan.action === "knowledge" &&
+            /I found /i.test(polished) &&
+            /couldn.?t find/i.test(polished) === false &&
+            polished.length < 80,
+        ),
+        groundedConfidence: answered.groundedConfidence ?? null,
+        groundedScoped: answered.groundedScoped ?? false,
+        synthesisProvider: answered.synthesisProvider ?? null,
+        negativeResultFeedback: isNegativeResultFeedback(text),
       },
     });
     await stampWhatsAppLifecycle(env, item.wamid, {
@@ -1357,6 +1426,13 @@ async function executeWhatsAppPlan(
   outcome: "answered" | "tool_failed" | "ai_failed";
   latencyMs: number;
   entities: WhatsAppEntityMemory;
+  groundedConfidence?: GroundedConfidence | null;
+  groundedScoped?: boolean;
+  synthesisProvider?: string | null;
+  moreDetailNovel?: boolean;
+  repeatedExcerpt?: boolean;
+  unsolicitedPii?: boolean;
+  malformedExtraction?: boolean;
 }> {
   const started = Date.now();
   const plan = input.plan;
@@ -1483,13 +1559,15 @@ async function executeWhatsAppPlan(
     };
   }
   if (plan.action === "memory_fact" && input.memory.lastDocument?.id) {
+    const target = resolveRememberedDocument(input.memory, input.originalText) ?? input.memory.lastDocument;
+    if (input.marks) input.marks.fetchStartedAt = Date.now();
     const fetched = await executeWhatsAppGateway(
       env,
       {
         actor: { type: "user", user: input.sessionUser },
         companyId: input.companyId,
         toolName: COMPANY_KNOWLEDGE_READ_TOOL,
-        arguments: { documentRef: input.memory.lastDocument.id, id: input.memory.lastDocument.id },
+        arguments: { documentRef: target.id, id: target.id },
         sourceClient: "whatsapp",
         interactionId: input.interactionId,
         waitUntil: input.waitUntil,
@@ -1498,7 +1576,8 @@ async function executeWhatsAppPlan(
       "knowledge_fetch",
     );
     if (fetched && fetched.status === 200) {
-      const doc = toStandardFetchPayload(fetched.result, input.memory.lastDocument.id);
+      if (input.marks) input.marks.fetchCompletedAt = Date.now();
+      const doc = toStandardFetchPayload(fetched.result, target.id);
       const identity = identityFromMetadata(doc.metadata ?? null);
       let url = doc.url || input.memory.lastDocument.url || "";
       if (!url) {
@@ -1520,8 +1599,8 @@ async function executeWhatsAppPlan(
         });
       }
       const nextDoc = documentEntityFromHit({
-        id: doc.id || input.memory.lastDocument.id,
-        title: doc.title || input.memory.lastDocument.title,
+        id: target.id,
+        title: doc.title || target.title,
         url,
         text: doc.text,
         sourceSystem: identity.sourceSystem ?? input.memory.lastDocument.sourceSystem,
@@ -1529,50 +1608,61 @@ async function executeWhatsAppPlan(
         sourceKey: identity.sourceKey ?? input.memory.lastDocument.sourceKey,
         path: identity.path ?? input.memory.lastDocument.path,
       });
+      if (input.marks) input.marks.synthesisStartedAt = Date.now();
+      const grounded = await answerCurrentDocument(env, {
+        plan,
+        question: input.originalText,
+        documentId: nextDoc.id,
+        title: nextDoc.title,
+        fetch: doc,
+        previousAnswer: input.memory.lastAnswerText,
+        path: nextDoc.path,
+        tenantId: input.companyId,
+      });
+      if (input.marks) input.marks.synthesisCompletedAt = Date.now();
       return {
-        reply: memoryFactReply(plan, { ...input.memory, lastDocument: nextDoc }, doc.text, input.originalText),
+        reply: grounded.reply,
         toolName: COMPANY_KNOWLEDGE_READ_TOOL,
         outcome: "answered",
         latencyMs: Date.now() - started,
-        entities: mergeEntityMemory(input.memory, { lastDocument: nextDoc, lastTool: COMPANY_KNOWLEDGE_READ_TOOL }),
-      };
-    }
-    if (input.memory.lastDocument.title) {
-      const fallback = await answerWithCompanyMcp(env, {
-        companyId: input.companyId,
-        sessionUser: input.sessionUser,
-        query: input.memory.lastDocument.title,
-        originalText: input.originalText,
-        interactionId: input.interactionId,
-        waitUntil: input.waitUntil,
-        fetch: true,
-        marks: input.marks,
-        wamid: input.wamid,
-      });
-      const fallbackText = fallback.entity?.excerpt ?? input.memory.lastDocument.excerpt;
-      return {
-        reply:
-          plan.fact === "answer"
-            ? memoryFactReply(plan, { ...input.memory, lastDocument: fallback.entity ?? input.memory.lastDocument }, fallbackText, input.originalText)
-            : fallback.reply,
-        toolName: fallback.toolName,
-        outcome: fallback.outcome,
-        latencyMs: fallback.latencyMs,
         entities: mergeEntityMemory(input.memory, {
-          lastDocument: fallback.entity ?? input.memory.lastDocument,
-          lastTool: fallback.toolName,
+          lastDocument: nextDoc,
+          lastTool: COMPANY_KNOWLEDGE_READ_TOOL,
+          lastUserQuestion: input.originalText,
+          lastAnswerText: grounded.reply,
         }),
+        groundedConfidence: grounded.confidence,
+        groundedScoped: true,
+        synthesisProvider: grounded.provider,
+        moreDetailNovel: grounded.moreDetailNovel,
+        repeatedExcerpt: grounded.repeatedExcerpt,
+        unsolicitedPii: grounded.unsolicitedPii,
+        malformedExtraction: grounded.malformedExtraction,
       };
     }
+    return {
+      reply: `${NONE_IN_DOCUMENT_REPLY} ${SEARCH_OTHER_DOCS_HINT}`,
+      toolName: COMPANY_KNOWLEDGE_READ_TOOL,
+      outcome: "answered",
+      latencyMs: Date.now() - started,
+      entities: mergeEntityMemory(input.memory, {
+        lastUserQuestion: input.originalText,
+      }),
+      groundedConfidence: "none",
+      groundedScoped: true,
+      synthesisProvider: "none",
+    };
   }
 
   if (plan.action === "memory_fact" && input.memory.lastDocument) {
     return {
-      reply: memoryFactReply(plan, input.memory, input.memory.lastDocument.excerpt, input.originalText),
+      reply: `${NONE_IN_DOCUMENT_REPLY} ${SEARCH_OTHER_DOCS_HINT}`,
       toolName: null,
       outcome: "answered",
       latencyMs: Date.now() - started,
-      entities: input.memory,
+      entities: mergeEntityMemory(input.memory, { lastUserQuestion: input.originalText }),
+      groundedConfidence: "none",
+      groundedScoped: true,
     };
   }
 
@@ -1674,6 +1764,8 @@ async function executeWhatsAppPlan(
       lastDocument: knowledge.entity,
       lastTool: knowledge.toolName,
       lastSource: knowledge.entity?.sourceLabel ?? knowledge.entity?.title,
+      lastSearchQuery: plan.query || input.originalText,
+      lastUserQuestion: input.originalText,
     }),
   };
 }
@@ -1810,6 +1902,7 @@ async function answerWithCompanyMcp(
     toStandardSearchPayload(search.result).results.slice(0, SEARCH_CANDIDATE_LIMIT),
     input.query,
   );
+  hits = rejectWeakSearchHits(hits, input.query);
   if (input.guidanceOnly) {
     const guided = hits.filter((hit) => isGuidanceHit(hit));
     if (guided.length) hits = guided;
@@ -1986,20 +2079,16 @@ async function answerWithCompanyMcp(
   };
 }
 
-function pickBestKnowledgeHits<T extends { title: string; snippet?: string }>(hits: T[], query: string): T[] {
-  if (hits.length <= 1) return hits;
-  const tokens = query
-    .toLowerCase()
-    .split(/\s+/)
-    .map((token) => token.replace(/[^a-z0-9]/g, ""))
-    .filter((token) => token.length > 2 && !["the", "and", "for", "what", "about"].includes(token));
-  if (!tokens.length) return hits;
-  return [...hits].sort((left, right) => scoreHit(right, tokens) - scoreHit(left, tokens));
-}
-
-function scoreHit(hit: { title: string; snippet?: string }, tokens: string[]): number {
-  const hay = `${hit.title} ${hit.snippet ?? ""}`.toLowerCase();
-  return tokens.reduce((score, token) => score + (hay.includes(token) ? (hit.title.toLowerCase().includes(token) ? 3 : 1) : 0), 0);
+function pickBestKnowledgeHits<T extends { id?: string; title: string; snippet?: string; metadata?: Record<string, unknown> }>(
+  hits: T[],
+  query: string,
+): T[] {
+  if (!hits.length) return hits;
+  const preferredClass = /\bcv\b/i.test(query) ? "cv_resume" : /\bpolicy\b/i.test(query) ? "policy_procedure" : null;
+  return [...hits].sort(
+    (left, right) =>
+      scoreGlobalSearchHit(right, query, { preferredClass }) - scoreGlobalSearchHit(left, query, { preferredClass }),
+  );
 }
 
 function formatSearchHits(
@@ -2126,8 +2215,36 @@ async function resolveInboundUserInput(
 function completedDocumentAction(plan: WhatsAppPlan): string | null {
   if (plan.fact === "summary") return "summarise";
   if (plan.fact === "detail") return "more_detail";
+  if (plan.fact === "answer") return "answer";
   if (plan.action === "memory_link") return "open_source";
   return null;
+}
+
+function answerCurrentDocument(
+  env: Env,
+  input: {
+    plan: WhatsAppPlan;
+    question: string;
+    documentId: string;
+    title: string;
+    fetch: ReturnType<typeof toStandardFetchPayload>;
+    previousAnswer?: string | null;
+    path?: string | null;
+    tenantId?: string | null;
+  },
+) {
+  const mode: GroundedMode =
+    input.plan.fact === "detail" ? "more_detail" : input.plan.fact === "summary" ? "summarise" : "answer";
+  return runGroundedQa(env, {
+    question: input.question,
+    documentId: input.documentId,
+    title: input.title,
+    fetch: input.fetch,
+    mode,
+    previousAnswer: input.previousAnswer,
+    path: input.path,
+    tenantId: input.tenantId,
+  });
 }
 
 function buttonsForAnswer(input: {
@@ -2137,6 +2254,7 @@ function buttonsForAnswer(input: {
   connectors: string[];
   outcome: string;
   contextToken?: string | null;
+  groundedConfidence?: GroundedConfidence | null;
 }): WhatsAppReplyButton[] {
   const hasXero = input.connectors.includes("conn_xero");
   const completedAction = completedDocumentAction(input.plan);
@@ -2155,7 +2273,17 @@ function buttonsForAnswer(input: {
       completedAction,
     });
   }
-  if (input.plan.action === "knowledge" || input.plan.action === "memory_fact" || input.plan.action === "guidance") {
+  if (input.plan.action === "memory_fact") {
+    const none = input.groundedConfidence === "none" || input.reply.includes(NONE_IN_DOCUMENT_REPLY);
+    return suggestionButtons({
+      kind: "document",
+      variant: none ? "none" : "grounded",
+      hasSourceUrl: Boolean(input.entities.lastDocument?.url),
+      contextToken: input.contextToken,
+      completedAction,
+    });
+  }
+  if (input.plan.action === "knowledge" || input.plan.action === "guidance") {
     if (input.reply.length > 520 && !input.contextToken) return suggestionButtons({ kind: "long" });
     return suggestionButtons({
       kind: /email|outlook|inbox/i.test(input.plan.query) ? "email" : "document",
@@ -2168,7 +2296,12 @@ function buttonsForAnswer(input: {
   return [];
 }
 
-function planBoundButton(action: string, entity: WhatsAppDocumentEntity, fallbackText: string): WhatsAppPlan {
+function planBoundButton(
+  action: string,
+  entity: WhatsAppDocumentEntity,
+  fallbackText: string,
+  memory?: WhatsAppEntityMemory,
+): WhatsAppPlan {
   const base: WhatsAppPlan = {
     action: "memory_fact",
     intent: "clarification",
@@ -2185,8 +2318,21 @@ function planBoundButton(action: string, entity: WhatsAppDocumentEntity, fallbac
   if (action === "open_source") {
     return { ...base, action: "memory_link", intent: "source_link", tool: null, skipTools: true, fetch: false, fact: null };
   }
-  if (action === "more_detail") {
+  if (action === "more_detail" || action === "more_on_this") {
     return { ...base, fact: "detail", fetch: true };
+  }
+  if (action === "search_other_docs") {
+    return {
+      ...base,
+      action: "knowledge",
+      intent: "knowledge_search",
+      tool: "search_company_knowledge",
+      query: memory?.lastUserQuestion || memory?.lastSearchQuery || fallbackText || entity.title,
+      fetch: false,
+      skipTools: false,
+      useMemory: false,
+      fact: null,
+    };
   }
   if (action === "find_similar") {
     return {
