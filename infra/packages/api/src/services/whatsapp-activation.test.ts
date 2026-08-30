@@ -166,7 +166,12 @@ describe("WhatsApp production assets", () => {
 
   it("reports secret presence without values", () => {
     const presence = secretPresence(env());
-    expect(presence).toEqual({ verifyToken: true, accessToken: true, appSecret: true });
+    expect(presence).toEqual({
+      verifyToken: true,
+      accessToken: true,
+      appSecret: true,
+      registrationPin: false,
+    });
     expect(JSON.stringify(presence)).not.toContain(TOKEN);
     expect(JSON.stringify(presence)).not.toContain(SECRET);
   });
