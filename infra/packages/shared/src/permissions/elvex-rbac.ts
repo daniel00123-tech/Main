@@ -1,0 +1,176 @@
+import type { CompanyRole } from "../types";
+
+export const ELVEX_COMPANY_ID = "co_el";
+export const ELVEX_COMPANY_SLUG = "el-business";
+
+export const ELVEX_CANONICAL_ROLES = [
+  "engineer",
+  "office_staff",
+  "finance_team",
+  "operations_manager",
+  "finance_manager",
+  "director",
+  "company_admin",
+] as const;
+
+export type ElvexRole = (typeof ELVEX_CANONICAL_ROLES)[number];
+
+export const ELVEX_ROLE_LABELS: Record<ElvexRole, string> = {
+  engineer: "Engineer",
+  office_staff: "Office Staff",
+  finance_team: "Finance Team",
+  operations_manager: "Operations Manager",
+  finance_manager: "Finance Manager",
+  director: "Director",
+  company_admin: "Company Admin",
+};
+
+export const ELVEX_CAPABILITIES = [
+  "knowledge.engineer.read",
+  "knowledge.company.read",
+  "knowledge.finance.read",
+  "knowledge.restricted.read",
+  "mail.info.read",
+  "mail.info.write",
+  "mail.finance.read",
+  "mail.finance.write",
+  "xero.sales.read",
+  "xero.finance.read",
+  "xero.draft.write",
+  "xero.contacts.write",
+  "xero.settings.read",
+  "admin.portal.access",
+  "admin.users.manage",
+  "admin.roles.manage",
+  "admin.config.manage",
+  "payment.info.access",
+  "system.health",
+] as const;
+
+export type ElvexCapability = (typeof ELVEX_CAPABILITIES)[number];
+
+const ENGINEER: ElvexCapability[] = ["knowledge.engineer.read", "system.health"];
+const OFFICE: ElvexCapability[] = [
+  ...ENGINEER,
+  "knowledge.company.read",
+  "mail.info.read",
+  "mail.info.write",
+];
+const FINANCE_TEAM: ElvexCapability[] = [
+  ...OFFICE,
+  "knowledge.finance.read",
+  "mail.finance.read",
+  "mail.finance.write",
+  "xero.sales.read",
+  "xero.finance.read",
+];
+const OPERATIONS: ElvexCapability[] = [...OFFICE, "xero.sales.read"];
+const FINANCE_MANAGER: ElvexCapability[] = [
+  ...FINANCE_TEAM,
+  "xero.draft.write",
+  "xero.contacts.write",
+  "xero.settings.read",
+];
+const DIRECTOR: ElvexCapability[] = [
+  ...FINANCE_MANAGER,
+  "knowledge.restricted.read",
+  "admin.portal.access",
+  "admin.users.manage",
+  "admin.config.manage",
+  "payment.info.access",
+];
+const COMPANY_ADMIN: ElvexCapability[] = [...DIRECTOR, "admin.roles.manage"];
+
+export const ELVEX_ROLE_GRANTS: Record<ElvexRole, ReadonlySet<ElvexCapability>> = {
+  engineer: new Set(ENGINEER),
+  office_staff: new Set(OFFICE),
+  finance_team: new Set(FINANCE_TEAM),
+  operations_manager: new Set(OPERATIONS),
+  finance_manager: new Set(FINANCE_MANAGER),
+  director: new Set(DIRECTOR),
+  company_admin: new Set(COMPANY_ADMIN),
+};
+
+export const ELVEX_DATA_CLASSIFICATIONS = [
+  { id: "engineer_knowledge", label: "Engineer Knowledge" },
+  { id: "company_general", label: "General Company" },
+  { id: "finance", label: "Finance" },
+  { id: "restricted_management", label: "Restricted Management" },
+] as const;
+
+export const ELVEX_PROTECTED_MICROSOFT_USERS = [
+  { hint: "William", label: "William Stone" },
+  { hint: "Ella", label: "Ella May" },
+] as const;
+
+export function isElvexRole(role: string | null | undefined): role is ElvexRole {
+  return Boolean(role && (ELVEX_CANONICAL_ROLES as readonly string[]).includes(role));
+}
+
+export function isElvexCompany(input: { id?: string | null; slug?: string | null }): boolean {
+  return input.id === ELVEX_COMPANY_ID || input.slug === ELVEX_COMPANY_SLUG;
+}
+
+export function elvexCan(role: CompanyRole | null, capability: ElvexCapability): boolean {
+  if (!isElvexRole(role)) return false;
+  return ELVEX_ROLE_GRANTS[role].has(capability);
+}
+
+export function elvexCapabilitiesForRole(role: ElvexRole): ElvexCapability[] {
+  return [...ELVEX_ROLE_GRANTS[role]].sort();
+}
+
+/** Map INFRA/MCP tool actions onto Elvex capabilities. Unknown privileged tools fail closed. */
+export function mapActionToElvexCapability(action: string): ElvexCapability | "engineer_or_company" | null {
+  if ((ELVEX_CAPABILITIES as readonly string[]).includes(action)) return action as ElvexCapability;
+  if (action === "system.health") return "system.health";
+  if (action === "knowledge.search" || action === "knowledge.read") return "engineer_or_company";
+  if (action.startsWith("xero.reports.profit") || action.includes("profit_and_loss")) return "xero.finance.read";
+  if (
+    action === "xero.invoices.read" ||
+    action === "xero.invoices.search" ||
+    action === "xero.invoices.get" ||
+    action === "xero.contacts.read" ||
+    action === "xero.contacts.search"
+  ) {
+    return "xero.sales.read";
+  }
+  if (
+    action.startsWith("xero.bills") ||
+    action === "xero.accounts.list" ||
+    action === "xero.bank_transactions.read" ||
+    action === "xero.credit_notes.read" ||
+    action === "xero.payments.read" ||
+    action === "xero.reports.profit_and_loss"
+  ) {
+    return "xero.finance.read";
+  }
+  if (
+    action.includes("create_draft") ||
+    action === "xero.invoices.create" ||
+    action === "xero.bills.create" ||
+    action === "xero.credit_notes.create_draft"
+  ) {
+    return "xero.draft.write";
+  }
+  if (action === "xero.contacts.create") return "xero.contacts.write";
+  if (action.startsWith("outlook.") || action.startsWith("mail.")) {
+    if (action.includes("finance")) {
+      return action.includes("write") || action.includes("send") ? "mail.finance.write" : "mail.finance.read";
+    }
+    return action.includes("write") || action.includes("send") ? "mail.info.write" : "mail.info.read";
+  }
+  return null;
+}
+
+export const ELVEX_MCP_TOOL_CAPABILITIES: Record<string, ElvexCapability> = {
+  search_elvex_email: "mail.info.read",
+  get_elvex_email: "mail.info.read",
+  send_elvex_email: "mail.info.write",
+  manage_elvex_email: "mail.info.write",
+  search_xero_invoices: "xero.sales.read",
+  analyse_xero_sales: "xero.sales.read",
+  search_xero_bills: "xero.finance.read",
+  get_xero_financial_summary: "xero.finance.read",
+  create_xero_draft_invoice: "xero.draft.write",
+};

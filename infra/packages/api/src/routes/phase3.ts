@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { CompanyRole } from "@infra/shared";
+import { isElvexCompany, type CompanyRole } from "@infra/shared";
 import type { Env } from "../env";
 import {
   requireAuth,
@@ -27,6 +27,7 @@ import {
   listMcpEnvironments,
   recordAuditEvent,
 } from "../services/control-plane";
+import { syncElvexCompanyUser } from "../services/elvex-identity";
 import {
   executeGatewayRequest,
   resolveGatewayActor,
@@ -124,6 +125,14 @@ function canManageCompany(user: AuthVariables["user"], companyId: string) {
   if (user.isPlatformAdmin) return true;
   const role = getUserCompanyRole(user, companyId);
   return role === "company_admin" || role === "director";
+}
+
+function canManageElvexRoles(user: AuthVariables["user"], company: { id: string; slug: string }) {
+  if (user.isPlatformAdmin) return true;
+  if (company.slug !== "el-business" && company.id !== "co_el") {
+    return canManageCompany(user, company.id);
+  }
+  return getUserCompanyRole(user, company.id) === "company_admin";
 }
 
 async function countActiveCompanyAdmins(db: D1Database, companyId: string): Promise<number> {
@@ -783,8 +792,15 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
   const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
   if (!company) return c.json({ error: "Company not found" }, 404);
   const user = c.get("user");
-  if (!canManageCompany(user, company.id)) {
-    return c.json({ error: "Company administrator access required" }, 403);
+  if (isElvexCompany(company) ? !canManageElvexRoles(user, company) : !canManageCompany(user, company.id)) {
+    return c.json(
+      {
+        error: isElvexCompany(company)
+          ? "Only Company Admin may assign Elvex roles"
+          : "Company administrator access required",
+      },
+      403,
+    );
   }
 
   const body = await c.req.json<{
@@ -793,6 +809,7 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
     role?: CompanyRole;
     teamId?: string;
     customRoleId?: string;
+    microsoftOid?: string;
   }>();
 
   if (!body.email || !body.displayName || !body.role) {
@@ -825,6 +842,15 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
       resourceId: invited.user.id,
       detail: { role: body.role, emailSent: invited.emailSent },
     });
+    if (isElvexCompany(company)) {
+      await syncElvexCompanyUser(c.env, {
+        externalId: invited.user.id,
+        email: invited.user.email,
+        displayName: invited.user.displayName,
+        role: body.role!,
+        microsoftOid: body.microsoftOid,
+      });
+    }
 
     return c.json({
       user: {
@@ -909,6 +935,24 @@ phase3.post("/api/companies/:slug/users/:userId/status", requireAuth, async (c) 
     resourceId: targetId,
     detail: { status: body.status },
   });
+
+  if (isElvexCompany(company) && target) {
+    const membership = await c.env.DB
+      .prepare(
+        `SELECT role FROM company_memberships WHERE company_id = ? AND user_id = ?`,
+      )
+      .bind(company.id, targetId)
+      .first<{ role: string }>();
+    if (membership) {
+      await syncElvexCompanyUser(c.env, {
+        externalId: target.id,
+        email: target.email,
+        displayName: target.displayName,
+        role: membership.role,
+        status: body.status,
+      });
+    }
+  }
 
   return c.json({ ok: true, userId: targetId, status: body.status });
 });
@@ -1050,14 +1094,17 @@ phase3.post("/api/companies/:slug/users/:userId/role", requireAuth, async (c) =>
   const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
   if (!company) return c.json({ error: "Company not found" }, 404);
   const actor = c.get("user");
-  if (!canManageCompany(actor, company.id)) {
-    return c.json({ error: "Company administrator access required" }, 403);
+  if (!canManageElvexRoles(actor, company)) {
+    return c.json({ error: "Only Company Admin may change Elvex user roles" }, 403);
   }
 
   const body = await c.req.json<{ role?: CompanyRole }>();
   if (!body.role) return c.json({ error: "role is required" }, 400);
 
   const targetId = c.req.param("userId");
+  if (targetId === actor.userId) {
+    return c.json({ error: "A user cannot change their own role" }, 403);
+  }
   if (targetId === actor.userId && body.role !== "company_admin") {
     const guard = await assertNotLastCompanyAdmin(
       c.env.DB,
@@ -1092,7 +1139,64 @@ phase3.post("/api/companies/:slug/users/:userId/role", requireAuth, async (c) =>
     detail: { role: body.role },
   });
 
+  if (isElvexCompany(company)) {
+    const target = await getUserById(c.env.DB, targetId);
+    if (target) {
+      await syncElvexCompanyUser(c.env, {
+        externalId: target.id,
+        email: target.email,
+        displayName: target.displayName,
+        role: body.role,
+        status: target.status === "disabled" ? "disabled" : "active",
+      });
+    }
+  }
+
   return c.json({ ok: true, membership });
+});
+
+phase3.post("/api/companies/:slug/users/:userId/microsoft-oid", requireAuth, async (c) => {
+  const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  const actor = c.get("user");
+  if (!isElvexCompany(company)) {
+    return c.json({ error: "Microsoft identity binding is only defined for EL Business" }, 404);
+  }
+  if (!canManageElvexRoles(actor, company)) {
+    return c.json({ error: "Only Company Admin may bind Microsoft identities" }, 403);
+  }
+  const body = await c.req.json<{ microsoftOid?: string }>();
+  const microsoftOid = body.microsoftOid?.trim() ?? "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(microsoftOid)) {
+    return c.json({ error: "microsoftOid must be a Microsoft Entra object ID (GUID)" }, 400);
+  }
+  const targetId = c.req.param("userId");
+  const target = await getUserById(c.env.DB, targetId);
+  if (!target) return c.json({ error: "User not found" }, 404);
+  const membership = await c.env.DB
+    .prepare(
+      `SELECT role, status FROM company_memberships WHERE company_id = ? AND user_id = ?`,
+    )
+    .bind(company.id, targetId)
+    .first<{ role: string; status: string }>();
+  if (!membership) return c.json({ error: "User is not a member of this company" }, 404);
+  const synced = await syncElvexCompanyUser(c.env, {
+    externalId: target.id,
+    email: target.email,
+    displayName: target.displayName,
+    role: membership.role,
+    status: membership.status === "disabled" || target.status === "disabled" ? "disabled" : "active",
+    microsoftOid,
+  });
+  await recordAuditEvent(c.env.DB, {
+    companyId: company.id,
+    eventType: "user.updated",
+    actor: actor.email,
+    resourceType: "user",
+    resourceId: targetId,
+    detail: { microsoftOidBound: true },
+  });
+  return c.json({ ok: true, microsoftOid, sync: synced });
 });
 
 // ---------- Service identities ----------

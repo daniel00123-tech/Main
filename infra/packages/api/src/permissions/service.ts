@@ -1,6 +1,9 @@
 import {
   COMPANY_ROLE_PRESETS,
   TOOL_ACTION_RISK,
+  elvexCan,
+  isElvexCompany,
+  mapActionToElvexCapability,
   isActionAllowed,
   type CompanyRole,
   type ToolAction,
@@ -91,6 +94,9 @@ export async function evaluateActionPermission(
     };
   }
 
+  const elvexDecision = await evaluateElvexOverlay(db, companyId, role, action, riskClass);
+  if (elvexDecision) return elvexDecision;
+
   const membership = user.memberships.find((m) => m.companyId === companyId);
   const customRoleId = membership?.customRoleId;
   if (customRoleId) {
@@ -157,6 +163,58 @@ export async function evaluateActionPermission(
     riskClass,
     reason: allowed ? undefined : "Role preset does not allow this action",
   };
+}
+
+async function evaluateElvexOverlay(
+  db: D1Database,
+  companyId: string,
+  role: CompanyRole,
+  action: ToolAction,
+  riskClass: string,
+): Promise<PermissionDecision | null> {
+  if (companyId !== "co_el") {
+    const row = await db
+      .prepare(`SELECT slug FROM companies WHERE id = ?`)
+      .bind(companyId)
+      .first<{ slug?: string }>();
+    if (!isElvexCompany({ id: companyId, slug: row?.slug })) return null;
+  }
+
+  const mapped = mapActionToElvexCapability(action);
+  if (mapped === "engineer_or_company") {
+    const allowed =
+      elvexCan(role, "knowledge.engineer.read") || elvexCan(role, "knowledge.company.read");
+    return {
+      allowed,
+      action,
+      companyId,
+      role,
+      riskClass,
+      reason: allowed ? undefined : "Elvex RBAC does not grant company knowledge to this role",
+    };
+  }
+  if (mapped) {
+    const allowed = elvexCan(role, mapped);
+    return {
+      allowed,
+      action,
+      companyId,
+      role,
+      riskClass,
+      reason: allowed ? undefined : "Elvex RBAC does not grant this capability",
+    };
+  }
+  if (action.startsWith("xero.") || action.startsWith("outlook.")) {
+    return {
+      allowed: false,
+      action,
+      companyId,
+      role,
+      riskClass,
+      reason: "Elvex RBAC fails closed for unmapped privileged tools",
+    };
+  }
+  return null;
 }
 
 export function listRolePresets() {

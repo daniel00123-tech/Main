@@ -1,0 +1,12 @@
+{
+  "name": "business-mcp-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "workers/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspace=@business-mcp/core",
+    "test:core": "npm run test --workspace=@business-mcp/core"
+  }
+}
