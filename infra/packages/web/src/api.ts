@@ -587,7 +587,24 @@ export const api = {
     const query = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
     return fetchJson<InfraUser[]>(`/api/users${query}`);
   },
-  getRolePresets: () => fetchJson<RolePresetResponse[]>("/api/roles/presets"),
+  getRolePresets: (companySlug?: string) =>
+    fetchJson<RolePresetResponse[]>(
+      `/api/roles/presets${companySlug ? `?company=${encodeURIComponent(companySlug)}` : ""}`,
+    ),
+  getElvexRbac: (slug: string) =>
+    fetchJson<{
+      companyId: string;
+      companySlug: string;
+      identityLimitation: string;
+      roles: Array<{
+        role: string;
+        label: string;
+        capabilities: Array<{ capability: string; access: "read" | "write" }>;
+      }>;
+      classifications: Array<{ id: string; label: string }>;
+      protectedMicrosoftUsers: Array<{ hint: string; label: string }>;
+      canManageRoles: boolean;
+    }>(`/api/companies/${encodeURIComponent(slug)}/elvex-rbac`),
   getCompanyRolePermissions: (slug: string) =>
     fetchJson<{
       companyId: string;
@@ -1177,7 +1194,7 @@ export const api = {
     ),
   inviteUser: (
     slug: string,
-    input: { email: string; displayName: string; role: CompanyRole },
+    input: { email: string; displayName: string; role: CompanyRole; microsoftOid?: string },
   ) =>
     fetchJson<{
       user: { id: string; email: string; displayName: string };
@@ -1199,6 +1216,11 @@ export const api = {
     fetchJson<{ ok: boolean }>(`/api/companies/${slug}/users/${userId}/role`, {
       method: "POST",
       body: JSON.stringify({ role }),
+    }),
+  bindMicrosoftOid: (slug: string, userId: string, microsoftOid: string) =>
+    fetchJson<{ ok: boolean; microsoftOid: string }>(`/api/companies/${slug}/users/${userId}/microsoft-oid`, {
+      method: "POST",
+      body: JSON.stringify({ microsoftOid }),
     }),
   resetCompanyUserPassword: (
     slug: string,

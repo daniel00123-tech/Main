@@ -77,4 +77,44 @@ describe("permission service", () => {
     expect(isRolePermissionEditable("company_admin")).toBe(false);
     expect(isRolePermissionEditable("engineer")).toBe(true);
   });
+
+  it("Elvex overlay denies office staff Xero and finance mailbox", async () => {
+    const office: SessionUser = {
+      userId: "user_office",
+      email: "office@example.com",
+      displayName: "Office",
+      isPlatformAdmin: false,
+      memberships: [{ companyId: "co_el", role: "office_staff" }],
+    };
+    const xero = await evaluateActionPermission(mockDb, office, "co_el", "xero.invoices.read");
+    expect(xero.allowed).toBe(false);
+    const knowledge = await evaluateActionPermission(mockDb, office, "co_el", "knowledge.search");
+    expect(knowledge.allowed).toBe(true);
+  });
+
+  it("Elvex operations manager gets sales read but not P&L", async () => {
+    const ops: SessionUser = {
+      userId: "user_ops",
+      email: "ops@example.com",
+      displayName: "Ops",
+      isPlatformAdmin: false,
+      memberships: [{ companyId: "co_el", role: "operations_manager" }],
+    };
+    const sales = await evaluateActionPermission(mockDb, ops, "co_el", "xero.invoices.read");
+    expect(sales.allowed).toBe(true);
+    const pnl = await evaluateActionPermission(mockDb, ops, "co_el", "xero.reports.profit_and_loss");
+    expect(pnl.allowed).toBe(false);
+  });
+
+  it("Elvex director cannot manage roles via capability overlay", async () => {
+    const director: SessionUser = {
+      userId: "user_dir",
+      email: "dir@example.com",
+      displayName: "Director",
+      isPlatformAdmin: false,
+      memberships: [{ companyId: "co_el", role: "director" }],
+    };
+    const portal = await evaluateActionPermission(mockDb, director, "co_el", "knowledge.search");
+    expect(portal.allowed).toBe(true);
+  });
 });

@@ -1,6 +1,13 @@
 import { Hono } from "hono";
 import type { ToolAction, CompanyRole } from "@infra/shared";
-import { CONNECTOR_CATALOGUE } from "@infra/shared";
+import {
+  CONNECTOR_CATALOGUE,
+  ELVEX_CANONICAL_ROLES,
+  ELVEX_DATA_CLASSIFICATIONS,
+  ELVEX_PROTECTED_MICROSOFT_USERS,
+  ELVEX_ROLE_LABELS,
+  elvexCapabilitiesForRole,
+} from "@infra/shared";
 import {
   clearSessionCookie,
   requireAuth,
@@ -1054,7 +1061,23 @@ app.get("/api/users", requireAuth, async (c) => {
   return c.json(users);
 });
 
-app.get("/api/roles/presets", requireAuth, (c) => c.json(listRolePresets()));
+app.get("/api/roles/presets", requireAuth, (c) => {
+  const company = c.req.query("company");
+  const presets = listRolePresets();
+  if (company === "el-business") {
+    const allowed = new Set([
+      "engineer",
+      "office_staff",
+      "finance_team",
+      "operations_manager",
+      "finance_manager",
+      "director",
+      "company_admin",
+    ]);
+    return c.json(presets.filter((preset) => allowed.has(preset.role)));
+  }
+  return c.json(presets);
+});
 
 app.get("/api/companies/:slug/role-permissions", requireAuth, async (c) => {
   const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
@@ -1076,7 +1099,40 @@ app.get("/api/companies/:slug/role-permissions", requireAuth, async (c) => {
       .map((preset) => preset.role)
       .filter((r) => isRolePermissionEditable(r)),
     presets,
-    canEdit: user.isPlatformAdmin || role === "company_admin" || role === "director",
+    canEdit:
+      user.isPlatformAdmin ||
+      role === "company_admin" ||
+      (role === "director" && company.slug !== "el-business"),
+  });
+});
+
+app.get("/api/companies/:slug/elvex-rbac", requireAuth, async (c) => {
+  const company = await getCompanyBySlug(c.env.DB, c.req.param("slug"));
+  if (!company) return c.json({ error: "Company not found" }, 404);
+  const user = c.get("user");
+  const role = getUserCompanyRole(user, company.id);
+  const canView =
+    user.isPlatformAdmin || role === "company_admin" || role === "director";
+  if (!canView) return c.json({ error: "Company administrator access required" }, 403);
+  if (company.slug !== "el-business" && company.id !== "co_el") {
+    return c.json({ error: "Elvex RBAC is only defined for EL Business" }, 404);
+  }
+  return c.json({
+    companyId: company.id,
+    companySlug: company.slug,
+    identityLimitation:
+      "Employee ChatGPT access uses Microsoft Entra ID. Privileged tools require a verified Entra object ID bound to an active EL company user. The shared MCP bearer token is machine/service transport only and never grants a human Company Admin role.",
+    roles: ELVEX_CANONICAL_ROLES.map((item) => ({
+      role: item,
+      label: ELVEX_ROLE_LABELS[item],
+      capabilities: elvexCapabilitiesForRole(item).map((capability) => ({
+        capability,
+        access: capability.includes(".write") || capability.endsWith(".manage") ? "write" : "read",
+      })),
+    })),
+    classifications: ELVEX_DATA_CLASSIFICATIONS,
+    protectedMicrosoftUsers: ELVEX_PROTECTED_MICROSOFT_USERS,
+    canManageRoles: user.isPlatformAdmin || role === "company_admin",
   });
 });
 
@@ -1086,7 +1142,9 @@ app.put("/api/companies/:slug/role-permissions", requireAuth, async (c) => {
   const user = c.get("user");
   const role = getUserCompanyRole(user, company.id);
   const canEdit =
-    user.isPlatformAdmin || role === "company_admin" || role === "director";
+    user.isPlatformAdmin ||
+    role === "company_admin" ||
+    (role === "director" && company.slug !== "el-business");
   if (!canEdit) {
     return c.json({ error: "Company administrator access required" }, 403);
   }

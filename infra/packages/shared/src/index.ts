@@ -28,5 +28,6 @@ export * from "./action-engine";
 export * from "./automation-engine";
 export * from "./permissions/role-presets";
 export * from "./permissions/xero-permissions";
+export * from "./permissions/elvex-rbac";
 export * from "./service-identity-scopes";
 export * from "./usage-labels";
