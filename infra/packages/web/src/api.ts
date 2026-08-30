@@ -1168,8 +1168,42 @@ export const api = {
         tokenStatus?: string;
         tokenPrefix?: string | null;
         requestCount?: number;
+        companyApproved?: boolean;
+        approvedBy?: string | null;
+        approvedAt?: string | null;
+        connectedUserCount?: number;
+        userConnection?: {
+          status: string;
+          connectedAs: string | null;
+          connectedAt: string | null;
+          lastSeen: string | null;
+        } | null;
+        canApprove?: boolean;
+        canConnect?: boolean;
+        canDisableCompany?: boolean;
+        authorizationUrl?: string | null;
       }>
     >(`/api/companies/${slug}/ai-connections`),
+  approveAiChannel: (slug: string, channel: string) =>
+    fetchJson<{ ok: boolean; approved: boolean }>(`/api/companies/${slug}/ai-channels/${channel}/approve`, {
+      method: "POST",
+      body: "{}",
+    }),
+  revokeCompanyAiChannel: (slug: string, channel: string) =>
+    fetchJson<{ ok: boolean; approved: boolean }>(
+      `/api/companies/${slug}/ai-channels/${channel}/revoke-company`,
+      { method: "POST", body: "{}" },
+    ),
+  connectUserAiChannel: (slug: string, channel: string) =>
+    fetchJson<{ ok: boolean; status: string; connectedAs: string; mcpEndpoint?: string }>(
+      `/api/companies/${slug}/ai-channels/${channel}/user-connect`,
+      { method: "POST", body: "{}" },
+    ),
+  disconnectUserAiChannel: (slug: string, channel: string) =>
+    fetchJson<{ ok: boolean; status: string }>(
+      `/api/companies/${slug}/ai-channels/${channel}/user-disconnect`,
+      { method: "POST", body: "{}" },
+    ),
   connectAiClient: (slug: string, clientType: string) =>
     fetchJson<{
       token: string;

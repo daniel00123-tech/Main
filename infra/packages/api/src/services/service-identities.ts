@@ -22,6 +22,7 @@ export interface ServiceIdentityRecord {
   hasToken: boolean;
   scopes: string[];
   mcpEnvironmentId: string | null;
+  boundUserId?: string | null;
   lastUsedAt: string | null;
   requestCount: number;
   createdAt: string;
@@ -49,6 +50,7 @@ function rowToIdentity(row: Record<string, unknown>): ServiceIdentityRecord {
     mcpEnvironmentId: row.mcp_environment_id
       ? String(row.mcp_environment_id)
       : null,
+    boundUserId: row.bound_user_id ? String(row.bound_user_id) : null,
     lastUsedAt: row.last_used_at ? String(row.last_used_at) : null,
     requestCount: Number(row.request_count ?? 0),
     createdAt: String(row.created_at),
@@ -115,6 +117,7 @@ export async function createServiceIdentity(
     identityType: ServiceIdentityType;
     scopes?: string[];
     mcpEnvironmentId?: string | null;
+    boundUserId?: string | null;
   },
 ): Promise<{ identity: ServiceIdentityRecord; token: string }> {
   const id = newId("svc");
@@ -126,8 +129,8 @@ export async function createServiceIdentity(
       `INSERT INTO service_identities (
         id, company_id, name, description, status, secret_ref,
         identity_type, token_hash, token_prefix, last_used_at, request_count,
-        scopes_json, mcp_environment_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, 'active', NULL, ?, ?, ?, NULL, 0, ?, ?, ?, ?)`,
+        scopes_json, mcp_environment_id, bound_user_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'active', NULL, ?, ?, ?, NULL, 0, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -139,6 +142,7 @@ export async function createServiceIdentity(
       prefix,
       JSON.stringify(input.scopes ?? [...BASE_AI_SERVICE_SCOPES]),
       input.mcpEnvironmentId ?? null,
+      input.boundUserId ?? null,
       now,
       now,
     )

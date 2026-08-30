@@ -6,6 +6,7 @@ import {
   buildCustomerAttention,
   connectorOverviewDescription,
   connectorOverviewTitle,
+  customerFacingConnectorInstances,
   customerOverallHealthy,
   deriveConnectorCustomerHealth,
   primaryAttentionSummary,
@@ -60,7 +61,9 @@ export default function PortalDashboardPage() {
   const mcp = overview?.mcpEnvironments[0] ?? null;
   const usage = overview?.usageSummary;
   const wallet = overview?.wallet;
-  const connectors = overview?.connectorInstances.filter((c) => c.status !== "draft") ?? [];
+  const connectors = overview
+    ? customerFacingConnectorInstances(overview.connectorInstances)
+    : [];
   const testCents = overview?.walletCredits?.testCents ?? 0;
   const paidCents = overview?.walletCredits?.paidCents ?? 0;
   const walletHealth =
@@ -266,7 +269,11 @@ export default function PortalDashboardPage() {
                       displayAccountName: item.displayAccountName,
                       companyName: company.name,
                     })}
-                    purpose={connectorOverviewDescription(item.connectorDefinitionId)}
+                    purpose={
+                      item.lastVerifiedAt
+                        ? `${connectorOverviewDescription(item.connectorDefinitionId)} · Verified ${formatRelativeTime(item.lastVerifiedAt)}`
+                        : connectorOverviewDescription(item.connectorDefinitionId)
+                    }
                     status={health.badgeStatus}
                     statusLabel={health.label}
                   />

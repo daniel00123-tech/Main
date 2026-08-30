@@ -6,17 +6,17 @@ import {
 } from "./customer-health";
 
 describe("deriveConnectorCustomerHealth", () => {
-  it("shows Healthy when healthStatus is healthy", () => {
+  it("shows Connected when healthStatus is healthy", () => {
     expect(
       deriveConnectorCustomerHealth({
         status: "configured",
         healthStatus: "healthy",
         authStatus: "connected",
       }),
-    ).toEqual({ badgeStatus: "healthy", label: "Healthy" });
+    ).toEqual({ badgeStatus: "healthy", label: "Connected" });
   });
 
-  it("shows Healthy when providerHealth is healthy", () => {
+  it("shows Connected when providerHealth is healthy", () => {
     expect(
       deriveConnectorCustomerHealth({
         status: "configured",
@@ -24,7 +24,7 @@ describe("deriveConnectorCustomerHealth", () => {
         authStatus: "connected",
         providerHealth: "healthy",
       }),
-    ).toEqual({ badgeStatus: "healthy", label: "Healthy" });
+    ).toEqual({ badgeStatus: "healthy", label: "Connected" });
   });
 
   it("does not surface Configured as a customer label", () => {
@@ -34,10 +34,10 @@ describe("deriveConnectorCustomerHealth", () => {
       authStatus: "connected",
     });
     expect(result.label).not.toBe("Configured");
-    expect(result.label).toBe("Checking…");
+    expect(result.label).toBe("Connected");
   });
 
-  it("maps Microsoft-style connected + configured + healthy provider to Healthy", () => {
+  it("maps Microsoft-style connected + configured + healthy provider to Connected", () => {
     expect(
       deriveConnectorCustomerHealth({
         status: "configured",
@@ -45,10 +45,10 @@ describe("deriveConnectorCustomerHealth", () => {
         authStatus: "connected",
         providerHealth: "healthy",
       }),
-    ).toEqual({ badgeStatus: "healthy", label: "Healthy" });
+    ).toEqual({ badgeStatus: "healthy", label: "Connected" });
   });
 
-  it("maps degraded sync to Attention needed", () => {
+  it("maps degraded sync to Needs attention", () => {
     expect(
       deriveConnectorCustomerHealth({
         status: "healthy",
@@ -56,14 +56,32 @@ describe("deriveConnectorCustomerHealth", () => {
         authStatus: "connected",
         syncHealth: "failed",
       }),
-    ).toEqual({ badgeStatus: "warning", label: "Attention needed" });
+    ).toEqual({ badgeStatus: "warning", label: "Needs attention" });
   });
 
-  it("maps draft connectors to Disconnected", () => {
+  it("maps draft connectors to Configuration required", () => {
     expect(
       deriveConnectorCustomerHealth({
         status: "draft",
         authStatus: "not_configured",
+      }),
+    ).toEqual({ badgeStatus: "not_configured", label: "Configuration required" });
+  });
+
+  it("maps expired auth to Authorisation expired", () => {
+    expect(
+      deriveConnectorCustomerHealth({
+        status: "configured",
+        authStatus: "auth_expired",
+      }),
+    ).toEqual({ badgeStatus: "warning", label: "Authorisation expired" });
+  });
+
+  it("maps revoked connectors to Disconnected", () => {
+    expect(
+      deriveConnectorCustomerHealth({
+        status: "disabled",
+        authStatus: "revoked",
       }),
     ).toEqual({ badgeStatus: "not_configured", label: "Disconnected" });
   });

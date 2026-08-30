@@ -366,6 +366,9 @@ export interface ConnectorInstance {
   connectedAt?: string | null;
   managedBy?: ConnectorManagedBy;
   lastHealthAt?: string | null;
+  lastVerifiedAt?: string | null;
+  sourceMcpId?: string | null;
+  sourceConnectorCode?: string | null;
   capabilitiesEnabled?: string[];
   recordsProcessed?: number | null;
   recordsCreated?: number | null;

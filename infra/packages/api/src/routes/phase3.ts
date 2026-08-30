@@ -29,6 +29,12 @@ import {
 } from "../services/control-plane";
 import { syncElvexCompanyUser } from "../services/elvex-identity";
 import {
+  connectUserAiChannel,
+  disconnectUserAiChannel,
+  listCompanyAiChannels,
+  setCompanyAiChannelApproved,
+} from "../services/ai-channel-policy";
+import {
   executeGatewayRequest,
   resolveGatewayActor,
 } from "../services/gateway";
@@ -1335,6 +1341,13 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
   const executeUrl = infraGatewayExecuteUrl(c.env, c.req.url);
   const identities = await listServiceIdentities(c.env.DB, company.id);
   const identityById = new Map(identities.map((item) => [item.id, item]));
+  const policy = await listCompanyAiChannels(c.env.DB, {
+    companyId: company.id,
+    companySlug: company.slug,
+    user: c.get("user"),
+    apiBase,
+  });
+  const policyByChannel = new Map(policy.map((item) => [item.channel, item]));
 
   return c.json(
     (rows.results ?? []).map((row) => {
@@ -1343,10 +1356,13 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
         : null;
       const identity = identityId ? identityById.get(identityId) : null;
       const status = String(row.status);
+      const channelPolicy = policyByChannel.get(String(row.client_type));
       let tokenStatus = "Not Generated";
-      if (identity?.status === "active" && identity.hasToken) tokenStatus = "Active";
+      if (channelPolicy?.userConnection?.status === "connected") tokenStatus = "Active";
+      else if (identity?.status === "active" && identity.hasToken) tokenStatus = "Active";
       else if (identity?.status === "disabled") tokenStatus = "Revoked";
       else if (status === "connected" && !identity) tokenStatus = "Rotation Required";
+      const hideSharedToken = !channelPolicy?.canApprove;
 
       return {
         id: String(row.id),
@@ -1355,12 +1371,21 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
         clientType: String(row.client_type),
         displayName: String(row.display_name),
         status,
-        serviceIdentityId: identityId,
-        serviceIdentityName: identity?.name ?? null,
-        serviceIdentityStatus: identity?.status ?? null,
-        scopes: identity?.scopes ?? [],
+        companyApproved: channelPolicy?.companyApproved ?? false,
+        approvedBy: channelPolicy?.approvedBy ?? null,
+        approvedAt: channelPolicy?.approvedAt ?? null,
+        connectedUserCount: channelPolicy?.connectedUserCount ?? 0,
+        userConnection: channelPolicy?.userConnection ?? null,
+        canApprove: channelPolicy?.canApprove ?? false,
+        canConnect: channelPolicy?.canConnect ?? false,
+        canDisableCompany: channelPolicy?.canDisableCompany ?? false,
+        authorizationUrl: channelPolicy?.authorizationUrl ?? null,
+        serviceIdentityId: hideSharedToken ? null : identityId,
+        serviceIdentityName: hideSharedToken ? null : identity?.name ?? null,
+        serviceIdentityStatus: hideSharedToken ? null : identity?.status ?? null,
+        scopes: hideSharedToken ? [] : identity?.scopes ?? [],
         tokenStatus,
-        tokenPrefix: identity?.tokenPrefix ?? null,
+        tokenPrefix: hideSharedToken ? null : identity?.tokenPrefix ?? null,
         connectionMethod: "INFRA MCP Gateway",
         gatewayEndpoint: executeUrl,
         mcpEndpoint: mcpUrl,
@@ -1388,11 +1413,22 @@ phase3.post(
   async (c) => {
     const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
     if (!company) return c.json({ error: "Company not found" }, 404);
+    const clientType = c.req.param("clientType");
     if (!canManageCompany(c.get("user"), company.id)) {
-      return c.json({ error: "Company administrator access required" }, 403);
+      const userConnect = await connectUserAiChannel(c.env.DB, {
+        companyId: company.id,
+        channel: clientType,
+        actor: c.get("user"),
+      });
+      if (!userConnect.ok) return c.json({ error: userConnect.error }, userConnect.status);
+      return c.json({
+        clientType,
+        status: userConnect.status,
+        connectedAs: userConnect.connectedAs,
+        mcpEndpoint: infraMcpGatewayUrl(c.env, c.req.url),
+      });
     }
 
-    const clientType = c.req.param("clientType");
     if (clientType === "whatsapp") {
       return c.json({ error: "WhatsApp is coming soon" }, 400);
     }
@@ -1497,13 +1533,102 @@ phase3.post(
 );
 
 phase3.post(
+  "/api/companies/:slug/ai-channels/:channel/approve",
+  requireAuth,
+  async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access to this company is denied" }, 403);
+    }
+    const result = await setCompanyAiChannelApproved(c.env.DB, {
+      companyId: company.id,
+      channel: c.req.param("channel"),
+      approved: true,
+      actor: c.get("user"),
+    });
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ ok: true, channel: c.req.param("channel"), approved: true });
+  },
+);
+
+phase3.post(
+  "/api/companies/:slug/ai-channels/:channel/revoke-company",
+  requireAuth,
+  async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access to this company is denied" }, 403);
+    }
+    const result = await setCompanyAiChannelApproved(c.env.DB, {
+      companyId: company.id,
+      channel: c.req.param("channel"),
+      approved: false,
+      actor: c.get("user"),
+    });
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ ok: true, channel: c.req.param("channel"), approved: false });
+  },
+);
+
+phase3.post(
+  "/api/companies/:slug/ai-channels/:channel/user-connect",
+  requireAuth,
+  async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access to this company is denied" }, 403);
+    }
+    const result = await connectUserAiChannel(c.env.DB, {
+      companyId: company.id,
+      channel: c.req.param("channel"),
+      actor: c.get("user"),
+    });
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({
+      ok: true,
+      status: result.status,
+      connectedAs: result.connectedAs,
+      mcpEndpoint: infraMcpGatewayUrl(c.env, c.req.url),
+    });
+  },
+);
+
+phase3.post(
+  "/api/companies/:slug/ai-channels/:channel/user-disconnect",
+  requireAuth,
+  async (c) => {
+    const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
+    if (!company) return c.json({ error: "Company not found" }, 404);
+    if (!userHasCompanyAccess(c.get("user"), company.id)) {
+      return c.json({ error: "Access to this company is denied" }, 403);
+    }
+    const result = await disconnectUserAiChannel(c.env.DB, {
+      companyId: company.id,
+      channel: c.req.param("channel"),
+      actor: c.get("user"),
+    });
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json({ ok: true, status: "revoked" });
+  },
+);
+
+phase3.post(
   "/api/companies/:slug/ai-connections/:clientType/revoke",
   requireAuth,
   async (c) => {
     const company = await companyFromSlug(c.env.DB, c.req.param("slug"));
     if (!company) return c.json({ error: "Company not found" }, 404);
     if (!canManageCompany(c.get("user"), company.id)) {
-      return c.json({ error: "Company administrator access required" }, 403);
+      const userDisconnect = await disconnectUserAiChannel(c.env.DB, {
+        companyId: company.id,
+        channel: c.req.param("clientType"),
+        actor: c.get("user"),
+      });
+      if (!userDisconnect.ok) return c.json({ error: userDisconnect.error }, userDisconnect.status);
+      return c.json({ ok: true, status: "revoked", clientType: c.req.param("clientType") });
     }
     const clientType = c.req.param("clientType");
     const row = await c.env.DB.prepare(

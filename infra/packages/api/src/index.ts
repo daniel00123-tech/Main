@@ -720,13 +720,20 @@ app.get("/api/companies/:slug/overview", requireAuth, async (c) => {
   if (!overview) return c.json({ error: "Company not found" }, 404);
 
   const { refreshStaleMicrosoftInstanceHealth } = await import("./services/microsoft-credentials");
+  const { syncCompanyMcpConnectorRegistry } = await import("./services/company-mcp-connector-sync");
+  await syncCompanyMcpConnectorRegistry(c.env, company.id, c.get("user").email).catch(() => null);
+  const refreshedOverview = await getCompanyOverview(c.env.DB, company.id);
   const connectorInstances = await refreshStaleMicrosoftInstanceHealth(c.env, {
     companyId: company.id,
-    instances: overview.connectorInstances,
+    instances: refreshedOverview?.connectorInstances ?? overview.connectorInstances,
     actor: c.get("user").email,
   });
 
-  return c.json({ ...overview, connectorInstances });
+  return c.json({
+    ...overview,
+    ...refreshedOverview,
+    connectorInstances,
+  });
 });
 
 app.get("/api/companies/:slug/onboarding", requireAuth, async (c) => {

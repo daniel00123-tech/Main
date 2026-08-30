@@ -28,6 +28,7 @@ import { handleXeroConnect, handleXeroDisconnect } from "./xero/http";
 import { runXeroVerification, xeroPublicStatus } from "./xero/verify";
 import { ElXeroError } from "./xero/errors";
 import { handleRbacAdminRequest } from "./rbac/admin-api";
+import { elPlatformRegistrySnapshot } from "./registry";
 
 const logger = createLogger(`${MCP_NAME}-admin`);
 
@@ -56,9 +57,11 @@ export async function handleAdminRequest(
   }
 
   if (url.pathname === "/admin/connectors") {
+    const platformRegistry = await elPlatformRegistrySnapshot(env);
     return json({
       company: EL_IDENTITY.company,
       connectors: elConnectorDefinitions(env),
+      platformRegistry,
       capabilityCatalog: elConnectorCapabilitiesCatalog(),
       registry: await loadConnectorRegistryRows(env.EL_BUSINESS_DATA),
       microsoft: publicMicrosoftPolicy(loadMicrosoftConfig(env)),
@@ -163,6 +166,7 @@ export async function buildPublicStatus(env: Env): Promise<Response> {
     }),
     microsoft: publicMicrosoftPolicy(loadMicrosoftConfig(env)),
     xero: await xeroPublicStatus(env),
+    platformRegistry: await elPlatformRegistrySnapshot(env),
   };
 
   return json(payload);

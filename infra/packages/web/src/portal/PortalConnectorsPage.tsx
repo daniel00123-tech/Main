@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import {
   CONNECTOR_CATALOGUE,
   connectorOverviewDescription,
+  customerFacingConnectorInstances,
   deriveConnectorCustomerHealth,
   taxonomyForConnector,
 } from "@infra/shared";
@@ -45,7 +46,7 @@ function instanceStatusLabel(instance: Parameters<typeof deriveConnectorCustomer
 
 function needsAttention(instance: Parameters<typeof deriveConnectorCustomerHealth>[0]) {
   const label = deriveConnectorCustomerHealth(instance).label;
-  return label === "Attention needed" || label === "Error";
+  return label === "Needs attention" || label === "Authorisation expired";
 }
 
 export default function PortalConnectorsPage() {
@@ -79,7 +80,7 @@ export default function PortalConnectorsPage() {
   );
 
   const connectedItems = useMemo(() => {
-    return instances.map((instance) => {
+    return customerFacingConnectorInstances(instances).map((instance) => {
       const definition = catalogueById.get(instance.connectorDefinitionId);
       return { instance, definition, kind: "instance" as const };
     });
@@ -224,7 +225,11 @@ export default function PortalConnectorsPage() {
                   ) : undefined
                 }
                 name={instance.name}
-                purpose={connectorOverviewDescription(instance.connectorDefinitionId)}
+                purpose={
+                  instance.lastVerifiedAt
+                    ? `${connectorOverviewDescription(instance.connectorDefinitionId)} · Verified ${formatRelativeTime(instance.lastVerifiedAt)}`
+                    : connectorOverviewDescription(instance.connectorDefinitionId)
+                }
                 status={instanceStatus(instance)}
                 statusLabel={instanceStatusLabel(instance)}
                 onClick={() => definition && setSelectedSlug(definition.slug)}

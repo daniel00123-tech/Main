@@ -90,7 +90,7 @@ export type GettingStartedItem = {
 };
 
 const PROFILE_INCOMPLETE_STATUSES = new Set(["draft", "provisioning"]);
-const CONNECTED_CUSTOMER_HEALTH = new Set(["Healthy", "Attention needed"]);
+const CONNECTED_CUSTOMER_HEALTH = new Set(["Connected", "Needs attention"]);
 
 function readDismissedAt(overview: CompanyOverview): string | null {
   if (typeof overview.gettingStartedDismissedAt === "string" && overview.gettingStartedDismissedAt) {
@@ -106,7 +106,7 @@ export function isCompanyProfileComplete(company: CompanyOverview["company"]): b
   return !PROFILE_INCOMPLETE_STATUSES.has(company.status);
 }
 
-/** At least one non-draft customer connector is Healthy or Attention needed (connected). */
+/** At least one non-draft customer connector is Connected or Needs attention. */
 export function hasConnectedCustomerSystem(
   connectors: CompanyOverview["connectorInstances"],
 ): boolean {

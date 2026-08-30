@@ -30,6 +30,7 @@ import {
   evaluateServiceActionPermission,
   type ServiceIdentityRecord,
 } from "./service-identities";
+import { evaluateBoundUserGatewayPermission } from "./bound-user-rbac";
 import {
   evaluateActionPermission,
   userHasCompanyAccess,
@@ -217,11 +218,11 @@ export async function executeGatewayRequest(
   const started = Date.now();
   const gatewayRequestId = newId("gw");
 
-  const actorLabel =
+  let actorLabel =
     input.actor.type === "user"
       ? input.actor.user.email
       : input.actor.identity.name;
-  const actorId =
+  let actorId =
     input.actor.type === "user"
       ? input.actor.user.userId
       : input.actor.identity.id;
@@ -458,6 +459,20 @@ export async function executeGatewayRequest(
     );
     permissionAllowed = decision.allowed;
     permissionReason = decision.reason;
+  } else if (input.actor.identity.boundUserId) {
+    const decision = await evaluateBoundUserGatewayPermission(env.DB, {
+      companyId: input.companyId,
+      identity: input.actor.identity,
+      action,
+      toolName: input.toolName,
+      args: input.arguments,
+    });
+    permissionAllowed = decision.allowed;
+    permissionReason = decision.reason;
+    if (decision.resolution && decision.resolution.ok) {
+      actorId = decision.resolution.user.userId;
+      actorLabel = decision.resolution.user.email;
+    }
   } else {
     const decision = await evaluateServiceActionPermission(
       env.DB,
