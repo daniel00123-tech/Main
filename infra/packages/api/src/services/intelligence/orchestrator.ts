@@ -167,10 +167,13 @@ export async function runIntelligenceTurn(input: {
         ? documentFromToolResult({ name: "search_company_knowledge", ok: true, latencyMs: 0, data: { document_id: (hits[0] as { id?: string }).id, title: (hits[0] as { title?: string }).title, url: (hits[0] as { url?: string }).url } })
         : null;
     if (first) currentDocument = first;
-    const titles = hits
-      .slice(0, 3)
-      .map((hit) => (hit && typeof hit === "object" ? String((hit as { title?: string }).title ?? "") : ""))
-      .filter(Boolean);
+    const titles = [
+      ...new Set(
+        hits
+          .map((hit) => (hit && typeof hit === "object" ? String((hit as { title?: string }).title ?? "") : ""))
+          .filter(Boolean),
+      ),
+    ].slice(0, 3);
     return finish({
       kind: titles.length ? "answer" : "clarify",
       text: titles.length
