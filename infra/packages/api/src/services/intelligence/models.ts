@@ -31,8 +31,8 @@ export const V1_FALLBACK_MODEL = "@cf/meta/llama-3.2-3b-instruct";
  */
 export const DEFAULT_PRIMARY_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
 
-/** Known-working Workers AI fallback from V1 production (not the weaker 3B). */
-export const DEFAULT_FALLBACK_MODEL = "@cf/meta/llama-3.1-8b-instruct";
+/** Live-available Workers AI fallback (V1 8B is rejected on this account). */
+export const DEFAULT_FALLBACK_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 
 /** Compact agentic model — only used if live probe shows quality/cost benefit. */
 export const OPTIONAL_ESCALATION_MODEL = "@cf/ibm/granite-4.0-h-micro";

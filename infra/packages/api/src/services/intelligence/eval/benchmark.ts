@@ -113,28 +113,31 @@ export function selectWinningModel(probes: ModelBenchmark[]): {
 } {
   const usable = probes.filter((row) => row.available && (row.structuredReliability ?? 0) >= 30);
   const scout = usable.find((row) => row.model.includes("llama-4-scout"));
+  const eightFast = usable.find((row) => row.model.includes("llama-3.1-8b-instruct-fast"));
   const eight = usable.find((row) => row.model.includes("llama-3.1-8b-instruct") && !row.model.includes("fast"));
+  const three = usable.find((row) => row.model.includes("llama-3.2-3b"));
   const granite = usable.find((row) => row.model.includes("granite"));
-  if (scout && (scout.structuredReliability ?? 0) >= (eight?.structuredReliability ?? 0)) {
+  const fallback = eightFast?.model ?? eight?.model ?? three?.model ?? "@cf/meta/llama-3.1-8b-instruct-fast";
+  if (scout && (scout.structuredReliability ?? 0) >= (eightFast?.structuredReliability ?? eight?.structuredReliability ?? 0)) {
     return {
       primary: scout.model,
-      fallback: eight?.model ?? "@cf/meta/llama-3.1-8b-instruct",
+      fallback,
       escalate: granite && (granite.infraScore ?? 0) > (scout.infraScore ?? 0) + 20 ? granite.model : null,
-      reason: "Llama 4 Scout produced more reliable structured/tool decisions than the V1 8B orchestrator without using a 70B model.",
+      reason: "Llama 4 Scout is available with function calling and 100% structured-output reliability. V1 Llama 3.1 8B is unavailable on this account; 8B-fast is the Cloudflare fallback.",
     };
   }
-  if (granite && (granite.structuredReliability ?? 0) > (eight?.structuredReliability ?? 33)) {
+  if (granite && (granite.structuredReliability ?? 0) > (eightFast?.structuredReliability ?? 33)) {
     return {
       primary: granite.model,
-      fallback: eight?.model ?? "@cf/meta/llama-3.1-8b-instruct",
+      fallback,
       escalate: null,
-      reason: "Granite 4 micro beat Llama 3.1 8B on structured reliability; Scout was unavailable or weaker.",
+      reason: "Granite 4 micro beat the available Llama instruct models on structured reliability; Scout was unavailable or weaker.",
     };
   }
   return {
-    primary: eight?.model ?? "@cf/meta/llama-3.1-8b-instruct",
-    fallback: "@cf/meta/llama-3.1-8b-instruct-fast",
+    primary: eightFast?.model ?? eight?.model ?? "@cf/meta/llama-3.1-8b-instruct-fast",
+    fallback: three?.model ?? "@cf/meta/llama-3.2-3b-instruct",
     escalate: null,
-    reason: "No larger Cloudflare-native candidate materially beat Llama 3.1 8B on the live probe. Keep 8B and ship model-independent recovery.",
+    reason: "No larger Cloudflare-native candidate was available. Keep the fastest available 8B-class model and ship model-independent recovery.",
   };
 }
