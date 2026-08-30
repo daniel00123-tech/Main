@@ -17,7 +17,7 @@ import { DEFAULT_QUALITY_RUNTIME } from "./quality-loop/runtime-config";
 import type { QualityRuntimeConfig } from "./quality-loop/types";
 import { recordUsageEvent } from "./usage";
 import { inspectWhatsAppAssets, outboundAiEnabled } from "./whatsapp-assets";
-import { capabilityReplyForCompany, formatPricingCapabilityReply, listConnectedCapabilityLabels, listConnectedConnectorIds } from "./whatsapp-capabilities";
+import { capabilityReplyForCompany, listConnectedConnectorIds } from "./whatsapp-capabilities";
 import {
   loadWhatsAppConversation,
   saveWhatsAppConversation,
@@ -28,7 +28,6 @@ import {
   emptyEntityMemory,
   inferEntitiesFromTurns,
   mergeEntityMemory,
-  recentDocumentTitles,
   resolveRememberedDocument,
   sameDocument,
   type WhatsAppDocumentEntity,
@@ -67,9 +66,10 @@ import {
   isNegativeResultFeedback,
   looksLikeCurrentDocumentQuestion,
   looksLikeSearchOtherDocs,
-  planWhatsAppTurn,
   type WhatsAppPlan,
 } from "./whatsapp-plan";
+import { executeWhatsAppIntelligence, type WhatsAppIntelligenceAnswer } from "./whatsapp-intelligence";
+import { matchFastPath } from "./intelligence/fast-path";
 import {
   NONE_IN_DOCUMENT_REPLY,
   SEARCH_OTHER_DOCS_HINT,
@@ -116,9 +116,7 @@ import { resolveWhatsAppIdentity } from "./whatsapp-identity";
 import {
   classifyWhatsAppIntent,
   focusSearchTerms,
-  isCheapConversationalIntent,
   looksLikeWriteIntent as looksLikeWriteIntentFromClassifier,
-  needsToolWork,
   softenSearchQuery,
   type WhatsAppIntent,
 } from "./whatsapp-intent";
@@ -768,10 +766,30 @@ async function handleWhatsAppInboundMessageInner(
     }
   }
 
-  const plan = inboundResolved.buttonAction && boundDocument
-    ? planBoundButton(inboundResolved.buttonAction, boundDocument, text, entities)
-    : planWhatsAppTurn({ text, memory: entities, connectors }, qualityRuntime);
-  const intent = plan.intent || classifyWhatsAppIntent(text, { hasPriorTurns: priorTurns.length > 0 });
+  const deterministicSource =
+    inboundResolved.buttonAction === "open_source" && boundDocument
+      ? planBoundButton(inboundResolved.buttonAction, boundDocument, text, entities)
+      : null;
+  let plan: WhatsAppPlan = deterministicSource ?? {
+    action: "knowledge",
+    intent: "knowledge_search",
+    tool: "search_company_knowledge",
+    query: text,
+    fetch: Boolean(boundDocument || entities.lastDocument),
+    skipTools: false,
+    useMemory: Boolean(boundDocument || entities.lastDocument),
+    needsGuidance: false,
+    clarification: null,
+    fact: inboundResolved.buttonAction === "more_on_this" || inboundResolved.buttonAction === "more_detail"
+      ? "detail"
+      : inboundResolved.buttonAction === "summarise"
+        ? "summary"
+        : "answer",
+    draftKind: null,
+  };
+  const intent = looksLikeWriteIntent(text)
+    ? "write_action"
+    : classifyWhatsAppIntent(text, { hasPriorTurns: priorTurns.length > 0 });
   marks.intentClassifiedAt = Date.now();
   marks.planningCompletedAt = Date.now();
   await stampWhatsAppLifecycle(env, item.wamid, { userStage: "understanding_request" });
@@ -798,7 +816,7 @@ async function handleWhatsAppInboundMessageInner(
     };
   }
 
-  if (plan.action === "write_blocked" || intent === "write_action" || looksLikeWriteIntent(text)) {
+  if (intent === "write_action" || looksLikeWriteIntent(text)) {
     const reply = writeIntentWhatsAppMessage();
     const sent = await maybeSendReply(env, sender, reply, { qualityRuntime });
     await rememberTurn(env, identity.user.id, companyDecision.companyId, conversation?.turns ?? [], text, reply, entities);
@@ -833,89 +851,23 @@ async function handleWhatsAppInboundMessageInner(
     };
   }
 
-  if (plan.action === "clarify") {
-    const reply = applyCustomerTone(
-      plan.clarification ?? "Can you give me a little more detail so I look in the right place?",
-    );
-    const sent = await maybeSendReply(env, sender, reply, {
-      qualityRuntime,
-      buttons: isNegativeResultFeedback(text)
-        ? [
-            { id: "search_other_docs", title: "Search other docs" },
-            { id: "search_documents", title: "Search documents" },
-          ]
-        : suggestionButtons({
-            kind: "clarify_docs",
-            documentTitles: recentDocumentTitles(entities),
-          }),
-    });
-    await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, reply, entities);
-    if (isNegativeResultFeedback(text)) {
-      await recordWhatsAppChannelUsage(env, {
-        companyId: companyDecision.companyId,
-        userId: identity.user.id,
-        actorEmail: identity.user.email,
-        interactionId: item.wamid || newId("wa"),
-        success: sent.ok,
-        durationMs: Date.now() - marks.processingStartedAt,
-        toolName: null,
-        send: sent,
-        metadata: {
-          channel: "whatsapp",
-          intent,
-          planAction: plan.action,
-          negativeResultFeedback: true,
-          precedingAnswerText: conversation?.turns?.filter((turn) => turn.role === "assistant").at(-1)?.text ?? null,
-          topicCorrected: /\b(not (about|to do with)|something else|wrong (doc|document|topic)|unrelated)\b/i.test(text),
-        },
-      });
-    }
-    await stampWhatsAppLifecycle(env, item.wamid, {
-      state: "clarification_sent",
-      terminal: "clarification_sent",
-      replySentAt: new Date().toISOString(),
-      firstVisibleAt: new Date().toISOString(),
-    });
-    return {
-      handled: true,
-      duplicate: false,
-      identityFound: true,
-      companyId: companyDecision.companyId,
-      userId: identity.user.id,
-      replySent: sent.ok,
-      publicReply: reply,
-      toolName: null,
-      interactionId: null,
-      outcome: "clarification_requested",
-      intent,
-      acknowledgementSent: false,
-      planAction: plan.action,
-      inputKind,
-      buttonsSent: sent.buttonsSent ?? 0,
-    };
-  }
-
-  if (plan.action === "chat" || plan.action === "capabilities" || isCheapConversationalIntent(intent)) {
+  const fastLocal = !inboundResolved.buttonAction && (Boolean(matchFastPath(text)) || isInstantLocalTurn(text));
+  if (fastLocal) {
     let capabilities: string | null = null;
     if (intent === "help" || intent === "capabilities") {
-      if (/\b(price|pricing|quote|rates?)\b/i.test(text)) {
-        capabilities = formatPricingCapabilityReply(
-          await listConnectedCapabilityLabels(env, companyDecision.companyId),
-        );
-      } else {
-        capabilities = await capabilityReplyForCompany(env, companyDecision.companyId);
-      }
+      capabilities = await capabilityReplyForCompany(env, companyDecision.companyId);
     }
     const reply = applyCustomerTone(
-      conversationalReply(intent as WhatsAppIntent, { text, capabilities }) ??
+      matchFastPath(text) ??
+        instantLocalReply(text) ??
+        conversationalReply(intent as WhatsAppIntent, { text, capabilities }) ??
         conversationalReply("greeting", { text })!,
     );
     const sent = await maybeSendReply(env, sender, reply, {
       qualityRuntime,
-      buttons:
-        intent === "help" || intent === "capabilities"
-          ? suggestionButtons({ kind: "help", hasXero: connectors.includes("conn_xero") })
-          : [],
+      buttons: intent === "help" || intent === "capabilities"
+        ? suggestionButtons({ kind: "help", hasXero: connectors.includes("conn_xero") })
+        : [],
     });
     await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, reply, entities);
     await recordAuditEvent(env.DB, {
@@ -924,7 +876,13 @@ async function handleWhatsAppInboundMessageInner(
       actor: identity.user.email,
       resourceType: "whatsapp_message",
       resourceId: item.wamid,
-      detail: { channel: "whatsapp", intent, cheapPath: true, costLane: "whatsapp_conversation" },
+      detail: {
+        channel: "whatsapp",
+        intent,
+        cheapPath: true,
+        intelligencePath: "fast_local",
+        costLane: "whatsapp_conversation",
+      },
     });
     await stampWhatsAppLifecycle(env, item.wamid, {
       state: "reply_sent",
@@ -999,19 +957,34 @@ async function handleWhatsAppInboundMessageInner(
 
   try {
     marks.toolStartedAt = Date.now();
-    const work = options?.simulateMcpTimeout
+    const work: Promise<WhatsAppIntelligenceAnswer> = options?.simulateMcpTimeout
       ? new Promise<never>(() => undefined)
-      : executeWhatsAppPlan(env, {
-          companyId: companyDecision.companyId,
-          sessionUser,
-          plan,
-          originalText: text,
-          memory: entities,
-          interactionId,
-          waitUntil: options?.waitUntil,
-          marks,
-          wamid: item.wamid,
-        });
+      : deterministicSource
+        ? executeWhatsAppPlan(env, {
+            companyId: companyDecision.companyId,
+            sessionUser,
+            plan: deterministicSource,
+            originalText: text,
+            memory: entities,
+            interactionId,
+            waitUntil: options?.waitUntil,
+            marks,
+            wamid: item.wamid,
+          }).then((answered) => ({
+            ...answered,
+            plan: deterministicSource,
+            intelligence: null,
+          }))
+        : executeWhatsAppIntelligence(env, {
+            companyId: companyDecision.companyId,
+            sessionUser,
+            originalText: text,
+            memory: entities,
+            priorTurns,
+            interactionId,
+            waitUntil: options?.waitUntil,
+            buttonAction: inboundResolved.buttonAction ?? null,
+          });
     const watched = await raceWithWhatsAppWatchdog(work, async (kind, body) => {
       if (kind === "ack") {
         const claimed = await claimWhatsAppAck(env, item.wamid);
@@ -1130,6 +1103,9 @@ async function handleWhatsAppInboundMessageInner(
     }
 
     const answered = watched.result;
+    if ("plan" in answered && answered.plan) {
+      plan = answered.plan;
+    }
     acknowledgementSent = acknowledgementSent || watched.acknowledgementSent;
     progressSent = progressSent || watched.progressSent;
     fallbackSent = fallbackSent || watched.delaySent;
@@ -1280,6 +1256,35 @@ async function handleWhatsAppInboundMessageInner(
         groundedScoped: answered.groundedScoped ?? false,
         synthesisProvider: answered.synthesisProvider ?? null,
         negativeResultFeedback: isNegativeResultFeedback(text),
+        intelligencePath: deterministicSource ? "deterministic_source" : "llm_orchestrator",
+        intelligenceProvider: "intelligence" in answered && answered.intelligence ? answered.intelligence.provider : null,
+        intelligenceModel: "intelligence" in answered && answered.intelligence ? answered.intelligence.model : null,
+        intelligenceModelMs: "intelligence" in answered && answered.intelligence ? answered.intelligence.totalModelMs : null,
+        intelligenceToolMs: "intelligence" in answered && answered.intelligence ? answered.intelligence.totalToolMs : null,
+        intelligenceToolCalls:
+          "intelligence" in answered && answered.intelligence
+            ? answered.intelligence.toolCalls.map((call) => ({
+                name: call.name,
+                ok: call.ok,
+                latencyMs: call.latencyMs,
+              }))
+            : [],
+        intelligenceEstimatedCostUsd:
+          "intelligence" in answered && answered.intelligence ? answered.intelligence.estimatedCostUsd : null,
+        intelligenceClarification: "intelligence" in answered && answered.intelligence ? answered.intelligence.clarification : false,
+        intelligenceEvidenceDocumentIds:
+          "intelligence" in answered && answered.intelligence ? answered.intelligence.evidenceDocumentIds : [],
+        intelligenceModelRounds:
+          "intelligence" in answered && answered.intelligence
+            ? answered.intelligence.modelRounds.map((round) => ({
+                provider: round.provider,
+                model: round.model,
+                latencyMs: round.latencyMs,
+                promptTokens: round.promptTokens,
+                completionTokens: round.completionTokens,
+                estimatedCostUsd: round.estimatedCostUsd,
+              }))
+            : [],
       },
     });
     await stampWhatsAppLifecycle(env, item.wamid, {

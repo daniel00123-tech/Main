@@ -6,7 +6,7 @@ import {
   type WhatsAppEntityMemory,
 } from "./whatsapp-entities";
 
-const MAX_TURNS = 6;
+const MAX_TURNS = 16;
 const CONTEXT_TTL_MS = 6 * 60 * 60 * 1000;
 
 export type WhatsAppTurn = {
