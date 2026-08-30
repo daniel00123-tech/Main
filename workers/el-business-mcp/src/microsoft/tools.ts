@@ -24,8 +24,8 @@ import {
 import {
   getFile,
   listFolder,
-  searchFiles,
 } from "./files";
+import { searchElvexFiles } from "./search";
 import {
   cancelEvent,
   createEvent,
@@ -33,7 +33,7 @@ import {
   searchEvents,
   updateEvent,
 } from "./calendar";
-import { upsertCatalogueItem } from "./knowledge";
+import { purgeProtectedFromCatalogue } from "./catalogue";
 
 function mailboxDesc(): string {
   return "Approved shared mailbox only: finance@elvexpropertyservices.com or info@elvexpropertyservices.com. Personal staff mailboxes are rejected.";
@@ -253,26 +253,26 @@ export function registerMicrosoftTools(server: McpServer, env: Env): void {
       description:
         "Search Elvex SharePoint (elvexpropertyservicesltd.sharepoint.com) and eligible employee OneDrives. Protected users (William, Ella, and any configured deny-list identities) are excluded before results are returned. Personal mailbox data is not included.",
       inputSchema: {
-        query: z.string().describe("Filename or keyword search."),
-        filename: z.string().optional(),
+        query: z.string().optional().describe("Filename, topic, customer, or keyword search."),
+        filename: z.string().optional().describe("Partial or full filename."),
         source: z.enum(["sharepoint", "onedrive", "all"]).optional(),
         top: z.number().int().min(1).max(40).optional(),
       },
     },
     async (input) => {
       try {
-        const ctx = await createMicrosoftContext(env);
-        const result = await searchFiles(ctx.graph, ctx.config, ctx.policy, input);
         if (env.EL_BUSINESS_DATA) {
-          for (const hit of result.results.slice(0, 10)) {
-            await upsertCatalogueItem(env.EL_BUSINESS_DATA, ctx.policy, hit).catch(() => undefined);
-          }
+          const ctx = await createMicrosoftContext(env);
+          await purgeProtectedFromCatalogue(env.EL_BUSINESS_DATA, ctx.policy);
         }
+        const result = await searchElvexFiles(env, input);
         return jsonTool({
-          sharePoint: result.sharePointSite,
+          sharePoint: result.sharePoint,
           sharePointDriveCount: result.sharePointDriveCount,
           eligibleOneDriveCount: result.eligibleOneDriveCount,
           excludedProtectedCount: result.excludedProtectedCount,
+          catalogue: result.catalogue,
+          graphSearchHits: result.graphSearchHits,
           results: result.results,
         });
       } catch (error) {
@@ -434,17 +434,13 @@ export async function searchCompanyKnowledgeViaMicrosoft(
   query: string,
   topK = 8
 ): Promise<unknown> {
-  const ctx = await createMicrosoftContext(env);
-  const result = await searchFiles(ctx.graph, ctx.config, ctx.policy, {
-    query,
-    source: "all",
-    top: topK,
-  });
+  const result = await searchElvexFiles(env, { query, source: "all", top: topK });
   return {
     status: "live_microsoft_graph",
-    note: "Company knowledge index (R2/Vectorize) is not provisioned. Results are a live Microsoft Graph search with protected-user filtering applied before return.",
+    note: "Company knowledge index (R2/Vectorize) is not provisioned. Results come from the bounded Microsoft file catalogue (protected users excluded before indexing) plus optional Graph search.",
     confidence: result.results.length ? "plausible" : "weak",
     excludedProtectedCount: result.excludedProtectedCount,
+    catalogue: result.catalogue,
     results: result.results,
   };
 }

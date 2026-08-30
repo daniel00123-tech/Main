@@ -20,6 +20,9 @@ import {
 } from "./connectors";
 import { MCP_NAME } from "./constants";
 import { loadMicrosoftConfig, publicMicrosoftPolicy } from "./microsoft/config";
+import { diagnoseSharePointAndSearch } from "./microsoft/diagnose";
+import { createMicrosoftContext } from "./microsoft/context";
+import { catalogueStats, syncEligibleCatalogue } from "./microsoft/catalogue";
 import { runMicrosoftVerification } from "./microsoft/verify";
 
 const logger = createLogger(`${MCP_NAME}-admin`);
@@ -65,6 +68,21 @@ export async function handleAdminRequest(
   if (url.pathname === "/admin/microsoft/verify") {
     const verification = await runMicrosoftVerification(env);
     return json(verification, verification.overall === "FAIL" ? 503 : 200);
+  }
+
+  if (url.pathname === "/admin/microsoft/diagnose") {
+    const diagnosis = await diagnoseSharePointAndSearch(env);
+    return json(diagnosis);
+  }
+
+  if (url.pathname === "/admin/microsoft/catalogue" && request.method === "GET") {
+    return json({ ok: true, stats: await catalogueStats(env.EL_BUSINESS_DATA) });
+  }
+
+  if (url.pathname === "/admin/microsoft/catalogue" && request.method === "POST") {
+    const ctx = await createMicrosoftContext(env);
+    const sync = await syncEligibleCatalogue(env.EL_BUSINESS_DATA, ctx.graph, ctx.config, ctx.policy);
+    return json({ ok: true, sync, stats: await catalogueStats(env.EL_BUSINESS_DATA) });
   }
 
   return json({ error: "Not Found" }, 404);

@@ -1,4 +1,4 @@
-export const MCP_VERSION = "1.1.0";
+export const MCP_VERSION = "1.1.1";
 export const MCP_NAME = "el-business-mcp";
 
 export const COMPANY_NAME = "EL Business";
@@ -13,6 +13,7 @@ export const QUERYABLE_TABLES = new Set([
   "entity_registry",
   "entity_records",
   "microsoft_index_items",
+  "microsoft_sync_state",
 ]);
 
 export const SUMMARY_TABLES = [
@@ -23,6 +24,7 @@ export const SUMMARY_TABLES = [
   "entity_registry",
   "entity_records",
   "microsoft_index_items",
+  "microsoft_sync_state",
 ] as const;
 
 export const SUMMARY_TIMESTAMP_COLUMNS: Record<string, string | null> = {
@@ -33,4 +35,5 @@ export const SUMMARY_TIMESTAMP_COLUMNS: Record<string, string | null> = {
   entity_registry: "updated_at",
   entity_records: "updated_at",
   microsoft_index_items: "updated_at",
+  microsoft_sync_state: "updated_at",
 };

@@ -55,7 +55,7 @@ await check("GET /health", async () => {
   if (!body.ok) throw new Error("health not ok");
   if (body.company !== "EL Business") throw new Error(`company=${body.company}`);
   if (body.coreVersion !== "1.0.0") throw new Error(`coreVersion=${body.coreVersion}`);
-  if (body.mcpVersion !== "1.1.0") throw new Error(`mcpVersion=${body.mcpVersion}`);
+  if (body.mcpVersion !== "1.1.1") throw new Error(`mcpVersion=${body.mcpVersion}`);
 });
 
 await check("GET /status", async () => {
@@ -82,7 +82,7 @@ if (mcpToken) {
   await check("MCP system_health", async () => {
     const text = await mcpCall("system_health");
     if (!text.includes("EL Business")) throw new Error("missing company in response");
-    if (!text.includes("1.1.0") && !text.includes("1.0.0")) {
+    if (!text.includes("1.1.1") && !text.includes("1.1.0") && !text.includes("1.0.0")) {
       throw new Error("missing version in response");
     }
   });

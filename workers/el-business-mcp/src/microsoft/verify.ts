@@ -5,7 +5,8 @@ import { ElMicrosoftError } from "./errors";
 import { acquireGraphToken } from "./auth";
 import { listUsers } from "./directory";
 import { listFolders, searchMailbox } from "./mail";
-import { discoverSharePointSite, getFile, listEligibleOneDrives, searchFiles } from "./files";
+import { discoverSharePointSite, getFile, listEligibleOneDrives } from "./files";
+import { searchElvexFiles } from "./search";
 
 export type VerifyCheck = {
   name: string;
@@ -114,7 +115,7 @@ export async function runMicrosoftVerification(env: Env): Promise<{
   }
 
   try {
-    const files = await searchFiles(ctx.graph, ctx.config, ctx.policy, {
+    const files = await searchElvexFiles(env, {
       query: "elvex",
       top: 5,
     });

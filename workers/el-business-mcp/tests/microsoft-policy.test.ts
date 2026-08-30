@@ -102,6 +102,18 @@ describe("protected-user deny list", () => {
     expect(policy.isProtectedUser({ displayName: "Alex Taylor", mail: "alex@elvexpropertyservices.com" })).toBe(
       false
     );
+    expect(
+      policy.isProtectedLocation(
+        "https://elvexpropertyservicesltd-my.sharepoint.com/personal/william_elvexpropertyservices_com/Documents/secret.docx",
+        null
+      )
+    ).toBe(true);
+    expect(
+      policy.isProtectedLocation(
+        "https://elvexpropertyservicesltd-my.sharepoint.com/personal/megan_freeman_elvexpropertyservices_com/Documents/ok.docx",
+        null
+      )
+    ).toBe(false);
   });
 
   it("prefers Elvex-domain William/Ella accounts when scoring", () => {

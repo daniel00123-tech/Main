@@ -10,7 +10,7 @@ import { isIndexableOwner, type FileHit } from "./files";
  */
 
 export function assertIndexableFile(policy: AccessPolicy, hit: FileHit): boolean {
-  return isIndexableOwner(policy, hit.owner, hit.driveId);
+  return isIndexableOwner(policy, hit.owner, hit.driveId, hit.webUrl, hit.path);
 }
 
 export async function upsertCatalogueItem(

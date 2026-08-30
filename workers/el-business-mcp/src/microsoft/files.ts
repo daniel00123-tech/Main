@@ -2,6 +2,7 @@ import type { ElMicrosoftConfig } from "./config";
 import type { GraphClient } from "./graph";
 import type { AccessPolicy } from "./policy";
 import { listUsers, type DirectoryUser } from "./directory";
+import { buildGraphKeywordQuery } from "./query-tokens";
 
 export type FileSourceType = "sharepoint" | "onedrive";
 
@@ -32,6 +33,7 @@ export type DriveInfo = {
   webUrl: string | null;
   owner: { id: string | null; displayName: string | null; mail: string | null };
   sourceType: FileSourceType;
+  siteId?: string | null;
 };
 
 type GraphDrive = {
@@ -78,9 +80,17 @@ function sourceTypeFromDrive(driveType: string | null | undefined): FileSourceTy
   return driveType === "documentLibrary" ? "sharepoint" : "onedrive";
 }
 
-export function isIndexableOwner(policy: AccessPolicy, owner: FileHit["owner"], driveId?: string | null): boolean {
+export function isIndexableOwner(
+  policy: AccessPolicy,
+  owner: FileHit["owner"],
+  driveId?: string | null,
+  webUrl?: string | null,
+  path?: string | null
+): boolean {
   if (policy.isProtectedDrive(driveId)) return false;
-  return !policy.isProtectedUser(owner);
+  if (policy.isProtectedUser(owner)) return false;
+  if (policy.isProtectedLocation(webUrl, path)) return false;
+  return true;
 }
 
 function toHit(
@@ -124,9 +134,7 @@ function toHit(
 }
 
 function allowHit(policy: AccessPolicy, hit: FileHit): boolean {
-  if (policy.isProtectedDrive(hit.driveId)) return false;
-  if (policy.isProtectedUser(hit.owner)) return false;
-  return true;
+  return isIndexableOwner(policy, hit.owner, hit.driveId, hit.webUrl, hit.path);
 }
 
 export async function discoverSharePointSite(
@@ -157,6 +165,28 @@ export async function discoverSharePointSite(
   }
 }
 
+export async function discoverTeamSites(graph: GraphClient): Promise<GraphSite[]> {
+  const page = await graph.get<{
+    value?: Array<{ id: string; displayName?: string; resourceProvisioningOptions?: string[] }>;
+  }>("/groups?$select=id,displayName,groupTypes,resourceProvisioningOptions&$top=50");
+  const sites: GraphSite[] = [];
+  const seen = new Set<string>();
+  for (const group of page.value ?? []) {
+    try {
+      const site = await graph.get<GraphSite>(
+        `/groups/${group.id}/sites/root?$select=id,displayName,name,webUrl`
+      );
+      if (site.id && !seen.has(site.id)) {
+        seen.add(site.id);
+        sites.push(site);
+      }
+    } catch {
+      /* group has no site or Sites.Selected blocks it */
+    }
+  }
+  return sites;
+}
+
 export async function listSiteDrives(graph: GraphClient, siteId: string): Promise<DriveInfo[]> {
   const drives = await graph.getAll<GraphDrive>(
     `/sites/${siteId}/drives?$select=id,name,driveType,webUrl,owner`,
@@ -169,8 +199,11 @@ export async function listSiteDrives(graph: GraphClient, siteId: string): Promis
     webUrl: drive.webUrl ?? null,
     owner: ownerFrom(drive.owner),
     sourceType: "sharepoint",
+    siteId,
   }));
 }
+
+export { allowHit, graphSearchDriveItems };
 
 export async function listEligibleOneDrives(
   graph: GraphClient,
@@ -213,39 +246,62 @@ export async function listEligibleOneDrives(
   return { eligible, excluded };
 }
 
-async function searchDrive(
+async function graphSearchDriveItems(
   graph: GraphClient,
-  drive: DriveInfo,
   query: string,
   policy: AccessPolicy
-): Promise<FileHit[]> {
-  if (!allowHit(policy, {
-    id: "",
-    name: "",
-    webUrl: null,
-    size: null,
-    mimeType: null,
-    lastModifiedDateTime: null,
-    folder: false,
-    sourceType: drive.sourceType,
-    driveId: drive.id,
-    siteId: null,
-    owner: drive.owner,
-    path: null,
-    provenance: "",
-  })) {
-    return [];
+): Promise<{ hits: FileHit[]; error?: string; region?: string }> {
+  for (const region of ["GBR"]) {
+    try {
+      const payload = await graph.post<{
+        value?: Array<{
+          hitsContainers?: Array<{
+            hits?: Array<{
+              resource?: GraphItem & {
+                remoteItem?: { id?: string };
+                parentReference?: GraphItem["parentReference"];
+              };
+            }>;
+          }>;
+        }>;
+      }>("/search/query", {
+        requests: [
+          {
+            entityTypes: ["driveItem"],
+            query: { queryString: buildGraphKeywordQuery(query) },
+            from: 0,
+            size: 25,
+            region,
+          },
+        ],
+      });
+      const hits: FileHit[] = [];
+      for (const container of payload.value ?? []) {
+        for (const hit of container.hitsContainers ?? []) {
+          for (const row of hit.hits ?? []) {
+            const item = row.resource;
+            if (!item?.id) continue;
+            if (item.webUrl?.includes("aka.ms/")) continue;
+            const sourceType: FileSourceType = item.webUrl?.includes("-my.sharepoint.com")
+              ? "onedrive"
+              : "sharepoint";
+            const mapped = toHit(
+              { ...item, name: item.name ?? item.id },
+              sourceType,
+              item.parentReference?.siteId ?? null,
+              ownerFrom(item.createdBy)
+            );
+            if (mapped && allowHit(policy, mapped) && !mapped.folder) hits.push(mapped);
+          }
+        }
+      }
+      return { hits, region };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (region === "EUR") return { hits: [], error: message };
+    }
   }
-  try {
-    const page = await graph.get<{ value?: GraphItem[] }>(
-      `/drives/${drive.id}/root/search(q='${encodeURIComponent(query).replace(/'/g, "''")}')?$top=15`
-    );
-    return (page.value ?? [])
-      .map((item) => toHit(item, drive.sourceType, null, drive.owner))
-      .filter((hit): hit is FileHit => Boolean(hit && allowHit(policy, hit)));
-  } catch {
-    return [];
-  }
+  return { hits: [] };
 }
 
 export async function searchFiles(
@@ -277,10 +333,8 @@ export async function searchFiles(
   ];
 
   if (query) {
-    for (const drive of drives.slice(0, 20)) {
-      const hits = await searchDrive(graph, drive, query, policy);
-      results.push(...hits);
-    }
+    const graphHits = await graphSearchDriveItems(graph, query, policy);
+    results.push(...graphHits.hits);
   } else {
     for (const drive of drives.slice(0, 8)) {
       try {

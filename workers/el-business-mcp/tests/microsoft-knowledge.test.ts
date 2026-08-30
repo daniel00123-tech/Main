@@ -58,5 +58,14 @@ describe("knowledge index exclusion", () => {
         })
       )
     ).toBe(false);
+    expect(
+      assertIndexableFile(
+        access,
+        hit({
+          webUrl:
+            "https://elvexpropertyservicesltd-my.sharepoint.com/personal/ella_elvexpropertyservices_com/Documents/notes.docx",
+        })
+      )
+    ).toBe(false);
   });
 });

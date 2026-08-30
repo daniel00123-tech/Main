@@ -101,6 +101,26 @@ export class AccessPolicy {
     return Boolean(driveId && this.protectedDriveIds.has(driveId));
   }
 
+  /**
+   * Defence in depth for Graph search hits that omit owner or driveId.
+   * Matches OneDrive personal-site URL/path tokens for resolved protected users.
+   */
+  isProtectedLocation(webUrl?: string | null, path?: string | null): boolean {
+    const hay = `${webUrl ?? ""}\n${path ?? ""}`.toLowerCase();
+    if (!hay.trim()) return false;
+    for (const user of this.protectedUsers.values()) {
+      if (user.driveId && hay.includes(user.driveId.toLowerCase())) return true;
+      const emails = [user.mail, user.userPrincipalName].filter(Boolean).map((value) => value!.toLowerCase());
+      for (const email of emails) {
+        const local = email.split("@")[0]?.replace(/[^a-z0-9]+/g, "_");
+        if (local && (hay.includes(`/personal/${local}_`) || hay.includes(`/personal/${local}/`))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   assertDriveAllowed(driveId: string, owner?: Parameters<AccessPolicy["isProtectedUser"]>[0]): void {
     if (this.isProtectedDrive(driveId) || (owner && this.isProtectedUser(owner))) {
       throw new ElMicrosoftError(
