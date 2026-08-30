@@ -4,7 +4,11 @@ import {
   issueMcpAccessToken,
   looksLikeJwt,
   isInfraServiceToken,
+  mcpOauthWwwAuthenticate,
   oauthAuthorizationServerMetadata,
+  oauthProtectedResourceMetadata,
+  oauthProtectedResourceMetadataUrl,
+  openidConfiguration,
   verifyMcpAccessToken,
 } from "./mcp-oauth";
 
@@ -66,7 +70,28 @@ describe("INFRA MCP OAuth tokens", () => {
     const meta = oauthAuthorizationServerMetadata(ISSUER);
     expect(meta.authorization_endpoint).toBe(`${ISSUER}/oauth/authorize`);
     expect(meta.token_endpoint).toBe(`${ISSUER}/oauth/token`);
+    expect(meta.registration_endpoint).toBe(`${ISSUER}/oauth/register`);
     expect(meta.code_challenge_methods_supported).toContain("S256");
+    expect(meta.code_challenge_methods_supported).not.toContain("plain");
+    expect(meta.resource_indicators_supported).toBe(true);
     expect(JSON.stringify(meta)).not.toMatch(/login\.microsoftonline|entra/i);
+    expect(openidConfiguration(ISSUER).issuer).toBe(ISSUER);
+  });
+
+  it("advertises RFC 9728 protected resource metadata for the gateway MCP URL", () => {
+    const prm = oauthProtectedResourceMetadata(ISSUER, AUD);
+    expect(prm.resource).toBe(AUD);
+    expect(prm.authorization_servers).toEqual([ISSUER]);
+    expect(prm.scopes_supported).toContain("mcp");
+    expect(oauthProtectedResourceMetadataUrl(ISSUER, AUD)).toBe(
+      `${ISSUER}/.well-known/oauth-protected-resource/api/gateway/v1/mcp`,
+    );
+  });
+
+  it("issues a ChatGPT-compatible 401 challenge without a service-token hint", () => {
+    const header = mcpOauthWwwAuthenticate(ISSUER, AUD);
+    expect(header).toContain(`resource_metadata="${ISSUER}/.well-known/oauth-protected-resource/api/gateway/v1/mcp"`);
+    expect(header).toContain('scope="mcp"');
+    expect(header).not.toMatch(/invalid_token|service token/i);
   });
 });

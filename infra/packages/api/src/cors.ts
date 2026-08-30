@@ -40,7 +40,7 @@ export function createCorsMiddleware() {
     },
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: MCP_ALLOW_HEADERS,
-    exposeHeaders: ["Mcp-Session-Id"],
+    exposeHeaders: ["Mcp-Session-Id", "WWW-Authenticate"],
     credentials: true,
   });
 }

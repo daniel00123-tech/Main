@@ -17,6 +17,7 @@ import {
   oauthAuthorizationServerMetadata,
   oauthIssuer,
   oauthProtectedResourceMetadata,
+  openidConfiguration,
   recordAccessJti,
   redirectUriAllowed,
   registerOauthClient,
@@ -24,7 +25,6 @@ import {
 } from "../auth/mcp-oauth";
 import { getCompanyById, getCompanyBySlug } from "../services/control-plane";
 import {
-  infraBrowserPublicBase,
   infraBrowserPublicBase,
   infraMcpGatewayUrl,
 } from "../services/public-urls";
@@ -80,27 +80,54 @@ async function sessionFromRequest(env: Env, request: Request) {
   return session;
 }
 
-oauth.get("/.well-known/oauth-authorization-server", (c) => {
-  const issuer = issuerFrom(c.env, c.req.raw);
-  return c.json(oauthAuthorizationServerMetadata(issuer), 200, {
+function metadataHeaders(): Record<string, string> {
+  return {
     "cache-control": "public, max-age=300",
-  });
+    "access-control-allow-origin": "*",
+  };
+}
+
+function authorizationServerDocument(c: { env: Env; req: { raw: Request; url: string } }) {
+  const issuer = issuerFrom(c.env, c.req.raw);
+  return oauthAuthorizationServerMetadata(issuer);
+}
+
+function protectedResourceDocument(c: { env: Env; req: { raw: Request; url: string } }) {
+  const issuer = issuerFrom(c.env, c.req.raw);
+  const resource = infraMcpGatewayUrl(c.env, c.req.url, c.req.raw);
+  return oauthProtectedResourceMetadata(issuer, resource);
+}
+
+oauth.get("/.well-known/oauth-authorization-server", (c) => {
+  return c.json(authorizationServerDocument(c), 200, metadataHeaders());
+});
+
+oauth.get("/.well-known/openid-configuration", (c) => {
+  return c.json(openidConfiguration(issuerFrom(c.env, c.req.raw)), 200, metadataHeaders());
 });
 
 oauth.get("/.well-known/oauth-protected-resource", (c) => {
-  const issuer = issuerFrom(c.env, c.req.raw);
-  const resource = infraMcpGatewayUrl(c.env, c.req.url, c.req.raw);
-  return c.json(oauthProtectedResourceMetadata(issuer, resource), 200, {
-    "cache-control": "public, max-age=300",
-  });
+  return c.json(protectedResourceDocument(c), 200, metadataHeaders());
 });
 
 oauth.get("/.well-known/oauth-protected-resource/api/gateway/v1/mcp", (c) => {
-  const issuer = issuerFrom(c.env, c.req.raw);
-  const resource = infraMcpGatewayUrl(c.env, c.req.url, c.req.raw);
-  return c.json(oauthProtectedResourceMetadata(issuer, resource), 200, {
-    "cache-control": "public, max-age=300",
-  });
+  return c.json(protectedResourceDocument(c), 200, metadataHeaders());
+});
+
+oauth.get("/api/.well-known/oauth-authorization-server", (c) => {
+  return c.json(authorizationServerDocument(c), 200, metadataHeaders());
+});
+
+oauth.get("/api/.well-known/openid-configuration", (c) => {
+  return c.json(openidConfiguration(issuerFrom(c.env, c.req.raw)), 200, metadataHeaders());
+});
+
+oauth.get("/api/.well-known/oauth-protected-resource", (c) => {
+  return c.json(protectedResourceDocument(c), 200, metadataHeaders());
+});
+
+oauth.get("/api/gateway/v1/mcp/.well-known/oauth-protected-resource", (c) => {
+  return c.json(protectedResourceDocument(c), 200, metadataHeaders());
 });
 
 oauth.post("/oauth/register", async (c) => {

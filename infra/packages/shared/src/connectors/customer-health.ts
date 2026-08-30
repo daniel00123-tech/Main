@@ -1,11 +1,11 @@
 /** Customer-facing connector health for portal overview surfaces. */
 
 export type ConnectorCustomerHealthLabel =
-  | "Healthy"
-  | "Attention needed"
+  | "Connected"
+  | "Needs attention"
   | "Disconnected"
-  | "Checking…"
-  | "Error";
+  | "Authorisation expired"
+  | "Configuration required";
 
 export type ConnectorHealthSignals = {
   status: string;
@@ -20,6 +20,7 @@ export type ConnectorOverviewCopyInput = {
   name: string;
   displayAccountName?: string | null;
   companyName?: string | null;
+  lastVerifiedAt?: string | null;
 };
 
 const OVERVIEW_DESCRIPTIONS: Record<string, string> = {
@@ -35,7 +36,7 @@ const OVERVIEW_DESCRIPTIONS: Record<string, string> = {
 
 /**
  * Maps connector instance signals to a compact health badge for customer UI.
- * Never surfaces lifecycle labels such as "Configured" or "Connected".
+ * States are product language — never "Configured" or raw lifecycle names.
  */
 export function deriveConnectorCustomerHealth(
   instance: ConnectorHealthSignals,
@@ -46,57 +47,56 @@ export function deriveConnectorCustomerHealth(
   const sync = normalise(instance.syncHealth);
   const provider = normalise(instance.providerHealth);
 
+  if (auth === "auth_expired" || auth === "expired" || auth === "rotation_required") {
+    return { badgeStatus: "warning", label: "Authorisation expired" };
+  }
+
   if (
     health === "unhealthy" ||
     provider === "unhealthy" ||
     provider === "unavailable" ||
     status === "error" ||
     status === "failed" ||
-    auth === "error"
-  ) {
-    return { badgeStatus: "error", label: "Error" };
-  }
-
-  if (
+    auth === "error" ||
     health === "degraded" ||
     provider === "degraded" ||
     status === "degraded" ||
-    auth === "auth_expired" ||
-    auth === "rotation_required" ||
-    auth === "expired" ||
     sync === "failed"
   ) {
-    return { badgeStatus: "warning", label: "Attention needed" };
-  }
-
-  if (health === "healthy" || provider === "healthy" || status === "healthy") {
-    return { badgeStatus: "healthy", label: "Healthy" };
+    return { badgeStatus: "warning", label: "Needs attention" };
   }
 
   if (
-    status === "draft" ||
-    auth === "revoked" ||
+    health === "healthy" ||
+    provider === "healthy" ||
+    status === "healthy" ||
+    (auth === "connected" && (status === "configured" || status === "healthy" || configuredEnough(status)))
+  ) {
+    return { badgeStatus: "healthy", label: "Connected" };
+  }
+
+  if (
     status === "disabled" ||
-    auth === "not_configured" ||
-    status === "not_configured" ||
-    auth === "credentials_required"
+    auth === "revoked"
   ) {
     return { badgeStatus: "not_configured", label: "Disconnected" };
   }
 
-  if (auth === "configuring" || status === "syncing" || sync === "running") {
-    return { badgeStatus: "pending", label: "Checking…" };
+  if (
+    status === "draft" ||
+    auth === "not_configured" ||
+    status === "not_configured" ||
+    auth === "credentials_required" ||
+    status === "credentials_required"
+  ) {
+    return { badgeStatus: "not_configured", label: "Configuration required" };
   }
 
-  if (auth === "connected" && health === "unknown" && !provider) {
-    return { badgeStatus: "pending", label: "Checking…" };
-  }
+  return { badgeStatus: "warning", label: "Needs attention" };
+}
 
-  if (status === "configured") {
-    return { badgeStatus: "pending", label: "Checking…" };
-  }
-
-  return { badgeStatus: "warning", label: "Attention needed" };
+function configuredEnough(status: string): boolean {
+  return status === "configured" || status === "active";
 }
 
 export function connectorOverviewDescription(connectorDefinitionId: string): string {

@@ -22,6 +22,8 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # CADDINGTON_MCP_AUTH_TOKEN (referenced by mcp_environments.auth_secret_ref)
 # HT_MCP_AUTH_TOKEN (downstream auth for existing ht-business-mcp — same value as that Worker's MCP_AUTH_TOKEN)
 # EL_MCP_AUTH_TOKEN (downstream auth for existing el-business-mcp — same value as that Worker's MCP_AUTH_TOKEN)
+# EL_BUSINESS_MCP_ADMIN_TOKEN (matches el-business-mcp EL_ADMIN_TOKEN for /admin/rbac/sync-user)
+# EL_RBAC_IDENTITY_SECRET (HMAC for signed EL identity headers + user sync; same value on el-business-mcp)
 # STRIPE_SECRET_KEY (optional — prepaid top-ups)
 # STRIPE_WEBHOOK_SECRET (optional — webhook verification)
 # INFRA_CREDENTIAL_WRAPPING_KEY (32-byte AES-256 wrapping key; never put in D1)

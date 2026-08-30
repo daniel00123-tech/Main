@@ -1152,10 +1152,24 @@ export const api = {
         tokenPrefix?: string | null;
         requestCount?: number;
         channelEnabled?: boolean;
+        companyApproved?: boolean;
+        approvedBy?: string | null;
+        approvedAt?: string | null;
+        connectedUserCount?: number;
+        canApprove?: boolean;
+        canConnect?: boolean;
+        canDisableCompany?: boolean;
+        authorizationUrl?: string;
         authMode?: string;
         viewerCanManageChannel?: boolean;
         viewerCanConnect?: boolean;
         userConnectionStatus?: string;
+        userConnection?: {
+          status: string;
+          connectedAs: string | null;
+          connectedAt: string | null;
+          lastSeen: string | null;
+        } | null;
         authorizationServer?: string;
         oauthAuthorizeUrl?: string;
       }>

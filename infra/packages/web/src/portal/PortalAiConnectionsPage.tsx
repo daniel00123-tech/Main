@@ -137,7 +137,7 @@ export default function PortalAiConnectionsPage() {
     setBusyType(`revoke-${clientType}`);
     setLoadError(null);
     try {
-      await api.revokeAiClient(company.slug, clientType);
+      await api.revokeOwnAiClient(company.slug, clientType);
       setTokenReveal(null);
       setManageType(null);
       toast(`${humanClient(clientType)} disconnected`);
@@ -159,10 +159,13 @@ export default function PortalAiConnectionsPage() {
     }
   }
 
-  const connectedCount = ordered.filter((c) => c.tokenStatus === "Active").length;
+  const connectedCount = ordered.filter(
+    (c) => c.userConnectionStatus === "connected" || c.tokenStatus === "Active",
+  ).length;
   const needsAttention = ordered.some(
     (c) => c.tokenStatus === "Revoked" || c.status === "error",
   );
+  const canManageAny = ordered.some((c) => c.viewerCanManageChannel || c.canApprove);
 
   if (loading || !company) return <LoadingState label="Loading AI access…" />;
   if (error) {
@@ -173,7 +176,11 @@ export default function PortalAiConnectionsPage() {
     <div className="portal-page">
       <PortalPageHeader
         title="AI Access"
-        description="Connect ChatGPT or Claude to your business systems securely."
+        description={
+          canManageAny
+            ? "Approve ChatGPT or Claude for the company. Employees then connect their own INFRA identity — no shared token and no Microsoft login."
+            : "Connect your own ChatGPT account through INFRA. A company administrator must approve the channel first."
+        }
       />
 
       {loadError ? <Notice tone="danger">{loadError}</Notice> : null}
@@ -266,6 +273,12 @@ export default function PortalAiConnectionsPage() {
                     <h3 style={{ margin: 0 }}>{conn.displayName}</h3>
                     <p className="muted small" style={{ margin: "4px 0 0" }}>
                       {humanConnectorPurpose(conn.clientType)}
+                      {conn.viewerCanManageChannel && typeof conn.connectedUserCount === "number"
+                        ? ` · ${conn.connectedUserCount} user${conn.connectedUserCount === 1 ? "" : "s"} connected`
+                        : ""}
+                      {conn.companyApproved && conn.approvedAt
+                        ? ` · Approved ${formatRelativeTime(conn.approvedAt)}`
+                        : ""}
                     </p>
                   </div>
                   <StatusBadge status={status} label={label} />

@@ -74,11 +74,21 @@ export function oauthAuthorizationServerMetadata(issuer: string) {
     revocation_endpoint: `${issuer}/oauth/revoke`,
     scopes_supported: ["mcp"],
     response_types_supported: ["code"],
+    response_modes_supported: ["query"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
     code_challenge_methods_supported: ["S256"],
+    resource_indicators_supported: true,
     service_documentation:
       "INFRA issues user-bound MCP credentials. Microsoft is not the identity provider.",
+  };
+}
+
+/** RFC 8414 / OIDC Discovery fallback used by MCP clients. */
+export function openidConfiguration(issuer: string) {
+  return {
+    ...oauthAuthorizationServerMetadata(issuer),
+    subject_types_supported: ["public"],
   };
 }
 
@@ -88,7 +98,33 @@ export function oauthProtectedResourceMetadata(issuer: string, resource: string)
     authorization_servers: [issuer],
     scopes_supported: ["mcp"],
     bearer_methods_supported: ["header"],
+    resource_documentation:
+      "ChatGPT must use INFRA OAuth. Microsoft is a downstream data connector, not the employee identity provider.",
   };
+}
+
+/** RFC 9728 path-inserted PRM URL for a non-root MCP resource. */
+export function oauthProtectedResourceMetadataUrl(issuer: string, resource: string): string {
+  const issuerBase = issuer.replace(/\/$/, "");
+  try {
+    const path = new URL(resource).pathname.replace(/\/+$/, "");
+    if (path && path !== "/") {
+      return `${issuerBase}/.well-known/oauth-protected-resource${path}`;
+    }
+  } catch {
+    /* fall through */
+  }
+  return `${issuerBase}/.well-known/oauth-protected-resource`;
+}
+
+/**
+ * 401 challenge for an unauthenticated MCP request.
+ * Do not set error=invalid_token here — that means a presented token failed,
+ * and ChatGPT treats a service-token-only challenge as "does not implement OAuth".
+ */
+export function mcpOauthWwwAuthenticate(issuer: string, resource: string): string {
+  const metadata = oauthProtectedResourceMetadataUrl(issuer, resource);
+  return `Bearer realm="infra-mcp", scope="mcp", resource_metadata="${metadata}"`;
 }
 
 export async function issueMcpAccessToken(
@@ -548,6 +584,18 @@ export async function isAiChannelEnabled(
       .first();
     if (!row) return false;
     if (Number(row.channel_enabled ?? 0) === 1) return true;
+    try {
+      const approved = await db
+        .prepare(
+          `SELECT approved FROM ai_client_connections
+           WHERE company_id = ? AND client_type = ?`,
+        )
+        .bind(companyId, clientType)
+        .first();
+      if (Number(approved?.approved ?? 0) === 1) return true;
+    } catch {
+      /* approved column is added in 0040 */
+    }
     return String(row.status) === "connected";
   } catch {
     const row = await db
@@ -566,15 +614,51 @@ export async function setAiChannelEnabled(
   companyId: string,
   clientType: string,
   enabled: boolean,
+  actorEmail?: string | null,
 ): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE ai_client_connections
-       SET channel_enabled = ?, updated_at = ?
-       WHERE company_id = ? AND client_type = ?`,
-    )
-    .bind(enabled ? 1 : 0, nowIso(), companyId, clientType)
-    .run();
+  const now = nowIso();
+  try {
+    await db
+      .prepare(
+        `UPDATE ai_client_connections
+         SET channel_enabled = ?,
+             approved = ?,
+             approved_by = ?,
+             approved_at = ?,
+             updated_at = ?
+         WHERE company_id = ? AND client_type = ?`,
+      )
+      .bind(
+        enabled ? 1 : 0,
+        enabled ? 1 : 0,
+        enabled ? actorEmail ?? null : null,
+        enabled ? now : null,
+        now,
+        companyId,
+        clientType,
+      )
+      .run();
+  } catch {
+    await db
+      .prepare(
+        `UPDATE ai_client_connections
+         SET channel_enabled = ?, updated_at = ?
+         WHERE company_id = ? AND client_type = ?`,
+      )
+      .bind(enabled ? 1 : 0, now, companyId, clientType)
+      .run();
+  }
+
+  if (!enabled) {
+    await db
+      .prepare(
+        `UPDATE ai_user_connections
+         SET status = 'revoked', updated_at = ?
+         WHERE company_id = ? AND client_type = ? AND status = 'connected'`,
+      )
+      .bind(now, companyId, clientType)
+      .run();
+  }
 }
 
 export function normalizeOauthChannel(clientType: string | null | undefined): string {

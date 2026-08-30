@@ -29,7 +29,8 @@ import {
 } from "./service-identities";
 import { newId, nowIso } from "../db/mappers";
 import { userHasCompanyAccess } from "../permissions/service";
-import { infraBrowserPublicBase } from "./public-urls";
+import { mcpOauthWwwAuthenticate } from "../auth/mcp-oauth";
+import { infraBrowserPublicBase, infraMcpGatewayUrl } from "./public-urls";
 import { publicToolErrorMessage } from "./public-errors";
 import {
   mapFetchArgumentsForCompanyMcp,
@@ -1068,7 +1069,10 @@ export async function handleInfraMcpHttp(
       sessionId,
       wwwAuthenticate:
         actorResult.status === 401
-          ? `Bearer realm="infra-mcp", resource_metadata="${infraBrowserPublicBase(env, request.url, request)}/.well-known/oauth-protected-resource"`
+          ? mcpOauthWwwAuthenticate(
+              infraBrowserPublicBase(env, request.url, request),
+              infraMcpGatewayUrl(env, request.url, request),
+            )
           : undefined,
     });
   }

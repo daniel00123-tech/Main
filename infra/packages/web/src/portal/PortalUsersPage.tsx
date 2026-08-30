@@ -44,23 +44,29 @@ export default function PortalUsersPage() {
   const [resetResult, setResetResult] = useState<string | null>(null);
   const [tab, setTab] = useState("users");
   const [invitations, setInvitations] = useState<Array<Record<string, unknown>>>([]);
+  const [elvexRbac, setElvexRbac] = useState<Awaited<ReturnType<typeof api.getElvexRbac>> | null>(null);
   const isMobile = useIsMobile();
 
+  const isElvex = company?.slug === "el-business" || company?.id === "co_el";
   const canManage =
     user?.isPlatformAdmin ||
     membership?.role === "company_admin" ||
     membership?.role === "director";
+  const canManageRoles = Boolean(user?.isPlatformAdmin || membership?.role === "company_admin");
 
   async function refresh() {
     if (!company) return;
     const [users, rolePresets, inviteList] = await Promise.all([
       api.getUsers(company.id),
-      api.getRolePresets(),
+      api.getRolePresets(isElvex ? "el-business" : undefined),
       canManage ? api.getInvitations(company.slug).catch(() => ({ invitations: [] })) : Promise.resolve({ invitations: [] }),
     ]);
     setTeam(users);
     setRoles(rolePresets);
     setInvitations(inviteList.invitations);
+    if (isElvex && canManage) {
+      setElvexRbac(await api.getElvexRbac(company.slug).catch(() => null));
+    }
   }
 
   useEffect(() => {
@@ -248,7 +254,7 @@ export default function PortalUsersPage() {
         title="Users"
         description={`${activeCount} active · People who can access ${company.name}`}
         actions={
-          canManage ? (
+          (isElvex ? canManageRoles : canManage) ? (
             <Button type="button" variant="primary" size="sm" onClick={() => setInviteOpen(true)}>
               <UserPlus size={16} style={{ marginRight: 6 }} aria-hidden />
               Invite user
@@ -266,6 +272,13 @@ export default function PortalUsersPage() {
             ? [
                 { id: "permissions", label: "Permissions" },
                 { id: "invitations", label: "Invitations", count: invitations.length },
+                ...(isElvex
+                  ? [
+                      { id: "roles", label: "Roles" },
+                      { id: "knowledge", label: "Knowledge" },
+                      { id: "protected", label: "Protected users" },
+                    ]
+                  : []),
               ]
             : []),
         ]}
@@ -359,7 +372,7 @@ export default function PortalUsersPage() {
                 render: (row) => {
                   const member = row.member as InfraUser;
                   const memberRole = String(row.memberRole);
-                  if (canManage && member.id !== user.userId) {
+                  if (canManageRoles && member.id !== user.userId) {
                     return (
                       <select
                         className="input"
@@ -412,6 +425,67 @@ export default function PortalUsersPage() {
 
       {tab === "permissions" && canManage ? (
         <PermissionsEditor companySlug={company.slug} roles={roles} />
+      ) : null}
+
+      {tab === "roles" && canManage && elvexRbac ? (
+        <SectionCard title="Canonical Elvex roles">
+          <p className="muted small">{elvexRbac.identityLimitation}</p>
+          <div className="table-wrap" style={{ marginTop: 16 }}>
+            <table className="table compact">
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Read</th>
+                  <th>Write / manage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {elvexRbac.roles.map((item) => (
+                  <tr key={item.role}>
+                    <td>{item.label}</td>
+                    <td className="small">
+                      {item.capabilities.filter((c) => c.access === "read").map((c) => c.capability).join(", ") || "—"}
+                    </td>
+                    <td className="small">
+                      {item.capabilities.filter((c) => c.access === "write").map((c) => c.capability).join(", ") || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      ) : null}
+
+      {tab === "knowledge" && canManage && elvexRbac ? (
+        <SectionCard title="Knowledge classification">
+          <p className="muted small">
+            Explicit and directory classification override automated keyword flags. Restricted management is
+            director and Company Admin only. Finance is not restricted management.
+          </p>
+          <ul style={{ marginTop: 12 }}>
+            {elvexRbac.classifications.map((item) => (
+              <li key={item.id}>
+                <strong>{item.label}</strong> <span className="muted">({item.id})</span>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      ) : null}
+
+      {tab === "protected" && canManage && elvexRbac ? (
+        <SectionCard title="Protected Microsoft users">
+          <p className="muted small">
+            Owner-level deny remains in force. RBAC cannot grant access to these drives. Secrets are not shown.
+          </p>
+          <ul style={{ marginTop: 12 }}>
+            {elvexRbac.protectedMicrosoftUsers.map((item) => (
+              <li key={item.hint}>
+                {item.label} <span className="muted">hint: {item.hint}</span>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
       ) : null}
 
       {tab === "invitations" && canManage ? (
