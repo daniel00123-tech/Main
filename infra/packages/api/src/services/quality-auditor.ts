@@ -72,7 +72,18 @@ export type QualityCategory =
   | "whatsapp_unsolicited_pii"
   | "whatsapp_weak_result_confident"
   | "whatsapp_negative_result_feedback"
-  | "whatsapp_topic_correction";
+  | "whatsapp_topic_correction"
+  | "intelligence_malformed_model_response"
+  | "intelligence_fallback"
+  | "intelligence_wrong_tool"
+  | "intelligence_user_correction"
+  | "intelligence_unsupported_answer"
+  | "intelligence_irrelevant_result"
+  | "intelligence_repeated_answer"
+  | "intelligence_lost_context"
+  | "intelligence_unnecessary_company_wide_search"
+  | "intelligence_bad_clarification"
+  | "intelligence_missing_clarification";
 
 export interface QualitySignal {
   category: QualityCategory;
@@ -766,6 +777,33 @@ function detectWhatsAppUxSignals(input: QualityAuditInput): QualitySignal[] {
       confidence: 0.85,
       evidence: { precedingAnswerText: meta.precedingAnswerText ?? null },
       suggestedInvestigation: "User corrected the topic after an Infra answer.",
+    });
+  }
+  const intelligenceFlags = Array.isArray(meta.intelligenceQualityFlags)
+    ? meta.intelligenceQualityFlags.map((flag) => String(flag))
+    : [];
+  const flagMap: Record<string, QualityCategory> = {
+    malformed_model_response: "intelligence_malformed_model_response",
+    fallback: "intelligence_fallback",
+    wrong_tool: "intelligence_wrong_tool",
+    user_correction: "intelligence_user_correction",
+    unsupported_answer: "intelligence_unsupported_answer",
+    irrelevant_result: "intelligence_irrelevant_result",
+    repeated_answer: "intelligence_repeated_answer",
+    lost_context: "intelligence_lost_context",
+    unnecessary_company_wide_search: "intelligence_unnecessary_company_wide_search",
+    bad_clarification: "intelligence_bad_clarification",
+    missing_clarification: "intelligence_missing_clarification",
+  };
+  for (const flag of intelligenceFlags) {
+    const category = flagMap[flag];
+    if (!category) continue;
+    signals.push({
+      category,
+      severity: flag === "user_correction" || flag === "unnecessary_company_wide_search" ? "high" : "medium",
+      confidence: 0.8,
+      evidence: { flag, model: meta.intelligenceModel ?? null },
+      suggestedInvestigation: `Conversational intelligence flagged ${flag}.`,
     });
   }
   return signals;

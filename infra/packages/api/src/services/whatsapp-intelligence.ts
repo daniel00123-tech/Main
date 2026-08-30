@@ -4,6 +4,7 @@ import { executeGatewayRequest } from "./gateway";
 import {
   GATEWAY_TOOL_ALIASES,
   buildConversationState,
+  permittedToolsForConnectors,
   runIntelligenceTurn,
   type IntelligenceCompleter,
   type IntelligenceDocumentRef,
@@ -12,6 +13,7 @@ import {
   type IntelligenceToolResult,
   type IntelligenceTurnResult,
 } from "./intelligence/index";
+import { collectQualityFlags } from "./intelligence/quality.js";
 import {
   COMPANY_KNOWLEDGE_READ_TOOL,
   COMPANY_KNOWLEDGE_SEARCH_TOOL,
@@ -40,7 +42,7 @@ import {
 } from "./whatsapp-entities";
 import { identityFromMetadata, lookupKnowledgeSourceUrl, persistDiscoveredSourceUrl } from "./whatsapp-source-urls";
 import { FETCH_TIMEOUT_MS, KNOWLEDGE_SEARCH_TIMEOUT_MS, MCP_TIMEOUT_MS, withBoundedTimeout } from "./whatsapp-timeouts";
-import { isNegativeResultFeedback, type WhatsAppPlan } from "./whatsapp-plan";
+import { isNegativeResultFeedback, looksLikeSearchOtherDocs, type WhatsAppPlan } from "./whatsapp-plan";
 import type { WhatsAppTurn } from "./whatsapp-context";
 
 const ALLOWED_GATEWAY_TOOLS = new Set([
@@ -58,6 +60,7 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_search_contacts",
   "xero_list_overdue_invoices",
   "xero_aged_receivables",
+  "outlook_search_mailbox",
 ]);
 
 export type WhatsAppIntelligenceAnswer = {
@@ -89,69 +92,17 @@ export async function executeWhatsAppIntelligence(
     waitUntil?: (promise: Promise<unknown>) => void;
     buttonAction?: string | null;
     completer?: IntelligenceCompleter;
+    connectors?: string[];
   },
 ): Promise<WhatsAppIntelligenceAnswer> {
   const started = Date.now();
+  const buttonAction =
+    input.buttonAction ?? (looksLikeSearchOtherDocs(input.originalText) ? "search_other_docs" : null);
   const originalText =
-    input.buttonAction === "search_other_docs"
+    buttonAction === "search_other_docs"
       ? input.memory.lastUserQuestion || input.memory.lastSearchQuery || input.originalText
       : input.originalText;
-  if (isNegativeResultFeedback(input.originalText) && input.buttonAction !== "search_other_docs") {
-    const reply =
-      "Sorry that wasn’t what you needed. I have noted the feedback. Ask about the current document, or name a different one.";
-    return {
-      reply,
-      toolName: null,
-      outcome: "answered",
-      latencyMs: Date.now() - started,
-      entities: mergeEntityMemory(input.memory, { lastAnswerText: reply, lastUserQuestion: input.originalText }),
-      groundedConfidence: "partial",
-      groundedScoped: Boolean(input.memory.lastDocument),
-      synthesisProvider: "none",
-      moreDetailNovel: false,
-      repeatedExcerpt: false,
-      unsolicitedPii: false,
-      malformedExtraction: false,
-      intelligence: {
-        kind: "answer",
-        text: reply,
-        confidence: "partial",
-        offerSearchOther: true,
-        toolCalls: [],
-        currentDocument: documentRefFromEntity(input.memory.lastDocument),
-        evidenceDocumentIds: input.memory.lastDocument?.id ? [input.memory.lastDocument.id] : [],
-        clarification: false,
-        citeSource: false,
-        modelRounds: [],
-        totalModelMs: 0,
-        totalToolMs: 0,
-        provider: "none",
-        model: null,
-        estimatedCostUsd: 0,
-      },
-      plan: planFromIntelligence(
-        {
-          kind: "answer",
-          text: reply,
-          confidence: "partial",
-          offerSearchOther: true,
-          toolCalls: [],
-          currentDocument: documentRefFromEntity(input.memory.lastDocument),
-          evidenceDocumentIds: [],
-          clarification: false,
-          citeSource: false,
-          modelRounds: [],
-          totalModelMs: 0,
-          totalToolMs: 0,
-          provider: "none",
-          model: null,
-          estimatedCostUsd: 0,
-        },
-        input.originalText,
-        input.buttonAction,
-      ),
-    };
-  }
+  const userCorrection = isNegativeResultFeedback(input.originalText) && buttonAction !== "search_other_docs";
   const fetchCache = new Map<string, ReturnType<typeof toStandardFetchPayload>>();
   const runtime = createWhatsAppIntelligenceRuntime(env, {
     companyId: input.companyId,
@@ -161,6 +112,8 @@ export async function executeWhatsAppIntelligence(
     memory: input.memory,
     fetchCache,
   });
+  const connectors = input.connectors ?? [];
+  const membership = input.sessionUser.memberships.find((row) => row.companyId === input.companyId);
   const state = buildConversationState({
     userText: originalText,
     currentDocument: documentRefFromEntity(input.memory.lastDocument),
@@ -168,6 +121,13 @@ export async function executeWhatsAppIntelligence(
       .map((doc) => documentRefFromEntity(doc))
       .filter((doc): doc is IntelligenceDocumentRef => Boolean(doc)),
     recentTurns: input.priorTurns,
+    companyId: input.companyId,
+    role: membership?.role ?? null,
+    connectors,
+    permittedTools: permittedToolsForConnectors(connectors),
+    lastToolName: input.memory.lastTool,
+    lastToolSummary: input.memory.lastAnswerText ? input.memory.lastAnswerText.slice(0, 240) : null,
+    userCorrection,
   });
   let result = await runIntelligenceTurn({
     env,
@@ -175,22 +135,38 @@ export async function executeWhatsAppIntelligence(
     state,
     runtime,
     channel: "whatsapp",
-    buttonHint: input.buttonAction ?? null,
+    buttonHint: buttonAction,
     completer: input.completer,
   });
-  if (result.kind === "failed") {
+  if (
+    result.kind === "failed" ||
+    (result.confidence === "none" &&
+      /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|search other)\b/i.test(originalText))
+  ) {
     result = await recoverFailedIntelligenceTurn(
       env,
       runtime,
-      { ...input, originalText },
+      { ...input, originalText, buttonAction },
       result,
       fetchCache,
     );
   }
 
+  result = {
+    ...result,
+    qualityFlags: collectQualityFlags({
+      result,
+      userCorrection,
+      expectedStayOnDocument: Boolean(input.memory.lastDocument && !/\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file))\b/i.test(originalText)),
+      previousAnswer: input.memory.lastAnswerText,
+    }),
+  };
+  if (String(env.INTELLIGENCE_SHADOW_EVAL ?? "").trim() === "1" && input.waitUntil && env.AI) {
+    input.waitUntil(runShadowEval(env, originalText, state, runtime, result).catch(() => undefined));
+  }
   const nextEntities = mergeEntitiesFromIntelligence(input.memory, result, originalText, fetchCache);
   const polished = polishIntelligenceReply(result, nextEntities, originalText);
-  const plan = planFromIntelligence(result, originalText, input.buttonAction);
+  const plan = planFromIntelligence(result, originalText, buttonAction);
   const documentClass = nextEntities.lastDocument
     ? classifyDocument({
         title: nextEntities.lastDocument.title,
@@ -240,9 +216,24 @@ export function planFromIntelligence(
   const fact =
     buttonAction === "more_on_this" || buttonAction === "more_detail"
       ? "detail"
-      : buttonAction === "summarise"
+      : buttonAction === "summarise" || /\bsummaris/i.test(text)
         ? "summary"
         : "answer";
+  if (result.kind === "controlled_action") {
+    return {
+      action: "write_blocked",
+      intent: "write_action",
+      tool: null,
+      query: text,
+      fetch: false,
+      skipTools: true,
+      useMemory: false,
+      needsGuidance: false,
+      clarification: null,
+      fact: null,
+      draftKind: null,
+    };
+  }
   if (result.kind === "fast_path") {
     return {
       action: "chat",
@@ -288,6 +279,9 @@ export function planFromIntelligence(
       draftKind: null,
     };
   }
+  const discovered =
+    result.toolCalls.some((call) => call.name === "search_company_knowledge") &&
+    result.toolCalls.some((call) => call.name === "get_knowledge_document" || call.name === "fetch");
   if (usedXero) {
     return {
       action: "xero",
@@ -303,7 +297,7 @@ export function planFromIntelligence(
       draftKind: null,
     };
   }
-  if (usedDocument && result.currentDocument) {
+  if (usedDocument && result.currentDocument && !discovered) {
     return {
       action: "memory_fact",
       intent: "knowledge_search",
@@ -350,8 +344,11 @@ function polishIntelligenceReply(
     }
   }
   const sourceUrl = firstHttpUrl(entities.lastDocument?.url, result.currentDocument?.url);
-  if ((result.citeSource || result.kind === "answer") && sourceUrl && !/https?:\/\//i.test(text)) {
-    if (result.citeSource) text = `${text}\n${sourceUrl}`;
+  const wantsSource =
+    result.citeSource ||
+    /\b(where did you get|source (url|link)|send me the (link|url)|what('?s| is) the (url|link))\b/i.test(question);
+  if (sourceUrl && wantsSource && !/https?:\/\//i.test(text)) {
+    text = `${text}\n${sourceUrl}`;
   }
   void question;
   return text;
@@ -402,7 +399,29 @@ async function recoverFailedIntelligenceTurn(
   const toolCalls = [...failed.toolCalls];
   let current = failed.currentDocument ?? documentRefFromEntity(input.memory.lastDocument);
   const evidenceDocumentIds = [...failed.evidenceDocumentIds];
-  const broaden = input.buttonAction === "search_other_docs" || !current;
+  if (/\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover)\b/i.test(input.originalText)) {
+    const xero = await runtime.executeTool({ name: "xero_sales_summary", arguments: {} });
+    toolCalls.push(xero);
+    return {
+      ...failed,
+      kind: xero.ok ? "answer" : "failed",
+      text: xero.ok
+        ? summariseXeroEvidence(xero.data)
+        : "I couldn't read Xero just now. Try again in a moment.",
+      confidence: xero.ok ? "partial" : "none",
+      offerSearchOther: false,
+      toolCalls,
+      currentDocument: current,
+      evidenceDocumentIds,
+      clarification: false,
+    };
+  }
+  const broaden =
+    input.buttonAction === "search_other_docs" ||
+    !current ||
+    /\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file)|broaden|search other)\b/i.test(
+      input.originalText,
+    );
   if (broaden) {
     let search = toolCalls.find((call) => call.name === "search_company_knowledge");
     if (!search) {
@@ -440,7 +459,7 @@ async function recoverFailedIntelligenceTurn(
       mode:
         input.buttonAction === "more_on_this" || input.buttonAction === "more_detail"
           ? "more_detail"
-          : input.buttonAction === "summarise"
+          : input.buttonAction === "summarise" || /\bsummaris/i.test(input.originalText)
             ? "summarise"
             : "answer",
       previousAnswer: input.memory.lastAnswerText,
@@ -762,8 +781,50 @@ function gatewayArguments(
   return { ...args };
 }
 
+function summariseXeroEvidence(data: unknown): string {
+  if (!data || typeof data !== "object") return "I have the latest permitted Xero sales figures, but nothing readable came back.";
+  const raw = JSON.stringify(data);
+  const amounts = raw.match(/£\s?[\d,]+(?:\.\d{2})?|[\d,]+\.\d{2}/g)?.slice(0, 4) ?? [];
+  if (amounts.length) {
+    return `From Xero, the figures I can see include ${amounts.join(", ")}. Ask if you want overdue invoices or a named invoice.`;
+  }
+  return "I reached Xero. Ask for overdue invoices, a named invoice, or P&L if you want a specific cut.";
+}
+
 function clipToolData(value: unknown): unknown {
   const raw = JSON.stringify(value ?? null);
   if (raw.length <= 3_500) return value;
   return { preview: raw.slice(0, 3_500), truncated: true };
+}
+
+async function runShadowEval(
+  env: Env,
+  text: string,
+  state: ReturnType<typeof buildConversationState>,
+  _runtime: IntelligenceRuntime,
+  live: IntelligenceTurnResult,
+): Promise<void> {
+  void text;
+  void state;
+  const models = String(env.INTELLIGENCE_SHADOW_MODELS ?? "")
+    .split(",")
+    .map((row) => row.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  if (!models.length || !env.AI) return;
+  for (const model of models) {
+    if (model === live.model) continue;
+    try {
+      await env.AI.run(model, {
+        messages: [
+          { role: "system", content: "Shadow eval only. Reply with one JSON decision. Do not address the user." },
+          { role: "user", content: `Compare-only. Live action was ${live.kind}. User text already answered.` },
+        ],
+        max_tokens: 80,
+        temperature: 0,
+      });
+    } catch {
+      // Shadow never affects the user path.
+    }
+  }
 }
