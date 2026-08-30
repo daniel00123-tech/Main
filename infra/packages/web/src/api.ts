@@ -1175,6 +1175,30 @@ export const api = {
       `/api/companies/${slug}/ai-connections/${clientType}/test`,
       { method: "POST", body: "{}" },
     ),
+  updatePlatformUser: (
+    userId: string,
+    input: {
+      displayName?: string;
+      email?: string;
+      mobile?: string;
+      status?: "active" | "disabled";
+      companyId?: string;
+      role?: CompanyRole;
+    },
+  ) =>
+    fetchJson<{ ok: boolean; userId: string }>(`/api/platform/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  deletePlatformUser: (userId: string) =>
+    fetchJson<{ ok: boolean; userId: string; status: string }>(`/api/platform/users/${userId}`, {
+      method: "DELETE",
+    }),
+  cancelPlatformUserInvitations: (userId: string) =>
+    fetchJson<{ ok: boolean; cancelled: number }>(
+      `/api/platform/users/${userId}/cancel-invitations`,
+      { method: "POST", body: "{}" },
+    ),
   inviteUser: (
     slug: string,
     input: { email: string; displayName: string; role: CompanyRole; mobile?: string },

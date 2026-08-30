@@ -354,6 +354,105 @@ export async function setUserStatus(
   return getUserById(db, userId);
 }
 
+export async function updateUserProfile(
+  db: D1Database,
+  userId: string,
+  input: { displayName?: string; email?: string },
+): Promise<DbUser> {
+  const user = await getUserById(db, userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+  let email = user.email;
+  if (typeof input.email === "string" && input.email.trim()) {
+    email = input.email.trim().toLowerCase();
+    if (email !== user.email) {
+      const collision = await getUserByEmail(db, email);
+      if (collision && collision.id !== userId) {
+        throw new Error("That email is already used by another Infra user");
+      }
+    }
+  }
+  const displayName =
+    typeof input.displayName === "string" && input.displayName.trim()
+      ? input.displayName.trim()
+      : user.displayName;
+  await db
+    .prepare(`UPDATE users SET email = ?, display_name = ?, updated_at = ? WHERE id = ?`)
+    .bind(email, displayName, nowIso(), userId)
+    .run();
+  const updated = await getUserById(db, userId);
+  if (!updated) {
+    throw new Error("User not found");
+  }
+  return updated;
+}
+
+export async function countActivePlatformAdmins(db: D1Database): Promise<number> {
+  const row = await db
+    .prepare(`SELECT COUNT(*) AS count FROM users WHERE is_platform_admin = 1 AND status = 'active'`)
+    .first<{ count: number }>();
+  return Number(row?.count ?? 0);
+}
+
+export async function cancelPendingInvitationsForEmail(
+  db: D1Database,
+  email: string,
+): Promise<number> {
+  const now = nowIso();
+  const result = await db
+    .prepare(
+      `UPDATE user_invitations
+       SET status = 'cancelled', cancelled_at = ?, updated_at = ?
+       WHERE email = ? AND status = 'pending'`,
+    )
+    .bind(now, now, email.trim().toLowerCase())
+    .run();
+  return Number(result.meta?.changes ?? 0);
+}
+
+export async function disableUserAccount(
+  db: D1Database,
+  userId: string,
+): Promise<void> {
+  const now = nowIso();
+  await db
+    .prepare(`UPDATE users SET status = 'disabled', updated_at = ? WHERE id = ?`)
+    .bind(now, userId)
+    .run();
+  await db
+    .prepare(
+      `UPDATE company_memberships SET status = 'disabled', updated_at = ? WHERE user_id = ?`,
+    )
+    .bind(now, userId)
+    .run();
+  await db
+    .prepare(
+      `UPDATE user_invitations
+       SET status = 'cancelled', cancelled_at = ?, updated_at = ?
+       WHERE email IN (SELECT email FROM users WHERE id = ?) AND status = 'pending'`,
+    )
+    .bind(now, now, userId)
+    .run();
+}
+
+export async function enableUserAccount(
+  db: D1Database,
+  userId: string,
+): Promise<void> {
+  const now = nowIso();
+  await db
+    .prepare(`UPDATE users SET status = 'active', updated_at = ? WHERE id = ?`)
+    .bind(now, userId)
+    .run();
+  await db
+    .prepare(
+      `UPDATE company_memberships SET status = 'active', updated_at = ? WHERE user_id = ?`,
+    )
+    .bind(now, userId)
+    .run();
+}
+
 export async function updateMembershipRole(
   db: D1Database,
   userId: string,

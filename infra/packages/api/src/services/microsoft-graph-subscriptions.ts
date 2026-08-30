@@ -267,6 +267,9 @@ export async function renewExpiringMicrosoftGraphSubscriptions(env: Env): Promis
   errors: string[];
 }> {
   const currentNotificationUrl = microsoftGraphNotificationUrl(env);
+  // datetime() is required: stored expires_at is ISO-8601 (`2026-08-31T00:00:45Z`).
+  // Lexicographic compare against SQLite datetime('now') (`2026-08-31 00:00:00`)
+  // never matches on the same calendar day because `T` > space.
   const rows = await env.DB.prepare(
     `SELECT s.id, s.company_id, s.connector_instance_id, s.source_id, s.graph_subscription_id,
             s.notification_url, s.resource_kind, src.external_id AS drive_id,
@@ -275,7 +278,7 @@ export async function renewExpiringMicrosoftGraphSubscriptions(env: Env): Promis
      JOIN microsoft_connector_sources src ON src.id = s.source_id
      WHERE s.status = 'active'
        AND s.graph_subscription_id IS NOT NULL
-       AND s.expires_at <= datetime('now', '+24 hours')
+       AND datetime(s.expires_at) <= datetime('now', '+24 hours')
        AND src.inclusion_status = 'included'`,
   ).all<{
     id: string;

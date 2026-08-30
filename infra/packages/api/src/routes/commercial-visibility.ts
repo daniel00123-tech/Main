@@ -5,7 +5,17 @@ import {
   requirePlatformAdmin,
   type AuthVariables,
 } from "../auth/middleware";
-import { getUserById, setUserMobileE164 } from "../auth/users";
+import {
+  cancelPendingInvitationsForEmail,
+  countActivePlatformAdmins,
+  disableUserAccount,
+  enableUserAccount,
+  getUserById,
+  setUserMobileE164,
+  updateMembershipRole,
+  updateUserProfile,
+} from "../auth/users";
+import { invalidateActiveSetupTokensForUser } from "../auth/password-setup";
 import { recordAuditEvent } from "../services/control-plane";
 import { MobileCollisionError, MobileValidationError, maskMobileE164 } from "../services/phone";
 import {
@@ -246,6 +256,133 @@ routes.post("/api/platform/whatsapp/lookup", requireAuth, requirePlatformAdmin, 
   if (!body.number) return c.json({ error: "number is required" }, 400);
   const result = await resolveWhatsAppIdentity(c.env.DB, body.number);
   return c.json(result);
+});
+
+routes.patch("/api/platform/users/:id", requireAuth, requirePlatformAdmin, async (c) => {
+  const existing = await getUserById(c.env.DB, c.req.param("id"));
+  if (!existing) return c.json({ error: "User not found" }, 404);
+  const body = await c.req.json<{
+    displayName?: string;
+    email?: string;
+    mobile?: string | null;
+    status?: "active" | "disabled";
+    companyId?: string;
+    role?: import("@infra/shared").CompanyRole;
+  }>().catch(
+    (): {
+      displayName?: string;
+      email?: string;
+      mobile?: string | null;
+      status?: "active" | "disabled";
+      companyId?: string;
+      role?: import("@infra/shared").CompanyRole;
+    } => ({}),
+  );
+
+  try {
+    if (body.displayName !== undefined || body.email !== undefined) {
+      await updateUserProfile(c.env.DB, existing.id, {
+        displayName: body.displayName,
+        email: body.email,
+      });
+      if (body.email && body.email.trim().toLowerCase() !== existing.email.toLowerCase()) {
+        await cancelPendingInvitationsForEmail(c.env.DB, existing.email);
+        await invalidateActiveSetupTokensForUser(c.env.DB, existing.id);
+      }
+    }
+    if (typeof body.mobile === "string" && body.mobile.trim()) {
+      await setUserMobileE164(c.env.DB, existing.id, body.mobile);
+    }
+    if (body.status === "active" || body.status === "disabled") {
+      if (body.status === "disabled" && existing.isPlatformAdmin) {
+        const admins = await countActivePlatformAdmins(c.env.DB);
+        if (admins <= 1) {
+          return c.json({ error: "The last platform administrator cannot be disabled" }, 400);
+        }
+      }
+      if (body.status === "disabled" && existing.id === c.get("user").userId) {
+        return c.json({ error: "You cannot disable your own account" }, 400);
+      }
+      if (body.status === "disabled") {
+        await disableUserAccount(c.env.DB, existing.id);
+        await invalidateActiveSetupTokensForUser(c.env.DB, existing.id);
+      } else {
+        await enableUserAccount(c.env.DB, existing.id);
+      }
+    }
+    if (body.companyId && body.role) {
+      await updateMembershipRole(c.env.DB, existing.id, body.companyId, body.role);
+    }
+    const user = await getUserById(c.env.DB, existing.id);
+    await recordAuditEvent(c.env.DB, {
+      companyId: body.companyId ?? null,
+      eventType: "user.updated",
+      actor: c.get("user").email,
+      resourceType: "user",
+      resourceId: existing.id,
+      detail: {
+        fields: Object.keys(body).filter((key) => body[key as keyof typeof body] != null),
+      },
+    });
+    return c.json({
+      ok: true,
+      userId: existing.id,
+      displayName: user?.displayName,
+      email: user?.email,
+      status: user?.status,
+      mobileMasked: maskMobileE164(user?.mobileE164 ?? null),
+    });
+  } catch (err) {
+    if (err instanceof MobileValidationError || err instanceof MobileCollisionError) {
+      return c.json({ error: err.message }, 400);
+    }
+    const message = err instanceof Error ? err.message : "Unable to update user";
+    if (message.includes("already used by another Infra user")) {
+      return c.json({ error: message }, 409);
+    }
+    return c.json({ error: message }, 400);
+  }
+});
+
+routes.delete("/api/platform/users/:id", requireAuth, requirePlatformAdmin, async (c) => {
+  const existing = await getUserById(c.env.DB, c.req.param("id"));
+  if (!existing) return c.json({ error: "User not found" }, 404);
+  if (existing.id === c.get("user").userId) {
+    return c.json({ error: "You cannot delete your own account" }, 400);
+  }
+  if (existing.isPlatformAdmin) {
+    const admins = await countActivePlatformAdmins(c.env.DB);
+    if (admins <= 1) {
+      return c.json({ error: "The last platform administrator cannot be deleted" }, 400);
+    }
+  }
+  await disableUserAccount(c.env.DB, existing.id);
+  await invalidateActiveSetupTokensForUser(c.env.DB, existing.id);
+  await recordAuditEvent(c.env.DB, {
+    companyId: null,
+    eventType: "user.disabled",
+    actor: c.get("user").email,
+    resourceType: "user",
+    resourceId: existing.id,
+    detail: { invitationsCancelled: true },
+  });
+  return c.json({ ok: true, userId: existing.id, status: "disabled" });
+});
+
+routes.post("/api/platform/users/:id/cancel-invitations", requireAuth, requirePlatformAdmin, async (c) => {
+  const existing = await getUserById(c.env.DB, c.req.param("id"));
+  if (!existing) return c.json({ error: "User not found" }, 404);
+  const cancelled = await cancelPendingInvitationsForEmail(c.env.DB, existing.email);
+  await invalidateActiveSetupTokensForUser(c.env.DB, existing.id);
+  await recordAuditEvent(c.env.DB, {
+    companyId: null,
+    eventType: "invitation.cancelled",
+    actor: c.get("user").email,
+    resourceType: "user",
+    resourceId: existing.id,
+    detail: { cancelled },
+  });
+  return c.json({ ok: true, cancelled });
 });
 
 routes.post("/api/platform/users/:id/mobile", requireAuth, requirePlatformAdmin, async (c) => {
