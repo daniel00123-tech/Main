@@ -24,6 +24,7 @@ import {
   chunksFromFetchPayload,
   extractTypedFacts,
   NONE_IN_DOCUMENT_REPLY,
+  queryTerms,
   redactUnsolicitedPii,
   rejectWeakSearchHits,
   runGroundedQa,
@@ -365,12 +366,8 @@ async function recoverFailedIntelligenceTurn(
   if (current && !evidenceDocumentIds.includes(current.id)) evidenceDocumentIds.push(current.id);
   const payload = current ? fetchCache.get(current.id) : null;
   if (current && payload) {
-    const groundedQuestion =
-      input.memory.lastUserQuestion && input.memory.lastUserQuestion !== input.originalText
-        ? `${input.originalText}\n${input.memory.lastUserQuestion}`
-        : input.originalText;
     const grounded = await runGroundedQa(env, {
-      question: groundedQuestion,
+      question: input.originalText,
       documentId: current.id,
       title: current.title || payload.title,
       fetch: payload,
@@ -394,7 +391,7 @@ async function recoverFailedIntelligenceTurn(
       currentDocument: current,
       evidenceDocumentIds,
       clarification: false,
-      citeSource: Boolean(current.url),
+      citeSource: failed.citeSource,
     };
   }
   const search = toolCalls.find((call) => call.name === "search_company_knowledge");
@@ -641,7 +638,12 @@ async function runSearchDocument(
   }
   const chunks = chunksFromFetchPayload(payload, documentId);
   let ranked = searchDocument(documentId, query || payload.title, chunks);
-  if (!ranked.length && input.memory.lastUserQuestion && input.memory.lastUserQuestion !== query) {
+  if (
+    !ranked.length &&
+    queryTerms(query).length === 0 &&
+    input.memory.lastUserQuestion &&
+    input.memory.lastUserQuestion !== query
+  ) {
     ranked = searchDocument(documentId, input.memory.lastUserQuestion, chunks);
   }
   const hits = ranked.length ? ranked : [];
