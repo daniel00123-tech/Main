@@ -1306,6 +1306,23 @@ connectors.post("/api/internal/google-drive/whole-drive-acceptance", async (c) =
   }
 });
 
+connectors.post("/api/internal/google-drive/backfill-provider-urls", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as { externalId?: string; limit?: number };
+    const { backfillGoogleDriveProviderUrls } = await import("../services/google-drive-acceptance");
+    const result = await backfillGoogleDriveProviderUrls(c.env, body);
+    return c.json({ httpStatus: result.status, ...result.body }, result.status >= 400 ? 400 : 200);
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Provider URL backfill failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/google-drive/trigger-sync", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

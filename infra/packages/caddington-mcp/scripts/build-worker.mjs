@@ -9,6 +9,7 @@ import {
   stripXeroInjection,
 } from "./strip-xero-inject.mjs";
 import { applyGoogleDriveContinuationPatches } from "./google-drive-continuation-patch.mjs";
+import { applyGoogleDriveUrlPatches } from "./google-drive-url-patch.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(__dirname, "..");
@@ -1176,6 +1177,7 @@ __name(handleAdminRequest, "handleAdminRequest");`;
 }
 
 base = applyGoogleDriveContinuationPatches(base);
+base = applyGoogleDriveUrlPatches(base);
 
 const knowledgeActivityMarker = "/admin/knowledge/activity";
 if (!base.includes(knowledgeActivityMarker)) {

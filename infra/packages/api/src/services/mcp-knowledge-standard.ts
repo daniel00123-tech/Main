@@ -167,6 +167,24 @@ export function mapFetchArgumentsForCompanyMcp(id: string): Record<string, unkno
   return { documentRef: id, id };
 }
 
+const PROVIDER_URL_KEYS = [
+  "url",
+  "sourceUrl",
+  "source_url",
+  "webUrl",
+  "web_url",
+  "webViewLink",
+  "web_view_link",
+  "webContentLink",
+  "web_content_link",
+  "webLink",
+  "web_link",
+  "alternateLink",
+  "alternate_link",
+  "canonicalUrl",
+  "canonical_url",
+] as const;
+
 export function firstHttpUrl(...candidates: unknown[]): string {
   for (const candidate of candidates) {
     if (typeof candidate !== "string") continue;
@@ -178,6 +196,57 @@ export function firstHttpUrl(...candidates: unknown[]): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Parse a JSON object that company MCPs often store as a string (D1 metadata). */
+export function parseMaybeJsonRecord(value: unknown): Record<string, unknown> | undefined {
+  if (isRecord(value)) return value;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{")) return undefined;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function urlFromRecordFields(source: Record<string, unknown> | undefined): string {
+  if (!source) return "";
+  return firstHttpUrl(...PROVIDER_URL_KEYS.map((key) => source[key]));
+}
+
+/**
+ * Collect a genuine provider HTTPS URL. Never constructs Drive/SharePoint links
+ * from file IDs — only copies http(s) fields the provider already returned.
+ */
+export function collectProviderHttpUrl(...sources: unknown[]): string {
+  for (const source of sources) {
+    if (typeof source === "string") {
+      const direct = firstHttpUrl(source);
+      if (direct) return direct;
+      const parsed = parseMaybeJsonRecord(source);
+      const fromParsed = urlFromRecordFields(parsed);
+      if (fromParsed) return fromParsed;
+      continue;
+    }
+    if (!isRecord(source)) continue;
+    const direct = urlFromRecordFields(source);
+    if (direct) return direct;
+    const nested = [
+      parseMaybeJsonRecord(source.metadata),
+      parseMaybeJsonRecord(source.provenance),
+      parseMaybeJsonRecord(source.document),
+      isRecord(source.document) ? parseMaybeJsonRecord(source.document.metadata) : undefined,
+      isRecord(source.provenance) ? parseMaybeJsonRecord(source.provenance.metadata) : undefined,
+    ];
+    for (const item of nested) {
+      const url = urlFromRecordFields(item);
+      if (url) return url;
+    }
+  }
+  return "";
 }
 
 export function unwrapToolPayload(payload: unknown, depth = 0): unknown {
@@ -288,18 +357,25 @@ function provenanceMetadata(
     "document_id",
     "externalId",
     "external_id",
+    "driveFileId",
+    "drive_file_id",
     "modifiedAt",
     "modified_at",
     "updatedAt",
     "updated_at",
+    "webViewLink",
+    "webContentLink",
+    "webUrl",
+    "web_url",
   ] as const;
   for (const key of keys) {
     if (source[key] != null && source[key] !== "") {
       metadata[key] = source[key];
     }
   }
-  if (isRecord(source.metadata)) {
-    for (const [key, value] of Object.entries(source.metadata)) {
+  const nestedMetadata = parseMaybeJsonRecord(source.metadata);
+  if (nestedMetadata) {
+    for (const [key, value] of Object.entries(nestedMetadata)) {
       if (value != null && value !== "" && metadata[key] == null) {
         metadata[key] = value;
       }
@@ -326,25 +402,12 @@ export function extractHitList(payload: unknown): Record<string, unknown>[] {
 export function toStandardSearchPayload(payload: unknown): StandardSearchPayload {
   const results: StandardSearchResult[] = [];
   for (const hit of extractHitList(payload)) {
+    const parsedHitMetadata = parseMaybeJsonRecord(hit.metadata);
+    if (parsedHitMetadata) hit.metadata = parsedHitMetadata;
     const title = pickTitle(hit);
     const id = pickId(hit, title);
     if (!id) continue;
-    const url = firstHttpUrl(
-      hit.url,
-      hit.sourceUrl,
-      hit.source_url,
-      hit.webUrl,
-      hit.web_url,
-      hit.webViewLink,
-      hit.web_view_link,
-      hit.webLink,
-      hit.web_link,
-      hit.canonicalUrl,
-      hit.canonical_url,
-      isRecord(hit.metadata) ? hit.metadata.webUrl : undefined,
-      isRecord(hit.metadata) ? hit.metadata.web_url : undefined,
-      isRecord(hit.metadata) ? hit.metadata.webViewLink : undefined,
-    );
+    const url = collectProviderHttpUrl(hit, parsedHitMetadata, hit.provenance);
     const snippet = pickSnippet(hit);
     const metadata = provenanceMetadata(hit);
     const result: StandardSearchResult = { id, title, url };
@@ -394,10 +457,11 @@ export function toStandardFetchPayload(
   requestedId: string,
 ): StandardFetchPayload {
   const unwrapped = unwrapToolPayload(payload);
-  const nested = isRecord(unwrapped) && isRecord(unwrapped.document)
-    ? unwrapped.document
-    : {};
+  const nestedRaw = isRecord(unwrapped) ? unwrapped.document : undefined;
+  const nested = parseMaybeJsonRecord(nestedRaw) ?? (isRecord(nestedRaw) ? nestedRaw : {});
   const doc = isRecord(unwrapped) ? { ...unwrapped, ...nested } : {};
+  const parsedDocMetadata = parseMaybeJsonRecord(doc.metadata);
+  if (parsedDocMetadata) doc.metadata = parsedDocMetadata;
 
   const id =
     requestedId ||
@@ -405,31 +469,19 @@ export function toStandardFetchPayload(
     pickId(nested);
   const title = pickTitle(doc, "Untitled document");
   const text = collectDocumentText(doc);
-  const url = firstHttpUrl(
-    doc.url,
-    doc.sourceUrl,
-    doc.source_url,
-    doc.webUrl,
-    doc.web_url,
-    doc.webViewLink,
-    doc.web_view_link,
-    doc.webLink,
-    doc.web_link,
-    doc.canonicalUrl,
-    doc.canonical_url,
-    nested.url,
-    nested.sourceUrl,
-    nested.webUrl,
-    isRecord(unwrapped) ? unwrapped.url : undefined,
-    isRecord(unwrapped) ? unwrapped.sourceUrl : undefined,
-    isRecord(unwrapped) ? unwrapped.webUrl : undefined,
-    isRecord(doc.metadata) ? doc.metadata.webUrl : undefined,
-    isRecord(doc.metadata) ? doc.metadata.webViewLink : undefined,
+  const url = collectProviderHttpUrl(
+    doc,
+    nested,
+    unwrapped,
+    parsedDocMetadata,
+    isRecord(unwrapped) ? unwrapped.metadata : undefined,
+    isRecord(unwrapped) ? unwrapped.provenance : undefined,
   );
   const metadata = provenanceMetadata({
     ...(isRecord(unwrapped) ? unwrapped : {}),
     ...nested,
     ...doc,
+    ...(parsedDocMetadata ?? {}),
   });
 
   const result: StandardFetchPayload = { id, title, text, url };
