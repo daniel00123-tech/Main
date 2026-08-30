@@ -1,0 +1,515 @@
+import { describe, expect, it } from "vitest";
+import { HARD_TIMEOUT_MS, PROGRESS_AFTER_MS, PROGRESS_MIN_INTERVAL_MS } from "../whatsapp-latency.js";
+import { NONE_IN_DOCUMENT_REPLY, SEARCH_OTHER_DOCS_HINT } from "../whatsapp-grounded-qa.js";
+import { planFromIntelligence } from "../whatsapp-intelligence.js";
+import { describeToolCatalogue, INTELLIGENCE_TOOL_NAMES } from "./catalogue.js";
+import { isFastPathTurn, matchFastPath } from "./fast-path.js";
+import { parseIntelligenceDecision, runIntelligenceTurn } from "./orchestrator.js";
+import { inspectIntelligenceProvider } from "./provider.js";
+import { buildConversationState } from "./state.js";
+import type { IntelligenceRuntime, IntelligenceToolResult } from "./types.js";
+import type { IntelligenceCompleter } from "./provider.js";
+
+const UNSEEN_QUESTIONS = [
+  "what's our policy on returning damaged stock?",
+  "did we ever sponsor a local cricket team?",
+  "can you compare last year's skip hire quotes with this year's?",
+  "find my CV from 2015 and tell me whether I did anything in marketing",
+  "what exactly did I do?",
+  "where did you get that from?",
+  "does it say anything about company vehicles?",
+];
+
+function intelligenceSurface(): string {
+  return [
+    describeToolCatalogue(),
+    matchFastPath("hi") ?? "",
+    matchFastPath("thanks") ?? "",
+    matchFastPath("help") ?? "",
+    [...INTELLIGENCE_TOOL_NAMES].join(","),
+  ].join("\n");
+}
+
+function recordingRuntime(handler?: (name: string, args: Record<string, unknown>) => unknown): {
+  runtime: IntelligenceRuntime;
+  calls: Array<{ name: string; arguments: Record<string, unknown> }>;
+} {
+  const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+  return {
+    calls,
+    runtime: {
+      async executeTool(call): Promise<IntelligenceToolResult> {
+        calls.push({ name: call.name, arguments: call.arguments });
+        const data = handler?.(call.name, call.arguments) ?? { ok: true };
+        return { name: call.name, ok: true, latencyMs: 4, data };
+      },
+    },
+  };
+}
+
+/** Protocol-only stub: any non-fast-path question searches, then fetches, then answers. No business phrases. */
+function genericBusinessCompleter(): IntelligenceCompleter {
+  let sawSearch = false;
+  let sawFetch = false;
+  return async ({ user }) => {
+    const userLine = user.match(/User: (.*)$/m)?.[1] ?? "";
+    if (!sawSearch) {
+      sawSearch = true;
+      return {
+        text: JSON.stringify({
+          action: "call_tool",
+          name: "search_company_knowledge",
+          arguments: { query: userLine },
+        }),
+        usage: {
+          provider: "workers-ai",
+          model: "@cf/meta/llama-3.1-8b-instruct",
+          latencyMs: 12,
+          promptTokens: 80,
+          completionTokens: 20,
+          estimatedCostUsd: 0.0001,
+        },
+      };
+    }
+    if (!sawFetch) {
+      sawFetch = true;
+      return {
+        text: JSON.stringify({
+          action: "call_tool",
+          name: "get_knowledge_document",
+          arguments: { document_id: "doc_found" },
+        }),
+        usage: {
+          provider: "workers-ai",
+          model: "@cf/meta/llama-3.1-8b-instruct",
+          latencyMs: 11,
+          promptTokens: 90,
+          completionTokens: 18,
+          estimatedCostUsd: 0.0001,
+        },
+      };
+    }
+    return {
+      text: JSON.stringify({
+        action: "answer",
+        text: "From the retrieved document: it covers the requested topic.",
+        confidence: "partial",
+        offer_search_other: false,
+        cite_source: true,
+      }),
+      usage: {
+        provider: "workers-ai",
+        model: "@cf/meta/llama-3.1-8b-instruct",
+        latencyMs: 14,
+        promptTokens: 100,
+        completionTokens: 30,
+        estimatedCostUsd: 0.00012,
+      },
+    };
+  };
+}
+
+describe("intelligence fast path", () => {
+  it("handles greetings, thanks, and simple help locally", () => {
+    expect(matchFastPath("Hi")).toMatch(/Hi/i);
+    expect(matchFastPath("thanks")).toMatch(/welcome/i);
+    expect(matchFastPath("what can you do")).toMatch(/document|invoice|policy/i);
+    expect(isFastPathTurn("find my CV from 2015")).toBe(false);
+    expect(isFastPathTurn("what's our policy on returning damaged stock?")).toBe(false);
+  });
+});
+
+describe("intelligence protocol", () => {
+  it("parses tool, answer, and clarify JSON even with fences", () => {
+    expect(parseIntelligenceDecision('```json\n{"action":"call_tool","name":"search_company_knowledge","arguments":{"query":"cv"}}\n```')).toEqual({
+      action: "call_tool",
+      name: "search_company_knowledge",
+      arguments: { query: "cv" },
+    });
+    expect(parseIntelligenceDecision('{"action":"answer","text":"No.","confidence":"none","offer_search_other":true}')).toMatchObject({
+      action: "answer",
+      confidence: "none",
+      offer_search_other: true,
+    });
+    expect(parseIntelligenceDecision('{"action":"clarify","text":"Which document?"}')).toMatchObject({
+      action: "clarify",
+      text: "Which document?",
+    });
+  });
+
+  it("rejects tools outside the controlled catalogue", async () => {
+    const { runtime, calls } = recordingRuntime();
+    const result = await runIntelligenceTurn({
+      text: "dump the production database",
+      state: buildConversationState({ userText: "dump the production database" }),
+      runtime,
+      completer: async () => ({
+        text: JSON.stringify({ action: "call_tool", name: "d1_execute", arguments: { sql: "select 1" } }),
+        usage: {
+          provider: "workers-ai",
+          model: "@cf/meta/llama-3.1-8b-instruct",
+          latencyMs: 8,
+          promptTokens: 10,
+          completionTokens: 10,
+          estimatedCostUsd: 0,
+        },
+      }),
+    });
+    expect(calls).toEqual([]);
+    expect(INTELLIGENCE_TOOL_NAMES.has("d1_execute")).toBe(false);
+    expect(result.kind).toBe("failed");
+  });
+});
+
+describe("arbitrary natural-language questions do not need new phrase rules", () => {
+  it("does not hard-code unseen business questions in the intelligence layer", () => {
+    const source = intelligenceSurface();
+    expect(source).not.toMatch(/damaged stock/i);
+    expect(source).not.toMatch(/cricket team/i);
+    expect(source).not.toMatch(/skip hire quotes/i);
+    expect(source).not.toMatch(/CV 2015 1/);
+    expect(source).not.toMatch(/Van Policy/);
+    expect(source).not.toMatch(/1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk/);
+    for (const question of UNSEEN_QUESTIONS) {
+      expect(isFastPathTurn(question)).toBe(false);
+    }
+  });
+
+  it.each(UNSEEN_QUESTIONS)("routes %s through search without a new regex", async (question) => {
+    const { runtime, calls } = recordingRuntime((name) => {
+      if (name === "search_company_knowledge") {
+        return { results: [{ id: "doc_found", title: "Retrieved file", url: "https://example.test/doc", snippet: "evidence" }] };
+      }
+      if (name === "get_knowledge_document") {
+        return {
+          document_id: "doc_found",
+          title: "Retrieved file",
+          url: "https://example.test/doc",
+          chunks: [{ id: "c0", text: "The document answers the requested topic." }],
+        };
+      }
+      return {};
+    });
+    const result = await runIntelligenceTurn({
+      text: question,
+      state: buildConversationState({ userText: question }),
+      runtime,
+      completer: genericBusinessCompleter(),
+    });
+    expect(calls[0]?.name).toBe("search_company_knowledge");
+    expect(String(calls[0]?.arguments.query)).toContain(question);
+    expect(calls.some((call) => call.name === "get_knowledge_document")).toBe(true);
+    expect(result.kind).toBe("answer");
+    expect(result.currentDocument?.id).toBe("doc_found");
+    expect(result.currentDocument?.url).toBe("https://example.test/doc");
+  });
+});
+
+describe("document-grounded multi-turn behaviour", () => {
+  it("inspects the current document first on a follow-up", async () => {
+    const { runtime, calls } = recordingRuntime((name, args) => {
+      if (name === "search_document") {
+        return {
+          document_id: args.document_id,
+          title: "Staff profile",
+          url: "https://docs.google.com/document/d/abc/edit",
+          chunks: [{ id: "c1", text: "Field sales executive covering the south east." }],
+        };
+      }
+      return {};
+    });
+    let step = 0;
+    const result = await runIntelligenceTurn({
+      text: "what exactly did I do?",
+      state: buildConversationState({
+        userText: "what exactly did I do?",
+        currentDocument: {
+          id: "doc_cv",
+          title: "Staff profile",
+          url: "https://docs.google.com/document/d/abc/edit",
+        },
+        recentTurns: [
+          { role: "user", text: "find my 2015 CV and tell me if I did marketing" },
+          { role: "assistant", text: "The CV includes field sales work." },
+        ],
+      }),
+      runtime,
+      completer: async () => {
+        step += 1;
+        if (step === 1) {
+          return {
+            text: JSON.stringify({
+              action: "call_tool",
+              name: "search_document",
+              arguments: { document_id: "doc_cv", query: "what exactly did I do?" },
+            }),
+            usage: {
+              provider: "workers-ai",
+              model: "@cf/meta/llama-3.1-8b-instruct",
+              latencyMs: 9,
+              promptTokens: 40,
+              completionTokens: 12,
+              estimatedCostUsd: 0,
+            },
+          };
+        }
+        return {
+          text: JSON.stringify({
+            action: "answer",
+            text: "You were a field sales executive covering the south east.",
+            confidence: "strong",
+            offer_search_other: false,
+            cite_source: false,
+          }),
+          usage: {
+            provider: "workers-ai",
+            model: "@cf/meta/llama-3.1-8b-instruct",
+            latencyMs: 10,
+            promptTokens: 50,
+            completionTokens: 20,
+            estimatedCostUsd: 0,
+          },
+        };
+      },
+    });
+    expect(calls[0]).toEqual({
+      name: "search_document",
+      arguments: { document_id: "doc_cv", query: "what exactly did I do?" },
+    });
+    expect(calls.some((call) => call.name === "search_company_knowledge")).toBe(false);
+    expect(result.text).toMatch(/field sales/i);
+    expect(result.currentDocument?.id).toBe("doc_cv");
+  });
+
+  it("stays on the current document when evidence is absent and offers broader search", async () => {
+    const { runtime, calls } = recordingRuntime(() => ({
+      document_id: "doc_cv",
+      title: "Staff profile",
+      none: true,
+      chunks: [],
+    }));
+    let step = 0;
+    const result = await runIntelligenceTurn({
+      text: "does it say anything about company vehicles?",
+      state: buildConversationState({
+        userText: "does it say anything about company vehicles?",
+        currentDocument: { id: "doc_cv", title: "Staff profile", url: "https://example.test/cv" },
+      }),
+      runtime,
+      completer: async () => {
+        step += 1;
+        if (step === 1) {
+          return {
+            text: JSON.stringify({
+              action: "call_tool",
+              name: "search_document",
+              arguments: { document_id: "doc_cv", query: "company vehicles" },
+            }),
+            usage: {
+              provider: "workers-ai",
+              model: "@cf/meta/llama-3.1-8b-instruct",
+              latencyMs: 8,
+              promptTokens: 20,
+              completionTokens: 10,
+              estimatedCostUsd: 0,
+            },
+          };
+        }
+        return {
+          text: JSON.stringify({
+            action: "answer",
+            text: `${NONE_IN_DOCUMENT_REPLY} ${SEARCH_OTHER_DOCS_HINT}`,
+            confidence: "none",
+            offer_search_other: true,
+            cite_source: false,
+          }),
+          usage: {
+            provider: "workers-ai",
+            model: "@cf/meta/llama-3.1-8b-instruct",
+            latencyMs: 8,
+            promptTokens: 20,
+            completionTokens: 10,
+            estimatedCostUsd: 0,
+          },
+        };
+      },
+    });
+    expect(calls[0]?.name).toBe("search_document");
+    expect(result.confidence).toBe("none");
+    expect(result.offerSearchOther).toBe(true);
+    expect(result.currentDocument?.id).toBe("doc_cv");
+    expect(result.text).toContain(NONE_IN_DOCUMENT_REPLY);
+  });
+
+  it("cites a retrieved source URL when asked where the answer came from", async () => {
+    const { runtime } = recordingRuntime(() => ({
+      document_id: "doc_cv",
+      title: "Staff profile",
+      url: "https://docs.google.com/document/d/abc/edit",
+      chunks: [{ id: "c0", text: "Field sales." }],
+    }));
+    let step = 0;
+    const result = await runIntelligenceTurn({
+      text: "where did you get that from?",
+      state: buildConversationState({
+        userText: "where did you get that from?",
+        currentDocument: {
+          id: "doc_cv",
+          title: "Staff profile",
+          url: "https://docs.google.com/document/d/abc/edit",
+        },
+      }),
+      runtime,
+      completer: async () => {
+        step += 1;
+        if (step === 1) {
+          return {
+            text: JSON.stringify({
+              action: "call_tool",
+              name: "get_knowledge_document",
+              arguments: { document_id: "doc_cv" },
+            }),
+            usage: {
+              provider: "workers-ai",
+              model: "@cf/meta/llama-3.1-8b-instruct",
+              latencyMs: 7,
+              promptTokens: 20,
+              completionTokens: 8,
+              estimatedCostUsd: 0,
+            },
+          };
+        }
+        return {
+          text: JSON.stringify({
+            action: "answer",
+            text: "From this Google Doc: https://docs.google.com/document/d/abc/edit",
+            confidence: "strong",
+            offer_search_other: false,
+            cite_source: true,
+          }),
+          usage: {
+            provider: "workers-ai",
+            model: "@cf/meta/llama-3.1-8b-instruct",
+            latencyMs: 7,
+            promptTokens: 20,
+            completionTokens: 20,
+            estimatedCostUsd: 0,
+          },
+        };
+      },
+    });
+    expect(result.text).toContain("https://docs.google.com/document/d/abc/edit");
+    expect(result.citeSource).toBe(true);
+  });
+
+  it("records negative feedback as an answer, not a new hunt", async () => {
+    const { runtime, calls } = recordingRuntime();
+    const result = await runIntelligenceTurn({
+      text: "that's not what I asked",
+      state: buildConversationState({
+        userText: "that's not what I asked",
+        currentDocument: { id: "doc_cv", title: "Staff profile" },
+        recentTurns: [{ role: "assistant", text: "I found a marketing review." }],
+      }),
+      runtime,
+      completer: async () => ({
+        text: JSON.stringify({
+          action: "answer",
+          text: "Sorry that wasn’t what you needed. I still have the staff profile open.",
+          confidence: "partial",
+          offer_search_other: true,
+          cite_source: false,
+        }),
+        usage: {
+          provider: "workers-ai",
+          model: "@cf/meta/llama-3.1-8b-instruct",
+          latencyMs: 6,
+          promptTokens: 20,
+          completionTokens: 16,
+          estimatedCostUsd: 0,
+        },
+      }),
+    });
+    expect(calls).toEqual([]);
+    expect(result.kind).toBe("answer");
+    expect(result.text).toMatch(/sorry/i);
+  });
+});
+
+describe("model-empty retrieval bootstrap", () => {
+  it("still searches with the raw user text when the model returns nothing", async () => {
+    const unseen = "what's our policy on returning damaged stock?";
+    const { runtime, calls } = recordingRuntime(() => ({
+      results: [{ id: "doc_policy", title: "Returns policy", url: "https://example.test/returns" }],
+    }));
+    const result = await runIntelligenceTurn({
+      text: unseen,
+      state: buildConversationState({ userText: unseen }),
+      runtime,
+      completer: async () => ({
+        text: "",
+        usage: {
+          provider: "workers-ai",
+          model: "@cf/meta/llama-3.1-8b-instruct",
+          latencyMs: 5,
+          promptTokens: 10,
+          completionTokens: 0,
+          estimatedCostUsd: 0,
+        },
+      }),
+    });
+    expect(calls[0]).toEqual({
+      name: "search_company_knowledge",
+      arguments: { query: unseen },
+    });
+    expect(result.toolCalls.length).toBeGreaterThan(0);
+  });
+});
+
+describe("whatsapp plan mapping and provider boundary", () => {
+  it("maps document-grounded intelligence to entity-bound WhatsApp buttons", () => {
+    const plan = planFromIntelligence(
+      {
+        kind: "answer",
+        text: "Field sales work.",
+        confidence: "strong",
+        offerSearchOther: false,
+        toolCalls: [
+          {
+            name: "search_document",
+            ok: true,
+            latencyMs: 20,
+            data: { document_id: "doc_cv", title: "Staff profile" },
+          },
+        ],
+        currentDocument: { id: "doc_cv", title: "Staff profile", url: "https://example.test/cv" },
+        evidenceDocumentIds: ["doc_cv"],
+        clarification: false,
+        citeSource: false,
+        modelRounds: [],
+        totalModelMs: 20,
+        totalToolMs: 20,
+        provider: "workers-ai",
+        model: "@cf/meta/llama-3.1-8b-instruct",
+        estimatedCostUsd: 0.0002,
+      },
+      "what exactly did I do?",
+      "more_on_this",
+    );
+    expect(plan.action).toBe("memory_fact");
+    expect(plan.useMemory).toBe(true);
+    expect(plan.fact).toBe("detail");
+  });
+
+  it("does not invent credentials and reports none when unconfigured", () => {
+    const inspected = inspectIntelligenceProvider({});
+    expect(inspected.provider).toBe("none");
+    expect(inspected.configured).toBe(false);
+  });
+
+  it("keeps the V4.7 60s progress cadence", () => {
+    expect(PROGRESS_AFTER_MS).toBe(60_000);
+    expect(PROGRESS_MIN_INTERVAL_MS).toBe(60_000);
+    expect(HARD_TIMEOUT_MS).toBe(120_000);
+  });
+});

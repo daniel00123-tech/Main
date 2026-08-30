@@ -518,7 +518,7 @@ function usefulSentences(text: string, max: number): string[] {
     .slice(0, max);
 }
 
-function queryTerms(query: string): string[] {
+export function queryTerms(query: string): string[] {
   return String(query ?? "")
     .toLowerCase()
     .split(/\s+/)
