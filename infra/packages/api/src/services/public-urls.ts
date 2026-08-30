@@ -96,7 +96,6 @@ export function infraMcpGatewayUrl(
 ): string {
   return `${infraBrowserPublicBase(env, requestUrl, request)}/api/gateway/v1/mcp`;
 }
-}
 
 export function infraGatewayExecuteUrl(env: Env, requestUrl?: string | URL | null): string {
   return `${infraPublicApiBase(env, requestUrl)}/api/gateway/v1/execute`;
