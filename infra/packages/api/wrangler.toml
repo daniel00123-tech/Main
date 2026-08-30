@@ -2,6 +2,9 @@ name = "infra-api"
 main = "src/index.ts"
 compatibility_date = "2025-02-14"
 compatibility_flags = ["nodejs_compat"]
+# SOURCE OF TRUTH for production infra-api:
+# cursor/infra-whatsapp-oauth-ca09 (WhatsApp V5 + INFRA OAuth #398).
+# Do not deploy origin/main, OAuth-only, or WhatsApp-only branches over this worker.
 
 [[d1_databases]]
 binding = "DB"
@@ -18,6 +21,7 @@ PORTAL_PUBLIC_ORIGIN = "https://app.infrastack.app"
 INFRA_PUBLIC_API_URL = "https://api.infrastack.app"
 INFRA_PUBLIC_MCP_URL = "https://mcp.infrastack.app"
 PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
+INFRA_API_LINEAGE = "whatsapp-v5+oauth-398"
 
 # Secrets (set via `wrangler secret put` — never commit):
 # SESSION_SECRET

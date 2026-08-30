@@ -119,12 +119,24 @@ app.use("*", async (c, next) => {
   await next();
 });
 
+function infraApiSurface(env: Env) {
+  return {
+    lineage: env.INFRA_API_LINEAGE ?? "unknown",
+    oauth: true,
+    whatsapp: Boolean(env.WHATSAPP_INBOUND_QUEUE),
+    oauthAuthorizationServer: "/.well-known/oauth-authorization-server",
+    whatsappWebhook: "/api/webhooks/whatsapp",
+    mcpFacade: "/api/gateway/v1/mcp",
+  };
+}
+
 app.get("/", (c) =>
   c.json({
     name: "INFRA",
     description: "Administration and control platform for business AI infrastructure",
     version: "0.1.0",
     role: "control_plane",
+    ...infraApiSurface(c.env),
   }),
 );
 
@@ -133,6 +145,7 @@ app.get("/health", (c) =>
     status: "ok",
     environment: c.env.ENVIRONMENT,
     timestamp: new Date().toISOString(),
+    ...infraApiSurface(c.env),
   }),
 );
 

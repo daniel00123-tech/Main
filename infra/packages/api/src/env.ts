@@ -32,6 +32,8 @@ export interface Env {
   INFRA_PUBLIC_MCP_URL?: string;
   /** Canonical customer/admin portal origin, e.g. https://app.infrastack.app */
   PORTAL_PUBLIC_ORIGIN?: string;
+  /** Deployed surface marker. Combined production must be whatsapp-v5+oauth-398. */
+  INFRA_API_LINEAGE?: string;
   /** Portal host domain for legacy company subdomains, e.g. infra-web.pages.dev */
   PORTAL_BASE_DOMAIN?: string;
   /**
