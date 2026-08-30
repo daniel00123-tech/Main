@@ -1172,8 +1172,9 @@ const worker = {
     const { recordPlatformHeartbeat } = await import("./services/platform-ops-heartbeats");
     const { logInfraEvent } = await import("./services/observability/structured-log");
     const cron = event.cron;
-    const runAutomation = cron !== "0 */6 * * *";
-    const runMicrosoft = cron !== "*/15 * * * *";
+    const runWhatsAppMinute = cron === "* * * * *";
+    const runAutomation = cron === "*/15 * * * *";
+    const runMicrosoft = cron === "0 */6 * * *";
     const started = Date.now();
 
     if (runMicrosoft) {
@@ -1203,12 +1204,17 @@ const worker = {
     try {
       const { sweepStuckWhatsAppTurns } = await import("./services/whatsapp-reaper");
       const swept = await sweepStuckWhatsAppTurns(env);
+      let subscription: Record<string, unknown> | null = null;
+      if (runWhatsAppMinute || runMicrosoft) {
+        const { ensureWhatsAppCloudWebhookSubscription } = await import("./services/whatsapp-subscription");
+        subscription = await ensureWhatsAppCloudWebhookSubscription(env, { applyOverride: true });
+      }
       await recordPlatformHeartbeat(env.DB, {
         key: "whatsapp_stuck_reaper",
         label: "WhatsApp stuck-turn reaper",
         success: true,
         error: null,
-        detail: swept,
+        detail: { ...swept, subscription },
       });
     } catch (err) {
       await recordPlatformHeartbeat(env.DB, {
@@ -1290,10 +1296,17 @@ const worker = {
       processWhatsAppInboundJob,
       WHATSAPP_INBOUND_DLQ,
       WHATSAPP_INBOUND_QUEUE,
+      WHATSAPP_WATCHDOG_QUEUE,
+      WHATSAPP_WATCHDOG_DLQ,
     } = await import("./services/whatsapp-webhook");
 
-    if (batch.queue === WHATSAPP_INBOUND_QUEUE || batch.queue === WHATSAPP_INBOUND_DLQ) {
-      const isDeadLetter = batch.queue === WHATSAPP_INBOUND_DLQ;
+    if (
+      batch.queue === WHATSAPP_INBOUND_QUEUE ||
+      batch.queue === WHATSAPP_INBOUND_DLQ ||
+      batch.queue === WHATSAPP_WATCHDOG_QUEUE ||
+      batch.queue === WHATSAPP_WATCHDOG_DLQ
+    ) {
+      const isDeadLetter = batch.queue === WHATSAPP_INBOUND_DLQ || batch.queue === WHATSAPP_WATCHDOG_DLQ;
       for (const message of batch.messages) {
         try {
           await processWhatsAppInboundJob(

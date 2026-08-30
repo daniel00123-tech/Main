@@ -122,6 +122,7 @@ export async function saveWhatsAppConversation(
     entities?: WhatsAppEntityMemory;
   }
 ): Promise<void> {
+  try {
   await ensureWhatsAppConversationsTable(env);
   const now = new Date().toISOString();
   await env.DB.prepare(
@@ -144,6 +145,9 @@ export async function saveWhatsAppConversation(
       now
     )
     .run();
+  } catch {
+    // Conversation persist is non-critical — never block a user-visible reply.
+  }
 }
 
 export function compactConversationPrompt(turns: WhatsAppTurn[], currentMessage: string): string {

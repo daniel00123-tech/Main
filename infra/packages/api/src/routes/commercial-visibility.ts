@@ -54,7 +54,10 @@ import {
   registerWhatsAppCloudPhoneNumber,
   resolveWhatsAppRegistrationPin,
 } from "../services/whatsapp-register";
-import { inspectWhatsAppMessageSubscription } from "../services/whatsapp-subscription";
+import {
+  ensureWhatsAppCloudWebhookSubscription,
+  inspectWhatsAppMessageSubscription,
+} from "../services/whatsapp-subscription";
 import {
   WHATSAPP_WEBHOOK_PATH,
   whatsappOutboundAiEnabled,
@@ -274,6 +277,20 @@ routes.get("/api/internal/whatsapp-meta-inspect", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
   return c.json(await inspectWhatsAppCloudRegistration(c.env));
+});
+
+routes.post("/api/internal/whatsapp-webhook-subscribe", async (c) => {
+  if (!whatsappMetaProbeAuthorized(c.env, c.req)) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json(await ensureWhatsAppCloudWebhookSubscription(c.env, { applyOverride: true }));
+});
+
+routes.get("/api/internal/whatsapp-webhook-subscribe", async (c) => {
+  if (!whatsappMetaProbeAuthorized(c.env, c.req)) {
+    return c.json({ error: "Not found" }, 404);
+  }
+  return c.json(await inspectWhatsAppMessageSubscription(c.env));
 });
 
 routes.post("/api/internal/whatsapp-meta-register", async (c) => {
