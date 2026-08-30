@@ -5,7 +5,7 @@ import { resolveWhatsAppIdentity } from "./whatsapp-identity";
 import { stampWhatsAppLifecycle } from "./whatsapp-lifecycle";
 import { tryNormalizeE164 } from "./phone";
 import { outboundAiEnabled } from "./whatsapp-assets";
-import { instantLocalReply, isInstantLocalTurn } from "./whatsapp-realtime";
+import { DOCUMENT_CLARIFY_REPLY, instantLocalReply, isGenericDocumentAsk, isInstantLocalTurn } from "./whatsapp-realtime";
 import {
   sendWhatsAppReadStatus,
   sendWhatsAppText,
@@ -174,7 +174,7 @@ export async function sendFirstResponseFailsafe(
 export async function tryWhatsAppEarlyVisible(
   env: Env,
   item: WhatsAppParsedInbound,
-): Promise<{ attempted: boolean; sent: boolean; identityFound: boolean }> {
+): Promise<{ attempted: boolean; sent: boolean; identityFound: boolean; kind?: "ack" | "clarify"; terminal?: boolean }> {
   const text = (item.text ?? "").trim();
   if (!text || isWhatsAppFastLaneText(text)) {
     return { attempted: false, sent: false, identityFound: false };
@@ -188,6 +188,7 @@ export async function tryWhatsAppEarlyVisible(
     return { attempted: true, sent: false, identityFound: false };
   }
   const now = new Date().toISOString();
+  const clarify = isGenericDocumentAsk(text);
   await stampWhatsAppLifecycle(env, item.wamid, {
     state: "validated",
     identityFound: 1,
@@ -197,6 +198,7 @@ export async function tryWhatsAppEarlyVisible(
     inboundText: text.slice(0, 500),
     identityResolvedAt: now,
     validatedAt: now,
+    userStage: "understanding_request",
   });
   const read = await sendWhatsAppReadStatus(env, { messageId: item.wamid }).catch(() => ({
     ok: false,
@@ -206,7 +208,7 @@ export async function tryWhatsAppEarlyVisible(
   if (!outboundAiEnabled(env)) {
     return { attempted: true, sent: false, identityFound: true };
   }
-  const reply = acknowledgementMessage(item.wamid + text);
+  const reply = clarify ? DOCUMENT_CLARIFY_REPLY : acknowledgementMessage(item.wamid + text);
   const send = await sendWhatsAppText(env, {
     toE164: sender,
     body: reply,
@@ -222,16 +224,20 @@ export async function tryWhatsAppEarlyVisible(
   }));
   if (send.ok) {
     await stampWhatsAppLifecycle(env, item.wamid, {
-      state: "acknowledged",
+      state: clarify ? "clarification_sent" : "acknowledged",
+      terminal: clarify ? "clarification_sent" : null,
       firstVisibleAt: now,
-      acknowledgementSentAt: now,
+      acknowledgementSentAt: clarify ? undefined : now,
+      replySentAt: clarify ? now : undefined,
+      finalSentAt: clarify ? now : undefined,
       readStatusSentAt: now,
       readStatusOk: read.ok ? 1 : 0,
-      ackSendOk: 1,
+      ackSendOk: clarify ? undefined : 1,
+      finalSendOk: clarify ? 1 : undefined,
       outboundHttpStatus: send.httpStatus ?? 200,
       outboundMetaMessageId: send.messageId,
       outboundAttempts: send.attempts,
     });
   }
-  return { attempted: true, sent: send.ok, identityFound: true };
+  return { attempted: true, sent: send.ok, identityFound: true, kind: clarify ? "clarify" : "ack", terminal: clarify };
 }

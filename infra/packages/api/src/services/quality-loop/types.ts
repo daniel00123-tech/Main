@@ -73,7 +73,11 @@ export type QualityFlagCategory =
   | "no_ack_on_slow_turn"
   | "first_visible_slow"
   | "rephrase_before_answer"
-  | "outbound_meta_failure";
+  | "outbound_meta_failure"
+  | "ack_no_final"
+  | "tool_timeout"
+  | "broad_search"
+  | "user_wait_over_60s";
 
 export interface QualityFlag {
   category: QualityFlagCategory;

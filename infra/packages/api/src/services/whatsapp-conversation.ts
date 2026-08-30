@@ -55,7 +55,7 @@ export const ACK_VARIANTS = [
 ];
 
 export const PROGRESS_VARIANTS = [
-  "I’ve found the right area — I’m still pulling the details together.",
+  "Still searching your documents — I’ll send the answer shortly.",
 ];
 
 export const DELAY_NOTICE_MESSAGE =

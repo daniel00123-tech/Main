@@ -30,7 +30,21 @@ import {
   recentDocumentTitles,
   type WhatsAppEntityMemory,
 } from "./whatsapp-entities";
-import { stampWhatsAppLifecycle, terminalStateForOutcome } from "./whatsapp-lifecycle";
+import { isWhatsAppTerminalState, stampWhatsAppLifecycle, terminalStateForOutcome } from "./whatsapp-lifecycle";
+import {
+  FETCH_TIMEOUT_MS,
+  FETCH_TOP_LIMIT,
+  KNOWLEDGE_SEARCH_TIMEOUT_MS,
+  MCP_TIMEOUT_MS,
+  SEARCH_CANDIDATE_LIMIT,
+  SYNTHESIS_TIMEOUT_MS,
+  withBoundedTimeout,
+} from "./whatsapp-timeouts";
+import {
+  knowledgeCircuitOpen,
+  recordKnowledgeSuccess,
+  recordKnowledgeTimeout,
+} from "./whatsapp-knowledge-breaker";
 import { lookupKnowledgeSourceUrl } from "./whatsapp-source-urls";
 import { raceWithWhatsAppWatchdog } from "./whatsapp-watchdog";
 import { guidanceInfluenceNote, guidanceSearchQuery, isGuidanceHit } from "./whatsapp-guidance";
@@ -256,7 +270,7 @@ export async function handleWhatsAppInboundMessage(
     return {
       handled: true,
       duplicate: false,
-      identityFound: Boolean(catchSender),
+      identityFound: Boolean(shared.sender),
       companyId: null,
       userId: null,
       replySent: sent.ok,
@@ -309,7 +323,7 @@ async function handleWhatsAppInboundMessageInner(
       outcome: "skipped",
     };
   }
-  const alreadyVisible = await inboundAlreadyVisible(env, item.wamid);
+  const alreadyVisible = await inboundAlreadyTerminal(env, item.wamid);
   if (alreadyVisible) {
     return {
       handled: true,
@@ -632,9 +646,12 @@ async function handleWhatsAppInboundMessageInner(
     companyId: companyDecision.companyId,
     userId: identity.user.id,
   }).catch(() => DEFAULT_QUALITY_RUNTIME);
+  marks.planningStartedAt = Date.now();
   const plan = planWhatsAppTurn({ text, memory: entities, connectors }, qualityRuntime);
   const intent = plan.intent || classifyWhatsAppIntent(text, { hasPriorTurns: priorTurns.length > 0 });
   marks.intentClassifiedAt = Date.now();
+  marks.planningCompletedAt = Date.now();
+  await stampWhatsAppLifecycle(env, item.wamid, { userStage: "understanding_request" });
 
   if (!text) {
     const reply = applyCustomerTone(
@@ -808,7 +825,9 @@ async function handleWhatsAppInboundMessageInner(
   const sessionUser = await toSessionUser(env.DB, dbUser);
   const interactionId = newId("int");
   const needsWork = !plan.skipTools;
-  let acknowledgementSent = Boolean(inboundResolved.acknowledgementSent);
+  const alreadyAcked = await inboundAlreadyAcknowledged(env, item.wamid);
+  let acknowledgementSent = Boolean(inboundResolved.acknowledgementSent) || alreadyAcked;
+  if (alreadyAcked) firstVisibleSent = true;
   let progressSent = false;
   let fallbackSent = false;
   let typingRefreshes = 0;
@@ -843,6 +862,8 @@ async function handleWhatsAppInboundMessageInner(
           memory: entities,
           interactionId,
           waitUntil: options?.waitUntil,
+          marks,
+          wamid: item.wamid,
         });
     const watched = await raceWithWhatsAppWatchdog(work, async (kind, body) => {
       const sent = await maybeSendReply(env, sender, body, { qualityRuntime });
@@ -871,6 +892,10 @@ async function handleWhatsAppInboundMessageInner(
         });
       } else if (kind === "progress") {
         progressSent = true;
+        await stampWhatsAppLifecycle(env, item.wamid, {
+          progressSentAt: new Date().toISOString(),
+          userStage: "searching_documents",
+        });
         if (typingRefreshes < TYPING_MAX_REFRESHES) {
           typingRefreshes += 1;
           void sendWhatsAppTypingIndicator(env, { messageId: item.wamid });
@@ -886,6 +911,9 @@ async function handleWhatsAppInboundMessageInner(
         });
       } else if (kind === "delay") {
         fallbackSent = true;
+        await stampWhatsAppLifecycle(env, item.wamid, {
+          delaySentAt: new Date().toISOString(),
+        });
         void recordWhatsAppUxUsage(env, {
           companyId: companyDecision.companyId,
           userId: identity.user.id,
@@ -897,7 +925,7 @@ async function handleWhatsAppInboundMessageInner(
         });
       }
       return true;
-    }, { skipAck: !needsWork, seed: item.wamid + text });
+    }, { skipAck: !needsWork || alreadyAcked, seed: item.wamid + text });
 
     if (watched.timedOut) {
       await stampWhatsAppLifecycle(env, item.wamid, {
@@ -1016,6 +1044,15 @@ async function handleWhatsAppInboundMessageInner(
         askedLink: plan.action === "memory_link",
         linkReturned: Boolean(answered.entities.lastDocument?.url) && plan.action === "memory_link",
         replyLength: polished.length,
+        planningMs: latency.planningMs,
+        queueMs: latency.queueMs,
+        mcpMs: latency.mcpMs,
+        knowledgeSearchMs: latency.knowledgeSearchMs,
+        fetchMs: latency.fetchMs,
+        synthesisMs: latency.synthesisMs,
+        slowestStage: latency.slowestStage,
+        broadSearchWithoutTerms: isGenericDocumentAsk(text),
+        userRepeatsWhileUnresolved: false,
         rawLeak: /```|__EMPTY|jsessionid=/i.test(polished),
         conversationKind: plan.skipTools ? "conversation" : "tool_mcp",
         costLane: plan.skipTools ? "whatsapp_conversation" : "whatsapp_tool_mcp",
@@ -1055,6 +1092,15 @@ async function handleWhatsAppInboundMessageInner(
       finalSendOk: sent.ok ? 1 : 0,
       outboundError: sent.ok ? null : sent.ok === false ? sent.error : "send_failed",
       lastError: sent.ok ? null : "send_failed",
+      planningMs: latency.planningMs,
+      queueMs: latency.queueMs,
+      mcpMs: latency.mcpMs,
+      knowledgeSearchMs: latency.knowledgeSearchMs,
+      fetchMs: latency.fetchMs,
+      synthesisMs: latency.synthesisMs,
+      outboundMs: latency.outboundMs,
+      totalMs: latency.totalMs,
+      slowestStage: latency.slowestStage,
     });
     if (inputKind === "voice") {
       await recordWhatsAppTranscriptionUsage(env, {
@@ -1153,6 +1199,8 @@ async function executeWhatsAppPlan(
     memory: WhatsAppEntityMemory;
     interactionId: string;
     waitUntil?: (promise: Promise<unknown>) => void;
+    marks?: ReturnType<typeof createWhatsAppLatencyMarks>;
+    wamid?: string;
   },
 ): Promise<{
   reply: string;
@@ -1211,16 +1259,21 @@ async function executeWhatsAppPlan(
     };
   }
   if (plan.action === "memory_fact" && input.memory.lastDocument?.id) {
-    const fetched = await executeGatewayRequest(env, {
-      actor: { type: "user", user: input.sessionUser },
-      companyId: input.companyId,
-      toolName: COMPANY_KNOWLEDGE_READ_TOOL,
-      arguments: { documentRef: input.memory.lastDocument.id, id: input.memory.lastDocument.id },
-      sourceClient: "whatsapp",
-      interactionId: input.interactionId,
-      waitUntil: input.waitUntil,
-    });
-    if (fetched.status === 200) {
+    const fetched = await executeWhatsAppGateway(
+      env,
+      {
+        actor: { type: "user", user: input.sessionUser },
+        companyId: input.companyId,
+        toolName: COMPANY_KNOWLEDGE_READ_TOOL,
+        arguments: { documentRef: input.memory.lastDocument.id, id: input.memory.lastDocument.id },
+        sourceClient: "whatsapp",
+        interactionId: input.interactionId,
+        waitUntil: input.waitUntil,
+      },
+      FETCH_TIMEOUT_MS,
+      "knowledge_fetch",
+    );
+    if (fetched && fetched.status === 200) {
       const doc = toStandardFetchPayload(fetched.result, input.memory.lastDocument.id);
       const nextDoc = documentEntityFromHit({
         id: doc.id || input.memory.lastDocument.id,
@@ -1239,15 +1292,29 @@ async function executeWhatsAppPlan(
   }
 
   if (plan.action === "xero" && plan.tool && ALLOWED_WHATSAPP_TOOLS.has(plan.tool)) {
-    const xero = await executeGatewayRequest(env, {
-      actor: { type: "user", user: input.sessionUser },
-      companyId: input.companyId,
-      toolName: plan.tool,
-      arguments: { query: plan.query || input.originalText },
-      sourceClient: "whatsapp",
-      interactionId: input.interactionId,
-      waitUntil: input.waitUntil,
-    });
+    const xero = await executeWhatsAppGateway(
+      env,
+      {
+        actor: { type: "user", user: input.sessionUser },
+        companyId: input.companyId,
+        toolName: plan.tool,
+        arguments: { query: plan.query || input.originalText },
+        sourceClient: "whatsapp",
+        interactionId: input.interactionId,
+        waitUntil: input.waitUntil,
+      },
+      MCP_TIMEOUT_MS,
+      "xero_mcp",
+    );
+    if (!xero) {
+      return {
+        reply: timeoutWhatsAppMessage(),
+        toolName: plan.tool,
+        outcome: "ai_failed",
+        latencyMs: Date.now() - started,
+        entities: input.memory,
+      };
+    }
     if (xero.status === 401 || xero.status === 403) {
       return {
         reply: permissionBlockedWhatsAppMessage("xero"),
@@ -1290,6 +1357,8 @@ async function executeWhatsAppPlan(
     waitUntil: input.waitUntil,
     fetch: plan.fetch,
     guidanceOnly: plan.needsGuidance && plan.action === "guidance",
+    marks: input.marks,
+    wamid: input.wamid,
   });
 
   let reply = knowledge.reply;
@@ -1330,6 +1399,8 @@ async function answerWithCompanyMcp(
     waitUntil?: (promise: Promise<unknown>) => void;
     fetch?: boolean;
     guidanceOnly?: boolean;
+    marks?: ReturnType<typeof createWhatsAppLatencyMarks>;
+    wamid?: string;
   },
 ): Promise<{
   reply: string;
@@ -1345,15 +1416,50 @@ async function answerWithCompanyMcp(
     return { reply: toolFailureWhatsAppMessage(), toolName: searchTool, outcome: "tool_failed", latencyMs: 0 };
   }
 
-  const search = await executeGatewayRequest(env, {
-    actor: { type: "user", user: input.sessionUser },
-    companyId: input.companyId,
-    toolName: searchTool,
-    arguments: { query: input.query, limit: 5 },
-    sourceClient: "whatsapp",
-    interactionId: input.interactionId,
-    waitUntil: input.waitUntil,
+  const circuit = await knowledgeCircuitOpen(env, input.companyId);
+  if (circuit.open) {
+    return {
+      reply: toolFailureWhatsAppMessage(),
+      toolName: searchTool,
+      outcome: "tool_failed",
+      latencyMs: Date.now() - started,
+    };
+  }
+
+  if (input.marks) input.marks.knowledgeSearchStartedAt = Date.now();
+  if (input.marks) input.marks.mcpStartedAt = Date.now();
+  await stampWhatsAppLifecycle(env, input.wamid, {
+    state: "tool_running",
+    toolRunningAt: new Date().toISOString(),
+    userStage: "searching_documents",
   });
+
+  const search = await executeWhatsAppGateway(
+    env,
+    {
+      actor: { type: "user", user: input.sessionUser },
+      companyId: input.companyId,
+      toolName: searchTool,
+      arguments: { query: input.query, limit: SEARCH_CANDIDATE_LIMIT },
+      sourceClient: "whatsapp",
+      interactionId: input.interactionId,
+      waitUntil: input.waitUntil,
+    },
+    KNOWLEDGE_SEARCH_TIMEOUT_MS,
+    "knowledge_search",
+  );
+  if (input.marks) input.marks.knowledgeSearchCompletedAt = Date.now();
+
+  if (!search) {
+    await recordKnowledgeTimeout(env, input.companyId, "knowledge_search_timeout");
+    if (input.marks) input.marks.mcpCompletedAt = Date.now();
+    return {
+      reply: timeoutWhatsAppMessage(),
+      toolName: searchTool,
+      outcome: "ai_failed",
+      latencyMs: Date.now() - started,
+    };
+  }
 
   if (search.status !== 200) {
     if (search.status === 401 || search.status === 403) {
@@ -1369,16 +1475,21 @@ async function answerWithCompanyMcp(
         ? "xero_profit_and_loss"
         : "xero_sales_summary";
       if (ALLOWED_WHATSAPP_TOOLS.has(xeroTool)) {
-        const xero = await executeGatewayRequest(env, {
-          actor: { type: "user", user: input.sessionUser },
-          companyId: input.companyId,
-          toolName: xeroTool,
-          arguments: { query: input.originalText },
-          sourceClient: "whatsapp",
-          interactionId: input.interactionId,
-          waitUntil: input.waitUntil,
-        });
-        if (xero.status === 200) {
+        const xero = await executeWhatsAppGateway(
+          env,
+          {
+            actor: { type: "user", user: input.sessionUser },
+            companyId: input.companyId,
+            toolName: xeroTool,
+            arguments: { query: input.originalText },
+            sourceClient: "whatsapp",
+            interactionId: input.interactionId,
+            waitUntil: input.waitUntil,
+          },
+          MCP_TIMEOUT_MS,
+          "xero_fallback",
+        );
+        if (xero && xero.status === 200) {
           return {
             reply: formatWhatsAppReply(compressToolResult(xero.result, input.originalText)),
             toolName: xeroTool,
@@ -1390,7 +1501,7 @@ async function answerWithCompanyMcp(
     }
     if (search.status >= 500) {
       return {
-        reply: Date.now() - started >= 20_000 ? timeoutWhatsAppMessage() : aiFailureWhatsAppMessage(),
+        reply: Date.now() - started >= KNOWLEDGE_SEARCH_TIMEOUT_MS ? timeoutWhatsAppMessage() : aiFailureWhatsAppMessage(),
         toolName: searchTool,
         outcome: "ai_failed",
         latencyMs: Date.now() - started,
@@ -1404,11 +1515,17 @@ async function answerWithCompanyMcp(
     };
   }
 
-  let hits = pickBestKnowledgeHits(toStandardSearchPayload(search.result).results, input.query);
+  await recordKnowledgeSuccess(env, input.companyId);
+  let hits = pickBestKnowledgeHits(
+    toStandardSearchPayload(search.result).results.slice(0, SEARCH_CANDIDATE_LIMIT),
+    input.query,
+  );
   if (input.guidanceOnly) {
     const guided = hits.filter((hit) => isGuidanceHit(hit));
     if (guided.length) hits = guided;
   }
+  hits = hits.slice(0, SEARCH_CANDIDATE_LIMIT);
+  if (input.marks) input.marks.synthesisStartedAt = Date.now();
   let body = formatSearchHits(hits, input.originalText);
   const shouldFetch =
     input.fetch !== false &&
@@ -1418,63 +1535,105 @@ async function answerWithCompanyMcp(
       /summarise|summarize|more detail|full detail/i.test(input.originalText));
 
   if (shouldFetch && hits[0]?.id && ALLOWED_WHATSAPP_TOOLS.has(COMPANY_KNOWLEDGE_READ_TOOL)) {
-    const fetched = await executeGatewayRequest(env, {
-      actor: { type: "user", user: input.sessionUser },
-      companyId: input.companyId,
-      toolName: COMPANY_KNOWLEDGE_READ_TOOL,
-      arguments: { documentRef: hits[0].id, id: hits[0].id },
-      sourceClient: "whatsapp",
-      interactionId: input.interactionId,
-      waitUntil: input.waitUntil,
-    });
-    if (fetched.status === 200) {
-      const doc = toStandardFetchPayload(fetched.result, hits[0].id);
-      const raw = doc.text || hits[0].snippet || "";
-      const title = doc.title && doc.title !== "Untitled document" ? doc.title : hits[0].title;
-      const excerpt = /__EMPTY/.test(raw)
-        ? `${title}\n\nThis looks like a spreadsheet. I can give you the useful rows if you want.`
-        : compressDocumentAnswer({ title, text: raw, question: input.originalText });
-      let url = doc.url || hits[0].url;
+    if (input.marks) input.marks.fetchStartedAt = Date.now();
+    await stampWhatsAppLifecycle(env, input.wamid, { userStage: "fetching_source" });
+    const toFetch = hits.slice(0, FETCH_TOP_LIMIT);
+    let fetchedDoc: { id: string; title: string; text: string; url: string; snippet?: string } | null = null;
+    for (const hit of toFetch) {
+      const fetched = await executeWhatsAppGateway(
+        env,
+        {
+          actor: { type: "user", user: input.sessionUser },
+          companyId: input.companyId,
+          toolName: COMPANY_KNOWLEDGE_READ_TOOL,
+          arguments: { documentRef: hit.id, id: hit.id },
+          sourceClient: "whatsapp",
+          interactionId: input.interactionId,
+          waitUntil: input.waitUntil,
+        },
+        FETCH_TIMEOUT_MS,
+        "knowledge_fetch",
+      );
+      if (!fetched) {
+        await recordKnowledgeTimeout(env, input.companyId, "knowledge_fetch_timeout");
+        break;
+      }
+      if (fetched.status === 200) {
+        const doc = toStandardFetchPayload(fetched.result, hit.id);
+        fetchedDoc = {
+          id: hit.id,
+          title: doc.title && doc.title !== "Untitled document" ? doc.title : hit.title,
+          text: doc.text || hit.snippet || "",
+          url: doc.url || hit.url || "",
+          snippet: hit.snippet,
+        };
+        break;
+      }
+    }
+    if (input.marks) input.marks.fetchCompletedAt = Date.now();
+    if (fetchedDoc) {
+      await stampWhatsAppLifecycle(env, input.wamid, { userStage: "preparing_answer" });
+      const excerpt = /__EMPTY/.test(fetchedDoc.text)
+        ? `${fetchedDoc.title}\n\nThis looks like a spreadsheet. I can give you the useful rows if you want.`
+        : compressDocumentAnswer({ title: fetchedDoc.title, text: fetchedDoc.text, question: input.originalText });
+      let url = fetchedDoc.url;
       if (!url) {
-        const backfill = await lookupKnowledgeSourceUrl(env, input.companyId, title);
+        const backfill = await lookupKnowledgeSourceUrl(env, input.companyId, fetchedDoc.title);
         url = backfill?.url ?? "";
       }
       const entity = documentEntityFromHit({
-        id: hits[0].id,
-        title,
+        id: fetchedDoc.id,
+        title: fetchedDoc.title,
         url,
-        text: raw,
-        snippet: hits[0].snippet,
-        sourceLabel: title,
+        text: fetchedDoc.text,
+        snippet: fetchedDoc.snippet,
+        sourceLabel: fetchedDoc.title,
       });
+      if (input.marks) input.marks.synthesisCompletedAt = Date.now();
+      if (input.marks) input.marks.mcpCompletedAt = Date.now();
       return {
         reply: excerpt,
         toolName: COMPANY_KNOWLEDGE_READ_TOOL,
         outcome: "answered",
         latencyMs: Date.now() - started,
         entity,
-        guidanceTitle: isGuidanceHit(hits[0]) ? title : null,
+        guidanceTitle: isGuidanceHit(hits[0]!) ? fetchedDoc.title : null,
       };
     }
   }
 
   if (!hits.length && FINANCIAL_READ.test(input.originalText)) {
     const xeroTool = "xero_sales_summary";
-    const xero = await executeGatewayRequest(env, {
-      actor: { type: "user", user: input.sessionUser },
-      companyId: input.companyId,
-      toolName: xeroTool,
-      arguments: { query: input.originalText },
-      sourceClient: "whatsapp",
-      interactionId: input.interactionId,
-      waitUntil: input.waitUntil,
-    });
-    if (xero.status === 200) {
+    const xero = await executeWhatsAppGateway(
+      env,
+      {
+        actor: { type: "user", user: input.sessionUser },
+        companyId: input.companyId,
+        toolName: xeroTool,
+        arguments: { query: input.originalText },
+        sourceClient: "whatsapp",
+        interactionId: input.interactionId,
+        waitUntil: input.waitUntil,
+      },
+      MCP_TIMEOUT_MS,
+      "xero_fallback",
+    );
+    if (xero && xero.status === 200) {
       body = formatWhatsAppReply(compressToolResult(xero.result, input.originalText));
+      if (input.marks) input.marks.synthesisCompletedAt = Date.now();
+      if (input.marks) input.marks.mcpCompletedAt = Date.now();
       return { reply: body, toolName: xeroTool, outcome: "answered", latencyMs: Date.now() - started };
     }
   }
 
+  await stampWhatsAppLifecycle(env, input.wamid, { userStage: "preparing_answer" });
+  const synthesised = await withBoundedTimeout(
+    Promise.resolve(formatWhatsAppReply(body)),
+    SYNTHESIS_TIMEOUT_MS,
+    "synthesis",
+  );
+  if (input.marks) input.marks.synthesisCompletedAt = Date.now();
+  if (input.marks) input.marks.mcpCompletedAt = Date.now();
   const top = hits[0];
   let topUrl = top?.url ?? "";
   if (top && !topUrl) {
@@ -1482,9 +1641,9 @@ async function answerWithCompanyMcp(
     topUrl = backfill?.url ?? "";
   }
   return {
-    reply: formatWhatsAppReply(body),
+    reply: synthesised.ok ? synthesised.value : timeoutWhatsAppMessage(),
     toolName: searchTool,
-    outcome: "answered",
+    outcome: synthesised.ok ? "answered" : "ai_failed",
     latencyMs: Date.now() - started,
     entity: top
       ? documentEntityFromHit({
@@ -1758,15 +1917,48 @@ async function claimWhatsAppMessage(env: Env, wamid: string): Promise<{ duplicat
   }
 }
 
-async function inboundAlreadyVisible(env: Env, wamid: string): Promise<boolean> {
+async function executeWhatsAppGateway(
+  env: Env,
+  input: Parameters<typeof executeGatewayRequest>[1],
+  timeoutMs: number,
+  label: string,
+): Promise<Awaited<ReturnType<typeof executeGatewayRequest>> | null> {
+  const raced = await withBoundedTimeout(executeGatewayRequest(env, input), timeoutMs, label);
+  if (!raced.ok || raced.timedOut) return null;
+  return raced.value;
+}
+
+/** Skip only a finished turn. ACK (`first_visible_at`) is not terminal — the queue must still search. */
+async function inboundAlreadyTerminal(env: Env, wamid: string): Promise<boolean> {
   if (!wamid) return false;
   try {
     const row = await env.DB.prepare(
-      `SELECT first_visible_at, reply_sent_at, terminal_state FROM whatsapp_inbound_events WHERE wamid = ? LIMIT 1`,
+      `SELECT reply_sent_at, terminal_state, final_sent_at FROM whatsapp_inbound_events WHERE wamid = ? LIMIT 1`,
     )
       .bind(wamid)
-      .first<{ first_visible_at?: string | null; reply_sent_at?: string | null; terminal_state?: string | null }>();
-    return Boolean(row?.first_visible_at || row?.reply_sent_at || row?.terminal_state);
+      .first<{ reply_sent_at?: string | null; terminal_state?: string | null; final_sent_at?: string | null }>();
+    return Boolean(
+      isWhatsAppTerminalState(row?.terminal_state) || row?.reply_sent_at || row?.final_sent_at,
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function inboundAlreadyAcknowledged(env: Env, wamid: string): Promise<boolean> {
+  if (!wamid) return false;
+  try {
+    const row = await env.DB.prepare(
+      `SELECT first_visible_at, acknowledgement_sent_at, terminal_state FROM whatsapp_inbound_events WHERE wamid = ? LIMIT 1`,
+    )
+      .bind(wamid)
+      .first<{
+        first_visible_at?: string | null;
+        acknowledgement_sent_at?: string | null;
+        terminal_state?: string | null;
+      }>();
+    if (isWhatsAppTerminalState(row?.terminal_state)) return false;
+    return Boolean(row?.first_visible_at || row?.acknowledgement_sent_at);
   } catch {
     return false;
   }

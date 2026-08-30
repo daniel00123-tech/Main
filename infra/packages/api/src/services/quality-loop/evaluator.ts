@@ -114,6 +114,24 @@ export function evaluateWhatsAppConversation(thread: ConversationThread): Conver
     penalise(dimensions, "reliability", 35, "Conversation stayed processing without a terminal reply.");
     flags.push(neg("stuck", "high", 0.9, "WhatsApp turn remained stuck."));
   }
+  if (
+    thread.qualitySignals.includes("whatsapp_no_final_after_ack") ||
+    thread.qualitySignals.includes("whatsapp_ack_no_final_over_30s")
+  ) {
+    penalise(dimensions, "reliability", 30, "Acknowledgement was sent without a terminal reply.");
+    flags.push(neg("ack_no_final", "high", 0.9, "Ack without final WhatsApp reply."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_tool_timeout")) {
+    penalise(dimensions, "reliability", 25, "Knowledge or tool call timed out.");
+    flags.push(neg("tool_timeout", "high", 0.9, "Tool/MCP timeout."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_broad_search_without_terms")) {
+    penalise(dimensions, "tool_correctness", 15, "Broad document ask launched a search without usable terms.");
+    flags.push(neg("broad_search", "medium", 0.8, "Broad search without distinctive terms."));
+  }
+  if (thread.qualitySignals.includes("whatsapp_user_wait_over_60s") || thread.qualitySignals.includes("whatsapp_final_over_60s")) {
+    flags.push(neg("user_wait_over_60s", "high", 0.85, `User wait ${thread.totalMs}ms.`));
+  }
   if (thread.contextLost || thread.qualitySignals.includes("whatsapp_context_lost") || thread.qualitySignals.includes("whatsapp_button_context_lost")) {
     penalise(dimensions, "context", 35, "Follow-up could not reuse the previous entity.");
     flags.push(neg("context_loss", "high", 0.8, "Context was lost on a follow-up or button tap."));

@@ -1,5 +1,5 @@
 import type { Env } from "../env";
-import { classifyWhatsAppIntent, focusSearchTerms } from "./whatsapp-intent";
+import { classifyWhatsAppIntent, focusSearchTerms, softenSearchQuery } from "./whatsapp-intent";
 import { sleepMs } from "./whatsapp-latency";
 import { isWhatsAppTerminalState } from "./whatsapp-lifecycle";
 
@@ -18,7 +18,69 @@ const LOCAL_GREETING =
 const CASUAL_ONLY = /^(how are you|how's it going|hows it going|you ok|you okay)[\s!.?]*$/i;
 const THANKS_ONLY = /^(thanks|thank you|cheers|ta|thx|ty)[\s!.?]*$/i;
 const GENERIC_DOC_FILLER =
-  /\b(shared folder|sharepoint|onedrive|one drive|folder|drive|help me|in the|the|a|an|please|for me)\b/gi;
+  /\b(shared folder|sharepoint|onedrive|one drive|folder|drive|help me|in the|the|a|an|please|for me|or two|a couple|on the system|in the system)\b/gi;
+
+const GENERIC_SEARCH_STOPWORDS = new Set([
+  "can",
+  "you",
+  "find",
+  "me",
+  "a",
+  "an",
+  "the",
+  "or",
+  "two",
+  "couple",
+  "some",
+  "any",
+  "few",
+  "doc",
+  "docs",
+  "document",
+  "documents",
+  "file",
+  "files",
+  "folder",
+  "folders",
+  "sharepoint",
+  "onedrive",
+  "drive",
+  "shared",
+  "on",
+  "in",
+  "system",
+  "systems",
+  "and",
+  "tell",
+  "about",
+  "it",
+  "this",
+  "that",
+  "please",
+  "for",
+  "of",
+  "help",
+  "look",
+  "into",
+  "something",
+  "anything",
+  "stuff",
+  "one",
+  "get",
+  "show",
+  "give",
+  "want",
+  "need",
+  "like",
+  "whats",
+  "what",
+  "called",
+  "name",
+  "there",
+  "here",
+  "available",
+  "tellme",
+]);
 
 export function isLocalGreetingText(text: string): boolean {
   return LOCAL_GREETING.test(text.trim());
@@ -50,6 +112,16 @@ export function instantLocalReply(text: string): string {
   return GREETING_REPLY;
 }
 
+/** Distinctive nouns left after stripping verbs and generic document filler. */
+export function usableSearchTerms(text: string): string[] {
+  return softenSearchQuery(text)
+    .toLowerCase()
+    .replace(/[?.!,]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z0-9]/g, ""))
+    .filter((token) => token.length >= 3 && !GENERIC_SEARCH_STOPWORDS.has(token));
+}
+
 /** Generic document/file ask with no distinctive search term — clarify, do not search. */
 export function isGenericDocumentAsk(text: string): boolean {
   const trimmed = text.trim();
@@ -59,12 +131,13 @@ export function isGenericDocumentAsk(text: string): boolean {
     trimmed,
   );
   if (!mentionsDoc) return false;
+  if (usableSearchTerms(trimmed).length === 0) return true;
   const focused = focusSearchTerms(trimmed)
     .replace(GENERIC_DOC_FILLER, " ")
     .replace(/[?.!,]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return focused.length < 4;
+  return focused.length < 4 && usableSearchTerms(trimmed).length === 0;
 }
 
 export function looksLikeBurstCompanion(text: string): boolean {
