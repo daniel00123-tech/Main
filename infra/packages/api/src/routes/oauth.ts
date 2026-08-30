@@ -24,15 +24,15 @@ import {
 } from "../auth/mcp-oauth";
 import { getCompanyById, getCompanyBySlug } from "../services/control-plane";
 import {
+  infraBrowserPublicBase,
+  infraBrowserPublicBase,
   infraMcpGatewayUrl,
-  infraPublicApiBase,
-  portalOrigin,
 } from "../services/public-urls";
 
 const oauth = new Hono<{ Bindings: Env }>();
 
-function issuerFrom(env: Env, requestUrl: string): string {
-  return oauthIssuer(infraPublicApiBase(env, requestUrl));
+function issuerFrom(env: Env, request: Request): string {
+  return oauthIssuer(infraBrowserPublicBase(env, request.url, request));
 }
 
 function htmlPage(title: string, body: string, status = 200): Response {
@@ -81,23 +81,23 @@ async function sessionFromRequest(env: Env, request: Request) {
 }
 
 oauth.get("/.well-known/oauth-authorization-server", (c) => {
-  const issuer = issuerFrom(c.env, c.req.url);
+  const issuer = issuerFrom(c.env, c.req.raw);
   return c.json(oauthAuthorizationServerMetadata(issuer), 200, {
     "cache-control": "public, max-age=300",
   });
 });
 
 oauth.get("/.well-known/oauth-protected-resource", (c) => {
-  const issuer = issuerFrom(c.env, c.req.url);
-  const resource = infraMcpGatewayUrl(c.env, c.req.url);
+  const issuer = issuerFrom(c.env, c.req.raw);
+  const resource = infraMcpGatewayUrl(c.env, c.req.url, c.req.raw);
   return c.json(oauthProtectedResourceMetadata(issuer, resource), 200, {
     "cache-control": "public, max-age=300",
   });
 });
 
 oauth.get("/.well-known/oauth-protected-resource/api/gateway/v1/mcp", (c) => {
-  const issuer = issuerFrom(c.env, c.req.url);
-  const resource = infraMcpGatewayUrl(c.env, c.req.url);
+  const issuer = issuerFrom(c.env, c.req.raw);
+  const resource = infraMcpGatewayUrl(c.env, c.req.url, c.req.raw);
   return c.json(oauthProtectedResourceMetadata(issuer, resource), 200, {
     "cache-control": "public, max-age=300",
   });
@@ -145,7 +145,7 @@ oauth.get("/oauth/authorize", async (c) => {
   const codeChallenge = query.code_challenge ?? "";
   const method = query.code_challenge_method ?? "";
   const scope = query.scope ?? "mcp";
-  const resource = query.resource ?? infraMcpGatewayUrl(c.env, c.req.url);
+  const resource = query.resource ?? infraMcpGatewayUrl(c.env, c.req.url, c.req.raw);
   const companyHint = query.company ?? query.tenant ?? "";
   const channel = normalizeOauthChannel(query.channel ?? query.client_type);
 
@@ -170,7 +170,12 @@ oauth.get("/oauth/authorize", async (c) => {
   const session = await sessionFromRequest(c.env, c.req.raw);
   if (!session) {
     const authorizeUrl = new URL(c.req.url);
-    const login = new URL("/portal/login", `${portalOrigin(c.env)}/`);
+    const loginBase = infraBrowserPublicBase(c.env, c.req.url, c.req.raw);
+    const loginOrigin =
+      loginBase.includes("infrastack.app") || loginBase.includes("pages.dev")
+        ? loginBase
+        : "https://app.infrastack.app";
+    const login = new URL("/portal/login", `${loginOrigin}/`);
     login.searchParams.set("next", authorizeUrl.toString());
     return c.redirect(login.toString(), 302);
   }
@@ -242,8 +247,8 @@ oauth.get("/oauth/authorize", async (c) => {
 });
 
 oauth.post("/oauth/token", async (c) => {
-  const issuer = issuerFrom(c.env, c.req.url);
-  const resourceDefault = infraMcpGatewayUrl(c.env, c.req.url);
+  const issuer = issuerFrom(c.env, c.req.raw);
+  const resourceDefault = infraMcpGatewayUrl(c.env, c.req.url, c.req.raw);
   const contentType = c.req.header("content-type") ?? "";
   const params = contentType.includes("application/json")
     ? ((await c.req.json().catch(() => ({}))) as Record<string, string>)

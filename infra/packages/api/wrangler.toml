@@ -11,7 +11,7 @@ migrations_dir = "../../migrations"
 
 [vars]
 ENVIRONMENT = "production"
-ALLOWED_ORIGINS = "https://infra-web.pages.dev,http://localhost:5173,http://127.0.0.1:5173,https://chatgpt.com,https://chat.openai.com,https://claude.ai"
+ALLOWED_ORIGINS = "https://app.infrastack.app,https://infra-web.pages.dev,http://localhost:5173,http://127.0.0.1:5173,https://chatgpt.com,https://chat.openai.com,https://claude.ai"
 COOKIE_CROSS_ORIGIN = "false"
 PORTAL_COOKIE_DOMAIN = ".infra-web.pages.dev"
 INFRA_PUBLIC_API_URL = "https://infra-api.daniel-dwyer123.workers.dev"

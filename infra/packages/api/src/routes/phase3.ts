@@ -103,7 +103,7 @@ import {
   infraGatewayExecuteUrl,
   infraMcpGatewayUrl,
   portalOrigin,
-  infraPublicApiBase,
+  infraBrowserPublicBase,
 } from "../services/public-urls";
 import {
   getUserCompanyRole,
@@ -1297,8 +1297,8 @@ phase3.get("/api/companies/:slug/ai-connections", requireAuth, async (c) => {
     .bind(company.id)
     .all();
 
-  const apiBase = infraPublicApiBase(c.env, c.req.url);
-  const mcpUrl = infraMcpGatewayUrl(c.env, c.req.url);
+  const apiBase = infraBrowserPublicBase(c.env, c.req.url, c.req.raw);
+  const mcpUrl = infraMcpGatewayUrl(c.env, c.req.url, c.req.raw);
   const executeUrl = infraGatewayExecuteUrl(c.env, c.req.url);
   const identities = await listServiceIdentities(c.env.DB, company.id);
   const identityById = new Map(identities.map((item) => [item.id, item]));
@@ -1452,9 +1452,9 @@ phase3.post(
     const body = (await c.req.json().catch(() => ({}))) as { mode?: string };
     const mode = body.mode === "service_token" ? "service_token" : "oauth";
     await ensureDefaultAiConnections(c.env.DB, company.id);
-    const mcpEndpoint = infraMcpGatewayUrl(c.env, c.req.url);
+    const mcpEndpoint = infraMcpGatewayUrl(c.env, c.req.url, c.req.raw);
     const gatewayEndpoint = infraGatewayExecuteUrl(c.env, c.req.url);
-    const issuer = oauthIssuer(infraPublicApiBase(c.env, c.req.url));
+    const issuer = oauthIssuer(infraBrowserPublicBase(c.env, c.req.url, c.req.raw));
 
     if (mode === "oauth") {
       const enabled = await isAiChannelEnabled(c.env.DB, company.id, clientType);

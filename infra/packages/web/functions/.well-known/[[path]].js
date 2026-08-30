@@ -1,6 +1,6 @@
 import { proxyToInfraApi } from "../_proxy.js";
 
-/** Proxy /api/* to the INFRA API worker so session cookies stay first-party on Pages. */
+/** Proxy OAuth discovery so ChatGPT can find INFRA as the authorization server. */
 export async function onRequest(context) {
   return proxyToInfraApi(context);
 }

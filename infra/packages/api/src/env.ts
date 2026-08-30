@@ -75,6 +75,12 @@ export function isOriginAllowed(origin: string | undefined, allowedOrigins: stri
     if (protocol === "https:" && hostname.endsWith(".infra-web.pages.dev")) {
       return true;
     }
+    if (
+      protocol === "https:" &&
+      (hostname === "app.infrastack.app" || hostname.endsWith(".infrastack.app"))
+    ) {
+      return true;
+    }
   } catch {
     return false;
   }

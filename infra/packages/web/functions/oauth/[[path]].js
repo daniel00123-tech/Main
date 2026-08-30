@@ -1,6 +1,6 @@
 import { proxyToInfraApi } from "../_proxy.js";
 
-/** Proxy /api/* to the INFRA API worker so session cookies stay first-party on Pages. */
+/** Proxy /oauth/* so ChatGPT OAuth stays on app.infrastack.app with the portal session. */
 export async function onRequest(context) {
   return proxyToInfraApi(context);
 }

@@ -6,10 +6,8 @@ import {
   isAccessJtiRevoked,
   isInfraServiceToken,
   looksLikeJwt,
-  oauthIssuer,
   verifyMcpAccessToken,
 } from "../auth/mcp-oauth";
-import { infraPublicApiBase } from "./public-urls";
 import {
   normalizeSourceClient,
   resolveConnectorInstanceId,
@@ -150,8 +148,7 @@ export async function resolveGatewayActor(
   const token = extractServiceCredential(request);
   if (token) {
     if (looksLikeJwt(token) && !isInfraServiceToken(token)) {
-      const issuer = oauthIssuer(infraPublicApiBase(env, request.url));
-      const claims = await verifyMcpAccessToken(token, env.SESSION_SECRET, issuer);
+      const claims = await verifyMcpAccessToken(token, env.SESSION_SECRET);
       if (!claims) {
         return { error: "Invalid or expired INFRA user credential", status: 401 };
       }

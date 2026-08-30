@@ -30,8 +30,49 @@ export function portalHostForSubdomain(env: Env, subdomain: string): string {
   return `${subdomain}.${portalBaseDomain(env)}`;
 }
 
-export function infraMcpGatewayUrl(env: Env, requestUrl?: string | URL | null): string {
-  return `${infraPublicApiBase(env, requestUrl)}/api/gateway/v1/mcp`;
+function isBrowserPublicHost(host: string): boolean {
+  const hostname = host.toLowerCase();
+  return (
+    hostname === "app.infrastack.app" ||
+    hostname.endsWith(".infrastack.app") ||
+    hostname.endsWith(".infra-web.pages.dev")
+  );
+}
+
+/**
+ * Browser/ChatGPT-facing base. Prefer the portal origin so OAuth and MCP
+ * stay first-party with the INFRA session cookie. Connector callbacks still
+ * use infraPublicApiBase() / INFRA_PUBLIC_API_URL (workers.dev).
+ */
+export function infraBrowserPublicBase(
+  env: Env,
+  requestUrl?: string | URL | null,
+  request?: Request | null,
+): string {
+  const forwardedHost = request?.headers.get("X-Forwarded-Host")?.split(",")[0]?.trim();
+  const forwardedProto = request?.headers.get("X-Forwarded-Proto")?.split(",")[0]?.trim() || "https";
+  if (forwardedHost && isBrowserPublicHost(forwardedHost)) {
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+  if (requestUrl) {
+    try {
+      const url = typeof requestUrl === "string" ? new URL(requestUrl) : requestUrl;
+      if (isBrowserPublicHost(url.hostname)) {
+        return url.origin;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return infraPublicApiBase(env, requestUrl);
+}
+
+export function infraMcpGatewayUrl(
+  env: Env,
+  requestUrl?: string | URL | null,
+  request?: Request | null,
+): string {
+  return `${infraBrowserPublicBase(env, requestUrl, request)}/api/gateway/v1/mcp`;
 }
 
 export function infraGatewayExecuteUrl(env: Env, requestUrl?: string | URL | null): string {
