@@ -1559,13 +1559,15 @@ async function executeWhatsAppPlan(
     };
   }
   if (plan.action === "memory_fact" && input.memory.lastDocument?.id) {
+    const target = resolveRememberedDocument(input.memory, input.originalText) ?? input.memory.lastDocument;
+    if (input.marks) input.marks.fetchStartedAt = Date.now();
     const fetched = await executeWhatsAppGateway(
       env,
       {
         actor: { type: "user", user: input.sessionUser },
         companyId: input.companyId,
         toolName: COMPANY_KNOWLEDGE_READ_TOOL,
-        arguments: { documentRef: input.memory.lastDocument.id, id: input.memory.lastDocument.id },
+        arguments: { documentRef: target.id, id: target.id },
         sourceClient: "whatsapp",
         interactionId: input.interactionId,
         waitUntil: input.waitUntil,
@@ -1574,7 +1576,8 @@ async function executeWhatsAppPlan(
       "knowledge_fetch",
     );
     if (fetched && fetched.status === 200) {
-      const doc = toStandardFetchPayload(fetched.result, input.memory.lastDocument.id);
+      if (input.marks) input.marks.fetchCompletedAt = Date.now();
+      const doc = toStandardFetchPayload(fetched.result, target.id);
       const identity = identityFromMetadata(doc.metadata ?? null);
       let url = doc.url || input.memory.lastDocument.url || "";
       if (!url) {
@@ -1596,8 +1599,8 @@ async function executeWhatsAppPlan(
         });
       }
       const nextDoc = documentEntityFromHit({
-        id: doc.id || input.memory.lastDocument.id,
-        title: doc.title || input.memory.lastDocument.title,
+        id: target.id,
+        title: doc.title || target.title,
         url,
         text: doc.text,
         sourceSystem: identity.sourceSystem ?? input.memory.lastDocument.sourceSystem,
@@ -2081,7 +2084,11 @@ function pickBestKnowledgeHits<T extends { id?: string; title: string; snippet?:
   query: string,
 ): T[] {
   if (!hits.length) return hits;
-  return [...hits].sort((left, right) => scoreGlobalSearchHit(right, query) - scoreGlobalSearchHit(left, query));
+  const preferredClass = /\bcv\b/i.test(query) ? "cv_resume" : /\bpolicy\b/i.test(query) ? "policy_procedure" : null;
+  return [...hits].sort(
+    (left, right) =>
+      scoreGlobalSearchHit(right, query, { preferredClass }) - scoreGlobalSearchHit(left, query, { preferredClass }),
+  );
 }
 
 function formatSearchHits(

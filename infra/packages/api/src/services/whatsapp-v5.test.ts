@@ -291,6 +291,17 @@ describe("WhatsApp V5 buttons, PII, ranking, and model boundary", () => {
     expect(classifyDocument({ title: "Vehicle use procedure", text: POLICY_CHUNKS[0]!.text })).toBe("policy_procedure");
   });
 
+  it("ranks a CV query above an unrelated year-matched marketing file", () => {
+    const kept = rejectWeakSearchHits(
+      [
+        { id: "mkt", title: "VHL 2015 Marketing Review FINAL.pdf", snippet: "campaign review" },
+        { id: "cv", title: "CV 2015 1", snippet: "curriculum vitae" },
+      ],
+      "CV 2015",
+    );
+    expect(kept[0]?.id).toBe("cv");
+  });
+
   it("rejects weak global hits below the confidence threshold", () => {
     const kept = rejectWeakSearchHits(
       [

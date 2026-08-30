@@ -281,7 +281,11 @@ export function resolveRememberedDocument(
     .replace(/[?.!,]/g, " ")
     .split(/\s+/)
     .map((token) => token.replace(/[^a-z0-9]/g, ""))
-    .filter((token) => token.length >= 2 && !["the", "and", "for", "that", "this", "document", "doc", "file"].includes(token));
+    .filter(
+      (token) =>
+        (token.length >= 4 || token === "cv" || token === "van") &&
+        !["that", "this", "document", "file", "allowed", "does", "what", "from"].includes(token),
+    );
   if (terms.length) {
     const docs = rememberedDocuments(memory);
     const scored = docs
@@ -292,7 +296,11 @@ export function resolveRememberedDocument(
       })
       .filter((row) => row.hits > 0)
       .sort((left, right) => right.hits - left.hits);
-    if (scored[0] && (scored.length === 1 || scored[0].hits > (scored[1]?.hits ?? 0))) {
+    if (
+      scored[0] &&
+      scored[0].hits >= 2 &&
+      (scored.length === 1 || scored[0].hits > (scored[1]?.hits ?? 0))
+    ) {
       return scored[0].doc;
     }
   }
