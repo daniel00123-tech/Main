@@ -1,9 +1,12 @@
 import {
   describeCapability,
   notConfiguredConnectorDefinition,
+  readOnlyCapabilities,
   type ConnectorDefinition,
 } from "@business-mcp/core";
 import { COMPANY_NAME } from "./constants";
+import type { Env } from "./env";
+import { MICROSOFT_CONNECTOR_CODES, microsoftCredentialsPresent } from "./microsoft/config";
 
 const EL_CONNECTOR_SEEDS: Array<{
   code: string;
@@ -21,13 +24,13 @@ const EL_CONNECTOR_SEEDS: Array<{
     code: "sharepoint",
     label: "SharePoint",
     category: "documents",
-    secretName: "MICROSOFT_SHAREPOINT_CREDENTIALS",
+    secretName: "EL_MS_CLIENT_SECRET",
   },
   {
     code: "onedrive",
     label: "OneDrive",
     category: "documents",
-    secretName: "MICROSOFT_ONEDRIVE_CREDENTIALS",
+    secretName: "EL_MS_CLIENT_SECRET",
   },
   {
     code: "xero",
@@ -39,7 +42,13 @@ const EL_CONNECTOR_SEEDS: Array<{
     code: "outlook_shared_mailbox",
     label: "Outlook Shared Mailbox",
     category: "email",
-    secretName: "OUTLOOK_SHARED_MAILBOX_CREDENTIALS",
+    secretName: "EL_MS_CLIENT_SECRET",
+  },
+  {
+    code: "outlook_calendar",
+    label: "Outlook Calendar",
+    category: "calendar",
+    secretName: "EL_MS_CLIENT_SECRET",
   },
   {
     code: "freshdesk",
@@ -49,15 +58,48 @@ const EL_CONNECTOR_SEEDS: Array<{
   },
 ];
 
-export function elConnectorDefinitions(): ConnectorDefinition[] {
-  return EL_CONNECTOR_SEEDS.map((seed) =>
-    notConfiguredConnectorDefinition(
+function microsoftConnectorDefinition(
+  seed: (typeof EL_CONNECTOR_SEEDS)[number]
+): ConnectorDefinition {
+  const mailOrCalendar = seed.code === "outlook_shared_mailbox" || seed.code === "outlook_calendar";
+  return {
+    connectorType: seed.code,
+    connectorVersion: "1.1.0",
+    company: COMPANY_NAME,
+    label: seed.label,
+    category: seed.category,
+    enabled: true,
+    status: "configured",
+    authenticationConfigured: true,
+    capabilities: mailOrCalendar
+      ? [
+          ...readOnlyCapabilities(),
+          describeCapability("CREATE", true),
+          describeCapability("UPDATE", true),
+          describeCapability("SEND", seed.code === "outlook_shared_mailbox"),
+        ]
+      : readOnlyCapabilities(),
+    readLevel: "read",
+    writeLevel: mailOrCalendar ? "update" : "none",
+    sendLevel: seed.code === "outlook_shared_mailbox" ? "send" : "none",
+    batchCapable: false,
+    health: "healthy",
+  };
+}
+
+export function elConnectorDefinitions(env?: Env): ConnectorDefinition[] {
+  const microsoftReady = env ? microsoftCredentialsPresent(env) : false;
+  return EL_CONNECTOR_SEEDS.map((seed) => {
+    if (microsoftReady && MICROSOFT_CONNECTOR_CODES.has(seed.code)) {
+      return microsoftConnectorDefinition(seed);
+    }
+    return notConfiguredConnectorDefinition(
       seed.code,
       COMPANY_NAME,
       seed.label,
       seed.category
-    )
-  );
+    );
+  });
 }
 
 export function elConnectorCapabilitiesCatalog(): Array<{
