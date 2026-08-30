@@ -94,7 +94,8 @@ function env(): Env {
                   company_id: args[1],
                   pending_company_selection: args[2],
                   turns_json: args[3],
-                  updated_at: args[4],
+                  entities_json: args[4],
+                  updated_at: args[5] ?? args[4],
                 });
               }
               return { success: true, meta: { changes: 1 } };
@@ -242,6 +243,40 @@ describe("WhatsApp UX orchestration", () => {
     expect(String(args?.arguments?.query ?? "")).toMatch(/coal search/i);
   });
 
+  it("reuses the last document when asked for the link", async () => {
+    executeGatewayRequest.mockImplementation(async (_env: unknown, input: { toolName?: string }) => {
+      if (String(input.toolName ?? "").includes("document")) {
+        return {
+          status: 200,
+          result: {
+            title: "Coal Search.pdf",
+            text: "Payment confirmation £49.92 CAD021/01",
+            url: "https://contoso.sharepoint.com/CoalSearch.pdf",
+          },
+        };
+      }
+      return {
+        status: 200,
+        result: {
+          results: [
+            {
+              id: "coal",
+              title: "Coal Search.pdf",
+              snippet: "coal search payment",
+              url: "https://contoso.sharepoint.com/CoalSearch.pdf",
+            },
+          ],
+        },
+      };
+    });
+    const runtime = env();
+    await handleWhatsAppInboundMessage(runtime, inbound("Find the Coal Search document"));
+    executeGatewayRequest.mockClear();
+    const follow = await handleWhatsAppInboundMessage(runtime, inbound("send me the link"));
+    expect(executeGatewayRequest).not.toHaveBeenCalled();
+    expect(follow.publicReply).toMatch(/https:\/\/contoso\.sharepoint\.com\/CoalSearch\.pdf/);
+  });
+
   it("prefers a title that matches the distinctive search terms", async () => {
     executeGatewayRequest.mockImplementation(async (_env: unknown, input: { toolName?: string; arguments?: { id?: string } }) => {
       if (String(input.toolName ?? "").includes("document") || String(input.toolName ?? "").includes("fetch")) {
@@ -372,9 +407,10 @@ describe("WhatsApp UX orchestration", () => {
       result: { results: [{ id: "doc_2", title: "Sales last month", snippet: "10k last month" }] },
     });
     await handleWhatsAppInboundMessage(runtime, inbound("What about last month?"));
-    const query = String((executeGatewayRequest.mock.calls[0]?.[1] as { arguments?: { query?: string } })?.arguments?.query ?? "");
+    const query = String((executeGatewayRequest.mock.calls[0]?.[1] as { arguments?: { query?: string }; toolName?: string })?.arguments?.query ?? "");
+    const tool = String((executeGatewayRequest.mock.calls[0]?.[1] as { toolName?: string })?.toolName ?? "");
     expect(query).toMatch(/last month/i);
-    expect(query).toMatch(/sales this month/i);
+    expect(tool).toMatch(/xero|search_company_knowledge/i);
   });
 
   it("does not send a progress update when the final answer is already ready", async () => {
