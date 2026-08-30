@@ -77,18 +77,18 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
   const inbound = parseWhatsAppInboundMessages(safeParse(rawBody));
   let fastLaneSent = 0;
   let earlyVisibleSent = 0;
-  const visibleWamids: string[] = [];
+  const visible: Array<{ wamid: string; terminal: boolean; clarify: boolean }> = [];
   for (const item of inbound) {
     const lane = await tryWhatsAppFastLane(c.env, item).catch(() => null);
     if (lane?.sent) {
       fastLaneSent += 1;
-      visibleWamids.push(item.wamid);
+      visible.push({ wamid: item.wamid, terminal: true, clarify: false });
       continue;
     }
     const early = await tryWhatsAppEarlyVisible(c.env, item).catch(() => null);
     if (early?.sent) {
       earlyVisibleSent += 1;
-      visibleWamids.push(item.wamid);
+      visible.push({ wamid: item.wamid, terminal: Boolean(early.terminal), clarify: early.kind === "clarify" });
     }
   }
 
@@ -100,12 +100,12 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
   });
 
   const nowVisible = new Date().toISOString();
-  for (const wamid of visibleWamids) {
-    await stampWhatsAppLifecycle(c.env, wamid, {
-      state: fastLaneSent > 0 ? "reply_sent" : "acknowledged",
-      terminal: fastLaneSent > 0 ? "reply_sent" : null,
+  for (const item of visible) {
+    await stampWhatsAppLifecycle(c.env, item.wamid, {
+      state: item.clarify ? "clarification_sent" : item.terminal ? "reply_sent" : "acknowledged",
+      terminal: item.clarify ? "clarification_sent" : item.terminal ? "reply_sent" : null,
       firstVisibleAt: nowVisible,
-      replySentAt: fastLaneSent > 0 ? nowVisible : undefined,
+      replySentAt: item.terminal || item.clarify ? nowVisible : undefined,
     }).catch(() => undefined);
   }
 
@@ -120,7 +120,7 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
 
   const queued = stored.duplicate ? true : await enqueueWhatsAppInbound(c.env, job);
   if (!stored.duplicate) {
-    for (const stage of ["t5", "t10", "t30"] as const) {
+    for (const stage of ["t5", "t10", "t15", "t30", "t60"] as const) {
       await enqueueWhatsAppInbound(
         c.env,
         {
@@ -131,7 +131,10 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
           wamid: inbound[0]?.wamid,
           stage,
         },
-        { delaySeconds: stage === "t5" ? 5 : stage === "t10" ? 10 : 30 },
+        {
+          delaySeconds:
+            stage === "t5" ? 5 : stage === "t10" ? 10 : stage === "t15" ? 15 : stage === "t30" ? 30 : 60,
+        },
       ).catch(() => false);
     }
   }

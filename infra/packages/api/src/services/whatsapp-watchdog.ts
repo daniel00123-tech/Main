@@ -13,8 +13,7 @@ export const WATCHDOG_ACK_COPY = [
   "Understood. Let me look into it.",
 ] as const;
 
-export const WATCHDOG_PROGRESS_COPY =
-  "I’ve found the right area — I’m still pulling the details together.";
+export const WATCHDOG_PROGRESS_COPY = "Still searching your documents — I’ll send the answer shortly.";
 
 export const WATCHDOG_DELAY_COPY =
   "This is taking longer than usual, but I’m still working on it.";
@@ -58,13 +57,27 @@ export async function raceWithWhatsAppWatchdog<T>(
       return { ok: false as const, error };
     });
 
-  if (options?.skipAck) {
-    const done = await Promise.race([
-      wrapped,
-      sleepMs(HARD_TIMEOUT_MS).then(() => ({ ok: false as const, timeout: true })),
-    ]);
-    if ("timeout" in done && done.timeout && !settled) {
+  const runTails = async (alreadyAcked: boolean) => {
+    const untilProgress = alreadyAcked ? PROGRESS_AFTER_MS : Math.max(0, PROGRESS_AFTER_MS - ACK_DECISION_MS);
+    await sleepMs(untilProgress);
+    if (!settled) {
+      progressSent = await send("progress", WATCHDOG_PROGRESS_COPY);
+    }
+    await sleepMs(Math.max(0, DELAY_NOTICE_MS - PROGRESS_AFTER_MS));
+    if (!settled) {
+      delaySent = await send("delay", WATCHDOG_DELAY_COPY);
+    }
+    await sleepMs(Math.max(0, HARD_TIMEOUT_MS - DELAY_NOTICE_MS));
+    if (!settled) {
       await send("timeout", WATCHDOG_TIMEOUT_COPY);
+      return { timeout: true as const };
+    }
+    return wrapped;
+  };
+
+  if (options?.skipAck) {
+    const done = await Promise.race([wrapped, runTails(true)]);
+    if ("timeout" in done && done.timeout) {
       return {
         result: null,
         timedOut: true,
@@ -124,25 +137,7 @@ export async function raceWithWhatsAppWatchdog<T>(
     acknowledgementSent = await send("ack", pickAck(options?.seed ?? "ack"));
   }
 
-  const rest = await Promise.race([
-    wrapped,
-    (async () => {
-      await sleepMs(PROGRESS_AFTER_MS - ACK_DECISION_MS);
-      if (!settled) {
-        progressSent = await send("progress", WATCHDOG_PROGRESS_COPY);
-      }
-      await sleepMs(DELAY_NOTICE_MS - PROGRESS_AFTER_MS);
-      if (!settled) {
-        delaySent = await send("delay", WATCHDOG_DELAY_COPY);
-      }
-      await sleepMs(HARD_TIMEOUT_MS - DELAY_NOTICE_MS);
-      if (!settled) {
-        await send("timeout", WATCHDOG_TIMEOUT_COPY);
-        return { timeout: true as const };
-      }
-      return wrapped;
-    })(),
-  ]);
+  const rest = await Promise.race([wrapped, runTails(false)]);
 
   if ("timeout" in rest && rest.timeout) {
     return {

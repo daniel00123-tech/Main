@@ -403,6 +403,8 @@ export default function SystemHealthPage() {
             <DataCard title="Silent >3s / >10s" metric={`${whatsappUx.metrics.silentOver3s} / ${whatsappUx.metrics.silentOver10s}`} />
             <DataCard title="Greeting silent >3s" metric={String(whatsappUx.metrics.greetingSilentOver3s ?? 0)} />
             <DataCard title="Stuck >30s" metric={String(whatsappUx.metrics.stuckOver30s)} />
+            <DataCard title="Ack no final >30s" metric={String(whatsappUx.metrics.ackWithoutFinalOver30s ?? 0)} />
+            <DataCard title="Knowledge circuit" metric={String(whatsappUx.metrics.knowledgeCircuitOpen ?? 0)} />
             <DataCard title="DLQ / persist fail" metric={`${whatsappUx.metrics.dlqEvents ?? 0} / ${whatsappUx.metrics.persistFailures ?? 0}`} />
             <DataCard title="Failed outbound" metric={String(whatsappUx.metrics.failedOutbound)} />
             <DataCard title="Queue p50" metric={whatsappUx.metrics.queueLatencyP50Ms == null ? "—" : `${whatsappUx.metrics.queueLatencyP50Ms} ms`} />

@@ -113,6 +113,14 @@ function titleFor(category: QualityFlagCategory): string {
       return "Second message before first answer";
     case "outbound_meta_failure":
       return "Meta outbound send failures";
+    case "ack_no_final":
+      return "Ack without a final WhatsApp reply";
+    case "tool_timeout":
+      return "Knowledge or tool timeouts";
+    case "broad_search":
+      return "Broad document search without terms";
+    case "user_wait_over_60s":
+      return "User waited over 60 seconds";
     case "wrong_tool":
       return "Wrong or unnecessary tool";
     case "permission_ux":
@@ -148,6 +156,14 @@ function rootCauseFor(category: QualityFlagCategory): string {
       return "User sent a second or rephrased message before the first answer arrived.";
     case "outbound_meta_failure":
       return "Meta Cloud API failed an outbound text send.";
+    case "ack_no_final":
+      return "Webhook ACK completed but the queue skipped or hung before a terminal reply.";
+    case "tool_timeout":
+      return "MCP/knowledge search exceeded its bounded timeout.";
+    case "broad_search":
+      return "Planner launched a search for a generic document ask with no usable terms.";
+    case "user_wait_over_60s":
+      return "Turn exceeded the 60s overall budget.";
     case "wrong_tool":
       return "Planner ranking selected an unnecessary or incorrect tool.";
     case "permission_ux":

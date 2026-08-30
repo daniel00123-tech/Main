@@ -1153,6 +1153,8 @@ export const api = {
         signatureRejects?: number;
         liveMetaInbound?: number;
         persistFailures?: number;
+        ackWithoutFinalOver30s?: number;
+        knowledgeCircuitOpen?: number;
         healthState?: "GREEN" | "AMBER" | "RED";
         redReasons?: string[];
       };

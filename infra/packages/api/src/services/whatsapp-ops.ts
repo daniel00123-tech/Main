@@ -2,6 +2,7 @@ import { nowIso } from "../db/mappers";
 import type { Env } from "../env";
 import { isWhatsAppTerminalState } from "./whatsapp-lifecycle";
 import { STUCK_INCIDENT_MS } from "./whatsapp-latency";
+import { listOpenKnowledgeCircuits } from "./whatsapp-knowledge-breaker";
 import { ensureWhatsAppInboundTable } from "./whatsapp-webhook";
 
 export type WhatsAppInboxRow = {
@@ -35,7 +36,10 @@ function classifyInboxRow(row: {
   const terminal = row.terminal_state || (row.processed === 1 ? row.lifecycle_state : null);
   const visible = Boolean(row.first_visible_at || row.reply_sent_at);
   const failed = Boolean(row.last_error || row.error) && isWhatsAppTerminalState(terminal) && /fail/i.test(terminal ?? "");
-  const stuck = !visible && ageMs >= STUCK_INCIDENT_MS && !isWhatsAppTerminalState(terminal);
+  const ackWithoutFinal = visible && !row.reply_sent_at && !isWhatsAppTerminalState(terminal);
+  const stuck =
+    !isWhatsAppTerminalState(terminal) &&
+    ((!visible && ageMs >= STUCK_INCIDENT_MS) || (ackWithoutFinal && ageMs >= 30_000));
   if (stuck) return { status: "stuck", stuck: true, ageMs };
   if (failed || terminal === "failed_notified") return { status: "failed", stuck: false, ageMs };
   if (isWhatsAppTerminalState(terminal) || row.reply_sent_at) return { status: "replied", stuck: false, ageMs };
@@ -141,6 +145,8 @@ export type WhatsAppUxMetrics = {
   signatureRejects: number;
   liveMetaInbound: number;
   persistFailures: number;
+  ackWithoutFinalOver30s: number;
+  knowledgeCircuitOpen: number;
   healthState: "GREEN" | "AMBER" | "RED";
   redReasons: string[];
 };
@@ -165,6 +171,8 @@ function emptyWhatsAppUxMetrics(): WhatsAppUxMetrics {
     signatureRejects: 0,
     liveMetaInbound: 0,
     persistFailures: 0,
+    ackWithoutFinalOver30s: 0,
+    knowledgeCircuitOpen: 0,
     healthState: "AMBER",
     redReasons: [],
   };
@@ -228,7 +236,12 @@ export async function computeWhatsAppUxMetrics(env: Env): Promise<WhatsAppUxMetr
     const visible = Boolean(visibleAt);
     if (!visible && age >= 3_000) silent3 += 1;
     if (!visible && age >= 10_000) silent10 += 1;
-    if (!visible && age >= 30_000 && !isWhatsAppTerminalState(row.terminal_state ? String(row.terminal_state) : null)) {
+    const terminal = row.terminal_state ? String(row.terminal_state) : null;
+    if (
+      !isWhatsAppTerminalState(terminal) &&
+      age >= 30_000 &&
+      (!visible || (!row.reply_sent_at && !row.final_sent_at))
+    ) {
       stuck30 += 1;
     }
     if (Number(row.final_send_ok) === 0 || /send_failed|outbound/i.test(String(row.last_error ?? ""))) {
@@ -269,6 +282,18 @@ export async function computeWhatsAppUxMetrics(env: Env): Promise<WhatsAppUxMetr
     if (row.signature_error || Number(row.webhook_status) === 403) signatureRejects += 1;
     if (Number(row.persist_ok) === 0 || row.persist_error) persistFailures += 1;
   }
+  let ackWithoutFinalOver30s = 0;
+  for (const row of recognised) {
+    const received = Date.parse(String(row.received_at ?? ""));
+    if (!Number.isFinite(received) || received < recentCutoff) continue;
+    const age = Date.now() - received;
+    const visible = Boolean(row.first_visible_at || row.acknowledgement_sent_at);
+    const terminal = isWhatsAppTerminalState(row.terminal_state ? String(row.terminal_state) : null);
+    if (visible && !row.reply_sent_at && !row.final_sent_at && !terminal && age >= 30_000) {
+      ackWithoutFinalOver30s += 1;
+    }
+  }
+  const circuits = await listOpenKnowledgeCircuits(env).catch(() => []);
   const health = classifyHealth({
     greetingSilentOver3s,
     silentOver3s: recognised.filter((row) => {
@@ -280,6 +305,8 @@ export async function computeWhatsAppUxMetrics(env: Env): Promise<WhatsAppUxMetr
     dlqEvents,
     signatureRejects,
     persistFailures,
+    ackWithoutFinalOver30s,
+    knowledgeCircuitOpen: circuits.length,
   });
   return {
     recognisedMessages: recognised.length,
@@ -300,6 +327,8 @@ export async function computeWhatsAppUxMetrics(env: Env): Promise<WhatsAppUxMetr
     signatureRejects,
     liveMetaInbound,
     persistFailures,
+    ackWithoutFinalOver30s,
+    knowledgeCircuitOpen: circuits.length,
     healthState: health.healthState,
     redReasons: health.redReasons,
   };
@@ -312,6 +341,8 @@ function classifyHealth(input: {
   dlqEvents: number;
   signatureRejects: number;
   persistFailures: number;
+  ackWithoutFinalOver30s: number;
+  knowledgeCircuitOpen: number;
 }): { healthState: "GREEN" | "AMBER" | "RED"; redReasons: string[] } {
   const redReasons: string[] = [];
   if (input.greetingSilentOver3s > 0) redReasons.push("greeting_no_reply_over_3s");
@@ -320,6 +351,8 @@ function classifyHealth(input: {
   if (input.dlqEvents > 0) redReasons.push("whatsapp_dlq_event");
   if (input.signatureRejects > 0) redReasons.push("webhook_signature_rejected");
   if (input.persistFailures > 0) redReasons.push("inbound_persist_failed");
+  if (input.ackWithoutFinalOver30s > 0) redReasons.push("ack_without_final_over_30s");
+  if (input.knowledgeCircuitOpen > 0) redReasons.push("knowledge_circuit_open");
   if (redReasons.length) return { healthState: "RED", redReasons };
   return { healthState: "GREEN", redReasons };
 }

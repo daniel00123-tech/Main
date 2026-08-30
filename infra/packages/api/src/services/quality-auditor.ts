@@ -52,7 +52,13 @@ export type QualityCategory =
   | "whatsapp_no_typing_ack_slow"
   | "whatsapp_first_visible_slow"
   | "whatsapp_rephrase_before_answer"
-  | "whatsapp_outbound_meta_failure";
+  | "whatsapp_outbound_meta_failure"
+  | "whatsapp_ack_no_final_over_30s"
+  | "whatsapp_final_over_60s"
+  | "whatsapp_tool_timeout"
+  | "whatsapp_user_wait_over_60s"
+  | "whatsapp_broad_search_without_terms"
+  | "whatsapp_repeat_while_unresolved";
 
 export interface QualitySignal {
   category: QualityCategory;
@@ -405,6 +411,60 @@ function detectWhatsAppUxSignals(input: QualityAuditInput): QualitySignal[] {
       confidence: 0.85,
       evidence: { intent },
       suggestedInvestigation: "Acknowledgement was sent but no final WhatsApp reply was recorded.",
+    });
+    if (totalMs >= 30_000) {
+      signals.push({
+        category: "whatsapp_ack_no_final_over_30s",
+        severity: "high",
+        confidence: 0.9,
+        evidence: { totalMs, intent },
+        suggestedInvestigation: "Acknowledgement was sent and the user waited more than 30s without a final reply.",
+      });
+    }
+  }
+  if (finalSent && totalMs >= 60_000) {
+    signals.push({
+      category: "whatsapp_final_over_60s",
+      severity: "high",
+      confidence: 0.85,
+      evidence: { totalMs },
+      suggestedInvestigation: "Final WhatsApp reply arrived after 60 seconds.",
+    });
+  }
+  if (totalMs >= 60_000) {
+    signals.push({
+      category: "whatsapp_user_wait_over_60s",
+      severity: "high",
+      confidence: 0.85,
+      evidence: { totalMs, finalSent },
+      suggestedInvestigation: "User waited more than 60 seconds on a WhatsApp turn.",
+    });
+  }
+  if (meta.toolTimeout || /timeout|mcp_timeout|knowledge_search_timeout/i.test(String(meta.lastError ?? ""))) {
+    signals.push({
+      category: "whatsapp_tool_timeout",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { lastError: meta.lastError ?? null, slowestStage: meta.slowestStage ?? null },
+      suggestedInvestigation: "A WhatsApp knowledge/tool call timed out.",
+    });
+  }
+  if (meta.broadSearchWithoutTerms) {
+    signals.push({
+      category: "whatsapp_broad_search_without_terms",
+      severity: "medium",
+      confidence: 0.8,
+      evidence: { intent },
+      suggestedInvestigation: "Broad document ask launched without usable search terms.",
+    });
+  }
+  if (meta.userRepeatsWhileUnresolved) {
+    signals.push({
+      category: "whatsapp_repeat_while_unresolved",
+      severity: "high",
+      confidence: 0.8,
+      evidence: { intent },
+      suggestedInvestigation: "User repeated a request while a prior WhatsApp turn was still unresolved.",
     });
   }
   if (progressSent && !finalSent) {

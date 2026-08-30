@@ -19,7 +19,7 @@ export type WhatsAppInboundMessage = {
   signatureValid: boolean;
   rawPayload?: string;
   wamid?: string;
-  stage?: "t5" | "t10" | "t30";
+  stage?: "t5" | "t10" | "t15" | "t30" | "t60";
 };
 
 export function whatsappPhoneNumberId(env: Env): string {
@@ -304,7 +304,13 @@ export async function processWhatsAppInboundJob(
 ): Promise<void> {
   if (message.kind === "whatsapp_watchdog") {
     const { recoverStuckWhatsAppTurn, applyWhatsAppWatchdogStage } = await import("./whatsapp-reaper");
-    if (message.stage === "t5" || message.stage === "t10" || message.stage === "t30") {
+    if (
+      message.stage === "t5" ||
+      message.stage === "t10" ||
+      message.stage === "t15" ||
+      message.stage === "t30" ||
+      message.stage === "t60"
+    ) {
       await applyWhatsAppWatchdogStage(env, {
         eventId: message.eventId,
         wamid: message.wamid ?? null,
@@ -523,7 +529,21 @@ export async function ensureWhatsAppInboundTable(env: Env): Promise<void> {
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN outbound_attempts INTEGER",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN watchdog_5s_at TEXT",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN watchdog_10s_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN watchdog_15s_at TEXT",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN watchdog_30s_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN watchdog_60s_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN progress_sent_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN delay_sent_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN user_stage TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN planning_ms INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN queue_ms INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN mcp_ms INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN knowledge_search_ms INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN fetch_ms INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN synthesis_ms INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN outbound_ms INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN total_ms INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN slowest_stage TEXT",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN dlq_at TEXT",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN signature_error TEXT",
   ];

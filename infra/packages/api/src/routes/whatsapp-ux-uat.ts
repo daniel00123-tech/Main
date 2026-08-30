@@ -103,19 +103,13 @@ routes.post("/api/internal/whatsapp-ux-uat", async (c) => {
       },
     );
     const row = await c.env.DB.prepare(
-      `SELECT id, wamid, processed, inbound_text, first_visible_at, reply_sent_at, persist_ok
+      `SELECT id, wamid, processed, inbound_text, first_visible_at, reply_sent_at, persist_ok,
+              lifecycle_state, terminal_state, planning_at, user_stage, last_error,
+              planning_ms, mcp_ms, knowledge_search_ms, fetch_ms, synthesis_ms, outbound_ms, total_ms, slowest_stage
        FROM whatsapp_inbound_events WHERE wamid = ? LIMIT 1`,
     )
       .bind(wamid)
-      .first<{
-        id: string;
-        wamid: string;
-        processed: number;
-        inbound_text?: string | null;
-        first_visible_at?: string | null;
-        reply_sent_at?: string | null;
-        persist_ok?: number | null;
-      }>()
+      .first<Record<string, unknown>>()
       .catch(() => null);
     return c.json({
       ok: Boolean(row),
@@ -125,6 +119,8 @@ routes.post("/api/internal/whatsapp-ux-uat", async (c) => {
       eventId: persisted.eventId,
       wamid,
       inboundRow: row,
+      terminal: row?.terminal_state ?? null,
+      lifecycleState: row?.lifecycle_state ?? null,
       totalMs: Date.now() - started,
     });
   }
