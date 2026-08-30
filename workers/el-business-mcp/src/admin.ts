@@ -24,6 +24,9 @@ import { diagnoseSharePointAndSearch } from "./microsoft/diagnose";
 import { createMicrosoftContext } from "./microsoft/context";
 import { catalogueStats, syncEligibleCatalogue } from "./microsoft/catalogue";
 import { runMicrosoftVerification } from "./microsoft/verify";
+import { handleXeroConnect, handleXeroDisconnect } from "./xero/http";
+import { runXeroVerification, xeroPublicStatus } from "./xero/verify";
+import { ElXeroError } from "./xero/errors";
 
 const logger = createLogger(`${MCP_NAME}-admin`);
 
@@ -55,6 +58,7 @@ export async function handleAdminRequest(
       capabilityCatalog: elConnectorCapabilitiesCatalog(),
       registry: await loadConnectorRegistryRows(env.EL_BUSINESS_DATA),
       microsoft: publicMicrosoftPolicy(loadMicrosoftConfig(env)),
+      xero: await xeroPublicStatus(env),
     });
   }
 
@@ -83,6 +87,34 @@ export async function handleAdminRequest(
     const ctx = await createMicrosoftContext(env);
     const sync = await syncEligibleCatalogue(env.EL_BUSINESS_DATA, ctx.graph, ctx.config, ctx.policy);
     return json({ ok: true, sync, stats: await catalogueStats(env.EL_BUSINESS_DATA) });
+  }
+
+  if (url.pathname === "/admin/xero") {
+    return json({
+      company: EL_IDENTITY.company,
+      xero: await xeroPublicStatus(env),
+    });
+  }
+
+  if (url.pathname === "/admin/xero/connect") {
+    try {
+      return await handleXeroConnect(request, env);
+    } catch (error) {
+      const status = error instanceof ElXeroError ? error.status : 500;
+      return json(
+        { error: error instanceof Error ? error.message : String(error), code: error instanceof ElXeroError ? error.code : "EL_XERO_UNEXPECTED" },
+        status
+      );
+    }
+  }
+
+  if (url.pathname === "/admin/xero/disconnect" && request.method === "POST") {
+    return json(await handleXeroDisconnect(env));
+  }
+
+  if (url.pathname === "/admin/xero/verify") {
+    const verification = await runXeroVerification(env);
+    return json(verification, verification.overall === "FAIL" ? 503 : 200);
   }
 
   return json({ error: "Not Found" }, 404);
@@ -126,6 +158,7 @@ export async function buildPublicStatus(env: Env): Promise<Response> {
       tables,
     }),
     microsoft: publicMicrosoftPolicy(loadMicrosoftConfig(env)),
+    xero: await xeroPublicStatus(env),
   };
 
   return json(payload);

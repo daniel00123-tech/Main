@@ -7,6 +7,7 @@ import {
 import { COMPANY_NAME } from "./constants";
 import type { Env } from "./env";
 import { MICROSOFT_CONNECTOR_CODES, microsoftCredentialsPresent } from "./microsoft/config";
+import { xeroCredentialsPresent } from "./xero/config";
 
 const EL_CONNECTOR_SEEDS: Array<{
   code: string;
@@ -36,7 +37,7 @@ const EL_CONNECTOR_SEEDS: Array<{
     code: "xero",
     label: "Xero",
     category: "finance",
-    secretName: "XERO_CREDENTIALS",
+    secretName: "EL_XERO_CLIENT_SECRET",
   },
   {
     code: "outlook_shared_mailbox",
@@ -87,11 +88,39 @@ function microsoftConnectorDefinition(
   };
 }
 
+function xeroConnectorDefinition(seed: (typeof EL_CONNECTOR_SEEDS)[number]): ConnectorDefinition {
+  return {
+    connectorType: seed.code,
+    connectorVersion: "1.0.0",
+    company: COMPANY_NAME,
+    label: seed.label,
+    category: seed.category,
+    enabled: true,
+    status: "configured",
+    authenticationConfigured: true,
+    capabilities: [
+      ...readOnlyCapabilities(),
+      describeCapability("CREATE", true),
+      describeCapability("UPDATE", false),
+      describeCapability("ANALYSE", true),
+    ],
+    readLevel: "read",
+    writeLevel: "create",
+    sendLevel: "none",
+    batchCapable: false,
+    health: "healthy",
+  };
+}
+
 export function elConnectorDefinitions(env?: Env): ConnectorDefinition[] {
   const microsoftReady = env ? microsoftCredentialsPresent(env) : false;
+  const xeroReady = env ? xeroCredentialsPresent(env) : false;
   return EL_CONNECTOR_SEEDS.map((seed) => {
     if (microsoftReady && MICROSOFT_CONNECTOR_CODES.has(seed.code)) {
       return microsoftConnectorDefinition(seed);
+    }
+    if (xeroReady && seed.code === "xero") {
+      return xeroConnectorDefinition(seed);
     }
     return notConfiguredConnectorDefinition(
       seed.code,

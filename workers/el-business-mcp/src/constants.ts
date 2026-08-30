@@ -1,4 +1,4 @@
-export const MCP_VERSION = "1.1.1";
+export const MCP_VERSION = "1.2.0";
 export const MCP_NAME = "el-business-mcp";
 
 export const COMPANY_NAME = "EL Business";
@@ -25,6 +25,7 @@ export const SUMMARY_TABLES = [
   "entity_records",
   "microsoft_index_items",
   "microsoft_sync_state",
+  "xero_connections",
 ] as const;
 
 export const SUMMARY_TIMESTAMP_COLUMNS: Record<string, string | null> = {
@@ -36,4 +37,5 @@ export const SUMMARY_TIMESTAMP_COLUMNS: Record<string, string | null> = {
   entity_records: "updated_at",
   microsoft_index_items: "updated_at",
   microsoft_sync_state: "updated_at",
+  xero_connections: "updated_at",
 };

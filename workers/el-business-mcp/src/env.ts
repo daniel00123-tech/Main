@@ -17,4 +17,8 @@ export interface Env {
   EL_MS_SHAREPOINT_HOSTNAME?: string;
   EL_MS_GRAPH_BASE_URL?: string;
   EL_MS_MAIL_DOMAIN?: string;
+  EL_XERO_CLIENT_ID?: string;
+  EL_XERO_CLIENT_SECRET?: string;
+  EL_XERO_REDIRECT_URI?: string;
+  EL_XERO_EXPECTED_ORG?: string;
 }
