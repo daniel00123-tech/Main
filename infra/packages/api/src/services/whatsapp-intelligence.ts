@@ -365,8 +365,12 @@ async function recoverFailedIntelligenceTurn(
   if (current && !evidenceDocumentIds.includes(current.id)) evidenceDocumentIds.push(current.id);
   const payload = current ? fetchCache.get(current.id) : null;
   if (current && payload) {
+    const groundedQuestion =
+      input.memory.lastUserQuestion && input.memory.lastUserQuestion !== input.originalText
+        ? `${input.originalText}\n${input.memory.lastUserQuestion}`
+        : input.originalText;
     const grounded = await runGroundedQa(env, {
-      question: input.originalText,
+      question: groundedQuestion,
       documentId: current.id,
       title: current.title || payload.title,
       fetch: payload,
@@ -636,7 +640,11 @@ async function runSearchDocument(
     input.fetchCache.set(documentId, payload);
   }
   const chunks = chunksFromFetchPayload(payload, documentId);
-  const hits = searchDocument(documentId, query || payload.title, chunks);
+  let ranked = searchDocument(documentId, query || payload.title, chunks);
+  if (!ranked.length && input.memory.lastUserQuestion && input.memory.lastUserQuestion !== query) {
+    ranked = searchDocument(documentId, input.memory.lastUserQuestion, chunks);
+  }
+  const hits = ranked.length ? ranked : [];
   const identity = identityFromMetadata(payload.metadata ?? null);
   let url = firstHttpUrl(payload.url, input.memory.lastDocument?.id === documentId ? input.memory.lastDocument.url : null);
   if (!url) {
@@ -657,7 +665,7 @@ async function runSearchDocument(
       document_id: documentId,
       title: payload.title,
       url,
-      none: hits.length === 0,
+      none: ranked.length === 0 && chunks.length === 0,
       chunks: hits.slice(0, 4).map((chunk) => ({
         id: chunk.id,
         heading: chunk.heading,
