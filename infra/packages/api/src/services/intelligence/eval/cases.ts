@@ -329,6 +329,12 @@ const QUALITY_ARBITRARY = [
   "Look up the Newry temporary works file",
   "Search for the Oban booking sheet",
   "Find the Truro plant card",
+  "Look up the Selby welfare rota",
+  "Search for the Ripon setting-out file",
+  "Have we got a Thirsk noise survey?",
+  "Find the Skipton temporary works note",
+  "Open the Harrogate induction pack if we have it",
+  "Search the library for a Scarborough lift plan",
 ];
 
 export function evaluationCases(): EvalCase[] {

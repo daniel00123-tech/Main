@@ -164,11 +164,14 @@ export function resolveBusinessPeriod(
   } else if (/\bthis quarter\b/.test(hay)) {
     primary = range(startOfQuarter(civil), civil, "this quarter");
     pnl = { periods: 1, timeframe: "QUARTER" };
+  } else if (/\bthis week\b/.test(hay)) {
+    primary = range(startOfWeek(civil), civil, "this week");
   } else if (/\blast week\b/.test(hay)) {
     const prev = addDays(startOfWeek(civil), -7);
     primary = range(prev, endOfWeek(prev), "last week");
-  } else if (/\bthis week\b/.test(hay)) {
-    primary = range(startOfWeek(civil), civil, "this week");
+  } else if (/\bthis month\b/.test(hay)) {
+    primary = range(startOfMonth(civil), civil, "this month");
+    pnl = { periods: 1, timeframe: "MONTH" };
   } else if (/\blast month\b/.test(hay)) {
     const prev = addMonths(startOfMonth(civil), -1);
     primary = range(startOfMonth(prev), endOfMonth(prev), "last month");

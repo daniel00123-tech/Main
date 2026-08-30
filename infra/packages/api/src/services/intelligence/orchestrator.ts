@@ -180,7 +180,7 @@ export async function runIntelligenceTurn(input: {
       kind: titles.length ? "answer" : "clarify",
       text: titles.length
         ? `Across your documents I can see: ${titles.join("; ")}. Which should I open?`
-        : "I searched across your documents and didn't find a clear match. Which file should I use?",
+        : "I couldn’t find that. Which file should I use?",
       confidence: titles.length ? "partial" : "none",
       offerSearchOther: true,
       toolCalls,

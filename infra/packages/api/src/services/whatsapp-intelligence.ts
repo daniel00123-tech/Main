@@ -49,6 +49,7 @@ import {
 import { identityFromMetadata, lookupKnowledgeSourceUrl, persistDiscoveredSourceUrl } from "./whatsapp-source-urls";
 import { FETCH_TIMEOUT_MS, KNOWLEDGE_SEARCH_TIMEOUT_MS, MCP_TIMEOUT_MS, withBoundedTimeout } from "./whatsapp-timeouts";
 import { isNegativeResultFeedback, looksLikeSearchOtherDocs, type WhatsAppPlan } from "./whatsapp-plan";
+import { softenSearchQuery } from "./whatsapp-intent";
 import type { WhatsAppTurn } from "./whatsapp-context";
 
 const ALLOWED_GATEWAY_TOOLS = new Set([
@@ -208,7 +209,9 @@ export async function executeWhatsAppIntelligence(
     toolName: result.toolCalls.at(-1)?.name ?? null,
     outcome:
       result.kind === "failed"
-        ? "ai_failed"
+        ? result.toolCalls.some((call) => !call.ok && /403|permission/i.test(`${call.error ?? ""} ${JSON.stringify(call.data ?? "")}`))
+          ? "tool_failed"
+          : "ai_failed"
         : result.kind === "clarify"
           ? "clarification_requested"
           : "answered",
@@ -260,14 +263,15 @@ export function planFromIntelligence(
     };
   }
   if (result.kind === "fast_path") {
+    const link = /^https?:\/\//i.test(result.text.trim());
     return {
-      action: "chat",
-      intent: "greeting",
+      action: link ? "memory_link" : "chat",
+      intent: link ? "source_link" : "greeting",
       tool: null,
       query: text,
       fetch: false,
       skipTools: true,
-      useMemory: false,
+      useMemory: link,
       needsGuidance: false,
       clarification: null,
       fact: null,
@@ -476,6 +480,20 @@ async function recoverFailedIntelligenceTurn(
   ) {
     return failed;
   }
+  const failedTool = [...failed.toolCalls].reverse().find((call) => !call.ok);
+  if (failedTool && failed.toolCalls.every((call) => !call.ok)) {
+    const err = `${failedTool.error ?? ""} ${JSON.stringify(failedTool.data ?? "")}`;
+    const permission = /403|permission/i.test(err);
+    return {
+      ...failed,
+      kind: "failed",
+      text: permission
+        ? "I don't have permission to read that just now."
+        : "I can’t reach that system just now. Try again in a moment.",
+      confidence: "none",
+      offerSearchOther: false,
+    };
+  }
   if (/\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover)\b/i.test(input.originalText) || failed.scope === "BUSINESS_SYSTEM") {
     const xero = await runtime.executeTool({
       name: "xero_sales_summary",
@@ -534,9 +552,9 @@ async function recoverFailedIntelligenceTurn(
   }
   if (current && !evidenceDocumentIds.includes(current.id)) evidenceDocumentIds.push(current.id);
   const payload = current ? fetchCache.get(current.id) : null;
-  if (current && payload) {
+  if (current && payload && String(payload.text ?? "").trim().length >= 40) {
     const grounded = await runGroundedQa(env, {
-      question: input.originalText,
+      question: softenSearchQuery(input.originalText),
       documentId: current.id,
       title: current.title || payload.title,
       fetch: payload,
@@ -582,7 +600,7 @@ async function recoverFailedIntelligenceTurn(
   return {
     ...failed,
     kind: "answer",
-    text: "I couldn't find a company document that answers that. Tell me the name of the file, or I can search again.",
+    text: "I couldn’t find that. Tell me the name of the file, or I can search again.",
     confidence: "none",
     offerSearchOther: true,
     toolCalls,
@@ -935,7 +953,7 @@ function gatewayArguments(
   memory: WhatsAppEntityMemory,
 ): Record<string, unknown> {
   if (toolName === COMPANY_KNOWLEDGE_SEARCH_TOOL || toolName === "search") {
-    return { query: String(args.query ?? args.q ?? "").trim() };
+    return { query: softenSearchQuery(String(args.query ?? args.q ?? "").trim()) };
   }
   if (toolName === COMPANY_KNOWLEDGE_READ_TOOL || toolName === "fetch") {
     const id = String(args.document_id ?? args.documentId ?? args.documentRef ?? args.id ?? memory.lastDocument?.id ?? "").trim();
