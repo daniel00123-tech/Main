@@ -53,6 +53,7 @@ import {
   resolveInteractionIds,
 } from "./interactions";
 import { sanitizeCustomerError } from "./secrets";
+import { scheduleQualityAudit } from "./quality-auditor";
 import {
   isXeroToolName,
   isXeroWriteToolName,
@@ -246,6 +247,7 @@ export async function executeGatewayRequest(
     interactionId?: string | null;
     parentRequestId?: string | null;
     mcpSessionId?: string | null;
+    waitUntil?: (promise: Promise<unknown>) => void;
   },
 ) {
   const correlationId = newId("corr");
@@ -606,6 +608,7 @@ export async function executeGatewayRequest(
       settlementStatus: "denied",
     });
 
+    scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
     return {
       status: 403 as const,
       error: permissionReason ?? "Permission denied",
@@ -907,6 +910,7 @@ export async function executeGatewayRequest(
   });
   usageRecordId = usage.id;
   await refreshInteractionTotals(env.DB, interaction.interactionId);
+  scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
 
   await recordAuditEvent(env.DB, {
     companyId: input.companyId,
@@ -1149,6 +1153,7 @@ export async function executeGatewayRequest(
     correlationId,
     gatewayRequestId,
     requestId,
+    interactionId: interaction.interactionId,
     companyId: input.companyId,
     mcpId: mcp.id,
     toolName: input.toolName,

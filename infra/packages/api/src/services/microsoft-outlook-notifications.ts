@@ -8,14 +8,11 @@ import {
   buildMicrosoftSubscriptionClientState,
   microsoftGraphNotificationUrl,
   MICROSOFT_SUBSCRIPTION_LIFETIME_MS,
+  shouldReuseActiveGraphSubscription,
   verifyMicrosoftSubscriptionClientState,
 } from "./microsoft-graph-subscriptions";
 import { acquireMicrosoftAppToken } from "./microsoft-auth";
-import {
-  createGraphSubscription,
-  deleteGraphSubscription,
-  type MicrosoftGraphConfig,
-} from "./microsoft-graph";
+import { createReplacingGraphSubscription, type MicrosoftGraphConfig } from "./microsoft-graph";
 import { recordAuditEvent } from "./control-plane";
 
 export function assessOutlookNotificationArchitecture(): {
@@ -60,6 +57,7 @@ export async function ensureOutlookMailboxGraphSubscription(
     sourceId: string;
     mailboxAddress: string;
     actor?: string;
+    force?: boolean;
   },
 ): Promise<{ ok: boolean; subscriptionId?: string; error?: string; skipped?: string }> {
   const existing = await env.DB.prepare(
@@ -74,12 +72,13 @@ export async function ensureOutlookMailboxGraphSubscription(
       status: string;
     }>();
 
-  const expiresAtMs = existing?.expires_at ? Date.parse(existing.expires_at) : 0;
-  if (
-    existing?.graph_subscription_id &&
-    existing.status === "active" &&
-    expiresAtMs > Date.now() + 12 * 60 * 60 * 1000
-  ) {
+  const reuse = shouldReuseActiveGraphSubscription({
+    status: existing?.status,
+    graphSubscriptionId: existing?.graph_subscription_id,
+    expiresAt: existing?.expires_at,
+    force: input.force,
+  });
+  if (reuse.reuse && existing?.graph_subscription_id) {
     return { ok: true, subscriptionId: existing.graph_subscription_id, skipped: "already_active" };
   }
 
@@ -103,21 +102,17 @@ export async function ensureOutlookMailboxGraphSubscription(
   const expirationDateTime = subscriptionExpirationIso();
 
   try {
-    if (existing?.graph_subscription_id) {
-      try {
-        await deleteGraphSubscription(config, existing.graph_subscription_id);
-      } catch {
-        // stale subscription
-      }
-    }
-
-    const created = await createGraphSubscription(config, {
-      resource: resourcePath,
-      changeType: "created,updated",
-      notificationUrl,
-      expirationDateTime,
-      clientState,
-    });
+    const created = await createReplacingGraphSubscription(
+      config,
+      {
+        resource: resourcePath,
+        changeType: "created,updated",
+        notificationUrl,
+        expirationDateTime,
+        clientState,
+      },
+      existing?.graph_subscription_id,
+    );
 
     const rowId = existing?.id ?? newId("mgs");
     const now = nowIso();
