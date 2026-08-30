@@ -460,6 +460,23 @@ __name2(pdfRequiresOcr, "pdfRequiresOcr");`;
   }
   base = base.replace(extractPdfTarget, extractPdfReplacement);
 
+  const imageExtractTarget = `  if (format2 === "image") {
+    const imageResult = await extractImageDocument(env22, bytes, mimeType, name);
+    return {
+      format: "image",
+      segments: imageResult.segments,
+      requiresOcr: false,`;
+  const imageExtractReplacement = `  if (format2 === "image") {
+    const imageResult = await extractImageDocument(env22, bytes, mimeType, name);
+    const imageNeedsOcr = imageResult.contentStatus !== "ok" || (imageResult.rawTextLength ?? 0) < 40;
+    return {
+      format: "image",
+      segments: imageResult.segments,
+      requiresOcr: imageNeedsOcr,`;
+  if (base.includes(imageExtractTarget) && !base.includes("imageNeedsOcr")) {
+    base = base.replace(imageExtractTarget, imageExtractReplacement);
+  }
+
   const indexMetaTarget = `    const documentMetaPatch = {
       sourceFormat: extracted.format,
       rawTextLength: extracted.rawTextLength
@@ -1086,6 +1103,43 @@ __name(handleAdminRequest, "handleAdminRequest");`;
     return new Response(object2.body, {
       headers: { "Content-Type": doc.mime_type || "application/octet-stream" }
     });
+  }
+  if (url2.pathname === "/admin/knowledge/ocr-candidates" && request.method === "GET") {
+    const limit = Math.min(50, Math.max(1, Number(url2.searchParams.get("limit") ?? 10) || 10));
+    const afterId = Math.max(0, Number(url2.searchParams.get("afterId") ?? 0) || 0);
+    const rows = await env22.CADDINGTON_BUSINESS_DATA.prepare(
+      \`SELECT id, title, status, mime_type, metadata
+       FROM knowledge_documents
+       WHERE id > ?
+         AND COALESCE(status, '') != 'archived'
+         AND (
+           status IN ('requires_ocr', 'no_searchable_content', 'requires_manual_review')
+           OR json_extract(metadata, '$.requiresOcr') = 1
+           OR json_extract(metadata, '$.extractionQuality') IN ('requires_ocr', 'heading_only', 'poor')
+           OR (
+             COALESCE(json_extract(metadata, '$.ocrStatus'), '') NOT IN ('ocr_completed', 'ocr_limit_exceeded')
+             AND COALESCE(json_extract(metadata, '$.substantiveCharacterCount'), 0) < 40
+             AND mime_type IN ('application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/tiff', 'image/tif')
+           )
+         )
+       ORDER BY id ASC
+       LIMIT ?\`
+    ).bind(afterId, limit).all();
+    const candidates = (rows.results ?? []).map((row) => {
+      let metadata = {};
+      try { metadata = row.metadata ? JSON.parse(row.metadata) : {}; } catch { metadata = {}; }
+      return {
+        documentId: row.id,
+        title: row.title ?? null,
+        status: row.status ?? null,
+        mimeType: row.mime_type ?? null,
+        source: metadata.source ?? metadata.sourceType ?? null,
+        extractionQuality: metadata.extractionQuality ?? null,
+        ocrStatus: metadata.ocrStatus ?? null,
+        substantiveCharacterCount: metadata.substantiveCharacterCount ?? null
+      };
+    });
+    return json2({ ok: true, candidates, nextAfterId: candidates.length ? candidates[candidates.length - 1].documentId : afterId });
   }
   const indexExtractedMatch = url2.pathname.match(/^\\/admin\\/knowledge\\/(\\d+)\\/index-extracted$/);
   if (indexExtractedMatch && request.method === "POST") {

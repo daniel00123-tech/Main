@@ -498,6 +498,57 @@ export async function deleteGraphSubscription(
   await graphRequest<void>(config, `/subscriptions/${subscriptionId}`, { method: "DELETE" });
 }
 
+/** Graph PATCH cannot change notificationUrl. Recreate when the webhook host changes. */
+export function isGraphSubscriptionConflict(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    message.includes("already exists") ||
+    message.includes("subscription limit") ||
+    message.includes("quota exceeded") ||
+    message.includes("maximum number of subscriptions")
+  );
+}
+
+/**
+ * Create the replacement subscription first so the existing one keeps delivering
+ * if Graph rejects the new notification URL. Delete the old id only after create.
+ * If Graph refuses a second subscription on the same resource, fall back to
+ * delete-then-create.
+ */
+export async function createReplacingGraphSubscription(
+  config: MicrosoftGraphConfig,
+  input: {
+    resource: string;
+    changeType: string;
+    notificationUrl: string;
+    expirationDateTime: string;
+    clientState: string;
+  },
+  existingGraphSubscriptionId?: string | null,
+): Promise<GraphSubscription> {
+  try {
+    const created = await createGraphSubscription(config, input);
+    if (existingGraphSubscriptionId && existingGraphSubscriptionId !== created.id) {
+      try {
+        await deleteGraphSubscription(config, existingGraphSubscriptionId);
+      } catch {
+        // Old Graph row may already be gone; D1 now points at the new id.
+      }
+    }
+    return created;
+  } catch (err) {
+    if (existingGraphSubscriptionId && isGraphSubscriptionConflict(err)) {
+      try {
+        await deleteGraphSubscription(config, existingGraphSubscriptionId);
+      } catch {
+        // Continue — create is the recovery path.
+      }
+      return createGraphSubscription(config, input);
+    }
+    throw err;
+  }
+}
+
 export async function ensureDriveFolderByPath(
   config: MicrosoftGraphConfig,
   driveId: string,

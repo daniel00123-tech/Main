@@ -92,11 +92,25 @@ Operational guides under [`docs/runbooks/`](./runbooks/):
 
 ## Public URLs
 
+Canonical production hosts (Cloudflare custom domains):
+
+- Portal: `https://app.infrastack.app`
+- API: `https://api.infrastack.app`
+- MCP: `https://mcp.infrastack.app/api/gateway/v1/mcp`
+- Public/root: `https://infrastack.app` (product site — not the admin portal)
+
 Configure per environment (not tenant-specific):
 
-- `INFRA_PUBLIC_API_URL` — API Worker (e.g. `https://infra-api.<account>.workers.dev`)
-- `PORTAL_BASE_DOMAIN` — Pages host for portal subdomains (e.g. `infra-web.pages.dev`)
-- Web build: `VITE_API_BASE` optional override; dev uses Vite proxy
+- `INFRA_PUBLIC_API_URL` — `https://api.infrastack.app`
+- `INFRA_PUBLIC_MCP_URL` — `https://mcp.infrastack.app`
+- `PORTAL_PUBLIC_ORIGIN` — `https://app.infrastack.app`
+- `PORTAL_BASE_DOMAIN` — legacy Pages host for company subdomains (`infra-web.pages.dev`)
+- Web build: `VITE_API_BASE` empty in production (same-origin `/api` proxy)
+
+Legacy fallbacks remain live during cutover:
+
+- `https://infra-web.pages.dev`
+- `https://infra-api.daniel-dwyer123.workers.dev`
 
 ## Scale notes (conceptual)
 
