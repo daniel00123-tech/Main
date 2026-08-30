@@ -122,6 +122,14 @@ export interface Env {
   OPENAI_API_KEY?: string;
   /** Optional Workers AI / OpenAI text model for document-grounded WhatsApp answers. */
   WHATSAPP_GROUNDED_MODEL?: string;
+  /** Optional Workers AI fallback for Conversational Intelligence V1.1. */
+  INTELLIGENCE_FALLBACK_MODEL?: string;
+  /** Optional second-tier Workers AI model. Off unless live bench shows benefit. */
+  INTELLIGENCE_ESCALATE_MODEL?: string;
+  /** Set to "1" only during gated UAT shadow eval. Never sends shadow answers. */
+  INTELLIGENCE_SHADOW_EVAL?: string;
+  /** Comma-separated Workers AI model ids for offline shadow compare. */
+  INTELLIGENCE_SHADOW_MODELS?: string;
   /** Safe send UAT — requires XERO_SEND_UAT_MODE=true simultaneously */
   XERO_SEND_UAT_MODE?: string;
   XERO_SEND_TEST_RECIPIENT?: string;

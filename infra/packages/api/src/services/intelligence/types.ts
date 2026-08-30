@@ -4,6 +4,21 @@ export type IntelligenceAction = "call_tool" | "answer" | "clarify";
 
 export type IntelligenceConfidence = "strong" | "partial" | "none";
 
+export type IntelligenceRoute = "FAST_LOCAL" | "INTELLIGENT" | "CONTROLLED_ACTION";
+
+export type IntelligenceQualityFlag =
+  | "malformed_model_response"
+  | "fallback"
+  | "wrong_tool"
+  | "user_correction"
+  | "unsupported_answer"
+  | "irrelevant_result"
+  | "repeated_answer"
+  | "lost_context"
+  | "unnecessary_company_wide_search"
+  | "bad_clarification"
+  | "missing_clarification";
+
 export type IntelligenceToolCall = {
   name: string;
   arguments: Record<string, unknown>;
@@ -25,6 +40,11 @@ export type IntelligenceDocumentRef = {
 };
 
 export type IntelligenceConversationState = {
+  companyId?: string | null;
+  companyName?: string | null;
+  role?: string | null;
+  connectors: string[];
+  permittedTools: string[];
   entities: Array<{
     type: string;
     id: string;
@@ -34,6 +54,9 @@ export type IntelligenceConversationState = {
   currentDocument: IntelligenceDocumentRef | null;
   recentTurns: Array<{ role: "user" | "assistant"; text: string }>;
   lastUserText: string;
+  lastToolName?: string | null;
+  lastToolSummary?: string | null;
+  userCorrection?: boolean;
 };
 
 export type IntelligenceModelUsage = {
@@ -43,10 +66,12 @@ export type IntelligenceModelUsage = {
   promptTokens: number | null;
   completionTokens: number | null;
   estimatedCostUsd: number | null;
+  fallbackUsed?: boolean;
+  malformed?: boolean;
 };
 
 export type IntelligenceTurnResult = {
-  kind: "answer" | "clarify" | "fast_path" | "failed";
+  kind: "answer" | "clarify" | "fast_path" | "failed" | "controlled_action";
   text: string;
   confidence: IntelligenceConfidence;
   offerSearchOther: boolean;
@@ -61,12 +86,26 @@ export type IntelligenceTurnResult = {
   provider: IntelligenceModelUsage["provider"];
   model: string | null;
   estimatedCostUsd: number;
+  route?: IntelligenceRoute;
+  qualityFlags?: IntelligenceQualityFlag[];
+  repaired?: boolean;
+  fallbackUsed?: boolean;
+};
+
+export type IntelligenceToolParam = {
+  type?: "string" | "number" | "boolean";
+  description: string;
+  required?: boolean;
 };
 
 export type IntelligenceToolSpec = {
   name: string;
   description: string;
-  parameters: Record<string, string>;
+  whenToUse: string;
+  whenNotToUse: string;
+  parameters: Record<string, IntelligenceToolParam>;
+  outputShape: string;
+  permission: string;
 };
 
 export type IntelligenceRuntime = {
@@ -78,4 +117,19 @@ export type IntelligenceEnv = {
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   WHATSAPP_GROUNDED_MODEL?: string;
+  INTELLIGENCE_FALLBACK_MODEL?: string;
+  INTELLIGENCE_ESCALATE_MODEL?: string;
+  INTELLIGENCE_SHADOW_EVAL?: string;
 };
+
+export type IntelligenceDecision =
+  | { action: "call_tool"; name: string; arguments: Record<string, unknown> }
+  | {
+      action: "answer";
+      text: string;
+      confidence: IntelligenceConfidence;
+      offer_search_other: boolean;
+      cite_source: boolean;
+    }
+  | { action: "clarify"; text: string }
+  | { action: "invalid"; reason: string };

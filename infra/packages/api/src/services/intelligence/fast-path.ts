@@ -24,3 +24,11 @@ export function matchFastPath(text: string): string | null {
 export function isFastPathTurn(text: string): boolean {
   return matchFastPath(text) !== null;
 }
+
+/** Open-source optimisation only — requires a validated URL already on the current entity. */
+const SOURCE_URL_ASK =
+  /^(open (the )?(source|link|url)|source (link|url)|send (me )?(the )?(link|url)|give me the (link|url)|what('?s| is) the (url|link))\b/i;
+
+export function matchOpenSourceFastPath(text: string): boolean {
+  return SOURCE_URL_ASK.test(text.trim());
+}

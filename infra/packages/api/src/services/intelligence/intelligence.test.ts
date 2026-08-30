@@ -513,3 +513,96 @@ describe("whatsapp plan mapping and provider boundary", () => {
     expect(HARD_TIMEOUT_MS).toBe(120_000);
   });
 });
+
+describe("V1.1 structured recovery and correction", () => {
+  it("recovers a tool call from malformed JSON and never executes unknown tools", async () => {
+    const { runtime, calls } = recordingRuntime();
+    const result = await runIntelligenceTurn({
+      text: "what exactly did I do?",
+      state: buildConversationState({
+        userText: "what exactly did I do?",
+        currentDocument: { id: "doc_cv", title: "Staff profile" },
+      }),
+      runtime,
+      completer: async () => ({
+        text: 'I will call search_document with query="what exactly did I do?" and document_id=doc_cv',
+        usage: {
+          provider: "workers-ai",
+          model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+          latencyMs: 9,
+          promptTokens: 20,
+          completionTokens: 20,
+          estimatedCostUsd: 0,
+        },
+      }),
+    });
+    expect(calls[0]?.name).toBe("search_document");
+    expect(result.repaired || result.qualityFlags?.includes("malformed_model_response")).toBeTruthy();
+  });
+
+  it("replans after a user correction that names a new document", async () => {
+    const { runtime, calls } = recordingRuntime();
+    const result = await runIntelligenceTurn({
+      text: "Wrong file, I meant the vehicle policy",
+      state: buildConversationState({
+        userText: "Wrong file, I meant the vehicle policy",
+        currentDocument: { id: "doc_cv", title: "Staff profile" },
+        userCorrection: true,
+        recentTurns: [{ role: "assistant", text: "I found a marketing review." }],
+      }),
+      runtime,
+      completer: async () => ({
+        text: JSON.stringify({
+          action: "call_tool",
+          name: "search_company_knowledge",
+          arguments: { query: "vehicle policy" },
+        }),
+        usage: {
+          provider: "workers-ai",
+          model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+          latencyMs: 8,
+          promptTokens: 20,
+          completionTokens: 12,
+          estimatedCostUsd: 0,
+        },
+      }),
+    });
+    expect(calls[0]?.name).toBe("search_company_knowledge");
+    expect(result.qualityFlags).toContain("user_correction");
+  });
+
+  it("returns a validated source URL locally when it is already on the current entity", async () => {
+    const { runtime, calls } = recordingRuntime();
+    const result = await runIntelligenceTurn({
+      text: "Open the source",
+      state: buildConversationState({
+        userText: "Open the source",
+        currentDocument: { id: "doc_cv", title: "Staff profile", url: "https://docs.example.test/profile" },
+      }),
+      runtime,
+    });
+    expect(calls).toEqual([]);
+    expect(result.kind).toBe("fast_path");
+    expect(result.text).toBe("https://docs.example.test/profile");
+    expect(result.route).toBe("FAST_LOCAL");
+  });
+});
+
+describe("V1.1 evaluation harness", () => {
+  it("covers at least 100 natural-language cases and scores the policy completer", async () => {
+    const { evaluationCases } = await import("./eval/cases.js");
+    const { runEvaluationSuite, policyCompleter, v1FragileCompleter } = await import("./eval/harness.js");
+    const cases = evaluationCases();
+    expect(cases.length).toBeGreaterThanOrEqual(100);
+    expect(cases.filter((row) => row.messy).length).toBeGreaterThanOrEqual(20);
+    const surface = intelligenceSurface();
+    expect(surface).not.toMatch(/Van Policy/);
+    expect(surface).not.toMatch(/CV 2015/);
+    expect(surface).not.toMatch(/1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk/);
+    const policy = await runEvaluationSuite(policyCompleter());
+    const fragile = await runEvaluationSuite(v1FragileCompleter());
+    expect(policy.scores.infraScore).toBeGreaterThan(fragile.scores.infraScore);
+    expect(policy.scores.correctTool).toBeGreaterThan(70);
+    expect(policy.scores.grounded).toBeGreaterThan(80);
+  });
+});

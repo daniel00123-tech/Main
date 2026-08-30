@@ -984,6 +984,7 @@ async function handleWhatsAppInboundMessageInner(
             interactionId,
             waitUntil: options?.waitUntil,
             buttonAction: inboundResolved.buttonAction ?? null,
+            connectors,
           });
     const watched = await raceWithWhatsAppWatchdog(work, async (kind, body) => {
       if (kind === "ack") {
@@ -1285,6 +1286,12 @@ async function handleWhatsAppInboundMessageInner(
                 estimatedCostUsd: round.estimatedCostUsd,
               }))
             : [],
+        intelligenceQualityFlags:
+          "intelligence" in answered && answered.intelligence ? answered.intelligence.qualityFlags ?? [] : [],
+        intelligenceRoute: "intelligence" in answered && answered.intelligence ? answered.intelligence.route ?? null : null,
+        intelligenceFallbackUsed:
+          "intelligence" in answered && answered.intelligence ? Boolean(answered.intelligence.fallbackUsed) : false,
+        intelligenceRepaired: "intelligence" in answered && answered.intelligence ? Boolean(answered.intelligence.repaired) : false,
       },
     });
     await stampWhatsAppLifecycle(env, item.wamid, {

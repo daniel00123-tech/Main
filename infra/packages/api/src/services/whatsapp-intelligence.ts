@@ -4,6 +4,7 @@ import { executeGatewayRequest } from "./gateway";
 import {
   GATEWAY_TOOL_ALIASES,
   buildConversationState,
+  permittedToolsForConnectors,
   runIntelligenceTurn,
   type IntelligenceCompleter,
   type IntelligenceDocumentRef,
@@ -12,6 +13,7 @@ import {
   type IntelligenceToolResult,
   type IntelligenceTurnResult,
 } from "./intelligence/index";
+import { collectQualityFlags } from "./intelligence/quality.js";
 import {
   COMPANY_KNOWLEDGE_READ_TOOL,
   COMPANY_KNOWLEDGE_SEARCH_TOOL,
@@ -58,6 +60,7 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_search_contacts",
   "xero_list_overdue_invoices",
   "xero_aged_receivables",
+  "outlook_search_mailbox",
 ]);
 
 export type WhatsAppIntelligenceAnswer = {
@@ -89,6 +92,7 @@ export async function executeWhatsAppIntelligence(
     waitUntil?: (promise: Promise<unknown>) => void;
     buttonAction?: string | null;
     completer?: IntelligenceCompleter;
+    connectors?: string[];
   },
 ): Promise<WhatsAppIntelligenceAnswer> {
   const started = Date.now();
@@ -96,62 +100,7 @@ export async function executeWhatsAppIntelligence(
     input.buttonAction === "search_other_docs"
       ? input.memory.lastUserQuestion || input.memory.lastSearchQuery || input.originalText
       : input.originalText;
-  if (isNegativeResultFeedback(input.originalText) && input.buttonAction !== "search_other_docs") {
-    const reply =
-      "Sorry that wasn’t what you needed. I have noted the feedback. Ask about the current document, or name a different one.";
-    return {
-      reply,
-      toolName: null,
-      outcome: "answered",
-      latencyMs: Date.now() - started,
-      entities: mergeEntityMemory(input.memory, { lastAnswerText: reply, lastUserQuestion: input.originalText }),
-      groundedConfidence: "partial",
-      groundedScoped: Boolean(input.memory.lastDocument),
-      synthesisProvider: "none",
-      moreDetailNovel: false,
-      repeatedExcerpt: false,
-      unsolicitedPii: false,
-      malformedExtraction: false,
-      intelligence: {
-        kind: "answer",
-        text: reply,
-        confidence: "partial",
-        offerSearchOther: true,
-        toolCalls: [],
-        currentDocument: documentRefFromEntity(input.memory.lastDocument),
-        evidenceDocumentIds: input.memory.lastDocument?.id ? [input.memory.lastDocument.id] : [],
-        clarification: false,
-        citeSource: false,
-        modelRounds: [],
-        totalModelMs: 0,
-        totalToolMs: 0,
-        provider: "none",
-        model: null,
-        estimatedCostUsd: 0,
-      },
-      plan: planFromIntelligence(
-        {
-          kind: "answer",
-          text: reply,
-          confidence: "partial",
-          offerSearchOther: true,
-          toolCalls: [],
-          currentDocument: documentRefFromEntity(input.memory.lastDocument),
-          evidenceDocumentIds: [],
-          clarification: false,
-          citeSource: false,
-          modelRounds: [],
-          totalModelMs: 0,
-          totalToolMs: 0,
-          provider: "none",
-          model: null,
-          estimatedCostUsd: 0,
-        },
-        input.originalText,
-        input.buttonAction,
-      ),
-    };
-  }
+  const userCorrection = isNegativeResultFeedback(input.originalText) && input.buttonAction !== "search_other_docs";
   const fetchCache = new Map<string, ReturnType<typeof toStandardFetchPayload>>();
   const runtime = createWhatsAppIntelligenceRuntime(env, {
     companyId: input.companyId,
@@ -161,6 +110,8 @@ export async function executeWhatsAppIntelligence(
     memory: input.memory,
     fetchCache,
   });
+  const connectors = input.connectors ?? [];
+  const membership = input.sessionUser.memberships.find((row) => row.companyId === input.companyId);
   const state = buildConversationState({
     userText: originalText,
     currentDocument: documentRefFromEntity(input.memory.lastDocument),
@@ -168,6 +119,13 @@ export async function executeWhatsAppIntelligence(
       .map((doc) => documentRefFromEntity(doc))
       .filter((doc): doc is IntelligenceDocumentRef => Boolean(doc)),
     recentTurns: input.priorTurns,
+    companyId: input.companyId,
+    role: membership?.role ?? null,
+    connectors,
+    permittedTools: permittedToolsForConnectors(connectors),
+    lastToolName: input.memory.lastTool,
+    lastToolSummary: input.memory.lastAnswerText ? input.memory.lastAnswerText.slice(0, 240) : null,
+    userCorrection,
   });
   let result = await runIntelligenceTurn({
     env,
@@ -188,6 +146,18 @@ export async function executeWhatsAppIntelligence(
     );
   }
 
+  result = {
+    ...result,
+    qualityFlags: collectQualityFlags({
+      result,
+      userCorrection,
+      expectedStayOnDocument: Boolean(input.memory.lastDocument && !/\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file))\b/i.test(originalText)),
+      previousAnswer: input.memory.lastAnswerText,
+    }),
+  };
+  if (String(env.INTELLIGENCE_SHADOW_EVAL ?? "").trim() === "1" && input.waitUntil && env.AI) {
+    input.waitUntil(runShadowEval(env, originalText, state, runtime, result).catch(() => undefined));
+  }
   const nextEntities = mergeEntitiesFromIntelligence(input.memory, result, originalText, fetchCache);
   const polished = polishIntelligenceReply(result, nextEntities, originalText);
   const plan = planFromIntelligence(result, originalText, input.buttonAction);
@@ -243,6 +213,21 @@ export function planFromIntelligence(
       : buttonAction === "summarise"
         ? "summary"
         : "answer";
+  if (result.kind === "controlled_action") {
+    return {
+      action: "write_blocked",
+      intent: "write_action",
+      tool: null,
+      query: text,
+      fetch: false,
+      skipTools: true,
+      useMemory: false,
+      needsGuidance: false,
+      clarification: null,
+      fact: null,
+      draftKind: null,
+    };
+  }
   if (result.kind === "fast_path") {
     return {
       action: "chat",
@@ -766,4 +751,36 @@ function clipToolData(value: unknown): unknown {
   const raw = JSON.stringify(value ?? null);
   if (raw.length <= 3_500) return value;
   return { preview: raw.slice(0, 3_500), truncated: true };
+}
+
+async function runShadowEval(
+  env: Env,
+  text: string,
+  state: ReturnType<typeof buildConversationState>,
+  _runtime: IntelligenceRuntime,
+  live: IntelligenceTurnResult,
+): Promise<void> {
+  void text;
+  void state;
+  const models = String(env.INTELLIGENCE_SHADOW_MODELS ?? "")
+    .split(",")
+    .map((row) => row.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  if (!models.length || !env.AI) return;
+  for (const model of models) {
+    if (model === live.model) continue;
+    try {
+      await env.AI.run(model, {
+        messages: [
+          { role: "system", content: "Shadow eval only. Reply with one JSON decision. Do not address the user." },
+          { role: "user", content: `Compare-only. Live action was ${live.kind}. User text already answered.` },
+        ],
+        max_tokens: 80,
+        temperature: 0,
+      });
+    } catch {
+      // Shadow never affects the user path.
+    }
+  }
 }

@@ -1,40 +1,36 @@
 import { withBoundedTimeout } from "../whatsapp-timeouts.js";
+import { estimateWorkersAiCostUsd, resolveModelRoute } from "./models.js";
+import { jsonSchemaResponseFormat, workersAiToolsPayload } from "./schema.js";
+import { extractJsonObject } from "./parse.js";
 import type { IntelligenceEnv, IntelligenceModelUsage } from "./types.js";
 
-export const DEFAULT_WORKERS_AI_TEXT_MODEL = "@cf/meta/llama-3.1-8b-instruct";
-export const FALLBACK_WORKERS_AI_TEXT_MODEL = "@cf/meta/llama-3.2-3b-instruct";
+export const DEFAULT_WORKERS_AI_TEXT_MODEL = resolveModelRoute({}).primary;
+export const FALLBACK_WORKERS_AI_TEXT_MODEL = resolveModelRoute({}).fallback;
+/** Leftover V1 constant — V1.1 does not call OpenAI. */
 export const DEFAULT_OPENAI_TEXT_MODEL = "gpt-4o-mini";
-export const INTELLIGENCE_LLM_TIMEOUT_MS = 10_000;
-
-const WORKERS_AI_INPUT_USD_PER_M = 0.282;
-const WORKERS_AI_OUTPUT_USD_PER_M = 0.827;
-const OPENAI_MINI_INPUT_USD_PER_M = 0.15;
-const OPENAI_MINI_OUTPUT_USD_PER_M = 0.6;
+export const INTELLIGENCE_LLM_TIMEOUT_MS = 12_000;
+export const INTELLIGENCE_FALLBACK_TIMEOUT_MS = 8_000;
 
 export type IntelligenceCompleter = (input: {
   system: string;
   user: string;
-}) => Promise<{ text: string; usage: IntelligenceModelUsage }>;
+  permittedTools?: string[];
+  mode?: "decide" | "repair" | "synthesise";
+}) => Promise<{
+  text: string;
+  usage: IntelligenceModelUsage;
+  toolCalls?: Array<{ name: string; arguments: Record<string, unknown> }>;
+  structured?: Record<string, unknown> | null;
+}>;
 
 export function inspectIntelligenceProvider(env: IntelligenceEnv): {
   provider: IntelligenceModelUsage["provider"];
   model: string | null;
   configured: boolean;
 } {
-  const configuredModel = String(env.WHATSAPP_GROUNDED_MODEL ?? "").trim();
+  const route = resolveModelRoute(env);
   if (env.AI) {
-    return {
-      provider: "workers-ai",
-      model: configuredModel || DEFAULT_WORKERS_AI_TEXT_MODEL,
-      configured: true,
-    };
-  }
-  if (String(env.OPENAI_API_KEY ?? "").trim().length >= 20) {
-    return {
-      provider: "openai",
-      model: configuredModel || DEFAULT_OPENAI_TEXT_MODEL,
-      configured: true,
-    };
+    return { provider: "workers-ai", model: route.primary, configured: true };
   }
   return { provider: "none", model: null, configured: false };
 }
@@ -42,62 +38,37 @@ export function inspectIntelligenceProvider(env: IntelligenceEnv): {
 export function createDefaultCompleter(env: IntelligenceEnv): IntelligenceCompleter {
   return async (input) => {
     const started = Date.now();
-    const inspected = inspectIntelligenceProvider(env);
-    if (inspected.provider === "workers-ai" && env.AI) {
-      const models = uniqueModels([
-        inspected.model,
-        DEFAULT_WORKERS_AI_TEXT_MODEL,
-        FALLBACK_WORKERS_AI_TEXT_MODEL,
-      ]);
-      for (const model of models) {
+    const route = resolveModelRoute(env);
+    if (env.AI) {
+      const models = uniqueModels([route.primary, route.fallback, route.escalation]);
+      for (const [index, model] of models.entries()) {
+        const timeout = index === 0 ? INTELLIGENCE_LLM_TIMEOUT_MS : INTELLIGENCE_FALLBACK_TIMEOUT_MS;
         const ran = await withBoundedTimeout(
-          runWorkersAi(env.AI, model, input.system, input.user),
-          INTELLIGENCE_LLM_TIMEOUT_MS,
-          "intelligence_workers_ai",
+          runWorkersAi(env.AI, model, input),
+          timeout,
+          `intelligence_workers_ai_${index}`,
         );
         if (ran.ok && ran.value) {
           return {
             text: ran.value.text,
-            usage: usageFrom(started, "workers-ai", model, input, ran.value.text, ran.value.usage),
+            toolCalls: ran.value.toolCalls,
+            structured: ran.value.structured,
+            usage: usageFrom(started, model, input, ran.value.text, ran.value.usage, index > 0),
           };
         }
       }
     }
-    const openaiKey = String(env.OPENAI_API_KEY ?? "").trim();
-    if (openaiKey.length >= 20) {
-      const model = String(env.WHATSAPP_GROUNDED_MODEL ?? "").trim() || DEFAULT_OPENAI_TEXT_MODEL;
-      const ran = await withBoundedTimeout(
-        runOpenAi(openaiKey, env.OPENAI_BASE_URL, model, input.system, input.user),
-        INTELLIGENCE_LLM_TIMEOUT_MS,
-        "intelligence_openai",
-      );
-      if (ran.ok && ran.value) {
-        return {
-          text: ran.value.text,
-          usage: usageFrom(started, "openai", model, input, ran.value.text, ran.value.usage),
-        };
-      }
-      return {
-        text: "",
-        usage: {
-          provider: "openai",
-          model,
-          latencyMs: Date.now() - started,
-          promptTokens: null,
-          completionTokens: null,
-          estimatedCostUsd: null,
-        },
-      };
-    }
     return {
       text: "",
       usage: {
-        provider: inspected.provider,
-        model: inspected.model,
+        provider: env.AI ? "workers-ai" : "none",
+        model: route.primary,
         latencyMs: Date.now() - started,
         promptTokens: null,
         completionTokens: null,
         estimatedCostUsd: null,
+        fallbackUsed: false,
+        malformed: true,
       },
     };
   };
@@ -105,21 +76,23 @@ export function createDefaultCompleter(env: IntelligenceEnv): IntelligenceComple
 
 function usageFrom(
   started: number,
-  provider: "workers-ai" | "openai",
   model: string,
   input: { system: string; user: string },
   output: string,
   raw?: { promptTokens?: number | null; completionTokens?: number | null },
+  fallbackUsed = false,
 ): IntelligenceModelUsage {
   const promptTokens = raw?.promptTokens ?? estimateTokens(`${input.system}\n${input.user}`);
   const completionTokens = raw?.completionTokens ?? estimateTokens(output);
   return {
-    provider,
+    provider: "workers-ai",
     model,
     latencyMs: Date.now() - started,
     promptTokens,
     completionTokens,
-    estimatedCostUsd: estimateCostUsd(provider, promptTokens, completionTokens),
+    estimatedCostUsd: estimateWorkersAiCostUsd(model, promptTokens, completionTokens),
+    fallbackUsed,
+    malformed: !output.trim(),
   };
 }
 
@@ -131,74 +104,121 @@ export function estimateCostUsd(
   provider: "workers-ai" | "openai" | "none",
   promptTokens: number,
   completionTokens: number,
+  model?: string | null,
 ): number {
   if (provider === "none") return 0;
-  const inputRate = provider === "openai" ? OPENAI_MINI_INPUT_USD_PER_M : WORKERS_AI_INPUT_USD_PER_M;
-  const outputRate = provider === "openai" ? OPENAI_MINI_OUTPUT_USD_PER_M : WORKERS_AI_OUTPUT_USD_PER_M;
-  return (promptTokens / 1_000_000) * inputRate + (completionTokens / 1_000_000) * outputRate;
+  if (provider === "workers-ai") return estimateWorkersAiCostUsd(model, promptTokens, completionTokens);
+  return (promptTokens / 1_000_000) * 0.15 + (completionTokens / 1_000_000) * 0.6;
 }
 
 async function runWorkersAi(
   ai: NonNullable<IntelligenceEnv["AI"]>,
   model: string,
-  system: string,
-  user: string,
-): Promise<{ text: string; usage?: { promptTokens?: number | null; completionTokens?: number | null } } | null> {
-  try {
-    const raw = await ai.run(model, {
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
+  input: { system: string; user: string; permittedTools?: string[]; mode?: "decide" | "repair" | "synthesise" },
+): Promise<{
+  text: string;
+  toolCalls?: Array<{ name: string; arguments: Record<string, unknown> }>;
+  structured?: Record<string, unknown> | null;
+  usage?: { promptTokens?: number | null; completionTokens?: number | null };
+} | null> {
+  const messages = [
+    { role: "system", content: input.system },
+    { role: "user", content: input.user },
+  ];
+  const attempts: Array<Record<string, unknown>> = [
+    {
+      messages,
+      max_tokens: 640,
+      temperature: input.mode === "repair" ? 0 : 0.1,
+      tools: workersAiToolsPayload(input.permittedTools),
+      response_format: jsonSchemaResponseFormat(),
+    },
+    {
+      messages,
+      max_tokens: 640,
+      temperature: 0.1,
+      tools: workersAiToolsPayload(input.permittedTools),
+    },
+    {
+      messages,
+      max_tokens: 640,
+      temperature: 0.1,
+      response_format: jsonSchemaResponseFormat(),
+    },
+    {
+      messages,
       max_tokens: 520,
       temperature: 0.1,
-    });
-    const text = extractModelText(raw);
-    if (!text) return null;
-    return { text, usage: extractUsage(raw) };
-  } catch {
-    return null;
+    },
+  ];
+  for (const payload of attempts) {
+    try {
+      const raw = await ai.run(model, payload);
+      const extracted = extractWorkersAiResult(raw);
+      if (extracted.text || extracted.toolCalls?.length || extracted.structured) {
+        return extracted;
+      }
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
-async function runOpenAi(
-  apiKey: string,
-  baseUrl: string | undefined,
-  model: string,
-  system: string,
-  user: string,
-): Promise<{ text: string; usage?: { promptTokens?: number | null; completionTokens?: number | null } } | null> {
-  const endpoint = String(baseUrl ?? "").trim() || "https://api.openai.com/v1/chat/completions";
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      max_tokens: 520,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
-  });
-  if (!response.ok) return null;
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
-  };
-  const text = extractModelText(payload.choices?.[0]?.message?.content ?? payload);
-  if (!text) return null;
-  return {
-    text,
-    usage: {
-      promptTokens: payload.usage?.prompt_tokens ?? null,
-      completionTokens: payload.usage?.completion_tokens ?? null,
-    },
-  };
+export function extractWorkersAiResult(raw: unknown): {
+  text: string;
+  toolCalls?: Array<{ name: string; arguments: Record<string, unknown> }>;
+  structured?: Record<string, unknown> | null;
+  usage?: { promptTokens?: number | null; completionTokens?: number | null };
+} {
+  const text = extractModelText(raw) ?? "";
+  const toolCalls = extractNativeToolCalls(raw);
+  const structured = extractStructured(raw) ?? extractJsonObject(text);
+  return { text, toolCalls, structured, usage: extractUsage(raw) };
+}
+
+export function extractNativeToolCalls(
+  raw: unknown,
+): Array<{ name: string; arguments: Record<string, unknown> }> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const record = raw as Record<string, unknown>;
+  const nested = record.result && typeof record.result === "object" ? (record.result as Record<string, unknown>) : record;
+  const rows = (nested.tool_calls ?? nested.toolCalls ?? record.tool_calls) as unknown;
+  if (!Array.isArray(rows) || rows.length === 0) return undefined;
+  const calls = rows
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const item = row as Record<string, unknown>;
+      const fn = item.function && typeof item.function === "object" ? (item.function as Record<string, unknown>) : item;
+      const name = String(fn.name ?? item.name ?? "").trim();
+      if (!name) return null;
+      let args: Record<string, unknown> = {};
+      const rawArgs = fn.arguments ?? item.arguments ?? item.parameters;
+      if (typeof rawArgs === "string") {
+        try {
+          args = JSON.parse(rawArgs) as Record<string, unknown>;
+        } catch {
+          args = {};
+        }
+      } else if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
+        args = rawArgs as Record<string, unknown>;
+      }
+      return { name, arguments: args };
+    })
+    .filter((row): row is { name: string; arguments: Record<string, unknown> } => Boolean(row));
+  return calls.length ? calls : undefined;
+}
+
+function extractStructured(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  for (const key of ["response", "result", "output"]) {
+    const value = record[key];
+    if (value && typeof value === "object" && !Array.isArray(value) && "action" in (value as object)) {
+      return value as Record<string, unknown>;
+    }
+  }
+  return null;
 }
 
 function extractUsage(raw: unknown): { promptTokens?: number | null; completionTokens?: number | null } | undefined {
@@ -242,6 +262,10 @@ export function extractModelText(raw: unknown): string | null {
       .join("\n")
       .trim();
     if (joined) return joined;
+  }
+  const toolText = extractNativeToolCalls(raw);
+  if (toolText?.[0]) {
+    return JSON.stringify({ action: "call_tool", name: toolText[0].name, arguments: toolText[0].arguments });
   }
   return null;
 }
