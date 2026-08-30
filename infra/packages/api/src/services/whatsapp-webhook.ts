@@ -357,9 +357,9 @@ export async function processWhatsAppInboundJob(
   const inbound = parseWhatsAppInboundMessages(payload);
   const assets = inspectWhatsAppAssets(env);
   const trusted = message.signatureValid && Number(row.signature_valid) === 1;
-  const pending: Promise<unknown>[] = [];
   const waitUntil = (promise: Promise<unknown>) => {
-    pending.push(promise);
+    // Hand long watches to the isolate waitUntil hook only.
+    // Awaiting them here held the queue consumer for 30s+ and blocked the next chat.
     options?.waitUntil?.(promise);
   };
 
@@ -410,8 +410,6 @@ export async function processWhatsAppInboundJob(
   )
     .bind(nowIso(), lastFound, lastUserId, lastCompanyId, message.eventId)
     .run();
-
-  await Promise.allSettled(pending);
 }
 
 async function claimWhatsAppInboundEvent(
