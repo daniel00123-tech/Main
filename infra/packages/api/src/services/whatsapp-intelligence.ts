@@ -42,7 +42,7 @@ import {
 } from "./whatsapp-entities";
 import { identityFromMetadata, lookupKnowledgeSourceUrl, persistDiscoveredSourceUrl } from "./whatsapp-source-urls";
 import { FETCH_TIMEOUT_MS, KNOWLEDGE_SEARCH_TIMEOUT_MS, MCP_TIMEOUT_MS, withBoundedTimeout } from "./whatsapp-timeouts";
-import { isNegativeResultFeedback, type WhatsAppPlan } from "./whatsapp-plan";
+import { isNegativeResultFeedback, looksLikeSearchOtherDocs, type WhatsAppPlan } from "./whatsapp-plan";
 import type { WhatsAppTurn } from "./whatsapp-context";
 
 const ALLOWED_GATEWAY_TOOLS = new Set([
@@ -96,11 +96,13 @@ export async function executeWhatsAppIntelligence(
   },
 ): Promise<WhatsAppIntelligenceAnswer> {
   const started = Date.now();
+  const buttonAction =
+    input.buttonAction ?? (looksLikeSearchOtherDocs(input.originalText) ? "search_other_docs" : null);
   const originalText =
-    input.buttonAction === "search_other_docs"
+    buttonAction === "search_other_docs"
       ? input.memory.lastUserQuestion || input.memory.lastSearchQuery || input.originalText
       : input.originalText;
-  const userCorrection = isNegativeResultFeedback(input.originalText) && input.buttonAction !== "search_other_docs";
+  const userCorrection = isNegativeResultFeedback(input.originalText) && buttonAction !== "search_other_docs";
   const fetchCache = new Map<string, ReturnType<typeof toStandardFetchPayload>>();
   const runtime = createWhatsAppIntelligenceRuntime(env, {
     companyId: input.companyId,
@@ -133,14 +135,18 @@ export async function executeWhatsAppIntelligence(
     state,
     runtime,
     channel: "whatsapp",
-    buttonHint: input.buttonAction ?? null,
+    buttonHint: buttonAction,
     completer: input.completer,
   });
-  if (result.kind === "failed") {
+  if (
+    result.kind === "failed" ||
+    (result.confidence === "none" &&
+      /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|search other)\b/i.test(originalText))
+  ) {
     result = await recoverFailedIntelligenceTurn(
       env,
       runtime,
-      { ...input, originalText },
+      { ...input, originalText, buttonAction },
       result,
       fetchCache,
     );
@@ -160,7 +166,7 @@ export async function executeWhatsAppIntelligence(
   }
   const nextEntities = mergeEntitiesFromIntelligence(input.memory, result, originalText, fetchCache);
   const polished = polishIntelligenceReply(result, nextEntities, originalText);
-  const plan = planFromIntelligence(result, originalText, input.buttonAction);
+  const plan = planFromIntelligence(result, originalText, buttonAction);
   const documentClass = nextEntities.lastDocument
     ? classifyDocument({
         title: nextEntities.lastDocument.title,
@@ -338,8 +344,11 @@ function polishIntelligenceReply(
     }
   }
   const sourceUrl = firstHttpUrl(entities.lastDocument?.url, result.currentDocument?.url);
-  if ((result.citeSource || result.kind === "answer") && sourceUrl && !/https?:\/\//i.test(text)) {
-    if (result.citeSource) text = `${text}\n${sourceUrl}`;
+  const wantsSource =
+    result.citeSource ||
+    /\b(where did you get|source (url|link)|send me the (link|url)|what('?s| is) the (url|link))\b/i.test(question);
+  if (sourceUrl && wantsSource && !/https?:\/\//i.test(text)) {
+    text = `${text}\n${sourceUrl}`;
   }
   void question;
   return text;
@@ -390,10 +399,27 @@ async function recoverFailedIntelligenceTurn(
   const toolCalls = [...failed.toolCalls];
   let current = failed.currentDocument ?? documentRefFromEntity(input.memory.lastDocument);
   const evidenceDocumentIds = [...failed.evidenceDocumentIds];
+  if (/\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover)\b/i.test(input.originalText)) {
+    const xero = await runtime.executeTool({ name: "xero_sales_summary", arguments: {} });
+    toolCalls.push(xero);
+    return {
+      ...failed,
+      kind: xero.ok ? "answer" : "failed",
+      text: xero.ok
+        ? summariseXeroEvidence(xero.data)
+        : "I couldn't read Xero just now. Try again in a moment.",
+      confidence: xero.ok ? "partial" : "none",
+      offerSearchOther: false,
+      toolCalls,
+      currentDocument: current,
+      evidenceDocumentIds,
+      clarification: false,
+    };
+  }
   const broaden =
     input.buttonAction === "search_other_docs" ||
     !current ||
-    /\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file)|broaden)\b/i.test(
+    /\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file)|broaden|search other)\b/i.test(
       input.originalText,
     );
   if (broaden) {
@@ -753,6 +779,16 @@ function gatewayArguments(
     return { invoice_id: String(args.invoice_id ?? args.id ?? "").trim() };
   }
   return { ...args };
+}
+
+function summariseXeroEvidence(data: unknown): string {
+  if (!data || typeof data !== "object") return "I have the latest permitted Xero sales figures, but nothing readable came back.";
+  const raw = JSON.stringify(data);
+  const amounts = raw.match(/£\s?[\d,]+(?:\.\d{2})?|[\d,]+\.\d{2}/g)?.slice(0, 4) ?? [];
+  if (amounts.length) {
+    return `From Xero, the figures I can see include ${amounts.join(", ")}. Ask if you want overdue invoices or a named invoice.`;
+  }
+  return "I reached Xero. Ask for overdue invoices, a named invoice, or P&L if you want a specific cut.";
 }
 
 function clipToolData(value: unknown): unknown {

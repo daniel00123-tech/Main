@@ -90,6 +90,12 @@ export async function runIntelligenceTurn(input: {
       formatConversationState({ ...input.state, currentDocument, lastUserText: input.text }),
       input.buttonHint ? `Channel button: ${input.buttonHint}` : "",
       input.channel ? `Channel: ${input.channel}` : "",
+      looksLikeFinanceRead(input.text)
+        ? "This is a finance question. Use a Xero read tool. Do not search the current document."
+        : "",
+      input.buttonHint === "search_other_docs"
+        ? "The user asked to look in other documents. Call search_company_knowledge. Do not stay on the current document."
+        : "",
       transcript.length ? `Evidence so far:\n${transcript.join("\n\n")}` : "Evidence so far: none yet",
       round === 0
         ? "Decide: enough information? If yes, answer or clarify. If not, call one tool."
@@ -374,7 +380,13 @@ function adoptFromTool(
 }
 
 function looksLikeNewDocumentSearch(text: string): boolean {
-  return /\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file)|broaden)\b/i.test(text);
+  return /\b(find|search|look(?:ing)? (for|up)|another|different|other (doc|document|file)|broaden|search other)\b/i.test(
+    text,
+  );
+}
+
+function looksLikeFinanceRead(text: string): boolean {
+  return /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables)\b/i.test(text);
 }
 
 async function bootstrapRetrieval(
@@ -383,6 +395,9 @@ async function bootstrapRetrieval(
   text: string,
   buttonHint?: string | null,
 ): Promise<IntelligenceToolResult | null> {
+  if (looksLikeFinanceRead(text)) {
+    return runtime.executeTool({ name: "xero_sales_summary", arguments: {} });
+  }
   if (buttonHint === "search_other_docs" || !state.currentDocument || looksLikeNewDocumentSearch(text)) {
     return runtime.executeTool({ name: "search_company_knowledge", arguments: { query: text } });
   }
