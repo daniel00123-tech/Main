@@ -850,7 +850,6 @@ async function handleWhatsAppInboundMessageInner(
   });
 
   try {
-    marks.planningStartedAt = Date.now();
     marks.toolStartedAt = Date.now();
     const work = options?.simulateMcpTimeout
       ? new Promise<never>(() => undefined)
