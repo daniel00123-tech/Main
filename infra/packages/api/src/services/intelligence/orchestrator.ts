@@ -152,23 +152,12 @@ export async function runIntelligenceTurn(input: {
     lastUserIntent: scoped.lastUserIntent,
   };
 
-  if (
-    scoped.scope === "COMPANY_KNOWLEDGE" &&
-    scoped.tool === "search_company_knowledge" &&
-    (scoped.clearCurrentDocument ||
-      input.state.userCorrection ||
-      scoped.lastUserIntent === "find_document" ||
-      scoped.lastUserIntent === "named_document_switch" ||
-      scoped.features.findDocument)
-  ) {
+  if (scoped.scope === "COMPANY_KNOWLEDGE" && (scoped.clearCurrentDocument || input.state.userCorrection)) {
     const priorUser =
       [...input.state.recentTurns].reverse().find((turn) => turn.role === "user")?.text ||
       input.state.lastAnswerTopic ||
       input.text;
-    const query =
-      scoped.clearCurrentDocument && input.state.currentDocument
-        ? [input.state.currentDocument.title, priorUser].filter(Boolean).join(" — ") || input.text
-        : stripFindVerb(input.text);
+    const query = [input.state.currentDocument?.title, priorUser].filter(Boolean).join(" — ") || input.text;
     const search = await input.runtime.executeTool({
       name: "search_company_knowledge",
       arguments: { query },
@@ -361,6 +350,45 @@ export async function runIntelligenceTurn(input: {
       if (shouldHaveClarified(input.state, toolCalls) === false && looksLikeGuess(decision.text)) {
         qualityFlags.add("bad_clarification");
       }
+      const foundTitles = searchHitTitles(toolCalls);
+      if (foundTitles.length && shouldForceScopedTool(scoped)) {
+        const hits = searchHits(toolCalls.find((call) => call.name === "search_company_knowledge")?.data);
+        if (hits.length === 1 && !currentDocument) {
+          const only = hits[0] && typeof hits[0] === "object" ? (hits[0] as { id?: string; title?: string; url?: string }) : null;
+          if (only?.id && only.title) {
+            currentDocument = {
+              id: String(only.id),
+              title: String(only.title),
+              url: typeof only.url === "string" && /^https?:\/\//i.test(only.url) ? only.url : null,
+            };
+            if (!evidenceDocumentIds.includes(currentDocument.id)) evidenceDocumentIds.push(currentDocument.id);
+          }
+        }
+        return finish({
+          kind: "answer",
+          text:
+            foundTitles.length === 1
+              ? `I found ${foundTitles[0]}. What do you want from it?`
+              : `Across your documents I can see: ${foundTitles.join("; ")}. Which should I open?`,
+          confidence: "partial",
+          offerSearchOther: true,
+          toolCalls,
+          currentDocument,
+          evidenceDocumentIds,
+          clarification: false,
+          modelRounds,
+          route: "INTELLIGENT",
+          scope: scoped.scope,
+          lastAnswerTopic: scoped.lastAnswerTopic,
+          lastUserIntent: scoped.lastUserIntent,
+          qualityFlags: [...qualityFlags],
+          repaired,
+          fallbackUsed: modelRounds.some((row) => row.fallbackUsed),
+        });
+      }
+      if (toolCalls.some((call) => call.ok) && scoped.scope === "BUSINESS_SYSTEM") {
+        continue;
+      }
       return finish({
         kind: "clarify",
         text: decision.text.trim() || "Can you give me a little more detail so I look in the right place?",
@@ -527,6 +555,17 @@ function searchHits(data: unknown): unknown[] {
   return Array.isArray(results) ? results : [];
 }
 
+function searchHitTitles(toolCalls: IntelligenceToolResult[]): string[] {
+  const hits = searchHits(toolCalls.find((call) => call.name === "search_company_knowledge")?.data);
+  return [
+    ...new Set(
+      hits
+        .map((hit) => (hit && typeof hit === "object" ? String((hit as { title?: string }).title ?? "") : ""))
+        .filter(Boolean),
+    ),
+  ].slice(0, 3);
+}
+
 function fallbackFromEvidence(
   toolCalls: IntelligenceToolResult[],
   current: IntelligenceDocumentRef | null,
@@ -588,17 +627,6 @@ function looksLikeNewDocumentSearch(text: string): boolean {
   return /\b(find|search|look(?:ing)? (for|up)|pull up|open|switch to|go to|another|different|other (doc|document|file)|broaden|search other)\b/i.test(
     text,
   );
-}
-
-function stripFindVerb(text: string): string {
-  const cleaned = text
-    .replace(
-      /^(?:can you |could you |please )?(?:open|find|search|look(?:ing)? (?:for|up)|pull up|show|get|go to|switch to)\s+/i,
-      "",
-    )
-    .replace(/^(me |us |the |a |an |that |this |our |my )/i, "")
-    .trim();
-  return cleaned || text.trim();
 }
 
 function shouldForceScopedTool(scoped: ScopeDecision): boolean {
@@ -663,10 +691,6 @@ function prepareToolArguments(
   let next = { ...args };
   if (needsBusinessDates(name)) {
     next = withResolvedBusinessDates(name, next, text);
-  }
-  if (name === "search_company_knowledge") {
-    const cleaned = stripFindVerb(String(next.query ?? text));
-    next.query = cleaned || text;
   }
   if (name === "search_document") {
     const enriched = enrichDocumentQuery(String(next.query ?? text), {

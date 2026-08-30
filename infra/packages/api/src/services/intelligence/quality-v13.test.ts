@@ -112,7 +112,7 @@ describe("document switch while another file is open", () => {
       }),
     });
     expect(calls[0]?.name).toBe("search_company_knowledge");
-    expect(String(calls[0]?.arguments.query ?? "")).toMatch(/north yard/i);
+    expect(String(calls[0]?.arguments.query ?? "")).toMatch(/Find North Yard/i);
     expect(result.kind).toBe("answer");
     expect(result.text).toMatch(/North Yard induction pack/i);
     expect(result.text).not.toMatch(/What do you mean/i);
