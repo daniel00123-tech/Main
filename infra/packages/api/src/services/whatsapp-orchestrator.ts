@@ -10,8 +10,10 @@ import {
   toStandardSearchPayload,
 } from "./mcp-knowledge-standard";
 import { UNKNOWN_WHATSAPP_ACCOUNT_MESSAGE, tryNormalizeE164 } from "./phone";
+import { scheduleQualityAudit } from "./quality-auditor";
 import { recordUsageEvent } from "./usage";
 import { inspectWhatsAppAssets, outboundAiEnabled } from "./whatsapp-assets";
+import { capabilityReplyForCompany, formatPricingCapabilityReply, listConnectedCapabilityLabels } from "./whatsapp-capabilities";
 import {
   compactConversationPrompt,
   loadWhatsAppConversation,
@@ -19,21 +21,41 @@ import {
   type WhatsAppTurn,
 } from "./whatsapp-context";
 import {
+  acknowledgementMessage,
+  conversationalReply,
+  progressMessage,
+  STILL_WORKING_MESSAGE,
+} from "./whatsapp-conversation";
+import {
   aiFailureWhatsAppMessage,
   companySelectionMessage,
   formatWhatsAppReply,
+  noResultWhatsAppMessage,
+  permissionBlockedWhatsAppMessage,
+  timeoutWhatsAppMessage,
   toolFailureWhatsAppMessage,
   writeIntentWhatsAppMessage,
 } from "./whatsapp-format";
 import { resolveWhatsAppIdentity } from "./whatsapp-identity";
-import { sendWhatsAppText, type WhatsAppSendResult } from "./whatsapp-send";
+import {
+  classifyWhatsAppIntent,
+  isCheapConversationalIntent,
+  looksLikeWriteIntent as looksLikeWriteIntentFromClassifier,
+  needsToolWork,
+  softenSearchQuery,
+} from "./whatsapp-intent";
+import {
+  createWhatsAppLatencyMarks,
+  HARD_SILENCE_MS,
+  PROGRESS_AFTER_MS,
+  summariseWhatsAppLatency,
+} from "./whatsapp-latency";
+import { sendWhatsAppText, sendWhatsAppTypingIndicator, type WhatsAppSendResult } from "./whatsapp-send";
 
 export const WHATSAPP_AI_PROVIDER = "infra-gateway";
 export const WHATSAPP_AI_MODEL = "company-mcp-knowledge";
 
-const WRITE_INTENT =
-  /\b(create (an? )?(invoice|bill|credit)|approve |send (the )?invoice|delete |void |allocate |raise an invoice|write to|update (the )?(invoice|bill|contact)|credit note)\b/i;
-const FETCH_INTENT = /\b(find|open|read|what does|what is|tell me what|relates? to)\b/i;
+const FETCH_INTENT = /\b(find|open|read|what does|what is|tell me what|relates? to|summarise|summarize)\b/i;
 const FINANCIAL_READ = /\b(sales|revenue|profit|p&l|invoices?|aged|balance|contacts?)\b/i;
 
 const ALLOWED_WHATSAPP_TOOLS = new Set([
@@ -72,10 +94,12 @@ export type WhatsAppOrchestratorResult = {
   toolName: string | null;
   interactionId: string | null;
   outcome: "unknown" | "company_selection" | "write_blocked" | "answered" | "tool_failed" | "ai_failed" | "send_failed" | "skipped";
+  intent?: string | null;
+  acknowledgementSent?: boolean;
 };
 
 export function looksLikeWriteIntent(text: string): boolean {
-  return WRITE_INTENT.test(text);
+  return looksLikeWriteIntentFromClassifier(text);
 }
 
 export function parseCompanySelection(
@@ -228,7 +252,13 @@ export async function handleWhatsAppInboundMessage(
     };
   }
 
+  const marks = createWhatsAppLatencyMarks();
+  marks.identityResolvedAt = Date.now();
+  const priorTurns = conversation?.companyId === companyDecision.companyId ? conversation?.turns ?? [] : [];
   const text = (item.text ?? "").trim();
+  const intent = classifyWhatsAppIntent(text, { hasPriorTurns: priorTurns.length > 0 });
+  marks.intentClassifiedAt = Date.now();
+
   if (!text || item.type !== "text") {
     const reply = "I can answer text questions about your connected business systems. Please send a short question.";
     const sent = await maybeSendReply(env, sender, reply);
@@ -243,10 +273,11 @@ export async function handleWhatsAppInboundMessage(
       toolName: null,
       interactionId: null,
       outcome: "answered",
+      intent,
     };
   }
 
-  if (looksLikeWriteIntent(text)) {
+  if (intent === "write_action" || looksLikeWriteIntent(text)) {
     const reply = writeIntentWhatsAppMessage();
     const sent = await maybeSendReply(env, sender, reply);
     await rememberTurn(env, identity.user.id, companyDecision.companyId, conversation?.turns ?? [], text, reply);
@@ -269,6 +300,45 @@ export async function handleWhatsAppInboundMessage(
       toolName: null,
       interactionId: null,
       outcome: "write_blocked",
+      intent: "write_action",
+    };
+  }
+
+  if (isCheapConversationalIntent(intent)) {
+    let capabilities: string | null = null;
+    if (intent === "help" || intent === "capabilities") {
+      if (/\b(price|pricing|quote|rates?)\b/i.test(text)) {
+        capabilities = formatPricingCapabilityReply(
+          await listConnectedCapabilityLabels(env, companyDecision.companyId),
+        );
+      } else {
+        capabilities = await capabilityReplyForCompany(env, companyDecision.companyId);
+      }
+    }
+    const reply = conversationalReply(intent, { text, capabilities }) ?? conversationalReply("greeting", { text })!;
+    const sent = await maybeSendReply(env, sender, reply);
+    await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, reply);
+    await recordAuditEvent(env.DB, {
+      companyId: companyDecision.companyId,
+      eventType: "whatsapp.conversation",
+      actor: identity.user.email,
+      resourceType: "whatsapp_message",
+      resourceId: item.wamid,
+      detail: { channel: "whatsapp", intent, cheapPath: true },
+    });
+    return {
+      handled: true,
+      duplicate: false,
+      identityFound: true,
+      companyId: companyDecision.companyId,
+      userId: identity.user.id,
+      replySent: sent.ok,
+      publicReply: reply,
+      toolName: null,
+      interactionId: null,
+      outcome: "answered",
+      intent,
+      acknowledgementSent: false,
     };
   }
 
@@ -292,40 +362,102 @@ export async function handleWhatsAppInboundMessage(
 
   const sessionUser = await toSessionUser(env.DB, dbUser);
   const interactionId = newId("int");
-  const query = compactConversationPrompt(
-    (conversation?.companyId === companyDecision.companyId ? conversation.turns : []) ?? [],
-    text,
-  );
+  const searchText = softenSearchQuery(text);
+  const query = compactConversationPrompt(priorTurns, searchText);
+  let acknowledgementSent = false;
+  let progressSent = false;
+  let fallbackSent = false;
+  let finished = false;
+
+  if (needsToolWork(intent)) {
+    void sendWhatsAppTypingIndicator(env, { messageId: item.wamid });
+    const ack = acknowledgementMessage(item.wamid + text);
+    const ackSend = await maybeSendReply(env, sender, ack);
+    acknowledgementSent = ackSend.ok;
+    marks.acknowledgementSentAt = Date.now();
+    await recordWhatsAppUxUsage(env, {
+      companyId: companyDecision.companyId,
+      userId: identity.user.id,
+      actorEmail: identity.user.email,
+      interactionId,
+      action: "whatsapp.ack",
+      durationMs: summariseWhatsAppLatency(marks).acknowledgementMs ?? 0,
+      metadata: { channel: "whatsapp", intent, acknowledgementSent, kind: "ack" },
+    });
+  }
+
+  const progressTimer = needsToolWork(intent)
+    ? setTimeout(() => {
+        if (finished || progressSent) return;
+        progressSent = true;
+        void maybeSendReply(env, sender, progressMessage(item.wamid)).then((sent) => {
+          if (sent.ok) {
+            void recordWhatsAppUxUsage(env, {
+              companyId: companyDecision.companyId,
+              userId: identity.user.id,
+              actorEmail: identity.user.email,
+              interactionId,
+              action: "whatsapp.progress",
+              durationMs: PROGRESS_AFTER_MS,
+              metadata: { channel: "whatsapp", intent, kind: "progress" },
+            });
+          }
+        });
+      }, PROGRESS_AFTER_MS)
+    : null;
+  const fallbackTimer = needsToolWork(intent)
+    ? setTimeout(() => {
+        if (finished || fallbackSent) return;
+        fallbackSent = true;
+        void maybeSendReply(env, sender, STILL_WORKING_MESSAGE);
+      }, HARD_SILENCE_MS)
+    : null;
 
   try {
+    marks.planningStartedAt = Date.now();
+    marks.toolStartedAt = Date.now();
     const answered = await answerWithCompanyMcp(env, {
       companyId: companyDecision.companyId,
       sessionUser,
       query,
-      originalText: text,
+      originalText: searchText,
       interactionId,
       waitUntil: options?.waitUntil,
     });
+    marks.toolCompletedAt = Date.now();
+    marks.finalGeneratedAt = Date.now();
+    finished = true;
+    if (progressTimer) clearTimeout(progressTimer);
+    if (fallbackTimer) clearTimeout(fallbackTimer);
 
+    marks.outboundStartedAt = Date.now();
     const sent = await maybeSendReply(env, sender, answered.reply);
-    await rememberTurn(
-      env,
-      identity.user.id,
-      companyDecision.companyId,
-      conversation?.companyId === companyDecision.companyId ? conversation?.turns ?? [] : [],
-      text,
-      answered.reply,
-    );
+    marks.outboundAcceptedAt = Date.now();
+    await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, answered.reply);
+    const latency = summariseWhatsAppLatency(marks);
     await recordWhatsAppChannelUsage(env, {
       companyId: companyDecision.companyId,
       userId: identity.user.id,
       actorEmail: identity.user.email,
       interactionId,
       success: answered.outcome === "answered" && sent.ok,
-      durationMs: answered.latencyMs,
+      durationMs: latency.totalMs,
       toolName: answered.toolName,
       send: sent,
+      metadata: {
+        channel: "whatsapp",
+        intent,
+        acknowledgementSent,
+        acknowledgementMs: latency.acknowledgementMs,
+        totalMs: latency.totalMs,
+        toolMs: latency.toolMs,
+        outboundMs: latency.outboundMs,
+        progressSent,
+        finalSent: sent.ok,
+        cheapPath: false,
+      },
     });
+    scheduleQualityAudit(env, options?.waitUntil, interactionId);
     await recordAuditEvent(env.DB, {
       companyId: companyDecision.companyId,
       eventType: sent.ok ? "whatsapp.inbound_identified" : "whatsapp.outbound_failed",
@@ -337,10 +469,13 @@ export async function handleWhatsAppInboundMessage(
         identityFound: true,
         companyId: companyDecision.companyId,
         toolName: answered.toolName,
+        intent,
         provider: WHATSAPP_AI_PROVIDER,
         model: WHATSAPP_AI_MODEL,
         sendKind: "customer_service_reply",
         cursorInRuntime: false,
+        acknowledgementMs: latency.acknowledgementMs,
+        totalMs: latency.totalMs,
       },
     });
     return {
@@ -354,8 +489,13 @@ export async function handleWhatsAppInboundMessage(
       toolName: answered.toolName,
       interactionId,
       outcome: sent.ok ? answered.outcome : "send_failed",
+      intent,
+      acknowledgementSent,
     };
   } catch {
+    finished = true;
+    if (progressTimer) clearTimeout(progressTimer);
+    if (fallbackTimer) clearTimeout(fallbackTimer);
     const reply = aiFailureWhatsAppMessage();
     const sent = await maybeSendReply(env, sender, reply);
     return {
@@ -369,6 +509,8 @@ export async function handleWhatsAppInboundMessage(
       toolName: null,
       interactionId,
       outcome: "ai_failed",
+      intent,
+      acknowledgementSent,
     };
   }
 }
@@ -406,6 +548,14 @@ async function answerWithCompanyMcp(
   });
 
   if (search.status !== 200) {
+    if (search.status === 401 || search.status === 403) {
+      return {
+        reply: permissionBlockedWhatsAppMessage(),
+        toolName: searchTool,
+        outcome: "tool_failed",
+        latencyMs: Date.now() - started,
+      };
+    }
     if (FINANCIAL_READ.test(input.originalText)) {
       const xeroTool = /\bprofit|p&l\b/i.test(input.originalText)
         ? "xero_profit_and_loss"
@@ -432,7 +582,7 @@ async function answerWithCompanyMcp(
     }
     if (search.status >= 500) {
       return {
-        reply: aiFailureWhatsAppMessage(),
+        reply: Date.now() - started >= 20_000 ? timeoutWhatsAppMessage() : aiFailureWhatsAppMessage(),
         toolName: searchTool,
         outcome: "ai_failed",
         latencyMs: Date.now() - started,
@@ -503,7 +653,7 @@ function formatSearchHits(
   question: string,
 ): string {
   if (!hits.length) {
-    return "I could not find a matching document in your connected business systems.";
+    return noResultWhatsAppMessage();
   }
   const top = hits[0]!;
   const extras = hits.slice(1, 3).map((hit) => `• ${hit.title}`);
@@ -583,6 +733,53 @@ async function claimWhatsAppMessage(env: Env, wamid: string): Promise<{ duplicat
   }
 }
 
+async function recordWhatsAppUxUsage(
+  env: Env,
+  input: {
+    companyId: string;
+    userId: string;
+    actorEmail: string;
+    interactionId: string;
+    action: string;
+    durationMs: number;
+    metadata: Record<string, unknown>;
+  },
+): Promise<void> {
+  await recordUsageEvent(env.DB, {
+    companyId: input.companyId,
+    userId: input.userId,
+    actorEmail: input.actorEmail,
+    resourceType: "whatsapp",
+    resourceId: input.action,
+    toolName: "whatsapp.ux",
+    action: input.action,
+    success: true,
+    durationMs: input.durationMs,
+    sourceClient: "whatsapp",
+    requestId: `wa_ux_${input.interactionId}_${input.action}`,
+    interactionId: input.interactionId,
+    charge: {
+      billable: false,
+      customerChargeCents: null,
+      calculatedSellingCents: null,
+      minimumChargeApplied: false,
+      underlyingCostCents: null,
+      underlyingCostMicros: null,
+      estimatedCostMicros: null,
+      costBasis: "unknown",
+      targetMarginBps: null,
+      actualMarginBps: null,
+      grossProfitCents: null,
+      pricingLabel: "whatsapp_ux_not_double_counted",
+      pricingRuleId: null,
+      rateCardId: null,
+      rateCardVersion: null,
+      isTestConfig: false,
+    },
+    metadata: input.metadata,
+  }).catch(() => undefined);
+}
+
 async function recordWhatsAppChannelUsage(
   env: Env,
   input: {
@@ -594,6 +791,7 @@ async function recordWhatsAppChannelUsage(
     durationMs: number;
     toolName: string | null;
     send: WhatsAppSendResult;
+    metadata?: Record<string, unknown>;
   },
 ): Promise<void> {
   await recordUsageEvent(env.DB, {
@@ -637,6 +835,7 @@ async function recordWhatsAppChannelUsage(
       sendKind: "customer_service_reply",
       sendAttempts: input.send.attempts,
       cursorInRuntime: false,
+      ...(input.metadata ?? {}),
     },
   }).catch(() => undefined);
 }

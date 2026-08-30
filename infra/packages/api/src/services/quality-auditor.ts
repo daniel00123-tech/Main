@@ -19,7 +19,14 @@ export type QualityCategory =
   | "high_cost"
   | "repeated_tool_calls"
   | "user_immediate_retry"
-  | "repeated_user_rephrase";
+  | "repeated_user_rephrase"
+  | "whatsapp_slow_ack"
+  | "whatsapp_slow_read"
+  | "whatsapp_slow_total"
+  | "whatsapp_unnecessary_tool"
+  | "whatsapp_no_final_after_ack"
+  | "whatsapp_progress_abandoned"
+  | "whatsapp_repeated_connector_timeout";
 
 export interface QualitySignal {
   category: QualityCategory;
@@ -220,7 +227,93 @@ export function detectQualitySignals(input: QualityAuditInput): QualitySignal[] 
     }
   }
 
+  signals.push(...detectWhatsAppUxSignals(input));
+
   return dedupeSignals(signals);
+}
+
+function detectWhatsAppUxSignals(input: QualityAuditInput): QualitySignal[] {
+  if (input.channel && input.channel !== "whatsapp") return [];
+  const meta = input.usage.map((row) => row.metadata ?? {}).find((row) => row.channel === "whatsapp") ?? {};
+  const ackMs = Number(meta.acknowledgementMs ?? meta.whatsappAckMs ?? 0);
+  const totalMs = Number(meta.totalMs ?? meta.whatsappTotalMs ?? input.usage[0]?.durationMs ?? 0);
+  const intent = String(meta.intent ?? "");
+  const cheap = /greeting|thanks|help|capabilities|casual/.test(intent);
+  const toolCalled = input.usage.some((row) => row.toolName && row.toolName !== "whatsapp.send");
+  const ackSent = Boolean(meta.acknowledgementSent);
+  const finalSent = Boolean(meta.finalSent ?? meta.success);
+  const progressSent = Boolean(meta.progressSent);
+
+  const signals: QualitySignal[] = [];
+  if (ackMs >= 5_000) {
+    signals.push({
+      category: "whatsapp_slow_ack",
+      severity: "medium",
+      confidence: 0.85,
+      evidence: { acknowledgementMs: ackMs },
+      suggestedInvestigation: "WhatsApp acknowledgement took more than 5 seconds.",
+    });
+  }
+  if (!cheap && totalMs >= 30_000 && totalMs < 60_000) {
+    signals.push({
+      category: "whatsapp_slow_read",
+      severity: "medium",
+      confidence: 0.75,
+      evidence: { totalMs },
+      suggestedInvestigation: "Simple WhatsApp read exceeded 30 seconds.",
+    });
+  }
+  if (totalMs >= 60_000) {
+    signals.push({
+      category: "whatsapp_slow_total",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { totalMs },
+      suggestedInvestigation: "WhatsApp request exceeded 60 seconds.",
+    });
+  }
+  if (cheap && toolCalled) {
+    signals.push({
+      category: "whatsapp_unnecessary_tool",
+      severity: "low",
+      confidence: 0.8,
+      evidence: { intent },
+      suggestedInvestigation: "A greeting or basic conversation called company tools.",
+    });
+  }
+  if (ackSent && !finalSent) {
+    signals.push({
+      category: "whatsapp_no_final_after_ack",
+      severity: "high",
+      confidence: 0.85,
+      evidence: { intent },
+      suggestedInvestigation: "Acknowledgement was sent but no final WhatsApp reply was recorded.",
+    });
+  }
+  if (progressSent && !finalSent) {
+    signals.push({
+      category: "whatsapp_progress_abandoned",
+      severity: "high",
+      confidence: 0.8,
+      evidence: { intent },
+      suggestedInvestigation: "A progress update was sent and the request was later abandoned.",
+    });
+  }
+  const timeoutRows = input.gateway?.filter((row) => isTimeout(row) || /timeout/i.test(String(row.errorCode ?? ""))) ?? [];
+  const timeoutTool = timeoutRows[0]?.toolName ?? null;
+  const priorTimeouts = (input.recentSameActor ?? []).filter((row) =>
+    Boolean(timeoutTool && row.toolName === timeoutTool),
+  );
+  if (timeoutRows.length > 0 && priorTimeouts.length > 0) {
+    signals.push({
+      category: "whatsapp_repeated_connector_timeout",
+      severity: "high",
+      confidence: 0.8,
+      evidence: { toolName: timeoutTool, priorCount: priorTimeouts.length },
+      suggestedInvestigation: "The same connector timed out more than once on WhatsApp.",
+    });
+  }
+  return signals;
 }
 
 function isAuthError(row?: { errorCode?: string | null; errorMessage?: string | null; status?: string | null }) {

@@ -88,6 +88,7 @@ import automationRoutes from "./routes/automations";
 import commercialVisibilityRoutes from "./routes/commercial-visibility";
 import emailLiveTestRoutes from "./routes/email-live-test";
 import whatsappRoutes from "./routes/whatsapp";
+import whatsappUxUatRoutes from "./routes/whatsapp-ux-uat";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -101,6 +102,7 @@ app.route("/", automationRoutes);
 app.route("/", commercialVisibilityRoutes);
 app.route("/", emailLiveTestRoutes);
 app.route("/", whatsappRoutes);
+app.route("/", whatsappUxUatRoutes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(
