@@ -1,8 +1,11 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { inboundSignatureRequired } from "../services/whatsapp-assets";
+import { tryWhatsAppFastLane } from "../services/whatsapp-fast-lane";
+import { stampWhatsAppLifecycle } from "../services/whatsapp-lifecycle";
 import {
   enqueueWhatsAppInbound,
+  parseWhatsAppInboundMessages,
   persistWhatsAppInboundEvent,
   processWhatsAppInboundJob,
   verifyWhatsAppHubChallenge,
@@ -38,12 +41,36 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
 
   if (inboundSignatureRequired(c.env)) {
     if (!signature.configured) {
+      await persistWhatsAppInboundEvent(c.env, {
+        rawBody: rawBody || "{}",
+        signatureValid: false,
+        signatureConfigured: false,
+        webhookStatus: 503,
+        persistError: "signature_secret_missing",
+        signatureError: "not_configured",
+      }).catch(() => undefined);
       return c.json({ error: "Webhook signature secret is not configured" }, 503);
     }
     if (!signature.valid) {
+      await persistWhatsAppInboundEvent(c.env, {
+        rawBody: rawBody || "{}",
+        signatureValid: false,
+        signatureConfigured: true,
+        webhookStatus: 403,
+        persistError: "signature_rejected",
+        signatureError: "invalid",
+      }).catch(() => undefined);
       return c.json({ error: "Invalid webhook signature" }, 403);
     }
   } else if (signature.configured && !signature.valid) {
+    await persistWhatsAppInboundEvent(c.env, {
+      rawBody: rawBody || "{}",
+      signatureValid: false,
+      signatureConfigured: true,
+      webhookStatus: 403,
+      persistError: "signature_rejected",
+      signatureError: "invalid",
+    }).catch(() => undefined);
     return c.json({ error: "Invalid webhook signature" }, 403);
   }
 
@@ -51,19 +78,17 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
     rawBody: rawBody || "{}",
     signatureValid: signature.valid,
     signatureConfigured: signature.configured,
+    webhookStatus: 200,
   });
 
-  if (stored.duplicate) {
-    return c.json(
-      {
-        ok: true,
-        accepted: true,
-        queued: false,
-        duplicate: true,
-        verifyConfigured: whatsappVerifyConfigured(c.env),
-      },
-      200,
-    );
+  const inbound = parseWhatsAppInboundMessages(safeParse(rawBody));
+  let fastLaneSent = 0;
+  for (const item of inbound) {
+    const lane = await tryWhatsAppFastLane(c.env, item).catch(() => null);
+    if (lane?.sent) {
+      fastLaneSent += 1;
+      await stampWhatsAppLifecycle(c.env, item.wamid, { state: "reply_sent", terminal: "reply_sent" });
+    }
   }
 
   const job: WhatsAppInboundMessage = {
@@ -71,23 +96,46 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
     eventId: stored.eventId,
     receivedAt: new Date().toISOString(),
     signatureValid: signature.valid,
+    rawPayload: (rawBody || "{}").slice(0, 16_384),
+    wamid: inbound[0]?.wamid,
   };
 
-  const queued = await enqueueWhatsAppInbound(c.env, job);
-  const work = processWhatsAppInboundJob(c.env, job).catch((err) => {
-    console.error(
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        service: "infra-api",
-        event: "whatsapp.inbound_failed",
-        message: err instanceof Error ? err.message : "WhatsApp inbound failed",
-      }),
-    );
-  });
-  try {
-    c.executionCtx.waitUntil(work);
-  } catch {
-    if (!queued) {
+  const queued = stored.duplicate ? true : await enqueueWhatsAppInbound(c.env, job);
+  if (!stored.duplicate) {
+    await enqueueWhatsAppInbound(c.env, {
+      kind: "whatsapp_watchdog",
+      eventId: stored.eventId,
+      receivedAt: job.receivedAt,
+      signatureValid: signature.valid,
+      wamid: inbound[0]?.wamid,
+      stage: "t10",
+    }).catch(() => false);
+    await enqueueWhatsAppInbound(c.env, {
+      kind: "whatsapp_watchdog",
+      eventId: stored.eventId,
+      receivedAt: job.receivedAt,
+      signatureValid: signature.valid,
+      wamid: inbound[0]?.wamid,
+      stage: "t30",
+    }).catch(() => false);
+  }
+
+  // Only run the full consumer on this isolate when the queue is unavailable.
+  // Dual-running waitUntil + queue caused CLAIM_BUSY retries that drained to DLQ.
+  if (!queued) {
+    const work = processWhatsAppInboundJob(c.env, job).catch((err) => {
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          service: "infra-api",
+          event: "whatsapp.inbound_failed",
+          message: err instanceof Error ? err.message : "WhatsApp inbound failed",
+        }),
+      );
+    });
+    try {
+      c.executionCtx.waitUntil(work);
+    } catch {
       await work;
     }
   }
@@ -97,10 +145,22 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
       ok: true,
       accepted: true,
       queued,
+      persisted: stored.persisted,
+      persistError: stored.error,
+      duplicate: stored.duplicate,
+      fastLaneSent,
       verifyConfigured: whatsappVerifyConfigured(c.env),
     },
     200,
   );
 });
+
+function safeParse(raw: string): unknown {
+  try {
+    return JSON.parse(raw || "{}");
+  } catch {
+    return {};
+  }
+}
 
 export default routes;

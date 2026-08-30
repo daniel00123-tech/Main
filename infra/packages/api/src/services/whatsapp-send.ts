@@ -7,8 +7,23 @@ import { clipButtonTitle, shouldAttachButtons } from "./whatsapp-buttons";
 export type WhatsAppSendKind = "customer_service_reply" | "business_initiated_template";
 
 export type WhatsAppSendResult =
-  | { ok: true; kind: WhatsAppSendKind; messageId: string | null; attempts: number }
-  | { ok: false; kind: WhatsAppSendKind; error: string; retryable: boolean; attempts: number };
+  | {
+      ok: true;
+      kind: WhatsAppSendKind;
+      messageId: string | null;
+      attempts: number;
+      httpStatus: number;
+      rawAccepted: true;
+    }
+  | {
+      ok: false;
+      kind: WhatsAppSendKind;
+      error: string;
+      retryable: boolean;
+      attempts: number;
+      httpStatus: number | null;
+      rawAccepted: false;
+    };
 
 const GRAPH_BASE = "https://graph.facebook.com/v21.0";
 
@@ -39,6 +54,8 @@ export async function sendWhatsAppText(
       error: "Free-form WhatsApp replies are only allowed inside an active customer-service window.",
       retryable: false,
       attempts: 0,
+      httpStatus: null,
+      rawAccepted: false,
     };
   }
   return postWhatsAppMessage(env, {
@@ -149,6 +166,8 @@ export async function sendWhatsAppInteractiveButtons(
       error: "Free-form WhatsApp replies are only allowed inside an active customer-service window.",
       retryable: false,
       attempts: 0,
+      httpStatus: null,
+      rawAccepted: false,
     };
   }
   if (!shouldAttachButtons(input.body, input.buttons)) {
@@ -259,15 +278,32 @@ async function postWhatsAppMessage(
 ): Promise<WhatsAppSendResult> {
   const assets = inspectWhatsAppAssets(env);
   if (!assets.ok) {
-    return { ok: false, kind: input.kind, error: assets.reason ?? "Invalid WhatsApp assets", retryable: false, attempts: 0 };
+    return {
+      ok: false,
+      kind: input.kind,
+      error: assets.reason ?? "Invalid WhatsApp assets",
+      retryable: false,
+      attempts: 0,
+      httpStatus: null,
+      rawAccepted: false,
+    };
   }
   const token = whatsappAccessToken(env);
   const phoneNumberId = whatsappPhoneNumberId(env);
   if (!token || !phoneNumberId) {
-    return { ok: false, kind: input.kind, error: "WhatsApp send credentials are not configured", retryable: false, attempts: 0 };
+    return {
+      ok: false,
+      kind: input.kind,
+      error: "WhatsApp send credentials are not configured",
+      retryable: false,
+      attempts: 0,
+      httpStatus: null,
+      rawAccepted: false,
+    };
   }
 
   let lastError = "WhatsApp send failed";
+  let lastStatus: number | null = null;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       const response = await fetch(`${GRAPH_BASE}/${phoneNumberId}/messages`, {
@@ -278,6 +314,7 @@ async function postWhatsAppMessage(
         },
         body: JSON.stringify(input.payload),
       });
+      lastStatus = response.status;
       const raw = await response.text();
       let parsed: { messages?: Array<{ id?: string }>; error?: { message?: string } } = {};
       try {
@@ -285,18 +322,32 @@ async function postWhatsAppMessage(
       } catch {
         parsed = {};
       }
-      if (response.ok) {
+      const messageId = parsed.messages?.[0]?.id ?? null;
+      // Only treat as sent when Meta accepted AND returned a message id.
+      if (response.ok && messageId) {
         return {
           ok: true,
           kind: input.kind,
-          messageId: parsed.messages?.[0]?.id ?? null,
+          messageId,
           attempts: attempt,
+          httpStatus: response.status,
+          rawAccepted: true,
         };
       }
-      lastError = publicSendError(parsed.error?.message ?? `HTTP ${response.status}`);
-      const retryable = response.status >= 500 || response.status === 429;
+      lastError = publicSendError(
+        parsed.error?.message ?? (response.ok ? "Meta accepted without message id" : `HTTP ${response.status}`),
+      );
+      const retryable = !response.ok && (response.status >= 500 || response.status === 429);
       if (!retryable) {
-        return { ok: false, kind: input.kind, error: lastError, retryable: false, attempts: attempt };
+        return {
+          ok: false,
+          kind: input.kind,
+          error: lastError,
+          retryable: false,
+          attempts: attempt,
+          httpStatus: response.status,
+          rawAccepted: false,
+        };
       }
       if (attempt < 3) await delay(200 * attempt);
     } catch (err) {
@@ -304,7 +355,15 @@ async function postWhatsAppMessage(
       if (attempt < 3) await delay(200 * attempt);
     }
   }
-  return { ok: false, kind: input.kind, error: lastError, retryable: true, attempts: 3 };
+  return {
+    ok: false,
+    kind: input.kind,
+    error: lastError,
+    retryable: true,
+    attempts: 3,
+    httpStatus: lastStatus,
+    rawAccepted: false,
+  };
 }
 
 function delay(ms: number): Promise<void> {

@@ -11,10 +11,13 @@ export const WHATSAPP_INBOUND_QUEUE = "whatsapp-inbound";
 export const WHATSAPP_INBOUND_DLQ = "whatsapp-inbound-dlq";
 
 export type WhatsAppInboundMessage = {
-  kind: "whatsapp_inbound";
+  kind: "whatsapp_inbound" | "whatsapp_watchdog";
   eventId: string;
   receivedAt: string;
   signatureValid: boolean;
+  rawPayload?: string;
+  wamid?: string;
+  stage?: "t10" | "t30";
 };
 
 export function whatsappPhoneNumberId(env: Env): string {
@@ -167,11 +170,23 @@ export async function persistWhatsAppInboundEvent(
     rawBody: string;
     signatureValid: boolean;
     signatureConfigured: boolean;
+    webhookStatus?: number;
+    persistError?: string | null;
+    signatureError?: string | null;
   },
-): Promise<{ eventId: string; duplicate: boolean }> {
+): Promise<{ eventId: string; duplicate: boolean; persisted: boolean; error: string | null }> {
   const eventId = newId("wa_evt");
   const receivedAt = nowIso();
-  await ensureWhatsAppInboundTable(env);
+  try {
+    await ensureWhatsAppInboundTable(env);
+  } catch (err) {
+    return {
+      eventId,
+      duplicate: false,
+      persisted: false,
+      error: err instanceof Error ? err.message : "ensure_table_failed",
+    };
+  }
   let inbound: ReturnType<typeof parseWhatsAppInboundMessages> = [];
   try {
     inbound = parseWhatsAppInboundMessages(JSON.parse(input.rawBody || "{}"));
@@ -180,19 +195,22 @@ export async function persistWhatsAppInboundEvent(
   }
   const first = inbound[0] ?? null;
   if (first?.wamid) {
-    const existing = await env.DB.prepare(
-      `SELECT id FROM whatsapp_inbound_events WHERE wamid = ? LIMIT 1`,
-    )
-      .bind(first.wamid)
-      .first<{ id: string }>();
-    if (existing) {
-      return { eventId: existing.id, duplicate: true };
+    try {
+      const existing = await env.DB.prepare(
+        `SELECT id FROM whatsapp_inbound_events WHERE wamid = ? LIMIT 1`,
+      )
+        .bind(first.wamid)
+        .first<{ id: string }>();
+      if (existing) {
+        return { eventId: existing.id, duplicate: true, persisted: true, error: null };
+      }
+    } catch {
+      // Dedup is best-effort — never block the user path.
     }
   }
   const sender = senderE164FromDigits(first?.from);
-  try {
-    // Base 0040 columns only — optional lifecycle columns are stamped after insert.
-    await env.DB.prepare(
+  const insert = async () =>
+    env.DB.prepare(
       `INSERT INTO whatsapp_inbound_events (
          id, wamid, phone_number_id, business_account_id, sender_e164, message_type,
          identity_found, user_id, company_id, signature_valid, processed,
@@ -211,50 +229,48 @@ export async function persistWhatsAppInboundEvent(
         receivedAt,
       )
       .run();
-    await env.DB.prepare(
-      `UPDATE whatsapp_inbound_events
-       SET lifecycle_state = COALESCE(lifecycle_state, 'received'),
-           inbound_text = COALESCE(inbound_text, ?)
-       WHERE id = ?`,
-    )
-      .bind((first?.text ?? "").slice(0, 500) || null, eventId)
-      .run()
-      .catch(() => undefined);
-    return { eventId, duplicate: false };
+  try {
+    await insert();
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
     if (/UNIQUE|already exists/i.test(message)) {
-      return { eventId, duplicate: true };
+      return { eventId, duplicate: true, persisted: true, error: null };
     }
     try {
-      await env.DB.prepare(
-        `INSERT INTO whatsapp_inbound_events (
-           id, wamid, phone_number_id, business_account_id, sender_e164, message_type,
-           identity_found, user_id, company_id, signature_valid, processed,
-           payload_json, error, received_at, processed_at
-         ) VALUES (?, ?, ?, ?, ?, ?, 0, NULL, NULL, ?, 0, ?, NULL, ?, NULL)`,
-      )
-        .bind(
-          eventId,
-          first?.wamid ?? null,
-          first?.phoneNumberId ?? null,
-          first?.businessAccountId ?? null,
-          sender,
-          first?.type ?? "webhook",
-          input.signatureValid ? 1 : 0,
-          input.rawBody.slice(0, 16_384),
-          receivedAt,
-        )
-        .run();
-      return { eventId, duplicate: false };
+      await insert();
     } catch (inner) {
       const innerMessage = inner instanceof Error ? inner.message : "";
       if (/UNIQUE|already exists/i.test(innerMessage)) {
-        return { eventId, duplicate: true };
+        return { eventId, duplicate: true, persisted: true, error: null };
       }
-      throw err;
+      return {
+        eventId,
+        duplicate: false,
+        persisted: false,
+        error: message || innerMessage || "persist_insert_failed",
+      };
     }
   }
+  await env.DB.prepare(
+    `UPDATE whatsapp_inbound_events
+     SET lifecycle_state = COALESCE(lifecycle_state, 'received'),
+         inbound_text = COALESCE(inbound_text, ?),
+         persist_ok = 1,
+         webhook_status = COALESCE(webhook_status, ?),
+         persist_error = ?,
+         signature_error = ?
+     WHERE id = ?`,
+  )
+    .bind(
+      (first?.text ?? "").slice(0, 500) || null,
+      input.webhookStatus ?? 200,
+      input.persistError ?? null,
+      input.signatureError ?? null,
+      eventId,
+    )
+    .run()
+    .catch(() => undefined);
+  return { eventId, duplicate: false, persisted: true, error: null };
 }
 
 export async function enqueueWhatsAppInbound(
@@ -271,8 +287,23 @@ export async function processWhatsAppInboundJob(
   message: WhatsAppInboundMessage,
   options?: { deadLetter?: boolean; waitUntil?: (promise: Promise<unknown>) => void },
 ): Promise<void> {
+  if (message.kind === "whatsapp_watchdog") {
+    const { recoverStuckWhatsAppTurn, applyWhatsAppWatchdogStage } = await import("./whatsapp-reaper");
+    if (message.stage === "t10" || message.stage === "t30") {
+      await applyWhatsAppWatchdogStage(env, {
+        eventId: message.eventId,
+        wamid: message.wamid ?? null,
+        stage: message.stage,
+        receivedAt: message.receivedAt,
+      });
+      return;
+    }
+    if (message.wamid) await recoverStuckWhatsAppTurn(env, message.wamid);
+    return;
+  }
+
   await ensureWhatsAppInboundTable(env);
-  const row = await env.DB.prepare(`SELECT * FROM whatsapp_inbound_events WHERE id = ?`)
+  let row = await env.DB.prepare(`SELECT * FROM whatsapp_inbound_events WHERE id = ?`)
     .bind(message.eventId)
     .first<{
       id: string;
@@ -281,40 +312,54 @@ export async function processWhatsAppInboundJob(
       processed: number;
       received_at?: string;
       error?: string | null;
+      first_visible_at?: string | null;
+      terminal_state?: string | null;
     }>();
+  if (!row && message.rawPayload) {
+    row = {
+      id: message.eventId,
+      payload_json: message.rawPayload,
+      signature_valid: message.signatureValid ? 1 : 0,
+      processed: 0,
+      received_at: message.receivedAt,
+      error: "ROW_MISSING_USED_QUEUE_PAYLOAD",
+    };
+  }
   if (!row) return;
   if (Number(row.processed) === 1) return;
   const claimed = await claimWhatsAppInboundEvent(env, message.eventId, row.received_at);
   if (!claimed) {
-    const again = await env.DB.prepare(`SELECT processed FROM whatsapp_inbound_events WHERE id = ?`)
-      .bind(message.eventId)
-      .first<{ processed: number }>();
-    if (Number(again?.processed) === 1) return;
-    throw new Error("WHATSAPP_CLAIM_BUSY");
+    // Another isolate owns this turn. Do not throw — queue retry/DLQ must not
+    // bury a greeting that the other isolate is still sending.
+    return;
   }
 
   if (options?.deadLetter) {
     await env.DB.prepare(
-      `UPDATE whatsapp_inbound_events SET processed = 1, error = 'DEAD_LETTER', processed_at = ? WHERE id = ?`,
+      `UPDATE whatsapp_inbound_events
+       SET processed = 1, error = 'DEAD_LETTER', processed_at = ?, dlq_at = COALESCE(dlq_at, ?)
+       WHERE id = ?`,
     )
-      .bind(nowIso(), message.eventId)
-      .run();
+      .bind(nowIso(), nowIso(), message.eventId)
+      .run()
+      .catch(() => undefined);
+    if (message.wamid || row.payload_json) {
+      const { recoverStuckWhatsAppTurn } = await import("./whatsapp-reaper");
+      const inbound = parseWhatsAppInboundMessages(safeJson(row.payload_json));
+      const wamid = message.wamid || inbound[0]?.wamid;
+      if (wamid) await recoverStuckWhatsAppTurn(env, wamid).catch(() => undefined);
+    }
     return;
   }
 
-  let payload: unknown = {};
-  try {
-    payload = JSON.parse(row.payload_json);
-  } catch {
-    payload = {};
-  }
+  const payload = safeJson(row.payload_json);
 
   const inbound = parseWhatsAppInboundMessages(payload);
   const assets = inspectWhatsAppAssets(env);
   const trusted = message.signatureValid && Number(row.signature_valid) === 1;
-  const pending: Promise<unknown>[] = [];
   const waitUntil = (promise: Promise<unknown>) => {
-    pending.push(promise);
+    // Hand long watches to the isolate waitUntil hook only.
+    // Awaiting them here held the queue consumer for 30s+ and blocked the next chat.
     options?.waitUntil?.(promise);
   };
 
@@ -365,8 +410,6 @@ export async function processWhatsAppInboundJob(
   )
     .bind(nowIso(), lastFound, lastUserId, lastCompanyId, message.eventId)
     .run();
-
-  await Promise.allSettled(pending);
 }
 
 async function claimWhatsAppInboundEvent(
@@ -383,7 +426,7 @@ async function claimWhatsAppInboundEvent(
       .bind(eventId)
       .run();
     if ((fresh.meta?.changes ?? 1) > 0) return true;
-    const staleCutoff = new Date(Date.now() - 60_000).toISOString();
+    const staleCutoff = new Date(Date.now() - 15_000).toISOString();
     if (receivedAt && receivedAt > staleCutoff) return false;
     const stale = await env.DB.prepare(
       `UPDATE whatsapp_inbound_events
@@ -453,9 +496,28 @@ export async function ensureWhatsAppInboundTable(env: Env): Promise<void> {
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN final_send_ok INTEGER",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN outbound_error TEXT",
     "ALTER TABLE whatsapp_inbound_events ADD COLUMN inbound_text TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN persist_ok INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN persist_error TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN webhook_status INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN fast_lane INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN outbound_http_status INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN outbound_meta_message_id TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN outbound_attempts INTEGER",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN watchdog_10s_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN watchdog_30s_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN dlq_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN signature_error TEXT",
   ];
   for (const sql of alters) {
     await env.DB.prepare(sql).run().catch(() => undefined);
+  }
+}
+
+function safeJson(raw: string | null | undefined): unknown {
+  try {
+    return JSON.parse(raw || "{}");
+  } catch {
+    return {};
   }
 }
 

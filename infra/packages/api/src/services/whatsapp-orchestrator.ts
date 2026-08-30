@@ -90,6 +90,7 @@ import {
   isInstantLocalTurn,
   maybeCoalesceBurst,
 } from "./whatsapp-realtime";
+import { sendFirstResponseFailsafe } from "./whatsapp-fast-lane";
 import { scheduleStuckTurnWatch } from "./whatsapp-reaper";
 import { TYPING_MAX_REFRESHES } from "./whatsapp-latency";
 import {
@@ -239,6 +240,8 @@ export async function handleWhatsAppInboundMessage(
       error: "send_failed",
       retryable: false,
       attempts: 0,
+      httpStatus: null,
+      rawAccepted: false as const,
     }));
     const now = new Date().toISOString();
     await stampWhatsAppLifecycle(env, item.wamid, {
@@ -305,6 +308,21 @@ async function handleWhatsAppInboundMessageInner(
       outcome: "skipped",
     };
   }
+  const alreadyVisible = await inboundAlreadyVisible(env, item.wamid);
+  if (alreadyVisible) {
+    return {
+      handled: true,
+      duplicate: true,
+      identityFound: true,
+      companyId: null,
+      userId: null,
+      replySent: true,
+      publicReply: null,
+      toolName: null,
+      interactionId: null,
+      outcome: "skipped",
+    };
+  }
 
   const parsed = tryNormalizeE164(item.from);
   const sender = parsed.ok ? parsed.e164 : null;
@@ -356,6 +374,15 @@ async function handleWhatsAppInboundMessageInner(
     inboundText: (item.text ?? "").slice(0, 500) || null,
   });
   scheduleStuckTurnWatch(options?.waitUntil, env, item.wamid);
+  let firstVisibleSent = false;
+  const failsafeWork = sender
+    ? sendFirstResponseFailsafe(env, {
+        toE164: sender,
+        wamid: item.wamid,
+        alreadyVisible: () => firstVisibleSent,
+      }).catch(() => ({ sent: false, timedOut: true }))
+    : Promise.resolve({ sent: false, timedOut: false });
+  options?.waitUntil?.(failsafeWork);
   const readResult = await sendWhatsAppReadStatus(env, { messageId: item.wamid }).catch(() => ({
     ok: false,
     supported: false,
@@ -375,6 +402,7 @@ async function handleWhatsAppInboundMessageInner(
   });
   if (inboundResolved.terminalReply) {
     const sent = await maybeSendReply(env, sender, inboundResolved.terminalReply);
+    firstVisibleSent = sent.ok || firstVisibleSent;
     if (inboundResolved.inputKind === "voice") {
       await recordWhatsAppTranscriptionUsage(env, {
         companyId: conversation?.companyId ?? "unknown",
@@ -416,14 +444,17 @@ async function handleWhatsAppInboundMessageInner(
 
   const earlyText = inboundResolved.text.trim();
   if (earlyText && isInstantLocalTurn(earlyText)) {
+    // Only coalesce a generic document ask — never wait on a tool-length sibling
+    // such as "what document tells me about van policy".
     const sibling = await maybeCoalesceBurst(env, {
       senderE164: sender,
       wamid: item.wamid,
-      coalesceMs: options?.coalesceMs ?? 0,
+      coalesceMs: Math.min(200, options?.coalesceMs ?? 0),
     });
     if (sibling && isGenericDocumentAsk(sibling.text)) {
       const reply = COMBINED_GREETING_DOCUMENT_REPLY;
       const sent = await maybeSendReply(env, sender, reply);
+      firstVisibleSent = sent.ok || firstVisibleSent;
       marks.firstVisibleAt = Date.now();
       marks.finalSentAt = Date.now();
       await rememberTurn(
@@ -471,6 +502,7 @@ async function handleWhatsAppInboundMessageInner(
     }
     const reply = instantLocalReply(earlyText);
     const sent = await maybeSendReply(env, sender, reply);
+    firstVisibleSent = sent.ok || firstVisibleSent;
     marks.firstVisibleAt = Date.now();
     marks.finalSentAt = Date.now();
     const companyId = conversation?.companyId ?? identity.memberships[0]?.companyId ?? "unknown";
@@ -803,6 +835,7 @@ async function handleWhatsAppInboundMessageInner(
       if (!sent.ok) return false;
       if (kind === "ack") {
         acknowledgementSent = true;
+        firstVisibleSent = true;
         marks.acknowledgementSentAt = Date.now();
         marks.firstVisibleAt ??= Date.now();
         await stampWhatsAppLifecycle(env, item.wamid, {
@@ -1624,6 +1657,8 @@ async function maybeSendReply(
       error: "Outbound WhatsApp is not enabled",
       retryable: false,
       attempts: 0,
+      httpStatus: null,
+      rawAccepted: false,
     };
   }
   const formatted = options?.qualityRuntime
@@ -1703,6 +1738,20 @@ async function claimWhatsAppMessage(env: Env, wamid: string): Promise<{ duplicat
     return { duplicate: Boolean(existing) };
   } catch {
     return { duplicate: false };
+  }
+}
+
+async function inboundAlreadyVisible(env: Env, wamid: string): Promise<boolean> {
+  if (!wamid) return false;
+  try {
+    const row = await env.DB.prepare(
+      `SELECT first_visible_at, reply_sent_at, terminal_state FROM whatsapp_inbound_events WHERE wamid = ? LIMIT 1`,
+    )
+      .bind(wamid)
+      .first<{ first_visible_at?: string | null; reply_sent_at?: string | null; terminal_state?: string | null }>();
+    return Boolean(row?.first_visible_at || row?.reply_sent_at || row?.terminal_state);
+  } catch {
+    return false;
   }
 }
 

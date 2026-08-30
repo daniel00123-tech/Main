@@ -2,9 +2,12 @@ import type { Env } from "../env";
 import { outboundAiEnabled } from "./whatsapp-assets";
 import { stampWhatsAppLifecycle } from "./whatsapp-lifecycle";
 import { STUCK_INCIDENT_MS } from "./whatsapp-latency";
+import { FIRST_RESPONSE_FAILSAFE_COPY } from "./whatsapp-fast-lane";
+import { FIRST_RESPONSE_FAILSAFE_COPY } from "./whatsapp-fast-lane";
 import { STUCK_RECOVERY_REPLY } from "./whatsapp-realtime";
 import { sendWhatsAppText } from "./whatsapp-send";
 import { ensureWhatsAppInboundTable } from "./whatsapp-webhook";
+import { outboundAiEnabled } from "./whatsapp-assets";
 
 const RECOVERY_COPY = STUCK_RECOVERY_REPLY;
 
@@ -123,6 +126,72 @@ export async function sweepStuckWhatsAppTurns(env: Env): Promise<{ scanned: numb
     if (result.recovered) recovered += 1;
   }
   return { scanned: rows.length, recovered };
+}
+
+export async function applyWhatsAppWatchdogStage(
+  env: Env,
+  input: { eventId: string; wamid: string | null; stage: "t10" | "t30"; receivedAt: string },
+): Promise<{ acted: boolean; reason: string }> {
+  const targetMs = input.stage === "t10" ? 10_000 : 30_000;
+  const received = Date.parse(input.receivedAt);
+  const age = Number.isFinite(received) ? Date.now() - received : targetMs;
+  if (age < targetMs) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, targetMs - age);
+    });
+  }
+  const wamid = input.wamid;
+  if (!wamid) return { acted: false, reason: "missing_wamid" };
+  await ensureWhatsAppInboundTable(env);
+  let row: {
+    sender_e164: string | null;
+    first_visible_at: string | null;
+    reply_sent_at: string | null;
+    terminal_state: string | null;
+    identity_found: number;
+    payload_json?: string | null;
+  } | null = null;
+  try {
+    row = await env.DB.prepare(
+      `SELECT sender_e164, first_visible_at, reply_sent_at, terminal_state, identity_found, payload_json
+       FROM whatsapp_inbound_events WHERE wamid = ? OR id = ? LIMIT 1`,
+    )
+      .bind(wamid, input.eventId)
+      .first();
+  } catch {
+    row = null;
+  }
+  if (row && Number(row.identity_found) !== 1) return { acted: false, reason: "not_recognised" };
+  if (row?.terminal_state && /reply_sent|clarification_sent|permission_denied|no_result|failed_notified/.test(row.terminal_state)) {
+    return { acted: false, reason: "already_terminal" };
+  }
+  const visible = Boolean(row?.first_visible_at || row?.reply_sent_at);
+  if (input.stage === "t10") {
+    if (visible) return { acted: false, reason: "already_visible" };
+    const sender = row?.sender_e164 || senderFromPayload(row?.payload_json);
+    if (sender && outboundAiEnabled(env)) {
+      await sendWhatsAppText(env, {
+        toE164: sender,
+        body: FIRST_RESPONSE_FAILSAFE_COPY,
+        inCustomerServiceWindow: true,
+      }).catch(() => undefined);
+    }
+    const now = new Date().toISOString();
+    await stampWhatsAppLifecycle(env, wamid, {
+      state: "acknowledged",
+      firstVisibleAt: now,
+      acknowledgementSentAt: now,
+      watchdog10sAt: now,
+      ackSendOk: sender ? 1 : 0,
+      lastError: "watchdog_t10",
+    });
+    return { acted: true, reason: "t10_failsafe" };
+  }
+  if (visible && row?.terminal_state) return { acted: false, reason: "already_final" };
+  return recoverStuckWhatsAppTurn(env, wamid).then((result) => {
+    void stampWhatsAppLifecycle(env, wamid, { watchdog30sAt: new Date().toISOString() });
+    return { acted: result.recovered, reason: result.reason };
+  });
 }
 
 export function scheduleStuckTurnWatch(

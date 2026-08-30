@@ -1125,7 +1125,7 @@ export const api = {
         failedCount: number;
         consecutiveFailedReplies: number;
         incidents: Array<Record<string, unknown>>;
-        metrics?: Record<string, number | null>;
+        metrics?: Record<string, number | string | string[] | null | undefined>;
       };
     }>("/api/platform/failed-requests"),
   getWhatsAppInbox: () =>
@@ -1147,6 +1147,14 @@ export const api = {
         queueLatencyP50Ms: number | null;
         typingSuccessRate: number | null;
         readStatusSuccessRate: number | null;
+        greetingSilentOver3s?: number;
+        queueOldestMs?: number | null;
+        dlqEvents?: number;
+        signatureRejects?: number;
+        liveMetaInbound?: number;
+        persistFailures?: number;
+        healthState?: "GREEN" | "AMBER" | "RED";
+        redReasons?: string[];
       };
     }>("/api/platform/whatsapp/inbox"),
   getWeeklyReview: () =>

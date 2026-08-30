@@ -389,12 +389,21 @@ export default function SystemHealthPage() {
           description="Recognised-user first-visible and final latency, silent/stuck counts, read and typing success."
           className="mt-6"
         >
+          {whatsappUx.metrics.healthState === "RED" ? (
+            <div className="attention-banner warn" style={{ marginBottom: 12 }}>
+              <p className="attention-title">WhatsApp UX RED</p>
+              <p className="muted small">{(whatsappUx.metrics.redReasons ?? []).join(" · ") || "Greeting or recognised-user first visible exceeded 3s, queue oldest >10s, or a WhatsApp DLQ event."}</p>
+            </div>
+          ) : null}
           <div className="metric-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
             <DataCard title="Recognised" metric={String(whatsappUx.metrics.recognisedMessages)} />
             <DataCard title="First visible p50/p95" metric={`${whatsappUx.metrics.firstVisibleP50Ms ?? "—"} / ${whatsappUx.metrics.firstVisibleP95Ms ?? "—"} ms`} />
             <DataCard title="Final p50/p95" metric={`${whatsappUx.metrics.finalP50Ms ?? "—"} / ${whatsappUx.metrics.finalP95Ms ?? "—"} ms`} />
+            <DataCard title="Health" metric={whatsappUx.metrics.healthState ?? "—"} />
             <DataCard title="Silent >3s / >10s" metric={`${whatsappUx.metrics.silentOver3s} / ${whatsappUx.metrics.silentOver10s}`} />
+            <DataCard title="Greeting silent >3s" metric={String(whatsappUx.metrics.greetingSilentOver3s ?? 0)} />
             <DataCard title="Stuck >30s" metric={String(whatsappUx.metrics.stuckOver30s)} />
+            <DataCard title="DLQ / persist fail" metric={`${whatsappUx.metrics.dlqEvents ?? 0} / ${whatsappUx.metrics.persistFailures ?? 0}`} />
             <DataCard title="Failed outbound" metric={String(whatsappUx.metrics.failedOutbound)} />
             <DataCard title="Queue p50" metric={whatsappUx.metrics.queueLatencyP50Ms == null ? "—" : `${whatsappUx.metrics.queueLatencyP50Ms} ms`} />
             <DataCard title="Typing / read" metric={`${whatsappUx.metrics.typingSuccessRate ?? "—"}% / ${whatsappUx.metrics.readStatusSuccessRate ?? "—"}%`} />
