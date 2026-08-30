@@ -1,11 +1,17 @@
-export const ACK_TARGET_MS = 2_000;
-export const ACK_AFTER_MS = 3_000;
+export const ACK_TARGET_MS = 1_500;
+export const ACK_DECISION_MS = 800;
+/** @deprecated Use ACK_DECISION_MS. Kept so existing imports keep compiling. */
+export const ACK_AFTER_MS = ACK_DECISION_MS;
+export const ACK_HARD_WARNING_MS = 3_000;
 export const SIMPLE_CONVERSATION_TARGET_MS = 3_000;
 export const SIMPLE_READ_TARGET_MS = 20_000;
 export const MULTI_TOOL_TARGET_MS = 45_000;
-export const HARD_SILENCE_MS = 55_000;
-export const PROGRESS_AFTER_MS = 8_000;
-export const SLOW_ACK_QUALITY_MS = 5_000;
+export const PROGRESS_AFTER_MS = 20_000;
+export const DELAY_NOTICE_MS = 45_000;
+export const HARD_TIMEOUT_MS = 60_000;
+export const HARD_SILENCE_MS = HARD_TIMEOUT_MS;
+export const STUCK_INCIDENT_MS = 30_000;
+export const SLOW_ACK_QUALITY_MS = 3_000;
 export const SLOW_READ_QUALITY_MS = 30_000;
 export const SLOW_TOTAL_QUALITY_MS = 60_000;
 
@@ -17,6 +23,7 @@ export type WhatsAppLatencyMarks = {
   identityResolvedAt?: number;
   intentClassifiedAt?: number;
   acknowledgementSentAt?: number;
+  firstVisibleAt?: number;
   planningStartedAt?: number;
   toolStartedAt?: number;
   toolCompletedAt?: number;
@@ -27,6 +34,7 @@ export type WhatsAppLatencyMarks = {
 
 export type WhatsAppLatencyReport = {
   acknowledgementMs: number | null;
+  firstVisibleMs: number | null;
   queueMs: number | null;
   identityMs: number | null;
   planningMs: number | null;
@@ -42,9 +50,11 @@ export function createWhatsAppLatencyMarks(now = Date.now()): WhatsAppLatencyMar
 
 export function summariseWhatsAppLatency(marks: WhatsAppLatencyMarks, now = Date.now()): WhatsAppLatencyReport {
   const start = marks.webhookReceivedAt ?? marks.processingStartedAt;
+  const firstVisible = marks.firstVisibleAt ?? marks.acknowledgementSentAt;
   return {
     acknowledgementMs:
       marks.acknowledgementSentAt != null ? marks.acknowledgementSentAt - start : null,
+    firstVisibleMs: firstVisible != null ? firstVisible - start : null,
     queueMs:
       marks.queueAcceptedAt != null && marks.webhookReceivedAt != null
         ? marks.queueAcceptedAt - marks.webhookReceivedAt
@@ -69,4 +79,10 @@ export function summariseWhatsAppLatency(marks: WhatsAppLatencyMarks, now = Date
         : null,
     totalMs: now - start,
   };
+}
+
+export function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

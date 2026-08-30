@@ -22,9 +22,13 @@ import {
 import {
   documentEntityFromHit,
   emptyEntityMemory,
+  inferEntitiesFromTurns,
   mergeEntityMemory,
   type WhatsAppEntityMemory,
 } from "./whatsapp-entities";
+import { stampWhatsAppLifecycle, terminalStateForOutcome } from "./whatsapp-lifecycle";
+import { lookupKnowledgeSourceUrl } from "./whatsapp-source-urls";
+import { raceWithWhatsAppWatchdog } from "./whatsapp-watchdog";
 import { guidanceInfluenceNote, guidanceSearchQuery, isGuidanceHit } from "./whatsapp-guidance";
 import { planWhatsAppTurn, type WhatsAppPlan } from "./whatsapp-plan";
 import {
@@ -40,12 +44,7 @@ import {
   compressSearchAnswer,
   compressToolResult,
 } from "./whatsapp-compress";
-import {
-  acknowledgementMessage,
-  conversationalReply,
-  progressMessage,
-  STILL_WORKING_MESSAGE,
-} from "./whatsapp-conversation";
+import { conversationalReply } from "./whatsapp-conversation";
 import {
   aiFailureWhatsAppMessage,
   companySelectionMessage,
@@ -66,9 +65,8 @@ import {
   softenSearchQuery,
 } from "./whatsapp-intent";
 import {
-  ACK_AFTER_MS,
   createWhatsAppLatencyMarks,
-  HARD_SILENCE_MS,
+  DELAY_NOTICE_MS,
   PROGRESS_AFTER_MS,
   summariseWhatsAppLatency,
 } from "./whatsapp-latency";
@@ -118,7 +116,16 @@ export type WhatsAppOrchestratorResult = {
   publicReply: string | null;
   toolName: string | null;
   interactionId: string | null;
-  outcome: "unknown" | "company_selection" | "write_blocked" | "answered" | "tool_failed" | "ai_failed" | "send_failed" | "skipped";
+  outcome:
+    | "unknown"
+    | "company_selection"
+    | "write_blocked"
+    | "answered"
+    | "clarification_requested"
+    | "tool_failed"
+    | "ai_failed"
+    | "send_failed"
+    | "skipped";
   intent?: string | null;
   acknowledgementSent?: boolean;
   planAction?: string | null;
@@ -236,7 +243,16 @@ export async function handleWhatsAppInboundMessage(
     };
   }
 
-  const conversation = await loadWhatsAppConversation(env, identity.user.id);
+  let conversation: Awaited<ReturnType<typeof loadWhatsAppConversation>> = null;
+  try {
+    conversation = await loadWhatsAppConversation(env, identity.user.id);
+  } catch {
+    conversation = null;
+  }
+  await stampWhatsAppLifecycle(env, item.wamid, {
+    state: "validated",
+    validatedAt: new Date().toISOString(),
+  });
   const companyDecision = resolveWhatsAppCompany({
     memberships: identity.memberships.map((membership) => ({
       companyId: membership.companyId,
@@ -282,7 +298,10 @@ export async function handleWhatsAppInboundMessage(
   marks.identityResolvedAt = Date.now();
   const sameCompany = conversation?.companyId === companyDecision.companyId;
   const priorTurns = sameCompany ? conversation?.turns ?? [] : [];
-  const entities = sameCompany ? conversation?.entities ?? emptyEntityMemory() : emptyEntityMemory();
+  const entities = inferEntitiesFromTurns(
+    priorTurns,
+    sameCompany ? conversation?.entities ?? emptyEntityMemory() : emptyEntityMemory(),
+  );
   const text = (item.text ?? "").trim();
   const connectors = await listConnectedConnectorIds(env, companyDecision.companyId);
   const plan = planWhatsAppTurn({ text, memory: entities, connectors });
@@ -338,6 +357,12 @@ export async function handleWhatsAppInboundMessage(
     const reply = plan.clarification ?? "Can you give me a little more detail so I look in the right place?";
     const sent = await maybeSendReply(env, sender, reply);
     await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, reply, entities);
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      state: "clarification_sent",
+      terminal: "clarification_sent",
+      replySentAt: new Date().toISOString(),
+      firstVisibleAt: new Date().toISOString(),
+    });
     return {
       handled: true,
       duplicate: false,
@@ -348,9 +373,10 @@ export async function handleWhatsAppInboundMessage(
       publicReply: reply,
       toolName: null,
       interactionId: null,
-      outcome: "answered",
+      outcome: "clarification_requested",
       intent,
       acknowledgementSent: false,
+      planAction: plan.action,
     };
   }
 
@@ -374,7 +400,13 @@ export async function handleWhatsAppInboundMessage(
       actor: identity.user.email,
       resourceType: "whatsapp_message",
       resourceId: item.wamid,
-      detail: { channel: "whatsapp", intent, cheapPath: true },
+      detail: { channel: "whatsapp", intent, cheapPath: true, costLane: "whatsapp_conversation" },
+    });
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      state: "reply_sent",
+      terminal: "reply_sent",
+      replySentAt: new Date().toISOString(),
+      firstVisibleAt: new Date().toISOString(),
     });
     return {
       handled: true,
@@ -416,64 +448,19 @@ export async function handleWhatsAppInboundMessage(
   let acknowledgementSent = false;
   let progressSent = false;
   let fallbackSent = false;
-  let finished = false;
 
   if (needsWork) {
     void sendWhatsAppTypingIndicator(env, { messageId: item.wamid });
   }
-
-  const ackTimer = needsWork
-    ? setTimeout(() => {
-        if (finished || acknowledgementSent) return;
-        const ack = acknowledgementMessage(item.wamid + text);
-        void maybeSendReply(env, sender, ack).then((ackSend) => {
-          if (finished || acknowledgementSent) return;
-          acknowledgementSent = ackSend.ok;
-          marks.acknowledgementSentAt = Date.now();
-          void recordWhatsAppUxUsage(env, {
-            companyId: companyDecision.companyId,
-            userId: identity.user.id,
-            actorEmail: identity.user.email,
-            interactionId,
-            action: "whatsapp.ack",
-            durationMs: summariseWhatsAppLatency(marks).acknowledgementMs ?? 0,
-            metadata: { channel: "whatsapp", intent, acknowledgementSent, kind: "ack" },
-          });
-        });
-      }, ACK_AFTER_MS)
-    : null;
-
-  const progressTimer = needsWork
-    ? setTimeout(() => {
-        if (finished || progressSent || !acknowledgementSent) return;
-        progressSent = true;
-        void maybeSendReply(env, sender, progressMessage(item.wamid)).then((sent) => {
-          if (sent.ok) {
-            void recordWhatsAppUxUsage(env, {
-              companyId: companyDecision.companyId,
-              userId: identity.user.id,
-              actorEmail: identity.user.email,
-              interactionId,
-              action: "whatsapp.progress",
-              durationMs: PROGRESS_AFTER_MS,
-              metadata: { channel: "whatsapp", intent, kind: "progress" },
-            });
-          }
-        });
-      }, PROGRESS_AFTER_MS)
-    : null;
-  const fallbackTimer = needsWork
-    ? setTimeout(() => {
-        if (finished || fallbackSent) return;
-        fallbackSent = true;
-        void maybeSendReply(env, sender, STILL_WORKING_MESSAGE);
-      }, HARD_SILENCE_MS)
-    : null;
+  await stampWhatsAppLifecycle(env, item.wamid, {
+    state: needsWork ? "planning" : "synthesising",
+    planningAt: new Date().toISOString(),
+  });
 
   try {
     marks.planningStartedAt = Date.now();
     marks.toolStartedAt = Date.now();
-    const answered = await executeWhatsAppPlan(env, {
+    const work = executeWhatsAppPlan(env, {
       companyId: companyDecision.companyId,
       sessionUser,
       plan,
@@ -482,16 +469,122 @@ export async function handleWhatsAppInboundMessage(
       interactionId,
       waitUntil: options?.waitUntil,
     });
+    const watched = await raceWithWhatsAppWatchdog(work, async (kind, body) => {
+      const sent = await maybeSendReply(env, sender, body);
+      if (!sent.ok) return false;
+      if (kind === "ack") {
+        acknowledgementSent = true;
+        marks.acknowledgementSentAt = Date.now();
+        marks.firstVisibleAt ??= Date.now();
+        await stampWhatsAppLifecycle(env, item.wamid, {
+          state: "acknowledged",
+          acknowledgedAt: new Date().toISOString(),
+          firstVisibleAt: new Date().toISOString(),
+        });
+        void recordWhatsAppUxUsage(env, {
+          companyId: companyDecision.companyId,
+          userId: identity.user.id,
+          actorEmail: identity.user.email,
+          interactionId,
+          action: "whatsapp.ack",
+          durationMs: summariseWhatsAppLatency(marks).acknowledgementMs ?? 0,
+          metadata: { channel: "whatsapp", intent, acknowledgementSent: true, kind: "ack", costLane: "whatsapp_conversation" },
+        });
+      } else if (kind === "progress") {
+        progressSent = true;
+        void recordWhatsAppUxUsage(env, {
+          companyId: companyDecision.companyId,
+          userId: identity.user.id,
+          actorEmail: identity.user.email,
+          interactionId,
+          action: "whatsapp.progress",
+          durationMs: PROGRESS_AFTER_MS,
+          metadata: { channel: "whatsapp", intent, kind: "progress" },
+        });
+      } else if (kind === "delay") {
+        fallbackSent = true;
+        void recordWhatsAppUxUsage(env, {
+          companyId: companyDecision.companyId,
+          userId: identity.user.id,
+          actorEmail: identity.user.email,
+          interactionId,
+          action: "whatsapp.delay",
+          durationMs: DELAY_NOTICE_MS,
+          metadata: { channel: "whatsapp", intent, kind: "delay" },
+        });
+      }
+      return true;
+    }, { skipAck: !needsWork, seed: item.wamid + text });
+
+    if (watched.timedOut) {
+      await stampWhatsAppLifecycle(env, item.wamid, {
+        state: "failed_notified",
+        terminal: "failed_notified",
+        replySentAt: new Date().toISOString(),
+        firstVisibleAt: new Date().toISOString(),
+        lastError: "hard_timeout",
+      });
+      return {
+        handled: true,
+        duplicate: false,
+        identityFound: true,
+        companyId: companyDecision.companyId,
+        userId: identity.user.id,
+        replySent: true,
+        publicReply: timeoutWhatsAppMessage(),
+        toolName: null,
+        interactionId,
+        outcome: "ai_failed",
+        intent,
+        acknowledgementSent,
+        planAction: plan.action,
+      };
+    }
+    if (watched.error || !watched.result) {
+      const reply = aiFailureWhatsAppMessage();
+      const sent = await maybeSendReply(env, sender, reply);
+      await stampWhatsAppLifecycle(env, item.wamid, {
+        state: "failed_notified",
+        terminal: "failed_notified",
+        replySentAt: new Date().toISOString(),
+        firstVisibleAt: new Date().toISOString(),
+        lastError: "plan_failed",
+      });
+      return {
+        handled: true,
+        duplicate: false,
+        identityFound: true,
+        companyId: companyDecision.companyId,
+        userId: identity.user.id,
+        replySent: sent.ok,
+        publicReply: reply,
+        toolName: null,
+        interactionId,
+        outcome: "ai_failed",
+        intent,
+        acknowledgementSent,
+        planAction: plan.action,
+      };
+    }
+
+    const answered = watched.result;
+    acknowledgementSent = acknowledgementSent || watched.acknowledgementSent;
+    progressSent = progressSent || watched.progressSent;
+    fallbackSent = fallbackSent || watched.delaySent;
     marks.toolCompletedAt = Date.now();
     marks.finalGeneratedAt = Date.now();
-    finished = true;
-    if (ackTimer) clearTimeout(ackTimer);
-    if (progressTimer) clearTimeout(progressTimer);
-    if (fallbackTimer) clearTimeout(fallbackTimer);
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      state: "synthesising",
+      synthesisingAt: new Date().toISOString(),
+      toolRunningAt: new Date().toISOString(),
+    });
 
     marks.outboundStartedAt = Date.now();
-    const sent = await maybeSendReply(env, sender, answered.reply);
+    const sent = await maybeSendReply(env, sender, answered.reply, {
+      previewUrl: /^https?:\/\//m.test(answered.reply),
+    });
     marks.outboundAcceptedAt = Date.now();
+    marks.firstVisibleAt ??= Date.now();
     await rememberTurn(
       env,
       identity.user.id,
@@ -528,8 +621,26 @@ export async function handleWhatsAppInboundMessage(
         linkReturned: Boolean(answered.entities.lastDocument?.url) && plan.action === "memory_link",
         replyLength: answered.reply.length,
         rawLeak: /```|__EMPTY|jsessionid=/i.test(answered.reply),
-        conversationKind: plan.skipTools ? "conversation" : "business_tool",
+        conversationKind: plan.skipTools ? "conversation" : "tool_mcp",
+        costLane: plan.skipTools ? "whatsapp_conversation" : "whatsapp_tool_mcp",
+        transportCostLane: "whatsapp_transport",
+        firstVisibleMs: latency.firstVisibleMs,
       },
+    });
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      state: terminalStateForOutcome({
+        outcome: sent.ok ? answered.outcome : "send_failed",
+        planAction: plan.action,
+        reply: answered.reply,
+      }),
+      terminal: terminalStateForOutcome({
+        outcome: sent.ok ? answered.outcome : "send_failed",
+        planAction: plan.action,
+        reply: answered.reply,
+      }),
+      replySentAt: new Date().toISOString(),
+      firstVisibleAt: new Date().toISOString(),
+      lastError: sent.ok ? null : "send_failed",
     });
     scheduleQualityAudit(env, options?.waitUntil, interactionId);
     await recordAuditEvent(env.DB, {
@@ -568,12 +679,15 @@ export async function handleWhatsAppInboundMessage(
       planAction: plan.action,
     };
   } catch {
-    finished = true;
-    if (ackTimer) clearTimeout(ackTimer);
-    if (progressTimer) clearTimeout(progressTimer);
-    if (fallbackTimer) clearTimeout(fallbackTimer);
     const reply = aiFailureWhatsAppMessage();
     const sent = await maybeSendReply(env, sender, reply);
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      state: "failed_notified",
+      terminal: "failed_notified",
+      replySentAt: new Date().toISOString(),
+      firstVisibleAt: new Date().toISOString(),
+      lastError: "handler_exception",
+    });
     return {
       handled: true,
       duplicate: false,
@@ -612,12 +726,23 @@ async function executeWhatsAppPlan(
   const started = Date.now();
   const plan = input.plan;
   if (plan.action === "memory_link") {
+    let memory = input.memory;
+    if (!memory.lastDocument?.url && memory.lastDocument?.title) {
+      const hit = await lookupKnowledgeSourceUrl(env, input.companyId, memory.lastDocument.title);
+      if (hit?.url) {
+        memory = mergeEntityMemory(memory, {
+          lastDocument: { ...memory.lastDocument, url: hit.url },
+          lastSourceUrl: hit.url,
+          lastSourceSystem: hit.sourceType,
+        });
+      }
+    }
     return {
-      reply: sourceLinkReply(input.memory.lastDocument),
+      reply: sourceLinkReply(memory.lastDocument),
       toolName: null,
       outcome: "answered",
       latencyMs: Date.now() - started,
-      entities: input.memory,
+      entities: memory,
     };
   }
   if (plan.action === "memory_source") {
@@ -687,7 +812,7 @@ async function executeWhatsAppPlan(
     });
     if (xero.status === 401 || xero.status === 403) {
       return {
-        reply: permissionBlockedWhatsAppMessage(),
+        reply: permissionBlockedWhatsAppMessage("xero"),
         toolName: plan.tool,
         outcome: "tool_failed",
         latencyMs: Date.now() - started,
@@ -795,7 +920,7 @@ async function answerWithCompanyMcp(
   if (search.status !== 200) {
     if (search.status === 401 || search.status === 403) {
       return {
-        reply: permissionBlockedWhatsAppMessage(),
+        reply: permissionBlockedWhatsAppMessage("knowledge"),
         toolName: searchTool,
         outcome: "tool_failed",
         latencyMs: Date.now() - started,
@@ -871,10 +996,15 @@ async function answerWithCompanyMcp(
       const excerpt = /__EMPTY/.test(raw)
         ? `${title}\n\nThis looks like a spreadsheet. I can give you the useful rows if you want.`
         : compressDocumentAnswer({ title, text: raw, question: input.originalText });
+      let url = doc.url || hits[0].url;
+      if (!url) {
+        const backfill = await lookupKnowledgeSourceUrl(env, input.companyId, title);
+        url = backfill?.url ?? "";
+      }
       const entity = documentEntityFromHit({
         id: hits[0].id,
         title,
-        url: doc.url || hits[0].url,
+        url,
         text: raw,
         snippet: hits[0].snippet,
         sourceLabel: title,
@@ -908,6 +1038,11 @@ async function answerWithCompanyMcp(
   }
 
   const top = hits[0];
+  let topUrl = top?.url ?? "";
+  if (top && !topUrl) {
+    const backfill = await lookupKnowledgeSourceUrl(env, input.companyId, top.title);
+    topUrl = backfill?.url ?? "";
+  }
   return {
     reply: formatWhatsAppReply(body),
     toolName: searchTool,
@@ -917,7 +1052,7 @@ async function answerWithCompanyMcp(
       ? documentEntityFromHit({
           id: top.id,
           title: top.title,
-          url: top.url,
+          url: topUrl,
           snippet: top.snippet,
           sourceLabel: top.title,
         })
@@ -960,6 +1095,7 @@ async function maybeSendReply(
   env: Env,
   toE164: string | null,
   body: string,
+  options?: { previewUrl?: boolean },
 ): Promise<WhatsAppSendResult> {
   if (!toE164 || !outboundAiEnabled(env)) {
     return {
@@ -974,6 +1110,7 @@ async function maybeSendReply(
     toE164,
     body,
     inCustomerServiceWindow: true,
+    previewUrl: options?.previewUrl,
   });
 }
 

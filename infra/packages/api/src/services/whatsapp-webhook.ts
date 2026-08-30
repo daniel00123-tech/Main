@@ -176,8 +176,8 @@ export async function persistWhatsAppInboundEvent(
       `INSERT INTO whatsapp_inbound_events (
          id, wamid, phone_number_id, business_account_id, sender_e164, message_type,
          identity_found, user_id, company_id, signature_valid, processed,
-         payload_json, error, received_at, processed_at
-       ) VALUES (?, ?, ?, ?, NULL, ?, 0, NULL, NULL, ?, 0, ?, NULL, ?, NULL)`,
+         payload_json, error, received_at, processed_at, lifecycle_state
+       ) VALUES (?, ?, ?, ?, NULL, ?, 0, NULL, NULL, ?, 0, ?, NULL, ?, NULL, 'received')`,
     )
       .bind(
         eventId,
@@ -196,7 +196,33 @@ export async function persistWhatsAppInboundEvent(
     if (/UNIQUE|already exists/i.test(message)) {
       return { eventId, duplicate: true };
     }
-    throw err;
+    try {
+      await env.DB.prepare(
+        `INSERT INTO whatsapp_inbound_events (
+           id, wamid, phone_number_id, business_account_id, sender_e164, message_type,
+           identity_found, user_id, company_id, signature_valid, processed,
+           payload_json, error, received_at, processed_at
+         ) VALUES (?, ?, ?, ?, NULL, ?, 0, NULL, NULL, ?, 0, ?, NULL, ?, NULL)`,
+      )
+        .bind(
+          eventId,
+          first?.wamid ?? null,
+          first?.phoneNumberId ?? null,
+          first?.businessAccountId ?? null,
+          first?.type ?? "webhook",
+          input.signatureValid ? 1 : 0,
+          input.rawBody.slice(0, 16_384),
+          receivedAt,
+        )
+        .run();
+      return { eventId, duplicate: false };
+    } catch (inner) {
+      const innerMessage = inner instanceof Error ? inner.message : "";
+      if (/UNIQUE|already exists/i.test(innerMessage)) {
+        return { eventId, duplicate: true };
+      }
+      throw err;
+    }
   }
 }
 
@@ -325,7 +351,7 @@ async function claimWhatsAppInboundEvent(
   }
 }
 
-async function ensureWhatsAppInboundTable(env: Env): Promise<void> {
+export async function ensureWhatsAppInboundTable(env: Env): Promise<void> {
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS whatsapp_inbound_events (
        id TEXT PRIMARY KEY,
@@ -342,9 +368,34 @@ async function ensureWhatsAppInboundTable(env: Env): Promise<void> {
        payload_json TEXT NOT NULL,
        error TEXT,
        received_at TEXT NOT NULL,
-       processed_at TEXT
+       processed_at TEXT,
+       lifecycle_state TEXT,
+       terminal_state TEXT,
+       validated_at TEXT,
+       acknowledged_at TEXT,
+       planning_at TEXT,
+       tool_running_at TEXT,
+       synthesising_at TEXT,
+       reply_sent_at TEXT,
+       first_visible_at TEXT,
+       last_error TEXT
      )`,
   ).run();
+  const alters = [
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN lifecycle_state TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN terminal_state TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN validated_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN acknowledged_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN planning_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN tool_running_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN synthesising_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN reply_sent_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN first_visible_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN last_error TEXT",
+  ];
+  for (const sql of alters) {
+    await env.DB.prepare(sql).run().catch(() => undefined);
+  }
 }
 
 function safeEqualString(left: string, right: string): boolean {

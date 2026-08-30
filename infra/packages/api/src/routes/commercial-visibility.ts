@@ -48,6 +48,7 @@ import {
   resolveWhatsAppIdentity,
 } from "../services/whatsapp-identity";
 import { inspectWhatsAppAssets, secretPresence } from "../services/whatsapp-assets";
+import { listWhatsAppInbox } from "../services/whatsapp-ops";
 import {
   inspectWhatsAppCloudRegistration,
   registerWhatsAppCloudPhoneNumber,
@@ -257,6 +258,10 @@ routes.get("/api/platform/whatsapp/foundation", requireAuth, requirePlatformAdmi
     subscription,
     registration,
   });
+});
+
+routes.get("/api/platform/whatsapp/inbox", requireAuth, requirePlatformAdmin, async (c) => {
+  return c.json(await listWhatsAppInbox(c.env));
 });
 
 function whatsappMetaProbeAuthorized(env: Env, request: { header(name: string): string | undefined }): boolean {

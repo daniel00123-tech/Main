@@ -3,16 +3,18 @@ const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 
 export const CONCISE_MAX_CHARS = 520;
 export const FULL_DETAIL_MAX_CHARS = 1600;
-export const ACK_AFTER_MS = 3_000;
+export const ACK_AFTER_MS = 800;
 
 export function wantsFullDetail(text: string): boolean {
-  return /\b(full detail|full document|the whole|give me the full|entire (doc|document|thing)|paste (it|the)|everything in (it|the))\b/i.test(
+  return /\b(full detail|full document|the whole|give me the full|entire (doc|document|thing)|paste (it|the)|everything in (it|the)|explain properly|show me everything)\b/i.test(
     text,
   );
 }
 
 export function wantsSummary(text: string): boolean {
-  return /\bsummaris[ee](\s+(that|it|this|the))?\b|\bsummarize(\s+(that|it|this|the))?\b/i.test(text);
+  return /\bsummaris[ee](\s+(that|it|this|the))?\b|\bsummarize(\s+(that|it|this|the))?\b|\b(briefly|quick summary)\b/i.test(
+    text,
+  );
 }
 
 export function wantsAlternatives(text: string): boolean {

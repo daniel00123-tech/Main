@@ -275,6 +275,24 @@ describe("WhatsApp UX orchestration", () => {
     const follow = await handleWhatsAppInboundMessage(runtime, inbound("send me the link"));
     expect(executeGatewayRequest).not.toHaveBeenCalled();
     expect(follow.publicReply).toMatch(/https:\/\/contoso\.sharepoint\.com\/CoalSearch\.pdf/);
+    executeGatewayRequest.mockClear();
+    const live = await handleWhatsAppInboundMessage(
+      runtime,
+      inbound("what is the url where i can download it from as i need a copy of it?"),
+    );
+    expect(executeGatewayRequest).not.toHaveBeenCalled();
+    expect(live.publicReply).toMatch(/https:\/\/contoso\.sharepoint\.com\/CoalSearch\.pdf/);
+    expect(live.planAction).toBe("memory_link");
+  });
+
+  it("clarifies a source-link ask immediately when there is no document in memory", async () => {
+    const result = await handleWhatsAppInboundMessage(
+      env(),
+      inbound("what is the url where i can download it from as i need a copy of it?"),
+    );
+    expect(executeGatewayRequest).not.toHaveBeenCalled();
+    expect(result.outcome).toBe("clarification_requested");
+    expect(result.publicReply).toMatch(/which document/i);
   });
 
   it("prefers a title that matches the distinctive search terms", async () => {

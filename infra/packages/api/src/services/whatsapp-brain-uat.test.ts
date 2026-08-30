@@ -5,9 +5,9 @@ import { planWhatsAppTurn } from "./whatsapp-plan";
 import { emptyEntityMemory } from "./whatsapp-entities";
 
 describe("WhatsApp conversational brain UAT suite", () => {
-  it("covers 50+ prompts and evaluates the planner", () => {
+  it("covers 75+ prompts and evaluates the planner", () => {
     const report = evaluateWhatsAppUatSuite();
-    expect(report.total).toBeGreaterThanOrEqual(50);
+    expect(report.total).toBeGreaterThanOrEqual(75);
     expect(report.failed, JSON.stringify(report.failed, null, 2)).toEqual([]);
     expect(report.passed).toBe(report.total);
   });
@@ -23,6 +23,7 @@ describe("WhatsApp conversational brain UAT suite", () => {
       sourceLabel: "Coal Search.pdf",
     });
     expect(withUrl).toContain("https://contoso.sharepoint.com/CoalSearch.pdf");
+    expect(withUrl).toMatch(/source link/i);
     const without = sourceLinkReply({
       id: "doc_coal",
       title: "Coal Search.pdf",
@@ -32,7 +33,7 @@ describe("WhatsApp conversational brain UAT suite", () => {
       reference: null,
       sourceLabel: "Coal Search.pdf",
     });
-    expect(without).toMatch(/don’t currently have a direct download link/i);
+    expect(without).toMatch(/don’t currently have a direct source link/i);
     expect(without).not.toMatch(/https?:\/\//);
   });
 

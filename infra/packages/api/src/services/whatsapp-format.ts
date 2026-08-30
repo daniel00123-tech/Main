@@ -43,8 +43,14 @@ export function toolFailureWhatsAppMessage(): string {
   return "I can’t reach that system right now. I’ve logged the issue — please try again shortly.";
 }
 
-export function permissionBlockedWhatsAppMessage(): string {
-  return "You don’t currently have permission to access that information.";
+export function permissionBlockedWhatsAppMessage(scope?: "xero" | "knowledge" | "generic"): string {
+  if (scope === "xero") {
+    return "You don’t currently have permission to access Xero financial information. Ask your Infra company administrator if you need access.";
+  }
+  if (scope === "knowledge") {
+    return "You don’t currently have permission to access that document store. Ask your Infra company administrator if you need access.";
+  }
+  return "You don’t currently have permission to access that information. Ask your Infra company administrator if you need access.";
 }
 
 export function noResultWhatsAppMessage(): string {

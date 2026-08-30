@@ -32,6 +32,9 @@ export function conversationalReply(
   if (intent === "greeting") return pickVariant(input.text || "hi", GREETING_REPLIES);
   if (intent === "thanks") return pickVariant(input.text || "thanks", THANKS_REPLIES);
   if (intent === "casual") return pickVariant(input.text || "how", CASUAL_REPLIES);
+  if (intent === "unsupported" && /\b(i don'?t understand|what did you mean|explain)\b/i.test(input.text)) {
+    return "Happy to explain. Which part should I make simpler — the last answer, or a specific document?";
+  }
   if (intent === "help" || intent === "capabilities") {
     if (/\b(price|pricing|quote|rates?)\b/i.test(input.text) && input.capabilities) {
       return input.capabilities;
@@ -46,17 +49,18 @@ export function conversationalReply(
 
 export const ACK_VARIANTS = [
   "Got it — I’m checking that now.",
-  "Thanks — I’m looking into that for you now.",
-  "Understood. I’m checking your connected systems now.",
-  "On it — I’ll come back with what I find.",
+  "Thanks — I’m looking into that for you.",
+  "Understood — I’m checking your connected systems now.",
 ];
 
 export const PROGRESS_VARIANTS = [
-  "I’ve found the relevant source — I’m pulling the details together now.",
+  "I’ve found the right area — I’m still pulling the details together.",
 ];
 
-export const STILL_WORKING_MESSAGE =
-  "This is taking a little longer than usual. I’m still working on it and I’ll reply as soon as I have the result.";
+export const DELAY_NOTICE_MESSAGE =
+  "This is taking longer than usual, but I’m still working on it.";
+
+export const STILL_WORKING_MESSAGE = DELAY_NOTICE_MESSAGE;
 
 export function acknowledgementMessage(seed: string): string {
   return pickVariant(seed, ACK_VARIANTS);

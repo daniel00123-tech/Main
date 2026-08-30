@@ -24,6 +24,7 @@ export async function sendWhatsAppText(
     toE164: string;
     body: string;
     inCustomerServiceWindow: boolean;
+    previewUrl?: boolean;
   },
 ): Promise<WhatsAppSendResult> {
   const kind = classifyWhatsAppOutbound({
@@ -46,7 +47,7 @@ export async function sendWhatsAppText(
       recipient_type: "individual",
       to: digitsOnly(input.toE164),
       type: "text",
-      text: { preview_url: false, body: input.body.slice(0, 4000) },
+      text: { preview_url: Boolean(input.previewUrl), body: input.body.slice(0, 4000) },
     },
   });
 }

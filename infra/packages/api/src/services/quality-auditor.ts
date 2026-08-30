@@ -32,7 +32,12 @@ export type QualityCategory =
   | "whatsapp_wrong_tool"
   | "whatsapp_excessive_length"
   | "whatsapp_raw_output"
-  | "whatsapp_capability_overpromise";
+  | "whatsapp_capability_overpromise"
+  | "whatsapp_stuck"
+  | "whatsapp_silent"
+  | "whatsapp_consecutive_failures"
+  | "whatsapp_meta_unavailable"
+  | "whatsapp_queue_backlog";
 
 export interface QualitySignal {
   category: QualityCategory;
@@ -251,13 +256,59 @@ function detectWhatsAppUxSignals(input: QualityAuditInput): QualitySignal[] {
   const progressSent = Boolean(meta.progressSent);
 
   const signals: QualitySignal[] = [];
-  if (ackMs >= 5_000) {
+  if (ackMs >= 3_000) {
     signals.push({
       category: "whatsapp_slow_ack",
       severity: "medium",
       confidence: 0.85,
       evidence: { acknowledgementMs: ackMs },
-      suggestedInvestigation: "WhatsApp acknowledgement took more than 5 seconds.",
+      suggestedInvestigation: "WhatsApp acknowledgement took more than 3 seconds.",
+    });
+  }
+  const firstVisibleMs = Number(meta.firstVisibleMs ?? ackMs ?? 0);
+  if (!cheap && firstVisibleMs <= 0 && totalMs >= 30_000) {
+    signals.push({
+      category: "whatsapp_silent",
+      severity: "high",
+      confidence: 0.95,
+      evidence: { totalMs },
+      suggestedInvestigation: "Recognised WhatsApp user had no user-visible response for 30 seconds.",
+    });
+  }
+  if (meta.stuck || (totalMs >= 60_000 && !finalSent)) {
+    signals.push({
+      category: "whatsapp_stuck",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { totalMs },
+      suggestedInvestigation: "WhatsApp message remained processing with no terminal reply.",
+    });
+  }
+  if (meta.consecutiveFailedReplies && Number(meta.consecutiveFailedReplies) >= 3) {
+    signals.push({
+      category: "whatsapp_consecutive_failures",
+      severity: "high",
+      confidence: 0.9,
+      evidence: { count: meta.consecutiveFailedReplies },
+      suggestedInvestigation: "Three consecutive WhatsApp replies failed.",
+    });
+  }
+  if (meta.metaUnavailable) {
+    signals.push({
+      category: "whatsapp_meta_unavailable",
+      severity: "high",
+      confidence: 0.9,
+      evidence: {},
+      suggestedInvestigation: "Meta Cloud API was unavailable for WhatsApp outbound.",
+    });
+  }
+  if (Number(meta.queueBacklog ?? 0) >= 25) {
+    signals.push({
+      category: "whatsapp_queue_backlog",
+      severity: "high",
+      confidence: 0.8,
+      evidence: { queueBacklog: meta.queueBacklog },
+      suggestedInvestigation: "WhatsApp inbound queue backlog exceeded the operational threshold.",
     });
   }
   if (!cheap && totalMs >= 30_000 && totalMs < 60_000) {
