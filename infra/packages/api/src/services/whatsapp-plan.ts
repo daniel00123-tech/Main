@@ -46,8 +46,9 @@ const CHAT =
   /^(hi+|h+ello+|hey+|hiya|morning|afternoon|evening|good (morning|afternoon|evening)|how are you|thanks|thank you|cheers|ta|hi there|hello there)[\s!.?]*$/i;
 const CAPABILITIES =
   /^(what can you do|what can u do|what do you do|who are you|what are you|what is infra|can you help me|help)[\s!.?]*$/i;
-const LINK =
+export const DOCUMENT_URL_ASK =
   /\b(send me (the |that )?(link|url)|give me the (link|url)|what('?s| is) the (url|link)|url where|where (can|could|do) i (download|get|find)|need a copy|want a copy|can i download|download (it|this|that|the)|open the (source|document|file)|source link)\b/i;
+const LINK = DOCUMENT_URL_ASK;
 const SOURCE_ASK =
   /\b(where did you (get|find)|what('s| is) the source|source (for|of) that|where is this stored|is it in sharepoint|where is it stored)\b/i;
 const AMOUNT = /\b(what was the (amount|figure)|how much|the amount|the figure again)\b/i;

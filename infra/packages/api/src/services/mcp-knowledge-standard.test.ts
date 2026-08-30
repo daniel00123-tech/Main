@@ -10,6 +10,7 @@ import {
   resolveCompanyMcpToolName,
   sanitizeStandardFetchArguments,
   sanitizeStandardSearchArguments,
+  collectProviderHttpUrl,
   toStandardFetchPayload,
   toStandardSearchPayload,
   withStandardKnowledgeTools,
@@ -163,6 +164,80 @@ describe("Company Knowledge response adaptors", () => {
       ],
     });
     expect(payload.results[0]?.url).toBe("");
+  });
+
+  it("preserves a Drive webViewLink and does not invent one from driveFileId", () => {
+    const withLink = toStandardSearchPayload({
+      results: [
+        {
+          id: "gdrive-1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk",
+          title: "CV 2015 1",
+          webViewLink: "https://docs.google.com/document/d/1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk/edit",
+          metadata: { source: "google_drive", driveFileId: "1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk" },
+        },
+      ],
+    });
+    expect(withLink.results[0]?.url).toBe(
+      "https://docs.google.com/document/d/1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk/edit",
+    );
+
+    const noLink = toStandardSearchPayload({
+      results: [
+        {
+          id: "gdrive-1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk",
+          title: "CV 2015 1",
+          metadata: { source: "google_drive", driveFileId: "1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk" },
+        },
+      ],
+    });
+    expect(noLink.results[0]?.url).toBe("");
+    expect(collectProviderHttpUrl({ driveFileId: "1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk" })).toBe("");
+  });
+
+  it("parses company-MCP metadata JSON strings on fetch", () => {
+    const fetched = toStandardFetchPayload(
+      {
+        document: {
+          id: 670,
+          external_id: "gdrive-1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk",
+          title: "CV 2015 1",
+          metadata: JSON.stringify({
+            source: "google_drive",
+            driveFileId: "1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk",
+            webViewLink: "https://docs.google.com/document/d/1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk/edit?usp=drivesdk",
+          }),
+        },
+        chunks: [{ content: "Curriculum vitae covering 2015." }],
+      },
+      "gdrive-1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk",
+    );
+    expect(fetched.url).toBe(
+      "https://docs.google.com/document/d/1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk/edit?usp=drivesdk",
+    );
+    expect(fetched.metadata?.driveFileId).toBe("1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk");
+  });
+
+  it("keeps Microsoft web_url / webUrl on search and fetch", () => {
+    const search = toStandardSearchPayload({
+      results: [
+        {
+          id: "item_coal_1",
+          title: "Coal Search.pdf",
+          web_url: "https://contoso.sharepoint.com/sites/docs/CoalSearch.pdf",
+        },
+      ],
+    });
+    expect(search.results[0]?.url).toBe("https://contoso.sharepoint.com/sites/docs/CoalSearch.pdf");
+    const fetched = toStandardFetchPayload(
+      {
+        id: "item_coal_1",
+        title: "Coal Search.pdf",
+        text: "Coal search extract",
+        metadata: { webUrl: "https://contoso.sharepoint.com/sites/docs/CoalSearch.pdf" },
+      },
+      "item_coal_1",
+    );
+    expect(fetched.url).toBe("https://contoso.sharepoint.com/sites/docs/CoalSearch.pdf");
   });
 
   it("unwraps MCP content wrappers from the company knowledge layer", () => {

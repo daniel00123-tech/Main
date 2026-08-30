@@ -15,9 +15,21 @@ export function sourceLinkReply(doc: WhatsAppDocumentEntity | null | undefined):
     return "Which document would you like the link for?";
   }
   if (doc.url && /^https?:\/\//i.test(doc.url)) {
-    return `Here’s the source link:\n${doc.url}`;
+    return `Here’s the document:\n${doc.url}`;
   }
   return missingSourceLinkReply(doc.title);
+}
+
+export function attachRequestedDocumentUrl(
+  reply: string,
+  url: string | null | undefined,
+  requested: boolean,
+): string {
+  if (!requested) return reply;
+  const href = typeof url === "string" && /^https?:\/\//i.test(url) ? url.trim() : "";
+  if (!href) return reply;
+  if (reply.includes(href)) return reply;
+  return `${reply.trim()}\n\nHere’s the document:\n${href}`;
 }
 
 export function sourceAttributionReply(doc: WhatsAppDocumentEntity | null | undefined): string {

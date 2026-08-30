@@ -53,10 +53,15 @@ import {
   recordKnowledgeSuccess,
   recordKnowledgeTimeout,
 } from "./whatsapp-knowledge-breaker";
-import { enrichUrlFromHit, identityFromMetadata, lookupKnowledgeSourceUrl } from "./whatsapp-source-urls";
+import {
+  enrichUrlFromHit,
+  identityFromMetadata,
+  lookupKnowledgeSourceUrl,
+  persistDiscoveredSourceUrl,
+} from "./whatsapp-source-urls";
 import { raceWithWhatsAppWatchdog } from "./whatsapp-watchdog";
 import { guidanceInfluenceNote, guidanceSearchQuery, isGuidanceHit } from "./whatsapp-guidance";
-import { planWhatsAppTurn, type WhatsAppPlan } from "./whatsapp-plan";
+import { DOCUMENT_URL_ASK, planWhatsAppTurn, type WhatsAppPlan } from "./whatsapp-plan";
 import {
   claimButtonIdempotency,
   createWhatsAppInteractionContext,
@@ -70,6 +75,7 @@ import {
   memoryFactReply,
   priceAdviceReply,
   sourceAttributionReply,
+  attachRequestedDocumentUrl,
   sourceLinkReply,
   withOptionalSource,
 } from "./whatsapp-synthesize";
@@ -1369,6 +1375,12 @@ async function executeWhatsAppPlan(
           lastSourceUrl: hit.url,
           lastSourceSystem: hit.sourceType,
         });
+        await persistDiscoveredSourceUrl(env, input.companyId, {
+          url: hit.url,
+          title: memory.lastDocument.title,
+          entityId: memory.lastDocument.id,
+          externalItemId: memory.lastDocument.providerItemId,
+        });
       }
     }
     return {
@@ -1458,6 +1470,14 @@ async function executeWhatsAppPlan(
           path: identity.path ?? input.memory.lastDocument.path,
         });
         url = backfill?.url ?? "";
+      }
+      if (url) {
+        await persistDiscoveredSourceUrl(env, input.companyId, {
+          url,
+          title: doc.title || input.memory.lastDocument.title,
+          entityId: doc.id || input.memory.lastDocument.id,
+          externalItemId: identity.providerItemId ?? input.memory.lastDocument.providerItemId,
+        });
       }
       const nextDoc = documentEntityFromHit({
         id: doc.id || input.memory.lastDocument.id,
@@ -1584,6 +1604,11 @@ async function executeWhatsAppPlan(
     reply = draftFromMemory(plan.draftKind ?? "reply", memory, knowledge.guidanceTitle ? guidanceInfluenceNote(knowledge.guidanceTitle) : null);
   } else {
     reply = withOptionalSource(reply, knowledge.entity?.title ?? null, input.originalText);
+    reply = attachRequestedDocumentUrl(
+      reply,
+      knowledge.entity?.url,
+      DOCUMENT_URL_ASK.test(input.originalText),
+    );
   }
 
   return {
@@ -1799,6 +1824,14 @@ async function answerWithCompanyMcp(
         });
         url = backfill?.url ?? "";
       }
+      if (url) {
+        await persistDiscoveredSourceUrl(env, input.companyId, {
+          url,
+          title: fetchedDoc.title,
+          entityId: fetchedDoc.id,
+          externalItemId: identity.providerItemId,
+        });
+      }
       const entity = documentEntityFromHit({
         id: fetchedDoc.id,
         title: fetchedDoc.title,
@@ -1868,6 +1901,14 @@ async function answerWithCompanyMcp(
       path: topIdentity.path,
     });
     topUrl = backfill?.url ?? "";
+  }
+  if (top && topUrl) {
+    await persistDiscoveredSourceUrl(env, input.companyId, {
+      url: topUrl,
+      title: top.title,
+      entityId: top.id,
+      externalItemId: topIdentity.providerItemId,
+    });
   }
   return {
     reply: synthesised.ok ? synthesised.value : timeoutWhatsAppMessage(),
