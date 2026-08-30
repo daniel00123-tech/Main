@@ -55,6 +55,13 @@ describe("Microsoft Graph subscriptions (CMD15)", () => {
     ).toBe(false);
   });
 
+  it("ISO expires_at strings do not lexicographically match SQLite datetime() output", () => {
+    const expiresAt = "2026-08-31T00:00:45.587Z";
+    const sqliteWindowEnd = "2026-08-31 00:00:00";
+    expect(expiresAt <= sqliteWindowEnd).toBe(false);
+    expect(expiresAt.replace("T", " ").replace("Z", "") <= "2026-08-31 00:01:00").toBe(true);
+  });
+
   it("cut over renewals that still point at workers.dev", () => {
     expect(
       graphSubscriptionNeedsNotificationUrlCutover(
