@@ -84,6 +84,11 @@ export interface Env {
   WHATSAPP_BUSINESS_ACCOUNT_ID?: string;
   /** WhatsApp Cloud API access token — required before outbound send */
   WHATSAPP_ACCESS_TOKEN?: string;
+  /**
+   * Optional 6-digit WhatsApp Cloud API two-step / registration PIN.
+   * Required by POST /{PHONE_NUMBER_ID}/register. Never guess this value.
+   */
+  WHATSAPP_REGISTRATION_PIN?: string;
   /** Meta app secret — used for X-Hub-Signature-256 */
   META_APP_SECRET?: string;
   /** Explicit outbound AI flag. Default off even if send credentials exist. */

@@ -45,6 +45,7 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # AZURE_OCR_MAX_BYTES (optional, default 20971520)
 # WHATSAPP_WEBHOOK_VERIFY_TOKEN (Meta hub.verify_token — wrangler secret put)
 # WHATSAPP_ACCESS_TOKEN (Cloud API user token — wrangler secret put)
+# WHATSAPP_REGISTRATION_PIN (optional 6-digit Cloud API two-step PIN — wrangler secret put)
 # META_APP_SECRET (X-Hub-Signature-256 — wrangler secret put)
 WHATSAPP_PHONE_NUMBER_ID = "1338434179351224"
 WHATSAPP_BUSINESS_ACCOUNT_ID = "1629422285251338"

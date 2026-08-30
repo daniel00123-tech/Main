@@ -87,15 +87,21 @@ export function metaAppSecret(env: Env): string {
   return String(env.META_APP_SECRET ?? "").trim();
 }
 
+export function whatsappRegistrationPin(env: Env): string {
+  return String(env.WHATSAPP_REGISTRATION_PIN ?? "").trim();
+}
+
 export function secretPresence(env: Env): {
   verifyToken: boolean;
   accessToken: boolean;
   appSecret: boolean;
+  registrationPin: boolean;
 } {
   return {
     verifyToken: String(env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ?? "").trim().length >= 16,
     accessToken: whatsappAccessToken(env).length > 8,
     appSecret: metaAppSecret(env).length > 8,
+    registrationPin: /^\d{6}$/.test(whatsappRegistrationPin(env)),
   };
 }
 
