@@ -29,6 +29,7 @@ import {
   updateQualityLoopConfig,
   updateProposalStatus,
   insertHistory,
+  getProposal,
 } from "./store";
 import type { ConversationThread, QualityLoopKind, QualityLoopMetrics, QualityProposalDraft } from "./types";
 
@@ -229,6 +230,15 @@ export async function decideProposal(
   env: Env,
   input: { proposalId: string; decision: "approve" | "reject" | "defer"; actor: string; runId?: string },
 ) {
+  const existing = await getProposal(env.DB, input.proposalId);
+  if (input.decision === "approve" && existing && (existing.status === "canary" || existing.status === "promoted")) {
+    const apply = await applyApprovedProposal(env, {
+      proposalId: input.proposalId,
+      actor: input.actor,
+      runId: input.runId,
+    });
+    return { status: apply.status, apply };
+  }
   const status = input.decision === "approve" ? "approved" : input.decision === "reject" ? "rejected" : "deferred";
   await updateProposalStatus(env.DB, input.proposalId, status);
   await insertHistory(env.DB, {

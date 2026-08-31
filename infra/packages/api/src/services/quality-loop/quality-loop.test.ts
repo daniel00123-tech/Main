@@ -558,6 +558,48 @@ describe("approval, tokens, canary, rollback", () => {
     expect(unknown).toBeNull();
   });
 
+  it("does not reset an already-canary proposal back to approved", async () => {
+    const { decideProposal } = await import("./runner");
+    const db = memoryDb();
+    const run = await insertQualityRun(db, {
+      kind: "daily",
+      phase: "daily",
+      periodFrom: "2026-08-29T00:00:00.000Z",
+      periodTo: "2026-08-30T00:00:00.000Z",
+    });
+    const ids = await insertProposals(
+      db,
+      run.id,
+      [
+        {
+          companyId: "co_caddington",
+          patternFingerprint: "co_caddington:rephrase",
+          title: "Completeness",
+          summary: "First answer",
+          kind: "prompt_tweak",
+          risk: "low",
+          autoApplyable: true,
+          engineeringRequired: false,
+          patch: { patches: [{ path: "prompts.systemNote", value: "Answer first." }] },
+          evidence: { occurrenceCount: 1 },
+          fingerprint: "prop:complete",
+        },
+      ],
+      { "prop:complete": { accepted: true } },
+    );
+    await updateProposalStatus(db, ids[0]!, "canary");
+    const env = { DB: db } as never;
+    const result = await decideProposal(env, {
+      proposalId: ids[0]!,
+      decision: "approve",
+      actor: "system:quality-apply",
+      runId: run.id,
+    });
+    expect(result.status).toBe("canary");
+    const row = (db as unknown as { tables: { quality_proposals: Array<{ status: string }> } }).tables.quality_proposals[0];
+    expect(row?.status).toBe("canary");
+  });
+
   it("records approval and rejection without applying high-risk changes", async () => {
     const db = memoryDb();
     const run = await insertQualityRun(db, {
