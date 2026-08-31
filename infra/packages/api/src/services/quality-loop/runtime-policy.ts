@@ -25,13 +25,16 @@ export function qualitySystemGuidance(runtime: QualityRuntimeConfig): string {
 
 export function isGenuineProviderHttpsUrl(url: string | null | undefined): boolean {
   if (!url || typeof url !== "string") return false;
+  const raw = url.trim();
+  if (/drive\.google\.com\/file\/d\/(\{id\}|no-url-file)(?:\/|$)/i.test(raw)) return false;
   try {
-    const parsed = new URL(url.trim());
+    const parsed = new URL(raw);
     if (parsed.protocol !== "https:") return false;
     const host = parsed.hostname.toLowerCase();
     if (host === "app.infrastack.app" || host === "localhost" || host === "127.0.0.1") return false;
-    if (/\/file\/d\/\{id\}\//i.test(parsed.pathname)) return false;
-    if (/\/file\/d\/no-url-file(?:\/|$)/i.test(parsed.pathname)) return false;
+    const path = decodeURIComponent(parsed.pathname);
+    if (/\/file\/d\/\{id\}(?:\/|$)/i.test(path)) return false;
+    if (/\/file\/d\/no-url-file(?:\/|$)/i.test(path)) return false;
     return true;
   } catch {
     return false;
