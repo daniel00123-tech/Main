@@ -14,6 +14,7 @@ import { UNKNOWN_WHATSAPP_ACCOUNT_MESSAGE, tryNormalizeE164 } from "./phone";
 import { scheduleQualityAudit } from "./quality-auditor";
 import { resolveActiveWhatsAppRuntime } from "./quality-loop";
 import { DEFAULT_QUALITY_RUNTIME } from "./quality-loop/runtime-config";
+import { qualitySystemGuidance } from "./quality-loop/runtime-policy";
 import type { QualityRuntimeConfig } from "./quality-loop/types";
 import { recordUsageEvent } from "./usage";
 import { inspectWhatsAppAssets, outboundAiEnabled } from "./whatsapp-assets";
@@ -1031,6 +1032,7 @@ async function handleWhatsAppInboundMessageInner(
             waitUntil: options?.waitUntil,
             buttonAction: inboundResolved.buttonAction ?? null,
             connectors,
+            qualityGuidance: qualitySystemGuidance(qualityRuntime),
           });
     const watched = await raceWithWhatsAppWatchdog(work, async (kind, body) => {
       if (kind === "ack") {
@@ -2289,6 +2291,7 @@ function answerCurrentDocument(
     previousAnswer?: string | null;
     path?: string | null;
     tenantId?: string | null;
+    qualityGuidance?: string | null;
   },
 ) {
   const mode: GroundedMode =
@@ -2302,6 +2305,7 @@ function answerCurrentDocument(
     previousAnswer: input.previousAnswer,
     path: input.path,
     tenantId: input.tenantId,
+    qualityGuidance: input.qualityGuidance,
   });
 }
 

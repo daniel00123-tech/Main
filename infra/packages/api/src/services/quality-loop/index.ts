@@ -6,7 +6,10 @@ export { groupQualityPatterns } from "./patterns";
 export { proposeImprovements, isHighRiskProposal } from "./proposals";
 export { replayProposal, replayWhatsAppUat } from "./replay";
 export { maybeRunQualityLoop, runQualityLoop, decideProposal, approveRecommended, buildThreadFromFixture } from "./runner";
-export { resolveActiveWhatsAppRuntime, applyApprovedProposal, canaryShouldRollback, validateBeforePromote } from "./apply";
+export { resolveActiveWhatsAppRuntime, applyApprovedProposal, canaryShouldRollback, validateBeforePromote, previewProposal, rollbackProposal } from "./apply";
+export { buildQualityCentre } from "./centre";
+export { classifyApplyClass, canAutoApply } from "./classify";
+export { isGenuineProviderHttpsUrl, qualitySystemGuidance } from "./runtime-policy";
 export {
   ensureQualityLoopConfig,
   listQualityLoopOverview,

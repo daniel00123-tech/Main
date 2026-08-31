@@ -662,6 +662,141 @@ function findLondon(hour: number, minute: number, weekday: number): Date {
   throw new Error("No matching London slot");
 }
 
+describe("control centre classification and source URL policy", () => {
+  it("classifies the three persisted email proposals and engineering leftovers", async () => {
+    const { classifyApplyClass, canAutoApply } = await import("./classify");
+    expect(
+      classifyApplyClass({
+        kind: "prompt_tweak",
+        risk: "low",
+        autoApplyable: true,
+        engineeringRequired: false,
+        patchPaths: ["prompts.systemNote"],
+      }),
+    ).toBe("AUTO_APPLY_SAFE");
+    expect(
+      classifyApplyClass({
+        kind: "planner_config",
+        risk: "medium",
+        autoApplyable: true,
+        engineeringRequired: false,
+        patchPaths: ["planner.requireSourceUrlWhenAsked"],
+      }),
+    ).toBe("AUTO_APPLY_SAFE");
+    expect(
+      classifyApplyClass({
+        kind: "threshold",
+        risk: "medium",
+        autoApplyable: true,
+        engineeringRequired: false,
+        patchPaths: ["thresholds.ackWarningMs", "thresholds.slowTotalMs"],
+      }),
+    ).toBe("AUTO_APPLY_SAFE");
+    expect(
+      classifyApplyClass({
+        kind: "engineering_change",
+        risk: "high",
+        autoApplyable: false,
+        engineeringRequired: true,
+      }),
+    ).toBe("REQUIRES_ENGINEERING");
+    expect(
+      canAutoApply({
+        kind: "engineering_change",
+        risk: "high",
+        autoApplyable: false,
+        engineeringRequired: true,
+        status: "pending_approval",
+      }),
+    ).toBe(false);
+  });
+
+  it("maps ack_no_final, first_visible_slow, repeated excerpt, and negative feedback", () => {
+    const failed = [
+      evaluateWhatsAppConversation(
+        buildThreadFromFixture({
+          companyId: "co_caddington",
+          conversationKey: "int_ack",
+          userMessages: ["Find Coal Search"],
+          assistantMessages: ["Got it"],
+          qualitySignals: ["whatsapp_ack_no_final_over_30s"],
+        }),
+      ),
+      evaluateWhatsAppConversation(
+        buildThreadFromFixture({
+          companyId: "co_caddington",
+          conversationKey: "int_excerpt",
+          userMessages: ["More detail"],
+          assistantMessages: ["Same excerpt"],
+          qualitySignals: ["whatsapp_answer_repeated_excerpt"],
+        }),
+      ),
+      evaluateWhatsAppConversation(
+        buildThreadFromFixture({
+          companyId: "co_caddington",
+          conversationKey: "int_neg",
+          userMessages: ["That's not it"],
+          assistantMessages: ["Which document?"],
+          qualitySignals: ["whatsapp_negative_result_feedback"],
+        }),
+      ),
+    ];
+    const drafts = proposeImprovements(groupQualityPatterns(failed));
+    expect(drafts.some((row) => row.title.includes("ack without a terminal"))).toBe(true);
+    expect(drafts.some((row) => row.title.includes("repeated search excerpt"))).toBe(true);
+    expect(drafts.some((row) => row.title.includes("Negative result feedback"))).toBe(true);
+    expect(drafts.every((row) => row.engineeringRequired)).toBe(true);
+  });
+
+  it("never treats invented Drive file URLs as genuine provider links", async () => {
+    const { isGenuineProviderHttpsUrl } = await import("./runtime-policy");
+    expect(isGenuineProviderHttpsUrl("https://drive.google.com/file/d/{id}/view")).toBe(false);
+    expect(isGenuineProviderHttpsUrl("https://drive.google.com/file/d/no-url-file/view")).toBe(false);
+    expect(isGenuineProviderHttpsUrl("https://app.infrastack.app")).toBe(false);
+    expect(isGenuineProviderHttpsUrl("https://drive.google.com/file/d/1abcGenuineId/view")).toBe(true);
+    const { sourceLinkReply } = await import("../whatsapp-synthesize");
+    expect(
+      sourceLinkReply({
+        id: "doc",
+        title: "Coal Search",
+        url: "https://drive.google.com/file/d/{id}/view",
+      } as never),
+    ).not.toContain("drive.google.com");
+  });
+
+  it("points the review email at /quality/improvements?run=", () => {
+    const mail = qualityReviewEmail({
+      date: "2026-08-31",
+      kind: "daily",
+      cadence: "Daily 08:00 Europe/London, auto-changes to weekly after 60 days",
+      periodFrom: "2026-08-29T23:00:00.000Z",
+      periodTo: "2026-08-30T23:00:00.000Z",
+      metrics: {
+        messagesAnalysed: 163,
+        conversationsAnalysed: 163,
+        qualityAverage: 99.4,
+        failedRate: 0.18,
+        rephraseRate: 0.03,
+        ackLatencyMs: 2084,
+        finalLatencyMs: 8805,
+        openProposals: 3,
+        approvedProposals: 0,
+        deployedProposals: 0,
+        rolledBackProposals: 0,
+        evaluatorCostCents: 0,
+      },
+      failures: [],
+      patterns: [],
+      proposals: [
+        { title: "Strengthen first-answer completeness guidance", risk: "low", autoApplyable: true, engineeringRequired: false },
+      ],
+      reviewUrl: "https://app.infrastack.app/quality/improvements?run=qlr_6ed56444-6d13-4b87-b7ad-ddfdc170818a",
+    });
+    expect(mail.bodyHtml).toContain("https://app.infrastack.app/quality/improvements?run=qlr_");
+    expect(mail.bodyHtml).toContain("Clicking this email does not apply changes");
+  });
+});
+
 vi.mock("../email/providers/cloudflare-email", () => ({
   sendCloudflareEmail: vi.fn(async () => ({ ok: true, providerMessageId: "msg_1" })),
 }));

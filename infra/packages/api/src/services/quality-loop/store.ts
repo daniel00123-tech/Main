@@ -364,6 +364,60 @@ export async function listProposalsForRun(db: D1Database, runId: string) {
   return (rows.results ?? []).map((row) => mapProposal(row as Record<string, unknown>));
 }
 
+export async function listPatternsForRun(db: D1Database, runId: string): Promise<import("./patterns").QualityPattern[]> {
+  const rows = await db.prepare(`SELECT * FROM quality_patterns WHERE run_id = ?`).bind(runId).all();
+  return (rows.results ?? []).map((row) => {
+    const mapped = mapPattern(row as Record<string, unknown>);
+    return {
+      fingerprint: mapped.fingerprint,
+      companyId: mapped.companyId,
+      category: mapped.category as import("./patterns").QualityPattern["category"],
+      title: mapped.title,
+      rootCause: mapped.rootCause ?? "",
+      occurrenceCount: mapped.occurrenceCount,
+      severity: mapped.severity as import("./patterns").QualityPattern["severity"],
+      evidence: Array.isArray(mapped.evidence) ? (mapped.evidence as import("./patterns").QualityPattern["evidence"]) : [],
+      platformAggregate: mapped.companyId == null,
+    };
+  });
+}
+
+export async function listProposalFingerprintsAcrossRuns(db: D1Database): Promise<Map<string, number>> {
+  const rows = await db
+    .prepare(`SELECT fingerprint, COUNT(*) AS n FROM quality_proposals GROUP BY fingerprint`)
+    .all<{ fingerprint: string; n: number }>()
+    .catch(() => ({ results: [] as Array<{ fingerprint: string; n: number }> }));
+  return new Map((rows.results ?? []).map((row) => [row.fingerprint, Number(row.n)]));
+}
+
+export async function recoverStaleApplying(db: D1Database, staleMs: number) {
+  const cutoff = new Date(Date.now() - staleMs).toISOString();
+  const rows = await db
+    .prepare(`SELECT id, run_id FROM quality_proposals WHERE status = 'applying' AND updated_at < ?`)
+    .bind(cutoff)
+    .all<{ id: string; run_id: string }>()
+    .catch(() => ({ results: [] as Array<{ id: string; run_id: string }> }));
+  for (const row of rows.results ?? []) {
+    await updateProposalStatus(db, row.id, "failed_validation");
+    await insertHistory(db, {
+      proposalId: row.id,
+      runId: row.run_id,
+      action: "stale_applying_recovered",
+      actor: "system:quality-loop",
+      evidence: { reason: "APPLYING exceeded recovery window; marked failed_validation" },
+    });
+  }
+  return (rows.results ?? []).length;
+}
+
+export async function listHistoryForProposal(db: D1Database, proposalId: string) {
+  const rows = await db
+    .prepare(`SELECT * FROM quality_improvement_history WHERE proposal_id = ? ORDER BY created_at DESC LIMIT 40`)
+    .bind(proposalId)
+    .all();
+  return (rows.results ?? []).map((row) => mapHistory(row as Record<string, unknown>));
+}
+
 export async function updateProposalStatus(db: D1Database, id: string, status: string) {
   await db
     .prepare(`UPDATE quality_proposals SET status = ?, updated_at = ? WHERE id = ?`)

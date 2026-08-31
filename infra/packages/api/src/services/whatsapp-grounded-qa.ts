@@ -312,6 +312,7 @@ export async function runGroundedQa(
     previousAnswer?: string | null;
     path?: string | null;
     tenantId?: string | null;
+    qualityGuidance?: string | null;
   },
 ): Promise<GroundedQaResult> {
   const documentClass = classifyDocument({
@@ -354,7 +355,7 @@ export async function runGroundedQa(
     confidence,
   });
   const generated = await generateGroundedCompletion(env, {
-    system: groundedSystemPrompt(input.mode),
+    system: groundedSystemPrompt(input.mode, input.qualityGuidance),
     user: groundedUserPrompt({
       title: input.title,
       question: input.question,
@@ -472,7 +473,7 @@ function extractiveAnswer(input: {
   return `${input.title}\n\n${body}`;
 }
 
-function groundedSystemPrompt(mode: GroundedMode): string {
+function groundedSystemPrompt(mode: GroundedMode, qualityGuidance?: string | null): string {
   return [
     "You answer only from the provided document evidence.",
     "Never invent facts, names, dates, roles, or figures that are not in the evidence.",
@@ -482,6 +483,7 @@ function groundedSystemPrompt(mode: GroundedMode): string {
     mode === "more_detail" ? "Add information that was not in the previous answer. Do not restate the same excerpt." : "",
     "Do not list other documents. Do not mention tools, models, or retrieval.",
     "Do not include phone numbers or email addresses unless the user asked for them.",
+    qualityGuidance?.trim() ?? "",
   ]
     .filter(Boolean)
     .join(" ");

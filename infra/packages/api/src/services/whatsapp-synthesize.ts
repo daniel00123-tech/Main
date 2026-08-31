@@ -7,6 +7,7 @@ import {
 } from "./whatsapp-compress";
 import type { WhatsAppDocumentEntity, WhatsAppEntityMemory } from "./whatsapp-entities";
 import type { WhatsAppPlan } from "./whatsapp-plan";
+import { isGenuineProviderHttpsUrl } from "./quality-loop/runtime-policy";
 
 export function missingSourceLinkReply(title?: string | null): string {
   const trimmed = String(title ?? "").trim();
@@ -20,7 +21,7 @@ export function sourceLinkReply(doc: WhatsAppDocumentEntity | null | undefined):
   if (!doc) {
     return "Which document would you like the link for?";
   }
-  if (doc.url && /^https?:\/\//i.test(doc.url)) {
+  if (doc.url && isGenuineProviderHttpsUrl(doc.url)) {
     return `Here’s the document:\n${doc.url}`;
   }
   return missingSourceLinkReply(doc.title);
@@ -32,7 +33,7 @@ export function attachRequestedDocumentUrl(
   requested: boolean,
 ): string {
   if (!requested) return reply;
-  const href = typeof url === "string" && /^https?:\/\//i.test(url) ? url.trim() : "";
+  const href = typeof url === "string" && isGenuineProviderHttpsUrl(url) ? url.trim() : "";
   if (!href) return reply;
   if (reply.includes(href)) return reply;
   return `${reply.trim()}\n\nHere’s the document:\n${href}`;

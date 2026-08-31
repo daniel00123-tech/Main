@@ -88,7 +88,11 @@ function mappingFor(pattern: QualityPattern): {
           { path: "planner.requireSourceUrlWhenAsked", value: true },
           { path: "responseRules.requireSourceUrlWhenAsked", value: true },
           { path: "suggestedActions.preferOpenSource", value: true },
-          { path: "prompts.sourceUrlGuidance", value: "If the user asks for a link, URL, source, or download, include a real https URL." },
+          {
+            path: "prompts.sourceUrlGuidance",
+            value:
+              "If the user asks for a link, URL, source, or download, include a genuine provider https URL from connected systems. Never invent a Google Drive or SharePoint file URL.",
+          },
         ],
       };
     case "context_loss":
@@ -168,6 +172,38 @@ function mappingFor(pattern: QualityPattern): {
       return {
         title: "ENGINEERING CHANGE REQUIRED — connector health",
         summary: "Connector/OAuth errors are not auto-applyable. Report only.",
+        kind: "engineering_change",
+        patches: [],
+      };
+    case "first_visible_slow":
+      return {
+        title: "ENGINEERING CHANGE REQUIRED — first-visible WhatsApp latency",
+        summary:
+          "First user-visible reply exceeded 3s. Independent watchdog already schedules t5–t60. Do not lower the 60s customer progress budget. Quality warning thresholds are a separate auto-applyable proposal.",
+        kind: "engineering_change",
+        patches: [],
+      };
+    case "ack_no_final":
+      return {
+        title: "ENGINEERING CHANGE REQUIRED — ack without a terminal reply",
+        summary:
+          "Acknowledge-then-silence needs a terminal watchdog outcome. Current production already schedules an independent t60 force-terminal. Review flagged interactions before changing send policy.",
+        kind: "engineering_change",
+        patches: [],
+      };
+    case "answer_repeated_excerpt":
+      return {
+        title: "ENGINEERING CHANGE REQUIRED — repeated search excerpt",
+        summary:
+          "The reply restated the retrieval preview. Grounded QA already forbids restating the same excerpt on more-detail; remaining misses need retrieval/synthesis work, not a threshold tweak.",
+        kind: "engineering_change",
+        patches: [],
+      };
+    case "negative_result_feedback":
+      return {
+        title: "Negative result feedback — re-plan still required",
+        summary:
+          "The user rejected the previous answer. Planner already routes explicit negative feedback to a clarify/re-plan. Report only — do not auto-apply a prompt that could invent a new document.",
         kind: "engineering_change",
         patches: [],
       };
