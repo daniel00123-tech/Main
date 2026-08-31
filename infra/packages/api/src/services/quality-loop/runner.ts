@@ -146,9 +146,9 @@ export async function runQualityLoop(
 
     await meterQualityLoop(env, metrics, run.id, threads[0]?.companyId ?? "co_caddington");
 
-    const token = await createReviewToken(env.DB, run.id);
+    await createReviewToken(env.DB, run.id);
     const origin = (env.PORTAL_PUBLIC_ORIGIN || "https://app.infrastack.app").replace(/\/$/, "");
-    const reviewUrl = `${origin}/quality/improvements?review=${encodeURIComponent(token)}`;
+    const reviewUrl = `${origin}/quality/improvements?run=${encodeURIComponent(run.id)}`;
     const date = input.now.toISOString().slice(0, 10);
     const email = qualityReviewEmail({
       date,

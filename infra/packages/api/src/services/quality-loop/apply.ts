@@ -2,11 +2,14 @@ import type { Env } from "../../env";
 import { recordAuditEvent } from "../control-plane";
 import { replayWhatsAppUat } from "./replay";
 import { applyRuntimePatches, DEFAULT_QUALITY_RUNTIME } from "./runtime-config";
+import { canAutoApply, classifyApplyClass, classifyApplyTier } from "./classify";
+import { applyPolicyToPatches } from "./runtime-policy";
 import {
   getActiveRuntimeRow,
   getProposal,
   insertHistory,
   insertRuntimeVersion,
+  listHistoryForProposal,
   markRuntimeStatus,
   updateProposalStatus,
 } from "./store";
@@ -52,28 +55,89 @@ export async function validateBeforePromote(runtime: QualityRuntimeConfig): Prom
   return { ok: true, reason: "Validation passed" };
 }
 
+export async function previewProposal(env: Env, proposalId: string) {
+  const proposal = await getProposal(env.DB, proposalId);
+  if (!proposal) return { ok: false as const, reason: "Proposal not found" };
+  const patch = proposal.patch as { patches?: Array<{ path: string; value: unknown }> };
+  const rawPatches = patch?.patches ?? [];
+  const patches = applyPolicyToPatches(rawPatches);
+  const applyClass = classifyApplyClass({
+    kind: proposal.kind,
+    risk: proposal.risk,
+    autoApplyable: proposal.autoApplyable,
+    engineeringRequired: proposal.engineeringRequired,
+    patchPaths: patches.map((item) => item.path),
+  });
+  const applyTier = classifyApplyTier({
+    kind: proposal.kind,
+    risk: proposal.risk,
+    autoApplyable: proposal.autoApplyable,
+    engineeringRequired: proposal.engineeringRequired,
+    patchPaths: patches.map((item) => item.path),
+  });
+  const active = await getActiveRuntimeRow(env.DB);
+  const base = (active.promoted?.config as QualityRuntimeConfig | undefined) ?? DEFAULT_QUALITY_RUNTIME;
+  const next = applyClass === "AUTO_APPLY_SAFE" ? applyRuntimePatches(base, patches) : base;
+  const validation = applyClass === "AUTO_APPLY_SAFE" ? await validateBeforePromote(next) : { ok: false, reason: "Not auto-applyable" };
+  const history = await listHistoryForProposal(env.DB, proposal.id);
+  return {
+    ok: true as const,
+    proposal,
+    applyClass,
+    applyTier,
+    patches,
+    before: base,
+    after: next,
+    validation,
+    history,
+    customerProgressUnchanged: true,
+    executesChanges: false,
+  };
+}
+
 export async function applyApprovedProposal(
   env: Env,
   input: { proposalId: string; actor: string; runId?: string | null },
 ): Promise<{ status: string; version?: number; reason: string }> {
   const proposal = await getProposal(env.DB, input.proposalId);
   if (!proposal) return { status: "missing", reason: "Proposal not found" };
-  if (proposal.status !== "approved" && proposal.status !== "pending_approval") {
+  if (proposal.status === "canary" || proposal.status === "promoted") {
+    return { status: proposal.status, reason: "Already applied (idempotent)" };
+  }
+  if (proposal.status !== "approved" && proposal.status !== "pending_approval" && proposal.status !== "applying") {
     return { status: proposal.status, reason: "Proposal is not awaiting apply" };
   }
-  if (proposal.engineeringRequired || proposal.risk === "high" || !proposal.autoApplyable) {
+  const patch = proposal.patch as { patches?: Array<{ path: string; value: unknown }> };
+  const patchPaths = (patch?.patches ?? []).map((item) => item.path);
+  const applyClass = classifyApplyClass({
+    kind: proposal.kind,
+    risk: proposal.risk,
+    autoApplyable: proposal.autoApplyable,
+    engineeringRequired: proposal.engineeringRequired,
+    patchPaths,
+  });
+  if (
+    applyClass !== "AUTO_APPLY_SAFE" ||
+    !canAutoApply({
+      kind: proposal.kind,
+      risk: proposal.risk,
+      autoApplyable: proposal.autoApplyable,
+      engineeringRequired: proposal.engineeringRequired,
+      status: proposal.status === "applying" ? "pending_approval" : proposal.status,
+      patchPaths,
+    })
+  ) {
     await updateProposalStatus(env.DB, proposal.id, "approved");
     await insertHistory(env.DB, {
       proposalId: proposal.id,
       runId: input.runId ?? proposal.runId,
       action: "approved",
       actor: input.actor,
-      evidence: { reportOnly: true },
+      evidence: { reportOnly: true, applyClass },
     });
     return { status: "approved", reason: "Recorded as report-only. ENGINEERING CHANGE REQUIRED — no production apply." };
   }
-  const patch = proposal.patch as { patches?: Array<{ path: string; value: unknown }> };
-  const patches = patch?.patches ?? [];
+  const patches = applyPolicyToPatches(patch?.patches ?? []);
   if (!isSafeAutoApplyPatch(patches)) {
     await updateProposalStatus(env.DB, proposal.id, "failed_validation");
     await insertHistory(env.DB, {
@@ -85,6 +149,15 @@ export async function applyApprovedProposal(
     });
     return { status: "failed_validation", reason: "Patch touched a forbidden path" };
   }
+
+  await updateProposalStatus(env.DB, proposal.id, "applying");
+  await insertHistory(env.DB, {
+    proposalId: proposal.id,
+    runId: input.runId ?? proposal.runId,
+    action: "applying",
+    actor: input.actor,
+    evidence: { applyClass },
+  });
 
   const active = await getActiveRuntimeRow(env.DB);
   const base = (active.promoted?.config as QualityRuntimeConfig | undefined) ?? DEFAULT_QUALITY_RUNTIME;
@@ -184,4 +257,38 @@ export async function promoteOrRollbackCanary(
     evidence: { reason: input.decision.reason },
   });
   return { status: "promoted" as const, reason: input.decision.reason };
+}
+
+export async function rollbackProposal(
+  env: Env,
+  input: { proposalId: string; actor: string; reason?: string },
+): Promise<{ status: string; reason: string }> {
+  const proposal = await getProposal(env.DB, input.proposalId);
+  if (!proposal) return { status: "missing", reason: "Proposal not found" };
+  if (proposal.status !== "canary" && proposal.status !== "promoted") {
+    return { status: proposal.status, reason: "Nothing to roll back" };
+  }
+  const runtime = await getActiveRuntimeRow(env.DB);
+  const version =
+    runtime.canary?.proposalId === proposal.id
+      ? runtime.canary.version
+      : runtime.promoted?.proposalId === proposal.id
+        ? runtime.promoted.version
+        : null;
+  if (version == null) {
+    await updateProposalStatus(env.DB, proposal.id, "rolled_back");
+    await insertHistory(env.DB, {
+      proposalId: proposal.id,
+      action: "rolled_back",
+      actor: input.actor,
+      evidence: { reason: "No runtime version bound; status rolled back" },
+    });
+    return { status: "rolled_back", reason: "Status rolled back; no bound runtime version" };
+  }
+  return promoteOrRollbackCanary(env, {
+    version,
+    proposalId: proposal.id,
+    actor: input.actor,
+    decision: { rollback: true, reason: input.reason ?? "Operator rollback" },
+  });
 }

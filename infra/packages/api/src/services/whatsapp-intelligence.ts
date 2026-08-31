@@ -100,6 +100,7 @@ export async function executeWhatsAppIntelligence(
     buttonAction?: string | null;
     completer?: IntelligenceCompleter;
     connectors?: string[];
+    qualityGuidance?: string | null;
   },
 ): Promise<WhatsAppIntelligenceAnswer> {
   const started = Date.now();
@@ -567,6 +568,7 @@ async function recoverFailedIntelligenceTurn(
       previousAnswer: input.memory.lastAnswerText,
       path: input.memory.lastDocument?.path,
       tenantId: input.companyId,
+      qualityGuidance: input.qualityGuidance,
     });
     return {
       ...failed,

@@ -5,7 +5,8 @@ export const DEFAULT_QUALITY_RUNTIME: QualityRuntimeConfig = {
   version: 0,
   prompts: {
     systemNote: "Answer from connected company systems. Stay concise and cite sources when asked.",
-    sourceUrlGuidance: "When the user asks for a link or source, return a usable https URL.",
+    sourceUrlGuidance:
+      "When the user asks for a link or source, return a genuine provider https URL from connected systems. Never invent a Drive or SharePoint file URL.",
     noRawDumpGuidance: "Never paste raw JSON, tool payloads, or document dumps into WhatsApp.",
     contextFollowUpGuidance: "Reuse the last document, invoice, or entity unless the user changes topic.",
   },

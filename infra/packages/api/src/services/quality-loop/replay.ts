@@ -75,7 +75,9 @@ export function applyConfigToThread(thread: ConversationThread, runtime: Quality
     );
   }
   if (runtime.planner.requireSourceUrlWhenAsked && runtime.responseRules.requireSourceUrlWhenAsked && next.askedForSource) {
-    if (next.sourceUrls.length === 0) next.sourceUrls = ["https://app.infrastack.app"];
+    // Replay may credit a genuine-looking https URL only when one already exists.
+    // Never invent a Drive/SharePoint file path.
+    if (next.sourceUrls.length === 0) next.sourceUrls = [];
   }
   if (runtime.planner.preferMemoryOnFollowUp && next.followUp) {
     next.contextLost = false;

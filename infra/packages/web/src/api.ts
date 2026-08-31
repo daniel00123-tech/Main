@@ -1821,72 +1821,133 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ status }),
     }),
-  getQualityLoop: () =>
-    fetchJson<{
-      config: {
-        activatedAt: string;
-        phase: string;
-        lastRunAt: string | null;
-        baselineCompletedAt: string | null;
-      };
-      cadence: string;
-      latestRun: { id: string; kind: string; phase: string; periodFrom: string; periodTo: string; status: string; metrics: Record<string, number>; createdAt: string } | null;
-      runs: Array<Record<string, unknown>>;
-      proposalCounts: Record<string, number>;
-      kpis: { conversationsAnalysed: number; qualityAverage: number; failedRate: number };
-      history: Array<{
-        id: string;
-        proposalId: string;
-        action: string;
-        actor: string | null;
-        runtimeVersion: number | null;
-        createdAt: string;
-      }>;
-      latest: {
-        run: { id: string; kind: string; metrics: Record<string, number>; periodFrom: string; periodTo: string };
-        failedConversations: Array<{
-          id: string;
-          companyId: string;
-          interactionId: string | null;
-          conversationKey: string;
-          overallScore: number;
-          failed: boolean;
-          flags: unknown;
-        }>;
-        patterns: Array<{
-          id: string;
-          companyId: string | null;
-          title: string;
-          rootCause: string | null;
-          occurrenceCount: number;
-          severity: string;
-        }>;
-        proposals: Array<{
-          id: string;
-          title: string;
-          summary: string;
-          risk: string;
-          autoApplyable: boolean;
-          engineeringRequired: boolean;
-          status: string;
-          pretest: unknown;
-        }>;
-      } | null;
-    }>("/api/platform/quality-loop"),
+  getQualityLoop: (query?: { run?: string }) =>
+    fetchJson<QualityLoopCentre>(
+      query?.run ? `/api/platform/quality-loop?run=${encodeURIComponent(query.run)}` : "/api/platform/quality-loop",
+    ),
   resolveQualityLoopToken: (token: string) =>
     fetchJson<{ runId: string; executesChanges: boolean }>(
       `/api/platform/quality-loop/resolve-token?token=${encodeURIComponent(token)}`,
     ),
-  approveQualityLoopRecommended: (runId: string) =>
-    fetchJson<{ ok: boolean }>(`/api/platform/quality-loop/reviews/${encodeURIComponent(runId)}/approve-recommended`, {
+  previewQualityLoopProposal: (id: string) =>
+    fetchJson<{
+      ok: boolean;
+      proposal: QualityLoopProposal;
+      applyClass: string;
+      applyTier: string;
+      patches: Array<{ path: string; value: unknown }>;
+      before: unknown;
+      after: unknown;
+      validation: { ok: boolean; reason: string };
+      history: QualityLoopHistory[];
+      executesChanges: boolean;
+    }>(`/api/platform/quality-loop/proposals/${encodeURIComponent(id)}/preview`, {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  approveQualityLoopRecommended: (runId: string) =>
+    fetchJson<{ ok: boolean; results?: unknown[] }>(
+      `/api/platform/quality-loop/reviews/${encodeURIComponent(runId)}/approve-recommended`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+  applyQualityLoopLow: (runId: string) =>
+    fetchJson<{ ok: boolean; results: Array<{ id: string; title: string; status: string; reason: string }> }>(
+      `/api/platform/quality-loop/reviews/${encodeURIComponent(runId)}/apply-low`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+  bulkQualityLoopDecide: (runId: string, decision: "approve" | "reject" | "defer", proposalIds: string[]) =>
+    fetchJson<{ ok: boolean; results: Array<{ id: string; ok: boolean; status: string; reason: string }> }>(
+      `/api/platform/quality-loop/reviews/${encodeURIComponent(runId)}/bulk`,
+      { method: "POST", body: JSON.stringify({ decision, proposalIds }) },
+    ),
   decideQualityLoopProposal: (id: string, decision: "approve" | "reject" | "defer", runId?: string) =>
     fetchJson<{ ok: boolean; status: string }>(`/api/platform/quality-loop/proposals/${encodeURIComponent(id)}/decide`, {
       method: "POST",
       body: JSON.stringify({ decision, runId }),
     }),
+  rollbackQualityLoopProposal: (id: string) =>
+    fetchJson<{ ok: boolean; status: string; reason: string }>(
+      `/api/platform/quality-loop/proposals/${encodeURIComponent(id)}/rollback`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+};
+
+export type QualityLoopHistory = {
+  id: string;
+  proposalId?: string;
+  action: string;
+  actor: string | null;
+  createdAt: string;
+  runtimeVersion: number | null;
+};
+
+export type QualityLoopProposal = {
+  id: string;
+  runId?: string;
+  title: string;
+  summary: string;
+  kind?: string;
+  risk: string;
+  autoApplyable: boolean;
+  engineeringRequired: boolean;
+  status: string;
+  pretest: unknown;
+  evidence?: unknown;
+  patch?: unknown;
+  fingerprint?: string;
+  applyClass?: string;
+  applyTier?: string;
+  recurrence?: string;
+  customerProgressUnchanged?: boolean;
+};
+
+export type QualityLoopCentre = {
+  config: { activatedAt: string; phase: string; lastRunAt: string | null; baselineCompletedAt?: string | null };
+  cadence: string;
+  latestRun: {
+    id: string;
+    kind: string;
+    phase?: string;
+    periodFrom: string;
+    periodTo: string;
+    status?: string;
+    metrics: Record<string, number>;
+    createdAt?: string;
+  } | null;
+  runs?: Array<Record<string, unknown>>;
+  proposalCounts: Record<string, number>;
+  kpis: { conversationsAnalysed: number; qualityAverage: number; failedRate: number };
+  history: QualityLoopHistory[];
+  selectedRunId?: string | null;
+  latest: {
+    run: { id: string; kind: string; metrics: Record<string, number>; periodFrom: string; periodTo: string; createdAt?: string };
+    failedConversations: Array<{
+      id: string;
+      companyId: string;
+      interactionId: string | null;
+      conversationKey: string;
+      overallScore: number;
+      failed: boolean;
+      flags: Array<{ category?: string; evidence?: string; polarity?: string }> | unknown;
+      latencyBreakdown?: Array<{ stage: string; evidence: string }>;
+    }>;
+    patterns: Array<{
+      id: string;
+      companyId: string | null;
+      title: string;
+      rootCause: string | null;
+      occurrenceCount: number;
+      severity: string;
+    }>;
+    proposals: QualityLoopProposal[];
+    ackNoFinalAudit?: {
+      flaggedInRun: number;
+      currentOpenAcks: number;
+      terminalWatchdog: string;
+      classification: string;
+      note: string;
+    };
+  } | null;
 };
 
 function toQuery(query?: Record<string, string | undefined>) {
