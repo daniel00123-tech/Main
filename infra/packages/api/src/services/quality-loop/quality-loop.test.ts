@@ -3,7 +3,7 @@ import { assertTenantIsolation, evaluateWhatsAppConversation } from "./evaluator
 import { groupQualityPatterns } from "./patterns";
 import { isHighRiskProposal, proposeImprovements } from "./proposals";
 import { replayProposal } from "./replay";
-import { canaryShouldRollback, isSafeAutoApplyPatch, validateBeforePromote } from "./apply";
+import { canaryShouldRollback, isSafeAutoApplyPatch, resolveApplyBase, validateBeforePromote } from "./apply";
 import { londonParts, resolvePhase, shouldRunCadence } from "./cadence";
 import { qualityReviewEmail, qualityReviewSubject } from "./email";
 import { buildThreadFromFixture } from "./runner";
@@ -764,6 +764,48 @@ describe("control centre classification and source URL policy", () => {
     ).not.toContain("drive.google.com");
   });
 
+  it("composes sequential AUTO_APPLY_SAFE canaries instead of replacing them", () => {
+    const first = resolveApplyBase({
+      promoted: null,
+      canary: {
+        config: {
+          ...DEFAULT_QUALITY_RUNTIME,
+          prompts: { ...DEFAULT_QUALITY_RUNTIME.prompts, systemNote: "Answer the user's ask in the first reply." },
+        },
+      },
+    });
+    expect(first.prompts.systemNote).toContain("first reply");
+    const second = resolveApplyBase({
+      promoted: null,
+      canary: {
+        config: {
+          ...first,
+          thresholds: { ...first.thresholds, ackWarningMs: 2_000, slowTotalMs: 45_000 },
+        },
+      },
+    });
+    expect(second.prompts.systemNote).toContain("first reply");
+    expect(second.thresholds.ackWarningMs).toBe(2_000);
+    expect(second.thresholds.slowTotalMs).toBe(45_000);
+    expect(second.planner.blockWriteIntents).toBe(true);
+  });
+
+  it("uses applied runtime warning thresholds when scoring", () => {
+    const evaluation = evaluateWhatsAppConversation(
+      buildThreadFromFixture({
+        companyId: "co_caddington",
+        conversationKey: "int_warn",
+        userMessages: ["Find Coal Search"],
+        assistantMessages: ["Found it."],
+        firstVisibleMs: 2_400,
+        totalMs: 2_400,
+        finalSent: true,
+      }),
+      { thresholds: { ackWarningMs: 2_000, silenceMs: 30_000, stuckMs: 60_000, slowTotalMs: 45_000 } },
+    );
+    expect(evaluation.flags.some((flag) => flag.category === "first_visible_slow")).toBe(true);
+  });
+
   it("points the review email at /quality/improvements?run=", () => {
     const mail = qualityReviewEmail({
       date: "2026-08-31",
@@ -793,6 +835,53 @@ describe("control centre classification and source URL policy", () => {
       reviewUrl: "https://app.infrastack.app/quality/improvements?run=qlr_6ed56444-6d13-4b87-b7ad-ddfdc170818a",
     });
     expect(mail.bodyHtml).toContain("https://app.infrastack.app/quality/improvements?run=qlr_");
+    expect(mail.bodyHtml).toContain("Clicking this email does not apply changes");
+  });
+
+  it("says when approved improvements are already applied", () => {
+    const mail = qualityReviewEmail({
+      date: "2026-08-31",
+      kind: "manual",
+      cadence: "Daily 08:00 Europe/London, auto-changes to weekly after 60 days",
+      periodFrom: "2026-08-29T23:00:00.000Z",
+      periodTo: "2026-08-30T23:00:00.000Z",
+      metrics: {
+        messagesAnalysed: 163,
+        conversationsAnalysed: 163,
+        qualityAverage: 99.4,
+        failedRate: 0.18,
+        rephraseRate: 0.03,
+        ackLatencyMs: 2084,
+        finalLatencyMs: 8805,
+        openProposals: 4,
+        approvedProposals: 3,
+        deployedProposals: 0,
+        rolledBackProposals: 0,
+        evaluatorCostCents: 0,
+      },
+      failures: [],
+      patterns: [],
+      proposals: [
+        {
+          title: "Strengthen first-answer completeness guidance",
+          risk: "low",
+          autoApplyable: true,
+          engineeringRequired: false,
+          status: "canary",
+        },
+        {
+          title: "ENGINEERING CHANGE REQUIRED — repeated search excerpt",
+          risk: "high",
+          autoApplyable: false,
+          engineeringRequired: true,
+          status: "pending_approval",
+        },
+      ],
+      reviewUrl: "https://app.infrastack.app/quality/improvements?run=qlr_6ed56444-6d13-4b87-b7ad-ddfdc170818a",
+      appliedNote: "3 approved improvements are live on the Caddington canary. 4 items still need review.",
+    });
+    expect(mail.bodyText).toContain("already applied");
+    expect(mail.bodyText).toContain("Caddington canary");
     expect(mail.bodyHtml).toContain("Clicking this email does not apply changes");
   });
 });

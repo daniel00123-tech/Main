@@ -164,6 +164,37 @@ export function planWhatsAppTurn(
     return { ...base(), action: "write_blocked", intent: "write_action", tool: null, skipTools: true };
   }
   if (isNegativeResultFeedback(text)) {
+    const namedDifferent = namesDifferentDocument(text, memory);
+    const priorAsk = [memory.lastUserQuestion, memory.lastSearchQuery]
+      .map((value) => String(value ?? "").trim())
+      .find((value) => value && !isNegativeResultFeedback(value));
+    const namesNewTopic =
+      namedDifferent &&
+      /\b(i meant|instead|wrong file|find|search|look(?:ing)? (?:for|up))\b/i.test(text);
+    if (namesNewTopic || NEW_CORPUS_SEARCH.test(text)) {
+      return {
+        ...base(),
+        action: "knowledge",
+        intent: "replan",
+        tool: "search_company_knowledge",
+        query: query || text,
+        fetch: false,
+        skipTools: false,
+        useMemory: false,
+      };
+    }
+    if (priorAsk) {
+      return {
+        ...base(),
+        action: "knowledge",
+        intent: "replan",
+        tool: "search_company_knowledge",
+        query: priorAsk,
+        fetch: false,
+        skipTools: false,
+        useMemory: false,
+      };
+    }
     return {
       ...base(),
       action: "clarify",

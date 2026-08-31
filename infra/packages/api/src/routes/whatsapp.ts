@@ -120,7 +120,7 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
 
   const queued = stored.duplicate ? true : await enqueueWhatsAppInbound(c.env, job);
   if (!stored.duplicate) {
-    for (const stage of ["t5", "t10", "t15", "t30", "t60"] as const) {
+    for (const stage of ["t2", "t5", "t10", "t15", "t30", "t60"] as const) {
       await enqueueWhatsAppInbound(
         c.env,
         {
@@ -133,7 +133,17 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
         },
         {
           delaySeconds:
-            stage === "t5" ? 5 : stage === "t10" ? 10 : stage === "t15" ? 15 : stage === "t30" ? 30 : 60,
+            stage === "t2"
+              ? 2
+              : stage === "t5"
+                ? 5
+                : stage === "t10"
+                  ? 10
+                  : stage === "t15"
+                    ? 15
+                    : stage === "t30"
+                      ? 30
+                      : 60,
         },
       ).catch(() => false);
     }

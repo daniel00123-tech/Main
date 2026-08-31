@@ -225,7 +225,7 @@ export async function listBlockedProposalFingerprints(db: D1Database): Promise<M
   const rows = await db
     .prepare(
       `SELECT fingerprint, evidence_json, status FROM quality_proposals
-       WHERE status IN ('rejected', 'rejected_pretest', 'failed_validation', 'rolled_back')`,
+       WHERE status IN ('rejected', 'rejected_pretest', 'failed_validation', 'rolled_back', 'canary', 'promoted')`,
     )
     .all<{ fingerprint: string; evidence_json: string; status: string }>();
   const map = new Map<string, number>();
@@ -497,6 +497,47 @@ export async function markRuntimeStatus(
     )
     .bind(status, status, now, status, now, reason ?? null, version)
     .run();
+}
+
+export async function ensureQualityOperatorJobs(db: D1Database) {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS quality_operator_jobs (
+         id TEXT PRIMARY KEY,
+         token_hash TEXT NOT NULL UNIQUE,
+         kind TEXT NOT NULL,
+         status TEXT NOT NULL,
+         actor TEXT,
+         payload_json TEXT NOT NULL DEFAULT '{}',
+         expires_at TEXT NOT NULL,
+         created_at TEXT NOT NULL,
+         consumed_at TEXT
+       )`,
+    )
+    .run();
+}
+
+export async function consumeQualityOperatorJob(
+  db: D1Database,
+  token: string,
+): Promise<{ id: string; kind: string; payload: Record<string, unknown> } | null> {
+  if (!token.trim()) return null;
+  await ensureQualityOperatorJobs(db);
+  const hash = await sha256Hex(token.trim());
+  const now = nowIso();
+  const row = await db
+    .prepare(
+      `SELECT id, kind, payload_json, status, expires_at
+       FROM quality_operator_jobs WHERE token_hash = ? LIMIT 1`,
+    )
+    .bind(hash)
+    .first<{ id: string; kind: string; payload_json: string; status: string; expires_at: string }>();
+  if (!row || row.status !== "pending" || row.expires_at <= now) return null;
+  await db
+    .prepare(`UPDATE quality_operator_jobs SET status = 'consumed', consumed_at = ? WHERE id = ?`)
+    .bind(now, row.id)
+    .run();
+  return { id: row.id, kind: row.kind, payload: (safeJson(row.payload_json) as Record<string, unknown>) ?? {} };
 }
 
 export async function sha256Hex(value: string): Promise<string> {

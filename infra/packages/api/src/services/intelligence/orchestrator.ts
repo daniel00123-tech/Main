@@ -122,7 +122,7 @@ export async function runIntelligenceTurn(input: {
     });
   }
 
-  if (scoped.scope === "GENERAL_CONVERSATION" && scoped.noTool) {
+  if (scoped.scope === "GENERAL_CONVERSATION" && scoped.noTool && !input.state.userCorrection) {
     return emptyResult({
       kind: "answer",
       text: answerGeneralConversation(input.text, input.state, scoped),
@@ -152,12 +152,16 @@ export async function runIntelligenceTurn(input: {
     lastUserIntent: scoped.lastUserIntent,
   };
 
-  if (scoped.scope === "COMPANY_KNOWLEDGE" && (scoped.clearCurrentDocument || input.state.userCorrection)) {
+  if (input.state.userCorrection || (scoped.scope === "COMPANY_KNOWLEDGE" && scoped.clearCurrentDocument)) {
     const priorUser =
+      previousUserText(input.state, input.text) ||
       [...input.state.recentTurns].reverse().find((turn) => turn.role === "user")?.text ||
       input.state.lastAnswerTopic ||
       input.text;
-    const query = [input.state.currentDocument?.title, priorUser].filter(Boolean).join(" — ") || input.text;
+    const namedShift = /\b(i meant|wrong file|instead|find|search|look(?:ing)? (?:for|up))\b/i.test(input.text);
+    const query = input.state.userCorrection
+      ? (namedShift ? input.text : priorUser) || input.text
+      : [input.state.currentDocument?.title, priorUser].filter(Boolean).join(" — ") || input.text;
     const search = await input.runtime.executeTool({
       name: "search_company_knowledge",
       arguments: { query },

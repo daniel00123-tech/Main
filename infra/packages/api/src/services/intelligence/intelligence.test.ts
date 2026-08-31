@@ -401,37 +401,27 @@ describe("document-grounded multi-turn behaviour", () => {
     expect(result.citeSource).toBe(true);
   });
 
-  it("records negative feedback as an answer, not a new hunt", async () => {
-    const { runtime, calls } = recordingRuntime();
+  it("replans after bare negative feedback using the prior user question", async () => {
+    const { runtime, calls } = recordingRuntime(() => ({
+      results: [{ id: "doc_coal", title: "Coal Search", url: "https://drive.google.com/file/d/abc/view" }],
+    }));
     const result = await runIntelligenceTurn({
       text: "that's not what I asked",
       state: buildConversationState({
         userText: "that's not what I asked",
         currentDocument: { id: "doc_cv", title: "Staff profile" },
-        recentTurns: [{ role: "assistant", text: "I found a marketing review." }],
+        userCorrection: true,
+        recentTurns: [
+          { role: "user", text: "find Coal Search" },
+          { role: "assistant", text: "I found a marketing review." },
+        ],
       }),
       runtime,
-      completer: async () => ({
-        text: JSON.stringify({
-          action: "answer",
-          text: "Sorry that wasn’t what you needed. I still have the staff profile open.",
-          confidence: "partial",
-          offer_search_other: true,
-          cite_source: false,
-        }),
-        usage: {
-          provider: "workers-ai",
-          model: "@cf/meta/llama-3.1-8b-instruct",
-          latencyMs: 6,
-          promptTokens: 20,
-          completionTokens: 16,
-          estimatedCostUsd: 0,
-        },
-      }),
     });
-    expect(calls).toEqual([]);
-    expect(result.kind).toBe("answer");
-    expect(result.text).toMatch(/sorry/i);
+    expect(calls[0]?.name).toBe("search_company_knowledge");
+    expect(String(calls[0]?.arguments.query ?? "")).toMatch(/Coal Search/i);
+    expect(result.text).toMatch(/Coal Search/i);
+    expect(result.offerSearchOther).toBe(true);
   });
 });
 

@@ -19,7 +19,7 @@ export type WhatsAppInboundMessage = {
   signatureValid: boolean;
   rawPayload?: string;
   wamid?: string;
-  stage?: "t5" | "t10" | "t15" | "t30" | "t60";
+  stage?: "t2" | "t5" | "t10" | "t15" | "t30" | "t60";
 };
 
 export function whatsappPhoneNumberId(env: Env): string {
@@ -305,6 +305,7 @@ export async function processWhatsAppInboundJob(
   if (message.kind === "whatsapp_watchdog") {
     const { recoverStuckWhatsAppTurn, applyWhatsAppWatchdogStage } = await import("./whatsapp-reaper");
     if (
+      message.stage === "t2" ||
       message.stage === "t5" ||
       message.stage === "t10" ||
       message.stage === "t15" ||

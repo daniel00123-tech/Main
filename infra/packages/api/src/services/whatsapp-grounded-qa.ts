@@ -364,9 +364,16 @@ export async function runGroundedQa(
       previousAnswer: input.previousAnswer,
     }),
   });
-  const raw = generated.ok && generated.text && isGroundedToEvidence(generated.text, evidence)
+  let raw = generated.ok && generated.text && isGroundedToEvidence(generated.text, evidence)
     ? generated.text
     : extractive;
+  if (
+    input.mode === "more_detail" &&
+    input.previousAnswer &&
+    similarText(raw, input.previousAnswer)
+  ) {
+    raw = extractive;
+  }
   const synthesisMode = generated.ok && raw === generated.text ? "model" : "extractive_fallback";
   const pii = redactUnsolicitedPii(raw, input.question, documentClass);
   const repeatedExcerpt = Boolean(input.previousAnswer && similarText(pii.text, input.previousAnswer));
@@ -416,6 +423,12 @@ function selectChunks(
 ): Array<DocumentChunk & { score?: number }> {
   if (mode === "summarise") return ranked.slice(0, Math.max(2, Math.ceil(ranked.length / 2)));
   if (mode === "more_detail") {
+    const previous = normalizeCompare(previousAnswer ?? "");
+    const unused = ranked.filter((chunk) => {
+      const needle = normalizeCompare(chunk.text).slice(0, 80);
+      return needle.length >= 24 && !previous.includes(needle.slice(0, 48));
+    });
+    if (unused.length) return unused.slice(0, 6);
     const later = ranked.slice(Math.floor(ranked.length / 2));
     return (later.length ? later : ranked).slice(0, 6);
   }
@@ -458,7 +471,8 @@ function extractiveAnswer(input: {
   if (input.mode === "more_detail") {
     const extra = usefulSentences(clean, 10).filter((line) => !overlaps(line, input.previousAnswer ?? ""));
     const body = extra.slice(0, 8).join(" ");
-    return body ? `${input.title}\n\n${body}` : `${input.title}\n\n${usefulSentences(clean, 8).join(" ")}`;
+    if (body) return `${input.title}\n\n${body}`;
+    return `${input.title}\n\nI don't have more distinct detail in this file beyond what I already sent. Ask about a specific part, or search other documents.`;
   }
   const terms = queryTerms(input.question);
   const sentences = usefulSentences(clean, 16);

@@ -245,6 +245,27 @@ describe("WhatsApp V5 grounded synthesis", () => {
     expect(detail.reply.length).toBeGreaterThan(40);
   });
 
+  it("does not restate the same excerpt when more detail has no unused sentences", async () => {
+    const same = "Staff profile fixture\n\nCommercial operator with military and retail management experience.";
+    const detail = await runGroundedQa(emptyEnv, {
+      question: "give me more detail",
+      documentId: "doc_fixture_cv",
+      title: "Staff profile fixture",
+      fetch: toStandardFetchPayload(
+        {
+          id: "doc_fixture_cv",
+          title: "Staff profile fixture",
+          chunks: [{ heading: "Profile", text: same }],
+        },
+        "doc_fixture_cv",
+      ),
+      mode: "more_detail",
+      previousAnswer: same,
+    });
+    expect(detail.reply).not.toEqual(same);
+    expect(detail.reply).toMatch(/don.?t have more distinct detail/i);
+  });
+
   it("answers a policy question from the policy document only", async () => {
     const qa = await runGroundedQa(emptyEnv, {
       question: "who is allowed to drive a van?",

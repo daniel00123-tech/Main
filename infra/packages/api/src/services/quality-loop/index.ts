@@ -5,7 +5,16 @@ export { evaluateWhatsAppConversation, threadFromAudit, assertTenantIsolation, w
 export { groupQualityPatterns } from "./patterns";
 export { proposeImprovements, isHighRiskProposal } from "./proposals";
 export { replayProposal, replayWhatsAppUat } from "./replay";
-export { maybeRunQualityLoop, runQualityLoop, decideProposal, approveRecommended, buildThreadFromFixture } from "./runner";
+export {
+  maybeRunQualityLoop,
+  runQualityLoop,
+  decideProposal,
+  approveRecommended,
+  buildThreadFromFixture,
+  sendPersistedQualityReview,
+  applyAuthorisedSafeProposals,
+  DANIEL_APPROVED_APPLY_ACTOR,
+} from "./runner";
 export { resolveActiveWhatsAppRuntime, applyApprovedProposal, canaryShouldRollback, validateBeforePromote, previewProposal, rollbackProposal } from "./apply";
 export { buildQualityCentre } from "./centre";
 export { classifyApplyClass, canAutoApply } from "./classify";
