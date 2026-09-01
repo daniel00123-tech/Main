@@ -27,9 +27,11 @@ describe("office text extraction", () => {
     const xml = `<w:document><w:body>
       <w:p><w:r><w:t>Health and Safety Policy</w:t></w:r></w:p>
       <w:p><w:r><w:t>Employees must report incidents within 24 hours.</w:t></w:r></w:p>
+      <w:tbl><w:tblPr><w:tblW w:w="10065" w:type="dxa" /></w:tblPr></w:tbl>
     </w:body></w:document>`;
     expect(extractDocxXmlText(xml)).toContain("Health and Safety Policy");
     expect(extractDocxXmlText(xml)).toContain("report incidents");
+    expect(extractDocxXmlText(xml)).not.toMatch(/<w:/);
   });
 
   it("extracts Excel shared strings", () => {

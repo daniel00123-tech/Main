@@ -111,10 +111,20 @@ export function extractDocxXmlText(xml: string): string {
     for (const match of paragraph.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/gi)) {
       parts.push(decodeXmlEntities(match[1] ?? ""));
     }
-    const line = parts.join("").replace(/\s+/g, " ").trim();
+    const line = stripResidualOfficeXml(parts.join("")).replace(/\s+/g, " ").trim();
     if (line) lines.push(line);
   }
-  return lines.join("\n").trim();
+  return stripResidualOfficeXml(lines.join("\n")).trim();
+}
+
+function stripResidualOfficeXml(value: string): string {
+  return value
+    .replace(/<\/?w:[^>]+>/g, " ")
+    .replace(/<\/?[a-zA-Z][\w:-]*[^>]*>/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }
 
 export function extractXlsxSharedStrings(xml: string): string {
