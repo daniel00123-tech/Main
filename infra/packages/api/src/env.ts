@@ -1,6 +1,8 @@
 export interface Env {
   DB: D1Database;
   ENVIRONMENT: string;
+  /** Official Cloudflare Worker version metadata. Present after wrangler deploy. */
+  CF_VERSION_METADATA?: { id?: string; tag?: string; timestamp?: string };
   SESSION_SECRET: string;
   ALLOWED_ORIGINS: string;
   COOKIE_CROSS_ORIGIN?: string;

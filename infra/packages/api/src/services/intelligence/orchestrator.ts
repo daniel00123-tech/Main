@@ -652,8 +652,8 @@ function documentFromToolResult(result: IntelligenceToolResult): IntelligenceDoc
     record.document && typeof record.document === "object"
       ? (record.document as Record<string, unknown>)
       : record;
-  const id = String(nested.document_id ?? nested.documentId ?? nested.id ?? "").trim();
-  const title = String(nested.title ?? "").trim();
+  const id = String(nested.document_id ?? nested.documentId ?? nested.id ?? nested.external_id ?? nested.externalId ?? "").trim();
+  const title = String(nested.title ?? nested.filename ?? nested.fileName ?? nested.name ?? "").trim();
   if (!id || !title) return null;
   const url = typeof nested.url === "string" && /^https?:\/\//i.test(nested.url) ? nested.url : null;
   return { id, title, url, source: typeof nested.source === "string" ? nested.source : null };

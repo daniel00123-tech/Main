@@ -133,13 +133,19 @@ app.get("/", (c) =>
   }),
 );
 
-app.get("/health", (c) =>
-  c.json({
+app.get("/health", (c) => {
+  const versionMeta = c.env.CF_VERSION_METADATA;
+  const versionId =
+    versionMeta && typeof versionMeta === "object" && "id" in versionMeta
+      ? String((versionMeta as { id?: unknown }).id ?? "")
+      : "";
+  return c.json({
     status: "ok",
     environment: c.env.ENVIRONMENT,
     timestamp: new Date().toISOString(),
-  }),
-);
+    ...(versionId ? { versionId } : {}),
+  });
+});
 
 app.get("/ready", async (c) => {
   try {
@@ -1238,6 +1244,29 @@ const worker = {
           label: "Microsoft scheduler",
           success: false,
           error: err instanceof Error ? err.message : "Scheduler failed",
+        });
+      }
+    }
+
+    if (runWhatsAppMinute) {
+      try {
+        const { enforceOperatorIntendedRoles } = await import("./auth/operator-intended-role");
+        const restored = await enforceOperatorIntendedRoles(env.DB);
+        if (restored > 0) {
+          await recordPlatformHeartbeat(env.DB, {
+            key: "membership_intended_role",
+            label: "Operator intended membership role",
+            success: true,
+            error: null,
+            detail: { restored },
+          });
+        }
+      } catch (err) {
+        await recordPlatformHeartbeat(env.DB, {
+          key: "membership_intended_role",
+          label: "Operator intended membership role",
+          success: false,
+          error: err instanceof Error ? err.message : "Intended-role enforce failed",
         });
       }
     }

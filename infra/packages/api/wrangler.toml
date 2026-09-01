@@ -9,6 +9,10 @@ database_name = "infra-control-plane"
 database_id = "adacb84d-7ee8-4b27-87ff-3d554b563d71"
 migrations_dir = "../../migrations"
 
+# Cloudflare Worker version id for /health lineage (official binding).
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
 [vars]
 ENVIRONMENT = "production"
 ALLOWED_ORIGINS = "https://app.infrastack.app,https://infrastack.app,https://infra-web.pages.dev,http://localhost:5173,http://127.0.0.1:5173,https://chatgpt.com,https://chat.openai.com,https://claude.ai"

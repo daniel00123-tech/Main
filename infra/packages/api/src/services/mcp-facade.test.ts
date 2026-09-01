@@ -15,7 +15,11 @@ import type { Env } from "../env";
 import { XERO_ACTION_SERVICE_SCOPES } from "@infra/shared";
 
 function withActionTools(names: string[]): string[] {
-  return [...new Set([...names, ...ACTION_CONTROL_TOOLS, ...AUTOMATION_CONTROL_TOOLS])].sort();
+  const extra =
+    names.includes("search") || names.includes("search_company_knowledge")
+      ? ["ask_document", "list_company_documents"]
+      : [];
+  return [...new Set([...names, ...extra, ...ACTION_CONTROL_TOOLS, ...AUTOMATION_CONTROL_TOOLS])].sort();
 }
 
 const ACTION_ENGINE_SCOPES = [...XERO_ACTION_SERVICE_SCOPES];

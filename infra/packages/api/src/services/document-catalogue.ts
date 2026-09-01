@@ -230,37 +230,52 @@ async function loadMcpDocuments(
   const binding = resolveMcpFetcher(env, mcp.serviceBindingRef ?? "CADDINGTON_MCP");
   const since = new Date(Date.now() - 1000 * 60 * 60 * 24 * 365 * 5).toISOString();
   const until = new Date().toISOString();
-  const path = `/admin/knowledge/activity?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
+  const paths = [
+    `/admin/knowledge/activity?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`,
+    `/admin/knowledge/documents`,
+  ];
   try {
-    const response = binding
-      ? await binding.fetch(
-          new Request(`https://company-mcp.internal${path}`, {
+    for (const path of paths) {
+      const response = binding
+        ? await binding.fetch(
+            new Request(`https://company-mcp.internal${path}`, {
+              headers: { Authorization: auth.authorizationHeader },
+            }),
+          )
+        : await fetch(`${mcp.endpointUrl.replace(/\/mcp\/?$/, "")}${path}`, {
             headers: { Authorization: auth.authorizationHeader },
-          }),
+          });
+      if (!response.ok) continue;
+      const body = (await response.json()) as {
+        documents?: McpActivityDocument[];
+        items?: McpActivityDocument[];
+      };
+      const rows = body.documents ?? body.items ?? [];
+      if (!rows.length) continue;
+      return rows
+        .filter(
+          (doc) =>
+            matchesSourceFilter(String(doc.source ?? doc.category ?? "drive"), filter === "all" ? "drive" : filter) ||
+            filter === "all",
         )
-      : await fetch(`${mcp.endpointUrl.replace(/\/mcp\/?$/, "")}${path}`, {
-          headers: { Authorization: auth.authorizationHeader },
+        .map((doc) => {
+          const grounded = groundedDescription({
+            summary: doc.summary,
+            snippet: doc.snippet,
+          });
+          return {
+            id: String(doc.id ?? doc.title ?? "mcp"),
+            title: String(doc.title ?? "Untitled"),
+            source: userFacingSourceLabel(String(doc.source ?? doc.category ?? "drive")),
+            url: firstString(doc.url, doc.webUrl),
+            created_at: doc.createdAt ?? null,
+            modified_at: doc.driveModifiedTime ?? doc.modifiedAt ?? null,
+            indexed_at: doc.indexedAt ?? null,
+            ...grounded,
+          };
         });
-    if (!response.ok) return [];
-    const body = (await response.json()) as { documents?: McpActivityDocument[] };
-    return (body.documents ?? [])
-      .filter((doc) => matchesSourceFilter(String(doc.source ?? doc.category ?? "drive"), filter === "all" ? "drive" : filter) || filter === "all")
-      .map((doc) => {
-        const grounded = groundedDescription({
-          summary: doc.summary,
-          snippet: doc.snippet,
-        });
-        return {
-          id: String(doc.id ?? doc.title ?? "mcp"),
-          title: String(doc.title ?? "Untitled"),
-          source: userFacingSourceLabel(String(doc.source ?? doc.category ?? "drive")),
-          url: firstString(doc.url, doc.webUrl),
-          created_at: doc.createdAt ?? null,
-          modified_at: doc.driveModifiedTime ?? doc.modifiedAt ?? null,
-          indexed_at: doc.indexedAt ?? null,
-          ...grounded,
-        };
-      });
+    }
+    return [];
   } catch {
     return [];
   }

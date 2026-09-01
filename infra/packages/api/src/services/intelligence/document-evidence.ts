@@ -10,8 +10,8 @@ export function searchHits(data: unknown): unknown[] {
 export function hitToDocument(hit: unknown): IntelligenceDocumentRef | null {
   if (!hit || typeof hit !== "object") return null;
   const row = hit as Record<string, unknown>;
-  const id = String(row.id ?? row.document_id ?? row.documentId ?? "").trim();
-  const title = String(row.title ?? "").trim();
+  const id = String(row.id ?? row.document_id ?? row.documentId ?? row.external_id ?? row.externalId ?? "").trim();
+  const title = String(row.title ?? row.filename ?? row.fileName ?? row.name ?? "").trim();
   if (!id || !title) return null;
   const url = typeof row.url === "string" && /^https?:\/\//i.test(row.url) ? row.url : null;
   return { id, title, url };

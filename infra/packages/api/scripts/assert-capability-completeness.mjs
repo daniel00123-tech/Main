@@ -71,6 +71,26 @@ const REQUIRED = [
     file: "src/services/usage-attribution.ts",
     marker: "resolveConnectorInstanceId",
   },
+  {
+    id: "health_lineage",
+    file: "wrangler.toml",
+    marker: "CF_VERSION_METADATA",
+  },
+  {
+    id: "knowledge_fetch_contract",
+    file: "src/services/mcp-knowledge-standard.ts",
+    marker: "page_content",
+  },
+  {
+    id: "knowledge_fetch_args",
+    file: "src/services/control-plane.ts",
+    marker: "mapFetchArgumentsForCompanyMcp",
+  },
+  {
+    id: "portal_chat_routes",
+    file: "src/routes/portal-chat.ts",
+    marker: "/api/companies/:slug/chat/messages",
+  },
 ];
 
 const missing = [];
