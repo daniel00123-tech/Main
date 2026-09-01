@@ -212,6 +212,7 @@ export function humanClient(source?: string | null): string {
     "infra-gateway": "INFRA",
     "e2e-probe": "System",
     portal: "Portal",
+    portal_chat: "Portal Chat",
     "action-engine": "INFRA",
   };
   if (!source) return "—";
