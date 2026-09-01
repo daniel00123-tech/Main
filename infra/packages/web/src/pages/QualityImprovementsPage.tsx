@@ -86,6 +86,11 @@ export default function QualityImprovementsPage() {
       row.applyClass === "AUTO_APPLY_SAFE" &&
       !row.engineeringRequired,
   );
+  const applyAllDisabledReason = busy
+    ? "A quality action is already running."
+    : lowSafe.length === 0
+      ? "No pending LOW-risk auto-apply proposals on this review."
+      : null;
 
   async function applyLow() {
     if (!latest?.run.id) return;
@@ -185,13 +190,27 @@ export default function QualityImprovementsPage() {
           { label: "Improvement Reviews" },
         ]}
         actions={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="quality-apply-actions">
             <Link className="button button-ghost button-small" to="/quality">
               Quality issues
             </Link>
-            <Button type="button" variant="primary" disabled={busy || lowSafe.length === 0} onClick={() => void applyLow()}>
+            <Button
+              type="button"
+              variant="primary"
+              className="quality-apply-button"
+              disabled={Boolean(applyAllDisabledReason)}
+              title={applyAllDisabledReason ?? "Apply every pending LOW-risk auto-apply proposal"}
+              aria-disabled={Boolean(applyAllDisabledReason)}
+              onClick={() => {
+                if (applyAllDisabledReason) return;
+                void applyLow();
+              }}
+            >
               Apply all LOW-risk
             </Button>
+            {applyAllDisabledReason ? (
+              <p className="muted small quality-apply-reason">{applyAllDisabledReason}</p>
+            ) : null}
           </div>
         }
       />
@@ -443,10 +462,23 @@ export default function QualityImprovementsPage() {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {selected.status === "pending_approval" ? (
                 <>
-                  <Button type="button" disabled={busy} onClick={() => void decide(selected.id, "approve")}>
+                  <Button
+                    type="button"
+                    className="quality-apply-button"
+                    disabled={busy}
+                    title={busy ? "A quality action is already running." : undefined}
+                    onClick={() => void decide(selected.id, "approve")}
+                  >
                     {selected.applyClass === "AUTO_APPLY_SAFE" ? "Apply" : "Record approval"}
                   </Button>
-                  <Button type="button" variant="secondary" disabled={busy} onClick={() => void decide(selected.id, "reject")}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="quality-apply-button"
+                    disabled={busy}
+                    title={busy ? "A quality action is already running." : undefined}
+                    onClick={() => void decide(selected.id, "reject")}
+                  >
                     Reject
                   </Button>
                 </>
@@ -517,8 +549,11 @@ function ProposalActions({
   onDecide: (id: string, decision: "approve" | "reject" | "defer") => Promise<void>;
   onRollback: (id: string) => Promise<void>;
 }) {
+  const canAutoApply =
+    row.applyClass === "AUTO_APPLY_SAFE" && row.risk === "low" && !row.engineeringRequired;
+  const rowApplyDisabledReason = busy ? "A quality action is already running." : null;
   return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+    <div className="quality-apply-actions" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
       {hideCheck ? null : (
         <label className="small muted" style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <input type="checkbox" checked={checked} onChange={(event) => onCheck(event.target.checked)} />
@@ -530,12 +565,34 @@ function ProposalActions({
       </Button>
       {row.status === "pending_approval" ? (
         <>
-          <Button type="button" size="sm" disabled={busy} onClick={() => void onDecide(row.id, "approve")}>
-            {row.applyClass === "AUTO_APPLY_SAFE" && row.risk === "low" ? "Apply" : row.applyClass === "AUTO_APPLY_SAFE" ? "Apply" : "Approve"}
+          <Button
+            type="button"
+            size="sm"
+            className="quality-apply-button"
+            disabled={Boolean(rowApplyDisabledReason)}
+            title={rowApplyDisabledReason ?? (canAutoApply ? "Apply this proposal" : "Record approval without auto-applying")}
+            aria-disabled={Boolean(rowApplyDisabledReason)}
+            onClick={() => {
+              if (rowApplyDisabledReason) return;
+              void onDecide(row.id, "approve");
+            }}
+          >
+            {canAutoApply ? "Apply" : "Approve"}
           </Button>
-          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void onDecide(row.id, "reject")}>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="quality-apply-button"
+            disabled={busy}
+            title={busy ? "A quality action is already running." : "Reject this proposal"}
+            onClick={() => void onDecide(row.id, "reject")}
+          >
             Reject
           </Button>
+          {rowApplyDisabledReason ? (
+            <span className="muted small quality-apply-reason">{rowApplyDisabledReason}</span>
+          ) : null}
         </>
       ) : null}
       {row.status === "canary" || row.status === "promoted" ? (

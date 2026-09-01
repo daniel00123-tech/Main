@@ -413,6 +413,23 @@ textarea {
   color: var(--text-secondary);
   max-width: 54ch;
 }
+.quality-apply-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  position: relative;
+  z-index: 2;
+}
+.quality-apply-button {
+  touch-action: manipulation;
+  position: relative;
+  z-index: 2;
+}
+.quality-apply-reason {
+  flex-basis: 100%;
+  margin: 0;
+}
 .page-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2395,6 +2412,22 @@ button.mobile-record-card.selected-record {
   .page-actions .button {
     flex: 1 1 auto;
     min-width: 0;
+  }
+  .quality-apply-actions {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+  }
+  .quality-apply-button {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+    position: relative;
+    z-index: 2;
+  }
+  .quality-apply-reason {
+    flex-basis: 100%;
+    margin: 0;
   }
   .kpi-strip {
     padding: var(--s-3);
