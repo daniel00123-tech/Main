@@ -174,13 +174,14 @@ export default function PortalAiConnectionsPage() {
     <div className="portal-page">
       <PortalPageHeader
         title="AI Access"
-        description={
-          <>
-            Connect ChatGPT or Claude to your business systems securely. You can also{" "}
-            <Link to={company ? `/portal/${company.slug}/chat` : "/portal"}>chat inside INFRA</Link>.
-          </>
-        }
+        description="Connect ChatGPT or Claude to your business systems securely. You can also chat inside INFRA."
       />
+
+      {company ? (
+        <p className="muted small">
+          Prefer to stay in the portal? <Link to={`/portal/${company.slug}/chat`}>Open company chat</Link>.
+        </p>
+      ) : null}
 
       {loadError ? <Notice tone="danger">{loadError}</Notice> : null}
 

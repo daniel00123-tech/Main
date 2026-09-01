@@ -111,7 +111,7 @@ export default function PortalChatPage() {
     setStatus("Thinking…");
     setActive((current) =>
       current
-        ? { ...current, messages: [...current.messages, optimistic] }
+        ? { ...current, messages: [...(current.messages ?? []), optimistic] }
         : {
             id: "pending",
             companyId: company.id,
@@ -134,7 +134,7 @@ export default function PortalChatPage() {
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Unable to send that message");
       setActive((current) =>
-        current ? { ...current, messages: current.messages.filter((message) => message.id !== optimistic.id) } : current,
+        current ? { ...current, messages: (current.messages ?? []).filter((message) => message.id !== optimistic.id) } : current,
       );
       setDraft(trimmed);
     } finally {
