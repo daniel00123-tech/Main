@@ -70,19 +70,26 @@ export async function runAdversarialSuite(input: {
   mode: AdversarialMode;
   includeTwentyTurn?: boolean;
   transport?: TransportLabel;
+  tenant?: "caddington" | "elvex";
+  limit?: number;
+  offset?: number;
 }): Promise<AdversarialRunResult> {
   const startedAt = new Date().toISOString();
   const transport: TransportLabel = input.transport ?? (input.mode === "persist" ? "GATED" : "OFFLINE");
-  const tenants =
+  const tenants = (
     input.mode === "persist" && input.env
       ? await resolveLiveTenants(input.env)
-      : [offlineProfile("caddington"), offlineProfile("elvex")];
+      : [offlineProfile("caddington"), offlineProfile("elvex")]
+  ).filter((tenant) => !input.tenant || tenant.tenant === input.tenant);
 
   const rows: AdversarialTurnCapture[] = [];
   const twentyTurn: Record<string, AdversarialTurnCapture[]> = {};
 
   for (const tenant of tenants) {
-    const scenarios = instantiateScenarios(tenant.adapter);
+    const scenarios = instantiateScenarios(tenant.adapter).slice(
+      Math.max(0, input.offset ?? 0),
+      input.limit != null ? Math.max(0, input.offset ?? 0) + input.limit : undefined,
+    );
     for (const scenario of scenarios) {
       const captured = await runScenario({
         env: input.env,

@@ -19,7 +19,13 @@ function authorized(env: Env, request: { header(name: string): string | undefine
 routes.post("/api/internal/intelligence-eval", async (c) => {
   if (!authorized(c.env, c.req)) return c.json({ error: "Not found" }, 404);
   const body = await c.req
-    .json<{ action?: string; includeTwentyTurn?: boolean }>()
+    .json<{
+      action?: string;
+      includeTwentyTurn?: boolean;
+      tenant?: "caddington" | "elvex";
+      limit?: number;
+      offset?: number;
+    }>()
     .catch(() => ({ action: "offline" }));
   const action = String(body.action ?? "offline").trim();
   if (action === "probe") {
@@ -40,6 +46,9 @@ routes.post("/api/internal/intelligence-eval", async (c) => {
       mode: persist ? "persist" : "offline",
       includeTwentyTurn: body.includeTwentyTurn === true,
       transport: persist ? "GATED" : "OFFLINE",
+      tenant: body.tenant === "elvex" || body.tenant === "caddington" ? body.tenant : undefined,
+      limit: Number.isFinite(body.limit) ? Number(body.limit) : undefined,
+      offset: Number.isFinite(body.offset) ? Number(body.offset) : undefined,
     });
     return c.json({
       ok: true,
