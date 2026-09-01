@@ -3,7 +3,15 @@ export { matchFastPath, isFastPathTurn, matchOpenSourceFastPath } from "./fast-p
 export { classifyScope, isCorpusInventoryAsk, detectNamedDocumentSwitch } from "./scope.js";
 export { verbaliseSystemMeta, isSystemMetaTool, executeSystemMetaTool } from "./system-meta.js";
 export { resolveBusinessPeriod, withResolvedBusinessDates, businessSystemArgs } from "./periods.js";
-export { enrichDocumentQuery } from "./query-enrichment.js";
+export {
+  enrichDocumentQuery,
+  isShortDocumentFollowUp,
+  previousContentUserText,
+  contentQueryTerms,
+  nextContentQuestion,
+  queryTerms,
+} from "./query-enrichment.js";
+export { adoptFromSearchHits, recoverScoutDocumentAnswer, documentHasUsableChunks } from "./document-evidence.js";
 export {
   runIntelligenceTurn,
   parseIntelligenceDecision,

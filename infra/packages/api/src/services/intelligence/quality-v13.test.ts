@@ -243,6 +243,18 @@ describe("short follow-up ranking", () => {
     expect(queryTerms("When?").length).toBeLessThan(2);
   });
 
+  it("still enriches after a find whose last topic is company_knowledge", () => {
+    const result = enrichDocumentQuery("What exactly?", {
+      scope: "CURRENT_DOCUMENT",
+      currentTitle: "Vehicle use policy",
+      previousUserText: "Find the vehicle use policy",
+      lastAnswerTopic: "company_knowledge",
+      scopeChanged: false,
+    });
+    expect(result.decayed).toBe(false);
+    expect(result.enriched).toBe(true);
+  });
+
   it("decays enrichment after a correction or subject change", () => {
     const result = enrichDocumentQuery("When?", {
       scope: "CURRENT_DOCUMENT",
