@@ -25,7 +25,7 @@ const MCP_URL = "https://app.infrastack.app/api/gateway/v1/mcp";
 const INFO_MAILBOX = "info@elvexpropertyservices.com";
 const FINANCE_MAILBOX = "finance@elvexpropertyservices.com";
 
-const DRAFT_NAME = /draft|reply|create_.*mail|create_.*email|send_elvex|send_.*mail|send_.*email/i;
+const OUTLOOK_DRAFT_NAME = /outlook_.*draft|draft_.*email|draft_.*mail|reply_.*email|create_.*email|send_elvex/i;
 const SEND_NAME = /send_elvex_email|send_.*email|outlook_send|mail_send/i;
 
 function isoDate(d: Date): string {
@@ -57,7 +57,7 @@ function summarizeValue(value: unknown, depth = 0): unknown {
       sample: value.slice(0, 3).map((item) => summarizeValue(item, depth + 1)),
     };
   }
-  if (typeof value === "object" && depth < 2) {
+  if (typeof value === "object" && depth < 3) {
     const record = value as Record<string, unknown>;
     const out: Record<string, unknown> = {};
     const keys = [
@@ -72,6 +72,7 @@ function summarizeValue(value: unknown, depth = 0): unknown {
       "subject",
       "from",
       "sender",
+      "fromAddress",
       "receivedDateTime",
       "title",
       "url",
@@ -224,12 +225,17 @@ async function callTool(
   toolName: string,
   args: Record<string, unknown>,
   id: number,
+  options?: { directCallIfUnlisted?: boolean },
 ) {
-  if (!listed.has(toolName)) {
+  const advertised = listed.has(toolName);
+  if (!advertised && !options?.directCallIfUnlisted) {
     return {
       toolName,
       arguments: args,
+      advertised: false,
       outcome: "TOOL_NOT_EXPOSED" as AcceptanceOutcome,
+      directCallOutcome: null,
+      parsed: null,
       httpStatus: null,
       errorCode: null,
       userRole: null,
@@ -240,10 +246,15 @@ async function callTool(
   const err = rpc.error as { message?: string; data?: Record<string, unknown> } | undefined;
   const text = extractText(rpc);
   const parsed = tryParse(text);
+  const listedForClassify = advertised ? listed : new Set([...listed, toolName]);
+  const executed = classifyRpc(toolName, listedForClassify, rpc, httpStatus);
   return {
     toolName,
     arguments: args,
-    outcome: classifyRpc(toolName, listed, rpc, httpStatus),
+    advertised,
+    outcome: advertised ? executed : "TOOL_NOT_EXPOSED",
+    directCallOutcome: advertised ? null : executed,
+    parsed,
     httpStatus,
     errorCode: err?.data?.errorCode ?? err?.data?.accessOutcome ?? null,
     userRole: err?.data?.userRole ?? null,
@@ -252,12 +263,14 @@ async function callTool(
     userAllowed: err?.data?.userAllowed ?? null,
     message: typeof err?.message === "string" ? err.message.slice(0, 240) : null,
     summary: summarizeValue(parsed),
-    rawPreview: text ? text.slice(0, 180) : null,
+    rawPreview: text ? text.slice(0, 220) : null,
   };
 }
 
 function pickInvoiceNumber(summary: unknown): string | null {
-  if (!summary || typeof summary !== "object") return null;
+  if (!summary) return null;
+  if (Array.isArray(summary)) return pickInvoiceNumber(summary[0]);
+  if (typeof summary !== "object") return null;
   const record = summary as Record<string, unknown>;
   if (typeof record.invoiceNumber === "string") return record.invoiceNumber;
   if (typeof record.InvoiceNumber === "string") return record.InvoiceNumber;
@@ -268,14 +281,24 @@ function pickInvoiceNumber(summary: unknown): string | null {
 }
 
 function pickMessageField(summary: unknown, field: "id" | "subject" | "from"): string | null {
-  if (!summary || typeof summary !== "object") return null;
+  if (!summary) return null;
+  if (Array.isArray(summary)) return pickMessageField(summary[0], field);
+  if (typeof summary !== "object") return null;
   const record = summary as Record<string, unknown>;
   if (typeof record[field] === "string") return record[field] as string;
   if (field === "from" && typeof record.sender === "string") return record.sender;
-  if (record.sample) return pickMessageField(record.sample, field);
+  if (field === "from" && record.from && typeof record.from === "object") {
+    const from = record.from as Record<string, unknown>;
+    if (typeof from.emailAddress === "string") return from.emailAddress;
+    if (from.emailAddress && typeof from.emailAddress === "object") {
+      const addr = from.emailAddress as Record<string, unknown>;
+      if (typeof addr.address === "string") return addr.address;
+    }
+  }
   if (Array.isArray(record.sample) && record.sample[0]) {
     return pickMessageField(record.sample[0], field);
   }
+  if (record.sample) return pickMessageField(record.sample, field);
   if (record.messages) return pickMessageField(record.messages, field);
   return null;
 }
@@ -361,7 +384,7 @@ export async function runWilliamChatgptAcceptance(
   const xeroReadListed = toolNames.filter(
     (name) => name.startsWith("xero_") && !/create|approve|send|allocate|void|update|delete/i.test(name),
   );
-  const outlookDraftListed = toolNames.filter((name) => DRAFT_NAME.test(name));
+  const outlookDraftListed = toolNames.filter((name) => OUTLOOK_DRAFT_NAME.test(name));
   const outlookSendListed = toolNames.filter((name) => SEND_NAME.test(name));
   const actionControlListed = toolNames.filter((name) =>
     /action_plan|plan_xero|confirm_action|execute_action/.test(name),
@@ -431,12 +454,20 @@ export async function runWilliamChatgptAcceptance(
   let secondDoc = { id: null as string | null, title: null as string | null, url: null as string | null };
 
   for (const testCase of cases) {
-    const result = await callTool(issued.token, listed, testCase.toolName, testCase.args, rpcId++);
-    results.push({ id: testCase.id, group: testCase.group, ...result });
+    const result = await callTool(issued.token, listed, testCase.toolName, testCase.args, rpcId++, {
+      directCallIfUnlisted: testCase.group === "xero" || testCase.group === "restore",
+    });
+    const { parsed: _parsed, ...safe } = result;
+    results.push({ id: testCase.id, group: testCase.group, ...safe });
     if (testCase.id === "xero.outstanding_invoices" || testCase.id === "xero.invoices_raised_today") {
-      knownInvoice = knownInvoice ?? pickInvoiceNumber(result.summary);
+      knownInvoice = knownInvoice ?? pickInvoiceNumber(result.summary) ?? pickInvoiceNumber(result.parsed);
     }
   }
+
+  const withoutParsed = (result: { parsed?: unknown } & Record<string, unknown>) => {
+    const { parsed: _ignored, ...safe } = result;
+    return safe;
+  };
 
   if (phase === "elevated") {
     const invoiceLookup = await callTool(
@@ -445,12 +476,13 @@ export async function runWilliamChatgptAcceptance(
       "xero_get_invoice",
       knownInvoice ? { invoiceNumber: knownInvoice } : { invoiceNumber: "INV-0001" },
       rpcId++,
+      { directCallIfUnlisted: true },
     );
     results.push({
       id: "xero.known_invoice_lookup",
       group: "xero",
       knownInvoiceUsed: knownInvoice,
-      ...invoiceLookup,
+      ...withoutParsed(invoiceLookup),
     });
 
     const infoNewest = await callTool(
@@ -460,10 +492,13 @@ export async function runWilliamChatgptAcceptance(
       { mailboxAddress: INFO_MAILBOX, limit: 3 },
       rpcId++,
     );
-    results.push({ id: "outlook.newest_info", group: "outlook", ...infoNewest });
-    infoMessageId = pickMessageField(infoNewest.summary, "id");
-    infoSubject = pickMessageField(infoNewest.summary, "subject");
-    infoFrom = pickMessageField(infoNewest.summary, "from");
+    results.push({ id: "outlook.newest_info", group: "outlook", ...withoutParsed(infoNewest) });
+    infoMessageId =
+      pickMessageField(infoNewest.parsed, "id") ?? pickMessageField(infoNewest.summary, "id");
+    infoSubject =
+      pickMessageField(infoNewest.parsed, "subject") ?? pickMessageField(infoNewest.summary, "subject");
+    infoFrom =
+      pickMessageField(infoNewest.parsed, "from") ?? pickMessageField(infoNewest.summary, "from");
 
     const financeNewest = await callTool(
       issued.token,
@@ -472,7 +507,7 @@ export async function runWilliamChatgptAcceptance(
       { mailboxAddress: FINANCE_MAILBOX, limit: 3 },
       rpcId++,
     );
-    results.push({ id: "outlook.newest_finance", group: "outlook", ...financeNewest });
+    results.push({ id: "outlook.newest_finance", group: "outlook", ...withoutParsed(financeNewest) });
 
     const senderQuery = infoFrom ? infoFrom : "elvex";
     const senderSearch = await callTool(
@@ -482,7 +517,12 @@ export async function runWilliamChatgptAcceptance(
       { mailboxAddress: INFO_MAILBOX, query: senderQuery, limit: 5 },
       rpcId++,
     );
-    results.push({ id: "outlook.sender_search", group: "outlook", query: senderQuery, ...senderSearch });
+    results.push({
+      id: "outlook.sender_search",
+      group: "outlook",
+      query: senderQuery,
+      ...withoutParsed(senderSearch),
+    });
 
     const subjectQuery = infoSubject ? infoSubject.slice(0, 40) : "invoice";
     const subjectSearch = await callTool(
@@ -492,7 +532,12 @@ export async function runWilliamChatgptAcceptance(
       { mailboxAddress: INFO_MAILBOX, query: subjectQuery, limit: 5 },
       rpcId++,
     );
-    results.push({ id: "outlook.subject_search", group: "outlook", query: subjectQuery, ...subjectSearch });
+    results.push({
+      id: "outlook.subject_search",
+      group: "outlook",
+      query: subjectQuery,
+      ...withoutParsed(subjectSearch),
+    });
 
     const fullEmail = await callTool(
       issued.token,
@@ -507,7 +552,7 @@ export async function runWilliamChatgptAcceptance(
       id: "outlook.full_email_retrieval",
       group: "outlook",
       usedMessageId: Boolean(infoMessageId),
-      ...fullEmail,
+      ...withoutParsed(fullEmail),
     });
 
     results.push({
@@ -538,8 +583,9 @@ export async function runWilliamChatgptAcceptance(
       { query: "company policy", limit: 5 },
       rpcId++,
     );
-    results.push({ id: "knowledge.document_search", group: "knowledge", ...knowledgeSearch });
-    knowledgeDoc = pickKnowledgeId(knowledgeSearch.summary);
+    results.push({ id: "knowledge.document_search", group: "knowledge", ...withoutParsed(knowledgeSearch) });
+    knowledgeDoc = pickKnowledgeId(knowledgeSearch.parsed);
+    if (!knowledgeDoc.id) knowledgeDoc = pickKnowledgeId(knowledgeSearch.summary);
 
     const qaSearch = await callTool(
       issued.token,
@@ -551,7 +597,8 @@ export async function runWilliamChatgptAcceptance(
       },
       rpcId++,
     );
-    results.push({ id: "knowledge.document_qa", group: "knowledge", ...qaSearch });
+    results.push({ id: "knowledge.document_qa", group: "knowledge", ...withoutParsed(qaSearch) });
+    if (!knowledgeDoc.id) knowledgeDoc = pickKnowledgeId(qaSearch.parsed);
     if (!knowledgeDoc.id) knowledgeDoc = pickKnowledgeId(qaSearch.summary);
 
     const fetchName = listed.has("fetch") ? "fetch" : "get_knowledge_document";
@@ -560,19 +607,22 @@ export async function runWilliamChatgptAcceptance(
           issued.token,
           listed,
           fetchName,
-          listed.has("fetch") ? { id: knowledgeDoc.id } : { id: knowledgeDoc.id },
+          { id: knowledgeDoc.id },
           rpcId++,
         )
       : {
           toolName: fetchName,
           outcome: "NO_RESULTS" as AcceptanceOutcome,
           summary: { reason: "no document id from search" },
+          parsed: null,
         };
-    const sourceUrl = pickKnowledgeId(sourceFetch.summary).url ?? knowledgeDoc.url;
+    const fetched = pickKnowledgeId(sourceFetch.parsed);
+    const fetchedFallback = fetched.id || fetched.url ? fetched : pickKnowledgeId(sourceFetch.summary);
+    const sourceUrl = fetchedFallback.url ?? knowledgeDoc.url;
     results.push({
       id: "knowledge.source_url",
       group: "knowledge",
-      ...sourceFetch,
+      ...withoutParsed(sourceFetch),
       sourceUrl,
       hasSourceUrl: Boolean(sourceUrl),
     });
@@ -584,7 +634,7 @@ export async function runWilliamChatgptAcceptance(
       { query: knowledgeDoc.title ? `${knowledgeDoc.title} summary` : "company policy summary", limit: 3 },
       rpcId++,
     );
-    results.push({ id: "knowledge.short_follow_up", group: "knowledge", ...followUp });
+    results.push({ id: "knowledge.short_follow_up", group: "knowledge", ...withoutParsed(followUp) });
 
     const switchSearch = await callTool(
       issued.token,
@@ -593,11 +643,12 @@ export async function runWilliamChatgptAcceptance(
       { query: "health and safety", limit: 5 },
       rpcId++,
     );
-    secondDoc = pickKnowledgeId(switchSearch.summary);
+    secondDoc = pickKnowledgeId(switchSearch.parsed);
+    if (!secondDoc.id) secondDoc = pickKnowledgeId(switchSearch.summary);
     results.push({
       id: "knowledge.document_switch",
       group: "knowledge",
-      ...switchSearch,
+      ...withoutParsed(switchSearch),
       firstDocument: knowledgeDoc.title,
       secondDocument: secondDoc.title,
       switched:
@@ -605,6 +656,12 @@ export async function runWilliamChatgptAcceptance(
         Boolean(secondDoc.title && knowledgeDoc.title && secondDoc.title !== knowledgeDoc.title),
     });
   }
+
+  const xeroDirect = results
+    .filter((row) => row.group === "xero" || row.id === "restore.xero_sales_denied")
+    .map((row) => row.directCallOutcome);
+  const xeroDirectWorked = xeroDirect.includes("WORKS") || xeroDirect.includes("NO_RESULTS");
+  const xeroDirectDenied = xeroDirect.includes("PERMISSION_DENIED");
 
   return {
     phase,
@@ -618,15 +675,21 @@ export async function runWilliamChatgptAcceptance(
     outlookSendListed,
     actionControlListed,
     xeroInvestigation: {
-      invoiceDateListingToolsOnAllowlistAndAdvertised: [
+      advertisedOnToolsList: [
         "xero_search_invoices",
         "xero_list_overdue_invoices",
         "xero_get_invoice",
         "xero_sales_summary",
       ].every((name) => listed.has(name)),
+      directCallWorked: xeroDirectWorked,
+      directCallDenied: xeroDirectDenied,
       conclusion: listed.has("xero_search_invoices")
         ? "A_rbac_or_routing_not_missing_capability"
-        : "B_genuine_missing_xero_read_capability",
+        : xeroDirectWorked
+          ? "advertised_missing_but_infra_read_executor_exists"
+          : xeroDirectDenied
+            ? "A_rbac_denial_and_not_advertised"
+            : "B_genuine_missing_or_failed_xero_read",
     },
     outlookDraftInvestigation: {
       conclusion:
