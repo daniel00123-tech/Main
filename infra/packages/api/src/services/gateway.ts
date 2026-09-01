@@ -999,6 +999,7 @@ export async function executeGatewayRequest(
             toolName: input.toolName,
             arguments: input.arguments,
             actor: actorLabel,
+            actorUserId: actorId,
           });
           if (!xero.ok) {
             const mapped = mapExecutionOutcome({

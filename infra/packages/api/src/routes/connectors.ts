@@ -1153,11 +1153,14 @@ connectors.post("/api/internal/william-chatgpt-acceptance", async (c) => {
   }
   const requestedPhase = c.req.query("phase") ?? "elevated";
   try {
-    const { runWilliamChatgptAcceptance, runWilliamXeroRoutingDenial } = await import(
+    const { runWilliamChatgptAcceptance, runWilliamXeroRoutingDenial, runWilliamXeroReadsAcceptance } = await import(
       "../services/william-chatgpt-acceptance"
     );
     if (requestedPhase === "xero-denial") {
       return c.json(await runWilliamXeroRoutingDenial(c.env));
+    }
+    if (requestedPhase === "xero-reads") {
+      return c.json(await runWilliamXeroReadsAcceptance(c.env));
     }
     const phase = requestedPhase === "restored" ? "restored" : "elevated";
     return c.json(await runWilliamChatgptAcceptance(c.env, phase));

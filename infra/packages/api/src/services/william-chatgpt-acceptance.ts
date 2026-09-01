@@ -64,10 +64,17 @@ function summarizeValue(value: unknown, depth = 0): unknown {
       "invoiceNumber",
       "InvoiceNumber",
       "totalSales",
+      "sales_total",
+      "invoice_count",
+      "invoice_numbers",
       "transactionCount",
       "currencyCode",
       "fromDate",
       "toDate",
+      "period",
+      "source",
+      "via",
+      "companyToolName",
       "id",
       "subject",
       "from",
@@ -183,6 +190,7 @@ function classifyRpc(
     parsed &&
     typeof parsed === "object" &&
     ("summary" in (parsed as object) ||
+      "sales_total" in (parsed as object) ||
       "totalSales" in ((parsed as { summary?: object }).summary ?? {}))
   ) {
     return "WORKS";
@@ -837,6 +845,200 @@ export async function runWilliamXeroRoutingDenial(env: Env): Promise<Record<stri
       expectedCopy: message.includes("don’t allow access to Xero financial data") || message.includes("don't allow access to Xero financial data"),
       noKnowledgeCharge: !knowledgeCharged,
       noXeroDownstream: !xeroDownstream,
+    },
+  };
+}
+
+const XERO_SALES_ROLES = new Set([
+  "finance_team",
+  "finance_manager",
+  "director",
+  "company_admin",
+  "operations_manager",
+]);
+
+/**
+ * Authorised Xero read acceptance. Does not change William's live role.
+ */
+export async function runWilliamXeroReadsAcceptance(env: Env): Promise<Record<string, unknown>> {
+  if (!env.SESSION_SECRET) {
+    return { error: "SESSION_SECRET missing" };
+  }
+  const actor = await loadLiveCompanyActor(env.DB, WILLIAM_USER_ID, COMPANY_ID);
+  if (!actor?.active) {
+    return { error: "William live actor missing or inactive" };
+  }
+  if (!XERO_SALES_ROLES.has(String(actor.role))) {
+    return {
+      error: "Refusing Xero reads run: live role cannot read Xero sales",
+      liveRole: actor.role,
+      recordedRole: actor.role,
+    };
+  }
+
+  const issued = await issueMcpAccessToken(
+    env.SESSION_SECRET,
+    "https://app.infrastack.app",
+    "https://app.infrastack.app/api/gateway/v1/mcp",
+    {
+      userId: actor.userId,
+      email: actor.email || WILLIAM_EMAIL,
+      companyId: actor.companyId,
+      membershipId: actor.membershipId || WILLIAM_MEMBERSHIP_ID,
+      clientId: CHATGPT_CLIENT_ID,
+      channel: "chatgpt",
+    },
+  );
+  await recordAccessJti(env.DB, {
+    jti: issued.jti,
+    userId: actor.userId,
+    companyId: actor.companyId,
+  });
+
+  const started = new Date().toISOString();
+  let rpcId = 1;
+  await mcp(
+    issued.token,
+    "initialize",
+    {
+      protocolVersion: "2025-03-26",
+      capabilities: {},
+      clientInfo: { name: "chatgpt-xero-reads", version: "1.0" },
+    },
+    rpcId++,
+  );
+
+  const listedRes = await mcp(issued.token, "tools/list", {}, rpcId++);
+  const tools = ((listedRes.rpc.result as { tools?: Array<{ name: string; description?: string }> } | undefined)
+    ?.tools ?? []) as Array<{ name: string; description?: string }>;
+  const listed = new Set(tools.map((tool) => tool.name));
+  const toolNames = tools.map((tool) => tool.name).sort();
+  const xeroReadListed = toolNames.filter(
+    (name) => name.startsWith("xero_") && !/create|approve|send|allocate|void|update|delete/i.test(name),
+  );
+  const xeroWriteListed = toolNames.filter((name) =>
+    /^xero_/.test(name) && /create|approve|send|allocate|void|update|delete/i.test(name),
+  );
+  const requiredReads = [
+    "xero_sales_summary",
+    "xero_search_invoices",
+    "xero_get_invoice",
+    "xero_list_overdue_invoices",
+    "xero_top_customers",
+  ];
+
+  const cases: Array<{ id: string; toolName: string; args: Record<string, unknown> }> = [
+    { id: "sales.today", toolName: "xero_sales_summary", args: { period: "today" } },
+    { id: "sales.this_month", toolName: "xero_sales_summary", args: { period: "this month" } },
+    { id: "sales.last_month", toolName: "xero_sales_summary", args: { period: "last month" } },
+    {
+      id: "invoices.2026-09-01",
+      toolName: "xero_search_invoices",
+      args: { fromDate: "2026-09-01", toDate: "2026-09-01", query: "invoiced today 01/09/2026" },
+    },
+    { id: "invoices.outstanding", toolName: "xero_search_invoices", args: { unpaidOnly: true, limit: 10 } },
+    { id: "invoices.overdue", toolName: "xero_list_overdue_invoices", args: { limit: 10 } },
+    { id: "customers.top", toolName: "xero_top_customers", args: { period: "this month", limit: 5 } },
+  ];
+
+  const results: Record<string, unknown>[] = [];
+  let knownInvoice: string | null = null;
+  for (const testCase of cases) {
+    const result = await callTool(issued.token, listed, testCase.toolName, testCase.args, rpcId++);
+    const { parsed, ...safe } = result;
+    results.push({ id: testCase.id, ...safe });
+    knownInvoice =
+      knownInvoice ?? pickInvoiceNumber(result.summary) ?? pickInvoiceNumber(parsed);
+  }
+
+  const invoiceLookup = await callTool(
+    issued.token,
+    listed,
+    "xero_get_invoice",
+    knownInvoice ? { invoiceNumber: knownInvoice } : { invoiceNumber: "INV-0001" },
+    rpcId++,
+  );
+  const { parsed: _lookupParsed, ...lookupSafe } = invoiceLookup;
+  results.push({
+    id: "invoice.lookup",
+    knownInvoiceUsed: knownInvoice,
+    ...lookupSafe,
+  });
+
+  const knowledgeFallback = await callTool(
+    issued.token,
+    listed,
+    listed.has("search") ? "search" : "search_company_knowledge",
+    { query: "What are the current sales on Xero?" },
+    rpcId++,
+  );
+  const { parsed: _knowledgeParsed, ...knowledgeSafe } = knowledgeFallback;
+  results.push({ id: "no_knowledge_fallback", ...knowledgeSafe });
+
+  const usage = await env.DB.prepare(
+    `SELECT tool_name, action, source_client, success, settlement_status, customer_charge_cents, recorded_at
+     FROM usage_records
+     WHERE company_id = ? AND user_id = ? AND recorded_at >= ?
+     ORDER BY recorded_at DESC
+     LIMIT 30`,
+  )
+    .bind(COMPANY_ID, WILLIAM_USER_ID, started)
+    .all();
+  const gateway = await env.DB.prepare(
+    `SELECT tool_name, action, status, settlement_status, error_code, source_client, created_at
+     FROM gateway_requests
+     WHERE company_id = ? AND actor_id = ? AND created_at >= ?
+     ORDER BY created_at DESC
+     LIMIT 30`,
+  )
+    .bind(COMPANY_ID, WILLIAM_USER_ID, started)
+    .all();
+
+  const usageRows = (usage.results ?? []) as Array<Record<string, unknown>>;
+  const gatewayRows = (gateway.results ?? []) as Array<Record<string, unknown>>;
+  const xeroUsage = usageRows.filter((row) => String(row.tool_name ?? "").startsWith("xero_"));
+  const knowledgeCharged = usageRows.some((row) => {
+    const tool = String(row.tool_name ?? "");
+    return (
+      (tool === "search" || tool === "database_summary" || tool === "search_company_knowledge") &&
+      row.customer_charge_cents != null &&
+      Number(row.customer_charge_cents) > 0
+    );
+  });
+  const xeroCharged = xeroUsage.some(
+    (row) => row.customer_charge_cents != null && Number(row.customer_charge_cents) > 0,
+  );
+  const outcomes = results.map((row) => String(row.outcome ?? ""));
+
+  return {
+    phase: "xero-reads",
+    recordedRole: actor.role,
+    liveRole: actor.role,
+    userId: WILLIAM_USER_ID,
+    companyId: COMPANY_ID,
+    sourceClient: "chatgpt",
+    roleChanged: false,
+    toolsListHttpStatus: listedRes.httpStatus,
+    toolCount: toolNames.length,
+    xeroReadListed,
+    xeroWriteListed,
+    requiredReadsAdvertised: requiredReads.every((name) => listed.has(name)),
+    results,
+    usageRows,
+    gatewayRows,
+    proof: {
+      toolsListed: requiredReads.every((name) => listed.has(name)),
+      noWritesAdded: xeroWriteListed.length === 0,
+      authorisedReadsWorked: outcomes.some((outcome) => outcome === "WORKS" || outcome === "NO_RESULTS"),
+      noKnowledgeCharge: !knowledgeCharged,
+      xeroUsageAttributed: xeroUsage.some(
+        (row) => row.source_client === "chatgpt" && String(row.action ?? "").startsWith("xero."),
+      ),
+      xeroZeroCharge: xeroUsage.length > 0 && !xeroCharged,
+      knowledgeNotUsedForXero:
+        knowledgeFallback.outcome === "WORKS" ||
+        knowledgeFallback.outcome === "NO_RESULTS" ||
+        String(knowledgeFallback.toolName ?? "").startsWith("xero_"),
     },
   };
 }

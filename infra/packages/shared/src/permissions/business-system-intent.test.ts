@@ -80,5 +80,16 @@ describe("resolveBusinessSystemIntent", () => {
     const intent = resolveBusinessSystemIntent("tell me on xero what our sales are")!;
     const tool = businessToolForIntent(intent, "tell me on xero what our sales are");
     expect(tool?.toolName).toBe("xero_sales_summary");
+    expect(tool?.arguments).not.toHaveProperty("fromDate");
+  });
+
+  it("routes invoice-number, outstanding, overdue, and date-list questions", () => {
+    const sales = resolveBusinessSystemIntent("What are our sales?", { connectors: EL_CONNECTORS })!;
+    expect(businessToolForIntent(sales, "Sales today?")?.toolName).toBe("xero_sales_summary");
+    expect(businessToolForIntent(sales, "Show outstanding invoices")?.toolName).toBe("xero_search_invoices");
+    expect(businessToolForIntent(sales, "Show overdue invoices")?.toolName).toBe("xero_list_overdue_invoices");
+    expect(businessToolForIntent(sales, "What is invoice INV-123?")?.toolName).toBe("xero_get_invoice");
+    expect(businessToolForIntent(sales, "List invoices raised today")?.toolName).toBe("xero_search_invoices");
+    expect(businessToolForIntent(sales, "Top five customers this month")?.toolName).toBe("xero_top_customers");
   });
 });

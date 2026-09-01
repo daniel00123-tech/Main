@@ -44,6 +44,7 @@ import { isXeroWriteToolName } from "./xero-tools";
 import { isKnowledgeDiscoveryTool, XERO_TOOL_CONTRACTS } from "@infra/shared";
 import { withActionControlTools, isActionControlTool, actionControlToolAllowed } from "./mcp-action-tools";
 import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
+import { withXeroReadTools } from "./xero-read-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeActionControlTool } from "./action-engine/action-control-handler";
 import {
@@ -129,7 +130,7 @@ export function enrichMcpToolDescription(
     xero_get_contact:
       "Fetch one Xero contact by id. Read-only.",
     xero_search_invoices:
-      "Search this company's Xero invoices, including overdue or unpaid filters. Read-only.",
+      "List or search live Xero sales invoices by date, status, outstanding/unpaid, or invoice number. Use this to list invoice numbers raised today or in a date range. Read-only. Do not use company knowledge search.",
     xero_get_invoice:
       "Fetch one Xero invoice by id or invoice number (for example INV-XXXXX). Read-only.",
     xero_list_overdue_invoices:
@@ -147,7 +148,7 @@ export function enrichMcpToolDescription(
     xero_aged_receivables:
       "Return aged receivables or payables for debtor/creditor position. Read-only.",
     xero_sales_summary:
-      "Use this for live Xero sales totals. If INFRA returns permission_denied, the company Xero connection may still be healthy — the signed-in user is not allowed to view Xero financial data. Do not treat permission_denied as zero sales or 'no results'. Read-only.",
+      "Use this tool to retrieve live Xero sales/invoice data for a date period. Use for current sales, sales today, this month, last month, or a comparison (call once per period). Do not use company knowledge search for live Xero financial totals. If INFRA returns permission_denied, the Xero connection may still be healthy — the signed-in user is not allowed to view Xero financial data. Do not treat permission_denied as zero sales. Read-only.",
     xero_top_customers:
       "Return top customers by qualifying ACCREC sales revenue for a date range. Purchase-side documents never count as customers. Amounts use currencyCode (e.g. GBP). Read-only.",
     xero_create_draft_invoice:
@@ -554,10 +555,10 @@ export async function handleInfraMcpJsonRpc(
           name: "infra-gateway",
           version: "1.0.0",
           instructions:
-            "All tool calls are authorised, metered, and billed by INFRA. Use search then fetch to read this company's knowledge. Both are read-only. Do not call company MCP endpoints directly.",
+            "All tool calls are authorised, metered, and billed by INFRA. For live Xero sales, invoices, outstanding, overdue, or customer totals use xero_sales_summary, xero_search_invoices, xero_get_invoice, xero_list_overdue_invoices, or xero_top_customers. Do not use search, fetch, or database_summary for live Xero financial figures. Use search then fetch only for company knowledge documents. Do not call company MCP endpoints directly.",
         },
         instructions:
-          "All tool calls are authorised, metered, and billed by INFRA. Use search then fetch to read this company's knowledge. Both are read-only. Do not call company MCP endpoints directly.",
+          "All tool calls are authorised, metered, and billed by INFRA. For live Xero sales, invoices, outstanding, overdue, or customer totals use xero_sales_summary, xero_search_invoices, xero_get_invoice, xero_list_overdue_invoices, or xero_top_customers. Do not use search, fetch, or database_summary for live Xero financial figures. Use search then fetch only for company knowledge documents. Do not call company MCP endpoints directly.",
       }),
       httpStatus: 200,
     };
@@ -650,8 +651,11 @@ export async function handleInfraMcpJsonRpc(
       const identityScopes =
         actor.type === "service" ? actor.identity.scopes : undefined;
       const advertised = withAutomationControlTools(
-        withOutlookReadTools(
-          withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
+        withXeroReadTools(
+          withOutlookReadTools(
+            withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
+            identityScopes,
+          ),
           identityScopes,
         ),
         { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
@@ -705,8 +709,11 @@ export async function handleInfraMcpJsonRpc(
       const identityScopes =
         actor.type === "service" ? actor.identity.scopes : undefined;
       const advertised = withAutomationControlTools(
-        withOutlookReadTools(
-          withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+        withXeroReadTools(
+          withOutlookReadTools(
+            withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+            identityScopes,
+          ),
           identityScopes,
         ),
         { identityType: actor.type === "service" ? actor.identity.identityType : undefined },

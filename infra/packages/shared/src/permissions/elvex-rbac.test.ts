@@ -51,6 +51,15 @@ describe("Elvex RBAC overlay", () => {
     expect(elvexAllowsAction("finance_team", "xero.invoices.search").allowed).toBe(true);
     expect(mapActionToElvexCapability("xero.sales.summary")).toBe("xero.sales.read");
     expect(elvexAllowsAction("office_staff", "xero.sales.summary").allowed).toBe(false);
+    expect(elvexAllowsAction("director", "xero.reports.pnl.read").allowed).toBe(true);
+    expect(elvexAllowsAction("director", "xero.accounts.read").allowed).toBe(true);
+    expect(elvexAllowsAction("director", "xero.reports.balance_sheet.read").allowed).toBe(true);
+    expect(
+      elvexAllowsAction("director", "xero.sales.summary", { toolName: "xero_sales_summary" }).allowed,
+    ).toBe(true);
+    expect(
+      elvexAllowsAction("office_staff", "xero.sales.summary", { toolName: "xero_sales_summary" }).allowed,
+    ).toBe(false);
   });
 
   it("maps mailboxes and unknown privileged actions fail closed", () => {

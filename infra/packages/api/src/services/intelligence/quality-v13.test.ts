@@ -129,6 +129,37 @@ describe("Xero natural periods", () => {
     expect(period.toDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
+  it("resolves this month on 1 September 2026 and last-month year/month boundaries", () => {
+    const firstSep = new Date("2026-09-01T12:00:00.000Z");
+    expect(resolveBusinessPeriod("sales this month", firstSep)).toMatchObject({
+      fromDate: "2026-09-01",
+      toDate: "2026-09-01",
+    });
+    expect(resolveBusinessPeriod("sales last month", firstSep)).toMatchObject({
+      fromDate: "2026-08-01",
+      toDate: "2026-08-31",
+    });
+    expect(resolveBusinessPeriod("sales last month", new Date("2026-01-02T12:00:00.000Z"))).toMatchObject({
+      fromDate: "2025-12-01",
+      toDate: "2025-12-31",
+    });
+    expect(resolveBusinessPeriod("tell me the invoice numbers invoiced today 01/09/2026", firstSep)).toMatchObject({
+      fromDate: "2026-09-01",
+      toDate: "2026-09-01",
+    });
+    expect(resolveBusinessPeriod("invoices on 2026-09-01", firstSep)).toMatchObject({
+      fromDate: "2026-09-01",
+      toDate: "2026-09-01",
+    });
+    expect(withResolvedBusinessDates("xero_sales_summary", { period: "this_month" }, "", firstSep)).toMatchObject({
+      fromDate: "2026-09-01",
+      toDate: "2026-09-01",
+    });
+    expect(withResolvedBusinessDates("xero_top_customers", {}, "top customers this month", firstSep).fromDate).toBe(
+      "2026-09-01",
+    );
+  });
+
   it("handles week, quarter, year, yesterday, and past-N-day bounds", () => {
     const now = new Date("2026-08-30T12:00:00.000Z");
     expect(resolveBusinessPeriod("sales yesterday", now)).toMatchObject({ fromDate: "2026-08-29", toDate: "2026-08-29" });
