@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const API = "https://api.infrastack.app";
+const ACCEPTANCE_PATH = "/api/internal/elvex-xero-acceptance";
 const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MEMBERSHIP_ID = "membership_78495c59-cff6-4db5-9986-a351ebe154f1";
 const USER_ID = "user_b0db1fc5-692c-436d-99e6-392966b20df8";
@@ -65,7 +66,7 @@ function mintAcceptanceToken() {
 
 async function runPhase(phase) {
   const token = mintAcceptanceToken();
-  const res = await fetch(`${API}/api/internal/william-chatgpt-acceptance?phase=${phase}`, {
+  const res = await fetch(`${API}${ACCEPTANCE_PATH}?phase=${phase}`, {
     method: "POST",
     headers: {
       "X-CMD13-Acceptance-Token": token,

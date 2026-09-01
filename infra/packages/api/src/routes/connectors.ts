@@ -1147,7 +1147,7 @@ connectors.post("/api/internal/cmd16b/outlook-rbac", async (c) => {
   }
 });
 
-connectors.post("/api/internal/william-chatgpt-acceptance", async (c) => {
+async function runWilliamChatgptAcceptanceRoute(c: { env: Env; req: { query: (name: string) => string | undefined }; json: (body: unknown, status?: number) => Response }) {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
   }
@@ -1170,7 +1170,10 @@ connectors.post("/api/internal/william-chatgpt-acceptance", async (c) => {
       500,
     );
   }
-});
+}
+
+connectors.post("/api/internal/william-chatgpt-acceptance", (c) => runWilliamChatgptAcceptanceRoute(c));
+connectors.post("/api/internal/elvex-xero-acceptance", (c) => runWilliamChatgptAcceptanceRoute(c));
 
 connectors.post("/api/internal/ocr/acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
