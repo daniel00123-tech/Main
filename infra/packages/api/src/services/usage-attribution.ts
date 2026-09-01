@@ -5,6 +5,7 @@ export type AiChannel =
   | "claude"
   | "whatsapp"
   | "portal"
+  | "portal_chat"
   | "automation"
   | "service";
 
@@ -17,6 +18,9 @@ export function normalizeSourceClient(
   if (value.includes("chatgpt") || value === "openai") return "chatgpt";
   if (value.includes("claude")) return "claude";
   if (value.includes("whatsapp")) return "whatsapp";
+  if (value === "portal_chat" || value.includes("portal_chat") || value.includes("portal-chat")) {
+    return "portal_chat";
+  }
   if (value.includes("portal") || value === "infra-gateway" || value === "infra-mcp") {
     return value === "infra-mcp" || value === "infra-gateway" ? value : "portal";
   }
