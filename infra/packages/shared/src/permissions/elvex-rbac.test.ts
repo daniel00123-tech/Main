@@ -27,6 +27,7 @@ describe("Elvex RBAC overlay", () => {
     expect(elvexCan("office_staff", "payment.info.access")).toBe(false);
 
     expect(elvexAllowsAction("office_staff", "knowledge.search").allowed).toBe(true);
+    expect(elvexAllowsAction("office_staff", "knowledge.catalogue").allowed).toBe(true);
     expect(elvexAllowsAction("office_staff", "xero.invoices.read").allowed).toBe(false);
     expect(
       elvexAllowsAction("office_staff", "outlook.search", {

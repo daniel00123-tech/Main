@@ -11,7 +11,7 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     whenToUse:
       "The user names or wants a different document, or no current document is set. First step of document discovery.",
     whenNotToUse:
-      "Do not use for follow-ups about the already-open document (he/that/when/managing). Do not use just because a new keyword appeared.",
+      "Do not use for follow-ups about the already-open document (he/that/when/managing). Do not use just because a new keyword appeared. Do not use for newest/latest/uploaded/recently modified listing — call list_documents.",
     parameters: {
       query: { description: "Natural-language search text", required: true },
       limit: { type: "number", description: "Optional hit cap, default 5" },
@@ -167,9 +167,28 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     name: "get_document_index_stats",
     description: "Tenant-scoped indexed document counts by source and file type. Real aggregates only.",
     whenToUse: "How many documents are indexed, where they come from, or type/source breakdowns.",
-    whenNotToUse: "Not for searching document text. Not when the user means the current file's contents.",
+    whenNotToUse: "Not for searching document text. Not when the user means the current file's contents. Not for listing newest/latest files.",
     parameters: {},
     outputShape: "{ totalIndexed, bySource, byType, lastSyncAt }",
+    permission: "company knowledge read",
+  },
+  {
+    name: "list_documents",
+    description:
+      "List real connected document metadata by recency. Newest, latest, uploaded, or recently modified files. Not semantic search.",
+    whenToUse:
+      "Newest document, latest ten files, uploaded today, changed this week, latest SharePoint PDFs, or what the newest files are about.",
+    whenNotToUse:
+      "Do not use for 'how many documents' (index stats). Do not use to find a document about a topic. Do not invent files.",
+    parameters: {
+      source: { description: "onedrive, sharepoint, drive, email, or all" },
+      sort: { description: "newest, oldest, or recently_modified" },
+      limit: { type: "number", description: "1–100, default 10" },
+      file_type: { description: "Optional pdf/docx/xlsx" },
+      date_from: { description: "Optional YYYY-MM-DD" },
+      date_to: { description: "Optional YYYY-MM-DD" },
+    },
+    outputShape: "{ documents: [{ id, title, source, createdAt, modifiedAt, fileType, url, description }] }",
     permission: "company knowledge read",
   },
   {
@@ -228,6 +247,8 @@ export const GATEWAY_TOOL_ALIASES: Record<string, string> = {
   xero_profit_and_loss: "xero_profit_and_loss",
   xero_aged_receivables: "xero_aged_receivables",
   xero_get_organisation: "xero_get_organisation",
+  ask_document: "ask_document",
+  list_documents: "list_documents",
 };
 
 const XERO_TOOLS = new Set(INTELLIGENCE_TOOLS.filter((tool) => tool.name.startsWith("xero_")).map((tool) => tool.name));

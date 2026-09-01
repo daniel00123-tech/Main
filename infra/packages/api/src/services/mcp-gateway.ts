@@ -46,6 +46,7 @@ import { withActionControlTools, isActionControlTool, actionControlToolAllowed }
 import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
 import { withXeroReadTools } from "./xero-read-tools";
 import { ASK_DOCUMENT_TOOL, withAskDocumentTool } from "./ask-document";
+import { LIST_DOCUMENTS_TOOL, withDocumentCatalogueTools } from "./document-catalogue";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeActionControlTool } from "./action-engine/action-control-handler";
 import {
@@ -113,11 +114,13 @@ export function enrichMcpToolDescription(
 ): string {
   const defaults: Record<string, string> = {
     search:
-      "Search this company's knowledge for policies, processes, and other indexed documents. Do NOT use this for live Xero sales, invoices, mailbox contents, payments, or administration. If a dedicated connector tool returns permission_denied, tell the user they lack permission — never interpret that as empty or zero results. Read-only.",
+      "Search this company's knowledge for policies, processes, and other indexed documents by meaning. Do NOT use this for newest/latest/uploaded/recently modified file lists — call list_documents instead. Do NOT use this for live Xero sales, invoices, mailbox contents, payments, or administration. If a dedicated connector tool returns permission_denied, tell the user they lack permission — never interpret that as empty or zero results. Read-only.",
+    list_documents:
+      "List real connected document metadata by recency. Use for the newest OneDrive document, latest ten files, files uploaded today, what changed this week, or latest SharePoint PDFs. Do not use search for those questions. Never invent files. Read-only.",
     fetch:
       "Fetch the full content of a company knowledge document previously returned by search. Pass the document id. Read-only. Use the returned url and metadata for source attribution when present.",
     search_company_knowledge:
-      "Search this company's indexed knowledge documents (policies, project docs, spend limits, approvals, etc.). Pass a natural-language query only (for example \"vehicle mileage policy\" or \"Company Van Policy\"). Do NOT set topic/category/department filters unless the user explicitly asks to filter by that metadata — invented filters often return zero results. Returns matching excerpts with source document titles.",
+      "Search this company's indexed knowledge documents by meaning (policies, project docs, spend limits, approvals, etc.). Do NOT use this for newest/latest/uploaded file lists — call list_documents. Pass a natural-language query only (for example \"vehicle mileage policy\"). Do NOT set topic/category/department filters unless the user explicitly asks to filter by that metadata — invented filters often return zero results. Returns matching excerpts with source document titles.",
     get_knowledge_document:
       "Read a specific company knowledge document by identifier or title after locating it with search_company_knowledge.",
     ask_document:
@@ -414,7 +417,8 @@ async function resolveToolActionForFilter(
     toolName === "get_knowledge_document" ||
     toolName === "fetch" ||
     toolName === "database_summary" ||
-    toolName === ASK_DOCUMENT_TOOL
+    toolName === ASK_DOCUMENT_TOOL ||
+    toolName === LIST_DOCUMENTS_TOOL
   ) {
     return "knowledge.read";
   }
@@ -663,14 +667,17 @@ export async function handleInfraMcpJsonRpc(
       const identityScopes =
         actor.type === "service" ? actor.identity.scopes : undefined;
       const advertised = withAutomationControlTools(
-        withAskDocumentTool(
-          withXeroReadTools(
-            withOutlookReadTools(
-              withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
+        withDocumentCatalogueTools(
+          withAskDocumentTool(
+            withXeroReadTools(
+              withOutlookReadTools(
+                withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
+                identityScopes,
+              ),
               identityScopes,
             ),
-            identityScopes,
           ),
+          identityScopes,
         ),
         { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
       );
@@ -723,14 +730,17 @@ export async function handleInfraMcpJsonRpc(
       const identityScopes =
         actor.type === "service" ? actor.identity.scopes : undefined;
       const advertised = withAutomationControlTools(
-        withAskDocumentTool(
-          withXeroReadTools(
-            withOutlookReadTools(
-              withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+        withDocumentCatalogueTools(
+          withAskDocumentTool(
+            withXeroReadTools(
+              withOutlookReadTools(
+                withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+                identityScopes,
+              ),
               identityScopes,
             ),
-            identityScopes,
           ),
+          identityScopes,
         ),
         { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
       );

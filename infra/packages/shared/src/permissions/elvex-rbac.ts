@@ -173,7 +173,7 @@ export function mapActionToElvexCapability(
     return action as ElvexCapability;
   }
   if (action === "system.health") return "system.health";
-  if (action === "knowledge.search" || action === "knowledge.read") {
+  if (action === "knowledge.search" || action === "knowledge.read" || action === "knowledge.catalogue") {
     return "engineer_or_company";
   }
   if (

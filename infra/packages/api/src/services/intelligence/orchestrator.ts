@@ -6,6 +6,7 @@ import { routeIntelligenceTurn } from "./router.js";
 import { classifyScope, persistableScope, type ScopeDecision } from "./scope.js";
 import { formatConversationState } from "./state.js";
 import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "./system-meta.js";
+import { parseCatalogueIntent, verbaliseDocumentCatalogue } from "../document-catalogue.js";
 import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
 import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
 import type {
@@ -33,7 +34,8 @@ Current document is context, not a command to always search it.
 Conversational turns (thanks, meaning, rephrase, what were we talking about) need no tools.
 System and index questions use system-meta tools, never the current document.
 Search a document only when the question is about that file's contents.
-Search company knowledge to find or compare documents, or when the user asks across files.
+Search company knowledge to find or compare documents by meaning.
+Use list_documents for newest/latest/uploaded/recently modified file lists — never substitute semantic search.
 Use Xero or email only when asked and those systems are connected.
 Clarify if ambiguous. Honour corrections and scope switches. Never invent facts, counts, or URLs.
 No D1, Vectorize, or MCP jargon unless an authorised admin asks a technical ops question.
@@ -661,6 +663,12 @@ async function bootstrapRetrieval(
   if (scoped?.scope === "SYSTEM_META" || scoped?.scope === "CONNECTOR_CAPABILITY") {
     return runtime.executeTool({ name: scoped.tool || "get_company_system_summary", arguments: {} });
   }
+  if (scoped?.tool === "list_documents") {
+    return runtime.executeTool({
+      name: "list_documents",
+      arguments: prepareToolArguments("list_documents", {}, text, state, scoped.scope),
+    });
+  }
   if (looksLikeFinanceRead(text) || scoped?.scope === "BUSINESS_SYSTEM") {
     const toolName = scoped?.tool || "xero_sales_summary";
     return runtime.executeTool({
@@ -702,6 +710,19 @@ function prepareToolArguments(
   if (needsBusinessDates(name)) {
     next = withResolvedBusinessDates(name, next, text);
   }
+  if (name === "list_documents") {
+    const parsed = parseCatalogueIntent(text);
+    return {
+      source: typeof next.source === "string" ? next.source : parsed.source,
+      sort: typeof next.sort === "string" ? next.sort : parsed.sort,
+      limit: next.limit ?? parsed.limit,
+      file_type: next.file_type ?? parsed.fileType,
+      date_from: next.date_from ?? parsed.dateFrom,
+      date_to: next.date_to ?? parsed.dateTo,
+      include_descriptions: next.include_descriptions ?? parsed.includeDescriptions,
+      titleContains: next.titleContains ?? parsed.titleContains,
+    };
+  }
   if (name === "search_document") {
     const enriched = enrichDocumentQuery(String(next.query ?? text), {
       scope: scope ?? "CURRENT_DOCUMENT",
@@ -722,9 +743,10 @@ function prepareToolArguments(
 
 function shouldRunDeterministicMeta(scoped: ScopeDecision): boolean {
   return (
-    (scoped.scope === "SYSTEM_META" || scoped.scope === "CONNECTOR_CAPABILITY") &&
-    Boolean(scoped.tool) &&
-    !scoped.clarify
+    ((scoped.scope === "SYSTEM_META" || scoped.scope === "CONNECTOR_CAPABILITY") &&
+      Boolean(scoped.tool) &&
+      !scoped.clarify) ||
+    scoped.tool === "list_documents"
   );
 }
 
@@ -751,10 +773,23 @@ async function runDeterministicMeta(
       flags: [],
     };
   }
-  const result = await runtime.executeTool({ name: toolName, arguments: {} });
+  const args = toolName === "list_documents" ? prepareToolArguments(toolName, {}, text, {
+    currentDocument: null,
+    lastAnswerTopic: scoped.lastAnswerTopic,
+    lastUserIntent: scoped.lastUserIntent,
+    userCorrection: false,
+    currentScope: scoped.scope,
+  } as IntelligenceConversationState, scoped.scope) : {};
+  const result = await runtime.executeTool({ name: toolName, arguments: args });
   const flags: IntelligenceQualityFlag[] = [];
-  const fallback = verbaliseSystemMeta(toolName, result.ok ? result.data : { error: result.error }, text);
+  const fallback =
+    toolName === "list_documents"
+      ? verbaliseDocumentCatalogue(result.ok ? result.data : { error: result.error }, text)
+      : verbaliseSystemMeta(toolName, result.ok ? result.data : { error: result.error }, text);
   if (!result.ok) {
+    return { text: fallback, toolCalls: [result], modelRounds: [], flags };
+  }
+  if (toolName === "list_documents") {
     return { text: fallback, toolCalls: [result], modelRounds: [], flags };
   }
   let textOut = fallback;
