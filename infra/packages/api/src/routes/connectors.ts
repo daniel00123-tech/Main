@@ -1172,8 +1172,11 @@ async function runWilliamChatgptAcceptanceRoute(c: { env: Env; req: { query: (na
   }
 }
 
-connectors.post("/api/internal/william-chatgpt-acceptance", (c) => runWilliamChatgptAcceptanceRoute(c));
-connectors.post("/api/internal/elvex-xero-acceptance", (c) => runWilliamChatgptAcceptanceRoute(c));
+connectors.post("/api/internal/william-chatgpt-acceptance", async (c) => runWilliamChatgptAcceptanceRoute(c));
+connectors.post("/api/internal/elvex-xero-acceptance", async (c) => runWilliamChatgptAcceptanceRoute(c));
+connectors.post("/api/internal/cmd15/microsoft-acceptance/xero-reads", async (c) =>
+  runWilliamChatgptAcceptanceRoute(c),
+);
 
 connectors.post("/api/internal/ocr/acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
