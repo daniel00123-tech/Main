@@ -12,6 +12,7 @@ import {
   sanitizeCatalogueArguments,
   withDocumentCatalogueTools,
   executeListDocuments,
+  usableCatalogueTitle,
   verbaliseDocumentCatalogue,
 } from "./document-catalogue";
 
@@ -251,6 +252,16 @@ describe("executeListDocuments", () => {
   });
 });
 
+describe("usableCatalogueTitle", () => {
+  it("keeps the real catalogue filename when a fetch returns Untitled document", () => {
+    expect(usableCatalogueTitle("Untitled document", "Elvex Jobs.xlsx")).toBe("Elvex Jobs.xlsx");
+    expect(usableCatalogueTitle("", "Rates card 2026 2.pdf")).toBe("Rates card 2026 2.pdf");
+    expect(usableCatalogueTitle("Health and Safety Policy (2).docx", "Untitled document")).toBe(
+      "Health and Safety Policy (2).docx",
+    );
+  });
+});
+
 describe("verbaliseDocumentCatalogue", () => {
   it("does not invent files when the catalogue is empty", () => {
     const text = verbaliseDocumentCatalogue(
@@ -263,5 +274,28 @@ describe("verbaliseDocumentCatalogue", () => {
     );
     expect(text).toMatch(/no document catalogue/i);
     expect(text).not.toMatch(/policy\.pdf/i);
+  });
+
+  it("keeps the catalogue filename when describing filename-only items", () => {
+    const text = verbaliseDocumentCatalogue(
+      {
+        status: "ok",
+        source: "onedrive",
+        dateFieldReason: "Ordered by last modified.",
+        documents: [
+          {
+            title: "Elvex Jobs.xlsx",
+            source: "onedrive",
+            fileType: "xlsx",
+            modifiedAt: "2026-08-18T15:23:09Z",
+            url: "https://elvex-my.sharepoint.com/personal/a/Elvex%20Jobs.xlsx",
+            description: "Description unavailable — only the filename “Elvex Jobs.xlsx” is available.",
+          },
+        ],
+      },
+      "What's the newest document in OneDrive?",
+    );
+    expect(text).toMatch(/Elvex Jobs\.xlsx/);
+    expect(text).not.toMatch(/Untitled document/);
   });
 });

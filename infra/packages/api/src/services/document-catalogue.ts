@@ -381,11 +381,21 @@ function sortDocuments(items: CatalogueDocument[], query: CatalogueQuery): Catal
   });
 }
 
+/** Prefer catalogue metadata titles over empty EL MCP placeholders. */
+export function usableCatalogueTitle(...candidates: Array<string | null | undefined>): string {
+  for (const candidate of candidates) {
+    const title = asNonEmpty(candidate);
+    if (title && title !== "Untitled document") return title;
+  }
+  return asNonEmpty(candidates.find((item) => asNonEmpty(item))) || "Untitled document";
+}
+
 function describeFromIndexedText(text: string, title: string): Pick<CatalogueDocument, "description" | "descriptionSource"> {
   const cleaned = text.replace(/\s+/g, " ").trim();
+  const displayTitle = usableCatalogueTitle(title);
   if (!cleaned) {
     return {
-      description: `Description unavailable — only the filename “${title}” is available.`,
+      description: `Description unavailable — only the filename “${displayTitle}” is available.`,
       descriptionSource: "filename_only",
     };
   }
@@ -769,7 +779,7 @@ async function attachDescriptions(
   if (!mcp) {
     for (const doc of documents) {
       if (!doc.description) {
-        doc.description = `Description unavailable — only the filename “${doc.title}” is available.`;
+        doc.description = `Description unavailable — only the filename “${usableCatalogueTitle(doc.title)}” is available.`;
         doc.descriptionSource = "filename_only";
       }
     }
@@ -799,14 +809,15 @@ async function attachDescriptions(
       if (fileGet.status === 200) {
         const payload = toStandardFetchPayload("data" in fileGet ? fileGet.data?.result : fileGet, doc.id);
         const text = payload.text || (payload.chunks ?? []).map((chunk) => chunk.text).join("\n");
-        const described = describeFromIndexedText(text, payload.title || doc.title);
+        const title = usableCatalogueTitle(payload.title, doc.title);
+        const described = describeFromIndexedText(text, title);
         doc.description = described.description;
         doc.descriptionSource = described.descriptionSource;
-        if (payload.title && payload.title !== "Untitled document") doc.title = payload.title;
+        doc.title = title;
         if (payload.url) doc.url = payload.url;
         continue;
       }
-      doc.description = `Description unavailable — only the filename “${doc.title}” is available.`;
+      doc.description = `Description unavailable — only the filename “${usableCatalogueTitle(doc.title)}” is available.`;
       doc.descriptionSource = "filename_only";
       continue;
     }
@@ -825,18 +836,20 @@ async function attachDescriptions(
       if (fileGet.status === 200) {
         const filePayload = toStandardFetchPayload("data" in fileGet ? fileGet.data?.result : fileGet, doc.id);
         const fileText = filePayload.text || (filePayload.chunks ?? []).map((chunk) => chunk.text).join("\n");
-        const described = describeFromIndexedText(fileText, filePayload.title || doc.title);
+        const title = usableCatalogueTitle(filePayload.title, payload.title, doc.title);
+        const described = describeFromIndexedText(fileText, title);
         doc.description = described.description;
         doc.descriptionSource = described.descriptionSource;
-        if (filePayload.title && filePayload.title !== "Untitled document") doc.title = filePayload.title;
+        doc.title = title;
         if (filePayload.url) doc.url = filePayload.url;
         continue;
       }
     }
-    const described = describeFromIndexedText(text, payload.title || doc.title);
+    const title = usableCatalogueTitle(payload.title, doc.title);
+    const described = describeFromIndexedText(text, title);
     doc.description = described.description;
     doc.descriptionSource = described.descriptionSource;
-    if (payload.title && payload.title !== "Untitled document") doc.title = payload.title;
+    doc.title = title;
     if (payload.url) doc.url = payload.url;
   }
 }
@@ -932,7 +945,7 @@ export async function executeListDocuments(
   } else {
     for (const doc of documents) {
       if (!doc.description) {
-        doc.description = `Description unavailable — only the filename “${doc.title}” is available.`;
+        doc.description = `Description unavailable — only the filename “${usableCatalogueTitle(doc.title)}” is available.`;
         doc.descriptionSource = "filename_only";
       }
     }
@@ -979,7 +992,7 @@ export function verbaliseDocumentCatalogue(data: unknown, question: string): str
   if (!docs.length) return String(data.message ?? "No documents matched that catalogue query.");
   const reason = asNonEmpty(data.dateFieldReason);
   const lines = docs.map((doc, index) => {
-    const title = asNonEmpty(doc.title) || "Untitled document";
+    const title = usableCatalogueTitle(typeof doc.title === "string" ? doc.title : null);
     const when = asNonEmpty(doc.modifiedAt) || asNonEmpty(doc.createdAt) || "timestamp unavailable";
     const source = asNonEmpty(doc.source) || "unknown";
     const type = asNonEmpty(doc.fileType);
