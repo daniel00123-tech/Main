@@ -362,7 +362,14 @@ export function registerCommand6Routes(app: Hono<AppEnv>) {
     if (!canManageCompany(c.get("user"), company.id)) {
       return c.json({ error: "Company administrator access required" }, 403);
     }
-    await cancelInvitation(c.env.DB, company.id, c.req.param("id"));
+    try {
+      await cancelInvitation(c.env.DB, company.id, c.req.param("id"));
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : "Unable to cancel invitation" },
+        400,
+      );
+    }
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
       eventType: "invitation.cancelled",

@@ -111,7 +111,7 @@ export function enrichMcpToolDescription(
 ): string {
   const defaults: Record<string, string> = {
     search:
-      "Search this company's knowledge for policies, processes, and other indexed documents. Use a natural-language query. Returns matching documents with stable ids so you can call fetch. Read-only.",
+      "Search this company's knowledge for policies, processes, and other indexed documents. Do NOT use this for live Xero sales, invoices, mailbox contents, payments, or administration. If a dedicated connector tool returns permission_denied, tell the user they lack permission — never interpret that as empty or zero results. Read-only.",
     fetch:
       "Fetch the full content of a company knowledge document previously returned by search. Pass the document id. Read-only. Use the returned url and metadata for source attribution when present.",
     search_company_knowledge:
@@ -119,7 +119,7 @@ export function enrichMcpToolDescription(
     get_knowledge_document:
       "Read a specific company knowledge document by identifier or title after locating it with search_company_knowledge.",
     database_summary:
-      "Summarise available company business-data collections exposed through the knowledge layer.",
+      "Summarise available company knowledge collections. This is not live Xero or mailbox data. Do not use it for sales totals or finance figures.",
     system_health:
       "Non-billable health check for the company MCP connection through INFRA. Does not search documents and does not debit the wallet.",
     xero_get_organisation:
@@ -147,7 +147,7 @@ export function enrichMcpToolDescription(
     xero_aged_receivables:
       "Return aged receivables or payables for debtor/creditor position. Read-only.",
     xero_sales_summary:
-      "Summarise qualifying Accounts Receivable (ACCREC) sales for a date range, net of sales credit notes (ACCRECCREDIT). Excludes purchase bills (ACCPAY), purchase credits, voided/deleted documents. Returns currencyCode and reconcilable transactions. Read-only.",
+      "Use this for live Xero sales totals. If INFRA returns permission_denied, the company Xero connection may still be healthy — the signed-in user is not allowed to view Xero financial data. Do not treat permission_denied as zero sales or 'no results'. Read-only.",
     xero_top_customers:
       "Return top customers by qualifying ACCREC sales revenue for a date range. Purchase-side documents never count as customers. Amounts use currencyCode (e.g. GBP). Read-only.",
     xero_create_draft_invoice:
@@ -904,14 +904,23 @@ export async function handleInfraMcpJsonRpc(
         result.status,
         result.error ?? "Tool call failed",
       );
+      const denial =
+        "permissionDenial" in result ? result.permissionDenial : undefined;
       return {
         payload: jsonRpcError(id, -32003, publicError.message, {
           correlationId: result.correlationId,
           requestId: "requestId" in result ? result.requestId : undefined,
           httpStatus: result.status,
-          errorCode: publicError.code,
+          errorCode: denial?.error ?? publicError.code,
           action: "action" in result ? result.action : undefined,
           riskClass: "riskClass" in result ? result.riskClass : undefined,
+          accessOutcome:
+            "accessOutcome" in result ? result.accessOutcome : undefined,
+          capability: denial?.capability,
+          connected: denial?.connected,
+          userAllowed: denial?.userAllowed,
+          userRole: denial?.userRole,
+          reason: denial?.reason,
         }),
         httpStatus: 200, // JSON-RPC errors travel as 200 with error body for MCP clients
       };

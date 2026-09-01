@@ -46,6 +46,7 @@ import {
   maskEmail,
   validateNewPassword,
 } from "./auth/password-setup";
+import { acceptPendingInvitationsAfterOnboarding } from "./services/invitations";
 import { createCorsMiddleware } from "./cors";
 import type { Env } from "./env";
 import {
@@ -234,6 +235,10 @@ app.post("/api/auth/password-setup", async (c) => {
 
   await updateUserPassword(c.env.DB, user.id, body.password);
   await consumeSetupToken(c.env.DB, record.id);
+  const acceptedInvites = await acceptPendingInvitationsAfterOnboarding(c.env.DB, user.id, {
+    actor: user.email,
+    reason: "password_setup_completed",
+  });
 
   await recordAuditEvent(c.env.DB, {
     eventType: "auth.password_setup_completed",
@@ -243,6 +248,7 @@ app.post("/api/auth/password-setup", async (c) => {
     detail: {
       purpose: record.purpose,
       tokenId: record.id,
+      acceptedInvitationIds: acceptedInvites,
     },
   });
 

@@ -2,8 +2,16 @@ import {
   ELVEX_INFO_MAILBOXES,
   isElvexCompany,
   resolveElvexConfiguredMailbox,
+  type StructuredCapabilityDenial,
   type ToolAction,
 } from "@infra/shared";
+import {
+  denyKnowledgeQueryIfProtected,
+  mapExecutionOutcome,
+  resolveProtectedCapability,
+  structuredPermissionDenial,
+  xeroResultLooksEmpty,
+} from "./capability-access";
 import type { Env } from "../env";
 import type { SessionUser } from "../auth/session";
 import { liveActorToSessionUser, loadLiveCompanyActor } from "../auth/live-identity";
@@ -561,6 +569,7 @@ export async function executeGatewayRequest(
 
   let permissionAllowed = false;
   let permissionReason: string | undefined;
+  let permissionRole: string | null = null;
 
   if (isOutlookReadTool(input.toolName) && isElvexCompany({ id: input.companyId })) {
     const rawMailbox =
@@ -589,6 +598,7 @@ export async function executeGatewayRequest(
     );
     permissionAllowed = decision.allowed;
     permissionReason = decision.reason;
+    permissionRole = decision.role;
   } else {
     const decision = await evaluateServiceActionPermission(
       env.DB,
@@ -597,6 +607,52 @@ export async function executeGatewayRequest(
     );
     permissionAllowed = decision.allowed;
     permissionReason = decision.reason;
+  }
+
+  const mailboxForCapability =
+    typeof input.arguments?.mailboxAddress === "string"
+      ? input.arguments.mailboxAddress
+      : typeof input.arguments?.mailbox === "string"
+        ? input.arguments.mailbox
+        : null;
+  const queryForCapability =
+    typeof input.arguments?.query === "string" ? input.arguments.query : null;
+  let protectedCapability = resolveProtectedCapability({
+    action,
+    toolName: input.toolName,
+    mailboxAddress: mailboxForCapability,
+    query: queryForCapability,
+  });
+
+  if (permissionAllowed && input.actor.type === "user") {
+    const knowledgeDenial = await denyKnowledgeQueryIfProtected(
+      env.DB,
+      input.actor.user,
+      input.companyId,
+      input.toolName,
+      input.arguments,
+    );
+    if (knowledgeDenial) {
+      permissionAllowed = false;
+      permissionReason = knowledgeDenial.message;
+      protectedCapability = knowledgeDenial.capability;
+    }
+  }
+
+  let permissionDenial: StructuredCapabilityDenial | undefined;
+  if (!permissionAllowed && protectedCapability) {
+    permissionDenial = await structuredPermissionDenial(env.DB, {
+      companyId: input.companyId,
+      capability: protectedCapability,
+      role: permissionRole,
+    });
+    permissionReason = permissionDenial.message;
+  } else if (!permissionAllowed) {
+    permissionDenial = undefined;
+    permissionReason =
+      permissionReason && !/elvex role|rbac|403|mcp denied/i.test(permissionReason)
+        ? permissionReason
+        : "Your current permissions don’t allow this action.";
   }
 
   if (!permissionAllowed) {
@@ -612,6 +668,11 @@ export async function executeGatewayRequest(
         toolName: input.toolName,
         reason: permissionReason,
         riskClass,
+        capability: protectedCapability,
+        connected: permissionDenial?.connected ?? null,
+        userAllowed: false,
+        userRole: permissionRole,
+        result: "permission_denied",
       },
     });
 
@@ -680,6 +741,9 @@ export async function executeGatewayRequest(
         membershipId:
           input.actor.type === "user" ? input.actor.membershipId ?? null : null,
         reason: permissionReason,
+        capability: protectedCapability,
+        connected: permissionDenial?.connected ?? null,
+        result: "permission_denied",
       },
       settlementStatus: "denied",
     });
@@ -687,11 +751,13 @@ export async function executeGatewayRequest(
     scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
     return {
       status: 403 as const,
-      error: permissionReason ?? "Permission denied",
+      error: permissionReason ?? "Your current permissions don’t allow this action.",
       correlationId,
       requestId,
       action,
       riskClass,
+      accessOutcome: "permission_denied" as const,
+      permissionDenial,
     };
   }
 
@@ -859,11 +925,21 @@ export async function executeGatewayRequest(
             actor: actorLabel,
           });
           if (!xero.ok) {
+            const mapped = mapExecutionOutcome({
+              capability: "xero",
+              connected: (xero.code ?? "") !== "CONNECTOR_NOT_CONNECTED",
+              httpStatus: xero.status,
+              error: xero.error,
+              code: xero.code,
+            });
             return {
               status: xero.status,
-              error: xero.error,
+              error: mapped?.message ?? xero.error,
+              code: xero.code,
+              accessOutcome: mapped?.outcome,
             } as const;
           }
+          const empty = xeroResultLooksEmpty(xero.result);
           return {
             status: 200 as const,
             data: {
@@ -874,6 +950,10 @@ export async function executeGatewayRequest(
               latencyMs: xero.latencyMs,
               authConfigured: true,
               riskClass,
+              accessOutcome: empty ? "empty_result" : "allowed",
+              message: empty
+                ? "No matching Xero records were found for that period."
+                : undefined,
               result: xero.result,
             },
           };
@@ -1233,13 +1313,23 @@ export async function executeGatewayRequest(
   }
 
   if (!success) {
+    const mapped = mapExecutionOutcome({
+      capability: protectedCapability,
+      connected: protectedCapability ? true : null,
+      httpStatus: execution.status,
+      error: "error" in execution ? String(execution.error) : null,
+      code: "code" in execution ? String(execution.code ?? "") : null,
+    });
     return {
       status: execution.status,
-      error: "error" in execution ? execution.error : "Gateway execution failed",
+      error:
+        mapped?.message ??
+        ("error" in execution ? execution.error : "Gateway execution failed"),
       correlationId,
       requestId,
       action,
       riskClass,
+      accessOutcome: mapped?.outcome,
     };
   }
 

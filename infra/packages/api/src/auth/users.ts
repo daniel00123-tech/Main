@@ -511,7 +511,13 @@ export async function inviteCompanyUser(
     role: CompanyRole;
     mobile?: string | null;
   },
-): Promise<{ user: DbUser; setupToken: string; expiresAt: string; created: boolean }> {
+): Promise<{
+    user: DbUser;
+    setupToken: string;
+    setupTokenId: string;
+    expiresAt: string;
+    created: boolean;
+  }> {
   const existing = await getUserByEmail(db, input.email);
   let user = existing;
   let created = false;
@@ -557,6 +563,7 @@ export async function inviteCompanyUser(
   return {
     user,
     setupToken: setup.token,
+    setupTokenId: setup.id,
     expiresAt: setup.expiresAt,
     created,
   };

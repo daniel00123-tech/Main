@@ -33,6 +33,15 @@ describe("publicToolErrorMessage", () => {
     expect(
       publicToolErrorMessage(403, "Permission denied: knowledge.search").message,
     ).toBe("Permission denied: knowledge.search");
+    expect(publicToolErrorMessage(403, "Elvex role does not grant xero.sales.read").code).toBe(
+      "permission_denied",
+    );
+    expect(
+      publicToolErrorMessage(
+        403,
+        "Xero is connected for EL Business, but your Office Staff permissions don’t allow you to view Xero financial data.",
+      ).code,
+    ).toBe("permission_denied");
   });
 
   it("maps Outlook connector failures to safe reconnect or retry copy", () => {
