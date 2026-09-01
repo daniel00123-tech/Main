@@ -110,7 +110,7 @@ try {
   report.elevateError = err instanceof Error ? err.message : String(err);
 } finally {
   if (elevated || membershipRole()?.role === TEMP_ROLE) {
-    report.restored = setRole(ORIGINAL_ROLE, "membership.role_restored");
+    report.restored = restoreIntendedRole(apiDir, TEMP_ROLE, "william chatgpt acceptance");
   }
 }
 
