@@ -160,20 +160,15 @@ export async function executeCompanyMcpOutlookRead(
   const query =
     typeof input.arguments.query === "string" && input.arguments.query.trim()
       ? input.arguments.query.trim()
-      : input.toolName === "outlook_list_messages"
-        ? "newest"
-        : "";
+      : "";
   const limit = Number(input.arguments.limit ?? input.arguments.top ?? 5);
 
   const forwarded: Record<string, unknown> = {
     mailbox: mailbox.mailboxAddress,
-    mailboxAddress: mailbox.mailboxAddress,
     folder: typeof input.arguments.folderName === "string" ? input.arguments.folderName : "inbox",
-    folderName: typeof input.arguments.folderName === "string" ? input.arguments.folderName : "inbox",
     limit,
-    top: limit,
   };
-  if (query) forwarded.query = query;
+  if (query && input.toolName !== "outlook_list_messages") forwarded.query = query;
   if (typeof input.arguments.messageId === "string") forwarded.messageId = input.arguments.messageId;
   if (typeof input.arguments.conversationId === "string") {
     forwarded.conversationId = input.arguments.conversationId;
@@ -224,13 +219,19 @@ export async function executeCompanyMcpOutlookRead(
     };
   }
 
+  const upstream = "data" in execution ? execution.data?.result : undefined;
+  const upstreamRecord =
+    upstream && typeof upstream === "object" ? (upstream as Record<string, unknown>) : {};
+  const messages = Array.isArray(upstreamRecord.messages) ? upstreamRecord.messages : [];
+
   return {
     ok: true,
     result: {
       mailboxAddress: mailbox.mailboxAddress,
+      count: messages.length,
+      messages,
       via: "company_mcp",
       toolName: forwardName,
-      result: "data" in execution ? execution.data?.result : undefined,
     },
   };
 }
