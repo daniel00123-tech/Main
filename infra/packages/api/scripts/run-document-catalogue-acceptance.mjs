@@ -44,6 +44,7 @@ const res = await fetch(`${API}/api/internal/document-catalogue-acceptance`, {
     "X-CMD13-Acceptance-Token": token,
     "Content-Type": "application/json",
   },
+  signal: AbortSignal.timeout(180_000),
 });
 const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
 const report = { httpStatus: res.status, williamRole: recorded, body };

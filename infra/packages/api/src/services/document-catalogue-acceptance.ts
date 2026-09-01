@@ -91,18 +91,25 @@ async function runTenant(
   env: Env,
   input: { companyId: string; label: string; userId?: string; email?: string },
 ): Promise<Record<string, unknown>> {
-  const listed = await executeListDocuments(env, {
-    companyId: input.companyId,
-    arguments: { source: "onedrive", sort: "recently_modified", limit: 1, include_descriptions: true },
-    actor: input.email ?? "document-catalogue-acceptance",
-    actorUserId: input.userId ?? "system",
-  });
   const latestTen = await executeListDocuments(env, {
     companyId: input.companyId,
     arguments: { source: "onedrive", sort: "recently_modified", limit: 10, include_descriptions: true },
     actor: input.email ?? "document-catalogue-acceptance",
     actorUserId: input.userId ?? "system",
   });
+  const listed =
+    latestTen.ok && latestTen.result.documents[0]
+      ? {
+          ok: true as const,
+          result: {
+            ...latestTen.result,
+            limit: 1,
+            count: 1,
+            documents: latestTen.result.documents.slice(0, 1),
+            message: latestTen.result.message,
+          },
+        }
+      : latestTen;
   let companyMcpTools: string[] = [];
   try {
     const { listMcpEnvironments } = await import("./control-plane");
@@ -196,7 +203,7 @@ export async function runDocumentCatalogueAcceptance(env: Env): Promise<Record<s
       source: "onedrive",
       sort: "recently_modified",
       limit: 10,
-      include_descriptions: true,
+      include_descriptions: false,
     });
     const search = await chatgptCall(issued.token, "search", {
       query: "newest document in OneDrive",

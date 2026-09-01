@@ -785,8 +785,17 @@ async function attachDescriptions(
     }
     return;
   }
+  const started = Date.now();
+  const budgetMs = 18_000;
   for (const doc of documents) {
     if (doc.descriptionSource === "indexed_content" && doc.description) continue;
+    if (Date.now() - started > budgetMs) {
+      if (!doc.description) {
+        doc.description = `Description unavailable — only the filename “${usableCatalogueTitle(doc.title)}” is available.`;
+        doc.descriptionSource = "filename_only";
+      }
+      continue;
+    }
     const execution = await executeRegisteredMcpTool(env, {
       mcpId: mcp.id,
       toolName: COMPANY_KNOWLEDGE_READ_TOOL,
@@ -796,61 +805,41 @@ async function attachDescriptions(
       sourceClient: "infra-document-catalogue",
       skipUsageRecording: true,
     });
-    if (execution.status !== 200 || !("data" in execution)) {
-      const fileGet = await executeRegisteredMcpTool(env, {
-        mcpId: mcp.id,
-        toolName: "get_elvex_file",
-        arguments: { id: doc.id, fileId: doc.id, documentRef: doc.id },
-        actorUserId: actorUserId ?? "system",
-        actorEmail: actor,
-        sourceClient: "infra-document-catalogue",
-        skipUsageRecording: true,
-      });
-      if (fileGet.status === 200) {
-        const payload = toStandardFetchPayload("data" in fileGet ? fileGet.data?.result : fileGet, doc.id);
-        const text = payload.text || (payload.chunks ?? []).map((chunk) => chunk.text).join("\n");
-        const title = usableCatalogueTitle(payload.title, doc.title);
-        const described = describeFromIndexedText(text, title);
-        doc.description = described.description;
-        doc.descriptionSource = described.descriptionSource;
-        doc.title = title;
-        if (payload.url) doc.url = payload.url;
-        continue;
-      }
-      doc.description = `Description unavailable — only the filename “${usableCatalogueTitle(doc.title)}” is available.`;
-      doc.descriptionSource = "filename_only";
+    if (execution.status === 200 && "data" in execution) {
+      const payload = toStandardFetchPayload(execution.data?.result, doc.id);
+      const text = payload.text || (payload.chunks ?? []).map((chunk) => chunk.text).join("\n");
+      const title = usableCatalogueTitle(payload.title, doc.title);
+      const described = describeFromIndexedText(text, title);
+      doc.description = described.description;
+      doc.descriptionSource = described.descriptionSource;
+      doc.title = title;
+      if (payload.url) doc.url = payload.url;
       continue;
     }
-    const payload = toStandardFetchPayload("data" in execution ? execution.data?.result : execution, doc.id);
-    const text = payload.text || (payload.chunks ?? []).map((chunk) => chunk.text).join("\n");
-    if (!text) {
-      const fileGet = await executeRegisteredMcpTool(env, {
-        mcpId: mcp.id,
-        toolName: "get_elvex_file",
-        arguments: { id: doc.id, fileId: doc.id, documentRef: doc.id },
-        actorUserId: actorUserId ?? "system",
-        actorEmail: actor,
-        sourceClient: "infra-document-catalogue",
-        skipUsageRecording: true,
-      });
-      if (fileGet.status === 200) {
-        const filePayload = toStandardFetchPayload("data" in fileGet ? fileGet.data?.result : fileGet, doc.id);
-        const fileText = filePayload.text || (filePayload.chunks ?? []).map((chunk) => chunk.text).join("\n");
-        const title = usableCatalogueTitle(filePayload.title, payload.title, doc.title);
-        const described = describeFromIndexedText(fileText, title);
-        doc.description = described.description;
-        doc.descriptionSource = described.descriptionSource;
-        doc.title = title;
-        if (filePayload.url) doc.url = filePayload.url;
-        continue;
-      }
+    // One fallback only when the knowledge read tool is missing/failed — do not
+    // stack a second 20s fetch after an empty but successful get_knowledge_document.
+    const fileGet = await executeRegisteredMcpTool(env, {
+      mcpId: mcp.id,
+      toolName: "get_elvex_file",
+      arguments: { id: doc.id, fileId: doc.id, documentRef: doc.id },
+      actorUserId: actorUserId ?? "system",
+      actorEmail: actor,
+      sourceClient: "infra-document-catalogue",
+      skipUsageRecording: true,
+    });
+    if (fileGet.status === 200) {
+      const payload = toStandardFetchPayload("data" in fileGet ? fileGet.data?.result : fileGet, doc.id);
+      const text = payload.text || (payload.chunks ?? []).map((chunk) => chunk.text).join("\n");
+      const title = usableCatalogueTitle(payload.title, doc.title);
+      const described = describeFromIndexedText(text, title);
+      doc.description = described.description;
+      doc.descriptionSource = described.descriptionSource;
+      doc.title = title;
+      if (payload.url) doc.url = payload.url;
+      continue;
     }
-    const title = usableCatalogueTitle(payload.title, doc.title);
-    const described = describeFromIndexedText(text, title);
-    doc.description = described.description;
-    doc.descriptionSource = described.descriptionSource;
-    doc.title = title;
-    if (payload.url) doc.url = payload.url;
+    doc.description = `Description unavailable — only the filename “${usableCatalogueTitle(doc.title)}” is available.`;
+    doc.descriptionSource = "filename_only";
   }
 }
 
