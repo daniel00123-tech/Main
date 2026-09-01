@@ -381,6 +381,10 @@ export async function runIntelligenceTurn(input: {
             evidenceDocumentIds,
             input.buttonHint,
           );
+          currentDocument = adoptFromSearchHits(toolCalls, currentDocument);
+          if (currentDocument && !evidenceDocumentIds.includes(currentDocument.id)) {
+            evidenceDocumentIds.push(currentDocument.id);
+          }
           transcript.push(formatToolTranscript(bootstrap));
           continue;
         }
