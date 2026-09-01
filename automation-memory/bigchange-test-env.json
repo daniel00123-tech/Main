@@ -1,0 +1,12 @@
+{
+  "environment": "test",
+  "note": "TEST environment only — not live production. Credentials are stored in .env (gitignored).",
+  "browser_url": "https://clients.bigchange.com/",
+  "api_docs_url": "https://developers.bigchange.com/",
+  "api_base_url": "https://webservice.bigchange.com/v01/services.ashx",
+  "username": "Daniel.dwyer+11@nirvana-group.co.uk",
+  "client_key_prefix": "32c1cdbf-bbfa",
+  "auth_mode": "api_key",
+  "key_location": "header",
+  "key_name": "key"
+}

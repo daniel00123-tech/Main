@@ -1,0 +1,68 @@
+{
+  "prepared_at": "2026-07-10",
+  "applied_at": "2026-07-10",
+  "mode": "applied",
+  "schedule_week": "2026-07-14",
+  "recommendations": [
+    {
+      "site": "Aston Place",
+      "job_ref": "JOB278036~3",
+      "job_type": "Plumbing Call Out",
+      "required_role": "Tech",
+      "proposed_resource": "UDAP_Aston_Tech Nikolaj Osokin",
+      "proposed_date": "2026-07-14",
+      "proposed_start": "13:10",
+      "proposed_end": "14:10",
+      "confidence": "Medium",
+      "status": "Scheduled"
+    },
+    {
+      "site": "Leodis Square",
+      "job_ref": "EOT284781~1",
+      "job_type": "EOT - Cleaning Post-Tenancy Deep Clean",
+      "required_role": "HK",
+      "proposed_resource": "UDL_Leodis_HKSup Rita Jakubauskiene",
+      "proposed_date": "2026-07-14",
+      "proposed_start": "10:30",
+      "proposed_end": "11:30",
+      "confidence": "High",
+      "status": "Scheduled"
+    },
+    {
+      "site": "Granary Quay",
+      "job_ref": "JOB284807",
+      "job_type": "Building Call Out",
+      "required_role": "Tech",
+      "proposed_resource": "UDGQ_Granary_Tech Mark Taylor",
+      "proposed_date": "2026-07-14",
+      "proposed_start": "09:00",
+      "proposed_end": "10:00",
+      "confidence": "High",
+      "status": "Scheduled"
+    },
+    {
+      "site": "Forbes Place",
+      "job_ref": "JOB284790",
+      "job_type": "Cleaning Call Out",
+      "required_role": "HK",
+      "proposed_resource": "UDA_Forbes_HK Heather Taylor",
+      "proposed_date": "2026-07-14",
+      "proposed_start": "12:00",
+      "proposed_end": "13:00",
+      "confidence": "Medium",
+      "status": "Scheduled"
+    },
+    {
+      "site": "The Point",
+      "job_ref": "DLFF284757",
+      "job_type": "DL - Tech Job from FixFlo",
+      "required_role": "Tech",
+      "proposed_resource": "UDA_Point _Tech - Eric Wilson",
+      "proposed_date": "2026-07-14",
+      "proposed_start": "09:00",
+      "proposed_end": "10:00",
+      "confidence": "Medium",
+      "status": "Scheduled"
+    }
+  ]
+}
