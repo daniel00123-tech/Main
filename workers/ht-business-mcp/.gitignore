@@ -1,0 +1,4 @@
+seed-output/
+.wrangler/
+node_modules/
+

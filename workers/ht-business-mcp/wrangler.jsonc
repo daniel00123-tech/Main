@@ -1,0 +1,14 @@
+{
+  "name": "ht-business-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "HT_BUSINESS_DATA",
+      "database_name": "ht-business-data",
+      "database_id": "4bbce2f7-94d0-44f0-b6d8-4fc92c8055f0"
+    }
+  ]
+}
