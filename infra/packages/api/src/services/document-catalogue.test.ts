@@ -27,6 +27,7 @@ describe("document catalogue intent", () => {
     expect(isCatalogueListingAsk("What are the newest files and what are they about?")).toBe(true);
     expect(isCatalogueListingAsk("What's the most recently modified policy?")).toBe(true);
     expect(isCatalogueListingAsk("What was added since yesterday?")).toBe(true);
+    expect(isCatalogueListingAsk("Show me the latest ten and tell me what they're about.")).toBe(true);
     expect(isCatalogueListingAsk("Find a document about boilers")).toBe(false);
     expect(isCatalogueListingAsk("How many documents can you see?")).toBe(false);
     expect(isCatalogueListingAsk("Summarise this document")).toBe(false);

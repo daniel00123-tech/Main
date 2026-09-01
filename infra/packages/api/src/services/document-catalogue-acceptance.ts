@@ -103,6 +103,19 @@ async function runTenant(
     actor: input.email ?? "document-catalogue-acceptance",
     actorUserId: input.userId ?? "system",
   });
+  let companyMcpTools: string[] = [];
+  try {
+    const { listMcpEnvironments } = await import("./control-plane");
+    const { listMcpTools } = await import("./mcp-client");
+    const mcp = (await listMcpEnvironments(env.DB, input.companyId)).find((item) => item.enabled);
+    if (mcp) {
+      const listed = await listMcpTools(env, mcp.endpointUrl, mcp.authSecretRef, mcp.serviceBindingRef);
+      companyMcpTools = listed.tools.map((tool) => tool.name).filter((name) => !/send|write|delete|create|draft/i.test(name));
+    }
+  } catch {
+    companyMcpTools = [];
+  }
+
   const routed = QUESTIONS.map((text) => {
     const decision = classifyScope(text, buildConversationState({ userText: text }));
     return {
@@ -123,6 +136,7 @@ async function runTenant(
   return {
     companyId: input.companyId,
     label: input.label,
+    companyMcpReadTools: companyMcpTools.slice(0, 40),
     routing: routed,
     newest: summarizeDocs(newest),
     latestTen: summarizeDocs(ten),

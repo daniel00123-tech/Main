@@ -15,7 +15,6 @@ import {
 } from "./mcp-knowledge-standard";
 import { executeRegisteredMcpTool, listMcpEnvironments } from "./control-plane";
 import { listMcpTools } from "./mcp-client";
-import { resolveMcpAdminAuthHeader } from "./mcp-admin-bridge";
 import { resolveMcpFetcher } from "./mcp-client";
 import { newId, nowIso } from "../db/mappers";
 import { acquireMicrosoftAppToken } from "./microsoft-auth";
@@ -77,7 +76,7 @@ export type CatalogueResult = {
 
 const WRITE_LIKE = /send|write|delete|draft|manage|create|update|upload|index/i;
 const LIST_TOOL =
-  /^(list|recent|catalogue|catalog)_.*(document|file|drive|onedrive|sharepoint|knowledge)|^(list|recent).*(documents?|files?|drive|onedrive|sharepoint)|list_elvex_.*(file|document|drive)|recent_.*(file|document)/i;
+  /^(list|recent|catalogue|catalog|browse)_.*(document|file|drive|onedrive|sharepoint|knowledge)|^(list|recent).*(documents?|files?|drive|onedrive|sharepoint)|list_elvex_.*(file|document|drive)|recent_.*(file|document)|list_company_knowledge|list_knowledge/i;
 
 export const LIST_DOCUMENTS_DESCRIPTION =
   "List connected document metadata by recency (newest, latest, uploaded, recently modified). Use this for catalogue listing — not semantic search, not index counts, and not reading one open document. Returns real titles, timestamps, file types, and genuine provider URLs only. Never invent files. Read-only.";
@@ -206,9 +205,9 @@ export function sanitizeCatalogueArguments(args: Record<string, unknown>): Catal
 }
 
 const RECENCY =
-  /\b(newest|latest|most recent|recently (modified|changed|updated|added|uploaded)|newly (added|uploaded)|just (added|uploaded)|uploaded|added (today|yesterday|this week|since)|changed (today|yesterday|this week)|what (was|were) (uploaded|added|changed)|what changed)\b/i;
+  /\b(newest|latest|most recent|recently (modified|changed|updated|added|uploaded)|newly (added|uploaded)|just (added|uploaded)|uploaded|added (today|yesterday|this week|since)|changed (today|yesterday|this week)|what (was|were) (uploaded|added|changed)|what changed|the latest( \d+| ten| few)?)\b/i;
 const CATALOGUE_NOUN =
-  /\b(documents?|files?|pdfs?|spreadsheets?|docx?|policies|policy)\b/i;
+  /\b(documents?|files?|pdfs?|spreadsheets?|docx?|policies|policy|the latest( \d+| ten| few)?)\b/i;
 const ABOUT_TOPIC = /\b(about|mention|contain|talk(?:s|ing)? about|cover(?:s|ing)?)\b/i;
 const FIND = /\b((can you |could you |please )?(find|search|look(?:ing)? (for|up)|pull up)|have we got|where is)\b/i;
 
@@ -219,7 +218,10 @@ export function isCatalogueListingAsk(text: string): boolean {
   }
   if (FIND.test(trimmed) && ABOUT_TOPIC.test(trimmed)) return false;
   if (/\bhow many\b/i.test(trimmed) && !RECENCY.test(trimmed)) return false;
-  return CATALOGUE_NOUN.test(trimmed) || /\b(onedrive|sharepoint|(google )?drive|uploaded|added|changed)\b/i.test(trimmed);
+  return (
+    CATALOGUE_NOUN.test(trimmed) ||
+    /\b(onedrive|sharepoint|(google )?drive|uploaded|added|changed|what they('re| are) about)\b/i.test(trimmed)
+  );
 }
 
 function addDays(year: number, month: number, day: number, delta: number): { year: number; month: number; day: number } {
@@ -556,36 +558,45 @@ function documentsFromMcpPayload(payload: unknown, query: CatalogueQuery, allowR
   return documents;
 }
 
+function catalogueAuthCandidates(
+  env: Env,
+  mcp: { serviceBindingRef?: string | null; adminSecretRef?: string | null; authSecretRef?: string | null },
+): string[] {
+  const refs: string[] = [];
+  if (mcp.adminSecretRef) refs.push(mcp.adminSecretRef);
+  if (mcp.authSecretRef) refs.push(mcp.authSecretRef);
+  if ((mcp.serviceBindingRef ?? "") === "CADDINGTON_MCP") refs.push("CADDINGTON_ADMIN_TOKEN");
+  const headers: string[] = [];
+  for (const ref of refs) {
+    const secret = (env as Record<string, unknown>)[ref];
+    if (typeof secret !== "string" || !secret.trim()) continue;
+    const header = `Bearer ${secret.trim().replace(/^Bearer\s+/i, "")}`;
+    if (!headers.includes(header)) headers.push(header);
+  }
+  return headers;
+}
+
 async function fetchMcpAdminJson(
   env: Env,
   mcp: { endpointUrl: string; serviceBindingRef?: string | null; adminSecretRef?: string | null; authSecretRef?: string | null },
   path: string,
 ): Promise<unknown | null> {
-  const admin = resolveMcpAdminAuthHeader(env, {
-    adminSecretRef: mcp.adminSecretRef ?? null,
-    authSecretRef: mcp.authSecretRef ?? null,
-  } as never);
-  let authorization = admin.authorizationHeader;
-  if (!authorization && mcp.authSecretRef) {
-    const secret = (env as Record<string, unknown>)[mcp.authSecretRef];
-    if (typeof secret === "string" && secret.trim()) {
-      authorization = `Bearer ${secret.trim().replace(/^Bearer\s+/i, "")}`;
-    }
-  }
-  if (!authorization) return null;
   const binding = resolveMcpFetcher(env, mcp.serviceBindingRef ?? null);
   const url = `https://company-mcp.internal${path}`;
-  try {
-    const response = binding
-      ? await binding.fetch(new Request(url, { headers: { Authorization: authorization } }))
-      : await fetch(`${mcp.endpointUrl.replace(/\/mcp\/?$/, "")}${path}`, {
-          headers: { Authorization: authorization },
-        });
-    if (!response.ok) return null;
-    return await response.json();
-  } catch {
-    return null;
+  for (const authorization of catalogueAuthCandidates(env, mcp)) {
+    try {
+      const response = binding
+        ? await binding.fetch(new Request(url, { headers: { Authorization: authorization } }))
+        : await fetch(`${mcp.endpointUrl.replace(/\/mcp\/?$/, "")}${path}`, {
+            headers: { Authorization: authorization },
+          });
+      if (!response.ok) continue;
+      return await response.json();
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 async function queryCompanyMcpCatalogue(
@@ -612,14 +623,16 @@ async function queryCompanyMcpCatalogue(
     documents.push(...documentsFromMcpPayload(activity, query, allowRestricted));
     backend.push("mcp_admin_activity");
   }
-  const listed = await fetchMcpAdminJson(
-    env,
-    mcp,
+  for (const path of [
     `/admin/knowledge/documents?limit=${query.limit * 4}&sort=${query.dateField}`,
-  );
-  if (listed) {
-    documents.push(...documentsFromMcpPayload(listed, query, allowRestricted));
-    backend.push("mcp_admin_documents");
+    `/admin/knowledge?limit=${query.limit * 4}`,
+    `/admin/knowledge/list?limit=${query.limit * 4}`,
+  ]) {
+    const listed = await fetchMcpAdminJson(env, mcp, path);
+    if (listed) {
+      documents.push(...documentsFromMcpPayload(listed, query, allowRestricted));
+      backend.push(`mcp_admin:${path.split("?")[0]}`);
+    }
   }
 
   let toolNames: string[] = [];

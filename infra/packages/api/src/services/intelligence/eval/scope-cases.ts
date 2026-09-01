@@ -124,6 +124,7 @@ const SEEDS: Seed[] = [
   { text: "What changed this week?", scope: "COMPANY_KNOWLEDGE", tool: "list_documents" },
   { text: "Latest SharePoint PDFs.", scope: "COMPANY_KNOWLEDGE", tool: "list_documents" },
   { text: "What are the newest files and what are they about?", scope: "COMPANY_KNOWLEDGE", tool: "list_documents" },
+  { text: "Show me the latest ten and tell me what they're about.", scope: "COMPANY_KNOWLEDGE", tool: "list_documents" },
   { text: "What's the most recently modified policy?", scope: "COMPANY_KNOWLEDGE", tool: "list_documents" },
   { text: "What was added since yesterday?", scope: "COMPANY_KNOWLEDGE", tool: "list_documents" },
   { text: "Find the vehicle use policy", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
