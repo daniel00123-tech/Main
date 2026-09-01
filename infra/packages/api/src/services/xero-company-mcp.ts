@@ -93,6 +93,13 @@ export function mapArgsForCompanyXeroTool(
   if (desired === "xero_get_invoice" && forwardName === "search_xero_invoices") {
     forwarded.query = args.invoiceNumber ?? args.invoiceId ?? args.query;
   }
+  if (
+    (desired === "xero_search_invoices" || desired === "xero_sales_summary" || desired === "xero_top_customers") &&
+    typeof forwarded.query === "string" &&
+    !/^INV-/i.test(forwarded.query)
+  ) {
+    delete forwarded.query;
+  }
   if (forwardName === "analyse_xero_sales" && !forwarded.query) {
     forwarded.query = typeof args.periodLabel === "string" ? args.periodLabel : "sales";
   }

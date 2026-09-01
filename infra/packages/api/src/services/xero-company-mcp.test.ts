@@ -33,6 +33,13 @@ describe("company MCP Xero mapping", () => {
     expect(
       mapArgsForCompanyXeroTool("xero_list_overdue_invoices", "search_xero_invoices", {}),
     ).toMatchObject({ overdueOnly: true, unpaidOnly: true });
+    expect(
+      mapArgsForCompanyXeroTool("xero_search_invoices", "search_xero_invoices", {
+        fromDate: "2026-09-01",
+        toDate: "2026-09-01",
+        query: "invoiced today 01/09/2026",
+      }).query,
+    ).toBeUndefined();
   });
 
   it("composes INFRA sales totals from Xero invoice rows and treats empty lists as zero", () => {
