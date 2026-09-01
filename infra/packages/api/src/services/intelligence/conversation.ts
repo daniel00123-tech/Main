@@ -20,7 +20,7 @@ export function answerGeneralConversation(
     return "You're welcome.";
   }
   if (/^(hi|hello|hey|hiya|morning)\b/i.test(text.trim())) {
-    return "Hi — what do you need?";
+    return "Hi — I'm here if you need anything.";
   }
   if (/\b(how are you|how(?:'s|s) it going)\b/i.test(text)) {
     return "I'm good, thanks. What can I help with?";
@@ -30,9 +30,9 @@ export function answerGeneralConversation(
     return "I was trying to work out which system or document you wanted. Tell me which one and I'll continue.";
   }
   if (/\b(example|what else can you help)\b/i.test(text)) {
-    return "Ask about a document, a connected finance figure, or how many files are indexed. I will only use systems that are connected.";
+    return "I can look up files you can access, permitted finance figures, or how the library is indexed — just say what you need.";
   }
-  return previous ? "Happy to keep going from there — what do you want next?" : "What do you need?";
+  return previous ? "Happy to keep going from there." : "I'm here — what would help?";
 }
 
 function remember(state: IntelligenceConversationState, text: string): string {

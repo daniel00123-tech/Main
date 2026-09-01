@@ -152,7 +152,11 @@ export async function runIntelligenceTurn(input: {
     lastUserIntent: scoped.lastUserIntent,
   };
 
-  if (input.state.userCorrection || (scoped.scope === "COMPANY_KNOWLEDGE" && scoped.clearCurrentDocument)) {
+  const namedFileCorrection =
+    input.state.userCorrection &&
+    (scoped.scope === "COMPANY_KNOWLEDGE" || scoped.scope === "RECENT_ENTITY") &&
+    (scoped.clearCurrentDocument || scoped.restoreRecentDocument || /\b(i meant|wrong file|instead|find|search|look(?:ing)? (?:for|up))\b/i.test(input.text));
+  if (namedFileCorrection || (scoped.scope === "COMPANY_KNOWLEDGE" && scoped.clearCurrentDocument && !input.state.userCorrection)) {
     const priorUser =
       previousUserText(input.state, input.text) ||
       [...input.state.recentTurns].reverse().find((turn) => turn.role === "user")?.text ||
@@ -183,8 +187,10 @@ export async function runIntelligenceTurn(input: {
     return finish({
       kind: titles.length ? "answer" : "clarify",
       text: titles.length
-        ? `Across your documents I can see: ${titles.join("; ")}. Which should I open?`
-        : "I couldn’t find that. Which file should I use?",
+        ? titles.length === 1
+          ? `The closest match is ${titles[0]}. I can open that.`
+          : `The closest match is ${titles[0]}. I can also open ${titles.slice(1).join(" or ")}.`
+        : "I couldn’t find that in the library. What should I try next?",
       confidence: titles.length ? "partial" : "none",
       offerSearchOther: true,
       toolCalls,
@@ -300,6 +306,23 @@ export async function runIntelligenceTurn(input: {
     }
 
     if (decision.action === "call_tool") {
+      if (
+        scoped.scope === "BUSINESS_SYSTEM" &&
+        scoped.tool &&
+        !decision.name.startsWith("xero_") &&
+        decision.name !== "outlook_search_mailbox"
+      ) {
+        decision = { action: "call_tool", name: scoped.tool, arguments: {} };
+        qualityFlags.add("wrong_tool");
+      }
+      if (
+        (scoped.scope === "SYSTEM_META" || scoped.scope === "CONNECTOR_CAPABILITY") &&
+        scoped.tool &&
+        !SYSTEM_META_TOOLS.has(decision.name)
+      ) {
+        decision = { action: "call_tool", name: scoped.tool, arguments: {} };
+        qualityFlags.add("wrong_tool");
+      }
       const validated = validateToolRequest(decision.name, decision.arguments);
       if (!validated.ok) {
         transcript.push(`Rejected tool ${decision.name}: ${validated.reason ?? "invalid"}.`);
@@ -372,8 +395,8 @@ export async function runIntelligenceTurn(input: {
           kind: "answer",
           text:
             foundTitles.length === 1
-              ? `I found ${foundTitles[0]}. What do you want from it?`
-              : `Across your documents I can see: ${foundTitles.join("; ")}. Which should I open?`,
+              ? `I found ${foundTitles[0]}. I can summarise it or pull a specific point.`
+              : `The closest match is ${foundTitles[0]}. I can also open ${foundTitles.slice(1, 3).join(" or ")}.`,
           confidence: "partial",
           offerSearchOther: true,
           toolCalls,
@@ -641,7 +664,8 @@ function shouldForceScopedTool(scoped: ScopeDecision): boolean {
 }
 
 function looksLikeFinanceRead(text: string): boolean {
-  return /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables)\b/i.test(text);
+  return /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables)\b/i.test(text) ||
+    /\bcompare\s+((this|last|past|previous)\s+(month|quarter|year|week)|today|yesterday)\s+(with|vs\.?|versus|and|to)\s+((this|last|past|previous)\s+(month|quarter|year|week)|today|yesterday)\b/i.test(text);
 }
 
 async function bootstrapRetrieval(

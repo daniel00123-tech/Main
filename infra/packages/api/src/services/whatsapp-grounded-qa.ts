@@ -254,7 +254,11 @@ export function scoreGlobalSearchHit(
   const queryNorm = query.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   let score = 0;
   if (queryNorm && (title.includes(queryNorm) || filename.includes(queryNorm))) score += 8;
+  const stem = filename.replace(/\.[a-z0-9]{2,5}$/i, "").trim();
+  if (queryNorm && (stem === queryNorm || title === queryNorm)) score += 6;
   const generic = new Set(["policy", "document", "documents", "file", "files", "report", "profile", "summary"]);
+  const distinctive = terms.filter((term) => !generic.has(term));
+  if (distinctive.length >= 2 && title.includes(distinctive.join(" "))) score += 6;
   for (const term of terms) {
     const weight = generic.has(term) ? 1 : 4;
     if (title.includes(term)) score += weight;
@@ -263,6 +267,7 @@ export function scoreGlobalSearchHit(
     else if (snippet.includes(term)) score += 1;
     else if (expandTerm(term).some((alt) => title.includes(alt) || snippet.includes(alt))) score += 1;
   }
+  if (distinctive.length === 0 && score < 4) score = Math.min(score, 1);
   if (context?.preferredClass && classified === context.preferredClass) score += 1;
   if (context?.currentDocumentId && hit.id && hit.id === context.currentDocumentId) score += 2;
   if (sourceType) score += 0.25;

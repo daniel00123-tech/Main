@@ -45,7 +45,7 @@ export type AdversarialTurnCapture = {
 };
 
 const SEARCH_FORM =
-  /\b(which document|tell me which|what do you need\?|ask about a document|i will only use systems|give me a little more detail so i look)\b/i;
+  /\b(which document do you mean|tell me which|what do you need\?|ask about a document|i will only use systems|give me a little more detail so i look|which should i open)\b/i;
 const INVENTED =
   /https:\/\/invented|drive\.google\.com\/file\/d\/PLACEHOLDER|I am sure they earned £|£9,999|Jane Doe invented|\bexactly 12,345 files\b|lunar mining quota is/i;
 const JARGON = /\b(vectorize|workers ai|\bmcp\b|\bd1\b|llama-4-scout|function.?call)\b/i;

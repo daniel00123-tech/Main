@@ -16,12 +16,17 @@ import {
   type TenantSubjectAdapter,
 } from "./adversarial-scenarios.js";
 import {
+  bandFor,
   scoreTurn,
   summariseCaptures,
   type AdversarialSummary,
   type AdversarialTurnCapture,
   type TransportLabel,
 } from "./adversarial-score.js";
+
+function bandFromAverage(avg: number, inventedConfident: boolean) {
+  return bandFor(avg, inventedConfident);
+}
 
 export type AdversarialMode = "offline" | "persist";
 
@@ -86,7 +91,19 @@ export async function runAdversarialSuite(input: {
         scenario,
         transport,
       });
-      rows.push(...captured);
+      if (scenario.intent === "mini_conversation") {
+        const avg = captured.reduce((sum, row) => sum + row.score, 0) / (captured.length || 1);
+        const rolled = {
+          ...captured[captured.length - 1]!,
+          turnIndex: 0,
+          score: Math.round(avg * 10) / 10,
+          band: bandFromAverage(avg, captured.some((row) => row.invented && row.confidence === "strong")),
+          reasons: [`mini_conversation_turns:${captured.length}`, ...captured.flatMap((row) => row.reasons).slice(0, 6)],
+        };
+        rows.push(rolled);
+      } else {
+        rows.push(...captured);
+      }
     }
     if (input.includeTwentyTurn) {
       twentyTurn[tenant.tenant] = await runScript({
@@ -144,8 +161,11 @@ async function runScript(input: {
   let memory = seedMemory(input.scenario.seed, input.tenant.adapter);
   const priorTurns: Array<{ role: "user" | "assistant"; text: string }> = [];
 
+  const judgedBy = instantiateScenarios(input.tenant.adapter);
   for (let i = 0; i < input.texts.length; i += 1) {
     const text = input.texts[i]!;
+    const matched =
+      judgedBy.find((row) => row.text.trim().toLowerCase() === text.trim().toLowerCase()) ?? input.scenario;
     const started = Date.now();
     let result;
     let toolError: string | null = null;
@@ -223,7 +243,7 @@ async function runScript(input: {
     priorTurns.push({ role: "assistant", text: result.text });
     out.push(
       scoreTurn({
-        scenario: input.scenario,
+        scenario: matched,
         tenant: input.tenant.tenant,
         text,
         turnIndex: i,

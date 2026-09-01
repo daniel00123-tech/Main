@@ -176,7 +176,7 @@ export function policyCompleter(): IntelligenceCompleter {
     if (hasCurrent && /open the source|source (link|url)|where did you get/i.test(userLine)) {
       return json({ action: "call_tool", name: "get_knowledge_document", arguments: { document_id: idFromCurrent(current) } });
     }
-    if (/sales|overdue|invoice|p&l|pnl|owes/i.test(userLine) && !hasCurrent) {
+    if ((/sales|overdue|invoice|p&l|pnl|owes/i.test(userLine) || /compare\s+((this|last)\s+(month|quarter|year|week)).{0,24}((this|last)\s+(month|quarter|year|week))/i.test(userLine)) && !hasCurrent) {
       const name = /INV-|\binvoice\b.*\d/i.test(userLine)
         ? "xero_get_invoice"
         : /overdue|owes/i.test(userLine)

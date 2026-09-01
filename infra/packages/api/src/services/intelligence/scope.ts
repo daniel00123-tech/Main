@@ -75,6 +75,8 @@ const CONNECTOR =
   /\b(what systems? (are )?(connected|linked)|which (live )?systems?|what(?:'s| is) connected|connectors?|(is|are) (xero|sharepoint|drive|email|outlook) (connected|linked)|do (we|i|you) have (xero|sharepoint|drive|email) connected|systems can you (actually )?use)\b/i;
 const FINANCE =
   /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables|who owes)\b/i;
+const PERIOD_COMPARE =
+  /\bcompare\s+((this|last|past|previous)\s+(month|quarter|year|week)|today|yesterday)\s+(with|vs\.?|versus|and|to)\s+((this|last|past|previous)\s+(month|quarter|year|week)|today|yesterday)\b/i;
 const EMAIL = /\b(emails?|mailbox|outlook|inbox|any mail)\b/i;
 const WRITE =
   /\b(create (an? )?(invoice|bill|credit)|approve |send(?: this| the)? invoice|delete |void |allocate |raise an invoice|write to|update (the )?(invoice|bill|contact)|credit note)\b/i;
@@ -166,7 +168,7 @@ function extractFeatures(text: string): ScopeFeatures {
     memoryRecall: MEMORY.test(trimmed),
     capabilityAsk: CAPABILITY.test(trimmed),
     connectorAsk: CONNECTOR.test(trimmed),
-    financeAsk: FINANCE.test(trimmed),
+    financeAsk: FINANCE.test(trimmed) || PERIOD_COMPARE.test(trimmed),
     emailAsk: EMAIL.test(trimmed) && !CORPUS.test(trimmed),
     writeIntent: WRITE.test(trimmed),
     findDocument: isNamedDocumentFind(trimmed),
@@ -350,6 +352,31 @@ export function classifyScope(
     });
   }
 
+  if (state.userCorrection && !features.financeAsk && !features.quantityAsk && !features.capabilityAsk && !features.connectorAsk) {
+    const correctionTopic = text
+      .replace(/^.*\b(i meant|instead|not the|wrong file,?|something else[ —-]*)\b/i, "")
+      .replace(/[.?!]+$/g, "")
+      .trim();
+    const namedCorrection = distinctiveTopicTokens(correctionTopic).length >= 1 || Boolean(namedSwitch);
+    if (namedCorrection && switchTo !== "system") {
+      return decide("COMPANY_KNOWLEDGE", features, {
+        tool: "search_company_knowledge",
+        clearCurrentDocument: true,
+        lastAnswerTopic: "company_knowledge",
+        lastUserIntent: "correction_named",
+      });
+    }
+    if (!switchTo && !features.findDocument && !features.systemLocus && !features.companyLocus) {
+      return decide("AMBIGUOUS", features, {
+        tool: null,
+        noTool: true,
+        clarify: true,
+        clarifyText: "Sorry — what did you want instead?",
+        lastUserIntent: "correction_clarify",
+      });
+    }
+  }
+
   if (switchTo === "recent") {
     const remembered = rememberedDocuments(state);
     const namedRecent =
@@ -435,7 +462,7 @@ export function classifyScope(
       tool: null,
       noTool: true,
       clarify: true,
-      clarifyText: "Do you mean how many documents are indexed for the company, or something in the current file?",
+      clarifyText: "Do you mean the company total, or a count inside the file we already have open?",
       lastUserIntent: "ambiguous_quantity",
     });
   }
@@ -519,7 +546,7 @@ export function classifyScope(
       tool: hasCurrent ? "search_document" : null,
       noTool: !hasCurrent,
       clarify: !hasCurrent,
-      clarifyText: hasCurrent ? undefined : "I don’t have a current file open. Which document should I stay on?",
+      clarifyText: hasCurrent ? undefined : "I don’t have a file open yet. Which one should I stay with?",
       lastAnswerTopic: "document",
       lastUserIntent: "lock_current_document",
     });
@@ -589,7 +616,7 @@ export function classifyScope(
       tool: null,
       noTool: true,
       clarify: true,
-      clarifyText: "Which document do you mean?",
+      clarifyText: "Which one did you have in mind?",
       lastUserIntent: "ambiguous_document",
     });
   }

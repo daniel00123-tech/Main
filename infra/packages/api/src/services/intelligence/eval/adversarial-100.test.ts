@@ -75,13 +75,23 @@ describe("adversarial 100-scenario harness", () => {
     expect(compareSummaries(before, better).objectivelyBetter).toBe(true);
   });
 
+  it("runs a 20-turn adversarial script per tenant after the frozen 100", async () => {
+    const run = await runAdversarialSuite({ mode: "offline", includeTwentyTurn: true });
+    expect(run.twentyTurn?.caddington).toHaveLength(20);
+    expect(run.twentyTurn?.elvex).toHaveLength(20);
+    const scores = [...(run.twentyTurn?.caddington ?? []), ...(run.twentyTurn?.elvex ?? [])];
+    expect(scores.every((row) => row.invented === false)).toBe(true);
+    expect(scores.filter((row) => row.band === "UNUSABLE")).toHaveLength(0);
+  }, 30_000);
+
   it("runs the offline 100 (50 x 2 tenants) through the same intelligence path", async () => {
     const run = await runAdversarialSuite({ mode: "offline" });
-    expect(run.rows.length).toBeGreaterThanOrEqual(100);
+    expect(run.rows).toHaveLength(100);
     expect(run.tenants.map((row) => row.tenant).sort()).toEqual(["caddington", "elvex"]);
     expect(run.transport).toBe("OFFLINE");
-    expect(run.summary.cases).toBe(run.rows.length);
-    expect(run.perTenant.caddington.cases).toBe(run.perTenant.elvex.cases);
+    expect(run.summary.cases).toBe(100);
+    expect(run.perTenant.caddington.cases).toBe(50);
+    expect(run.perTenant.elvex.cases).toBe(50);
     expect(run.rows.every((row) => row.reply.length > 0 || row.kind === "failed")).toBe(true);
   }, 30_000);
 });
@@ -89,7 +99,7 @@ describe("adversarial 100-scenario harness", () => {
 function baseResult(partial: Partial<IntelligenceTurnResult>): IntelligenceTurnResult {
   return {
     kind: "answer",
-    text: "Hi — what do you need?",
+    text: "Hi — I'm here if you need anything.",
     confidence: "strong",
     offerSearchOther: false,
     toolCalls: [],
