@@ -261,6 +261,18 @@ describe("Drive count honesty", () => {
 });
 
 describe("short follow-up ranking", () => {
+  it("enriches what exactly with the previous grounded question", () => {
+    const result = enrichDocumentQuery("what exactly?", {
+      scope: "CURRENT_DOCUMENT",
+      currentTitle: "Vehicle use procedure",
+      previousUserText: "Who is allowed to drive a van?",
+      lastAnswerTopic: "document",
+    });
+    expect(result.enriched).toBe(true);
+    expect(result.decayed).toBe(false);
+    expect(result.query.toLowerCase()).toMatch(/drive|van|vehicle/);
+  });
+
   it("enriches CURRENT_DOCUMENT queries with fewer than two distinctive terms", () => {
     const result = enrichDocumentQuery("When?", {
       scope: "CURRENT_DOCUMENT",

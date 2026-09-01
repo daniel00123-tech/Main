@@ -89,6 +89,16 @@ const SYNONYMS: Record<string, string[]> = {
   sales: ["selling", "sold"],
 };
 
+export type DocumentQaDiagnostics = {
+  documentId: string;
+  chunkCount: number;
+  rankedCount: number;
+  selectedCount: number;
+  topChunkScores: number[];
+  retrievalQuery: string;
+  underspecifiedFollowUp: boolean;
+};
+
 export type GroundedQaResult = {
   reply: string;
   confidence: GroundedConfidence;
@@ -105,7 +115,17 @@ export type GroundedQaResult = {
   repeatedExcerpt: boolean;
   unsolicitedPii: boolean;
   malformedExtraction: boolean;
+  diagnostics: DocumentQaDiagnostics;
 };
+
+export function isUnderspecifiedDocumentFollowUp(question: string): boolean {
+  const trimmed = String(question ?? "").trim();
+  if (!trimmed) return false;
+  if (queryTerms(trimmed).length < 2) return true;
+  return /^(what exactly|when|who|how much|more(?:\s+(?:detail|on this))?|anything else)\??$/i.test(
+    trimmed,
+  );
+}
 
 export function classifyDocument(input: { title?: string | null; text?: string | null; path?: string | null }): DocumentClass {
   const hay = `${input.title ?? ""}\n${input.path ?? ""}\n${String(input.text ?? "").slice(0, 1200)}`.toLowerCase();
@@ -305,11 +325,13 @@ export async function runGroundedQa(
   env: Env,
   input: {
     question: string;
+    retrievalQuery?: string | null;
     documentId: string;
     title: string;
     fetch: StandardFetchPayload;
     mode: GroundedMode;
     previousAnswer?: string | null;
+    previousQuestion?: string | null;
     path?: string | null;
     tenantId?: string | null;
     qualityGuidance?: string | null;
@@ -321,13 +343,37 @@ export async function runGroundedQa(
     path: input.path,
   });
   const chunks = chunksFromFetchPayload(input.fetch, input.documentId);
-  const ranked =
+  const underspecified = isUnderspecifiedDocumentFollowUp(input.question);
+  const retrievalQuery = (input.retrievalQuery ?? input.question).trim() || input.question;
+  let ranked =
     input.mode === "answer"
-      ? searchDocument(input.documentId, input.question, chunks, { tenantId: input.tenantId })
+      ? searchDocument(input.documentId, retrievalQuery, chunks, { tenantId: input.tenantId })
       : chunks.map((chunk, index) => ({ ...chunk, score: Math.max(1, chunks.length - index) }));
+  if (!ranked.length && input.previousQuestion && input.mode === "answer") {
+    ranked = searchDocument(input.documentId, input.previousQuestion, chunks, {
+      tenantId: input.tenantId,
+    });
+  }
+  if (!ranked.length && chunks.length && input.mode === "answer" && underspecified) {
+    ranked = chunks.slice(0, 5).map((chunk, index) => ({
+      ...chunk,
+      score: Math.max(1, chunks.length - index),
+    }));
+  }
   const selected = selectChunks(ranked, input.mode, input.previousAnswer);
   const evidence = selected.map((chunk) => chunk.text).join("\n\n");
-  const confidence = confidenceFromEvidence(input.mode, input.question, selected, evidence);
+  const confidenceQuestion =
+    underspecified && queryTerms(input.question).length < 2 ? retrievalQuery : input.question;
+  const confidence = confidenceFromEvidence(input.mode, confidenceQuestion, selected, evidence);
+  const diagnostics: DocumentQaDiagnostics = {
+    documentId: input.documentId,
+    chunkCount: chunks.length,
+    rankedCount: ranked.length,
+    selectedCount: selected.length,
+    topChunkScores: ranked.slice(0, 5).map((chunk) => Number(chunk.score ?? 0)),
+    retrievalQuery,
+    underspecifiedFollowUp: underspecified,
+  };
   const facts = extractTypedFacts(evidence, documentClass);
   const malformedExtraction = documentClass === "cv_resume" && Boolean(facts.amount || facts.reference);
 
@@ -342,6 +388,7 @@ export async function runGroundedQa(
       repeatedExcerpt: false,
       unsolicitedPii: false,
       malformedExtraction,
+      diagnostics,
     });
   }
 
@@ -396,6 +443,7 @@ export async function runGroundedQa(
     repeatedExcerpt,
     unsolicitedPii: pii.redacted || looksLikeUnsolicitedPii(raw, input.question, documentClass),
     malformedExtraction,
+    diagnostics,
   });
 }
 

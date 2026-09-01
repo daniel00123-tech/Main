@@ -7,6 +7,7 @@
 import { issueMcpAccessToken, recordAccessJti } from "../auth/mcp-oauth";
 import { loadLiveCompanyActor } from "../auth/live-identity";
 import type { Env } from "../env";
+import { outlookWriteExposure } from "./outlook-write-policy";
 
 export type AcceptanceOutcome =
   | "WORKS"
@@ -85,6 +86,11 @@ function summarizeValue(value: unknown, depth = 0): unknown {
       "url",
       "sourceUrl",
       "documentId",
+      "body",
+      "bodyPreview",
+      "answer",
+      "confidence",
+      "noneInDocument",
       "name",
       "organisationName",
       "summary",
@@ -193,6 +199,14 @@ function classifyRpc(
       "sales_total" in (parsed as object) ||
       "totalSales" in ((parsed as { summary?: object }).summary ?? {}))
   ) {
+    return "WORKS";
+  }
+  if (toolName === "outlook_get_message" && parsed && typeof parsed === "object") {
+    const record = parsed as { body?: unknown; messages?: unknown };
+    if (typeof record.body === "string" && record.body.trim()) return "WORKS";
+    if (Array.isArray(record.messages) && record.messages.length > 0) return "WORKS";
+  }
+  if (toolName === "ask_document" && parsed && typeof parsed === "object" && "answer" in parsed) {
     return "WORKS";
   }
   const len = collectionLength(parsed);
@@ -563,24 +577,26 @@ export async function runWilliamChatgptAcceptance(
       ...withoutParsed(fullEmail),
     });
 
+    const writePolicy = outlookWriteExposure();
     results.push({
       id: "outlook.draft_reply_capability",
       group: "outlook",
       toolName: null,
-      outcome: outlookDraftListed.length > 0 ? "WORKS" : "TOOL_NOT_EXPOSED",
+      outcome: outlookDraftListed.length > 0 ? "WORKS" : writePolicy.draft,
       listedDraftLikeTools: outlookDraftListed,
       investigation: outlookDraftListed.length > 0 ? "A_draft_tool_exposed" : "B_draft_creation_does_not_exist",
+      policy: writePolicy.draftReason,
     });
 
     results.push({
       id: "outlook.send_behind_confirmation_gate",
       group: "outlook",
       toolName: null,
-      outcome: outlookSendListed.length > 0 ? "WORKS" : "TOOL_NOT_EXPOSED",
+      outcome: outlookSendListed.length > 0 ? "WORKS" : writePolicy.send,
       listedSendLikeTools: outlookSendListed,
       actionControlListed,
       executed: false,
-      note: "Send was not invoked. Action Engine confirm/execute tools are Xero-scoped and were not called.",
+      note: writePolicy.sendReason,
     });
 
     const searchTool = listed.has("search") ? "search" : "search_company_knowledge";
@@ -594,20 +610,6 @@ export async function runWilliamChatgptAcceptance(
     results.push({ id: "knowledge.document_search", group: "knowledge", ...withoutParsed(knowledgeSearch) });
     knowledgeDoc = pickKnowledgeId(knowledgeSearch.parsed);
     if (!knowledgeDoc.id) knowledgeDoc = pickKnowledgeId(knowledgeSearch.summary);
-
-    const qaSearch = await callTool(
-      issued.token,
-      listed,
-      searchTool,
-      {
-        query: knowledgeDoc.title ? `What does ${knowledgeDoc.title} say?` : "What is the company van policy?",
-        limit: 5,
-      },
-      rpcId++,
-    );
-    results.push({ id: "knowledge.document_qa", group: "knowledge", ...withoutParsed(qaSearch) });
-    if (!knowledgeDoc.id) knowledgeDoc = pickKnowledgeId(qaSearch.parsed);
-    if (!knowledgeDoc.id) knowledgeDoc = pickKnowledgeId(qaSearch.summary);
 
     const fetchName = listed.has("fetch") ? "fetch" : "get_knowledge_document";
     const sourceFetch = knowledgeDoc.id
@@ -626,6 +628,7 @@ export async function runWilliamChatgptAcceptance(
         };
     const fetched = pickKnowledgeId(sourceFetch.parsed);
     const fetchedFallback = fetched.id || fetched.url ? fetched : pickKnowledgeId(sourceFetch.summary);
+    if (fetchedFallback.id) knowledgeDoc = { ...knowledgeDoc, ...fetchedFallback, id: fetchedFallback.id };
     const sourceUrl = fetchedFallback.url ?? knowledgeDoc.url;
     results.push({
       id: "knowledge.source_url",
@@ -635,14 +638,96 @@ export async function runWilliamChatgptAcceptance(
       hasSourceUrl: Boolean(sourceUrl),
     });
 
-    const followUp = await callTool(
-      issued.token,
-      listed,
-      searchTool,
-      { query: knowledgeDoc.title ? `${knowledgeDoc.title} summary` : "company policy summary", limit: 3 },
-      rpcId++,
-    );
-    results.push({ id: "knowledge.short_follow_up", group: "knowledge", ...withoutParsed(followUp) });
+    const askName = listed.has("ask_document") ? "ask_document" : null;
+    const factualQuestion = knowledgeDoc.title
+      ? `What is the main purpose of ${knowledgeDoc.title}?`
+      : "What is the main purpose of this document?";
+    const qaCall = knowledgeDoc.id && askName
+      ? await callTool(
+          issued.token,
+          listed,
+          askName,
+          { documentId: knowledgeDoc.id, question: factualQuestion },
+          rpcId++,
+        )
+      : await callTool(
+          issued.token,
+          listed,
+          searchTool,
+          { query: factualQuestion, limit: 5 },
+          rpcId++,
+        );
+    results.push({
+      id: "knowledge.document_qa",
+      group: "knowledge",
+      documentId: knowledgeDoc.id,
+      via: askName ?? searchTool,
+      ...withoutParsed(qaCall),
+    });
+
+    const followUps = [
+      { id: "knowledge.short_follow_up", question: "what exactly?" },
+      { id: "knowledge.follow_up_when", question: "when?" },
+      { id: "knowledge.follow_up_more", question: "more detail" },
+    ];
+    for (const follow of followUps) {
+      const followCall = knowledgeDoc.id && askName
+        ? await callTool(
+            issued.token,
+            listed,
+            askName,
+            { documentId: knowledgeDoc.id, question: follow.question, priorQuestion: factualQuestion },
+            rpcId++,
+          )
+        : await callTool(
+            issued.token,
+            listed,
+            searchTool,
+            { query: follow.question, limit: 3 },
+            rpcId++,
+          );
+      results.push({
+        id: follow.id,
+        group: "knowledge",
+        documentId: knowledgeDoc.id,
+        via: askName ?? searchTool,
+        ...withoutParsed(followCall),
+      });
+    }
+
+    const unrelated = knowledgeDoc.id && askName
+      ? await callTool(
+          issued.token,
+          listed,
+          askName,
+          {
+            documentId: knowledgeDoc.id,
+            question: "does it mention offshore drilling licenses?",
+            priorQuestion: factualQuestion,
+          },
+          rpcId++,
+        )
+      : {
+          toolName: askName ?? searchTool,
+          outcome: "TOOL_NOT_EXPOSED" as AcceptanceOutcome,
+          summary: { reason: "ask_document not advertised" },
+        };
+    const unrelatedParsed = "parsed" in unrelated ? unrelated.parsed : null;
+    const unrelatedNone =
+      Boolean(
+        unrelatedParsed &&
+          typeof unrelatedParsed === "object" &&
+          (unrelatedParsed as { noneInDocument?: boolean }).noneInDocument,
+      ) ||
+      String((unrelated as { rawPreview?: string }).rawPreview ?? "").includes("can't see anything");
+    results.push({
+      id: "knowledge.unrelated_no_global_fallback",
+      group: "knowledge",
+      documentId: knowledgeDoc.id,
+      noneInDocument: unrelatedNone,
+      globalSearchUsed: false,
+      ...withoutParsed(unrelated as { parsed?: unknown } & Record<string, unknown>),
+    });
 
     const switchSearch = await callTool(
       issued.token,
@@ -663,6 +748,22 @@ export async function runWilliamChatgptAcceptance(
         Boolean(secondDoc.id && knowledgeDoc.id && secondDoc.id !== knowledgeDoc.id) ||
         Boolean(secondDoc.title && knowledgeDoc.title && secondDoc.title !== knowledgeDoc.title),
     });
+    if (secondDoc.id && askName) {
+      const switchedQa = await callTool(
+        issued.token,
+        listed,
+        askName,
+        { documentId: secondDoc.id, question: "What does this document cover?" },
+        rpcId++,
+      );
+      results.push({
+        id: "knowledge.switched_document_qa",
+        group: "knowledge",
+        documentId: secondDoc.id,
+        via: askName,
+        ...withoutParsed(switchedQa),
+      });
+    }
   }
 
   const xeroDirect = results

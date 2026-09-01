@@ -73,7 +73,15 @@ export const OUTLOOK_READ_TOOL_SCHEMAS: Record<
       properties: {
         mailboxAddress: { type: "string" },
         sourceId: { type: "string" },
-        messageId: { type: "string" },
+        messageId: {
+          type: "string",
+          description: "Stable Graph or company-MCP message id returned by list/search. Not a preview snippet.",
+        },
+        id: { type: "string", description: "Alias of messageId" },
+        internetMessageId: {
+          type: "string",
+          description: "Optional RFC internet message id when list/search returned that field instead of Graph id.",
+        },
       },
     },
   },

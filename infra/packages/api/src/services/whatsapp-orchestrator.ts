@@ -71,6 +71,7 @@ import {
 } from "./whatsapp-plan";
 import { executeWhatsAppIntelligence, type WhatsAppIntelligenceAnswer } from "./whatsapp-intelligence";
 import { matchFastPath } from "./intelligence/fast-path";
+import { enrichDocumentQuery } from "./intelligence/query-enrichment";
 import {
   NONE_IN_DOCUMENT_REPLY,
   SEARCH_OTHER_DOCS_HINT,
@@ -2296,8 +2297,17 @@ function answerCurrentDocument(
 ) {
   const mode: GroundedMode =
     input.plan.fact === "detail" ? "more_detail" : input.plan.fact === "summary" ? "summarise" : "answer";
+  const enrichment = enrichDocumentQuery(input.question, {
+    scope: "CURRENT_DOCUMENT",
+    currentTitle: input.title,
+    previousUserText: null,
+    lastAnswerTopic: "document",
+    userCorrection: false,
+    documentChanged: false,
+  });
   return runGroundedQa(env, {
     question: input.question,
+    retrievalQuery: enrichment.query,
     documentId: input.documentId,
     title: input.title,
     fetch: input.fetch,

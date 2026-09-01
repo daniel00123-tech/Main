@@ -55,4 +55,16 @@ describe("publicToolErrorMessage", () => {
       "Outlook mailbox is not available",
     );
   });
+
+  it("keeps tool-not-exposed, permission, and Xero upstream copy distinct", () => {
+    expect(publicToolErrorMessage(404, "TOOL_NOT_EXPOSED").message).toBe(
+      "This capability isn’t available through this connection yet.",
+    );
+    expect(publicToolErrorMessage(403, "Your current permissions don’t allow access.").message).toBe(
+      "Your current permissions don’t allow access.",
+    );
+    expect(publicToolErrorMessage(502, "I couldn’t reach Xero just now.").message).toBe(
+      "I couldn’t reach Xero just now.",
+    );
+  });
 });
