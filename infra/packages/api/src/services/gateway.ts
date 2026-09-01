@@ -83,6 +83,7 @@ import {
   shouldExecuteElvexXeroViaElMcp,
 } from "./elvex-xero-el-mcp";
 import { executeAskDocument, isAskDocumentTool } from "./ask-document";
+import { isListCompanyDocumentsTool, listCompanyDocuments } from "./document-catalogue";
 
 export type GatewayActor =
   | {
@@ -978,7 +979,41 @@ export async function executeGatewayRequest(
 
   const balanceBefore = await getWalletBalance(env.DB, input.companyId);
 
-  const execution = isAskDocumentTool(input.toolName)
+  const execution = isListCompanyDocumentsTool(input.toolName)
+    ? await (async () => {
+        const catalogue = await listCompanyDocuments(env, {
+          companyId: input.companyId,
+          text: String(input.arguments?.query ?? ""),
+          sort:
+            input.arguments?.sort === "newest" ||
+            input.arguments?.sort === "latest" ||
+            input.arguments?.sort === "indexed"
+              ? input.arguments.sort
+              : undefined,
+          source:
+            input.arguments?.source === "onedrive" ||
+            input.arguments?.source === "sharepoint" ||
+            input.arguments?.source === "drive" ||
+            input.arguments?.source === "all"
+              ? input.arguments.source
+              : undefined,
+          limit: typeof input.arguments?.limit === "number" ? input.arguments.limit : undefined,
+        });
+        return {
+          status: 200 as const,
+          data: {
+            correlationId,
+            mcpId: mcp.id,
+            companyId: input.companyId,
+            toolName: input.toolName,
+            latencyMs: Date.now() - started,
+            authConfigured: true,
+            riskClass,
+            result: catalogue,
+          },
+        };
+      })()
+    : isAskDocumentTool(input.toolName)
     ? await (async () => {
         const asked = await executeAskDocument(env, {
           companyId: input.companyId,

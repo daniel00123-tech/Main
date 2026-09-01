@@ -70,6 +70,19 @@ describe("scope classifier", () => {
     expect(isCorpusInventoryAsk("find the vehicle policy")).toBe(false);
   });
 
+  it("lists newest or latest files as a metadata catalogue, not semantic search", () => {
+    const newest = classifyScope("show me the newest 10 OneDrive files", buildConversationState({ userText: "show me the newest 10 OneDrive files" }));
+    expect(newest.scope).toBe("SYSTEM_META");
+    expect(newest.tool).toBe("list_company_documents");
+    const latest = classifyScope(
+      "what are the latest changed SharePoint documents",
+      buildConversationState({ userText: "what are the latest changed SharePoint documents" }),
+    );
+    expect(latest.tool).toBe("list_company_documents");
+    const xero = classifyScope("tell me on xero what our sales are", buildConversationState({ userText: "tell me on xero what our sales are" }));
+    expect(xero.tool).not.toBe("list_company_documents");
+  });
+
   it("switches away from the open file when a different named title is requested", () => {
     const open = buildConversationState({
       userText: "Open the vehicle handbook",

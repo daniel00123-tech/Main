@@ -206,6 +206,7 @@ async function runSystemMeta(
     const data = await executeSystemMetaTool(env, {
       name: call.name,
       companyId: input.companyId,
+      arguments: call.arguments,
       actor: {
         role: membership?.role ?? null,
         isPlatformAdmin: Boolean(input.sessionUser.isPlatformAdmin),

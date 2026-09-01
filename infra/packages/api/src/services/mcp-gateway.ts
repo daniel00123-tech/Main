@@ -49,6 +49,7 @@ import { getUserCompanyRole } from "../permissions/service";
 import { withActionControlTools, isActionControlTool, actionControlToolAllowed } from "./mcp-action-tools";
 import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
 import { ASK_DOCUMENT_TOOL, withAskDocumentTool } from "./ask-document";
+import { LIST_COMPANY_DOCUMENTS_TOOL, withListCompanyDocumentsTool } from "./document-catalogue";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeActionControlTool } from "./action-engine/action-control-handler";
 import {
@@ -417,7 +418,8 @@ async function resolveToolActionForFilter(
     toolName === "get_knowledge_document" ||
     toolName === "fetch" ||
     toolName === "database_summary" ||
-    toolName === ASK_DOCUMENT_TOOL
+    toolName === ASK_DOCUMENT_TOOL ||
+    toolName === LIST_COMPANY_DOCUMENTS_TOOL
   ) {
     return "knowledge.read";
   }
@@ -677,18 +679,20 @@ export async function handleInfraMcpJsonRpc(
           ? []
           : identityScopes;
       const advertised = withAutomationControlTools(
-        withAskDocumentTool(
-          withXeroReadTools(
-            withOutlookReadTools(
-              withActionControlTools(withStandardKnowledgeTools(tools), actionScopes),
-              identityScopes,
+        withListCompanyDocumentsTool(
+          withAskDocumentTool(
+            withXeroReadTools(
+              withOutlookReadTools(
+                withActionControlTools(withStandardKnowledgeTools(tools), actionScopes),
+                identityScopes,
+              ),
+              {
+                scopes: identityScopes,
+                companyId: resolvedCompanyId,
+                userRole,
+                actorType: actor.type,
+              },
             ),
-            {
-              scopes: identityScopes,
-              companyId: resolvedCompanyId,
-              userRole,
-              actorType: actor.type,
-            },
           ),
         ),
         { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
@@ -749,18 +753,20 @@ export async function handleInfraMcpJsonRpc(
         fallbackRole = live?.role ?? getUserCompanyRole(actor.user, resolvedCompanyId);
       }
       const advertised = withAutomationControlTools(
-        withAskDocumentTool(
-          withXeroReadTools(
-            withOutlookReadTools(
-              withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
-              identityScopes,
+        withListCompanyDocumentsTool(
+          withAskDocumentTool(
+            withXeroReadTools(
+              withOutlookReadTools(
+                withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+                identityScopes,
+              ),
+              {
+                scopes: identityScopes,
+                companyId: resolvedCompanyId,
+                userRole: fallbackRole,
+                actorType: actor.type,
+              },
             ),
-            {
-              scopes: identityScopes,
-              companyId: resolvedCompanyId,
-              userRole: fallbackRole,
-              actorType: actor.type,
-            },
           ),
         ),
         { identityType: actor.type === "service" ? actor.identity.identityType : undefined },

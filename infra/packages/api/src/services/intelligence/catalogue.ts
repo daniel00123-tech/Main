@@ -208,6 +208,23 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     outputShape: "{ lastSyncAt, bySource }",
     permission: "company knowledge read",
   },
+  {
+    name: "list_company_documents",
+    description:
+      "List the newest or latest OneDrive/SharePoint/Drive files from real metadata. Not semantic search.",
+    whenToUse:
+      "User asks for the newest, latest, recently uploaded, or recently changed files. created_at for newest; modified_at for latest/changed.",
+    whenNotToUse:
+      "Do not use for meaning-based find. Do not use for Xero, Outlook, or a named document hunt.",
+    parameters: {
+      sort: { description: "newest | latest | indexed" },
+      source: { description: "all | onedrive | sharepoint | drive" },
+      limit: { type: "number", description: "Default 10, max 20" },
+      query: { description: "Original user text used only to infer sort/source" },
+    },
+    outputShape: "{ sort, documents: [{ id, title, source, url, created_at, modified_at, description }] }",
+    permission: "company knowledge read",
+  },
 ];
 
 export const INTELLIGENCE_TOOL_NAMES = new Set(INTELLIGENCE_TOOLS.map((tool) => tool.name));
@@ -239,6 +256,7 @@ export const SYSTEM_META_TOOLS = new Set([
   "get_active_automations",
   "get_user_capabilities",
   "get_recent_sync_status",
+  "list_company_documents",
 ]);
 
 export function toolsForModel(permitted?: Iterable<string> | null): IntelligenceToolSpec[] {

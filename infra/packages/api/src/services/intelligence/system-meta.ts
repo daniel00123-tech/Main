@@ -1,6 +1,7 @@
 import { listConnectedCapabilityLabels, listConnectedConnectorIds } from "../whatsapp-capabilities.js";
 import { listAutomationDefinitions } from "../automation-engine/store.js";
 import type { Env } from "../../env.js";
+import { isListCompanyDocumentsTool, listCompanyDocuments, verbaliseCatalogue } from "../document-catalogue.js";
 
 export type IndexSourceCount = { source: string; count: number };
 export type IndexTypeCount = { type: string; count: number };
@@ -109,7 +110,8 @@ export function isSystemMetaTool(name: string): boolean {
     name === "get_connector_status" ||
     name === "get_active_automations" ||
     name === "get_user_capabilities" ||
-    name === "get_recent_sync_status"
+    name === "get_recent_sync_status" ||
+    name === "list_company_documents"
   );
 }
 
@@ -382,8 +384,28 @@ export async function executeSystemMetaTool(
     companyName?: string | null;
     driveIndexed?: number | null;
     permittedReads?: string[];
+    arguments?: Record<string, unknown>;
   },
 ): Promise<unknown> {
+  if (isListCompanyDocumentsTool(input.name)) {
+    if (input.actor.canReadKnowledge === false) {
+      return { sort: "newest", documents: [], note: "Your current permissions don’t allow document listing." };
+    }
+    const args = input.arguments ?? {};
+    return listCompanyDocuments(env as Env, {
+      companyId: input.companyId,
+      text: typeof args.query === "string" ? args.query : "",
+      sort:
+        args.sort === "newest" || args.sort === "latest" || args.sort === "indexed"
+          ? args.sort
+          : undefined,
+      source:
+        args.source === "onedrive" || args.source === "sharepoint" || args.source === "drive" || args.source === "all"
+          ? args.source
+          : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+    });
+  }
   const summary = await loadCompanySystemSummary(env, input.companyId, input.actor, {
     driveIndexed: input.driveIndexed,
     companyName: input.companyName,
@@ -403,6 +425,7 @@ export async function executeSystemMetaTool(
     const connected = summary.connectors;
     const canHelpWith = [
       "search documents you can access",
+      "list newest or latest OneDrive, SharePoint, and Drive files",
       connected.some((label) => /Xero/i.test(label)) ? "check permitted finance figures" : null,
       connected.some((label) => /mailbox|email/i.test(label)) ? "search shared mailboxes" : null,
       "tell you how many files are indexed",
@@ -446,6 +469,7 @@ export function verbaliseSystemMeta(name: string, data: unknown, question?: stri
   if (name === "get_active_automations") return verbaliseAutomations(data);
   if (name === "get_recent_sync_status") return verbaliseSync(data);
   if (name === "get_document_index_stats") return verbaliseIndexStats(data, question);
+  if (name === "list_company_documents") return verbaliseCatalogue(data);
   return verbaliseSummary(data, question);
 }
 

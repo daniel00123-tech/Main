@@ -712,7 +712,10 @@ async function bootstrapRetrieval(
 ): Promise<IntelligenceToolResult | null> {
   if (scoped?.scope === "GENERAL_CONVERSATION" || scoped?.scope === "AMBIGUOUS") return null;
   if (scoped?.scope === "SYSTEM_META" || scoped?.scope === "CONNECTOR_CAPABILITY") {
-    return runtime.executeTool({ name: scoped.tool || "get_company_system_summary", arguments: {} });
+    return runtime.executeTool({
+      name: scoped.tool || "get_company_system_summary",
+      arguments: scoped.tool === "list_company_documents" ? { query: text } : {},
+    });
   }
   if (looksLikeFinanceRead(text) || scoped?.scope === "BUSINESS_SYSTEM") {
     const toolName = scoped?.tool || "xero_sales_summary";

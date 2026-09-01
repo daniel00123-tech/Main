@@ -152,7 +152,7 @@ describe("document Q&A and short follow-ups", () => {
 describe("Outlook write exposure policy", () => {
   it("keeps draft and send unexposed without a real Outlook draft/send executor", () => {
     const policy = outlookWriteExposure();
-    expect(policy.draft).toBe("TOOL_NOT_EXPOSED");
+    expect(policy.draft).toBe("REQUIRES_ACTION_ENGINE_EXTENSION");
     expect(policy.send).toBe("TOOL_NOT_EXPOSED");
     expect(policy.actionEngineEmailSupport).toBe(false);
   });

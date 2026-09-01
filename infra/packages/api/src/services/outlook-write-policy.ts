@@ -19,7 +19,7 @@ export const UPSTREAM_FAILURE_COPY = "I couldn’t reach that mailbox just now."
 export const NO_RESULTS_COPY = "No matching emails were found.";
 
 export type OutlookWriteExposure = {
-  draft: "TOOL_NOT_EXPOSED";
+  draft: "REQUIRES_ACTION_ENGINE_EXTENSION";
   send: "TOOL_NOT_EXPOSED";
   draftReason: string;
   sendReason: string;
@@ -28,12 +28,12 @@ export type OutlookWriteExposure = {
 
 export function outlookWriteExposure(): OutlookWriteExposure {
   return {
-    draft: "TOOL_NOT_EXPOSED",
+    draft: "REQUIRES_ACTION_ENGINE_EXTENSION",
     send: "TOOL_NOT_EXPOSED",
     draftReason:
-      "No INFRA or company-MCP executor creates a real Outlook Draft item. Do not fake a draft, and do not expose send_elvex_email as a draft.",
+      "REQUIRES_ACTION_ENGINE_EXTENSION: Graph/EL MCP cannot create a Draft without send on the current read path, and Action Engine is Xero-scoped. Do not fake a draft.",
     sendReason:
-      "Sending must stay behind Action Engine confirmation. The Action Engine is Xero-scoped; email-write needs a separate Action Engine capability.",
+      "Sending must stay behind Action Engine confirmation. The Action Engine is Xero-scoped; email-write is the next controlled-action feature. Do not implement send.",
     actionEngineEmailSupport: false,
   };
 }
