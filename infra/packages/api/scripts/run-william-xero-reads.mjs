@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const API = "https://api.infrastack.app";
-const ACCEPTANCE_PATH = "/api/internal/elvex-xero-acceptance";
+const ACCEPTANCE_PATH = "/api/internal/cmd15/microsoft-acceptance/xero-reads";
 const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MEMBERSHIP_ID = "membership_78495c59-cff6-4db5-9986-a351ebe154f1";
 const USER_ID = "user_b0db1fc5-692c-436d-99e6-392966b20df8";

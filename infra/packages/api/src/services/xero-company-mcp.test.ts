@@ -28,6 +28,7 @@ describe("company MCP Xero mapping", () => {
       from: "2026-09-01",
       to: "2026-09-01",
       invoiceType: "ACCREC",
+      limit: 100,
     });
     expect(
       mapArgsForCompanyXeroTool("xero_list_overdue_invoices", "search_xero_invoices", {}),

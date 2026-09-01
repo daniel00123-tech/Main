@@ -102,6 +102,9 @@ export function mapArgsForCompanyXeroTool(
   ) {
     forwarded.invoiceType = "ACCREC";
   }
+  if (forwarded.limit == null) {
+    forwarded.limit = desired === "xero_sales_summary" || desired === "xero_top_customers" ? 100 : 50;
+  }
   return forwarded;
 }
 
@@ -293,15 +296,17 @@ export async function executeCompanyMcpXeroRead(
     return { ok: false, status: 503, error: "Business MCP unavailable", code: "XERO_MCP_UNAVAILABLE" };
   }
 
-  let listedNames: string[] = [];
-  try {
-    const listed = await listMcpTools(env, mcp.endpointUrl, mcp.authSecretRef, mcp.serviceBindingRef);
-    listedNames = listed.tools.map((tool) => tool.name);
-  } catch {
-    listedNames = Object.values(EL_XERO_READ_ALIASES).flat();
+  let listedNames = Object.values(EL_XERO_READ_ALIASES).flat();
+  let forwardName = pickCompanyXeroTool(listedNames, input.toolName);
+  if (!forwardName) {
+    try {
+      const listed = await listMcpTools(env, mcp.endpointUrl, mcp.authSecretRef, mcp.serviceBindingRef);
+      listedNames = listed.tools.map((tool) => tool.name);
+      forwardName = pickCompanyXeroTool(listedNames, input.toolName);
+    } catch {
+      forwardName = pickCompanyXeroTool(Object.values(EL_XERO_READ_ALIASES).flat(), input.toolName);
+    }
   }
-
-  const forwardName = pickCompanyXeroTool(listedNames, input.toolName);
   if (!forwardName) {
     return {
       ok: false,
