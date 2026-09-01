@@ -163,7 +163,12 @@ export async function executeAskDocument(
   const execution = await executeRegisteredMcpTool(env, {
     mcpId: mcp.id,
     toolName: COMPANY_KNOWLEDGE_READ_TOOL,
-    arguments: mapFetchArgumentsForCompanyMcp(sanitized.documentId),
+    arguments: {
+      ...mapFetchArgumentsForCompanyMcp(sanitized.documentId),
+      document_id: sanitized.documentId,
+      externalId: sanitized.documentId,
+      external_id: sanitized.documentId,
+    },
     actorUserId: input.actorUserId ?? "system",
     actorEmail: input.actor,
     sourceClient: "infra-ask-document",

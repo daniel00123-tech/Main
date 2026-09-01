@@ -464,7 +464,17 @@ export function collectDocumentChunks(
 
 function collectDocumentText(doc: Record<string, unknown>): string {
   const direct = asNonEmptyString(
-    doc.text ?? doc.content ?? doc.body ?? doc.fullText ?? doc.full_text,
+    doc.text ??
+      doc.content ??
+      doc.body ??
+      doc.fullText ??
+      doc.full_text ??
+      doc.extractedText ??
+      doc.extracted_text ??
+      doc.markdown ??
+      doc.html ??
+      doc.ocrText ??
+      doc.ocr_text,
   );
 
   if (Array.isArray(doc.chunks)) {

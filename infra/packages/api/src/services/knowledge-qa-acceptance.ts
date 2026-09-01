@@ -47,17 +47,32 @@ async function runOneTenant(
     skipUsageRecording: true,
   });
   const hits = toStandardSearchPayload("data" in search ? search.data?.result : search).results;
-  const first = hits[0];
-  if (!first?.id) {
+  let first = hits[0];
+  let qa: Awaited<ReturnType<typeof executeAskDocument>> | null = null;
+  let factual = "";
+  for (const hit of hits.slice(0, 5)) {
+    if (!hit.id) continue;
+    factual = `What is the main purpose of ${hit.title}?`;
+    const candidate = await executeAskDocument(env, {
+      companyId,
+      arguments: { documentId: hit.id, question: factual },
+      actor: "knowledge-qa-acceptance",
+      actorUserId: "system",
+    });
+    const chunks = candidate.ok ? Number(candidate.diagnostics.chunkCount ?? 0) : 0;
+    if (candidate.ok && chunks > 0) {
+      first = hit;
+      qa = candidate;
+      break;
+    }
+    if (!qa) {
+      first = hit;
+      qa = candidate;
+    }
+  }
+  if (!first?.id || !qa) {
     return { companyId, label, outcome: "NO_RESULTS", reason: "search returned no document id", hitCount: hits.length };
   }
-  const factual = `What is the main purpose of ${first.title}?`;
-  const qa = await executeAskDocument(env, {
-    companyId,
-    arguments: { documentId: first.id, question: factual },
-    actor: "knowledge-qa-acceptance",
-    actorUserId: "system",
-  });
   const follow = await executeAskDocument(env, {
     companyId,
     arguments: { documentId: first.id, question: "what exactly?", priorQuestion: factual },

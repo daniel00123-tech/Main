@@ -411,9 +411,13 @@ export async function runGroundedQa(
       previousAnswer: input.previousAnswer,
     }),
   });
-  let raw = generated.ok && generated.text && isGroundedToEvidence(generated.text, evidence)
-    ? generated.text
-    : extractive;
+  let raw =
+    generated.ok &&
+    generated.text &&
+    isGroundedToEvidence(generated.text, evidence) &&
+    !(confidence !== "none" && generated.text.includes(NONE_IN_DOCUMENT_REPLY))
+      ? generated.text
+      : extractive;
   if (
     input.mode === "more_detail" &&
     input.previousAnswer &&

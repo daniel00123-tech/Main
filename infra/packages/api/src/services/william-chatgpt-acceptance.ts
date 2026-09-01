@@ -91,6 +91,9 @@ function summarizeValue(value: unknown, depth = 0): unknown {
       "answer",
       "confidence",
       "noneInDocument",
+      "upstreamType",
+      "upstreamKeys",
+      "upstreamPreview",
       "name",
       "organisationName",
       "summary",
@@ -601,13 +604,22 @@ export async function runWilliamChatgptAcceptance(
     });
 
     const searchTool = listed.has("search") ? "search" : "search_company_knowledge";
-    const knowledgeSearch = await callTool(
+    let knowledgeSearch = await callTool(
       issued.token,
       listed,
       searchTool,
       { query: "company policy", limit: 5 },
       rpcId++,
     );
+    if (knowledgeSearch.outcome !== "WORKS") {
+      knowledgeSearch = await callTool(
+        issued.token,
+        listed,
+        searchTool,
+        { query: "health and safety policy", limit: 5 },
+        rpcId++,
+      );
+    }
     results.push({ id: "knowledge.document_search", group: "knowledge", ...withoutParsed(knowledgeSearch) });
     knowledgeDoc = pickKnowledgeId(knowledgeSearch.parsed);
     if (!knowledgeDoc.id) knowledgeDoc = pickKnowledgeId(knowledgeSearch.summary);

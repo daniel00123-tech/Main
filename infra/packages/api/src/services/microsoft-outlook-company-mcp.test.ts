@@ -12,7 +12,8 @@ describe("company MCP Outlook get composition", () => {
     expect(mapOutlookGetArgs({ messageId: "AAMkAGI1" })).toMatchObject({
       messageId: "AAMkAGI1",
       id: "AAMkAGI1",
-      internetMessageId: "AAMkAGI1",
+      emailId: "AAMkAGI1",
+      query: "AAMkAGI1",
       documentRef: "AAMkAGI1",
     });
     expect(
@@ -38,6 +39,15 @@ describe("company MCP Outlook get composition", () => {
       subject: "Quote request",
       body: "Please quote the roof works.",
     });
+  });
+
+  it("treats a raw HTML string as the message body", () => {
+    const composed = composeOutlookGetResult(
+      "<html><body><p>Please quote the roof works.</p></body></html>",
+      "info@elvexpropertyservices.com",
+    );
+    expect(composed.count).toBe(1);
+    expect(String(composed.body)).toMatch(/roof works/i);
   });
 
   it("does not treat a missing get payload as an empty list success", () => {

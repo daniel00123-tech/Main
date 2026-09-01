@@ -121,6 +121,19 @@ describe("document Q&A and short follow-ups", () => {
     expect(qa.reply).toMatch(/licence|checklist|van|employees/i);
   });
 
+  it("does not keep a model none-copy when the document already has evidence", async () => {
+    const qa = await runGroundedQa(emptyEnv, {
+      question: "Who is allowed to drive a van?",
+      documentId: "doc_policy",
+      title: "Vehicle use procedure",
+      fetch: POLICY,
+      mode: "answer",
+    });
+    expect(qa.confidence).not.toBe("none");
+    expect(qa.reply).not.toBe(NONE_IN_DOCUMENT_REPLY);
+    expect(qa.reply).toMatch(/licence|checklist|employees|van/i);
+  });
+
   it("says so when the selected document has no evidence and does not search globally", async () => {
     const qa = await runGroundedQa(emptyEnv, {
       question: "does it mention offshore drilling licenses?",
