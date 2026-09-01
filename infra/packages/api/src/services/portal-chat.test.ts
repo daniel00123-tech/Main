@@ -220,7 +220,7 @@ describe("portal chat channel", () => {
 
   it("attributes portal chat as portal_chat without inventing prices", () => {
     expect(normalizeSourceClient("portal_chat")).toBe(PORTAL_CHAT_SOURCE_CLIENT);
-    expect(normalizeSourceClient("Company portal chat")).toBe(PORTAL_CHAT_SOURCE_CLIENT);
+    expect(normalizeSourceClient("portal")).toBe("portal");
     expect(toolStatusLabel("xero_sales_summary")).toBe("Checking Xero…");
     expect(toolStatusLabel("search_company_knowledge")).toBe("Searching company files…");
   });

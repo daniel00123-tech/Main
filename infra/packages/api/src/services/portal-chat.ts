@@ -346,7 +346,7 @@ export function polishPortalReply(result: IntelligenceTurnResult, question: stri
     if (result.kind === "failed") return "I couldn't complete that just now. Try again in a moment.";
     text = "I'm here — what would help?";
   }
-  if (denied && looksLikeInventedSuccess(text, result) && !/permission|not allowed|cannot|can't/i.test(text)) {
+  if (denied && !/permission|not allowed|cannot|can't|do not have/i.test(text)) {
     return "You do not have permission to do that in this company.";
   }
   const sourceUrl = result.currentDocument?.url ?? null;
@@ -362,11 +362,6 @@ export function polishPortalReply(result: IntelligenceTurnResult, question: stri
 export function isPermissionDenial(error?: string | null, data?: unknown): boolean {
   const blob = `${error ?? ""} ${typeof data === "string" ? data : JSON.stringify(data ?? "")}`;
   return /403|permission|not allowed|denied|not a member|not available for your role/i.test(blob);
-}
-
-function looksLikeInventedSuccess(text: string, result: IntelligenceTurnResult): boolean {
-  if (result.kind !== "failed" && result.confidence !== "none") return false;
-  return /£\s?[\d,]+|invoice|profit|overdue|sales/i.test(text);
 }
 
 function metadataFromTurn(result: IntelligenceTurnResult): PortalChatMessageMetadata {
