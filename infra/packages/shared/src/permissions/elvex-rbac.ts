@@ -184,7 +184,10 @@ export function mapActionToElvexCapability(
     action === "xero.invoices.search" ||
     action === "xero.invoices.get" ||
     action === "xero.contacts.read" ||
-    action === "xero.contacts.search"
+    action === "xero.contacts.search" ||
+    action === "xero.sales.read" ||
+    action === "xero.sales.summary" ||
+    action === "xero.top_customers"
   ) {
     return "xero.sales.read";
   }
