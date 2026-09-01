@@ -1,0 +1,2327 @@
+{
+  "summary": {
+    "attempted": 153,
+    "ok": 153,
+    "fail": 0,
+    "tenant_sent": 11,
+    "agent_sent": 142,
+    "failures": []
+  },
+  "results": [
+    {
+      "issue_id": "IS22655163",
+      "jb": "JB11420714",
+      "recipient": "Agent",
+      "confirm_date": "13/07/2026",
+      "contact": "Flat 313 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75096979,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:11.7501156Z"
+    },
+    {
+      "issue_id": "IS22831880",
+      "jb": "JB11534771",
+      "recipient": "Agent",
+      "confirm_date": "13/07/2026",
+      "contact": "Flat 426 The Point",
+      "ok": true,
+      "comment_id": 75100878,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:12.2638546Z"
+    },
+    {
+      "issue_id": "IS22878805",
+      "jb": "JB11563542",
+      "recipient": "Agent",
+      "confirm_date": "13/07/2026",
+      "contact": "Flat 1105 Aston Place",
+      "ok": true,
+      "comment_id": 75100879,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:12.7503497Z"
+    },
+    {
+      "issue_id": "IS22864484",
+      "jb": "JB11556101",
+      "recipient": "Agent",
+      "confirm_date": "13/07/2026",
+      "contact": "Flat 319 Leodis Square",
+      "ok": true,
+      "comment_id": 75100880,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:13.2433987Z"
+    },
+    {
+      "issue_id": "IS22835075",
+      "jb": "JB11536735",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 503 Leodis Square",
+      "ok": true,
+      "comment_id": 75100881,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:13.7014576Z"
+    },
+    {
+      "issue_id": "IS22652873",
+      "jb": "JB11419766",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 519 Leodis Square",
+      "ok": true,
+      "comment_id": 75096980,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:14.1810381Z"
+    },
+    {
+      "issue_id": "IS22684090",
+      "jb": "JB11441537",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "258 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75100882,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:14.7067113Z"
+    },
+    {
+      "issue_id": "IS22671838",
+      "jb": "JB11439768",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat G08 Leodis Square",
+      "ok": true,
+      "comment_id": 75096981,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:15.2326499Z"
+    },
+    {
+      "issue_id": "IS22738305",
+      "jb": "JB11478788",
+      "recipient": "Tenant",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat G09 Leodis Square",
+      "ok": true,
+      "comment_id": 75100883,
+      "sent_to": [
+        "Tenant"
+      ],
+      "comment_sent": "2026-07-13T16:37:15.7138926Z"
+    },
+    {
+      "issue_id": "IS22831776",
+      "jb": "JB11534671",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 1024 The Point",
+      "ok": true,
+      "comment_id": 75100884,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:16.2277649Z"
+    },
+    {
+      "issue_id": "IS22843566",
+      "jb": "JB11542617",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "54 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75096982,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:16.6716174Z"
+    },
+    {
+      "issue_id": "IS22857135",
+      "jb": "JB11551864",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Reception, Granary Quay, 365 Glasgow Harbour Terra",
+      "ok": true,
+      "comment_id": 75100885,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:17.1686578Z"
+    },
+    {
+      "issue_id": "IS22874534",
+      "jb": "JB11562348",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 519 Leodis Square",
+      "ok": true,
+      "comment_id": 75100886,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:17.7061137Z"
+    },
+    {
+      "issue_id": "IS22874825",
+      "jb": "JB11562402",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 908 The Point",
+      "ok": true,
+      "comment_id": 75096983,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:18.1987394Z"
+    },
+    {
+      "issue_id": "IS22886300",
+      "jb": "JB11568475",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 314 Leodis Square",
+      "ok": true,
+      "comment_id": 75100887,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:18.7181626Z"
+    },
+    {
+      "issue_id": "IS22820670",
+      "jb": "JB11526287",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "704 Calvert House",
+      "ok": true,
+      "comment_id": 75096984,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:19.1691468Z"
+    },
+    {
+      "issue_id": "IS22830679",
+      "jb": "JB11533645",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 1908 Aston Place",
+      "ok": true,
+      "comment_id": 75096985,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:19.6215974Z"
+    },
+    {
+      "issue_id": "IS22790848",
+      "jb": "JB11517141",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 226 The Point",
+      "ok": true,
+      "comment_id": 75096986,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:20.1848568Z"
+    },
+    {
+      "issue_id": "IS22871667",
+      "jb": "JB11569667",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Aaron House",
+      "ok": true,
+      "comment_id": 75100888,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:20.6481263Z"
+    },
+    {
+      "issue_id": "IS22807250",
+      "jb": "JB11515994",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat G11 Leodis Square",
+      "ok": true,
+      "comment_id": 75100889,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:21.0868317Z"
+    },
+    {
+      "issue_id": "IS22104945",
+      "jb": "JB11527389",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "20 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75096987,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:21.6016964Z"
+    },
+    {
+      "issue_id": "IS22873786",
+      "jb": "JB11562158",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "223 Granary Quay",
+      "ok": true,
+      "comment_id": 75100890,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:27.4579177Z"
+    },
+    {
+      "issue_id": "IS22724001",
+      "jb": "JB11466714",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 316 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75096988,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:27.937082Z"
+    },
+    {
+      "issue_id": "IS22806552",
+      "jb": "JB11515843",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 314 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75100891,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:28.4922284Z"
+    },
+    {
+      "issue_id": "IS22815157",
+      "jb": "JB11522547",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 912 Leodis Square",
+      "ok": true,
+      "comment_id": 75100892,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:29.3288868Z"
+    },
+    {
+      "issue_id": "IS22281610",
+      "jb": "JB11527749",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "338 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75100893,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:29.7638324Z"
+    },
+    {
+      "issue_id": "IS22886895",
+      "jb": "JB11569105",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "1503 Doodson House",
+      "ok": true,
+      "comment_id": 75100894,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:30.2921199Z"
+    },
+    {
+      "issue_id": "IS22815764",
+      "jb": "JB11523001",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 912 Leodis Square",
+      "ok": true,
+      "comment_id": 75096989,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:30.7812501Z"
+    },
+    {
+      "issue_id": "IS22714090",
+      "jb": "JB11462002",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 211 Leodis Square",
+      "ok": true,
+      "comment_id": 75100895,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:31.2746507Z"
+    },
+    {
+      "issue_id": "IS22807081",
+      "jb": "JB11517208",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat G06 Leodis Square",
+      "ok": true,
+      "comment_id": 75096990,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:31.7203308Z"
+    },
+    {
+      "issue_id": "IS22840424",
+      "jb": "JB11540055",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 907 The Point",
+      "ok": true,
+      "comment_id": 75096991,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:32.1945629Z"
+    },
+    {
+      "issue_id": "IS22691159",
+      "jb": "JB11446920",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "303 Bradshaw House",
+      "ok": true,
+      "comment_id": 75100896,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:32.6145606Z"
+    },
+    {
+      "issue_id": "IS22860760",
+      "jb": "JB11553734",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 316 Leodis Square",
+      "ok": true,
+      "comment_id": 75100897,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:33.1615348Z"
+    },
+    {
+      "issue_id": "IS22853382",
+      "jb": "JB11560255",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "258 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75096992,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:33.6033684Z"
+    },
+    {
+      "issue_id": "IS22856681",
+      "jb": "JB11551536",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 303 Leodis Square",
+      "ok": true,
+      "comment_id": 75096993,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:34.0832204Z"
+    },
+    {
+      "issue_id": "IS22799565",
+      "jb": "JB11514084",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 1002 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75096994,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:34.5522005Z"
+    },
+    {
+      "issue_id": "IS22823903",
+      "jb": "JB11527791",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat G03 Leodis Square",
+      "ok": true,
+      "comment_id": 75096995,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:35.0281091Z"
+    },
+    {
+      "issue_id": "IS22865054",
+      "jb": "JB11556672",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 319 Leodis Square",
+      "ok": true,
+      "comment_id": 75096996,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:35.4794834Z"
+    },
+    {
+      "issue_id": "IS22857807",
+      "jb": "JB11552448",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Reception, Granary Quay, 365 Glasgow Harbour Terra",
+      "ok": true,
+      "comment_id": 75096997,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:35.9095498Z"
+    },
+    {
+      "issue_id": "IS22888699",
+      "jb": "JB11570576",
+      "recipient": "Tenant",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 601 Leodis Square",
+      "ok": true,
+      "comment_id": 75096998,
+      "sent_to": [
+        "Tenant"
+      ],
+      "comment_sent": "2026-07-13T16:37:36.4708094Z"
+    },
+    {
+      "issue_id": "IS22720222",
+      "jb": "JB11466721",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 806 Leodis Square",
+      "ok": true,
+      "comment_id": 75096999,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:36.8906954Z"
+    },
+    {
+      "issue_id": "IS22806033",
+      "jb": "JB11515704",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "1602 Doodson House",
+      "ok": true,
+      "comment_id": 75097000,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:37.3924237Z"
+    },
+    {
+      "issue_id": "IS22832677",
+      "jb": "JB11535466",
+      "recipient": "Tenant",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 111 Leodis Square",
+      "ok": true,
+      "comment_id": 75097001,
+      "sent_to": [
+        "Tenant"
+      ],
+      "comment_sent": "2026-07-13T16:37:37.8432614Z"
+    },
+    {
+      "issue_id": "IS22864527",
+      "jb": "JB11556136",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 319 Leodis Square",
+      "ok": true,
+      "comment_id": 75100898,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:38.2885226Z"
+    },
+    {
+      "issue_id": "IS22806096",
+      "jb": "JB11515735",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "1602 Doodson House",
+      "ok": true,
+      "comment_id": 75100899,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:38.7211808Z"
+    },
+    {
+      "issue_id": "IS22815060",
+      "jb": "JB11522486",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "1006 Doodson House",
+      "ok": true,
+      "comment_id": 75097002,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:39.1552693Z"
+    },
+    {
+      "issue_id": "IS22827312",
+      "jb": "JB11531003",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "1606 Alcock House",
+      "ok": true,
+      "comment_id": 75100900,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:39.6123997Z"
+    },
+    {
+      "issue_id": "IS22857604",
+      "jb": "JB11552279",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Reception, Granary Quay, 365 Glasgow Harbour Terra",
+      "ok": true,
+      "comment_id": 75097003,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:40.0929336Z"
+    },
+    {
+      "issue_id": "IS22860589",
+      "jb": "JB11553714",
+      "recipient": "Tenant",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat G02 Leodis Square",
+      "ok": true,
+      "comment_id": 75097004,
+      "sent_to": [
+        "Tenant"
+      ],
+      "comment_sent": "2026-07-13T16:37:40.6512403Z"
+    },
+    {
+      "issue_id": "IS22815072",
+      "jb": "JB11522500",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "1006 Doodson House",
+      "ok": true,
+      "comment_id": 75100901,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:41.1912789Z"
+    },
+    {
+      "issue_id": "IS22784595",
+      "jb": "JB11504702",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 1014 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75100902,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:41.6545349Z"
+    },
+    {
+      "issue_id": "IS22887178",
+      "jb": "JB11569365",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "Flat 518 Leodis Square",
+      "ok": true,
+      "comment_id": 75097005,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:42.1658809Z"
+    },
+    {
+      "issue_id": "IS22812618",
+      "jb": "JB11528110",
+      "recipient": "Agent",
+      "confirm_date": "14/07/2026",
+      "contact": "1518 Chapman House",
+      "ok": true,
+      "comment_id": 75097006,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:42.6053507Z"
+    },
+    {
+      "issue_id": "IS22812952",
+      "jb": "JB11521149",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "25 Honeywood",
+      "ok": true,
+      "comment_id": 75097007,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:43.1245989Z"
+    },
+    {
+      "issue_id": "IS22864176",
+      "jb": "JB11555856",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 531 The Point",
+      "ok": true,
+      "comment_id": 75097008,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:43.594914Z"
+    },
+    {
+      "issue_id": "IS22874795",
+      "jb": "JB11562398",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 402 The Point",
+      "ok": true,
+      "comment_id": 75100903,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:44.0268485Z"
+    },
+    {
+      "issue_id": "IS20558106",
+      "jb": "JB11398484",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Spitfire Court",
+      "ok": true,
+      "comment_id": 75097009,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:44.4900012Z"
+    },
+    {
+      "issue_id": "IS22834924",
+      "jb": "JB11536211",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "1211 Aston Place",
+      "ok": true,
+      "comment_id": 75097010,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:45.0637197Z"
+    },
+    {
+      "issue_id": "IS22869121",
+      "jb": "JB11561938",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 215 The Point",
+      "ok": true,
+      "comment_id": 75100904,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:45.5121201Z"
+    },
+    {
+      "issue_id": "IS22833578",
+      "jb": "JB11535938",
+      "recipient": "Tenant",
+      "confirm_date": "15/07/2026",
+      "contact": "903 Calvert House",
+      "ok": true,
+      "comment_id": 75097011,
+      "sent_to": [
+        "Tenant"
+      ],
+      "comment_sent": "2026-07-13T16:37:45.9435989Z"
+    },
+    {
+      "issue_id": "IS22837119",
+      "jb": "JB11537168",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "916 The Point",
+      "ok": true,
+      "comment_id": 75097012,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:46.4226789Z"
+    },
+    {
+      "issue_id": "IS22869882",
+      "jb": "JB11560574",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "1121 Granary Quay",
+      "ok": true,
+      "comment_id": 75100905,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:46.8544209Z"
+    },
+    {
+      "issue_id": "IS22831579",
+      "jb": "JB11534473",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 714 Leodis Square",
+      "ok": true,
+      "comment_id": 75100906,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:47.3812316Z"
+    },
+    {
+      "issue_id": "IS22840282",
+      "jb": "JB11539932",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "308 Armouries",
+      "ok": true,
+      "comment_id": 75097013,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:47.8076096Z"
+    },
+    {
+      "issue_id": "IS22878580",
+      "jb": "JB11563498",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 907 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75097014,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:48.2702635Z"
+    },
+    {
+      "issue_id": "IS22723783",
+      "jb": "JB11466717",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 203 Leodis Square",
+      "ok": true,
+      "comment_id": 75097015,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:48.7596563Z"
+    },
+    {
+      "issue_id": "IS22842833",
+      "jb": "JB11541979",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 1105 Leodis Square",
+      "ok": true,
+      "comment_id": 75097016,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:49.2325543Z"
+    },
+    {
+      "issue_id": "IS22851172",
+      "jb": "JB11553178",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "629 The Point",
+      "ok": true,
+      "comment_id": 75097017,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:49.6744478Z"
+    },
+    {
+      "issue_id": "IS22642682",
+      "jb": "JB11429814",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "908 Aaron House",
+      "ok": true,
+      "comment_id": 75097018,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:50.1878619Z"
+    },
+    {
+      "issue_id": "IS22870393",
+      "jb": "JB11560984",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 716 Leodis Square",
+      "ok": true,
+      "comment_id": 75100907,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:50.7065857Z"
+    },
+    {
+      "issue_id": "IS22820641",
+      "jb": "JB11526283",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "506 Doodson House",
+      "ok": true,
+      "comment_id": 75097019,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:51.1875835Z"
+    },
+    {
+      "issue_id": "IS22780399",
+      "jb": "JB11502106",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 907 Leodis Square",
+      "ok": true,
+      "comment_id": 75100908,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:53.4810589Z"
+    },
+    {
+      "issue_id": "IS22738472",
+      "jb": "JB11475605",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "1606 Doodson House",
+      "ok": true,
+      "comment_id": 75097020,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:55.882647Z"
+    },
+    {
+      "issue_id": "IS22868207",
+      "jb": "JB11559195",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 316 Leodis Square",
+      "ok": true,
+      "comment_id": 75097021,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:56.343899Z"
+    },
+    {
+      "issue_id": "IS22735020",
+      "jb": "JB11473131",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "1006 Doodson House",
+      "ok": true,
+      "comment_id": 75100909,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:56.7710487Z"
+    },
+    {
+      "issue_id": "IS22738949",
+      "jb": "JB11475688",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 504 Leodis Square",
+      "ok": true,
+      "comment_id": 75100910,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:57.2185727Z"
+    },
+    {
+      "issue_id": "IS22887296",
+      "jb": "JB11569461",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat 518 Leodis Square",
+      "ok": true,
+      "comment_id": 75100911,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:57.6402902Z"
+    },
+    {
+      "issue_id": "IS22887759",
+      "jb": "JB11569833",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "Flat G06 Leodis Square",
+      "ok": true,
+      "comment_id": 75097023,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:58.2898Z"
+    },
+    {
+      "issue_id": "IS22714469",
+      "jb": "JB11462201",
+      "recipient": "Agent",
+      "confirm_date": "15/07/2026",
+      "contact": "702 Doodson House",
+      "ok": true,
+      "comment_id": 75097024,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:58.7244464Z"
+    },
+    {
+      "issue_id": "IS22866323",
+      "jb": "JB11557752",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "909 Burton House",
+      "ok": true,
+      "comment_id": 75097025,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:59.1952014Z"
+    },
+    {
+      "issue_id": "IS22040967",
+      "jb": "JB11366754",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Rudyard Court, 127 Long Lane,",
+      "ok": true,
+      "comment_id": 75100912,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:37:59.6851995Z"
+    },
+    {
+      "issue_id": "IS22801228",
+      "jb": "JB11514480",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 203 Leodis Square",
+      "ok": true,
+      "comment_id": 75097026,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:00.1951603Z"
+    },
+    {
+      "issue_id": "IS22877843",
+      "jb": "JB11563373",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 218 The Point",
+      "ok": true,
+      "comment_id": 75100913,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:00.6351014Z"
+    },
+    {
+      "issue_id": "IS22763039",
+      "jb": "JB11495509",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "1604 Chapmam",
+      "ok": true,
+      "comment_id": 75097027,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:01.0663746Z"
+    },
+    {
+      "issue_id": "IS22802051",
+      "jb": "JB11514628",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 415 Leodis Square",
+      "ok": true,
+      "comment_id": 75100914,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:01.5238565Z"
+    },
+    {
+      "issue_id": "IS22854771",
+      "jb": "JB11553152",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 730 The Point",
+      "ok": true,
+      "comment_id": 75097028,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:01.953077Z"
+    },
+    {
+      "issue_id": "IS22868811",
+      "jb": "JB11559715",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "222 Granary Quay",
+      "ok": true,
+      "comment_id": 75097029,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:02.4554278Z"
+    },
+    {
+      "issue_id": "IS22829754",
+      "jb": "JB11533620",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 1309 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75097030,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:02.9745587Z"
+    },
+    {
+      "issue_id": "IS22804261",
+      "jb": "JB11515378",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 508 Leodis Square",
+      "ok": true,
+      "comment_id": 75097031,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:03.436735Z"
+    },
+    {
+      "issue_id": "IS22673986",
+      "jb": "JB11528853",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "The Archers",
+      "ok": true,
+      "comment_id": 75097032,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:03.8670654Z"
+    },
+    {
+      "issue_id": "IS22800141",
+      "jb": "JB11514243",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 507 Leodis Square",
+      "ok": true,
+      "comment_id": 75100915,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:04.3426071Z"
+    },
+    {
+      "issue_id": "IS22830549",
+      "jb": "JB11533527",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 1002 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75097033,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:04.7840594Z"
+    },
+    {
+      "issue_id": "IS22790218",
+      "jb": "JB11508374",
+      "recipient": "Tenant",
+      "confirm_date": "16/07/2026",
+      "contact": "3 Limestone Avenue, Clay Cross",
+      "ok": true,
+      "comment_id": 75097034,
+      "sent_to": [
+        "Tenant"
+      ],
+      "comment_sent": "2026-07-13T16:38:05.2653743Z"
+    },
+    {
+      "issue_id": "IS22790758",
+      "jb": "JB11508855",
+      "recipient": "Tenant",
+      "confirm_date": "16/07/2026",
+      "contact": "3 Limestone Avenue, Clay Cross",
+      "ok": true,
+      "comment_id": 75100916,
+      "sent_to": [
+        "Tenant"
+      ],
+      "comment_sent": "2026-07-13T16:38:05.7289199Z"
+    },
+    {
+      "issue_id": "IS22800249",
+      "jb": "JB11514283",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 411 Leodis Square",
+      "ok": true,
+      "comment_id": 75101176,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:06.1495175Z"
+    },
+    {
+      "issue_id": "IS22845846",
+      "jb": "JB11544528",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 519 The Point",
+      "ok": true,
+      "comment_id": 75100917,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:06.5720763Z"
+    },
+    {
+      "issue_id": "IS22877832",
+      "jb": "JB11563369",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 313 The Point",
+      "ok": true,
+      "comment_id": 75101177,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:06.9947111Z"
+    },
+    {
+      "issue_id": "IS22847020",
+      "jb": "JB11545156",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 402 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75101178,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:07.4347639Z"
+    },
+    {
+      "issue_id": "IS22887123",
+      "jb": "JB11569317",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "Flat 518 Leodis Square",
+      "ok": true,
+      "comment_id": 75100918,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:07.9196867Z"
+    },
+    {
+      "issue_id": "IS22889983",
+      "jb": "JB11571679",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "530 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75101179,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:08.316Z"
+    },
+    {
+      "issue_id": "IS22891770",
+      "jb": "JB11573385",
+      "recipient": "Agent",
+      "confirm_date": "16/07/2026",
+      "contact": "468 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75101180,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:08.7865875Z"
+    },
+    {
+      "issue_id": "IS22878225",
+      "jb": "JB11563431",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "530 The Point",
+      "ok": true,
+      "comment_id": 75100919,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:12.7181748Z"
+    },
+    {
+      "issue_id": "IS22662229",
+      "jb": "JB11429674",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 1209 Aston Place",
+      "ok": true,
+      "comment_id": 75101181,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:13.2192727Z"
+    },
+    {
+      "issue_id": "IS22878288",
+      "jb": "JB11563442",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 121 Leodis Square",
+      "ok": true,
+      "comment_id": 75101182,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:13.6672848Z"
+    },
+    {
+      "issue_id": "IS22878637",
+      "jb": "JB11563504",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 906 Leodis Square",
+      "ok": true,
+      "comment_id": 75100920,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:14.1182192Z"
+    },
+    {
+      "issue_id": "IS22878657",
+      "jb": "JB11563507",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 308 Leodis Square",
+      "ok": true,
+      "comment_id": 75100921,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:14.5536686Z"
+    },
+    {
+      "issue_id": "IS22878205",
+      "jb": "JB11563429",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 606 The Point",
+      "ok": true,
+      "comment_id": 75100922,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:15.0080207Z"
+    },
+    {
+      "issue_id": "IS22866240",
+      "jb": "JB11557705",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 723 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75100923,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:15.4659162Z"
+    },
+    {
+      "issue_id": "IS22878025",
+      "jb": "JB11563400",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 308 Leodis Square",
+      "ok": true,
+      "comment_id": 75100924,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:15.8943623Z"
+    },
+    {
+      "issue_id": "IS22875674",
+      "jb": "JB11562560",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 418 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75100925,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:16.3079765Z"
+    },
+    {
+      "issue_id": "IS22874886",
+      "jb": "JB11562414",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 308 Leodis Square",
+      "ok": true,
+      "comment_id": 75100926,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:16.7854861Z"
+    },
+    {
+      "issue_id": "IS22876053",
+      "jb": "JB11562649",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 404 Leodis Square",
+      "ok": true,
+      "comment_id": 75101183,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:17.2214234Z"
+    },
+    {
+      "issue_id": "IS22777105",
+      "jb": "JB11505586",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "1504 Doodson House",
+      "ok": true,
+      "comment_id": 75101184,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:17.6865001Z"
+    },
+    {
+      "issue_id": "IS22884814",
+      "jb": "JB11567091",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "G06 Burton House",
+      "ok": true,
+      "comment_id": 75100927,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:18.1604818Z"
+    },
+    {
+      "issue_id": "IS22730040",
+      "jb": "JB11478847",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "1503 Alcock House",
+      "ok": true,
+      "comment_id": 75100928,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:18.5874645Z"
+    },
+    {
+      "issue_id": "IS22834794",
+      "jb": "JB11536188",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 110 Forbes Place",
+      "ok": true,
+      "comment_id": 75100929,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:19.0621834Z"
+    },
+    {
+      "issue_id": "IS22736525",
+      "jb": "JB11474418",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat G08 Leodis Square",
+      "ok": true,
+      "comment_id": 75100930,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:19.5187195Z"
+    },
+    {
+      "issue_id": "IS22863525",
+      "jb": "JB11556911",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "1206 Doodson House",
+      "ok": true,
+      "comment_id": 75101185,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:19.9348841Z"
+    },
+    {
+      "issue_id": "IS22799230",
+      "jb": "JB11513974",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "Flat 907 Leodis Square",
+      "ok": true,
+      "comment_id": 75101186,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:20.4354108Z"
+    },
+    {
+      "issue_id": "IS22730275",
+      "jb": "JB11478843",
+      "recipient": "Agent",
+      "confirm_date": "17/07/2026",
+      "contact": "2007 Doodson House",
+      "ok": true,
+      "comment_id": 75101187,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:20.9671008Z"
+    },
+    {
+      "issue_id": "IS22800456",
+      "jb": "JB11514332",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "478 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75100931,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:21.4564389Z"
+    },
+    {
+      "issue_id": "IS22709953",
+      "jb": "JB11459430",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "Flat 415 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75100932,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:21.8963493Z"
+    },
+    {
+      "issue_id": "IS22846158",
+      "jb": "JB11544747",
+      "recipient": "Tenant",
+      "confirm_date": "20/07/2026",
+      "contact": "1005 Granary Quay",
+      "ok": true,
+      "comment_id": 75100933,
+      "sent_to": [
+        "Tenant"
+      ],
+      "comment_sent": "2026-07-13T16:38:22.3355692Z"
+    },
+    {
+      "issue_id": "IS22870655",
+      "jb": "JB11561147",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "Flat 812 Leodis Square",
+      "ok": true,
+      "comment_id": 75100934,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:22.7934709Z"
+    },
+    {
+      "issue_id": "IS22878689",
+      "jb": "JB11569538",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "Flat 605 Aston Place",
+      "ok": true,
+      "comment_id": 75101188,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:23.354402Z"
+    },
+    {
+      "issue_id": "IS22800471",
+      "jb": "JB11514333",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "478 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75100935,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:23.8367992Z"
+    },
+    {
+      "issue_id": "IS22767150",
+      "jb": "JB11493645",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "Flat 1701 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75100936,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:24.2864161Z"
+    },
+    {
+      "issue_id": "IS22870511",
+      "jb": "JB11561069",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "707 Daniels House",
+      "ok": true,
+      "comment_id": 75101189,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:24.7264503Z"
+    },
+    {
+      "issue_id": "IS22878686",
+      "jb": "JB11569545",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "Flat 801 Aston Place",
+      "ok": true,
+      "comment_id": 75100937,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:25.1638719Z"
+    },
+    {
+      "issue_id": "IS22848542",
+      "jb": "JB11556881",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "Flat 218 Leodis Square",
+      "ok": true,
+      "comment_id": 75100938,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:25.618702Z"
+    },
+    {
+      "issue_id": "IS22834396",
+      "jb": "JB11536095",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "448 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75100939,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:26.0990993Z"
+    },
+    {
+      "issue_id": "IS22879334",
+      "jb": "JB11563624",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "416 Burton House",
+      "ok": true,
+      "comment_id": 75101190,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:26.5468579Z"
+    },
+    {
+      "issue_id": "IS22888400",
+      "jb": "JB11570372",
+      "recipient": "Tenant",
+      "confirm_date": "20/07/2026",
+      "contact": "1116 Aston Place",
+      "ok": true,
+      "comment_id": 75101191,
+      "sent_to": [
+        "Tenant"
+      ],
+      "comment_sent": "2026-07-13T16:38:26.9816755Z"
+    },
+    {
+      "issue_id": "IS22889060",
+      "jb": "JB11570867",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "Flat 903 The Point",
+      "ok": true,
+      "comment_id": 75100940,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:27.4444261Z"
+    },
+    {
+      "issue_id": "IS22739156",
+      "jb": "JB11475721",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "Flat G03 Leodis Square",
+      "ok": true,
+      "comment_id": 75101192,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:27.8811594Z"
+    },
+    {
+      "issue_id": "IS22880256",
+      "jb": "JB11563787",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "301 Doodson House",
+      "ok": true,
+      "comment_id": 75100941,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:28.2986418Z"
+    },
+    {
+      "issue_id": "IS22880402",
+      "jb": "JB11563812",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "Flat 323 Leodis Square",
+      "ok": true,
+      "comment_id": 75100942,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:28.7757514Z"
+    },
+    {
+      "issue_id": "IS22745254",
+      "jb": "JB11477869",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "514 Bradshaw House",
+      "ok": true,
+      "comment_id": 75101193,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:29.2780796Z"
+    },
+    {
+      "issue_id": "IS22835096",
+      "jb": "JB11536706",
+      "recipient": "Agent",
+      "confirm_date": "20/07/2026",
+      "contact": "809 Burton House",
+      "ok": true,
+      "comment_id": 75101194,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:29.7324442Z"
+    },
+    {
+      "issue_id": "IS22790715",
+      "jb": "JB11517137",
+      "recipient": "Agent",
+      "confirm_date": "21/07/2026",
+      "contact": "Flat 617 The Point",
+      "ok": true,
+      "comment_id": 75101195,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:30.1774136Z"
+    },
+    {
+      "issue_id": "IS22875898",
+      "jb": "JB11562603",
+      "recipient": "Agent",
+      "confirm_date": "21/07/2026",
+      "contact": "Flat 1001 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75100943,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:30.6136921Z"
+    },
+    {
+      "issue_id": "IS22760861",
+      "jb": "JB11488673",
+      "recipient": "Agent",
+      "confirm_date": "21/07/2026",
+      "contact": "Flat 421 Chapel Wharf",
+      "ok": true,
+      "comment_id": 75101196,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:31.1272092Z"
+    },
+    {
+      "issue_id": "IS22675958",
+      "jb": "JB11436437",
+      "recipient": "Agent",
+      "confirm_date": "21/07/2026",
+      "contact": "310 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75100944,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:31.5836922Z"
+    },
+    {
+      "issue_id": "IS22887048",
+      "jb": "JB11569235",
+      "recipient": "Agent",
+      "confirm_date": "21/07/2026",
+      "contact": "719 Alcock House",
+      "ok": true,
+      "comment_id": 75100945,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:32.0248757Z"
+    },
+    {
+      "issue_id": "IS22874608",
+      "jb": "JB11562358",
+      "recipient": "Agent",
+      "confirm_date": "22/07/2026",
+      "contact": "Flat 714 The Point",
+      "ok": true,
+      "comment_id": 75100946,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:32.4697011Z"
+    },
+    {
+      "issue_id": "IS22044530",
+      "jb": "JB11022935",
+      "recipient": "Tenant",
+      "confirm_date": "22/07/2026",
+      "contact": "236 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75100947,
+      "sent_to": [
+        "Tenant"
+      ],
+      "comment_sent": "2026-07-13T16:38:32.9147438Z"
+    },
+    {
+      "issue_id": "IS22854578",
+      "jb": "JB11553155",
+      "recipient": "Agent",
+      "confirm_date": "22/07/2026",
+      "contact": "Flat 334 The Point",
+      "ok": true,
+      "comment_id": 75100948,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:36.0406346Z"
+    },
+    {
+      "issue_id": "IS22604945",
+      "jb": "JB11389469",
+      "recipient": "Agent",
+      "confirm_date": "23/07/2026",
+      "contact": "Flat 124 Forbes Place",
+      "ok": true,
+      "comment_id": 75100949,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:36.478211Z"
+    },
+    {
+      "issue_id": "IS22870326",
+      "jb": "JB11573154",
+      "recipient": "Tenant",
+      "confirm_date": "23/07/2026",
+      "contact": "20 Farnell Road",
+      "ok": true,
+      "comment_id": 75100950,
+      "sent_to": [
+        "Tenant"
+      ],
+      "comment_sent": "2026-07-13T16:38:36.960066Z"
+    },
+    {
+      "issue_id": "IS22875415",
+      "jb": "JB11563339",
+      "recipient": "Agent",
+      "confirm_date": "23/07/2026",
+      "contact": "Flat 330 The Point",
+      "ok": true,
+      "comment_id": 75101197,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:38.7305583Z"
+    },
+    {
+      "issue_id": "IS22684192",
+      "jb": "JB11441618",
+      "recipient": "Agent",
+      "confirm_date": "23/07/2026",
+      "contact": "308 Stoneywood Brae",
+      "ok": true,
+      "comment_id": 75100951,
+      "sent_to": [
+        "Agent",
+        "Agent",
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:39.2279831Z"
+    },
+    {
+      "issue_id": "IS22879151",
+      "jb": "JB11568634",
+      "recipient": "Agent",
+      "confirm_date": "27/07/2026",
+      "contact": "533 The Point",
+      "ok": true,
+      "comment_id": 75101198,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:39.7511394Z"
+    },
+    {
+      "issue_id": "IS22879067",
+      "jb": "JB11568660",
+      "recipient": "Agent",
+      "confirm_date": "28/07/2026",
+      "contact": "Flat 531 The Point",
+      "ok": true,
+      "comment_id": 75100952,
+      "sent_to": [
+        "Agent"
+      ],
+      "comment_sent": "2026-07-13T16:38:40.3018113Z"
+    }
+  ]
+}

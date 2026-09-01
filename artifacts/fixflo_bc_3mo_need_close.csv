@@ -1,0 +1,134 @@
+issue_id,job_id,status,agency,created,title,bc_status,bc_status_date,bc_job_id
+IS21846996,,Reported,,2026-04-02T11:11:25,Check Out Inspection (Planned works),Completed,2026-04-17 13:44:17,184628909
+IS21884973,JB10917164,AwaitingJobCompletion,,2026-04-07T17:42:08,Other (Window),Completed,2026-04-14 10:20:16,184707720
+IS21991574,,Reported,,2026-04-17T11:30:44,Other (Internal door),Completed with issues,2026-04-27 12:33:00,185676208
+IS22040967,JB11366754,AwaitingJobCompletion,,2026-04-22T11:06:54,Trunking,Completed with issues,2026-06-19 14:00:00,190751520
+IS22044530,JB11022935,JobAwarded,,2026-04-22T14:38:29,Grout cracked (Bathroom floor tiles),Completed with issues,2026-06-30 10:00:00,188179502
+IS22117597,,Reported,,2026-04-29T14:38:44,Needs bulb replacement (Light bulb),Completed with issues,2026-06-19 12:12:01,188179628
+IS22260930,JB11165271,AwaitingJobCompletion,,2026-05-13T15:00:30,Sealant discoloured/mouldy (Between bath and wall),Completed with issues,2026-05-27 10:57:14,188057035
+IS22276028,JB11175629,AwaitingJobCompletion,,2026-05-14T21:07:09,Other (Sockets),Completed with issues,2026-06-16 11:35:00,189763884
+IS22281911,JB11179944,AwaitingJobCompletion,,2026-05-15T11:21:50,"“Please replace vertical blind slats (stock has arrived)” Please treat this as priority , Thank y...",Completed with issues,2026-05-27 16:07:22,188534240
+IS22290574,JB11184891,JobAwarded,,2026-05-16T13:52:17,Other (Vent),Completed with issues,2026-06-02 14:44:52,188346218
+IS22307094,JB11194851,AwaitingJobCompletion,,2026-05-18T14:39:45,Broken tiles (need new tiles) (Bathroom wall tiles),Completed with issues,2026-06-03 11:00:00,188479739
+IS22323645,JB11206258,AwaitingJobCompletion,,2026-05-19T21:01:06,Dishwasher does not work correctly (Dishwasher),Completed with issues,2026-06-08 14:00:16,188610047
+IS22341918,JB11219136,AwaitingJobCompletion,,2026-05-21T10:44:46,Flush pipe leaking at joint with pan (Pipes),Completed with issues,2026-06-15 10:21:58,190142814
+IS22349125,JB11224027,AwaitingJobCompletion,,2026-05-22T06:58:55,Other (Shower curtain or screen),Completed with issues,2026-05-28 15:00:00,188859094
+IS22353256,JB11226917,AwaitingJobCompletion,,2026-05-22T10:21:52,"closing issue IS17961468, as its being ignored. Most of risers are clear, please clear riser on l...",Completed with issues,2026-06-22 15:45:34,188885050
+IS22366816,JB11233368,JobAwarded,,2026-05-24T12:52:40,Oven (electric) does not work correctly (Oven),Completed with issues,2026-06-26 12:01:45,189808890
+IS22387210,JB11246166,AwaitingJobCompletion,,2026-05-26T17:02:30,Other (Freezer),Completed with issues,2026-06-02 09:48:54,189124987
+IS22387485,JB11246237,AwaitingJobCompletion,,2026-05-26T17:48:59,Above ground floor level - double glazed (Broken glass),Completed with issues,2026-06-03 16:33:54,189128106
+IS22402018,JB11255807,AwaitingJobCompletion,,2026-05-28T06:56:23,Water leak within property (Leak),Completed with issues,2026-05-28 16:30:49,189267663
+IS22411431,JB11263409,AwaitingJobCompletion,,2026-05-28T15:00:07,Cracked tiles (Bathroom floor tiles),Completed with issues,2026-06-11 10:22:21,189378880
+IS22420768,JB11269549,AwaitingJobCompletion,,2026-05-29T12:15:46,Oven (electric) does not work correctly (Oven),Completed with issues,2026-06-23 13:04:03,189472848
+IS22430704,JB11274589,AwaitingJobCompletion,,2026-05-31T07:04:50,Toilet seat broken (Toilet seat/bowl),Completed with issues,2026-06-24 10:41:45,190289030
+IS22432964,JB11275745,JobAwarded,,2026-05-31T09:41:49,Broken (Single socket),Completed with issues,2026-06-10 17:18:08,190131602
+IS22433664,JB11275864,AwaitingJobCompletion,,2026-05-31T12:46:25,Not opening/closing properly (Communal entrance doors),Completed with issues,2026-06-15 13:59:20,190479215
+IS22433966,JB11275921,AwaitingJobCompletion,,2026-05-31T14:18:49,Other (Fridge),Completed with issues,2026-06-08 15:54:09,189565681
+IS22448107,JB11285826,AwaitingJobCompletion,,2026-06-01T14:56:29,Entry system not working (Communal entrance doors),Completed with issues,2026-06-02 16:30:00,189675367
+IS22456570,JB11290741,AwaitingJobCompletion,,2026-06-02T09:41:19,Other (Fridge),Completed with issues,2026-06-03 15:25:27,189752412
+IS22459977,JB11293494,AwaitingJobCompletion,,2026-06-02T12:35:14,On our boiler we have 5d error code and when on we get a whiring sound from the boiler drainage p...,Completed with issues,2026-06-02 15:00:30,189787275
+IS22465981,JB11297273,AwaitingJobCompletion,,2026-06-02T21:43:30,Oven (electric) does not turn on (Oven),Completed with issues,2026-06-04 12:35:43,189830931
+IS22477979,JB11306395,JobAwarded,,2026-06-03T17:31:31,Other (Leaks or blockages),Completed with issues,2026-06-12 15:50:19,189944359
+IS22479613,JB11306786,AwaitingJobCompletion,,2026-06-04T06:08:33,Above ground floor level and you think that it is related to a leak (Damp patches appearing),Completed with issues,2026-06-04 12:53:24,189965895
+IS22482920,JB11309082,AwaitingJobCompletion,,2026-06-04T09:05:09,Other (Oven),Completed with issues,2026-06-05 09:00:00,189984080
+IS22483307,JB11309455,AwaitingJobCompletion,,2026-06-04T09:25:10,Other (Table),Completed with issues,2026-06-24 15:45:00,189986941
+IS22484322,JB11466789,AwaitingJobCompletion,,2026-06-04T10:14:06,Other (Toilet seat/bowl),Completed with issues,2026-06-05 08:32:33,189995032
+IS22498083,JB11320048,AwaitingJobCompletion,,2026-06-05T11:52:27,Other (Between basin and wall),Completed with issues,2026-06-12 10:05:57,190117726
+IS22506509,JB11324737,AwaitingJobCompletion,,2026-06-06T15:37:29,Other (Internal door),Completed with issues,2026-06-15 16:53:14,190179315
+IS22506931,JB11324808,AwaitingJobCompletion,,2026-06-06T18:06:08,Other (Appliances),Completed with issues,2026-06-19 12:23:05,190674949
+IS22509475,JB11325579,AwaitingJobCompletion,,2026-06-07T09:45:11,Other (Walls),Completed with issues,2026-06-15 11:20:33,190208437
+IS22509883,JB11325654,AwaitingJobCompletion,,2026-06-07T11:35:35,Other (Furniture),Completed with issues,2026-06-25 15:00:00,190209290
+IS22514427,JB11327026,JobAwarded,,2026-06-08T07:36:16,Bed broken (Bed),Completed with issues,2026-06-16 14:52:55,190234730
+IS22515528,JB11328216,JobAwarded,,2026-06-08T08:42:28,Hinge broken (Internal door),Completed with issues,2026-06-16 10:00:00,190246334
+IS22517838,JB11330382,AwaitingJobCompletion,,2026-06-08T10:22:17,Oven (electric) does not turn on (Oven),Completed with issues,2026-06-16 12:46:10,190262604
+IS22521354,JB11333392,AwaitingJobCompletion,,2026-06-08T13:27:38,Oven (electric) does not work correctly (Oven),Completed with issues,2026-06-26 14:28:08,191940098
+IS22524808,JB11336232,AwaitingJobCompletion,,2026-06-08T17:10:47,Hinge broken (Internal door),Completed with issues,2026-06-29 11:30:00,190494547
+IS22525555,JB11336395,AwaitingJobCompletion,,2026-06-08T19:12:53,Other (Oven),Completed with issues,2026-06-26 10:28:56,191007329
+IS22531055,JB11339702,AwaitingJobCompletion,,2026-06-09T09:39:50,Power wash slabs free off algae around courtyard and letting suite before Sunday 14th of June At ...,Completed with issues,2026-06-26 14:38:12,191573283
+IS22531240,JB11339853,AwaitingJobCompletion,,2026-06-09T09:48:52,Other (Walls),Completed with issues,2026-06-17 17:46:03,190366113
+IS22535271,JB11343367,AwaitingJobCompletion,,2026-06-09T13:42:12,Other (Fridge),Completed with issues,2026-06-19 14:58:11,190673339
+IS22537267,JB11345037,AwaitingJobCompletion,,2026-06-09T15:39:15,Other (Shower curtain or screen),Completed with issues,2026-06-16 10:14:05,190425728
+IS22538424,JB11345822,AwaitingJobCompletion,,2026-06-09T17:41:21,Other (Fridge),Completed with issues,2026-06-17 11:23:24,190431005
+IS22539854,JB11346073,AwaitingJobCompletion,,2026-06-09T23:47:54,Door not opening/closing properly (Internal door),Completed with issues,2026-06-23 16:09:00,191235452
+IS22539867,JB11346076,AwaitingJobCompletion,,2026-06-10T00:22:53,Other (Oven),Completed with issues,2026-06-19 09:10:00,190436003
+IS22542428,JB11347418,AwaitingJobCompletion,,2026-06-10T08:21:57,Other (Table),Completed,2026-06-16 12:32:00,190470212
+IS22545400,JB11356216,AwaitingJobCompletion,,2026-06-10T10:54:42,Check Out Inspection (Planned works),Completed,2026-06-18 17:11:39,190592419
+IS22549087,JB11353115,AwaitingJobCompletion,,2026-06-10T14:41:09,Door not opening/closing properly (Internal door),Completed,2026-06-29 16:00:00,191603343
+IS22556701,JB11359715,AwaitingJobCompletion,,2026-06-11T10:06:44,Check Out Inspection (Planned works),Completed,2026-06-23 10:32:14,190676075
+IS22559077,,QuotesAwaitingReview,,2026-06-11T12:31:25,Other (Snagging ),Completed with issues,2026-06-12 08:02:00,190654539
+IS22561636,JB11361959,AwaitingJobCompletion,,2026-06-11T15:10:26,Unclean (Landings/Stairwells),Completed with issues,2026-06-12 08:57:03,190677160
+IS22561740,JB11362059,AwaitingJobCompletion,,2026-06-11T15:16:59,Other (Fridge),Completed with issues,2026-06-17 16:51:35,190678094
+IS22562953,JB11362842,AwaitingJobCompletion,,2026-06-11T16:56:29,Other (Exterior and garden),Completed with issues,2026-06-24 11:52:18,190695945
+IS22568148,JB11369363,AwaitingJobCompletion,,2026-06-12T09:51:19,Check Out Inspection (Planned works),Completed,2026-06-22 17:43:38,190791859
+IS22571676,JB11369336,AwaitingJobCompletion,,2026-06-12T13:32:01,Check Out Inspection (Planned works),Completed,2026-06-18 16:43:28,190781573
+IS22577226,JB11371697,AwaitingJobCompletion,,2026-06-13T09:42:44,Major structural or framework (Balcony),Completed with issues,2026-06-16 11:15:40,190815078
+IS22581669,JB11373024,AwaitingJobCompletion,,2026-06-14T11:17:03,Other (Bath),Completed with issues,2026-06-19 14:57:42,190841494
+IS22581684,JB11373512,JobAwarded,,2026-06-14T11:25:09,Other (Table),Completed with issues,2026-06-22 13:35:00,190860704
+IS22586687,JB11385409,AwaitingJobCompletion,,2026-06-15T08:31:17,Other (External door),Completed with issues,2026-06-26 10:00:00,190974116
+IS22586726,JB11385434,AwaitingJobCompletion,,2026-06-15T08:33:02,Other (In Garden),Completed with issues,2026-06-26 11:43:00,190974475
+IS22588047,JB11376730,AwaitingJobCompletion,,2026-06-15T09:34:00,Yale lock not working (Front door),Completed with issues,2026-06-15 12:30:00,190883318
+IS22592071,JB11380431,AwaitingJobCompletion,,2026-06-15T13:00:49,Other (Freezer),Completed with issues,2026-06-22 14:39:00,190914344
+IS22592796,JB11396755,AwaitingJobCompletion,,2026-06-15T13:38:34,Check Out Inspection (Planned works),Completed,2026-06-22 16:00:00,191146637
+IS22596205,JB11383578,AwaitingJobCompletion,,2026-06-15T18:02:55,Other (Leak),Completed with issues,2026-06-18 16:34:47,190944046
+IS22596810,JB11383675,AwaitingJobCompletion,,2026-06-15T20:07:30,Other (Plug/Chain),Completed,2026-06-26 11:57:41,190946363
+IS22606962,JB11391118,AwaitingJobCompletion,,2026-06-16T15:15:04,Other (Bathroom and Toilet),Completed with issues,2026-06-23 16:50:09,191048648
+IS22607081,JB11391197,AwaitingJobCompletion,,2026-06-16T15:21:43,Interim inspection (Property Inspection),Completed with issues,2026-06-19 14:59:43,191330781
+IS22609513,JB11392433,AwaitingJobCompletion,,2026-06-16T21:55:10,Interim inspection (Property Inspection),Completed,2026-06-19 16:10:31,191069357
+IS22612742,JB11396675,AwaitingJobCompletion,,2026-06-17T08:47:13,Check Out Inspection (Planned works),Completed,2026-06-26 12:38:10,191270095
+IS22613623,JB11395174,AwaitingJobCompletion,,2026-06-17T09:38:33,Hob damaged (Hob),Completed with issues,2026-06-24 11:30:00,191114463
+IS22613934,JB11395483,AwaitingJobCompletion,,2026-06-17T09:55:48,Other (Internal Lighting),Completed,2026-06-25 12:49:30,191117260
+IS22617989,JB11399016,AwaitingJobCompletion,,2026-06-17T14:04:24,Other (Leak),Completed,2026-06-25 15:10:17,191158518
+IS22619655,JB11400530,AwaitingJobCompletion,,2026-06-17T15:47:03,Hob damaged (Hob),Completed with issues,2026-06-18 14:59:02,191175898
+IS22621067,JB11401213,AwaitingJobCompletion,,2026-06-17T19:38:07,Fridge does not work correctly (Fridge),Completed with issues,2026-06-25 17:57:46,191181871
+IS22624112,JB11402639,AwaitingJobCompletion,,2026-06-18T08:28:27,Wardrobe Broken (Wardrobe),Completed with issues,2026-06-26 16:53:19,191212680
+IS22625994,JB11404364,AwaitingJobCompletion,,2026-06-18T10:19:23,Broken (Single socket),Completed with issues,2026-06-24 13:30:00,191413961
+IS22630257,JB11413208,AwaitingJobCompletion,,2026-06-18T14:45:22,Check Out Inspection (Planned works),Completed,2026-06-26 14:35:29,191376073
+IS22630579,JB11408132,AwaitingJobCompletion,,2026-06-18T15:05:12,Other (Fridge),Completed with issues,2026-06-19 11:43:31,191294502
+IS22636837,JB11411837,AwaitingJobCompletion,,2026-06-19T09:44:23,Door not opening/closing properly (Internal door),Completed with issues,2026-06-26 11:00:00,191361373
+IS22639974,JB11421185,AwaitingJobCompletion,,2026-06-19T13:15:03,Check Out Inspection (Planned works),Completed with issues,2026-06-29 13:31:24,192158547
+IS22640739,JB11415112,AwaitingJobCompletion,,2026-06-19T14:03:25,Other (Furniture),Completed,2026-06-25 10:00:00,191401089
+IS22642714,JB11416606,AwaitingJobCompletion,,2026-06-19T16:40:01,Blinds Broken (Blinds),Completed,2026-06-26 16:34:04,191420892
+IS22643325,JB11416753,AwaitingJobCompletion,,2026-06-19T19:42:16,Fridge does not work correctly (Fridge),Completed with issues,2026-06-23 10:30:00,191424255
+IS22646450,JB11417750,AwaitingJobCompletion,,2026-06-20T13:21:01,Other (Water and Leaks),Completed with issues,2026-06-24 16:00:00,191442445
+IS22646677,JB11417794,AwaitingJobCompletion,,2026-06-20T14:30:38,Other (Appliances),Completed with issues,2026-06-29 09:30:00,191442920
+IS22647043,JB11417859,AwaitingJobCompletion,,2026-06-20T16:46:02,Lock damaged/broken (Bike store),Completed with issues,2026-06-24 11:30:00,191443750
+IS22649509,JB11418762,AwaitingJobCompletion,,2026-06-21T07:20:58,Other (Appliances),Completed,2026-06-25 09:30:00,191465575
+IS22649784,JB11418810,AwaitingJobCompletion,,2026-06-21T09:10:24,Other (Internal door),Completed with issues,2026-06-29 11:00:00,191466757
+IS22649891,JB11419520,AwaitingJobCompletion,,2026-06-21T09:37:33,Inventory (Planned works),Completed with issues,2026-06-26 09:00:00,191563536
+IS22650114,JB11418862,AwaitingJobCompletion,,2026-06-21T10:49:12,Other (Internal Lighting),Completed with issues,2026-06-25 11:30:00,191467693
+IS22650619,JB11418958,AwaitingJobCompletion,,2026-06-21T12:59:15,Carpet ripped or damaged (need new carpet) (Floors),Completed with issues,2026-06-23 09:10:00,191468526
+IS22651498,JB11419125,AwaitingJobCompletion,,2026-06-21T17:29:03,Cooker hood does not turn on (Cooker hood),Completed with issues,2026-06-26 14:41:29,191472276
+IS22652873,JB11419766,AwaitingJobCompletion,,2026-06-22T05:07:18,Check Out Inspection (Planned works),Completed,2026-06-23 15:55:35,191493094
+IS22653040,JB11419440,AwaitingJobCompletion,,2026-06-22T06:33:27,Dishwasher does not work correctly (Dishwasher),Completed with issues,2026-06-26 10:00:00,191490251
+IS22656411,JB11422075,AwaitingJobCompletion,,2026-06-22T09:08:29,Toilet seat loose (Toilet seat/bowl),Completed,2026-06-30 11:30:00,191511416
+IS22656838,JB11422498,AwaitingJobCompletion,,2026-06-22T09:29:06,Other (Freezer),Completed with issues,2026-06-30 11:34:31,191514646
+IS22660248,JB11425514,AwaitingJobCompletion,,2026-06-22T12:10:17,Other (Communal entrance doors),Completed,2026-06-26 10:29:22,191537212
+IS22660858,JB11429680,AwaitingJobCompletion,,2026-06-22T12:47:16,Check Out Inspection (Planned works),Completed,2026-06-29 16:27:13,191596177
+IS22662945,JB11427700,AwaitingJobCompletion,,2026-06-22T14:42:25,External cleaning (Cleaning),Completed with issues,2026-06-25 09:59:49,191562370
+IS22662989,JB11427744,AwaitingJobCompletion,,2026-06-22T14:45:05,Other (Exterior and garden),Completed,2026-06-25 13:20:25,191562865
+IS22664340,JB11428901,AwaitingJobCompletion,,2026-06-22T16:08:01,Single switch (Trip switch),Completed with issues,2026-06-26 12:30:00,191575593
+IS22669515,JB11430866,AwaitingJobCompletion,,2026-06-23T08:13:23,Other (Fridge),Completed with issues,2026-06-24 16:45:00,191603447
+IS22671142,JB11432463,AwaitingJobCompletion,,2026-06-23T09:34:51,Push button damaged (Flush),Completed with issues,2026-06-29 14:18:07,191620443
+IS22672287,JB11433410,AwaitingJobCompletion,,2026-06-23T10:28:50,Other (Exterior and garden),Completed,2026-06-24 11:25:21,191632315
+IS22674683,JB11439756,AwaitingJobCompletion,,2026-06-23T12:53:40,Check Out Inspection (Planned works),Completed,2026-06-29 15:53:57,192220671
+IS22674833,JB11439747,AwaitingJobCompletion,,2026-06-23T13:03:07,Check Out Inspection (Planned works),Completed,2026-06-26 09:00:00,191784933
+IS22674905,JB11439743,AwaitingJobCompletion,,2026-06-23T13:07:09,Check Out Inspection (Planned works),Completed,2026-06-26 11:00:00,191785234
+IS22676619,JB11436932,AwaitingJobCompletion,,2026-06-23T14:51:07,Weed around Exterior walls,Completed,2026-06-25 15:20:09,191682636
+IS22676694,JB11436988,AwaitingJobCompletion,,2026-06-23T14:54:31,Cosh Cabinet needs organised,Completed,2026-06-25 16:05:33,191683096
+IS22678010,JB11438116,AwaitingJobCompletion,,2026-06-23T16:13:05,Key lost and property cannot be accessed (Key lost),Completed,2026-06-25 17:15:00,191693006
+IS22679148,JB11438484,AwaitingJobCompletion,,2026-06-23T19:04:52,Other (Sink),Completed,2026-06-26 14:20:44,191696700
+IS22684659,JB11453894,AwaitingJobCompletion,,2026-06-24T10:05:46,Check Out Inspection (Planned works),Completed,2026-06-26 10:00:00,191965251
+IS22684756,JB11453889,AwaitingJobCompletion,,2026-06-24T10:10:31,Check Out Inspection (Planned works),Completed,2026-06-29 17:22:41,191958761
+IS22687278,JB11443990,AwaitingJobCompletion,,2026-06-24T12:35:43,Fridge does not turn on (Fridge),Completed with issues,2026-06-26 14:40:06,191789514
+IS22699147,JB11451711,AwaitingJobCompletion,,2026-06-25T11:55:59,Other (Internal Lighting),Completed,2026-06-30 14:00:00,191913856
+IS22699215,JB11451777,AwaitingJobCompletion,,2026-06-25T12:00:26,External cleaning (Cleaning),Completed,2026-06-30 14:10:41,191915114
+IS22699584,JB11452069,AwaitingJobCompletion,,2026-06-25T12:25:52,Interim inspection (Property Inspection),Completed,2026-06-30 11:30:00,191923405
+IS22700023,JB11453845,AwaitingJobCompletion,,2026-06-25T12:57:07,Check Out Inspection (Planned works),Completed,2026-06-29 11:55:36,192073171
+IS22703343,JB11454990,AwaitingJobCompletion,,2026-06-25T17:11:16,"check - in inspection pending / tenancy start date 01/07 painting : entryway - both walls, bedroo...",Completed,2026-06-29 14:00:00,191969706
+IS22709360,JB11458460,AwaitingJobCompletion,,2026-06-26T10:35:39,1029 The Point - Bathroom light needs replaced,Completed,2026-06-30 11:49:54,192020468
+IS22711082,JB11459705,AwaitingJobCompletion,,2026-06-26T12:17:36,Hob damaged (Hob),Completed,2026-06-26 16:22:06,192038357
+IS22717337,JB11463095,AwaitingJobCompletion,,2026-06-27T08:36:50,Other (Exterior and garden),Completed with issues,2026-06-29 16:03:37,192095256
+IS22719550,JB11463628,JobAwarded,,2026-06-27T18:31:30,Other (Glass),Completed with issues,2026-06-29 16:33:52,192100581
+IS22724258,JB11465447,AwaitingJobCompletion,,2026-06-28T16:35:17,Water leak within property (Leak),Completed,2026-06-29 16:17:30,192129981
+IS22730383,JB11469254,AwaitingJobCompletion,,2026-06-29T09:43:53,Yale lock not working (Front door),Completed with issues,2026-06-29 17:59:02,192171189
+IS22744857,JB11477556,AwaitingJobCompletion,,2026-06-30T07:25:57,Other (Floors),Completed with issues,2026-06-30 13:19:02,192279288
