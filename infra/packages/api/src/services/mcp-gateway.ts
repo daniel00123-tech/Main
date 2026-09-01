@@ -1021,7 +1021,9 @@ export async function handleInfraMcpHttp(
         ? "authorization_non_bearer"
         : "none";
 
-  const actorResult = await resolveGatewayActor(env, request, sessionUser);
+  const actorResult = await resolveGatewayActor(env, request, sessionUser, {
+    mcpFacade: true,
+  });
   if ("error" in actorResult) {
     // Always JSON-RPC shaped — ChatGPT clients cannot parse {"error":"..."}.
     const payload = jsonRpcError(null, -32001, actorResult.error, {
