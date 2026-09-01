@@ -233,7 +233,7 @@ export function businessToolForIntent(
       const match = query.match(/\bINV-\d+\b/i);
       return { toolName: "xero_get_invoice", arguments: { invoiceNumber: match?.[0], query } };
     }
-    if (/top customers?/i.test(query)) {
+    if (/\btop(?:\s+\d+|\s+five|\s+5|\s+ten)?\s+customers?\b/i.test(query)) {
       return { toolName: "xero_top_customers", arguments: { query, limit: 5 } };
     }
     return {

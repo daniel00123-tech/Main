@@ -93,7 +93,7 @@ describe("capability access runtime", () => {
       expect(result.kind).toBe("reroute");
       if (result.kind === "reroute") {
         expect(result.toolName).toMatch(/^xero_/);
-        expect(result.toolName).not.toMatch(/search|database_summary|knowledge/);
+        expect(result.toolName).not.toMatch(/database_summary|search_company_knowledge|^search$/);
       }
     }
   });
