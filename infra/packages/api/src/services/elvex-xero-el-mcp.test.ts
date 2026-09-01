@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  filterInvoicesToRequestedRange,
   mapArgumentsForElMcpTool,
   resolveElMcpXeroToolName,
   resolveXeroReadArguments,
+  shapeElvexXeroReadResult,
   shouldExecuteElvexXeroViaElMcp,
 } from "./elvex-xero-el-mcp";
 
@@ -63,5 +65,31 @@ describe("Elvex Xero via EL MCP", () => {
     );
     expect(specific.fromDate).toBe("2026-08-15");
     expect(specific.toDate).toBe("2026-08-15");
+  });
+
+  it("filters invoice lists to the requested civil dates without inventing rows", () => {
+    const filtered = filterInvoicesToRequestedRange(
+      [
+        { invoiceNumber: "INV-1", date: "2026-09-01", total: 498 },
+        { invoiceNumber: "INV-2", date: "2026-08-31", total: 114 },
+      ],
+      "2026-09-01",
+      "2026-09-01",
+    );
+    expect(filtered.invoices).toEqual([{ invoiceNumber: "INV-1", date: "2026-09-01", total: 498 }]);
+    expect(filtered.unfilteredCount).toBe(2);
+
+    const sales = shapeElvexXeroReadResult(
+      "xero_sales_summary",
+      { fromDate: "2026-09-01", toDate: "2026-09-01" },
+      { monthToDate: { from: "2026-09-01", to: "2026-09-01", invoicedSales: -114, documentCount: 1 } },
+    );
+    expect(sales.summary).toEqual({
+      totalSales: -114,
+      transactionCount: 1,
+      fromDate: "2026-09-01",
+      toDate: "2026-09-01",
+      currencyCode: "GBP",
+    });
   });
 });

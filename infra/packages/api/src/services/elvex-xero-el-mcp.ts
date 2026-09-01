@@ -175,6 +175,92 @@ function jsonSafePayload(payload: Record<string, unknown>): Record<string, unkno
   }
 }
 
+function invoiceCivilDate(invoice: Record<string, unknown>): string {
+  return String(invoice.date ?? invoice.Date ?? invoice.invoiceDate ?? "").slice(0, 10);
+}
+
+export function filterInvoicesToRequestedRange(
+  invoices: unknown,
+  fromDate: unknown,
+  toDate: unknown,
+): {
+  invoices: Record<string, unknown>[];
+  unfilteredCount: number;
+  dateFilterApplied: boolean;
+} {
+  const list = Array.isArray(invoices)
+    ? invoices.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object")
+    : [];
+  const from = String(fromDate ?? "").slice(0, 10);
+  const to = String(toDate ?? "").slice(0, 10);
+  if (!from || !to) {
+    return { invoices: list, unfilteredCount: list.length, dateFilterApplied: false };
+  }
+  return {
+    invoices: list.filter((invoice) => {
+      const date = invoiceCivilDate(invoice);
+      return date >= from && date <= to;
+    }),
+    unfilteredCount: list.length,
+    dateFilterApplied: true,
+  };
+}
+
+export function shapeElvexXeroReadResult(
+  toolName: string,
+  args: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const shaped: Record<string, unknown> = { ...payload };
+  const lookup =
+    toolName === "xero_get_invoice" ||
+    Boolean(String(args.invoiceNumber ?? args.invoice_number ?? "").trim());
+  if (toolName === "xero_search_invoices" && !lookup && args.unpaidOnly !== true && args.overdueOnly !== true) {
+    const filtered = filterInvoicesToRequestedRange(payload.invoices, args.fromDate, args.toDate);
+    shaped.invoices = filtered.invoices;
+    shaped.invoiceCount = filtered.invoices.length;
+    shaped.unfilteredCount = filtered.unfilteredCount;
+    shaped.dateFilterApplied = filtered.dateFilterApplied;
+  }
+
+  const monthToDate = asRecord(payload.monthToDate);
+  if (
+    monthToDate &&
+    String(monthToDate.from ?? "") === String(args.fromDate ?? "") &&
+    String(monthToDate.to ?? "") === String(args.toDate ?? "")
+  ) {
+    shaped.summary = {
+      totalSales: monthToDate.invoicedSales,
+      transactionCount: monthToDate.documentCount,
+      fromDate: monthToDate.from,
+      toDate: monthToDate.to,
+      currencyCode: "GBP",
+    };
+  }
+
+  if (toolName === "xero_top_customers") {
+    const inRange = filterInvoicesToRequestedRange(
+      payload.largestInvoices ?? payload.customers,
+      args.fromDate,
+      args.toDate,
+    );
+    const totals = new Map<string, { name: string; total: number; invoiceCount: number }>();
+    for (const invoice of inRange.invoices) {
+      const name = String(invoice.customerOrSupplier ?? invoice.Name ?? invoice.name ?? "").trim();
+      if (!name) continue;
+      const total = Number(invoice.total ?? invoice.Total ?? 0);
+      const current = totals.get(name) ?? { name, total: 0, invoiceCount: 0 };
+      current.total += Number.isFinite(total) ? total : 0;
+      current.invoiceCount += 1;
+      totals.set(name, current);
+    }
+    shaped.customers = [...totals.values()].sort((a, b) => b.total - a.total);
+    shaped.dateFilterApplied = inRange.dateFilterApplied;
+  }
+
+  return shaped;
+}
+
 export async function executeElvexXeroReadViaElMcp(
   env: Env,
   input: {
@@ -281,7 +367,7 @@ export async function executeElvexXeroReadViaElMcp(
         comparisonRequested: args.comparisonRequested === true,
         comparisonSupported: Boolean(comparison),
         comparison,
-        ...payload,
+        ...shapeElvexXeroReadResult(input.toolName, args, payload),
       }),
     };
   } catch (error) {
