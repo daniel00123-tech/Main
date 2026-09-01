@@ -15,6 +15,7 @@ import {
 import { collectQualityFlags } from "./intelligence/quality.js";
 import { listConnectedConnectorIds } from "./whatsapp-capabilities";
 import { createPortalChatRuntime, type PortalChatGatewayFn } from "./portal-chat-runtime";
+import { publicToolErrorMessage } from "./public-errors";
 import {
   emptyPortalChatContext,
   titleFromUserText,
@@ -339,15 +340,17 @@ export class PortalChatError extends Error {
 }
 
 export function polishPortalReply(result: IntelligenceTurnResult, question: string): string {
-  const denied = result.toolCalls.some((call) => isPermissionDenial(call.error, call.data));
+  const deniedCall = result.toolCalls.find((call) => isPermissionDenial(call.error, call.data));
+  if (deniedCall) {
+    const data = isRecord(deniedCall.data) ? deniedCall.data : {};
+    const raw = String(deniedCall.error ?? data.error ?? result.text ?? "");
+    const status = Number(data.status ?? 403);
+    return publicToolErrorMessage(status, raw).message;
+  }
   let text = (result.text ?? "").trim();
   if (!text) {
-    if (denied) return "You do not have permission to do that in this company.";
-    if (result.kind === "failed") return "I couldn't complete that just now. Try again in a moment.";
+    if (result.kind === "failed") return "INFRA couldn’t process that request just now. Please try again.";
     text = "I'm here — what would help?";
-  }
-  if (denied && !/permission|not allowed|cannot|can't|do not have/i.test(text)) {
-    return "You do not have permission to do that in this company.";
   }
   const sourceUrl = result.currentDocument?.url ?? null;
   const wantsSource =
@@ -357,6 +360,10 @@ export function polishPortalReply(result: IntelligenceTurnResult, question: stri
     text = `${text}\n${sourceUrl}`;
   }
   return text;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 export function isPermissionDenial(error?: string | null, data?: unknown): boolean {

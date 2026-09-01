@@ -361,6 +361,7 @@ describe("portal chat polish", () => {
       "sales last month",
     );
     expect(text).not.toContain("{");
+    expect(text).toMatch(/permission denied/i);
     expect(isPermissionDenial("permission denied", { status: 403 })).toBe(true);
   });
 });
