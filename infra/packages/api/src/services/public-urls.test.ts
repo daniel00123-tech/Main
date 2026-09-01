@@ -5,9 +5,11 @@ import {
   LEGACY_API_ORIGIN,
 } from "@infra/shared";
 import {
+  infraBrowserPublicBase,
   infraMcpGatewayUrl,
   infraPublicApiBase,
   oauthAuthorizeContinuePath,
+  oauthAuthorizeContinueUrl,
   oauthLoginRedirectUrl,
   portalOrigin,
 } from "./public-urls";
@@ -51,6 +53,9 @@ describe("public URLs", () => {
     expect(oauthAuthorizeContinuePath(request)).toBe(
       "/oauth/authorize?response_type=code&client_id=chatgpt-mcp&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2FoVPk3&code_challenge=abc&code_challenge_method=S256",
     );
+    expect(oauthAuthorizeContinueUrl(configured, request)).toBe(
+      `https://app.infrastack.app/oauth/authorize?response_type=code&client_id=chatgpt-mcp&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2FoVPk3&code_challenge=abc&code_challenge_method=S256`,
+    );
     const login = oauthLoginRedirectUrl(configured, request);
     expect(login.startsWith("https://app.infrastack.app/portal/login?")).toBe(true);
     expect(login).not.toContain("workers.dev");
@@ -63,5 +68,32 @@ describe("public URLs", () => {
     const proxiedLogin = oauthLoginRedirectUrl(configured, proxied);
     expect(proxiedLogin.startsWith("https://app.infrastack.app/portal/login?")).toBe(true);
     expect(proxiedLogin).toContain("next=%2Foauth%2Fauthorize");
+  });
+
+  it("stays on the portal when Pages proxies authorize to the worker", () => {
+    const configured = env({
+      INFRA_PUBLIC_API_URL: "https://infra-api.daniel-dwyer123.workers.dev",
+    });
+    const request = new Request(
+      "https://infra-api.daniel-dwyer123.workers.dev/oauth/authorize?response_type=code&client_id=chatgpt-mcp&company=el-business",
+      {
+        headers: {
+          "X-Forwarded-Host": "app.infrastack.app",
+          "X-Forwarded-Proto": "https",
+        },
+      },
+    );
+
+    expect(infraBrowserPublicBase(configured, request.url, request)).toBe("https://app.infrastack.app");
+    expect(oauthAuthorizeContinueUrl(configured, request)).toBe(
+      "https://app.infrastack.app/oauth/authorize?response_type=code&client_id=chatgpt-mcp&company=el-business",
+    );
+
+    const login = new URL(oauthLoginRedirectUrl(configured, request));
+    expect(login.origin).toBe("https://app.infrastack.app");
+    expect(login.pathname).toBe("/portal/login");
+    expect(login.searchParams.get("next")).toBe(
+      "/oauth/authorize?response_type=code&client_id=chatgpt-mcp&company=el-business",
+    );
   });
 });

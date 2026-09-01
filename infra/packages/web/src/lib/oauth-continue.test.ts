@@ -19,5 +19,10 @@ describe("safeOauthContinueUrl", () => {
     ).toBe("/oauth/authorize?client_id=x");
     expect(safeOauthContinueUrl("https://evil.example/oauth/authorize")).toBeNull();
     expect(safeOauthContinueUrl("https://app.infrastack.app/portal")).toBeNull();
+    expect(
+      safeOauthContinueUrl(
+        "https://infra-api.daniel-dwyer123.workers.dev/oauth/authorize?client_id=chatgpt-mcp",
+      ),
+    ).toBe("/oauth/authorize?client_id=chatgpt-mcp");
   });
 });

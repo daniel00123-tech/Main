@@ -20,6 +20,7 @@ export function safeOauthContinueUrl(next: string | null | undefined): string | 
     if (
       host === "app.infrastack.app" ||
       host === "infrastack.app" ||
+      host.endsWith(".infrastack.app") ||
       host.endsWith(".infra-web.pages.dev") ||
       host === "localhost" ||
       host === "127.0.0.1"
