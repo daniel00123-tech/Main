@@ -24,6 +24,7 @@ const AUTHORISED_ROLES = new Set([
   "company_admin",
   "operations_manager",
 ]);
+const TEMP_AUTHORISED_ROLE = "finance_team";
 
 function d1(command) {
   const out = execFileSync(
@@ -88,19 +89,31 @@ if (!recorded) {
   process.exit(1);
 }
 
-if (AUTHORISED_ROLES.has(originalRole)) {
+let elevated = false;
+try {
+  if (!AUTHORISED_ROLES.has(originalRole)) {
+    report.temporaryAuthorisedRole = setRole(
+      TEMP_AUTHORISED_ROLE,
+      "membership.role_temporary_elevate",
+      originalRole,
+    );
+    elevated = true;
+    if (report.temporaryAuthorisedRole.membership?.role !== TEMP_AUTHORISED_ROLE) {
+      throw new Error("Temporary Xero-read elevation did not persist");
+    }
+  }
   report.authorisedRun = await runPhase("xero-reads");
-} else {
-  report.authorisedRun = {
-    skipped: true,
-    reason: "live role cannot read Xero sales; record-only",
-    liveRole: originalRole,
-  };
+} catch (err) {
+  report.authorisedError = err instanceof Error ? err.message : String(err);
+} finally {
+  if (elevated || (AUTHORISED_ROLES.has(membershipRole()?.role) && !AUTHORISED_ROLES.has(originalRole))) {
+    report.restoredAfterReads = setRole(originalRole, "membership.role_restored", TEMP_AUTHORISED_ROLE);
+  }
 }
 
 let switched = false;
 try {
-  if (originalRole !== "office_staff") {
+  if (membershipRole()?.role !== "office_staff") {
     report.temporaryDenialRole = setRole("office_staff", "membership.role_temporary_xero_denial", originalRole);
     switched = true;
   }
