@@ -1151,9 +1151,15 @@ connectors.post("/api/internal/william-chatgpt-acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
   }
-  const phase = c.req.query("phase") === "restored" ? "restored" : "elevated";
+  const requestedPhase = c.req.query("phase") ?? "elevated";
   try {
-    const { runWilliamChatgptAcceptance } = await import("../services/william-chatgpt-acceptance");
+    const { runWilliamChatgptAcceptance, runWilliamXeroRoutingDenial } = await import(
+      "../services/william-chatgpt-acceptance"
+    );
+    if (requestedPhase === "xero-denial") {
+      return c.json(await runWilliamXeroRoutingDenial(c.env));
+    }
+    const phase = requestedPhase === "restored" ? "restored" : "elevated";
     return c.json(await runWilliamChatgptAcceptance(c.env, phase));
   } catch (err) {
     return c.json(

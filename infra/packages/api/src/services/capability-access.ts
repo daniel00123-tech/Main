@@ -1,13 +1,17 @@
 import {
   actionForProtectedCapability,
   buildStructuredPermissionDenial,
+  businessToolForIntent,
   capabilityFromAction,
+  extractIntentText,
   inferProtectedCapabilityFromQuery,
   isKnowledgeDiscoveryTool,
   mailboxForCapability,
+  resolveBusinessSystemIntent,
   userFacingNotConnectedMessage,
   userFacingTechnicalFailureMessage,
   type CapabilityAccessOutcome,
+  type CompanyConnectorHint,
   type ProtectedCapability,
   type StructuredCapabilityDenial,
 } from "@infra/shared";
@@ -22,6 +26,31 @@ const CONNECTOR_DEFINITIONS: Record<ProtectedCapability, string[]> = {
   admin: [],
   restricted_knowledge: [],
 };
+
+export type KnowledgeBusinessSystemPreflight =
+  | { kind: "knowledge" }
+  | {
+      kind: "permission_denied";
+      capability: ProtectedCapability;
+      denial: StructuredCapabilityDenial;
+    }
+  | {
+      kind: "not_connected";
+      capability: ProtectedCapability;
+      message: string;
+    }
+  | {
+      kind: "reroute";
+      capability: ProtectedCapability;
+      toolName: string;
+      arguments: Record<string, unknown>;
+    }
+  | {
+      kind: "no_business_tool";
+      capability: ProtectedCapability | null;
+      connectorDefinitionId: string;
+      message: string;
+    };
 
 export async function isCapabilityConnected(
   db: D1Database,
@@ -88,6 +117,107 @@ export function resolveProtectedCapability(input: {
   );
 }
 
+async function loadCompanyConnectors(db: D1Database, companyId: string): Promise<CompanyConnectorHint[]> {
+  const rows = await db
+    .prepare(
+      `SELECT connector_definition_id, name, status, auth_status
+       FROM connector_instances
+       WHERE company_id = ?`,
+    )
+    .bind(companyId)
+    .all();
+  return (rows.results ?? []).map((row) => ({
+    definitionId: String(row.connector_definition_id),
+    name: row.name ? String(row.name) : null,
+    connected: String(row.auth_status ?? "") === "connected",
+  }));
+}
+
+function connectorLabel(definitionId: string): string {
+  if (definitionId === "conn_xero") return "Xero";
+  if (definitionId === "conn_outlook_shared" || definitionId === "conn_microsoft_365") return "Outlook";
+  if (definitionId === "conn_bigchange") return "BigChange";
+  if (definitionId === "conn_commusoft") return "Commusoft";
+  return definitionId.replace(/^conn_/, "");
+}
+
+/**
+ * Knowledge tools are classified only after business-system intent.
+ * Explicit named-connector + data/action requests never fall through to
+ * company knowledge, even when ChatGPT picked search/database_summary.
+ */
+export async function evaluateKnowledgeBusinessSystemPreflight(
+  db: D1Database,
+  user: SessionUser,
+  companyId: string,
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+): Promise<KnowledgeBusinessSystemPreflight> {
+  if (!isKnowledgeDiscoveryTool(toolName)) return { kind: "knowledge" };
+
+  const query = extractIntentText(args);
+  const connectors = await loadCompanyConnectors(db, companyId);
+  const intent = resolveBusinessSystemIntent(query, { connectors });
+  if (!intent) return { kind: "knowledge" };
+
+  const companyName = await companyDisplayName(db, companyId);
+
+  if (!intent.capability) {
+    return {
+      kind: "no_business_tool",
+      capability: null,
+      connectorDefinitionId: intent.connectorDefinitionId,
+      message: `${connectorLabel(intent.connectorDefinitionId)} is connected for ${companyName}, but this client cannot query it directly. Ask through WhatsApp or the portal, or ask an INFRA administrator.`,
+    };
+  }
+
+  const connected = await isCapabilityConnected(db, companyId, intent.capability);
+  if (!connected && intent.capability !== "admin" && intent.capability !== "restricted_knowledge") {
+    return {
+      kind: "not_connected",
+      capability: intent.capability,
+      message: userFacingNotConnectedMessage(intent.capability, companyName),
+    };
+  }
+
+  const mailbox = mailboxForCapability(intent.capability);
+  const decision = await evaluateActionPermission(
+    db,
+    user,
+    companyId,
+    actionForProtectedCapability(intent.capability) as never,
+    { toolName, mailboxAddress: mailbox },
+  );
+  if (!decision.allowed) {
+    return {
+      kind: "permission_denied",
+      capability: intent.capability,
+      denial: await structuredPermissionDenial(db, {
+        companyId,
+        capability: intent.capability,
+        role: decision.role,
+      }),
+    };
+  }
+
+  const tool = businessToolForIntent(intent, query);
+  if (!tool) {
+    return {
+      kind: "no_business_tool",
+      capability: intent.capability,
+      connectorDefinitionId: intent.connectorDefinitionId,
+      message: `${connectorLabel(intent.connectorDefinitionId)} is connected for ${companyName}, but this client cannot query it directly. Ask through WhatsApp or the portal, or ask an INFRA administrator.`,
+    };
+  }
+
+  return {
+    kind: "reroute",
+    capability: intent.capability,
+    toolName: tool.toolName,
+    arguments: tool.arguments,
+  };
+}
+
 export async function denyKnowledgeQueryIfProtected(
   db: D1Database,
   user: SessionUser,
@@ -95,25 +225,8 @@ export async function denyKnowledgeQueryIfProtected(
   toolName: string,
   args: Record<string, unknown> | undefined,
 ): Promise<StructuredCapabilityDenial | null> {
-  if (!isKnowledgeDiscoveryTool(toolName)) return null;
-  const query = typeof args?.query === "string" ? args.query : null;
-  const inferred = inferProtectedCapabilityFromQuery(query);
-  if (!inferred) return null;
-
-  const mailbox = mailboxForCapability(inferred);
-  const decision = await evaluateActionPermission(
-    db,
-    user,
-    companyId,
-    actionForProtectedCapability(inferred) as never,
-    { toolName, mailboxAddress: mailbox },
-  );
-  if (decision.allowed) return null;
-  return structuredPermissionDenial(db, {
-    companyId,
-    capability: inferred,
-    role: decision.role,
-  });
+  const result = await evaluateKnowledgeBusinessSystemPreflight(db, user, companyId, toolName, args);
+  return result.kind === "permission_denied" ? result.denial : null;
 }
 
 export function mapExecutionOutcome(input: {

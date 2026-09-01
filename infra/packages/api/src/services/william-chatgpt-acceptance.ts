@@ -701,3 +701,142 @@ export async function runWilliamChatgptAcceptance(
     results,
   };
 }
+
+/**
+ * Office-staff only. Proves an explicit Xero question via ChatGPT knowledge
+ * tools is permission-denied before knowledge search or Xero execute.
+ * Does not elevate William.
+ */
+export async function runWilliamXeroRoutingDenial(env: Env): Promise<Record<string, unknown>> {
+  if (!env.SESSION_SECRET) {
+    return { error: "SESSION_SECRET missing" };
+  }
+  const actor = await loadLiveCompanyActor(env.DB, WILLIAM_USER_ID, COMPANY_ID);
+  if (!actor?.active) {
+    return { error: "William live actor missing or inactive" };
+  }
+  if (actor.role !== "office_staff") {
+    return { error: "Refusing Xero routing denial run: live role is not office_staff", liveRole: actor.role };
+  }
+
+  const issued = await issueMcpAccessToken(
+    env.SESSION_SECRET,
+    "https://app.infrastack.app",
+    "https://app.infrastack.app/api/gateway/v1/mcp",
+    {
+      userId: actor.userId,
+      email: actor.email || WILLIAM_EMAIL,
+      companyId: actor.companyId,
+      membershipId: actor.membershipId || WILLIAM_MEMBERSHIP_ID,
+      clientId: CHATGPT_CLIENT_ID,
+      channel: "chatgpt",
+    },
+  );
+  await recordAccessJti(env.DB, {
+    jti: issued.jti,
+    userId: actor.userId,
+    companyId: actor.companyId,
+  });
+
+  const started = new Date().toISOString();
+  let rpcId = 1;
+  await mcp(
+    issued.token,
+    "initialize",
+    {
+      protocolVersion: "2025-03-26",
+      capabilities: {},
+      clientInfo: { name: "chatgpt-xero-routing", version: "1.0" },
+    },
+    rpcId++,
+  );
+  const listedRes = await mcp(issued.token, "tools/list", {}, rpcId++);
+  const tools = ((listedRes.rpc.result as { tools?: Array<{ name: string }> } | undefined)?.tools ?? []) as Array<{
+    name: string;
+  }>;
+  const listed = new Set(tools.map((tool) => tool.name));
+  const query = "tell me on xero what our sales are";
+
+  const searchCall = await callTool(issued.token, listed, "search", { query }, rpcId++);
+  const summaryWithQuery = await callTool(
+    issued.token,
+    listed,
+    "database_summary",
+    { query },
+    rpcId++,
+  );
+  const summaryWithMeta = await mcp(
+    issued.token,
+    "tools/call",
+    {
+      name: "database_summary",
+      arguments: {},
+      _meta: { userQuery: query },
+    },
+    rpcId++,
+  );
+  const metaText = extractText(summaryWithMeta.rpc);
+  const metaErr = summaryWithMeta.rpc.error as { message?: string; data?: Record<string, unknown> } | undefined;
+
+  const usage = await env.DB.prepare(
+    `SELECT tool_name, action, source_client, success, settlement_status, customer_charge_cents, metadata_json, recorded_at
+     FROM usage_records
+     WHERE company_id = ? AND user_id = ? AND recorded_at >= ?
+     ORDER BY recorded_at DESC
+     LIMIT 20`,
+  )
+    .bind(COMPANY_ID, WILLIAM_USER_ID, started)
+    .all();
+
+  const gateway = await env.DB.prepare(
+    `SELECT tool_name, action, status, settlement_status, error_code, error_message, source_client, created_at
+     FROM gateway_requests
+     WHERE company_id = ? AND actor_id = ? AND created_at >= ?
+     ORDER BY created_at DESC
+     LIMIT 20`,
+  )
+    .bind(COMPANY_ID, WILLIAM_USER_ID, started)
+    .all();
+
+  const usageRows = (usage.results ?? []) as Array<Record<string, unknown>>;
+  const gatewayRows = (gateway.results ?? []) as Array<Record<string, unknown>>;
+  const knowledgeCharged = usageRows.some((row) => {
+    const tool = String(row.tool_name ?? "");
+    const charge = row.customer_charge_cents;
+    return (
+      (tool === "search" || tool === "database_summary" || tool === "search_company_knowledge") &&
+      charge != null &&
+      Number(charge) > 0
+    );
+  });
+  const xeroDownstream = gatewayRows.some((row) => String(row.tool_name ?? "").startsWith("xero_"));
+  const denied = searchCall.outcome === "PERMISSION_DENIED";
+  const message = searchCall.message ?? "";
+
+  return {
+    phase: "xero-denial",
+    liveRole: actor.role,
+    query,
+    sourceClient: "chatgpt",
+    userId: WILLIAM_USER_ID,
+    companyId: COMPANY_ID,
+    search: searchCall,
+    databaseSummaryWithQuery: summaryWithQuery,
+    databaseSummaryWithMeta: {
+      httpStatus: summaryWithMeta.httpStatus,
+      message: typeof metaErr?.message === "string" ? metaErr.message.slice(0, 240) : null,
+      errorCode: metaErr?.data?.errorCode ?? metaErr?.data?.accessOutcome ?? null,
+      capability: metaErr?.data?.capability ?? null,
+      connected: metaErr?.data?.connected ?? null,
+      rawPreview: metaText ? metaText.slice(0, 220) : null,
+    },
+    usageRows,
+    gatewayRows,
+    proof: {
+      permissionDenied: denied,
+      expectedCopy: message.includes("don’t allow access to Xero financial data") || message.includes("don't allow access to Xero financial data"),
+      noKnowledgeCharge: !knowledgeCharged,
+      noXeroDownstream: !xeroDownstream,
+    },
+  };
+}

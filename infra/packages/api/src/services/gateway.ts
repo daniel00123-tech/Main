@@ -1,12 +1,13 @@
 import {
   ELVEX_INFO_MAILBOXES,
+  actionForProtectedCapability,
   isElvexCompany,
   resolveElvexConfiguredMailbox,
   type StructuredCapabilityDenial,
   type ToolAction,
 } from "@infra/shared";
 import {
-  denyKnowledgeQueryIfProtected,
+  evaluateKnowledgeBusinessSystemPreflight,
   mapExecutionOutcome,
   resolveProtectedCapability,
   structuredPermissionDenial,
@@ -549,11 +550,94 @@ export async function executeGatewayRequest(
   }
 
   await ensureDefaultToolAllowlist(env.DB, mcp.companyId, mcp.id);
-  const { action, riskClass } = await resolveToolAction(
+
+  let knowledgePreflight: Awaited<ReturnType<typeof evaluateKnowledgeBusinessSystemPreflight>> = {
+    kind: "knowledge",
+  };
+  if (input.actor.type === "user") {
+    knowledgePreflight = await evaluateKnowledgeBusinessSystemPreflight(
+      env.DB,
+      input.actor.user,
+      input.companyId,
+      input.toolName,
+      input.arguments,
+    );
+    if (knowledgePreflight.kind === "not_connected" || knowledgePreflight.kind === "no_business_tool") {
+      await recordAuditEvent(env.DB, {
+        companyId: input.companyId,
+        eventType: "mcp.execution_failed",
+        actor: actorLabel,
+        resourceType: "gateway",
+        resourceId: input.toolName,
+        detail: {
+          correlationId,
+          requestId,
+          reason: knowledgePreflight.kind,
+          capability: knowledgePreflight.capability,
+          billed: false,
+        },
+      });
+      return {
+        status: 409 as const,
+        error: knowledgePreflight.message,
+        correlationId,
+        requestId,
+        accessOutcome: knowledgePreflight.kind === "not_connected" ? "not_connected" : "technical_failure",
+      };
+    }
+    if (knowledgePreflight.kind === "reroute") {
+      input.toolName = knowledgePreflight.toolName;
+      input.arguments = { ...(input.arguments ?? {}), ...knowledgePreflight.arguments };
+      if (isXeroToolName(input.toolName) && !isXeroWriteToolName(input.toolName)) {
+        const prepared = await prepareXeroMcpExecution({
+          env,
+          companyId: input.companyId,
+          toolName: input.toolName,
+        });
+        if (!prepared.ok) {
+          const mapped = mapExecutionOutcome({
+            capability: knowledgePreflight.capability,
+            connected: prepared.code !== "CONNECTOR_NOT_CONNECTED",
+            httpStatus: prepared.status,
+            error: prepared.body.error,
+            code: prepared.code,
+          });
+          await recordAuditEvent(env.DB, {
+            companyId: input.companyId,
+            eventType: "mcp.execution_failed",
+            actor: actorLabel,
+            resourceType: "gateway",
+            resourceId: input.toolName,
+            detail: {
+              correlationId,
+              requestId,
+              provider: "xero",
+              billed: false,
+              inventsData: false,
+              code: prepared.body.code,
+              reroutedFromKnowledge: true,
+            },
+          });
+          return {
+            status: prepared.status,
+            error: mapped?.message ?? prepared.body.error,
+            correlationId,
+            requestId,
+            accessOutcome: mapped?.outcome,
+          };
+        }
+      }
+    }
+  }
+
+  let { action, riskClass } = await resolveToolAction(
     env.DB,
     mcp.id,
     input.toolName,
   );
+  if (knowledgePreflight.kind === "permission_denied") {
+    action = actionForProtectedCapability(knowledgePreflight.capability);
+  }
 
   await persistInteraction(env.DB, {
     id: interaction.interactionId,
@@ -624,19 +708,11 @@ export async function executeGatewayRequest(
     query: queryForCapability,
   });
 
-  if (permissionAllowed && input.actor.type === "user") {
-    const knowledgeDenial = await denyKnowledgeQueryIfProtected(
-      env.DB,
-      input.actor.user,
-      input.companyId,
-      input.toolName,
-      input.arguments,
-    );
-    if (knowledgeDenial) {
-      permissionAllowed = false;
-      permissionReason = knowledgeDenial.message;
-      protectedCapability = knowledgeDenial.capability;
-    }
+  if (knowledgePreflight.kind === "permission_denied") {
+    permissionAllowed = false;
+    permissionReason = knowledgePreflight.denial.message;
+    permissionRole = knowledgePreflight.denial.userRole;
+    protectedCapability = knowledgePreflight.capability;
   }
 
   let permissionDenial: StructuredCapabilityDenial | undefined;
