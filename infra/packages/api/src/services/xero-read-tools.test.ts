@@ -38,9 +38,10 @@ describe("Xero read tool advertisement", () => {
     expect(tools.some((tool) => tool.name.includes("create"))).toBe(false);
   });
 
-  it("hides Xero tools from Elvex office_staff and shows them to finance_team", () => {
+  it("hides Xero tools from Elvex office_staff and shows them to finance_team and director", () => {
     expect(elvexRoleMaySeeXeroReadTools("office_staff")).toBe(false);
     expect(elvexRoleMaySeeXeroReadTools("finance_team")).toBe(true);
+    expect(elvexRoleMaySeeXeroReadTools("director")).toBe(true);
 
     const denied = withXeroReadTools(
       [...base, { name: "analyse_xero_sales", description: "el", inputSchema: {} }],
@@ -55,6 +56,15 @@ describe("Xero read tool advertisement", () => {
     });
     expect(allowed.map((tool) => tool.name)).toEqual(
       expect.arrayContaining(["xero_sales_summary", "xero_get_invoice", "xero_top_customers"]),
+    );
+
+    const director = withXeroReadTools(base, {
+      actorType: "user",
+      companyId: "co_el",
+      userRole: "director",
+    });
+    expect(director.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining([...ADVERTISED_XERO_READ_TOOLS]),
     );
   });
 

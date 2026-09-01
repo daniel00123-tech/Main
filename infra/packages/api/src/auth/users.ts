@@ -7,6 +7,7 @@ import {
 import type { SessionMembership, SessionUser } from "./session";
 import { credentialsVersionFromHash } from "./session";
 import { MobileCollisionError, MobileValidationError, normalizeE164 } from "../services/phone";
+import { persistOperatorIntendedRole } from "./operator-intended-role";
 
 export interface DbUser {
   id: string;
@@ -321,6 +322,14 @@ export async function createMembership(
     throw new Error("Failed to create membership");
   }
 
+  await persistOperatorIntendedRole(db, {
+    membershipId: id,
+    companyId: input.companyId,
+    userId: input.userId,
+    intendedRole: input.role,
+    setBy: "membership.create",
+  });
+
   return rowToMembership(row);
 }
 
@@ -459,6 +468,7 @@ export async function updateMembershipRole(
   userId: string,
   companyId: string,
   role: CompanyRole,
+  setBy = "membership.role_changed",
 ) {
   const updatedAt = nowIso();
   await db
@@ -476,7 +486,17 @@ export async function updateMembershipRole(
     )
     .bind(userId, companyId)
     .first();
-  return row ? rowToMembership(row) : null;
+  const membership = row ? rowToMembership(row) : null;
+  if (membership) {
+    await persistOperatorIntendedRole(db, {
+      membershipId: membership.id,
+      companyId: membership.companyId,
+      userId: membership.userId,
+      intendedRole: role,
+      setBy,
+    });
+  }
+  return membership;
 }
 
 export async function setMembershipStatus(

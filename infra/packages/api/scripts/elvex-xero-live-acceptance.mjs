@@ -1,18 +1,24 @@
 #!/usr/bin/env node
-/** Temporary William finance_team Xero READ acceptance. Restores office_staff. Never prints tokens. */
+/** William Xero READ acceptance. Temporary office_staff only for denial. Restores operator-intended Director. Never prints tokens. */
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  WILLIAM_USER,
+  WILLIAM_MEM,
+  persistIntendedRole,
+  readIntendedRole,
+  restoreIntendedRole,
+  setLiveRole,
+} from "./lib/william-intended-role.mjs";
 
 const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const API = process.env.INFRA_API_BASE ?? "https://infra-api.daniel-dwyer123.workers.dev";
 const MCP = `${API}/api/gateway/v1/mcp`;
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
-const WILLIAM_USER = "user_b0db1fc5-692c-436d-99e6-392966b20df8";
-const WILLIAM_MEM = "membership_78495c59-cff6-4db5-9986-a351ebe154f1";
 const CLIENT_ID = "oauth_16c41fc5-c625-4c00-9ff1-a252a28ec518";
 const REDIRECT = "https://chatgpt.com/connector/oauth/callback";
 
@@ -53,12 +59,8 @@ function randomUrlSafe(bytes = 32) {
 }
 
 function setRole(role) {
-  d1File(
-    `UPDATE company_memberships SET role='${role}' WHERE id='${WILLIAM_MEM}' AND company_id='co_el';`,
-  );
-  return d1(
-    `SELECT role FROM company_memberships WHERE id='${WILLIAM_MEM}';`,
-  )[0]?.role;
+  const from = d1(`SELECT role FROM company_memberships WHERE id='${WILLIAM_MEM}';`)[0]?.role;
+  return setLiveRole(apiDir, role, "membership.role_controlled_acceptance", from, "elvex xero live acceptance").role;
 }
 
 async function mintWilliamToken() {
@@ -180,7 +182,8 @@ function pickFigure(payload) {
 
 const report = {
   beforeRole: d1(`SELECT role FROM company_memberships WHERE id='${WILLIAM_MEM}';`)[0]?.role,
-  financeRole: null,
+  intendedRole: readIntendedRole(apiDir),
+  authorisedRole: null,
   tokenOk: false,
   toolsList: [],
   xeroTools: [],
@@ -190,9 +193,13 @@ const report = {
   oauthStillValid: false,
   restoredRole: null,
 };
+persistIntendedRole(apiDir, report.intendedRole || "director", "elvex-xero-live-acceptance");
 
 try {
-  report.financeRole = setRole("finance_team");
+  const authorised = ["director", "finance_team", "finance_manager", "company_admin", "operations_manager"];
+  report.authorisedRole = authorised.includes(report.beforeRole)
+    ? report.beforeRole
+    : setRole("director");
   const minted = await mintWilliamToken();
   report.tokenOk = minted.hasAccess;
   if (!minted.hasAccess) {
@@ -257,7 +264,7 @@ try {
 } catch (error) {
   report.liveError = error instanceof Error ? error.message : String(error);
 } finally {
-  report.restoredRole = setRole("office_staff");
+  report.denialRole = setRole("office_staff");
 }
 
 try {
@@ -297,6 +304,7 @@ try {
   report.officeStaff.error = error instanceof Error ? error.message : String(error);
 }
 
+report.restoredRole = restoreIntendedRole(apiDir, "office_staff", "elvex xero live acceptance").intended;
 report.finalRole = d1(`SELECT role FROM company_memberships WHERE id='${WILLIAM_MEM}';`)[0]?.role;
 report.oauthStillValid = Boolean(
   d1(

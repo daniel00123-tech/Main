@@ -1105,6 +1105,7 @@ phase3.post("/api/companies/:slug/users/:userId/role", requireAuth, async (c) =>
     targetId,
     company.id,
     body.role,
+    actor.email,
   );
 
   await recordAuditEvent(c.env.DB, {

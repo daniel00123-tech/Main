@@ -365,6 +365,13 @@ export async function runWilliamChatgptAcceptance(
   if (phase === "elevated" && actor.role !== "finance_team") {
     return { error: "Refusing elevated run: live role is not finance_team", liveRole: actor.role };
   }
+  if (phase === "restored" && actor.role === "director") {
+    return {
+      skipped: true,
+      reason: "William is intended Director; office_staff restore probe is retired",
+      liveRole: actor.role,
+    };
+  }
   if (phase === "restored" && actor.role !== "office_staff") {
     return { error: "Refusing restore run: live role is not office_staff", liveRole: actor.role };
   }

@@ -2,13 +2,14 @@
 /**
  * Combined-tree live acceptance. Records William's role first.
  * Authorised Xero reads use the existing director role (no finance_team).
- * Denial is proven as office_staff. William finishes as office_staff.
+ * Denial is proven as temporary office_staff. William finishes as Director.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { persistIntendedRole, readIntendedRole, restoreIntendedRole } from "./lib/william-intended-role.mjs";
 
 const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const API = "https://api.infrastack.app";
@@ -145,6 +146,7 @@ const report = {
   recordedBefore: d1(
     `SELECT role, status, updated_at FROM company_memberships WHERE id='${WILLIAM_MEM}';`,
   )[0],
+  intendedRole: readIntendedRole(apiDir),
   workerHealth: null,
   authorised: {},
   catalogue: {},
@@ -153,6 +155,7 @@ const report = {
   finalRole: null,
   oauthStillValid: false,
 };
+persistIntendedRole(apiDir, report.intendedRole || "director", "capability-completeness-live");
 
 const health = await fetch(`${API}/health`, { headers: { "User-Agent": UA } }).then((r) => r.json());
 report.workerHealth = health;
@@ -310,10 +313,8 @@ try {
   report.officeStaff.error = error instanceof Error ? error.message : String(error);
 }
 
+report.restored = restoreIntendedRole(apiDir, "office_staff", "capability completeness live acceptance");
 report.finalRole = d1(`SELECT role FROM company_memberships WHERE id='${WILLIAM_MEM}';`)[0]?.role;
-if (report.finalRole !== "office_staff") {
-  report.finalRole = setRole("office_staff");
-}
 report.oauthStillValid = Boolean(
   d1(
     `SELECT id FROM oauth_refresh_tokens WHERE user_id='${WILLIAM_USER}' AND company_id='co_el' AND revoked_at IS NULL AND expires_at > datetime('now') LIMIT 1;`,
