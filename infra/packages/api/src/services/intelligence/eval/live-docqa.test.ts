@@ -5,6 +5,7 @@ import { enrichDocumentQuery, isShortDocumentFollowUp, nextContentQuestion } fro
 import { retrieveDocumentChunks, synthesizeFromDocumentEvidence, NONE_IN_DOCUMENT_REPLY } from "../../whatsapp-grounded-qa.js";
 import { FALLBACK_ADAPTERS } from "./adversarial-scenarios.js";
 import { instantiateLiveDocQaSequences, sequenceTurns } from "./live-docqa-sequences.js";
+import { policyCompleter } from "./harness.js";
 import type { IntelligenceRuntime, IntelligenceToolResult } from "../types.js";
 import type { WhatsAppEntityMemory } from "../../whatsapp-entities.js";
 
@@ -294,6 +295,7 @@ describe("live document Q&A sequences — 20 per tenant (OFFLINE)", () => {
             text: turn.text,
             state,
             runtime: docRuntime(),
+            completer: policyCompleter(),
           });
           if (result.currentDocument) {
             previousId = memory.lastDocument?.id ?? previousId;

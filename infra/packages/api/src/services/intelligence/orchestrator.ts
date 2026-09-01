@@ -301,6 +301,10 @@ export async function runIntelligenceTurn(input: {
         adoptFromTool(bootstrap, toolCalls, () => currentDocument, (doc) => {
           currentDocument = doc;
         }, evidenceDocumentIds, input.buttonHint);
+        currentDocument = adoptFromSearchHits(toolCalls, currentDocument);
+        if (currentDocument && !evidenceDocumentIds.includes(currentDocument.id)) {
+          evidenceDocumentIds.push(currentDocument.id);
+        }
         transcript.push(formatToolTranscript(bootstrap));
         continue;
       }
@@ -350,6 +354,12 @@ export async function runIntelligenceTurn(input: {
           currentDocument = doc;
         }
         if (!evidenceDocumentIds.includes(doc.id)) evidenceDocumentIds.push(doc.id);
+      }
+      if (validated.name === "search_company_knowledge" && !currentDocument) {
+        currentDocument = adoptFromSearchHits(toolCalls, currentDocument);
+        if (currentDocument && !evidenceDocumentIds.includes(currentDocument.id)) {
+          evidenceDocumentIds.push(currentDocument.id);
+        }
       }
       if (looksIrrelevant(result, currentDocument)) qualityFlags.add("irrelevant_result");
       transcript.push(formatToolTranscript(result));
@@ -498,6 +508,10 @@ export async function runIntelligenceTurn(input: {
   }
 
   if (toolCalls.length > 0) {
+    currentDocument = adoptFromSearchHits(toolCalls, currentDocument);
+    if (currentDocument && !evidenceDocumentIds.includes(currentDocument.id)) {
+      evidenceDocumentIds.push(currentDocument.id);
+    }
     return finish({
       kind: "failed",
       text: fallbackFromEvidence(toolCalls, currentDocument),
