@@ -52,6 +52,7 @@ describe("ask_document tool surface", () => {
       documentId: "doc_1",
       question: "What is the purpose?",
       priorQuestion: null,
+      title: null,
     });
     expect(sanitizeAskDocumentArguments({ documentId: "doc_1" })).toEqual({
       error: "ask_document requires a non-empty arguments.question",

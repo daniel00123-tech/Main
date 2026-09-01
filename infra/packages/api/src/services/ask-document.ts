@@ -49,6 +49,10 @@ export function askDocumentToolDefinition(): AdvertisedMcpTool {
           description:
             "Previous grounded question on the same document. Required for short follow-ups (what exactly, when, who, more).",
         },
+        title: {
+          type: "string",
+          description: "Document title from search. Used only if fetch-by-id returns no content.",
+        },
       },
       additionalProperties: false,
     },
@@ -81,7 +85,7 @@ export function withAskDocumentTool<T extends { name: string; description: strin
 
 export function sanitizeAskDocumentArguments(
   args: Record<string, unknown>,
-): { documentId: string; question: string; priorQuestion: string | null } | { error: string } {
+): { documentId: string; question: string; priorQuestion: string | null; title: string | null } | { error: string } {
   const documentId =
     typeof args.documentId === "string"
       ? args.documentId.trim()
@@ -102,9 +106,10 @@ export function sanitizeAskDocumentArguments(
       : typeof args.previousQuestion === "string"
         ? args.previousQuestion.trim()
         : "";
+  const title = typeof args.title === "string" ? args.title.trim() : "";
   if (!documentId) return { error: "ask_document requires a non-empty arguments.documentId" };
   if (!question) return { error: "ask_document requires a non-empty arguments.question" };
-  return { documentId, question, priorQuestion: priorQuestion || null };
+  return { documentId, question, priorQuestion: priorQuestion || null, title: title || null };
 }
 
 export function inferDocumentQaMode(question: string): GroundedMode {
@@ -163,12 +168,7 @@ export async function executeAskDocument(
   const execution = await executeRegisteredMcpTool(env, {
     mcpId: mcp.id,
     toolName: COMPANY_KNOWLEDGE_READ_TOOL,
-    arguments: {
-      ...mapFetchArgumentsForCompanyMcp(sanitized.documentId),
-      document_id: sanitized.documentId,
-      externalId: sanitized.documentId,
-      external_id: sanitized.documentId,
-    },
+    arguments: mapFetchArgumentsForCompanyMcp(sanitized.documentId),
     actorUserId: input.actorUserId ?? "system",
     actorEmail: input.actor,
     sourceClient: "infra-ask-document",
@@ -184,10 +184,28 @@ export async function executeAskDocument(
     };
   }
 
-  const payload = toStandardFetchPayload(
+  let payload = toStandardFetchPayload(
     "data" in execution ? execution.data?.result : execution,
     sanitized.documentId,
   );
+  if (!payload.text && !payload.chunks?.length && sanitized.title) {
+    const titled = await executeRegisteredMcpTool(env, {
+      mcpId: mcp.id,
+      toolName: COMPANY_KNOWLEDGE_READ_TOOL,
+      arguments: mapFetchArgumentsForCompanyMcp(sanitized.title),
+      actorUserId: input.actorUserId ?? "system",
+      actorEmail: input.actor,
+      sourceClient: "infra-ask-document",
+      skipUsageRecording: true,
+    });
+    if (titled.status === 200) {
+      const retry = toStandardFetchPayload(
+        "data" in titled ? titled.data?.result : titled,
+        sanitized.documentId,
+      );
+      if (retry.text || retry.chunks?.length) payload = { ...retry, id: sanitized.documentId };
+    }
+  }
   const chunks = chunksFromFetchPayload(payload, sanitized.documentId);
   const enrichment = enrichDocumentQuery(sanitized.question, {
     scope: "CURRENT_DOCUMENT",

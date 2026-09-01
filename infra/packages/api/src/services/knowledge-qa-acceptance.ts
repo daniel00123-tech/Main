@@ -55,7 +55,7 @@ async function runOneTenant(
     factual = `What is the main purpose of ${hit.title}?`;
     const candidate = await executeAskDocument(env, {
       companyId,
-      arguments: { documentId: hit.id, question: factual },
+      arguments: { documentId: hit.id, question: factual, title: hit.title },
       actor: "knowledge-qa-acceptance",
       actorUserId: "system",
     });
@@ -75,19 +75,19 @@ async function runOneTenant(
   }
   const follow = await executeAskDocument(env, {
     companyId,
-    arguments: { documentId: first.id, question: "what exactly?", priorQuestion: factual },
+    arguments: { documentId: first.id, question: "what exactly?", priorQuestion: factual, title: first.title },
     actor: "knowledge-qa-acceptance",
     actorUserId: "system",
   });
   const when = await executeAskDocument(env, {
     companyId,
-    arguments: { documentId: first.id, question: "when?", priorQuestion: factual },
+    arguments: { documentId: first.id, question: "when?", priorQuestion: factual, title: first.title },
     actor: "knowledge-qa-acceptance",
     actorUserId: "system",
   });
   const more = await executeAskDocument(env, {
     companyId,
-    arguments: { documentId: first.id, question: "more detail", priorQuestion: factual },
+    arguments: { documentId: first.id, question: "more detail", priorQuestion: factual, title: first.title },
     actor: "knowledge-qa-acceptance",
     actorUserId: "system",
   });
@@ -97,6 +97,7 @@ async function runOneTenant(
       documentId: first.id,
       question: "does it mention offshore drilling licenses?",
       priorQuestion: factual,
+      title: first.title,
     },
     actor: "knowledge-qa-acceptance",
     actorUserId: "system",

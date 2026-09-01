@@ -641,7 +641,13 @@ export async function runWilliamChatgptAcceptance(
         };
     const fetched = pickKnowledgeId(sourceFetch.parsed);
     const fetchedFallback = fetched.id || fetched.url ? fetched : pickKnowledgeId(sourceFetch.summary);
-    if (fetchedFallback.id) knowledgeDoc = { ...knowledgeDoc, ...fetchedFallback, id: fetchedFallback.id };
+    if (fetchedFallback.id) {
+      knowledgeDoc = {
+        id: fetchedFallback.id,
+        title: fetchedFallback.title || knowledgeDoc.title,
+        url: fetchedFallback.url || knowledgeDoc.url,
+      };
+    }
     const sourceUrl = fetchedFallback.url ?? knowledgeDoc.url;
     results.push({
       id: "knowledge.source_url",
@@ -660,7 +666,7 @@ export async function runWilliamChatgptAcceptance(
           issued.token,
           listed,
           askName,
-          { documentId: knowledgeDoc.id, question: factualQuestion },
+          { documentId: knowledgeDoc.id, question: factualQuestion, title: knowledgeDoc.title },
           rpcId++,
         )
       : await callTool(
@@ -689,7 +695,12 @@ export async function runWilliamChatgptAcceptance(
             issued.token,
             listed,
             askName,
-            { documentId: knowledgeDoc.id, question: follow.question, priorQuestion: factualQuestion },
+            {
+              documentId: knowledgeDoc.id,
+              question: follow.question,
+              priorQuestion: factualQuestion,
+              title: knowledgeDoc.title,
+            },
             rpcId++,
           )
         : await callTool(
@@ -717,6 +728,7 @@ export async function runWilliamChatgptAcceptance(
             documentId: knowledgeDoc.id,
             question: "does it mention offshore drilling licenses?",
             priorQuestion: factualQuestion,
+            title: knowledgeDoc.title,
           },
           rpcId++,
         )
