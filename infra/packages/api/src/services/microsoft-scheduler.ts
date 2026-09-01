@@ -26,13 +26,19 @@ export async function runMicrosoftScheduledSync(env: Env): Promise<{
       sourcesSynced: 0,
       errors: ["Microsoft not configured"],
       graphSubscriptions: { created: 0, skipped: 0, failed: 0, errors: [] },
-      graphRenewals: { renewed: 0, failed: 0, errors: [] },
+      graphRenewals: { renewed: 0, cutover: 0, failed: 0, errors: [] },
     };
   }
 
   const graphSubscriptions = await provisionMicrosoftGraphSubscriptionsForIncludedSources(env);
   const outlookGraphSubscriptions = await provisionOutlookMailboxGraphSubscriptions(env);
   const graphRenewals = await renewExpiringMicrosoftGraphSubscriptions(env);
+  try {
+    const { processDueOcrCandidates } = await import("./ocr/backfill");
+    await processDueOcrCandidates(env, { limit: 2 });
+  } catch {
+    // OCR backfill is best-effort and must not block Microsoft sync.
+  }
 
   const companies = await env.DB.prepare(
     `SELECT DISTINCT company_id, connector_instance_id FROM microsoft_connector_sources WHERE inclusion_status = 'included'`,

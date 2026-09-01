@@ -212,6 +212,7 @@ export function humanClient(source?: string | null): string {
     "infra-gateway": "INFRA",
     "e2e-probe": "System",
     portal: "Portal",
+    portal_chat: "Company chat",
     "action-engine": "INFRA",
   };
   if (!source) return "—";
@@ -331,6 +332,7 @@ export function statusTone(value: string): string {
       "complete",
       "settled",
       "credited",
+      "accepted",
     ].includes(v)
   ) {
     return "healthy";
@@ -341,11 +343,15 @@ export function statusTone(value: string): string {
       "warning",
       "attention",
       "pending",
+      "pending_approval",
+      "canary",
+      "applying",
       "low",
       "syncing",
       "onboarding",
       "test_mode",
       "draft",
+      "expired",
     ].includes(v)
   ) {
     return "warning";
@@ -377,6 +383,7 @@ export function statusTone(value: string): string {
       "registered",
       "configured",
       "available",
+      "cancelled",
     ].includes(v)
   ) {
     return "muted";
@@ -574,7 +581,7 @@ export function humanConnectorPurpose(slug: string, fallback?: string): string {
     commusoft: "Customers, jobs and service history",
     chatgpt: "Use ChatGPT securely with your connected systems",
     claude: "Use Claude securely with your connected systems",
-    whatsapp: "Business messaging through INFRA",
+    whatsapp: "Business messaging through the INFRA WhatsApp channel",
   };
   return map[slug] ?? fallback ?? "Connect this system to INFRA";
 }
@@ -604,6 +611,9 @@ export function humanStatus(value: string): string {
     degraded: "Degraded",
     unreachable: "Unavailable",
     pending: "Pending",
+    accepted: "Accepted",
+    cancelled: "Cancelled",
+    expired: "Expired",
     disabled: "Disabled",
     not_configured: "Not configured",
     failed: "Failed",
@@ -635,6 +645,19 @@ export function humanStatus(value: string): string {
     not_applicable: "Not applicable",
     optional: "Optional",
     required: "Required",
+    pending_approval: "Pending approval",
+    rejected_pretest: "Rejected in pretest",
+    applying: "Applying",
+    canary: "Canary",
+    promoted: "Applied",
+    rolled_back: "Rolled back",
+    failed_validation: "Failed validation",
+    auto_apply_safe: "Auto-apply safe",
+    requires_engineering: "Needs engineering",
+    informational: "Informational",
+    historical: "Historical",
+    current: "Current",
+    recurrent: "Recurrent",
   };
   return map[value] ?? value.replace(/_/g, " ");
 }

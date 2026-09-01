@@ -15,7 +15,11 @@ import type { Env } from "../env";
 import { XERO_ACTION_SERVICE_SCOPES } from "@infra/shared";
 
 function withActionTools(names: string[]): string[] {
-  return [...new Set([...names, ...ACTION_CONTROL_TOOLS, ...AUTOMATION_CONTROL_TOOLS])].sort();
+  const extra =
+    names.includes("search") || names.includes("search_company_knowledge")
+      ? ["ask_document", "list_company_documents"]
+      : [];
+  return [...new Set([...names, ...extra, ...ACTION_CONTROL_TOOLS, ...AUTOMATION_CONTROL_TOOLS])].sort();
 }
 
 const ACTION_ENGINE_SCOPES = [...XERO_ACTION_SERVICE_SCOPES];
@@ -778,5 +782,39 @@ describe("tenant isolation across Caddington / HT / EL identities", () => {
       { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
     );
     expect(result.httpStatus).toBe(403);
+  });
+
+  function userActor(role: "office_staff" | "finance_team") {
+    return {
+      type: "user" as const,
+      user: {
+        userId: "user_william",
+        email: "william@elvexpropertyservices.com",
+        displayName: "William",
+        isPlatformAdmin: false,
+        memberships: [{ companyId: "co_el", role }],
+      },
+      boundCompanyId: "co_el",
+      channel: "chatgpt",
+    };
+  }
+
+  it("does not advertise Xero reads to office_staff", async () => {
+    const names = await listTools(envFor(threeTenantDb()), userActor("office_staff") as never);
+    expect(names.some((name) => name.startsWith("xero_") || name.includes("xero"))).toBe(false);
+  });
+
+  it("advertises authorised Xero READ tools to finance_team", async () => {
+    const names = await listTools(envFor(threeTenantDb()), userActor("finance_team") as never);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "xero_sales_summary",
+        "xero_search_invoices",
+        "xero_get_invoice",
+        "xero_list_overdue_invoices",
+        "xero_top_customers",
+      ]),
+    );
+    expect(names).not.toContain("xero_create_draft_invoice");
   });
 });

@@ -5,7 +5,8 @@ import {
 } from "@infra/shared";
 import { AzureDocumentIntelligenceOcrProvider, AzureOcrError } from "./azure-document-intelligence";
 import { applyOcrFallbackIfRequired } from "./knowledge-ocr";
-import { assessOcrTextQuality, estimatePdfPageCount, ocrDocument, sha256Hex } from "./service";
+import { assessOcrTextQuality, estimateAzureReadCostUsd, estimatePdfPageCount, ocrDocument, sha256Hex } from "./service";
+import { selectBackfillCandidates } from "./backfill";
 import type { OcrProvider } from "./types";
 
 type JobRow = Record<string, unknown>;
@@ -181,6 +182,30 @@ describe("OCR quality and limits", () => {
 });
 
 describe("OCR idempotency and isolation", () => {
+  it("stops retrying a failed document version after the job attempt limit", async () => {
+    const { db, jobs } = memoryDb();
+    const provider = mockProvider({
+      async analyze() {
+        throw new AzureOcrError({ retryable: true, category: "TIMEOUT", message: "timed out" });
+      },
+    });
+    const input = {
+      companyId: "co_caddington",
+      documentId: 54,
+      bytes: sampleBytes,
+      mimeType: "application/pdf" as const,
+    };
+    for (let i = 0; i < 5; i += 1) {
+      const result = await ocrDocument(db, input, { provider });
+      expect(result.status).toBe("ocr_failed");
+      expect(result.providerCalled).toBe(true);
+    }
+    const blocked = await ocrDocument(db, input, { provider });
+    expect(blocked.providerCalled).toBe(false);
+    expect(blocked.message).toMatch(/retry limit/i);
+    expect(jobs[0]?.ocr_attempt_count).toBe(5);
+  });
+
   it("does not call the provider twice for the same document version", async () => {
     const { db } = memoryDb();
     const provider = mockProvider();
@@ -324,6 +349,94 @@ describe("OCR fallback orchestration", () => {
     expect(merged.itemKind).toBe("mail_attachment");
     expect(merged.sourceType).toBe("outlook_shared");
     expect(merged.ocrStatus).toBe("ocr_completed");
+  });
+});
+
+describe("OCR images and timeouts", () => {
+  it("invokes Azure for image/jpeg requires_ocr", async () => {
+    const { db } = memoryDb();
+    const provider = mockProvider();
+    const result = await ocrDocument(
+      db,
+      {
+        companyId: "co_caddington",
+        documentId: 80,
+        bytes: sampleBytes,
+        mimeType: "image/jpeg",
+      },
+      { provider },
+    );
+    expect(result.status).toBe("ocr_completed");
+    expect(provider.calls).toBe(1);
+  });
+
+  it("calls Cloudflare fetch without an illegal this binding", async () => {
+    let calls = 0;
+    function workersFetch(this: unknown, url: string | URL, init?: RequestInit) {
+      if (this != null && this !== globalThis) {
+        throw new TypeError("Illegal invocation: function called with incorrect `this` reference.");
+      }
+      calls += 1;
+      if (init?.method === "POST") {
+        return Promise.resolve(
+          new Response(null, {
+            status: 202,
+            headers: { "Operation-Location": "https://ocr.example/ops/1" },
+          }),
+        );
+      }
+      return Promise.resolve(
+        Response.json({
+          status: "succeeded",
+          analyzeResult: { content: "Scanned Coal Search borehole log", pages: [{}] },
+        }),
+      );
+    }
+    const provider = new AzureDocumentIntelligenceOcrProvider(
+      { endpoint: "https://ocr.example", key: "test-key" },
+      workersFetch as unknown as typeof fetch,
+    );
+    const result = await provider.analyze({
+      bytes: sampleBytes,
+      mimeType: "application/pdf",
+      maxPages: 50,
+    });
+    expect(result.pageCount).toBe(1);
+    expect(calls).toBe(2);
+  });
+
+  it("times out when Azure never reaches succeeded", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return new Response(null, {
+          status: 202,
+          headers: { "Operation-Location": "https://ocr.example/ops/hang" },
+        });
+      }
+      return Response.json({ status: "running" });
+    });
+    const provider = new AzureDocumentIntelligenceOcrProvider(
+      { endpoint: "https://ocr.example", key: "test-key", maxPolls: 1 },
+      fetchImpl as unknown as typeof fetch,
+    );
+    await expect(
+      provider.analyze({ bytes: sampleBytes, mimeType: "application/pdf", maxPages: 50 }),
+    ).rejects.toMatchObject({ category: "TIMEOUT" });
+  });
+
+  it("estimates Azure Read cost for operator metering only", () => {
+    expect(estimateAzureReadCostUsd(2)).toBe(0.003);
+    expect(estimateAzureReadCostUsd(0)).toBe(0);
+  });
+});
+
+describe("OCR backfill selection", () => {
+  it("skips completed jobs and keeps metadata-only candidates", () => {
+    const selected = selectBackfillCandidates([
+      { documentId: 1, title: "10818.pdf", status: "requires_ocr", mimeType: "application/pdf", source: "sharepoint", extractionQuality: "requires_ocr", ocrStatus: null, substantiveCharacterCount: 0 },
+      { documentId: 2, title: "ok.pdf", status: "indexed", mimeType: "application/pdf", source: "google_drive", extractionQuality: "good", ocrStatus: "ocr_completed", substantiveCharacterCount: 900 },
+    ]);
+    expect(selected.map((row) => row.documentId)).toEqual([1]);
   });
 });
 

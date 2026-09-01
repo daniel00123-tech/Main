@@ -15,6 +15,12 @@ describe("session cookies", () => {
     expect(cookie).toContain("Secure");
   });
 
+  it("omits Domain for host-only app.infrastack.app cookies", () => {
+    const cookie = buildSessionCookie("token123", true, false, null);
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).not.toContain("Domain=");
+  });
+
   it("uses SameSite=None for legacy cross-origin mode", () => {
     const cookie = buildSessionCookie("token123", true, true);
     expect(cookie).toContain("SameSite=None");

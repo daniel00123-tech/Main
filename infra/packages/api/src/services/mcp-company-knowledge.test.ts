@@ -20,7 +20,11 @@ import { READ_ONLY_TOOL_ANNOTATIONS } from "./mcp-knowledge-standard";
 import { XERO_ACTION_SERVICE_SCOPES } from "@infra/shared";
 
 function withActionTools(names: string[]): string[] {
-  return [...new Set([...names, ...ACTION_CONTROL_TOOLS, ...AUTOMATION_CONTROL_TOOLS])].sort();
+  const extra =
+    names.includes("search") || names.includes("search_company_knowledge")
+      ? ["ask_document", "list_company_documents"]
+      : [];
+  return [...new Set([...names, ...extra, ...ACTION_CONTROL_TOOLS, ...AUTOMATION_CONTROL_TOOLS])].sort();
 }
 
 type Row = Record<string, unknown>;
@@ -462,10 +466,12 @@ describe("INFRA MCP Company Knowledge adaptors", () => {
       toolName: "search_company_knowledge",
       arguments: { query: "boiler bonus policy" },
     });
-    const searchText = parseResult(search.payload)?.content?.[0]?.text ?? "";
-    expect(searchText).toContain("tenant");
-    expect(searchText).toContain("Boiler Sales Bonus process.docx");
-    expect(parseResult(search.payload)?.structuredContent).toBeUndefined();
+    const searchJson = JSON.parse(parseResult(search.payload)?.content?.[0]?.text ?? "{}") as {
+      results: Array<{ id: string; title: string }>;
+    };
+    expect(searchJson.results[0]?.id).toBe("doc_boiler_bonus_001");
+    expect(searchJson.results[0]?.title).toBe("Boiler Sales Bonus process.docx");
+    expect(parseResult(search.payload)?.structuredContent).toEqual(searchJson);
 
     const read = await handleInfraMcpJsonRpc(
       env,
@@ -484,7 +490,14 @@ describe("INFRA MCP Company Knowledge adaptors", () => {
     expect(executeGatewayRequest.mock.calls[1]?.[1]).toMatchObject({
       toolName: "get_knowledge_document",
     });
-    expect(parseResult(read.payload)?.content?.[0]?.text).toContain("legacy body");
+    const readJson = JSON.parse(parseResult(read.payload)?.content?.[0]?.text ?? "{}") as {
+      id: string;
+      title: string;
+      text: string;
+    };
+    expect(readJson.id).toBe("doc_boiler_bonus_001");
+    expect(readJson.title).toBe("Boiler Sales Bonus process.docx");
+    expect(readJson.text).toContain("legacy body");
   });
 
   it("keeps system_health and database_summary working", async () => {
