@@ -32,6 +32,15 @@ export { evaluationCases } from "./eval/cases.js";
 export { scopeEvaluationCases } from "./eval/scope-cases.js";
 export { runEvaluationSuite, policyCompleter, v1FragileCompleter } from "./eval/harness.js";
 export { runOfflineBenchmarks, probeWorkersAiModels, selectWinningModel } from "./eval/benchmark.js";
+export {
+  ADVERSARIAL_SCENARIOS,
+  ADVERSARIAL_SUITE_VERSION,
+  FALLBACK_ADAPTERS,
+  instantiateScenarios,
+  assertSuiteIntegrity,
+} from "./eval/adversarial-scenarios.js";
+export { runAdversarialSuite, resolveLiveTenants, sanitizeReport } from "./eval/adversarial-runner.js";
+export { compareSummaries, summariseCaptures } from "./eval/adversarial-score.js";
 export type {
   IntelligenceChannel,
   IntelligenceConfidence,
