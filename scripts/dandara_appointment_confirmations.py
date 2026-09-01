@@ -20,6 +20,19 @@ from pathlib import Path
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo
 
+try:
+    from former_company_guard import (
+        FormerCompanyAccessError,
+        reject_former_company_environment,
+        reject_former_company_value,
+    )
+except ImportError:
+    from scripts.former_company_guard import (
+        FormerCompanyAccessError,
+        reject_former_company_environment,
+        reject_former_company_value,
+    )
+
 
 IS_RE = re.compile(r"\bIS\d{8}\b", re.IGNORECASE)
 OPEN_FIXFLO_STATUSES = {"reported", "jobawarded", "awaitingjobcompletion"}
@@ -66,11 +79,20 @@ def required_env(name: str) -> str:
     value = os.environ.get(name)
     if value in (None, ""):
         raise ConfigError(f"Missing required environment variable: {name}")
+    try:
+        reject_former_company_value(name, value)
+    except FormerCompanyAccessError as exc:
+        raise ConfigError(str(exc)) from exc
     return value
 
 
 def optional_env(name: str, default: str = "") -> str:
-    return os.environ.get(name, default)
+    value = os.environ.get(name, default)
+    try:
+        reject_former_company_value(name, value)
+    except FormerCompanyAccessError as exc:
+        raise ConfigError(str(exc)) from exc
+    return value
 
 
 def truthy(value: Any) -> bool:
@@ -690,6 +712,7 @@ def configured_today() -> dt.date:
 
 def main() -> int:
     try:
+        reject_former_company_environment()
         result = run(
             BigChangeClient(),
             FixFloClient(),

@@ -1,0 +1,16 @@
+---
+description: Block all live access to Nirvana, Aquilo and Urban Maintenance
+alwaysApply: true
+---
+
+Nirvana, Aquilo and Urban Maintenance are former-company environments.
+
+Never authenticate against, query, modify, send information to, send email to, trigger webhooks for, or otherwise communicate with systems belonging to these organisations unless Daniel explicitly overrides this restriction for a specific action.
+
+Never use former-company credentials as fallback credentials.
+
+New integrations for Caddington, HT Business and EL Business must use credentials explicitly identified as belonging to the intended environment.
+
+If credential ownership is uncertain, fail closed and ask Daniel.
+
+Historical source code, API knowledge, schemas, integration patterns and documentation from previous development may be used as technical reference, but former-company credentials and live connections must never be reused.
