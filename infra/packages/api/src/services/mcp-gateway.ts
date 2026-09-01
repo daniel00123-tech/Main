@@ -41,7 +41,7 @@ import {
   wrapStandardToolResult,
 } from "./mcp-knowledge-standard";
 import { isXeroWriteToolName } from "./xero-tools";
-import { XERO_TOOL_CONTRACTS } from "@infra/shared";
+import { isKnowledgeDiscoveryTool, XERO_TOOL_CONTRACTS } from "@infra/shared";
 import { withActionControlTools, isActionControlTool, actionControlToolAllowed } from "./mcp-action-tools";
 import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
@@ -784,6 +784,13 @@ export async function handleInfraMcpJsonRpc(
 
     const clientRequestId = resolveMcpClientRequestId(request, body);
     const interactionHints = pickInteractionHints(request, body);
+    const callMeta =
+      body.params && typeof body.params === "object" && body.params._meta && typeof body.params._meta === "object"
+        ? (body.params._meta as Record<string, unknown>)
+        : undefined;
+    if (isKnowledgeDiscoveryTool(toolName) && callMeta) {
+      args = { ...args, __meta: callMeta };
+    }
 
     if (isAutomationControlTool(toolName)) {
       const automationResult = await executeAutomationControlTool(env, {

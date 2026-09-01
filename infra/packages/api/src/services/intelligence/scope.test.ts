@@ -7,6 +7,19 @@ import { verbaliseSystemMeta, inventedCount, resetSystemMetaCache, loadDocumentI
 import type { IntelligenceRuntime, IntelligenceToolResult } from "./types.js";
 
 describe("scope classifier", () => {
+  it("ranks explicit Xero data questions as BUSINESS_SYSTEM", () => {
+    for (const text of [
+      "tell me on xero what our sales are",
+      "what are our Xero sales this month?",
+      "show me invoices raised today",
+      "what is outstanding in Xero?",
+    ]) {
+      const decision = classifyScope(text, buildConversationState({ userText: text }));
+      expect(decision.scope).toBe("BUSINESS_SYSTEM");
+      expect(decision.tool?.startsWith("xero_")).toBe(true);
+    }
+  });
+
   it("covers at least 120 unseen prompts and exceeds 95% scope accuracy", () => {
     const cases = scopeEvaluationCases();
     expect(cases.length).toBeGreaterThanOrEqual(120);

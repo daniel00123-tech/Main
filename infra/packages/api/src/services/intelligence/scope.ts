@@ -1,3 +1,4 @@
+import { resolveBusinessSystemIntent } from "@infra/shared";
 import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "./types.js";
 import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
 
@@ -318,6 +319,50 @@ export function classifyScope(
       tool: "get_connector_status",
       lastAnswerTopic: "connectors",
       lastUserIntent: "connectors",
+    });
+  }
+
+  const businessIntent = resolveBusinessSystemIntent(text);
+  if (
+    businessIntent &&
+    !features.connectorAsk &&
+    !features.capabilityAsk &&
+    !features.systemLocus &&
+    !features.companyLocus &&
+    !switchTo &&
+    businessIntent.capability !== "admin" &&
+    businessIntent.capability !== "restricted_knowledge"
+  ) {
+    if (businessIntent.capability === "payments" || features.writeIntent) {
+      return decide("CONTROLLED_ACTION", features, {
+        tool: null,
+        noTool: true,
+        lastUserIntent: "controlled_action",
+      });
+    }
+    if (
+      businessIntent.capability === "finance_mailbox" ||
+      businessIntent.capability === "info_mailbox" ||
+      businessIntent.connectorDefinitionId === "conn_outlook_shared"
+    ) {
+      return decide("BUSINESS_SYSTEM", features, {
+        tool: "outlook_search_mailbox",
+        lastAnswerTopic: "email",
+        lastUserIntent: "email",
+      });
+    }
+    if (businessIntent.capability === "xero" || businessIntent.connectorDefinitionId === "conn_xero") {
+      return decide("BUSINESS_SYSTEM", features, {
+        tool: pickBusinessTool(text, state.lastSuccessfulTool),
+        lastAnswerTopic: "finance",
+        lastUserIntent: "finance",
+      });
+    }
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: null,
+      noTool: true,
+      lastAnswerTopic: businessIntent.connectorDefinitionId.replace(/^conn_/, ""),
+      lastUserIntent: "business_system",
     });
   }
 

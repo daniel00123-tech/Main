@@ -1,5 +1,6 @@
 import { ELVEX_FINANCE_MAILBOXES, ELVEX_INFO_MAILBOXES, ELVEX_ROLE_LABELS, isElvexRole } from "./elvex-rbac";
 import type { CompanyRole } from "../types";
+import { resolveBusinessSystemIntent } from "./business-system-intent";
 
 /**
  * Company-connected capability families used for user-facing access outcomes.
@@ -106,41 +107,7 @@ export function capabilityFromAction(input: {
  * Document questions about a system stay on the knowledge path.
  */
 export function inferProtectedCapabilityFromQuery(query: string | null | undefined): ProtectedCapability | null {
-  if (!query?.trim()) return null;
-  const q = query.trim().toLowerCase();
-
-  if (
-    /\b(make a payment|pay (this |an |the )?invoice|send (a )?payment|allocate (a )?payment)\b/.test(q)
-  ) {
-    return "payments";
-  }
-  if (
-    /\b(admin users|list users|show (me )?admin|administration|manage (the )?roles|who has admin)\b/.test(q)
-  ) {
-    return "admin";
-  }
-  if (/\b(restricted (knowledge|documents?|files?)|confidential (docs?|documents?))\b/.test(q)) {
-    return "restricted_knowledge";
-  }
-  if (
-    /\b(finance@|finance inbox|finance emails?|emails? (in |from )?finance)\b/.test(q)
-  ) {
-    return "finance_mailbox";
-  }
-
-  const mentionsXero = /\bxero\b/.test(q);
-  const documentQuestion =
-    /\b(process|policy|procedure|how do we|where is|written|document|guide|manual)\b/.test(q);
-  const liveFinance =
-    /\b(sales|invoices?|p&l|profit and loss|balance sheet|overdue|aged receivables|bank transactions|month[- ]to[- ]date|this month|what (are|were|is) (our |the )?sales)\b/.test(
-      q,
-    );
-  if (mentionsXero && liveFinance && !documentQuestion) return "xero";
-  if (mentionsXero && /\b(tell me|show me|how much|total)\b/.test(q) && !documentQuestion) {
-    return "xero";
-  }
-
-  return null;
+  return resolveBusinessSystemIntent(query)?.capability ?? null;
 }
 
 export function actionForProtectedCapability(capability: ProtectedCapability): string {
@@ -180,7 +147,7 @@ export function userFacingPermissionDeniedMessage(input: {
   switch (input.capability) {
     case "xero":
       return input.connected
-        ? `Xero is connected for ${company}, but your ${roleLabel} permissions don’t allow you to view Xero financial data. ${askAdmin}`
+        ? `Xero is connected for ${company}, but your ${roleLabel} permissions don’t allow access to Xero financial data. ${askAdmin}`
         : `Xero isn’t connected for ${company}.`;
     case "finance_mailbox":
       return input.connected

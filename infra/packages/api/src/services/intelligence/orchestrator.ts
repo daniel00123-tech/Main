@@ -152,7 +152,13 @@ export async function runIntelligenceTurn(input: {
     lastUserIntent: scoped.lastUserIntent,
   };
 
-  if (input.state.userCorrection || (scoped.scope === "COMPANY_KNOWLEDGE" && scoped.clearCurrentDocument)) {
+  if (
+    scoped.scope !== "SYSTEM_META" &&
+    scoped.scope !== "BUSINESS_SYSTEM" &&
+    scoped.scope !== "CONTROLLED_ACTION" &&
+    scoped.scope !== "CONNECTOR_CAPABILITY" &&
+    (input.state.userCorrection || (scoped.scope === "COMPANY_KNOWLEDGE" && scoped.clearCurrentDocument))
+  ) {
     const priorUser =
       previousUserText(input.state, input.text) ||
       [...input.state.recentTurns].reverse().find((turn) => turn.role === "user")?.text ||

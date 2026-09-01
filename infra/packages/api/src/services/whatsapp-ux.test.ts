@@ -440,10 +440,18 @@ describe("WhatsApp UX orchestration", () => {
       result: { results: [{ id: "doc_2", title: "Sales last month", snippet: "10k last month" }] },
     });
     await handleWhatsAppInboundMessage(runtime, inbound("What about last month?"));
-    const query = String((executeGatewayRequest.mock.calls[0]?.[1] as { arguments?: { query?: string }; toolName?: string })?.arguments?.query ?? "");
-    const tool = String((executeGatewayRequest.mock.calls[0]?.[1] as { toolName?: string })?.toolName ?? "");
-    expect(query).toMatch(/last month/i);
+    const followUp = executeGatewayRequest.mock.calls[0]?.[1] as {
+      arguments?: Record<string, unknown>;
+      toolName?: string;
+    };
+    const query = String(followUp?.arguments?.query ?? "");
+    const tool = String(followUp?.toolName ?? "");
     expect(tool).toMatch(/xero|search_company_knowledge/i);
+    if (tool.startsWith("xero")) {
+      expect(JSON.stringify(followUp?.arguments ?? "")).toMatch(/last month|fromDate|toDate/i);
+    } else {
+      expect(query).toMatch(/last month/i);
+    }
   });
 
   it("does not send a progress update when the final answer is already ready", async () => {

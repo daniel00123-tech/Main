@@ -73,6 +73,9 @@ describe("capability inference", () => {
   it("maps William's Xero sales question to the xero capability", () => {
     expect(inferProtectedCapabilityFromQuery("tell me on xero what our sales are")).toBe("xero");
     expect(inferProtectedCapabilityFromQuery("Xero current sales total month to date")).toBe("xero");
+    expect(inferProtectedCapabilityFromQuery("what are our Xero sales this month?")).toBe("xero");
+    expect(inferProtectedCapabilityFromQuery("show me invoices raised today")).toBe("xero");
+    expect(inferProtectedCapabilityFromQuery("what is outstanding in Xero?")).toBe("xero");
   });
 
   it("does not treat a Xero process document question as live finance", () => {
