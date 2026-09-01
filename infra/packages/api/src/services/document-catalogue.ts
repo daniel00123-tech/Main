@@ -3,8 +3,13 @@
  * Metadata listing only — not a semantic search substitute, no extra LLM.
  */
 
+import { isElvexCompany } from "@infra/shared";
 import type { Env } from "../env";
 import { getCompanyById, listMcpEnvironments } from "./control-plane";
+import {
+  catalogueFilesFromSearchPayload,
+  executeElvexKnowledgeViaElFiles,
+} from "./elvex-files-el-mcp";
 import { resolveMcpAdminAuthHeader } from "./mcp-admin-bridge";
 import { resolveMcpFetcher } from "./mcp-client";
 const SOURCE_LABELS: Record<string, string> = {
@@ -281,6 +286,41 @@ async function loadMcpDocuments(
   }
 }
 
+async function loadElvexFileDocuments(
+  env: Env,
+  companyId: string,
+  filter: CatalogueSourceFilter,
+  text: string,
+): Promise<CatalogueDocument[]> {
+  if (!isElvexCompany({ id: companyId })) return [];
+  const environments = await listMcpEnvironments(env.DB, companyId).catch(() => []);
+  const mcp = environments.find((item) => item.enabled) ?? environments[0];
+  if (!mcp) return [];
+  const query = text.replace(/\b(newest|latest|recent|files?|documents?|docs?|list|show|uploaded|changed|modified)\b/gi, " ").trim() || "file";
+  const listed = await executeElvexKnowledgeViaElFiles(env, {
+    companyId,
+    mcp,
+    toolName: "search_elvex_files",
+    arguments: { query, limit: 20 },
+  });
+  if (!listed.ok || !("results" in listed.result)) return [];
+  return catalogueFilesFromSearchPayload(listed.result)
+    .filter((doc) => matchesSourceFilter(doc.source, filter === "all" ? "drive" : filter) || filter === "all")
+    .map((doc) => {
+      const grounded = groundedDescription({ snippet: doc.description });
+      return {
+        id: doc.id,
+        title: doc.title,
+        source: userFacingSourceLabel(doc.source),
+        url: doc.url,
+        created_at: doc.created_at,
+        modified_at: doc.modified_at,
+        indexed_at: null,
+        ...grounded,
+      };
+    });
+}
+
 export async function listCompanyDocuments(
   env: Env,
   input: {
@@ -297,14 +337,15 @@ export async function listCompanyDocuments(
   const limit = Math.min(20, Math.max(1, input.limit ?? resolveCatalogueLimit(text)));
   const field = sortFieldFor(sort);
 
-  const [microsoft, mcp] = await Promise.all([
+  const [microsoft, mcp, elvexFiles] = await Promise.all([
     loadMicrosoftDocuments(env, input.companyId, source),
     loadMcpDocuments(env, input.companyId, source),
+    loadElvexFileDocuments(env, input.companyId, source, text),
   ]);
 
   const seen = new Set<string>();
   const merged: CatalogueDocument[] = [];
-  for (const doc of [...microsoft, ...mcp]) {
+  for (const doc of [...microsoft, ...mcp, ...elvexFiles]) {
     const key = `${doc.title}::${doc.url ?? doc.id}`;
     if (seen.has(key)) continue;
     seen.add(key);

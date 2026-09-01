@@ -115,12 +115,17 @@ async function resolveToolAction(
     };
   }
 
-  if (toolName === "search_company_knowledge" || toolName === "search") {
+  if (
+    toolName === "search_company_knowledge" ||
+    toolName === "search" ||
+    toolName === "search_elvex_files"
+  ) {
     return { action: "knowledge.search", riskClass: "low_risk" };
   }
   if (
     toolName === "get_knowledge_document" ||
     toolName === "fetch" ||
+    toolName === "get_elvex_file" ||
     toolName === "database_summary" ||
     toolName === "ask_document" ||
     toolName === "list_company_documents"
