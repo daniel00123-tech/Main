@@ -9,7 +9,7 @@ export function matchFastPath(text: string): string | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
   if (GREETING.test(trimmed)) {
-    return "Hi — what do you need?";
+    return "Hi — I'm here if you need anything.";
   }
   if (THANKS.test(trimmed)) {
     return "You're welcome.";

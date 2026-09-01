@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyScope, detectNamedDocumentSwitch } from "./scope.js";
+import { matchFastPath } from "./fast-path.js";
 import { buildConversationState } from "./state.js";
 import { runIntelligenceTurn } from "./orchestrator.js";
 import { resolveBusinessPeriod, withResolvedBusinessDates } from "./periods.js";
@@ -283,5 +284,43 @@ describe("short follow-up ranking", () => {
 describe("eval harness size", () => {
   it("covers at least 250 cases", () => {
     expect(evaluationCases().length).toBeGreaterThanOrEqual(250);
+  });
+});
+
+describe("adversarial systemic gates", () => {
+  it("routes a bare period comparison to Xero instead of company search", async () => {
+    const { runtime, calls } = recordingRuntime();
+    const result = await runIntelligenceTurn({
+      text: "Compare this month with last month",
+      state: buildConversationState({ userText: "Compare this month with last month", connectors: ["conn_xero"] }),
+      runtime,
+    });
+    expect(classifyScope("Compare this month with last month", buildConversationState({ userText: "Compare this month with last month" })).scope).toBe(
+      "BUSINESS_SYSTEM",
+    );
+    expect(calls[0]?.name).toBe("xero_sales_summary");
+    expect(result.scope).toBe("BUSINESS_SYSTEM");
+  });
+
+  it("asks what the user wanted when a correction has no named replacement", async () => {
+    const result = await runIntelligenceTurn({
+      text: "No, that's not what I meant",
+      state: buildConversationState({
+        userText: "No, that's not what I meant",
+        currentDocument: CV,
+        userCorrection: true,
+        lastAnswerTopic: "document",
+        currentScope: "CURRENT_DOCUMENT",
+      }),
+      runtime: recordingRuntime().runtime,
+    });
+    expect(result.kind).toBe("clarify");
+    expect(result.scope).toBe("AMBIGUOUS");
+    expect(result.toolCalls).toHaveLength(0);
+  });
+
+  it("answers greetings like an assistant, not a search prompt", () => {
+    expect(matchFastPath("Hi")).toMatch(/here if you need/i);
+    expect(matchFastPath("Hi")).not.toMatch(/what do you need/i);
   });
 });
