@@ -270,6 +270,11 @@ const report = {
   finalWilliam: null,
 };
 
+const beforeRole = report.recordedBefore?.role ?? null;
+if (beforeRole === "office_staff") {
+  report.temporaryAuthorisedRole = setWilliamRole("director");
+}
+
 try {
   const minted = await mint(WILLIAM_USER, "co_el", WILLIAM_MEM);
   if (!minted.accessToken) throw new Error(`william token ${minted.httpStatus}`);
