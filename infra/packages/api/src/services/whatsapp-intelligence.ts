@@ -68,6 +68,8 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_list_overdue_invoices",
   "xero_aged_receivables",
   "outlook_search_mailbox",
+  "ask_document",
+  "list_documents",
 ]);
 
 export type WhatsAppIntelligenceAnswer = {

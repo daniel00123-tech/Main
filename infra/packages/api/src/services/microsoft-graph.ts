@@ -129,6 +129,44 @@ export async function graphGet<T>(config: MicrosoftGraphConfig, path: string): P
   return graphRequest(config, path, { method: "GET" });
 }
 
+export async function graphPost<T>(config: MicrosoftGraphConfig, path: string, body: unknown): Promise<T> {
+  return graphRequest(config, path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Metadata-only recent drive items. Not a semantic knowledge search. */
+export async function searchRecentDriveItems(
+  config: MicrosoftGraphConfig,
+  input: { top?: number; source?: "onedrive" | "sharepoint" | "all" },
+): Promise<GraphDriveItem[]> {
+  const size = Math.min(Math.max(input.top ?? 10, 1), 50);
+  const payload = await graphPost<{
+    value?: Array<{ hitsContainers?: Array<{ hits?: Array<{ resource?: GraphDriveItem }> }> }>;
+  }>(config, "/search/query", {
+    requests: [
+      {
+        entityTypes: ["driveItem"],
+        query: { queryString: "isDocument=true" },
+        from: 0,
+        size,
+        sortProperties: [{ name: "lastModifiedDateTime", isDescending: true }],
+      },
+    ],
+  });
+  const items: GraphDriveItem[] = [];
+  for (const request of payload.value ?? []) {
+    for (const container of request.hitsContainers ?? []) {
+      for (const hit of container.hits ?? []) {
+        if (hit.resource?.id && hit.resource.name) items.push(hit.resource);
+      }
+    }
+  }
+  return items;
+}
+
 export async function graphGetAll<T>(
   config: MicrosoftGraphConfig,
   path: string,

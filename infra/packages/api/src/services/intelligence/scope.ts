@@ -1,6 +1,7 @@
 import { resolveBusinessSystemIntent } from "@infra/shared";
 import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "./types.js";
 import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
+import { isCatalogueListingAsk } from "../document-catalogue.js";
 
 export type ScopeSwitch =
   | "company"
@@ -363,6 +364,14 @@ export function classifyScope(
       noTool: true,
       lastAnswerTopic: businessIntent.connectorDefinitionId.replace(/^conn_/, ""),
       lastUserIntent: "business_system",
+    });
+  }
+
+  if (isCatalogueListingAsk(text) && !features.financeAsk && !features.writeIntent) {
+    return decide("COMPANY_KNOWLEDGE", features, {
+      tool: "list_documents",
+      lastAnswerTopic: "document_catalogue",
+      lastUserIntent: "document_catalogue",
     });
   }
 

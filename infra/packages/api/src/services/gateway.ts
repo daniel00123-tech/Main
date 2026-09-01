@@ -79,6 +79,12 @@ import { executeXeroReadToolOnInfra } from "./xero-read-execution";
 import { isOutlookReadTool, outlookActionForTool } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeAskDocument, isAskDocumentTool } from "./ask-document";
+import {
+  DOCUMENT_CATALOGUE_ACTION,
+  DOCUMENT_CATALOGUE_PERMISSION_ACTION,
+  executeListDocuments,
+  isDocumentCatalogueTool,
+} from "./document-catalogue";
 
 export type GatewayActor =
   | {
@@ -117,9 +123,10 @@ async function resolveToolAction(
     toolName === "get_knowledge_document" ||
     toolName === "fetch" ||
     toolName === "database_summary" ||
-    toolName === "ask_document"
+    toolName === "ask_document" ||
+    isDocumentCatalogueTool(toolName)
   ) {
-    return { action: "knowledge.read", riskClass: "low_risk" };
+    return { action: DOCUMENT_CATALOGUE_PERMISSION_ACTION, riskClass: "low_risk" };
   }
   if (toolName === "system_health") {
     return { action: "system.health", riskClass: "low_risk" };
@@ -884,6 +891,10 @@ export async function executeGatewayRequest(
     detail: { stage: "gateway.authorised", correlationId, requestId },
   });
 
+  if (isDocumentCatalogueTool(input.toolName)) {
+    action = DOCUMENT_CATALOGUE_ACTION;
+  }
+
   const policy = await resolvePricingPolicy(env.DB, input.companyId);
   const pricing = await resolvePricingRule(env.DB, input.companyId, action);
   const estimated = calculateChargeCents(pricing, {
@@ -968,7 +979,33 @@ export async function executeGatewayRequest(
 
   const balanceBefore = await getWalletBalance(env.DB, input.companyId);
 
-  const execution = isAskDocumentTool(input.toolName)
+  const execution = isDocumentCatalogueTool(input.toolName)
+    ? await (async () => {
+        const listed = await executeListDocuments(env, {
+          companyId: input.companyId,
+          arguments: input.arguments ?? {},
+          actor: actorLabel,
+          actorUserId: actorId,
+          role: permissionRole,
+        });
+        if (!listed.ok) {
+          return { status: listed.status, error: listed.message, code: listed.code } as const;
+        }
+        return {
+          status: 200 as const,
+          data: {
+            correlationId,
+            mcpId: mcp.id,
+            companyId: input.companyId,
+            toolName: input.toolName,
+            latencyMs: Date.now() - started,
+            authConfigured: true,
+            riskClass,
+            result: listed.result,
+          },
+        };
+      })()
+    : isAskDocumentTool(input.toolName)
     ? await (async () => {
         const asked = await executeAskDocument(env, {
           companyId: input.companyId,
@@ -1501,6 +1538,7 @@ function humanAction(action: string): string {
   const map: Record<string, string> = {
     "knowledge.search": "Knowledge Search",
     "knowledge.read": "Knowledge Read",
+    "knowledge.catalogue": "Document Catalogue",
     "system.health": "System Health",
   };
   return map[action] ?? action.replace(/[._]/g, " ");

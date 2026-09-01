@@ -2,6 +2,7 @@
 const ACTION_LABELS: Record<string, string> = {
   "knowledge.search": "Search company knowledge",
   "knowledge.read": "Read company knowledge",
+  "knowledge.catalogue": "List document catalogue",
   "system.health": "Check system health",
   "xero.list_contacts": "Search Xero contacts",
   "xero.get_contact": "View Xero contact",
@@ -39,6 +40,7 @@ const TOOL_LABELS: Record<string, string> = {
   plan_xero_draft_invoice: "Prepare draft Xero invoice",
   search_company_knowledge: "Search company knowledge",
   ask_document: "Ask a selected document",
+  list_documents: "List document catalogue",
   system_health: "System health check",
 };
 

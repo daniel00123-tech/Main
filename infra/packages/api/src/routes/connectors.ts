@@ -1178,6 +1178,21 @@ connectors.post("/api/internal/cmd15/microsoft-acceptance/xero-reads", async (c)
   runWilliamChatgptAcceptanceRoute(c),
 );
 
+connectors.post("/api/internal/document-catalogue-acceptance", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runDocumentCatalogueAcceptance } = await import("../services/document-catalogue-acceptance");
+    return c.json(await runDocumentCatalogueAcceptance(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Document catalogue acceptance failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/knowledge-qa-acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

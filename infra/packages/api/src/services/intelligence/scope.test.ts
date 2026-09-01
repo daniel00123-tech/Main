@@ -82,6 +82,25 @@ describe("scope classifier", () => {
     expect(decision.clearCurrentDocument).toBe(true);
     expect(classifyScope("What about him?", open).scope).toBe("CURRENT_DOCUMENT");
   });
+
+  it("routes newest/latest file questions to list_documents, not search or index stats", () => {
+    for (const text of [
+      "What's the newest document in OneDrive?",
+      "Show me the latest ten files.",
+      "What was uploaded today?",
+    ]) {
+      const decision = classifyScope(text, buildConversationState({ userText: text }));
+      expect(decision.tool).toBe("list_documents");
+      expect(decision.tool).not.toBe("search_company_knowledge");
+      expect(decision.tool).not.toBe("get_document_index_stats");
+    }
+    expect(classifyScope("Find a document about boilers", buildConversationState({ userText: "Find a document about boilers" })).tool).toBe(
+      "search_company_knowledge",
+    );
+    expect(classifyScope("How many documents can you see?", buildConversationState({ userText: "How many documents can you see?" })).tool).toBe(
+      "get_document_index_stats",
+    );
+  });
 });
 
 describe("system meta intelligence", () => {

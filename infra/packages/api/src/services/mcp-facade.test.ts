@@ -406,7 +406,7 @@ describe("INFRA MCP facade tool catalogue consistency", () => {
       }
     ).result?.tools;
     expect(tools?.map((t) => t.name).sort()).toEqual(
-      withActionTools(["search", "search_company_knowledge", "system_health"]),
+      withActionTools(["ask_document", "list_documents", "search", "search_company_knowledge", "system_health"]),
     );
     expect(tools?.some((t) => t.name === "query_business_data")).toBe(false);
     const search = tools?.find((t) => t.name === "search_company_knowledge");
@@ -632,7 +632,7 @@ describe("tenant isolation across Caddington / HT / EL identities", () => {
       ),
     );
     expect(names.sort()).toEqual(
-      withActionTools(["search", "search_company_knowledge", "system_health"]),
+      withActionTools(["ask_document", "list_documents", "search", "search_company_knowledge", "system_health"]),
     );
     expect(names).not.toContain("database_summary");
     expect(names).not.toContain("fetch");
