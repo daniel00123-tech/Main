@@ -4,13 +4,14 @@
  * Records William's current role first. Does not assume office_staff.
  * Authorised reads run without a lasting role change. Denial is proven
  * only with a temporary office_staff switch that always restores the
- * original role.
+ * operator-intended role (Director).
  */
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { persistIntendedRole, readIntendedRole, restoreIntendedRole } from "./lib/william-intended-role.mjs";
 
 const API = "https://api.infrastack.app";
 const ACCEPTANCE_PATH = "/api/internal/cmd15/microsoft-acceptance/xero-reads";
@@ -25,7 +26,7 @@ const AUTHORISED_ROLES = new Set([
   "company_admin",
   "operations_manager",
 ]);
-const TEMP_AUTHORISED_ROLE = "finance_team";
+const TEMP_AUTHORISED_ROLE = "director";
 
 function d1(command) {
   const out = execFileSync(
@@ -78,7 +79,9 @@ async function runPhase(phase) {
 }
 
 const recorded = membershipRole();
-const originalRole = recorded?.role ?? null;
+const intended = readIntendedRole(apiDir);
+persistIntendedRole(apiDir, intended, "run-william-xero-reads");
+const originalRole = intended === "director" ? "director" : (recorded?.role ?? null);
 const report = {
   recordedBefore: recorded,
   originalRole,
@@ -88,6 +91,9 @@ const report = {
 if (!recorded) {
   console.error(JSON.stringify({ error: "William membership missing", recorded }, null, 2));
   process.exit(1);
+}
+if (intended === "director" && recorded.role !== "director") {
+  report.alignedToIntended = restoreIntendedRole(apiDir, recorded.role, "align live role to operator-intended Director");
 }
 
 let elevated = false;
@@ -107,8 +113,8 @@ try {
 } catch (err) {
   report.authorisedError = err instanceof Error ? err.message : String(err);
 } finally {
-  if (elevated || (AUTHORISED_ROLES.has(membershipRole()?.role) && !AUTHORISED_ROLES.has(originalRole))) {
-    report.restoredAfterReads = setRole(originalRole, "membership.role_restored", TEMP_AUTHORISED_ROLE);
+  if (elevated || membershipRole()?.role !== originalRole) {
+    report.restoredAfterReads = restoreIntendedRole(apiDir, TEMP_AUTHORISED_ROLE, "restore intended Director after authorised Xero reads");
   }
 }
 
@@ -123,10 +129,13 @@ try {
   report.denialError = err instanceof Error ? err.message : String(err);
 } finally {
   if (switched || membershipRole()?.role !== originalRole) {
-    report.restored = setRole(originalRole, "membership.role_restored", "office_staff");
+    report.restored = restoreIntendedRole(apiDir, "office_staff", "controlled William Xero read acceptance");
   }
 }
 
+if (membershipRole()?.role !== intended) {
+  report.finalRestore = restoreIntendedRole(apiDir, membershipRole()?.role, "final restore intended Director");
+}
 report.finalMembership = membershipRole();
 writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
 const readsProof = report.authorisedRun?.body?.proof ?? null;

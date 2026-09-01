@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
  * Controlled William ChatGPT acceptance runner.
- * Records office_staff, elevates to finance_team, probes the live ChatGPT MCP
- * path, then always restores office_staff. Never prints tokens or secrets.
+ * Records the live role. William is intended Director — this runner must not
+ * leave him as office_staff. Never prints tokens or secrets.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { persistIntendedRole, readIntendedRole, restoreIntendedRole } from "./lib/william-intended-role.mjs";
 
 const API = "https://api.infrastack.app";
 const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -70,8 +71,23 @@ async function runPhase(phase) {
 }
 
 const recorded = membershipRole();
+const intended = readIntendedRole(apiDir);
+persistIntendedRole(apiDir, intended, "run-william-chatgpt-acceptance");
+if (intended === "director" || recorded?.role === "director") {
+  const restored = restoreIntendedRole(apiDir, recorded?.role, "william is intended Director");
+  const report = {
+    skipped: true,
+    reason: "William is intended Director; office_staff elevate/restore loop is retired",
+    recordedBefore: recorded,
+    intendedRole: intended,
+    finalMembership: restored.membership,
+  };
+  writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
+  console.log(JSON.stringify({ reportPath: REPORT_PATH, ...report }, null, 2));
+  process.exit(0);
+}
 if (!recorded || recorded.role !== ORIGINAL_ROLE) {
-  console.error(JSON.stringify({ error: "Refusing to elevate: live role is not office_staff", recorded }, null, 2));
+  console.error(JSON.stringify({ error: "Refusing to elevate: live role is not office_staff", recorded, intended }, null, 2));
   process.exit(1);
 }
 
@@ -106,7 +122,7 @@ try {
   report.restoreProbeError = err instanceof Error ? err.message : String(err);
 }
 
-report.finalMembership = membershipRole();
+report.finalMembership = restoreIntendedRole(apiDir, membershipRole()?.role, "william chatgpt acceptance").membership;
 report.chatgptConnection = d1(
   `SELECT id, status, last_used_at, oauth_client_id FROM ai_user_connections WHERE id = 'aiu_275e6019-4ae9-4f8a-a655-0be747bd8418';`,
 );
@@ -119,6 +135,7 @@ console.log(
       recordedBeforeElevate: report.recordedBeforeElevate,
       elevatedRole: report.elevated?.membership?.role ?? null,
       restoredRole: report.finalMembership?.role ?? null,
+      intendedRole: intended,
       elevateError: report.elevateError ?? null,
       elevatedHttpStatus: report.elevatedRun?.httpStatus ?? null,
       restoredHttpStatus: report.restoredRun?.httpStatus ?? null,
@@ -128,4 +145,4 @@ console.log(
   ),
 );
 
-process.exit(report.finalMembership?.role === ORIGINAL_ROLE && !report.elevateError ? 0 : 1);
+process.exit(report.finalMembership?.role === intended && !report.elevateError ? 0 : 1);

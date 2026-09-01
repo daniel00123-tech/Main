@@ -59,6 +59,7 @@ describe("Elvex RBAC overlay", () => {
         toolName: "xero_sales_summary",
       }).allowed,
     ).toBe(true);
+    expect(elvexCan("director", "xero.sales.read")).toBe(true);
     expect(
       elvexAllowsAction("director", "xero.sales.summary", { toolName: "xero_sales_summary" }).allowed,
     ).toBe(true);
