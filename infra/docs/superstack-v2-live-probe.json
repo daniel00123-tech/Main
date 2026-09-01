@@ -3,17 +3,17 @@
     "id": "membership_78495c59-cff6-4db5-9986-a351ebe154f1",
     "user_id": "user_b0db1fc5-692c-436d-99e6-392966b20df8",
     "company_id": "co_el",
-    "role": "director",
+    "role": "office_staff",
     "status": "active",
-    "updated_at": "2026-09-01 20:22:29"
+    "updated_at": "2026-09-01 20:39:40"
   },
   "intended": "director",
   "public": {
     "health": {
       "status": "ok",
       "environment": "production",
-      "timestamp": "2026-09-01T20:24:50.576Z",
-      "versionId": "c39cffaa-af7e-4d32-b80d-d23b77f7451e"
+      "timestamp": "2026-09-01T20:43:55.869Z",
+      "versionId": "2fc0dc77-816c-48c6-b408-a69292cb0207"
     },
     "portalChatUnauth": {
       "status": 401,
@@ -333,8 +333,8 @@
     },
     "catalogue": {
       "httpStatus": 200,
-      "count": 0,
-      "firstTitle": null,
+      "count": 10,
+      "firstTitle": "Elvex Jobs.xlsx",
       "note": "Sorted by provider modified_at (latest changed).",
       "error": null
     }
@@ -384,8 +384,8 @@
         "code": -32003,
         "message": "Xero is connected for EL Business, but your Office Staff permissions don’t allow access to Xero financial data. If you need access, ask your manager or an INFRA administrator to update your permissions.",
         "data": {
-          "correlationId": "corr_6031c2c4-e4ef-4f20-94df-4fc0077996dc",
-          "requestId": "req_824fe48b-67fa-4ff0-943d-992ff8fc1a9b",
+          "correlationId": "corr_f71a31f0-b7bf-45b4-bc8e-0c8c2dda107b",
+          "requestId": "req_5175c75a-f54f-44f1-8403-34053c1a150a",
           "httpStatus": 403,
           "errorCode": "permission_denied",
           "action": "xero.sales.summary",
@@ -403,8 +403,8 @@
           "code": -32003,
           "message": "Xero is connected for EL Business, but your Office Staff permissions don’t allow access to Xero financial data. If you need access, ask your manager or an INFRA administrator to update your permissions.",
           "data": {
-            "correlationId": "corr_6031c2c4-e4ef-4f20-94df-4fc0077996dc",
-            "requestId": "req_824fe48b-67fa-4ff0-943d-992ff8fc1a9b",
+            "correlationId": "corr_f71a31f0-b7bf-45b4-bc8e-0c8c2dda107b",
+            "requestId": "req_5175c75a-f54f-44f1-8403-34053c1a150a",
             "httpStatus": 403,
             "errorCode": "permission_denied",
             "action": "xero.sales.summary",
@@ -428,7 +428,7 @@
       "company_id": "co_el",
       "role": "director",
       "status": "active",
-      "updated_at": "2026-09-01 20:26:11"
+      "updated_at": "2026-09-01 20:45:24"
     }
   },
   "officeStaffRole": "office_staff",
@@ -438,7 +438,7 @@
     "company_id": "co_el",
     "role": "director",
     "status": "active",
-    "updated_at": "2026-09-01 20:26:11"
+    "updated_at": "2026-09-01 20:45:24"
   },
   "intendedAfter": "director",
   "oauthStillValidAfterDenial": true,
