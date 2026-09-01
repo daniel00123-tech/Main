@@ -37,6 +37,7 @@ export type WhatsAppEntityMemory = {
   lastSourceSystem?: string | null;
   lastSearchQuery?: string | null;
   lastUserQuestion?: string | null;
+  lastContentQuestion?: string | null;
   lastAnswerText?: string | null;
   currentScope?: string | null;
   currentBusinessSystem?: string | null;
@@ -78,6 +79,7 @@ export function serializeEntityMemory(memory: WhatsAppEntityMemory): string {
     lastSourceSystem: memory.lastSourceSystem ?? memory.lastDocument?.sourceSystem ?? null,
     lastSearchQuery: memory.lastSearchQuery ?? null,
     lastUserQuestion: memory.lastUserQuestion ?? null,
+    lastContentQuestion: memory.lastContentQuestion ?? null,
     lastAnswerText: memory.lastAnswerText ?? null,
     currentScope: memory.currentScope ?? null,
     currentBusinessSystem: memory.currentBusinessSystem ?? null,
@@ -220,6 +222,8 @@ export function mergeEntityMemory(
         : lastDocument?.sourceSystem ?? prior.lastSourceSystem ?? null,
     lastSearchQuery: next.lastSearchQuery !== undefined ? next.lastSearchQuery : prior.lastSearchQuery,
     lastUserQuestion: next.lastUserQuestion !== undefined ? next.lastUserQuestion : prior.lastUserQuestion,
+    lastContentQuestion:
+      next.lastContentQuestion !== undefined ? next.lastContentQuestion : prior.lastContentQuestion,
     lastAnswerText: next.lastAnswerText !== undefined ? next.lastAnswerText : prior.lastAnswerText,
     currentScope: next.currentScope !== undefined ? next.currentScope : prior.currentScope,
     currentBusinessSystem:

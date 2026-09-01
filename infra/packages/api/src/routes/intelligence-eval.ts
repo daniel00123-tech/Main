@@ -4,6 +4,8 @@ import { probeWorkersAiModels, runOfflineBenchmarks, selectWinningModel } from "
 import { evaluationCases } from "../services/intelligence/eval/cases.js";
 import { runAdversarialSuite, sanitizeReport } from "../services/intelligence/eval/adversarial-runner.js";
 import { ADVERSARIAL_SUITE_VERSION, assertSuiteIntegrity } from "../services/intelligence/eval/adversarial-scenarios.js";
+import { instantiateLiveDocQaSequences } from "../services/intelligence/eval/live-docqa-sequences.js";
+import { FALLBACK_ADAPTERS } from "../services/intelligence/eval/adversarial-scenarios.js";
 
 const routes = new Hono<{ Bindings: Env }>();
 
@@ -57,6 +59,18 @@ routes.post("/api/internal/intelligence-eval", async (c) => {
       integrity,
       sendWhatsApp: false,
       ...sanitizeReport(run),
+    });
+  }
+  if (action === "live-docqa-offline") {
+    return c.json({
+      ok: true,
+      action,
+      transport: "OFFLINE",
+      sequences: {
+        caddington: instantiateLiveDocQaSequences(FALLBACK_ADAPTERS.caddington).length,
+        elvex: instantiateLiveDocQaSequences(FALLBACK_ADAPTERS.elvex).length,
+      },
+      sendWhatsApp: false,
     });
   }
   const offline = await runOfflineBenchmarks();
