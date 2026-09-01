@@ -184,8 +184,8 @@ export default function PortalDashboardPage() {
         Connect a system
       </Link>
     ) : (
-      <Link to={`${base}/usage`} className="button button-secondary">
-        View usage
+      <Link to={`${base}/chat`} className="button button-primary">
+        Open chat
       </Link>
     );
 

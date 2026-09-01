@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageSquare,
   Plug,
   Settings,
   Users,
@@ -45,6 +46,7 @@ type NavItem = {
 
 const ALL_NAV: NavItem[] = [
   { path: "dashboard", label: "Overview", icon: <LayoutDashboard size={18} />, section: "overview" },
+  { path: "chat", label: "Chat", icon: <MessageSquare size={18} />, section: "work" },
   { path: "ai-connections", label: "AI", icon: <Bot size={18} />, section: "work" },
   {
     path: "automations",

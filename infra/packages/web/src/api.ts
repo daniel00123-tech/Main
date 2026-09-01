@@ -64,6 +64,47 @@ export interface RolePresetResponse {
   deniedByDefault: ToolAction[];
 }
 
+export type PortalChatMessage = {
+  id: string;
+  conversationId: string;
+  companyId: string;
+  userId: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  metadata: {
+    kind?: string | null;
+    confidence?: string | null;
+    scope?: string | null;
+    toolNames?: string[];
+    sources?: Array<{ id: string; title: string; url?: string | null }>;
+    permissionDenied?: boolean;
+    controlledAction?: boolean;
+    citeSource?: boolean;
+  };
+};
+
+export type PortalChatConversation = {
+  id: string;
+  companyId: string;
+  userId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  context?: {
+    currentDocument?: { id: string; title: string; url?: string | null } | null;
+    recentDocuments?: Array<{ id: string; title: string; url?: string | null }>;
+  };
+  messages?: PortalChatMessage[];
+};
+
+export type PortalChatTurnResult = {
+  conversation: PortalChatConversation;
+  userMessage: PortalChatMessage;
+  assistantMessage: PortalChatMessage;
+  createdConversation: boolean;
+};
+
 export interface CompanyUsageResponse {
   companyId: string;
   summary: UsageSummary;
@@ -393,6 +434,37 @@ export const api = {
   getCompany: (slug: string) => fetchJson<Company>(`/api/companies/${slug}`),
   getCompanyOverview: (slug: string) =>
     fetchJson<CompanyOverview>(`/api/companies/${slug}/overview`),
+  listPortalConversations: (slug: string) =>
+    fetchJson<{ conversations: PortalChatConversation[] }>(`/api/companies/${slug}/chat/conversations`),
+  createPortalConversation: (slug: string, title?: string) =>
+    fetchJson<{ conversation: PortalChatConversation }>(`/api/companies/${slug}/chat/conversations`, {
+      method: "POST",
+      body: JSON.stringify(title ? { title } : {}),
+    }),
+  getPortalConversation: (slug: string, id: string) =>
+    fetchJson<{ conversation: PortalChatConversation }>(
+      `/api/companies/${slug}/chat/conversations/${encodeURIComponent(id)}`,
+    ),
+  renamePortalConversation: (slug: string, id: string, title: string) =>
+    fetchJson<{ conversation: PortalChatConversation }>(
+      `/api/companies/${slug}/chat/conversations/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify({ title }) },
+    ),
+  sendPortalChatMessage: (slug: string, input: { conversationId?: string | null; text: string }) =>
+    fetchJson<PortalChatTurnResult>(
+      input.conversationId
+        ? `/api/companies/${slug}/chat/conversations/${encodeURIComponent(input.conversationId)}/messages`
+        : `/api/companies/${slug}/chat/messages`,
+      { method: "POST", body: JSON.stringify({ text: input.text, conversationId: input.conversationId }) },
+    ),
+  streamPortalChatMessage: (
+    slug: string,
+    input: {
+      conversationId?: string | null;
+      text: string;
+      onStatus?: (status: { label: string; tool: string }) => void;
+    },
+  ) => streamPortalChat(slug, input),
   listCompanyActions: (slug: string, status?: string) => {
     const query = status ? `?status=${encodeURIComponent(status)}` : "";
     return fetchJson<{ plans: ActionPlanRecord[] }>(`/api/companies/${slug}/actions${query}`);
@@ -1949,6 +2021,52 @@ export type QualityLoopCentre = {
     };
   } | null;
 };
+
+async function streamPortalChat(
+  slug: string,
+  input: {
+    conversationId?: string | null;
+    text: string;
+    onStatus?: (status: { label: string; tool: string }) => void;
+  },
+): Promise<PortalChatTurnResult> {
+  const path = input.conversationId
+    ? `/api/companies/${slug}/chat/conversations/${encodeURIComponent(input.conversationId)}/messages/stream`
+    : `/api/companies/${slug}/chat/messages/stream`;
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: input.text, conversationId: input.conversationId }),
+  });
+  if (!response.ok || !response.body) {
+    return api.sendPortalChatMessage(slug, { conversationId: input.conversationId, text: input.text });
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: PortalChatTurnResult | null = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() ?? "";
+    for (const chunk of chunks) {
+      const event = chunk.match(/^event: (\w+)/m)?.[1];
+      const dataLine = chunk.match(/^data: (.+)$/m)?.[1];
+      if (!event || !dataLine) continue;
+      const data = JSON.parse(dataLine) as Record<string, unknown>;
+      if (event === "status") input.onStatus?.(data as { label: string; tool: string });
+      if (event === "done") result = data as unknown as PortalChatTurnResult;
+      if (event === "error") throw new ApiError(String(data.error ?? "Chat failed"), Number(data.status ?? 500));
+    }
+  }
+  if (!result) {
+    return api.sendPortalChatMessage(slug, { conversationId: input.conversationId, text: input.text });
+  }
+  return result;
+}
 
 function toQuery(query?: Record<string, string | undefined>) {
   if (!query) return "";
