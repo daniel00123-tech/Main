@@ -7,6 +7,8 @@ import {
 import {
   infraMcpGatewayUrl,
   infraPublicApiBase,
+  oauthAuthorizeContinuePath,
+  oauthLoginRedirectUrl,
   portalOrigin,
 } from "./public-urls";
 import type { Env } from "../env";
@@ -36,5 +38,30 @@ describe("public URLs", () => {
     expect(portalOrigin(configured, "https://infra-web.pages.dev")).toBe(
       "https://infra-web.pages.dev",
     );
+  });
+
+  it("keeps OAuth login and continue on the portal, never api/workers.dev", () => {
+    const configured = env({
+      INFRA_PUBLIC_API_URL: LEGACY_API_ORIGIN,
+      PORTAL_PUBLIC_ORIGIN: INFRA_PORTAL_ORIGIN,
+    });
+    const authorize =
+      "https://infra-api.daniel-dwyer123.workers.dev/oauth/authorize?response_type=code&client_id=chatgpt-mcp&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2FoVPk3&code_challenge=abc&code_challenge_method=S256";
+    const request = new Request(authorize);
+    expect(oauthAuthorizeContinuePath(request)).toBe(
+      "/oauth/authorize?response_type=code&client_id=chatgpt-mcp&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2FoVPk3&code_challenge=abc&code_challenge_method=S256",
+    );
+    const login = oauthLoginRedirectUrl(configured, request);
+    expect(login.startsWith("https://app.infrastack.app/portal/login?")).toBe(true);
+    expect(login).not.toContain("workers.dev");
+    expect(login).not.toContain("api.infrastack.app");
+    expect(login).toContain("next=%2Foauth%2Fauthorize");
+
+    const proxied = new Request(authorize, {
+      headers: { "X-Forwarded-Host": "app.infrastack.app", "X-Forwarded-Proto": "https" },
+    });
+    const proxiedLogin = oauthLoginRedirectUrl(configured, proxied);
+    expect(proxiedLogin.startsWith("https://app.infrastack.app/portal/login?")).toBe(true);
+    expect(proxiedLogin).toContain("next=%2Foauth%2Fauthorize");
   });
 });
