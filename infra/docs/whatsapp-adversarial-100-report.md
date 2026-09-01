@@ -112,7 +112,11 @@ These 100 scores use the **same scope/router/tools path** with the policy comple
 
 ## M. Deploy
 
-After-scores improved and gates passed → `cd /workspace/infra/packages/api && npx wrangler deploy` for existing `infra-api` only.
+After-scores improved and gates passed → existing `infra-api` deployed twice (fixes, then batched persist route).
+
+- Version `6159a776-ee96-4b37-9422-d1af4eba6a1b` — systemic intelligence fixes
+- Version `fed669fe-fafa-44bb-8347-e92b04313d8b` — batched persist eval
+- Webhook still `https://api.infrastack.app/api/webhooks/whatsapp` (GET without hub params → 403 `Invalid verification request`, as designed)
 
 ## N. Live UAT
 
@@ -120,10 +124,11 @@ After-scores improved and gates passed → `cd /workspace/infra/packages/api && 
 - Elvex: Ella Mae is the persist identity (director, WhatsApp-linked). William was not messaged. **No Meta send.**
 - REAL META required `wamid.HBg…` — none.
 - `WHATSAPP_META_PROBE_KEY` was not created; nothing to delete.
+- A temporary `ADVERSARIAL_EVAL_KEY` was set only to smoke the persist route on `api.infrastack.app`, which returned 404 (custom-domain auth/propagation). The key was deleted immediately and is not present on infra-api.
 
 ## O. Remaining gaps
 
-- Live Scout persist-inclusive 100 against Caddington + Elvex connectors still to be run through the gated route when an operator is watching
+- Live Scout persist-inclusive 100 against Caddington + Elvex connectors still to be run in batches through the gated route when an operator is watching (one Worker request cannot finish 100 live Scout turns)
 - Elvex WhatsApp UAT identity is not signed off — persist only
 - Hybrid ranking helps title collisions; weak OCR / empty chunks remain a SEARCH/INDEX risk on live data
 - Controlled writes stay on Action Engine — unchanged
