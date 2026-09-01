@@ -292,6 +292,8 @@ describe("INFRA MCP Company Knowledge adaptors", () => {
       withActionTools([
         "search",
         "fetch",
+        "ask_document",
+        "list_documents",
         "search_company_knowledge",
         "get_knowledge_document",
         "system_health",

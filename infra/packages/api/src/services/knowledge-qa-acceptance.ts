@@ -10,8 +10,8 @@ import { executeRegisteredMcpTool, listMcpEnvironments } from "./control-plane";
 import { toStandardSearchPayload } from "./mcp-knowledge-standard";
 
 const TENANTS = [
-  { companyId: "co_el", label: "elvex" },
-  { companyId: "co_caddington", label: "caddington" },
+  { companyId: "co_el", label: "elvex", query: "health and safety policy" },
+  { companyId: "co_caddington", label: "caddington", query: "company policy" },
 ] as const;
 
 export async function runKnowledgeQaAcceptance(
@@ -23,7 +23,7 @@ export async function runKnowledgeQaAcceptance(
     : [...TENANTS];
   const tenants: Record<string, unknown>[] = [];
   for (const tenant of targets) {
-    tenants.push(await runOneTenant(env, tenant.companyId, tenant.label));
+    tenants.push(await runOneTenant(env, tenant.companyId, tenant.label, tenant.query));
   }
   return { tenants };
 }
@@ -32,6 +32,7 @@ async function runOneTenant(
   env: Env,
   companyId: string,
   label: string,
+  query: string,
 ): Promise<Record<string, unknown>> {
   const mcp = (await listMcpEnvironments(env.DB, companyId)).find((item) => item.enabled);
   if (!mcp) {
@@ -40,7 +41,7 @@ async function runOneTenant(
   const search = await executeRegisteredMcpTool(env, {
     mcpId: mcp.id,
     toolName: "search_company_knowledge",
-    arguments: { query: "company policy" },
+    arguments: { query },
     actorUserId: "system",
     actorEmail: "knowledge-qa-acceptance",
     sourceClient: "infra-ask-document",
@@ -118,6 +119,8 @@ async function runOneTenant(
     searchQuality: hits.length,
     documentId: first.id,
     title: first.title,
+    fetchBackend: qa.ok ? qa.diagnostics.fetchBackend : null,
+    chunkCount: qa.ok ? qa.diagnostics.chunkCount : 0,
     factual: summariseAsk(qa),
     whatExactly: summariseAsk(follow),
     when: summariseAsk(when),

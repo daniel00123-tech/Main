@@ -39,14 +39,45 @@ function isWriteLikeTool(name: string): boolean {
   return isXeroWriteToolName(name) || /create|approve|send|allocate|void|update|delete|draft/i.test(name);
 }
 
-export function pickCompanyXeroTool(available: string[], desired: string): string | null {
+function isXeroInvoiceUuid(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim())
+  );
+}
+
+export function pickCompanyXeroTool(
+  available: string[],
+  desired: string,
+  args: Record<string, unknown> = {},
+): string | null {
   const names = new Set(available);
-  const aliases = EL_XERO_READ_ALIASES[desired] ?? [desired];
+  let aliases = EL_XERO_READ_ALIASES[desired] ?? [desired];
+  if (desired === "xero_get_invoice" && !isXeroInvoiceUuid(args.invoice_id ?? args.invoiceId)) {
+    aliases = aliases.filter((name) => name !== "get_xero_invoice" && name !== "xero_get_invoice");
+    if (!aliases.includes("search_xero_invoices")) aliases = [...aliases, "search_xero_invoices"];
+  }
   for (const alias of aliases) {
     if (names.has(alias) && !isWriteLikeTool(alias)) return alias;
   }
   if (names.has(desired) && !isWriteLikeTool(desired)) return desired;
   return null;
+}
+
+export function companyXeroPayloadLooksFailed(record: Record<string, unknown>): boolean {
+  const code = typeof record.code === "string" ? record.code : "";
+  if (/^EL_XERO_|XERO_MCP_UPSTREAM|XERO_AUTH|TIMEOUT/i.test(code)) return true;
+  if (record.isError === true) return true;
+  if (typeof record.error === "string" && record.error.trim()) {
+    const hasData =
+      Array.isArray(record.invoices) ||
+      Array.isArray(record.bills) ||
+      record.invoice != null ||
+      typeof record.sales_total === "number" ||
+      record.summary != null;
+    return !hasData;
+  }
+  return false;
 }
 
 async function ensureXeroToolsAllowlisted(
@@ -86,12 +117,18 @@ export function mapArgsForCompanyXeroTool(
   if (desired === "xero_list_overdue_invoices") {
     forwarded.overdueOnly = true;
     forwarded.unpaidOnly = true;
+    forwarded.overdue = true;
+    forwarded.outstanding = true;
   }
-  if (desired === "xero_search_invoices" && args.unpaidOnly === true) {
+  if (desired === "xero_search_invoices" && (args.unpaidOnly === true || args.outstanding === true)) {
     forwarded.unpaidOnly = true;
+    forwarded.outstanding = true;
   }
   if (desired === "xero_get_invoice" && forwardName === "search_xero_invoices") {
     forwarded.query = args.invoiceNumber ?? args.invoiceId ?? args.query;
+  }
+  if (forwardName === "get_xero_invoice") {
+    forwarded.invoice_id = args.invoice_id ?? args.invoiceId ?? args.invoiceNumber;
   }
   if (
     (desired === "xero_search_invoices" || desired === "xero_sales_summary" || desired === "xero_top_customers") &&
@@ -100,8 +137,11 @@ export function mapArgsForCompanyXeroTool(
   ) {
     delete forwarded.query;
   }
-  if (forwardName === "analyse_xero_sales" && !forwarded.query) {
-    forwarded.query = typeof args.periodLabel === "string" ? args.periodLabel : "sales";
+  if (forwardName === "analyse_xero_sales") {
+    const months = Number(args.months);
+    return {
+      months: Number.isFinite(months) && months >= 1 ? Math.min(Math.trunc(months), 12) : 6,
+    };
   }
   if (
     (desired === "xero_sales_summary" || desired === "xero_search_invoices" || desired === "xero_top_customers") &&
@@ -109,8 +149,12 @@ export function mapArgsForCompanyXeroTool(
   ) {
     forwarded.invoiceType = "ACCREC";
   }
+  const requestedTop = Number(args.top ?? args.limit);
+  const defaultLimit = desired === "xero_sales_summary" || desired === "xero_top_customers" ? 50 : 25;
+  const top = Number.isFinite(requestedTop) ? requestedTop : defaultLimit;
+  forwarded.top = Math.min(Math.max(1, Math.trunc(top)), 50);
   if (forwarded.limit == null) {
-    forwarded.limit = desired === "xero_sales_summary" || desired === "xero_top_customers" ? 100 : 50;
+    forwarded.limit = forwarded.top;
   }
   return forwarded;
 }
@@ -281,6 +325,14 @@ export function composeInfraXeroReadResult(
   };
 }
 
+export function isRetryableCompanyXeroUpstream(status: number, error?: string | null): boolean {
+  return (
+    status === 502 ||
+    status === 503 ||
+    /timeout|temporar|unavailable|524|522/i.test(String(error ?? ""))
+  );
+}
+
 export async function executeCompanyMcpXeroRead(
   env: Env,
   input: {
@@ -303,17 +355,14 @@ export async function executeCompanyMcpXeroRead(
     return { ok: false, status: 503, error: "Business MCP unavailable", code: "XERO_MCP_UNAVAILABLE" };
   }
 
-  let listedNames = Object.values(EL_XERO_READ_ALIASES).flat();
-  let forwardName = pickCompanyXeroTool(listedNames, input.toolName);
-  if (!forwardName) {
-    try {
-      const listed = await listMcpTools(env, mcp.endpointUrl, mcp.authSecretRef, mcp.serviceBindingRef);
-      listedNames = listed.tools.map((tool) => tool.name);
-      forwardName = pickCompanyXeroTool(listedNames, input.toolName);
-    } catch {
-      forwardName = pickCompanyXeroTool(Object.values(EL_XERO_READ_ALIASES).flat(), input.toolName);
-    }
+  let listedNames: string[] = [];
+  try {
+    const listed = await listMcpTools(env, mcp.endpointUrl, mcp.authSecretRef, mcp.serviceBindingRef);
+    listedNames = listed.tools.map((tool) => tool.name);
+  } catch {
+    listedNames = [];
   }
+  const forwardName = pickCompanyXeroTool(listedNames, input.toolName, input.arguments ?? {});
   if (!forwardName) {
     return {
       ok: false,
@@ -326,21 +375,37 @@ export async function executeCompanyMcpXeroRead(
   await ensureXeroToolsAllowlisted(env.DB, input.companyId, mcp.id, [forwardName, input.toolName]);
 
   const started = Date.now();
-  const execution = await executeRegisteredMcpTool(env, {
+  const readArgs = mapArgsForCompanyXeroTool(input.toolName, forwardName, input.arguments ?? {});
+  let execution = await executeRegisteredMcpTool(env, {
     mcpId: mcp.id,
     toolName: forwardName,
-    arguments: mapArgsForCompanyXeroTool(input.toolName, forwardName, input.arguments ?? {}),
+    arguments: readArgs,
     actorUserId: input.actorUserId ?? "system",
     actorEmail: input.actor,
     sourceClient: "infra-xero",
     skipUsageRecording: true,
   });
+  const retryable = isRetryableCompanyXeroUpstream(
+    execution.status,
+    "error" in execution ? execution.error : null,
+  );
+  if (execution.status !== 200 && retryable) {
+    execution = await executeRegisteredMcpTool(env, {
+      mcpId: mcp.id,
+      toolName: forwardName,
+      arguments: readArgs,
+      actorUserId: input.actorUserId ?? "system",
+      actorEmail: input.actor,
+      sourceClient: "infra-xero",
+      skipUsageRecording: true,
+    });
+  }
 
   if (execution.status !== 200) {
     return {
       ok: false,
       status: execution.status >= 400 && execution.status < 600 ? (execution.status as 403 | 404 | 409 | 502 | 503) : 502,
-      error: execution.error ?? "I couldn’t retrieve Xero data just now.",
+      error: "I couldn’t retrieve Xero data just now.",
       code: execution.status === 404 ? "XERO_TOOL_NOT_IMPLEMENTED" : "XERO_MCP_UPSTREAM",
     };
   }
@@ -358,6 +423,15 @@ export async function executeCompanyMcpXeroRead(
     record = upstream as Record<string, unknown>;
   } else {
     record = { result: upstream };
+  }
+  if (companyXeroPayloadLooksFailed(record)) {
+    const upstreamCode = typeof record.code === "string" ? record.code : "";
+    return {
+      ok: false,
+      status: 502,
+      error: "I couldn’t retrieve Xero data just now.",
+      code: /^EL_XERO_/.test(upstreamCode) ? upstreamCode : "XERO_MCP_UPSTREAM",
+    };
   }
   return {
     ok: true,
