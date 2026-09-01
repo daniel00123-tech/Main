@@ -76,6 +76,7 @@ import PortalSettingsPage from "./portal/PortalSettingsPage";
 import PortalActivityPage from "./portal/PortalActivityPage";
 import PortalActionsPage from "./portal/PortalActionsPage";
 import PortalAutomationsPage from "./portal/PortalAutomationsPage";
+import PortalChatPage from "./portal/PortalChatPage";
 import AdminCompanySwitcher from "./components/AdminCompanySwitcher";
 import ScopeBanner from "./components/ScopeBanner";
 import { AdminScopeProvider } from "./context/AdminScopeContext";
@@ -360,9 +361,11 @@ export default function App() {
         <Route path="/portal/activity" element={<PortalEntryRedirect />} />
         <Route path="/portal/actions" element={<PortalEntryRedirect />} />
         <Route path="/portal/automations" element={<PortalEntryRedirect />} />
+        <Route path="/portal/chat" element={<PortalEntryRedirect />} />
         <Route path="/portal/:companySlug" element={<PortalShell />}>
           <Route index element={<PortalDashboardPage />} />
           <Route path="dashboard" element={<PortalDashboardPage />} />
+          <Route path="chat" element={<PortalChatPage />} />
           <Route path="connectors" element={<PortalConnectorsPage />} />
           <Route path="microsoft-365" element={<PortalMicrosoft365Page />} />
           <Route path="ai-connections" element={<PortalAiConnectionsPage />} />

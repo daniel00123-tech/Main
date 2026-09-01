@@ -1079,6 +1079,7 @@ export function mapChannel(clientKind?: string | null): string {
     case "service":
       return "automation";
     case "portal":
+    case "portal_chat":
     case "infra-web":
     case "internal":
       return "portal";

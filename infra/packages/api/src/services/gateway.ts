@@ -1186,6 +1186,8 @@ function humanSource(source: string): string {
     chatgpt: "ChatGPT",
     claude: "Claude",
     whatsapp: "WhatsApp",
+    portal: "Portal",
+    portal_chat: "Company chat",
   };
   return map[source] ?? source;
 }

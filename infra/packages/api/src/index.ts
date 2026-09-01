@@ -92,6 +92,7 @@ import whatsappRoutes from "./routes/whatsapp";
 import whatsappUxUatRoutes from "./routes/whatsapp-ux-uat";
 import intelligenceEvalRoutes from "./routes/intelligence-eval";
 import qualityLoopRoutes from "./routes/quality-loop";
+import portalChatRoutes from "./routes/portal-chat";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -109,6 +110,7 @@ app.route("/", whatsappRoutes);
 app.route("/", whatsappUxUatRoutes);
 app.route("/", intelligenceEvalRoutes);
 app.route("/", qualityLoopRoutes);
+app.route("/", portalChatRoutes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(

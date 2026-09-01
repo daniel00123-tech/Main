@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Bot, Copy, Check } from "lucide-react";
 import {
   AdvancedDetails,
@@ -173,7 +174,12 @@ export default function PortalAiConnectionsPage() {
     <div className="portal-page">
       <PortalPageHeader
         title="AI Access"
-        description="Connect ChatGPT or Claude to your business systems securely."
+        description={
+          <>
+            Connect ChatGPT or Claude to your business systems securely. You can also{" "}
+            <Link to={company ? `/portal/${company.slug}/chat` : "/portal"}>chat inside INFRA</Link>.
+          </>
+        }
       />
 
       {loadError ? <Notice tone="danger">{loadError}</Notice> : null}
