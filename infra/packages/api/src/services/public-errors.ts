@@ -7,8 +7,11 @@ export type PublicErrorCode =
   | "auth_reconnect"
   | "insufficient_credit"
   | "insufficient_permissions"
+  | "permission_denied"
   | "mcp_unavailable"
   | "connector_not_configured"
+  | "not_connected"
+  | "technical_failure"
   | "retry";
 
 const SAFE_PERMISSION_PREFIXES = [
@@ -17,6 +20,13 @@ const SAFE_PERMISSION_PREFIXES = [
   "role does not allow",
   "not allowed",
   "action not permitted",
+  "your current permissions",
+  "permissions don’t allow",
+  "permissions don't allow",
+  "doesn’t allow you",
+  "doesn't allow you",
+  "don’t allow access",
+  "don't allow access",
 ];
 
 export function publicToolErrorMessage(
@@ -77,13 +87,32 @@ export function publicToolErrorMessage(
       message: "Insufficient credit",
     };
   }
+  if (
+    lower.includes("isn’t connected") ||
+    lower.includes("isn't connected") ||
+    lower.includes("is not connected") ||
+    lower.includes("aren’t connected") ||
+    lower.includes("aren't connected")
+  ) {
+    return {
+      code: "not_connected",
+      message: text && text.length < 200 ? text : "This capability isn’t connected for this company.",
+    };
+  }
+  if (
+    lower.includes("couldn’t retrieve") ||
+    lower.includes("couldn't retrieve") ||
+    lower.includes("just now")
+  ) {
+    return { code: "technical_failure", message: text };
+  }
   if (httpStatus === 403) {
     if (text && SAFE_PERMISSION_PREFIXES.some((p) => lower.startsWith(p) || lower.includes(p))) {
-      return { code: "insufficient_permissions", message: text };
+      return { code: "permission_denied", message: text };
     }
     return {
-      code: "insufficient_permissions",
-      message: "Insufficient permissions",
+      code: "permission_denied",
+      message: "Your current permissions don’t allow this action.",
     };
   }
   if (
