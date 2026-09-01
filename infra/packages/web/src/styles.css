@@ -3506,6 +3506,82 @@ body,
   }
 }
 
+/* Quality improvement reviews — mobile tap targets (not hover-only) */
+.quality-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+}
+.quality-bulk-reason {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  max-width: 42ch;
+}
+.quality-review-section {
+  margin: 8px 0 28px;
+}
+.quality-review-hint {
+  margin: 0 0 12px;
+}
+.quality-tap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
+}
+.quality-tap-actions .button,
+.quality-page-actions .button,
+.quality-tap-target {
+  pointer-events: auto;
+  touch-action: manipulation;
+  min-height: 44px;
+  min-width: 88px;
+}
+.quality-select-label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  padding-right: 8px;
+}
+.quality-item-hint {
+  flex: 1 1 100%;
+  margin: 0;
+}
+.page-actions .quality-page-actions .button,
+.page-actions .quality-tap-target {
+  min-width: 88px;
+}
+
+@media (max-width: 768px) {
+  .quality-page-actions,
+  .quality-tap-actions {
+    width: 100%;
+  }
+  .page-actions .quality-page-actions .button,
+  .page-actions .quality-tap-target,
+  .quality-tap-actions .button,
+  .quality-tap-target {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 120px;
+    min-height: 44px;
+  }
+  .quality-bulk-reason {
+    width: 100%;
+    max-width: none;
+  }
+}
+
 /* ——— Public legal pages ——— */
 .legal-page {
   min-height: 100vh;

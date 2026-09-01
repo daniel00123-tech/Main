@@ -18,6 +18,15 @@ import {
   formatDate,
   toast,
 } from "../components";
+import {
+  acceptRemainingButton,
+  bulkLowButton,
+  itemActionsEnabled,
+  itemPrimaryHint,
+  itemPrimaryKind,
+  itemPrimaryLabel,
+  pendingOpen,
+} from "./quality-improvements-actions";
 
 type FilterKey = "all" | "pending" | "low" | "engineering" | "applied";
 
@@ -29,7 +38,7 @@ export default function QualityImprovementsPage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<QualityLoopCentre | null>(null);
   const [busy, setBusy] = useState(false);
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const [filter, setFilter] = useState<FilterKey>("pending");
   const [selected, setSelected] = useState<QualityLoopProposal | null>(null);
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof api.previewQualityLoopProposal>> | null>(null);
   const [checked, setChecked] = useState<string[]>([]);
@@ -79,16 +88,12 @@ export default function QualityImprovementsPage() {
     });
   }, [proposals, filter]);
 
-  const lowSafe = proposals.filter(
-    (row) =>
-      row.status === "pending_approval" &&
-      row.risk === "low" &&
-      row.applyClass === "AUTO_APPLY_SAFE" &&
-      !row.engineeringRequired,
-  );
+  const lowBulk = bulkLowButton(proposals);
+  const acceptBulk = acceptRemainingButton(proposals);
+  const openItems = pendingOpen(proposals);
 
   async function applyLow() {
-    if (!latest?.run.id) return;
+    if (!latest?.run.id || !lowBulk.enabled) return;
     setBusy(true);
     try {
       const result = await api.applyQualityLoopLow(latest.run.id);
@@ -117,13 +122,36 @@ export default function QualityImprovementsPage() {
         decision === "approve"
           ? result.status === "canary" || result.status === "promoted"
             ? "Applied to quality runtime canary."
-            : "Recorded. Engineering items are not auto-applied."
+            : "Accepted. Review recorded — this item is not auto-deployed."
           : `Proposal ${decision}d`,
       );
       await load();
       if (selected?.id === id) setSelected(null);
     } catch (err) {
       toast(err instanceof Error ? err.message : "Unable to update proposal", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function acceptRemaining() {
+    if (!latest?.run.id || !acceptBulk.enabled) return;
+    setBusy(true);
+    try {
+      const ids = acceptRemainingButton(proposals).count
+        ? proposals.filter((row) => itemPrimaryKind(row) === "accept").map((row) => row.id)
+        : [];
+      const result = await api.bulkQualityLoopDecide(latest.run.id, "approve", ids);
+      const failed = result.results.filter((row) => !row.ok).length;
+      toast(
+        failed
+          ? `Accepted ${result.results.length - failed} of ${result.results.length}. ${failed} failed.`
+          : `Accepted ${result.results.length} open item${result.results.length === 1 ? "" : "s"}. Review recorded — not auto-deployed.`,
+      );
+      setChecked([]);
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Unable to accept remaining items", "error");
     } finally {
       setBusy(false);
     }
@@ -185,13 +213,37 @@ export default function QualityImprovementsPage() {
           { label: "Improvement Reviews" },
         ]}
         actions={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Link className="button button-ghost button-small" to="/quality">
+          <div className="quality-page-actions">
+            <Link className="button button-ghost quality-tap-target" to="/quality">
               Quality issues
             </Link>
-            <Button type="button" variant="primary" disabled={busy || lowSafe.length === 0} onClick={() => void applyLow()}>
-              Apply all LOW-risk
-            </Button>
+            {lowBulk.showButton ? (
+              <Button
+                type="button"
+                variant="primary"
+                className="quality-tap-target"
+                disabled={busy || !lowBulk.enabled}
+                onClick={() => void applyLow()}
+              >
+                Apply all LOW-risk{lowBulk.count ? ` (${lowBulk.count})` : ""}
+              </Button>
+            ) : (
+              <p className="quality-bulk-reason" role="status">
+                {lowBulk.reason}. Use Accept or Reject on the open items below.
+              </p>
+            )}
+            {acceptBulk.showButton ? (
+              <Button
+                type="button"
+                variant="primary"
+                className="quality-tap-target"
+                disabled={busy || !acceptBulk.enabled}
+                title={acceptBulk.hint}
+                onClick={() => void acceptRemaining()}
+              >
+                Accept remaining open ({acceptBulk.count})
+              </Button>
+            ) : null}
           </div>
         }
       />
@@ -212,7 +264,7 @@ export default function QualityImprovementsPage() {
         <Kpi label="Conversations" value={String(metrics.conversationsAnalysed ?? data?.kpis.conversationsAnalysed ?? 0)} />
         <Kpi label="Quality" value={Number(metrics.qualityAverage ?? data?.kpis.qualityAverage ?? 0).toFixed(1)} />
         <Kpi label="Failed rate" value={`${Math.round(Number(metrics.failedRate ?? data?.kpis.failedRate ?? 0) * 100)}%`} />
-        <Kpi label="Open" value={String(counts.pending_approval ?? 0)} />
+        <Kpi label="Open" value={String(counts.pending_approval ?? openItems.length)} />
         <Kpi label="Applied" value={String((counts.promoted ?? 0) + (counts.canary ?? 0))} />
         <Kpi label="Rolled back" value={String(counts.rolled_back ?? 0)} />
       </div>
@@ -231,6 +283,142 @@ export default function QualityImprovementsPage() {
               Watchdog: {latest.ackNoFinalAudit.terminalWatchdog}.
             </div>
           ) : null}
+
+          <section className="quality-review-section" aria-labelledby="quality-proposals-heading">
+            <h2 className="section-title" id="quality-proposals-heading">
+              Proposed improvements
+            </h2>
+            <p className="muted small quality-review-hint">
+              {openItems.length
+                ? `${openItems.length} open item${openItems.length === 1 ? "" : "s"} need a review. Accept records the review and does not auto-deploy TIER B/C. Apply is only for pending LOW/MEDIUM AUTO_APPLY_SAFE items.`
+                : "No open items. Applied canary items can still be rolled back."}
+            </p>
+            <FilterBar className="filter-bar-mobile-stack">
+              <FilterChip active={filter === "all"} onClick={() => setFilter("all")} count={proposals.length}>
+                All
+              </FilterChip>
+              <FilterChip active={filter === "pending"} onClick={() => setFilter("pending")} count={openItems.length}>
+                Pending
+              </FilterChip>
+              <FilterChip active={filter === "low"} onClick={() => setFilter("low")} count={lowBulk.count}>
+                LOW safe
+              </FilterChip>
+              <FilterChip active={filter === "engineering"} onClick={() => setFilter("engineering")}>
+                Engineering
+              </FilterChip>
+              <FilterChip active={filter === "applied"} onClick={() => setFilter("applied")}>
+                Applied
+              </FilterChip>
+            </FilterBar>
+            {checked.length > 0 ? (
+              <div className="quality-tap-actions" style={{ margin: "8px 0 12px" }}>
+                <Button type="button" className="quality-tap-target" disabled={busy} onClick={() => void bulk("approve")}>
+                  Apply selected ({checked.length})
+                </Button>
+                <Button type="button" className="quality-tap-target" variant="secondary" disabled={busy} onClick={() => void bulk("reject")}>
+                  Reject selected
+                </Button>
+              </div>
+            ) : null}
+
+            {filtered.length === 0 ? (
+              <EmptyState
+                icon={<CircleAlert size={28} />}
+                title="No proposals match this filter"
+                description="Clear the filter to see every persisted improvement for this run."
+                action={
+                  <Button type="button" variant="secondary" className="quality-tap-target" onClick={() => setFilter("all")}>
+                    Show all
+                  </Button>
+                }
+              />
+            ) : (
+              <>
+                <div className="mobile-cards">
+                  <MobileRecordList>
+                    {filtered.map((row) => (
+                      <DataCard
+                        key={row.id}
+                        title={row.title}
+                        subtitle={`${(row.applyClass ?? "").replace(/_/g, " ")} · ${(row.recurrence ?? "").toLowerCase()}`}
+                        status={<StatusBadge status={row.risk} />}
+                        metric={row.status.replace(/_/g, " ")}
+                        actions={
+                          <ProposalActions
+                            row={row}
+                            busy={busy}
+                            checked={checked.includes(row.id)}
+                            onCheck={(on) => setChecked((current) => (on ? [...current, row.id] : current.filter((id) => id !== row.id)))}
+                            onOpen={() => void openDetail(row)}
+                            onDecide={decide}
+                            onRollback={rollback}
+                          />
+                        }
+                      >
+                        <p className="muted small">{row.summary}</p>
+                      </DataCard>
+                    ))}
+                  </MobileRecordList>
+                </div>
+                <div className="desktop-table table-wrap">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th></th>
+                        <th>Proposal</th>
+                        <th>Class</th>
+                        <th>Risk</th>
+                        <th>Status</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((row) => (
+                        <tr key={row.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={checked.includes(row.id)}
+                              onChange={(event) =>
+                                setChecked((current) =>
+                                  event.target.checked ? [...current, row.id] : current.filter((id) => id !== row.id),
+                                )
+                              }
+                              aria-label={`Select ${row.title}`}
+                            />
+                          </td>
+                          <td>
+                            <strong>{row.title}</strong>
+                            <div className="muted small">{row.summary}</div>
+                          </td>
+                          <td className="muted small">
+                            {(row.applyClass ?? "—").replace(/_/g, " ")}
+                            <div>{(row.recurrence ?? "").toLowerCase()}</div>
+                          </td>
+                          <td>
+                            <StatusBadge status={row.risk} />
+                          </td>
+                          <td>{row.status.replace(/_/g, " ")}</td>
+                          <td>
+                            <ProposalActions
+                              row={row}
+                              busy={busy}
+                              checked={checked.includes(row.id)}
+                              hideCheck
+                              onCheck={() => undefined}
+                              onOpen={() => void openDetail(row)}
+                              onDecide={decide}
+                              onRollback={rollback}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </section>
 
           <h2 className="section-title">Focused failures</h2>
           {latest.failedConversations.length === 0 ? (
@@ -287,132 +475,6 @@ export default function QualityImprovementsPage() {
               ))}
             </MobileRecordList>
           )}
-
-          <h2 className="section-title">Proposed improvements</h2>
-          <FilterBar className="filter-bar-mobile-stack">
-            <FilterChip active={filter === "all"} onClick={() => setFilter("all")} count={proposals.length}>
-              All
-            </FilterChip>
-            <FilterChip active={filter === "pending"} onClick={() => setFilter("pending")} count={proposals.filter((row) => row.status === "pending_approval").length}>
-              Pending
-            </FilterChip>
-            <FilterChip active={filter === "low"} onClick={() => setFilter("low")} count={lowSafe.length}>
-              LOW safe
-            </FilterChip>
-            <FilterChip active={filter === "engineering"} onClick={() => setFilter("engineering")}>
-              Engineering
-            </FilterChip>
-            <FilterChip active={filter === "applied"} onClick={() => setFilter("applied")}>
-              Applied
-            </FilterChip>
-          </FilterBar>
-          {checked.length > 0 ? (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0 12px" }}>
-              <Button type="button" size="sm" disabled={busy} onClick={() => void bulk("approve")}>
-                Apply selected ({checked.length})
-              </Button>
-              <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void bulk("reject")}>
-                Reject selected
-              </Button>
-            </div>
-          ) : null}
-
-          {filtered.length === 0 ? (
-            <EmptyState
-              icon={<CircleAlert size={28} />}
-              title="No proposals match this filter"
-              description="Clear the filter to see every persisted improvement for this run."
-              action={
-                <Button type="button" variant="secondary" onClick={() => setFilter("all")}>
-                  Show all
-                </Button>
-              }
-            />
-          ) : (
-            <>
-              <div className="mobile-cards">
-                <MobileRecordList>
-                  {filtered.map((row) => (
-                    <DataCard
-                      key={row.id}
-                      title={row.title}
-                      subtitle={`${(row.applyClass ?? "").replace(/_/g, " ")} · ${(row.recurrence ?? "").toLowerCase()}`}
-                      status={<StatusBadge status={row.risk} />}
-                      metric={row.status.replace(/_/g, " ")}
-                    >
-                      <p className="muted small">{row.summary}</p>
-                      {row.engineeringRequired ? <p className="muted small">ENGINEERING CHANGE REQUIRED</p> : null}
-                      <ProposalActions
-                        row={row}
-                        busy={busy}
-                        checked={checked.includes(row.id)}
-                        onCheck={(on) => setChecked((current) => (on ? [...current, row.id] : current.filter((id) => id !== row.id)))}
-                        onOpen={() => void openDetail(row)}
-                        onDecide={decide}
-                        onRollback={rollback}
-                      />
-                    </DataCard>
-                  ))}
-                </MobileRecordList>
-              </div>
-              <div className="desktop-table table-wrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th></th>
-                      <th>Proposal</th>
-                      <th>Class</th>
-                      <th>Risk</th>
-                      <th>Status</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((row) => (
-                      <tr key={row.id}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={checked.includes(row.id)}
-                            onChange={(event) =>
-                              setChecked((current) =>
-                                event.target.checked ? [...current, row.id] : current.filter((id) => id !== row.id),
-                              )
-                            }
-                            aria-label={`Select ${row.title}`}
-                          />
-                        </td>
-                        <td>
-                          <strong>{row.title}</strong>
-                          <div className="muted small">{row.summary}</div>
-                        </td>
-                        <td className="muted small">
-                          {(row.applyClass ?? "—").replace(/_/g, " ")}
-                          <div>{(row.recurrence ?? "").toLowerCase()}</div>
-                        </td>
-                        <td>
-                          <StatusBadge status={row.risk} />
-                        </td>
-                        <td>{row.status.replace(/_/g, " ")}</td>
-                        <td>
-                          <ProposalActions
-                            row={row}
-                            busy={busy}
-                            checked={checked.includes(row.id)}
-                            hideCheck
-                            onCheck={() => undefined}
-                            onOpen={() => void openDetail(row)}
-                            onDecide={decide}
-                            onRollback={rollback}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
         </>
       )}
 
@@ -440,19 +502,25 @@ export default function QualityImprovementsPage() {
         title={selected?.title ?? "Proposal"}
         footer={
           selected ? (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {selected.status === "pending_approval" ? (
+            <div className="quality-tap-actions">
+              {itemPrimaryKind(selected) === "apply" || itemPrimaryKind(selected) === "accept" ? (
                 <>
-                  <Button type="button" disabled={busy} onClick={() => void decide(selected.id, "approve")}>
-                    {selected.applyClass === "AUTO_APPLY_SAFE" ? "Apply" : "Record approval"}
+                  <Button
+                    type="button"
+                    className="quality-tap-target"
+                    disabled={busy}
+                    title={itemPrimaryHint(selected) ?? undefined}
+                    onClick={() => void decide(selected.id, "approve")}
+                  >
+                    {itemPrimaryLabel(selected)}
                   </Button>
-                  <Button type="button" variant="secondary" disabled={busy} onClick={() => void decide(selected.id, "reject")}>
+                  <Button type="button" variant="secondary" className="quality-tap-target" disabled={busy} onClick={() => void decide(selected.id, "reject")}>
                     Reject
                   </Button>
                 </>
               ) : null}
-              {selected.status === "canary" || selected.status === "promoted" ? (
-                <Button type="button" variant="secondary" disabled={busy} onClick={() => void rollback(selected.id)}>
+              {itemPrimaryKind(selected) === "rollback" ? (
+                <Button type="button" variant="secondary" className="quality-tap-target" disabled={busy} onClick={() => void rollback(selected.id)}>
                   Roll back
                 </Button>
               ) : null}
@@ -468,6 +536,7 @@ export default function QualityImprovementsPage() {
             <KeyValue label="Recurrence" value={selected.recurrence ?? "—"} />
             <KeyValue label="Status" value={selected.status.replace(/_/g, " ")} />
             <KeyValue label="Summary" value={selected.summary} />
+            {itemPrimaryHint(selected) ? <KeyValue label="Action" value={itemPrimaryHint(selected)} /> : null}
             {selected.customerProgressUnchanged ? (
               <KeyValue label="Customer progress" value="60s watchdog unchanged. Only quality warning thresholds can move." />
             ) : null}
@@ -517,31 +586,48 @@ function ProposalActions({
   onDecide: (id: string, decision: "approve" | "reject" | "defer") => Promise<void>;
   onRollback: (id: string) => Promise<void>;
 }) {
+  const enabled = itemActionsEnabled(row, busy);
+  const primary = itemPrimaryKind(row);
   return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+    <div className="quality-tap-actions">
       {hideCheck ? null : (
-        <label className="small muted" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <label className="small muted quality-select-label">
           <input type="checkbox" checked={checked} onChange={(event) => onCheck(event.target.checked)} />
           Select
         </label>
       )}
-      <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onOpen}>
+      <Button type="button" variant="ghost" className="quality-tap-target" disabled={!enabled.evidence} onClick={onOpen}>
         Evidence
       </Button>
-      {row.status === "pending_approval" ? (
+      {primary === "apply" || primary === "accept" ? (
         <>
-          <Button type="button" size="sm" disabled={busy} onClick={() => void onDecide(row.id, "approve")}>
-            {row.applyClass === "AUTO_APPLY_SAFE" && row.risk === "low" ? "Apply" : row.applyClass === "AUTO_APPLY_SAFE" ? "Apply" : "Approve"}
+          <Button
+            type="button"
+            className="quality-tap-target"
+            disabled={!(primary === "apply" ? enabled.apply : enabled.accept)}
+            title={itemPrimaryHint(row) ?? undefined}
+            onClick={() => void onDecide(row.id, "approve")}
+          >
+            {itemPrimaryLabel(row)}
           </Button>
-          <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void onDecide(row.id, "reject")}>
+          <Button type="button" variant="secondary" className="quality-tap-target" disabled={!enabled.reject} onClick={() => void onDecide(row.id, "reject")}>
             Reject
           </Button>
         </>
       ) : null}
-      {row.status === "canary" || row.status === "promoted" ? (
-        <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void onRollback(row.id)}>
+      {primary === "rollback" ? (
+        <Button type="button" variant="secondary" className="quality-tap-target" disabled={!enabled.rollback} onClick={() => void onRollback(row.id)}>
           Roll back
         </Button>
+      ) : null}
+      {row.engineeringRequired || row.applyClass === "REQUIRES_ENGINEERING" || row.applyClass === "INFORMATIONAL" ? (
+        <p className="muted small quality-item-hint">
+          {row.status === "pending_approval"
+            ? "Accept records review. Does not auto-deploy this change."
+            : row.engineeringRequired
+              ? "ENGINEERING CHANGE REQUIRED"
+              : null}
+        </p>
       ) : null}
     </div>
   );
