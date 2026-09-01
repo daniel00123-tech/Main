@@ -142,6 +142,14 @@ describe("Xero natural periods", () => {
     const week = resolveBusinessPeriod("sales this week", now);
     expect(week.fromDate).toBe("2026-08-24");
     expect(week.toDate).toBe("2026-08-30");
+    expect(resolveBusinessPeriod("15 August 2026", now)).toMatchObject({
+      fromDate: "2026-08-15",
+      toDate: "2026-08-15",
+    });
+    expect(resolveBusinessPeriod("from 2026-08-01 to 2026-08-15", now)).toMatchObject({
+      fromDate: "2026-08-01",
+      toDate: "2026-08-15",
+    });
   });
 
   it("marks sales-summary comparisons as unsupported and P&L as supported", () => {

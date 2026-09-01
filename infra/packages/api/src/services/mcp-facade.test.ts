@@ -779,4 +779,38 @@ describe("tenant isolation across Caddington / HT / EL identities", () => {
     );
     expect(result.httpStatus).toBe(403);
   });
+
+  function userActor(role: "office_staff" | "finance_team") {
+    return {
+      type: "user" as const,
+      user: {
+        userId: "user_william",
+        email: "william@elvexpropertyservices.com",
+        displayName: "William",
+        isPlatformAdmin: false,
+        memberships: [{ companyId: "co_el", role }],
+      },
+      boundCompanyId: "co_el",
+      channel: "chatgpt",
+    };
+  }
+
+  it("does not advertise Xero reads to office_staff", async () => {
+    const names = await listTools(envFor(threeTenantDb()), userActor("office_staff") as never);
+    expect(names.some((name) => name.startsWith("xero_") || name.includes("xero"))).toBe(false);
+  });
+
+  it("advertises authorised Xero READ tools to finance_team", async () => {
+    const names = await listTools(envFor(threeTenantDb()), userActor("finance_team") as never);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "xero_sales_summary",
+        "xero_search_invoices",
+        "xero_get_invoice",
+        "xero_list_overdue_invoices",
+        "xero_top_customers",
+      ]),
+    );
+    expect(names).not.toContain("xero_create_draft_invoice");
+  });
 });

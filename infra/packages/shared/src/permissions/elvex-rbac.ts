@@ -156,7 +156,9 @@ export function mapActionToElvexCapability(
     action === "xero.invoices.search" ||
     action === "xero.invoices.get" ||
     action === "xero.contacts.read" ||
-    action === "xero.contacts.search"
+    action === "xero.contacts.search" ||
+    action === "xero.sales.summary" ||
+    action === "xero.top_customers"
   ) {
     return "xero.sales.read";
   }
@@ -244,4 +246,21 @@ export const ELVEX_MCP_TOOL_CAPABILITIES: Record<string, ElvexCapability> = {
   search_xero_bills: "xero.finance.read",
   get_xero_financial_summary: "xero.finance.read",
   create_xero_draft_invoice: "xero.draft.write",
+  xero_sales_summary: "xero.sales.read",
+  xero_top_customers: "xero.sales.read",
+  xero_search_invoices: "xero.sales.read",
+  xero_get_invoice: "xero.sales.read",
+  xero_list_overdue_invoices: "xero.sales.read",
+  xero_list_contacts: "xero.sales.read",
+  xero_get_contact: "xero.sales.read",
+  xero_get_organisation: "xero.finance.read",
+  xero_profit_and_loss: "xero.finance.read",
+  xero_list_payments: "xero.finance.read",
+  xero_list_accounts: "xero.finance.read",
+  xero_list_bank_transactions: "xero.finance.read",
+  xero_balance_sheet: "xero.finance.read",
+  xero_aged_receivables: "xero.finance.read",
+  xero_top_suppliers: "xero.finance.read",
+  xero_list_tax_rates: "xero.finance.read",
+  xero_vat_capability: "xero.finance.read",
 };

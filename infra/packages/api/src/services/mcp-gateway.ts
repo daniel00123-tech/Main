@@ -40,8 +40,12 @@ import {
   withStandardKnowledgeTools,
   wrapStandardToolResult,
 } from "./mcp-knowledge-standard";
-import { isXeroWriteToolName } from "./xero-tools";
-import { XERO_TOOL_CONTRACTS } from "@infra/shared";
+import { isXeroToolName, isXeroWriteToolName } from "./xero-tools";
+import { XERO_TOOL_CONTRACTS, elvexCan, isElvexCompany } from "@infra/shared";
+import { withXeroReadTools } from "./xero-read-tools";
+import { resolveXeroReadArguments } from "./elvex-xero-el-mcp";
+import { loadLiveCompanyActor } from "../auth/live-identity";
+import { getUserCompanyRole } from "../permissions/service";
 import { withActionControlTools, isActionControlTool, actionControlToolAllowed } from "./mcp-action-tools";
 import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
@@ -641,10 +645,29 @@ export async function handleInfraMcpJsonRpc(
 
       const identityScopes =
         actor.type === "service" ? actor.identity.scopes : undefined;
+      let userRole = null;
+      if (actor.type === "user") {
+        const live = await loadLiveCompanyActor(env.DB, actor.user.userId, resolvedCompanyId);
+        userRole = live?.role ?? getUserCompanyRole(actor.user, resolvedCompanyId);
+      }
+      const actionScopes =
+        actor.type === "user" &&
+        isElvexCompany({ id: resolvedCompanyId }) &&
+        !elvexCan(userRole, "xero.draft.write")
+          ? []
+          : identityScopes;
       const advertised = withAutomationControlTools(
-        withOutlookReadTools(
-          withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
-          identityScopes,
+        withXeroReadTools(
+          withOutlookReadTools(
+            withActionControlTools(withStandardKnowledgeTools(tools), actionScopes),
+            identityScopes,
+          ),
+          {
+            scopes: identityScopes,
+            companyId: resolvedCompanyId,
+            userRole,
+            actorType: actor.type,
+          },
         ),
         { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
       );
@@ -657,6 +680,8 @@ export async function handleInfraMcpJsonRpc(
         httpStatus: 200,
         detail: {
           toolNames: advertised.map((t) => t.name),
+          userRole,
+          actorType: actor.type,
           mcpId: mcp.id,
           serviceIdentityId:
             actor.type === "service" ? actor.identity.id : null,
@@ -748,6 +773,10 @@ export async function handleInfraMcpJsonRpc(
           httpStatus: 400,
         };
       }
+    }
+
+    if (isXeroToolName(toolName) && !isXeroWriteToolName(toolName)) {
+      args = resolveXeroReadArguments(toolName, args);
     }
 
     const clientRequestId = resolveMcpClientRequestId(request, body);
@@ -877,7 +906,8 @@ export async function handleInfraMcpJsonRpc(
           correlationId: result.correlationId,
           requestId: "requestId" in result ? result.requestId : undefined,
           httpStatus: result.status,
-          errorCode: publicError.code,
+          errorCode:
+            result.status === 403 ? "permission_denied" : publicError.code,
           action: "action" in result ? result.action : undefined,
           riskClass: "riskClass" in result ? result.riskClass : undefined,
         }),
@@ -1131,13 +1161,25 @@ export async function handleInfraMcpHttp(
     });
   }
 
-  const { payload, httpStatus } = await handleInfraMcpJsonRpc(
-    env,
-    request,
-    actorResult,
-    body,
-    waitUntil,
-  );
+  let payload: ReturnType<typeof jsonRpcError> | ReturnType<typeof jsonRpcResult> | null;
+  let httpStatus: number;
+  try {
+    const handled = await handleInfraMcpJsonRpc(
+      env,
+      request,
+      actorResult,
+      body,
+      waitUntil,
+    );
+    payload = handled.payload;
+    httpStatus = handled.httpStatus;
+  } catch (err) {
+    payload = jsonRpcError(body.id ?? null, -32000, "Tool call failed", {
+      errorCode: "retry",
+    });
+    httpStatus = 200;
+    void err;
+  }
 
   if (httpStatus === 202 && payload == null) {
     return new Response(null, {

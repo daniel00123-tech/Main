@@ -123,6 +123,77 @@ function range(from: CivilDate, to: CivilDate, label: string): Omit<ResolvedPeri
   return { fromDate: formatCivilDate(from), toDate: formatCivilDate(to), label };
 }
 
+const MONTH_INDEX: Record<string, number> = {
+  january: 1,
+  jan: 1,
+  february: 2,
+  feb: 2,
+  march: 3,
+  mar: 3,
+  april: 4,
+  apr: 4,
+  may: 5,
+  june: 6,
+  jun: 6,
+  july: 7,
+  jul: 7,
+  august: 8,
+  aug: 8,
+  september: 9,
+  sep: 9,
+  sept: 9,
+  october: 10,
+  oct: 10,
+  november: 11,
+  nov: 11,
+  december: 12,
+  dec: 12,
+};
+
+function parseIsoDate(value: string): CivilDate | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return null;
+  return { year, month, day };
+}
+
+function parseNamedDate(value: string, fallbackYear: number): CivilDate | null {
+  const match =
+    /\b(\d{1,2})(?:st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?:\s+(\d{4}))?\b/i.exec(
+      value,
+    );
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = MONTH_INDEX[match[2].toLowerCase()];
+  const year = match[3] ? Number(match[3]) : fallbackYear;
+  if (!month || day < 1 || day > daysInMonth(year, month)) return null;
+  return { year, month, day };
+}
+
+function extractExplicitDates(text: string, fallbackYear: number): CivilDate[] {
+  const found: CivilDate[] = [];
+  const seen = new Set<string>();
+  const push = (date: CivilDate | null) => {
+    if (!date) return;
+    const key = formatCivilDate(date);
+    if (seen.has(key)) return;
+    seen.add(key);
+    found.push(date);
+  };
+  for (const match of text.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)) {
+    push(parseIsoDate(match[1]));
+  }
+  for (const match of text.matchAll(
+    /\b(\d{1,2})(?:st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?:\s+(\d{4}))?\b/gi,
+  )) {
+    push(parseNamedDate(match[0], fallbackYear));
+  }
+  return found;
+}
+
 export function resolveBusinessPeriod(
   text: string,
   now = new Date(),
@@ -177,8 +248,18 @@ export function resolveBusinessPeriod(
     primary = range(startOfMonth(prev), endOfMonth(prev), "last month");
     pnl = { periods: 1, timeframe: "MONTH" };
   } else {
-    primary = range(startOfMonth(civil), civil, "this month");
-    pnl = { periods: 1, timeframe: "MONTH" };
+    const explicit = extractExplicitDates(hay, civil.year);
+    if (explicit.length >= 2) {
+      const ordered = [...explicit].sort((a, b) => formatCivilDate(a).localeCompare(formatCivilDate(b)));
+      const start = ordered[0];
+      const end = ordered[ordered.length - 1];
+      primary = range(start, end, `${formatCivilDate(start)} to ${formatCivilDate(end)}`);
+    } else if (explicit.length === 1) {
+      primary = range(explicit[0], explicit[0], formatCivilDate(explicit[0]));
+    } else {
+      primary = range(startOfMonth(civil), civil, "this month");
+      pnl = { periods: 1, timeframe: "MONTH" };
+    }
   }
 
   if (comparisonRequested) {
@@ -237,7 +318,9 @@ export function needsBusinessDates(toolName: string | null | undefined): boolean
   return (
     toolName === "xero_sales_summary" ||
     toolName === "xero_profit_and_loss" ||
-    toolName === "xero_search_invoices"
+    toolName === "xero_search_invoices" ||
+    toolName === "xero_top_customers" ||
+    toolName === "xero_list_overdue_invoices"
   );
 }
 

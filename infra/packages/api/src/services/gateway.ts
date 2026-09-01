@@ -63,6 +63,10 @@ import {
 import { executeXeroReadToolOnInfra } from "./xero-read-execution";
 import { isOutlookReadTool, outlookActionForTool } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
+import {
+  executeElvexXeroReadViaElMcp,
+  shouldExecuteElvexXeroViaElMcp,
+} from "./elvex-xero-el-mcp";
 
 export type GatewayActor =
   | {
@@ -427,33 +431,35 @@ export async function executeGatewayRequest(
         code: "ACTION_ENGINE_REQUIRED",
       };
     }
-    const prepared = await prepareXeroMcpExecution({
-      env,
-      companyId: input.companyId,
-      toolName: input.toolName,
-    });
-    if (!prepared.ok) {
-      await recordAuditEvent(env.DB, {
+    if (!shouldExecuteElvexXeroViaElMcp(input.companyId, input.toolName)) {
+      const prepared = await prepareXeroMcpExecution({
+        env,
         companyId: input.companyId,
-        eventType: "mcp.execution_failed",
-        actor: actorLabel,
-        resourceType: "gateway",
-        resourceId: input.toolName,
-        detail: {
+        toolName: input.toolName,
+      });
+      if (!prepared.ok) {
+        await recordAuditEvent(env.DB, {
+          companyId: input.companyId,
+          eventType: "mcp.execution_failed",
+          actor: actorLabel,
+          resourceType: "gateway",
+          resourceId: input.toolName,
+          detail: {
+            correlationId,
+            requestId,
+            provider: "xero",
+            billed: false,
+            inventsData: false,
+            code: prepared.body.code,
+          },
+        });
+        return {
+          status: prepared.status,
+          error: prepared.body.error,
           correlationId,
           requestId,
-          provider: "xero",
-          billed: false,
-          inventsData: false,
-          code: prepared.body.code,
-        },
-      });
-      return {
-        status: prepared.status,
-        error: prepared.body.error,
-        correlationId,
-        requestId,
-      };
+        };
+      }
     }
   }
 
@@ -572,41 +578,45 @@ export async function executeGatewayRequest(
       )
       .run();
 
-    const connectorInstanceId = await resolveConnectorInstanceId(
-      env.DB,
-      input.companyId,
-      action,
-      input.toolName,
-    );
-    await recordUsageEvent(env.DB, {
-      companyId: input.companyId,
-      userId: input.actor.type === "user" ? actorId : null,
-      actorEmail: actorLabel,
-      resourceType: "gateway",
-      resourceId: input.toolName,
-      mcpEnvironmentId: mcp.id,
-      connectorInstanceId,
-      toolName: input.toolName,
-      action,
-      riskClass,
-      success: false,
-      durationMs: Date.now() - started,
-      sourceClient,
-      correlationId,
-      requestId,
-      interactionId: interaction.interactionId,
-      parentRequestId: interaction.parentRequestId,
-      mcpSessionId: interaction.mcpSessionId,
-      metadata: {
-        denied: true,
-        billingStatus: "denied",
-        actorType: input.actor.type,
-        membershipId:
-          input.actor.type === "user" ? input.actor.membershipId ?? null : null,
-        reason: permissionReason,
-      },
-      settlementStatus: "denied",
-    });
+    try {
+      const connectorInstanceId = await resolveConnectorInstanceId(
+        env.DB,
+        input.companyId,
+        action,
+        input.toolName,
+      );
+      await recordUsageEvent(env.DB, {
+        companyId: input.companyId,
+        userId: input.actor.type === "user" ? actorId : null,
+        actorEmail: actorLabel,
+        resourceType: "gateway",
+        resourceId: input.toolName,
+        mcpEnvironmentId: mcp.id,
+        connectorInstanceId,
+        toolName: input.toolName,
+        action,
+        riskClass,
+        success: false,
+        durationMs: Date.now() - started,
+        sourceClient,
+        correlationId,
+        requestId,
+        interactionId: interaction.interactionId,
+        parentRequestId: interaction.parentRequestId,
+        mcpSessionId: interaction.mcpSessionId,
+        metadata: {
+          denied: true,
+          billingStatus: "denied",
+          actorType: input.actor.type,
+          membershipId:
+            input.actor.type === "user" ? input.actor.membershipId ?? null : null,
+          reason: permissionReason,
+        },
+        settlementStatus: "denied",
+      });
+    } catch {
+      // Denial must still return permission_denied even if usage insert fails.
+    }
 
     scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
     return {
@@ -773,6 +783,36 @@ export async function executeGatewayRequest(
           },
         };
       })()
+    : shouldExecuteElvexXeroViaElMcp(input.companyId, input.toolName)
+      ? await (async () => {
+          const xero = await executeElvexXeroReadViaElMcp(env, {
+            companyId: input.companyId,
+            mcp,
+            toolName: input.toolName,
+            arguments: input.arguments,
+          });
+          if (!xero.ok) {
+            return {
+              status: xero.status,
+              error: xero.error,
+            } as const;
+          }
+          return {
+            status: 200 as const,
+            data: {
+              correlationId,
+              mcpId: mcp.id,
+              companyId: input.companyId,
+              toolName: input.toolName,
+              latencyMs: xero.latencyMs,
+              authConfigured: true,
+              riskClass,
+              result: xero.result,
+              executionPath: "el-business-mcp",
+              elToolName: xero.elToolName,
+            },
+          };
+        })()
     : isXeroToolName(input.toolName) && !isXeroWriteToolName(input.toolName)
       ? await (async () => {
           const xero = await executeXeroReadToolOnInfra(env, {
@@ -860,13 +900,20 @@ export async function executeGatewayRequest(
   let ledgerEntryId: string | null = null;
   let settlementStatus = "zero_charge";
 
-  const connectorInstanceId = await resolveConnectorInstanceId(
-    env.DB,
-    input.companyId,
-    action,
-    input.toolName,
-  );
-  const usage = await recordUsageEvent(env.DB, {
+  let connectorInstanceId: string | null = null;
+  try {
+    connectorInstanceId = await resolveConnectorInstanceId(
+      env.DB,
+      input.companyId,
+      action,
+      input.toolName,
+    );
+  } catch {
+    connectorInstanceId = null;
+  }
+  let usage: Awaited<ReturnType<typeof recordUsageEvent>>;
+  try {
+    usage = await recordUsageEvent(env.DB, {
     companyId: input.companyId,
     userId: input.actor.type === "user" ? actorId : null,
     actorEmail: actorLabel,
@@ -907,7 +954,15 @@ export async function executeGatewayRequest(
       }).customerBillable && charge.customerChargeCents
         ? "unsettled"
         : "zero_charge",
-  });
+    });
+  } catch {
+    usage = {
+      id: newId("usage"),
+      recordedAt: nowIso(),
+      alreadyExists: false,
+      settlementStatus: "zero_charge",
+    };
+  }
   usageRecordId = usage.id;
   await refreshInteractionTotals(env.DB, interaction.interactionId);
   scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
