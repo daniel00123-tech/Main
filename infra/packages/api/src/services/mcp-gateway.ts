@@ -816,7 +816,7 @@ export async function handleInfraMcpJsonRpc(
       const scoped = applyKnowledgeSourceScopeToSearchArgs({ query: sanitized.query });
       args = scoped.args;
       sourceScopeApplied = scoped.scopeApplied;
-    } else if (toolName === "fetch") {
+    } else if (toolName === "fetch" || toolName === "get_knowledge_document") {
       const sanitized = sanitizeStandardFetchArguments(args);
       if ("error" in sanitized) {
         return {
@@ -824,7 +824,10 @@ export async function handleInfraMcpJsonRpc(
           httpStatus: 400,
         };
       }
-      args = mapFetchArgumentsForCompanyMcp(sanitized.id);
+      args = {
+        ...mapFetchArgumentsForCompanyMcp(sanitized.id),
+        ...(typeof args.title === "string" && args.title.trim() ? { title: args.title.trim() } : {}),
+      };
     } else if (toolName === "search_company_knowledge") {
       const sanitized = sanitizeKnowledgeSearchArguments(args);
       args = sanitized.forwarded;
@@ -1050,12 +1053,12 @@ export async function handleInfraMcpJsonRpc(
     };
 
     const wrapped =
-      toolName === "search"
+      toolName === "search" || toolName === "search_company_knowledge"
         ? {
             ...wrapStandardToolResult(toStandardSearchPayload(payload)),
             _infra: infraMeta,
           }
-        : toolName === "fetch"
+        : toolName === "fetch" || toolName === "get_knowledge_document"
           ? {
               ...wrapStandardToolResult(
                 toStandardFetchPayload(
