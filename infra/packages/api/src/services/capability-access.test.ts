@@ -76,6 +76,28 @@ describe("capability access runtime", () => {
     expect(await isCapabilityConnected(mockDb([]), "co_el", "xero")).toBe(false);
   });
 
+  it("routes sales, outstanding, and invoice-date questions away from knowledge", async () => {
+    for (const query of [
+      "What are the current sales on Xero?",
+      "How much have we invoiced this month?",
+      "Show outstanding invoices",
+      "tell me the invoice numbers invoiced today 01/09/2026",
+    ]) {
+      const result = await evaluateKnowledgeBusinessSystemPreflight(
+        mockDb(["conn_xero"], "finance_team"),
+        financeUser,
+        "co_el",
+        "search",
+        { query },
+      );
+      expect(result.kind).toBe("reroute");
+      if (result.kind === "reroute") {
+        expect(result.toolName).toMatch(/^xero_/);
+        expect(result.toolName).not.toMatch(/database_summary|search_company_knowledge|^search$/);
+      }
+    }
+  });
+
   it("A: connected + allowed reroutes to the Xero tool instead of knowledge", async () => {
     const result = await evaluateKnowledgeBusinessSystemPreflight(
       mockDb(["conn_xero"], "finance_team"),

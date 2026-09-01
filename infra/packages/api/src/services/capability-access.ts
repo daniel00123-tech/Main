@@ -263,6 +263,7 @@ export function xeroResultLooksEmpty(result: unknown): boolean {
   const row = result as Record<string, unknown>;
   const summary = row.summary && typeof row.summary === "object" ? (row.summary as Record<string, unknown>) : null;
   if (summary && Number(summary.transactionCount ?? -1) === 0) return true;
+  if (Number(row.invoice_count ?? -1) === 0 && Number(row.sales_total ?? 0) === 0) return true;
   if (Array.isArray(row.transactions) && row.transactions.length === 0 && Array.isArray(row.invoices) && row.invoices.length === 0) {
     return true;
   }

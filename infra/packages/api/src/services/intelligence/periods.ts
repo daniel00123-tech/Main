@@ -123,6 +123,86 @@ function range(from: CivilDate, to: CivilDate, label: string): Omit<ResolvedPeri
   return { fromDate: formatCivilDate(from), toDate: formatCivilDate(to), label };
 }
 
+const MONTH_NAMES: Record<string, number> = {
+  january: 1,
+  february: 2,
+  march: 3,
+  april: 4,
+  may: 5,
+  june: 6,
+  july: 7,
+  august: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12,
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  sept: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+};
+
+export function parseExplicitCivilDate(token: string): CivilDate | null {
+  const value = String(token ?? "").trim();
+  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month)) {
+      return { year, month, day };
+    }
+    return null;
+  }
+  const uk = value.match(/^(\d{1,2})[/.\\-](\d{1,2})[/.\\-](\d{4})$/);
+  if (uk) {
+    const day = Number(uk[1]);
+    const month = Number(uk[2]);
+    const year = Number(uk[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month)) {
+      return { year, month, day };
+    }
+  }
+  return null;
+}
+
+function findExplicitPeriod(hay: string): Omit<ResolvedPeriod, "comparisonRequested" | "comparisonSupported"> | null {
+  const rangeMatch = hay.match(
+    /(?:from|between)\s+(\d{4}-\d{2}-\d{2}|\d{1,2}[/.\\-]\d{1,2}[/.\\-]\d{4})\s+(?:to|and|-)\s+(\d{4}-\d{2}-\d{2}|\d{1,2}[/.\\-]\d{1,2}[/.\\-]\d{4})/i,
+  );
+  if (rangeMatch) {
+    const from = parseExplicitCivilDate(rangeMatch[1]);
+    const to = parseExplicitCivilDate(rangeMatch[2]);
+    if (from && to) return range(from, to, `${formatCivilDate(from)} to ${formatCivilDate(to)}`);
+  }
+  const named = hay.match(
+    /\b(\d{1,2})(?:st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\.?\s+(\d{4})\b/i,
+  );
+  if (named) {
+    const month = MONTH_NAMES[named[2].toLowerCase().replace(".", "")];
+    const day = Number(named[1]);
+    const year = Number(named[3]);
+    if (month && day >= 1 && day <= daysInMonth(year, month)) {
+      const civil = { year, month, day };
+      return range(civil, civil, formatCivilDate(civil));
+    }
+  }
+  const single = hay.match(/\b(\d{4}-\d{2}-\d{2}|\d{1,2}[/.\\-]\d{1,2}[/.\\-]\d{4})\b/);
+  if (single) {
+    const civil = parseExplicitCivilDate(single[1]);
+    if (civil) return range(civil, civil, formatCivilDate(civil));
+  }
+  return null;
+}
+
 export function resolveBusinessPeriod(
   text: string,
   now = new Date(),
@@ -130,7 +210,9 @@ export function resolveBusinessPeriod(
 ): ResolvedPeriod {
   const today = londonCivilParts(now, timeZone);
   const civil: CivilDate = { year: today.year, month: today.month, day: today.day };
-  const hay = String(text ?? "").toLowerCase();
+  const hay = String(text ?? "")
+    .toLowerCase()
+    .replace(/_/g, " ");
   const comparisonRequested = /\b(compar(e|ed|ing)|versus|vs\.?|against|this (month|week|quarter|year) (and|with|vs) last)\b/i.test(
     hay,
   );
@@ -139,7 +221,18 @@ export function resolveBusinessPeriod(
   let comparison: ResolvedPeriod["comparison"];
   let pnl: ResolvedPeriod["pnl"];
 
-  if (/\b(past|last|previous) 90 days\b/.test(hay)) {
+  const explicit = findExplicitPeriod(hay);
+  const namedPeriod = /\b(this|last|past|previous|yesterday|today)\s+(week|month|quarter|year|7 days|30 days|90 days)\b/.test(
+    hay,
+  ) || /\b(yesterday|last week|last month|last quarter|last year|this week|this month|this quarter|this year|past 7 days|past 30 days|past 90 days)\b/.test(
+    hay,
+  );
+
+  if (explicit && !namedPeriod) {
+    primary = explicit;
+  } else if (explicit && /\btoday\b/.test(hay) && !/\bthis (week|month|quarter|year)\b/.test(hay)) {
+    primary = explicit;
+  } else if (/\b(past|last|previous) 90 days\b/.test(hay)) {
     primary = range(addDays(civil, -89), civil, "past 90 days");
   } else if (/\b(past|last|previous) 30 days\b/.test(hay)) {
     primary = range(addDays(civil, -29), civil, "past 30 days");
@@ -237,7 +330,11 @@ export function needsBusinessDates(toolName: string | null | undefined): boolean
   return (
     toolName === "xero_sales_summary" ||
     toolName === "xero_profit_and_loss" ||
-    toolName === "xero_search_invoices"
+    toolName === "xero_search_invoices" ||
+    toolName === "xero_top_customers" ||
+    toolName === "xero_top_suppliers" ||
+    toolName === "xero_list_payments" ||
+    toolName === "xero_list_bank_transactions"
   );
 }
 
@@ -250,6 +347,13 @@ export function withResolvedBusinessDates(
   if (!needsBusinessDates(toolName)) return args;
   const hasDates = String(args.fromDate ?? "").trim() && String(args.toDate ?? "").trim();
   if (hasDates) return args;
-  const period = resolveBusinessPeriod(text, now);
+  const periodText = [
+    text,
+    typeof args.period === "string" ? args.period.replace(/_/g, " ") : "",
+    typeof args.query === "string" ? args.query : "",
+  ]
+    .filter((value) => value && value.trim())
+    .join(" ");
+  const period = resolveBusinessPeriod(periodText, now);
   return { ...args, ...businessSystemArgs(toolName, period) };
 }

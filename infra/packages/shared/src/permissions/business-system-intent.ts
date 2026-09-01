@@ -29,7 +29,7 @@ export type BusinessSystemIntent = {
   reason: "named_connector" | "domain_language";
 };
 
-const QUERY_KEYS = ["query", "q", "question", "prompt", "text", "userQuery", "message", "topic"];
+const QUERY_KEYS = ["query", "q", "question", "prompt", "text", "userQuery", "message", "topic", "period"];
 
 export function extractIntentText(args?: Record<string, unknown> | null): string {
   if (!args) return "";
@@ -105,7 +105,7 @@ function capabilityForDefinition(definitionId: string, query: string): Protected
 }
 
 const XERO_DOMAIN =
-  /\b(sales|invoices?|outstanding|overdue|p&l|pnl|profit and loss|balance sheet|aged receivables|revenue|turnover|who owes|raised today)\b/;
+  /\b(sales|invoices?|invoiced|outstanding|overdue|p&l|pnl|profit and loss|balance sheet|aged receivables|revenue|turnover|who owes|raised today|customers?|spend)\b/;
 
 export function catalogueOperationalConnectors(): CompanyConnectorHint[] {
   return CONNECTOR_CATALOGUE.filter((connector) =>
@@ -214,25 +214,31 @@ export function businessToolForIntent(
   intent: BusinessSystemIntent,
   query: string,
 ): { toolName: string; arguments: Record<string, unknown> } | null {
-  const today = new Date().toISOString().slice(0, 10);
-  const monthStart = `${today.slice(0, 7)}-01`;
   if (intent.capability === "xero" || intent.capability === "payments") {
-    if (/overdue|outstanding|owes/i.test(query)) {
-      return { toolName: "xero_search_invoices", arguments: { unpaidOnly: true, limit: 10 } };
+    if (/overdue/i.test(query)) {
+      return { toolName: "xero_list_overdue_invoices", arguments: { query, limit: 25 } };
     }
-    if (/raised today|invoices? (raised |issued )?today/i.test(query)) {
-      return { toolName: "xero_search_invoices", arguments: { fromDate: today, toDate: today, limit: 10 } };
+    if (/outstanding|owes/i.test(query)) {
+      return { toolName: "xero_search_invoices", arguments: { query, unpaidOnly: true, limit: 25 } };
+    }
+    if (
+      /raised today|invoices? (raised |issued |invoiced )?today|invoice numbers/i.test(query)
+    ) {
+      return {
+        toolName: "xero_search_invoices",
+        arguments: { query, invoiceType: "ACCREC", limit: 50 },
+      };
     }
     if (/\bINV-\d+/i.test(query)) {
       const match = query.match(/\bINV-\d+\b/i);
-      return { toolName: "xero_get_invoice", arguments: { invoiceNumber: match?.[0] } };
+      return { toolName: "xero_get_invoice", arguments: { invoiceNumber: match?.[0], query } };
     }
-    if (/top customers?/i.test(query)) {
-      return { toolName: "xero_top_customers", arguments: { fromDate: monthStart, toDate: today, limit: 5 } };
+    if (/\btop(?:\s+\d+|\s+five|\s+5|\s+ten)?\s+customers?\b/i.test(query)) {
+      return { toolName: "xero_top_customers", arguments: { query, limit: 5 } };
     }
     return {
       toolName: "xero_sales_summary",
-      arguments: { fromDate: monthStart, toDate: today },
+      arguments: { query },
     };
   }
   if (intent.capability === "finance_mailbox") {
