@@ -125,13 +125,15 @@ Authorised deployer for this job. Concurrent `wrangler deploy` checked before ea
 |---|---|---|
 | 20:23:26 | `c39cffaa-…` | earlier this-job deploy (overwritten) |
 | 20:29–20:39 | several others | overwrites; portal 404; some no `versionId` |
-| **20:43:43** | **`2fc0dc77-816c-48c6-b408-a69292cb0207`** | **current last-wins 100%** |
+| 20:43:43 | `2fc0dc77-…` | this-job deploy (later overwritten) |
+| 20:47:57 | `72b12085-…` | concurrent overwrite, no `versionId` |
+| **20:49:24** | **`70f553e0-8cee-4d8d-933e-6e232c6f2624`** | **current last-wins 100%** |
 
-Git tip at deploy: `7542194`. Worker `infra-api` only. No new Worker.
+Git tip at deploy: `5c8da6f` (Worker code unchanged from `7542194`). Worker `infra-api` only. No new Worker.
 
 ## N. Health lineage
 
-Live: `{"status":"ok","environment":"production","versionId":"2fc0dc77-816c-48c6-b408-a69292cb0207"}`  
+Live: `{"status":"ok","environment":"production","versionId":"70f553e0-8cee-4d8d-933e-6e232c6f2624"}`  
 Official Cloudflare `CF_VERSION_METADATA` only.
 
 ## O. Live probe (this Worker)
@@ -174,7 +176,7 @@ Metadata live on `https://api.infrastack.app`. Client `oauth_16c41fc5-c625-4c00-
 | Job start | director |
 | Temp (deny only) | office_staff |
 | Concurrent agents also flipped him mid-job | office_staff at times |
-| **Final D1** | **director** (`2026-09-01 20:45:24`) |
+| **Final D1** | **director** (`2026-09-01 20:49:33`) |
 | Intended persist | director (`membership_operator_roles`) |
 
 ## V. `xero.sales.read`
@@ -191,7 +193,7 @@ Metadata live on `https://api.infrastack.app`. Client `oauth_16c41fc5-c625-4c00-
 
 ## X. Git represents this production Worker
 
-Branch tip `7542194` is the tree that was deployed as `2fc0dc77`. Contains main + reconciled PRs + Elvex file routing. Not a WhatsApp-only tip.
+Branch tip `5c8da6f` (Worker code `7542194`) is the tree deployed as `70f553e0`. Contains main + reconciled PRs + Elvex file routing. Not a WhatsApp-only tip.
 
 ## Y. PR
 
@@ -214,7 +216,7 @@ https://github.com/daniel00123-tech/Main/compare/main...cursor/infra-production-
 
 | Gate | Status |
 |---|---|
-| One Worker: WhatsApp webhook + ChatGPT OAuth + Portal Chat Send | PASS on `2fc0dc77` |
+| One Worker: WhatsApp webhook + ChatGPT OAuth + Portal Chat Send | PASS on `70f553e0` |
 | RBAC + invites + quality + usage in tree | PASS |
 | Elvex Outlook list + full get (same id, body) | PASS |
 | Elvex Xero reads (Director, EL MCP) | PASS |
@@ -222,9 +224,9 @@ https://github.com/daniel00123-tech/Main/compare/main...cursor/infra-production-
 | Catalogue latest metadata | PASS (Elvex live 10 + Caddington SQL) |
 | Elvex knowledge Q&A after a titled search hit | PARTIAL (contract + catalogue; handbook search empty) |
 | Short follow-ups in tree | PASS (code); live sequences not sent |
-| No overwrite at verify time | PASS (`2fc0dc77` still 100% when this report was written) |
+| No overwrite at verify time | PASS (`70f553e0` last-wins after concurrent overwrite) |
 | William original role | PASS director |
-| Git represents production | PASS `7542194` |
+| Git represents production | PASS `5c8da6f` / Worker `7542194` |
 
 ## AC. Human-only action
 
@@ -264,4 +266,4 @@ See the following section in the agent reply.
 
 ## AL. Verdict
 
-**PASS** on Worker `2fc0dc77-816c-48c6-b408-a69292cb0207` for WhatsApp + ChatGPT OAuth + Portal Chat Send + RBAC + Elvex Xero reads + Outlook list/get + catalogue + deploy guard + William restored to Director. Elvex semantic handbook Q&A remains empty-corpus, not a 403/Untitled contract failure.
+**PASS** on Worker `70f553e0-8cee-4d8d-933e-6e232c6f2624` for WhatsApp + ChatGPT OAuth + Portal Chat Send + RBAC + Elvex Xero reads + Outlook list/get + catalogue + deploy guard + William restored to Director. Elvex semantic handbook Q&A remains empty-corpus, not a 403/Untitled contract failure.
