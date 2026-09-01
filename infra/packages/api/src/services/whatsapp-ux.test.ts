@@ -30,6 +30,20 @@ vi.mock("./whatsapp-send", async () => {
   return {
     ...actual,
     sendWhatsAppText: sendWhatsAppTextMock,
+    sendWhatsAppInteractiveButtons: vi.fn().mockResolvedValue({
+      ok: false,
+      kind: "customer_service_reply",
+      error: "interactive_fallback",
+      retryable: false,
+      attempts: 1,
+    }),
+    sendWhatsAppInteractiveList: vi.fn().mockResolvedValue({
+      ok: false,
+      kind: "customer_service_reply",
+      error: "interactive_fallback",
+      retryable: false,
+      attempts: 1,
+    }),
     sendWhatsAppTypingIndicator: vi.fn().mockResolvedValue({ ok: true, supported: true }),
   };
 });
@@ -585,7 +599,7 @@ describe("WhatsApp response compression", () => {
     });
     expect(reply).toMatch(/Coal Search/i);
     expect(reply).toMatch(/relates to a coal-search|coal search/i);
-    expect(reply).toMatch(/Want me to summarise the full document/i);
+    expect(reply).toMatch(/Would you like me to summarise it/i);
     expect(reply).not.toMatch(/Also found|jsessionid|```|aaaaaaaa-bbbb/i);
     expect(reply.length).toBeLessThan(520);
     expect(looksLikeRawToolDump(reply)).toBe(false);
@@ -611,7 +625,7 @@ describe("WhatsApp response compression", () => {
       question: "summarise it",
     });
     expect(reply).toMatch(/Coal Search/i);
-    expect(reply).not.toMatch(/Want me to summarise the full document/i);
+    expect(reply).not.toMatch(/Would you like me to summarise it/i);
     expect(reply).not.toMatch(/Also found|jsessionid/i);
     expect(reply.length).toBeLessThan(520);
   });

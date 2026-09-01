@@ -38,6 +38,13 @@ function channelLabel(channel: string): string {
   }
 }
 
+function inputTypeLabel(row: { channel: string; inputType?: string | null; originatedAsVoice?: boolean }): string {
+  if (row.channel !== "whatsapp") return channelLabel(row.channel);
+  if (row.originatedAsVoice || row.inputType === "voice") return "WhatsApp · Voice note";
+  if (row.inputType === "button") return "WhatsApp · Button";
+  return "WhatsApp";
+}
+
 export default function InteractionsPage() {
   const { companyId: scopeCompanyId } = useAdminScope();
   const [channel, setChannel] = useState("");
@@ -128,7 +135,7 @@ export default function InteractionsPage() {
                 <DataCard
                   key={row.id}
                   title={row.userName || row.userEmail || "Unknown user"}
-                  subtitle={[row.companyName, channelLabel(row.channel)].filter(Boolean).join(" · ")}
+                  subtitle={[row.companyName, inputTypeLabel(row)].filter(Boolean).join(" · ")}
                   status={<StatusBadge status={row.success ? "healthy" : "failed"} />}
                   metric={row.label}
                   timestamp={formatDate(row.createdAt)}
@@ -158,7 +165,7 @@ export default function InteractionsPage() {
                       <div className="muted small">{row.userEmail}</div>
                     </td>
                     <td>{row.companyName ?? "—"}</td>
-                    <td>{channelLabel(row.channel)}</td>
+                    <td>{inputTypeLabel(row)}</td>
                     <td>{row.label}</td>
                     <td>
                       <StatusBadge status={row.success ? "healthy" : "failed"} />
@@ -176,7 +183,23 @@ export default function InteractionsPage() {
             <KeyValue label="User" value={selected.userName ?? selected.userEmail ?? "—"} />
             <KeyValue label="Company" value={selected.companyName ?? "—"} />
             <KeyValue label="Channel" value={channelLabel(selected.channel)} />
+            <KeyValue
+              label="Input"
+              value={
+                selected.originatedAsVoice || selected.inputType === "voice"
+                  ? "Voice note"
+                  : selected.inputType === "button"
+                    ? "Button"
+                    : "Text"
+              }
+            />
             <KeyValue label="Outcome" value={selected.status === "error" ? "Failed" : "Succeeded"} />
+            {selected.transcript ? (
+              <>
+                <h3>Voice transcript</h3>
+                <p className="small">{selected.transcript}</p>
+              </>
+            ) : null}
             <h3>User request</h3>
             <pre className="mono small">{JSON.stringify(selected.request, null, 2)}</pre>
             <h3>Infra response</h3>

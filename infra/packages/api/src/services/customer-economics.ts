@@ -171,6 +171,9 @@ export function classifyUsageResource(input: {
     return { classification: "stripe_fees", provider: "stripe", service: "payments" };
   }
   if (resource === "whatsapp" || hay.includes("whatsapp")) {
+    if (hay.includes("transcri") || action.includes("whatsapp.transcribe") || resource === "whatsapp_transcription") {
+      return { classification: "other", provider: tool || "stt", service: "whatsapp_transcription" };
+    }
     if (hay.includes("conversation") || action.includes("whatsapp.conversation") || action.includes("whatsapp.ack")) {
       return { classification: "other", provider: "infra", service: "whatsapp_conversation" };
     }

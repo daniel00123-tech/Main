@@ -24,6 +24,7 @@ import {
   emptyEntityMemory,
   inferEntitiesFromTurns,
   mergeEntityMemory,
+  recentDocumentTitles,
   type WhatsAppEntityMemory,
 } from "./whatsapp-entities";
 import { stampWhatsAppLifecycle, terminalStateForOutcome } from "./whatsapp-lifecycle";
@@ -63,6 +64,7 @@ import {
   looksLikeWriteIntent as looksLikeWriteIntentFromClassifier,
   needsToolWork,
   softenSearchQuery,
+  type WhatsAppIntent,
 } from "./whatsapp-intent";
 import {
   createWhatsAppLatencyMarks,
@@ -70,7 +72,24 @@ import {
   PROGRESS_AFTER_MS,
   summariseWhatsAppLatency,
 } from "./whatsapp-latency";
-import { sendWhatsAppText, sendWhatsAppTypingIndicator, type WhatsAppSendResult } from "./whatsapp-send";
+import {
+  sendWhatsAppInteractiveButtons,
+  sendWhatsAppInteractiveList,
+  sendWhatsAppText,
+  sendWhatsAppTypingIndicator,
+  type WhatsAppSendResult,
+} from "./whatsapp-send";
+import {
+  listRowsFromCompanies,
+  mapButtonToUserText,
+  shouldAttachButtons,
+  suggestionButtons,
+  type WhatsAppReplyButton,
+} from "./whatsapp-buttons";
+import { downloadWhatsAppMedia } from "./whatsapp-media";
+import { applyCustomerTone, UNSUPPORTED_BUTTON, VOICE_ACK, VOICE_NOT_CONFIGURED, VOICE_UNCLEAR } from "./whatsapp-tone";
+import { transcribeWhatsAppAudio } from "./whatsapp-transcribe";
+import type { WhatsAppParsedInbound } from "./whatsapp-webhook";
 
 export const WHATSAPP_AI_PROVIDER = "infra-gateway";
 export const WHATSAPP_AI_MODEL = "company-mcp-knowledge";
@@ -96,15 +115,7 @@ const ALLOWED_WHATSAPP_TOOLS = new Set([
   "xero_aged_receivables",
 ]);
 
-export type WhatsAppInboundItem = {
-  wamid: string;
-  from: string;
-  type: string;
-  text: string | null;
-  phoneNumberId: string | null;
-  businessAccountId: string | null;
-  timestamp: string | null;
-};
+export type WhatsAppInboundItem = WhatsAppParsedInbound;
 
 export type WhatsAppOrchestratorResult = {
   handled: boolean;
@@ -129,6 +140,8 @@ export type WhatsAppOrchestratorResult = {
   intent?: string | null;
   acknowledgementSent?: boolean;
   planAction?: string | null;
+  inputKind?: "text" | "voice" | "button";
+  buttonsSent?: number;
 };
 
 export function looksLikeWriteIntent(text: string): boolean {
@@ -140,6 +153,8 @@ export function parseCompanySelection(
   companies: Array<{ companyId: string; companyName: string }>,
 ): { companyId: string; companyName: string } | null {
   const trimmed = text.trim();
+  const byId = companies.find((company) => company.companyId === trimmed);
+  if (byId) return byId;
   const numbered = trimmed.match(/^(\d+)\.?$/);
   if (numbered) {
     const index = Number(numbered[1]) - 1;
@@ -253,6 +268,53 @@ export async function handleWhatsAppInboundMessage(
     state: "validated",
     validatedAt: new Date().toISOString(),
   });
+
+  const inboundResolved = await resolveInboundUserInput(env, {
+    item,
+    sender,
+    lastUserText: conversation?.turns?.slice().reverse().find((turn) => turn.role === "user")?.text ?? null,
+  });
+  if (inboundResolved.terminalReply) {
+    const sent = await maybeSendReply(env, sender, inboundResolved.terminalReply);
+    if (inboundResolved.inputKind === "voice") {
+      await recordWhatsAppTranscriptionUsage(env, {
+        companyId: conversation?.companyId ?? "unknown",
+        userId: identity.user.id,
+        actorEmail: identity.user.email,
+        interactionId: inboundResolved.interactionId ?? item.wamid,
+        success: false,
+        durationMs: inboundResolved.transcriptionMs ?? 0,
+        metadata: {
+          channel: "whatsapp",
+          inputKind: "voice",
+          inputType: "voice",
+          transcriptionProvider: inboundResolved.transcriptionProvider ?? null,
+          transcriptionFailed: Boolean(inboundResolved.transcriptionFailed),
+          transcriptionReason: inboundResolved.transcriptionReason ?? null,
+          voiceDownloadFailed: Boolean(inboundResolved.voiceDownloadFailed),
+          voiceDownloadReason: inboundResolved.voiceDownloadReason ?? null,
+          acknowledgementSent: inboundResolved.acknowledgementSent,
+          finalSent: sent.ok,
+          costLane: "whatsapp_transcription",
+        },
+      });
+    }
+    return {
+      handled: true,
+      duplicate: false,
+      identityFound: true,
+      companyId: conversation?.companyId ?? null,
+      userId: identity.user.id,
+      replySent: sent.ok,
+      publicReply: inboundResolved.terminalReply,
+      toolName: null,
+      interactionId: inboundResolved.interactionId ?? null,
+      outcome: inboundResolved.outcome ?? "answered",
+      inputKind: inboundResolved.inputKind,
+      acknowledgementSent: inboundResolved.acknowledgementSent,
+    };
+  }
+
   const companyDecision = resolveWhatsAppCompany({
     memberships: identity.memberships.map((membership) => ({
       companyId: membership.companyId,
@@ -260,12 +322,21 @@ export async function handleWhatsAppInboundMessage(
     })),
     lastCompanyId: conversation?.companyId ?? null,
     pendingSelection: Boolean(conversation?.pendingCompanySelection),
-    message: item.text ?? "",
+    message: inboundResolved.text,
   });
 
   if (companyDecision.status === "select") {
     const reply = companySelectionMessage(companyDecision.companies);
-    const sent = await maybeSendReply(env, sender, reply);
+    const sent = await maybeSendReply(env, sender, reply, {
+      buttons: suggestionButtons({ kind: "company", companies: companyDecision.companies }),
+      list:
+        companyDecision.companies.length > 3
+          ? {
+              buttonLabel: "Choose company",
+              rows: listRowsFromCompanies(companyDecision.companies),
+            }
+          : undefined,
+    });
     await saveWhatsAppConversation(env, {
       userId: identity.user.id,
       companyId: null,
@@ -291,6 +362,8 @@ export async function handleWhatsAppInboundMessage(
       toolName: null,
       interactionId: null,
       outcome: "company_selection",
+      inputKind: inboundResolved.inputKind,
+      buttonsSent: sent.buttonsSent ?? 0,
     };
   }
 
@@ -302,14 +375,17 @@ export async function handleWhatsAppInboundMessage(
     priorTurns,
     sameCompany ? conversation?.entities ?? emptyEntityMemory() : emptyEntityMemory(),
   );
-  const text = (item.text ?? "").trim();
+  const text = inboundResolved.text.trim();
+  const inputKind = inboundResolved.inputKind;
   const connectors = await listConnectedConnectorIds(env, companyDecision.companyId);
   const plan = planWhatsAppTurn({ text, memory: entities, connectors });
   const intent = plan.intent || classifyWhatsAppIntent(text, { hasPriorTurns: priorTurns.length > 0 });
   marks.intentClassifiedAt = Date.now();
 
-  if (!text || item.type !== "text") {
-    const reply = "I can answer text questions about your connected business systems. Please send a short question.";
+  if (!text) {
+    const reply = applyCustomerTone(
+      "I can answer questions about your connected business systems. Send a short message or a voice note.",
+    );
     const sent = await maybeSendReply(env, sender, reply);
     return {
       handled: true,
@@ -323,6 +399,7 @@ export async function handleWhatsAppInboundMessage(
       interactionId: null,
       outcome: "answered",
       intent,
+      inputKind,
     };
   }
 
@@ -354,8 +431,15 @@ export async function handleWhatsAppInboundMessage(
   }
 
   if (plan.action === "clarify") {
-    const reply = plan.clarification ?? "Can you give me a little more detail so I look in the right place?";
-    const sent = await maybeSendReply(env, sender, reply);
+    const reply = applyCustomerTone(
+      plan.clarification ?? "Can you give me a little more detail so I look in the right place?",
+    );
+    const sent = await maybeSendReply(env, sender, reply, {
+      buttons: suggestionButtons({
+        kind: "clarify_docs",
+        documentTitles: recentDocumentTitles(entities),
+      }),
+    });
     await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, reply, entities);
     await stampWhatsAppLifecycle(env, item.wamid, {
       state: "clarification_sent",
@@ -377,6 +461,8 @@ export async function handleWhatsAppInboundMessage(
       intent,
       acknowledgementSent: false,
       planAction: plan.action,
+      inputKind,
+      buttonsSent: sent.buttonsSent ?? 0,
     };
   }
 
@@ -391,8 +477,16 @@ export async function handleWhatsAppInboundMessage(
         capabilities = await capabilityReplyForCompany(env, companyDecision.companyId);
       }
     }
-    const reply = conversationalReply(intent, { text, capabilities }) ?? conversationalReply("greeting", { text })!;
-    const sent = await maybeSendReply(env, sender, reply);
+    const reply = applyCustomerTone(
+      conversationalReply(intent as WhatsAppIntent, { text, capabilities }) ??
+        conversationalReply("greeting", { text })!,
+    );
+    const sent = await maybeSendReply(env, sender, reply, {
+      buttons:
+        intent === "help" || intent === "capabilities"
+          ? suggestionButtons({ kind: "help", hasXero: connectors.includes("conn_xero") })
+          : [],
+    });
     await rememberTurn(env, identity.user.id, companyDecision.companyId, priorTurns, text, reply, entities);
     await recordAuditEvent(env.DB, {
       companyId: companyDecision.companyId,
@@ -421,6 +515,8 @@ export async function handleWhatsAppInboundMessage(
       outcome: "answered",
       intent,
       acknowledgementSent: false,
+      inputKind,
+      buttonsSent: sent.buttonsSent ?? 0,
     };
   }
 
@@ -445,7 +541,7 @@ export async function handleWhatsAppInboundMessage(
   const sessionUser = await toSessionUser(env.DB, dbUser);
   const interactionId = newId("int");
   const needsWork = !plan.skipTools;
-  let acknowledgementSent = false;
+  let acknowledgementSent = Boolean(inboundResolved.acknowledgementSent);
   let progressSent = false;
   let fallbackSent = false;
 
@@ -580,8 +676,19 @@ export async function handleWhatsAppInboundMessage(
     });
 
     marks.outboundStartedAt = Date.now();
-    const sent = await maybeSendReply(env, sender, answered.reply, {
-      previewUrl: /^https?:\/\//m.test(answered.reply),
+    const polished = applyCustomerTone(answered.reply, {
+      restrained: plan.action === "xero" || answered.outcome === "tool_failed",
+    });
+    const buttons = buttonsForAnswer({
+      plan,
+      reply: polished,
+      entities: answered.entities,
+      connectors,
+      outcome: answered.outcome,
+    });
+    const sent = await maybeSendReply(env, sender, polished, {
+      previewUrl: /^https?:\/\//m.test(polished),
+      buttons,
     });
     marks.outboundAcceptedAt = Date.now();
     marks.firstVisibleAt ??= Date.now();
@@ -591,7 +698,7 @@ export async function handleWhatsAppInboundMessage(
       companyDecision.companyId,
       priorTurns,
       text,
-      answered.reply,
+      polished,
       answered.entities,
     );
     const latency = summariseWhatsAppLatency(marks);
@@ -619,29 +726,59 @@ export async function handleWhatsAppInboundMessage(
         usedMemory: plan.useMemory,
         askedLink: plan.action === "memory_link",
         linkReturned: Boolean(answered.entities.lastDocument?.url) && plan.action === "memory_link",
-        replyLength: answered.reply.length,
-        rawLeak: /```|__EMPTY|jsessionid=/i.test(answered.reply),
+        replyLength: polished.length,
+        rawLeak: /```|__EMPTY|jsessionid=/i.test(polished),
         conversationKind: plan.skipTools ? "conversation" : "tool_mcp",
         costLane: plan.skipTools ? "whatsapp_conversation" : "whatsapp_tool_mcp",
         transportCostLane: "whatsapp_transport",
         firstVisibleMs: latency.firstVisibleMs,
+        inputKind,
+        inputType: inputKind,
+        buttonAction: inboundResolved.buttonAction ?? null,
+        buttonsSent: sent.buttonsSent ?? buttons.length,
+        buttonFailed: Boolean(sent.buttonFailed),
+        transcript: inboundResolved.transcript ?? null,
+        transcriptionProvider: inboundResolved.transcriptionProvider ?? null,
+        transcriptionMs: inboundResolved.transcriptionMs ?? null,
+        transcriptionFailed: Boolean(inboundResolved.transcriptionFailed),
+        voiceDownloadFailed: Boolean(inboundResolved.voiceDownloadFailed),
+        emojiCount: (polished.match(/\p{Extended_Pictographic}/gu) ?? []).length,
       },
     });
     await stampWhatsAppLifecycle(env, item.wamid, {
       state: terminalStateForOutcome({
         outcome: sent.ok ? answered.outcome : "send_failed",
         planAction: plan.action,
-        reply: answered.reply,
+        reply: polished,
       }),
       terminal: terminalStateForOutcome({
         outcome: sent.ok ? answered.outcome : "send_failed",
         planAction: plan.action,
-        reply: answered.reply,
+        reply: polished,
       }),
       replySentAt: new Date().toISOString(),
       firstVisibleAt: new Date().toISOString(),
       lastError: sent.ok ? null : "send_failed",
     });
+    if (inputKind === "voice") {
+      await recordWhatsAppTranscriptionUsage(env, {
+        companyId: companyDecision.companyId,
+        userId: identity.user.id,
+        actorEmail: identity.user.email,
+        interactionId,
+        success: Boolean(inboundResolved.transcript),
+        durationMs: inboundResolved.transcriptionMs ?? 0,
+        metadata: {
+          channel: "whatsapp",
+          inputKind: "voice",
+          inputType: "voice",
+          transcript: inboundResolved.transcript ?? null,
+          transcriptionProvider: inboundResolved.transcriptionProvider ?? null,
+          transcriptionMs: inboundResolved.transcriptionMs ?? null,
+          costLane: "whatsapp_transcription",
+        },
+      });
+    }
     scheduleQualityAudit(env, options?.waitUntil, interactionId);
     await recordAuditEvent(env.DB, {
       companyId: companyDecision.companyId,
@@ -670,13 +807,15 @@ export async function handleWhatsAppInboundMessage(
       companyId: companyDecision.companyId,
       userId: identity.user.id,
       replySent: sent.ok,
-      publicReply: answered.reply,
+      publicReply: polished,
       toolName: answered.toolName,
       interactionId,
       outcome: sent.ok ? answered.outcome : "send_failed",
       intent,
       acknowledgementSent,
       planAction: plan.action,
+      inputKind,
+      buttonsSent: sent.buttonsSent ?? buttons.length,
     };
   } catch {
     const reply = aiFailureWhatsAppMessage();
@@ -1091,12 +1230,143 @@ function formatSearchHits(
   });
 }
 
+async function resolveInboundUserInput(
+  env: Env,
+  input: { item: WhatsAppInboundItem; sender: string; lastUserText: string | null },
+): Promise<{
+  text: string;
+  inputKind: "text" | "voice" | "button";
+  acknowledgementSent?: boolean;
+  terminalReply?: string;
+  outcome?: WhatsAppOrchestratorResult["outcome"];
+  interactionId?: string | null;
+  buttonAction?: string | null;
+  transcript?: string | null;
+  transcriptionProvider?: string | null;
+  transcriptionMs?: number | null;
+  transcriptionFailed?: boolean;
+  transcriptionReason?: string | null;
+  voiceDownloadFailed?: boolean;
+  voiceDownloadReason?: string | null;
+}> {
+  const kind =
+    input.item.inputKind ??
+    (input.item.type === "audio" || input.item.type === "voice"
+      ? "voice"
+      : input.item.type === "interactive"
+        ? "button"
+        : "text");
+  if (kind === "button" || input.item.type === "interactive") {
+    const mapped = mapButtonToUserText(input.item.buttonId ?? "", input.item.buttonTitle);
+    if (!mapped.supported || !mapped.text) {
+      return { text: "", inputKind: "button", terminalReply: UNSUPPORTED_BUTTON, buttonAction: mapped.action };
+    }
+    const text = mapped.action === "try_again" ? input.lastUserText || mapped.text : mapped.text;
+    return { text, inputKind: "button", buttonAction: mapped.action };
+  }
+
+  if (kind === "voice" || input.item.type === "audio" || input.item.type === "voice") {
+    const ack = await maybeSendReply(env, input.sender, VOICE_ACK);
+    const downloaded = await downloadWhatsAppMedia(env, input.item.mediaId);
+    if (!downloaded.ok) {
+      return {
+        text: "",
+        inputKind: "voice",
+        acknowledgementSent: ack.ok,
+        terminalReply: VOICE_UNCLEAR,
+        voiceDownloadFailed: true,
+        voiceDownloadReason: downloaded.reason,
+        transcriptionFailed: true,
+        transcriptionReason: downloaded.reason,
+      };
+    }
+    const started = Date.now();
+    const transcribed = await transcribeWhatsAppAudio(env, {
+      bytes: downloaded.bytes,
+      mimeType: downloaded.mimeType,
+      filename: "whatsapp-voice.ogg",
+    });
+    const transcriptionMs = Date.now() - started;
+    if (!transcribed.ok) {
+      const reply = transcribed.reason === "not_configured" ? VOICE_NOT_CONFIGURED : VOICE_UNCLEAR;
+      return {
+        text: "",
+        inputKind: "voice",
+        acknowledgementSent: ack.ok,
+        terminalReply: reply,
+        transcriptionProvider: transcribed.provider,
+        transcriptionMs,
+        transcriptionFailed: true,
+        transcriptionReason: transcribed.reason,
+      };
+    }
+    if (transcribed.text.trim().length < 2) {
+      return {
+        text: "",
+        inputKind: "voice",
+        acknowledgementSent: ack.ok,
+        terminalReply: VOICE_UNCLEAR,
+        transcriptionProvider: transcribed.provider,
+        transcriptionMs,
+        transcriptionFailed: true,
+        transcriptionReason: "empty",
+      };
+    }
+    return {
+      text: transcribed.text,
+      inputKind: "voice",
+      acknowledgementSent: ack.ok,
+      transcript: transcribed.text,
+      transcriptionProvider: transcribed.provider,
+      transcriptionMs,
+    };
+  }
+
+  return { text: (input.item.text ?? "").trim(), inputKind: "text" };
+}
+
+function buttonsForAnswer(input: {
+  plan: WhatsAppPlan;
+  reply: string;
+  entities: WhatsAppEntityMemory;
+  connectors: string[];
+  outcome: string;
+}): WhatsAppReplyButton[] {
+  const hasXero = input.connectors.includes("conn_xero");
+  if (input.outcome === "tool_failed" || input.plan.action === "write_blocked") return [];
+  if (/couldn’t find that/i.test(input.reply)) {
+    return suggestionButtons({ kind: "no_result" });
+  }
+  if (input.plan.action === "xero" && hasXero && !/permission/i.test(input.reply)) {
+    return suggestionButtons({ kind: "finance", hasXero });
+  }
+  if (input.plan.action === "memory_link" || /^https?:\/\//m.test(input.reply)) {
+    return suggestionButtons({
+      kind: "document",
+      hasSourceUrl: /^https?:\/\//m.test(input.reply) || Boolean(input.entities.lastDocument?.url),
+    });
+  }
+  if (input.plan.action === "knowledge" || input.plan.action === "memory_fact" || input.plan.action === "guidance") {
+    if (input.reply.length > 520) return suggestionButtons({ kind: "long" });
+    return suggestionButtons({
+      kind: /email|outlook|inbox/i.test(input.plan.query) ? "email" : "document",
+      hasSourceUrl: Boolean(input.entities.lastDocument?.url),
+    });
+  }
+  if (input.plan.action === "draft") return suggestionButtons({ kind: "long" });
+  return [];
+}
+
 async function maybeSendReply(
   env: Env,
   toE164: string | null,
   body: string,
-  options?: { previewUrl?: boolean },
-): Promise<WhatsAppSendResult> {
+  options?: {
+    previewUrl?: boolean;
+    buttons?: WhatsAppReplyButton[];
+    list?: { buttonLabel: string; rows: ReturnType<typeof listRowsFromCompanies> };
+  },
+): Promise<WhatsAppSendResult & { buttonsSent?: number; buttonFailed?: boolean }> {
   if (!toE164 || !outboundAiEnabled(env)) {
     return {
       ok: false,
@@ -1106,9 +1376,43 @@ async function maybeSendReply(
       attempts: 0,
     };
   }
+  const text = applyCustomerTone(body);
+  if (options?.list?.rows.length) {
+    const sent = await sendWhatsAppInteractiveList(env, {
+      toE164,
+      body: text,
+      buttonLabel: options.list.buttonLabel,
+      rows: options.list.rows,
+      inCustomerServiceWindow: true,
+    });
+    if (sent.ok) return { ...sent, buttonsSent: options.list.rows.length };
+    const fallback = await sendWhatsAppText(env, {
+      toE164,
+      body: text,
+      inCustomerServiceWindow: true,
+      previewUrl: options?.previewUrl,
+    });
+    return { ...fallback, buttonsSent: 0, buttonFailed: true };
+  }
+  if (options?.buttons && shouldAttachButtons(text, options.buttons)) {
+    const sent = await sendWhatsAppInteractiveButtons(env, {
+      toE164,
+      body: text,
+      buttons: options.buttons,
+      inCustomerServiceWindow: true,
+    });
+    if (sent.ok) return { ...sent, buttonsSent: options.buttons.length };
+    const fallback = await sendWhatsAppText(env, {
+      toE164,
+      body: text,
+      inCustomerServiceWindow: true,
+      previewUrl: options?.previewUrl,
+    });
+    return { ...fallback, buttonsSent: 0, buttonFailed: true };
+  }
   return sendWhatsAppText(env, {
     toE164,
-    body,
+    body: text,
     inCustomerServiceWindow: true,
     previewUrl: options?.previewUrl,
   });
@@ -1187,6 +1491,54 @@ async function recordWhatsAppUxUsage(
       actualMarginBps: null,
       grossProfitCents: null,
       pricingLabel: "whatsapp_ux_not_double_counted",
+      pricingRuleId: null,
+      rateCardId: null,
+      rateCardVersion: null,
+      isTestConfig: false,
+    },
+    metadata: input.metadata,
+  }).catch(() => undefined);
+}
+
+async function recordWhatsAppTranscriptionUsage(
+  env: Env,
+  input: {
+    companyId: string;
+    userId: string;
+    actorEmail: string;
+    interactionId: string;
+    success: boolean;
+    durationMs: number;
+    metadata: Record<string, unknown>;
+  },
+): Promise<void> {
+  if (input.companyId === "unknown") return;
+  await recordUsageEvent(env.DB, {
+    companyId: input.companyId,
+    userId: input.userId,
+    actorEmail: input.actorEmail,
+    resourceType: "whatsapp_transcription",
+    resourceId: "inbound_voice",
+    toolName: String(input.metadata.transcriptionProvider ?? "stt"),
+    action: "whatsapp.transcribe",
+    success: input.success,
+    durationMs: input.durationMs,
+    sourceClient: "whatsapp",
+    requestId: `wa_stt_${input.interactionId}`,
+    interactionId: input.interactionId,
+    charge: {
+      billable: false,
+      customerChargeCents: null,
+      calculatedSellingCents: null,
+      minimumChargeApplied: false,
+      underlyingCostCents: null,
+      underlyingCostMicros: null,
+      estimatedCostMicros: null,
+      costBasis: "unknown",
+      targetMarginBps: null,
+      actualMarginBps: null,
+      grossProfitCents: null,
+      pricingLabel: "whatsapp_transcription_cost_unknown",
       pricingRuleId: null,
       rateCardId: null,
       rateCardVersion: null,

@@ -7,9 +7,10 @@ import {
 } from "./whatsapp-latency";
 
 export const WATCHDOG_ACK_COPY = [
-  "Got it — I’m checking that now.",
-  "Thanks — I’m looking into that for you.",
-  "Understood — I’m checking your connected systems now.",
+  "Got it 👍 I’m checking now.",
+  "No problem — I’m looking into that.",
+  "Thanks — I’ll check that for you.",
+  "Understood. Let me look into it.",
 ] as const;
 
 export const WATCHDOG_PROGRESS_COPY =
