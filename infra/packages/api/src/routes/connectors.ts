@@ -1147,6 +1147,22 @@ connectors.post("/api/internal/cmd16b/outlook-rbac", async (c) => {
   }
 });
 
+connectors.post("/api/internal/william-chatgpt-acceptance", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  const phase = c.req.query("phase") === "restored" ? "restored" : "elevated";
+  try {
+    const { runWilliamChatgptAcceptance } = await import("../services/william-chatgpt-acceptance");
+    return c.json(await runWilliamChatgptAcceptance(c.env, phase));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "William ChatGPT acceptance failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/ocr/acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

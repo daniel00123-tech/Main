@@ -1,0 +1,640 @@
+/**
+ * Controlled William ChatGPT-path acceptance.
+ * Mints a short-lived user MCP JWT (channel=chatgpt) and calls the live
+ * gateway. Never returns tokens or secrets. No Xero writes. No email send.
+ */
+
+import { issueMcpAccessToken, recordAccessJti } from "../auth/mcp-oauth";
+import { loadLiveCompanyActor } from "../auth/live-identity";
+import type { Env } from "../env";
+
+export type AcceptanceOutcome =
+  | "WORKS"
+  | "PERMISSION_DENIED"
+  | "TOOL_NOT_EXPOSED"
+  | "CONNECTOR_NOT_CONNECTED"
+  | "UPSTREAM_FAILURE"
+  | "NO_RESULTS";
+
+const WILLIAM_USER_ID = "user_b0db1fc5-692c-436d-99e6-392966b20df8";
+const WILLIAM_MEMBERSHIP_ID = "membership_78495c59-cff6-4db5-9986-a351ebe154f1";
+const WILLIAM_EMAIL = "william@elvexpropertyservices.com";
+const COMPANY_ID = "co_el";
+const CHATGPT_CLIENT_ID = "oauth_16c41fc5-c625-4c00-9ff1-a252a28ec518";
+const MCP_URL = "https://app.infrastack.app/api/gateway/v1/mcp";
+const INFO_MAILBOX = "info@elvexpropertyservices.com";
+const FINANCE_MAILBOX = "finance@elvexpropertyservices.com";
+
+const DRAFT_NAME = /draft|reply|create_.*mail|create_.*email|send_elvex|send_.*mail|send_.*email/i;
+const SEND_NAME = /send_elvex_email|send_.*email|outlook_send|mail_send/i;
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function extractText(rpc: Record<string, unknown>): string {
+  const result = rpc.result as { content?: Array<{ type?: string; text?: string }> } | undefined;
+  const text = result?.content?.find((part) => part.type === "text")?.text;
+  return typeof text === "string" ? text : "";
+}
+
+function tryParse(text: string): unknown {
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text.slice(0, 400) };
+  }
+}
+
+function summarizeValue(value: unknown, depth = 0): unknown {
+  if (value == null) return value;
+  if (typeof value === "string") return value.slice(0, 160);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) {
+    return {
+      count: value.length,
+      sample: value.slice(0, 3).map((item) => summarizeValue(item, depth + 1)),
+    };
+  }
+  if (typeof value === "object" && depth < 2) {
+    const record = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    const keys = [
+      "invoiceNumber",
+      "InvoiceNumber",
+      "totalSales",
+      "transactionCount",
+      "currencyCode",
+      "fromDate",
+      "toDate",
+      "id",
+      "subject",
+      "from",
+      "sender",
+      "receivedDateTime",
+      "title",
+      "url",
+      "sourceUrl",
+      "documentId",
+      "name",
+      "organisationName",
+      "summary",
+      "customers",
+      "invoices",
+      "messages",
+      "results",
+      "matches",
+      "documents",
+      "items",
+    ];
+    for (const key of keys) {
+      if (key in record) out[key] = summarizeValue(record[key], depth + 1);
+    }
+    if (Object.keys(out).length === 0) {
+      return { keys: Object.keys(record).slice(0, 12) };
+    }
+    return out;
+  }
+  return typeof value;
+}
+
+function collectionLength(parsed: unknown): number | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const record = parsed as Record<string, unknown>;
+  for (const key of [
+    "invoices",
+    "messages",
+    "results",
+    "matches",
+    "documents",
+    "items",
+    "customers",
+    "transactions",
+  ]) {
+    if (Array.isArray(record[key])) return record[key].length;
+  }
+  if (record.summary && typeof record.summary === "object") return 1;
+  return null;
+}
+
+function classifyRpc(
+  toolName: string,
+  listed: Set<string>,
+  rpc: Record<string, unknown>,
+  httpStatus: number,
+): AcceptanceOutcome {
+  if (!listed.has(toolName)) return "TOOL_NOT_EXPOSED";
+  const err = rpc.error as
+    | {
+        message?: string;
+        data?: {
+          accessOutcome?: string;
+          errorCode?: string;
+          reason?: string;
+          userAllowed?: boolean;
+          connected?: boolean | null;
+        };
+      }
+    | undefined;
+  if (err) {
+    const data = err.data ?? {};
+    const msg = String(err.message ?? "").toLowerCase();
+    if (
+      data.accessOutcome === "permission_denied" ||
+      data.errorCode === "permission_denied" ||
+      data.errorCode === "insufficient_permissions" ||
+      data.reason === "user_not_authorised" ||
+      data.userAllowed === false ||
+      msg.includes("permissions") ||
+      msg.includes("not allow")
+    ) {
+      return "PERMISSION_DENIED";
+    }
+    if (
+      data.errorCode === "not_connected" ||
+      data.errorCode === "connector_not_configured" ||
+      data.connected === false ||
+      msg.includes("not connected") ||
+      msg.includes("not configured")
+    ) {
+      return "CONNECTOR_NOT_CONNECTED";
+    }
+    return "UPSTREAM_FAILURE";
+  }
+  if (httpStatus === 401 || httpStatus === 403) {
+    const body = JSON.stringify(rpc).toLowerCase();
+    if (body.includes("permission") || body.includes("not allow")) return "PERMISSION_DENIED";
+    return "UPSTREAM_FAILURE";
+  }
+  const result = rpc.result as { isError?: boolean } | undefined;
+  const text = extractText(rpc);
+  const parsed = tryParse(text);
+  if (result?.isError) return "UPSTREAM_FAILURE";
+  if (typeof parsed === "object" && parsed && "error" in (parsed as object)) {
+    const inner = String((parsed as { error?: unknown }).error ?? "").toLowerCase();
+    if (inner.includes("permission") || inner.includes("not allow")) return "PERMISSION_DENIED";
+    if (inner.includes("not connected")) return "CONNECTOR_NOT_CONNECTED";
+    return "UPSTREAM_FAILURE";
+  }
+  if (
+    toolName === "xero_sales_summary" &&
+    parsed &&
+    typeof parsed === "object" &&
+    ("summary" in (parsed as object) ||
+      "totalSales" in ((parsed as { summary?: object }).summary ?? {}))
+  ) {
+    return "WORKS";
+  }
+  const len = collectionLength(parsed);
+  if (len === 0) return "NO_RESULTS";
+  if (!text.trim() && parsed == null) return "NO_RESULTS";
+  return "WORKS";
+}
+
+async function mcp(
+  token: string,
+  method: string,
+  params?: Record<string, unknown>,
+  id = 1,
+): Promise<{ httpStatus: number; rpc: Record<string, unknown> }> {
+  const response = await fetch(MCP_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "User-Agent": "chatgpt-mcp",
+      Origin: "https://chatgpt.com",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id,
+      method,
+      params: params ?? {},
+    }),
+  });
+  const rpc = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  return { httpStatus: response.status, rpc };
+}
+
+async function callTool(
+  token: string,
+  listed: Set<string>,
+  toolName: string,
+  args: Record<string, unknown>,
+  id: number,
+) {
+  if (!listed.has(toolName)) {
+    return {
+      toolName,
+      arguments: args,
+      outcome: "TOOL_NOT_EXPOSED" as AcceptanceOutcome,
+      httpStatus: null,
+      errorCode: null,
+      userRole: null,
+      summary: { missingFromToolsList: true },
+    };
+  }
+  const { httpStatus, rpc } = await mcp(token, "tools/call", { name: toolName, arguments: args }, id);
+  const err = rpc.error as { message?: string; data?: Record<string, unknown> } | undefined;
+  const text = extractText(rpc);
+  const parsed = tryParse(text);
+  return {
+    toolName,
+    arguments: args,
+    outcome: classifyRpc(toolName, listed, rpc, httpStatus),
+    httpStatus,
+    errorCode: err?.data?.errorCode ?? err?.data?.accessOutcome ?? null,
+    userRole: err?.data?.userRole ?? null,
+    reason: err?.data?.reason ?? null,
+    connected: err?.data?.connected ?? null,
+    userAllowed: err?.data?.userAllowed ?? null,
+    message: typeof err?.message === "string" ? err.message.slice(0, 240) : null,
+    summary: summarizeValue(parsed),
+    rawPreview: text ? text.slice(0, 180) : null,
+  };
+}
+
+function pickInvoiceNumber(summary: unknown): string | null {
+  if (!summary || typeof summary !== "object") return null;
+  const record = summary as Record<string, unknown>;
+  if (typeof record.invoiceNumber === "string") return record.invoiceNumber;
+  if (typeof record.InvoiceNumber === "string") return record.InvoiceNumber;
+  const sample = record.sample;
+  if (Array.isArray(sample) && sample[0]) return pickInvoiceNumber(sample[0]);
+  if (record.invoices) return pickInvoiceNumber(record.invoices);
+  return null;
+}
+
+function pickMessageField(summary: unknown, field: "id" | "subject" | "from"): string | null {
+  if (!summary || typeof summary !== "object") return null;
+  const record = summary as Record<string, unknown>;
+  if (typeof record[field] === "string") return record[field] as string;
+  if (field === "from" && typeof record.sender === "string") return record.sender;
+  if (record.sample) return pickMessageField(record.sample, field);
+  if (Array.isArray(record.sample) && record.sample[0]) {
+    return pickMessageField(record.sample[0], field);
+  }
+  if (record.messages) return pickMessageField(record.messages, field);
+  return null;
+}
+
+function pickKnowledgeId(summary: unknown): { id: string | null; title: string | null; url: string | null } {
+  if (!summary || typeof summary !== "object") return { id: null, title: null, url: null };
+  const record = summary as Record<string, unknown>;
+  const id =
+    (typeof record.id === "string" && record.id) ||
+    (typeof record.documentId === "string" && record.documentId) ||
+    null;
+  const title =
+    typeof record.title === "string" ? record.title : typeof record.name === "string" ? record.name : null;
+  const url =
+    (typeof record.url === "string" && record.url) ||
+    (typeof record.sourceUrl === "string" && record.sourceUrl) ||
+    null;
+  if (id || title || url) return { id, title, url };
+  if (record.sample) {
+    return pickKnowledgeId(Array.isArray(record.sample) ? record.sample[0] : record.sample);
+  }
+  if (record.results) return pickKnowledgeId(record.results);
+  if (record.matches) return pickKnowledgeId(record.matches);
+  if (record.documents) return pickKnowledgeId(record.documents);
+  return { id: null, title: null, url: null };
+}
+
+export async function runWilliamChatgptAcceptance(
+  env: Env,
+  phase: "elevated" | "restored",
+): Promise<Record<string, unknown>> {
+  if (!env.SESSION_SECRET) {
+    return { error: "SESSION_SECRET missing" };
+  }
+  const actor = await loadLiveCompanyActor(env.DB, WILLIAM_USER_ID, COMPANY_ID);
+  if (!actor?.active) {
+    return { error: "William live actor missing or inactive" };
+  }
+  if (phase === "elevated" && actor.role !== "finance_team") {
+    return { error: "Refusing elevated run: live role is not finance_team", liveRole: actor.role };
+  }
+  if (phase === "restored" && actor.role !== "office_staff") {
+    return { error: "Refusing restore run: live role is not office_staff", liveRole: actor.role };
+  }
+
+  const issued = await issueMcpAccessToken(
+    env.SESSION_SECRET,
+    "https://app.infrastack.app",
+    "https://app.infrastack.app/api/gateway/v1/mcp",
+    {
+      userId: actor.userId,
+      email: actor.email || WILLIAM_EMAIL,
+      companyId: actor.companyId,
+      membershipId: actor.membershipId || WILLIAM_MEMBERSHIP_ID,
+      clientId: CHATGPT_CLIENT_ID,
+      channel: "chatgpt",
+    },
+  );
+  await recordAccessJti(env.DB, {
+    jti: issued.jti,
+    userId: actor.userId,
+    companyId: actor.companyId,
+  });
+
+  let rpcId = 1;
+  await mcp(
+    issued.token,
+    "initialize",
+    {
+      protocolVersion: "2025-03-26",
+      capabilities: {},
+      clientInfo: { name: "chatgpt-acceptance", version: "1.0" },
+    },
+    rpcId++,
+  );
+
+  const listedRes = await mcp(issued.token, "tools/list", {}, rpcId++);
+  const tools = ((listedRes.rpc.result as { tools?: Array<{ name: string; description?: string }> } | undefined)
+    ?.tools ?? []) as Array<{ name: string; description?: string }>;
+  const listed = new Set(tools.map((tool) => tool.name));
+  const toolNames = tools.map((tool) => tool.name).sort();
+
+  const xeroReadListed = toolNames.filter(
+    (name) => name.startsWith("xero_") && !/create|approve|send|allocate|void|update|delete/i.test(name),
+  );
+  const outlookDraftListed = toolNames.filter((name) => DRAFT_NAME.test(name));
+  const outlookSendListed = toolNames.filter((name) => SEND_NAME.test(name));
+  const actionControlListed = toolNames.filter((name) =>
+    /action_plan|plan_xero|confirm_action|execute_action/.test(name),
+  );
+
+  const today = isoDate(new Date());
+  const monthStart = `${today.slice(0, 7)}-01`;
+
+  const cases: Array<{
+    id: string;
+    group: "xero" | "outlook" | "knowledge" | "restore";
+    toolName: string;
+    args: Record<string, unknown>;
+  }> = [];
+
+  if (phase === "elevated") {
+    cases.push(
+      { id: "xero.sales_today", group: "xero", toolName: "xero_sales_summary", args: { fromDate: today, toDate: today } },
+      {
+        id: "xero.sales_this_month",
+        group: "xero",
+        toolName: "xero_sales_summary",
+        args: { fromDate: monthStart, toDate: today },
+      },
+      {
+        id: "xero.invoices_raised_today",
+        group: "xero",
+        toolName: "xero_search_invoices",
+        args: { fromDate: today, toDate: today, limit: 10 },
+      },
+      {
+        id: "xero.outstanding_invoices",
+        group: "xero",
+        toolName: "xero_search_invoices",
+        args: { unpaidOnly: true, limit: 10 },
+      },
+      {
+        id: "xero.top_customers",
+        group: "xero",
+        toolName: "xero_top_customers",
+        args: { fromDate: monthStart, toDate: today, limit: 5 },
+      },
+    );
+  } else {
+    cases.push(
+      {
+        id: "restore.xero_sales_denied",
+        group: "restore",
+        toolName: "xero_sales_summary",
+        args: { fromDate: today, toDate: today },
+      },
+      {
+        id: "restore.finance_inbox_denied",
+        group: "restore",
+        toolName: "outlook_list_messages",
+        args: { mailboxAddress: FINANCE_MAILBOX, limit: 1 },
+      },
+    );
+  }
+
+  const results: Record<string, unknown>[] = [];
+  let knownInvoice: string | null = null;
+  let infoMessageId: string | null = null;
+  let infoSubject: string | null = null;
+  let infoFrom: string | null = null;
+  let knowledgeDoc = { id: null as string | null, title: null as string | null, url: null as string | null };
+  let secondDoc = { id: null as string | null, title: null as string | null, url: null as string | null };
+
+  for (const testCase of cases) {
+    const result = await callTool(issued.token, listed, testCase.toolName, testCase.args, rpcId++);
+    results.push({ id: testCase.id, group: testCase.group, ...result });
+    if (testCase.id === "xero.outstanding_invoices" || testCase.id === "xero.invoices_raised_today") {
+      knownInvoice = knownInvoice ?? pickInvoiceNumber(result.summary);
+    }
+  }
+
+  if (phase === "elevated") {
+    const invoiceLookup = await callTool(
+      issued.token,
+      listed,
+      "xero_get_invoice",
+      knownInvoice ? { invoiceNumber: knownInvoice } : { invoiceNumber: "INV-0001" },
+      rpcId++,
+    );
+    results.push({
+      id: "xero.known_invoice_lookup",
+      group: "xero",
+      knownInvoiceUsed: knownInvoice,
+      ...invoiceLookup,
+    });
+
+    const infoNewest = await callTool(
+      issued.token,
+      listed,
+      "outlook_list_messages",
+      { mailboxAddress: INFO_MAILBOX, limit: 3 },
+      rpcId++,
+    );
+    results.push({ id: "outlook.newest_info", group: "outlook", ...infoNewest });
+    infoMessageId = pickMessageField(infoNewest.summary, "id");
+    infoSubject = pickMessageField(infoNewest.summary, "subject");
+    infoFrom = pickMessageField(infoNewest.summary, "from");
+
+    const financeNewest = await callTool(
+      issued.token,
+      listed,
+      "outlook_list_messages",
+      { mailboxAddress: FINANCE_MAILBOX, limit: 3 },
+      rpcId++,
+    );
+    results.push({ id: "outlook.newest_finance", group: "outlook", ...financeNewest });
+
+    const senderQuery = infoFrom ? infoFrom : "elvex";
+    const senderSearch = await callTool(
+      issued.token,
+      listed,
+      "outlook_search_mailbox",
+      { mailboxAddress: INFO_MAILBOX, query: senderQuery, limit: 5 },
+      rpcId++,
+    );
+    results.push({ id: "outlook.sender_search", group: "outlook", query: senderQuery, ...senderSearch });
+
+    const subjectQuery = infoSubject ? infoSubject.slice(0, 40) : "invoice";
+    const subjectSearch = await callTool(
+      issued.token,
+      listed,
+      "outlook_search_mailbox",
+      { mailboxAddress: INFO_MAILBOX, query: subjectQuery, limit: 5 },
+      rpcId++,
+    );
+    results.push({ id: "outlook.subject_search", group: "outlook", query: subjectQuery, ...subjectSearch });
+
+    const fullEmail = await callTool(
+      issued.token,
+      listed,
+      "outlook_get_message",
+      infoMessageId
+        ? { mailboxAddress: INFO_MAILBOX, messageId: infoMessageId }
+        : { mailboxAddress: INFO_MAILBOX, messageId: "missing" },
+      rpcId++,
+    );
+    results.push({
+      id: "outlook.full_email_retrieval",
+      group: "outlook",
+      usedMessageId: Boolean(infoMessageId),
+      ...fullEmail,
+    });
+
+    results.push({
+      id: "outlook.draft_reply_capability",
+      group: "outlook",
+      toolName: null,
+      outcome: outlookDraftListed.length > 0 ? "WORKS" : "TOOL_NOT_EXPOSED",
+      listedDraftLikeTools: outlookDraftListed,
+      investigation: outlookDraftListed.length > 0 ? "A_draft_tool_exposed" : "B_draft_creation_does_not_exist",
+    });
+
+    results.push({
+      id: "outlook.send_behind_confirmation_gate",
+      group: "outlook",
+      toolName: null,
+      outcome: outlookSendListed.length > 0 ? "WORKS" : "TOOL_NOT_EXPOSED",
+      listedSendLikeTools: outlookSendListed,
+      actionControlListed,
+      executed: false,
+      note: "Send was not invoked. Action Engine confirm/execute tools are Xero-scoped and were not called.",
+    });
+
+    const searchTool = listed.has("search") ? "search" : "search_company_knowledge";
+    const knowledgeSearch = await callTool(
+      issued.token,
+      listed,
+      searchTool,
+      { query: "company policy", limit: 5 },
+      rpcId++,
+    );
+    results.push({ id: "knowledge.document_search", group: "knowledge", ...knowledgeSearch });
+    knowledgeDoc = pickKnowledgeId(knowledgeSearch.summary);
+
+    const qaSearch = await callTool(
+      issued.token,
+      listed,
+      searchTool,
+      {
+        query: knowledgeDoc.title ? `What does ${knowledgeDoc.title} say?` : "What is the company van policy?",
+        limit: 5,
+      },
+      rpcId++,
+    );
+    results.push({ id: "knowledge.document_qa", group: "knowledge", ...qaSearch });
+    if (!knowledgeDoc.id) knowledgeDoc = pickKnowledgeId(qaSearch.summary);
+
+    const fetchName = listed.has("fetch") ? "fetch" : "get_knowledge_document";
+    const sourceFetch = knowledgeDoc.id
+      ? await callTool(
+          issued.token,
+          listed,
+          fetchName,
+          listed.has("fetch") ? { id: knowledgeDoc.id } : { id: knowledgeDoc.id },
+          rpcId++,
+        )
+      : {
+          toolName: fetchName,
+          outcome: "NO_RESULTS" as AcceptanceOutcome,
+          summary: { reason: "no document id from search" },
+        };
+    const sourceUrl = pickKnowledgeId(sourceFetch.summary).url ?? knowledgeDoc.url;
+    results.push({
+      id: "knowledge.source_url",
+      group: "knowledge",
+      ...sourceFetch,
+      sourceUrl,
+      hasSourceUrl: Boolean(sourceUrl),
+    });
+
+    const followUp = await callTool(
+      issued.token,
+      listed,
+      searchTool,
+      { query: knowledgeDoc.title ? `${knowledgeDoc.title} summary` : "company policy summary", limit: 3 },
+      rpcId++,
+    );
+    results.push({ id: "knowledge.short_follow_up", group: "knowledge", ...followUp });
+
+    const switchSearch = await callTool(
+      issued.token,
+      listed,
+      searchTool,
+      { query: "health and safety", limit: 5 },
+      rpcId++,
+    );
+    secondDoc = pickKnowledgeId(switchSearch.summary);
+    results.push({
+      id: "knowledge.document_switch",
+      group: "knowledge",
+      ...switchSearch,
+      firstDocument: knowledgeDoc.title,
+      secondDocument: secondDoc.title,
+      switched:
+        Boolean(secondDoc.id && knowledgeDoc.id && secondDoc.id !== knowledgeDoc.id) ||
+        Boolean(secondDoc.title && knowledgeDoc.title && secondDoc.title !== knowledgeDoc.title),
+    });
+  }
+
+  return {
+    phase,
+    liveRole: actor.role,
+    isPlatformAdmin: actor.isPlatformAdmin,
+    toolsListHttpStatus: listedRes.httpStatus,
+    toolCount: toolNames.length,
+    toolNames,
+    xeroReadListed,
+    outlookDraftListed,
+    outlookSendListed,
+    actionControlListed,
+    xeroInvestigation: {
+      invoiceDateListingToolsOnAllowlistAndAdvertised: [
+        "xero_search_invoices",
+        "xero_list_overdue_invoices",
+        "xero_get_invoice",
+        "xero_sales_summary",
+      ].every((name) => listed.has(name)),
+      conclusion: listed.has("xero_search_invoices")
+        ? "A_rbac_or_routing_not_missing_capability"
+        : "B_genuine_missing_xero_read_capability",
+    },
+    outlookDraftInvestigation: {
+      conclusion:
+        outlookDraftListed.length > 0
+          ? "A_draft_tool_exists_and_is_exposed"
+          : "B_draft_creation_does_not_exist_on_gateway",
+      listedDraftLikeTools: outlookDraftListed,
+    },
+    results,
+  };
+}
