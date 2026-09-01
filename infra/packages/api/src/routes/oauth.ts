@@ -6,6 +6,7 @@ import { loadLiveCompanyActor } from "../auth/live-identity";
 import {
   consumeAuthorizationCode,
   consumeRefreshToken,
+  revokeRefreshTokenByValue,
   createAuthorizationCode,
   ensureDefaultChatgptClient,
   getOauthClient,
@@ -362,7 +363,7 @@ oauth.post("/oauth/revoke", async (c) => {
   const token = String(params.token ?? "");
   const clientId = String(params.client_id ?? "");
   if (token && clientId) {
-    await consumeRefreshToken(c.env.DB, token, clientId);
+    await revokeRefreshTokenByValue(c.env.DB, token, clientId);
   }
   return c.body(null, 200);
 });
