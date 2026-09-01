@@ -906,7 +906,8 @@ export async function handleInfraMcpJsonRpc(
           correlationId: result.correlationId,
           requestId: "requestId" in result ? result.requestId : undefined,
           httpStatus: result.status,
-          errorCode: publicError.code,
+          errorCode:
+            result.status === 403 ? "permission_denied" : publicError.code,
           action: "action" in result ? result.action : undefined,
           riskClass: "riskClass" in result ? result.riskClass : undefined,
         }),
@@ -1160,13 +1161,25 @@ export async function handleInfraMcpHttp(
     });
   }
 
-  const { payload, httpStatus } = await handleInfraMcpJsonRpc(
-    env,
-    request,
-    actorResult,
-    body,
-    waitUntil,
-  );
+  let payload: ReturnType<typeof jsonRpcError> | ReturnType<typeof jsonRpcResult> | null;
+  let httpStatus: number;
+  try {
+    const handled = await handleInfraMcpJsonRpc(
+      env,
+      request,
+      actorResult,
+      body,
+      waitUntil,
+    );
+    payload = handled.payload;
+    httpStatus = handled.httpStatus;
+  } catch (err) {
+    payload = jsonRpcError(body.id ?? null, -32000, "Tool call failed", {
+      errorCode: "retry",
+    });
+    httpStatus = 200;
+    void err;
+  }
 
   if (httpStatus === 202 && payload == null) {
     return new Response(null, {

@@ -112,8 +112,16 @@ async function mcp(token, method, params = {}, id = 1) {
     },
     body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
   });
-  const body = await res.json().catch(() => ({}));
-  return { httpStatus: res.status, body };
+  const raw = await res.text();
+  let body = {};
+  try {
+    body = raw.trim().startsWith("data:")
+      ? JSON.parse(raw.split("\n").find((line) => line.startsWith("data:"))?.slice(5).trim() ?? "{}")
+      : JSON.parse(raw);
+  } catch {
+    body = { parseError: raw.slice(0, 400) };
+  }
+  return { httpStatus: res.status, contentType: res.headers.get("content-type"), body };
 }
 
 function toolText(body) {
@@ -127,30 +135,46 @@ function toolText(body) {
 }
 
 function pickFigure(payload) {
-  const summary = payload?.summary && typeof payload.summary === "object" ? payload.summary : {};
+  const nested =
+    payload?.result && typeof payload.result === "object" ? payload.result : payload;
+  const summary = nested?.summary && typeof nested.summary === "object" ? nested.summary : {};
+  const invoices = nested?.invoices ?? nested?.Invoices ?? nested?.transactions ?? [];
   return {
-    totalSales: summary.totalSales ?? payload.totalSales ?? payload.sales ?? payload.revenue ?? null,
+    totalSales:
+      summary.totalSales ??
+      summary.total ??
+      nested?.totalSales ??
+      nested?.sales ??
+      nested?.revenue ??
+      nested?.total ??
+      null,
     invoiceCount:
       summary.transactionCount ??
-      payload.invoiceCount ??
-      (Array.isArray(payload.invoices) ? payload.invoices.length : null) ??
-      (Array.isArray(payload.transactions) ? payload.transactions.length : null),
-    currency: summary.currencyCode ?? payload.currencyCode ?? payload.currency ?? null,
+      nested?.invoiceCount ??
+      (Array.isArray(invoices) ? invoices.length : null),
+    currency: summary.currencyCode ?? nested?.currencyCode ?? nested?.currency ?? null,
     firstInvoice:
-      payload.invoices?.[0]?.InvoiceNumber ??
-      payload.invoices?.[0]?.invoiceNumber ??
-      payload.invoice?.InvoiceNumber ??
-      payload.invoice?.invoiceNumber ??
+      invoices?.[0]?.InvoiceNumber ??
+      invoices?.[0]?.invoiceNumber ??
+      nested?.invoice?.InvoiceNumber ??
+      nested?.invoice?.invoiceNumber ??
       null,
     topCustomer:
-      payload.customers?.[0]?.name ??
-      payload.customers?.[0]?.Name ??
-      payload.top_customers?.[0]?.name ??
+      nested?.customers?.[0]?.name ??
+      nested?.customers?.[0]?.Name ??
+      nested?.top_customers?.[0]?.name ??
+      nested?.topCustomers?.[0]?.name ??
       null,
-    source: payload.source ?? null,
-    elToolName: payload.elToolName ?? null,
-    fromDate: payload.fromDate ?? summary.fromDate ?? null,
-    toDate: payload.toDate ?? summary.toDate ?? null,
+    source: nested?.source ?? payload?.source ?? null,
+    elToolName: nested?.elToolName ?? payload?.elToolName ?? null,
+    fromDate: nested?.fromDate ?? summary.fromDate ?? null,
+    toDate: nested?.toDate ?? summary.toDate ?? null,
+    snippet:
+      typeof nested?.text === "string"
+        ? nested.text.slice(0, 240)
+        : typeof payload?.text === "string"
+          ? payload.text.slice(0, 240)
+          : null,
   };
 }
 
@@ -201,6 +225,7 @@ try {
       figure: pickFigure(payload),
       keys: payload && typeof payload === "object" ? Object.keys(payload).slice(0, 20) : [],
       rawError: result.body?.error ?? (payload && payload.error) ?? null,
+      preview: result.body?.parseError ?? null,
     };
     if (key === "outstanding" && report.reads[key].figure.firstInvoice) {
       const inv = report.reads[key].figure.firstInvoice;

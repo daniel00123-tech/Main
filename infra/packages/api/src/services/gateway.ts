@@ -578,41 +578,45 @@ export async function executeGatewayRequest(
       )
       .run();
 
-    const connectorInstanceId = await resolveConnectorInstanceId(
-      env.DB,
-      input.companyId,
-      action,
-      input.toolName,
-    );
-    await recordUsageEvent(env.DB, {
-      companyId: input.companyId,
-      userId: input.actor.type === "user" ? actorId : null,
-      actorEmail: actorLabel,
-      resourceType: "gateway",
-      resourceId: input.toolName,
-      mcpEnvironmentId: mcp.id,
-      connectorInstanceId,
-      toolName: input.toolName,
-      action,
-      riskClass,
-      success: false,
-      durationMs: Date.now() - started,
-      sourceClient,
-      correlationId,
-      requestId,
-      interactionId: interaction.interactionId,
-      parentRequestId: interaction.parentRequestId,
-      mcpSessionId: interaction.mcpSessionId,
-      metadata: {
-        denied: true,
-        billingStatus: "denied",
-        actorType: input.actor.type,
-        membershipId:
-          input.actor.type === "user" ? input.actor.membershipId ?? null : null,
-        reason: permissionReason,
-      },
-      settlementStatus: "denied",
-    });
+    try {
+      const connectorInstanceId = await resolveConnectorInstanceId(
+        env.DB,
+        input.companyId,
+        action,
+        input.toolName,
+      );
+      await recordUsageEvent(env.DB, {
+        companyId: input.companyId,
+        userId: input.actor.type === "user" ? actorId : null,
+        actorEmail: actorLabel,
+        resourceType: "gateway",
+        resourceId: input.toolName,
+        mcpEnvironmentId: mcp.id,
+        connectorInstanceId,
+        toolName: input.toolName,
+        action,
+        riskClass,
+        success: false,
+        durationMs: Date.now() - started,
+        sourceClient,
+        correlationId,
+        requestId,
+        interactionId: interaction.interactionId,
+        parentRequestId: interaction.parentRequestId,
+        mcpSessionId: interaction.mcpSessionId,
+        metadata: {
+          denied: true,
+          billingStatus: "denied",
+          actorType: input.actor.type,
+          membershipId:
+            input.actor.type === "user" ? input.actor.membershipId ?? null : null,
+          reason: permissionReason,
+        },
+        settlementStatus: "denied",
+      });
+    } catch {
+      // Denial must still return permission_denied even if usage insert fails.
+    }
 
     scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
     return {
@@ -896,13 +900,20 @@ export async function executeGatewayRequest(
   let ledgerEntryId: string | null = null;
   let settlementStatus = "zero_charge";
 
-  const connectorInstanceId = await resolveConnectorInstanceId(
-    env.DB,
-    input.companyId,
-    action,
-    input.toolName,
-  );
-  const usage = await recordUsageEvent(env.DB, {
+  let connectorInstanceId: string | null = null;
+  try {
+    connectorInstanceId = await resolveConnectorInstanceId(
+      env.DB,
+      input.companyId,
+      action,
+      input.toolName,
+    );
+  } catch {
+    connectorInstanceId = null;
+  }
+  let usage: Awaited<ReturnType<typeof recordUsageEvent>>;
+  try {
+    usage = await recordUsageEvent(env.DB, {
     companyId: input.companyId,
     userId: input.actor.type === "user" ? actorId : null,
     actorEmail: actorLabel,
@@ -943,7 +954,15 @@ export async function executeGatewayRequest(
       }).customerBillable && charge.customerChargeCents
         ? "unsettled"
         : "zero_charge",
-  });
+    });
+  } catch {
+    usage = {
+      id: newId("usage"),
+      recordedAt: nowIso(),
+      alreadyExists: false,
+      settlementStatus: "zero_charge",
+    };
+  }
   usageRecordId = usage.id;
   await refreshInteractionTotals(env.DB, interaction.interactionId);
   scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);

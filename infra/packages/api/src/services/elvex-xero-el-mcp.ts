@@ -167,6 +167,14 @@ function hasUsablePayload(payload: Record<string, unknown>): boolean {
   return Object.keys(payload).length > 0;
 }
 
+function jsonSafePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  try {
+    return JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
+  } catch {
+    return { text: "EL MCP returned a non-JSON Xero payload" };
+  }
+}
+
 export async function executeElvexXeroReadViaElMcp(
   env: Env,
   input: {
@@ -263,7 +271,7 @@ export async function executeElvexXeroReadViaElMcp(
       ok: true,
       latencyMs: Date.now() - started,
       elToolName,
-      result: {
+      result: jsonSafePayload({
         source: "el-business-mcp",
         infraToolName: input.toolName,
         elToolName,
@@ -274,7 +282,7 @@ export async function executeElvexXeroReadViaElMcp(
         comparisonSupported: Boolean(comparison),
         comparison,
         ...payload,
-      },
+      }),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "EL MCP Xero read failed";

@@ -3,6 +3,7 @@ import {
   accumulateBreakdown,
   connectorFamilyFromAction,
   normalizeSourceClient,
+  resolveConnectorInstanceId,
 } from "./usage-attribution";
 
 describe("shared usage attribution", () => {
@@ -18,6 +19,30 @@ describe("shared usage attribution", () => {
     expect(connectorFamilyFromAction("knowledge.search", "search_company_knowledge")).toBe(
       "knowledge",
     );
+  });
+
+  it("looks up connector instances with the live D1 column names", async () => {
+    const statements: string[] = [];
+    const db = {
+      prepare(sql: string) {
+        statements.push(sql);
+        return {
+          bind() {
+            return {
+              async first() {
+                return { id: "ci_el_xero" };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+    await expect(resolveConnectorInstanceId(db, "co_el", "xero.sales.summary", "xero_sales_summary")).resolves.toBe(
+      "ci_el_xero",
+    );
+    expect(statements[0]).toContain("connector_definition_id");
+    expect(statements[0]).toContain("lower(name)");
+    expect(statements[0]).not.toMatch(/\bdefinition_id\b/);
   });
 
   it("attributes denied requests as non-billable", () => {

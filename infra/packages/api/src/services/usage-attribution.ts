@@ -59,18 +59,23 @@ export async function resolveConnectorInstanceId(
       : family === "xero"
         ? "%xero%"
         : `%${family}%`;
-  const row = await db
-    .prepare(
-      `SELECT id FROM connector_instances
-       WHERE company_id = ? AND (
-         lower(definition_id) LIKE ? OR lower(id) LIKE ? OR lower(display_name) LIKE ?
-       )
-       ORDER BY updated_at DESC
-       LIMIT 1`,
-    )
-    .bind(companyId, like, like, like)
-    .first();
-  return row?.id ? String(row.id) : null;
+  try {
+    const row = await db
+      .prepare(
+        `SELECT id FROM connector_instances
+         WHERE company_id = ? AND (
+           lower(connector_definition_id) LIKE ? OR lower(id) LIKE ? OR lower(name) LIKE ?
+         )
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+      )
+      .bind(companyId, like, like, like)
+      .first();
+    return row?.id ? String(row.id) : null;
+  } catch {
+    // Attribution must never fail a live tool response.
+    return null;
+  }
 }
 
 export function emptyBreakdown(key: string, label: string): UsageBreakdownRow {
