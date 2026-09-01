@@ -63,6 +63,10 @@ import {
 import { executeXeroReadToolOnInfra } from "./xero-read-execution";
 import { isOutlookReadTool, outlookActionForTool } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
+import {
+  executeElvexXeroReadViaElMcp,
+  shouldExecuteElvexXeroViaElMcp,
+} from "./elvex-xero-el-mcp";
 
 export type GatewayActor =
   | {
@@ -427,33 +431,35 @@ export async function executeGatewayRequest(
         code: "ACTION_ENGINE_REQUIRED",
       };
     }
-    const prepared = await prepareXeroMcpExecution({
-      env,
-      companyId: input.companyId,
-      toolName: input.toolName,
-    });
-    if (!prepared.ok) {
-      await recordAuditEvent(env.DB, {
+    if (!shouldExecuteElvexXeroViaElMcp(input.companyId, input.toolName)) {
+      const prepared = await prepareXeroMcpExecution({
+        env,
         companyId: input.companyId,
-        eventType: "mcp.execution_failed",
-        actor: actorLabel,
-        resourceType: "gateway",
-        resourceId: input.toolName,
-        detail: {
+        toolName: input.toolName,
+      });
+      if (!prepared.ok) {
+        await recordAuditEvent(env.DB, {
+          companyId: input.companyId,
+          eventType: "mcp.execution_failed",
+          actor: actorLabel,
+          resourceType: "gateway",
+          resourceId: input.toolName,
+          detail: {
+            correlationId,
+            requestId,
+            provider: "xero",
+            billed: false,
+            inventsData: false,
+            code: prepared.body.code,
+          },
+        });
+        return {
+          status: prepared.status,
+          error: prepared.body.error,
           correlationId,
           requestId,
-          provider: "xero",
-          billed: false,
-          inventsData: false,
-          code: prepared.body.code,
-        },
-      });
-      return {
-        status: prepared.status,
-        error: prepared.body.error,
-        correlationId,
-        requestId,
-      };
+        };
+      }
     }
   }
 
@@ -773,6 +779,36 @@ export async function executeGatewayRequest(
           },
         };
       })()
+    : shouldExecuteElvexXeroViaElMcp(input.companyId, input.toolName)
+      ? await (async () => {
+          const xero = await executeElvexXeroReadViaElMcp(env, {
+            companyId: input.companyId,
+            mcp,
+            toolName: input.toolName,
+            arguments: input.arguments,
+          });
+          if (!xero.ok) {
+            return {
+              status: xero.status,
+              error: xero.error,
+            } as const;
+          }
+          return {
+            status: 200 as const,
+            data: {
+              correlationId,
+              mcpId: mcp.id,
+              companyId: input.companyId,
+              toolName: input.toolName,
+              latencyMs: xero.latencyMs,
+              authConfigured: true,
+              riskClass,
+              result: xero.result,
+              executionPath: "el-business-mcp",
+              elToolName: xero.elToolName,
+            },
+          };
+        })()
     : isXeroToolName(input.toolName) && !isXeroWriteToolName(input.toolName)
       ? await (async () => {
           const xero = await executeXeroReadToolOnInfra(env, {
