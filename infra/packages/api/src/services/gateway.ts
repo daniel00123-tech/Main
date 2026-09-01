@@ -1,4 +1,9 @@
-import type { ToolAction } from "@infra/shared";
+import {
+  ELVEX_INFO_MAILBOXES,
+  isElvexCompany,
+  resolveElvexConfiguredMailbox,
+  type ToolAction,
+} from "@infra/shared";
 import type { Env } from "../env";
 import type { SessionUser } from "../auth/session";
 import { liveActorToSessionUser, loadLiveCompanyActor } from "../auth/live-identity";
@@ -557,6 +562,17 @@ export async function executeGatewayRequest(
   let permissionAllowed = false;
   let permissionReason: string | undefined;
 
+  if (isOutlookReadTool(input.toolName) && isElvexCompany({ id: input.companyId })) {
+    const rawMailbox =
+      typeof input.arguments?.mailboxAddress === "string"
+        ? input.arguments.mailboxAddress
+        : typeof input.arguments?.mailbox === "string"
+          ? input.arguments.mailbox
+          : null;
+    const resolvedMailbox = resolveElvexConfiguredMailbox(rawMailbox) ?? ELVEX_INFO_MAILBOXES[0];
+    input.arguments = { ...(input.arguments ?? {}), mailboxAddress: resolvedMailbox };
+  }
+
   if (input.actor.type === "user") {
     const mailbox =
       typeof input.arguments?.mailboxAddress === "string"
@@ -815,6 +831,7 @@ export async function executeGatewayRequest(
           toolName: input.toolName,
           arguments: input.arguments ?? {},
           actor: actorLabel,
+          actorUserId: actorId,
         });
         if (!outlook.ok) {
           return { status: outlook.status, error: outlook.message, code: outlook.code } as const;
@@ -887,6 +904,8 @@ export async function executeGatewayRequest(
       requestId,
       success,
       latencyMs,
+      errorCode: !success && "code" in execution ? execution.code : undefined,
+      error: !success && "error" in execution ? execution.error : undefined,
     },
   });
 
@@ -920,12 +939,17 @@ export async function executeGatewayRequest(
   let ledgerEntryId: string | null = null;
   let settlementStatus = "zero_charge";
 
-  const connectorInstanceId = await resolveConnectorInstanceId(
-    env.DB,
-    input.companyId,
-    action,
-    input.toolName,
-  );
+  let connectorInstanceId: string | null = null;
+  try {
+    connectorInstanceId = await resolveConnectorInstanceId(
+      env.DB,
+      input.companyId,
+      action,
+      input.toolName,
+    );
+  } catch {
+    connectorInstanceId = null;
+  }
   if (
     input.actor.type === "user" &&
     (sourceClient === "chatgpt" || sourceClient === "claude")
@@ -938,65 +962,81 @@ export async function executeGatewayRequest(
     ).catch(() => undefined);
   }
 
-  const usage = await recordUsageEvent(env.DB, {
-    companyId: input.companyId,
-    userId: input.actor.type === "user" ? actorId : null,
-    actorEmail: actorLabel,
-    resourceType: "gateway",
-    resourceId: input.toolName,
-    mcpEnvironmentId: mcp.id,
-    connectorInstanceId,
-    toolName: input.toolName,
-    action,
-    riskClass,
-    success,
-    durationMs: latencyMs,
-    sourceClient,
-    correlationId,
-    requestId,
-    interactionId: interaction.interactionId,
-    parentRequestId: interaction.parentRequestId,
-    mcpSessionId: interaction.mcpSessionId,
-    charge,
-    metadata: {
-      pricingLabel: charge.pricingLabel,
-      isTestConfig: charge.isTestConfig,
-      actorType: input.actor.type,
-      membershipId:
-        input.actor.type === "user" ? input.actor.membershipId ?? null : null,
-      balanceBeforeCents: balanceBefore.balanceCents,
-      interactionId: interaction.interactionId,
-      interactionSourcedFrom: interaction.sourcedFrom,
-    },
-    settlementStatus:
-      decideTestBilling({
-        toolName: input.toolName,
-        action,
-        success,
-        httpStatus: execution.status,
-        ruleBillable: charge.billable,
-        chargeOnFailure: pricing?.chargeOnFailure ?? false,
-      }).customerBillable && charge.customerChargeCents
-        ? "unsettled"
-        : "zero_charge",
-  });
-  usageRecordId = usage.id;
-  await refreshInteractionTotals(env.DB, interaction.interactionId);
-  scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
-
-  await recordAuditEvent(env.DB, {
-    companyId: input.companyId,
-    eventType: "company.accessed",
-    actor: actorLabel,
-    resourceType: "usage",
-    resourceId: usage.id,
-    detail: {
-      stage: "usage.recorded",
+  try {
+    const usage = await recordUsageEvent(env.DB, {
+      companyId: input.companyId,
+      userId: input.actor.type === "user" ? actorId : null,
+      actorEmail: actorLabel,
+      resourceType: "gateway",
+      resourceId: input.toolName,
+      mcpEnvironmentId: mcp.id,
+      connectorInstanceId,
+      toolName: input.toolName,
+      action,
+      riskClass,
+      success,
+      durationMs: latencyMs,
+      sourceClient,
       correlationId,
       requestId,
-      alreadyExists: usage.alreadyExists,
-    },
-  });
+      interactionId: interaction.interactionId,
+      parentRequestId: interaction.parentRequestId,
+      mcpSessionId: interaction.mcpSessionId,
+      charge,
+      metadata: {
+        pricingLabel: charge.pricingLabel,
+        isTestConfig: charge.isTestConfig,
+        actorType: input.actor.type,
+        membershipId:
+          input.actor.type === "user" ? input.actor.membershipId ?? null : null,
+        balanceBeforeCents: balanceBefore.balanceCents,
+        interactionId: interaction.interactionId,
+        interactionSourcedFrom: interaction.sourcedFrom,
+      },
+      settlementStatus:
+        decideTestBilling({
+          toolName: input.toolName,
+          action,
+          success,
+          httpStatus: execution.status,
+          ruleBillable: charge.billable,
+          chargeOnFailure: pricing?.chargeOnFailure ?? false,
+        }).customerBillable && charge.customerChargeCents
+          ? "unsettled"
+          : "zero_charge",
+    });
+    usageRecordId = usage.id;
+    await refreshInteractionTotals(env.DB, interaction.interactionId);
+    scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
+
+    await recordAuditEvent(env.DB, {
+      companyId: input.companyId,
+      eventType: "company.accessed",
+      actor: actorLabel,
+      resourceType: "usage",
+      resourceId: usage.id,
+      detail: {
+        stage: "usage.recorded",
+        correlationId,
+        requestId,
+        alreadyExists: usage.alreadyExists,
+      },
+    });
+  } catch {
+    await recordAuditEvent(env.DB, {
+      companyId: input.companyId,
+      eventType: "company.accessed",
+      actor: actorLabel,
+      resourceType: "usage",
+      resourceId: input.toolName,
+      detail: {
+        stage: "usage.record_failed",
+        correlationId,
+        requestId,
+        toolName: input.toolName,
+      },
+    }).catch(() => undefined);
+  }
 
   const billing = decideTestBilling({
     toolName: input.toolName,
@@ -1010,7 +1050,8 @@ export async function executeGatewayRequest(
   if (
     billing.customerBillable &&
     charge.customerChargeCents &&
-    charge.customerChargeCents > 0
+    charge.customerChargeCents > 0 &&
+    usageRecordId
   ) {
     const latestWallet = await getWalletBalance(env.DB, input.companyId);
     if (latestWallet.balanceCents < charge.customerChargeCents) {
@@ -1020,7 +1061,7 @@ export async function executeGatewayRequest(
         eventType: "permission.denied",
         actor: actorLabel,
         resourceType: "billing",
-        resourceId: usage.id,
+        resourceId: usageRecordId,
         detail: {
           stage: "billing.debit_skipped_insufficient_credit",
           correlationId,
@@ -1043,7 +1084,7 @@ export async function executeGatewayRequest(
           entryType: "usage_debit",
           amountCents: -chargeCents,
           referenceType: "usage",
-          referenceId: usage.id,
+          referenceId: usageRecordId,
           description: `${humanSource(sourceClient)} · ${humanAction(action)}`,
           metadata: {
             correlationId,
@@ -1063,7 +1104,7 @@ export async function executeGatewayRequest(
         }
         ledgerEntryId = ledger.entry.id;
         settlementStatus = "settled";
-        await markUsageSettled(env.DB, usage.id, ledger.entry.id);
+        await markUsageSettled(env.DB, usageRecordId, ledger.entry.id);
 
         await recordAuditEvent(env.DB, {
           companyId: input.companyId,
@@ -1089,7 +1130,7 @@ export async function executeGatewayRequest(
           eventType: "permission.denied",
           actor: actorLabel,
           resourceType: "billing",
-          resourceId: usage.id,
+          resourceId: usageRecordId,
           detail: {
             stage:
               message === "INSUFFICIENT_CREDIT"

@@ -111,12 +111,40 @@ export function elvexCapabilitiesForRole(role: ElvexRole): ElvexCapability[] {
   return [...ELVEX_ROLE_GRANTS[role]].sort();
 }
 
+/** Map a user/ChatGPT mailbox hint onto the configured Elvex SMTP address. Does not invent addresses. */
+export function resolveElvexConfiguredMailbox(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const value = raw.trim().toLowerCase();
+  if (
+    value === "info" ||
+    value === "info@" ||
+    value === "info inbox" ||
+    value === "the info inbox" ||
+    value.startsWith("info@") ||
+    ELVEX_INFO_MAILBOXES.includes(value)
+  ) {
+    return ELVEX_INFO_MAILBOXES[0];
+  }
+  if (
+    value === "finance" ||
+    value === "finance@" ||
+    value === "finance inbox" ||
+    value === "the finance inbox" ||
+    value.startsWith("finance@") ||
+    ELVEX_FINANCE_MAILBOXES.includes(value)
+  ) {
+    return ELVEX_FINANCE_MAILBOXES[0];
+  }
+  return raw.trim();
+}
+
 export function elvexMailboxCapability(
   mailbox: string | null | undefined,
   write: boolean,
 ): ElvexCapability | null {
-  if (!mailbox?.trim()) return null;
-  const addr = mailbox.trim().toLowerCase();
+  const resolved = resolveElvexConfiguredMailbox(mailbox);
+  if (!resolved) return null;
+  const addr = resolved.toLowerCase();
   if (addr.includes("finance@") || ELVEX_FINANCE_MAILBOXES.includes(addr)) {
     return write ? "mail.finance.write" : "mail.finance.read";
   }

@@ -26,6 +26,40 @@ export function publicToolErrorMessage(
   const text = (raw ?? "").trim();
   const lower = text.toLowerCase();
 
+  if (
+    lower.includes("outlook needs reconnecting") ||
+    lower.includes("mail.read") ||
+    lower.includes("microsoft 365 is not connected") ||
+    lower.includes("outlook_graph_unauthorized") ||
+    (lower.includes("outlook") && (httpStatus === 401 || lower.includes("token")))
+  ) {
+    return {
+      code: "auth_reconnect",
+      message: "Outlook needs reconnecting",
+    };
+  }
+  if (
+    httpStatus === 429 ||
+    lower.includes("outlook_rate_limited") ||
+    lower.includes("microsoft temporarily rejected") ||
+    (lower.includes("outlook") && (httpStatus >= 500 || lower.includes("timeout") || lower.includes("aborted")))
+  ) {
+    return {
+      code: "retry",
+      message: "Microsoft temporarily rejected the request",
+    };
+  }
+  if (
+    lower.includes("mailbox source not found") ||
+    lower.includes("mailbox is not") ||
+    lower.includes("outlook_mailbox")
+  ) {
+    return {
+      code: "connector_not_configured",
+      message: "Outlook mailbox is not available",
+    };
+  }
+
   if (httpStatus === 401 || lower.includes("invalid or revoked") || lower.includes("authentication")) {
     return {
       code: "auth_reconnect",
