@@ -122,7 +122,8 @@ async function resolveToolAction(
     toolName === "get_knowledge_document" ||
     toolName === "fetch" ||
     toolName === "database_summary" ||
-    toolName === "ask_document"
+    toolName === "ask_document" ||
+    toolName === "list_company_documents"
   ) {
     return { action: "knowledge.read", riskClass: "low_risk" };
   }

@@ -126,6 +126,8 @@ export function enrichMcpToolDescription(
       "Read a specific company knowledge document by identifier or title after locating it with search_company_knowledge.",
     ask_document:
       "Answer a question from one already-selected company document. Pass documentId from search/fetch and the user's question. For short follow-ups such as \"what exactly?\" or \"when?\" also pass priorQuestion. Reads only that document. Do not use this for live Xero, mailbox, or a new company-wide search. Read-only.",
+    list_company_documents:
+      "List the newest or latest OneDrive, SharePoint, or Drive files using real file metadata (created_at for newest/uploaded, modified_at for latest/changed). Not a semantic search. Read-only. Same visibility as knowledge search.",
     outlook_get_message:
       "Fetch the full body of one Outlook message. Pass the stable id returned by outlook_list_messages or outlook_search_mailbox as messageId. Do not invent an id. Office staff may read info@ only — never finance@. Read-only.",
     confirm_action_plan:
