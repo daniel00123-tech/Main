@@ -149,7 +149,12 @@ export function withDocumentCatalogueTools<T extends { name: string; description
     names.has("search_company_knowledge") ||
     names.has("get_knowledge_document");
   if (!hasKnowledge) return tools;
-  return [...tools, documentCatalogueToolDefinition()];
+  const catalogue = documentCatalogueToolDefinition();
+  const searchIdx = tools.findIndex((tool) => tool.name === "search" || tool.name === "search_company_knowledge");
+  if (searchIdx >= 0) {
+    return [...tools.slice(0, searchIdx + 1), catalogue, ...tools.slice(searchIdx + 1)];
+  }
+  return [...tools, catalogue];
 }
 
 function asNonEmpty(value: unknown): string {

@@ -152,13 +152,6 @@ async function runTenant(
 }
 
 export async function runDocumentCatalogueAcceptance(env: Env): Promise<Record<string, unknown>> {
-  const elvex = await runTenant(env, {
-    companyId: "co_el",
-    label: "elvex",
-    userId: WILLIAM_USER_ID,
-    email: WILLIAM_EMAIL,
-  });
-
   let chatgpt: Record<string, unknown> | null = null;
   const actor = await loadLiveCompanyActor(env.DB, WILLIAM_USER_ID, "co_el");
   if (actor) {
@@ -212,13 +205,20 @@ export async function runDocumentCatalogueAcceptance(env: Env): Promise<Record<s
       role: actor.role,
       advertised: names.includes("list_documents"),
       toolNamesSample: names.filter((name) => /list_documents|search|ask_document/.test(name)),
-      newest: { httpStatus: newest.httpStatus, parsed: summarizeDocs(newest.parsed) },
-      latestTen: { httpStatus: ten.httpStatus, parsed: summarizeDocs(ten.parsed) },
+      newest: { httpStatus: newest.httpStatus, parsed: summarizeDocs(newest.parsed), error: newest.rpc.error ?? null },
+      latestTen: { httpStatus: ten.httpStatus, parsed: summarizeDocs(ten.parsed), error: ten.rpc.error ?? null },
       semanticSearchNotUsedAsCatalogue: true,
       searchStillExists: names.includes("search"),
       searchCallWasSeparate: Boolean(search.parsed),
     };
   }
+
+  const elvex = await runTenant(env, {
+    companyId: "co_el",
+    label: "elvex",
+    userId: WILLIAM_USER_ID,
+    email: WILLIAM_EMAIL,
+  });
 
   const caddington = await runTenant(env, { companyId: "co_caddington", label: "caddington" });
 

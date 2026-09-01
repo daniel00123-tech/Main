@@ -65,6 +65,7 @@ describe("withDocumentCatalogueTools", () => {
     const tools = withDocumentCatalogueTools([
       { name: "search", description: "s", inputSchema: { type: "object", properties: {} } },
     ]);
+    expect(tools.map((tool) => tool.name)).toEqual(["search", "list_documents"]);
     expect(tools.some((tool) => tool.name === "list_documents")).toBe(true);
     expect(isDocumentCatalogueTool("list_documents")).toBe(true);
     expect(
