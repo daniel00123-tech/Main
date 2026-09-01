@@ -6,13 +6,11 @@
 import type { Env } from "../env";
 import type { AdvertisedMcpTool } from "./mcp-knowledge-standard";
 import {
-  COMPANY_KNOWLEDGE_READ_TOOL,
   collectProviderHttpUrl,
   extractHitList,
-  mapFetchArgumentsForCompanyMcp,
-  toStandardFetchPayload,
   unwrapToolPayload,
 } from "./mcp-knowledge-standard";
+import { fetchCompanyKnowledgeDocument, usableDocumentTitle as usableFetchedTitle } from "./document-fetch";
 import { executeRegisteredMcpTool, listMcpEnvironments } from "./control-plane";
 import { listMcpTools } from "./mcp-client";
 import { resolveMcpFetcher } from "./mcp-client";
@@ -801,46 +799,22 @@ async function attachDescriptions(
       }
       continue;
     }
-    const execution = await executeRegisteredMcpTool(env, {
-      mcpId: mcp.id,
-      toolName: COMPANY_KNOWLEDGE_READ_TOOL,
-      arguments: mapFetchArgumentsForCompanyMcp(doc.id),
-      actorUserId: actorUserId ?? "system",
-      actorEmail: actor,
+    const fetched = await fetchCompanyKnowledgeDocument(env, {
+      companyId,
+      documentId: doc.id,
+      title: doc.title,
+      actor,
+      actorUserId,
       sourceClient: "infra-document-catalogue",
-      skipUsageRecording: true,
     });
-    if (execution.status === 200 && "data" in execution) {
-      const payload = toStandardFetchPayload(execution.data?.result, doc.id);
-      const text = payload.text || (payload.chunks ?? []).map((chunk) => chunk.text).join("\n");
-      const title = usableCatalogueTitle(payload.title, doc.title);
+    if (fetched.ok) {
+      const text = fetched.payload.text || (fetched.payload.chunks ?? []).map((chunk) => chunk.text).join("\n");
+      const title = usableCatalogueTitle(usableFetchedTitle(fetched.payload.title, doc.title), doc.title);
       const described = describeFromIndexedText(text, title);
       doc.description = described.description;
       doc.descriptionSource = described.descriptionSource;
       doc.title = title;
-      if (payload.url) doc.url = payload.url;
-      continue;
-    }
-    // One fallback only when the knowledge read tool is missing/failed — do not
-    // stack a second 20s fetch after an empty but successful get_knowledge_document.
-    const fileGet = await executeRegisteredMcpTool(env, {
-      mcpId: mcp.id,
-      toolName: "get_elvex_file",
-      arguments: { id: doc.id, fileId: doc.id, documentRef: doc.id },
-      actorUserId: actorUserId ?? "system",
-      actorEmail: actor,
-      sourceClient: "infra-document-catalogue",
-      skipUsageRecording: true,
-    });
-    if (fileGet.status === 200) {
-      const payload = toStandardFetchPayload("data" in fileGet ? fileGet.data?.result : fileGet, doc.id);
-      const text = payload.text || (payload.chunks ?? []).map((chunk) => chunk.text).join("\n");
-      const title = usableCatalogueTitle(payload.title, doc.title);
-      const described = describeFromIndexedText(text, title);
-      doc.description = described.description;
-      doc.descriptionSource = described.descriptionSource;
-      doc.title = title;
-      if (payload.url) doc.url = payload.url;
+      if (fetched.payload.url) doc.url = fetched.payload.url;
       continue;
     }
     doc.description = `Description unavailable — only the filename “${usableCatalogueTitle(doc.title)}” is available.`;

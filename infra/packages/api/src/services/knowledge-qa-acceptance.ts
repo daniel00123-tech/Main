@@ -118,6 +118,8 @@ async function runOneTenant(
     searchQuality: hits.length,
     documentId: first.id,
     title: first.title,
+    fetchBackend: qa.ok ? qa.diagnostics.fetchBackend : null,
+    chunkCount: qa.ok ? qa.diagnostics.chunkCount : 0,
     factual: summariseAsk(qa),
     whatExactly: summariseAsk(follow),
     when: summariseAsk(when),

@@ -5,14 +5,13 @@
  */
 
 import type { Env } from "../env";
-import { executeRegisteredMcpTool, listMcpEnvironments } from "./control-plane";
 import { enrichDocumentQuery } from "./intelligence/query-enrichment";
 import {
-  COMPANY_KNOWLEDGE_READ_TOOL,
-  mapFetchArgumentsForCompanyMcp,
-  toStandardFetchPayload,
-  type AdvertisedMcpTool,
-} from "./mcp-knowledge-standard";
+  DOCUMENT_FETCH_AMBIGUOUS,
+  fetchCompanyKnowledgeDocument,
+  usableDocumentTitle,
+} from "./document-fetch";
+import { COMPANY_KNOWLEDGE_READ_TOOL, type AdvertisedMcpTool } from "./mcp-knowledge-standard";
 import {
   NONE_IN_DOCUMENT_REPLY,
   chunksFromFetchPayload,
@@ -155,57 +154,35 @@ export async function executeAskDocument(
     return { ok: false, status: 400, code: "ASK_DOCUMENT_INVALID", message: sanitized.error };
   }
 
-  const mcp = (await listMcpEnvironments(env.DB, input.companyId)).find((item) => item.enabled);
-  if (!mcp) {
-    return {
-      ok: false,
-      status: 503,
-      code: "KNOWLEDGE_MCP_UNAVAILABLE",
-      message: "Business MCP unavailable",
-    };
-  }
-
-  const execution = await executeRegisteredMcpTool(env, {
-    mcpId: mcp.id,
-    toolName: COMPANY_KNOWLEDGE_READ_TOOL,
-    arguments: mapFetchArgumentsForCompanyMcp(sanitized.documentId),
-    actorUserId: input.actorUserId ?? "system",
-    actorEmail: input.actor,
+  const fetched = await fetchCompanyKnowledgeDocument(env, {
+    companyId: input.companyId,
+    documentId: sanitized.documentId,
+    title: sanitized.title,
+    actor: input.actor,
+    actorUserId: input.actorUserId,
     sourceClient: "infra-ask-document",
-    skipUsageRecording: true,
   });
-
-  if (execution.status !== 200) {
+  if (!fetched.ok) {
+    if (fetched.code === DOCUMENT_FETCH_AMBIGUOUS) {
+      return {
+        ok: false,
+        status: fetched.status,
+        code: fetched.code,
+        message: fetched.message,
+      };
+    }
     return {
       ok: false,
-      status: execution.status >= 400 && execution.status < 600 ? execution.status : 502,
-      code: "UPSTREAM_FAILURE",
-      message: "I couldn’t reach that document just now.",
+      status: fetched.status >= 400 && fetched.status < 600 ? fetched.status : 502,
+      code: fetched.code || "UPSTREAM_FAILURE",
+      message: fetched.message || "I couldn’t reach that document just now.",
     };
   }
 
-  let payload = toStandardFetchPayload(
-    "data" in execution ? execution.data?.result : execution,
-    sanitized.documentId,
-  );
-  if (!payload.text && !payload.chunks?.length && sanitized.title) {
-    const titled = await executeRegisteredMcpTool(env, {
-      mcpId: mcp.id,
-      toolName: COMPANY_KNOWLEDGE_READ_TOOL,
-      arguments: mapFetchArgumentsForCompanyMcp(sanitized.title),
-      actorUserId: input.actorUserId ?? "system",
-      actorEmail: input.actor,
-      sourceClient: "infra-ask-document",
-      skipUsageRecording: true,
-    });
-    if (titled.status === 200) {
-      const retry = toStandardFetchPayload(
-        "data" in titled ? titled.data?.result : titled,
-        sanitized.documentId,
-      );
-      if (retry.text || retry.chunks?.length) payload = { ...retry, id: sanitized.documentId };
-    }
-  }
+  const payload = {
+    ...fetched.payload,
+    title: usableDocumentTitle(fetched.payload.title, sanitized.title) || fetched.payload.title,
+  };
   const chunks = chunksFromFetchPayload(payload, sanitized.documentId);
   const enrichment = enrichDocumentQuery(sanitized.question, {
     scope: "CURRENT_DOCUMENT",
@@ -244,6 +221,8 @@ export async function executeAskDocument(
       documentId: sanitized.documentId,
       title: payload.title,
       chunkCount: chunks.length,
+      fetchBackend: fetched.diagnostics.backend,
+      extractionMethod: fetched.diagnostics.extractionMethod,
       retrievalQuery: enrichment.query,
       enriched: enrichment.enriched,
       decayed: enrichment.decayed,

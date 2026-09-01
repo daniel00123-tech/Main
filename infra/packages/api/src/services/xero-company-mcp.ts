@@ -281,6 +281,14 @@ export function composeInfraXeroReadResult(
   };
 }
 
+export function isRetryableCompanyXeroUpstream(status: number, error?: string | null): boolean {
+  return (
+    status === 502 ||
+    status === 503 ||
+    /timeout|temporar|unavailable|524|522/i.test(String(error ?? ""))
+  );
+}
+
 export async function executeCompanyMcpXeroRead(
   env: Env,
   input: {
@@ -326,21 +334,37 @@ export async function executeCompanyMcpXeroRead(
   await ensureXeroToolsAllowlisted(env.DB, input.companyId, mcp.id, [forwardName, input.toolName]);
 
   const started = Date.now();
-  const execution = await executeRegisteredMcpTool(env, {
+  const readArgs = mapArgsForCompanyXeroTool(input.toolName, forwardName, input.arguments ?? {});
+  let execution = await executeRegisteredMcpTool(env, {
     mcpId: mcp.id,
     toolName: forwardName,
-    arguments: mapArgsForCompanyXeroTool(input.toolName, forwardName, input.arguments ?? {}),
+    arguments: readArgs,
     actorUserId: input.actorUserId ?? "system",
     actorEmail: input.actor,
     sourceClient: "infra-xero",
     skipUsageRecording: true,
   });
+  const retryable = isRetryableCompanyXeroUpstream(
+    execution.status,
+    "error" in execution ? execution.error : null,
+  );
+  if (execution.status !== 200 && retryable) {
+    execution = await executeRegisteredMcpTool(env, {
+      mcpId: mcp.id,
+      toolName: forwardName,
+      arguments: readArgs,
+      actorUserId: input.actorUserId ?? "system",
+      actorEmail: input.actor,
+      sourceClient: "infra-xero",
+      skipUsageRecording: true,
+    });
+  }
 
   if (execution.status !== 200) {
     return {
       ok: false,
       status: execution.status >= 400 && execution.status < 600 ? (execution.status as 403 | 404 | 409 | 502 | 503) : 502,
-      error: execution.error ?? "I couldn’t retrieve Xero data just now.",
+      error: "I couldn’t retrieve Xero data just now.",
       code: execution.status === 404 ? "XERO_TOOL_NOT_IMPLEMENTED" : "XERO_MCP_UPSTREAM",
     };
   }

@@ -79,6 +79,7 @@ import { executeXeroReadToolOnInfra } from "./xero-read-execution";
 import { isOutlookReadTool, outlookActionForTool } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeAskDocument, isAskDocumentTool } from "./ask-document";
+import { fetchCompanyKnowledgeDocument, isCompanyKnowledgeReadTool } from "./document-fetch";
 import {
   DOCUMENT_CATALOGUE_ACTION,
   DOCUMENT_CATALOGUE_PERMISSION_ACTION,
@@ -1027,6 +1028,51 @@ export async function executeGatewayRequest(
             authConfigured: true,
             riskClass,
             result: asked.result,
+          },
+        };
+      })()
+    : isCompanyKnowledgeReadTool(input.toolName)
+    ? await (async () => {
+        const documentId = String(
+          input.arguments?.id ??
+            input.arguments?.documentId ??
+            input.arguments?.document_id ??
+            input.arguments?.documentRef ??
+            "",
+        ).trim();
+        const fetched = await fetchCompanyKnowledgeDocument(env, {
+          companyId: input.companyId,
+          documentId,
+          title: typeof input.arguments?.title === "string" ? input.arguments.title : null,
+          driveId:
+            typeof input.arguments?.driveId === "string"
+              ? input.arguments.driveId
+              : typeof input.arguments?.drive_id === "string"
+                ? input.arguments.drive_id
+                : null,
+          actor: actorLabel,
+          actorUserId: actorId,
+          sourceClient,
+        });
+        if (!fetched.ok) {
+          return {
+            status: fetched.status,
+            error: fetched.message,
+            code: fetched.code,
+            result: fetched.candidates ? { candidates: fetched.candidates } : undefined,
+          } as const;
+        }
+        return {
+          status: 200 as const,
+          data: {
+            correlationId,
+            mcpId: mcp.id,
+            companyId: input.companyId,
+            toolName: input.toolName,
+            latencyMs: Date.now() - started,
+            authConfigured: true,
+            riskClass,
+            result: fetched.payload,
           },
         };
       })()

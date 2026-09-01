@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   composeInfraXeroReadResult,
   extractRawSalesDocuments,
+  isRetryableCompanyXeroUpstream,
   mapArgsForCompanyXeroTool,
   pickCompanyXeroTool,
 } from "./xero-company-mcp";
@@ -103,5 +104,13 @@ describe("company MCP Xero mapping", () => {
     expect(wrapped.sales_total).toBeUndefined();
     expect(wrapped.source).toBe("Xero");
     expect(wrapped.analysis).toBe("Sales look healthy");
+  });
+
+  it("retries only transient company-MCP timeouts, never writes", () => {
+    expect(isRetryableCompanyXeroUpstream(502, "MCP HTTP timeout")).toBe(true);
+    expect(isRetryableCompanyXeroUpstream(503, "unavailable")).toBe(true);
+    expect(isRetryableCompanyXeroUpstream(401, "unauthorized")).toBe(false);
+    expect(isRetryableCompanyXeroUpstream(403, "permission denied")).toBe(false);
+    expect(pickCompanyXeroTool(["create_xero_draft_invoice"], "xero_sales_summary")).toBeNull();
   });
 });
