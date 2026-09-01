@@ -30,9 +30,13 @@ export const OUTLOOK_READ_TOOL_SCHEMAS: Record<
       .description,
     inputSchema: {
       type: "object",
-      required: ["mailboxAddress", "query"],
+      required: ["query"],
       properties: {
-        mailboxAddress: { type: "string", description: "Included shared mailbox SMTP address" },
+        mailboxAddress: {
+          type: "string",
+          description:
+            "Shared mailbox SMTP address. For Elvex info inbox use info@elvexpropertyservices.com. Do not use finance@ unless the user is authorised for finance mail.",
+        },
         sourceId: { type: "string", description: "Optional INFRA mailbox source id" },
         query: { type: "string", description: "Search query (subject/body/sender where Graph permits)" },
         folderId: { type: "string" },
@@ -47,13 +51,16 @@ export const OUTLOOK_READ_TOOL_SCHEMAS: Record<
       .description,
     inputSchema: {
       type: "object",
-      required: ["mailboxAddress"],
       properties: {
-        mailboxAddress: { type: "string" },
+        mailboxAddress: {
+          type: "string",
+          description:
+            "Shared mailbox SMTP address. For the Elvex info inbox use info@elvexpropertyservices.com. Omit to default to the info inbox. Never use finance@ for office staff.",
+        },
         sourceId: { type: "string" },
         folderId: { type: "string" },
         folderName: { type: "string", default: "inbox" },
-        limit: { type: "number", default: 25 },
+        limit: { type: "number", default: 5 },
       },
     },
   },

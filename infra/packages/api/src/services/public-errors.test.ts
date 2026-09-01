@@ -34,4 +34,16 @@ describe("publicToolErrorMessage", () => {
       publicToolErrorMessage(403, "Permission denied: knowledge.search").message,
     ).toBe("Permission denied: knowledge.search");
   });
+
+  it("maps Outlook connector failures to safe reconnect or retry copy", () => {
+    expect(publicToolErrorMessage(403, "Mail.Read (Application) admin consent").message).toBe(
+      "Outlook needs reconnecting",
+    );
+    expect(publicToolErrorMessage(429, "OUTLOOK_RATE_LIMITED").message).toBe(
+      "Microsoft temporarily rejected the request",
+    );
+    expect(publicToolErrorMessage(404, "Mailbox source not found").message).toBe(
+      "Outlook mailbox is not available",
+    );
+  });
 });

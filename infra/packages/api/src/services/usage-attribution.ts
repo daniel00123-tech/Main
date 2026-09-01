@@ -53,24 +53,27 @@ export async function resolveConnectorInstanceId(
 ): Promise<string | null> {
   const family = connectorFamilyFromAction(action, toolName);
   if (family === "system" || family === "other" || family === "knowledge") return null;
-  const like =
+  const likes =
     family === "microsoft"
-      ? "%microsoft%"
+      ? ["%microsoft%", "%outlook%"]
       : family === "xero"
-        ? "%xero%"
-        : `%${family}%`;
-  const row = await db
-    .prepare(
-      `SELECT id FROM connector_instances
-       WHERE company_id = ? AND (
-         lower(definition_id) LIKE ? OR lower(id) LIKE ? OR lower(display_name) LIKE ?
-       )
-       ORDER BY updated_at DESC
-       LIMIT 1`,
-    )
-    .bind(companyId, like, like, like)
-    .first();
-  return row?.id ? String(row.id) : null;
+        ? ["%xero%"]
+        : [`%${family}%`];
+  for (const like of likes) {
+    const row = await db
+      .prepare(
+        `SELECT id FROM connector_instances
+         WHERE company_id = ? AND (
+           lower(connector_definition_id) LIKE ? OR lower(id) LIKE ? OR lower(name) LIKE ?
+         )
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+      )
+      .bind(companyId, like, like, like)
+      .first();
+    if (row?.id) return String(row.id);
+  }
+  return null;
 }
 
 export function emptyBreakdown(key: string, label: string): UsageBreakdownRow {

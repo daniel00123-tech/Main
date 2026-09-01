@@ -7,6 +7,10 @@ import { acquireMicrosoftAppToken } from "./microsoft-auth";
 import { assessOutlookPermissions } from "./microsoft-outlook-permissions";
 import { resolveIncludedOutlookMailbox } from "./microsoft-outlook-mailbox";
 import {
+  companyHasMcpOutlookConnection,
+  executeCompanyMcpOutlookRead,
+} from "./microsoft-outlook-company-mcp";
+import {
   formatOutlookProvenance,
   getMailboxMessage,
   getMessageAttachmentContent,
@@ -99,6 +103,7 @@ export async function executeOutlookReadTool(
     toolName: string;
     arguments: Record<string, unknown>;
     actor: string;
+    actorUserId?: string | null;
   },
 ): Promise<{ ok: true; result: unknown } | { ok: false; status: number; code: string; message: string }> {
   const mailboxAddress =
@@ -111,7 +116,11 @@ export async function executeOutlookReadTool(
     sourceId,
   });
   if (!mailbox.ok) {
-    return { ok: false, status: 403, code: mailbox.code, message: mailbox.message };
+    if (await companyHasMcpOutlookConnection(env.DB, input.companyId)) {
+      return executeCompanyMcpOutlookRead(env, input);
+    }
+    const status = mailbox.code === "OUTLOOK_MAILBOX_NOT_FOUND" ? 404 : 403;
+    return { ok: false, status, code: mailbox.code, message: mailbox.message };
   }
 
   const ready = await assertOutlookReadReady(env, {
@@ -302,12 +311,26 @@ export async function executeOutlookReadTool(
     return { ok: true, result };
   } catch (err) {
     if (err instanceof MicrosoftGraphError) {
-      return {
-        ok: false,
-        status: err.status >= 400 && err.status < 600 ? err.status : 502,
-        code: err.status === 429 ? "OUTLOOK_RATE_LIMITED" : "OUTLOOK_GRAPH_ERROR",
-        message: err.message,
-      };
+      const status = err.status >= 400 && err.status < 600 ? err.status : 502;
+      const code =
+        err.status === 429
+          ? "OUTLOOK_RATE_LIMITED"
+          : err.status === 401
+            ? "OUTLOOK_GRAPH_UNAUTHORIZED"
+            : err.status === 403
+              ? "OUTLOOK_GRAPH_FORBIDDEN"
+              : err.status >= 500
+                ? "OUTLOOK_GRAPH_UNAVAILABLE"
+                : "OUTLOOK_GRAPH_ERROR";
+      const message =
+        err.status === 401
+          ? "Outlook needs reconnecting"
+          : err.status === 429 || err.status >= 500
+            ? "Microsoft temporarily rejected the request"
+            : err.status === 403
+              ? "Microsoft denied mailbox access"
+              : "Microsoft temporarily rejected the request";
+      return { ok: false, status, code, message };
     }
     return {
       ok: false,

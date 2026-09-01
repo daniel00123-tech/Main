@@ -5,6 +5,7 @@ import {
   elvexMailboxCapability,
   isElvexCompany,
   mapActionToElvexCapability,
+  resolveElvexConfiguredMailbox,
 } from "./elvex-rbac";
 
 describe("Elvex RBAC overlay", () => {
@@ -52,8 +53,14 @@ describe("Elvex RBAC overlay", () => {
       "mail.finance.read",
     );
     expect(elvexMailboxCapability("info@elvexpropertyservices.com", true)).toBe("mail.info.write");
+    expect(elvexMailboxCapability("info inbox", false)).toBe("mail.info.read");
+    expect(elvexMailboxCapability("finance inbox", false)).toBe("mail.finance.read");
     expect(elvexMailboxCapability("private@elvexpropertyservices.com", false)).toBeNull();
     expect(mapActionToElvexCapability("mcp.secret_admin")).toBeNull();
     expect(elvexAllowsAction("office_staff", "mcp.secret_admin").allowed).toBe(false);
+    expect(resolveElvexConfiguredMailbox("info inbox")).toBe("info@elvexpropertyservices.com");
+    expect(resolveElvexConfiguredMailbox("finance@elvexpropertyservices.com")).toBe(
+      "finance@elvexpropertyservices.com",
+    );
   });
 });

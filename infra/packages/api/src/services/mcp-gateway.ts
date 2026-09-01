@@ -156,6 +156,14 @@ export function enrichMcpToolDescription(
       "Create a credit note in Xero. Financial write — uses execution plan when batching.",
     xero_allocate_payment:
       "Allocate a payment to invoices in Xero. Financial write — remittance workflow.",
+    outlook_list_messages:
+      "List the newest messages in a shared Outlook mailbox. For Elvex, the info inbox is info@elvexpropertyservices.com. Office staff may read info@ only — never finance@. Read-only. Do not send, reply, or delete mail.",
+    outlook_search_mailbox:
+      "Search an Elvex shared Outlook mailbox. For the info inbox pass mailboxAddress=info@elvexpropertyservices.com. Office staff must not search finance@. Read-only.",
+    search_elvex_email:
+      "Search the Elvex Outlook connection. Use mailbox info@elvexpropertyservices.com for the info inbox. Read-only.",
+    get_elvex_email:
+      "Read one Elvex Outlook message by id from an allowed mailbox (info@ for office staff). Read-only.",
   };
   const enriched = defaults[toolName];
   if (enriched) return enriched;
