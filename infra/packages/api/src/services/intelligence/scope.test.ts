@@ -7,6 +7,19 @@ import { verbaliseSystemMeta, inventedCount, resetSystemMetaCache, loadDocumentI
 import type { IntelligenceRuntime, IntelligenceToolResult } from "./types.js";
 
 describe("scope classifier", () => {
+  it("ranks explicit Xero data questions as BUSINESS_SYSTEM", () => {
+    for (const text of [
+      "tell me on xero what our sales are",
+      "what are our Xero sales this month?",
+      "show me invoices raised today",
+      "what is outstanding in Xero?",
+    ]) {
+      const decision = classifyScope(text, buildConversationState({ userText: text }));
+      expect(decision.scope).toBe("BUSINESS_SYSTEM");
+      expect(decision.tool?.startsWith("xero_")).toBe(true);
+    }
+  });
+
   it("covers at least 120 unseen prompts and exceeds 95% scope accuracy", () => {
     const cases = scopeEvaluationCases();
     expect(cases.length).toBeGreaterThanOrEqual(120);
@@ -55,6 +68,19 @@ describe("scope classifier", () => {
   it("does not treat inventory questions as generic document hunts", () => {
     expect(isCorpusInventoryAsk("How many files are there on the system?")).toBe(true);
     expect(isCorpusInventoryAsk("find the vehicle policy")).toBe(false);
+  });
+
+  it("lists newest or latest files as a metadata catalogue, not semantic search", () => {
+    const newest = classifyScope("show me the newest 10 OneDrive files", buildConversationState({ userText: "show me the newest 10 OneDrive files" }));
+    expect(newest.scope).toBe("SYSTEM_META");
+    expect(newest.tool).toBe("list_company_documents");
+    const latest = classifyScope(
+      "what are the latest changed SharePoint documents",
+      buildConversationState({ userText: "what are the latest changed SharePoint documents" }),
+    );
+    expect(latest.tool).toBe("list_company_documents");
+    const xero = classifyScope("tell me on xero what our sales are", buildConversationState({ userText: "tell me on xero what our sales are" }));
+    expect(xero.tool).not.toBe("list_company_documents");
   });
 
   it("switches away from the open file when a different named title is requested", () => {

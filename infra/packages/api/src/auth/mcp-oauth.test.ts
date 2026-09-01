@@ -5,6 +5,7 @@ import {
   looksLikeJwt,
   isInfraServiceToken,
   oauthAuthorizationServerMetadata,
+  revokeHumanOauthGrant,
   verifyMcpAccessToken,
 } from "./mcp-oauth";
 
@@ -68,5 +69,24 @@ describe("INFRA MCP OAuth tokens", () => {
     expect(meta.token_endpoint).toBe(`${ISSUER}/oauth/token`);
     expect(meta.code_challenge_methods_supported).toContain("S256");
     expect(JSON.stringify(meta)).not.toMatch(/login\.microsoftonline|entra/i);
+  });
+
+  it("revokes refresh tokens, access JTIs, and the user ChatGPT connection", async () => {
+    const updates: string[] = [];
+    const db = {
+      prepare: (sql: string) => ({
+        bind: (..._values: unknown[]) => ({
+          run: async () => {
+            updates.push(sql.replace(/\s+/g, " ").trim());
+            return { success: true };
+          },
+        }),
+      }),
+    } as unknown as D1Database;
+
+    await revokeHumanOauthGrant(db, "user_william", "co_el");
+    expect(updates.some((sql) => sql.includes("oauth_refresh_tokens"))).toBe(true);
+    expect(updates.some((sql) => sql.includes("oauth_access_jti"))).toBe(true);
+    expect(updates.some((sql) => sql.includes("ai_user_connections"))).toBe(true);
   });
 });

@@ -1,5 +1,7 @@
+import { resolveBusinessSystemIntent } from "@infra/shared";
 import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "./types.js";
 import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
+import { isDocumentCatalogueAsk } from "../document-catalogue.js";
 
 export type ScopeSwitch =
   | "company"
@@ -34,6 +36,7 @@ export type ScopeFeatures = {
   automationAsk: boolean;
   userOrCompanyAsk: boolean;
   adminOpsAsk: boolean;
+  catalogueAsk: boolean;
   scopeSwitch: ScopeSwitch;
 };
 
@@ -179,6 +182,7 @@ function extractFeatures(text: string): ScopeFeatures {
     automationAsk: AUTOMATION.test(trimmed),
     userOrCompanyAsk: USER_COMPANY.test(trimmed) || SYSTEM_OVERVIEW.test(trimmed),
     adminOpsAsk: ADMIN_OPS.test(trimmed),
+    catalogueAsk: isDocumentCatalogueAsk(trimmed),
     scopeSwitch: detectScopeSwitch(trimmed),
   };
 }
@@ -320,6 +324,58 @@ export function classifyScope(
       tool: "get_connector_status",
       lastAnswerTopic: "connectors",
       lastUserIntent: "connectors",
+    });
+  }
+
+  if (features.catalogueAsk && !features.financeAsk && !features.emailAsk && !features.writeIntent) {
+    return decide("SYSTEM_META", features, {
+      tool: "list_company_documents",
+      lastAnswerTopic: "document_catalogue",
+      lastUserIntent: "document_catalogue",
+    });
+  }
+
+  const businessIntent = resolveBusinessSystemIntent(text);
+  if (
+    businessIntent &&
+    !features.connectorAsk &&
+    !features.capabilityAsk &&
+    !features.systemLocus &&
+    !features.companyLocus &&
+    !switchTo &&
+    businessIntent.capability !== "admin" &&
+    businessIntent.capability !== "restricted_knowledge"
+  ) {
+    if (businessIntent.capability === "payments" || features.writeIntent) {
+      return decide("CONTROLLED_ACTION", features, {
+        tool: null,
+        noTool: true,
+        lastUserIntent: "controlled_action",
+      });
+    }
+    if (
+      businessIntent.capability === "finance_mailbox" ||
+      businessIntent.capability === "info_mailbox" ||
+      businessIntent.connectorDefinitionId === "conn_outlook_shared"
+    ) {
+      return decide("BUSINESS_SYSTEM", features, {
+        tool: "outlook_search_mailbox",
+        lastAnswerTopic: "email",
+        lastUserIntent: "email",
+      });
+    }
+    if (businessIntent.capability === "xero" || businessIntent.connectorDefinitionId === "conn_xero") {
+      return decide("BUSINESS_SYSTEM", features, {
+        tool: pickBusinessTool(text, state.lastSuccessfulTool),
+        lastAnswerTopic: "finance",
+        lastUserIntent: "finance",
+      });
+    }
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: null,
+      noTool: true,
+      lastAnswerTopic: businessIntent.connectorDefinitionId.replace(/^conn_/, ""),
+      lastUserIntent: "business_system",
     });
   }
 

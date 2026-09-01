@@ -2,6 +2,13 @@ import type { Env } from "../env";
 import { collectDocumentChunks, type StandardDocumentChunk, type StandardFetchPayload } from "./mcp-knowledge-standard";
 import { generateGroundedCompletion, inspectGroundedQaProvider, type GroundedLlmProvider } from "./whatsapp-llm";
 import { sanitizeWhatsAppSource } from "./whatsapp-compress";
+import {
+  contentQueryTerms,
+  enrichDocumentQuery,
+  isShortDocumentFollowUp,
+  queryTerms,
+  type EnrichmentContext,
+} from "./intelligence/query-enrichment.js";
 
 export type DocumentClass =
   | "cv_resume"
@@ -32,54 +39,6 @@ const PII_PHONE = /(?<!\d)(?:\+?\d[\d\s()-]{7,}\d)/g;
 const ASKED_CONTACT =
   /\b(phone|mobile|tel|telephone|e-?mail|contact (number|details|email)|how (do i|can i) (call|email|contact))\b/i;
 
-const STOP = new Set([
-  "the",
-  "and",
-  "for",
-  "that",
-  "this",
-  "document",
-  "documents",
-  "doc",
-  "file",
-  "was",
-  "were",
-  "what",
-  "did",
-  "does",
-  "who",
-  "how",
-  "why",
-  "when",
-  "in",
-  "on",
-  "of",
-  "to",
-  "do",
-  "he",
-  "she",
-  "they",
-  "it",
-  "is",
-  "are",
-  "with",
-  "about",
-  "from",
-  "into",
-  "more",
-  "tell",
-  "give",
-  "allowed",
-  "please",
-  "find",
-  "search",
-  "just",
-  "also",
-  "some",
-  "any",
-  "something",
-]);
-
 const KEEP_SHORT = new Set(["cv", "uk", "hr", "qa", "it"]);
 const SYNONYMS: Record<string, string[]> = {
   van: ["vehicle", "vehicles", "fleet", "car"],
@@ -87,6 +46,16 @@ const SYNONYMS: Record<string, string[]> = {
   drive: ["driver", "driving", "driven"],
   fuel: ["petrol", "diesel", "mileage", "litre"],
   sales: ["selling", "sold"],
+};
+
+export type DocumentQaDiagnostics = {
+  documentId: string;
+  chunkCount: number;
+  rankedCount: number;
+  selectedCount: number;
+  topChunkScores: number[];
+  retrievalQuery: string;
+  underspecifiedFollowUp: boolean;
 };
 
 export type GroundedQaResult = {
@@ -105,7 +74,17 @@ export type GroundedQaResult = {
   repeatedExcerpt: boolean;
   unsolicitedPii: boolean;
   malformedExtraction: boolean;
+  diagnostics: DocumentQaDiagnostics;
 };
+
+export function isUnderspecifiedDocumentFollowUp(question: string): boolean {
+  const trimmed = String(question ?? "").trim();
+  if (!trimmed) return false;
+  if (queryTerms(trimmed).length < 2) return true;
+  return /^(what exactly|when|who|how much|more(?:\s+(?:detail|on this))?|anything else)\??$/i.test(
+    trimmed,
+  );
+}
 
 export function classifyDocument(input: { title?: string | null; text?: string | null; path?: string | null }): DocumentClass {
   const hay = `${input.title ?? ""}\n${input.path ?? ""}\n${String(input.text ?? "").slice(0, 1200)}`.toLowerCase();
@@ -306,18 +285,138 @@ export function looksLikeUnsolicitedPii(text: string, question: string, document
   return PII_EMAIL.test(text) || PII_PHONE.test(text);
 }
 
+export function retrieveDocumentChunks(input: {
+  documentId: string;
+  query: string;
+  chunks: DocumentChunk[];
+  enrichment: EnrichmentContext;
+  previousContentQuery?: string | null;
+}): {
+  ranked: Array<DocumentChunk & { score: number }>;
+  enriched: boolean;
+  decayed: boolean;
+  fallback: "none" | "previous_content" | "current_document_context";
+  none: boolean;
+  query: string;
+} {
+  const usable = input.chunks.filter((chunk) => chunk.text.trim().length >= 20);
+  if (!usable.length) {
+    return { ranked: [], enriched: false, decayed: false, fallback: "none", none: true, query: input.query };
+  }
+  const enrichment = enrichDocumentQuery(input.query, input.enrichment);
+  let ranked = searchDocument(input.documentId, enrichment.query, usable);
+  if (ranked.length) {
+    return {
+      ranked,
+      enriched: enrichment.enriched,
+      decayed: enrichment.decayed,
+      fallback: "none",
+      none: false,
+      query: enrichment.query,
+    };
+  }
+  const short = !enrichment.decayed && isShortDocumentFollowUp(input.query);
+  const prior = input.previousContentQuery || input.enrichment.lastContentQuestion || input.enrichment.previousUserText;
+  if (short && prior && prior.trim() !== input.query.trim()) {
+    ranked = searchDocument(input.documentId, prior, usable);
+    if (ranked.length) {
+      return { ranked, enriched: true, decayed: false, fallback: "previous_content", none: false, query: prior };
+    }
+  }
+  if (short && contentQueryTerms(input.query).length === 0) {
+    const contextual = usable.slice(0, 5).map((chunk, index) => ({
+      ...chunk,
+      score: Math.max(1, usable.length - index),
+    }));
+    return {
+      ranked: contextual,
+      enriched: enrichment.enriched,
+      decayed: false,
+      fallback: "current_document_context",
+      none: false,
+      query: enrichment.query,
+    };
+  }
+  return {
+    ranked: [],
+    enriched: enrichment.enriched,
+    decayed: enrichment.decayed,
+    fallback: "none",
+    none: false,
+    query: enrichment.query,
+  };
+}
+
+export function synthesizeFromDocumentEvidence(input: {
+  title: string;
+  question: string;
+  chunks: Array<{ text: string; heading?: string | null; score?: number }>;
+  previousAnswer?: string | null;
+  mode?: GroundedMode;
+}): {
+  reply: string;
+  confidence: GroundedConfidence;
+  moreDetailNovel: boolean;
+  repeatedExcerpt: boolean;
+} {
+  const selected = input.chunks.filter((chunk) => String(chunk.text ?? "").trim().length >= 20);
+  const mode = input.mode ?? "answer";
+  if (!selected.length) {
+    return {
+      reply: `${NONE_IN_DOCUMENT_REPLY} ${SEARCH_OTHER_DOCS_HINT}`,
+      confidence: "none",
+      moreDetailNovel: false,
+      repeatedExcerpt: false,
+    };
+  }
+  const evidence = selected.map((chunk) => chunk.text).join("\n\n");
+  let confidence = confidenceFromEvidence(mode, input.question, selected, evidence);
+  if (confidence === "none" && isShortDocumentFollowUp(input.question) && evidence.trim()) {
+    confidence = "partial";
+  }
+  const extractive = extractiveAnswer({
+    title: input.title,
+    mode,
+    question: input.question,
+    evidence,
+    chunks: selected.map((chunk, index) => ({
+      id: `synth:${index}`,
+      documentId: "current",
+      text: chunk.text,
+      heading: chunk.heading ?? null,
+      index,
+    })),
+    previousAnswer: input.previousAnswer,
+    confidence,
+  });
+  const repeatedExcerpt = Boolean(input.previousAnswer && similarText(extractive, input.previousAnswer));
+  return {
+    reply: extractive.trim(),
+    confidence,
+    moreDetailNovel:
+      mode !== "more_detail" ||
+      (!repeatedExcerpt &&
+        (addsInformation(extractive, input.previousAnswer) || /don.?t have more distinct detail/i.test(extractive))),
+    repeatedExcerpt,
+  };
+}
+
 export async function runGroundedQa(
   env: Env,
   input: {
     question: string;
+    retrievalQuery?: string | null;
     documentId: string;
     title: string;
     fetch: StandardFetchPayload;
     mode: GroundedMode;
     previousAnswer?: string | null;
+    previousQuestion?: string | null;
     path?: string | null;
     tenantId?: string | null;
     qualityGuidance?: string | null;
+    enrichment?: EnrichmentContext;
+    previousContentQuery?: string | null;
   },
 ): Promise<GroundedQaResult> {
   const documentClass = classifyDocument({
@@ -326,13 +425,49 @@ export async function runGroundedQa(
     path: input.path,
   });
   const chunks = chunksFromFetchPayload(input.fetch, input.documentId);
-  const ranked =
+  const underspecified = isUnderspecifiedDocumentFollowUp(input.question);
+  const retrievalQuery = (input.retrievalQuery ?? input.question).trim() || input.question;
+  const retrieved =
     input.mode === "answer"
-      ? searchDocument(input.documentId, input.question, chunks, { tenantId: input.tenantId })
-      : chunks.map((chunk, index) => ({ ...chunk, score: Math.max(1, chunks.length - index) }));
+      ? retrieveDocumentChunks({
+          documentId: input.documentId,
+          query: retrievalQuery,
+          chunks,
+          enrichment: input.enrichment ?? {
+            scope: "CURRENT_DOCUMENT",
+            currentTitle: input.title,
+            previousUserText: input.previousContentQuery ?? input.previousQuestion ?? null,
+            lastAnswerTopic: "document",
+          },
+          previousContentQuery: input.previousContentQuery ?? input.previousQuestion ?? null,
+        })
+      : { ranked: chunks.map((chunk, index) => ({ ...chunk, score: Math.max(1, chunks.length - index) })), none: chunks.length === 0 };
+  let ranked = retrieved.ranked;
+  if (!ranked.length && input.previousQuestion && input.mode === "answer") {
+    ranked = searchDocument(input.documentId, input.previousQuestion, chunks, {
+      tenantId: input.tenantId,
+    });
+  }
+  if (!ranked.length && chunks.length && input.mode === "answer" && underspecified) {
+    ranked = chunks.slice(0, 5).map((chunk, index) => ({
+      ...chunk,
+      score: Math.max(1, chunks.length - index),
+    }));
+  }
   const selected = selectChunks(ranked, input.mode, input.previousAnswer);
   const evidence = selected.map((chunk) => chunk.text).join("\n\n");
-  const confidence = confidenceFromEvidence(input.mode, input.question, selected, evidence);
+  const confidenceQuestion =
+    underspecified && queryTerms(input.question).length < 2 ? retrievalQuery : input.question;
+  const confidence = confidenceFromEvidence(input.mode, confidenceQuestion, selected, evidence);
+  const diagnostics: DocumentQaDiagnostics = {
+    documentId: input.documentId,
+    chunkCount: chunks.length,
+    rankedCount: ranked.length,
+    selectedCount: selected.length,
+    topChunkScores: ranked.slice(0, 5).map((chunk) => Number(chunk.score ?? 0)),
+    retrievalQuery,
+    underspecifiedFollowUp: underspecified,
+  };
   const facts = extractTypedFacts(evidence, documentClass);
   const malformedExtraction = documentClass === "cv_resume" && Boolean(facts.amount || facts.reference);
 
@@ -347,6 +482,7 @@ export async function runGroundedQa(
       repeatedExcerpt: false,
       unsolicitedPii: false,
       malformedExtraction,
+      diagnostics,
     });
   }
 
@@ -369,9 +505,13 @@ export async function runGroundedQa(
       previousAnswer: input.previousAnswer,
     }),
   });
-  let raw = generated.ok && generated.text && isGroundedToEvidence(generated.text, evidence)
-    ? generated.text
-    : extractive;
+  let raw =
+    generated.ok &&
+    generated.text &&
+    isGroundedToEvidence(generated.text, evidence) &&
+    !(confidence !== "none" && generated.text.includes(NONE_IN_DOCUMENT_REPLY))
+      ? generated.text
+      : extractive;
   if (
     input.mode === "more_detail" &&
     input.previousAnswer &&
@@ -401,6 +541,7 @@ export async function runGroundedQa(
     repeatedExcerpt,
     unsolicitedPii: pii.redacted || looksLikeUnsolicitedPii(raw, input.question, documentClass),
     malformedExtraction,
+    diagnostics,
   });
 }
 
@@ -443,12 +584,12 @@ function selectChunks(
 function confidenceFromEvidence(
   mode: GroundedMode,
   question: string,
-  chunks: Array<DocumentChunk & { score?: number }>,
+  chunks: Array<{ text: string; score?: number }>,
   evidence: string,
 ): GroundedConfidence {
   if (!evidence.trim()) return "none";
   if (mode !== "answer") return chunks.length >= 2 ? "strong" : "partial";
-  const terms = queryTerms(question).filter((term) => term.length >= 3 || KEEP_SHORT.has(term));
+  const terms = contentQueryTerms(question).filter((term) => term.length >= 3 || KEEP_SHORT.has(term));
   if (!terms.length) return chunks.length ? "partial" : "none";
   const hay = evidence.toLowerCase();
   const hits = terms.filter((term) => fuzzyIncludes(hay, term) || expandTerm(term).some((alt) => hay.includes(alt)));
@@ -546,13 +687,7 @@ function usefulSentences(text: string, max: number): string[] {
     .slice(0, max);
 }
 
-export function queryTerms(query: string): string[] {
-  return String(query ?? "")
-    .toLowerCase()
-    .split(/\s+/)
-    .map((token) => token.replace(/[^a-z0-9]/g, ""))
-    .filter((token) => (token.length >= 3 || KEEP_SHORT.has(token)) && !STOP.has(token));
-}
+export { queryTerms };
 
 function expandTerm(term: string): string[] {
   return SYNONYMS[term] ?? [];

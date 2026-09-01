@@ -46,6 +46,7 @@ import {
   maskEmail,
   validateNewPassword,
 } from "./auth/password-setup";
+import { acceptPendingInvitationsAfterOnboarding } from "./services/invitations";
 import { createCorsMiddleware } from "./cors";
 import type { Env } from "./env";
 import {
@@ -92,6 +93,7 @@ import whatsappRoutes from "./routes/whatsapp";
 import whatsappUxUatRoutes from "./routes/whatsapp-ux-uat";
 import intelligenceEvalRoutes from "./routes/intelligence-eval";
 import qualityLoopRoutes from "./routes/quality-loop";
+import portalChatRoutes from "./routes/portal-chat";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -109,6 +111,7 @@ app.route("/", whatsappRoutes);
 app.route("/", whatsappUxUatRoutes);
 app.route("/", intelligenceEvalRoutes);
 app.route("/", qualityLoopRoutes);
+app.route("/", portalChatRoutes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(
@@ -130,13 +133,19 @@ app.get("/", (c) =>
   }),
 );
 
-app.get("/health", (c) =>
-  c.json({
+app.get("/health", (c) => {
+  const versionMeta = c.env.CF_VERSION_METADATA;
+  const versionId =
+    versionMeta && typeof versionMeta === "object" && "id" in versionMeta
+      ? String((versionMeta as { id?: unknown }).id ?? "")
+      : "";
+  return c.json({
     status: "ok",
     environment: c.env.ENVIRONMENT,
     timestamp: new Date().toISOString(),
-  }),
-);
+    ...(versionId ? { versionId } : {}),
+  });
+});
 
 app.get("/ready", async (c) => {
   try {
@@ -234,6 +243,10 @@ app.post("/api/auth/password-setup", async (c) => {
 
   await updateUserPassword(c.env.DB, user.id, body.password);
   await consumeSetupToken(c.env.DB, record.id);
+  const acceptedInvites = await acceptPendingInvitationsAfterOnboarding(c.env.DB, user.id, {
+    actor: user.email,
+    reason: "password_setup_completed",
+  });
 
   await recordAuditEvent(c.env.DB, {
     eventType: "auth.password_setup_completed",
@@ -243,6 +256,7 @@ app.post("/api/auth/password-setup", async (c) => {
     detail: {
       purpose: record.purpose,
       tokenId: record.id,
+      acceptedInvitationIds: acceptedInvites,
     },
   });
 
@@ -1230,6 +1244,29 @@ const worker = {
           label: "Microsoft scheduler",
           success: false,
           error: err instanceof Error ? err.message : "Scheduler failed",
+        });
+      }
+    }
+
+    if (runWhatsAppMinute) {
+      try {
+        const { enforceOperatorIntendedRoles } = await import("./auth/operator-intended-role");
+        const restored = await enforceOperatorIntendedRoles(env.DB);
+        if (restored > 0) {
+          await recordPlatformHeartbeat(env.DB, {
+            key: "membership_intended_role",
+            label: "Operator intended membership role",
+            success: true,
+            error: null,
+            detail: { restored },
+          });
+        }
+      } catch (err) {
+        await recordPlatformHeartbeat(env.DB, {
+          key: "membership_intended_role",
+          label: "Operator intended membership role",
+          success: false,
+          error: err instanceof Error ? err.message : "Intended-role enforce failed",
         });
       }
     }

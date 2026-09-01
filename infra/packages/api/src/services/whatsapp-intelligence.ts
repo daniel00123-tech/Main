@@ -9,7 +9,6 @@ import {
   permittedToolsForConnectors,
   runIntelligenceTurn,
   withResolvedBusinessDates,
-  enrichDocumentQuery,
   type IntelligenceCompleter,
   type IntelligenceDocumentRef,
   type IntelligenceRuntime,
@@ -32,14 +31,15 @@ import {
   chunksFromFetchPayload,
   extractTypedFacts,
   NONE_IN_DOCUMENT_REPLY,
-  queryTerms,
   redactUnsolicitedPii,
   rejectWeakSearchHits,
+  retrieveDocumentChunks,
   runGroundedQa,
   SEARCH_OTHER_DOCS_HINT,
-  searchDocument,
   type GroundedConfidence,
 } from "./whatsapp-grounded-qa";
+import { enrichDocumentQuery, nextContentQuestion } from "./intelligence/query-enrichment.js";
+import { documentHasUsableChunks } from "./intelligence/document-evidence.js";
 import {
   documentEntityFromHit,
   mergeEntityMemory,
@@ -398,10 +398,12 @@ function polishIntelligenceReply(
     text = "I couldn't complete that just now. Try again in a moment.";
   }
   if (result.confidence === "none" && result.currentDocument && result.scope === "CURRENT_DOCUMENT") {
-    if (!text.includes(NONE_IN_DOCUMENT_REPLY)) {
-      text = `${NONE_IN_DOCUMENT_REPLY} ${SEARCH_OTHER_DOCS_HINT}`;
-    } else if (result.offerSearchOther && !/search other/i.test(text)) {
-      text = `${text} ${SEARCH_OTHER_DOCS_HINT}`;
+    if (!documentHasUsableChunks(result.toolCalls)) {
+      if (!text.includes(NONE_IN_DOCUMENT_REPLY)) {
+        text = `${NONE_IN_DOCUMENT_REPLY} ${SEARCH_OTHER_DOCS_HINT}`;
+      } else if (result.offerSearchOther && !/search other/i.test(text)) {
+        text = `${text} ${SEARCH_OTHER_DOCS_HINT}`;
+      }
     }
   }
   const sourceUrl = firstHttpUrl(entities.lastDocument?.url, result.currentDocument?.url);
@@ -436,11 +438,42 @@ function mergeEntitiesFromIntelligence(
       path: identity.path ?? lastDocument?.path,
     });
   }
+  if (!result.currentDocument) {
+    const search = result.toolCalls.find((call) => call.name === "search_company_knowledge");
+    const first = firstSearchHit(search?.data);
+    const hitCount =
+      search?.data && typeof search.data === "object" && Array.isArray((search.data as { results?: unknown[] }).results)
+        ? (search.data as { results: unknown[] }).results.length
+        : 0;
+    const mentioned = Boolean(first && result.text.toLowerCase().includes(first.title.toLowerCase().slice(0, 24)));
+    if (first && (hitCount === 1 || mentioned)) {
+      lastDocument = documentEntityFromHit({
+        id: first.id,
+        title: first.title,
+        url: first.url,
+        text: lastDocument?.excerpt ?? "",
+        sourceSystem: lastDocument?.sourceSystem,
+        providerItemId: lastDocument?.providerItemId,
+        sourceKey: lastDocument?.sourceKey,
+        path: lastDocument?.path,
+      });
+    }
+  }
+  const switched = Boolean(lastDocument && prior.lastDocument && lastDocument.id !== prior.lastDocument.id);
+  const resetContent =
+    switched ||
+    result.scope === "BUSINESS_SYSTEM" ||
+    /\b(forget that|never mind|search other|another document|different (doc|file|document))\b/i.test(question);
   return mergeEntityMemory(prior, {
     lastDocument,
     lastTool: result.toolCalls.at(-1)?.name ?? prior.lastTool,
     lastSearchQuery: question,
     lastUserQuestion: question,
+    lastContentQuestion: nextContentQuestion({
+      question,
+      prior: prior.lastContentQuestion ?? prior.lastUserQuestion ?? null,
+      reset: resetContent,
+    }),
     lastSourceUrl: lastDocument?.url ?? prior.lastSourceUrl,
     lastSourceSystem: lastDocument?.sourceSystem ?? prior.lastSourceSystem,
     currentScope: result.scope ?? prior.currentScope ?? null,
@@ -553,22 +586,46 @@ async function recoverFailedIntelligenceTurn(
   }
   if (current && !evidenceDocumentIds.includes(current.id)) evidenceDocumentIds.push(current.id);
   const payload = current ? fetchCache.get(current.id) : null;
-  if (current && payload && String(payload.text ?? "").trim().length >= 40) {
+  if (current && payload && (String(payload.text ?? "").trim().length >= 40 || (payload.chunks?.length ?? 0) > 0)) {
+    const groundedQuestion = softenSearchQuery(input.originalText);
+    const groundedEnrichment = enrichDocumentQuery(groundedQuestion, {
+      scope: "CURRENT_DOCUMENT",
+      currentTitle: current.title || payload.title,
+      previousUserText:
+        input.memory.lastUserQuestion && input.memory.lastUserQuestion !== groundedQuestion
+          ? input.memory.lastUserQuestion
+          : null,
+      lastAnswerTopic: input.memory.lastAnswerTopic ?? "document",
+      userCorrection: false,
+      documentChanged: Boolean(input.memory.lastDocument && input.memory.lastDocument.id !== current.id),
+    });
     const grounded = await runGroundedQa(env, {
-      question: softenSearchQuery(input.originalText),
+      question: groundedQuestion,
+      retrievalQuery: groundedEnrichment.query,
       documentId: current.id,
       title: current.title || payload.title,
       fetch: payload,
       mode:
-        input.buttonAction === "more_on_this" || input.buttonAction === "more_detail"
+        input.buttonAction === "more_on_this" ||
+        input.buttonAction === "more_detail" ||
+        /^(more|more detail|tell me more)\b/i.test(input.originalText)
           ? "more_detail"
           : input.buttonAction === "summarise" || /\bsummaris/i.test(input.originalText)
             ? "summarise"
             : "answer",
       previousAnswer: input.memory.lastAnswerText,
+      previousQuestion: input.memory.lastUserQuestion,
       path: input.memory.lastDocument?.path,
       tenantId: input.companyId,
       qualityGuidance: input.qualityGuidance,
+      previousContentQuery: input.memory.lastContentQuestion ?? input.memory.lastUserQuestion ?? null,
+      enrichment: {
+        scope: "CURRENT_DOCUMENT",
+        currentTitle: current.title || payload.title,
+        previousUserText: input.memory.lastContentQuestion ?? input.memory.lastUserQuestion ?? null,
+        lastContentQuestion: input.memory.lastContentQuestion ?? null,
+        lastAnswerTopic: "document",
+      },
     });
     return {
       ...failed,
@@ -655,6 +712,7 @@ async function runSystemMetaTool(
     const data = await executeSystemMetaTool(env, {
       name: call.name,
       companyId: input.companyId,
+      arguments: call.arguments,
       actor: {
         role: membership?.role ?? null,
         isPlatformAdmin: Boolean(input.sessionUser.isPlatformAdmin),
@@ -807,6 +865,7 @@ function createWhatsAppIntelligenceRuntime(
         const documentId = String(args.id ?? args.documentRef ?? "");
         const doc = toStandardFetchPayload(fetched.value.result, documentId);
         input.fetchCache.set(doc.id || documentId, doc);
+        if (documentId && doc.id && documentId !== doc.id) input.fetchCache.set(documentId, doc);
         const identity = identityFromMetadata(doc.metadata ?? null);
         let url = firstHttpUrl(doc.url);
         if (!url) {
@@ -827,7 +886,7 @@ function createWhatsAppIntelligenceRuntime(
             externalItemId: identity.providerItemId,
           });
         }
-        const chunks = chunksFromFetchPayload(doc, doc.id || documentId).slice(0, 6);
+        const chunks = chunksFromFetchPayload(doc, doc.id || documentId).slice(0, 8);
         return {
           name: call.name,
           ok: true,
@@ -837,10 +896,12 @@ function createWhatsAppIntelligenceRuntime(
             title: doc.title,
             url,
             source: identity.sourceSystem ?? null,
+            none: chunks.length === 0 && String(doc.text ?? "").trim().length < 40,
+            text: String(doc.text ?? "").slice(0, 2000),
             chunks: chunks.map((chunk) => ({
               id: chunk.id,
               heading: chunk.heading,
-              text: chunk.text.slice(0, 700),
+              text: chunk.text.slice(0, 1000),
             })),
           },
         };
@@ -901,23 +962,31 @@ async function runSearchDocument(
     }
     payload = toStandardFetchPayload(fetched.value.result, documentId);
     input.fetchCache.set(documentId, payload);
+    if (payload.id && payload.id !== documentId) input.fetchCache.set(payload.id, payload);
   }
   const chunks = chunksFromFetchPayload(payload, documentId);
-  const enriched = enrichDocumentQuery(query || payload.title, {
-    scope: "CURRENT_DOCUMENT",
-    currentTitle: payload.title,
-    previousUserText: input.memory.lastUserQuestion && input.memory.lastUserQuestion !== query
-      ? input.memory.lastUserQuestion
-      : null,
-    lastAnswerTopic: input.memory.lastAnswerTopic ?? "document",
-    userCorrection: false,
-    documentChanged: Boolean(input.memory.lastDocument && input.memory.lastDocument.id !== documentId),
+  const sameDocument = !input.memory.lastDocument || input.memory.lastDocument.id === documentId;
+  const retrieved = retrieveDocumentChunks({
+    documentId,
+    query: query || payload.title,
+    chunks,
+    enrichment: {
+      scope: "CURRENT_DOCUMENT",
+      currentTitle: payload.title,
+      previousUserText:
+        input.memory.lastContentQuestion && input.memory.lastContentQuestion !== query
+          ? input.memory.lastContentQuestion
+          : input.memory.lastUserQuestion && input.memory.lastUserQuestion !== query
+            ? input.memory.lastUserQuestion
+            : null,
+      lastContentQuestion: input.memory.lastContentQuestion ?? null,
+      lastAnswerTopic: sameDocument ? input.memory.lastAnswerTopic ?? "document" : "document",
+      userCorrection: false,
+      documentChanged: Boolean(input.memory.lastDocument && input.memory.lastDocument.id !== documentId),
+    },
+    previousContentQuery: input.memory.lastContentQuestion ?? input.memory.lastUserQuestion ?? null,
   });
-  let ranked = searchDocument(documentId, enriched.query, chunks);
-  if (!ranked.length && queryTerms(query).length < 2 && input.memory.lastUserQuestion && input.memory.lastUserQuestion !== query) {
-    ranked = searchDocument(documentId, input.memory.lastUserQuestion, chunks);
-  }
-  const hits = ranked.length ? ranked : [];
+  const hits = retrieved.ranked;
   const identity = identityFromMetadata(payload.metadata ?? null);
   let url = firstHttpUrl(payload.url, input.memory.lastDocument?.id === documentId ? input.memory.lastDocument.url : null);
   if (!url) {
@@ -938,12 +1007,13 @@ async function runSearchDocument(
       document_id: documentId,
       title: payload.title,
       url,
-      none: ranked.length === 0 && chunks.length === 0,
-      chunks: hits.slice(0, 4).map((chunk) => ({
+      none: retrieved.none,
+      retrieval: retrieved.fallback,
+      chunks: hits.slice(0, 6).map((chunk) => ({
         id: chunk.id,
         heading: chunk.heading,
         score: chunk.score,
-        text: chunk.text.slice(0, 800),
+        text: chunk.text.slice(0, 1000),
       })),
     },
   };

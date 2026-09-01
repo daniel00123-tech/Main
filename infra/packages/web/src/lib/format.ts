@@ -212,6 +212,7 @@ export function humanClient(source?: string | null): string {
     "infra-gateway": "INFRA",
     "e2e-probe": "System",
     portal: "Portal",
+    portal_chat: "Company chat",
     "action-engine": "INFRA",
   };
   if (!source) return "—";
@@ -331,6 +332,7 @@ export function statusTone(value: string): string {
       "complete",
       "settled",
       "credited",
+      "accepted",
     ].includes(v)
   ) {
     return "healthy";
@@ -349,6 +351,7 @@ export function statusTone(value: string): string {
       "onboarding",
       "test_mode",
       "draft",
+      "expired",
     ].includes(v)
   ) {
     return "warning";
@@ -380,6 +383,7 @@ export function statusTone(value: string): string {
       "registered",
       "configured",
       "available",
+      "cancelled",
     ].includes(v)
   ) {
     return "muted";
@@ -607,6 +611,9 @@ export function humanStatus(value: string): string {
     degraded: "Degraded",
     unreachable: "Unavailable",
     pending: "Pending",
+    accepted: "Accepted",
+    cancelled: "Cancelled",
+    expired: "Expired",
     disabled: "Disabled",
     not_configured: "Not configured",
     failed: "Failed",

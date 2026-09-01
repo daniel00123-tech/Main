@@ -158,7 +158,9 @@ export function sanitizeStandardFetchArguments(
         ? args.documentId.trim()
         : typeof args.document_id === "string"
           ? args.document_id.trim()
-          : "";
+          : typeof args.documentRef === "string"
+            ? args.documentRef.trim()
+            : "";
   if (!id) {
     return { error: "fetch requires a non-empty arguments.id string" };
   }
@@ -324,18 +326,27 @@ function pickSnippet(hit: Record<string, unknown>): string | undefined {
 }
 
 function pickTitle(hit: Record<string, unknown>, fallback = "Untitled document"): string {
+  const nestedFile = isRecord(hit.file) ? hit.file : undefined;
   return (
     asNonEmptyString(
       hit.title ??
         hit.name ??
         hit.filename ??
+        hit.fileName ??
+        hit.file_name ??
+        hit.displayName ??
+        hit.display_name ??
         hit.documentTitle ??
-        hit.document_title,
+        hit.document_title ??
+        nestedFile?.name ??
+        nestedFile?.title ??
+        nestedFile?.filename,
     ) || fallback
   );
 }
 
 function pickId(hit: Record<string, unknown>, fallback = ""): string {
+  const nestedFile = isRecord(hit.file) ? hit.file : undefined;
   return (
     asIdString(hit.id) ||
     asIdString(hit.externalId) ||
@@ -344,6 +355,10 @@ function pickId(hit: Record<string, unknown>, fallback = ""): string {
     asIdString(hit.document_id) ||
     asIdString(hit.docId) ||
     asIdString(hit.doc_id) ||
+    asIdString(hit.fileId) ||
+    asIdString(hit.file_id) ||
+    asIdString(nestedFile?.id) ||
+    asIdString(nestedFile?.externalId) ||
     fallback
   );
 }
@@ -402,6 +417,7 @@ export function extractHitList(payload: unknown): Record<string, unknown>[] {
     unwrapped.results ??
     unwrapped.matches ??
     unwrapped.documents ??
+    unwrapped.files ??
     unwrapped.hits ??
     unwrapped.items;
   return Array.isArray(list) ? list.filter(isRecord) : [];
@@ -413,10 +429,12 @@ export function toStandardSearchPayload(payload: unknown): StandardSearchPayload
     const parsedHitMetadata = parseMaybeJsonRecord(hit.metadata);
     if (parsedHitMetadata) hit.metadata = parsedHitMetadata;
     const title = pickTitle(hit);
-    const id = pickId(hit, title);
+    const id = pickId(hit, title !== "Untitled document" ? title : "");
     if (!id) continue;
-    const url = collectProviderHttpUrl(hit, parsedHitMetadata, hit.provenance);
+    const explicitEmptyChunks = Array.isArray(hit.chunks) && hit.chunks.length === 0;
     const snippet = pickSnippet(hit);
+    if (explicitEmptyChunks && !snippet) continue;
+    const url = collectProviderHttpUrl(hit, parsedHitMetadata, hit.provenance);
     const metadata = provenanceMetadata(hit);
     const result: StandardSearchResult = { id, title, url };
     if (snippet) result.snippet = snippet;
@@ -448,7 +466,9 @@ export function collectDocumentChunks(
       return;
     }
     if (!isRecord(chunk)) return;
-    const text = asNonEmptyString(chunk.text ?? chunk.content ?? chunk.excerpt ?? chunk.body);
+    const text = asNonEmptyString(
+      chunk.text ?? chunk.content ?? chunk.excerpt ?? chunk.body ?? chunk.page_content ?? chunk.pageContent,
+    );
     if (!text) return;
     const heading = asNonEmptyString(chunk.heading ?? chunk.title ?? chunk.section);
     const chunkId = asNonEmptyString(chunk.id ?? chunk.chunk_id ?? chunk.chunkId) || `${id}:c${index}`;
@@ -464,7 +484,19 @@ export function collectDocumentChunks(
 
 function collectDocumentText(doc: Record<string, unknown>): string {
   const direct = asNonEmptyString(
-    doc.text ?? doc.content ?? doc.body ?? doc.fullText ?? doc.full_text,
+    doc.text ??
+      doc.content ??
+      doc.body ??
+      doc.fullText ??
+      doc.full_text ??
+      doc.extractedText ??
+      doc.extracted_text ??
+      doc.markdown ??
+      doc.html ??
+      doc.ocrText ??
+      doc.ocr_text ??
+      doc.page_content ??
+      doc.pageContent,
   );
 
   if (Array.isArray(doc.chunks)) {
@@ -472,7 +504,9 @@ function collectDocumentText(doc: Record<string, unknown>): string {
       .map((chunk) => {
         if (typeof chunk === "string") return chunk;
         if (!isRecord(chunk)) return "";
-        return asNonEmptyString(chunk.text ?? chunk.content ?? chunk.excerpt);
+        return asNonEmptyString(
+          chunk.text ?? chunk.content ?? chunk.excerpt ?? chunk.page_content ?? chunk.pageContent,
+        );
       })
       .filter(Boolean)
       .join("\n\n");
@@ -512,7 +546,7 @@ export function toStandardFetchPayload(
     requestedId ||
     pickId(doc) ||
     pickId(nested);
-  const title = pickTitle(doc, "Untitled document");
+  const title = pickTitle(doc, requestedId && /[.][a-z0-9]{2,8}$/i.test(requestedId) ? requestedId : "Untitled document");
   const text = collectDocumentText(doc);
   const url = collectProviderHttpUrl(
     doc,

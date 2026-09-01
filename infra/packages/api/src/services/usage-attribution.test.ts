@@ -3,6 +3,7 @@ import {
   accumulateBreakdown,
   connectorFamilyFromAction,
   normalizeSourceClient,
+  resolveConnectorInstanceId,
 } from "./usage-attribution";
 
 describe("shared usage attribution", () => {
@@ -10,6 +11,7 @@ describe("shared usage attribution", () => {
     expect(normalizeSourceClient("chatgpt-mcp")).toBe("chatgpt");
     expect(normalizeSourceClient("Claude")).toBe("claude");
     expect(normalizeSourceClient(null, "portal")).toBe("portal");
+    expect(normalizeSourceClient("portal_chat")).toBe("portal_chat");
   });
 
   it("maps tools onto connector families", () => {
@@ -18,6 +20,30 @@ describe("shared usage attribution", () => {
     expect(connectorFamilyFromAction("knowledge.search", "search_company_knowledge")).toBe(
       "knowledge",
     );
+  });
+
+  it("looks up connector instances with the live D1 column names", async () => {
+    const statements: string[] = [];
+    const db = {
+      prepare(sql: string) {
+        statements.push(sql);
+        return {
+          bind() {
+            return {
+              async first() {
+                return { id: "ci_el_xero" };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+    await expect(resolveConnectorInstanceId(db, "co_el", "xero.sales.summary", "xero_sales_summary")).resolves.toBe(
+      "ci_el_xero",
+    );
+    expect(statements[0]).toContain("connector_definition_id");
+    expect(statements[0]).toContain("lower(name)");
+    expect(statements[0]).not.toMatch(/\bdefinition_id\b/);
   });
 
   it("attributes denied requests as non-billable", () => {
@@ -31,5 +57,25 @@ describe("shared usage attribution", () => {
     expect(map.get("user_william")?.denied).toBe(1);
     expect(map.get("user_william")?.billable).toBe(0);
     expect(map.get("user_william")?.nonBillable).toBe(1);
+  });
+
+  it("resolves Outlook usage onto connector_definition_id / name columns", async () => {
+    const sqls: string[] = [];
+    const db = {
+      prepare: (sql: string) => {
+        sqls.push(sql);
+        return {
+          bind: () => ({
+            first: async () => ({ id: "ci_el_outlook" }),
+          }),
+        };
+      },
+    } as unknown as D1Database;
+    await expect(
+      resolveConnectorInstanceId(db, "co_el", "outlook.mail.read", "outlook_list_messages"),
+    ).resolves.toBe("ci_el_outlook");
+    expect(sqls.join(" ")).toContain("connector_definition_id");
+    expect(sqls.join(" ")).not.toMatch(/\bdefinition_id\b/);
+    expect(sqls.join(" ")).toContain("lower(name)");
   });
 });

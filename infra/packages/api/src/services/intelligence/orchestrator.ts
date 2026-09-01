@@ -6,7 +6,8 @@ import { routeIntelligenceTurn } from "./router.js";
 import { classifyScope, persistableScope, type ScopeDecision } from "./scope.js";
 import { formatConversationState } from "./state.js";
 import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "./system-meta.js";
-import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
+import { enrichDocumentQuery, previousContentUserText, previousUserText } from "./query-enrichment.js";
+import { adoptFromSearchHits, recoverScoutDocumentAnswer } from "./document-evidence.js";
 import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
 import type {
   IntelligenceChannel,
@@ -156,7 +157,15 @@ export async function runIntelligenceTurn(input: {
     input.state.userCorrection &&
     (scoped.scope === "COMPANY_KNOWLEDGE" || scoped.scope === "RECENT_ENTITY") &&
     (scoped.clearCurrentDocument || scoped.restoreRecentDocument || /\b(i meant|wrong file|instead|find|search|look(?:ing)? (?:for|up))\b/i.test(input.text));
-  if (namedFileCorrection || (scoped.scope === "COMPANY_KNOWLEDGE" && scoped.clearCurrentDocument && !input.state.userCorrection)) {
+  if (
+    scoped.scope !== "SYSTEM_META" &&
+    scoped.scope !== "BUSINESS_SYSTEM" &&
+    scoped.scope !== "CONTROLLED_ACTION" &&
+    scoped.scope !== "CONNECTOR_CAPABILITY" &&
+    (namedFileCorrection ||
+      (scoped.scope === "COMPANY_KNOWLEDGE" && scoped.clearCurrentDocument && !input.state.userCorrection) ||
+      (input.state.userCorrection && scoped.scope === "COMPANY_KNOWLEDGE"))
+  ) {
     const priorUser =
       previousUserText(input.state, input.text) ||
       [...input.state.recentTurns].reverse().find((turn) => turn.role === "user")?.text ||
@@ -300,6 +309,10 @@ export async function runIntelligenceTurn(input: {
         adoptFromTool(bootstrap, toolCalls, () => currentDocument, (doc) => {
           currentDocument = doc;
         }, evidenceDocumentIds, input.buttonHint);
+        currentDocument = adoptFromSearchHits(toolCalls, currentDocument);
+        if (currentDocument && !evidenceDocumentIds.includes(currentDocument.id)) {
+          evidenceDocumentIds.push(currentDocument.id);
+        }
         transcript.push(formatToolTranscript(bootstrap));
         continue;
       }
@@ -350,6 +363,12 @@ export async function runIntelligenceTurn(input: {
         }
         if (!evidenceDocumentIds.includes(doc.id)) evidenceDocumentIds.push(doc.id);
       }
+      if (validated.name === "search_company_knowledge" && !currentDocument) {
+        currentDocument = adoptFromSearchHits(toolCalls, currentDocument);
+        if (currentDocument && !evidenceDocumentIds.includes(currentDocument.id)) {
+          evidenceDocumentIds.push(currentDocument.id);
+        }
+      }
       if (looksIrrelevant(result, currentDocument)) qualityFlags.add("irrelevant_result");
       transcript.push(formatToolTranscript(result));
       continue;
@@ -370,6 +389,10 @@ export async function runIntelligenceTurn(input: {
             evidenceDocumentIds,
             input.buttonHint,
           );
+          currentDocument = adoptFromSearchHits(toolCalls, currentDocument);
+          if (currentDocument && !evidenceDocumentIds.includes(currentDocument.id)) {
+            evidenceDocumentIds.push(currentDocument.id);
+          }
           transcript.push(formatToolTranscript(bootstrap));
           continue;
         }
@@ -379,17 +402,9 @@ export async function runIntelligenceTurn(input: {
       }
       const foundTitles = searchHitTitles(toolCalls);
       if (foundTitles.length && shouldForceScopedTool(scoped)) {
-        const hits = searchHits(toolCalls.find((call) => call.name === "search_company_knowledge")?.data);
-        if (hits.length === 1 && !currentDocument) {
-          const only = hits[0] && typeof hits[0] === "object" ? (hits[0] as { id?: string; title?: string; url?: string }) : null;
-          if (only?.id && only.title) {
-            currentDocument = {
-              id: String(only.id),
-              title: String(only.title),
-              url: typeof only.url === "string" && /^https?:\/\//i.test(only.url) ? only.url : null,
-            };
-            if (!evidenceDocumentIds.includes(currentDocument.id)) evidenceDocumentIds.push(currentDocument.id);
-          }
+        currentDocument = adoptFromSearchHits(toolCalls, currentDocument, foundTitles[0]);
+        if (currentDocument && !evidenceDocumentIds.includes(currentDocument.id)) {
+          evidenceDocumentIds.push(currentDocument.id);
         }
         return finish({
           kind: "answer",
@@ -446,11 +461,27 @@ export async function runIntelligenceTurn(input: {
       }
       const metaData = toolCalls.find((call) => SYSTEM_META_TOOLS.has(call.name))?.data;
       if (metaData && inventedCount(decision.text, metaData)) qualityFlags.add("count_invented");
+      currentDocument = adoptFromSearchHits(toolCalls, currentDocument, decision.text);
+      if (currentDocument && !evidenceDocumentIds.includes(currentDocument.id)) {
+        evidenceDocumentIds.push(currentDocument.id);
+      }
+      const recovered = recoverScoutDocumentAnswer({
+        decision,
+        toolCalls,
+        question: input.text,
+        previousAnswer: workingState.lastAnswerText,
+        title: currentDocument?.title ?? "Document",
+        moreDetail:
+          input.buttonHint === "more_on_this" ||
+          input.buttonHint === "more_detail" ||
+          /^(more|more detail|more details|tell me more)\b/i.test(input.text),
+      });
+      if (recovered.usedExtractive) qualityFlags.add("fallback");
       return finish({
         kind: "answer",
-        text: decision.text.trim(),
-        confidence: decision.confidence,
-        offerSearchOther: decision.offer_search_other || decision.confidence === "none",
+        text: recovered.text,
+        confidence: recovered.confidence,
+        offerSearchOther: recovered.offerSearchOther,
         toolCalls,
         currentDocument,
         evidenceDocumentIds,
@@ -463,7 +494,7 @@ export async function runIntelligenceTurn(input: {
         lastUserIntent: scoped.lastUserIntent,
         qualityFlags: [...qualityFlags],
         repaired,
-        fallbackUsed: modelRounds.some((row) => row.fallbackUsed),
+        fallbackUsed: recovered.usedExtractive || modelRounds.some((row) => row.fallbackUsed),
       });
     }
   }
@@ -489,6 +520,10 @@ export async function runIntelligenceTurn(input: {
   }
 
   if (toolCalls.length > 0) {
+    currentDocument = adoptFromSearchHits(toolCalls, currentDocument);
+    if (currentDocument && !evidenceDocumentIds.includes(currentDocument.id)) {
+      evidenceDocumentIds.push(currentDocument.id);
+    }
     return finish({
       kind: "failed",
       text: fallbackFromEvidence(toolCalls, currentDocument),
@@ -617,8 +652,8 @@ function documentFromToolResult(result: IntelligenceToolResult): IntelligenceDoc
     record.document && typeof record.document === "object"
       ? (record.document as Record<string, unknown>)
       : record;
-  const id = String(nested.document_id ?? nested.documentId ?? nested.id ?? "").trim();
-  const title = String(nested.title ?? "").trim();
+  const id = String(nested.document_id ?? nested.documentId ?? nested.id ?? nested.external_id ?? nested.externalId ?? "").trim();
+  const title = String(nested.title ?? nested.filename ?? nested.fileName ?? nested.name ?? "").trim();
   if (!id || !title) return null;
   const url = typeof nested.url === "string" && /^https?:\/\//i.test(nested.url) ? nested.url : null;
   return { id, title, url, source: typeof nested.source === "string" ? nested.source : null };
@@ -677,7 +712,10 @@ async function bootstrapRetrieval(
 ): Promise<IntelligenceToolResult | null> {
   if (scoped?.scope === "GENERAL_CONVERSATION" || scoped?.scope === "AMBIGUOUS") return null;
   if (scoped?.scope === "SYSTEM_META" || scoped?.scope === "CONNECTOR_CAPABILITY") {
-    return runtime.executeTool({ name: scoped.tool || "get_company_system_summary", arguments: {} });
+    return runtime.executeTool({
+      name: scoped.tool || "get_company_system_summary",
+      arguments: scoped.tool === "list_company_documents" ? { query: text } : {},
+    });
   }
   if (looksLikeFinanceRead(text) || scoped?.scope === "BUSINESS_SYSTEM") {
     const toolName = scoped?.tool || "xero_sales_summary";
@@ -721,14 +759,18 @@ function prepareToolArguments(
     next = withResolvedBusinessDates(name, next, text);
   }
   if (name === "search_document") {
+    const leavingDocument =
+      Boolean(state.currentScope && scope && state.currentScope !== scope) &&
+      scope !== "CURRENT_DOCUMENT" &&
+      scope !== "RECENT_ENTITY";
     const enriched = enrichDocumentQuery(String(next.query ?? text), {
       scope: scope ?? "CURRENT_DOCUMENT",
       currentTitle: state.currentDocument?.title ?? null,
-      previousUserText: previousUserText(state, text),
+      previousUserText: previousContentUserText(state, text) || previousUserText(state, text),
       lastAnswerTopic: state.lastAnswerTopic ?? null,
       userCorrection: Boolean(state.userCorrection),
       documentChanged: false,
-      scopeChanged: Boolean(state.currentScope && scope && state.currentScope !== scope),
+      scopeChanged: leavingDocument,
     });
     next.query = enriched.query;
     if (state.currentDocument && !String(next.document_id ?? "").trim()) {

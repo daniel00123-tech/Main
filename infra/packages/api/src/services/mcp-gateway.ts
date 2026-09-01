@@ -40,10 +40,16 @@ import {
   withStandardKnowledgeTools,
   wrapStandardToolResult,
 } from "./mcp-knowledge-standard";
-import { isXeroWriteToolName } from "./xero-tools";
-import { XERO_TOOL_CONTRACTS } from "@infra/shared";
+import { isXeroToolName, isXeroWriteToolName } from "./xero-tools";
+import { isKnowledgeDiscoveryTool, XERO_TOOL_CONTRACTS, elvexCan, isElvexCompany } from "@infra/shared";
+import { withXeroReadTools } from "./xero-read-tools";
+import { resolveXeroReadArguments } from "./elvex-xero-el-mcp";
+import { loadLiveCompanyActor } from "../auth/live-identity";
+import { getUserCompanyRole } from "../permissions/service";
 import { withActionControlTools, isActionControlTool, actionControlToolAllowed } from "./mcp-action-tools";
 import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
+import { ASK_DOCUMENT_TOOL, withAskDocumentTool } from "./ask-document";
+import { LIST_COMPANY_DOCUMENTS_TOOL, withListCompanyDocumentsTool } from "./document-catalogue";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeActionControlTool } from "./action-engine/action-control-handler";
 import {
@@ -111,15 +117,27 @@ export function enrichMcpToolDescription(
 ): string {
   const defaults: Record<string, string> = {
     search:
-      "Search this company's knowledge for policies, processes, and other indexed documents. Use a natural-language query. Returns matching documents with stable ids so you can call fetch. Read-only.",
+      "Search this company's knowledge for policies, processes, and other indexed documents. Do NOT use this for live Xero sales, invoices, mailbox contents, payments, or administration. If a dedicated connector tool returns permission_denied, tell the user they lack permission — never interpret that as empty or zero results. Read-only.",
     fetch:
       "Fetch the full content of a company knowledge document previously returned by search. Pass the document id. Read-only. Use the returned url and metadata for source attribution when present.",
     search_company_knowledge:
       "Search this company's indexed knowledge documents (policies, project docs, spend limits, approvals, etc.). Pass a natural-language query only (for example \"vehicle mileage policy\" or \"Company Van Policy\"). Do NOT set topic/category/department filters unless the user explicitly asks to filter by that metadata — invented filters often return zero results. Returns matching excerpts with source document titles.",
     get_knowledge_document:
       "Read a specific company knowledge document by identifier or title after locating it with search_company_knowledge.",
+    ask_document:
+      "Answer a question from one already-selected company document. Pass documentId from search/fetch and the user's question. For short follow-ups such as \"what exactly?\" or \"when?\" also pass priorQuestion. Reads only that document. Do not use this for live Xero, mailbox, or a new company-wide search. Read-only.",
+    list_company_documents:
+      "List the newest or latest OneDrive, SharePoint, or Drive files using real file metadata (created_at for newest/uploaded, modified_at for latest/changed). Not a semantic search. Read-only. Same visibility as knowledge search.",
+    outlook_get_message:
+      "Fetch the full body of one Outlook message. Pass the stable id returned by outlook_list_messages or outlook_search_mailbox as messageId. Do not invent an id. Office staff may read info@ only — never finance@. Read-only.",
+    confirm_action_plan:
+      "Confirm a previously created Xero financial action plan. Requires plan_id and confirmationToken. This is Xero Action Engine plumbing — it does not send email and must not be used to bypass confirmation.",
+    execute_action_plan:
+      "Execute a confirmed Xero financial action plan. Confirmation is required first. This does not send Outlook mail.",
+    get_action_plan:
+      "Fetch a server-side Xero action plan by plan_id. Financial write plumbing — not an email tool.",
     database_summary:
-      "Summarise available company business-data collections exposed through the knowledge layer.",
+      "Summarise available company knowledge collections. This is not live Xero or mailbox data. Do not use it for sales totals or finance figures.",
     system_health:
       "Non-billable health check for the company MCP connection through INFRA. Does not search documents and does not debit the wallet.",
     xero_get_organisation:
@@ -129,7 +147,7 @@ export function enrichMcpToolDescription(
     xero_get_contact:
       "Fetch one Xero contact by id. Read-only.",
     xero_search_invoices:
-      "Search this company's Xero invoices, including overdue or unpaid filters. Read-only.",
+      "List or search live Xero sales invoices by date, status, outstanding/unpaid, or invoice number. Use this to list invoice numbers raised today or in a date range. Read-only. Do not use company knowledge search.",
     xero_get_invoice:
       "Fetch one Xero invoice by id or invoice number (for example INV-XXXXX). Read-only.",
     xero_list_overdue_invoices:
@@ -147,7 +165,7 @@ export function enrichMcpToolDescription(
     xero_aged_receivables:
       "Return aged receivables or payables for debtor/creditor position. Read-only.",
     xero_sales_summary:
-      "Summarise qualifying Accounts Receivable (ACCREC) sales for a date range, net of sales credit notes (ACCRECCREDIT). Excludes purchase bills (ACCPAY), purchase credits, voided/deleted documents. Returns currencyCode and reconcilable transactions. Read-only.",
+      "Use this tool to retrieve live Xero sales/invoice data for a date period. Use for current sales, sales today, this month, last month, or a comparison (call once per period). Do not use company knowledge search for live Xero financial totals. If INFRA returns permission_denied, the Xero connection may still be healthy — the signed-in user is not allowed to view Xero financial data. Do not treat permission_denied as zero sales. Read-only.",
     xero_top_customers:
       "Return top customers by qualifying ACCREC sales revenue for a date range. Purchase-side documents never count as customers. Amounts use currencyCode (e.g. GBP). Read-only.",
     xero_create_draft_invoice:
@@ -156,6 +174,18 @@ export function enrichMcpToolDescription(
       "Create a credit note in Xero. Financial write — uses execution plan when batching.",
     xero_allocate_payment:
       "Allocate a payment to invoices in Xero. Financial write — remittance workflow.",
+    outlook_list_messages:
+      "List the newest messages in a shared Outlook mailbox. For Elvex, the info inbox is info@elvexpropertyservices.com. Office staff may read info@ only — never finance@. Read-only. Do not send, reply, or delete mail.",
+    outlook_search_mailbox:
+      "Search an Elvex shared Outlook mailbox. For the info inbox pass mailboxAddress=info@elvexpropertyservices.com. Office staff must not search finance@. Read-only.",
+    search_elvex_email:
+      "Search the Elvex Outlook connection. Use mailbox info@elvexpropertyservices.com for the info inbox. Read-only.",
+    get_elvex_email:
+      "Read one Elvex Outlook message by id from an allowed mailbox (info@ for office staff). Read-only.",
+    search_elvex_files:
+      "Search Elvex Drive/OneDrive files. Returns stable ids for fetch / get_elvex_file. Read-only. Not for live Xero.",
+    get_elvex_file:
+      "Fetch one Elvex Drive/OneDrive file by the id returned from search or search_elvex_files. Read-only.",
   };
   const enriched = defaults[toolName];
   if (enriched) return enriched;
@@ -387,13 +417,20 @@ async function resolveToolActionForFilter(
     (tool) => tool.mcpToolName === toolName,
   );
   if (xeroContract) return xeroContract.action;
-  if (toolName === "search_company_knowledge" || toolName === "search") {
+  if (
+    toolName === "search_company_knowledge" ||
+    toolName === "search" ||
+    toolName === "search_elvex_files"
+  ) {
     return "knowledge.search";
   }
   if (
     toolName === "get_knowledge_document" ||
     toolName === "fetch" ||
-    toolName === "database_summary"
+    toolName === "get_elvex_file" ||
+    toolName === "database_summary" ||
+    toolName === ASK_DOCUMENT_TOOL ||
+    toolName === LIST_COMPANY_DOCUMENTS_TOOL
   ) {
     return "knowledge.read";
   }
@@ -546,10 +583,10 @@ export async function handleInfraMcpJsonRpc(
           name: "infra-gateway",
           version: "1.0.0",
           instructions:
-            "All tool calls are authorised, metered, and billed by INFRA. Use search then fetch to read this company's knowledge. Both are read-only. Do not call company MCP endpoints directly.",
+            "All tool calls are authorised, metered, and billed by INFRA. For live Xero sales, invoices, outstanding, overdue, or customer totals use xero_sales_summary, xero_search_invoices, xero_get_invoice, xero_list_overdue_invoices, or xero_top_customers. Do not use search, fetch, or database_summary for live Xero financial figures. Use search then fetch only for company knowledge documents. Do not call company MCP endpoints directly.",
         },
         instructions:
-          "All tool calls are authorised, metered, and billed by INFRA. Use search then fetch to read this company's knowledge. Both are read-only. Do not call company MCP endpoints directly.",
+          "All tool calls are authorised, metered, and billed by INFRA. For live Xero sales, invoices, outstanding, overdue, or customer totals use xero_sales_summary, xero_search_invoices, xero_get_invoice, xero_list_overdue_invoices, or xero_top_customers. Do not use search, fetch, or database_summary for live Xero financial figures. Use search then fetch only for company knowledge documents. Do not call company MCP endpoints directly.",
       }),
       httpStatus: 200,
     };
@@ -641,10 +678,33 @@ export async function handleInfraMcpJsonRpc(
 
       const identityScopes =
         actor.type === "service" ? actor.identity.scopes : undefined;
+      let userRole = null;
+      if (actor.type === "user") {
+        const live = await loadLiveCompanyActor(env.DB, actor.user.userId, resolvedCompanyId);
+        userRole = live?.role ?? getUserCompanyRole(actor.user, resolvedCompanyId);
+      }
+      const actionScopes =
+        actor.type === "user" &&
+        isElvexCompany({ id: resolvedCompanyId }) &&
+        !elvexCan(userRole, "xero.draft.write")
+          ? []
+          : identityScopes;
       const advertised = withAutomationControlTools(
-        withOutlookReadTools(
-          withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
-          identityScopes,
+        withListCompanyDocumentsTool(
+          withAskDocumentTool(
+            withXeroReadTools(
+              withOutlookReadTools(
+                withActionControlTools(withStandardKnowledgeTools(tools), actionScopes),
+                identityScopes,
+              ),
+              {
+                scopes: identityScopes,
+                companyId: resolvedCompanyId,
+                userRole,
+                actorType: actor.type,
+              },
+            ),
+          ),
         ),
         { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
       );
@@ -657,6 +717,8 @@ export async function handleInfraMcpJsonRpc(
         httpStatus: 200,
         detail: {
           toolNames: advertised.map((t) => t.name),
+          userRole,
+          actorType: actor.type,
           mcpId: mcp.id,
           serviceIdentityId:
             actor.type === "service" ? actor.identity.id : null,
@@ -678,23 +740,64 @@ export async function handleInfraMcpJsonRpc(
         httpStatus: 200,
       };
     } catch (err) {
+      // ChatGPT treats tools/list failure as "could not connect". Downstream
+      // EL machine auth must not block OAuth connection completion.
+      const allow = await env.DB.prepare(
+        `SELECT tool_name FROM mcp_tool_allowlist
+         WHERE mcp_environment_id = ? AND enabled = 1`,
+      )
+        .bind(mcp.id)
+        .all();
+      const fallbackTools = (allow.results ?? [])
+        .map((row) => String(row.tool_name))
+        .filter((name) => !isXeroWriteToolName(name))
+        .map((name) => ({
+          name,
+          description: enrichMcpToolDescription(name),
+          inputSchema: { type: "object" as const, properties: {} },
+        }));
+      const identityScopes =
+        actor.type === "service" ? actor.identity.scopes : undefined;
+      let fallbackRole = null;
+      if (actor.type === "user") {
+        const live = await loadLiveCompanyActor(env.DB, actor.user.userId, resolvedCompanyId);
+        fallbackRole = live?.role ?? getUserCompanyRole(actor.user, resolvedCompanyId);
+      }
+      const advertised = withAutomationControlTools(
+        withListCompanyDocumentsTool(
+          withAskDocumentTool(
+            withXeroReadTools(
+              withOutlookReadTools(
+                withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+                identityScopes,
+              ),
+              {
+                scopes: identityScopes,
+                companyId: resolvedCompanyId,
+                userRole: fallbackRole,
+                actorType: actor.type,
+              },
+            ),
+          ),
+        ),
+        { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
+      );
       await logFacadeEvent(env.DB, {
         companyId: resolvedCompanyId,
         actor: actorLabel,
         method,
-        status: "error",
-        httpStatus: 502,
+        status: "ok",
+        httpStatus: 200,
         detail: {
-          error: err instanceof Error ? err.message : "Failed to list tools",
+          fallback: true,
+          downstreamError: err instanceof Error ? err.message : "Failed to list tools",
+          toolNames: advertised.map((tool) => tool.name),
+          mcpId: mcp.id,
         },
       });
       return {
-        payload: jsonRpcError(
-          id,
-          -32002,
-          err instanceof Error ? err.message : "Failed to list tools",
-        ),
-        httpStatus: 502,
+        payload: jsonRpcResult(id, { tools: advertised }),
+        httpStatus: 200,
       };
     }
   }
@@ -722,7 +825,7 @@ export async function handleInfraMcpJsonRpc(
       const scoped = applyKnowledgeSourceScopeToSearchArgs({ query: sanitized.query });
       args = scoped.args;
       sourceScopeApplied = scoped.scopeApplied;
-    } else if (toolName === "fetch") {
+    } else if (toolName === "fetch" || toolName === "get_knowledge_document") {
       const sanitized = sanitizeStandardFetchArguments(args);
       if ("error" in sanitized) {
         return {
@@ -730,7 +833,10 @@ export async function handleInfraMcpJsonRpc(
           httpStatus: 400,
         };
       }
-      args = mapFetchArgumentsForCompanyMcp(sanitized.id);
+      args = {
+        ...mapFetchArgumentsForCompanyMcp(sanitized.id),
+        ...(typeof args.title === "string" && args.title.trim() ? { title: args.title.trim() } : {}),
+      };
     } else if (toolName === "search_company_knowledge") {
       const sanitized = sanitizeKnowledgeSearchArguments(args);
       args = sanitized.forwarded;
@@ -750,8 +856,19 @@ export async function handleInfraMcpJsonRpc(
       }
     }
 
+    if (isXeroToolName(toolName) && !isXeroWriteToolName(toolName)) {
+      args = resolveXeroReadArguments(toolName, args);
+    }
+
     const clientRequestId = resolveMcpClientRequestId(request, body);
     const interactionHints = pickInteractionHints(request, body);
+    const callMeta =
+      body.params && typeof body.params === "object" && body.params._meta && typeof body.params._meta === "object"
+        ? (body.params._meta as Record<string, unknown>)
+        : undefined;
+    if (isKnowledgeDiscoveryTool(toolName) && callMeta) {
+      args = { ...args, __meta: callMeta };
+    }
 
     if (isAutomationControlTool(toolName)) {
       const automationResult = await executeAutomationControlTool(env, {
@@ -872,14 +989,26 @@ export async function handleInfraMcpJsonRpc(
         result.status,
         result.error ?? "Tool call failed",
       );
+      const denial =
+        "permissionDenial" in result ? result.permissionDenial : undefined;
       return {
         payload: jsonRpcError(id, -32003, publicError.message, {
           correlationId: result.correlationId,
           requestId: "requestId" in result ? result.requestId : undefined,
           httpStatus: result.status,
-          errorCode: publicError.code,
+          errorCode:
+            result.status === 403
+              ? "permission_denied"
+              : denial?.error ?? publicError.code,
           action: "action" in result ? result.action : undefined,
           riskClass: "riskClass" in result ? result.riskClass : undefined,
+          accessOutcome:
+            "accessOutcome" in result ? result.accessOutcome : undefined,
+          capability: denial?.capability,
+          connected: denial?.connected,
+          userAllowed: denial?.userAllowed,
+          userRole: denial?.userRole,
+          reason: denial?.reason,
         }),
         httpStatus: 200, // JSON-RPC errors travel as 200 with error body for MCP clients
       };
@@ -933,12 +1062,16 @@ export async function handleInfraMcpJsonRpc(
     };
 
     const wrapped =
-      toolName === "search"
+      toolName === "search" ||
+      toolName === "search_company_knowledge" ||
+      toolName === "search_elvex_files"
         ? {
             ...wrapStandardToolResult(toStandardSearchPayload(payload)),
             _infra: infraMeta,
           }
-        : toolName === "fetch"
+        : toolName === "fetch" ||
+            toolName === "get_knowledge_document" ||
+            toolName === "get_elvex_file"
           ? {
               ...wrapStandardToolResult(
                 toStandardFetchPayload(
@@ -1024,7 +1157,9 @@ export async function handleInfraMcpHttp(
         ? "authorization_non_bearer"
         : "none";
 
-  const actorResult = await resolveGatewayActor(env, request, sessionUser);
+  const actorResult = await resolveGatewayActor(env, request, sessionUser, {
+    mcpFacade: true,
+  });
   if ("error" in actorResult) {
     // Always JSON-RPC shaped — ChatGPT clients cannot parse {"error":"..."}.
     const payload = jsonRpcError(null, -32001, actorResult.error, {
@@ -1131,13 +1266,25 @@ export async function handleInfraMcpHttp(
     });
   }
 
-  const { payload, httpStatus } = await handleInfraMcpJsonRpc(
-    env,
-    request,
-    actorResult,
-    body,
-    waitUntil,
-  );
+  let payload: ReturnType<typeof jsonRpcError> | ReturnType<typeof jsonRpcResult> | null;
+  let httpStatus: number;
+  try {
+    const handled = await handleInfraMcpJsonRpc(
+      env,
+      request,
+      actorResult,
+      body,
+      waitUntil,
+    );
+    payload = handled.payload;
+    httpStatus = handled.httpStatus;
+  } catch (err) {
+    payload = jsonRpcError(body.id ?? null, -32000, "Tool call failed", {
+      errorCode: "retry",
+    });
+    httpStatus = 200;
+    void err;
+  }
 
   if (httpStatus === 202 && payload == null) {
     return new Response(null, {

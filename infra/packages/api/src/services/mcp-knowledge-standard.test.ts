@@ -266,6 +266,52 @@ describe("Company Knowledge response adaptors", () => {
     expect(fetched.chunks?.map((chunk) => chunk.text)).toEqual(["Part one.", "Part two."]);
   });
 
+  it("unwraps EL MCP files[] search hits", () => {
+    const search = toStandardSearchPayload({
+      files: [
+        {
+          fileId: "gdrive-staff-handbook",
+          file: { name: "Staff Handbook.pdf" },
+          snippet: "Annual leave is 28 days.",
+        },
+      ],
+    });
+    expect(search.results[0]?.id).toBe("gdrive-staff-handbook");
+    expect(search.results[0]?.title).toBe("Staff Handbook.pdf");
+  });
+
+  it("maps EL MCP file/page_content fetch into id/title/text/chunks", () => {
+    const fetched = toStandardFetchPayload(
+      {
+        file: { id: "gdrive-staff-handbook", name: "Staff Handbook.pdf" },
+        chunks: [{ page_content: "Employees receive 28 days of annual leave." }],
+      },
+      "gdrive-staff-handbook",
+    );
+    expect(fetched.id).toBe("gdrive-staff-handbook");
+    expect(fetched.title).toBe("Staff Handbook.pdf");
+    expect(fetched.text).toContain("28 days of annual leave");
+    expect(fetched.chunks?.[0]?.text).toContain("28 days");
+  });
+
+  it("accepts documentRef on fetch and skips empty-chunk search hits", () => {
+    expect(sanitizeStandardFetchArguments({ documentRef: "doc_el_1" })).toEqual({
+      id: "doc_el_1",
+    });
+    const search = toStandardSearchPayload({
+      results: [
+        { id: "empty_el", title: "Untitled document", chunks: [] },
+        {
+          documentId: 41,
+          filename: "Site inspection report.docx",
+          snippet: "Inspection of the roof covering.",
+        },
+      ],
+    });
+    expect(search.results.map((item) => item.id)).toEqual(["41"]);
+    expect(search.results[0]?.title).toBe("Site inspection report.docx");
+  });
+
   it("wraps standard results as a single MCP text content item plus structuredContent", () => {
     const payload = toStandardSearchPayload(BOILER_BONUS_SEARCH);
     const wrapped = wrapStandardToolResult(payload);

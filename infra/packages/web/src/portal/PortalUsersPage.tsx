@@ -86,6 +86,8 @@ export default function PortalUsersPage() {
   }, [company]);
 
   const activeCount = team.filter((m) => m.status === "active").length;
+  const pendingInvitations = invitations.filter((inv) => String(inv.status) === "pending");
+  const invitationHistory = invitations.filter((inv) => String(inv.status) !== "pending");
   const actionMenuMember = useMemo(
     () => (actionMenuUserId ? team.find((member) => member.id === actionMenuUserId) ?? null : null),
     [actionMenuUserId, team],
@@ -249,7 +251,7 @@ export default function PortalUsersPage() {
     <>
       <PortalPageHeader
         title="Users"
-        description={`${activeCount} active · People who can access ${company.name}`}
+        description={`${activeCount} active · Members have company access. Invitations are onboarding history. Roles control what each member may do.`}
         actions={
           canManage ? (
             <Button type="button" variant="primary" size="sm" onClick={() => setInviteOpen(true)}>
@@ -268,7 +270,11 @@ export default function PortalUsersPage() {
           ...(canManage
             ? [
                 { id: "permissions", label: "Permissions" },
-                { id: "invitations", label: "Invitations", count: invitations.length },
+                {
+                  id: "invitations",
+                  label: "Invitations",
+                  count: invitations.filter((inv) => String(inv.status) === "pending").length,
+                },
               ]
             : []),
         ]}
@@ -418,33 +424,102 @@ export default function PortalUsersPage() {
       ) : null}
 
       {tab === "invitations" && canManage ? (
-        <SectionCard title="Pending invitations">
-          {invitations.length === 0 ? (
-            <EmptyState title="No pending invitations" description="Invited users will appear here until they accept." />
-          ) : (
-            <div className="table-wrap">
-              <table className="table compact">
-                <thead>
-                  <tr>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                    <th>Expires</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {invitations.map((inv) => (
-                    <tr key={String(inv.id)}>
-                      <td>{String(inv.email)}</td>
-                      <td>{humanRole(String(inv.role))}</td>
-                      <td>
-                        <StatusBadge status={String(inv.status)} />
-                      </td>
-                      <td className="muted small">{formatDate(String(inv.expiresAt))}</td>
-                      <td>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          {inv.status === "pending" || inv.status === "expired" ? (
+        <>
+          <SectionCard title="Pending invitations">
+            {pendingInvitations.length === 0 ? (
+              <EmptyState
+                title="No pending invitations"
+                description="Open invites stay here until the person completes setup. Accepted members appear on the Users tab."
+              />
+            ) : (
+              <div className="table-wrap">
+                <table className="table compact">
+                  <thead>
+                    <tr>
+                      <th>Email</th>
+                      <th>Role</th>
+                      <th>Status</th>
+                      <th>Expires</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingInvitations.map((inv) => (
+                      <tr key={String(inv.id)}>
+                        <td>{String(inv.email)}</td>
+                        <td>{humanRole(String(inv.role))}</td>
+                        <td>
+                          <StatusBadge status={String(inv.status)} />
+                        </td>
+                        <td className="muted small">{formatDate(String(inv.expiresAt))}</td>
+                        <td>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={async () => {
+                                const r = await api.resendInvitation(company.slug, String(inv.id));
+                                window.alert(
+                                  r.emailSent ? "Invitation resent by email" : `Copy link: ${r.setupUrl}`,
+                                );
+                                await refresh();
+                              }}
+                            >
+                              Resend
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={async () => {
+                                await api.cancelInvitation(company.slug, String(inv.id));
+                                await refresh();
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+          {invitationHistory.length > 0 ? (
+            <SectionCard title="Invitation history">
+              <div className="table-wrap">
+                <table className="table compact">
+                  <thead>
+                    <tr>
+                      <th>Email</th>
+                      <th>Role</th>
+                      <th>Status</th>
+                      <th>Detail</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invitationHistory.map((inv) => (
+                      <tr key={String(inv.id)}>
+                        <td>{String(inv.email)}</td>
+                        <td>{humanRole(String(inv.role))}</td>
+                        <td>
+                          <StatusBadge status={String(inv.status)} />
+                        </td>
+                        <td className="muted small">
+                          {inv.status === "accepted" && inv.acceptedAt
+                            ? `Accepted ${formatDate(String(inv.acceptedAt))}`
+                            : inv.status === "expired"
+                              ? `Expired ${formatDate(String(inv.expiresAt))}`
+                              : inv.status === "cancelled" && inv.cancelledAt
+                                ? `Cancelled ${formatDate(String(inv.cancelledAt))}`
+                                : "—"}
+                        </td>
+                        <td>
+                          {inv.status === "expired" ? (
                             <Button
                               type="button"
                               variant="secondary"
@@ -460,28 +535,15 @@ export default function PortalUsersPage() {
                               Resend
                             </Button>
                           ) : null}
-                          {inv.status === "pending" ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={async () => {
-                                await api.cancelInvitation(company.slug, String(inv.id));
-                                await refresh();
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </SectionCard>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
+          ) : null}
+        </>
       ) : null}
 
       {/* legacy read-only role summary removed — use Permissions tab */}

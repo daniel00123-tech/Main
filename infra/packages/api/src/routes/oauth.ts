@@ -6,6 +6,7 @@ import { loadLiveCompanyActor } from "../auth/live-identity";
 import {
   consumeAuthorizationCode,
   consumeRefreshToken,
+  revokeRefreshTokenByValue,
   createAuthorizationCode,
   ensureDefaultChatgptClient,
   getOauthClient,
@@ -26,6 +27,8 @@ import { getCompanyById, getCompanyBySlug } from "../services/control-plane";
 import {
   infraBrowserPublicBase,
   infraMcpGatewayUrl,
+  oauthAuthorizeContinueUrl,
+  oauthLoginRedirectUrl,
 } from "../services/public-urls";
 
 const oauth = new Hono<{ Bindings: Env }>();
@@ -168,15 +171,7 @@ oauth.get("/oauth/authorize", async (c) => {
 
   const session = await sessionFromRequest(c.env, c.req.raw);
   if (!session) {
-    const authorizeUrl = new URL(c.req.url);
-    const loginBase = infraBrowserPublicBase(c.env, c.req.url, c.req.raw);
-    const loginOrigin =
-      loginBase.includes("infrastack.app") || loginBase.includes("pages.dev")
-        ? loginBase
-        : "https://app.infrastack.app";
-    const login = new URL("/portal/login", `${loginOrigin}/`);
-    login.searchParams.set("next", authorizeUrl.toString());
-    return c.redirect(login.toString(), 302);
+    return c.redirect(oauthLoginRedirectUrl(c.env, c.req.raw), 302);
   }
 
   const memberships = await listMembershipsForUser(c.env.DB, session.userId);
@@ -193,7 +188,7 @@ oauth.get("/oauth/authorize", async (c) => {
     ).filter(Boolean);
     const list = options
       .map((item) => {
-        const url = new URL(c.req.url);
+        const url = new URL(oauthAuthorizeContinueUrl(c.env, c.req.raw));
         url.searchParams.set("company", item!.slug);
         return `<p><a class="btn" href="${escapeHtml(url.toString())}">${escapeHtml(item!.name)}</a></p>`;
       })
@@ -362,7 +357,7 @@ oauth.post("/oauth/revoke", async (c) => {
   const token = String(params.token ?? "");
   const clientId = String(params.client_id ?? "");
   if (token && clientId) {
-    await consumeRefreshToken(c.env.DB, token, clientId);
+    await revokeRefreshTokenByValue(c.env.DB, token, clientId);
   }
   return c.body(null, 200);
 });

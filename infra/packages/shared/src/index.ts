@@ -30,6 +30,8 @@ export * from "./action-engine";
 export * from "./automation-engine";
 export * from "./permissions/role-presets";
 export * from "./permissions/elvex-rbac";
+export * from "./permissions/capability-access";
+export * from "./permissions/business-system-intent";
 export * from "./permissions/billable-events";
 export * from "./permissions/xero-permissions";
 export * from "./service-identity-scopes";
