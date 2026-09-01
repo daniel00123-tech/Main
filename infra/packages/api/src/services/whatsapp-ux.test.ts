@@ -30,6 +30,20 @@ vi.mock("./whatsapp-send", async () => {
   return {
     ...actual,
     sendWhatsAppText: sendWhatsAppTextMock,
+    sendWhatsAppInteractiveButtons: vi.fn().mockResolvedValue({
+      ok: false,
+      kind: "customer_service_reply",
+      error: "interactive_fallback",
+      retryable: false,
+      attempts: 1,
+    }),
+    sendWhatsAppInteractiveList: vi.fn().mockResolvedValue({
+      ok: false,
+      kind: "customer_service_reply",
+      error: "interactive_fallback",
+      retryable: false,
+      attempts: 1,
+    }),
     sendWhatsAppTypingIndicator: vi.fn().mockResolvedValue({ ok: true, supported: true }),
   };
 });
@@ -275,6 +289,24 @@ describe("WhatsApp UX orchestration", () => {
     const follow = await handleWhatsAppInboundMessage(runtime, inbound("send me the link"));
     expect(executeGatewayRequest).not.toHaveBeenCalled();
     expect(follow.publicReply).toMatch(/https:\/\/contoso\.sharepoint\.com\/CoalSearch\.pdf/);
+    executeGatewayRequest.mockClear();
+    const live = await handleWhatsAppInboundMessage(
+      runtime,
+      inbound("what is the url where i can download it from as i need a copy of it?"),
+    );
+    expect(executeGatewayRequest).not.toHaveBeenCalled();
+    expect(live.publicReply).toMatch(/https:\/\/contoso\.sharepoint\.com\/CoalSearch\.pdf/);
+    expect(live.planAction).toBe("memory_link");
+  });
+
+  it("clarifies a source-link ask immediately when there is no document in memory", async () => {
+    const result = await handleWhatsAppInboundMessage(
+      env(),
+      inbound("what is the url where i can download it from as i need a copy of it?"),
+    );
+    expect(executeGatewayRequest).not.toHaveBeenCalled();
+    expect(result.outcome).toBe("clarification_requested");
+    expect(result.publicReply).toMatch(/which document/i);
   });
 
   it("prefers a title that matches the distinctive search terms", async () => {
@@ -567,7 +599,7 @@ describe("WhatsApp response compression", () => {
     });
     expect(reply).toMatch(/Coal Search/i);
     expect(reply).toMatch(/relates to a coal-search|coal search/i);
-    expect(reply).toMatch(/Want me to summarise the full document/i);
+    expect(reply).toMatch(/Would you like me to summarise it/i);
     expect(reply).not.toMatch(/Also found|jsessionid|```|aaaaaaaa-bbbb/i);
     expect(reply.length).toBeLessThan(520);
     expect(looksLikeRawToolDump(reply)).toBe(false);
@@ -593,7 +625,7 @@ describe("WhatsApp response compression", () => {
       question: "summarise it",
     });
     expect(reply).toMatch(/Coal Search/i);
-    expect(reply).not.toMatch(/Want me to summarise the full document/i);
+    expect(reply).not.toMatch(/Would you like me to summarise it/i);
     expect(reply).not.toMatch(/Also found|jsessionid/i);
     expect(reply.length).toBeLessThan(520);
   });

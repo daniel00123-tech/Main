@@ -62,20 +62,35 @@ export async function loadWhatsAppConversation(
   userId: string
 ): Promise<WhatsAppConversationState | null> {
   await ensureWhatsAppConversationsTable(env);
-  const row = await env.DB.prepare(
-    `SELECT user_id, company_id, pending_company_selection, turns_json, entities_json, updated_at
-     FROM whatsapp_conversations
-     WHERE user_id = ?`
-  )
-    .bind(userId)
-    .first<{
-      user_id: string;
-      company_id: string | null;
-      pending_company_selection: number;
-      turns_json: string | null;
-      entities_json: string | null;
-      updated_at: string;
-    }>();
+  let row: {
+    user_id: string;
+    company_id: string | null;
+    pending_company_selection: number;
+    turns_json: string | null;
+    entities_json?: string | null;
+    updated_at: string;
+  } | null = null;
+  try {
+    row = await env.DB.prepare(
+      `SELECT user_id, company_id, pending_company_selection, turns_json, entities_json, updated_at
+       FROM whatsapp_conversations
+       WHERE user_id = ?`
+    )
+      .bind(userId)
+      .first();
+  } catch {
+    try {
+      row = await env.DB.prepare(
+        `SELECT user_id, company_id, pending_company_selection, turns_json, updated_at
+         FROM whatsapp_conversations
+         WHERE user_id = ?`
+      )
+        .bind(userId)
+        .first();
+    } catch {
+      return null;
+    }
+  }
   if (!row) return null;
   if (Date.parse(row.updated_at) + CONTEXT_TTL_MS < Date.now()) {
     return {

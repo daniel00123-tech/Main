@@ -12,9 +12,23 @@ function authorized(env: Env, request: { header(name: string): string | undefine
 
 routes.post("/api/internal/whatsapp-ux-uat", async (c) => {
   if (!authorized(c.env, c.req)) return c.json({ error: "Not found" }, 404);
-  const body = await c.req.json<{ text?: string }>().catch(() => ({ text: "" }));
+  const body = await c.req
+    .json<{
+      text?: string;
+      inputKind?: "text" | "voice" | "button";
+      buttonId?: string;
+      buttonTitle?: string;
+      mediaId?: string;
+    }>()
+    .catch(() => ({} as Record<string, string>));
+
+  const inputKind = body.inputKind === "voice" || body.inputKind === "button" ? body.inputKind : "text";
+  const buttonId = String(body.buttonId ?? "").trim();
+  const mediaId = String(body.mediaId ?? "").trim();
   const text = String(body.text ?? "").trim();
-  if (!text) return c.json({ error: "text required" }, 400);
+  if (inputKind === "text" && !text) return c.json({ error: "text required" }, 400);
+  if (inputKind === "button" && !buttonId && !text) return c.json({ error: "buttonId required" }, 400);
+  if (inputKind === "voice" && !mediaId) return c.json({ error: "mediaId required for live voice" }, 400);
 
   const user = await c.env.DB.prepare(
     `SELECT mobile_e164 FROM users
@@ -24,16 +38,22 @@ routes.post("/api/internal/whatsapp-ux-uat", async (c) => {
   if (!user?.mobile_e164) return c.json({ error: "no_linked_user" }, 409);
 
   const started = Date.now();
+  const type = inputKind === "button" ? "interactive" : inputKind === "voice" ? "audio" : "text";
   const result = await handleWhatsAppInboundMessage(
     c.env,
     {
       wamid: `wamid.uat.${started}.${Math.random().toString(16).slice(2)}`,
       from: user.mobile_e164.replace(/^\+/, ""),
-      type: "text",
-      text,
+      type,
+      text: text || null,
       phoneNumberId: INFRA_WHATSAPP_PHONE_NUMBER_ID,
       businessAccountId: INFRA_WHATSAPP_BUSINESS_ACCOUNT_ID,
       timestamp: String(Math.floor(started / 1000)),
+      inputKind,
+      mediaId: mediaId || null,
+      mimeType: inputKind === "voice" ? "audio/ogg; codecs=opus" : null,
+      buttonId: buttonId || null,
+      buttonTitle: String(body.buttonTitle ?? "").trim() || null,
     },
     {
       signatureValid: true,
@@ -56,6 +76,8 @@ routes.post("/api/internal/whatsapp-ux-uat", async (c) => {
     replySent: result.replySent,
     publicReply: result.publicReply,
     toolName: result.toolName,
+    inputKind: result.inputKind ?? inputKind,
+    buttonsSent: result.buttonsSent ?? 0,
     totalMs: Date.now() - started,
     companyIdPresent: Boolean(result.companyId),
   });

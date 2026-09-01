@@ -114,6 +114,10 @@ export interface Env {
   META_APP_SECRET?: string;
   /** Explicit outbound AI flag. Default off even if send credentials exist. */
   WHATSAPP_OUTBOUND_AI_ENABLED?: string;
+  /** Cloudflare Workers AI binding — preferred WhatsApp voice transcription. */
+  AI?: { run: (model: string, inputs: Record<string, unknown>) => Promise<unknown> };
+  /** Optional OpenAI Whisper fallback. Set via wrangler secret put — never commit. */
+  OPENAI_API_KEY?: string;
   /** Safe send UAT — requires XERO_SEND_UAT_MODE=true simultaneously */
   XERO_SEND_UAT_MODE?: string;
   XERO_SEND_TEST_RECIPIENT?: string;

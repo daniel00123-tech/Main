@@ -3,14 +3,14 @@ import type { WhatsAppDocumentEntity, WhatsAppEntityMemory } from "./whatsapp-en
 import type { WhatsAppPlan } from "./whatsapp-plan";
 
 const NO_LINK =
-  "I found the document, but I don’t currently have a direct download link for that source. I can summarise it or look for another copy if that helps.";
+  "I found the document, but I don’t currently have a direct source link for it.";
 
 export function sourceLinkReply(doc: WhatsAppDocumentEntity | null | undefined): string {
   if (!doc) {
-    return "I don’t have a previous document in this chat to link. Tell me the name and I’ll look it up.";
+    return "Which document would you like the link for?";
   }
   if (doc.url && /^https?:\/\//i.test(doc.url)) {
-    return `${doc.title}\n${doc.url}`;
+    return `Here’s the source link:\n${doc.url}`;
   }
   return NO_LINK;
 }
@@ -34,6 +34,21 @@ export function memoryFactReply(
       ? `${doc.title}: the amount was ${doc.amount}.`
       : `I have ${doc.title}, but I couldn’t see a clear amount in what I stored. Want me to open the document again?`;
   }
+  if (plan.fact === "reference") {
+    return doc.reference
+      ? `${doc.title}: the reference was ${doc.reference}.`
+      : `I have ${doc.title}, but I couldn’t see a clear reference in what I stored.`;
+  }
+  if (plan.fact === "shorter") {
+    return compressDocumentAnswer({
+      title: doc.title,
+      text: fetchedText || doc.excerpt,
+      question: "briefly",
+    });
+  }
+  if (plan.fact === "explain") {
+    return `${doc.title}: ${doc.excerpt.slice(0, 220) || "I can explain the last result if you tell me which part was unclear."}`;
+  }
   if (plan.fact === "who") {
     const who = (fetchedText || doc.excerpt).match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+(?:LLP|Ltd|Limited|Solicitors)\b/);
     return who
@@ -51,7 +66,7 @@ export function memoryFactReply(
 }
 
 export function draftFromMemory(
-  kind: "reply" | "quote" | "method" | "professional",
+  kind: "reply" | "quote" | "method" | "professional" | "customer_update",
   memory: WhatsAppEntityMemory,
   guidanceNote?: string | null,
 ): string {
@@ -61,6 +76,8 @@ export function draftFromMemory(
   const body =
     kind === "quote"
       ? `Draft quote summary based on ${title}.\n\nScope is taken from the source notes only. I have not invented prices.${doc?.amount ? ` Source-backed figure: ${doc.amount}.` : " No source-backed price was found — treat any figure as an assumption until you confirm."}`
+      : kind === "customer_update"
+        ? `Draft customer update based on ${title}.\n\nWe’ve reviewed ${title}${doc?.reference ? ` (ref ${doc.reference})` : ""}. I’ll share the next confirmed step once you approve this draft.\n\nThis is a draft only — I have not sent it.`
       : kind === "method"
         ? `Draft method-statement outline from ${title}. Use the source document for site-specific steps; I have not added unstated procedures.`
         : kind === "professional"

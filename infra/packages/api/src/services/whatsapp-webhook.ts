@@ -82,7 +82,7 @@ export async function verifyWhatsAppSignature(
   return { configured: true, valid: safeEqualHex(provided, expected) };
 }
 
-export function parseWhatsAppInboundMessages(payload: unknown): Array<{
+export type WhatsAppParsedInbound = {
   wamid: string;
   from: string;
   type: string;
@@ -90,7 +90,14 @@ export function parseWhatsAppInboundMessages(payload: unknown): Array<{
   phoneNumberId: string | null;
   businessAccountId: string | null;
   timestamp: string | null;
-}> {
+  inputKind?: "text" | "voice" | "button";
+  mediaId?: string | null;
+  mimeType?: string | null;
+  buttonId?: string | null;
+  buttonTitle?: string | null;
+};
+
+export function parseWhatsAppInboundMessages(payload: unknown): WhatsAppParsedInbound[] {
   if (!payload || typeof payload !== "object") return [];
   const root = payload as {
     object?: string;
@@ -106,6 +113,13 @@ export function parseWhatsAppInboundMessages(payload: unknown): Array<{
             type?: string;
             timestamp?: string;
             text?: { body?: string };
+            audio?: { id?: string; mime_type?: string; voice?: boolean };
+            voice?: { id?: string; mime_type?: string };
+            interactive?: {
+              type?: string;
+              button_reply?: { id?: string; title?: string };
+              list_reply?: { id?: string; title?: string };
+            };
           }>;
         };
       }>;
@@ -113,21 +127,17 @@ export function parseWhatsAppInboundMessages(payload: unknown): Array<{
   };
   if (root.object && root.object !== "whatsapp_business_account") return [];
 
-  const messages: Array<{
-    wamid: string;
-    from: string;
-    type: string;
-    text: string | null;
-    phoneNumberId: string | null;
-    businessAccountId: string | null;
-    timestamp: string | null;
-  }> = [];
+  const messages: WhatsAppParsedInbound[] = [];
 
   for (const entry of root.entry ?? []) {
     for (const change of entry.changes ?? []) {
       if (change.field && change.field !== "messages") continue;
       for (const message of change.value?.messages ?? []) {
         if (!message.id || !message.from) continue;
+        const button = message.interactive?.button_reply ?? message.interactive?.list_reply;
+        const audio = message.audio ?? message.voice;
+        const isVoice = message.type === "audio" || message.type === "voice" || Boolean(audio?.id);
+        const isButton = message.type === "interactive" && Boolean(button?.id);
         messages.push({
           wamid: message.id,
           from: message.from,
@@ -136,6 +146,11 @@ export function parseWhatsAppInboundMessages(payload: unknown): Array<{
           phoneNumberId: change.value?.metadata?.phone_number_id ?? null,
           businessAccountId: entry.id ?? null,
           timestamp: message.timestamp ?? null,
+          inputKind: isButton ? "button" : isVoice ? "voice" : "text",
+          mediaId: audio?.id ?? null,
+          mimeType: audio?.mime_type ?? null,
+          buttonId: button?.id ?? null,
+          buttonTitle: button?.title ?? null,
         });
       }
     }
@@ -176,8 +191,8 @@ export async function persistWhatsAppInboundEvent(
       `INSERT INTO whatsapp_inbound_events (
          id, wamid, phone_number_id, business_account_id, sender_e164, message_type,
          identity_found, user_id, company_id, signature_valid, processed,
-         payload_json, error, received_at, processed_at
-       ) VALUES (?, ?, ?, ?, NULL, ?, 0, NULL, NULL, ?, 0, ?, NULL, ?, NULL)`,
+         payload_json, error, received_at, processed_at, lifecycle_state
+       ) VALUES (?, ?, ?, ?, NULL, ?, 0, NULL, NULL, ?, 0, ?, NULL, ?, NULL, 'received')`,
     )
       .bind(
         eventId,
@@ -196,7 +211,33 @@ export async function persistWhatsAppInboundEvent(
     if (/UNIQUE|already exists/i.test(message)) {
       return { eventId, duplicate: true };
     }
-    throw err;
+    try {
+      await env.DB.prepare(
+        `INSERT INTO whatsapp_inbound_events (
+           id, wamid, phone_number_id, business_account_id, sender_e164, message_type,
+           identity_found, user_id, company_id, signature_valid, processed,
+           payload_json, error, received_at, processed_at
+         ) VALUES (?, ?, ?, ?, NULL, ?, 0, NULL, NULL, ?, 0, ?, NULL, ?, NULL)`,
+      )
+        .bind(
+          eventId,
+          first?.wamid ?? null,
+          first?.phoneNumberId ?? null,
+          first?.businessAccountId ?? null,
+          first?.type ?? "webhook",
+          input.signatureValid ? 1 : 0,
+          input.rawBody.slice(0, 16_384),
+          receivedAt,
+        )
+        .run();
+      return { eventId, duplicate: false };
+    } catch (inner) {
+      const innerMessage = inner instanceof Error ? inner.message : "";
+      if (/UNIQUE|already exists/i.test(innerMessage)) {
+        return { eventId, duplicate: true };
+      }
+      throw err;
+    }
   }
 }
 
@@ -325,7 +366,7 @@ async function claimWhatsAppInboundEvent(
   }
 }
 
-async function ensureWhatsAppInboundTable(env: Env): Promise<void> {
+export async function ensureWhatsAppInboundTable(env: Env): Promise<void> {
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS whatsapp_inbound_events (
        id TEXT PRIMARY KEY,
@@ -342,9 +383,34 @@ async function ensureWhatsAppInboundTable(env: Env): Promise<void> {
        payload_json TEXT NOT NULL,
        error TEXT,
        received_at TEXT NOT NULL,
-       processed_at TEXT
+       processed_at TEXT,
+       lifecycle_state TEXT,
+       terminal_state TEXT,
+       validated_at TEXT,
+       acknowledged_at TEXT,
+       planning_at TEXT,
+       tool_running_at TEXT,
+       synthesising_at TEXT,
+       reply_sent_at TEXT,
+       first_visible_at TEXT,
+       last_error TEXT
      )`,
   ).run();
+  const alters = [
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN lifecycle_state TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN terminal_state TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN validated_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN acknowledged_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN planning_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN tool_running_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN synthesising_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN reply_sent_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN first_visible_at TEXT",
+    "ALTER TABLE whatsapp_inbound_events ADD COLUMN last_error TEXT",
+  ];
+  for (const sql of alters) {
+    await env.DB.prepare(sql).run().catch(() => undefined);
+  }
 }
 
 function safeEqualString(left: string, right: string): boolean {

@@ -171,7 +171,16 @@ export function classifyUsageResource(input: {
     return { classification: "stripe_fees", provider: "stripe", service: "payments" };
   }
   if (resource === "whatsapp" || hay.includes("whatsapp")) {
-    return { classification: "other", provider: "meta", service: "whatsapp" };
+    if (hay.includes("transcri") || action.includes("whatsapp.transcribe") || resource === "whatsapp_transcription") {
+      return { classification: "other", provider: tool || "stt", service: "whatsapp_transcription" };
+    }
+    if (hay.includes("conversation") || action.includes("whatsapp.conversation") || action.includes("whatsapp.ack")) {
+      return { classification: "other", provider: "infra", service: "whatsapp_conversation" };
+    }
+    if (hay.includes("tool_mcp") || hay.includes("search_company") || hay.includes("xero_")) {
+      return { classification: "other", provider: "infra", service: "whatsapp_tool_mcp" };
+    }
+    return { classification: "other", provider: "meta", service: "whatsapp_transport" };
   }
   return { classification: "other", provider: resource || "unknown", service: tool || action || resource || "usage" };
 }

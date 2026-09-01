@@ -47,6 +47,7 @@ import { updateAutoTopUpSettings } from "../services/company-settings";
 import { listLedgerEntries } from "../services/ledger";
 import { listPlatformUsage } from "../services/usage";
 import { portalOrigin } from "../services/public-urls";
+import { listWhatsAppInbox } from "../services/whatsapp-ops";
 
 type AppEnv = { Bindings: Env; Variables: AuthVariables };
 
@@ -525,7 +526,22 @@ export function registerCommand6Routes(app: Hono<AppEnv>) {
       ]),
     );
 
+    const whatsappInbox = await listWhatsAppInbox(c.env).catch(() => ({
+      items: [],
+      stuckCount: 0,
+      processingCount: 0,
+      failedCount: 0,
+      consecutiveFailedReplies: 0,
+    }));
+
     return c.json({
+      whatsapp: {
+        stuckCount: whatsappInbox.stuckCount,
+        processingCount: whatsappInbox.processingCount,
+        failedCount: whatsappInbox.failedCount,
+        consecutiveFailedReplies: whatsappInbox.consecutiveFailedReplies,
+        incidents: whatsappInbox.items.filter((item) => item.stuck || item.status === "failed").slice(0, 40),
+      },
       failures: (rows.results ?? []).map((row) => {
         const companyId = String(row.company_id);
         const meta = companyMap.get(companyId);

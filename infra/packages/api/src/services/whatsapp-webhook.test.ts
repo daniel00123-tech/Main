@@ -133,6 +133,11 @@ describe("WhatsApp inbound parse and outbound gate", () => {
         phoneNumberId: "1338434179351224",
         businessAccountId: "1629422285251338",
         timestamp: "1710000000",
+        inputKind: "text",
+        mediaId: null,
+        mimeType: null,
+        buttonId: null,
+        buttonTitle: null,
       },
     ]);
   });

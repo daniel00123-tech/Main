@@ -58,6 +58,9 @@ describe("customer economics calculations", () => {
     expect(classifyUsageResource({ resourceType: "knowledge_ocr" }).classification).toBe("ocr");
     expect(classifyUsageResource({ toolName: "openai.chat", unit: "tokens" }).classification).toBe("ai_model");
     expect(classifyUsageResource({ resourceType: "gateway", toolName: "search" }).classification).toBe("other");
+    expect(classifyUsageResource({ resourceType: "whatsapp_transcription", action: "whatsapp.transcribe" }).service).toBe(
+      "whatsapp_transcription",
+    );
   });
 
   it("computes margin and leaves percent null when revenue is zero", () => {

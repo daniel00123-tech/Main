@@ -1,18 +1,26 @@
+import { documentResultCopy } from "./whatsapp-tone";
+
 const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 
 export const CONCISE_MAX_CHARS = 520;
 export const FULL_DETAIL_MAX_CHARS = 1600;
-export const ACK_AFTER_MS = 3_000;
+export const ACK_AFTER_MS = 800;
 
 export function wantsFullDetail(text: string): boolean {
-  return /\b(full detail|full document|the whole|give me the full|entire (doc|document|thing)|paste (it|the)|everything in (it|the))\b/i.test(
+  return /\b(full detail|full document|the whole|give me the full|give me detail|entire (doc|document|thing)|paste (it|the)|everything in (it|the)|explain properly|full summary|show me everything)\b/i.test(
     text,
   );
 }
 
+export function wantsVeryShort(text: string): boolean {
+  return /\b(quickly|briefly|just tell me|in brief|short version)\b/i.test(text);
+}
+
 export function wantsSummary(text: string): boolean {
-  return /\bsummaris[ee](\s+(that|it|this|the))?\b|\bsummarize(\s+(that|it|this|the))?\b/i.test(text);
+  return /\bsummaris[ee](\s+(that|it|this|the))?\b|\bsummarize(\s+(that|it|this|the))?\b|\b(quick summary)\b/i.test(
+    text,
+  );
 }
 
 export function wantsAlternatives(text: string): boolean {
@@ -66,13 +74,13 @@ function firstUsefulSentences(text: string, max = 2): string {
   return picked.length > 280 ? `${picked.slice(0, 277).trim()}…` : picked;
 }
 
-function extractKeyFacts(text: string): string[] {
-  const facts: string[] = [];
-  const money = text.match(/£\s?[\d,]+(?:\.\d{2})?(?:\s*GBP)?/i);
-  if (money) facts.push(money[0].replace(/\s+/g, " "));
+function extractKeyFacts(text: string): { amount?: string; reference?: string } {
+  const money = text.match(/£\s?[\d,]+(?:\.\d{2})?/);
   const order = text.match(/\b(?:order id|ref(?:\.? no)?\.?)\s*[:.]?\s*([A-Z0-9][A-Z0-9/_-]{3,})/i);
-  if (order) facts.push(`Ref ${order[1]}`);
-  return facts.slice(0, 2);
+  return {
+    amount: money ? money[0].replace(/\s+/g, " ") : undefined,
+    reference: order?.[1],
+  };
 }
 
 export function inferRelatesTo(title: string, text: string): string {
@@ -111,10 +119,18 @@ export function compressDocumentAnswer(input: {
   }
   const relates = inferRelatesTo(title, clean);
   const facts = extractKeyFacts(clean);
-  const lines = [title, "", relates];
-  if (facts.length) lines.push(facts.map((fact) => `• ${fact}`).join("\n"));
-  lines.push("", "Want me to summarise the full document?");
-  return trimReply(lines.filter(Boolean).join("\n"), CONCISE_MAX_CHARS);
+  if (wantsVeryShort(input.question)) {
+    return trimReply(`I found ${title} 📄\n${relates}`, 240);
+  }
+  return trimReply(
+    documentResultCopy({
+      title,
+      relates,
+      amount: facts.amount,
+      reference: facts.reference,
+    }),
+    CONCISE_MAX_CHARS,
+  );
 }
 
 export function compressSearchAnswer(input: {

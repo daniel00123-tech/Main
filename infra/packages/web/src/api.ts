@@ -1117,7 +1117,23 @@ export const api = {
       };
     }>(`/api/companies/${slug}/wallet/health`),
   getFailedRequests: () =>
-    fetchJson<{ failures: Array<Record<string, unknown>> }>("/api/platform/failed-requests"),
+    fetchJson<{
+      failures: Array<Record<string, unknown>>;
+      whatsapp?: {
+        stuckCount: number;
+        processingCount: number;
+        failedCount: number;
+        consecutiveFailedReplies: number;
+        incidents: Array<Record<string, unknown>>;
+      };
+    }>("/api/platform/failed-requests"),
+  getWhatsAppInbox: () =>
+    fetchJson<{
+      items: Array<Record<string, unknown>>;
+      stuckCount: number;
+      processingCount: number;
+      failedCount: number;
+    }>("/api/platform/whatsapp/inbox"),
   getWeeklyReview: () =>
     fetchJson<{ summary: Array<Record<string, unknown>>; generatedAt: string }>(
       "/api/platform/weekly-review",
@@ -1701,6 +1717,8 @@ export const api = {
         providerCostCents: number | null;
         tools: string[];
         latencyMs: number | null;
+        inputType?: string | null;
+        originatedAsVoice?: boolean;
       }>;
     }>(`/api/platform/interactions${toQuery(query)}`),
   getInteractionDetail: (id: string) =>
@@ -1712,6 +1730,9 @@ export const api = {
       channel: string;
       label: string;
       status: string;
+      inputType?: string | null;
+      originatedAsVoice?: boolean;
+      transcript?: string | null;
       createdAt: string;
       request: unknown;
       response: unknown;

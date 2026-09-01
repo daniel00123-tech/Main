@@ -1,6 +1,8 @@
 import type { Env } from "../env";
 import { redactSecretFields } from "./secrets";
 import { inspectWhatsAppAssets, whatsappAccessToken, whatsappPhoneNumberId } from "./whatsapp-assets";
+import type { WhatsAppListRow, WhatsAppReplyButton } from "./whatsapp-buttons";
+import { clipButtonTitle, shouldAttachButtons } from "./whatsapp-buttons";
 
 export type WhatsAppSendKind = "customer_service_reply" | "business_initiated_template";
 
@@ -24,6 +26,7 @@ export async function sendWhatsAppText(
     toE164: string;
     body: string;
     inCustomerServiceWindow: boolean;
+    previewUrl?: boolean;
   },
 ): Promise<WhatsAppSendResult> {
   const kind = classifyWhatsAppOutbound({
@@ -46,7 +49,7 @@ export async function sendWhatsAppText(
       recipient_type: "individual",
       to: digitsOnly(input.toE164),
       type: "text",
-      text: { preview_url: false, body: input.body.slice(0, 4000) },
+      text: { preview_url: Boolean(input.previewUrl), body: input.body.slice(0, 4000) },
     },
   });
 }
@@ -85,6 +88,105 @@ export async function sendWhatsAppTypingIndicator(
 
 export const WHATSAPP_TYPING_INDICATOR_SUPPORT =
   "Meta Cloud API supports a short typing indicator via POST /{PHONE_NUMBER_ID}/messages with status=read and typing_indicator.type=text (shown ~25s). Text acknowledgements remain the primary UX.";
+
+export async function sendWhatsAppInteractiveButtons(
+  env: Env,
+  input: {
+    toE164: string;
+    body: string;
+    buttons: WhatsAppReplyButton[];
+    inCustomerServiceWindow: boolean;
+  },
+): Promise<WhatsAppSendResult> {
+  const kind = classifyWhatsAppOutbound({
+    inCustomerServiceWindow: input.inCustomerServiceWindow,
+  });
+  if (!input.inCustomerServiceWindow) {
+    return {
+      ok: false,
+      kind,
+      error: "Free-form WhatsApp replies are only allowed inside an active customer-service window.",
+      retryable: false,
+      attempts: 0,
+    };
+  }
+  if (!shouldAttachButtons(input.body, input.buttons)) {
+    return sendWhatsAppText(env, {
+      toE164: input.toE164,
+      body: input.body,
+      inCustomerServiceWindow: true,
+    });
+  }
+  return postWhatsAppMessage(env, {
+    kind,
+    toE164: input.toE164,
+    payload: {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: digitsOnly(input.toE164),
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: { text: input.body.slice(0, 1024) },
+        action: {
+          buttons: input.buttons.slice(0, 3).map((button) => ({
+            type: "reply",
+            reply: { id: button.id.slice(0, 256), title: clipButtonTitle(button.title) },
+          })),
+        },
+      },
+    },
+  });
+}
+
+export async function sendWhatsAppInteractiveList(
+  env: Env,
+  input: {
+    toE164: string;
+    body: string;
+    buttonLabel: string;
+    rows: WhatsAppListRow[];
+    inCustomerServiceWindow: boolean;
+  },
+): Promise<WhatsAppSendResult> {
+  const kind = classifyWhatsAppOutbound({
+    inCustomerServiceWindow: input.inCustomerServiceWindow,
+  });
+  if (!input.inCustomerServiceWindow || input.rows.length === 0) {
+    return sendWhatsAppText(env, {
+      toE164: input.toE164,
+      body: input.body,
+      inCustomerServiceWindow: Boolean(input.inCustomerServiceWindow),
+    });
+  }
+  return postWhatsAppMessage(env, {
+    kind,
+    toE164: input.toE164,
+    payload: {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: digitsOnly(input.toE164),
+      type: "interactive",
+      interactive: {
+        type: "list",
+        body: { text: input.body.slice(0, 1024) },
+        action: {
+          button: clipButtonTitle(input.buttonLabel || "Choose"),
+          sections: [
+            {
+              title: "Options",
+              rows: input.rows.slice(0, 10).map((row) => ({
+                id: row.id.slice(0, 200),
+                title: clipButtonTitle(row.title),
+                description: row.description?.slice(0, 72),
+              })),
+            },
+          ],
+        },
+      },
+    },
+  });
+}
 
 export async function sendWhatsAppTemplate(
   env: Env,
