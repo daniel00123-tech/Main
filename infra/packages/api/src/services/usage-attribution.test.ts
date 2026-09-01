@@ -11,6 +11,7 @@ describe("shared usage attribution", () => {
     expect(normalizeSourceClient("chatgpt-mcp")).toBe("chatgpt");
     expect(normalizeSourceClient("Claude")).toBe("claude");
     expect(normalizeSourceClient(null, "portal")).toBe("portal");
+    expect(normalizeSourceClient("portal_chat")).toBe("portal_chat");
   });
 
   it("maps tools onto connector families", () => {
