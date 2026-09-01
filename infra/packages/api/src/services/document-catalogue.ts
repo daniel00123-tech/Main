@@ -76,7 +76,7 @@ export type CatalogueResult = {
 
 const WRITE_LIKE = /send|write|delete|draft|manage|create|update|upload|index/i;
 const LIST_TOOL =
-  /^(list|recent|catalogue|catalog|browse)_.*(document|file|drive|onedrive|sharepoint|knowledge)|^(list|recent).*(documents?|files?|drive|onedrive|sharepoint)|list_elvex_.*(file|document|drive)|recent_.*(file|document)|list_company_knowledge|list_knowledge/i;
+  /^(list|recent|catalogue|catalog|browse)_.*(document|file|drive|onedrive|sharepoint|knowledge)|^(list|recent).*(documents?|files?|drive|onedrive|sharepoint)|list_elvex_.*(file|document|drive)|search_elvex_files|recent_.*(file|document)|list_company_knowledge|list_knowledge/i;
 
 export const LIST_DOCUMENTS_DESCRIPTION =
   "List connected document metadata by recency (newest, latest, uploaded, recently modified). Use this for catalogue listing — not semantic search, not index counts, and not reading one open document. Returns real titles, timestamps, file types, and genuine provider URLs only. Never invent files. Read-only.";
@@ -503,17 +503,21 @@ function documentsFromMcpPayload(payload: unknown, query: CatalogueQuery, allowR
     ? ([] as unknown[])
         .concat(Array.isArray(payload.documents) ? payload.documents : [])
         .concat(Array.isArray(payload.items) ? payload.items : [])
+        .concat(Array.isArray(payload.files) ? payload.files : [])
+        .concat(Array.isArray(payload.value) ? payload.value : [])
     : [];
   const records = [...hits, ...extra.filter(isRecord)];
   const documents: CatalogueDocument[] = [];
   for (const hit of records) {
     const provenance = isRecord(hit.metadata) ? hit.metadata : isRecord(hit.provenance) ? hit.provenance : {};
     if (!allowRestricted && isRestrictedItem(provenance)) continue;
-    const source = asNonEmpty(hit.source) || asNonEmpty(hit.source_type) || asNonEmpty(hit.category) || asNonEmpty(provenance.source) || "unknown";
-    if (!sourceMatches(query.source, source) && query.source !== "all") {
-      if (query.source === "drive" && !/drive/i.test(source)) continue;
-      if (query.source !== "drive") continue;
-    }
+    const source =
+      asNonEmpty(hit.source) ||
+      asNonEmpty(hit.source_type) ||
+      asNonEmpty(hit.category) ||
+      asNonEmpty(provenance.source) ||
+      (query.source !== "all" ? query.source : "onedrive");
+    if (!sourceMatches(query.source, source) && query.source !== "all") continue;
     const title = asNonEmpty(hit.title) || asNonEmpty(hit.name) || asNonEmpty(hit.filename) || "Untitled document";
     const mime = asNonEmpty(hit.mimeType) || asNonEmpty(hit.mime_type) || null;
     if (!fileTypeMatches(query.fileType, mime, title)) continue;
@@ -642,23 +646,30 @@ async function queryCompanyMcpCatalogue(
   } catch {
     toolNames = [];
   }
-  const catalogueTool = toolNames.find((name) => LIST_TOOL.test(name) && !WRITE_LIKE.test(name));
+  const catalogueTool =
+    toolNames.find((name) => name === "search_elvex_files") ??
+    toolNames.find((name) => LIST_TOOL.test(name) && !WRITE_LIKE.test(name));
   if (catalogueTool) {
     const now = nowIso();
-    await env.DB.prepare(
-      `INSERT OR IGNORE INTO mcp_tool_allowlist
-        (id, company_id, mcp_environment_id, tool_name, risk_class, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'low_risk', 1, ?, ?)`,
-    )
-      .bind(newId("allow"), companyId, mcp.id, catalogueTool, now, now)
-      .run();
+    for (const name of [catalogueTool, "get_elvex_file"]) {
+      if (WRITE_LIKE.test(name)) continue;
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO mcp_tool_allowlist
+          (id, company_id, mcp_environment_id, tool_name, risk_class, enabled, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'low_risk', 1, ?, ?)`,
+      )
+        .bind(newId("allow"), companyId, mcp.id, name, now, now)
+        .run();
+    }
     const execution = await executeRegisteredMcpTool(env, {
       mcpId: mcp.id,
       toolName: catalogueTool,
       arguments: {
-        source: query.source,
+        source: query.source === "all" ? undefined : query.source,
         sort: query.sort,
+        orderBy: query.dateField === "created_at" ? "createdDateTime" : "lastModifiedDateTime",
         limit: Math.min(query.limit * 2, 50),
+        top: Math.min(query.limit * 2, 50),
         file_type: query.fileType,
         date_from: query.dateFrom,
         date_to: query.dateTo,
@@ -775,13 +786,53 @@ async function attachDescriptions(
       sourceClient: "infra-document-catalogue",
       skipUsageRecording: true,
     });
-    if (execution.status !== 200) {
+    if (execution.status !== 200 || !("data" in execution)) {
+      const fileGet = await executeRegisteredMcpTool(env, {
+        mcpId: mcp.id,
+        toolName: "get_elvex_file",
+        arguments: { id: doc.id, fileId: doc.id, documentRef: doc.id },
+        actorUserId: actorUserId ?? "system",
+        actorEmail: actor,
+        sourceClient: "infra-document-catalogue",
+        skipUsageRecording: true,
+      });
+      if (fileGet.status === 200) {
+        const payload = toStandardFetchPayload("data" in fileGet ? fileGet.data?.result : fileGet, doc.id);
+        const text = payload.text || (payload.chunks ?? []).map((chunk) => chunk.text).join("\n");
+        const described = describeFromIndexedText(text, payload.title || doc.title);
+        doc.description = described.description;
+        doc.descriptionSource = described.descriptionSource;
+        if (payload.title && payload.title !== "Untitled document") doc.title = payload.title;
+        if (payload.url) doc.url = payload.url;
+        continue;
+      }
       doc.description = `Description unavailable — only the filename “${doc.title}” is available.`;
       doc.descriptionSource = "filename_only";
       continue;
     }
     const payload = toStandardFetchPayload("data" in execution ? execution.data?.result : execution, doc.id);
     const text = payload.text || (payload.chunks ?? []).map((chunk) => chunk.text).join("\n");
+    if (!text) {
+      const fileGet = await executeRegisteredMcpTool(env, {
+        mcpId: mcp.id,
+        toolName: "get_elvex_file",
+        arguments: { id: doc.id, fileId: doc.id, documentRef: doc.id },
+        actorUserId: actorUserId ?? "system",
+        actorEmail: actor,
+        sourceClient: "infra-document-catalogue",
+        skipUsageRecording: true,
+      });
+      if (fileGet.status === 200) {
+        const filePayload = toStandardFetchPayload("data" in fileGet ? fileGet.data?.result : fileGet, doc.id);
+        const fileText = filePayload.text || (filePayload.chunks ?? []).map((chunk) => chunk.text).join("\n");
+        const described = describeFromIndexedText(fileText, filePayload.title || doc.title);
+        doc.description = described.description;
+        doc.descriptionSource = described.descriptionSource;
+        if (filePayload.title && filePayload.title !== "Untitled document") doc.title = filePayload.title;
+        if (filePayload.url) doc.url = filePayload.url;
+        continue;
+      }
+    }
     const described = describeFromIndexedText(text, payload.title || doc.title);
     doc.description = described.description;
     doc.descriptionSource = described.descriptionSource;
