@@ -60,6 +60,50 @@ export async function readOperatorIntendedRole(
   return row?.intended_role ? (String(row.intended_role) as CompanyRole) : null;
 }
 
+const INTENDED_ROLE_GRACE_MS = 90_000;
+
+function isStaleMembershipUpdate(updatedAt: string | null | undefined): boolean {
+  if (!updatedAt) return true;
+  const parsed = Date.parse(updatedAt.includes("T") ? updatedAt : `${updatedAt.replace(" ", "T")}Z`);
+  if (Number.isNaN(parsed)) return true;
+  return Date.now() - parsed >= INTENDED_ROLE_GRACE_MS;
+}
+
+/** Restore intended roles after short-lived acceptance overwrites (90s grace). */
+export async function enforceOperatorIntendedRoles(db: D1Database): Promise<number> {
+  await ensureMembershipOperatorRolesTable(db);
+  const intended = await db
+    .prepare(
+      `SELECT membership_id, company_id, user_id, intended_role FROM membership_operator_roles`,
+    )
+    .all();
+  let restored = 0;
+  for (const row of intended.results ?? []) {
+    const live = await db
+      .prepare(`SELECT role, updated_at FROM company_memberships WHERE id = ?`)
+      .bind(String(row.membership_id))
+      .first();
+    if (!live || String(live.role) === String(row.intended_role)) continue;
+    if (!isStaleMembershipUpdate(live.updated_at ? String(live.updated_at) : null)) continue;
+    await db
+      .prepare(
+        `UPDATE company_memberships
+         SET role = ?, updated_at = ?
+         WHERE id = ? AND user_id = ? AND company_id = ?`,
+      )
+      .bind(
+        String(row.intended_role),
+        nowIso(),
+        String(row.membership_id),
+        String(row.user_id),
+        String(row.company_id),
+      )
+      .run();
+    restored += 1;
+  }
+  return restored;
+}
+
 export async function restoreOperatorIntendedRole(
   db: D1Database,
   input: { membershipId: string; userId: string; companyId: string; fallback?: CompanyRole },

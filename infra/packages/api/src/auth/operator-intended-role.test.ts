@@ -59,6 +59,12 @@ function memoryDb() {
         async run() {
           return { success: true };
         },
+        async all() {
+          return { results: tables.membership_operator_roles };
+        },
+        async first() {
+          return tables.company_memberships[0] ?? null;
+        },
       };
     },
   };
@@ -86,6 +92,21 @@ describe("operator intended membership role", () => {
       fallback: "director",
     });
     expect(restored).toBe("director");
+    expect(tables.company_memberships[0]?.role).toBe("director");
+  });
+
+  it("enforces intended Director after a stale office_staff overwrite", async () => {
+    const { db, tables } = memoryDb();
+    tables.membership_operator_roles.push({
+      membership_id: "membership_78495c59-cff6-4db5-9986-a351ebe154f1",
+      company_id: "co_el",
+      user_id: "user_b0db1fc5-692c-436d-99e6-392966b20df8",
+      intended_role: "director",
+    });
+    tables.company_memberships[0]!.updated_at = "2000-01-01 00:00:00";
+    const { enforceOperatorIntendedRoles } = await import("./operator-intended-role");
+    const restored = await enforceOperatorIntendedRoles(db);
+    expect(restored).toBe(1);
     expect(tables.company_memberships[0]?.role).toBe("director");
   });
 });
