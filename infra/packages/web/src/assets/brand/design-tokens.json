@@ -1,0 +1,36 @@
+{
+  "brand": {
+    "displayName": "Infra",
+    "secondaryName": "stack",
+    "domain": "infrastack.app",
+    "tagline": null
+  },
+  "colors": {
+    "navy950": "#07111F",
+    "navy900": "#0B1627",
+    "surface": "#0F1C2E",
+    "surfaceRaised": "#142239",
+    "border": "#203047",
+    "blue": "#2F80FF",
+    "cyan": "#22D3EE",
+    "textPrimary": "#F5F9FF",
+    "textSecondary": "#CBD5E1",
+    "textMuted": "#94A3B8",
+    "white": "#FFFFFF"
+  },
+  "gradient": {
+    "primary": "linear-gradient(135deg, #2F80FF 0%, #22D3EE 100%)"
+  },
+  "radius": {
+    "sm": "8px",
+    "md": "12px",
+    "lg": "16px"
+  },
+  "style": [
+    "premium",
+    "minimal",
+    "modern AI",
+    "enterprise infrastructure",
+    "dark-first"
+  ]
+}

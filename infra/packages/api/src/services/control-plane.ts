@@ -903,6 +903,8 @@ const READ_ONLY_DEFAULT_TOOLS = [
   ...XERO_READ_MCP_TOOLS,
 ] as const;
 
+const ELVEX_EMAIL_READ_TOOLS = ["search_elvex_email", "get_elvex_email"] as const;
+
 export async function executeRegisteredMcpTool(
   env: Env,
   input: {
@@ -1237,6 +1239,18 @@ export async function ensureDefaultToolAllowlist(
       )
       .bind(id, companyId, mcpEnvironmentId, toolName, now, now)
       .run();
+  }
+  if (companyId === "co_el") {
+    for (const toolName of ELVEX_EMAIL_READ_TOOLS) {
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO mcp_tool_allowlist
+            (id, company_id, mcp_environment_id, tool_name, risk_class, enabled, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'low_risk', 1, ?, ?)`,
+        )
+        .bind(newId("allow"), companyId, mcpEnvironmentId, toolName, now, now)
+        .run();
+    }
   }
   await ensureXeroToolActionMaps(db, mcpEnvironmentId);
 }

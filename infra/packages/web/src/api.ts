@@ -64,6 +64,47 @@ export interface RolePresetResponse {
   deniedByDefault: ToolAction[];
 }
 
+export type PortalChatMessage = {
+  id: string;
+  conversationId: string;
+  companyId: string;
+  userId: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  metadata: {
+    kind?: string | null;
+    confidence?: string | null;
+    scope?: string | null;
+    toolNames?: string[];
+    sources?: Array<{ id: string; title: string; url?: string | null }>;
+    permissionDenied?: boolean;
+    controlledAction?: boolean;
+    citeSource?: boolean;
+  };
+};
+
+export type PortalChatConversation = {
+  id: string;
+  companyId: string;
+  userId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  context?: {
+    currentDocument?: { id: string; title: string; url?: string | null } | null;
+    recentDocuments?: Array<{ id: string; title: string; url?: string | null }>;
+  };
+  messages?: PortalChatMessage[];
+};
+
+export type PortalChatTurnResult = {
+  conversation: PortalChatConversation;
+  userMessage: PortalChatMessage;
+  assistantMessage: PortalChatMessage;
+  createdConversation: boolean;
+};
+
 export interface CompanyUsageResponse {
   companyId: string;
   summary: UsageSummary;
@@ -393,6 +434,37 @@ export const api = {
   getCompany: (slug: string) => fetchJson<Company>(`/api/companies/${slug}`),
   getCompanyOverview: (slug: string) =>
     fetchJson<CompanyOverview>(`/api/companies/${slug}/overview`),
+  listPortalConversations: (slug: string) =>
+    fetchJson<{ conversations: PortalChatConversation[] }>(`/api/companies/${slug}/chat/conversations`),
+  createPortalConversation: (slug: string, title?: string) =>
+    fetchJson<{ conversation: PortalChatConversation }>(`/api/companies/${slug}/chat/conversations`, {
+      method: "POST",
+      body: JSON.stringify(title ? { title } : {}),
+    }),
+  getPortalConversation: (slug: string, id: string) =>
+    fetchJson<{ conversation: PortalChatConversation }>(
+      `/api/companies/${slug}/chat/conversations/${encodeURIComponent(id)}`,
+    ),
+  renamePortalConversation: (slug: string, id: string, title: string) =>
+    fetchJson<{ conversation: PortalChatConversation }>(
+      `/api/companies/${slug}/chat/conversations/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify({ title }) },
+    ),
+  sendPortalChatMessage: (slug: string, input: { conversationId?: string | null; text: string }) =>
+    fetchJson<PortalChatTurnResult>(
+      input.conversationId
+        ? `/api/companies/${slug}/chat/conversations/${encodeURIComponent(input.conversationId)}/messages`
+        : `/api/companies/${slug}/chat/messages`,
+      { method: "POST", body: JSON.stringify({ text: input.text, conversationId: input.conversationId }) },
+    ),
+  streamPortalChatMessage: (
+    slug: string,
+    input: {
+      conversationId?: string | null;
+      text: string;
+      onStatus?: (status: { label: string; tool: string }) => void;
+    },
+  ) => streamPortalChat(slug, input),
   listCompanyActions: (slug: string, status?: string) => {
     const query = status ? `?status=${encodeURIComponent(status)}` : "";
     return fetchJson<{ plans: ActionPlanRecord[] }>(`/api/companies/${slug}/actions${query}`);
@@ -1117,7 +1189,48 @@ export const api = {
       };
     }>(`/api/companies/${slug}/wallet/health`),
   getFailedRequests: () =>
-    fetchJson<{ failures: Array<Record<string, unknown>> }>("/api/platform/failed-requests"),
+    fetchJson<{
+      failures: Array<Record<string, unknown>>;
+      whatsapp?: {
+        stuckCount: number;
+        processingCount: number;
+        failedCount: number;
+        consecutiveFailedReplies: number;
+        incidents: Array<Record<string, unknown>>;
+        metrics?: Record<string, number | string | string[] | null | undefined>;
+      };
+    }>("/api/platform/failed-requests"),
+  getWhatsAppInbox: () =>
+    fetchJson<{
+      items: Array<Record<string, unknown>>;
+      stuckCount: number;
+      processingCount: number;
+      failedCount: number;
+      metrics?: {
+        recognisedMessages: number;
+        firstVisibleP50Ms: number | null;
+        firstVisibleP95Ms: number | null;
+        finalP50Ms: number | null;
+        finalP95Ms: number | null;
+        silentOver3s: number;
+        silentOver10s: number;
+        stuckOver30s: number;
+        failedOutbound: number;
+        queueLatencyP50Ms: number | null;
+        typingSuccessRate: number | null;
+        readStatusSuccessRate: number | null;
+        greetingSilentOver3s?: number;
+        queueOldestMs?: number | null;
+        dlqEvents?: number;
+        signatureRejects?: number;
+        liveMetaInbound?: number;
+        persistFailures?: number;
+        ackWithoutFinalOver30s?: number;
+        knowledgeCircuitOpen?: number;
+        healthState?: "GREEN" | "AMBER" | "RED";
+        redReasons?: string[];
+      };
+    }>("/api/platform/whatsapp/inbox"),
   getWeeklyReview: () =>
     fetchJson<{ summary: Array<Record<string, unknown>>; generatedAt: string }>(
       "/api/platform/weekly-review",
@@ -1200,9 +1313,33 @@ export const api = {
       `/api/companies/${slug}/ai-connections/${clientType}/test`,
       { method: "POST", body: "{}" },
     ),
+  updatePlatformUser: (
+    userId: string,
+    input: {
+      displayName?: string;
+      email?: string;
+      mobile?: string;
+      status?: "active" | "disabled";
+      companyId?: string;
+      role?: CompanyRole;
+    },
+  ) =>
+    fetchJson<{ ok: boolean; userId: string }>(`/api/platform/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  deletePlatformUser: (userId: string) =>
+    fetchJson<{ ok: boolean; userId: string; status: string }>(`/api/platform/users/${userId}`, {
+      method: "DELETE",
+    }),
+  cancelPlatformUserInvitations: (userId: string) =>
+    fetchJson<{ ok: boolean; cancelled: number }>(
+      `/api/platform/users/${userId}/cancel-invitations`,
+      { method: "POST", body: "{}" },
+    ),
   inviteUser: (
     slug: string,
-    input: { email: string; displayName: string; role: CompanyRole },
+    input: { email: string; displayName: string; role: CompanyRole; mobile?: string },
   ) =>
     fetchJson<{
       user: { id: string; email: string; displayName: string };
@@ -1550,5 +1687,394 @@ export const api = {
         detectedAt: string;
       }>;
     }>(`/api/commercial/reconciliation/exceptions?status=${encodeURIComponent(status)}`),
+  getCustomerEconomics: (query?: {
+    companyId?: string;
+    preset?: string;
+    from?: string;
+    to?: string;
+    provider?: string;
+    service?: string;
+  }) =>
+    fetchJson<{
+      period: { from: string; to: string; preset: string };
+      companies: Array<{
+        companyId: string;
+        companyName: string;
+        companySlug: string;
+        cashCollectedCents: number;
+        usageChargeCents: number;
+        creditsRefundsCents: number;
+        revenueCents: number;
+        revenueBasis: string;
+        cashBasisNote: string;
+        directCostCents: number;
+        directCostKnown: boolean;
+        grossProfitCents: number | null;
+        grossMarginPercent: number | null;
+        activeUsers: number;
+        costPerActiveUserCents: number | null;
+        revenuePerActiveUserCents: number | null;
+        ocrCostCents: number;
+        aiModelCostCents: number;
+        cloudflareCostCents: number;
+        stripeFeeCents: number;
+        otherAttributableCostCents: number;
+        unattributedCostCents: number;
+      }>;
+      platformOverheads: {
+        allocatedToCustomers: boolean;
+        monthlyCostCents: number;
+        activeCount: number;
+        currency: string;
+      };
+      coverage: Array<{ provider: string; service: string; coverage: string; notes: string }>;
+    }>(`/api/platform/economics${toQuery(query)}`),
+  getCompanyEconomics: (
+    companyId: string,
+    query?: { preset?: string; from?: string; to?: string; provider?: string; service?: string },
+  ) =>
+    fetchJson<{
+      period: { from: string; to: string; preset: string };
+      company: {
+        companyId: string;
+        companyName: string;
+        companySlug: string;
+        cashCollectedCents: number;
+        usageChargeCents: number;
+        creditsRefundsCents: number;
+        revenueCents: number;
+        cashBasisNote: string;
+        directCostCents: number;
+        grossProfitCents: number | null;
+        grossMarginPercent: number | null;
+        activeUsers: number;
+        costPerActiveUserCents: number | null;
+        revenuePerActiveUserCents: number | null;
+        ocrCostCents: number;
+        aiModelCostCents: number;
+        stripeFeeCents: number;
+        otherAttributableCostCents: number;
+        unattributedCostCents: number;
+      };
+      providers: Array<{
+        provider: string;
+        service: string;
+        classification: string;
+        costBasis: string;
+        usageQuantity: number;
+        usageUnit: string;
+        costCents: number;
+        eventCount: number;
+      }>;
+      users: Array<{
+        userId: string | null;
+        actorLabel: string;
+        attributed: boolean;
+        usageCount: number;
+        interactionCount: number;
+        usageChargeCents: number;
+        directCostCents: number;
+        providers: string[];
+        features: string[];
+      }>;
+      trend: Array<{ day: string; revenueCents: number; directCostCents: number }>;
+    }>(`/api/platform/economics/${encodeURIComponent(companyId)}${toQuery(query)}`),
+  getPlatformOverheads: () =>
+    fetchJson<{
+      items: Array<{
+        id: string;
+        provider: string;
+        description: string;
+        monthlyCostCents: number;
+        currency: string;
+        startDate: string;
+        endDate: string | null;
+        category: string;
+      }>;
+      categories: string[];
+      allocatedToCustomers: boolean;
+    }>("/api/platform/overheads"),
+  createPlatformOverhead: (input: {
+    provider: string;
+    description: string;
+    monthlyCostCents: number;
+    currency?: string;
+    startDate: string;
+    endDate?: string | null;
+    category: string;
+  }) =>
+    fetchJson<Record<string, unknown>>("/api/platform/overheads", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  deletePlatformOverhead: (id: string) =>
+    fetchJson<{ ok: boolean }>(`/api/platform/overheads/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+  getInteractionHistory: (query?: {
+    companyId?: string;
+    userId?: string;
+    channel?: string;
+    provider?: string;
+    tool?: string;
+    success?: string;
+    from?: string;
+    to?: string;
+  }) =>
+    fetchJson<{
+      items: Array<{
+        id: string;
+        companyId: string;
+        companyName: string | null;
+        userId: string | null;
+        userEmail: string | null;
+        userName: string;
+        channel: string;
+        label: string;
+        status: string;
+        success: boolean;
+        createdAt: string;
+        operationCount: number;
+        customerChargeCents: number;
+        providerCostCents: number | null;
+        tools: string[];
+        latencyMs: number | null;
+        inputType?: string | null;
+        originatedAsVoice?: boolean;
+      }>;
+    }>(`/api/platform/interactions${toQuery(query)}`),
+  getInteractionDetail: (id: string) =>
+    fetchJson<{
+      id: string;
+      companyName: string | null;
+      userEmail: string | null;
+      userName: string | null;
+      channel: string;
+      label: string;
+      status: string;
+      inputType?: string | null;
+      originatedAsVoice?: boolean;
+      transcript?: string | null;
+      createdAt: string;
+      request: unknown;
+      response: unknown;
+      tools: Array<{ name: string | null; action: string | null; success: boolean; resultMetadata: unknown }>;
+      timing: { latencyMs: number | null };
+      providerCost: { customerChargeCents: number; providerCostCents: number | null; known: boolean };
+      traceIds: { interactionId: string; mcpSessionId: string | null; requestIds: string[]; correlationIds: string[] };
+      qualityFlags: Array<{ id: string; category: string; severity: string; confidence: number; status: string; occurrenceCount: number }>;
+      operations: Array<Record<string, unknown>>;
+      gateway: Array<Record<string, unknown>>;
+    }>(`/api/platform/interactions/${encodeURIComponent(id)}`),
+  getQualityIssues: (query?: { companyId?: string; status?: string; category?: string }) =>
+    fetchJson<{
+      items: Array<{
+        id: string;
+        companyId: string | null;
+        companyName: string | null;
+        userEmail: string | null;
+        userName: string | null;
+        interactionId: string | null;
+        channel: string | null;
+        category: string;
+        severity: string;
+        confidence: number;
+        evidence: unknown[];
+        suggestedInvestigation: string | null;
+        occurrenceCount: number;
+        firstSeenAt: string;
+        lastSeenAt: string;
+        status: string;
+      }>;
+      statuses: string[];
+    }>(`/api/platform/quality-issues${toQuery(query)}`),
+  setQualityIssueStatus: (id: string, status: string) =>
+    fetchJson<{ ok: boolean }>(`/api/platform/quality-issues/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    }),
+  getQualityLoop: (query?: { run?: string }) =>
+    fetchJson<QualityLoopCentre>(
+      query?.run ? `/api/platform/quality-loop?run=${encodeURIComponent(query.run)}` : "/api/platform/quality-loop",
+    ),
+  resolveQualityLoopToken: (token: string) =>
+    fetchJson<{ runId: string; executesChanges: boolean }>(
+      `/api/platform/quality-loop/resolve-token?token=${encodeURIComponent(token)}`,
+    ),
+  previewQualityLoopProposal: (id: string) =>
+    fetchJson<{
+      ok: boolean;
+      proposal: QualityLoopProposal;
+      applyClass: string;
+      applyTier: string;
+      patches: Array<{ path: string; value: unknown }>;
+      before: unknown;
+      after: unknown;
+      validation: { ok: boolean; reason: string };
+      history: QualityLoopHistory[];
+      executesChanges: boolean;
+    }>(`/api/platform/quality-loop/proposals/${encodeURIComponent(id)}/preview`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  approveQualityLoopRecommended: (runId: string) =>
+    fetchJson<{ ok: boolean; results?: unknown[] }>(
+      `/api/platform/quality-loop/reviews/${encodeURIComponent(runId)}/approve-recommended`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+  applyQualityLoopLow: (runId: string) =>
+    fetchJson<{ ok: boolean; results: Array<{ id: string; title: string; status: string; reason: string }> }>(
+      `/api/platform/quality-loop/reviews/${encodeURIComponent(runId)}/apply-low`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+  bulkQualityLoopDecide: (runId: string, decision: "approve" | "reject" | "defer", proposalIds: string[]) =>
+    fetchJson<{ ok: boolean; results: Array<{ id: string; ok: boolean; status: string; reason: string }> }>(
+      `/api/platform/quality-loop/reviews/${encodeURIComponent(runId)}/bulk`,
+      { method: "POST", body: JSON.stringify({ decision, proposalIds }) },
+    ),
+  decideQualityLoopProposal: (id: string, decision: "approve" | "reject" | "defer", runId?: string) =>
+    fetchJson<{ ok: boolean; status: string }>(`/api/platform/quality-loop/proposals/${encodeURIComponent(id)}/decide`, {
+      method: "POST",
+      body: JSON.stringify({ decision, runId }),
+    }),
+  rollbackQualityLoopProposal: (id: string) =>
+    fetchJson<{ ok: boolean; status: string; reason: string }>(
+      `/api/platform/quality-loop/proposals/${encodeURIComponent(id)}/rollback`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
 };
+
+export type QualityLoopHistory = {
+  id: string;
+  proposalId?: string;
+  action: string;
+  actor: string | null;
+  createdAt: string;
+  runtimeVersion: number | null;
+};
+
+export type QualityLoopProposal = {
+  id: string;
+  runId?: string;
+  title: string;
+  summary: string;
+  kind?: string;
+  risk: string;
+  autoApplyable: boolean;
+  engineeringRequired: boolean;
+  status: string;
+  pretest: unknown;
+  evidence?: unknown;
+  patch?: unknown;
+  fingerprint?: string;
+  applyClass?: string;
+  applyTier?: string;
+  recurrence?: string;
+  customerProgressUnchanged?: boolean;
+};
+
+export type QualityLoopCentre = {
+  config: { activatedAt: string; phase: string; lastRunAt: string | null; baselineCompletedAt?: string | null };
+  cadence: string;
+  latestRun: {
+    id: string;
+    kind: string;
+    phase?: string;
+    periodFrom: string;
+    periodTo: string;
+    status?: string;
+    metrics: Record<string, number>;
+    createdAt?: string;
+  } | null;
+  runs?: Array<Record<string, unknown>>;
+  proposalCounts: Record<string, number>;
+  kpis: { conversationsAnalysed: number; qualityAverage: number; failedRate: number };
+  history: QualityLoopHistory[];
+  selectedRunId?: string | null;
+  latest: {
+    run: { id: string; kind: string; metrics: Record<string, number>; periodFrom: string; periodTo: string; createdAt?: string };
+    failedConversations: Array<{
+      id: string;
+      companyId: string;
+      interactionId: string | null;
+      conversationKey: string;
+      overallScore: number;
+      failed: boolean;
+      flags: Array<{ category?: string; evidence?: string; polarity?: string }> | unknown;
+      latencyBreakdown?: Array<{ stage: string; evidence: string }>;
+    }>;
+    patterns: Array<{
+      id: string;
+      companyId: string | null;
+      title: string;
+      rootCause: string | null;
+      occurrenceCount: number;
+      severity: string;
+    }>;
+    proposals: QualityLoopProposal[];
+    ackNoFinalAudit?: {
+      flaggedInRun: number;
+      currentOpenAcks: number;
+      terminalWatchdog: string;
+      classification: string;
+      note: string;
+    };
+  } | null;
+};
+
+async function streamPortalChat(
+  slug: string,
+  input: {
+    conversationId?: string | null;
+    text: string;
+    onStatus?: (status: { label: string; tool: string }) => void;
+  },
+): Promise<PortalChatTurnResult> {
+  const path = input.conversationId
+    ? `/api/companies/${slug}/chat/conversations/${encodeURIComponent(input.conversationId)}/messages/stream`
+    : `/api/companies/${slug}/chat/messages/stream`;
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: input.text, conversationId: input.conversationId }),
+  });
+  if (!response.ok || !response.body) {
+    return api.sendPortalChatMessage(slug, { conversationId: input.conversationId, text: input.text });
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: PortalChatTurnResult | null = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() ?? "";
+    for (const chunk of chunks) {
+      const event = chunk.match(/^event: (\w+)/m)?.[1];
+      const dataLine = chunk.match(/^data: (.+)$/m)?.[1];
+      if (!event || !dataLine) continue;
+      const data = JSON.parse(dataLine) as Record<string, unknown>;
+      if (event === "status") input.onStatus?.(data as { label: string; tool: string });
+      if (event === "done") result = data as unknown as PortalChatTurnResult;
+      if (event === "error") throw new ApiError(String(data.error ?? "Chat failed"), Number(data.status ?? 500));
+    }
+  }
+  if (!result) {
+    return api.sendPortalChatMessage(slug, { conversationId: input.conversationId, text: input.text });
+  }
+  return result;
+}
+
+function toQuery(query?: Record<string, string | undefined>) {
+  if (!query) return "";
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value) params.set(key, value);
+  }
+  const text = params.toString();
+  return text ? `?${text}` : "";
+}
 

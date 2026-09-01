@@ -1,0 +1,79 @@
+#!/usr/bin/env node
+/**
+ * Office-staff only. Does not elevate William.
+ * Proves ChatGPT Xero questions deny before knowledge search.
+ */
+import { createHash, randomBytes } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const API = "https://api.infrastack.app";
+const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
+const MEMBERSHIP_ID = "membership_78495c59-cff6-4db5-9986-a351ebe154f1";
+const USER_ID = "user_b0db1fc5-692c-436d-99e6-392966b20df8";
+const REPORT_PATH = "/tmp/william-xero-routing-denial.json";
+
+function d1(command) {
+  const out = execFileSync(
+    "npx",
+    ["wrangler", "d1", "execute", "infra-control-plane", "--remote", "--json", "--command", command],
+    { cwd: apiDir, encoding: "utf8" },
+  );
+  const parsed = JSON.parse(out);
+  return parsed[0]?.results ?? [];
+}
+
+function membershipRole() {
+  const rows = d1(
+    `SELECT role, status FROM company_memberships WHERE id = '${MEMBERSHIP_ID}' AND user_id = '${USER_ID}';`,
+  );
+  return rows[0] ?? null;
+}
+
+function mintAcceptanceToken() {
+  const token = `william_xero_${randomBytes(24).toString("hex")}`;
+  const hash = createHash("sha256").update(token).digest("hex");
+  d1(
+    `CREATE TABLE IF NOT EXISTS cmd13_acceptance_tokens (token_hash TEXT PRIMARY KEY, expires_at TEXT NOT NULL); INSERT OR REPLACE INTO cmd13_acceptance_tokens (token_hash, expires_at) VALUES ('${hash}', datetime('now', '+2 hours'));`,
+  );
+  return token;
+}
+
+const recorded = membershipRole();
+if (!recorded || recorded.role !== "office_staff") {
+  console.error(JSON.stringify({ error: "Refusing: live role is not office_staff", recorded }, null, 2));
+  process.exit(1);
+}
+
+const token = mintAcceptanceToken();
+const res = await fetch(`${API}/api/internal/william-chatgpt-acceptance?phase=xero-denial`, {
+  method: "POST",
+  headers: {
+    "X-CMD13-Acceptance-Token": token,
+    "Content-Type": "application/json",
+  },
+});
+const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+const report = {
+  httpStatus: res.status,
+  liveRole: recorded,
+  body,
+  finalMembership: membershipRole(),
+};
+writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      reportPath: REPORT_PATH,
+      httpStatus: res.status,
+      liveRole: recorded.role,
+      proof: body.proof ?? null,
+      searchMessage: body.search?.message ?? body.error ?? null,
+    },
+    null,
+    2,
+  ),
+);
+process.exit(res.status === 200 && body.proof?.permissionDenied && body.proof?.noKnowledgeCharge ? 0 : 1);

@@ -5,11 +5,11 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Env } from "../env";
+import { infraPublicApiBase } from "./public-urls";
 import { newId, nowIso } from "../db/mappers";
 import { acquireMicrosoftAppToken, resolveMicrosoftTenantId } from "./microsoft-auth";
 import {
-  createGraphSubscription,
-  deleteGraphSubscription,
+  createReplacingGraphSubscription,
   renewGraphSubscription,
   type MicrosoftGraphConfig,
 } from "./microsoft-graph";
@@ -32,11 +32,44 @@ export type GraphNotificationPayload = {
 };
 
 export function microsoftGraphNotificationUrl(env: Env): string {
-  const base = (env.INFRA_PUBLIC_API_URL ?? "https://infra-api.daniel-dwyer123.workers.dev").replace(
-    /\/$/,
-    "",
-  );
-  return `${base}${MICROSOFT_GRAPH_WEBHOOK_PATH}`;
+  return `${infraPublicApiBase(env)}${MICROSOFT_GRAPH_WEBHOOK_PATH}`;
+}
+
+function normalizeGraphNotificationUrl(url: string | null | undefined): string {
+  return (url ?? "").trim().replace(/\/$/, "").toLowerCase();
+}
+
+/**
+ * Graph PATCH renewals cannot change notificationUrl. Recreate at renew time
+ * when the stored URL is not the current canonical webhook.
+ * Healthy long-lived subscriptions are left alone until that renew window.
+ */
+export function graphSubscriptionNeedsNotificationUrlCutover(
+  storedUrl: string | null | undefined,
+  currentUrl: string,
+): boolean {
+  const stored = normalizeGraphNotificationUrl(storedUrl);
+  const current = normalizeGraphNotificationUrl(currentUrl);
+  if (!stored || !current) return stored !== current;
+  return stored !== current;
+}
+
+export function shouldReuseActiveGraphSubscription(input: {
+  status?: string | null;
+  graphSubscriptionId?: string | null;
+  expiresAt?: string | null;
+  force?: boolean;
+  nowMs?: number;
+}): { reuse: boolean; reason?: string } {
+  if (input.force) return { reuse: false, reason: "force" };
+  if (!input.graphSubscriptionId || input.status !== "active") {
+    return { reuse: false, reason: "inactive" };
+  }
+  const expiresAtMs = input.expiresAt ? Date.parse(input.expiresAt) : 0;
+  if (!(expiresAtMs > (input.nowMs ?? Date.now()) + 12 * 60 * 60 * 1000)) {
+    return { reuse: false, reason: "expiring" };
+  }
+  return { reuse: true, reason: "already_active" };
 }
 
 export function buildMicrosoftSubscriptionClientState(
@@ -76,6 +109,7 @@ export async function ensureMicrosoftGraphSubscription(
     sourceId: string;
     driveId: string;
     actor?: string;
+    force?: boolean;
   },
 ): Promise<{ ok: boolean; subscriptionId?: string; error?: string; skipped?: string }> {
   const existing = await env.DB.prepare(
@@ -90,12 +124,13 @@ export async function ensureMicrosoftGraphSubscription(
       status: string;
     }>();
 
-  const expiresAtMs = existing?.expires_at ? Date.parse(existing.expires_at) : 0;
-  if (
-    existing?.graph_subscription_id &&
-    existing.status === "active" &&
-    expiresAtMs > Date.now() + 12 * 60 * 60 * 1000
-  ) {
+  const reuse = shouldReuseActiveGraphSubscription({
+    status: existing?.status,
+    graphSubscriptionId: existing?.graph_subscription_id,
+    expiresAt: existing?.expires_at,
+    force: input.force,
+  });
+  if (reuse.reuse && existing?.graph_subscription_id) {
     return { ok: true, subscriptionId: existing.graph_subscription_id, skipped: "already_active" };
   }
 
@@ -119,21 +154,17 @@ export async function ensureMicrosoftGraphSubscription(
   const expirationDateTime = subscriptionExpirationIso();
 
   try {
-    if (existing?.graph_subscription_id) {
-      try {
-        await deleteGraphSubscription(config, existing.graph_subscription_id);
-      } catch {
-        // Stale subscription — Graph may have already expired it.
-      }
-    }
-
-    const created = await createGraphSubscription(config, {
-      resource: resourcePath,
-      changeType: "updated",
-      notificationUrl,
-      expirationDateTime,
-      clientState,
-    });
+    const created = await createReplacingGraphSubscription(
+      config,
+      {
+        resource: resourcePath,
+        changeType: "updated",
+        notificationUrl,
+        expirationDateTime,
+        clientState,
+      },
+      existing?.graph_subscription_id,
+    );
 
     const rowId = existing?.id ?? newId("mgs");
     const now = nowIso();
@@ -231,17 +262,23 @@ export async function ensureMicrosoftGraphSubscription(
 
 export async function renewExpiringMicrosoftGraphSubscriptions(env: Env): Promise<{
   renewed: number;
+  cutover: number;
   failed: number;
   errors: string[];
 }> {
+  const currentNotificationUrl = microsoftGraphNotificationUrl(env);
+  // datetime() is required: stored expires_at is ISO-8601 (`2026-08-31T00:00:45Z`).
+  // Lexicographic compare against SQLite datetime('now') (`2026-08-31 00:00:00`)
+  // never matches on the same calendar day because `T` > space.
   const rows = await env.DB.prepare(
     `SELECT s.id, s.company_id, s.connector_instance_id, s.source_id, s.graph_subscription_id,
-            src.external_id AS drive_id
+            s.notification_url, s.resource_kind, src.external_id AS drive_id,
+            src.source_type, src.mailbox_address
      FROM microsoft_graph_subscriptions s
      JOIN microsoft_connector_sources src ON src.id = s.source_id
      WHERE s.status = 'active'
        AND s.graph_subscription_id IS NOT NULL
-       AND s.expires_at <= datetime('now', '+24 hours')
+       AND datetime(s.expires_at) <= datetime('now', '+24 hours')
        AND src.inclusion_status = 'included'`,
   ).all<{
     id: string;
@@ -249,14 +286,47 @@ export async function renewExpiringMicrosoftGraphSubscriptions(env: Env): Promis
     connector_instance_id: string;
     source_id: string;
     graph_subscription_id: string;
+    notification_url: string | null;
+    resource_kind: string | null;
     drive_id: string;
+    source_type: string;
+    mailbox_address: string | null;
   }>();
 
   let renewed = 0;
+  let cutover = 0;
   let failed = 0;
   const errors: string[] = [];
 
   for (const row of rows.results ?? []) {
+    const isMailbox = row.resource_kind === "mailbox" || row.source_type === "outlook_shared";
+    const needsCutover = graphSubscriptionNeedsNotificationUrlCutover(
+      row.notification_url,
+      currentNotificationUrl,
+    );
+
+    if (needsCutover) {
+      const migrated = isMailbox
+        ? await migrateMailboxGraphSubscription(env, row)
+        : await ensureMicrosoftGraphSubscription(env, {
+            companyId: row.company_id,
+            connectorInstanceId: row.connector_instance_id,
+            sourceId: row.source_id,
+            driveId: row.drive_id,
+            actor: "system:microsoft-graph-url-cutover",
+            force: true,
+          });
+      if (migrated.ok && !migrated.skipped) {
+        cutover++;
+      } else if (migrated.ok) {
+        renewed++;
+      } else {
+        failed++;
+        if (migrated.error) errors.push(`${row.source_id}: ${migrated.error}`);
+      }
+      continue;
+    }
+
     const token = await acquireMicrosoftAppToken(env, {
       companyId: row.company_id,
       connectorInstanceId: row.connector_instance_id,
@@ -294,17 +364,44 @@ export async function renewExpiringMicrosoftGraphSubscriptions(env: Env): Promis
       )
         .bind(message, nowIso(), row.id)
         .run();
-      await ensureMicrosoftGraphSubscription(env, {
-        companyId: row.company_id,
-        connectorInstanceId: row.connector_instance_id,
-        sourceId: row.source_id,
-        driveId: row.drive_id,
-        actor: "system:microsoft-graph-renewal",
-      });
+      if (isMailbox) {
+        await migrateMailboxGraphSubscription(env, row);
+      } else {
+        await ensureMicrosoftGraphSubscription(env, {
+          companyId: row.company_id,
+          connectorInstanceId: row.connector_instance_id,
+          sourceId: row.source_id,
+          driveId: row.drive_id,
+          actor: "system:microsoft-graph-renewal",
+        });
+      }
     }
   }
 
-  return { renewed, failed, errors };
+  return { renewed, cutover, failed, errors };
+}
+
+async function migrateMailboxGraphSubscription(
+  env: Env,
+  row: {
+    company_id: string;
+    connector_instance_id: string;
+    source_id: string;
+    mailbox_address: string | null;
+  },
+): Promise<{ ok: boolean; subscriptionId?: string; error?: string; skipped?: string }> {
+  if (!row.mailbox_address) {
+    return { ok: false, error: "Mailbox subscription is missing mailbox_address" };
+  }
+  const { ensureOutlookMailboxGraphSubscription } = await import("./microsoft-outlook-notifications");
+  return ensureOutlookMailboxGraphSubscription(env, {
+    companyId: row.company_id,
+    connectorInstanceId: row.connector_instance_id,
+    sourceId: row.source_id,
+    mailboxAddress: row.mailbox_address,
+    actor: "system:microsoft-graph-url-cutover",
+    force: true,
+  });
 }
 
 export async function provisionMicrosoftGraphSubscriptionsForIncludedSources(env: Env): Promise<{

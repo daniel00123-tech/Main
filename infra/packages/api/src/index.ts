@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { ToolAction, CompanyRole } from "@infra/shared";
-import { CONNECTOR_CATALOGUE } from "@infra/shared";
+import { CONNECTOR_CATALOGUE, LEGACY_PORTAL_BASE_DOMAIN } from "@infra/shared";
 import {
   clearSessionCookie,
   requireAuth,
@@ -46,6 +46,7 @@ import {
   maskEmail,
   validateNewPassword,
 } from "./auth/password-setup";
+import { acceptPendingInvitationsAfterOnboarding } from "./services/invitations";
 import { createCorsMiddleware } from "./cors";
 import type { Env } from "./env";
 import {
@@ -86,6 +87,13 @@ import internalMcpRoutes from "./routes/internal-mcp";
 import actionPlanRoutes from "./routes/action-plans";
 import automationRoutes from "./routes/automations";
 import oauthRoutes from "./routes/oauth";
+import commercialVisibilityRoutes from "./routes/commercial-visibility";
+import emailLiveTestRoutes from "./routes/email-live-test";
+import whatsappRoutes from "./routes/whatsapp";
+import whatsappUxUatRoutes from "./routes/whatsapp-ux-uat";
+import intelligenceEvalRoutes from "./routes/intelligence-eval";
+import qualityLoopRoutes from "./routes/quality-loop";
+import portalChatRoutes from "./routes/portal-chat";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -97,6 +105,13 @@ app.route("/", connectorRoutes);
 app.route("/", internalMcpRoutes);
 app.route("/", actionPlanRoutes);
 app.route("/", automationRoutes);
+app.route("/", commercialVisibilityRoutes);
+app.route("/", emailLiveTestRoutes);
+app.route("/", whatsappRoutes);
+app.route("/", whatsappUxUatRoutes);
+app.route("/", intelligenceEvalRoutes);
+app.route("/", qualityLoopRoutes);
+app.route("/", portalChatRoutes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(
@@ -222,6 +237,10 @@ app.post("/api/auth/password-setup", async (c) => {
 
   await updateUserPassword(c.env.DB, user.id, body.password);
   await consumeSetupToken(c.env.DB, record.id);
+  const acceptedInvites = await acceptPendingInvitationsAfterOnboarding(c.env.DB, user.id, {
+    actor: user.email,
+    reason: "password_setup_completed",
+  });
 
   await recordAuditEvent(c.env.DB, {
     eventType: "auth.password_setup_completed",
@@ -231,6 +250,7 @@ app.post("/api/auth/password-setup", async (c) => {
     detail: {
       purpose: record.purpose,
       tokenId: record.id,
+      acceptedInvitationIds: acceptedInvites,
     },
   });
 
@@ -278,7 +298,7 @@ app.post("/api/auth/password-reset/request", async (c) => {
       actor: user.email,
       resourceType: "user",
       resourceId: user.id,
-      detail: { outcome: "no_email_config" },
+      detail: { outcome: "no_company_membership" },
     });
     return c.json({ ok: true, message: genericMessage });
   }
@@ -418,6 +438,11 @@ app.get("/api/platform/attention", requireAuth, async (c) => {
 app.get("/api/platform/operations/health", requireAuth, requirePlatformAdmin, async (c) => {
   const { getPlatformOperationalHealth } = await import("./services/platform-operations");
   return c.json(await getPlatformOperationalHealth(c.env));
+});
+
+app.get("/api/platform/operations/usage", requireAuth, requirePlatformAdmin, async (c) => {
+  const { getCachedPlatformInfrastructureUsage } = await import("./services/platform-operations");
+  return c.json(await getCachedPlatformInfrastructureUsage(c.env));
 });
 
 app.post("/api/platform/operations/billing-reconciliation", requireAuth, requirePlatformAdmin, async (c) => {
@@ -582,7 +607,7 @@ app.post("/api/companies", requireAuth, requirePlatformAdmin, async (c) => {
       portalBaseDomain:
         typeof c.env.PORTAL_BASE_DOMAIN === "string"
           ? c.env.PORTAL_BASE_DOMAIN
-          : "infra-web.pages.dev",
+          : LEGACY_PORTAL_BASE_DOMAIN,
     });
     return c.json(
       {
@@ -1184,60 +1209,120 @@ app.post("/api/permissions/check", requireAuth, async (c) => {
 
 const worker = {
   fetch: app.fetch.bind(app),
-  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
-    const { runMicrosoftScheduledSync } = await import("./services/microsoft-scheduler");
+  async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
     const { recordPlatformHeartbeat } = await import("./services/platform-ops-heartbeats");
+    const { logInfraEvent } = await import("./services/observability/structured-log");
+    const cron = event.cron;
+    const runWhatsAppMinute = cron === "* * * * *";
+    const runAutomation = cron === "*/15 * * * *";
+    const runMicrosoft = cron === "0 */6 * * *";
+    const started = Date.now();
 
-    let msResult;
+    if (runMicrosoft) {
+      const { runMicrosoftScheduledSync } = await import("./services/microsoft-scheduler");
+      try {
+        const msResult = await runMicrosoftScheduledSync(env);
+        await recordPlatformHeartbeat(env.DB, {
+          key: "microsoft_scheduler",
+          label: "Microsoft scheduler",
+          success: msResult.errors.length === 0,
+          error: msResult.errors[0] ?? null,
+          detail: {
+            sourcesSynced: msResult.sourcesSynced,
+            graphRenewals: msResult.graphRenewals,
+          },
+        });
+      } catch (err) {
+        await recordPlatformHeartbeat(env.DB, {
+          key: "microsoft_scheduler",
+          label: "Microsoft scheduler",
+          success: false,
+          error: err instanceof Error ? err.message : "Scheduler failed",
+        });
+      }
+    }
+
     try {
-      msResult = await runMicrosoftScheduledSync(env);
+      const { sweepStuckWhatsAppTurns } = await import("./services/whatsapp-reaper");
+      const swept = await sweepStuckWhatsAppTurns(env);
+      let subscription: Record<string, unknown> | null = null;
+      if (runWhatsAppMinute || runMicrosoft) {
+        const { ensureWhatsAppCloudWebhookSubscription } = await import("./services/whatsapp-subscription");
+        subscription = await ensureWhatsAppCloudWebhookSubscription(env, { applyOverride: true });
+      }
       await recordPlatformHeartbeat(env.DB, {
-        key: "microsoft_scheduler",
-        label: "Microsoft scheduler",
-        success: msResult.errors.length === 0,
-        error: msResult.errors[0] ?? null,
-        detail: {
-          sourcesSynced: msResult.sourcesSynced,
-          graphRenewals: msResult.graphRenewals,
-        },
+        key: "whatsapp_stuck_reaper",
+        label: "WhatsApp stuck-turn reaper",
+        success: true,
+        error: null,
+        detail: { ...swept, subscription },
       });
     } catch (err) {
       await recordPlatformHeartbeat(env.DB, {
-        key: "microsoft_scheduler",
-        label: "Microsoft scheduler",
+        key: "whatsapp_stuck_reaper",
+        label: "WhatsApp stuck-turn reaper",
         success: false,
-        error: err instanceof Error ? err.message : "Scheduler failed",
+        error: err instanceof Error ? err.message : "Reaper failed",
       });
     }
 
-    const { runAutomationScheduler } = await import("./services/automation-engine/scheduler");
-    try {
-      const autoResult = await runAutomationScheduler(env);
-      await recordPlatformHeartbeat(env.DB, {
-        key: "automation_scheduler",
-        label: "Automation scheduler",
-        success: autoResult.errors.length === 0,
-        error: autoResult.errors[0] ?? null,
-        detail: {
-          scanned: autoResult.scanned,
-          enqueued: autoResult.enqueued,
-        },
-      });
-    } catch (err) {
-      await recordPlatformHeartbeat(env.DB, {
-        key: "automation_scheduler",
-        label: "Automation scheduler",
-        success: false,
-        error: err instanceof Error ? err.message : "Scheduler failed",
-      });
+    if (runAutomation) {
+      try {
+        const { maybeRunQualityLoop } = await import("./services/quality-loop");
+        const quality = await maybeRunQualityLoop(env);
+        await recordPlatformHeartbeat(env.DB, {
+          key: "quality_loop",
+          label: "Quality loop",
+          success: !quality.reason || quality.reason === "completed" || quality.reason.startsWith("Cadence"),
+          error: quality.ran && quality.reason !== "completed" ? quality.reason : null,
+          detail: { ran: quality.ran, runId: quality.runId ?? null, kind: quality.kind ?? null, reason: quality.reason },
+        });
+      } catch (err) {
+        await recordPlatformHeartbeat(env.DB, {
+          key: "quality_loop",
+          label: "Quality loop",
+          success: false,
+          error: err instanceof Error ? err.message : "Quality loop failed",
+        });
+      }
+
+      const { runAutomationScheduler } = await import("./services/automation-engine/scheduler");
+      try {
+        const autoResult = await runAutomationScheduler(env);
+        await recordPlatformHeartbeat(env.DB, {
+          key: "automation_scheduler",
+          label: "Automation scheduler",
+          success: autoResult.errors.length === 0,
+          error: autoResult.errors[0] ?? null,
+          detail: {
+            scanned: autoResult.scanned,
+            enqueued: autoResult.enqueued,
+          },
+        });
+      } catch (err) {
+        await recordPlatformHeartbeat(env.DB, {
+          key: "automation_scheduler",
+          label: "Automation scheduler",
+          success: false,
+          error: err instanceof Error ? err.message : "Scheduler failed",
+        });
+      }
     }
+
+    logInfraEvent({
+      event: "scheduler.tick",
+      status: cron || "unknown",
+      durationMs: Date.now() - started,
+    });
   },
   async queue(
     batch: MessageBatch<
       | import("./services/microsoft-queue").MicrosoftFileJobMessage
       | import("./services/automation-engine/queue").AutomationRunMessage
+      | import("./services/whatsapp-webhook").WhatsAppInboundMessage
     >,
     env: Env,
+    ctx: ExecutionContext,
   ) {
     const {
       processMicrosoftFileJob,
@@ -1248,13 +1333,53 @@ const worker = {
       AUTOMATION_RUN_DLQ,
       AUTOMATION_RUN_QUEUE,
     } = await import("./services/automation-engine/queue");
+    const {
+      processWhatsAppInboundJob,
+      WHATSAPP_INBOUND_DLQ,
+      WHATSAPP_INBOUND_QUEUE,
+      WHATSAPP_WATCHDOG_QUEUE,
+      WHATSAPP_WATCHDOG_DLQ,
+    } = await import("./services/whatsapp-webhook");
+
+    if (
+      batch.queue === WHATSAPP_INBOUND_QUEUE ||
+      batch.queue === WHATSAPP_INBOUND_DLQ ||
+      batch.queue === WHATSAPP_WATCHDOG_QUEUE ||
+      batch.queue === WHATSAPP_WATCHDOG_DLQ
+    ) {
+      const isDeadLetter = batch.queue === WHATSAPP_INBOUND_DLQ || batch.queue === WHATSAPP_WATCHDOG_DLQ;
+      for (const message of batch.messages) {
+        try {
+          await processWhatsAppInboundJob(
+            env,
+            message.body as import("./services/whatsapp-webhook").WhatsAppInboundMessage,
+            { deadLetter: isDeadLetter, waitUntil: (promise) => ctx.waitUntil(promise) },
+          );
+          message.ack();
+        } catch {
+          message.retry();
+        }
+      }
+      return;
+    }
 
     if (batch.queue === AUTOMATION_RUN_QUEUE || batch.queue === AUTOMATION_RUN_DLQ) {
       const isDeadLetter = batch.queue === AUTOMATION_RUN_DLQ;
       for (const message of batch.messages) {
         try {
-          await processAutomationRunJob(env, message.body as import("./services/automation-engine/queue").AutomationRunMessage, {
+          const started = Date.now();
+          const body = message.body as import("./services/automation-engine/queue").AutomationRunMessage;
+          await processAutomationRunJob(env, body, {
             deadLetter: isDeadLetter,
+          });
+          const { logInfraEvent } = await import("./services/observability/structured-log");
+          logInfraEvent({
+            event: "automation.queue_consumed",
+            companyId: body.companyId,
+            automationId: body.automationId,
+            runId: body.runId,
+            durationMs: Date.now() - started,
+            status: isDeadLetter ? "dead_letter" : "processed",
           });
           message.ack();
         } catch {

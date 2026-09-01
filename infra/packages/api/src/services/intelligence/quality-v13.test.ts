@@ -1,0 +1,389 @@
+import { describe, expect, it } from "vitest";
+import { classifyScope, detectNamedDocumentSwitch } from "./scope.js";
+import { matchFastPath } from "./fast-path.js";
+import { buildConversationState } from "./state.js";
+import { runIntelligenceTurn } from "./orchestrator.js";
+import { resolveBusinessPeriod, withResolvedBusinessDates } from "./periods.js";
+import { enrichDocumentQuery } from "./query-enrichment.js";
+import { verbaliseSystemMeta } from "./system-meta.js";
+import { queryTerms, scoreGlobalSearchHit, searchDocument, type DocumentChunk } from "../whatsapp-grounded-qa.js";
+import { evaluationCases } from "./eval/cases.js";
+import type { IntelligenceRuntime, IntelligenceToolResult } from "./types.js";
+
+const CV = { id: "doc_profile_2015", title: "Staff profile", url: "https://docs.example.test/profile" };
+const VAN = { id: "doc_vehicle_policy", title: "Vehicle use policy", url: "https://docs.example.test/vehicle" };
+const SITE = { id: "doc_site_survey", title: "Site survey report", url: "https://files.example.test/survey.pdf" };
+
+function recordingRuntime(handler?: (name: string, args: Record<string, unknown>) => unknown): {
+  runtime: IntelligenceRuntime;
+  calls: Array<{ name: string; arguments: Record<string, unknown> }>;
+} {
+  const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+  return {
+    calls,
+    runtime: {
+      async executeTool(call): Promise<IntelligenceToolResult> {
+        calls.push({ name: call.name, arguments: call.arguments });
+        const data = handler?.(call.name, call.arguments) ?? { ok: true };
+        return { name: call.name, ok: true, latencyMs: 2, data };
+      },
+    },
+  };
+}
+
+describe("document switch while another file is open", () => {
+  it("routes a named different title to company knowledge instead of the current file", () => {
+    const state = buildConversationState({
+      userText: "Open the vehicle handbook",
+      currentDocument: CV,
+      lastAnswerTopic: "document",
+      currentScope: "CURRENT_DOCUMENT",
+    });
+    const decision = classifyScope("Open the vehicle handbook", state);
+    expect(decision.scope).toBe("COMPANY_KNOWLEDGE");
+    expect(decision.tool).toBe("search_company_knowledge");
+    expect(decision.clearCurrentDocument).toBe(true);
+  });
+
+  it("keeps pronoun follow-ups on the current document", () => {
+    const state = buildConversationState({
+      userText: "What about him?",
+      currentDocument: CV,
+      lastAnswerTopic: "document",
+      currentScope: "CURRENT_DOCUMENT",
+    });
+    expect(classifyScope("What about him?", state).scope).toBe("CURRENT_DOCUMENT");
+    expect(classifyScope("When was that?", state).scope).toBe("CURRENT_DOCUMENT");
+  });
+
+  it("restores a remembered title only when two title tokens hit", () => {
+    const state = buildConversationState({
+      userText: "Switch to the site survey report",
+      currentDocument: CV,
+      recentDocuments: [SITE],
+      entities: [CV, VAN, SITE],
+    });
+    const named = detectNamedDocumentSwitch("Switch to the site survey report", state);
+    expect(named?.target).toBe("recent");
+    expect(named?.matchedDocument?.id).toBe(SITE.id);
+    expect(detectNamedDocumentSwitch("Open the vehicle handbook", state)?.target).toBe("company");
+  });
+
+  it("does not treat open-the-source as a document switch", () => {
+    const state = buildConversationState({
+      userText: "Open the source",
+      currentDocument: CV,
+      lastAnswerTopic: "document",
+    });
+    expect(detectNamedDocumentSwitch("Open the source", state)).toBeNull();
+    expect(classifyScope("Open the source", state).scope).toBe("CURRENT_DOCUMENT");
+  });
+
+  it("treats a short named find as company search even without a current file", () => {
+    const bare = buildConversationState({ userText: "Find North Yard" });
+    const decision = classifyScope("Find North Yard", bare);
+    expect(decision.scope).toBe("COMPANY_KNOWLEDGE");
+    expect(decision.tool).toBe("search_company_knowledge");
+    expect(decision.clarify).toBe(false);
+    expect(classifyScope("Find the document", bare).scope).toBe("AMBIGUOUS");
+  });
+
+  it("searches a short named title instead of letting the model ask what it means", async () => {
+    const { runtime, calls } = recordingRuntime((name) => {
+      if (name === "search_company_knowledge") {
+        return {
+          results: [{ id: "doc_ny", title: "North Yard induction pack", url: "https://files.example.test/ny" }],
+        };
+      }
+    });
+    const result = await runIntelligenceTurn({
+      text: "Find North Yard",
+      state: buildConversationState({ userText: "Find North Yard" }),
+      runtime,
+      completer: async () => ({
+        text: JSON.stringify({ action: "clarify", text: "What do you mean by North Yard?" }),
+        usage: {
+          provider: "workers-ai",
+          model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+          latencyMs: 4,
+          promptTokens: 8,
+          completionTokens: 8,
+          estimatedCostUsd: 0,
+        },
+      }),
+    });
+    expect(calls[0]?.name).toBe("search_company_knowledge");
+    expect(String(calls[0]?.arguments.query ?? "")).toMatch(/Find North Yard/i);
+    expect(result.kind).toBe("answer");
+    expect(result.text).toMatch(/North Yard induction pack/i);
+    expect(result.text).not.toMatch(/What do you mean/i);
+  });
+});
+
+describe("Xero natural periods", () => {
+  it("maps this month to Europe/London month-to-date, never empty dates", () => {
+    const now = new Date("2026-08-30T12:00:00.000Z");
+    const period = resolveBusinessPeriod("What were sales this month?", now);
+    expect(period.fromDate).toBe("2026-08-01");
+    expect(period.toDate).toBe("2026-08-30");
+    expect(period.fromDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(period.toDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("resolves this month on 1 September 2026 and last-month year/month boundaries", () => {
+    const firstSep = new Date("2026-09-01T12:00:00.000Z");
+    expect(resolveBusinessPeriod("sales this month", firstSep)).toMatchObject({
+      fromDate: "2026-09-01",
+      toDate: "2026-09-01",
+    });
+    expect(resolveBusinessPeriod("sales last month", firstSep)).toMatchObject({
+      fromDate: "2026-08-01",
+      toDate: "2026-08-31",
+    });
+    expect(resolveBusinessPeriod("sales last month", new Date("2026-01-02T12:00:00.000Z"))).toMatchObject({
+      fromDate: "2025-12-01",
+      toDate: "2025-12-31",
+    });
+    expect(resolveBusinessPeriod("tell me the invoice numbers invoiced today 01/09/2026", firstSep)).toMatchObject({
+      fromDate: "2026-09-01",
+      toDate: "2026-09-01",
+    });
+    expect(resolveBusinessPeriod("invoices on 2026-09-01", firstSep)).toMatchObject({
+      fromDate: "2026-09-01",
+      toDate: "2026-09-01",
+    });
+    expect(withResolvedBusinessDates("xero_sales_summary", { period: "this_month" }, "", firstSep)).toMatchObject({
+      fromDate: "2026-09-01",
+      toDate: "2026-09-01",
+    });
+    expect(withResolvedBusinessDates("xero_top_customers", {}, "top customers this month", firstSep).fromDate).toBe(
+      "2026-09-01",
+    );
+  });
+
+  it("handles week, quarter, year, yesterday, and past-N-day bounds", () => {
+    const now = new Date("2026-08-30T12:00:00.000Z");
+    expect(resolveBusinessPeriod("sales yesterday", now)).toMatchObject({ fromDate: "2026-08-29", toDate: "2026-08-29" });
+    expect(resolveBusinessPeriod("sales last month", now)).toMatchObject({ fromDate: "2026-07-01", toDate: "2026-07-31" });
+    expect(resolveBusinessPeriod("sales this quarter", now)).toMatchObject({ fromDate: "2026-07-01", toDate: "2026-08-30" });
+    expect(resolveBusinessPeriod("sales last quarter", now)).toMatchObject({ fromDate: "2026-04-01", toDate: "2026-06-30" });
+    expect(resolveBusinessPeriod("sales this year", now)).toMatchObject({ fromDate: "2026-01-01", toDate: "2026-08-30" });
+    expect(resolveBusinessPeriod("past 7 days sales", now)).toMatchObject({ fromDate: "2026-08-24", toDate: "2026-08-30" });
+    expect(resolveBusinessPeriod("past 30 days revenue", now)).toMatchObject({ fromDate: "2026-08-01", toDate: "2026-08-30" });
+    const week = resolveBusinessPeriod("sales this week", now);
+    expect(week.fromDate).toBe("2026-08-24");
+    expect(week.toDate).toBe("2026-08-30");
+    expect(resolveBusinessPeriod("15 August 2026", now)).toMatchObject({
+      fromDate: "2026-08-15",
+      toDate: "2026-08-15",
+    });
+    expect(resolveBusinessPeriod("from 2026-08-01 to 2026-08-15", now)).toMatchObject({
+      fromDate: "2026-08-01",
+      toDate: "2026-08-15",
+    });
+  });
+
+  it("marks sales-summary comparisons as unsupported and P&L as supported", () => {
+    const now = new Date("2026-08-30T12:00:00.000Z");
+    const period = resolveBusinessPeriod("Compare this month with last month", now);
+    expect(period.comparisonRequested).toBe(true);
+    expect(period.comparison).toMatchObject({ fromDate: "2026-07-01", toDate: "2026-07-31" });
+    const sales = withResolvedBusinessDates("xero_sales_summary", {}, "Compare this month with last month", now);
+    expect(sales.comparisonSupported).toBe(false);
+    expect(sales.fromDate).toBe("2026-08-01");
+    const pnl = withResolvedBusinessDates("xero_profit_and_loss", {}, "Compare this month with last month", now);
+    expect(pnl.comparisonSupported).toBe(true);
+    expect(pnl.periods).toBe(2);
+    expect(pnl.timeframe).toBe("MONTH");
+  });
+
+  it("passes real dates on the intelligence Xero path", async () => {
+    const { runtime, calls } = recordingRuntime();
+    await runIntelligenceTurn({
+      text: "What were sales this month?",
+      state: buildConversationState({ userText: "What were sales this month?", connectors: ["conn_xero"] }),
+      runtime,
+    });
+    expect(calls[0]?.name).toBe("xero_sales_summary");
+    expect(String(calls[0]?.arguments.fromDate ?? "")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(String(calls[0]?.arguments.toDate ?? "")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(calls[0]?.arguments.fromDate).not.toBe("");
+    expect(calls[0]?.arguments.toDate).not.toBe("");
+  });
+
+  it("keeps a period follow-up on Xero after a finance turn", async () => {
+    const state = buildConversationState({
+      userText: "What about last month?",
+      lastAnswerTopic: "finance",
+      currentScope: "BUSINESS_SYSTEM",
+      currentBusinessSystem: "xero",
+      lastSuccessfulTool: "xero_sales_summary",
+      connectors: ["conn_xero"],
+    });
+    expect(classifyScope("What about last month?", state)).toMatchObject({
+      scope: "BUSINESS_SYSTEM",
+      tool: "xero_sales_summary",
+    });
+    const { runtime, calls } = recordingRuntime();
+    await runIntelligenceTurn({ text: "What about last month?", state, runtime });
+    expect(calls[0]?.name).toBe("xero_sales_summary");
+    expect(calls[0]?.arguments.fromDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(calls[0]?.arguments.toDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe("Drive count honesty", () => {
+  it("does not say Drive is missing when it is connected without a reliable count", () => {
+    const text = verbaliseSystemMeta(
+      "get_document_index_stats",
+      {
+        totalIndexed: 9,
+        bySource: [{ source: "SharePoint", count: 9 }],
+        byType: [],
+        lastSyncAt: null,
+        driveConnected: true,
+        driveCountReliable: false,
+        connectedSystems: ["Google Drive files", "SharePoint"],
+      },
+      "How many files are indexed?",
+    );
+    expect(text).toMatch(/9/);
+    expect(text).toMatch(/Google Drive is connected/i);
+    expect(text).not.toMatch(/Drive is missing|not connected|don't have Drive/i);
+    expect(text).toMatch(/won't guess a combined total|don't have a reliable Drive/i);
+  });
+
+  it("never invents a combined total when only Microsoft counts are real", () => {
+    const text = verbaliseSystemMeta(
+      "get_document_index_stats",
+      {
+        totalIndexed: 9,
+        bySource: [{ source: "SharePoint", count: 9 }],
+        driveConnected: true,
+        connectedSystems: ["Google Drive files"],
+      },
+      "How many Drive files are there?",
+    );
+    expect(text).not.toMatch(/\b1[0-9]\b/);
+    expect(text).toMatch(/reliable Drive file count/i);
+  });
+});
+
+describe("short follow-up ranking", () => {
+  it("enriches what exactly with the previous grounded question", () => {
+    const result = enrichDocumentQuery("what exactly?", {
+      scope: "CURRENT_DOCUMENT",
+      currentTitle: "Vehicle use procedure",
+      previousUserText: "Who is allowed to drive a van?",
+      lastAnswerTopic: "document",
+    });
+    expect(result.enriched).toBe(true);
+    expect(result.decayed).toBe(false);
+    expect(result.query.toLowerCase()).toMatch(/drive|van|vehicle/);
+  });
+
+  it("enriches CURRENT_DOCUMENT queries with fewer than two distinctive terms", () => {
+    const result = enrichDocumentQuery("When?", {
+      scope: "CURRENT_DOCUMENT",
+      currentTitle: "Vehicle use policy",
+      previousUserText: "What are the main rules for returning the vehicle?",
+      lastAnswerTopic: "document",
+    });
+    expect(result.enriched).toBe(true);
+    expect(result.terms.length).toBeGreaterThanOrEqual(2);
+    expect(queryTerms("When?").length).toBeLessThan(2);
+  });
+
+  it("still enriches after a find whose last topic is company_knowledge", () => {
+    const result = enrichDocumentQuery("What exactly?", {
+      scope: "CURRENT_DOCUMENT",
+      currentTitle: "Vehicle use policy",
+      previousUserText: "Find the vehicle use policy",
+      lastAnswerTopic: "company_knowledge",
+      scopeChanged: false,
+    });
+    expect(result.decayed).toBe(false);
+    expect(result.enriched).toBe(true);
+  });
+
+  it("decays enrichment after a correction or subject change", () => {
+    const result = enrichDocumentQuery("When?", {
+      scope: "CURRENT_DOCUMENT",
+      currentTitle: "Vehicle use policy",
+      previousUserText: "What are the main rules?",
+      lastAnswerTopic: "document",
+      userCorrection: true,
+    });
+    expect(result.decayed).toBe(true);
+    expect(result.enriched).toBe(false);
+  });
+
+  it("does not lower the global title ranking for an exact title vs a coincidence", () => {
+    const exact = scoreGlobalSearchHit({ title: "North yard induction pack", snippet: "site rules" }, "north yard induction pack");
+    const weak = scoreGlobalSearchHit({ title: "Random policy note", snippet: "north of the yard there is a pack" }, "north yard induction pack");
+    expect(exact).toBeGreaterThan(weak);
+    expect(exact).toBeGreaterThanOrEqual(8);
+  });
+
+  it("does not give every chunk the same useful rank once a short follow-up is enriched", () => {
+    const chunks: DocumentChunk[] = [
+      { id: "c0", documentId: "d1", text: "Drivers record fuel weekly and keep receipts.", heading: "Fuel", index: 0 },
+      { id: "c1", documentId: "d1", text: "The canteen menu changes on Fridays.", heading: "Welfare", index: 1 },
+    ];
+    const empty = searchDocument("d1", "When?", chunks);
+    expect(empty.every((row) => row.score === 1) || empty.length === 2).toBe(true);
+    const enriched = enrichDocumentQuery("When?", {
+      scope: "CURRENT_DOCUMENT",
+      currentTitle: "Vehicle use policy",
+      previousUserText: "What about fuel cards and receipts?",
+      lastAnswerTopic: "document",
+    });
+    const ranked = searchDocument("d1", enriched.query, chunks);
+    expect(ranked[0]?.id).toBe("c0");
+    expect(ranked[0]!.score).toBeGreaterThan(ranked.find((row) => row.id === "c1")?.score ?? 0);
+  });
+});
+
+describe("eval harness size", () => {
+  it("covers at least 250 cases", () => {
+    expect(evaluationCases().length).toBeGreaterThanOrEqual(250);
+  });
+});
+
+describe("adversarial systemic gates", () => {
+  it("routes a bare period comparison to Xero instead of company search", async () => {
+    const { runtime, calls } = recordingRuntime();
+    const result = await runIntelligenceTurn({
+      text: "Compare this month with last month",
+      state: buildConversationState({ userText: "Compare this month with last month", connectors: ["conn_xero"] }),
+      runtime,
+    });
+    expect(classifyScope("Compare this month with last month", buildConversationState({ userText: "Compare this month with last month" })).scope).toBe(
+      "BUSINESS_SYSTEM",
+    );
+    expect(calls[0]?.name).toBe("xero_sales_summary");
+    expect(result.scope).toBe("BUSINESS_SYSTEM");
+  });
+
+  it("asks what the user wanted when a correction has no named replacement", async () => {
+    const result = await runIntelligenceTurn({
+      text: "No, that's not what I meant",
+      state: buildConversationState({
+        userText: "No, that's not what I meant",
+        currentDocument: CV,
+        userCorrection: true,
+        lastAnswerTopic: "document",
+        currentScope: "CURRENT_DOCUMENT",
+      }),
+      runtime: recordingRuntime().runtime,
+    });
+    expect(result.kind).toBe("clarify");
+    expect(result.scope).toBe("AMBIGUOUS");
+    expect(result.toolCalls).toHaveLength(0);
+  });
+
+  it("answers greetings like an assistant, not a search prompt", () => {
+    expect(matchFastPath("Hi")).toMatch(/here if you need/i);
+    expect(matchFastPath("Hi")).not.toMatch(/what do you need/i);
+  });
+});
