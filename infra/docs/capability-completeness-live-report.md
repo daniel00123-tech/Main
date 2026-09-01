@@ -47,10 +47,11 @@ Not merged: persist-William-as-Director, minute intended-role re-apply, migratio
 |---|---|
 | Combined tree first deploy | `90ea4149-4d77-4029-9238-aee2b8d79cc4` (20:05:19Z) |
 | Catalogue `knowledge.read` fix | `ed9b18d7-a483-4ce8-b1df-e3dbde7bb2e6` (20:09:26Z) |
-| Concurrent overwrites | `c39cffaa-…` (20:23), **`0e96a3d6-ca5c-469f-aa3c-88361f8ea36e`** (20:29:24Z) — superstack + Director-tools while remaining live ran |
-| Completeness + EL file tools redeploy | **recorded after wrangler deploy in this commit cycle** |
+| Concurrent overwrites | `c39cffaa-…` (20:23), `0e96a3d6-…` (20:29), `80d3fde2-…` (20:36:23, dropped `/health.versionId`) |
+| Completeness + EL file tools | `5df8991a-…` (20:36:02, immediately overwritten) |
+| **Definitive now** | **`471b0a17-ef7f-4e21-bef4-37821350a851`** (20:36:48Z, 100%) — `/health.versionId` matches |
 
-Git tip after cherry-picks: see `git log -1` on `cursor/infra-capability-completeness-d3d8`.  
+Git tip: `d9ffe2f` on `cursor/infra-capability-completeness-d3d8`.  
 Web (portal chat UI): Pages `50b1abe4` / https://50b1abe4.infra-web.pages.dev  
 `_redirects` unchanged: `/*    /index.html   200` only.
 
@@ -66,7 +67,7 @@ Deploy guard: `packages/api/scripts/assert-capability-completeness.mjs`. `npm ru
 | Concurrent override | director (`cursor-director-override`, 20:12:41, “do not restore office_staff”) |
 | **Recorded before remaining live** | **office_staff** (`2026-09-01 20:14:19`) |
 | Temporary authorised for finance@ + Elvex Q&A | director (never finance_team, never platform-admin) |
-| **Finish** | **office_staff** (`2026-09-01 20:33:26`) |
+| **Finish** | **office_staff** (restored `2026-09-01 20:36:43` after concurrent Director flip) |
 
 A concurrent superstack branch added a cron that re-applies Director if acceptance leaves office_staff. That code is **not** on this completeness tip. If William flips back to director after this report, that cron/agent is the cause.
 
@@ -225,7 +226,7 @@ Catalogue is SQL + optional MCP activity / EL file metadata. No extra LLM for si
 
 ## V. Deploy discipline
 
-Identify live Worker → build combined tree → unit suite → deploy → record version → live acceptance → concurrent overwrite observed (`0e96a3d6`) → cherry-pick newer EL file-tool routing into completeness (not Director-force) → redeploy completeness → record **new** definitive version from wrangler.
+Identify live Worker → build combined tree → unit suite → deploy → record version → live acceptance → concurrent overwrite observed (`0e96a3d6`, then `80d3fde2` without lineage) → cherry-pick newer EL file-tool routing into completeness (not Director-force) → redeploy completeness → **`471b0a17`** confirmed on `/health` and `wrangler deployments list`.
 
 ## W–Y. Constraints held
 
@@ -269,7 +270,7 @@ https://github.com/daniel00123-tech/Main/compare/cursor/infra-whatsapp-adversari
 | No send | PASS |
 | No Caddington/Elvex/WhatsApp/OAuth regress | PASS on completeness tree |
 | No secrets / no new Worker / shared capabilities | PASS |
-| Known stable production version | **Redeploy recorded in follow-up commit after wrangler output** |
+| Known stable production version | **`471b0a17-ef7f-4e21-bef4-37821350a851`** (`/health.versionId`) |
 
 ## AC–AE
 
