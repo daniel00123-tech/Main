@@ -1147,6 +1147,52 @@ connectors.post("/api/internal/cmd16b/outlook-rbac", async (c) => {
   }
 });
 
+async function runWilliamChatgptAcceptanceRoute(c: { env: Env; req: { query: (name: string) => string | undefined }; json: (body: unknown, status?: number) => Response }) {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  const requestedPhase = c.req.query("phase") ?? "elevated";
+  try {
+    const { runWilliamChatgptAcceptance, runWilliamXeroRoutingDenial, runWilliamXeroReadsAcceptance } = await import(
+      "../services/william-chatgpt-acceptance"
+    );
+    if (requestedPhase === "xero-denial") {
+      return c.json(await runWilliamXeroRoutingDenial(c.env));
+    }
+    if (requestedPhase === "xero-reads") {
+      return c.json(await runWilliamXeroReadsAcceptance(c.env));
+    }
+    const phase = requestedPhase === "restored" ? "restored" : "elevated";
+    return c.json(await runWilliamChatgptAcceptance(c.env, phase));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "William ChatGPT acceptance failed" },
+      500,
+    );
+  }
+}
+
+connectors.post("/api/internal/william-chatgpt-acceptance", async (c) => runWilliamChatgptAcceptanceRoute(c));
+connectors.post("/api/internal/elvex-xero-acceptance", async (c) => runWilliamChatgptAcceptanceRoute(c));
+connectors.post("/api/internal/cmd15/microsoft-acceptance/xero-reads", async (c) =>
+  runWilliamChatgptAcceptanceRoute(c),
+);
+
+connectors.post("/api/internal/knowledge-qa-acceptance", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runKnowledgeQaAcceptance } = await import("../services/knowledge-qa-acceptance");
+    return c.json(await runKnowledgeQaAcceptance(c.env, c.req.query("companyId")));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Knowledge Q&A acceptance failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/ocr/acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

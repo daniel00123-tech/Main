@@ -1,13 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { XERO_WRITE_MCP_TOOLS } from "@infra/shared";
 import {
   ADVERTISED_XERO_READ_TOOLS,
   elvexRoleMaySeeXeroReadTools,
   filterElvexXeroToolsForRole,
   serviceMaySeeXeroReadTools,
   withXeroReadTools,
+  xeroReadToolsAllowed,
 } from "./xero-read-tools";
 
 const base = [{ name: "system_health", description: "health", inputSchema: { type: "object" } }];
+const searchBase = [
+  {
+    name: "search",
+    description: "Search knowledge",
+    inputSchema: { type: "object", properties: { query: { type: "string" } } },
+  },
+];
 
 describe("Xero read tool advertisement", () => {
   it("does not overlay Xero reads for service identities without Xero read scopes", () => {
@@ -60,5 +69,43 @@ describe("Xero read tool advertisement", () => {
       "office_staff",
     );
     expect(tools.map((tool) => tool.name)).toEqual(["system_health"]);
+  });
+
+  it("advertises Xero reads for human actors and not writes", () => {
+    const advertised = withXeroReadTools(searchBase);
+    const names = advertised.map((tool) => tool.name);
+    expect(names).toContain("xero_sales_summary");
+    expect(names).toContain("xero_search_invoices");
+    expect(names).toContain("xero_get_invoice");
+    expect(names).toContain("xero_list_overdue_invoices");
+    expect(names).toContain("xero_top_customers");
+    for (const write of XERO_WRITE_MCP_TOOLS) {
+      expect(names).not.toContain(write);
+    }
+    const sales = advertised.find((tool) => tool.name === "xero_sales_summary");
+    expect(sales?.description).toMatch(/live Xero sales/i);
+    expect(sales?.description).toMatch(/Do not use company knowledge/i);
+    expect(sales?.inputSchema).toMatchObject({
+      type: "object",
+      properties: { fromDate: { type: "string" }, toDate: { type: "string" } },
+    });
+  });
+
+  it("enriches empty allowlist schemas already present", () => {
+    const advertised = withXeroReadTools([
+      ...searchBase,
+      { name: "xero_sales_summary", description: "xero sales summary", inputSchema: { type: "object", properties: {} } },
+    ]);
+    const sales = advertised.filter((tool) => tool.name === "xero_sales_summary");
+    expect(sales).toHaveLength(1);
+    expect(Object.keys((sales[0].inputSchema.properties ?? {}) as object).length).toBeGreaterThan(0);
+  });
+
+  it("filters service identities without Xero read scopes", () => {
+    expect(xeroReadToolsAllowed(["knowledge.search"])).toBe(false);
+    expect(xeroReadToolsAllowed(["xero.sales.read"])).toBe(true);
+    expect(xeroReadToolsAllowed(["xero.action.create"])).toBe(false);
+    expect(serviceMaySeeXeroReadTools(["knowledge.search"])).toBe(false);
+    expect(withXeroReadTools(searchBase, ["knowledge.search"]).map((tool) => tool.name)).toEqual(["search"]);
   });
 });

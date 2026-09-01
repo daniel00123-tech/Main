@@ -5,6 +5,7 @@ import {
   elvexMailboxCapability,
   isElvexCompany,
   mapActionToElvexCapability,
+  resolveElvexConfiguredMailbox,
 } from "./elvex-rbac";
 
 describe("Elvex RBAC overlay", () => {
@@ -47,10 +48,19 @@ describe("Elvex RBAC overlay", () => {
     expect(elvexAllowsAction("finance_team", "xero.invoices.read").allowed).toBe(true);
     expect(elvexAllowsAction("finance_team", "xero.sales.summary").allowed).toBe(true);
     expect(elvexAllowsAction("finance_team", "xero.top_customers").allowed).toBe(true);
+    expect(elvexAllowsAction("finance_team", "xero.invoices.search").allowed).toBe(true);
+    expect(mapActionToElvexCapability("xero.sales.summary")).toBe("xero.sales.read");
+    expect(elvexAllowsAction("office_staff", "xero.sales.summary").allowed).toBe(false);
+    expect(elvexAllowsAction("director", "xero.reports.pnl.read").allowed).toBe(true);
+    expect(elvexAllowsAction("director", "xero.accounts.read").allowed).toBe(true);
+    expect(elvexAllowsAction("director", "xero.reports.balance_sheet.read").allowed).toBe(true);
     expect(
       elvexAllowsAction("finance_team", "xero.sales.summary", {
         toolName: "xero_sales_summary",
       }).allowed,
+    ).toBe(true);
+    expect(
+      elvexAllowsAction("director", "xero.sales.summary", { toolName: "xero_sales_summary" }).allowed,
     ).toBe(true);
     expect(
       elvexAllowsAction("office_staff", "xero.sales.summary", {
@@ -64,8 +74,14 @@ describe("Elvex RBAC overlay", () => {
       "mail.finance.read",
     );
     expect(elvexMailboxCapability("info@elvexpropertyservices.com", true)).toBe("mail.info.write");
+    expect(elvexMailboxCapability("info inbox", false)).toBe("mail.info.read");
+    expect(elvexMailboxCapability("finance inbox", false)).toBe("mail.finance.read");
     expect(elvexMailboxCapability("private@elvexpropertyservices.com", false)).toBeNull();
     expect(mapActionToElvexCapability("mcp.secret_admin")).toBeNull();
     expect(elvexAllowsAction("office_staff", "mcp.secret_admin").allowed).toBe(false);
+    expect(resolveElvexConfiguredMailbox("info inbox")).toBe("info@elvexpropertyservices.com");
+    expect(resolveElvexConfiguredMailbox("finance@elvexpropertyservices.com")).toBe(
+      "finance@elvexpropertyservices.com",
+    );
   });
 });

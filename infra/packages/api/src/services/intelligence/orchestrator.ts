@@ -157,7 +157,15 @@ export async function runIntelligenceTurn(input: {
     input.state.userCorrection &&
     (scoped.scope === "COMPANY_KNOWLEDGE" || scoped.scope === "RECENT_ENTITY") &&
     (scoped.clearCurrentDocument || scoped.restoreRecentDocument || /\b(i meant|wrong file|instead|find|search|look(?:ing)? (?:for|up))\b/i.test(input.text));
-  if (namedFileCorrection || (scoped.scope === "COMPANY_KNOWLEDGE" && scoped.clearCurrentDocument && !input.state.userCorrection)) {
+  if (
+    scoped.scope !== "SYSTEM_META" &&
+    scoped.scope !== "BUSINESS_SYSTEM" &&
+    scoped.scope !== "CONTROLLED_ACTION" &&
+    scoped.scope !== "CONNECTOR_CAPABILITY" &&
+    (namedFileCorrection ||
+      (scoped.scope === "COMPANY_KNOWLEDGE" && scoped.clearCurrentDocument && !input.state.userCorrection) ||
+      (input.state.userCorrection && scoped.scope === "COMPANY_KNOWLEDGE"))
+  ) {
     const priorUser =
       previousUserText(input.state, input.text) ||
       [...input.state.recentTurns].reverse().find((turn) => turn.role === "user")?.text ||

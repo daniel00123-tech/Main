@@ -54,11 +54,47 @@ export function portalHostForSubdomain(env: Env, subdomain: string): string {
 
 function isBrowserPublicHost(host: string): boolean {
   const hostname = host.toLowerCase();
+  // api./mcp. and company MCP hosts are not the portal. Sending OAuth login
+  // there produces a worker 404 ("Page not found") after INFRA sign-in.
+  if (
+    hostname === "api.infrastack.app" ||
+    hostname === "mcp.infrastack.app" ||
+    hostname.endsWith(".workers.dev")
+  ) {
+    return false;
+  }
   return (
     hostname === "app.infrastack.app" ||
-    hostname.endsWith(".infrastack.app") ||
+    hostname === "infrastack.app" ||
     hostname.endsWith(".infra-web.pages.dev")
   );
+}
+
+/** First-party /oauth/authorize path+query so the portal session cookie is sent. */
+export function oauthAuthorizeContinuePath(request: Request): string {
+  const incoming = new URL(request.url);
+  const path = incoming.pathname === "/oauth/authorize" ? incoming.pathname : "/oauth/authorize";
+  return `${path}${incoming.search}`;
+}
+
+/** Absolute authorize URL on the portal origin (never workers.dev / api.). */
+export function oauthAuthorizeContinueUrl(env: Env, request: Request): string {
+  const browserBase = infraBrowserPublicBase(env, request.url, request);
+  const origin = isBrowserPublicHost(new URL(`${browserBase}/`).hostname)
+    ? browserBase.replace(/\/$/, "")
+    : INFRA_PORTAL_ORIGIN;
+  return `${origin}${oauthAuthorizeContinuePath(request)}`;
+}
+
+/** Login URL used when /oauth/authorize has no INFRA session. */
+export function oauthLoginRedirectUrl(env: Env, request: Request): string {
+  const browserBase = infraBrowserPublicBase(env, request.url, request);
+  const loginOrigin = isBrowserPublicHost(new URL(`${browserBase}/`).hostname)
+    ? browserBase.replace(/\/$/, "")
+    : INFRA_PORTAL_ORIGIN;
+  const login = new URL("/portal/login", `${loginOrigin}/`);
+  login.searchParams.set("next", oauthAuthorizeContinuePath(request));
+  return login.toString();
 }
 
 /**

@@ -91,7 +91,9 @@ export type AuditEventType =
   | "invitation.sent"
   | "invitation.queued"
   | "invitation.resent"
-  | "invitation.cancelled";
+  | "invitation.cancelled"
+  | "invitation.accepted"
+  | "invitation.reconciled";
 
 export type UserStatus = "active" | "disabled";
 

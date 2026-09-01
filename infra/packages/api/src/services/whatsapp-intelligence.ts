@@ -38,7 +38,7 @@ import {
   SEARCH_OTHER_DOCS_HINT,
   type GroundedConfidence,
 } from "./whatsapp-grounded-qa";
-import { nextContentQuestion } from "./intelligence/query-enrichment.js";
+import { enrichDocumentQuery, nextContentQuestion } from "./intelligence/query-enrichment.js";
 import { documentHasUsableChunks } from "./intelligence/document-evidence.js";
 import {
   documentEntityFromHit,
@@ -587,8 +587,21 @@ async function recoverFailedIntelligenceTurn(
   if (current && !evidenceDocumentIds.includes(current.id)) evidenceDocumentIds.push(current.id);
   const payload = current ? fetchCache.get(current.id) : null;
   if (current && payload && (String(payload.text ?? "").trim().length >= 40 || (payload.chunks?.length ?? 0) > 0)) {
+    const groundedQuestion = softenSearchQuery(input.originalText);
+    const groundedEnrichment = enrichDocumentQuery(groundedQuestion, {
+      scope: "CURRENT_DOCUMENT",
+      currentTitle: current.title || payload.title,
+      previousUserText:
+        input.memory.lastUserQuestion && input.memory.lastUserQuestion !== groundedQuestion
+          ? input.memory.lastUserQuestion
+          : null,
+      lastAnswerTopic: input.memory.lastAnswerTopic ?? "document",
+      userCorrection: false,
+      documentChanged: Boolean(input.memory.lastDocument && input.memory.lastDocument.id !== current.id),
+    });
     const grounded = await runGroundedQa(env, {
-      question: softenSearchQuery(input.originalText),
+      question: groundedQuestion,
+      retrievalQuery: groundedEnrichment.query,
       documentId: current.id,
       title: current.title || payload.title,
       fetch: payload,
@@ -601,6 +614,7 @@ async function recoverFailedIntelligenceTurn(
             ? "summarise"
             : "answer",
       previousAnswer: input.memory.lastAnswerText,
+      previousQuestion: input.memory.lastUserQuestion,
       path: input.memory.lastDocument?.path,
       tenantId: input.companyId,
       qualityGuidance: input.qualityGuidance,
