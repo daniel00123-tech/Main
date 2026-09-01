@@ -680,6 +680,8 @@ export async function handleInfraMcpJsonRpc(
         httpStatus: 200,
         detail: {
           toolNames: advertised.map((t) => t.name),
+          userRole,
+          actorType: actor.type,
           mcpId: mcp.id,
           serviceIdentityId:
             actor.type === "service" ? actor.identity.id : null,
