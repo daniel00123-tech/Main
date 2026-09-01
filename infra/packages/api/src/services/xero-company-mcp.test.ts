@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   composeInfraXeroReadResult,
+  companyXeroPayloadLooksFailed,
   extractRawSalesDocuments,
   isRetryableCompanyXeroUpstream,
   mapArgsForCompanyXeroTool,
@@ -29,7 +30,8 @@ describe("company MCP Xero mapping", () => {
       from: "2026-09-01",
       to: "2026-09-01",
       invoiceType: "ACCREC",
-      limit: 100,
+      limit: 50,
+      top: 50,
     });
     expect(
       mapArgsForCompanyXeroTool("xero_list_overdue_invoices", "search_xero_invoices", {}),
@@ -112,5 +114,50 @@ describe("company MCP Xero mapping", () => {
     expect(isRetryableCompanyXeroUpstream(401, "unauthorized")).toBe(false);
     expect(isRetryableCompanyXeroUpstream(403, "permission denied")).toBe(false);
     expect(pickCompanyXeroTool(["create_xero_draft_invoice"], "xero_sales_summary")).toBeNull();
+  });
+
+  it("never treats INFRA facade names as live company tools unless they are actually listed", () => {
+    const elvexLive = ["search_xero_invoices", "get_xero_invoice", "analyse_xero_sales", "get_xero_financial_summary"];
+    expect(pickCompanyXeroTool(elvexLive, "xero_sales_summary")).toBe("search_xero_invoices");
+    expect(pickCompanyXeroTool(elvexLive, "xero_search_invoices")).toBe("search_xero_invoices");
+    expect(pickCompanyXeroTool(elvexLive, "xero_top_customers")).toBe("search_xero_invoices");
+    expect(pickCompanyXeroTool(elvexLive, "xero_get_invoice", { invoiceNumber: "INV-0001" })).toBe(
+      "search_xero_invoices",
+    );
+    expect(
+      pickCompanyXeroTool(elvexLive, "xero_get_invoice", { invoiceId: "11111111-2222-4333-a444-555555555555" }),
+    ).toBe("get_xero_invoice");
+    expect(pickCompanyXeroTool(["xero_sales_summary"], "xero_sales_summary")).toBe("xero_sales_summary");
+  });
+
+  it("maps Elvex-native invoice search args (top/overdue/outstanding) without sending writes", () => {
+    expect(
+      mapArgsForCompanyXeroTool("xero_sales_summary", "search_xero_invoices", {
+        fromDate: "2026-09-01",
+        toDate: "2026-09-01",
+        limit: 100,
+      }),
+    ).toMatchObject({
+      from: "2026-09-01",
+      to: "2026-09-01",
+      top: 50,
+    });
+    expect(
+      mapArgsForCompanyXeroTool("xero_list_overdue_invoices", "search_xero_invoices", {}),
+    ).toMatchObject({ overdue: true, outstanding: true, overdueOnly: true, unpaidOnly: true });
+    expect(
+      mapArgsForCompanyXeroTool("xero_get_invoice", "get_xero_invoice", {
+        invoiceId: "11111111-2222-4333-a444-555555555555",
+      }),
+    ).toMatchObject({ invoice_id: "11111111-2222-4333-a444-555555555555" });
+    expect(mapArgsForCompanyXeroTool("xero_sales_summary", "analyse_xero_sales", { fromDate: "2026-09-01" })).toEqual({
+      months: 6,
+    });
+  });
+
+  it("treats EL Xero tool-error payloads as upstream failure, not empty sales", () => {
+    expect(companyXeroPayloadLooksFailed({ error: "token denied", code: "EL_XERO_TOKEN_DENIED" })).toBe(true);
+    expect(companyXeroPayloadLooksFailed({ invoices: [], organisation: "Elvex" })).toBe(false);
+    expect(companyXeroPayloadLooksFailed({ sales_total: 0, invoice_count: 0 })).toBe(false);
   });
 });
