@@ -12,12 +12,203 @@ import {
 import type { Env } from "../env";
 import { executeRegisteredMcpTool, listMcpEnvironments } from "./control-plane";
 import { listMcpTools } from "./mcp-client";
+import { unwrapToolPayload } from "./mcp-knowledge-standard";
 import { newId, nowIso } from "../db/mappers";
 
 const ELVEX_EMAIL_READ_TOOLS = ["search_elvex_email", "get_elvex_email"] as const;
 
 function isWriteLikeTool(name: string): boolean {
   return /send|write|delete|draft|manage|create|update|reply/i.test(name);
+}
+
+export function isOutlookGetTool(name: string): boolean {
+  return /get.*message|get.*email|get.*mail|fetch.*message|read.*message|read.*email/i.test(name);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asNonEmptyString(value: unknown): string {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function formatOutlookFrom(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  const record = asRecord(value);
+  if (!record) return null;
+  if (typeof record.address === "string" && record.address.trim()) {
+    return record.name ? `${record.name} <${record.address}>` : record.address;
+  }
+  const nested = asRecord(record.emailAddress);
+  if (nested && typeof nested.address === "string" && nested.address.trim()) {
+    return nested.name ? `${nested.name} <${nested.address}>` : nested.address;
+  }
+  return asNonEmptyString(record.email) || asNonEmptyString(record.fromAddress) || null;
+}
+
+function pickMessageBody(raw: Record<string, unknown>): { body: string; bodyContentType: string | null } {
+  const nested = asRecord(raw.body);
+  const body =
+    asNonEmptyString(raw.bodyContent) ||
+    asNonEmptyString(raw.content) ||
+    asNonEmptyString(raw.text) ||
+    asNonEmptyString(raw.html) ||
+    (nested ? asNonEmptyString(nested.content) || asNonEmptyString(nested.text) : "") ||
+    asNonEmptyString(raw.body);
+  const bodyContentType =
+    asNonEmptyString(raw.bodyContentType) ||
+    (nested ? asNonEmptyString(nested.contentType) : "") ||
+    null;
+  return { body, bodyContentType: bodyContentType || null };
+}
+
+export function composeOutlookMessage(raw: Record<string, unknown>): Record<string, unknown> {
+  const id =
+    asNonEmptyString(raw.id) ||
+    asNonEmptyString(raw.messageId) ||
+    asNonEmptyString(raw.graphId) ||
+    asNonEmptyString(raw.internetMessageId);
+  const { body, bodyContentType } = pickMessageBody(raw);
+  const bodyPreview =
+    asNonEmptyString(raw.bodyPreview) ||
+    asNonEmptyString(raw.preview) ||
+    asNonEmptyString(raw.snippet) ||
+    body.slice(0, 240);
+  return {
+    id,
+    internetMessageId: asNonEmptyString(raw.internetMessageId) || asNonEmptyString(raw.internet_message_id) || id,
+    subject: asNonEmptyString(raw.subject) || asNonEmptyString(raw.title) || null,
+    from: formatOutlookFrom(raw.from ?? raw.sender ?? raw.fromAddress),
+    to: raw.to ?? raw.toRecipients ?? [],
+    cc: raw.cc ?? raw.ccRecipients ?? [],
+    receivedDateTime: asNonEmptyString(raw.receivedDateTime) || asNonEmptyString(raw.received) || asNonEmptyString(raw.date) || null,
+    sentDateTime: asNonEmptyString(raw.sentDateTime) || null,
+    conversationId: asNonEmptyString(raw.conversationId) || null,
+    hasAttachments: Boolean(raw.hasAttachments),
+    body,
+    bodyPreview,
+    bodyContentType,
+    webLink: asNonEmptyString(raw.webLink) || asNonEmptyString(raw.webUrl) || null,
+  };
+}
+
+export function unwrapOutlookMessage(upstream: unknown): Record<string, unknown> | null {
+  if (typeof upstream === "string" && upstream.trim()) {
+    const parsed = unwrapToolPayload(upstream);
+    if (parsed !== upstream) return unwrapOutlookMessage(parsed);
+    return { body: upstream, bodyContentType: /<\/?[a-z][\s\S]*>/i.test(upstream) ? "html" : "text" };
+  }
+  const unwrapped = unwrapToolPayload(upstream);
+  const record = asRecord(unwrapped);
+  if (!record) return null;
+  const nested =
+    asRecord(record.message) ||
+    asRecord(record.email) ||
+    asRecord(record.item) ||
+    asRecord(record.value) ||
+    (Array.isArray(record.messages) ? asRecord(record.messages[0]) : null) ||
+    (Array.isArray(record.emails) ? asRecord(record.emails[0]) : null) ||
+    (Array.isArray(record.value) ? asRecord(record.value[0]) : null) ||
+    (Array.isArray(record.items) ? asRecord(record.items[0]) : null);
+  if (nested) return nested;
+  if (
+    asNonEmptyString(record.id) ||
+    asNonEmptyString(record.subject) ||
+    asNonEmptyString(record.body) ||
+    asNonEmptyString(record.bodyPreview) ||
+    asRecord(record.body)
+  ) {
+    return record;
+  }
+  return null;
+}
+
+export function mapOutlookGetArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const messageId =
+    asNonEmptyString(args.messageId) ||
+    asNonEmptyString(args.message_id) ||
+    asNonEmptyString(args.emailId) ||
+    asNonEmptyString(args.email_id) ||
+    asNonEmptyString(args.id) ||
+    asNonEmptyString(args.documentRef);
+  const internetMessageId = asNonEmptyString(args.internetMessageId);
+  return {
+    messageId,
+    id: messageId,
+    emailId: messageId,
+    email_id: messageId,
+    message_id: messageId,
+    internetMessageId: internetMessageId || undefined,
+    documentRef: messageId,
+    query: messageId,
+  };
+}
+
+export function composeOutlookGetResult(
+  upstream: unknown,
+  mailboxAddress: string,
+): Record<string, unknown> {
+  const raw = unwrapOutlookMessage(upstream);
+  if (!raw) {
+    const unwrapped = unwrapToolPayload(upstream);
+    const record = asRecord(unwrapped);
+    return {
+      mailboxAddress,
+      count: 0,
+      messages: [],
+      via: "company_mcp",
+      upstreamType: unwrapped == null ? "null" : Array.isArray(unwrapped) ? "array" : typeof unwrapped,
+      upstreamKeys: record ? Object.keys(record).slice(0, 20) : undefined,
+      upstreamPreview: typeof unwrapped === "string" ? unwrapped.slice(0, 160) : undefined,
+    };
+  }
+  const message = composeOutlookMessage(raw);
+  return {
+    mailboxAddress,
+    count: message.id || message.body || message.subject ? 1 : 0,
+    messages: message.id || message.body || message.subject ? [message] : [],
+    message,
+    id: message.id,
+    subject: message.subject,
+    from: message.from,
+    receivedDateTime: message.receivedDateTime,
+    body: message.body,
+    bodyPreview: message.bodyPreview,
+    bodyContentType: message.bodyContentType,
+    hasAttachments: message.hasAttachments,
+    webLink: message.webLink,
+    via: "company_mcp",
+  };
+}
+
+export function composeOutlookListResult(
+  upstream: unknown,
+  mailboxAddress: string,
+): Record<string, unknown> {
+  const unwrapped = unwrapToolPayload(upstream);
+  const record = asRecord(unwrapped);
+  const rawMessages = Array.isArray(record?.messages)
+    ? record!.messages
+    : Array.isArray(record?.results)
+      ? record!.results
+      : Array.isArray(record?.items)
+        ? record!.items
+        : Array.isArray(unwrapped)
+          ? unwrapped
+          : [];
+  const messages = rawMessages
+    .map((item) => asRecord(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item))
+    .map((item) => composeOutlookMessage(item));
+  return {
+    mailboxAddress,
+    count: messages.length,
+    messages,
+    via: "company_mcp",
+  };
 }
 
 function pickCompanyOutlookTool(
@@ -157,19 +348,24 @@ export async function executeCompanyMcpOutlookRead(
     ...ELVEX_EMAIL_READ_TOOLS,
   ]);
 
+  const isGet = isOutlookGetTool(input.toolName) || isOutlookGetTool(forwardName);
   const query =
     typeof input.arguments.query === "string" && input.arguments.query.trim()
       ? input.arguments.query.trim()
       : "";
   const limit = Number(input.arguments.limit ?? input.arguments.top ?? 5);
+  const getArgs = isGet ? mapOutlookGetArgs(input.arguments) : input.arguments;
 
   const forwarded: Record<string, unknown> = {
     mailbox: mailbox.mailboxAddress,
-    folder: typeof input.arguments.folderName === "string" ? input.arguments.folderName : "inbox",
-    limit,
   };
-  if (query && input.toolName !== "outlook_list_messages") forwarded.query = query;
-  if (typeof input.arguments.messageId === "string") forwarded.messageId = input.arguments.messageId;
+  if (!isGet) {
+    forwarded.folder = typeof input.arguments.folderName === "string" ? input.arguments.folderName : "inbox";
+    forwarded.limit = limit;
+    if (query && input.toolName !== "outlook_list_messages") forwarded.query = query;
+  } else {
+    Object.assign(forwarded, getArgs, { mailbox: mailbox.mailboxAddress });
+  }
   if (typeof input.arguments.conversationId === "string") {
     forwarded.conversationId = input.arguments.conversationId;
   }
@@ -220,16 +416,52 @@ export async function executeCompanyMcpOutlookRead(
   }
 
   const upstream = "data" in execution ? execution.data?.result : undefined;
-  const upstreamRecord =
-    upstream && typeof upstream === "object" ? (upstream as Record<string, unknown>) : {};
-  const messages = Array.isArray(upstreamRecord.messages) ? upstreamRecord.messages : [];
+  let composed =
+    isGet
+      ? composeOutlookGetResult(upstream, mailbox.mailboxAddress)
+      : composeOutlookListResult(upstream, mailbox.mailboxAddress);
+
+  if (isGet && Number(composed.count ?? 0) === 0 && typeof forwarded.messageId === "string") {
+    const searchName =
+      pickCompanyOutlookTool(listedNames, "outlook_search_mailbox") ?? "search_elvex_email";
+    if (!isWriteLikeTool(searchName)) {
+      const searched = await executeRegisteredMcpTool(env, {
+        mcpId: mcp.id,
+        toolName: searchName,
+        arguments: {
+          mailbox: mailbox.mailboxAddress,
+          query: forwarded.messageId,
+          limit: 5,
+        },
+        actorUserId: input.actorUserId ?? "system",
+        actorEmail: input.actor,
+        sourceClient: "infra-outlook",
+        skipUsageRecording: true,
+      });
+      if (searched.status === 200) {
+        const listed = composeOutlookListResult(
+          "data" in searched ? searched.data?.result : undefined,
+          mailbox.mailboxAddress,
+        );
+        const wanted = String(forwarded.messageId);
+        const match = (Array.isArray(listed.messages) ? listed.messages : []).find((row) => {
+          const record = asRecord(row);
+          if (!record) return false;
+          return [record.id, record.messageId, record.internetMessageId].some(
+            (value) => typeof value === "string" && value === wanted,
+          );
+        });
+        if (match) {
+          composed = composeOutlookGetResult(match, mailbox.mailboxAddress);
+        }
+      }
+    }
+  }
 
   return {
     ok: true,
     result: {
-      mailboxAddress: mailbox.mailboxAddress,
-      count: messages.length,
-      messages,
+      ...composed,
       via: "company_mcp",
       toolName: forwardName,
     },

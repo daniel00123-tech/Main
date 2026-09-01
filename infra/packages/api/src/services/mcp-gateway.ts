@@ -45,6 +45,7 @@ import { isKnowledgeDiscoveryTool, XERO_TOOL_CONTRACTS } from "@infra/shared";
 import { withActionControlTools, isActionControlTool, actionControlToolAllowed } from "./mcp-action-tools";
 import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
 import { withXeroReadTools } from "./xero-read-tools";
+import { ASK_DOCUMENT_TOOL, withAskDocumentTool } from "./ask-document";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeActionControlTool } from "./action-engine/action-control-handler";
 import {
@@ -119,6 +120,16 @@ export function enrichMcpToolDescription(
       "Search this company's indexed knowledge documents (policies, project docs, spend limits, approvals, etc.). Pass a natural-language query only (for example \"vehicle mileage policy\" or \"Company Van Policy\"). Do NOT set topic/category/department filters unless the user explicitly asks to filter by that metadata — invented filters often return zero results. Returns matching excerpts with source document titles.",
     get_knowledge_document:
       "Read a specific company knowledge document by identifier or title after locating it with search_company_knowledge.",
+    ask_document:
+      "Answer a question from one already-selected company document. Pass documentId from search/fetch and the user's question. For short follow-ups such as \"what exactly?\" or \"when?\" also pass priorQuestion. Reads only that document. Do not use this for live Xero, mailbox, or a new company-wide search. Read-only.",
+    outlook_get_message:
+      "Fetch the full body of one Outlook message. Pass the stable id returned by outlook_list_messages or outlook_search_mailbox as messageId. Do not invent an id. Office staff may read info@ only — never finance@. Read-only.",
+    confirm_action_plan:
+      "Confirm a previously created Xero financial action plan. Requires plan_id and confirmationToken. This is Xero Action Engine plumbing — it does not send email and must not be used to bypass confirmation.",
+    execute_action_plan:
+      "Execute a confirmed Xero financial action plan. Confirmation is required first. This does not send Outlook mail.",
+    get_action_plan:
+      "Fetch a server-side Xero action plan by plan_id. Financial write plumbing — not an email tool.",
     database_summary:
       "Summarise available company knowledge collections. This is not live Xero or mailbox data. Do not use it for sales totals or finance figures.",
     system_health:
@@ -402,7 +413,8 @@ async function resolveToolActionForFilter(
   if (
     toolName === "get_knowledge_document" ||
     toolName === "fetch" ||
-    toolName === "database_summary"
+    toolName === "database_summary" ||
+    toolName === ASK_DOCUMENT_TOOL
   ) {
     return "knowledge.read";
   }
@@ -651,12 +663,14 @@ export async function handleInfraMcpJsonRpc(
       const identityScopes =
         actor.type === "service" ? actor.identity.scopes : undefined;
       const advertised = withAutomationControlTools(
-        withXeroReadTools(
-          withOutlookReadTools(
-            withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
+        withAskDocumentTool(
+          withXeroReadTools(
+            withOutlookReadTools(
+              withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
+              identityScopes,
+            ),
             identityScopes,
           ),
-          identityScopes,
         ),
         { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
       );
@@ -709,12 +723,14 @@ export async function handleInfraMcpJsonRpc(
       const identityScopes =
         actor.type === "service" ? actor.identity.scopes : undefined;
       const advertised = withAutomationControlTools(
-        withXeroReadTools(
-          withOutlookReadTools(
-            withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+        withAskDocumentTool(
+          withXeroReadTools(
+            withOutlookReadTools(
+              withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+              identityScopes,
+            ),
             identityScopes,
           ),
-          identityScopes,
         ),
         { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
       );

@@ -554,8 +554,21 @@ async function recoverFailedIntelligenceTurn(
   if (current && !evidenceDocumentIds.includes(current.id)) evidenceDocumentIds.push(current.id);
   const payload = current ? fetchCache.get(current.id) : null;
   if (current && payload && String(payload.text ?? "").trim().length >= 40) {
+    const groundedQuestion = softenSearchQuery(input.originalText);
+    const groundedEnrichment = enrichDocumentQuery(groundedQuestion, {
+      scope: "CURRENT_DOCUMENT",
+      currentTitle: current.title || payload.title,
+      previousUserText:
+        input.memory.lastUserQuestion && input.memory.lastUserQuestion !== groundedQuestion
+          ? input.memory.lastUserQuestion
+          : null,
+      lastAnswerTopic: input.memory.lastAnswerTopic ?? "document",
+      userCorrection: false,
+      documentChanged: Boolean(input.memory.lastDocument && input.memory.lastDocument.id !== current.id),
+    });
     const grounded = await runGroundedQa(env, {
-      question: softenSearchQuery(input.originalText),
+      question: groundedQuestion,
+      retrievalQuery: groundedEnrichment.query,
       documentId: current.id,
       title: current.title || payload.title,
       fetch: payload,
@@ -566,6 +579,7 @@ async function recoverFailedIntelligenceTurn(
             ? "summarise"
             : "answer",
       previousAnswer: input.memory.lastAnswerText,
+      previousQuestion: input.memory.lastUserQuestion,
       path: input.memory.lastDocument?.path,
       tenantId: input.companyId,
       qualityGuidance: input.qualityGuidance,
@@ -916,6 +930,12 @@ async function runSearchDocument(
   let ranked = searchDocument(documentId, enriched.query, chunks);
   if (!ranked.length && queryTerms(query).length < 2 && input.memory.lastUserQuestion && input.memory.lastUserQuestion !== query) {
     ranked = searchDocument(documentId, input.memory.lastUserQuestion, chunks);
+  }
+  if (!ranked.length && chunks.length && queryTerms(query).length < 2 && !enriched.decayed) {
+    ranked = chunks.slice(0, 4).map((chunk, index) => ({
+      ...chunk,
+      score: Math.max(1, chunks.length - index),
+    }));
   }
   const hits = ranked.length ? ranked : [];
   const identity = identityFromMetadata(payload.metadata ?? null);

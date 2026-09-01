@@ -179,7 +179,7 @@ export async function executeOutlookReadTool(
         break;
       }
       case "outlook_get_message": {
-        const messageId = String(input.arguments.messageId ?? "").trim();
+        const messageId = String(input.arguments.messageId ?? input.arguments.id ?? "").trim();
         if (!messageId) {
           return { ok: false, status: 400, code: "OUTLOOK_MESSAGE_ID_REQUIRED", message: "messageId is required" };
         }

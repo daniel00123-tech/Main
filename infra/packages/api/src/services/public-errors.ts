@@ -100,6 +100,19 @@ export function publicToolErrorMessage(
     };
   }
   if (
+    lower.includes("isn’t available through this connection") ||
+    lower.includes("isn't available through this connection") ||
+    lower.includes("tool_not_exposed")
+  ) {
+    return {
+      code: "connector_not_configured",
+      message: "This capability isn’t available through this connection yet.",
+    };
+  }
+  if (lower.includes("couldn’t reach xero") || lower.includes("couldn't reach xero")) {
+    return { code: "technical_failure", message: "I couldn’t reach Xero just now." };
+  }
+  if (
     lower.includes("couldn’t retrieve") ||
     lower.includes("couldn't retrieve") ||
     lower.includes("just now")

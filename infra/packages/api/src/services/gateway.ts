@@ -78,6 +78,7 @@ import {
 import { executeXeroReadToolOnInfra } from "./xero-read-execution";
 import { isOutlookReadTool, outlookActionForTool } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
+import { executeAskDocument, isAskDocumentTool } from "./ask-document";
 
 export type GatewayActor =
   | {
@@ -115,7 +116,8 @@ async function resolveToolAction(
   if (
     toolName === "get_knowledge_document" ||
     toolName === "fetch" ||
-    toolName === "database_summary"
+    toolName === "database_summary" ||
+    toolName === "ask_document"
   ) {
     return { action: "knowledge.read", riskClass: "low_risk" };
   }
@@ -966,7 +968,32 @@ export async function executeGatewayRequest(
 
   const balanceBefore = await getWalletBalance(env.DB, input.companyId);
 
-  const execution = isOutlookReadTool(input.toolName)
+  const execution = isAskDocumentTool(input.toolName)
+    ? await (async () => {
+        const asked = await executeAskDocument(env, {
+          companyId: input.companyId,
+          arguments: input.arguments ?? {},
+          actor: actorLabel,
+          actorUserId: actorId,
+        });
+        if (!asked.ok) {
+          return { status: asked.status, error: asked.message, code: asked.code } as const;
+        }
+        return {
+          status: 200 as const,
+          data: {
+            correlationId,
+            mcpId: mcp.id,
+            companyId: input.companyId,
+            toolName: input.toolName,
+            latencyMs: Date.now() - started,
+            authConfigured: true,
+            riskClass,
+            result: asked.result,
+          },
+        };
+      })()
+    : isOutlookReadTool(input.toolName)
     ? await (async () => {
         const outlook = await executeOutlookReadTool(env, {
           companyId: input.companyId,
