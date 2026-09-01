@@ -506,6 +506,7 @@ export async function runWilliamChatgptAcceptance(
       knownInvoiceUsed: knownInvoice,
       ...withoutParsed(invoiceLookup),
     });
+  }
 
     const infoNewest = await callTool(
       issued.token,
@@ -764,7 +765,6 @@ export async function runWilliamChatgptAcceptance(
         ...withoutParsed(switchedQa),
       });
     }
-  }
 
   const xeroDirect = results
     .filter((row) => row.group === "xero" || row.id === "restore.xero_sales_denied")
