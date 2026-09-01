@@ -37,6 +37,11 @@ const REQUIRED = [
     marker: "executeElvexXeroReadViaElMcp",
   },
   {
+    id: "elvex_files_el_mcp",
+    file: "src/services/elvex-files-el-mcp.ts",
+    marker: "executeElvexKnowledgeViaElFiles",
+  },
+  {
     id: "xero_read_tools",
     file: "src/services/xero-read-tools.ts",
     marker: "withXeroReadTools",

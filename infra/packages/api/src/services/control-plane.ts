@@ -579,7 +579,16 @@ export async function isToolAllowed(
   toolName: string,
 ): Promise<{ allowed: boolean; riskClass: string }> {
   const candidates = Array.from(
-    new Set([toolName, resolveCompanyMcpToolName(toolName)]),
+    new Set([
+      toolName,
+      resolveCompanyMcpToolName(toolName),
+      ...(toolName === "search" || toolName === "search_company_knowledge"
+        ? [ELVEX_FILE_SEARCH_TOOL]
+        : []),
+      ...(toolName === "fetch" || toolName === "get_knowledge_document"
+        ? [ELVEX_FILE_GET_TOOL]
+        : []),
+    ]),
   );
 
   for (const name of candidates) {
@@ -900,6 +909,12 @@ export async function refreshMcpCapabilities(
 import { XERO_AUTH, XERO_READ_MCP_TOOLS, XERO_TOOL_CONTRACTS } from "@infra/shared";
 import { isXeroToolName, prepareXeroMcpExecution } from "./xero-tools";
 import { getValidXeroAccessToken } from "./xero";
+import {
+  ELVEX_FILE_GET_TOOL,
+  ELVEX_FILE_SEARCH_TOOL,
+  executeElvexKnowledgeViaElFiles,
+  shouldExecuteElvexKnowledgeViaElFiles,
+} from "./elvex-files-el-mcp";
 
 const READ_ONLY_DEFAULT_TOOLS = [
   "search_company_knowledge",
@@ -910,6 +925,7 @@ const READ_ONLY_DEFAULT_TOOLS = [
 ] as const;
 
 const ELVEX_EMAIL_READ_TOOLS = ["search_elvex_email", "get_elvex_email"] as const;
+const ELVEX_FILE_READ_TOOLS = [ELVEX_FILE_SEARCH_TOOL, ELVEX_FILE_GET_TOOL] as const;
 
 export async function executeRegisteredMcpTool(
   env: Env,
@@ -1043,6 +1059,78 @@ export async function executeRegisteredMcpTool(
       }
     }
 
+    if (shouldExecuteElvexKnowledgeViaElFiles(mcp.companyId, input.toolName)) {
+      const elKnowledge = await executeElvexKnowledgeViaElFiles(env, {
+        companyId: mcp.companyId,
+        mcp,
+        toolName: input.toolName,
+        arguments: forwardArgs,
+      });
+      if (elKnowledge.ok) {
+        const checkedAt = nowIso();
+        await env.DB.prepare(
+          `UPDATE mcp_environments
+           SET last_successful_request_at = ?, last_latency_ms = ?, last_error = NULL, updated_at = ?
+           WHERE id = ?`,
+        )
+          .bind(checkedAt, elKnowledge.latencyMs, checkedAt, mcp.id)
+          .run();
+        if (!input.skipUsageRecording) {
+          await recordUsageEvent(env.DB, {
+            companyId: mcp.companyId,
+            userId: input.actorUserId,
+            actorEmail: input.actorEmail,
+            resourceType: "mcp_tool",
+            resourceId: input.toolName,
+            mcpEnvironmentId: mcp.id,
+            toolName: input.toolName,
+            action: input.toolName,
+            riskClass: allow.riskClass,
+            success: true,
+            durationMs: elKnowledge.latencyMs,
+            sourceClient: input.sourceClient ?? "infra-admin",
+            correlationId,
+            underlyingCostCents: null,
+            customerChargeCents: null,
+            metadata: {
+              executionPath: "el-business-mcp",
+              elToolName: elKnowledge.elToolName,
+              fallbackUsed: elKnowledge.fallbackUsed,
+            },
+          });
+        }
+        await recordAuditEvent(env.DB, {
+          companyId: mcp.companyId,
+          eventType: "mcp.execution_succeeded",
+          actor: input.actorEmail,
+          resourceType: "mcp_tool",
+          resourceId: input.toolName,
+          detail: {
+            mcpId: mcp.id,
+            correlationId,
+            latencyMs: elKnowledge.latencyMs,
+            executionPath: "el-business-mcp",
+            elToolName: elKnowledge.elToolName,
+          },
+        });
+        return {
+          status: 200 as const,
+          data: {
+            correlationId,
+            mcpId: mcp.id,
+            companyId: mcp.companyId,
+            toolName: input.toolName,
+            latencyMs: elKnowledge.latencyMs,
+            authConfigured: true,
+            riskClass: allow.riskClass,
+            result: elKnowledge.result,
+            executionPath: "el-business-mcp",
+            elToolName: elKnowledge.elToolName,
+          },
+        };
+      }
+    }
+
     const execution = await callMcpTool(env, {
       endpointUrl: mcp.endpointUrl,
       authSecretRef: mcp.authSecretRef,
@@ -1107,9 +1195,15 @@ export async function executeRegisteredMcpTool(
       }
     }
 
-    if (companyToolName === "search_company_knowledge") {
+    if (
+      companyToolName === "search_company_knowledge" ||
+      companyToolName === ELVEX_FILE_SEARCH_TOOL
+    ) {
       parsedText = toStandardSearchPayload(parsedText);
-    } else if (companyToolName === "get_knowledge_document") {
+    } else if (
+      companyToolName === "get_knowledge_document" ||
+      companyToolName === ELVEX_FILE_GET_TOOL
+    ) {
       const requestedId =
         typeof forwardArgs.id === "string"
           ? forwardArgs.id
@@ -1245,6 +1339,8 @@ const SAFE_READ_TOOL_NAMES = new Set([
   "database_summary",
   "search_company_knowledge",
   "get_knowledge_document",
+  ELVEX_FILE_SEARCH_TOOL,
+  ELVEX_FILE_GET_TOOL,
 ]);
 
 export async function syncAllowlistFromRemoteTools(
@@ -1297,7 +1393,7 @@ export async function ensureDefaultToolAllowlist(
       .run();
   }
   if (companyId === "co_el") {
-    for (const toolName of ELVEX_EMAIL_READ_TOOLS) {
+    for (const toolName of [...ELVEX_EMAIL_READ_TOOLS, ...ELVEX_FILE_READ_TOOLS]) {
       await db
         .prepare(
           `INSERT OR IGNORE INTO mcp_tool_allowlist
@@ -1305,6 +1401,14 @@ export async function ensureDefaultToolAllowlist(
            VALUES (?, ?, ?, ?, 'low_risk', 1, ?, ?)`,
         )
         .bind(newId("allow"), companyId, mcpEnvironmentId, toolName, now, now)
+        .run();
+      await db
+        .prepare(
+          `UPDATE mcp_tool_allowlist
+           SET risk_class = 'low_risk', enabled = 1, updated_at = ?
+           WHERE mcp_environment_id = ? AND tool_name = ?`,
+        )
+        .bind(now, mcpEnvironmentId, toolName)
         .run();
     }
   }

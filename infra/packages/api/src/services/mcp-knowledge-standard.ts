@@ -417,6 +417,7 @@ export function extractHitList(payload: unknown): Record<string, unknown>[] {
     unwrapped.results ??
     unwrapped.matches ??
     unwrapped.documents ??
+    unwrapped.files ??
     unwrapped.hits ??
     unwrapped.items;
   return Array.isArray(list) ? list.filter(isRecord) : [];

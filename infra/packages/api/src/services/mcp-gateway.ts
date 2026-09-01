@@ -182,6 +182,10 @@ export function enrichMcpToolDescription(
       "Search the Elvex Outlook connection. Use mailbox info@elvexpropertyservices.com for the info inbox. Read-only.",
     get_elvex_email:
       "Read one Elvex Outlook message by id from an allowed mailbox (info@ for office staff). Read-only.",
+    search_elvex_files:
+      "Search Elvex Drive/OneDrive files. Returns stable ids for fetch / get_elvex_file. Read-only. Not for live Xero.",
+    get_elvex_file:
+      "Fetch one Elvex Drive/OneDrive file by the id returned from search or search_elvex_files. Read-only.",
   };
   const enriched = defaults[toolName];
   if (enriched) return enriched;
@@ -413,12 +417,17 @@ async function resolveToolActionForFilter(
     (tool) => tool.mcpToolName === toolName,
   );
   if (xeroContract) return xeroContract.action;
-  if (toolName === "search_company_knowledge" || toolName === "search") {
+  if (
+    toolName === "search_company_knowledge" ||
+    toolName === "search" ||
+    toolName === "search_elvex_files"
+  ) {
     return "knowledge.search";
   }
   if (
     toolName === "get_knowledge_document" ||
     toolName === "fetch" ||
+    toolName === "get_elvex_file" ||
     toolName === "database_summary" ||
     toolName === ASK_DOCUMENT_TOOL ||
     toolName === LIST_COMPANY_DOCUMENTS_TOOL
@@ -1053,12 +1062,16 @@ export async function handleInfraMcpJsonRpc(
     };
 
     const wrapped =
-      toolName === "search" || toolName === "search_company_knowledge"
+      toolName === "search" ||
+      toolName === "search_company_knowledge" ||
+      toolName === "search_elvex_files"
         ? {
             ...wrapStandardToolResult(toStandardSearchPayload(payload)),
             _infra: infraMeta,
           }
-        : toolName === "fetch" || toolName === "get_knowledge_document"
+        : toolName === "fetch" ||
+            toolName === "get_knowledge_document" ||
+            toolName === "get_elvex_file"
           ? {
               ...wrapStandardToolResult(
                 toStandardFetchPayload(

@@ -266,6 +266,20 @@ describe("Company Knowledge response adaptors", () => {
     expect(fetched.chunks?.map((chunk) => chunk.text)).toEqual(["Part one.", "Part two."]);
   });
 
+  it("unwraps EL MCP files[] search hits", () => {
+    const search = toStandardSearchPayload({
+      files: [
+        {
+          fileId: "gdrive-staff-handbook",
+          file: { name: "Staff Handbook.pdf" },
+          snippet: "Annual leave is 28 days.",
+        },
+      ],
+    });
+    expect(search.results[0]?.id).toBe("gdrive-staff-handbook");
+    expect(search.results[0]?.title).toBe("Staff Handbook.pdf");
+  });
+
   it("maps EL MCP file/page_content fetch into id/title/text/chunks", () => {
     const fetched = toStandardFetchPayload(
       {
