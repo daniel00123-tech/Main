@@ -19,7 +19,7 @@ const capable: AutomationCapabilitySnapshot = {
   documentSourcesConnected: true,
   emailEnabled: true,
   allowedEmailTypes: ["XERO_SALES_REPORT", "DOCUMENT_ACTIVITY_REPORT"],
-  senderAddress: "admin@CaddingtonHoldings.co.uk",
+  senderAddress: "noreply@infrastack.app",
 };
 
 describe("automation action catalogue", () => {
@@ -209,7 +209,7 @@ describe("automation plan validation", () => {
         requiresXero: true,
         requiresDocuments: false,
       },
-      senderAddress: "admin@CaddingtonHoldings.co.uk",
+      senderAddress: "noreply@infrastack.app",
       companyName: "Caddington Holdings",
     });
     expect(summary.schedule).toBe("Every day at 08:00");

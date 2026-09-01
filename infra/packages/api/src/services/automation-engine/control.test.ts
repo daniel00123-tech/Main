@@ -34,7 +34,7 @@ vi.mock("./permissions", () => ({
   ensureAutomationServiceIdentity: vi.fn(async () => "svc_aut"),
 }));
 vi.mock("../public-urls", () => ({
-  portalOrigin: () => "https://infra-web.pages.dev",
+  portalOrigin: () => "https://app.infrastack.app",
 }));
 
 import {

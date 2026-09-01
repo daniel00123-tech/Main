@@ -99,4 +99,23 @@ describe("resolveMicrosoftAppCredentials", () => {
       expect(resolved.code).toBe("MICROSOFT_TENANT_NOT_BOUND");
     }
   });
+
+  it("does not use platform credentials when a company has no Microsoft 365 binding", async () => {
+    const db = {
+      prepare: () => ({
+        bind: () => ({
+          first: async () => null,
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const resolved = await resolveMicrosoftAppCredentials(legacyEnv, db, {
+      companyId: "co_el",
+    });
+
+    expect(resolved.ok).toBe(false);
+    if (!resolved.ok) {
+      expect(resolved.code).toBe("MICROSOFT_NOT_CONNECTED");
+    }
+  });
 });
