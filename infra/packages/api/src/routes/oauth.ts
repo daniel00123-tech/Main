@@ -25,8 +25,8 @@ import {
 import { getCompanyById, getCompanyBySlug } from "../services/control-plane";
 import {
   infraBrowserPublicBase,
-  infraBrowserPublicBase,
   infraMcpGatewayUrl,
+  oauthLoginRedirectUrl,
 } from "../services/public-urls";
 
 const oauth = new Hono<{ Bindings: Env }>();
@@ -169,15 +169,7 @@ oauth.get("/oauth/authorize", async (c) => {
 
   const session = await sessionFromRequest(c.env, c.req.raw);
   if (!session) {
-    const authorizeUrl = new URL(c.req.url);
-    const loginBase = infraBrowserPublicBase(c.env, c.req.url, c.req.raw);
-    const loginOrigin =
-      loginBase.includes("infrastack.app") || loginBase.includes("pages.dev")
-        ? loginBase
-        : "https://app.infrastack.app";
-    const login = new URL("/portal/login", `${loginOrigin}/`);
-    login.searchParams.set("next", authorizeUrl.toString());
-    return c.redirect(login.toString(), 302);
+    return c.redirect(oauthLoginRedirectUrl(c.env, c.req.raw), 302);
   }
 
   const memberships = await listMembershipsForUser(c.env.DB, session.userId);

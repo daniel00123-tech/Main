@@ -8,10 +8,13 @@ export function safeOauthContinueUrl(next: string | null | undefined): string | 
     if (url.protocol !== "https:" && url.protocol !== "http:") return null;
     if (url.pathname !== "/oauth/authorize") return null;
     const host = url.hostname.toLowerCase();
+    // Keep the post-login continue first-party so the session cookie is sent.
+    if (host.endsWith(".workers.dev")) {
+      return `${url.pathname}${url.search}`;
+    }
     if (
       host === "app.infrastack.app" ||
       host.endsWith(".infrastack.app") ||
-      host.endsWith(".workers.dev") ||
       host === "localhost" ||
       host === "127.0.0.1"
     ) {
