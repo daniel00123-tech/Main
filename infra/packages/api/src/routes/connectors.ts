@@ -1150,6 +1150,26 @@ connectors.post("/api/internal/ocr/acceptance", async (c) => {
   }
 });
 
+connectors.post("/api/internal/ocr/backfill", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      companyId?: string;
+      documentIds?: number[];
+      dryRun?: boolean;
+    };
+    const { runOcrBackfill } = await import("../services/ocr/backfill");
+    return c.json(await runOcrBackfill(c.env, body));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "OCR backfill failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/operations/acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

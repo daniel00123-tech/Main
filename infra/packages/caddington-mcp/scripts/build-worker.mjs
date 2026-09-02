@@ -397,7 +397,7 @@ function assessPdfExtractionQuality(segments, rawMarkdown) {
     requiresOcr = true;
     extractionQuality = "heading_only";
     fallbackRequired = true;
-  } else if (substantiveCharacterCount < 80 && pageCount >= 2) {
+  } else if (substantiveCharacterCount < 80) {
     requiresOcr = true;
     extractionQuality = "poor";
     fallbackRequired = true;
