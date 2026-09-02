@@ -14,7 +14,7 @@ describe("scope classifier", () => {
       "show me invoices raised today",
       "what is outstanding in Xero?",
     ]) {
-      const decision = classifyScope(text, buildConversationState({ userText: text }));
+      const decision = classifyScope(text, buildConversationState({ userText: text, connectors: ["conn_xero"] }));
       expect(decision.scope).toBe("BUSINESS_SYSTEM");
       expect(decision.tool?.startsWith("xero_")).toBe(true);
     }

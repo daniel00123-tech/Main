@@ -96,7 +96,7 @@ const CASES: Array<{
   { id: "p3", group: "permissions", text: "Tell me Xero sales this month", scope: "BUSINESS_SYSTEM", toolFamily: "xero" },
   { id: "c1", group: "corrections", text: "No, I meant email", scope: "BUSINESS_SYSTEM", toolFamily: "outlook" },
   { id: "c2", group: "corrections", text: "Search documents instead", scope: "COMPANY_KNOWLEDGE", toolFamily: "knowledge" },
-  { id: "c3", group: "corrections", text: "That's not what I asked", scope: "AMBIGUOUS", toolFamily: "clarify" },
+  { id: "c3", group: "corrections", text: "That's not what I asked", scope: "COMPANY_KNOWLEDGE", toolFamily: "knowledge" },
   { id: "c4", group: "corrections", text: "Look in emails instead", scope: "BUSINESS_SYSTEM", toolFamily: "outlook" },
   { id: "e10", group: "email", text: "emails from Sharon today", scope: "BUSINESS_SYSTEM", toolFamily: "outlook" },
   { id: "d9", group: "documents", text: "Where is the purchase order process written down?", scope: "COMPANY_KNOWLEDGE", toolFamily: "knowledge" },
