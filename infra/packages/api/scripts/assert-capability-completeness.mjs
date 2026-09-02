@@ -96,6 +96,21 @@ const REQUIRED = [
     file: "src/routes/portal-chat.ts",
     marker: "/api/companies/:slug/chat/messages",
   },
+  {
+    id: "capability_routing_guard",
+    file: "src/services/intelligence/capability-guard.ts",
+    marker: "honourScopedToolCall",
+  },
+  {
+    id: "xero_misroute_guard",
+    file: "../shared/src/permissions/business-system-intent.ts",
+    marker: "xeroAllowedForQuery",
+  },
+  {
+    id: "outlook_search_args",
+    file: "src/services/intelligence/outlook-args.ts",
+    marker: "prepareOutlookSearchArguments",
+  },
 ];
 
 const missing = [];

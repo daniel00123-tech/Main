@@ -147,6 +147,29 @@ describe("capability access runtime", () => {
     }
   });
 
+  it("reroutes mailbox asks to Outlook and keeps process asks on knowledge", async () => {
+    const email = await evaluateKnowledgeBusinessSystemPreflight(
+      mockDb(["conn_xero", "conn_outlook_shared"], "finance_team"),
+      financeUser,
+      "co_el",
+      "search",
+      { query: "How many emails has Sharon sent today?" },
+    );
+    expect(email.kind).toBe("reroute");
+    if (email.kind === "reroute") {
+      expect(email.toolName).toMatch(/^outlook_/);
+      expect(email.toolName).not.toMatch(/^xero_/);
+    }
+    const process = await evaluateKnowledgeBusinessSystemPreflight(
+      mockDb(["conn_xero", "conn_outlook_shared"], "finance_team"),
+      financeUser,
+      "co_el",
+      "search",
+      { query: "What is the PO process" },
+    );
+    expect(process.kind).toBe("knowledge");
+  });
+
   it("does not deny ordinary knowledge search", async () => {
     const denial = await denyKnowledgeQueryIfProtected(
       mockDb(),

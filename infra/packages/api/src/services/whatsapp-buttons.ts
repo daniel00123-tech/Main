@@ -16,7 +16,7 @@ export const ACTION_TO_TEXT: Record<string, string> = {
   open_source: "send me the link",
   search_other_docs: "search other documents",
   try_again: "try again",
-  search_emails: "find the latest email about it",
+  search_emails: "search the shared mailbox",
   search_documents: "find the document",
   make_shorter: "make that shorter",
   find_similar: "find another document like it",

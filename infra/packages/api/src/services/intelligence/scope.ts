@@ -1,7 +1,8 @@
-import { resolveBusinessSystemIntent } from "@infra/shared";
+import { resolveBusinessSystemIntent, xeroAllowedForQuery } from "@infra/shared";
 import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "./types.js";
 import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
 import { isDocumentCatalogueAsk } from "../document-catalogue.js";
+import { pickOutlookReadTool } from "./outlook-args.js";
 
 export type ScopeSwitch =
   | "company"
@@ -177,7 +178,7 @@ function extractFeatures(text: string): ScopeFeatures {
     findDocument: isNamedDocumentFind(trimmed),
     underspecifiedQuantity: UNDERSPECIFIED_QUANTITY.test(trimmed),
     sourceBreakdown: SOURCE_BREAKDOWN.test(trimmed),
-    typeBreakdown: TYPE_BREAKDOWN.test(trimmed),
+    typeBreakdown: TYPE_BREAKDOWN.test(trimmed) && !EMAIL.test(trimmed),
     syncAsk: SYNC_ASK.test(trimmed),
     automationAsk: AUTOMATION.test(trimmed),
     userOrCompanyAsk: USER_COMPANY.test(trimmed) || SYSTEM_OVERVIEW.test(trimmed),
@@ -286,6 +287,7 @@ export function classifyScope(
     | "recentDocuments"
     | "currentBusinessSystem"
     | "lastSuccessfulTool"
+    | "connectors"
   >,
 ): ScopeDecision {
   const features = extractFeatures(text);
@@ -335,7 +337,11 @@ export function classifyScope(
     });
   }
 
-  const businessIntent = resolveBusinessSystemIntent(text);
+  const connectorHints =
+    "connectors" in state && Array.isArray(state.connectors) && state.connectors.length > 0
+      ? state.connectors.map((id) => ({ definitionId: id }))
+      : undefined;
+  const businessIntent = resolveBusinessSystemIntent(text, { connectors: connectorHints });
   if (
     businessIntent &&
     !features.connectorAsk &&
@@ -359,9 +365,10 @@ export function classifyScope(
       businessIntent.connectorDefinitionId === "conn_outlook_shared"
     ) {
       return decide("BUSINESS_SYSTEM", features, {
-        tool: "outlook_search_mailbox",
+        tool: pickOutlookReadTool(text),
         lastAnswerTopic: "email",
         lastUserIntent: "email",
+        clearCurrentDocument: Boolean(hasCurrent),
       });
     }
     if (businessIntent.capability === "xero" || businessIntent.connectorDefinitionId === "conn_xero") {
@@ -608,23 +615,28 @@ export function classifyScope(
     });
   }
 
+  if (switchTo === "email" || (features.emailAsk && !features.currentLocus)) {
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: pickOutlookReadTool(text),
+      lastAnswerTopic: "email",
+      lastUserIntent: "email",
+      clearCurrentDocument: Boolean(hasCurrent),
+    });
+  }
+
   if (
-    switchTo === "business" ||
-    financeFollowUp ||
-    (features.financeAsk && (!features.corpusNoun || /\bxero\b/i.test(text)) && (!features.currentLocus || /\bxero\b/i.test(text) || switchTo === "business"))
+    (switchTo === "business" ||
+      financeFollowUp ||
+      (features.financeAsk &&
+        !features.emailAsk &&
+        (!features.corpusNoun || /\bxero\b/i.test(text)) &&
+        (!features.currentLocus || /\bxero\b/i.test(text) || switchTo === "business"))) &&
+    (financeFollowUp || xeroAllowedForQuery(text))
   ) {
     return decide("BUSINESS_SYSTEM", features, {
       tool: pickBusinessTool(text, state.lastSuccessfulTool),
       lastAnswerTopic: "finance",
       lastUserIntent: "finance",
-    });
-  }
-
-  if (switchTo === "email" || (features.emailAsk && !features.currentLocus && !hasCurrent)) {
-    return decide("BUSINESS_SYSTEM", features, {
-      tool: "outlook_search_mailbox",
-      lastAnswerTopic: "email",
-      lastUserIntent: "email",
     });
   }
 
@@ -672,7 +684,7 @@ export function classifyScope(
       tool: null,
       noTool: true,
       clarify: true,
-      clarifyText: "Which one did you have in mind?",
+      clarifyText: "Which document did you have in mind?",
       lastUserIntent: "ambiguous_document",
     });
   }

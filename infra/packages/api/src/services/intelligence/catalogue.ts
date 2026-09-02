@@ -61,14 +61,40 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
   },
   {
     name: "outlook_search_mailbox",
-    description: "Search an included shared mailbox (read only).",
-    whenToUse: "User asks about inbox, Outlook, or a shared mailbox message they are permitted to see.",
-    whenNotToUse: "Not for Drive/SharePoint documents. Writes are forbidden.",
+    description: "Search an included shared mailbox by sender, subject, or date (read only).",
+    whenToUse: "User asks about inbox, Outlook, a named sender, a subject, or a count of matching emails they are permitted to see.",
+    whenNotToUse: "Not for Drive/SharePoint documents. Not for Xero. Writes are forbidden.",
     parameters: {
       query: { description: "Subject/body/sender search", required: true },
       mailboxAddress: { description: "Included shared mailbox SMTP if known" },
+      fromDate: { description: "Inclusive start date YYYY-MM-DD in Europe/London" },
+      toDate: { description: "Inclusive end date YYYY-MM-DD in Europe/London" },
     },
-    outputShape: "{ mailboxAddress, messages: [{ subject, from, receivedDateTime }] }",
+    outputShape: "{ mailboxAddress, count, messages: [{ subject, from, receivedDateTime }] }",
+    permission: "outlook shared mailbox read",
+  },
+  {
+    name: "outlook_list_messages",
+    description: "List the newest messages in an included shared mailbox (read only).",
+    whenToUse: "User asks for the latest, newest, or recent emails with no extra sender/subject filter.",
+    whenNotToUse: "Not for Xero, documents, or a named-sender count. Writes are forbidden.",
+    parameters: {
+      mailboxAddress: { description: "Included shared mailbox SMTP if known" },
+      limit: { type: "number", description: "Optional cap, default 5" },
+    },
+    outputShape: "{ mailboxAddress, count, messages: [{ subject, from, receivedDateTime }] }",
+    permission: "outlook shared mailbox read",
+  },
+  {
+    name: "outlook_get_message",
+    description: "Fetch the full body of one Outlook message by the id returned from list or search.",
+    whenToUse: "User wants the full email after list/search returned a stable message id.",
+    whenNotToUse: "Do not invent a message id. Not for Xero.",
+    parameters: {
+      messageId: { description: "Stable id from outlook_list_messages or outlook_search_mailbox", required: true },
+      mailboxAddress: { description: "Included shared mailbox SMTP if known" },
+    },
+    outputShape: "{ id, subject, from, body }",
     permission: "outlook shared mailbox read",
   },
   {
@@ -237,6 +263,8 @@ export const GATEWAY_TOOL_ALIASES: Record<string, string> = {
   database_summary: "database_summary",
   system_health: "system_health",
   outlook_search_mailbox: "outlook_search_mailbox",
+  outlook_list_messages: "outlook_list_messages",
+  outlook_get_message: "outlook_get_message",
   xero_sales_summary: "xero_sales_summary",
   xero_list_overdue_invoices: "xero_list_overdue_invoices",
   xero_get_invoice: "xero_get_invoice",
@@ -272,7 +300,7 @@ export function permittedToolsForConnectors(connectors: string[]): string[] {
   const hasMailbox = connectors.some((id) => /outlook|microsoft|mailbox/i.test(id));
   return INTELLIGENCE_TOOLS.filter((tool) => {
     if (XERO_TOOLS.has(tool.name)) return hasXero;
-    if (tool.name === "outlook_search_mailbox") return hasMailbox;
+    if (tool.name.startsWith("outlook_")) return hasMailbox;
     return true;
   }).map((tool) => tool.name);
 }

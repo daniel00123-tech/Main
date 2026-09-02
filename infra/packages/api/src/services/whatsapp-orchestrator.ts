@@ -182,6 +182,9 @@ const ALLOWED_WHATSAPP_TOOLS = new Set([
   "xero_search_contacts",
   "xero_list_overdue_invoices",
   "xero_aged_receivables",
+  "outlook_search_mailbox",
+  "outlook_list_messages",
+  "outlook_get_message",
 ]);
 
 export type WhatsAppInboundItem = WhatsAppParsedInbound;

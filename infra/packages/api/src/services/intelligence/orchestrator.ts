@@ -9,6 +9,8 @@ import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "
 import { enrichDocumentQuery, previousContentUserText, previousUserText } from "./query-enrichment.js";
 import { adoptFromSearchHits, recoverScoutDocumentAnswer } from "./document-evidence.js";
 import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
+import { honourScopedToolCall, isOutlookToolName } from "./capability-guard.js";
+import { withOutlookReadArgs } from "./outlook-args.js";
 import type {
   IntelligenceChannel,
   IntelligenceConfidence,
@@ -251,8 +253,13 @@ export async function runIntelligenceTurn(input: {
       input.buttonHint ? `Channel button: ${input.buttonHint}` : "",
       input.channel ? `Channel: ${input.channel}` : "",
       `Turn scope: ${scoped.scope}. Do not search the current document unless scope is CURRENT_DOCUMENT.`,
-      looksLikeFinanceRead(input.text) || scoped.scope === "BUSINESS_SYSTEM"
-        ? "This is a finance or business-system question. Use a Xero or mailbox read tool. Do not search the current document."
+      scoped.lastAnswerTopic === "email" || scoped.lastUserIntent === "email"
+        ? "This is an email/mailbox question. Use an Outlook read tool. Never use Xero."
+        : looksLikeFinanceRead(input.text) || (scoped.scope === "BUSINESS_SYSTEM" && scoped.lastAnswerTopic === "finance")
+          ? "This is a finance question. Use a Xero read tool. Do not search the current document. Do not use Outlook."
+          : "",
+      scoped.scope === "COMPANY_KNOWLEDGE"
+        ? "This is a company-knowledge question. Search documents. Do not use Xero unless the user named Xero or asked for live financial figures."
         : "",
       scoped.scope === "SYSTEM_META" || scoped.scope === "CONNECTOR_CAPABILITY"
         ? "Use a system-meta tool. Do not search documents."
@@ -319,13 +326,16 @@ export async function runIntelligenceTurn(input: {
     }
 
     if (decision.action === "call_tool") {
-      if (
-        scoped.scope === "BUSINESS_SYSTEM" &&
-        scoped.tool &&
-        !decision.name.startsWith("xero_") &&
-        decision.name !== "outlook_search_mailbox"
-      ) {
-        decision = { action: "call_tool", name: scoped.tool, arguments: {} };
+      const honoured = honourScopedToolCall(scoped, decision.name);
+      if (honoured.overridden) {
+        decision = {
+          action: "call_tool",
+          name: honoured.name,
+          arguments:
+            isOutlookToolName(honoured.name) && honoured.name === "outlook_search_mailbox"
+              ? { query: String(decision.arguments.query ?? input.text) }
+              : decision.arguments,
+        };
         qualityFlags.add("wrong_tool");
       }
       if (
@@ -336,7 +346,14 @@ export async function runIntelligenceTurn(input: {
         decision = { action: "call_tool", name: scoped.tool, arguments: {} };
         qualityFlags.add("wrong_tool");
       }
-      const validated = validateToolRequest(decision.name, decision.arguments);
+      const prepared = prepareToolArguments(
+        decision.name,
+        decision.arguments,
+        input.text,
+        workingState,
+        scoped.scope,
+      );
+      const validated = validateToolRequest(decision.name, prepared);
       if (!validated.ok) {
         transcript.push(`Rejected tool ${decision.name}: ${validated.reason ?? "invalid"}.`);
         qualityFlags.add("wrong_tool");
@@ -352,10 +369,37 @@ export async function runIntelligenceTurn(input: {
       if (scoped.lastUserIntent === "rephrase") qualityFlags.add("unnecessary_search_after_rephrase");
       const call: IntelligenceToolCall = {
         name: validated.name,
-        arguments: prepareToolArguments(validated.name, validated.arguments, input.text, workingState, scoped.scope),
+        arguments: validated.arguments,
       };
       const result = await input.runtime.executeTool(call);
       toolCalls.push(result);
+      const clarifyMessage =
+        result.ok &&
+        result.data &&
+        typeof result.data === "object" &&
+        (result.data as { needsClarification?: boolean }).needsClarification
+          ? String((result.data as { message?: string }).message ?? "").trim()
+          : "";
+      if (clarifyMessage) {
+        return finish({
+          kind: "clarify",
+          text: clarifyMessage,
+          confidence: "partial",
+          offerSearchOther: false,
+          toolCalls,
+          currentDocument,
+          evidenceDocumentIds,
+          clarification: true,
+          modelRounds,
+          route: "INTELLIGENT",
+          scope: scoped.scope,
+          lastAnswerTopic: scoped.lastAnswerTopic,
+          lastUserIntent: scoped.lastUserIntent,
+          qualityFlags: [...qualityFlags],
+          repaired,
+          fallbackUsed: modelRounds.some((row) => row.fallbackUsed),
+        });
+      }
       const doc = documentFromToolResult(result);
       if (doc) {
         if (shouldAdoptDocument(validated.name, input.state.currentDocument, doc, input.buttonHint)) {
@@ -717,7 +761,14 @@ async function bootstrapRetrieval(
       arguments: scoped.tool === "list_company_documents" ? { query: text } : {},
     });
   }
-  if (looksLikeFinanceRead(text) || scoped?.scope === "BUSINESS_SYSTEM") {
+  if (scoped?.lastAnswerTopic === "email" || (scoped?.tool && isOutlookToolName(scoped.tool))) {
+    const toolName = scoped.tool && isOutlookToolName(scoped.tool) ? scoped.tool : "outlook_search_mailbox";
+    return runtime.executeTool({
+      name: toolName,
+      arguments: prepareToolArguments(toolName, {}, text, state, scoped?.scope),
+    });
+  }
+  if (looksLikeFinanceRead(text) || (scoped?.scope === "BUSINESS_SYSTEM" && scoped.lastAnswerTopic === "finance")) {
     const toolName = scoped?.tool || "xero_sales_summary";
     return runtime.executeTool({
       name: toolName,
@@ -757,6 +808,9 @@ function prepareToolArguments(
   let next = { ...args };
   if (needsBusinessDates(name)) {
     next = withResolvedBusinessDates(name, next, text);
+  }
+  if (isOutlookToolName(name)) {
+    next = withOutlookReadArgs(name, next, text);
   }
   if (name === "search_document") {
     const leavingDocument =

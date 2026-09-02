@@ -83,8 +83,8 @@ export function mockedToolRuntime(): IntelligenceRuntime {
       if (call.name.startsWith("xero_")) {
         return { name: call.name, ok: true, latencyMs: started, data: { summary: "Sales 12k, overdue 2 invoices." } };
       }
-      if (call.name === "outlook_search_mailbox") {
-        return { name: call.name, ok: true, latencyMs: started, data: { messages: [{ subject: "Invoice scan" }] } };
+      if (call.name === "outlook_search_mailbox" || call.name === "outlook_list_messages" || call.name === "outlook_get_message") {
+        return { name: call.name, ok: true, latencyMs: started, data: { count: 1, messages: [{ subject: "Invoice scan" }] } };
       }
       if (call.name === "get_document_index_stats") {
         return {
@@ -176,7 +176,13 @@ export function policyCompleter(): IntelligenceCompleter {
     if (hasCurrent && /open the source|source (link|url)|where did you get/i.test(userLine)) {
       return json({ action: "call_tool", name: "get_knowledge_document", arguments: { document_id: idFromCurrent(current) } });
     }
-    if ((/sales|overdue|invoice|p&l|pnl|owes/i.test(userLine) || /compare\s+((this|last)\s+(month|quarter|year|week)).{0,24}((this|last)\s+(month|quarter|year|week))/i.test(userLine)) && !hasCurrent) {
+    if (/email|mailbox|outlook|inbox/i.test(userLine)) {
+      return json({ action: "call_tool", name: "outlook_search_mailbox", arguments: { query: userLine } });
+    }
+    if (/\b(emails?|mailbox|outlook|inbox|any mail)\b/i.test(userLine) && !/\bxero\b/i.test(userLine)) {
+      return json({ action: "call_tool", name: "outlook_search_mailbox", arguments: { query: userLine } });
+    }
+    if ((/sales|overdue|invoice|p&l|pnl|owes/i.test(userLine) || /compare\s+((this|last)\s+(month|quarter|year|week)).{0,24}((this|last)\s+(month|quarter|year|week))/i.test(userLine)) && !hasCurrent && !/\b(emails?|mailbox|outlook|inbox|any mail)\b/i.test(userLine)) {
       const name = /INV-|\binvoice\b.*\d/i.test(userLine)
         ? "xero_get_invoice"
         : /overdue|owes/i.test(userLine)
@@ -186,7 +192,7 @@ export function policyCompleter(): IntelligenceCompleter {
             : "xero_sales_summary";
       return json({ action: "call_tool", name, arguments: /INV-003/.test(userLine) ? { invoice_id: "INV-003" } : {} });
     }
-    if (/mailbox|outlook|inbox/i.test(userLine)) {
+    if (/\b(emails?|mailbox|outlook|inbox|any mail)\b/i.test(userLine)) {
       return json({ action: "call_tool", name: "outlook_search_mailbox", arguments: { query: userLine } });
     }
     if (/what's the policy|find the document|open that file|the other one|policy on this|pull up the policy/i.test(userLine) && !hasCurrent) {
@@ -383,7 +389,7 @@ function matchesIntent(expect: EvalExpectation, result: IntelligenceTurnResult, 
     case "xero":
       return result.toolCalls.some((call) => call.name.startsWith("xero_"));
     case "mailbox":
-      return result.toolCalls.some((call) => call.name === "outlook_search_mailbox");
+      return result.toolCalls.some((call) => call.name.startsWith("outlook_"));
     case "meta":
       return result.toolCalls.some((call) =>
         [

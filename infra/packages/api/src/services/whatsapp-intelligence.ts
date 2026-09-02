@@ -18,6 +18,10 @@ import {
   type IntelligenceTurnResult,
 } from "./intelligence/index";
 import { recordUsageEvent } from "./usage";
+import { shouldRecoverAsEmail, shouldRecoverAsFinance } from "./intelligence/capability-guard.js";
+import { withOutlookReadArgs, prepareOutlookSearchArguments } from "./intelligence/outlook-args.js";
+import { applyResolvedSender, resolveDirectorySenders } from "./directory-senders";
+import { loadCompanyDirectory } from "./company-directory";
 import { collectQualityFlags } from "./intelligence/quality.js";
 import {
   COMPANY_KNOWLEDGE_READ_TOOL,
@@ -68,6 +72,8 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_list_overdue_invoices",
   "xero_aged_receivables",
   "outlook_search_mailbox",
+  "outlook_list_messages",
+  "outlook_get_message",
 ]);
 
 export type WhatsAppIntelligenceAnswer = {
@@ -159,7 +165,9 @@ export async function executeWhatsAppIntelligence(
   if (
     result.kind === "failed" ||
     (result.confidence === "none" &&
-      /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|search other)\b/i.test(originalText))
+      (shouldRecoverAsFinance(originalText, result) ||
+        shouldRecoverAsEmail(originalText, result) ||
+        /\bsearch other\b/i.test(originalText)))
   ) {
     result = await recoverFailedIntelligenceTurn(
       env,
@@ -343,7 +351,7 @@ export function planFromIntelligence(
       draftKind: null,
     };
   }
-  if (usedXero) {
+  if (usedXero && result.lastUserIntent !== "email" && result.lastAnswerTopic !== "email") {
     return {
       action: "xero",
       intent: "finance_read",
@@ -394,6 +402,12 @@ function polishIntelligenceReply(
   question: string,
 ): string {
   let text = result.text.trim();
+  if (
+    (result.lastUserIntent === "email" || result.lastAnswerTopic === "email" || /\b(emails?|mailbox|outlook|inbox)\b/i.test(question)) &&
+    result.toolCalls.some((call) => call.name.startsWith("xero_"))
+  ) {
+    text = "I looked in email, not Xero. I couldn’t finish the mailbox read just now — try again in a moment.";
+  }
   if (result.kind === "failed" && !text) {
     text = "I couldn't complete that just now. Try again in a moment.";
   }
@@ -528,7 +542,37 @@ async function recoverFailedIntelligenceTurn(
       offerSearchOther: false,
     };
   }
-  if (/\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover)\b/i.test(input.originalText) || failed.scope === "BUSINESS_SYSTEM") {
+  if (shouldRecoverAsEmail(input.originalText, failed)) {
+    const outlookName =
+      failed.toolCalls.find((call) => call.name.startsWith("outlook_"))?.name ?? "outlook_search_mailbox";
+    const outlook = await runtime.executeTool({
+      name: outlookName,
+      arguments: withOutlookReadArgs(outlookName, {}, input.originalText),
+    });
+    toolCalls.push(outlook);
+    const count =
+      outlook.ok && outlook.data && typeof outlook.data === "object"
+        ? Number((outlook.data as { count?: unknown }).count)
+        : null;
+    return {
+      ...failed,
+      kind: outlook.ok ? "answer" : "failed",
+      text: outlook.ok
+        ? Number.isFinite(count)
+          ? `I found ${count} matching email${count === 1 ? "" : "s"} in the mailbox I can read.`
+          : "I searched the mailbox I can read. Ask if you want a sender, subject, or a specific message opened."
+        : "I couldn’t read the mailbox just now. Try again in a moment.",
+      confidence: outlook.ok ? "partial" : "none",
+      offerSearchOther: false,
+      toolCalls,
+      currentDocument: current,
+      evidenceDocumentIds,
+      clarification: false,
+      lastAnswerTopic: "email",
+      lastUserIntent: "email",
+    };
+  }
+  if (shouldRecoverAsFinance(input.originalText, failed)) {
     const xero = await runtime.executeTool({
       name: "xero_sales_summary",
       arguments: withResolvedBusinessDates("xero_sales_summary", {}, input.originalText),
@@ -801,7 +845,37 @@ function createWhatsAppIntelligenceRuntime(
           error: "tool_not_permitted",
         };
       }
-      const args = gatewayArguments(gatewayName, call.arguments, input.memory);
+      let args = gatewayArguments(gatewayName, call.arguments, input.memory);
+      if (gatewayName.startsWith("outlook_")) {
+        const people = await loadCompanyDirectory(env.DB, input.companyId);
+        const userText = String(args.query ?? input.memory.lastUserQuestion ?? "");
+        const prepared = prepareOutlookSearchArguments(userText, people);
+        if (prepared.clarify) {
+          return {
+            name: call.name,
+            ok: true,
+            latencyMs: Date.now() - started,
+            data: { needsClarification: true, message: prepared.clarify },
+          };
+        }
+        args = withOutlookReadArgs(gatewayName, args, userText, people);
+        if (!prepared.fromEmail) {
+          const hint = String(args.senderHint ?? "").trim();
+          if (hint) {
+            const matches = await resolveDirectorySenders(env.DB, input.companyId, hint);
+            const resolved = applyResolvedSender(args, matches);
+            if (resolved.clarification) {
+              return {
+                name: call.name,
+                ok: true,
+                latencyMs: Date.now() - started,
+                data: { needsClarification: true, candidates: matches, message: resolved.clarification },
+              };
+            }
+            args = resolved.args;
+          }
+        }
+      }
       const timeoutMs =
         gatewayName === COMPANY_KNOWLEDGE_SEARCH_TOOL || gatewayName === "search"
           ? KNOWLEDGE_SEARCH_TIMEOUT_MS
@@ -1033,6 +1107,9 @@ function gatewayArguments(
   }
   if (toolName === "xero_get_invoice") {
     return { invoice_id: String(args.invoice_id ?? args.id ?? "").trim() };
+  }
+  if (toolName.startsWith("outlook_")) {
+    return withOutlookReadArgs(toolName, { ...args }, String(args.query ?? memory.lastUserQuestion ?? ""));
   }
   return { ...args };
 }
