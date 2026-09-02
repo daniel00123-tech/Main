@@ -337,9 +337,10 @@ export function classifyScope(
     });
   }
 
-  const connectorHints = ("connectors" in state && Array.isArray(state.connectors)
-    ? state.connectors.map((id) => ({ definitionId: id }))
-    : undefined);
+  const connectorHints =
+    "connectors" in state && Array.isArray(state.connectors) && state.connectors.length > 0
+      ? state.connectors.map((id) => ({ definitionId: id }))
+      : undefined;
   const businessIntent = resolveBusinessSystemIntent(text, { connectors: connectorHints });
   if (
     businessIntent &&
