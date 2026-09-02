@@ -368,7 +368,7 @@ describe("WhatsApp inbound orchestration", () => {
 
   it("returns a safe tool-failure reply", async () => {
     executeGatewayRequest.mockResolvedValue({ status: 403, error: "Permission denied" });
-    const result = await handleWhatsAppInboundMessage(env(), inbound({ text: "What can you tell me about the documents?" }));
+    const result = await handleWhatsAppInboundMessage(env(), inbound({ text: "Find the Coal Search document and tell me what it relates to." }));
     expect(result.outcome).toBe("tool_failed");
     expect(result.publicReply).not.toMatch(/Permission denied|co_a|token/i);
   });

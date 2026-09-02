@@ -62,7 +62,10 @@ export function honourScopedToolCall(
   return { name: requestedName, overridden: false };
 }
 
-export function shouldRecoverAsFinance(text: string, scoped?: Pick<ScopeDecision, "scope" | "lastAnswerTopic" | "lastUserIntent"> | null): boolean {
+export function shouldRecoverAsFinance(
+  text: string,
+  scoped?: Partial<Pick<ScopeDecision, "scope" | "lastAnswerTopic" | "lastUserIntent">> | null,
+): boolean {
   if (scoped?.lastAnswerTopic === "email" || scoped?.lastUserIntent === "email") return false;
   if (scoped?.scope === "COMPANY_KNOWLEDGE" || scoped?.scope === "CURRENT_DOCUMENT") return false;
   if (scoped?.lastAnswerTopic === "finance" || scoped?.lastUserIntent === "finance") return true;
@@ -73,7 +76,10 @@ export function shouldRecoverAsFinance(text: string, scoped?: Pick<ScopeDecision
   return xeroAllowedForQuery(text);
 }
 
-export function shouldRecoverAsEmail(text: string, scoped?: Pick<ScopeDecision, "scope" | "lastAnswerTopic" | "lastUserIntent" | "tool"> | null): boolean {
+export function shouldRecoverAsEmail(
+  text: string,
+  scoped?: Partial<Pick<ScopeDecision, "scope" | "lastAnswerTopic" | "lastUserIntent" | "tool">> | null,
+): boolean {
   if (scoped?.lastAnswerTopic === "email" || scoped?.lastUserIntent === "email") return true;
   if (scoped?.tool && isOutlookToolName(scoped.tool)) return true;
   return /\b(emails?|mailbox|outlook|inbox)\b/i.test(text) && !/\bxero\b/i.test(text);

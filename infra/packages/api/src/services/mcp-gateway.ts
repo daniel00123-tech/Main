@@ -41,7 +41,14 @@ import {
   wrapStandardToolResult,
 } from "./mcp-knowledge-standard";
 import { isXeroToolName, isXeroWriteToolName } from "./xero-tools";
-import { isKnowledgeDiscoveryTool, XERO_TOOL_CONTRACTS, elvexCan, isElvexCompany } from "@infra/shared";
+import {
+  extractIntentText,
+  isKnowledgeDiscoveryTool,
+  resolveBusinessSystemIntent,
+  XERO_TOOL_CONTRACTS,
+  elvexCan,
+  isElvexCompany,
+} from "@infra/shared";
 import { withXeroReadTools } from "./xero-read-tools";
 import { resolveXeroReadArguments } from "./elvex-xero-el-mcp";
 import { loadLiveCompanyActor } from "../auth/live-identity";
@@ -137,7 +144,7 @@ export function enrichMcpToolDescription(
     get_action_plan:
       "Fetch a server-side Xero action plan by plan_id. Financial write plumbing — not an email tool.",
     database_summary:
-      "Summarise available company knowledge collections. This is not live Xero or mailbox data. Do not use it for sales totals or finance figures.",
+      "Summarise available company knowledge collections only. Never use this for live Xero sales, invoices, outstanding, overdue, or finance figures — call xero_sales_summary or xero_search_invoices instead.",
     system_health:
       "Non-billable health check for the company MCP connection through INFRA. Does not search documents and does not debit the wallet.",
     xero_get_organisation:
@@ -438,6 +445,21 @@ async function resolveToolActionForFilter(
   return `mcp.${toolName}`;
 }
 
+export const DATABASE_SUMMARY_NOT_XERO_MESSAGE =
+  "This tool is not live Xero. Use xero_sales_summary with fromDate and toDate for sales figures, or xero_search_invoices to list invoices.";
+
+export function hideDatabaseSummaryForHumanMcp(actor: GatewayActor): boolean {
+  return actor.type === "user";
+}
+
+export function advertisedToolsForActor(
+  actor: GatewayActor,
+  tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>,
+): Array<{ name: string; description: string; inputSchema: Record<string, unknown> }> {
+  if (!hideDatabaseSummaryForHumanMcp(actor)) return tools;
+  return tools.filter((tool) => tool.name !== "database_summary");
+}
+
 async function logFacadeEvent(
   db: D1Database,
   input: {
@@ -689,24 +711,27 @@ export async function handleInfraMcpJsonRpc(
         !elvexCan(userRole, "xero.draft.write")
           ? []
           : identityScopes;
-      const advertised = withAutomationControlTools(
-        withListCompanyDocumentsTool(
-          withAskDocumentTool(
-            withXeroReadTools(
-              withOutlookReadTools(
-                withActionControlTools(withStandardKnowledgeTools(tools), actionScopes),
-                identityScopes,
+      const advertised = advertisedToolsForActor(
+        actor,
+        withAutomationControlTools(
+          withListCompanyDocumentsTool(
+            withAskDocumentTool(
+              withXeroReadTools(
+                withOutlookReadTools(
+                  withActionControlTools(withStandardKnowledgeTools(tools), actionScopes),
+                  identityScopes,
+                ),
+                {
+                  scopes: identityScopes,
+                  companyId: resolvedCompanyId,
+                  userRole,
+                  actorType: actor.type,
+                },
               ),
-              {
-                scopes: identityScopes,
-                companyId: resolvedCompanyId,
-                userRole,
-                actorType: actor.type,
-              },
             ),
           ),
+          { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
         ),
-        { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
       );
 
       await logFacadeEvent(env.DB, {
@@ -763,24 +788,27 @@ export async function handleInfraMcpJsonRpc(
         const live = await loadLiveCompanyActor(env.DB, actor.user.userId, resolvedCompanyId);
         fallbackRole = live?.role ?? getUserCompanyRole(actor.user, resolvedCompanyId);
       }
-      const advertised = withAutomationControlTools(
-        withListCompanyDocumentsTool(
-          withAskDocumentTool(
-            withXeroReadTools(
-              withOutlookReadTools(
-                withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
-                identityScopes,
+      const advertised = advertisedToolsForActor(
+        actor,
+        withAutomationControlTools(
+          withListCompanyDocumentsTool(
+            withAskDocumentTool(
+              withXeroReadTools(
+                withOutlookReadTools(
+                  withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+                  identityScopes,
+                ),
+                {
+                  scopes: identityScopes,
+                  companyId: resolvedCompanyId,
+                  userRole: fallbackRole,
+                  actorType: actor.type,
+                },
               ),
-              {
-                scopes: identityScopes,
-                companyId: resolvedCompanyId,
-                userRole: fallbackRole,
-                actorType: actor.type,
-              },
             ),
           ),
+          { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
         ),
-        { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
       );
       await logFacadeEvent(env.DB, {
         companyId: resolvedCompanyId,
@@ -868,6 +896,43 @@ export async function handleInfraMcpJsonRpc(
         : undefined;
     if (isKnowledgeDiscoveryTool(toolName) && callMeta) {
       args = { ...args, __meta: callMeta };
+    }
+
+    if (actor.type === "user" && toolName === "database_summary") {
+      const intentText = extractIntentText(args);
+      const intent = resolveBusinessSystemIntent(intentText);
+      if (intent?.capability !== "xero" && intent?.capability !== "payments") {
+        await logFacadeEvent(env.DB, {
+          companyId: resolvedCompanyId,
+          actor: actorLabel,
+          method,
+          toolName,
+          status: "ok",
+          httpStatus: 200,
+          detail: {
+            intercepted: "database_summary_not_live_xero",
+            queryPreview: intentText ? intentText.slice(0, 80) : null,
+          },
+        });
+        return {
+          payload: jsonRpcResult(id, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    notLiveXero: true,
+                    message: DATABASE_SUMMARY_NOT_XERO_MESSAGE,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          }),
+          httpStatus: 200,
+        };
+      }
     }
 
     if (isAutomationControlTool(toolName)) {

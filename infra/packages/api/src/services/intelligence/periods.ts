@@ -392,6 +392,14 @@ export function withResolvedBusinessDates(
   if (!needsBusinessDates(toolName)) return args;
   const hasDates = String(args.fromDate ?? "").trim() && String(args.toDate ?? "").trim();
   if (hasDates) return args;
+  if (
+    args.unpaidOnly === true ||
+    args.outstanding === true ||
+    args.overdue === true ||
+    args.overdueOnly === true
+  ) {
+    return args;
+  }
   const periodText = [
     text,
     typeof args.period === "string" ? args.period.replace(/_/g, " ") : "",

@@ -684,7 +684,7 @@ export function classifyScope(
       tool: null,
       noTool: true,
       clarify: true,
-      clarifyText: "Which one did you have in mind?",
+      clarifyText: "Which document did you have in mind?",
       lastUserIntent: "ambiguous_document",
     });
   }

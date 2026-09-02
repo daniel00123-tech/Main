@@ -159,6 +159,9 @@ describe("Xero natural periods", () => {
     expect(withResolvedBusinessDates("xero_top_customers", {}, "top customers this month", firstSep).fromDate).toBe(
       "2026-09-01",
     );
+    expect(
+      withResolvedBusinessDates("xero_search_invoices", { unpaidOnly: true, limit: 10 }, "", firstSep),
+    ).toEqual({ unpaidOnly: true, limit: 10 });
   });
 
   it("handles week, quarter, year, yesterday, and past-N-day bounds", () => {
