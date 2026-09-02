@@ -1,6 +1,8 @@
 export { INTELLIGENCE_TOOLS, INTELLIGENCE_TOOL_NAMES, GATEWAY_TOOL_ALIASES, SYSTEM_META_TOOLS, describeToolCatalogue, permittedToolsForConnectors } from "./catalogue.js";
 export { matchFastPath, isFastPathTurn, matchOpenSourceFastPath } from "./fast-path.js";
 export { classifyScope, isCorpusInventoryAsk, detectNamedDocumentSwitch } from "./scope.js";
+export { honourScopedToolCall, isOutlookToolName, isXeroToolName, shouldRecoverAsEmail, shouldRecoverAsFinance } from "./capability-guard.js";
+export { pickOutlookReadTool, extractSenderHint, withOutlookReadArgs } from "./outlook-args.js";
 export { verbaliseSystemMeta, isSystemMetaTool, executeSystemMetaTool } from "./system-meta.js";
 export { resolveBusinessPeriod, withResolvedBusinessDates, businessSystemArgs } from "./periods.js";
 export {

@@ -1,8 +1,12 @@
 import {
   ELVEX_INFO_MAILBOXES,
   actionForProtectedCapability,
+  businessToolForIntent,
+  extractIntentText,
   isElvexCompany,
+  resolveBusinessSystemIntent,
   resolveElvexConfiguredMailbox,
+  xeroAllowedForQuery,
   type StructuredCapabilityDenial,
   type ToolAction,
 } from "@infra/shared";
@@ -641,6 +645,42 @@ export async function executeGatewayRequest(
             accessOutcome: mapped?.outcome,
           };
         }
+      }
+    }
+  }
+
+  if (isXeroToolName(input.toolName) && !isXeroWriteToolName(input.toolName)) {
+    const intentText = extractIntentText(input.arguments);
+    if (intentText && !xeroAllowedForQuery(intentText)) {
+      const intent = resolveBusinessSystemIntent(intentText);
+      if (intent && (intent.capability === "info_mailbox" || intent.capability === "finance_mailbox")) {
+        const tool = businessToolForIntent(intent, intentText);
+        if (tool) {
+          input.toolName = tool.toolName;
+          input.arguments = { ...(input.arguments ?? {}), ...tool.arguments };
+        }
+      } else {
+        await recordAuditEvent(env.DB, {
+          companyId: input.companyId,
+          eventType: "mcp.execution_failed",
+          actor: actorLabel,
+          resourceType: "gateway",
+          resourceId: input.toolName,
+          detail: {
+            correlationId,
+            requestId,
+            reason: "xero_misroute_blocked",
+            billed: false,
+          },
+        });
+        return {
+          status: 409 as const,
+          error:
+            "That question is not a Xero financial read. I can search company documents or email when those systems apply.",
+          correlationId,
+          requestId,
+          code: "XERO_MISROUTE_BLOCKED",
+        };
       }
     }
   }

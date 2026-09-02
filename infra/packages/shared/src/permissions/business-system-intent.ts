@@ -50,9 +50,17 @@ export function extractIntentText(args?: Record<string, unknown> | null): string
 }
 
 function isDocumentAboutSystem(query: string): boolean {
-  return /\b(where is|written down|written|process|procedure|policy|guide|manual|handbook|how do we)\b/.test(
+  return isProcessOrPolicyAsk(query);
+}
+
+export function isProcessOrPolicyAsk(query: string): boolean {
+  return /\b(where is|written down|written|process|procedure|policy|guide|manual|handbook|how do we|how (does|do|should) (we|i|the))\b/.test(
     query,
   );
+}
+
+export function isEmailCapabilityAsk(query: string): boolean {
+  return /\b(emails?|mailbox|outlook|inbox|any mail)\b/.test(query) && !/\bxero\b/.test(query);
 }
 
 function isLiveDataOrAction(query: string): boolean {
@@ -105,7 +113,35 @@ function capabilityForDefinition(definitionId: string, query: string): Protected
 }
 
 const XERO_DOMAIN =
-  /\b(sales|invoices?|invoiced|outstanding|overdue|p&l|pnl|profit and loss|balance sheet|aged receivables|revenue|turnover|who owes|raised today|customers?|spend)\b/;
+  /\b(sales|invoices?|invoiced|outstanding|overdue|p&l|pnl|profit and loss|balance sheet|aged receivables|revenue|turnover|who owes|raised today|top (?:\d+|five|5|ten)?\s+customers?|(?:customer|supplier) (?:balances?|invoices?)|spend)\b/;
+
+const FINANCIAL_COMPARE =
+  /\bcompare\s+((this|last|past|previous)\s+(month|quarter|year|week)|today|yesterday)\s+(with|vs\.?|versus|and|to)\s+((this|last|past|previous)\s+(month|quarter|year|week)|today|yesterday)\b/;
+
+export function isFinancialOperationalAsk(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  if (isEmailCapabilityAsk(q)) return false;
+  if (isProcessOrPolicyAsk(q) && !/\b(how much|outstanding|overdue|raised today|sales|invoices?|p&l|pnl|revenue|who owes)\b/.test(q)) {
+    return false;
+  }
+  return XERO_DOMAIN.test(q) || FINANCIAL_COMPARE.test(q) || /\bxero\b/.test(q);
+}
+
+/**
+ * Semantic Xero guard — not a phrase list of the failing prompts.
+ * Email, documents, and process/policy asks must not execute Xero
+ * unless the user named Xero or asked for live financial figures.
+ */
+export function xeroAllowedForQuery(query: string | null | undefined): boolean {
+  if (!query?.trim()) return false;
+  const q = query.trim().toLowerCase();
+  if (isEmailCapabilityAsk(q)) return false;
+  if (isProcessOrPolicyAsk(q) && !/\bxero\b/.test(q) && !/\b(how much|outstanding|overdue|raised today|sales figures|invoices? raised)\b/.test(q)) {
+    return false;
+  }
+  return isFinancialOperationalAsk(q);
+}
 
 export function catalogueOperationalConnectors(): CompanyConnectorHint[] {
   return CONNECTOR_CATALOGUE.filter((connector) =>
@@ -168,7 +204,18 @@ export function resolveBusinessSystemIntent(
       reason: "named_connector",
     };
   }
-  if (isDocumentAboutSystem(q) && !/\b(tell me|show me|how much|what are our|what is outstanding|raised today|this month)\b/.test(q)) {
+  if (isEmailCapabilityAsk(q)) {
+    return {
+      capability: /\bfinance\b/.test(q) ? "finance_mailbox" : "info_mailbox",
+      connectorDefinitionId: "conn_outlook_shared",
+      namedExplicitly: /\b(outlook|mailbox|inbox)\b/.test(q),
+      reason: /\b(outlook|mailbox|inbox)\b/.test(q) ? "named_connector" : "domain_language",
+    };
+  }
+  if (
+    isDocumentAboutSystem(q) &&
+    !/\b(tell me|show me|how much|what are our|what is outstanding|raised today|this month)\b/.test(q)
+  ) {
     return null;
   }
 
@@ -187,18 +234,9 @@ export function resolveBusinessSystemIntent(
     };
   }
 
-  if (/\b(emails?|mailbox|outlook|inbox)\b/.test(q) && !/\bxero\b/.test(q)) {
-    return {
-      capability: /\bfinance\b/.test(q) ? "finance_mailbox" : "info_mailbox",
-      connectorDefinitionId: "conn_outlook_shared",
-      namedExplicitly: /\b(outlook|mailbox|inbox)\b/.test(q),
-      reason: /\b(outlook|mailbox|inbox)\b/.test(q) ? "named_connector" : "domain_language",
-    };
-  }
-
   const connectorsForDomain = companyConnectors === undefined ? catalogueOperationalConnectors() : companyConnectors;
   const hasXero = connectorsForDomain.some((connector) => connector.definitionId === "conn_xero");
-  if (hasXero && XERO_DOMAIN.test(q)) {
+  if (hasXero && isFinancialOperationalAsk(q)) {
     return {
       capability: "xero",
       connectorDefinitionId: "conn_xero",
@@ -241,16 +279,12 @@ export function businessToolForIntent(
       arguments: { query },
     };
   }
-  if (intent.capability === "finance_mailbox") {
+  if (intent.capability === "finance_mailbox" || intent.capability === "info_mailbox") {
+    const mailboxAddress =
+      intent.capability === "finance_mailbox" ? ELVEX_FINANCE_MAILBOXES[0] : ELVEX_INFO_MAILBOXES[0];
     return {
-      toolName: "outlook_list_messages",
-      arguments: { mailboxAddress: ELVEX_FINANCE_MAILBOXES[0], limit: 5 },
-    };
-  }
-  if (intent.capability === "info_mailbox") {
-    return {
-      toolName: "outlook_list_messages",
-      arguments: { mailboxAddress: ELVEX_INFO_MAILBOXES[0], limit: 5 },
+      toolName: "outlook_search_mailbox",
+      arguments: { mailboxAddress, query, limit: 25 },
     };
   }
   return null;

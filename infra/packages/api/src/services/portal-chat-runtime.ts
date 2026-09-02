@@ -20,6 +20,8 @@ import { identityFromMetadata, lookupKnowledgeSourceUrl, persistDiscoveredSource
 import { chunksFromFetchPayload, queryTerms, rejectWeakSearchHits, searchDocument } from "./whatsapp-grounded-qa";
 import { FETCH_TIMEOUT_MS, KNOWLEDGE_SEARCH_TIMEOUT_MS, MCP_TIMEOUT_MS, withBoundedTimeout } from "./whatsapp-timeouts";
 import { PORTAL_CHAT_SOURCE_CLIENT, toolStatusLabel, type PortalChatContext, type PortalChatStatusEvent } from "./portal-chat-types";
+import { withOutlookReadArgs } from "./intelligence/outlook-args.js";
+import { applyResolvedSender, resolveDirectorySenders } from "./directory-senders";
 
 const ALLOWED_GATEWAY_TOOLS = new Set([
   "search",
@@ -37,6 +39,8 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_list_overdue_invoices",
   "xero_aged_receivables",
   "outlook_search_mailbox",
+  "outlook_list_messages",
+  "outlook_get_message",
 ]);
 
 export type PortalChatGatewayFn = (
@@ -78,7 +82,23 @@ export function createPortalChatRuntime(
         return { name: call.name, ok: false, latencyMs: Date.now() - started, data: null, error: "tool_not_permitted" };
       }
 
-      const args = gatewayArguments(gatewayName, call.arguments, input.context);
+      let args = gatewayArguments(gatewayName, call.arguments, input.context);
+      if (gatewayName.startsWith("outlook_")) {
+        const hint = String(args.senderHint ?? "").trim();
+        if (hint) {
+          const matches = await resolveDirectorySenders(env.DB, input.companyId, hint);
+          const resolved = applyResolvedSender(args, matches);
+          if (resolved.clarification) {
+            return {
+              name: call.name,
+              ok: true,
+              latencyMs: Date.now() - started,
+              data: { needsClarification: true, candidates: matches, message: resolved.clarification },
+            };
+          }
+          args = resolved.args;
+        }
+      }
       const timeoutMs =
         gatewayName === COMPANY_KNOWLEDGE_SEARCH_TOOL || gatewayName === "search"
           ? KNOWLEDGE_SEARCH_TIMEOUT_MS
@@ -389,6 +409,9 @@ function gatewayArguments(
   }
   if (toolName === "xero_get_invoice") {
     return { invoice_id: String(args.invoice_id ?? args.id ?? "").trim() };
+  }
+  if (toolName.startsWith("outlook_")) {
+    return withOutlookReadArgs(toolName, { ...args }, String(args.query ?? ""));
   }
   return { ...args };
 }

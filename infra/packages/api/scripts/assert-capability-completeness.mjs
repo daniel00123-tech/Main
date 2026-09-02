@@ -96,6 +96,11 @@ const REQUIRED = [
     file: "src/routes/portal-chat.ts",
     marker: "/api/companies/:slug/chat/messages",
   },
+  {
+    id: "capability_routing_guard",
+    file: "src/services/intelligence/capability-guard.ts",
+    marker: "honourScopedToolCall",
+  },
 ];
 
 const missing = [];

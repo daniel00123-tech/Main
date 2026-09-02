@@ -363,6 +363,17 @@ export async function executeCompanyMcpOutlookRead(
     forwarded.folder = typeof input.arguments.folderName === "string" ? input.arguments.folderName : "inbox";
     forwarded.limit = limit;
     if (query && input.toolName !== "outlook_list_messages") forwarded.query = query;
+    const fromDate = typeof input.arguments.fromDate === "string" ? input.arguments.fromDate : "";
+    const toDate = typeof input.arguments.toDate === "string" ? input.arguments.toDate : "";
+    if (fromDate) forwarded.fromDate = fromDate;
+    if (toDate) forwarded.toDate = toDate;
+    const sender =
+      typeof input.arguments.sender === "string"
+        ? input.arguments.sender
+        : typeof input.arguments.from === "string"
+          ? input.arguments.from
+          : "";
+    if (sender) forwarded.from = sender;
   } else {
     Object.assign(forwarded, getArgs, { mailbox: mailbox.mailboxAddress });
   }

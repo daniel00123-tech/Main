@@ -133,6 +133,10 @@ const SEEDS: Seed[] = [
   { text: "Show the P&L", scope: "BUSINESS_SYSTEM", tool: "xero_profit_and_loss" },
   { text: "Check Xero instead of this file", scope: "BUSINESS_SYSTEM", tool: "xero_sales_summary", withDoc: true },
   { text: "Search the shared mailbox", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox" },
+  { text: "Search emails", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox" },
+  { text: "How many emails has Sharon sent today?", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox" },
+  { text: "What is the PO process", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Purchase order process", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
   { text: "Any unread in Outlook?", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox" },
   { text: "Create an invoice for that", scope: "CONTROLLED_ACTION", tool: null },
   { text: "Send this invoice now", scope: "CONTROLLED_ACTION", tool: null },
@@ -241,6 +245,15 @@ const SEEDS: Seed[] = [
     currentBusinessSystem: "xero",
     lastSuccessfulTool: "xero_sales_summary",
   },
+  { text: "Search emails", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox" },
+  { text: "How many emails has Sharon sent today?", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox" },
+  { text: "What is the PO process", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Po process", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Purchase order process", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "find the latest email about it", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox" },
+  { text: "Tell me Xero sales this month", scope: "BUSINESS_SYSTEM", tool: "xero_sales_summary" },
+  { text: "No, I meant email", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox", correction: true },
+  { text: "Search documents instead", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
 ];
 
 export function scopeEvaluationCases(): ScopeEvalCase[] {
