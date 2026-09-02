@@ -1139,7 +1139,9 @@ export async function executeGatewayRequest(
               riskClass,
               accessOutcome: empty ? "empty_result" : "allowed",
               message: empty
-                ? "No matching Xero records were found for that period."
+                ? input.toolName === "xero_sales_summary"
+                  ? "No matching Xero sales records were found for that period."
+                  : "No matching Xero records were found for that period."
                 : undefined,
               result: xero.result,
             },

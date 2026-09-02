@@ -1173,6 +1173,20 @@ async function runWilliamChatgptAcceptanceRoute(c: { env: Env; req: { query: (na
 }
 
 connectors.post("/api/internal/william-chatgpt-acceptance", async (c) => runWilliamChatgptAcceptanceRoute(c));
+connectors.post("/api/internal/ella-chatgpt-xero-acceptance", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runEllaChatgptXeroAcceptance } = await import("../services/ella-chatgpt-acceptance");
+    return c.json(await runEllaChatgptXeroAcceptance(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Ella ChatGPT Xero acceptance failed" },
+      500,
+    );
+  }
+});
 connectors.post("/api/internal/elvex-xero-acceptance", async (c) => runWilliamChatgptAcceptanceRoute(c));
 connectors.post("/api/internal/cmd15/microsoft-acceptance/xero-reads", async (c) =>
   runWilliamChatgptAcceptanceRoute(c),
