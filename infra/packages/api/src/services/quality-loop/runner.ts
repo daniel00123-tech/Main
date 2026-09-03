@@ -14,7 +14,13 @@ import { assertTenantIsolation, evaluateWhatsAppConversation, threadFromAudit } 
 import { groupQualityPatterns } from "./patterns";
 import { proposeImprovements } from "./proposals";
 import { replayProposal } from "./replay";
-import { applyApprovedProposal, canaryShouldRollback, promoteOrRollbackCanary, resolveActiveWhatsAppRuntime } from "./apply";
+import {
+  applyApprovedProposal,
+  baselineFromRunMetrics,
+  decideCanaryClose,
+  promoteOrRollbackCanary,
+  resolveActiveWhatsAppRuntime,
+} from "./apply";
 import {
   completeQualityRun,
   createReviewToken,
@@ -386,30 +392,49 @@ export async function applyAuthorisedSafeProposals(
 
 async function maybeCloseCanary(env: Env) {
   const runtime = await getActiveRuntimeRow(env.DB);
-  if (!runtime.canary) return;
+  if (!runtime.canary?.proposalId) return;
+  const canaryStartedAt = runtime.canary.createdAt;
+  if (!canaryStartedAt) return;
   const scores = await env.DB.prepare(
-    `SELECT COUNT(*) AS n, AVG(overall_score) AS quality, AVG(failed) AS failed_rate
-     FROM quality_conversation_scores
-     WHERE created_at >= datetime('now', '-2 days')`,
+    `SELECT COUNT(*) AS n, AVG(s.overall_score) AS quality, AVG(s.failed) AS failed_rate
+     FROM quality_conversation_scores s
+     INNER JOIN interactions i ON i.id = s.interaction_id
+     WHERE i.created_at >= ?
+       AND (? IS NULL OR s.company_id = ?)`,
   )
+    .bind(canaryStartedAt, runtime.canary.canaryCompanyId, runtime.canary.canaryCompanyId)
     .first<{ n: number; quality: number; failed_rate: number }>()
     .catch(() => null);
-  if (!runtime.canary.proposalId) return;
-  if (!scores || Number(scores.n ?? 0) < 3) return;
-  const decision = canaryShouldRollback({
-    baselineQuality: 80,
-    canaryQuality: Number(scores.quality ?? 80),
-    baselineErrorRate: 0.15,
-    canaryErrorRate: Number(scores.failed_rate ?? 0),
-    baselineLatencyMs: 20_000,
-    canaryLatencyMs: 20_000,
+  const previous = await env.DB.prepare(
+    `SELECT metrics_json FROM quality_loop_runs
+     WHERE status = 'completed'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .first<{ metrics_json: string }>()
+    .catch(() => null);
+  let previousMetrics: { qualityAverage?: number; failedRate?: number; finalLatencyMs?: number | null } | null = null;
+  try {
+    previousMetrics = previous?.metrics_json ? JSON.parse(previous.metrics_json) : null;
+  } catch {
+    previousMetrics = null;
+  }
+  const baseline = baselineFromRunMetrics(previousMetrics);
+  const close = decideCanaryClose({
+    canaryCreatedAt: canaryStartedAt,
+    postCanaryScores: Number(scores?.n ?? 0),
+    canaryQuality: Number(scores?.quality ?? baseline.baselineQuality),
+    canaryErrorRate: Number(scores?.failed_rate ?? 0),
+    baselineQuality: baseline.baselineQuality,
+    baselineErrorRate: baseline.baselineErrorRate,
+    baselineLatencyMs: baseline.baselineLatencyMs,
+    canaryLatencyMs: baseline.baselineLatencyMs,
     permissionSafetyWorsened: false,
   });
-  if (!decision.rollback && Number(scores.n) < 8) return;
+  if (close.action === "hold") return;
   const result = await promoteOrRollbackCanary(env, {
     version: runtime.canary.version,
     proposalId: runtime.canary.proposalId,
-    decision,
+    decision: { rollback: close.action === "rollback", reason: close.reason },
   });
   if (result.status === "rolled_back") {
     const recipients = await listQualityLoopRecipients(env.DB, env);

@@ -3,7 +3,14 @@ import { assertTenantIsolation, evaluateWhatsAppConversation } from "./evaluator
 import { groupQualityPatterns } from "./patterns";
 import { isHighRiskProposal, proposeImprovements } from "./proposals";
 import { replayProposal } from "./replay";
-import { canaryShouldRollback, isSafeAutoApplyPatch, resolveApplyBase, validateBeforePromote } from "./apply";
+import {
+  baselineFromRunMetrics,
+  canaryShouldRollback,
+  decideCanaryClose,
+  isSafeAutoApplyPatch,
+  resolveApplyBase,
+  validateBeforePromote,
+} from "./apply";
 import { londonParts, resolvePhase, shouldRunCadence } from "./cadence";
 import { qualityReviewEmail, qualityReviewSubject } from "./email";
 import { buildThreadFromFixture } from "./runner";
@@ -155,7 +162,17 @@ function memoryDb() {
         status: values[2],
         config_json: values[3],
         proposal_id: values[4],
+        created_at: values[7],
       });
+      return { success: true };
+    }
+    if (sql.includes("UPDATE quality_runtime_config") && sql.includes("Superseded by a newer canary")) {
+      for (const row of tables.quality_runtime_config) {
+        if (row.status === "canary") {
+          row.status = "rolled_back";
+          row.rollback_reason = "Superseded by a newer canary";
+        }
+      }
       return { success: true };
     }
     if (sql.includes("MAX(version)")) {
@@ -552,7 +569,7 @@ describe("approval, tokens, canary, rollback", () => {
     const token = await createReviewToken(db, run.id);
     const ok = await resolveReviewToken(db, token, "2026-08-30T08:00:00.000Z");
     expect(ok && "runId" in ok && ok.runId).toBe(run.id);
-    const expired = await resolveReviewToken(db, token, "2026-09-02T08:00:00.000Z");
+    const expired = await resolveReviewToken(db, token, "2099-01-01T00:00:00.000Z");
     expect(expired && "expired" in expired).toBe(true);
     const unknown = await resolveReviewToken(db, "not-a-token");
     expect(unknown).toBeNull();
@@ -691,6 +708,78 @@ describe("approval, tokens, canary, rollback", () => {
         permissionSafetyWorsened: true,
       }).reason,
     ).toMatch(/Permission-safety/);
+  });
+
+  it("does not roll back a canary from pre-canary daily scores or a hardcoded 15% baseline", () => {
+    const v6Incident = decideCanaryClose({
+      canaryCreatedAt: "2026-09-03T07:21:45.098Z",
+      nowMs: Date.parse("2026-09-03T07:30:28.598Z"),
+      postCanaryScores: 0,
+      canaryQuality: 96,
+      canaryErrorRate: 1,
+      baselineQuality: 80,
+      baselineErrorRate: 0.15,
+    });
+    expect(v6Incident).toEqual({
+      action: "hold",
+      reason: "Canary still soaking; pre-canary scores are not evidence",
+    });
+
+    const soakedButNoLiveTraffic = decideCanaryClose({
+      canaryCreatedAt: "2026-09-03T07:21:45.098Z",
+      nowMs: Date.parse("2026-09-03T10:00:00.000Z"),
+      postCanaryScores: 0,
+      canaryQuality: 96,
+      canaryErrorRate: 1,
+      baselineQuality: 96,
+      baselineErrorRate: 1,
+    });
+    expect(soakedButNoLiveTraffic.action).toBe("hold");
+    expect(soakedButNoLiveTraffic.reason).toMatch(/post-canary/);
+
+    const sameRateAsPreviousRun = decideCanaryClose({
+      canaryCreatedAt: "2026-09-03T07:21:45.098Z",
+      nowMs: Date.parse("2026-09-04T08:00:00.000Z"),
+      postCanaryScores: 12,
+      canaryQuality: 96,
+      canaryErrorRate: 1,
+      baselineQuality: 96,
+      baselineErrorRate: 1,
+    });
+    expect(sameRateAsPreviousRun.action).toBe("promote");
+
+    const genuinelyWorse = decideCanaryClose({
+      canaryCreatedAt: "2026-09-03T07:21:45.098Z",
+      nowMs: Date.parse("2026-09-04T08:00:00.000Z"),
+      postCanaryScores: 12,
+      canaryQuality: 96,
+      canaryErrorRate: 0.4,
+      baselineQuality: 96,
+      baselineErrorRate: 0.18,
+    });
+    expect(genuinelyWorse).toEqual({
+      action: "rollback",
+      reason: "Error rate worsened on canary",
+    });
+  });
+
+  it("uses the last completed quality-run metrics as the canary baseline", () => {
+    expect(
+      baselineFromRunMetrics({
+        qualityAverage: 96,
+        failedRate: 1,
+        finalLatencyMs: 51_838,
+      }),
+    ).toEqual({
+      baselineQuality: 96,
+      baselineErrorRate: 1,
+      baselineLatencyMs: 51_838,
+    });
+    expect(baselineFromRunMetrics(null)).toEqual({
+      baselineQuality: 80,
+      baselineErrorRate: 0.15,
+      baselineLatencyMs: 20_000,
+    });
   });
 });
 
@@ -846,6 +935,9 @@ describe("control centre classification and source URL policy", () => {
       { thresholds: { ackWarningMs: 2_000, silenceMs: 30_000, stuckMs: 60_000, slowTotalMs: 45_000 } },
     );
     expect(evaluation.flags.some((flag) => flag.category === "first_visible_slow")).toBe(true);
+    expect(evaluation.flags.find((flag) => flag.category === "first_visible_slow")?.severity).toBe("medium");
+    expect(evaluation.failed).toBe(false);
+    expect(evaluation.overallQualityScore).toBeGreaterThanOrEqual(90);
   });
 
   it("points the review email at /quality/improvements?run=", () => {

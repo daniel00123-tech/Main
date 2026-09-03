@@ -15,7 +15,16 @@ export {
   applyAuthorisedSafeProposals,
   DANIEL_APPROVED_APPLY_ACTOR,
 } from "./runner";
-export { resolveActiveWhatsAppRuntime, applyApprovedProposal, canaryShouldRollback, validateBeforePromote, previewProposal, rollbackProposal } from "./apply";
+export {
+  resolveActiveWhatsAppRuntime,
+  applyApprovedProposal,
+  canaryShouldRollback,
+  decideCanaryClose,
+  baselineFromRunMetrics,
+  validateBeforePromote,
+  previewProposal,
+  rollbackProposal,
+} from "./apply";
 export { buildQualityCentre } from "./centre";
 export { classifyApplyClass, canAutoApply } from "./classify";
 export { isGenuineProviderHttpsUrl, qualitySystemGuidance } from "./runtime-policy";

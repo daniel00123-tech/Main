@@ -109,7 +109,7 @@ export function evaluateWhatsAppConversation(
   }
   if ((thread.firstVisibleMs ?? 0) >= firstVisibleLimit) {
     penalise(dimensions, "latency", 15, `First visible response exceeded ${Math.round(firstVisibleLimit / 1000)} seconds.`);
-    flags.push(neg("first_visible_slow", "high", 0.85, `First visible ${thread.firstVisibleMs}ms.`));
+    flags.push(neg("first_visible_slow", "medium", 0.85, `First visible ${thread.firstVisibleMs}ms.`));
   }
   if (thread.qualitySignals.includes("whatsapp_rephrase_before_answer")) {
     penalise(dimensions, "ux", 20, "User rephrased or sent a second message before the first answer.");
