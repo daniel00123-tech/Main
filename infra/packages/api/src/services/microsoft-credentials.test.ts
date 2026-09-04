@@ -139,14 +139,16 @@ describe("resolveMicrosoftAppCredentials", () => {
     const resolved = await resolveMicrosoftAppCredentials(
       {
         ...legacyEnv,
-        EL_MICROSOFT_CLIENT_SECRET: "el-native-secret",
+        EL_MS_CLIENT_SECRET: "el-native-secret",
+        EL_MS_CLIENT_ID: "f8ec6a91-f043-4f63-8800-64135af48c4e",
+        EL_MS_TENANT_ID: "af32e619-3647-44a2-85d9-1c45457c0e91",
       } as unknown as Env,
       db,
       { companyId: "co_el" },
     );
     expect(resolved.ok).toBe(true);
     if (resolved.ok) {
-      expect(resolved.credentials.clientId).toBe("18ec6a91-f043-4f63-8800-64135af48c4e");
+      expect(resolved.credentials.clientId).toBe("f8ec6a91-f043-4f63-8800-64135af48c4e");
       expect(resolved.credentials.tenantId).toBe("af32e619-3647-44a2-85d9-1c45457c0e91");
       expect(resolved.credentials.clientSecret).toBe("el-native-secret");
       expect(resolved.credentials.identityKind).toBe("tenant_native");

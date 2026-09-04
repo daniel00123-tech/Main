@@ -82,6 +82,8 @@ export interface Env {
   EL_MICROSOFT_TENANT_ID?: string;
   EL_MICROSOFT_CLIENT_ID?: string;
   EL_MICROSOFT_CLIENT_SECRET?: string;
+  EL_MS_TENANT_ID?: string;
+  EL_MS_CLIENT_ID?: string;
   EL_MS_CLIENT_SECRET?: string;
   EL_MICROSOFT_APP_DISPLAY_NAME?: string;
   /** When true, use platform multitenant Entra app; tenant ID comes from connector instance after admin consent */

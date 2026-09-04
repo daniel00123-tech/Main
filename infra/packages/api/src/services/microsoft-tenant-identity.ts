@@ -13,9 +13,11 @@ export const MICROSOFT_PROVIDER = "microsoft";
 export const SHARED_INFRA_BUSINESS_CONNECTOR_CLIENT_ID = "e5fd0533-ce51-43b8-999c-152f1e268246";
 export const EL_NATIVE_MICROSOFT_DISPLAY_NAME = "INFRA - Elvex MCP";
 export const EL_NATIVE_MICROSOFT_TENANT_ID = "af32e619-3647-44a2-85d9-1c45457c0e91";
-export const EL_NATIVE_MICROSOFT_CLIENT_ID = "18ec6a91-f043-4f63-8800-64135af48c4e";
-export const EL_NATIVE_MICROSOFT_SECRET_BINDING = "EL_MICROSOFT_CLIENT_SECRET";
-export const EL_NATIVE_MICROSOFT_SECRET_ALIASES = ["EL_MS_CLIENT_SECRET"] as const;
+export const EL_NATIVE_MICROSOFT_CLIENT_ID = "f8ec6a91-f043-4f63-8800-64135af48c4e";
+export const EL_NATIVE_MICROSOFT_SECRET_BINDING = "EL_MS_CLIENT_SECRET";
+export const EL_NATIVE_MICROSOFT_SECRET_ALIASES = ["EL_MICROSOFT_CLIENT_SECRET"] as const;
+export const EL_NATIVE_MICROSOFT_TENANT_BINDINGS = ["EL_MS_TENANT_ID", "EL_MICROSOFT_TENANT_ID"] as const;
+export const EL_NATIVE_MICROSOFT_CLIENT_BINDINGS = ["EL_MS_CLIENT_ID", "EL_MICROSOFT_CLIENT_ID"] as const;
 
 export type MicrosoftTenantIdentityRow = {
   id: string;
@@ -57,11 +59,18 @@ function envString(env: Env, name: string): string {
 }
 
 export function elNativeMicrosoftPublicIds(env?: Env): { tenantId: string; clientId: string; displayName: string } {
+  const resolved = env ?? ({} as Env);
   return {
-    tenantId: envString(env ?? ({} as Env), "EL_MICROSOFT_TENANT_ID") || EL_NATIVE_MICROSOFT_TENANT_ID,
-    clientId: envString(env ?? ({} as Env), "EL_MICROSOFT_CLIENT_ID") || EL_NATIVE_MICROSOFT_CLIENT_ID,
+    tenantId:
+      envString(resolved, "EL_MS_TENANT_ID") ||
+      envString(resolved, "EL_MICROSOFT_TENANT_ID") ||
+      EL_NATIVE_MICROSOFT_TENANT_ID,
+    clientId:
+      envString(resolved, "EL_MS_CLIENT_ID") ||
+      envString(resolved, "EL_MICROSOFT_CLIENT_ID") ||
+      EL_NATIVE_MICROSOFT_CLIENT_ID,
     displayName:
-      envString(env ?? ({} as Env), "EL_MICROSOFT_APP_DISPLAY_NAME") || EL_NATIVE_MICROSOFT_DISPLAY_NAME,
+      envString(resolved, "EL_MICROSOFT_APP_DISPLAY_NAME") || EL_NATIVE_MICROSOFT_DISPLAY_NAME,
   };
 }
 
@@ -85,8 +94,9 @@ export function auditMicrosoftBindingNames(env: Env): {
   globalTenantPresent: boolean;
   globalClientPresent: boolean;
   globalSecretPresent: boolean;
-  elTenantBinding: "EL_MICROSOFT_TENANT_ID";
-  elClientBinding: "EL_MICROSOFT_CLIENT_ID";
+  elTenantBinding: "EL_MS_TENANT_ID";
+  elClientBinding: "EL_MS_CLIENT_ID";
+  elSecretBinding: "EL_MS_CLIENT_SECRET";
   elSecretBindings: string[];
   EL_TENANT_PRESENT: "YES" | "NO";
   EL_CLIENT_PRESENT: "YES" | "NO";
@@ -97,8 +107,8 @@ export function auditMicrosoftBindingNames(env: Env): {
   elTenantId: string | null;
 } {
   const el = elNativeMicrosoftPublicIds(env);
-  const elTenantBound = Boolean(envString(env, "EL_MICROSOFT_TENANT_ID") || el.tenantId);
-  const elClientBound = Boolean(envString(env, "EL_MICROSOFT_CLIENT_ID") || el.clientId);
+  const elTenantBound = Boolean(envString(env, "EL_MS_TENANT_ID") || envString(env, "EL_MICROSOFT_TENANT_ID"));
+  const elClientBound = Boolean(envString(env, "EL_MS_CLIENT_ID") || envString(env, "EL_MICROSOFT_CLIENT_ID"));
   return {
     globalTenantBinding: "MICROSOFT_TENANT_ID",
     globalClientBinding: "MICROSOFT_CLIENT_ID",
@@ -106,8 +116,9 @@ export function auditMicrosoftBindingNames(env: Env): {
     globalTenantPresent: Boolean(envString(env, "MICROSOFT_TENANT_ID")),
     globalClientPresent: Boolean(envString(env, "MICROSOFT_CLIENT_ID")),
     globalSecretPresent: Boolean(envString(env, "MICROSOFT_CLIENT_SECRET")),
-    elTenantBinding: "EL_MICROSOFT_TENANT_ID",
-    elClientBinding: "EL_MICROSOFT_CLIENT_ID",
+    elTenantBinding: "EL_MS_TENANT_ID",
+    elClientBinding: "EL_MS_CLIENT_ID",
+    elSecretBinding: "EL_MS_CLIENT_SECRET",
     elSecretBindings: [EL_NATIVE_MICROSOFT_SECRET_BINDING, ...EL_NATIVE_MICROSOFT_SECRET_ALIASES],
     EL_TENANT_PRESENT: elTenantBound ? "YES" : "NO",
     EL_CLIENT_PRESENT: elClientBound ? "YES" : "NO",
@@ -179,8 +190,13 @@ export async function seedElNativeMicrosoftIdentity(env: Env, db: D1Database): P
       .first<MicrosoftTenantIdentityRow>())!;
   }
 
-  const shouldRepairSharedApp = existing.client_id === SHARED_INFRA_BUSINESS_CONNECTOR_CLIENT_ID;
-  if (shouldRepairSharedApp || !existing.active) {
+  const shouldRepair =
+    !existing.active ||
+    existing.client_id === SHARED_INFRA_BUSINESS_CONNECTOR_CLIENT_ID ||
+    existing.client_id !== el.clientId ||
+    existing.tenant_id !== el.tenantId ||
+    existing.secret_binding !== EL_NATIVE_MICROSOFT_SECRET_BINDING;
+  if (shouldRepair) {
     await db
       .prepare(
         `UPDATE microsoft_tenant_identities
@@ -192,7 +208,7 @@ export async function seedElNativeMicrosoftIdentity(env: Env, db: D1Database): P
         el.displayName,
         el.tenantId,
         el.clientId,
-        existing.secret_binding || EL_NATIVE_MICROSOFT_SECRET_BINDING,
+        EL_NATIVE_MICROSOFT_SECRET_BINDING,
         existing.configured_at || now,
         existing.id,
       )
@@ -213,19 +229,20 @@ function hydrateIdentity(
     "company_id" | "provider" | "display_name" | "tenant_id" | "client_id" | "secret_binding" | "auth_mode" | "active" | "configured_at" | "last_token_success" | "last_error"
   >,
 ): ResolvedMicrosoftTenantIdentity {
+  const el = row.company_id === "co_el" ? elNativeMicrosoftPublicIds(env) : null;
   const aliases =
-    row.company_id === "co_el" &&
-    (row.secret_binding === EL_NATIVE_MICROSOFT_SECRET_BINDING || !row.secret_binding)
+    row.company_id === "co_el"
       ? EL_NATIVE_MICROSOFT_SECRET_ALIASES
       : [];
-  const secretBinding = row.secret_binding || EL_NATIVE_MICROSOFT_SECRET_BINDING;
+  const secretBinding =
+    row.company_id === "co_el" ? EL_NATIVE_MICROSOFT_SECRET_BINDING : row.secret_binding || EL_NATIVE_MICROSOFT_SECRET_BINDING;
   const clientSecret = readSecretBinding(env, secretBinding, aliases);
   return {
     companyId: row.company_id,
     provider: row.provider,
-    displayName: row.display_name || elNativeMicrosoftPublicIds(env).displayName,
-    tenantId: row.tenant_id,
-    clientId: row.client_id,
+    displayName: row.display_name || el?.displayName || elNativeMicrosoftPublicIds(env).displayName,
+    tenantId: el?.tenantId || row.tenant_id,
+    clientId: el?.clientId || row.client_id,
     secretBinding,
     authMode: row.auth_mode || "client_credentials",
     active: row.active !== 0,

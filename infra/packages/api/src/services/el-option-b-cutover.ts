@@ -14,6 +14,7 @@ import {
   getKnowledgeIntakeTarget,
 } from "./knowledge-intake";
 import {
+  MicrosoftGraphError,
   graphGet,
   listDriveChildren,
   listSiteDrives,
@@ -21,6 +22,7 @@ import {
   listTenantUsers,
   type MicrosoftGraphConfig,
 } from "./microsoft-graph";
+import { resolveMicrosoftAppCredentials } from "./microsoft-credentials";
 import {
   getMessageAttachmentContent,
   listMailboxMessages,
@@ -115,26 +117,51 @@ function matchDirectoryUser(
 async function probeMailbox(
   config: MicrosoftGraphConfig,
   mailboxAddress: string,
+  kind: "shared" | "user",
 ): Promise<{
   result: Verdict;
-  mailboxExists: boolean;
+  mailboxExists: Verdict;
+  recentMessages: Verdict;
+  hasAttachments: Verdict | "SKIP";
+  attachmentEnum: Verdict | "SKIP";
+  attachmentMetadata: Verdict | "SKIP";
+  attachmentBytes: Verdict | "SKIP";
   messages: number;
   messagesWithAttachments: number;
-  attachmentEnum: Verdict | "SKIP";
-  attachmentBytes: Verdict | "SKIP";
+  httpStatus: number | null;
+  exchangeApplicationScopeIssue: boolean;
   error: string | null;
 }> {
+  const fail = (error: string, httpStatus: number | null = null) => ({
+    result: "FAIL" as Verdict,
+    mailboxExists: "FAIL" as Verdict,
+    recentMessages: "FAIL" as Verdict,
+    hasAttachments: "FAIL" as Verdict,
+    attachmentEnum: "FAIL" as const,
+    attachmentMetadata: "FAIL" as const,
+    attachmentBytes: "FAIL" as const,
+    messages: 0,
+    messagesWithAttachments: 0,
+    httpStatus,
+    exchangeApplicationScopeIssue: httpStatus === 403 && kind === "user",
+    error,
+  });
   try {
     const messages = await listMailboxMessages(config, { mailboxAddress, top: 50 });
     const withAtt = messages.filter((row) => row.hasAttachments && row.id);
     if (!withAtt[0]?.id) {
       return {
         result: "PASS",
-        mailboxExists: true,
+        mailboxExists: "PASS",
+        recentMessages: "PASS",
+        hasAttachments: "SKIP",
+        attachmentEnum: "SKIP",
+        attachmentMetadata: "SKIP",
+        attachmentBytes: "SKIP",
         messages: messages.length,
         messagesWithAttachments: 0,
-        attachmentEnum: messages.length ? "SKIP" : "SKIP",
-        attachmentBytes: "SKIP",
+        httpStatus: 200,
+        exchangeApplicationScopeIssue: false,
         error: null,
       };
     }
@@ -142,11 +169,16 @@ async function probeMailbox(
     if (!attachments[0]?.id) {
       return {
         result: "FAIL",
-        mailboxExists: true,
+        mailboxExists: "PASS",
+        recentMessages: "PASS",
+        hasAttachments: "PASS",
+        attachmentEnum: "FAIL",
+        attachmentMetadata: "FAIL",
+        attachmentBytes: "FAIL",
         messages: messages.length,
         messagesWithAttachments: withAtt.length,
-        attachmentEnum: "FAIL",
-        attachmentBytes: "FAIL",
+        httpStatus: 200,
+        exchangeApplicationScopeIssue: false,
         error: "hasAttachments=true but attachment list empty",
       };
     }
@@ -154,23 +186,21 @@ async function probeMailbox(
     const bytesOk = Boolean(content.contentBytes);
     return {
       result: bytesOk ? "PASS" : "FAIL",
-      mailboxExists: true,
+      mailboxExists: "PASS",
+      recentMessages: "PASS",
+      hasAttachments: "PASS",
+      attachmentEnum: "PASS",
+      attachmentMetadata: "PASS",
+      attachmentBytes: bytesOk ? "PASS" : "FAIL",
       messages: messages.length,
       messagesWithAttachments: withAtt.length,
-      attachmentEnum: "PASS",
-      attachmentBytes: bytesOk ? "PASS" : "FAIL",
+      httpStatus: 200,
+      exchangeApplicationScopeIssue: false,
       error: bytesOk ? null : "attachment content bytes empty",
     };
   } catch (err) {
-    return {
-      result: "FAIL",
-      mailboxExists: false,
-      messages: 0,
-      messagesWithAttachments: 0,
-      attachmentEnum: "FAIL",
-      attachmentBytes: "FAIL",
-      error: err instanceof Error ? err.message : String(err),
-    };
+    const httpStatus = err instanceof MicrosoftGraphError ? err.status : null;
+    return fail(err instanceof Error ? err.message : String(err), httpStatus);
   }
 }
 
@@ -264,9 +294,11 @@ export async function runElOptionBGraphCutover(
   const usedSharedConnector =
     (token.ok ? token.clientId : identity?.clientId) === SHARED_INFRA_BUSINESS_CONNECTOR_CLIENT_ID ||
     (access.ok && access.clientId === SHARED_INFRA_BUSINESS_CONNECTOR_CLIENT_ID);
+  const usedElMsClient =
+    (token.ok ? token.clientId : identity?.clientId) === EL_NATIVE_MICROSOFT_CLIENT_ID;
 
   const tokenResult = {
-    result: token.ok && !usedSharedConnector ? ("PASS" as Verdict) : ("FAIL" as Verdict),
+    result: token.ok && !usedSharedConnector && usedElMsClient ? ("PASS" as Verdict) : ("FAIL" as Verdict),
     tenantId: token.ok ? token.tenantId : identity?.tenantId ?? EL_NATIVE_MICROSOFT_TENANT_ID,
     clientId: token.ok ? token.clientId ?? identity?.clientId : identity?.clientId ?? EL_NATIVE_MICROSOFT_CLIENT_ID,
     displayName: identity?.displayName ?? EL_NATIVE_MICROSOFT_DISPLAY_NAME,
@@ -305,10 +337,12 @@ export async function runElOptionBGraphCutover(
     };
 
     for (const target of APPROVED) {
-      const probe = await probeMailbox(config, target.mailbox);
+      const kind = target.key === "finance" || target.key === "info" ? "shared" : "user";
+      const probe = await probeMailbox(config, target.mailbox, kind);
       mailboxes.push({
         key: target.key,
         mailboxAddress: target.mailbox,
+        mailboxKind: kind,
         ...probe,
       });
     }
@@ -395,8 +429,42 @@ export async function runElOptionBGraphCutover(
   if (usedSharedConnector) remainingFailures.push("Runtime still resolved the shared INFRA Business Connector");
   if (ingest.counts.failed > 0) remainingFailures.push(`${ingest.counts.failed} attachment candidate(s) remain FAILED`);
   if (bindings.EL_SECRET_PRESENT === "NO") {
-    remainingFailures.push("EL_MICROSOFT_CLIENT_SECRET is not bound on infra-api");
+    remainingFailures.push("EL_MS_CLIENT_SECRET is not bound on infra-api");
   }
+  const userMailbox403 = mailboxes.filter((row) => row.exchangeApplicationScopeIssue);
+  if (userMailbox403.length) {
+    remainingFailures.push(
+      `User mailbox 403 on ${userMailbox403.map((row) => row.key).join(", ")} — classify as Exchange application scope/policy, not a shared-app fallback`,
+    );
+  }
+
+  const caddingtonResolved = await resolveMicrosoftAppCredentials(env, env.DB, {
+    companyId: "co_caddington",
+    actor,
+  });
+  const htResolved = await resolveMicrosoftAppCredentials(env, env.DB, {
+    companyId: "co_ht",
+    actor,
+  });
+  const caddingtonClientId = caddingtonResolved.ok ? caddingtonResolved.credentials.clientId : null;
+  const caddingtonSafety = {
+    unaffected:
+      !caddingtonResolved.ok ||
+      (caddingtonClientId !== EL_NATIVE_MICROSOFT_CLIENT_ID &&
+        caddingtonClientId !== "18ec6a91-f043-4f63-8800-64135af48c4e"),
+    usesElMsCredentials: caddingtonClientId === EL_NATIVE_MICROSOFT_CLIENT_ID,
+    usesGlobalMicrosoft:
+      caddingtonResolved.ok &&
+      caddingtonResolved.credentials.credentialSource === "platform" &&
+      caddingtonClientId === String(env.MICROSOFT_CLIENT_ID ?? "").trim(),
+    code: caddingtonResolved.ok ? "OK" : caddingtonResolved.code,
+    clientId: caddingtonClientId,
+  };
+  const htSafety = {
+    unaffected: !htResolved.ok,
+    connected: htResolved.ok,
+    code: htResolved.ok ? "OK" : htResolved.code,
+  };
 
   let emailSent = false;
   let emailId: string | null = null;
@@ -503,6 +571,8 @@ export async function runElOptionBGraphCutover(
     retrievalProof,
     remainingFailures,
     sharedConnectorFallbackUsed: usedSharedConnector,
+    caddingtonSafety,
+    htSafety,
     dailyKnowledgeActivity: {
       id: AUTOMATION_ID,
       schedule: "08:00 Europe/London",

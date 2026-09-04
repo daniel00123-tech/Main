@@ -34,13 +34,19 @@ describe("Option B tenant-native Microsoft identity", () => {
   it("audits binding names without exposing secrets", () => {
     const audit = auditMicrosoftBindingNames({
       ...platformEnv,
-      EL_MICROSOFT_CLIENT_SECRET: "el-secret-must-not-appear",
+      EL_MS_TENANT_ID: EL_NATIVE_MICROSOFT_TENANT_ID,
+      EL_MS_CLIENT_ID: EL_NATIVE_MICROSOFT_CLIENT_ID,
+      EL_MS_CLIENT_SECRET: "el-secret-must-not-appear",
     } as Env);
     expect(audit.globalClientBinding).toBe("MICROSOFT_CLIENT_ID");
     expect(audit.globalSecretBinding).toBe("MICROSOFT_CLIENT_SECRET");
+    expect(audit.elTenantBinding).toBe("EL_MS_TENANT_ID");
+    expect(audit.elClientBinding).toBe("EL_MS_CLIENT_ID");
+    expect(audit.elSecretBinding).toBe("EL_MS_CLIENT_SECRET");
     expect(audit.EL_TENANT_PRESENT).toBe("YES");
     expect(audit.EL_CLIENT_PRESENT).toBe("YES");
     expect(audit.EL_SECRET_PRESENT).toBe("YES");
+    expect(audit.elClientId).toBe(EL_NATIVE_MICROSOFT_CLIENT_ID);
     expect(JSON.stringify(audit)).not.toContain("el-secret-must-not-appear");
     expect(JSON.stringify(audit)).not.toContain("shared-platform-secret");
   });
@@ -64,7 +70,7 @@ describe("Option B tenant-native Microsoft identity", () => {
       expect(access.code).toBe("MICROSOFT_TENANT_SECRET_MISSING");
       expect(access.clientId).toBe(EL_NATIVE_MICROSOFT_CLIENT_ID);
       expect(access.clientId).not.toBe(SHARED_INFRA_BUSINESS_CONNECTOR_CLIENT_ID);
-      expect(access.message).toMatch(/Elvex MCP|EL_MICROSOFT_CLIENT_SECRET|not used/i);
+      expect(access.message).toMatch(/Elvex MCP|EL_MS_CLIENT_SECRET|not used/i);
     }
   });
 
@@ -78,7 +84,10 @@ describe("Option B tenant-native Microsoft identity", () => {
     clearMicrosoftTokenCache();
     const env = {
       ...platformEnv,
-      EL_MICROSOFT_CLIENT_SECRET: "el-native-secret",
+      EL_MS_TENANT_ID: EL_NATIVE_MICROSOFT_TENANT_ID,
+      EL_MS_CLIENT_ID: EL_NATIVE_MICROSOFT_CLIENT_ID,
+      EL_MS_CLIENT_SECRET: "el-native-secret",
+      EL_MICROSOFT_CLIENT_ID: "18ec6a91-f043-4f63-8800-64135af48c4e",
     } as Env;
     const token = await acquireMicrosoftAppToken(env, { companyId: "co_el" });
     expect(token.ok).toBe(true);
@@ -92,6 +101,7 @@ describe("Option B tenant-native Microsoft identity", () => {
     expect(body).toContain("el-native-secret");
     expect(body).not.toContain("shared-platform-secret");
     expect(body).not.toContain(SHARED_INFRA_BUSINESS_CONNECTOR_CLIENT_ID);
+    expect(body).not.toContain("18ec6a91-f043-4f63-8800-64135af48c4e");
     vi.unstubAllGlobals();
   });
 

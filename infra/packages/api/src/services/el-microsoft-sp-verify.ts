@@ -8,7 +8,7 @@ import { platformMultitenantAppEnabled } from "./microsoft-credentials";
 import { discoverEntraTenantIdFromDomain } from "./outlook-graph-access";
 
 export const EL_GRAPH_TENANT_ID = "af32e619-3647-44a2-85d9-1c45457c0e91";
-export const EL_GRAPH_APP_ID = "18ec6a91-f043-4f63-8800-64135af48c4e";
+export const EL_GRAPH_APP_ID = "f8ec6a91-f043-4f63-8800-64135af48c4e";
 export const EL_GRAPH_APP_DISPLAY_NAME = "INFRA - Elvex MCP";
 
 type TokenAttempt = {
@@ -162,9 +162,9 @@ async function queryServicePrincipal(
 }
 
 export async function verifyElMicrosoftServicePrincipal(env: Env): Promise<Record<string, unknown>> {
-  const nativeClientId = trim(env.EL_MICROSOFT_CLIENT_ID) || EL_GRAPH_APP_ID;
-  const nativeTenantId = trim(env.EL_MICROSOFT_TENANT_ID) || EL_GRAPH_TENANT_ID;
-  const nativeSecret = trim(env.EL_MICROSOFT_CLIENT_SECRET) || trim(env.EL_MS_CLIENT_SECRET);
+  const nativeClientId = trim(env.EL_MS_CLIENT_ID) || trim(env.EL_MICROSOFT_CLIENT_ID) || EL_GRAPH_APP_ID;
+  const nativeTenantId = trim(env.EL_MS_TENANT_ID) || trim(env.EL_MICROSOFT_TENANT_ID) || EL_GRAPH_TENANT_ID;
+  const nativeSecret = trim(env.EL_MS_CLIENT_SECRET) || trim(env.EL_MICROSOFT_CLIENT_SECRET);
   const boundClientId = nativeClientId;
   const boundHomeTenant = trim(env.MICROSOFT_TENANT_ID);
   const boundSecret = nativeSecret;

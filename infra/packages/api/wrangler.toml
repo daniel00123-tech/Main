@@ -38,7 +38,8 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # MICROSOFT_TENANT_ID (Microsoft Entra tenant ID — Caddington Holdings / shared platform)
 # MICROSOFT_CLIENT_ID (INFRA Business Connector — do not reuse for co_el)
 # MICROSOFT_CLIENT_SECRET (shared/Caddington app secret — never commit, never overwrite for EL)
-# EL_MICROSOFT_CLIENT_SECRET (co_el tenant-native Graph — INFRA - Elvex MCP; alias EL_MS_CLIENT_SECRET)
+# EL_MS_TENANT_ID / EL_MS_CLIENT_ID (co_el tenant-native Graph public IDs)
+# EL_MS_CLIENT_SECRET (co_el tenant-native Graph — do not overwrite MICROSOFT_CLIENT_SECRET)
 # Do not rotate or replace the global MICROSOFT_* triplet when adding EL-native credentials.
 # CADDINGTON_ADMIN_TOKEN (matches caddington-mcp Worker secret for /admin/knowledge/* bridge)
 # AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT (https://infra-document-intelligence-prod.cognitiveservices.azure.com)
@@ -66,9 +67,9 @@ OPENAI_MODEL_DEFAULT = "gpt-5.6-terra"
 OPENAI_MODEL_REASONING = "gpt-5.6-sol"
 EMAIL_FROM_NAME = "Infra"
 EMAIL_FROM_ADDRESS = "noreply@infrastack.app"
-# Public EL-native Microsoft identity (Option B). Secret stays in wrangler secret storage.
-EL_MICROSOFT_TENANT_ID = "af32e619-3647-44a2-85d9-1c45457c0e91"
-EL_MICROSOFT_CLIENT_ID = "18ec6a91-f043-4f63-8800-64135af48c4e"
+# Public EL-native Microsoft identity (Option B). Secret stays in wrangler secret storage as EL_MS_CLIENT_SECRET.
+EL_MS_TENANT_ID = "af32e619-3647-44a2-85d9-1c45457c0e91"
+EL_MS_CLIENT_ID = "f8ec6a91-f043-4f63-8800-64135af48c4e"
 EL_MICROSOFT_APP_DISPLAY_NAME = "INFRA - Elvex MCP"
 WHATSAPP_PHONE_NUMBER_ID = "1338434179351224"
 WHATSAPP_BUSINESS_ACCOUNT_ID = "1629422285251338"

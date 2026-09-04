@@ -29,8 +29,8 @@ describe("EL Microsoft service principal verify", () => {
     });
 
     const result = await verifyElMicrosoftServicePrincipal({
-      EL_MICROSOFT_CLIENT_ID: EL_GRAPH_APP_ID,
-      EL_MICROSOFT_CLIENT_SECRET: "not-a-real-secret",
+      EL_MS_CLIENT_ID: EL_GRAPH_APP_ID,
+      EL_MS_CLIENT_SECRET: "not-a-real-secret",
       MICROSOFT_TENANT_ID: "11111111-2222-3333-4444-555555555555",
       MICROSOFT_CLIENT_ID: "e5fd0533-ce51-43b8-999c-152f1e268246",
       MICROSOFT_CLIENT_SECRET: "shared-secret-must-not-be-used",
@@ -89,8 +89,8 @@ describe("EL Microsoft service principal verify", () => {
     });
 
     const result = await verifyElMicrosoftServicePrincipal({
-      EL_MICROSOFT_CLIENT_ID: EL_GRAPH_APP_ID,
-      EL_MICROSOFT_CLIENT_SECRET: "not-a-real-secret",
+      EL_MS_CLIENT_ID: EL_GRAPH_APP_ID,
+      EL_MS_CLIENT_SECRET: "not-a-real-secret",
       MICROSOFT_TENANT_ID: "11111111-2222-3333-4444-555555555555",
       MICROSOFT_CLIENT_ID: "e5fd0533-ce51-43b8-999c-152f1e268246",
       MICROSOFT_CLIENT_SECRET: "shared-secret-must-not-be-used",
