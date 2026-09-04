@@ -44,7 +44,7 @@ const res = await fetch(`${API}/api/internal/el-knowledge-onedrive-diagnostic`, 
     "Content-Type": "application/json",
     "User-Agent": "InfraAcceptance/1.0",
   },
-  signal: AbortSignal.timeout(180_000),
+  signal: AbortSignal.timeout(90_000),
 });
 const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
 const out = { api: API, httpStatus: res.status, body };

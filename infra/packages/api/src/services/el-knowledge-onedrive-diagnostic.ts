@@ -20,14 +20,10 @@ import {
 
 const COMPANY_ID = "co_el";
 const DIAGNOSTIC_TERMS = [
-  "purchase order",
-  "PO process",
-  "procurement",
-  "ordering materials",
-  "raising a PO",
-  "purchase order procedure",
-  "purchase ordering process",
   "What is the PO process?",
+  "purchase order",
+  "procurement",
+  "purchase order procedure",
 ] as const;
 const KNOWN_TITLES = ["AFPO11888.pdf", "AFPO11782.pdf", "AFPO11783.pdf"];
 
@@ -71,11 +67,11 @@ async function searchRaw(env: Env, query: string, actor: { userId: string; email
     processOrPolicyQuery: isProcessOrPolicyQuery(query),
     rawCount: hits.length,
     keptCount: kept.length,
-    raw: hits.slice(0, 5).map((hit) => ({
+    raw: hits.slice(0, 4).map((hit) => ({
       ...summarizeHit(hit),
       score: scoreGlobalSearchHit(hit, query),
     })),
-    kept: kept.slice(0, 5).map((hit) => ({
+    kept: kept.slice(0, 4).map((hit) => ({
       ...summarizeHit(hit),
       score: scoreGlobalSearchHit(hit, query),
     })),
@@ -102,7 +98,7 @@ async function auditDocument(
       outcome: "fetch_failed",
       code: fetched.code,
       message: fetched.message,
-      candidates: fetched.candidates?.slice(0, 5) ?? [],
+      candidates: (fetched.candidates ?? []).slice(0, 3),
     };
   }
   const text = fetched.payload.text || (fetched.payload.chunks ?? []).map((chunk) => chunk.text).join("\n");
@@ -115,9 +111,9 @@ async function auditDocument(
     url: fetched.payload.url ?? null,
     chunkCount: fetched.diagnostics.chunkCount,
     extractedChars: text.length,
-    extractedPreview: text.replace(/\s+/g, " ").trim().slice(0, 280),
+    extractedPreview: text.replace(/\s+/g, " ").trim().slice(0, 240),
     hasProcessLanguage: /\b(process|procedure|policy|procurement|purchase order)\b/i.test(text),
-    mentionsPurchaseOrder: hay.includes("purchase order") || /\b\bpo\b/.test(hay),
+    mentionsPurchaseOrder: hay.includes("purchase order") || /\bpo\b/.test(hay),
     backend: fetched.diagnostics.backend,
     providerId: fetched.diagnostics.providerId,
     extractionMethod: fetched.diagnostics.extractionMethod,
@@ -126,7 +122,7 @@ async function auditDocument(
 }
 
 function classifyPoRootCause(input: {
-  searches: Array<{ query: string; rawCount: number; keptCount: number; raw: Array<{ title: string; documentClass: string; hasProcessLanguage?: boolean }> }>;
+  searches: Array<{ rawCount: number; keptCount: number }>;
   documents: Array<Record<string, unknown>>;
 }): { code: string; reason: string } {
   const anyProcessDoc = input.documents.some(
@@ -157,77 +153,70 @@ export async function runElKnowledgeOnedriveDiagnostic(env: Env): Promise<Record
   )
     .bind(COMPANY_ID)
     .first<{ user_id: string; email: string }>();
-  const actor = ellaRow
-    ? await loadLiveCompanyActor(env.DB, ellaRow.user_id, COMPANY_ID)
-    : null;
+  const actor = ellaRow ? await loadLiveCompanyActor(env.DB, ellaRow.user_id, COMPANY_ID) : null;
   if (!actor?.active) {
     return { outcome: "UPSTREAM_FAILURE", reason: "Ella director actor unavailable" };
   }
 
-  const searches = [];
-  for (const term of DIAGNOSTIC_TERMS) {
-    searches.push(await searchRaw(env, term, actor));
-  }
+  const searches = await Promise.all(DIAGNOSTIC_TERMS.map((term) => searchRaw(env, term, actor)));
 
   const fetchTargets: Array<{ id?: string; title: string }> = KNOWN_TITLES.map((title) => ({ title }));
   for (const search of searches) {
     for (const hit of search.kept.length ? search.kept : search.raw) {
       if (hit.id && !fetchTargets.some((item) => item.id === hit.id || item.title === hit.title)) {
-        fetchTargets.push({ id: hit.id, title: hit.title });
+        fetchTargets.push({ id: String(hit.id), title: hit.title });
       }
     }
   }
-  const documents = [];
-  for (const target of fetchTargets.slice(0, 8)) {
-    documents.push(await auditDocument(env, target, actor));
-  }
+  const documents = await Promise.all(
+    fetchTargets.slice(0, 4).map((target) => auditDocument(env, target, actor)),
+  );
 
-  const intents = [
-    "Find the newest OneDrive document.",
-    "What is the newest document?",
-    "Show latest 10 files.",
-    "What was modified most recently?",
-  ];
-  const catalogues = [];
-  for (const source of ["onedrive", "sharepoint", "all"] as const) {
-    const listed = await executeListDocuments(env, {
-      companyId: COMPANY_ID,
-      arguments: { source, sort: "recently_modified", limit: source === "onedrive" ? 1 : 10, include_descriptions: false },
-      actor: actor.email,
-      actorUserId: actor.userId,
-      role: actor.role,
-    });
-    const result = listed.ok ? listed.result : { error: listed.message, documents: [] };
-    const rawJson = JSON.stringify(result);
-    const clipped = clipBusinessToolData(result, "list_documents");
-    catalogues.push({
-      source,
-      ok: listed.ok,
-      parsedIntent: parseCatalogueIntent(source === "onedrive" ? "Find the newest OneDrive document." : "Show latest 10 files."),
-      status: listed.ok ? listed.result.status : listed.code,
-      count: listed.ok ? listed.result.count : 0,
-      backend: listed.ok ? listed.result.backend : [],
-      rawChars: rawJson.length,
-      clipPreservesDocuments: Array.isArray((clipped as { documents?: unknown }).documents),
-      documents: listed.ok
-        ? listed.result.documents.slice(0, 5).map((doc) => ({
-            id: doc.id,
-            title: doc.title,
-            source: doc.source,
-            modifiedAt: doc.modifiedAt,
-            createdAt: doc.createdAt,
-            modifiedBy: doc.modifiedBy,
-            url: doc.url,
-            fileType: doc.fileType,
-            descriptionSource: doc.descriptionSource,
-          }))
-        : [],
-    });
-  }
+  const catalogues = await Promise.all(
+    (["onedrive", "sharepoint", "all"] as const).map(async (source) => {
+      const listed = await executeListDocuments(env, {
+        companyId: COMPANY_ID,
+        arguments: {
+          source,
+          sort: "recently_modified",
+          limit: source === "onedrive" ? 1 : 10,
+          include_descriptions: false,
+        },
+        actor: actor.email,
+        actorUserId: actor.userId,
+        role: actor.role,
+      });
+      const result = listed.ok ? listed.result : { error: listed.message, documents: [] };
+      const clipped = clipBusinessToolData(result, "list_documents") as { documents?: unknown[] };
+      return {
+        source,
+        ok: listed.ok,
+        parsedIntent: parseCatalogueIntent(
+          source === "onedrive" ? "Find the newest OneDrive document." : "Show latest 10 files.",
+        ),
+        status: listed.ok ? listed.result.status : listed.code,
+        count: listed.ok ? listed.result.count : 0,
+        backend: listed.ok ? listed.result.backend : [],
+        rawChars: JSON.stringify(result).length,
+        clipPreservesDocuments: Array.isArray(clipped.documents),
+        documents: listed.ok
+          ? listed.result.documents.slice(0, 5).map((doc) => ({
+              id: doc.id,
+              title: doc.title,
+              source: doc.source,
+              modifiedAt: doc.modifiedAt,
+              createdAt: doc.createdAt,
+              modifiedBy: doc.modifiedBy,
+              url: doc.url,
+              fileType: doc.fileType,
+              descriptionSource: doc.descriptionSource,
+            }))
+          : [],
+      };
+    }),
+  );
 
-  const newestIntent = parseCatalogueIntent("Find the newest OneDrive document.");
   const po = classifyPoRootCause({ searches, documents });
-
   return {
     companyId: COMPANY_ID,
     actor: { email: actor.email, role: actor.role },
@@ -239,10 +228,8 @@ export async function runElKnowledgeOnedriveDiagnostic(env: Env): Promise<Record
       documents,
     },
     catalogue: {
-      newestIntent,
+      newestIntent: parseCatalogueIntent("Find the newest OneDrive document."),
       listings: catalogues,
-      clipWouldEmptyLargePayload: false,
     },
-    intents,
   };
 }
