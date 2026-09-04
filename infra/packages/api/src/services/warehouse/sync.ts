@@ -343,17 +343,20 @@ export async function maybeRunWarehouseSyncs(
   nextSync: string;
 }> {
   const repo = createD1WarehouseRepository(env.DB);
-  await ensureWarehouseSource(repo, WAREHOUSE_EL_COMPANY_ID, WAREHOUSE_XERO_CONNECTOR);
+  const source = await ensureWarehouseSource(repo, WAREHOUSE_EL_COMPANY_ID, WAREHOUSE_XERO_CONNECTOR);
   const slot = currentWarehouseSlot(now);
   const nextSync = computeNextWarehouseSyncUtcIso(now);
-  if (!slot) return { actions: [], nextSync };
+  const continueBackfill = source.checkpoint?.mode === "backfill" && Boolean(source.checkpoint.backfillCursor);
+  if (!slot && !continueBackfill && source.status !== "NEVER_SYNCED") return { actions: [], nextSync };
 
-  const existing = await repo.findSyncBySlot(WAREHOUSE_EL_COMPANY_ID, WAREHOUSE_XERO_CONNECTOR, slot.utcIso);
-  if (existing) {
-    return {
-      actions: [{ companyId: WAREHOUSE_EL_COMPANY_ID, skipped: "duplicate_slot", syncId: existing.syncId }],
-      nextSync,
-    };
+  if (slot) {
+    const existing = await repo.findSyncBySlot(WAREHOUSE_EL_COMPANY_ID, WAREHOUSE_XERO_CONNECTOR, slot.utcIso);
+    if (existing && !continueBackfill) {
+      return {
+        actions: [{ companyId: WAREHOUSE_EL_COMPANY_ID, skipped: "duplicate_slot", syncId: existing.syncId }],
+        nextSync,
+      };
+    }
   }
 
   const adapter = createXeroWarehouseAdapter(env);
@@ -362,8 +365,8 @@ export async function maybeRunWarehouseSyncs(
     adapter,
     companyId: WAREHOUSE_EL_COMPANY_ID,
     connector: WAREHOUSE_XERO_CONNECTOR,
-    trigger: "scheduled",
-    scheduledFor: slot.utcIso,
+    trigger: continueBackfill || source.status === "NEVER_SYNCED" || source.status === "FAILED" ? "backfill" : "scheduled",
+    scheduledFor: slot?.utcIso ?? null,
     now,
     env,
   });

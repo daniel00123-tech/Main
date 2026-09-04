@@ -75,6 +75,8 @@ export type WarehouseCheckpoint = {
   historyFrom?: string | null;
   historyTo?: string | null;
   sourceTimestamp?: string | null;
+  /** Next YYYY-MM-DD still needed during chunked company-MCP backfill. */
+  backfillCursor?: string | null;
 };
 
 export type WarehouseSource = {

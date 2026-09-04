@@ -21,6 +21,7 @@ import { executeWarehouseTool, isWarehouseToolName, withWarehouseTools } from ".
 import { buildReconciliation } from "./adapters/types";
 import {
   computeWarehouseSalesMetrics,
+  dateWindows,
   financialYearWindow,
   normaliseInvoice,
   parseXeroTimestamp,
@@ -475,6 +476,10 @@ describe("xero normalisers", () => {
     expect(mapped.invoice.invoiceDate).toBe("2026-09-02");
     const fy = financialYearWindow({ FinancialYearEndDay: 31, FinancialYearEndMonth: 3 }, new Date("2026-09-04T12:00:00.000Z"));
     expect(fy.historicalFrom).toBe("2025-04-01");
+    expect(dateWindows("2026-08-01", "2026-09-04")).toEqual([
+      { from: "2026-08-01", to: "2026-08-31" },
+      { from: "2026-09-01", to: "2026-09-04" },
+    ]);
     const metrics = computeWarehouseSalesMetrics([mapped.invoice], [], { today: "2026-09-04", monthStart: "2026-09-01" });
     expect(metrics.salesMtd).toBeGreaterThan(0);
     const rec = buildReconciliation({
