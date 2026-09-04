@@ -1,6 +1,6 @@
 {
   "api": "https://api.infrastack.app",
-  "startedAt": "2026-09-04T17:42:08.082Z",
+  "startedAt": "2026-09-04T18:29:57.937Z",
   "smoke": {
     "httpStatus": 200,
     "body": {
@@ -31,13 +31,13 @@
         "ok": true,
         "success": true,
         "model": "gpt-5.6-luna",
-        "latencyMs": 1287,
+        "latencyMs": 1607,
         "promptTokens": 32,
-        "completionTokens": 21,
+        "completionTokens": 5,
         "cachedTokens": 0,
-        "estimatedCostUsd": 0.000031599999999999996,
+        "estimatedCostUsd": 0.0000124,
         "costBasis": "estimated",
-        "correlationId": "openai-smoke-mtn8r9x5",
+        "correlationId": "openai-smoke-mtnags88",
         "failure": null,
         "replyClass": "pong",
         "keyConfigured": true,
@@ -104,7 +104,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 1589,
+        "avgLatencyMs": 996,
         "costStatus": "estimated",
         "overall": 96
       },
@@ -120,11 +120,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 6354,
-          "promptTokens": 4468,
-          "completionTokens": 393,
+          "latencyMs": 3982,
+          "promptTokens": 4494,
+          "completionTokens": 210,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.013652,
+          "estimatedCostUsd": 0.011508000000000001,
           "failure": null,
           "reusedEvidence": false
         },
@@ -139,11 +139,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1486,
-          "promptTokens": 4463,
+          "latencyMs": 1743,
+          "promptTokens": 4489,
           "completionTokens": 34,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009334000000000002,
+          "estimatedCostUsd": 0.009386000000000002,
           "failure": null,
           "reusedEvidence": false
         },
@@ -158,11 +158,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 3504,
-          "promptTokens": 4465,
-          "completionTokens": 147,
+          "latencyMs": 3498,
+          "promptTokens": 4491,
+          "completionTokens": 133,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.010694,
+          "estimatedCostUsd": 0.010578,
           "failure": null,
           "reusedEvidence": false
         },
@@ -177,11 +177,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1574,
-          "promptTokens": 4466,
-          "completionTokens": 38,
+          "latencyMs": 1713,
+          "promptTokens": 4492,
+          "completionTokens": 27,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009388,
+          "estimatedCostUsd": 0.009308,
           "failure": null,
           "reusedEvidence": false
         }
@@ -205,7 +205,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 1210,
+        "avgLatencyMs": 873,
         "costStatus": "estimated",
         "overall": 92
       },
@@ -221,49 +221,49 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 2150,
-          "promptTokens": 4466,
-          "completionTokens": 40,
+          "latencyMs": 1958,
+          "promptTokens": 4492,
+          "completionTokens": 75,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009412,
+          "estimatedCostUsd": 0.009884,
           "failure": null,
           "reusedEvidence": false
         },
         {
           "id": "xero_6",
-          "pass": true,
-          "cloudflareTools": [
-            "xero_sales_summary"
-          ],
-          "shadowTools": [
-            "xero_sales_summary"
-          ],
-          "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1372,
-          "promptTokens": 4462,
-          "completionTokens": 36,
-          "costBasis": "estimated",
-          "estimatedCostUsd": 0.009356000000000001,
-          "failure": null,
-          "reusedEvidence": false
-        },
-        {
-          "id": "xero_7",
           "pass": false,
           "cloudflareTools": [
-            "search_company_knowledge"
+            "xero_sales_summary"
           ],
           "shadowTools": [
             "web_search"
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 4840,
-          "promptTokens": 4465,
-          "completionTokens": 208,
+          "latencyMs": 3493,
+          "promptTokens": 4488,
+          "completionTokens": 151,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.011426,
+          "estimatedCostUsd": 0.010788000000000002,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_7",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "xero_profit_and_loss"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1295,
+          "promptTokens": 4491,
+          "completionTokens": 47,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009546,
           "failure": null,
           "reusedEvidence": false
         },
@@ -277,12 +277,12 @@
             "xero_aged_receivables"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1840,
-          "promptTokens": 4465,
-          "completionTokens": 32,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1655,
+          "promptTokens": 4491,
+          "completionTokens": 49,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009314000000000001,
+          "estimatedCostUsd": 0.0009570000000000001,
           "failure": null,
           "reusedEvidence": false
         }
@@ -291,107 +291,6 @@
     },
     {
       "offset": 8,
-      "scorecard": {
-        "provider": "openai",
-        "cases": 4,
-        "intent": 100,
-        "tool": 50,
-        "rbac": 100,
-        "reasoning": 100,
-        "existingEvidence": 100,
-        "unnecessaryTools": 0,
-        "grounding": 100,
-        "hallucination": 0,
-        "firstAnswer": 100,
-        "naturalness": 100,
-        "followUp": 100,
-        "correction": 100,
-        "avgLatencyMs": 1563,
-        "costStatus": "estimated",
-        "overall": 92
-      },
-      "rows": [
-        {
-          "id": "xero_9",
-          "pass": true,
-          "cloudflareTools": [
-            "xero_search_invoices"
-          ],
-          "shadowTools": [
-            "xero_search_invoices"
-          ],
-          "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1364,
-          "promptTokens": 4464,
-          "completionTokens": 40,
-          "costBasis": "estimated",
-          "estimatedCostUsd": 0.009408,
-          "failure": null,
-          "reusedEvidence": false
-        },
-        {
-          "id": "xero_10",
-          "pass": true,
-          "cloudflareTools": [
-            "xero_sales_summary"
-          ],
-          "shadowTools": [
-            "xero_get_organisation"
-          ],
-          "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1550,
-          "promptTokens": 4464,
-          "completionTokens": 30,
-          "costBasis": "estimated",
-          "estimatedCostUsd": 0.009288,
-          "failure": null,
-          "reusedEvidence": false
-        },
-        {
-          "id": "xero_11",
-          "pass": false,
-          "cloudflareTools": [
-            "xero_sales_summary"
-          ],
-          "shadowTools": [
-            "web_search"
-          ],
-          "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 6251,
-          "promptTokens": 4465,
-          "completionTokens": 339,
-          "costBasis": "estimated",
-          "estimatedCostUsd": 0.012998000000000001,
-          "failure": null,
-          "reusedEvidence": false
-        },
-        {
-          "id": "xero_12",
-          "pass": false,
-          "cloudflareTools": [
-            "xero_search_invoices"
-          ],
-          "shadowTools": [
-            "xero_search_invoices"
-          ],
-          "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1634,
-          "promptTokens": 4464,
-          "completionTokens": 66,
-          "costBasis": "estimated",
-          "estimatedCostUsd": 0.00972,
-          "failure": null,
-          "reusedEvidence": false
-        }
-      ],
-      "source": "LIVE_API"
-    },
-    {
-      "offset": 12,
       "scorecard": {
         "provider": "openai",
         "cases": 4,
@@ -407,9 +306,110 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 2060,
+        "avgLatencyMs": 2296,
         "costStatus": "estimated",
         "overall": 96
+      },
+      "rows": [
+        {
+          "id": "xero_9",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_search_invoices"
+          ],
+          "shadowTools": [
+            "xero_search_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1691,
+          "promptTokens": 4490,
+          "completionTokens": 56,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009652000000000002,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_10",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_get_organisation"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1122,
+          "promptTokens": 4490,
+          "completionTokens": 30,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.00934,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_11",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_sales_summary"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 9182,
+          "promptTokens": 4491,
+          "completionTokens": 554,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.01563,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_12",
+          "pass": false,
+          "cloudflareTools": [
+            "xero_search_invoices"
+          ],
+          "shadowTools": [
+            "xero_search_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2565,
+          "promptTokens": 4490,
+          "completionTokens": 95,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.001012,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 12,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 50,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 1350,
+        "costStatus": "estimated",
+        "overall": 92
       },
       "rows": [
         {
@@ -422,12 +422,12 @@
             "xero_list_overdue_invoices"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1994,
-          "promptTokens": 4464,
-          "completionTokens": 23,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1210,
+          "promptTokens": 4490,
+          "completionTokens": 68,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009204,
+          "estimatedCostUsd": 0.0009796000000000002,
           "failure": null,
           "reusedEvidence": false
         },
@@ -441,12 +441,12 @@
             "xero_top_customers"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 5349,
-          "promptTokens": 4464,
-          "completionTokens": 305,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 4947,
+          "promptTokens": 4490,
+          "completionTokens": 335,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.012588,
+          "estimatedCostUsd": 0.0013000000000000002,
           "failure": null,
           "reusedEvidence": false
         },
@@ -460,31 +460,31 @@
             "xero_list_overdue_invoices"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1278,
-          "promptTokens": 4463,
-          "completionTokens": 23,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1411,
+          "promptTokens": 4489,
+          "completionTokens": 50,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009202000000000002,
+          "estimatedCostUsd": 0.0009578000000000002,
           "failure": null,
           "reusedEvidence": false
         },
         {
           "id": "xero_16",
-          "pass": true,
+          "pass": false,
           "cloudflareTools": [
             "xero_sales_summary"
           ],
           "shadowTools": [
-            "xero_sales_summary"
+            "xero_search_invoices"
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 8240,
-          "promptTokens": 4465,
-          "completionTokens": 428,
+          "latencyMs": 5400,
+          "promptTokens": 4491,
+          "completionTokens": 320,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.014066,
+          "estimatedCostUsd": 0.012822,
           "failure": null,
           "reusedEvidence": false
         }
@@ -497,7 +497,7 @@
         "provider": "openai",
         "cases": 4,
         "intent": 100,
-        "tool": 100,
+        "tool": 75,
         "rbac": 100,
         "reasoning": 100,
         "existingEvidence": 100,
@@ -508,9 +508,9 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 1053,
+        "avgLatencyMs": 1365,
         "costStatus": "estimated",
-        "overall": 100
+        "overall": 96
       },
       "rows": [
         {
@@ -523,12 +523,12 @@
             "xero_search_invoices"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1653,
-          "promptTokens": 4466,
-          "completionTokens": 46,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1519,
+          "promptTokens": 4492,
+          "completionTokens": 73,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009484000000000001,
+          "estimatedCostUsd": 0.0009860000000000001,
           "failure": null,
           "reusedEvidence": false
         },
@@ -543,11 +543,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 4212,
-          "promptTokens": 4466,
-          "completionTokens": 222,
+          "latencyMs": 5461,
+          "promptTokens": 4492,
+          "completionTokens": 338,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.011596,
+          "estimatedCostUsd": 0.01304,
           "failure": null,
           "reusedEvidence": false
         },
@@ -562,30 +562,30 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1508,
-          "promptTokens": 4464,
-          "completionTokens": 36,
+          "latencyMs": 1397,
+          "promptTokens": 4490,
+          "completionTokens": 50,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.00936,
+          "estimatedCostUsd": 0.00958,
           "failure": null,
           "reusedEvidence": false
         },
         {
           "id": "xero_20",
-          "pass": true,
+          "pass": false,
           "cloudflareTools": [
             "xero_sales_summary"
           ],
           "shadowTools": [
-            "xero_sales_summary"
+            "xero_search_invoices"
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 2315,
-          "promptTokens": 4465,
+          "latencyMs": 2042,
+          "promptTokens": 4491,
           "completionTokens": 105,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.010190000000000001,
+          "estimatedCostUsd": 0.010242000000000001,
           "failure": null,
           "reusedEvidence": false
         }
@@ -609,7 +609,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 1694,
+        "avgLatencyMs": 1020,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -625,11 +625,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 2916,
-          "promptTokens": 4470,
-          "completionTokens": 138,
+          "latencyMs": 1559,
+          "promptTokens": 4496,
+          "completionTokens": 39,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.010596,
+          "estimatedCostUsd": 0.00946,
           "failure": null,
           "reusedEvidence": false
         },
@@ -644,11 +644,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1483,
-          "promptTokens": 4464,
-          "completionTokens": 42,
+          "latencyMs": 1674,
+          "promptTokens": 4490,
+          "completionTokens": 44,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009432,
+          "estimatedCostUsd": 0.009508,
           "failure": null,
           "reusedEvidence": false
         },
@@ -663,11 +663,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1335,
-          "promptTokens": 4466,
-          "completionTokens": 39,
+          "latencyMs": 1281,
+          "promptTokens": 4492,
+          "completionTokens": 26,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0094,
+          "estimatedCostUsd": 0.009296,
           "failure": null,
           "reusedEvidence": false
         },
@@ -682,11 +682,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1340,
-          "promptTokens": 4466,
-          "completionTokens": 42,
+          "latencyMs": 1201,
+          "promptTokens": 4492,
+          "completionTokens": 24,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009436,
+          "estimatedCostUsd": 0.009272,
           "failure": null,
           "reusedEvidence": false
         }
@@ -710,7 +710,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 373,
+        "avgLatencyMs": 561,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -726,11 +726,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1373,
-          "promptTokens": 4465,
-          "completionTokens": 52,
+          "latencyMs": 1592,
+          "promptTokens": 4491,
+          "completionTokens": 40,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009554,
+          "estimatedCostUsd": 0.009462,
           "failure": null,
           "reusedEvidence": false
         },
@@ -745,11 +745,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1036,
-          "promptTokens": 4464,
+          "latencyMs": 1773,
+          "promptTokens": 4490,
           "completionTokens": 26,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.00924,
+          "estimatedCostUsd": 0.009292,
           "failure": null,
           "reusedEvidence": false
         },
@@ -763,12 +763,12 @@
             "outlook_search_mailbox"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1207,
-          "promptTokens": 4464,
-          "completionTokens": 29,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2008,
+          "promptTokens": 4490,
+          "completionTokens": 94,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009276,
+          "estimatedCostUsd": 0.0010108,
           "failure": null,
           "reusedEvidence": false
         },
@@ -783,11 +783,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1491,
-          "promptTokens": 4465,
-          "completionTokens": 47,
+          "latencyMs": 2243,
+          "promptTokens": 4491,
+          "completionTokens": 24,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009494,
+          "estimatedCostUsd": 0.00927,
           "failure": null,
           "reusedEvidence": false
         }
@@ -811,7 +811,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 1700,
+        "avgLatencyMs": 408,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -826,12 +826,12 @@
             "outlook_list_messages"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1082,
-          "promptTokens": 4463,
-          "completionTokens": 24,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1631,
+          "promptTokens": 4489,
+          "completionTokens": 74,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009214000000000002,
+          "estimatedCostUsd": 0.0009866000000000002,
           "failure": null,
           "reusedEvidence": false
         },
@@ -846,11 +846,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1406,
-          "promptTokens": 4466,
+          "latencyMs": 1499,
+          "promptTokens": 4492,
           "completionTokens": 26,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009244,
+          "estimatedCostUsd": 0.009296,
           "failure": null,
           "reusedEvidence": false
         },
@@ -865,11 +865,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 6801,
-          "promptTokens": 4464,
-          "completionTokens": 41,
+          "latencyMs": 1188,
+          "promptTokens": 4490,
+          "completionTokens": 27,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.00942,
+          "estimatedCostUsd": 0.009304,
           "failure": null,
           "reusedEvidence": false
         },
@@ -884,11 +884,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1158,
-          "promptTokens": 4464,
-          "completionTokens": 41,
+          "latencyMs": 982,
+          "promptTokens": 4490,
+          "completionTokens": 24,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.00942,
+          "estimatedCostUsd": 0.009268,
           "failure": null,
           "reusedEvidence": false
         }
@@ -912,7 +912,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 730,
+        "avgLatencyMs": 685,
         "costStatus": "estimated",
         "overall": 96
       },
@@ -928,11 +928,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1298,
-          "promptTokens": 4465,
-          "completionTokens": 28,
+          "latencyMs": 2077,
+          "promptTokens": 4491,
+          "completionTokens": 43,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009266,
+          "estimatedCostUsd": 0.009498,
           "failure": null,
           "reusedEvidence": false
         },
@@ -947,11 +947,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1022,
-          "promptTokens": 4463,
-          "completionTokens": 26,
+          "latencyMs": 1428,
+          "promptTokens": 4489,
+          "completionTokens": 46,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009238000000000001,
+          "estimatedCostUsd": 0.009530000000000002,
           "failure": null,
           "reusedEvidence": false
         },
@@ -966,11 +966,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1155,
-          "promptTokens": 4463,
-          "completionTokens": 26,
+          "latencyMs": 2741,
+          "promptTokens": 4489,
+          "completionTokens": 117,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009238000000000001,
+          "estimatedCostUsd": 0.010382000000000002,
           "failure": null,
           "reusedEvidence": false
         },
@@ -985,11 +985,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 2920,
-          "promptTokens": 4463,
+          "latencyMs": 1625,
+          "promptTokens": 4489,
           "completionTokens": 41,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009418000000000001,
+          "estimatedCostUsd": 0.009470000000000001,
           "failure": null,
           "reusedEvidence": false
         }
@@ -1013,7 +1013,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 342,
+        "avgLatencyMs": 1503,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -1028,12 +1028,12 @@
             "outlook_list_messages"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1138,
-          "promptTokens": 4468,
-          "completionTokens": 26,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 6012,
+          "promptTokens": 4494,
+          "completionTokens": 90,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009248000000000001,
+          "estimatedCostUsd": 0.0010068000000000002,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1048,11 +1048,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1367,
-          "promptTokens": 4464,
+          "latencyMs": 1398,
+          "promptTokens": 4490,
           "completionTokens": 27,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009252,
+          "estimatedCostUsd": 0.009304,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1067,11 +1067,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1153,
-          "promptTokens": 4464,
-          "completionTokens": 24,
+          "latencyMs": 2039,
+          "promptTokens": 4490,
+          "completionTokens": 78,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009216,
+          "estimatedCostUsd": 0.009916,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1086,11 +1086,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1014,
-          "promptTokens": 4462,
-          "completionTokens": 24,
+          "latencyMs": 1315,
+          "promptTokens": 4488,
+          "completionTokens": 43,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009212000000000001,
+          "estimatedCostUsd": 0.009492,
           "failure": null,
           "reusedEvidence": false
         }
@@ -1114,7 +1114,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 461,
+        "avgLatencyMs": 779,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -1131,11 +1131,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1130,
-          "promptTokens": 4468,
-          "completionTokens": 29,
+          "latencyMs": 1348,
+          "promptTokens": 4494,
+          "completionTokens": 41,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009284,
+          "estimatedCostUsd": 0.00948,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1151,11 +1151,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1349,
-          "promptTokens": 4467,
+          "latencyMs": 1284,
+          "promptTokens": 4493,
           "completionTokens": 36,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009366000000000001,
+          "estimatedCostUsd": 0.009418000000000001,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1170,11 +1170,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1724,
-          "promptTokens": 4465,
-          "completionTokens": 16,
+          "latencyMs": 3117,
+          "promptTokens": 4491,
+          "completionTokens": 27,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009122,
+          "estimatedCostUsd": 0.009306,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1189,11 +1189,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1842,
-          "promptTokens": 4466,
+          "latencyMs": 1283,
+          "promptTokens": 4492,
           "completionTokens": 38,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009388,
+          "estimatedCostUsd": 0.00944,
           "failure": null,
           "reusedEvidence": false
         }
@@ -1217,7 +1217,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 399,
+        "avgLatencyMs": 612,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -1233,11 +1233,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1342,
-          "promptTokens": 4468,
-          "completionTokens": 35,
+          "latencyMs": 1587,
+          "promptTokens": 4494,
+          "completionTokens": 36,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009356000000000001,
+          "estimatedCostUsd": 0.009420000000000001,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1251,12 +1251,12 @@
             "search_company_knowledge"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1243,
-          "promptTokens": 4467,
-          "completionTokens": 25,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1619,
+          "promptTokens": 4493,
+          "completionTokens": 50,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009234000000000001,
+          "estimatedCostUsd": 0.0009586000000000002,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1271,11 +1271,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1594,
-          "promptTokens": 4467,
-          "completionTokens": 55,
+          "latencyMs": 2155,
+          "promptTokens": 4493,
+          "completionTokens": 39,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009594000000000002,
+          "estimatedCostUsd": 0.009454,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1289,12 +1289,12 @@
             "list_documents"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1404,
-          "promptTokens": 4468,
-          "completionTokens": 50,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2446,
+          "promptTokens": 4494,
+          "completionTokens": 131,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009536000000000001,
+          "estimatedCostUsd": 0.001056,
           "failure": null,
           "reusedEvidence": false
         }
@@ -1318,7 +1318,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 360,
+        "avgLatencyMs": 409,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -1333,12 +1333,12 @@
             "search_company_knowledge"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1420,
-          "promptTokens": 4467,
-          "completionTokens": 25,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1636,
+          "promptTokens": 4493,
+          "completionTokens": 57,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009234000000000001,
+          "estimatedCostUsd": 0.0009670000000000002,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1354,11 +1354,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1207,
-          "promptTokens": 4471,
-          "completionTokens": 38,
+          "latencyMs": 1599,
+          "promptTokens": 4497,
+          "completionTokens": 26,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009398,
+          "estimatedCostUsd": 0.009306,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1373,11 +1373,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1382,
-          "promptTokens": 4468,
+          "latencyMs": 1231,
+          "promptTokens": 4494,
           "completionTokens": 38,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009392000000000001,
+          "estimatedCostUsd": 0.009444000000000001,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1393,11 +1393,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1441,
-          "promptTokens": 4467,
-          "completionTokens": 39,
+          "latencyMs": 1231,
+          "promptTokens": 4493,
+          "completionTokens": 26,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009402,
+          "estimatedCostUsd": 0.009298,
           "failure": null,
           "reusedEvidence": false
         }
@@ -1421,7 +1421,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 758,
+        "avgLatencyMs": 892,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -1437,11 +1437,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1237,
-          "promptTokens": 4467,
+          "latencyMs": 1339,
+          "promptTokens": 4493,
           "completionTokens": 25,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009234000000000001,
+          "estimatedCostUsd": 0.009286,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1456,11 +1456,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1680,
-          "promptTokens": 4468,
-          "completionTokens": 55,
+          "latencyMs": 2179,
+          "promptTokens": 4494,
+          "completionTokens": 101,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009596,
+          "estimatedCostUsd": 0.0102,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1471,15 +1471,15 @@
             "search_company_knowledge"
           ],
           "shadowTools": [
-            "search_company_knowledge"
+            "list_documents"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 2097,
-          "promptTokens": 4469,
-          "completionTokens": 89,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1959,
+          "promptTokens": 4495,
+          "completionTokens": 94,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.010006000000000001,
+          "estimatedCostUsd": 0.0010118000000000002,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1493,12 +1493,12 @@
             "list_documents"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 3030,
-          "promptTokens": 4467,
-          "completionTokens": 92,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 3568,
+          "promptTokens": 4493,
+          "completionTokens": 198,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.010038000000000002,
+          "estimatedCostUsd": 0.0011362000000000002,
           "failure": null,
           "reusedEvidence": false
         }
@@ -1522,7 +1522,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 477,
+        "avgLatencyMs": 559,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -1538,11 +1538,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1659,
-          "promptTokens": 4470,
-          "completionTokens": 62,
+          "latencyMs": 1327,
+          "promptTokens": 4496,
+          "completionTokens": 27,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009684,
+          "estimatedCostUsd": 0.009316,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1556,12 +1556,12 @@
             "search_company_knowledge"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1651,
-          "promptTokens": 4469,
-          "completionTokens": 39,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1198,
+          "promptTokens": 4495,
+          "completionTokens": 42,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009406000000000001,
+          "estimatedCostUsd": 0.0009494000000000002,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1575,12 +1575,12 @@
             "search_company_knowledge"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1906,
-          "promptTokens": 4466,
-          "completionTokens": 51,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2237,
+          "promptTokens": 4492,
+          "completionTokens": 89,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009544,
+          "estimatedCostUsd": 0.0010052000000000001,
           "failure": null,
           "reusedEvidence": false
         },
@@ -1595,11 +1595,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1287,
-          "promptTokens": 4468,
+          "latencyMs": 1256,
+          "promptTokens": 4494,
           "completionTokens": 39,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009404000000000001,
+          "estimatedCostUsd": 0.009456,
           "failure": null,
           "reusedEvidence": false
         }
@@ -1623,7 +1623,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 543,
+        "avgLatencyMs": 1533,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -1635,11 +1635,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1586,
-          "promptTokens": 4501,
-          "completionTokens": 16,
+          "latencyMs": 1329,
+          "promptTokens": 4527,
+          "completionTokens": 34,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009194,
+          "estimatedCostUsd": 0.0009462,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1650,11 +1650,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1572,
-          "promptTokens": 4501,
-          "completionTokens": 37,
+          "latencyMs": 1491,
+          "promptTokens": 4527,
+          "completionTokens": 36,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009446,
+          "estimatedCostUsd": 0.0009486,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1665,11 +1665,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 2172,
-          "promptTokens": 4507,
-          "completionTokens": 98,
+          "latencyMs": 3521,
+          "promptTokens": 4533,
+          "completionTokens": 99,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.001019,
+          "estimatedCostUsd": 0.0010254,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1680,11 +1680,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 2109,
-          "promptTokens": 4508,
-          "completionTokens": 83,
+          "latencyMs": 6130,
+          "promptTokens": 4534,
+          "completionTokens": 120,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0010012,
+          "estimatedCostUsd": 0.0010508,
           "failure": null,
           "reusedEvidence": true
         }
@@ -1708,7 +1708,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 595,
+        "avgLatencyMs": 532,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -1720,11 +1720,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1901,
-          "promptTokens": 4509,
-          "completionTokens": 65,
+          "latencyMs": 2062,
+          "promptTokens": 4535,
+          "completionTokens": 73,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009798,
+          "estimatedCostUsd": 0.0009946,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1735,11 +1735,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 2378,
-          "promptTokens": 4510,
-          "completionTokens": 27,
+          "latencyMs": 1562,
+          "promptTokens": 4536,
+          "completionTokens": 59,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009344,
+          "estimatedCostUsd": 0.000978,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1750,11 +1750,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1968,
-          "promptTokens": 4503,
-          "completionTokens": 93,
+          "latencyMs": 1715,
+          "promptTokens": 4529,
+          "completionTokens": 85,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0010122,
+          "estimatedCostUsd": 0.0010078,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1765,11 +1765,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 2273,
-          "promptTokens": 4506,
-          "completionTokens": 113,
+          "latencyMs": 2128,
+          "promptTokens": 4532,
+          "completionTokens": 116,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0010368,
+          "estimatedCostUsd": 0.0010456,
           "failure": null,
           "reusedEvidence": true
         }
@@ -1793,7 +1793,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 582,
+        "avgLatencyMs": 602,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -1805,11 +1805,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1191,
-          "promptTokens": 4501,
-          "completionTokens": 40,
+          "latencyMs": 1173,
+          "promptTokens": 4527,
+          "completionTokens": 41,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009482,
+          "estimatedCostUsd": 0.0009546,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1820,11 +1820,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 951,
-          "promptTokens": 4502,
-          "completionTokens": 16,
+          "latencyMs": 1236,
+          "promptTokens": 4528,
+          "completionTokens": 33,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009196,
+          "estimatedCostUsd": 0.0009452,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1835,11 +1835,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1621,
-          "promptTokens": 4504,
-          "completionTokens": 75,
+          "latencyMs": 2407,
+          "promptTokens": 4530,
+          "completionTokens": 127,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009908,
+          "estimatedCostUsd": 0.0010584,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1850,11 +1850,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 2328,
-          "promptTokens": 4506,
-          "completionTokens": 111,
+          "latencyMs": 1701,
+          "promptTokens": 4532,
+          "completionTokens": 58,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0010344,
+          "estimatedCostUsd": 0.000976,
           "failure": null,
           "reusedEvidence": true
         }
@@ -1878,7 +1878,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 513,
+        "avgLatencyMs": 1318,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -1893,12 +1893,12 @@
             "get_user_capabilities"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1551,
-          "promptTokens": 4510,
-          "completionTokens": 27,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2208,
+          "promptTokens": 4536,
+          "completionTokens": 101,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009344,
+          "estimatedCostUsd": 0.0010284,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1912,12 +1912,12 @@
             "get_user_capabilities"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1159,
-          "promptTokens": 4511,
-          "completionTokens": 29,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 5270,
+          "promptTokens": 4537,
+          "completionTokens": 63,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.00937,
+          "estimatedCostUsd": 0.0009830000000000001,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1928,11 +1928,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1197,
-          "promptTokens": 4501,
-          "completionTokens": 33,
+          "latencyMs": 1129,
+          "promptTokens": 4527,
+          "completionTokens": 36,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009398,
+          "estimatedCostUsd": 0.0009486,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1943,11 +1943,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 2053,
-          "promptTokens": 4504,
-          "completionTokens": 85,
+          "latencyMs": 2074,
+          "promptTokens": 4530,
+          "completionTokens": 92,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0010028,
+          "estimatedCostUsd": 0.0010164,
           "failure": null,
           "reusedEvidence": true
         }
@@ -1971,7 +1971,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 457,
+        "avgLatencyMs": 505,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -1983,11 +1983,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1828,
-          "promptTokens": 4506,
-          "completionTokens": 94,
+          "latencyMs": 2021,
+          "promptTokens": 4532,
+          "completionTokens": 104,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.001014,
+          "estimatedCostUsd": 0.0010312,
           "failure": null,
           "reusedEvidence": true
         },
@@ -1998,11 +1998,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1748,
-          "promptTokens": 4503,
-          "completionTokens": 82,
+          "latencyMs": 1665,
+          "promptTokens": 4529,
+          "completionTokens": 74,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009989999999999999,
+          "estimatedCostUsd": 0.0009946,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2013,11 +2013,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1199,
-          "promptTokens": 4502,
-          "completionTokens": 16,
+          "latencyMs": 1017,
+          "promptTokens": 4528,
+          "completionTokens": 34,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009196,
+          "estimatedCostUsd": 0.0009464,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2028,11 +2028,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1536,
-          "promptTokens": 4503,
-          "completionTokens": 50,
+          "latencyMs": 1910,
+          "promptTokens": 4529,
+          "completionTokens": 44,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009606,
+          "estimatedCostUsd": 0.0009586,
           "failure": null,
           "reusedEvidence": true
         }
@@ -2056,7 +2056,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 984,
+        "avgLatencyMs": 1084,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -2068,15 +2068,15 @@
             "search_company_knowledge"
           ],
           "shadowTools": [
-            "list_documents"
+            "search_company_knowledge"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 2223,
-          "promptTokens": 4512,
-          "completionTokens": 119,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 4031,
+          "promptTokens": 4538,
+          "completionTokens": 155,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.010452000000000001,
+          "estimatedCostUsd": 0.0010936000000000001,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2087,11 +2087,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1720,
-          "promptTokens": 4506,
-          "completionTokens": 93,
+          "latencyMs": 1573,
+          "promptTokens": 4532,
+          "completionTokens": 83,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0010128,
+          "estimatedCostUsd": 0.001006,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2102,15 +2102,15 @@
             "xero_sales_summary"
           ],
           "shadowTools": [
-            "xero_sales_summary"
+            "xero_search_invoices"
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 3934,
-          "promptTokens": 4511,
-          "completionTokens": 210,
+          "latencyMs": 4336,
+          "promptTokens": 4537,
+          "completionTokens": 194,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.011542,
+          "estimatedCostUsd": 0.011402,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2125,11 +2125,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1527,
-          "promptTokens": 4509,
-          "completionTokens": 48,
+          "latencyMs": 1198,
+          "promptTokens": 4535,
+          "completionTokens": 33,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009594000000000002,
+          "estimatedCostUsd": 0.009466000000000002,
           "failure": null,
           "reusedEvidence": true
         }
@@ -2153,7 +2153,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 711,
+        "avgLatencyMs": 727,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -2168,12 +2168,12 @@
             "search_company_knowledge"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 2044,
-          "promptTokens": 4511,
-          "completionTokens": 93,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2701,
+          "promptTokens": 4537,
+          "completionTokens": 138,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.010138000000000001,
+          "estimatedCostUsd": 0.001073,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2189,11 +2189,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1643,
-          "promptTokens": 4515,
-          "completionTokens": 36,
+          "latencyMs": 2317,
+          "promptTokens": 4541,
+          "completionTokens": 48,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009462000000000002,
+          "estimatedCostUsd": 0.009658000000000002,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2204,11 +2204,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 2844,
-          "promptTokens": 4512,
-          "completionTokens": 167,
+          "latencyMs": 2906,
+          "promptTokens": 4538,
+          "completionTokens": 194,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0011028,
+          "estimatedCostUsd": 0.0011404,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2219,11 +2219,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 2578,
-          "promptTokens": 4508,
-          "completionTokens": 112,
+          "latencyMs": 2410,
+          "promptTokens": 4534,
+          "completionTokens": 107,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.001036,
+          "estimatedCostUsd": 0.0010352,
           "failure": null,
           "reusedEvidence": true
         }
@@ -2247,7 +2247,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 598,
+        "avgLatencyMs": 873,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -2259,11 +2259,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1511,
-          "promptTokens": 4506,
-          "completionTokens": 56,
+          "latencyMs": 1315,
+          "promptTokens": 4532,
+          "completionTokens": 21,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009684,
+          "estimatedCostUsd": 0.0009316,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2277,12 +2277,12 @@
             "get_connector_status"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1239,
-          "promptTokens": 4511,
-          "completionTokens": 15,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2048,
+          "promptTokens": 4537,
+          "completionTokens": 93,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009202,
+          "estimatedCostUsd": 0.0010190000000000002,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2290,18 +2290,19 @@
           "id": "mixed_11",
           "pass": true,
           "cloudflareTools": [
+            "xero_sales_summary",
             "outlook_list_messages"
           ],
           "shadowTools": [
             "xero_sales_summary"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 2392,
-          "promptTokens": 4512,
-          "completionTokens": 131,
+          "model": "gpt-5.6-sol",
+          "latencyMs": 3491,
+          "promptTokens": 4538,
+          "completionTokens": 211,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.010596000000000001,
+          "estimatedCostUsd": 0.022372000000000003,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2316,11 +2317,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1225,
-          "promptTokens": 4510,
+          "latencyMs": 2120,
+          "promptTokens": 4536,
           "completionTokens": 33,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009416,
+          "estimatedCostUsd": 0.009468,
           "failure": null,
           "reusedEvidence": true
         }
@@ -2344,7 +2345,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 1515,
+        "avgLatencyMs": 979,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -2360,11 +2361,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 2731,
-          "promptTokens": 4510,
-          "completionTokens": 53,
+          "latencyMs": 1409,
+          "promptTokens": 4536,
+          "completionTokens": 60,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009656,
+          "estimatedCostUsd": 0.009792,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2379,11 +2380,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 6060,
-          "promptTokens": 4512,
-          "completionTokens": 236,
+          "latencyMs": 2657,
+          "promptTokens": 4538,
+          "completionTokens": 128,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.011856,
+          "estimatedCostUsd": 0.010612,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2394,15 +2395,15 @@
             "outlook_search_mailbox"
           ],
           "shadowTools": [
-            "get_user_capabilities"
+            "database_summary"
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 2720,
-          "promptTokens": 4511,
-          "completionTokens": 126,
+          "latencyMs": 3914,
+          "promptTokens": 4537,
+          "completionTokens": 14,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.010534,
+          "estimatedCostUsd": 0.009242,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2413,11 +2414,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 2052,
-          "promptTokens": 4509,
-          "completionTokens": 108,
+          "latencyMs": 2003,
+          "promptTokens": 4535,
+          "completionTokens": 81,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0010314,
+          "estimatedCostUsd": 0.0010042,
           "failure": null,
           "reusedEvidence": true
         }
@@ -2441,7 +2442,7 @@
         "naturalness": 100,
         "followUp": 100,
         "correction": 100,
-        "avgLatencyMs": 825,
+        "avgLatencyMs": 678,
         "costStatus": "estimated",
         "overall": 100
       },
@@ -2453,11 +2454,11 @@
           "shadowTools": [],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-luna",
-          "latencyMs": 1529,
-          "promptTokens": 4512,
-          "completionTokens": 65,
+          "latencyMs": 1811,
+          "promptTokens": 4538,
+          "completionTokens": 51,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.0009804,
+          "estimatedCostUsd": 0.0009687999999999999,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2468,15 +2469,15 @@
             "search_company_knowledge"
           ],
           "shadowTools": [
-            "get_document_index_stats"
+            "search_company_knowledge"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 1435,
-          "promptTokens": 4511,
-          "completionTokens": 61,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1979,
+          "promptTokens": 4537,
+          "completionTokens": 84,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009754,
+          "estimatedCostUsd": 0.0010082000000000001,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2490,12 +2491,12 @@
             "search_company_knowledge"
           ],
           "userVisibleProvider": "cloudflare",
-          "model": "gpt-5.6-terra",
-          "latencyMs": 3298,
-          "promptTokens": 4512,
-          "completionTokens": 134,
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2711,
+          "promptTokens": 4538,
+          "completionTokens": 145,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.010632,
+          "estimatedCostUsd": 0.0010816000000000003,
           "failure": null,
           "reusedEvidence": true
         },
@@ -2510,11 +2511,11 @@
           ],
           "userVisibleProvider": "cloudflare",
           "model": "gpt-5.6-terra",
-          "latencyMs": 1918,
-          "promptTokens": 4509,
+          "latencyMs": 1186,
+          "promptTokens": 4535,
           "completionTokens": 34,
           "costBasis": "estimated",
-          "estimatedCostUsd": 0.009426000000000002,
+          "estimatedCostUsd": 0.009478000000000002,
           "failure": null,
           "reusedEvidence": true
         }
@@ -2651,7 +2652,8 @@
     "userVisible": "cloudflare",
     "text": "What are sales this month and what is the newest info email?",
     "cloudflareTools": [
-      "xero_sales_summary"
+      "xero_sales_summary",
+      "outlook_list_messages"
     ],
     "shadowTools": [
       "outlook_list_messages"
@@ -2690,9 +2692,9 @@
         "id": "notool_4",
         "text": "What is 2+2?",
         "shadowTools": [
-          "search_company_knowledge"
+          "system_health"
         ],
-        "usedBusinessTool": true
+        "usedBusinessTool": false
       },
       {
         "id": "notool_5",
@@ -2703,20 +2705,20 @@
         "usedBusinessTool": true
       }
     ],
-    "businessTools": 3
+    "businessTools": 2
   },
   "exactTool": {
     "scorecard": {
       "cases": 50,
-      "familyAgreement": 94,
-      "requiredAgreement": 96,
-      "overall": 95,
-      "inboxNoTool": 1,
+      "familyAgreement": 96,
+      "requiredAgreement": 98,
+      "overall": 97,
+      "inboxNoTool": 0,
       "xeroNoTool": 0,
       "knowledgeToXero": 0,
       "emailToXero": 0,
       "byFamily": {
-        "outlook": 90,
+        "outlook": 100,
         "xero": 100,
         "knowledge": 100,
         "catalogue": 100,
@@ -2875,11 +2877,15 @@
         "expectedFamilies": [
           "outlook"
         ],
-        "actualFamilies": [],
-        "tools": [],
-        "familyOk": false,
-        "requiredOk": false,
-        "inboxNoTool": true,
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_search_mailbox"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
         "xeroNoTool": false
       },
       {
@@ -3019,7 +3025,7 @@
           "xero"
         ],
         "tools": [
-          "xero_search_invoices"
+          "xero_top_customers"
         ],
         "familyOk": true,
         "requiredOk": true,
@@ -3591,10 +3597,10 @@
         "required": false,
         "expectedFamilies": [],
         "actualFamilies": [
-          "catalogue"
+          "system"
         ],
         "tools": [
-          "get_user_capabilities"
+          "database_summary"
         ],
         "familyOk": false,
         "requiredOk": false,
@@ -3607,24 +3613,24 @@
     "source": "LIVE_API",
     "cases": 100,
     "intent": 100,
-    "tool": 93,
+    "tool": 92,
     "grounding": 100,
     "firstAnswer": 100,
     "naturalness": 100,
     "followUp": 100,
     "unnecessaryTools": 0,
     "hallucination": 0,
-    "avgLatencyMs": 884,
-    "promptTokens": 448247,
-    "completionTokens": 7356,
-    "estimatedCostUsd": 0.771394,
+    "avgLatencyMs": 926,
+    "promptTokens": 450847,
+    "completionTokens": 8249,
+    "estimatedCostUsd": 0.5754319999999999,
     "costBasis": "estimated",
     "failures": 0,
     "costInputs": {
-      "promptTokens": 448247,
-      "completionTokens": 7356,
+      "promptTokens": 450847,
+      "completionTokens": 8249,
       "rates": "published gpt-5.6-luna/terra/sol from developers.openai.com/api/docs/models"
     }
   },
-  "finishedAt": "2026-09-04T17:48:15.611Z"
+  "finishedAt": "2026-09-04T18:34:37.702Z"
 }
