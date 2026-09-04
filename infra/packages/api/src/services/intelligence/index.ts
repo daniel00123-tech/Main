@@ -41,7 +41,15 @@ export {
   DEFAULT_OPENAI_TEXT_MODEL,
 } from "./provider.js";
 export { createReasoningCompleter, createOpenAiCompleter } from "./brain.js";
-export { resolveBrainPolicy, EL_COMPANY_ID, parseBrainMode } from "./brain-policy.js";
+export { resolveBrainPolicy, EL_COMPANY_ID, parseBrainMode, resolveTenantReasoningMode } from "./brain-policy.js";
+export {
+  buildTenantToolCatalogue,
+  normaliseVendorToolName,
+  detectRequestedCapabilities,
+  wantsMultiCapabilityRead,
+} from "./company-tool-registry.js";
+export { isolateEvidenceForCompany, stampEvidenceTenant } from "./tenant-isolation.js";
+export { classifyTurnComplexity, recommendModelTier } from "./complexity-router.js";
 export {
   classifyEvidenceNeed,
   canUseExisting,

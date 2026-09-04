@@ -32,6 +32,9 @@ export type EvidenceSufficiency = "ENOUGH_TO_ANSWER" | "NEEDS_MORE_INFORMATION";
 
 export type EngineeringFailureCategory =
   | "WRONG_TOOL"
+  | "WRONG_CAPABILITY"
+  | "RBAC_DENIAL"
+  | "UPSTREAM_FAILURE"
   | "EXPECTED_TOOL_MISSING"
   | "DUPLICATE_TOOL"
   | "FIRST_ANSWER_INCOMPLETE"
@@ -116,6 +119,9 @@ export type RecentCatalogueEvidence = {
 };
 
 export type StructuredEvidence = {
+  companyId?: string | null;
+  source?: string | null;
+  capturedAt?: string | null;
   recentEmail?: RecentEmailEvidence | null;
   recentXero?: RecentXeroEvidence | null;
   recentDocument?: RecentDocumentEvidence | null;
@@ -296,6 +302,7 @@ export type IntelligenceEnv = {
   OPENAI_BRAIN_ENABLED?: string;
   OPENAI_BRAIN_MODE?: string;
   OPENAI_BRAIN_COMPANY_IDS?: string;
+  OPENAI_BRAIN_COMPANY_MODES?: string;
   OPENAI_BRAIN_CANARY_PERCENT?: string;
   OPENAI_MODEL_FAST?: string;
   OPENAI_MODEL_DEFAULT?: string;

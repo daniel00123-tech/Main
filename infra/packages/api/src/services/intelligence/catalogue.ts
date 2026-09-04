@@ -6,8 +6,9 @@ import type { IntelligenceToolFamily, IntelligenceToolSpec } from "./types.js";
  *
  * Descriptions are generic. They must not contain customer names, mailboxes, or phrases.
  */
-export const CURRENT_BUSINESS_DATA_PROTOCOL = `Current or private company data is never guessed from world knowledge.
-If the answer depends on CURRENT or private company data (mailbox, Xero, indexed knowledge, file catalogue) that is not already in authorised recent evidence, you MUST call the matching INFRA function tool before answering.
+export const CURRENT_BUSINESS_DATA_PROTOCOL = `Current or private company data is never guessed from world knowledge. This rule is tenant-universal.
+If the answer depends on CURRENT or private company information (mailbox, accounting, CRM, indexed knowledge, file catalogue) that is not already in authorised recent evidence for THIS company, you MUST call the matching INFRA function tool before answering.
+Never use another company's evidence. Never answer live company figures from model memory.
 If authorised recent evidence already contains the requested facts, do not call a business tool — answer from that evidence.
 Named shared inboxes (info, finance, office, shared mailbox) are mailbox tools, never knowledge search and never Xero.
 outlook_list_messages = newest/latest/recent/unread/last-N mailbox listing with no sender, subject, or content filter.

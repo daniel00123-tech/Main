@@ -7,6 +7,7 @@ describe("brain policy", () => {
       OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
       OPENAI_BRAIN_ENABLED: "true",
       OPENAI_BRAIN_MODE: "openai_primary",
+      OPENAI_BRAIN_COMPANY_IDS: "co_el",
     };
     expect(resolveBrainPolicy({ env, companyId: "co_caddington" }).useOpenAi).toBe(false);
     expect(resolveBrainPolicy({ env, companyId: "co_ht" }).useOpenAi).toBe(false);
@@ -28,6 +29,7 @@ describe("brain policy", () => {
       OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
       OPENAI_BRAIN_ENABLED: "true",
       OPENAI_BRAIN_MODE: "openai_shadow",
+      OPENAI_BRAIN_COMPANY_IDS: "co_el",
     };
     const el = resolveBrainPolicy({ env, companyId: "co_el" });
     expect(el.shadow).toBe(true);
@@ -42,7 +44,22 @@ describe("brain policy", () => {
       OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
       OPENAI_BRAIN_ENABLED: "true",
       OPENAI_BRAIN_MODE: "openai_primary",
+      OPENAI_BRAIN_COMPANY_IDS: "co_el",
     };
     expect(resolveBrainPolicy({ env, companyId: "co_el", channel: "chatgpt" }).reason).toBe("chatgpt_stays_direct_tools");
+  });
+
+  it("defaults an unconfigured future tenant to Cloudflare", () => {
+    const env = {
+      OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
+      OPENAI_BRAIN_ENABLED: "true",
+      OPENAI_BRAIN_MODE: "openai_primary",
+      OPENAI_BRAIN_COMPANY_IDS: "co_el",
+    };
+    const future = resolveBrainPolicy({ env, companyId: "co_newco" });
+    expect(future.mode).toBe("cloudflare");
+    expect(future.useOpenAi).toBe(false);
+    expect(future.shadow).toBe(false);
+    expect(future.reason).toBe("tenant_not_allowlisted");
   });
 });

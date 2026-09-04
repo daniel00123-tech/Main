@@ -125,8 +125,10 @@ export interface Env {
   OPENAI_BRAIN_ENABLED?: string;
   /** cloudflare | openai_shadow | openai_canary | openai_primary */
   OPENAI_BRAIN_MODE?: string;
-  /** Comma-separated company ids. Default co_el only. */
+  /** Comma-separated company ids explicitly promoted onto the shared OpenAI reasoning provider. Empty = none. */
   OPENAI_BRAIN_COMPANY_IDS?: string;
+  /** Optional per-company mode map: co_el=openai_shadow,co_future=cloudflare */
+  OPENAI_BRAIN_COMPANY_MODES?: string;
   OPENAI_BRAIN_CANARY_PERCENT?: string;
   OPENAI_MODEL_FAST?: string;
   OPENAI_MODEL_DEFAULT?: string;

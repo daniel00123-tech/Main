@@ -14,6 +14,11 @@ import { resolveBrainPolicy } from "./intelligence/brain-policy";
 import { authorizeToolCall, buildAllowedToolCatalogue } from "./intelligence/tool-auth";
 import { looksLikePublicWebAsk } from "./intelligence/web-search";
 import { ENGINEERING_SUPERVISOR_CONTRACT } from "./intelligence/dev-failure-queue";
+import { buildTenantToolCatalogue, normaliseVendorToolName } from "./intelligence/company-tool-registry";
+import { isolateEvidenceForCompany } from "./intelligence/tenant-isolation";
+import { classifyTurnFailures } from "./intelligence/failure-telemetry";
+import { inspectIntelligenceProvider } from "./intelligence/provider";
+import { resolveRequestPricingPolicy } from "./customer-request-pricing";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -70,6 +75,7 @@ export function assertProductionSuperstackCapabilities(): {
       OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
       OPENAI_BRAIN_ENABLED: "true",
       OPENAI_BRAIN_MODE: "openai_shadow",
+      OPENAI_BRAIN_COMPANY_IDS: "co_el",
     },
     companyId: "co_el",
   });
@@ -107,6 +113,32 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (ENGINEERING_SUPERVISOR_CONTRACT.autoDeployFromSingleFailure) {
     throw new Error("must not auto-deploy from a single customer failure");
+  }
+  const ht = buildTenantToolCatalogue({ companyId: "co_ht", connectors: [], role: "office_staff" });
+  if (ht.tools.some((name) => name.startsWith("xero_") || name.startsWith("outlook_"))) {
+    throw new Error("HT catalogue must not advertise disconnected EL systems");
+  }
+  if (normaliseVendorToolName("analyse_xero_sales") !== "xero_sales_summary") {
+    throw new Error("vendor MCP aliases must normalise to INFRA tools");
+  }
+  const leaked = isolateEvidenceForCompany(
+    { companyId: "co_el", recentXero: { toolName: "xero_sales_summary", total: 1, count: 1, fromDate: null, toDate: null, currency: "GBP", summary: "x", label: "x" } },
+    "co_caddington",
+  );
+  if (leaked.recentXero) {
+    throw new Error("cross-tenant evidence must be stripped");
+  }
+  if (typeof classifyTurnFailures !== "function") {
+    throw new Error("failure telemetry missing");
+  }
+  if (inspectIntelligenceProvider({}).provider === "openai") {
+    throw new Error("Cloudflare/Workers AI must remain the default fallback provider");
+  }
+  if (resolveRequestPricingPolicy("co_caddington") || resolveRequestPricingPolicy("co_ht")) {
+    throw new Error("must not apply EL request pricing to Caddington or HT");
+  }
+  if (resolveRequestPricingPolicy("co_el")?.chargeCents !== 3) {
+    throw new Error("EL request-level pricing must remain 3p");
   }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };

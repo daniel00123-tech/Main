@@ -1,3 +1,4 @@
+import { rejectCrossTenantMerge } from "./tenant-isolation.js";
 import { extractOutlookMessages } from "./verbalise-business.js";
 import type {
   EvidenceNeed,
@@ -16,6 +17,9 @@ const MAX_SUMMARY = 420;
 
 export function emptyEvidence(): StructuredEvidence {
   return {
+    companyId: null,
+    source: null,
+    capturedAt: null,
     recentEmail: null,
     recentXero: null,
     recentDocument: null,
@@ -30,7 +34,11 @@ export function mergeEvidence(
 ): StructuredEvidence {
   const left = prior ?? emptyEvidence();
   const right = next ?? emptyEvidence();
+  if (rejectCrossTenantMerge(left, right)) return left;
   return {
+    companyId: right.companyId ?? left.companyId ?? null,
+    source: right.source ?? left.source ?? null,
+    capturedAt: right.capturedAt ?? left.capturedAt ?? null,
     recentEmail: right.recentEmail ?? left.recentEmail ?? null,
     recentXero: right.recentXero ?? left.recentXero ?? null,
     recentDocument: right.recentDocument ?? left.recentDocument ?? null,

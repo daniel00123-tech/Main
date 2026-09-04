@@ -17,6 +17,11 @@ export const PRODUCTION_SUPERSTACK_CAPABILITIES = [
   "rbac",
   "usage_recording",
   "quality_route",
+  "openai_provider",
+  "cloudflare_provider",
+  "tenant_registry",
+  "tool_registry",
+  "failure_telemetry",
 ] as const;
 
 export type ProductionLineage = {
