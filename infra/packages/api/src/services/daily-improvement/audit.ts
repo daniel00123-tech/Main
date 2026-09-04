@@ -2,7 +2,7 @@ import { newId, nowIso } from "../../db/mappers";
 import { CUSTOMER_TRAFFIC_CLASS } from "./constants";
 import { evidenceRefsOnly, stripSecrets } from "./redact";
 import { upsertInteraction } from "./store";
-import { classifyDailyTraffic, isGenuineCustomerTraffic } from "./traffic";
+import { classifyDailyTraffic, isGenuineCustomerTraffic, normalisePrompt } from "./traffic";
 import type { DailyImprovementInteraction } from "./types";
 
 export { isGenuineCustomerTraffic } from "./traffic";
@@ -107,18 +107,27 @@ export async function reclassifyStoredInteractions(
     )
     .bind(fromIso, toIso)
     .all<Record<string, unknown>>();
+  const promptCounts = new Map<string, number>();
+  for (const row of rows.results ?? []) {
+    const key = normalisePrompt(row.user_message ? String(row.user_message) : "");
+    if (key.length >= 16) promptCounts.set(key, (promptCounts.get(key) ?? 0) + 1);
+  }
   let updated = 0;
   for (const row of rows.results ?? []) {
-    const next = classifyDailyTraffic({
+    const message = row.user_message ? String(row.user_message) : null;
+    let next = classifyDailyTraffic({
       trafficClass: row.traffic_class ? String(row.traffic_class) : null,
       sourceClient: row.source_client ? String(row.source_client) : null,
-      userMessage: row.user_message ? String(row.user_message) : null,
+      userMessage: message,
       customerChargeCents: row.customer_charge_cents != null ? Number(row.customer_charge_cents) : null,
       correlationId: row.correlation_id ? String(row.correlation_id) : null,
       providerMode: row.provider_mode ? String(row.provider_mode) : null,
       userId: row.user_id ? String(row.user_id) : null,
     });
-    if (next === String(row.traffic_class ?? CUSTOMER_TRAFFIC_CLASS)) continue;
+    const key = normalisePrompt(message);
+    if (next === CUSTOMER_TRAFFIC_CLASS && key.length >= 16 && (promptCounts.get(key) ?? 0) >= 3) {
+      next = "TEST";
+    }
     await db
       .prepare(`UPDATE daily_improvement_interactions SET traffic_class = ? WHERE interaction_id = ?`)
       .bind(next, String(row.interaction_id))
