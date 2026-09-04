@@ -1,8 +1,7 @@
 import { Link } from "react-router-dom";
+import { portalCompanyHomePath, portalOverviewPath } from "./portal-home";
 
-export function portalOverviewPath(companySlug: string): string {
-  return `/portal/${encodeURIComponent(companySlug)}/dashboard`;
-}
+export { portalCompanyHomePath, portalOverviewPath };
 
 export function PortalCompanyHomeLink({
   company,
@@ -13,10 +12,10 @@ export function PortalCompanyHomeLink({
 }) {
   return (
     <Link
-      to={portalOverviewPath(company.slug)}
+      to={portalCompanyHomePath(company.slug)}
       className={["portal-company-home-link", className].filter(Boolean).join(" ")}
-      aria-label={`Go to ${company.name} overview`}
-      title={`Go to ${company.name} overview`}
+      aria-label={`Go to ${company.name} chat`}
+      title={`Go to ${company.name} chat`}
     >
       {company.name}
     </Link>

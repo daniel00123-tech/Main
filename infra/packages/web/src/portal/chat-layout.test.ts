@@ -1,18 +1,30 @@
 import { describe, expect, it } from "vitest";
 import {
+  composerInputLocked,
+  composerSendDisabled,
   followUpHints,
   isEmptyChatState,
   linkifyChatText,
   portalChatLayout,
   portalChatShellClass,
+  PORTAL_CHAT_VISIBLE_BEFORE_SCROLL,
 } from "./chat-layout";
 
 describe("portal chat layout", () => {
-  it("uses a full-screen mobile layout under 900px", () => {
+  it("uses desktop, tablet, and mobile breakpoints", () => {
     expect(portalChatLayout(390)).toBe("mobile");
+    expect(portalChatLayout(900)).toBe("tablet");
     expect(portalChatLayout(1280)).toBe("desktop");
     expect(portalChatShellClass("mobile", true)).toContain("portal-chat--mobile");
     expect(portalChatShellClass("mobile", true)).toContain("portal-chat--history-open");
+    expect(portalChatShellClass("tablet", false)).toContain("portal-chat--tablet");
+  });
+
+  it("keeps the composer editable while a response is running", () => {
+    expect(composerInputLocked(true)).toBe(false);
+    expect(composerSendDisabled(true, "next question")).toBe(true);
+    expect(composerSendDisabled(false, "next question")).toBe(false);
+    expect(composerSendDisabled(false, "   ")).toBe(true);
   });
 
   it("empty and error-adjacent states are explicit", () => {
@@ -20,6 +32,7 @@ describe("portal chat layout", () => {
     expect(isEmptyChatState(1, 0)).toBe(false);
     expect(followUpHints({ permissionDenied: true })).toEqual([]);
     expect(followUpHints({ controlledAction: true })[0]).toMatch(/approvals/i);
+    expect(PORTAL_CHAT_VISIBLE_BEFORE_SCROLL).toBe(5);
   });
 
   it("turns source URLs into links without dumping JSON", () => {

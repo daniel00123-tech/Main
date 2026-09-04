@@ -1,13 +1,22 @@
-export const PORTAL_CHAT_MOBILE_MAX = 900;
+import { groupConversations } from "@infra/shared";
 
-export function portalChatLayout(width: number): "mobile" | "desktop" {
-  return width < PORTAL_CHAT_MOBILE_MAX ? "mobile" : "desktop";
+export const PORTAL_CHAT_MOBILE_MAX = 768;
+export const PORTAL_CHAT_TABLET_MAX = 1100;
+export const PORTAL_CHAT_VISIBLE_BEFORE_SCROLL = 5;
+
+export function portalChatLayout(width: number): "mobile" | "tablet" | "desktop" {
+  if (width < PORTAL_CHAT_MOBILE_MAX) return "mobile";
+  if (width < PORTAL_CHAT_TABLET_MAX) return "tablet";
+  return "desktop";
 }
 
-export function portalChatShellClass(layout: "mobile" | "desktop", historyOpen: boolean): string {
+export function portalChatShellClass(
+  layout: "mobile" | "tablet" | "desktop",
+  historyOpen: boolean,
+): string {
   return [
     "portal-chat",
-    layout === "mobile" ? "portal-chat--mobile" : "portal-chat--desktop",
+    `portal-chat--${layout}`,
     historyOpen ? "portal-chat--history-open" : "",
   ]
     .filter(Boolean)
@@ -16,6 +25,15 @@ export function portalChatShellClass(layout: "mobile" | "desktop", historyOpen: 
 
 export function isEmptyChatState(conversationCount: number, messageCount: number): boolean {
   return conversationCount === 0 && messageCount === 0;
+}
+
+export function composerSendDisabled(busy: boolean, draft: string): boolean {
+  return busy || !draft.replace(/\s+/g, " ").trim();
+}
+
+export function composerInputLocked(busy: boolean): boolean {
+  void busy;
+  return false;
 }
 
 export function followUpHints(input: {
@@ -44,3 +62,5 @@ export function linkifyChatText(text: string): Array<{ type: "text" | "link"; va
   if (last < text.length) parts.push({ type: "text", value: text.slice(last) });
   return parts.length ? parts : [{ type: "text", value: text }];
 }
+
+export { groupConversations };

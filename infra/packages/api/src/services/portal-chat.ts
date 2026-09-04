@@ -21,6 +21,7 @@ import {
   isGenericRetryCopy,
   synthesizeFromToolCalls,
 } from "./intelligence/verbalise-business.js";
+import { displayConversationTitle, messagePreview } from "@infra/shared";
 import {
   emptyPortalChatContext,
   titleFromUserText,
@@ -131,7 +132,22 @@ export async function listPortalConversations(
     )
     .bind(companyId, userId, Math.min(Math.max(limit, 1), 80))
     .all<Record<string, unknown>>();
-  return (rows.results ?? []).map(rowToSummary);
+  const summaries = (rows.results ?? []).map(rowToSummary);
+  const visible: PortalChatConversationSummary[] = [];
+  for (const summary of summaries) {
+    const messages = await listPortalMessages(db, summary.id, companyId);
+    if (messages.length === 0) continue;
+    const firstUser = messages.find((message) => message.role === "user");
+    const last = messages[messages.length - 1];
+    visible.push({
+      ...summary,
+      title: displayConversationTitle(summary.title, firstUser?.content),
+      lastMessagePreview: messagePreview(last?.content) || null,
+      lastMessageAt: last?.createdAt ?? summary.updatedAt,
+      messageCount: messages.length,
+    });
+  }
+  return visible;
 }
 
 export async function createPortalConversation(

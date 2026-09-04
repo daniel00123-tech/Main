@@ -206,8 +206,31 @@ describe("portal chat channel", () => {
     expect(state.recentTurns.every((turn) => turn.text.length <= 360)).toBe(true);
   });
 
+  it("hides empty conversations from the recent-chat list", async () => {
+    const db = memoryDb();
+    const william = user("office_staff");
+    await createPortalConversation(db, { companyId: "co_el", userId: william.userId, title: "New chat" });
+    const created = await createPortalConversation(db, { companyId: "co_el", userId: william.userId, title: "CV search" });
+    await sendPortalChatMessage({ DB: db } as Env, {
+      companyId: "co_el",
+      sessionUser: william,
+      conversationId: created.id,
+      text: "hi",
+      completer: greetingCompleter(),
+      connectors: [],
+      executeGateway: async () => ({ status: 200, result: {} }) as never,
+    });
+    const mine = await listPortalConversations(db, "co_el", william.userId);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]?.id).toBe(created.id);
+    expect(mine[0]?.messageCount).toBeGreaterThan(0);
+  });
+
   it("empty and invalid messages stay user-facing", async () => {
     expect(titleFromUserText("")).toBe("New chat");
+    expect(titleFromUserText("what are the sales for this month on xero?", new Date("2026-09-04"))).toBe(
+      "September Xero Sales",
+    );
     await expect(
       sendPortalChatMessage({ DB: memoryDb() } as Env, {
         companyId: "co_el",

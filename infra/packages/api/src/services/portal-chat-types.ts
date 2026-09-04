@@ -1,3 +1,4 @@
+import { titleFromUserText as sharedTitleFromUserText } from "@infra/shared";
 import type { IntelligenceDocumentRef, IntelligenceScope } from "./intelligence/types.js";
 
 export const PORTAL_CHAT_SOURCE_CLIENT = "portal_chat";
@@ -24,6 +25,9 @@ export type PortalChatConversationSummary = {
   title: string;
   createdAt: string;
   updatedAt: string;
+  lastMessagePreview?: string | null;
+  lastMessageAt?: string | null;
+  messageCount?: number;
 };
 
 export type PortalChatMessage = {
@@ -73,10 +77,8 @@ export function emptyPortalChatContext(): PortalChatContext {
   };
 }
 
-export function titleFromUserText(text: string): string {
-  const cleaned = text.replace(/\s+/g, " ").trim();
-  if (!cleaned) return "New chat";
-  return cleaned.length > 48 ? `${cleaned.slice(0, 45)}…` : cleaned;
+export function titleFromUserText(text: string, now = new Date()): string {
+  return sharedTitleFromUserText(text, now);
 }
 
 export function toolStatusLabel(toolName: string): string | null {
@@ -84,6 +86,9 @@ export function toolStatusLabel(toolName: string): string | null {
   if (/outlook|mailbox|email/i.test(toolName)) return "Checking email…";
   if (toolName === "search_company_knowledge" || toolName === "search") {
     return "Searching company files…";
+  }
+  if (/web_search|search_web|tavily|brave/i.test(toolName)) {
+    return "Searching the web…";
   }
   if (toolName === "search_document" || toolName === "get_knowledge_document" || toolName === "fetch") {
     return "Reading the document…";

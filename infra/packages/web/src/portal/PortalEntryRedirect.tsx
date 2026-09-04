@@ -3,8 +3,9 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api";
 import { ErrorState, LoadingState } from "../components";
+import { resolvePortalEntryTarget } from "./portal-home";
 
-/** Redirect /portal → company picker (platform admin) or own company portal. */
+/** Redirect /portal → company picker (admin / multi-company) or own company Chat. */
 export default function PortalEntryRedirect() {
   const { user, loading } = useAuth();
   const [target, setTarget] = useState<string | null>(null);
@@ -20,15 +21,12 @@ export default function PortalEntryRedirect() {
     void (async () => {
       try {
         const companies = await api.getCompanies();
-        const memberIds = new Set(user.memberships.map((m) => m.companyId));
-        const preferred = companies.find((c) => memberIds.has(c.id));
-        if (!preferred) {
-          if (!cancelled) {
-            setFailed("No company access. Contact your administrator.");
-          }
-          return;
-        }
-        if (!cancelled) setTarget(`/portal/${preferred.slug}/dashboard`);
+        const next = resolvePortalEntryTarget({
+          isPlatformAdmin: false,
+          membershipCompanyIds: user.memberships.map((membership) => membership.companyId),
+          companies,
+        });
+        if (!cancelled) setTarget(next);
       } catch (err) {
         if (!cancelled) {
           setFailed(err instanceof Error ? err.message : "Unable to open portal");
