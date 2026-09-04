@@ -51,8 +51,9 @@ export async function beginRun(
     .first<{ id: string; status: string; started_at: string }>();
   if (existing) {
     const stale =
-      existing.status === "running" &&
-      Date.now() - new Date(existing.started_at).getTime() > 2 * 60 * 1000;
+      existing.status === "failed" ||
+      (existing.status === "running" &&
+        Date.now() - new Date(existing.started_at).getTime() > 2 * 60 * 1000);
     if (!stale) return { id: existing.id, created: false };
     await db
       .prepare(`UPDATE daily_improvement_runs SET status = 'running', started_at = ?, completed_at = NULL WHERE id = ?`)
