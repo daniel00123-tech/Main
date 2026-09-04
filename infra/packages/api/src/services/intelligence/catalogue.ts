@@ -8,6 +8,7 @@ import type { IntelligenceToolFamily, IntelligenceToolSpec } from "./types.js";
  */
 export const CURRENT_BUSINESS_DATA_PROTOCOL = `Current or private company data is never guessed from world knowledge. This rule is tenant-universal.
 If the answer depends on CURRENT or private company information (mailbox, accounting, CRM, indexed knowledge, file catalogue) that is not already in authorised recent evidence for THIS company, you MUST call the matching INFRA function tool before answering.
+HISTORICAL_ANALYTICAL accounting (trends, monthly series, overdue movement, period comparisons) prefers warehouse_* tools. CURRENT_LIVE_STATE (right now, paid yet, newest invoice) prefers live xero_* tools. If warehouse evidence is stale, degraded, or missing, use live Xero and say so.
 Never use another company's evidence. Never answer live company figures from model memory.
 If authorised recent evidence already contains the requested facts, do not call a business tool — answer from that evidence.
 Named shared inboxes (info, finance, office, shared mailbox) are mailbox tools, never knowledge search and never Xero.
@@ -269,6 +270,87 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     permission: "xero read",
   },
   {
+    name: "warehouse_sales_analysis",
+    description:
+      "Historical/analytical Xero sales from the INFRA warehouse. Live: no — uses last successful warehouse sync. Returns source=xero_warehouse and warehouse_as_of.",
+    whenToUse:
+      "Monthly sales, last six months, period comparisons, or sales at month-end. Not for sales right now.",
+    whenNotToUse:
+      "Do not use for current live sales, a named invoice paid-yet question, or the newest invoice. Those are live xero_* tools.",
+    live: false,
+    intentClass: "warehouse_sales",
+    intentExamples: "sales each month for the last six months; compare this month against last month",
+    parameters: {
+      fromDate: { description: "Inclusive YYYY-MM-DD" },
+      toDate: { description: "Inclusive YYYY-MM-DD" },
+      aggregation: { description: "sales_by_month, sales_total, or invoice_count" },
+    },
+    outputShape: "{ months|sales, source, warehouseAsOf }",
+    permission: "xero read",
+  },
+  {
+    name: "warehouse_invoice_analysis",
+    description: "Historical warehouse invoice lists and counts. Live: no.",
+    whenToUse: "Invoice counts or lists over a past period already in the warehouse.",
+    whenNotToUse: "Named invoice current status — use xero_get_invoice.",
+    live: false,
+    intentClass: "warehouse_invoices",
+    intentExamples: "how many invoices last quarter; invoices raised last month",
+    parameters: {
+      fromDate: { description: "Inclusive YYYY-MM-DD" },
+      toDate: { description: "Inclusive YYYY-MM-DD" },
+      invoiceNumber: { description: "Optional invoice number" },
+    },
+    outputShape: "{ invoices, source, warehouseAsOf }",
+    permission: "xero read",
+  },
+  {
+    name: "warehouse_receivables_analysis",
+    description: "Warehouse overdue/outstanding trends and snapshots. Live: no.",
+    whenToUse: "How overdue debt moved over time, or outstanding as a proportion of invoiced value.",
+    whenNotToUse: "Who is overdue right now — use xero_list_overdue_invoices.",
+    live: false,
+    intentClass: "warehouse_receivables",
+    intentExamples: "how has overdue debt moved; what proportion of invoiced value is outstanding",
+    parameters: {
+      aggregation: { description: "overdue_total, outstanding_total, or snapshot_series" },
+    },
+    outputShape: "{ overdue|outstanding|snapshots, source, warehouseAsOf }",
+    permission: "xero read",
+  },
+  {
+    name: "warehouse_customer_analysis",
+    description: "Highest-value customers over a warehouse period. Live: no.",
+    whenToUse: "Top or highest-value customers over a historical period.",
+    whenNotToUse: "Not for a single named invoice or live sales today.",
+    live: false,
+    intentClass: "warehouse_customers",
+    intentExamples: "highest-value customers over this period; top customers last year",
+    parameters: {
+      fromDate: { description: "Inclusive YYYY-MM-DD" },
+      toDate: { description: "Inclusive YYYY-MM-DD" },
+    },
+    outputShape: "{ customers, source, warehouseAsOf }",
+    permission: "xero read",
+  },
+  {
+    name: "warehouse_query",
+    description:
+      "Controlled warehouse query over approved aggregations only. Never arbitrary SQL. Live: no. Falls back when warehouse is missing, stale, or degraded.",
+    whenToUse: "A bounded warehouse aggregation that does not fit the typed analysis tools.",
+    whenNotToUse: "Do not invent SQL. Do not use for current live figures.",
+    live: false,
+    intentClass: "warehouse_query",
+    intentExamples: "warehouse KPI snapshot; warehouse sales by month",
+    parameters: {
+      aggregation: { description: "Approved aggregation name" },
+      fromDate: { description: "Inclusive YYYY-MM-DD" },
+      toDate: { description: "Inclusive YYYY-MM-DD" },
+    },
+    outputShape: "{ result, source, warehouseAsOf }",
+    permission: "xero read",
+  },
+  {
     name: "get_company_system_summary",
     description: "Read-only tenant snapshot: indexed document totals, connected systems, automations, last sync.",
     whenToUse: "Company-wide system questions, inventory of indexed files, or a compact platform summary.",
@@ -399,12 +481,21 @@ export const GATEWAY_TOOL_ALIASES: Record<string, string> = {
   xero_profit_and_loss: "xero_profit_and_loss",
   xero_aged_receivables: "xero_aged_receivables",
   xero_get_organisation: "xero_get_organisation",
+  warehouse_sales_analysis: "warehouse_sales_analysis",
+  warehouse_invoice_analysis: "warehouse_invoice_analysis",
+  warehouse_receivables_analysis: "warehouse_receivables_analysis",
+  warehouse_customer_analysis: "warehouse_customer_analysis",
+  warehouse_query: "warehouse_query",
   ask_document: "ask_document",
   list_documents: "list_documents",
   web_search: "web_search",
 };
 
-const XERO_TOOLS = new Set(INTELLIGENCE_TOOLS.filter((tool) => tool.name.startsWith("xero_")).map((tool) => tool.name));
+const XERO_TOOLS = new Set(
+  INTELLIGENCE_TOOLS.filter((tool) => tool.name.startsWith("xero_") || tool.name.startsWith("warehouse_")).map(
+    (tool) => tool.name,
+  ),
+);
 
 export const SYSTEM_META_TOOLS = new Set([
   "get_company_system_summary",
@@ -417,7 +508,7 @@ export const SYSTEM_META_TOOLS = new Set([
 
 export function toolFamilyOf(name?: string | null): IntelligenceToolFamily {
   const tool = String(name ?? "");
-  if (tool.startsWith("xero_")) return "xero";
+  if (tool.startsWith("xero_") || tool.startsWith("warehouse_")) return "xero";
   if (/outlook/i.test(tool)) return "outlook";
   if (tool === "list_documents" || SYSTEM_META_TOOLS.has(tool) || tool === "database_summary" || tool === "system_health") {
     return tool === "database_summary" || tool === "system_health" ? "system" : "catalogue";

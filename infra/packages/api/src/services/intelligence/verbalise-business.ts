@@ -216,6 +216,42 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     return `I found ${invoices.length} invoice${invoices.length === 1 ? "" : "s"}: ${listed}.`;
   }
 
+  if (call.name.startsWith("warehouse_")) {
+    const record = isRecord(call.data) ? call.data : {};
+    const inner = isRecord(record.result) ? record.result : record;
+    const asOf = asString(inner.warehouseAsOf ?? record.warehouseAsOf);
+    const freshness = asOf ? ` Warehouse as of ${asOf}.` : "";
+    if (record.fallback === "xero_live" || inner.fallback === "xero_live") {
+      return `The warehouse is not authoritative right now (${asString(record.reason ?? inner.reason) || "stale or degraded"}). I should use live Xero for the current figure.`;
+    }
+    if (Array.isArray(inner.months)) {
+      const listed = inner.months
+        .filter(isRecord)
+        .slice(-6)
+        .map((row) => `${asString(row.month)} ${formatMoney(row.sales)}`)
+        .join("; ");
+      return `Warehouse sales by month: ${listed || "no months in range"}.${freshness}`;
+    }
+    if (typeof inner.sales === "number") {
+      return `Warehouse sales for that period are ${formatMoney(inner.sales)}.${freshness}`;
+    }
+    if (typeof inner.outstanding === "number") {
+      return `Warehouse outstanding receivables are ${formatMoney(inner.outstanding)}.${freshness}`;
+    }
+    if (typeof inner.overdue === "number") {
+      return `Warehouse overdue receivables are ${formatMoney(inner.overdue)}.${freshness}`;
+    }
+    if (Array.isArray(inner.customers) && inner.customers.length) {
+      const listed = inner.customers
+        .filter(isRecord)
+        .slice(0, 5)
+        .map((row) => `${asString(row.name)} ${formatMoney(row.total)}`)
+        .join("; ");
+      return `Warehouse top customers: ${listed}.${freshness}`;
+    }
+    return `I retrieved warehouse analytics.${freshness}`;
+  }
+
   if (call.name === "xero_sales_summary" || call.name.startsWith("xero_")) {
     const record = isRecord(call.data) ? call.data : {};
     const summary = isRecord(record.summary) ? record.summary : {};

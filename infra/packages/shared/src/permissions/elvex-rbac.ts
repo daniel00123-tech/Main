@@ -306,4 +306,9 @@ export const ELVEX_MCP_TOOL_CAPABILITIES: Record<string, ElvexCapability> = {
   xero_top_suppliers: "xero.finance.read",
   xero_list_tax_rates: "xero.finance.read",
   xero_vat_capability: "xero.finance.read",
+  warehouse_sales_analysis: "xero.sales.read",
+  warehouse_invoice_analysis: "xero.sales.read",
+  warehouse_receivables_analysis: "xero.sales.read",
+  warehouse_customer_analysis: "xero.sales.read",
+  warehouse_query: "xero.sales.read",
 };

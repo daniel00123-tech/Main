@@ -67,7 +67,7 @@ function authorizeNamedTool(name: string, role: string | null | undefined, mailb
   if (!isElvexRole(role)) {
     return { allowed: true, reason: "role_not_elvex_bundle", capability: capabilityForTool(name) };
   }
-  if (name.startsWith("xero_")) {
+  if (name.startsWith("xero_") || name.startsWith("warehouse_")) {
     const mapped = elvexAllowsAction(role, name, { toolName: name });
     return {
       allowed: mapped.allowed,
@@ -120,7 +120,7 @@ function isKnowledgeTool(name: string): boolean {
 }
 
 function capabilityForTool(name: string): string | null {
-  if (name.startsWith("xero_")) return "xero";
+  if (name.startsWith("xero_") || name.startsWith("warehouse_")) return "xero";
   if (name.startsWith("outlook_")) return "outlook";
   if (isKnowledgeTool(name)) return "knowledge";
   if (name === "web_search") return "web.public";

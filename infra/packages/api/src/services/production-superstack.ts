@@ -22,6 +22,12 @@ import { resolveRequestPricingPolicy } from "./customer-request-pricing";
 import { DAILY_IMPROVEMENT_CONTRACT } from "./daily-improvement/constants";
 import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
 import { discoverKnowledgeIntakeTarget, isKnowledgeIntakePath } from "./knowledge-intake";
+import {
+  computeNextWarehouseSlot,
+  describeWarehouseSchedule,
+  isWarehouseToolName,
+  warehouseSlotsPerWeek,
+} from "./warehouse";
 import { defaultIngestionPolicyForCompany } from "./mailbox-ingestion-policy";
 import { runElMailboxAttachmentBackfill } from "./mailbox-attachment-backfill";
 
@@ -187,6 +193,25 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (typeof runElMailboxAttachmentBackfill !== "function") {
     throw new Error("EL mailbox attachment backfill missing");
+  }
+  if (!isWarehouseToolName("warehouse_sales_analysis") || warehouseSlotsPerWeek() !== 37) {
+    throw new Error("business data warehouse schedule or tools missing");
+  }
+  const schedule = describeWarehouseSchedule();
+  if (schedule.overnight || schedule.hourly || schedule.extraWeekend || schedule.timezone !== "Europe/London") {
+    throw new Error("warehouse schedule must stay Europe/London weekday/weekend slots");
+  }
+  const summer = computeNextWarehouseSlot(new Date("2026-07-07T05:00:00.000Z"));
+  if (summer.hour !== 7) {
+    throw new Error("warehouse next slot must remain 07:00 Europe/London in BST");
+  }
+  const officeWarehouse = buildAllowedToolCatalogue({
+    role: "office_staff",
+    companyId: "co_el",
+    connectors: ["conn_xero", "conn_outlook_shared"],
+  });
+  if (officeWarehouse.some((name) => name.startsWith("warehouse_"))) {
+    throw new Error("preauth catalogue must not offer warehouse Xero to office_staff");
   }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };

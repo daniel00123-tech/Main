@@ -59,7 +59,7 @@ export default function SystemHealthPage() {
     setError(null);
     const now = new Date().toISOString();
     try {
-      const [healthResult, readyResult, gatewayResult, mcpList, connectorList, companyList, opsResult, inbox] =
+      const [healthResult, readyResult, gatewayResult, mcpList, connectorList, companyList, opsResult, inbox, warehouseResult] =
         await Promise.all([
           api.getHealth().then(
             (data) => ({ ok: true as const, data }),
@@ -81,6 +81,7 @@ export default function SystemHealthPage() {
           api.getCompanies().catch(() => [] as Company[]),
           api.getPlatformOperationsHealth().catch(() => null),
           api.getWhatsAppInbox().catch(() => null),
+          api.getWarehouse("co_el").catch(() => null),
         ]);
 
       setWhatsappUx(inbox);
@@ -133,6 +134,24 @@ export default function SystemHealthPage() {
         name: "Authentication",
         status: healthResult.ok ? "operational" : "unknown",
         detail: healthResult.ok ? "Session endpoints reachable" : "Unknown while API is down",
+        lastCheck,
+      });
+
+      const wh = warehouseResult && "warehouse" in warehouseResult ? warehouseResult.warehouse : null;
+      rows.push({
+        id: "xero_warehouse",
+        name: "EL Xero Warehouse",
+        status:
+          !wh || wh.status === "NEVER_SYNCED"
+            ? "not_configured"
+            : wh.status === "HEALTHY"
+              ? "operational"
+              : wh.status === "DEGRADED"
+                ? "degraded"
+                : "unavailable",
+        detail: wh
+          ? `${wh.status} · last ${wh.lastSuccessfulSync ?? "never"} · next ${wh.nextScheduledSync}`
+          : "Warehouse status unavailable",
         lastCheck,
       });
 

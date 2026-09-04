@@ -7,6 +7,7 @@
 import { INTELLIGENCE_TOOLS, permittedToolsForConnectors, toolFamilyOf } from "./catalogue.js";
 import { authorizeToolCall, buildAllowedToolCatalogue } from "./tool-auth.js";
 import type { IntelligenceToolSpec } from "./types.js";
+import { classifyQueryFreshness } from "../warehouse/freshness.js";
 
 export type PlatformCapability =
   | "EMAIL_SEARCH"
@@ -17,6 +18,7 @@ export type PlatformCapability =
   | "ACCOUNTING_INVOICE_GET"
   | "ACCOUNTING_CONTACTS"
   | "ACCOUNTING_REPORTS"
+  | "ACCOUNTING_WAREHOUSE"
   | "KNOWLEDGE_SEARCH"
   | "KNOWLEDGE_READ"
   | "CATALOGUE_LIST"
@@ -61,6 +63,7 @@ const CONNECTOR_CAPABILITIES: Record<string, PlatformCapability[]> = {
     "ACCOUNTING_INVOICE_GET",
     "ACCOUNTING_CONTACTS",
     "ACCOUNTING_REPORTS",
+    "ACCOUNTING_WAREHOUSE",
   ],
   conn_outlook_shared: ["EMAIL_SEARCH", "EMAIL_LIST", "EMAIL_READ"],
   conn_microsoft: ["EMAIL_SEARCH", "EMAIL_LIST", "EMAIL_READ", "CATALOGUE_LIST", "KNOWLEDGE_SEARCH"],
@@ -88,6 +91,11 @@ const TOOL_CAPABILITY: Record<string, PlatformCapability> = {
   xero_aged_receivables: "ACCOUNTING_REPORTS",
   xero_balance_sheet: "ACCOUNTING_REPORTS",
   xero_get_organisation: "ACCOUNTING_REPORTS",
+  warehouse_sales_analysis: "ACCOUNTING_WAREHOUSE",
+  warehouse_invoice_analysis: "ACCOUNTING_WAREHOUSE",
+  warehouse_receivables_analysis: "ACCOUNTING_WAREHOUSE",
+  warehouse_customer_analysis: "ACCOUNTING_WAREHOUSE",
+  warehouse_query: "ACCOUNTING_WAREHOUSE",
   search_company_knowledge: "KNOWLEDGE_SEARCH",
   search: "KNOWLEDGE_SEARCH",
   search_document: "KNOWLEDGE_READ",
@@ -129,6 +137,7 @@ export function capabilitiesForConnectors(connectors: string[]): Set<PlatformCap
       out.add("ACCOUNTING_SALES");
       out.add("ACCOUNTING_INVOICE_SEARCH");
       out.add("ACCOUNTING_INVOICE_GET");
+      out.add("ACCOUNTING_WAREHOUSE");
     }
   }
   return out;
@@ -208,6 +217,8 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
     found.add("ACCOUNTING_REPORTS");
   } else if (accounting && /\b(contact named|customer named|who is)\b/i.test(value)) {
     found.add("ACCOUNTING_CONTACTS");
+  } else if (accounting && classifyQueryFreshness(value) === "HISTORICAL_ANALYTICAL") {
+    found.add("ACCOUNTING_WAREHOUSE");
   } else if (accounting) found.add("ACCOUNTING_SALES");
   if (catalogue) found.add("CATALOGUE_LIST");
   if (knowledge) found.add("KNOWLEDGE_SEARCH");
@@ -233,6 +244,8 @@ export function defaultToolForCapability(capability: PlatformCapability): string
       return "xero_search_contacts";
     case "ACCOUNTING_REPORTS":
       return "xero_profit_and_loss";
+    case "ACCOUNTING_WAREHOUSE":
+      return "warehouse_sales_analysis";
     case "KNOWLEDGE_SEARCH":
       return "search_company_knowledge";
     case "KNOWLEDGE_READ":

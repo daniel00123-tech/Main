@@ -1,6 +1,7 @@
 import {
   ELVEX_INFO_MAILBOXES,
   actionForProtectedCapability,
+  extractIntentText,
   isElvexCompany,
   resolveElvexConfiguredMailbox,
   type StructuredCapabilityDenial,
@@ -85,6 +86,7 @@ import {
   xeroActionForTool,
 } from "./xero-tools";
 import { executeXeroReadToolOnInfra } from "./xero-read-execution";
+import { executeWarehouseTool, isWarehouseToolName } from "./warehouse/tools";
 import { isOutlookReadTool, outlookActionForTool } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeAskDocument, isAskDocumentTool } from "./ask-document";
@@ -150,6 +152,10 @@ async function resolveToolAction(
   }
   if (toolName.startsWith("automation_")) {
     return { action: "automation.manage", riskClass: "high_risk" };
+  }
+
+  if (isWarehouseToolName(toolName)) {
+    return { action: "xero.sales.read", riskClass: "low_risk" };
   }
 
   const xero = xeroActionForTool(toolName);
@@ -1194,6 +1200,48 @@ export async function executeGatewayRequest(
             authConfigured: true,
             riskClass,
             result: outlook.result,
+          },
+        };
+      })()
+    : isWarehouseToolName(input.toolName)
+    ? await (async () => {
+        const warehouse = await executeWarehouseTool({
+          db: env.DB,
+          companyId: input.companyId,
+          toolName: input.toolName,
+          arguments: input.arguments,
+          intentText: extractIntentText(input.arguments),
+        });
+        if (!warehouse.ok) {
+          return {
+            status: warehouse.status,
+            error: warehouse.error,
+            code: warehouse.error,
+            data: warehouse.result
+              ? {
+                  correlationId,
+                  mcpId: mcp.id,
+                  companyId: input.companyId,
+                  toolName: input.toolName,
+                  latencyMs: Date.now() - started,
+                  authConfigured: true,
+                  riskClass,
+                  result: warehouse.result,
+                }
+              : undefined,
+          } as const;
+        }
+        return {
+          status: 200 as const,
+          data: {
+            correlationId,
+            mcpId: mcp.id,
+            companyId: input.companyId,
+            toolName: input.toolName,
+            latencyMs: warehouse.latencyMs,
+            authConfigured: true,
+            riskClass,
+            result: warehouse.result,
           },
         };
       })()

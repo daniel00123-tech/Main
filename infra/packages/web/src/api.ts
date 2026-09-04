@@ -1952,6 +1952,36 @@ export const api = {
       `/api/platform/quality-loop/proposals/${encodeURIComponent(id)}/rollback`,
       { method: "POST", body: JSON.stringify({}) },
     ),
+  getWarehouse: (companyId?: string) =>
+    fetchJson<{
+      ok: boolean;
+      warehouse: {
+        companyId: string;
+        label: string;
+        status: string;
+        lastSuccessfulSync: string | null;
+        nextScheduledSync: string;
+        records: {
+          invoices: number;
+          invoiceLines: number;
+          contacts: number;
+          payments: number;
+          creditNotes: number;
+          snapshots: number;
+        } | null;
+        historicalRange: { from: string | null; to: string | null };
+        latestReconciliation: {
+          passed: boolean;
+          mtdSalesWarehouse: number | null;
+          mtdSalesLive: number | null;
+          invoiceCountWarehouse: number | null;
+          invoiceCountLive: number | null;
+          divergence: string[];
+        } | null;
+        failures: Array<{ syncId: string; status: string; failureCode: string | null; startedAt: string }>;
+        schedule: { timezone: string; weekdayHours: number[]; weekendHours: number[]; slotsPerWeek: number };
+      };
+    }>(`/api/platform/warehouse${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ""}`),
   getDailyImprovement: (query?: {
     tenant?: string;
     channel?: string;

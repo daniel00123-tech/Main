@@ -14,7 +14,7 @@ export function newCorrelationId(): string {
 
 export function capabilityFromTool(tool?: string | null): string | null {
   const name = String(tool ?? "");
-  if (name.startsWith("xero_")) return "xero";
+  if (name.startsWith("xero_") || name.startsWith("warehouse_")) return "xero";
   if (/outlook/i.test(name)) return "outlook";
   if (/knowledge|search_document|list_documents|fetch/.test(name)) return "knowledge";
   if (name === "web_search") return "web.public";

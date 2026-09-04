@@ -27,6 +27,7 @@ export const PRODUCTION_SUPERSTACK_CAPABILITIES = [
   "openai_pa_request_brain",
   "knowledge_intake_landing_zone",
   "mailbox_ingestion_default_include",
+  "business_data_warehouse",
 ] as const;
 
 export type ProductionLineage = {
