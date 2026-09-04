@@ -26,6 +26,7 @@ export * from "./ocr";
 export * from "./email/types";
 export * from "./email/identity";
 export * from "./email/templates";
+export * from "./email/knowledge-ingestion-email";
 export * from "./action-engine";
 export * from "./automation-engine";
 export * from "./permissions/role-presets";
