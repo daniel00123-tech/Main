@@ -382,7 +382,17 @@ function countDuplicateSuccessfulCalls(toolCalls: IntelligenceTurnResult["toolCa
   const seen = new Map<string, number>();
   for (const call of toolCalls) {
     if (!call.ok) continue;
-    seen.set(call.name, (seen.get(call.name) ?? 0) + 1);
+    const data = isRecord(call.data) ? call.data : {};
+    const period = isRecord(data.period) ? data.period : {};
+    const key = [
+      call.name,
+      String(data.fromDate ?? period.fromDate ?? data.period ?? ""),
+      String(data.toDate ?? period.toDate ?? ""),
+      String(data.invoiceNumber ?? data.invoice_id ?? ""),
+      String(data.query ?? ""),
+      String(data.mailboxAddress ?? ""),
+    ].join("|");
+    seen.set(key, (seen.get(key) ?? 0) + 1);
   }
   let extra = 0;
   for (const count of seen.values()) {

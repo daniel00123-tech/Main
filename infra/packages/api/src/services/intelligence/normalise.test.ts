@@ -105,7 +105,7 @@ describe("structured business result normalisation", () => {
     const compact = compactBusinessToolData("xero_sales_summary", huge) as Record<string, unknown>;
     expect(compact.amount).toBe(20550.5);
     expect(compact.invoice_count).toBe(2);
-    expect(JSON.stringify(compact).length).toBeLessThan(2_000);
+    expect(JSON.stringify(compact).length).toBeLessThan(4_000);
   });
 
   it("treats equivalent Xero date args as the same call", () => {

@@ -120,7 +120,17 @@ export function compactBusinessToolData(tool: string, data: unknown): unknown {
     source: normalised.source ?? record.source ?? null,
     retrieved_at: record.retrieved_at ?? record.retrievedAt ?? null,
     toolName: record.toolName ?? tool,
+    summaryText: normalised.summaryText,
   };
+  if (Array.isArray(record.invoices)) {
+    compact.invoices = record.invoices.slice(0, 5);
+    compact.invoice_numbers = Array.isArray(record.invoice_numbers)
+      ? record.invoice_numbers.slice(0, 8)
+      : undefined;
+  }
+  if (Array.isArray(record.customers)) {
+    compact.customers = record.customers.slice(0, 5);
+  }
   if (raw.length > 3_500) {
     compact.truncated = true;
   }
@@ -238,10 +248,10 @@ function normaliseXero(tool: string, data: unknown): NormalisedBusinessResult {
     const names = customers
       .slice(0, 5)
       .map((row) => (isRecord(row) ? firstString(row.name, row.contactName) : null))
-      .filter(Boolean);
+      .filter((name): name is string => Boolean(name && name !== "No Contact"));
     summaryText = names.length
       ? `Top Xero customers: ${names.join(", ")}.`
-      : "I reached Xero customers, but no names were readable.";
+      : "Xero ranked customers for that period, but contact names were not returned.";
   } else if (typeof amount === "number") {
     const invoices = invoiceCount != null ? ` across ${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"}` : "";
     const window = period ? ` for ${period}` : "";

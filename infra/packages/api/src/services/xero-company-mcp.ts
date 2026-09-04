@@ -198,6 +198,8 @@ export function extractRawSalesDocuments(value: unknown): RawSalesDocument[] {
         contact?.Name ??
         row.contactName ??
         contact?.name ??
+        (typeof row.Contact === "string" ? row.Contact : null) ??
+        (typeof row.contact === "string" ? row.contact : null) ??
         null) as string | null,
       transactionType: type,
       status: (row.Status ?? row.status ?? null) as string | null,
