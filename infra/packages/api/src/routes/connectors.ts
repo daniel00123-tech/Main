@@ -1262,6 +1262,7 @@ connectors.post("/api/internal/el-whatsapp-qa", async (c) => {
       conversation?: string;
       memory?: Record<string, unknown>;
       actor?: string;
+      texts?: Array<{ id: string; text: string; family?: string; expectedToolPrefix?: string | null }>;
     };
     const { runElWhatsAppQaSlice } = await import("../services/el-whatsapp-qa/campaign");
     return c.json(
@@ -1277,6 +1278,14 @@ connectors.post("/api/internal/el-whatsapp-qa", async (c) => {
           | undefined,
         memory: body.memory as never,
         actor: body.actor === "office_staff" ? "office_staff" : "director",
+        texts: Array.isArray(body.texts)
+          ? body.texts.map((row) => ({
+              id: String(row.id),
+              text: String(row.text),
+              family: row.family as never,
+              expectedToolPrefix: row.expectedToolPrefix ?? null,
+            }))
+          : undefined,
       }),
     );
   } catch (err) {
