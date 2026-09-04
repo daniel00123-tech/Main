@@ -1317,6 +1317,21 @@ connectors.post("/api/internal/knowledge-qa-acceptance", async (c) => {
   }
 });
 
+connectors.post("/api/internal/el-knowledge-onedrive-diagnostic", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runElKnowledgeOnedriveDiagnostic } = await import("../services/el-knowledge-onedrive-diagnostic");
+    return c.json(await runElKnowledgeOnedriveDiagnostic(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "EL knowledge/OneDrive diagnostic failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/ocr/acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

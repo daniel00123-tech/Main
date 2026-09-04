@@ -39,6 +39,7 @@ export type GraphDriveItem = {
   mimeType?: string | null;
   lastModifiedDateTime: string | null;
   createdDateTime?: string | null;
+  lastModifiedBy?: { user?: { displayName?: string; email?: string } };
   eTag?: string | null;
   cTag?: string | null;
   folder?: { childCount: number } | null;

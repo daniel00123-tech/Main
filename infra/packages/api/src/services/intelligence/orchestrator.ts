@@ -1,6 +1,6 @@
 import { businessToolForIntent, ELVEX_FINANCE_MAILBOXES, resolveBusinessSystemIntent } from "@infra/shared";
 import { describeToolCatalogue, INTELLIGENCE_TOOL_NAMES, SYSTEM_META_TOOLS } from "./catalogue.js";
-import { answerGeneralConversation } from "./conversation.js";
+import { answerGeneralConversation, answerSelectedDocumentFollowUp } from "./conversation.js";
 import { parseIntelligenceDecision, recoverDecision, validateToolRequest } from "./parse.js";
 import { createDefaultCompleter, type IntelligenceCompleter } from "./provider.js";
 import { routeIntelligenceTurn } from "./router.js";
@@ -131,6 +131,21 @@ export async function runIntelligenceTurn(input: {
     });
   }
 
+  const selectedFollowUp = answerSelectedDocumentFollowUp(input.text, currentDocument);
+  if (selectedFollowUp && scoped.scope === "CURRENT_DOCUMENT") {
+    return emptyResult({
+      kind: "answer",
+      text: selectedFollowUp,
+      confidence: "strong",
+      offerSearchOther: false,
+      route: "INTELLIGENT",
+      scope: "CURRENT_DOCUMENT",
+      lastAnswerTopic: "document",
+      lastUserIntent: scoped.lastUserIntent,
+      currentDocument,
+    });
+  }
+
   if (scoped.scope === "GENERAL_CONVERSATION" && scoped.noTool && !input.state.userCorrection) {
     return emptyResult({
       kind: "answer",
@@ -221,6 +236,15 @@ export async function runIntelligenceTurn(input: {
     if (meta) {
       if (input.state.userCorrection && scoped.clearCurrentDocument && meta.toolCalls[0]?.name === input.state.lastSuccessfulTool) {
         qualityFlags.add("correction_ignored");
+      }
+      const listed =
+        [...meta.toolCalls]
+          .reverse()
+          .map((call) => documentFromToolResult(call))
+          .find((item) => item) ?? null;
+      if (listed) {
+        currentDocument = listed;
+        if (!evidenceDocumentIds.includes(listed.id)) evidenceDocumentIds.push(listed.id);
       }
       return finish({
         kind: "answer",
@@ -723,15 +747,30 @@ function documentFromToolResult(result: IntelligenceToolResult): IntelligenceDoc
   const data = result.data;
   if (!data || typeof data !== "object") return null;
   const record = data as Record<string, unknown>;
+  const catalogueDocs = Array.isArray(record.documents)
+    ? record.documents
+    : record.result && typeof record.result === "object" && Array.isArray((record.result as { documents?: unknown }).documents)
+      ? (record.result as { documents: unknown[] }).documents
+      : null;
+  const firstCatalogue = catalogueDocs?.find((item) => item && typeof item === "object") as Record<string, unknown> | undefined;
   const nested =
-    record.document && typeof record.document === "object"
+    firstCatalogue ??
+    (record.document && typeof record.document === "object"
       ? (record.document as Record<string, unknown>)
-      : record;
+      : record);
   const id = String(nested.document_id ?? nested.documentId ?? nested.id ?? "").trim();
   const title = String(nested.title ?? "").trim();
   if (!id || !title) return null;
   const url = typeof nested.url === "string" && /^https?:\/\//i.test(nested.url) ? nested.url : null;
-  return { id, title, url, source: typeof nested.source === "string" ? nested.source : null };
+  return {
+    id,
+    title,
+    url,
+    source: typeof nested.source === "string" ? nested.source : null,
+    modifiedAt: typeof nested.modifiedAt === "string" ? nested.modifiedAt : null,
+    createdAt: typeof nested.createdAt === "string" ? nested.createdAt : null,
+    modifiedBy: typeof nested.modifiedBy === "string" ? nested.modifiedBy : null,
+  };
 }
 
 function shouldAdoptDocument(
@@ -742,7 +781,12 @@ function shouldAdoptDocument(
 ): boolean {
   void current;
   void buttonHint;
-  return toolName === "get_knowledge_document" || toolName === "fetch" || toolName === "search_document";
+  return (
+    toolName === "get_knowledge_document" ||
+    toolName === "fetch" ||
+    toolName === "search_document" ||
+    toolName === "list_documents"
+  );
 }
 
 function adoptFromTool(

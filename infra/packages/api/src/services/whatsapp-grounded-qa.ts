@@ -80,13 +80,16 @@ const STOP = new Set([
   "something",
 ]);
 
-const KEEP_SHORT = new Set(["cv", "uk", "hr", "qa", "it"]);
+const KEEP_SHORT = new Set(["cv", "uk", "hr", "qa", "it", "hs", "po"]);
+const STANDALONE_ACRONYM = /^[A-Z]{2}$/;
 const SYNONYMS: Record<string, string[]> = {
   van: ["vehicle", "vehicles", "fleet", "car"],
   vehicle: ["van", "vehicles", "fleet"],
   drive: ["driver", "driving", "driven"],
   fuel: ["petrol", "diesel", "mileage", "litre"],
   sales: ["selling", "sold"],
+  po: ["purchase", "procurement"],
+  hs: ["health", "safety"],
 };
 
 export type DocumentQaDiagnostics = {
@@ -290,6 +293,21 @@ export function scoreGlobalSearchHit(
   return score;
 }
 
+export function isProcessOrPolicyQuery(query: string): boolean {
+  return /\b(process|procedure|policy|how do we)\b/i.test(query);
+}
+
+function looksLikeProcessOrPolicyDocument(hit: {
+  title: string;
+  snippet?: string;
+  metadata?: Record<string, unknown>;
+}): boolean {
+  const path = String(hit.metadata?.path ?? hit.metadata?.folder ?? "");
+  if (classifyDocument({ title: hit.title, text: hit.snippet, path }) === "policy_procedure") return true;
+  const hay = `${hit.title} ${hit.snippet ?? ""} ${path}`.toLowerCase();
+  return /\b(process|procedure|policy|guidance|handbook|how to|standard operating|\bsop\b)\b/.test(hay);
+}
+
 export function rejectWeakSearchHits<T extends { title: string; snippet?: string; id?: string; metadata?: Record<string, unknown> }>(
   hits: T[],
   query: string,
@@ -299,9 +317,17 @@ export function rejectWeakSearchHits<T extends { title: string; snippet?: string
     .map((hit) => ({ hit, score: scoreGlobalSearchHit(hit, query, context) }))
     .sort((left, right) => right.score - left.score);
   const strong = scored.filter((row) => row.score >= GLOBAL_SEARCH_MIN_SCORE);
-  if (strong.length) return strong.map((row) => row.hit);
-  if (scored.length === 1 && scored[0]!.score >= 1) return [scored[0]!.hit];
-  return [];
+  const kept = strong.length
+    ? strong
+    : scored.length === 1 && scored[0]!.score >= 1
+      ? [scored[0]!]
+      : [];
+  if (!kept.length) return [];
+  if (isProcessOrPolicyQuery(query)) {
+    const processLike = kept.filter((row) => looksLikeProcessOrPolicyDocument(row.hit));
+    return processLike.map((row) => row.hit);
+  }
+  return kept.map((row) => row.hit);
 }
 
 export function redactUnsolicitedPii(
@@ -595,10 +621,17 @@ function usefulSentences(text: string, max: number): string[] {
 
 export function queryTerms(query: string): string[] {
   return String(query ?? "")
-    .toLowerCase()
     .split(/\s+/)
-    .map((token) => token.replace(/[^a-z0-9]/g, ""))
-    .filter((token) => (token.length >= 3 || KEEP_SHORT.has(token)) && !STOP.has(token));
+    .map((token) => token.replace(/[^a-zA-Z0-9]/g, ""))
+    .filter((token) => {
+      if (!token) return false;
+      const lower = token.toLowerCase();
+      if (STOP.has(lower)) return false;
+      if (token.length >= 3) return true;
+      if (KEEP_SHORT.has(lower)) return true;
+      return STANDALONE_ACRONYM.test(token);
+    })
+    .map((token) => token.toLowerCase());
 }
 
 function expandTerm(term: string): string[] {

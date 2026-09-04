@@ -777,7 +777,7 @@ function createWhatsAppIntelligenceRuntime(
           ? KNOWLEDGE_SEARCH_TIMEOUT_MS
           : gatewayName === COMPANY_KNOWLEDGE_READ_TOOL || gatewayName === "fetch"
             ? FETCH_TIMEOUT_MS
-            : /^(outlook_|xero_)/.test(gatewayName)
+            : /^(outlook_|xero_|list_documents)/.test(gatewayName)
               ? 20_000
               : MCP_TIMEOUT_MS;
       const fetched = await withBoundedTimeout(
@@ -1018,8 +1018,8 @@ function summariseXeroEvidence(data: unknown): string {
   return "I reached Xero. Ask for overdue invoices, a named invoice, or P&L if you want a specific cut.";
 }
 
-function clipToolData(value: unknown): unknown {
-  return clipBusinessToolData(value);
+function clipToolData(value: unknown, toolName = ""): unknown {
+  return clipBusinessToolData(value, toolName);
 }
 
 async function runShadowEval(

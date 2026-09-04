@@ -6,6 +6,7 @@ vi.mock("./control-plane", () => ({
 }));
 
 import {
+  classifyMicrosoftFileSource,
   isCatalogueListingAsk,
   isDocumentCatalogueTool,
   parseCatalogueIntent,
@@ -33,6 +34,12 @@ describe("document catalogue intent", () => {
     expect(isCatalogueListingAsk("Find a document about boilers")).toBe(false);
     expect(isCatalogueListingAsk("How many documents can you see?")).toBe(false);
     expect(isCatalogueListingAsk("Summarise this document")).toBe(false);
+  });
+
+  it("classifies personal Microsoft paths as OneDrive", () => {
+    expect(classifyMicrosoftFileSource("https://elvex-my.sharepoint.com/personal/a/file.pdf")).toBe("onedrive");
+    expect(classifyMicrosoftFileSource("https://elvex.sharepoint.com/personal/a/file.pdf")).toBe("onedrive");
+    expect(classifyMicrosoftFileSource("https://elvex.sharepoint.com/sites/ops/file.pdf")).toBe("sharepoint");
   });
 
   it("uses modified time for latest/changed and created time for uploaded", () => {
@@ -268,6 +275,40 @@ describe("executeListDocuments", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.result.documents.map((doc) => doc.title)).not.toContain("Restricted board pack.pdf");
+  });
+
+  it("falls back to Microsoft files when OneDrive-labelled rows are empty", async () => {
+    const env = mockEnv({
+      companyId: "co_el",
+      connectors: [{ definition: "conn_microsoft_365", name: "Microsoft 365" }],
+      items: [
+        {
+          id: "mki_sp",
+          title: "Site file.pdf",
+          source_type: "sharepoint",
+          mime_type: "application/pdf",
+          modified_at: "2026-09-01T10:00:00Z",
+          created_at: "2026-08-27T18:17:36.500Z",
+          web_url: "https://elvex.sharepoint.com/sites/ops/Site%20file.pdf",
+          knowledge_document_id: 60,
+          external_item_id: "01GHI",
+          path: "Documents/Site file.pdf",
+          provenance_json: "{}",
+          visibility_status: "active",
+          indexing_status: "indexed",
+        },
+      ],
+    });
+    const result = await executeListDocuments(env, {
+      companyId: "co_el",
+      arguments: { source: "onedrive", sort: "recently_modified", limit: 1, include_descriptions: false },
+      actor: "ella",
+      role: "director",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.result.documents.map((doc) => doc.title)).toEqual(["Site file.pdf"]);
+    expect(result.result.backend).toContain("microsoft_fallback_after_onedrive_empty");
   });
 });
 

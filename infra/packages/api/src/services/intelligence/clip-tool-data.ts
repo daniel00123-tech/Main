@@ -33,12 +33,56 @@ function slimMessage(value: unknown): unknown {
   };
 }
 
+function slimCatalogueDocument(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const description = String(value.description ?? "").slice(0, 200);
+  return {
+    id: value.id ?? null,
+    title: value.title ?? value.name ?? null,
+    source: value.source ?? value.source_type ?? null,
+    createdAt: value.createdAt ?? value.created_at ?? null,
+    modifiedAt: value.modifiedAt ?? value.modified_at ?? value.lastModifiedDateTime ?? null,
+    modifiedBy: value.modifiedBy ?? value.lastModifiedBy ?? null,
+    fileType: value.fileType ?? value.file_type ?? null,
+    url: value.url ?? value.webUrl ?? null,
+    description,
+    descriptionSource: value.descriptionSource ?? null,
+  };
+}
+
+function catalogueRecord(value: Record<string, unknown>): Record<string, unknown> | null {
+  if (Array.isArray(value.documents) && (value.status || value.dateField || value.source || value.code)) {
+    return value;
+  }
+  if (isRecord(value.result) && Array.isArray(value.result.documents)) {
+    return value.result;
+  }
+  return null;
+}
+
 /**
  * Keep Xero/Outlook summaries when clipping bulky tool payloads so synthesis
  * can still read totals, invoice lists, and email subjects after truncation.
  */
 export function clipBusinessToolData(value: unknown, toolName = ""): unknown {
   if (isRecord(value)) {
+    if (toolName === "list_documents" || catalogueRecord(value)) {
+      const catalogue = isRecord(value) ? catalogueRecord(value) ?? value : value;
+      const documents = Array.isArray(catalogue.documents) ? catalogue.documents : [];
+      return {
+        status: catalogue.status ?? "ok",
+        code: catalogue.code ?? null,
+        source: catalogue.source ?? null,
+        sort: catalogue.sort ?? null,
+        dateField: catalogue.dateField ?? null,
+        dateFieldReason: catalogue.dateFieldReason ?? null,
+        limit: catalogue.limit ?? documents.length,
+        count: catalogue.count ?? documents.length,
+        backend: catalogue.backend ?? null,
+        message: catalogue.message ?? null,
+        documents: documents.slice(0, 12).map(slimCatalogueDocument),
+      };
+    }
     if (toolName === "outlook_get_message" || ("body" in value && /^outlook_/.test(toolName))) {
       return {
         id: value.id ?? value.messageId ?? value.emailId ?? value.email_id ?? value.internetMessageId ?? null,
