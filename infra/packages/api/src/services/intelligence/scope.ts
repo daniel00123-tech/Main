@@ -212,7 +212,7 @@ function detectScopeSwitch(text: string): ScopeSwitch {
   if (/\b\bxero\b|\b(finance|invoices?|sales figures)\b/i.test(text) && /\b(switch|instead|use|from|in|check)\b/i.test(text)) {
     return "business";
   }
-  if (/\b(emails?|mailbox|outlook)\b/i.test(text) && /\b(instead|switch|search|check|from)\b/i.test(text)) {
+  if (/\b(emails?|mailbox|outlook)\b/i.test(text) && /\b(instead|switch|search|check|from|meant)\b/i.test(text)) {
     return "email";
   }
   return null;

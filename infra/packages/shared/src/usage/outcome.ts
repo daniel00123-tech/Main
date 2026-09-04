@@ -42,7 +42,8 @@ export type UsageOutcome = {
 };
 
 export type UsageOutcomeInput = {
-  success?: boolean;
+  /** D1 stores 0/1; treat 0 as failed. */
+  success?: boolean | number | null;
   settlementStatus?: string | null;
   toolName?: string | null;
   action?: string | null;
@@ -51,6 +52,10 @@ export type UsageOutcomeInput = {
   actorEmail?: string | null;
   metadata?: Record<string, unknown> | null;
 };
+
+export function usageRowFailed(success?: boolean | number | null): boolean {
+  return success === false || success === 0;
+}
 
 /** Xero company-MCP tool-name mapping shipped 2026-09-02. */
 export const XERO_TOOL_MAPPING_FIXED_AT = "2026-09-02T00:00:00.000Z";
@@ -70,7 +75,7 @@ export function classifyUsageOutcome(input: UsageOutcomeInput): UsageOutcome {
   const tool = `${input.toolName ?? ""} ${input.action ?? ""}`.toLowerCase();
   const historicalHint = historicalHintFor(input, tool);
 
-  if (input.success !== false) {
+  if (!usageRowFailed(input.success)) {
     if (empty) {
       return {
         kind: "SUCCESS_NO_RESULTS",
@@ -223,7 +228,7 @@ export function summarizeUsageOutcomes(rows: UsageOutcomeInput[]): {
   let noResults = 0;
   for (const row of rows) {
     const outcome = classifyUsageOutcome(row);
-    if (row.success !== false) successful += 1;
+    if (!usageRowFailed(row.success)) successful += 1;
     else failed += 1;
     if (outcome.expectedDenial) denied += 1;
     if (outcome.operationalFailure) operationalFailed += 1;

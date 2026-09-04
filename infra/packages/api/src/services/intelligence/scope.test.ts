@@ -83,6 +83,41 @@ describe("scope classifier", () => {
     expect(classifyScope("What about him?", open).scope).toBe("CURRENT_DOCUMENT");
   });
 
+  it("routes EL WhatsApp business-system prompts away from Xero when they are email or process", () => {
+    expect(classifyScope("Search emails", buildConversationState({ userText: "Search emails" })).tool).toBe(
+      "outlook_search_mailbox",
+    );
+    expect(
+      classifyScope(
+        "How many emails has Sharon sent today?",
+        buildConversationState({ userText: "How many emails has Sharon sent today?" }),
+      ).tool,
+    ).toBe("outlook_search_mailbox");
+    expect(classifyScope("What is the PO process?", buildConversationState({ userText: "What is the PO process?" })).tool).not.toMatch(
+      /^xero_/,
+    );
+    expect(
+      classifyScope("Tell me Xero sales this month.", buildConversationState({ userText: "Tell me Xero sales this month." }))
+        .tool,
+    ).toMatch(/^xero_/);
+    expect(
+      classifyScope(
+        "Find the newest OneDrive document.",
+        buildConversationState({ userText: "Find the newest OneDrive document." }),
+      ).tool,
+    ).toBe("list_documents");
+    const afterXero = buildConversationState({
+      userText: "Tell me Xero sales this month.",
+      lastAnswerTopic: "finance",
+      currentScope: "BUSINESS_SYSTEM",
+      currentBusinessSystem: "xero",
+      lastSuccessfulTool: "xero_sales_summary",
+    });
+    const correction = classifyScope("No, I meant email.", afterXero);
+    expect(correction.tool).toBe("outlook_search_mailbox");
+    expect(correction.tool).not.toMatch(/^xero_/);
+  });
+
   it("routes newest/latest file questions to list_documents, not search or index stats", () => {
     for (const text of [
       "What's the newest document in OneDrive?",

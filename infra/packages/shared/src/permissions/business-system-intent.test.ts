@@ -83,6 +83,24 @@ describe("resolveBusinessSystemIntent", () => {
     expect(tool?.arguments).not.toHaveProperty("fromDate");
   });
 
+  it("keeps WhatsApp email and PO-process prompts off Xero", () => {
+    expect(resolveBusinessSystemIntent("Search emails", { connectors: EL_CONNECTORS })?.capability).toBe(
+      "info_mailbox",
+    );
+    expect(
+      resolveBusinessSystemIntent("How many emails has Sharon sent today?", { connectors: EL_CONNECTORS })
+        ?.capability,
+    ).toBe("info_mailbox");
+    expect(resolveBusinessSystemIntent("What is the PO process?", { connectors: EL_CONNECTORS })).toBeNull();
+    expect(resolveBusinessSystemIntent("Tell me Xero sales this month.", { connectors: EL_CONNECTORS })?.capability).toBe(
+      "xero",
+    );
+    expect(resolveBusinessSystemIntent("Find the newest OneDrive document.", { connectors: EL_CONNECTORS })).toBeNull();
+    expect(resolveBusinessSystemIntent("No, I meant email.", { connectors: EL_CONNECTORS })?.capability).toBe(
+      "info_mailbox",
+    );
+  });
+
   it("routes invoice-number, outstanding, overdue, and date-list questions", () => {
     const sales = resolveBusinessSystemIntent("What are our sales?", { connectors: EL_CONNECTORS })!;
     expect(businessToolForIntent(sales, "Sales today?")?.toolName).toBe("xero_sales_summary");

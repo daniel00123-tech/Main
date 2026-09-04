@@ -214,6 +214,28 @@ const CATALOGUE_NOUN =
 const ABOUT_TOPIC = /\b(about|mention|contain|talk(?:s|ing)? about|cover(?:s|ing)?)\b/i;
 const FIND = /\b((can you |could you |please )?(find|search|look(?:ing)? (for|up)|pull up)|have we got|where is)\b/i;
 
+export function rewriteKnowledgeCallForCatalogue(
+  toolName: string,
+  args: Record<string, unknown>,
+): { toolName: string; arguments: Record<string, unknown>; rewritten: boolean } {
+  if (toolName !== "search" && toolName !== "search_company_knowledge") {
+    return { toolName, arguments: args, rewritten: false };
+  }
+  const query =
+    typeof args.query === "string" && args.query.trim()
+      ? args.query
+      : [args.q, args.question, args.prompt, args.text]
+          .find((value): value is string => typeof value === "string" && value.trim()) ?? "";
+  if (!query || !isCatalogueListingAsk(query)) {
+    return { toolName, arguments: args, rewritten: false };
+  }
+  return {
+    toolName: LIST_DOCUMENTS_TOOL,
+    arguments: { ...parseCatalogueIntent(query), query },
+    rewritten: true,
+  };
+}
+
 export function isCatalogueListingAsk(text: string): boolean {
   const trimmed = text.trim();
   if (!RECENCY.test(trimmed) && !/\b(uploaded|added since|changed this|changed today)\b/i.test(trimmed)) {

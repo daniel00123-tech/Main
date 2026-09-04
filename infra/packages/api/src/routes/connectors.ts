@@ -1192,6 +1192,36 @@ connectors.post("/api/internal/cmd15/microsoft-acceptance/xero-reads", async (c)
   runWilliamChatgptAcceptanceRoute(c),
 );
 
+connectors.post("/api/internal/el-production-acceptance", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runElProductionAcceptance } = await import("../services/el-production-acceptance");
+    return c.json(await runElProductionAcceptance(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "EL production acceptance failed" },
+      500,
+    );
+  }
+});
+
+connectors.post("/api/internal/office-staff-rbac-acceptance", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runOfficeStaffRbacAcceptance } = await import("../services/sharon-rbac-acceptance");
+    return c.json(await runOfficeStaffRbacAcceptance(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Office-staff RBAC acceptance failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/portal-chat-acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
