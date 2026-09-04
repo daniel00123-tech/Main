@@ -106,8 +106,6 @@ describe("Option B tenant-native Microsoft identity", () => {
   });
 
   it("keeps the Option B cutover subject exact", () => {
-    expect(EL_OPTION_B_CUTOVER_SUBJECT).toBe(
-      "INFRA — EL Business Knowledge Intake — Option B Graph Cutover Complete",
-    );
+    expect(EL_OPTION_B_CUTOVER_SUBJECT).toBe("INFRA — EL Business Knowledge Intake — Sync test");
   });
 });

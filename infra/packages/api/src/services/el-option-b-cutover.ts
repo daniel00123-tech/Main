@@ -6,20 +6,27 @@
 
 import { automationRecipientEmailOf, isValidRecipientEmail } from "@infra/shared";
 import type { Env } from "../env";
-import { getCompanyById } from "./control-plane";
+import { getCompanyById, listMcpEnvironments } from "./control-plane";
 import { sendTransactionalEmail } from "./email/send-transactional";
 import { getAutomationDefinition } from "./automation-engine/store";
 import {
   discoverKnowledgeIntakeTarget,
   getKnowledgeIntakeTarget,
 } from "./knowledge-intake";
+import { resolveMcpAdminAuthHeader } from "./mcp-admin-bridge";
+import { resolveMcpFetcher } from "./mcp-client";
+import { fetchCompanyMcpConnectorSnapshot } from "./mcp-connector-mirror";
 import {
   MicrosoftGraphError,
   graphGet,
+  hostnameFromSharePointUrl,
+  listAllDrives,
   listDriveChildren,
   listSiteDrives,
   listSites,
   listTenantUsers,
+  probeGraphPath,
+  readGraphAppTokenClaims,
   type MicrosoftGraphConfig,
 } from "./microsoft-graph";
 import { resolveMicrosoftAppCredentials } from "./microsoft-credentials";
@@ -46,7 +53,7 @@ import { resolveOutlookGraphAccess } from "./outlook-graph-access";
 const COMPANY_ID = "co_el";
 const AUTOMATION_ID = "aut_b00ab912-845b-49b4-9609-cbedeeea6ddf";
 export const EL_OPTION_B_CUTOVER_SUBJECT =
-  "INFRA — EL Business Knowledge Intake — Option B Graph Cutover Complete";
+  "INFRA — EL Business Knowledge Intake — Sync test";
 
 const APPROVED = [
   { key: "finance", hint: "finance", mailbox: "finance@elvexpropertyservices.com" },
@@ -60,6 +67,111 @@ type Verdict = "PASS" | "FAIL";
 
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderElOptionBSyncEmail(input: {
+  tokenPass: boolean;
+  mailboxes: string[];
+  landingZonePass: boolean;
+  landingZoneLabel: string;
+  counts: {
+    mailboxesScanned: number;
+    attachmentsDiscovered: number;
+    attachmentsStored: number;
+    attachmentsExtracted: number;
+    attachmentsIndexed: number;
+    chunksAdded: number;
+    skipped: number;
+    failed: number;
+  };
+  people: Array<{
+    name: string;
+    mailboxAccess: unknown;
+    messagesFound: unknown;
+    attachmentsFound: unknown;
+    attachmentsIndexed: unknown;
+  }>;
+  retrievalProof: string;
+  remainingFailures: string[];
+}): { subject: string; text: string; html: string } {
+  const subject = EL_OPTION_B_CUTOVER_SUBJECT;
+  const mailboxList = input.mailboxes.length ? input.mailboxes.join(", ") : "none yet";
+  const retrieval =
+    input.retrievalProof.startsWith("PASS")
+      ? "Yes — a real stored attachment can now be found in company knowledge search."
+      : input.retrievalProof.startsWith("BLOCKED")
+        ? "Not yet — Graph access was still blocked."
+        : "Not yet — attachments were stored, but they are not searchable until indexing finishes.";
+  const remaining = input.remainingFailures.length
+    ? input.remainingFailures.map((row) => `• ${row}`).join("\n")
+    : "None.";
+  const people = input.people
+    .map(
+      (row) =>
+        `${row.name}: mailbox ${row.mailboxAccess === "PASS" ? "OK" : "needs attention"}; ${row.messagesFound ?? 0} messages, ${row.attachmentsFound ?? 0} attachments, ${row.attachmentsIndexed ?? 0} indexed`,
+    )
+    .join("\n");
+  const text = [
+    "Hello Daniel,",
+    "",
+    "This is a one-off INFRA sync test for EL Business email-attachment knowledge intake.",
+    "",
+    input.tokenPass
+      ? "EL mail is now being read with the EL-native Microsoft app (not the shared Business Connector)."
+      : "EL mail could not be read with the EL-native Microsoft app in this run.",
+    "",
+    `Mailboxes checked: ${mailboxList}`,
+    `Knowledge Intake library: ${input.landingZonePass ? "ready" : "not ready"} — ${input.landingZoneLabel}`,
+    "",
+    "Last 7 days",
+    `• Mailboxes scanned: ${input.counts.mailboxesScanned}`,
+    `• Attachments found: ${input.counts.attachmentsDiscovered}`,
+    `• Stored in Knowledge Intake: ${input.counts.attachmentsStored}`,
+    `• Extracted: ${input.counts.attachmentsExtracted}`,
+    `• Indexed: ${input.counts.attachmentsIndexed}`,
+    `• Search chunks: ${input.counts.chunksAdded}`,
+    `• Skipped (signatures / unsupported): ${input.counts.skipped}`,
+    `• Still failed: ${input.counts.failed}`,
+    "",
+    "People",
+    people,
+    "",
+    `Can we search a real attachment? ${retrieval}`,
+    "",
+    "Still open",
+    remaining,
+    "",
+    "The daily EL knowledge activity email is unchanged (08:00 Europe/London).",
+    "Caddington and HT were not changed. No passwords or secrets are included here.",
+    "",
+    "INFRA",
+  ].join("\n");
+  const html = `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#111">
+<p>Hello Daniel,</p>
+<p>This is a one-off INFRA sync test for EL Business email-attachment knowledge intake.</p>
+<p>${escapeHtml(
+    input.tokenPass
+      ? "EL mail is now being read with the EL-native Microsoft app (not the shared Business Connector)."
+      : "EL mail could not be read with the EL-native Microsoft app in this run.",
+  )}</p>
+<p><strong>Mailboxes checked:</strong> ${escapeHtml(mailboxList)}<br/>
+<strong>Knowledge Intake library:</strong> ${escapeHtml(input.landingZonePass ? "ready" : "not ready")} — ${escapeHtml(input.landingZoneLabel)}</p>
+<p><strong>Last 7 days</strong><br/>
+Mailboxes scanned: ${input.counts.mailboxesScanned}<br/>
+Attachments found: ${input.counts.attachmentsDiscovered}<br/>
+Stored in Knowledge Intake: ${input.counts.attachmentsStored}<br/>
+Extracted: ${input.counts.attachmentsExtracted}<br/>
+Indexed: ${input.counts.attachmentsIndexed}<br/>
+Search chunks: ${input.counts.chunksAdded}<br/>
+Skipped (signatures / unsupported): ${input.counts.skipped}<br/>
+Still failed: ${input.counts.failed}</p>
+<p><strong>People</strong><br/>${escapeHtml(people).replace(/\n/g, "<br/>")}</p>
+<p><strong>Can we search a real attachment?</strong> ${escapeHtml(retrieval)}</p>
+<p><strong>Still open</strong><br/>${escapeHtml(remaining).replace(/\n/g, "<br/>")}</p>
+<p>The daily EL knowledge activity email is unchanged (08:00 Europe/London). Caddington and HT were not changed. No passwords or secrets are included here.</p>
+<p>INFRA</p>
+</div>`;
+  return { subject, text, html };
 }
 
 async function graphUser(
@@ -204,7 +316,10 @@ async function probeMailbox(
   }
 }
 
-async function probeSharePoint(config: MicrosoftGraphConfig): Promise<{
+async function probeSharePoint(
+  config: MicrosoftGraphConfig,
+  hostnames: string[] = [],
+): Promise<{
   result: Verdict;
   sites: Array<{ id: string; name: string | null; webUrl: string | null }>;
   drive: { id: string; name: string | null; driveType: string | null } | null;
@@ -212,38 +327,78 @@ async function probeSharePoint(config: MicrosoftGraphConfig): Promise<{
   canCreate: boolean | null;
   canUpload: boolean | null;
   canRead: boolean | null;
+  tokenRoles: string[];
+  tokenAppId: string | null;
+  pathProbes: Array<{ path: string; ok: boolean; status: number | null; requestId: string | null }>;
   error: string | null;
 }> {
+  const claims = readGraphAppTokenClaims(config.accessToken);
+  const paths = [
+    "/sites?search=Elvex&$select=id,displayName,webUrl&$top=1",
+    "/sites/root?$select=id,name,displayName,webUrl",
+    "/drives?$select=id,name,driveType,webUrl&$top=1",
+    ...hostnames.slice(0, 2).map((host) => `/sites/${host}?$select=id,name,displayName,webUrl`),
+  ];
+  const pathProbes = [];
+  for (const path of paths) {
+    const probed = await probeGraphPath(config, path);
+    pathProbes.push({
+      path: probed.path,
+      ok: probed.ok,
+      status: probed.status,
+      requestId: probed.requestId,
+    });
+  }
+  const fail = (error: string) => ({
+    result: "FAIL" as Verdict,
+    sites: [] as Array<{ id: string; name: string | null; webUrl: string | null }>,
+    drive: null,
+    canEnumerate: false,
+    canCreate: null,
+    canUpload: null,
+    canRead: null,
+    tokenRoles: claims.roles,
+    tokenAppId: claims.appId,
+    pathProbes,
+    error,
+  });
   try {
-    const sites = await listSites(config, "Elvex");
-    const site = sites.find((row) => !/personal|my\.sharepoint|onedrive/i.test(`${row.webUrl ?? ""} ${row.displayName ?? ""}`)) ?? sites[0];
-    if (!site?.id) {
-      return {
-        result: "FAIL",
-        sites: [],
-        drive: null,
-        canEnumerate: false,
-        canCreate: null,
-        canUpload: null,
-        canRead: null,
-        error: "No SharePoint site was discoverable",
-      };
-    }
-    const drives = await listSiteDrives(config, site.id);
-    const drive =
+    const sites = await listSites(config, "Elvex", hostnames);
+    let site =
+      sites.find((row) => !/personal|my\.sharepoint|onedrive/i.test(`${row.webUrl ?? ""} ${row.displayName ?? ""}`)) ??
+      sites[0];
+    let drives = site?.id ? await listSiteDrives(config, site.id).catch(() => []) : [];
+    let drive =
       drives.find((row) => row.driveType === "documentLibrary" || /documents/i.test(row.name ?? "")) ??
       drives.find((row) => row.driveType !== "personal") ??
-      drives[0];
+      drives[0] ??
+      null;
+    if (!drive?.id) {
+      const allDrives = await listAllDrives(config).catch(() => []);
+      drive =
+        allDrives.find((row) => row.driveType === "documentLibrary" || /documents/i.test(row.name ?? "")) ??
+        allDrives.find((row) => row.driveType !== "personal") ??
+        allDrives[0] ??
+        null;
+      const host = hostnameFromSharePointUrl(drive?.webUrl ?? drive?.sharePointIds?.siteUrl);
+      if (!site?.id && host) {
+        const extra = await listSites(config, "*", [host]);
+        site = extra[0] ?? site;
+      }
+      if (!site?.id && drive?.sharePointIds?.siteId) {
+        site = {
+          id: drive.sharePointIds.siteId,
+          name: drive.name,
+          displayName: drive.name,
+          webUrl: drive.webUrl,
+        };
+      }
+    }
+    if (!site?.id) return fail("No SharePoint site was discoverable");
     if (!drive?.id) {
       return {
-        result: "FAIL",
+        ...fail("No document library was discoverable"),
         sites: sites.map((row) => ({ id: row.id, name: row.displayName ?? row.name, webUrl: row.webUrl })),
-        drive: null,
-        canEnumerate: false,
-        canCreate: null,
-        canUpload: null,
-        canRead: null,
-        error: "No document library was discoverable",
       };
     }
     const children = await listDriveChildren(config, drive.id);
@@ -255,17 +410,43 @@ async function probeSharePoint(config: MicrosoftGraphConfig): Promise<{
       canCreate: null,
       canUpload: null,
       canRead: children.length >= 0,
+      tokenRoles: claims.roles,
+      tokenAppId: claims.appId,
+      pathProbes,
       error: null,
+    };
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err));
+  }
+}
+
+async function probeElMcpAdmin(env: Env): Promise<Record<string, unknown>> {
+  const mcp = (await listMcpEnvironments(env.DB, COMPANY_ID)).find((item) => item.enabled);
+  if (!mcp) return { result: "FAIL", error: "EL MCP environment not registered" };
+  const auth = resolveMcpAdminAuthHeader(env, mcp);
+  const binding = resolveMcpFetcher(env, mcp.serviceBindingRef);
+  if (!auth.authorizationHeader) {
+    return { result: "FAIL", source: auth.source, error: "No EL MCP admin token binding is present" };
+  }
+  try {
+    const headers = new Headers({ Authorization: auth.authorizationHeader, Accept: "application/json" });
+    try {
+      headers.set("Host", new URL(mcp.endpointUrl).host);
+    } catch {
+      /* ignore */
+    }
+    const request = new Request("https://company-mcp.internal/admin/health", { method: "GET", headers });
+    const response = binding ? await binding.fetch(request) : await fetch(request);
+    return {
+      result: response.ok ? "PASS" : "FAIL",
+      source: auth.source,
+      httpStatus: response.status,
+      error: response.ok ? null : `EL MCP /admin/health HTTP ${response.status}`,
     };
   } catch (err) {
     return {
       result: "FAIL",
-      sites: [],
-      drive: null,
-      canEnumerate: false,
-      canCreate: null,
-      canUpload: null,
-      canRead: null,
+      source: auth.source,
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -347,25 +528,27 @@ export async function runElOptionBGraphCutover(
       });
     }
 
-    const sp = await probeSharePoint(config);
-    sharePoint = sp;
-    if (sp.result === "PASS") {
-      const discovered = await discoverKnowledgeIntakeTarget(env, { companyId: COMPANY_ID, actor });
-      landingZone = {
-        result: discovered.status === "ready" && discovered.site_id && discovered.drive_id && discovered.root_folder_id
+    const mcp = (await listMcpEnvironments(env.DB, COMPANY_ID)).find((item) => item.enabled);
+    const snapshot = mcp ? await fetchCompanyMcpConnectorSnapshot(env, mcp).catch(() => null) : null;
+    const hostnames = [snapshot?.microsoft?.sharePointHostname].filter(
+      (value): value is string => Boolean(value && value.trim()),
+    );
+    const sp = await probeSharePoint(config, hostnames);
+    sharePoint = { ...sp, hostnames };
+    const discovered = await discoverKnowledgeIntakeTarget(env, { companyId: COMPANY_ID, actor });
+    landingZone = {
+      result:
+        discovered.status === "ready" && discovered.site_id && discovered.drive_id && discovered.root_folder_id
           ? "PASS"
           : "FAIL",
-        status: discovered.status,
-        siteId: discovered.site_id,
-        driveId: discovered.drive_id,
-        folderId: discovered.root_folder_id,
-        rootPath: discovered.root_folder_path,
-        webUrl: discovered.web_url,
-        error: discovered.last_error,
-      };
-    } else {
-      landingZone = { result: "FAIL", error: `SharePoint probe failed: ${sp.error}` };
-    }
+      status: discovered.status,
+      siteId: discovered.site_id,
+      driveId: discovered.drive_id,
+      folderId: discovered.root_folder_id,
+      rootPath: discovered.root_folder_path,
+      webUrl: discovered.web_url,
+      error: discovered.last_error ?? (sp.result === "FAIL" ? sp.error : null),
+    };
   }
 
   const window = sevenDayBackfillWindow();
@@ -424,10 +607,17 @@ export async function runElOptionBGraphCutover(
     };
   });
 
+  const mcpAdmin = await probeElMcpAdmin(env);
   const remainingFailures: string[] = [];
   if (tokenResult.result === "FAIL") remainingFailures.push(`EL token: ${tokenResult.error}`);
   if (usedSharedConnector) remainingFailures.push("Runtime still resolved the shared INFRA Business Connector");
+  if (landingZone.result === "FAIL") {
+    remainingFailures.push(`SharePoint landing zone: ${String(landingZone.error ?? "not ready")}`);
+  }
   if (ingest.counts.failed > 0) remainingFailures.push(`${ingest.counts.failed} attachment candidate(s) remain FAILED`);
+  if (mcpAdmin.result === "FAIL" && ingest.counts.attachmentsIndexed === 0) {
+    remainingFailures.push(`EL MCP admin: ${String(mcpAdmin.error ?? "Unauthorized")} (source ${String(mcpAdmin.source ?? "none")})`);
+  }
   if (bindings.EL_SECRET_PRESENT === "NO") {
     remainingFailures.push("EL_MS_CLIENT_SECRET is not bound on infra-api");
   }
@@ -478,56 +668,27 @@ export async function runElOptionBGraphCutover(
     if (!recipient || !isValidRecipientEmail(recipient)) {
       emailError = "Configured admin recipient missing on Daily EL knowledge activity";
     } else {
-      const lines = [
-        "INFRA Option B Graph cutover for EL Business.",
-        "",
-        `Graph identity now used: ${EL_NATIVE_MICROSOFT_DISPLAY_NAME}`,
-        `Client ID: ${tokenResult.clientId}`,
-        `Tenant ID: ${tokenResult.tenantId}`,
-        `Token: ${tokenResult.result}`,
-        `Shared INFRA Business Connector used: NO`,
-        "",
-        `Mailboxes proven: ${mailboxes.filter((row) => row.result === "PASS").map((row) => row.key).join(", ") || "none"}`,
-        `Directory: ${String((directory as { result?: string }).result ?? "FAIL")}`,
-        `SharePoint probe: ${String(sharePoint.result ?? "FAIL")}`,
-        `Landing zone: ${String(landingZone.result ?? "FAIL")} site=${String(landingZone.siteId ?? intake?.site_id ?? "n/a")} drive=${String(landingZone.driveId ?? intake?.drive_id ?? "n/a")} folder=${String(landingZone.folderId ?? intake?.root_folder_id ?? "n/a")}`,
-        "",
-        `7-day window: ${window.from.toISOString()} → ${window.to.toISOString()}`,
-        `Mailboxes scanned: ${ingest.counts.mailboxesScanned}`,
-        `Messages with attachments: ${ingest.counts.messagesWithAttachments}`,
-        `Attachments found: ${ingest.counts.attachmentsDiscovered}`,
-        `Bytes fetched: ${ingest.counts.attachmentsFetched}`,
-        `Stored: ${ingest.counts.attachmentsStored}`,
-        `Extracted: ${ingest.counts.attachmentsExtracted}`,
-        `Indexed: ${ingest.counts.attachmentsIndexed}`,
-        `Chunks: ${ingest.counts.chunksAdded}`,
-        `Duplicates: ${ingest.counts.duplicates}`,
-        `Skipped: ${ingest.counts.skipped}`,
-        `Failed: ${ingest.counts.failed}`,
-        "",
-        `Semantic retrieval: ${retrievalProof}`,
-        "",
-        "Michael / Sharon / Lauren:",
-        ...peopleProof.map(
-          (row) =>
-            `${row.name}: directory=${row.directoryResolved} mailbox=${row.mailboxAccess} messages=${row.messagesFound} found=${row.attachmentsFound} fetched=${row.attachmentsFetched} stored=${row.attachmentsStored} indexed=${row.attachmentsIndexed}`,
-        ),
-        "",
-        remainingFailures.length ? `Remaining failures:\n- ${remainingFailures.join("\n- ")}` : "Remaining failures: none",
-        "",
-        "Daily EL knowledge activity schedule is unchanged (08:00 Europe/London).",
-        "Caddington and HT Microsoft identities were not modified.",
-        "No credentials are included in this email.",
-      ];
-      const text = lines.join("\n");
-      const html = `<p>${escapeHtml(text).replace(/\n/g, "<br/>")}</p>`;
+      const email = renderElOptionBSyncEmail({
+        tokenPass: tokenResult.result === "PASS",
+        mailboxes: mailboxes.filter((row) => row.result === "PASS").map((row) => String(row.key)),
+        landingZonePass: landingZone.result === "PASS",
+        landingZoneLabel:
+          intake?.web_url ||
+          (landingZone.result === "PASS"
+            ? "INFRA Knowledge Intake / Email Attachments"
+            : String(landingZone.error ?? intake?.last_error ?? "not configured")),
+        counts: ingest.counts,
+        people: peopleProof,
+        retrievalProof,
+        remainingFailures,
+      });
       const delivery = await sendTransactionalEmail(env, env.DB, {
         companyId: COMPANY_ID,
         type: "DOCUMENT_ACTIVITY_REPORT",
         recipient,
-        subject: EL_OPTION_B_CUTOVER_SUBJECT,
-        bodyText: text,
-        bodyHtml: html,
+        subject: email.subject,
+        bodyText: email.text,
+        bodyHtml: email.html,
         actor,
       });
       emailSent = delivery.sent;
@@ -564,6 +725,7 @@ export async function runElOptionBGraphCutover(
     mailboxes,
     sharePoint,
     landingZone,
+    mcpAdmin,
     windowFrom: window.from.toISOString(),
     windowTo: window.to.toISOString(),
     ingest,
