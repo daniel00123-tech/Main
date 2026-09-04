@@ -455,9 +455,13 @@ export function toolsForModel(permitted?: Iterable<string> | null): Intelligence
   });
 }
 
+export function connectorOffersMailbox(id: string): boolean {
+  return id === "conn_microsoft" || /outlook|mailbox/i.test(id);
+}
+
 export function permittedToolsForConnectors(connectors: string[]): string[] {
   const hasXero = connectors.includes("conn_xero");
-  const hasMailbox = connectors.some((id) => /outlook|microsoft|mailbox/i.test(id));
+  const hasMailbox = connectors.some((id) => connectorOffersMailbox(id));
   return INTELLIGENCE_TOOLS.filter((tool) => {
     if (XERO_TOOLS.has(tool.name)) return hasXero;
     if (tool.name === "outlook_search_mailbox" || tool.name === "outlook_list_messages" || tool.name === "outlook_get_message") {
