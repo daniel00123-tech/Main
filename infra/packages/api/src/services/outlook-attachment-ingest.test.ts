@@ -251,6 +251,116 @@ describe("Outlook attachment ingest", () => {
     expect(JSON.stringify(result)).not.toContain("Caddington");
   });
 
+  it("does not advance the mailbox checkpoint when attachment enumeration fails", async () => {
+    hoisted.resolveGraph.mockResolvedValue({
+      ok: false,
+      code: "AADSTS7000229",
+      message: "The client application is missing service principal in the tenant",
+    });
+    hoisted.executeOutlook.mockImplementation(async (_env: unknown, input: { toolName: string }) => {
+      if (input.toolName === "outlook_list_messages") {
+        return {
+          ok: true,
+          result: {
+            messages: [
+              {
+                id: "msg-quote",
+                subject: "RE: Quote request - 19 Lewis Street, Pentre, CF41 7JB",
+                hasAttachments: true,
+                receivedDateTime: "2026-09-04T15:41:18Z",
+              },
+            ],
+          },
+        };
+      }
+      return { ok: false, code: "OUTLOOK_MCP_ATTACHMENT_TOOL_MISSING", message: "no attachment tool" };
+    });
+
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-09-03T17:39:03.388Z"),
+        windowTo: new Date("2026-09-04T17:39:03.388Z"),
+      },
+    );
+
+    expect(result.counts.failed).toBe(1);
+    expect(result.counts.attachmentsIndexed).toBe(0);
+    expect(hoisted.markScan).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        success: false,
+        checkpoint: null,
+        graphAccessible: false,
+      }),
+    );
+  });
+
+  it("indexes when company MCP get-message returns attachment bytes without Graph", async () => {
+    hoisted.resolveGraph.mockResolvedValue({
+      ok: false,
+      code: "AADSTS7000229",
+      message: "missing service principal",
+    });
+    hoisted.executeOutlook.mockImplementation(async (_env: unknown, input: { toolName: string }) => {
+      if (input.toolName === "outlook_list_messages") {
+        return {
+          ok: true,
+          result: {
+            messages: [
+              {
+                id: "msg-receipt",
+                subject: "Fw: Your receipt from Anthropic, PBC #2275-0489-5290",
+                hasAttachments: true,
+                receivedDateTime: "2026-09-04T13:41:08Z",
+                from: "Ella@elvexpropertyservices.com",
+              },
+            ],
+          },
+        };
+      }
+      if (input.toolName === "outlook_list_attachments") {
+        return { ok: false, code: "OUTLOOK_MCP_ATTACHMENT_TOOL_MISSING", message: "no list tool" };
+      }
+      if (input.toolName === "outlook_get_message") {
+        return {
+          ok: true,
+          result: {
+            attachments: [
+              {
+                id: "att-receipt",
+                name: "receipt.pdf",
+                contentType: "application/pdf",
+                size: 20_000,
+                isInline: false,
+                contentBytesBase64: pdfBytes,
+              },
+            ],
+          },
+        };
+      }
+      return { ok: false, code: "OUTLOOK_MCP_ATTACHMENT_TOOL_MISSING", message: "no get tool" };
+    });
+
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-09-03T17:39:03.388Z"),
+        windowTo: new Date("2026-09-04T17:39:03.388Z"),
+      },
+    );
+
+    expect(result.counts.attachmentsIndexed).toBe(1);
+    expect(result.counts.failed).toBe(0);
+    expect(hoisted.upload).toHaveBeenCalledTimes(1);
+    expect(hoisted.markScan).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ success: true, graphAccessible: false }),
+    );
+  });
+
   it("does not ingest another tenant when asked for co_el", async () => {
     hoisted.listApproved.mockResolvedValue([]);
     const result = await ingestApprovedOutlookAttachments(
