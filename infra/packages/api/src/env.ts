@@ -130,6 +130,8 @@ export interface Env {
   /** Optional per-company mode map: co_el=openai_shadow,co_future=cloudflare */
   OPENAI_BRAIN_COMPANY_MODES?: string;
   OPENAI_BRAIN_CANARY_PERCENT?: string;
+  /** Default on. Allowlisted PA (Portal Chat) and request (WhatsApp) channels use OpenAI as the user-visible brain. */
+  OPENAI_BRAIN_PA_REQUEST_PRIMARY?: string;
   OPENAI_MODEL_FAST?: string;
   OPENAI_MODEL_DEFAULT?: string;
   OPENAI_MODEL_REASONING?: string;

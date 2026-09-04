@@ -1,5 +1,10 @@
 import { hasOpenAiApiKey } from "./openai-responses.js";
-import type { BrainMode, IntelligenceEnv } from "./types.js";
+import type {
+  BrainChannelRole,
+  BrainMode,
+  BrainProviderName,
+  IntelligenceEnv,
+} from "./types.js";
 
 export const EL_COMPANY_ID = "co_el";
 /** Empty by default so a new tenant is Cloudflare until explicitly promoted. */
@@ -13,7 +18,37 @@ export type BrainDecision = {
   fallbackToCloudflare: boolean;
   companyId: string | null;
   reason: string;
+  role: BrainChannelRole;
+  designatedBrain: BrainProviderName;
+  userVisibleBrain: BrainProviderName;
 };
+
+export function classifyBrainChannelRole(channel?: string | null): BrainChannelRole {
+  const raw = String(channel ?? "").trim().toLowerCase();
+  if (raw === "portal" || raw === "portal_chat") return "pa";
+  if (raw === "whatsapp") return "request";
+  if (raw === "chatgpt" || raw === "mcp") return "chatbot";
+  if (
+    raw === "automation" ||
+    raw === "email" ||
+    raw === "daily_improvement" ||
+    raw === "smoke" ||
+    raw === "shadow_bench"
+  ) {
+    return "automation";
+  }
+  return "internal";
+}
+
+export function isPaOrRequestRole(role: BrainChannelRole): boolean {
+  return role === "pa" || role === "request";
+}
+
+/** Unset defaults on: PA and WhatsApp requests use OpenAI as the user-visible brain. */
+export function paRequestPrimaryEnabled(env?: IntelligenceEnv | null): boolean {
+  const raw = String(env?.OPENAI_BRAIN_PA_REQUEST_PRIMARY ?? "true").trim();
+  return !/^(0|false|no|off)$/i.test(raw);
+}
 
 export function parseBrainMode(value: unknown): BrainMode {
   const raw = String(value ?? "").trim().toLowerCase();
@@ -64,6 +99,7 @@ export function resolveBrainPolicy(input: {
 }): BrainDecision {
   const env = input.env ?? {};
   const companyId = String(input.companyId ?? "").trim() || null;
+  const role = classifyBrainChannelRole(input.channel);
   const enabledFlag = /^(1|true|yes)$/i.test(String(env.OPENAI_BRAIN_ENABLED ?? "").trim());
   const configured = hasOpenAiApiKey(env);
   const requested = resolveTenantReasoningMode({ env, companyId });
@@ -71,19 +107,33 @@ export function resolveBrainPolicy(input: {
   const promoted = Boolean(companyId && (allow.includes(companyId) || openaiCompanyModeMap(env)[companyId]));
 
   if (!enabledFlag) {
-    return deny(companyId, "flag_off");
+    return deny(companyId, "flag_off", role);
   }
   if (!configured) {
-    return deny(companyId, "missing_key");
+    return deny(companyId, "missing_key", role);
   }
   if (!promoted) {
-    return deny(companyId, companyId ? "tenant_not_allowlisted" : "missing_company");
+    return deny(companyId, companyId ? "tenant_not_allowlisted" : "missing_company", role);
   }
-  if (input.channel === "chatgpt" || input.channel === "mcp") {
-    return deny(companyId, "chatgpt_stays_direct_tools");
+  if (role === "chatbot") {
+    return deny(companyId, "chatgpt_stays_direct_tools", role);
   }
   if (requested === "cloudflare") {
-    return deny(companyId, "mode_cloudflare");
+    return deny(companyId, "mode_cloudflare", role);
+  }
+  if (isPaOrRequestRole(role) && paRequestPrimaryEnabled(env)) {
+    return {
+      mode: requested,
+      enabled: true,
+      useOpenAi: true,
+      shadow: false,
+      fallbackToCloudflare: true,
+      companyId,
+      reason: "pa_request_openai_brain",
+      role,
+      designatedBrain: "openai",
+      userVisibleBrain: "openai",
+    };
   }
   if (requested === "openai_canary") {
     const roll = Number.isFinite(input.canaryRoll) ? Number(input.canaryRoll) : Math.random();
@@ -97,21 +147,28 @@ export function resolveBrainPolicy(input: {
         fallbackToCloudflare: true,
         companyId,
         reason: "canary_holdout",
+        role,
+        designatedBrain: "openai",
+        userVisibleBrain: "cloudflare",
       };
     }
   }
+  const useOpenAi = requested === "openai_primary" || requested === "openai_canary";
   return {
     mode: requested,
     enabled: true,
-    useOpenAi: requested === "openai_primary" || requested === "openai_canary",
+    useOpenAi,
     shadow: requested === "openai_shadow" || requested === "openai_canary",
     fallbackToCloudflare: true,
     companyId,
     reason: requested,
+    role,
+    designatedBrain: "openai",
+    userVisibleBrain: useOpenAi ? "openai" : "cloudflare",
   };
 }
 
-function deny(companyId: string | null, reason: string): BrainDecision {
+function deny(companyId: string | null, reason: string, role: BrainChannelRole): BrainDecision {
   return {
     mode: "cloudflare",
     enabled: false,
@@ -120,5 +177,8 @@ function deny(companyId: string | null, reason: string): BrainDecision {
     fallbackToCloudflare: true,
     companyId,
     reason,
+    role,
+    designatedBrain: "cloudflare",
+    userVisibleBrain: "cloudflare",
   };
 }

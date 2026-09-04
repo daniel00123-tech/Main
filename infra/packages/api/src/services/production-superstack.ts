@@ -72,20 +72,33 @@ export function assertProductionSuperstackCapabilities(): {
   if (brain.useOpenAi) {
     throw new Error("openai brain must not activate for non-EL tenants by default");
   }
+  const shadowEnv = {
+    OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
+    OPENAI_BRAIN_ENABLED: "true",
+    OPENAI_BRAIN_MODE: "openai_shadow",
+    OPENAI_BRAIN_COMPANY_IDS: "co_el",
+  };
   const shadow = resolveBrainPolicy({
-    env: {
-      OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
-      OPENAI_BRAIN_ENABLED: "true",
-      OPENAI_BRAIN_MODE: "openai_shadow",
-      OPENAI_BRAIN_COMPANY_IDS: "co_el",
-    },
+    env: shadowEnv,
     companyId: "co_el",
   });
   if (shadow.useOpenAi) {
-    throw new Error("openai_shadow must keep Cloudflare as the user-visible brain");
+    throw new Error("unscoped openai_shadow must keep Cloudflare as the user-visible brain");
   }
   if (!shadow.shadow) {
     throw new Error("openai_shadow must evaluate OpenAI in parallel");
+  }
+  const pa = resolveBrainPolicy({ env: shadowEnv, companyId: "co_el", channel: "portal_chat" });
+  if (!pa.useOpenAi || pa.userVisibleBrain !== "openai" || pa.role !== "pa") {
+    throw new Error("EL Portal Chat PA must use OpenAI as the user-visible brain");
+  }
+  const request = resolveBrainPolicy({ env: shadowEnv, companyId: "co_el", channel: "whatsapp" });
+  if (!request.useOpenAi || request.userVisibleBrain !== "openai" || request.role !== "request") {
+    throw new Error("EL WhatsApp requests must use OpenAI as the user-visible brain");
+  }
+  const chatbot = resolveBrainPolicy({ env: shadowEnv, companyId: "co_el", channel: "chatgpt" });
+  if (chatbot.useOpenAi || chatbot.reason !== "chatgpt_stays_direct_tools") {
+    throw new Error("ChatGPT must stay on direct INFRA tools, not the hosted OpenAI brain");
   }
   const officeTools = buildAllowedToolCatalogue({
     role: "office_staff",

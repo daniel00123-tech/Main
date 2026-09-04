@@ -48,10 +48,13 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # WHATSAPP_REGISTRATION_PIN (optional 6-digit Cloud API two-step PIN — wrangler secret put)
 # META_APP_SECRET (X-Hub-Signature-256 — wrangler secret put)
 # OPENAI_API_KEY (optional Whisper + OpenAI reasoning brain — wrangler secret put, never commit)
-# EL-only shadow: Cloudflare still serves users. Do not set openai_primary here.
+# Global mode stays openai_shadow for unscoped/automation traffic.
+# EL Portal Chat (PA) and WhatsApp (requests) still use OpenAI as the user-visible brain.
+# ChatGPT / MCP stay direct tools. Do not set openai_primary here.
 OPENAI_BRAIN_ENABLED = "true"
 OPENAI_BRAIN_MODE = "openai_shadow"
 OPENAI_BRAIN_COMPANY_IDS = "co_el"
+OPENAI_BRAIN_PA_REQUEST_PRIMARY = "true"
 # Optional per-company override. Unlisted companies stay Cloudflare.
 # OPENAI_BRAIN_COMPANY_MODES = "co_el=openai_shadow"
 OPENAI_BRAIN_CANARY_PERCENT = "10"

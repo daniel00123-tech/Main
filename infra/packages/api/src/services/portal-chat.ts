@@ -335,7 +335,7 @@ export async function sendPortalChatMessage(
     text,
     state,
     runtime,
-    channel: "portal",
+    channel: "portal_chat",
     completer: input.completer,
     waitUntil: input.waitUntil,
   });

@@ -47,13 +47,28 @@ async function verifyCmdAcceptanceToken(c: {
 
 function flagState(env: Env) {
   const el = resolveBrainPolicy({ env, companyId: "co_el" });
+  const elPa = resolveBrainPolicy({ env, companyId: "co_el", channel: "portal_chat" });
+  const elRequest = resolveBrainPolicy({ env, companyId: "co_el", channel: "whatsapp" });
+  const elChatbot = resolveBrainPolicy({ env, companyId: "co_el", channel: "chatgpt" });
   const caddington = resolveBrainPolicy({ env, companyId: "co_caddington" });
   const ht = resolveBrainPolicy({ env, companyId: "co_ht" });
+  const publicDecision = (row: ReturnType<typeof resolveBrainPolicy>) => ({
+    mode: row.mode,
+    shadow: row.shadow,
+    useOpenAi: row.useOpenAi,
+    reason: row.reason,
+    role: row.role,
+    designatedBrain: row.designatedBrain,
+    userVisibleBrain: row.userVisibleBrain,
+  });
   return {
     keyConfigured: inspectOpenAiKey(env).configured,
-    el: { mode: el.mode, shadow: el.shadow, useOpenAi: el.useOpenAi, reason: el.reason },
-    caddington: { mode: caddington.mode, shadow: caddington.shadow, useOpenAi: caddington.useOpenAi, reason: caddington.reason },
-    ht: { mode: ht.mode, shadow: ht.shadow, useOpenAi: ht.useOpenAi, reason: ht.reason },
+    el: publicDecision(el),
+    elPa: publicDecision(elPa),
+    elRequest: publicDecision(elRequest),
+    elChatbot: publicDecision(elChatbot),
+    caddington: publicDecision(caddington),
+    ht: publicDecision(ht),
   };
 }
 
