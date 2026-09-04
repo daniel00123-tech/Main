@@ -60,6 +60,10 @@ vi.mock("./knowledge-ingestion-events", () => ({
 
 vi.mock("./knowledge-intake", () => ({
   storeOriginalInKnowledgeIntake: hoisted.store,
+  discoverKnowledgeIntakeTarget: vi.fn(async () => ({
+    status: "unconfigured",
+    last_error: "LANDING_ZONE_GRAPH_UNAVAILABLE",
+  })),
   isKnowledgeIntakePath: (path?: string | null) => /INFRA Knowledge Intake/i.test(path ?? ""),
 }));
 

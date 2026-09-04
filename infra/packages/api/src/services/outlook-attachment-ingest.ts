@@ -12,7 +12,7 @@ import type { Env } from "../env";
 import { listMcpEnvironments } from "./control-plane";
 import { nowIso } from "../db/mappers";
 import { recordKnowledgeIngestionEvent } from "./knowledge-ingestion-events";
-import { storeOriginalInKnowledgeIntake } from "./knowledge-intake";
+import { discoverKnowledgeIntakeTarget, storeOriginalInKnowledgeIntake } from "./knowledge-intake";
 import { runProductionKnowledgeSearch } from "./microsoft-acceptance-knowledge-search";
 import {
   discoverCompanyUserMailboxes,
@@ -930,6 +930,7 @@ export async function ingestApprovedOutlookAttachments(
   registry: MailboxRegistryRow[];
 }> {
   const actor = input.actor ?? "system:outlook-attachment-ingest";
+  await discoverKnowledgeIntakeTarget(env, { companyId: input.companyId, actor }).catch(() => undefined);
   await seedPolicyMailboxes(env.DB, input.companyId);
   const discoveredUsers = await discoverCompanyUserMailboxes(env, input.companyId);
   const approved = await listApprovedAttachmentMailboxes(env.DB, input.companyId);
