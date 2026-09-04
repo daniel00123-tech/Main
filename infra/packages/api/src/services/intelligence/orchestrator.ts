@@ -1176,6 +1176,8 @@ function shouldStopAfterRead(scoped: ScopeDecision, result: IntelligenceToolResu
 export function isCompoundBusinessAsk(text: string): boolean {
   // Sales-then-email is a deterministic two-system read, not a two-period Xero compare.
   if (wantsSalesThenFinanceEmail(text)) return false;
+  // Historical analytical windows are one warehouse read, not two live Xero calls.
+  if (classifyQueryFreshness(text) === "HISTORICAL_ANALYTICAL") return false;
   const compare = /\b(compare|versus|vs\.?|better than|month[- ]over[- ]month)\b/i.test(text);
   const twoPeriods =
     /\b(this month|current month|mtd).{0,48}(last month|previous month)\b/i.test(text) ||

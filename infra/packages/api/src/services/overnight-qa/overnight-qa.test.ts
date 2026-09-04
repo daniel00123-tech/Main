@@ -77,8 +77,11 @@ describe("warehouse vs live routing concepts", () => {
   it("does not treat a single last-month question as a two-period compound ask", () => {
     expect(isCompoundBusinessAsk("What did last month's invoiced sales come to?")).toBe(false);
     expect(isCompoundBusinessAsk("What were sales in March?")).toBe(false);
-    expect(isCompoundBusinessAsk("compare Xero sales this month versus last month")).toBe(true);
-    expect(isCompoundBusinessAsk("sales this month and were they better than last month")).toBe(true);
+    expect(isCompoundBusinessAsk("compare Xero sales this month versus last month")).toBe(false);
+    expect(isCompoundBusinessAsk("sales this month and were they better than last month")).toBe(false);
+    expect(isCompoundBusinessAsk("Give me a month-over-month sales comparison for the last few completed months.")).toBe(
+      false,
+    );
   });
 
   it("allows warehouse tools on the shared WhatsApp/Portal gateway allow-list", () => {
