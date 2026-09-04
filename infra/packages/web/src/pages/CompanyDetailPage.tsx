@@ -254,7 +254,7 @@ export default function CompanyDetailPage() {
         meta={<StatusBadge status={company.status} />}
         actions={
           <>
-            <Link to={`/portal/${company.slug}/dashboard`} className="button button-primary">
+            <Link to={`/portal/${company.slug}/chat`} className="button button-primary">
               Open company portal
             </Link>
             <ActionMenu
