@@ -32,6 +32,9 @@ export type EvidenceSufficiency = "ENOUGH_TO_ANSWER" | "NEEDS_MORE_INFORMATION";
 
 export type EngineeringFailureCategory =
   | "WRONG_TOOL"
+  | "EXPECTED_TOOL_MISSING"
+  | "DUPLICATE_TOOL"
+  | "FIRST_ANSWER_INCOMPLETE"
   | "TOOL_FAILED"
   | "UPSTREAM_TIMEOUT"
   | "NO_FINAL_RESPONSE"
@@ -264,11 +267,19 @@ export type IntelligenceToolParam = {
   required?: boolean;
 };
 
+export type IntelligenceToolFamily = "outlook" | "xero" | "knowledge" | "catalogue" | "web" | "system" | "none";
+
 export type IntelligenceToolSpec = {
   name: string;
   description: string;
   whenToUse: string;
   whenNotToUse: string;
+  /** True when the tool reads live/private company systems rather than prior chat evidence. */
+  live: boolean;
+  /** Stable intent class for first-tool selection (not customer-specific phrases). */
+  intentClass: string;
+  /** Generic examples of the intent class. */
+  intentExamples: string;
   parameters: Record<string, IntelligenceToolParam>;
   outputShape: string;
   permission: string;

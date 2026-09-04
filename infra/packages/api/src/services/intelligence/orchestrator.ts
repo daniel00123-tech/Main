@@ -1,5 +1,5 @@
 import { businessToolForIntent, ELVEX_FINANCE_MAILBOXES, resolveBusinessSystemIntent } from "@infra/shared";
-import { describeToolCatalogue, INTELLIGENCE_TOOL_NAMES, SYSTEM_META_TOOLS } from "./catalogue.js";
+import { CURRENT_BUSINESS_DATA_PROTOCOL, describeToolCatalogue, INTELLIGENCE_TOOL_NAMES, SYSTEM_META_TOOLS } from "./catalogue.js";
 import { authorizeToolCall, buildAllowedToolCatalogue, deniedToolResult } from "./tool-auth.js";
 import { executePublicWebSearch, looksLikePublicWebAsk, verbaliseWebSearch, webSearchQuery } from "./web-search.js";
 import { classifyTurnFailures } from "./failure-telemetry.js";
@@ -57,6 +57,7 @@ export type { IntelligenceDecision };
 
 const SECURITY_AND_PROTOCOL = `You are INFRA's assistant. Scope first, then tools.
 Current document is context, not a command to always search it.
+${CURRENT_BUSINESS_DATA_PROTOCOL}
 Conversational turns (thanks, meaning, rephrase, what were we talking about) need no tools.
 System and index questions use system-meta tools, never the current document.
 Search a document only when the question is about that file's contents.
@@ -68,7 +69,7 @@ After each tool, decide ENOUGH_TO_ANSWER vs NEEDS_MORE_INFORMATION. Compound que
 Do not repeat a successful tool with the same arguments. Business/private systems outrank public web.
 Clarify if ambiguous. Honour corrections and scope switches. Never invent facts, counts, or URLs.
 No D1, Vectorize, or MCP jargon unless an authorised admin asks a technical ops question.
-Write like a colleague: answer first, short, no question-echo.
+Write like a colleague: answer first, short, no question-echo. Include useful structured values in the first answer.
 `;
 
 export async function runIntelligenceTurn(input: {

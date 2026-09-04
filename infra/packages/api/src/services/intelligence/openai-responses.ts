@@ -6,7 +6,7 @@ import type { IntelligenceEnv, IntelligenceModelUsage } from "./types.js";
 
 export const OPENAI_RESPONSES_TIMEOUT_MS = 14_000;
 export const OPENAI_RESPONSES_RETRY_TIMEOUT_MS = 8_000;
-const MAX_INSTRUCTION_CHARS = 8_000;
+const MAX_INSTRUCTION_CHARS = 16_000;
 const MAX_INPUT_CHARS = 10_000;
 
 export type OpenAiResponsesResult = {
@@ -62,6 +62,7 @@ export async function runOpenAiResponses(
     mode?: "decide" | "repair" | "synthesise";
     correlationId?: string;
     userText?: string;
+    toolChoice?: "auto" | "required" | "none";
   },
 ): Promise<OpenAiResponsesResult> {
   const started = Date.now();
@@ -83,6 +84,7 @@ export async function runOpenAiResponses(
     store: false,
     max_output_tokens: input.mode === "synthesise" ? 700 : 640,
     ...(tools ? { tools } : {}),
+    ...(tools && input.toolChoice && input.toolChoice !== "auto" ? { tool_choice: input.toolChoice } : {}),
     metadata: input.correlationId ? { infra_correlation_id: input.correlationId } : undefined,
   };
 

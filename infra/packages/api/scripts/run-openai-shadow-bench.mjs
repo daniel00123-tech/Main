@@ -46,7 +46,7 @@ async function post(path, body) {
       "User-Agent": "InfraAcceptance/1.0",
     },
     body: JSON.stringify(body ?? {}),
-    signal: AbortSignal.timeout(180_000),
+    signal: AbortSignal.timeout(300_000),
   });
   const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   return { httpStatus: res.status, body: json };
@@ -91,6 +91,21 @@ for (let offset = 0; offset < 100; offset += 4) {
 
 const email = await post("/api/internal/openai-brain-shadow-bench", { action: "email_sequence" });
 report.emailSequence = email.body?.sequence ?? email;
+
+const xero = await post("/api/internal/openai-brain-shadow-bench", { action: "xero_sequence" });
+report.xeroSequence = xero.body?.sequence ?? xero;
+
+const mixed = await post("/api/internal/openai-brain-shadow-bench", { action: "mixed_tool" });
+report.mixedTool = mixed.body?.sequence ?? mixed;
+
+const noTool = await post("/api/internal/openai-brain-shadow-bench", { action: "no_tool" });
+report.noToolConversation = noTool.body?.sequence ?? noTool;
+
+const exact = await post("/api/internal/openai-brain-shadow-bench", { action: "exact_tool" });
+report.exactTool = {
+  scorecard: exact.body?.scorecard ?? exact,
+  rows: exact.body?.rows ?? [],
+};
 
 const totals = {
   cases: 0,

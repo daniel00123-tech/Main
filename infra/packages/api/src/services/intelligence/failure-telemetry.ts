@@ -1,3 +1,6 @@
+import { toolFamilyOf } from "./catalogue.js";
+import { classifyEvidenceNeed } from "./evidence.js";
+import { classifyScope } from "./scope.js";
 import { looksPermissionDenied } from "./verbalise-business.js";
 import type {
   EngineeringFailureCategory,
@@ -45,6 +48,36 @@ export function classifyTurnFailures(input: {
   if (flags.has("wrong_tool")) {
     events.push(event(base, "WRONG_TOOL", { flag: "wrong_tool" }));
   }
+  const evidenceNeed = classifyEvidenceNeed(input.question, {
+    recentEvidence: result.recentEvidence ?? null,
+    lastAnswerText: result.text,
+    lastAnswerTopic: result.lastAnswerTopic ?? null,
+    currentBusinessSystem: null,
+  });
+  const scoped = classifyScope(input.question, {
+    currentDocument: result.currentDocument,
+    currentScope: result.scope ?? null,
+    lastAnswerTopic: result.lastAnswerTopic ?? null,
+    lastUserIntent: result.lastUserIntent ?? null,
+    userCorrection: false,
+    recentDocuments: [],
+    currentBusinessSystem: null,
+    lastSuccessfulTool: lastTool,
+  });
+  if (
+    evidenceNeed === "NEEDS_FRESH_DATA" &&
+    result.toolCalls.length === 0 &&
+    (scoped.scope === "BUSINESS_SYSTEM" || scoped.scope === "COMPANY_KNOWLEDGE" || scoped.scope === "SYSTEM_META")
+  ) {
+    events.push(event(base, "EXPECTED_TOOL_MISSING", { scope: scoped.scope, evidenceNeed }));
+  }
+  if (
+    result.toolCalls.some((call) => call.ok) &&
+    (/more detail|what exactly would you like|can you give me a little more detail/i.test(result.text) ||
+      (result.text.trim().split(/\s+/).length < 8 && /sales_total|messages|invoices|documents/.test(JSON.stringify(result.toolCalls))))
+  ) {
+    events.push(event(base, "FIRST_ANSWER_INCOMPLETE", { textLength: result.text.length }));
+  }
   if (flags.has("user_correction")) {
     events.push(event(base, "USER_CORRECTION_AFTER_BAD_ROUTE", { flag: "user_correction" }));
   }
@@ -85,6 +118,7 @@ export function classifyTurnFailures(input: {
   }
   for (const [key, count] of hashes) {
     if (count > 1) {
+      events.push(event(base, "DUPLICATE_TOOL", { key, count }));
       events.push(event(base, "DUPLICATE_TOOL_CALL", { key, count }));
     }
   }
@@ -103,6 +137,15 @@ export function classifyTurnFailures(input: {
 
   if ((result.qualityFlags ?? []).includes("unsupported_answer") && successful.length > 0) {
     events.push(event(base, "EVIDENCE_DROPPED", { flags: [...flags] }));
+  }
+
+  const shadowTools = result.shadowEval?.toolProposal ?? [];
+  const liveFamilies = new Set(successful.map((call) => toolFamilyOf(call.name)).filter((family) => family !== "none"));
+  const shadowFamilies = new Set(shadowTools.map((name) => toolFamilyOf(name)).filter((family) => family !== "none"));
+  if (liveFamilies.size > 0 && shadowFamilies.size === 0 && evidenceNeed === "NEEDS_FRESH_DATA") {
+    events.push(event(base, "EXPECTED_TOOL_MISSING", { source: "openai_shadow", liveTools: successful.map((call) => call.name) }));
+  } else if (liveFamilies.size > 0 && shadowFamilies.size > 0 && [...liveFamilies].some((family) => !shadowFamilies.has(family))) {
+    events.push(event(base, "WRONG_TOOL", { source: "openai_shadow", live: [...liveFamilies], shadow: [...shadowFamilies] }));
   }
 
   return events;

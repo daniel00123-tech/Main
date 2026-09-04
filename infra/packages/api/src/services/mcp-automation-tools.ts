@@ -121,7 +121,11 @@ export const AUTOMATION_CONTROL_TOOL_SCHEMAS: Record<
         name: { type: "string", description: "Suggested automation name." },
         templateKey: {
           type: "string",
-          enum: ["xero_month_to_date_sales_email", "document_activity_daily_email"],
+          enum: [
+            "xero_month_to_date_sales_email",
+            "document_activity_daily_email",
+            "knowledge_ingestion_daily_email",
+          ],
           description: "Approved template shortcut when steps are omitted.",
         },
         frequency: {

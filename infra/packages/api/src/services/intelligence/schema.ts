@@ -1,4 +1,4 @@
-import { toolsForModel } from "./catalogue.js";
+import { formatToolForModel, toolsForModel } from "./catalogue.js";
 
 export const INTELLIGENCE_DECISION_SCHEMA = {
   type: "object",
@@ -28,7 +28,7 @@ export type CloudflareToolDef = {
 export function cloudflareToolDefs(permitted?: Iterable<string> | null): CloudflareToolDef[] {
   return toolsForModel(permitted).map((tool) => ({
     name: tool.name,
-    description: `${tool.description} When to use: ${tool.whenToUse} When not: ${tool.whenNotToUse}`,
+    description: formatToolForModel(tool),
     parameters: {
       type: "object",
       properties: Object.fromEntries(

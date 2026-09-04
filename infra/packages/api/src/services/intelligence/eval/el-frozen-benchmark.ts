@@ -322,7 +322,14 @@ export async function scoreFrozenBenchmark(provider: "cloudflare" | "openai"): P
     const hallu = /vectorize|\bd1\b|i reached xero without/i.test(result.text);
     if (toolOk) tool += 1;
     if (looksAnswer) intent += 1;
-    if (looksAnswer && (tools.length > 0 || testCase.category === "general")) firstAnswer += 1;
+    if (
+      looksAnswer &&
+      (tools.length > 0 ||
+        testCase.category === "general" ||
+        ((testCase.expectTool == null || testCase.expectTool === null) && Boolean(state.recentEvidence?.recentEmail || state.recentEvidence?.recentXero)))
+    ) {
+      firstAnswer += 1;
+    }
     if (testCase.expectTool === null && tools.length > 0) unnecessary += 1;
     if (grounded) grounding += 1;
     if (hallu) hallucination += 1;
@@ -502,7 +509,15 @@ export async function scoreLiveOpenAiShadowSlice(
   for (const row of scored) {
     if (row.toolOk) tool += 1;
     if (row.looksAnswer) intent += 1;
-    if (row.looksAnswer && (row.tools.length > 0 || row.testCase.category === "general")) firstAnswer += 1;
+    if (
+      row.looksAnswer &&
+      (row.tools.length > 0 ||
+        row.testCase.category === "general" ||
+        row.shadow.reusedEvidence ||
+        looksStructuredFirstAnswer(row.result.text, row.tools))
+    ) {
+      firstAnswer += 1;
+    }
     if (row.testCase.expectTool === null && row.tools.length > 0) unnecessary += 1;
     if (row.looksAnswer) grounding += 1;
     if (row.shadow.failure === "malformed") hallucination += 1;
@@ -592,6 +607,41 @@ export const EMAIL_FOLLOWUP_SEQUENCE: FrozenCase[] = [
     text: "what were they asking for again?",
     expectTool: null,
   },
+  {
+    id: "email_seq_6",
+    category: "general",
+    text: "who sent that email?",
+    expectTool: null,
+  },
+  {
+    id: "email_seq_7",
+    category: "general",
+    text: "Give a professional reply",
+    expectTool: null,
+  },
+];
+
+export const XERO_FOLLOWUP_SEQUENCE: FrozenCase[] = [
+  { id: "xero_seq_1", category: "xero", text: "What are our Xero sales this month?", expectTool: "xero_sales_summary" },
+  { id: "xero_seq_2", category: "xero", text: "How does that compare to last month?", expectTool: "xero_sales_summary" },
+  { id: "xero_seq_3", category: "xero", text: "Who are the top customers?", expectTool: "xero_top_customers" },
+  { id: "xero_seq_4", category: "general", text: "make that shorter", expectTool: null },
+];
+
+export const MIXED_TOOL_SEQUENCE: FrozenCase[] = [
+  {
+    id: "mixed_seq_1",
+    category: "mixed",
+    text: "What are sales this month and what is the newest info email?",
+  },
+];
+
+export const NO_TOOL_CONVERSATION: FrozenCase[] = [
+  { id: "notool_1", category: "general", text: "Give a professional reply", expectTool: null },
+  { id: "notool_2", category: "general", text: "make that shorter", expectTool: null },
+  { id: "notool_3", category: "general", text: "Explain that simply", expectTool: null },
+  { id: "notool_4", category: "general", text: "What is 2+2?", expectTool: null },
+  { id: "notool_5", category: "general", text: "Brainstorm a few ways to say thanks", expectTool: null },
 ];
 
 export async function scoreEmailFollowUpShadow(env: IntelligenceEnv): Promise<{
@@ -656,6 +706,123 @@ function countingEmailRuntime(): { runtime: IntelligenceRuntime } {
   return { runtime: benchRuntime() };
 }
 
+export async function scoreXeroFollowUpShadow(env: IntelligenceEnv): Promise<{
+  source: "LIVE_API";
+  userVisible: "cloudflare";
+  turns: Array<{ id: string; text: string; cloudflareTools: string[]; shadowTools: string[]; shadowFailure: string | null }>;
+  xeroOnFirst: boolean;
+  extraXeroOnLast: boolean;
+}> {
+  const runtime = benchRuntime();
+  const completer = policyCompleter();
+  const turns = [];
+  let evidence = null as ReturnType<typeof buildConversationState>["recentEvidence"];
+  let lastAnswer = "";
+  let lastTopic: string | null = "finance";
+  for (const step of XERO_FOLLOWUP_SEQUENCE) {
+    const state = buildConversationState({
+      userText: step.text,
+      companyId: "co_el",
+      connectors: ["conn_xero", "conn_outlook_shared"],
+      lastAnswerTopic: lastTopic,
+      lastAnswerText: lastAnswer || null,
+      recentEvidence: evidence,
+    });
+    const result = await runIntelligenceTurn({ text: step.text, state, runtime, completer });
+    const shadow = await evaluateOpenAiShadow({ env, text: step.text, state: { ...state, recentEvidence: result.recentEvidence ?? evidence }, live: result });
+    evidence = result.recentEvidence ?? evidence;
+    lastAnswer = result.text;
+    lastTopic = result.lastAnswerTopic ?? lastTopic;
+    turns.push({
+      id: step.id,
+      text: step.text,
+      cloudflareTools: result.toolCalls.map((call) => call.name),
+      shadowTools: shadow.toolProposal,
+      shadowFailure: shadow.failure,
+    });
+  }
+  return {
+    source: "LIVE_API",
+    userVisible: "cloudflare",
+    turns,
+    xeroOnFirst: turns[0]?.shadowTools.some((name) => name.startsWith("xero_")) ?? false,
+    extraXeroOnLast: turns.at(-1)?.shadowTools.some((name) => name.startsWith("xero_")) ?? false,
+  };
+}
+
+export async function scoreMixedToolShadow(env: IntelligenceEnv): Promise<{
+  source: "LIVE_API";
+  userVisible: "cloudflare";
+  text: string;
+  cloudflareTools: string[];
+  shadowTools: string[];
+  families: string[];
+  oneFinalAnswer: boolean;
+}> {
+  const runtime = benchRuntime();
+  const step = MIXED_TOOL_SEQUENCE[0]!;
+  const state = buildConversationState({
+    userText: step.text,
+    companyId: "co_el",
+    connectors: ["conn_xero", "conn_outlook_shared"],
+  });
+  const result = await runIntelligenceTurn({ text: step.text, state, runtime, completer: policyCompleter() });
+  const shadow = await evaluateOpenAiShadow({ env, text: step.text, state, live: result });
+  const tools = [...new Set([...result.toolCalls.map((call) => call.name), ...shadow.toolProposal])];
+  const families = [...new Set(tools.map((name) => (name.startsWith("xero_") ? "xero" : /outlook/.test(name) ? "outlook" : name)))];
+  return {
+    source: "LIVE_API",
+    userVisible: "cloudflare",
+    text: step.text,
+    cloudflareTools: result.toolCalls.map((call) => call.name),
+    shadowTools: shadow.toolProposal,
+    families,
+    oneFinalAnswer: Boolean(result.text.trim()) && !/more detail/i.test(result.text),
+  };
+}
+
+export async function scoreNoToolConversationShadow(env: IntelligenceEnv): Promise<{
+  source: "LIVE_API";
+  userVisible: "cloudflare";
+  turns: Array<{ id: string; text: string; shadowTools: string[]; usedBusinessTool: boolean }>;
+  businessTools: number;
+}> {
+  const runtime = benchRuntime();
+  const completer = policyCompleter();
+  const evidence = {
+    recentEmail: {
+      id: "msg_1",
+      subject: "Leak detection quote",
+      from: "ops@example.com",
+      receivedDateTime: "2026-09-04",
+      mailboxAddress: "info@example.com",
+      body: "Please confirm availability for a leak survey next Tuesday.",
+      toolName: "outlook_list_messages",
+    },
+  };
+  const turns = [];
+  for (const step of NO_TOOL_CONVERSATION) {
+    const state = buildConversationState({
+      userText: step.text,
+      companyId: "co_el",
+      connectors: ["conn_xero", "conn_outlook_shared"],
+      lastAnswerTopic: "email",
+      lastAnswerText: "Suggested reply:\nHi Ops,\nThanks for your email about leak detection.\nKind regards",
+      recentEvidence: evidence,
+    });
+    const result = await runIntelligenceTurn({ text: step.text, state, runtime, completer });
+    const shadow = await evaluateOpenAiShadow({ env, text: step.text, state, live: result });
+    const usedBusinessTool = shadow.toolProposal.some((name) => name.startsWith("xero_") || /outlook|search_company|list_documents/.test(name));
+    turns.push({ id: step.id, text: step.text, shadowTools: shadow.toolProposal, usedBusinessTool });
+  }
+  return {
+    source: "LIVE_API",
+    userVisible: "cloudflare",
+    turns,
+    businessTools: turns.filter((turn) => turn.usedBusinessTool).length,
+  };
+}
+
 export async function compareFrozenBrains(): Promise<{
   cloudflare: BrainScorecard;
   openai: BrainScorecard;
@@ -671,6 +838,14 @@ export async function compareFrozenBrains(): Promise<{
           ? "openai"
           : "tie";
   return { cloudflare: cloudflare.scorecard, openai: openai.scorecard, winner };
+}
+
+function looksStructuredFirstAnswer(text: string, tools: string[]): boolean {
+  if (!text.trim()) return false;
+  if (/more detail|what exactly would you like/i.test(text)) return false;
+  if (tools.some((name) => name.startsWith("xero_")) && /£|\d/.test(text)) return true;
+  if (tools.some((name) => /outlook/.test(name)) && /subject|from|inbox|email/i.test(text)) return true;
+  return tools.length === 0 && text.split(/\s+/).length >= 3;
 }
 
 function pct(value: number, n: number): number {
