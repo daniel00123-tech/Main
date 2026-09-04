@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { classifyElTraffic, shouldChargeElCustomerRequest } from "../el-customer-billing";
 import { classifyQueryFreshness, expectedAccountingSource } from "../warehouse/freshness";
-import { detectRequestedCapabilities } from "../intelligence/company-tool-registry";
+import { detectRequestedCapabilities, rewriteHistoricalAccountingTool } from "../intelligence/company-tool-registry";
+import { classifyScope } from "../intelligence/scope";
+import { buildConversationState } from "../intelligence/state";
 import { BUSINESS_GATEWAY_TOOL_SET, isAllowedBusinessGatewayTool } from "../intelligence/business-gateway-tools";
 import { isCompoundBusinessAsk } from "../intelligence/orchestrator";
 import { WAREHOUSE_TOOL_NAMES } from "../warehouse/standard";
@@ -60,6 +62,15 @@ describe("warehouse vs live routing concepts", () => {
     expect(expectedAccountingSource("What are sales right now?", NOW)).toBe("xero_live");
     expect(detectRequestedCapabilities("What were sales in March?")).toContain("ACCOUNTING_WAREHOUSE");
     expect(detectRequestedCapabilities("What are sales right now?")).not.toContain("ACCOUNTING_WAREHOUSE");
+    expect(rewriteHistoricalAccountingTool("xero_sales_summary", {}, "What were sales in March?", NOW).name).toBe(
+      "warehouse_sales_analysis",
+    );
+    expect(classifyScope("What were sales in March?", buildConversationState({ userText: "What were sales in March?" })).tool).toBe(
+      "warehouse_sales_analysis",
+    );
+    expect(classifyScope("What are sales right now?", buildConversationState({ userText: "What are sales right now?" })).tool).toBe(
+      "xero_sales_summary",
+    );
   });
 
   it("does not treat a single last-month question as a two-period compound ask", () => {

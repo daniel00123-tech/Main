@@ -235,7 +235,7 @@ const SEEDS: Seed[] = [
   {
     text: "What about last month?",
     scope: "BUSINESS_SYSTEM",
-    tool: "xero_sales_summary",
+    tool: "warehouse_sales_analysis",
     lastTopic: "finance",
     currentScope: "BUSINESS_SYSTEM",
     currentBusinessSystem: "xero",

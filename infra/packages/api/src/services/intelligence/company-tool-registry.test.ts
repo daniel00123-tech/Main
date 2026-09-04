@@ -4,6 +4,7 @@ import {
   capabilityForPlatformTool,
   detectRequestedCapabilities,
   rewriteExactAccountingTool,
+  rewriteHistoricalAccountingTool,
   normaliseVendorToolName,
   secondRbacAllows,
   standardToolContracts,
@@ -109,6 +110,35 @@ describe("company tool registry", () => {
       name: "xero_get_invoice",
       arguments: { query: "INV-02268", invoiceNumber: "INV-02268" },
     });
+    const now = new Date("2026-09-04T12:00:00.000Z");
+    expect(rewriteHistoricalAccountingTool("xero_sales_summary", {}, "What were sales in March?", now).name).toBe(
+      "warehouse_sales_analysis",
+    );
+    expect(rewriteHistoricalAccountingTool("xero_sales_summary", {}, "What are sales right now?", now).name).toBe(
+      "xero_sales_summary",
+    );
+    expect(rewriteHistoricalAccountingTool("xero_get_invoice", { invoiceNumber: "INV-02268" }, "Has INV-02268 been paid?", now).name).toBe(
+      "xero_get_invoice",
+    );
+    expect(
+      rewriteHistoricalAccountingTool("xero_search_invoices", {}, "How many invoices did we raise in April?", now).name,
+    ).toBe("warehouse_invoice_analysis");
+    expect(
+      rewriteHistoricalAccountingTool(
+        "xero_list_overdue_invoices",
+        {},
+        "How has overdue debt moved over the last few months?",
+        now,
+      ).name,
+    ).toBe("warehouse_receivables_analysis");
+    expect(
+      rewriteHistoricalAccountingTool(
+        "xero_top_customers",
+        {},
+        "Who were the highest-value customers over this historical period?",
+        now,
+      ).name,
+    ).toBe("warehouse_customer_analysis");
   });
 
   it("does not register future CRM capabilities until a connector exists", () => {
