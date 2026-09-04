@@ -1,6 +1,6 @@
 /** Written by scripts/write-production-lineage.mjs immediately before production deploy. */
 export const GENERATED_PRODUCTION_LINEAGE = {
-  gitSha: "9384dee7b19eb089557fbf932317c0f2c31f817c",
+  gitSha: "f6a3005ef64055c941bbd3f533d98730e6f17a72",
   branch: "cursor/el-whatsapp-qa-50-b8da",
-  generatedAt: "2026-09-04T15:09:37.206Z",
+  generatedAt: "2026-09-04T15:12:17.586Z",
 } as const;
