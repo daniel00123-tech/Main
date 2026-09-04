@@ -13,6 +13,7 @@ import {
   answerFromExistingEvidence,
   classifyEvidenceNeed,
   extractEvidenceFromTools,
+  isFreshBusinessSystemAsk,
   mergeEvidence,
   recordSuccessfulCall,
   sanitiseEvidenceForModel,
@@ -1253,9 +1254,16 @@ async function runDeterministicRead(
     name: toolName,
     arguments: prepareToolArguments(toolName, {}, text, state, scoped.scope),
   };
-  if (shouldReuseSuccessfulTool(planned, state.recentEvidence)) {
+  if (shouldReuseSuccessfulTool(planned, state.recentEvidence) && !isFreshBusinessSystemAsk(text)) {
     const reused = answerFromExistingEvidence(text, state);
-    return { text: reused || (state.lastAnswerText ?? ""), toolCalls: [], ok: true };
+    if (reused) return { text: reused, toolCalls: [], ok: true };
+    if (state.recentEvidence?.recentXero?.summary && /^xero_/.test(toolName)) {
+      return { text: `Xero: ${state.recentEvidence.recentXero.summary}`, toolCalls: [], ok: true };
+    }
+    if (state.recentEvidence?.recentEmail && /outlook/i.test(toolName)) {
+      const email = state.recentEvidence.recentEmail;
+      return { text: `The newest email is “${email.subject}” from ${email.from}.`, toolCalls: [], ok: true };
+    }
   }
   const result = await runtime.executeTool(planned);
   const toolCalls = [result];
