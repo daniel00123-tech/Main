@@ -63,6 +63,7 @@ function memoryEnv(companyId = "co_el") {
           last_checkpoint: null,
           last_successful_sync: null,
           last_attachment_scan_at: null,
+          last_messages_scanned: null,
           last_error: null,
           metadata_json: binds[10],
         });

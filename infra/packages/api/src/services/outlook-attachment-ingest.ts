@@ -44,6 +44,28 @@ import { formatMailboxScanCount, mailboxScanHealth, type MailboxScanHealth } fro
 const MAX_MESSAGES_PER_MAILBOX = 200;
 const MAX_RETRIES = 4;
 const TRANSIENT_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+export const MAILBOX_INGEST_MAX_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+export const MAILBOX_INGEST_CHECKPOINT_OVERLAP_MS = 2 * 60 * 1000;
+
+export function resolveMailboxIngestWindow(input: {
+  now: Date;
+  lastCheckpoint?: string | null;
+  maxLookbackMs?: number;
+}): { windowFrom: Date; windowTo: Date; usedCheckpoint: boolean } {
+  const windowTo = input.now;
+  const maxLookback = input.maxLookbackMs ?? MAILBOX_INGEST_MAX_LOOKBACK_MS;
+  const floor = new Date(windowTo.getTime() - maxLookback);
+  const checkpointMs = input.lastCheckpoint ? Date.parse(input.lastCheckpoint) : Number.NaN;
+  if (Number.isFinite(checkpointMs)) {
+    const overlapped = new Date(checkpointMs - MAILBOX_INGEST_CHECKPOINT_OVERLAP_MS);
+    return {
+      windowFrom: overlapped.getTime() > floor.getTime() ? overlapped : floor,
+      windowTo,
+      usedCheckpoint: true,
+    };
+  }
+  return { windowFrom: floor, windowTo, usedCheckpoint: false };
+}
 
 export type AttachmentIngestCounts = {
   mailboxesEligible: number;
@@ -157,15 +179,27 @@ async function findIndexedByHash(
   db: D1Database,
   companyId: string,
   contentHash: string,
-): Promise<{ id: string; chunk_count: number | null } | null> {
+): Promise<{
+  id: string;
+  chunk_count: number | null;
+  stored_item_id: string | null;
+  stored_url: string | null;
+  stored_at: string | null;
+} | null> {
   return db
     .prepare(
-      `SELECT id, chunk_count FROM knowledge_ingestion_events
+      `SELECT id, chunk_count, stored_item_id, stored_url, stored_at FROM knowledge_ingestion_events
        WHERE company_id = ? AND content_hash = ? AND event_type IN ('indexed', 'reindexed')
        ORDER BY created_at DESC LIMIT 1`,
     )
     .bind(companyId, contentHash)
-    .first<{ id: string; chunk_count: number | null }>();
+    .first<{
+      id: string;
+      chunk_count: number | null;
+      stored_item_id: string | null;
+      stored_url: string | null;
+      stored_at: string | null;
+    }>();
 }
 
 async function findIndexedByProvider(
@@ -506,6 +540,7 @@ async function ingestOneAttachment(
   chunks: number;
   recovered: boolean;
   stored: boolean;
+  storedThisRun: boolean;
   skipReason: string | null;
   failureCode: string | null;
 }> {
@@ -554,6 +589,7 @@ async function ingestOneAttachment(
       chunks: 0,
       recovered: false,
       stored: false,
+      storedThisRun: false,
       skipReason: filter.skipReason,
       failureCode: filter.failureCode,
     };
@@ -566,6 +602,7 @@ async function ingestOneAttachment(
       chunks: already.chunk_count ?? 0,
       recovered: false,
       stored: true,
+      storedThisRun: false,
       skipReason: "already_indexed",
       failureCode: null,
     };
@@ -606,7 +643,7 @@ async function ingestOneAttachment(
       sourceModifiedAt: messageTime(input.message),
       metadata: { subject, from: sender, stop: "FETCH" },
     });
-    return { status: "failed", chunks: 0, recovered: false, stored: false, skipReason: message, failureCode: "FETCH_FAILED" };
+    return { status: "failed", chunks: 0, recovered: false, stored: false, storedThisRun: false, skipReason: message, failureCode: "FETCH_FAILED" };
   }
 
   const contentHash = await sha256Hex(fetched.bytes);
@@ -626,6 +663,42 @@ async function ingestOneAttachment(
     metadata: { subject, from: sender, via: fetched.via },
   });
 
+  const hashed = await findIndexedByHash(env.DB, input.companyId, contentHash);
+  if (hashed) {
+    await recordKnowledgeIngestionEvent(env.DB, {
+      companyId: input.companyId,
+      sourceType: "outlook_attachments",
+      eventType: "duplicate",
+      providerItemId,
+      parentMessageId: input.message.id,
+      filename: fetched.name,
+      contentHash,
+      mailboxAddress: input.mailbox.mailbox_address,
+      chunkCount: hashed.chunk_count,
+      skipReason: "duplicate_content_hash",
+      storedAt: hashed.stored_at,
+      storedItemId: hashed.stored_item_id,
+      storedUrl: hashed.stored_url,
+      sourceModifiedAt: messageTime(input.message),
+      metadata: {
+        subject,
+        from: sender,
+        originalEventId: hashed.id,
+        pipelineStatus: "STORED",
+        reusedStoredItem: true,
+      },
+    });
+    return {
+      status: "duplicate",
+      chunks: hashed.chunk_count ?? 0,
+      recovered: false,
+      stored: Boolean(hashed.stored_item_id),
+      storedThisRun: false,
+      skipReason: "duplicate_content_hash",
+      failureCode: null,
+    };
+  }
+
   const storedAt = nowIso();
   const stored = await storeOriginalInKnowledgeIntake(env, {
     companyId: input.companyId,
@@ -637,6 +710,7 @@ async function ingestOneAttachment(
     attachmentId: input.attachment.id,
     receivedAt: messageTime(input.message) ? new Date(messageTime(input.message)!) : new Date(),
     actor: input.actor,
+    quarantine: filter.classification === "unsafe",
   });
   if (!stored.ok) {
     await recordKnowledgeIngestionEvent(env.DB, {
@@ -657,6 +731,7 @@ async function ingestOneAttachment(
       chunks: 0,
       recovered: false,
       stored: false,
+      storedThisRun: false,
       skipReason: stored.message,
       failureCode: stored.code,
     };
@@ -665,7 +740,7 @@ async function ingestOneAttachment(
   await recordKnowledgeIngestionEvent(env.DB, {
     companyId: input.companyId,
     sourceType: "outlook_attachments",
-    eventType: "extracted",
+    eventType: "stored",
     providerItemId,
     parentMessageId: input.message.id,
     filename: fetched.name,
@@ -684,43 +759,9 @@ async function ingestOneAttachment(
       storeVia: stored.via,
       landingZoneReady: stored.landingZoneReady,
       warning: stored.warning,
+      quarantine: filter.classification === "unsafe",
     },
   });
-
-  const hashed = await findIndexedByHash(env.DB, input.companyId, contentHash);
-  if (hashed) {
-    await recordKnowledgeIngestionEvent(env.DB, {
-      companyId: input.companyId,
-      sourceType: "outlook_attachments",
-      eventType: "duplicate",
-      providerItemId,
-      parentMessageId: input.message.id,
-      filename: fetched.name,
-      contentHash,
-      mailboxAddress: input.mailbox.mailbox_address,
-      chunkCount: hashed.chunk_count,
-      skipReason: "duplicate_content_hash",
-      storedAt,
-      storedItemId: stored.storedItemId,
-      storedUrl: stored.storedUrl,
-      sourceModifiedAt: messageTime(input.message),
-      metadata: {
-        subject,
-        from: sender,
-        originalEventId: hashed.id,
-        pipelineStatus: "STORED",
-        storeVia: stored.via,
-      },
-    });
-    return {
-      status: "duplicate",
-      chunks: hashed.chunk_count ?? 0,
-      recovered: false,
-      stored: true,
-      skipReason: "duplicate_content_hash",
-      failureCode: null,
-    };
-  }
 
   if (!filter.ingest) {
     await recordKnowledgeIngestionEvent(env.DB, {
@@ -751,6 +792,7 @@ async function ingestOneAttachment(
       chunks: 0,
       recovered: false,
       stored: true,
+      storedThisRun: true,
       skipReason: filter.skipReason,
       failureCode: filter.failureCode,
     };
@@ -779,6 +821,7 @@ async function ingestOneAttachment(
       chunks: 0,
       recovered: false,
       stored: true,
+      storedThisRun: true,
       skipReason: "Business MCP unavailable",
       failureCode: "MCP_UNAVAILABLE",
     };
@@ -855,6 +898,7 @@ async function ingestOneAttachment(
       chunks: 0,
       recovered: false,
       stored: true,
+      storedThisRun: true,
       skipReason: message,
       failureCode: "INDEX_WRITE_FAILED",
     };
@@ -882,6 +926,7 @@ async function ingestOneAttachment(
       chunks: 0,
       recovered: false,
       stored: true,
+      storedThisRun: true,
       skipReason: upload.message,
       failureCode: upload.code,
     };
@@ -920,6 +965,7 @@ async function ingestOneAttachment(
       chunks,
       recovered: input.recoverExisting,
       stored: true,
+      storedThisRun: true,
       skipReason: upload.documentStatus ?? "not indexed",
       failureCode: "NOT_INDEXED",
     };
@@ -961,6 +1007,7 @@ async function ingestOneAttachment(
       chunks,
       recovered: input.recoverExisting,
       stored: true,
+      storedThisRun: true,
       skipReason: verified.reason ?? "retrieval verification failed",
       failureCode: "RETRIEVAL_UNVERIFIED",
     };
@@ -1003,6 +1050,7 @@ async function ingestOneAttachment(
     chunks,
     recovered: input.recoverExisting,
     stored: true,
+    storedThisRun: true,
     skipReason: null,
     failureCode: null,
   };
@@ -1016,6 +1064,7 @@ export async function ingestApprovedOutlookAttachments(
     windowTo: Date;
     actor?: string;
     recoverExisting?: boolean;
+    useMailboxCheckpoints?: boolean;
   },
 ): Promise<{
   companyId: string;
@@ -1046,11 +1095,21 @@ export async function ingestApprovedOutlookAttachments(
 
   for (const mailbox of approved) {
     counts.mailboxesScanned += 1;
+    const mailboxWindow = input.useMailboxCheckpoints
+      ? resolveMailboxIngestWindow({
+          now: input.windowTo,
+          lastCheckpoint: mailbox.last_checkpoint,
+          maxLookbackMs: Math.min(
+            MAILBOX_INGEST_MAX_LOOKBACK_MS,
+            Math.max(60_000, input.windowTo.getTime() - input.windowFrom.getTime()),
+          ),
+        })
+      : { windowFrom: input.windowFrom, windowTo: input.windowTo, usedCheckpoint: false };
     const graphDiscover = await discoverMessagesViaGraph(env, {
       companyId: input.companyId,
       mailboxAddress: mailbox.mailbox_address,
-      windowFrom: input.windowFrom,
-      windowTo: input.windowTo,
+      windowFrom: mailboxWindow.windowFrom,
+      windowTo: mailboxWindow.windowTo,
       actor,
     }).catch((err: unknown) => ({
       ok: false as const,
@@ -1076,8 +1135,8 @@ export async function ingestApprovedOutlookAttachments(
       const mcpDiscover = await discoverMessagesViaMcp(env, {
         companyId: input.companyId,
         mailboxAddress: mailbox.mailbox_address,
-        windowFrom: input.windowFrom,
-        windowTo: input.windowTo,
+        windowFrom: mailboxWindow.windowFrom,
+        windowTo: mailboxWindow.windowTo,
         actor,
       });
       if (mcpDiscover.ok && (mcpDiscover.messagesScanned > 0 || mcpDiscover.messages.length > 0)) {
@@ -1099,6 +1158,7 @@ export async function ingestApprovedOutlookAttachments(
           success: false,
           graphAccessible: false,
           error: `${errorCode}: ${discoverError}`,
+          messagesScanned: null,
         });
         mailboxReports.push({
           mailboxAddress: mailbox.mailbox_address,
@@ -1166,19 +1226,19 @@ export async function ingestApprovedOutlookAttachments(
         });
         if (result.status === "indexed") {
           counts.attachmentsFetched += 1;
-          if (result.stored) counts.attachmentsStored += 1;
+          if (result.storedThisRun) counts.attachmentsStored += 1;
           counts.attachmentsExtracted += 1;
           counts.attachmentsIndexed += 1;
           counts.chunksAdded += result.chunks;
           if (result.recovered) counts.recovered += 1;
         } else if (result.status === "duplicate") {
           counts.attachmentsFetched += 1;
-          if (result.stored) counts.attachmentsStored += 1;
+          if (result.storedThisRun) counts.attachmentsStored += 1;
           counts.duplicates += 1;
           counts.skipped += 1;
         } else if (result.status === "stored_not_indexed") {
           counts.attachmentsFetched += 1;
-          counts.attachmentsStored += 1;
+          if (result.storedThisRun) counts.attachmentsStored += 1;
           counts.unsupported += 1;
           counts.skipped += 1;
         } else if (result.status === "skipped") {
@@ -1186,7 +1246,7 @@ export async function ingestApprovedOutlookAttachments(
           counts.skippedJunk += 1;
         } else {
           counts.attachmentsFetched += 1;
-          if (result.stored) counts.attachmentsStored += 1;
+          if (result.storedThisRun) counts.attachmentsStored += 1;
           counts.failed += 1;
           mailboxFailures += 1;
         }
@@ -1227,6 +1287,7 @@ export async function ingestApprovedOutlookAttachments(
       success: scanOk,
       graphAccessible: Boolean(graph),
       error: scanOk ? null : errorCode || discoverError || `attachment ingest incomplete (${mailboxFailures} failed)`,
+      messagesScanned,
     });
     mailboxReports.push({
       mailboxAddress: mailbox.mailbox_address,

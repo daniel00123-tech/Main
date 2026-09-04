@@ -178,7 +178,7 @@ Required company-MCP / INFRA facade capabilities:
 | ATTACHMENT_FETCH | Fetch attachment bytes through controlled backend credentials |
 | KNOWLEDGE_INTAKE_STORAGE | Save each original attachment to the tenant Microsoft 365 landing zone |
 | PROVENANCE | Retain mailbox / message / attachment / stored-item identity without email body text |
-| INGESTION_EVENTS | Append-only ledger: discovered → fetched → stored → extracted → indexed |
+| INGESTION_EVENTS | Append-only ledger: discovered → fetched → stored → extracted → indexed. `stored` is a first-class event, not an extracted alias. |
 | INDEX_STATUS | INDEXED only after extract + chunks + vector write + retrieval verification |
 | RETRY | Bounded retry for Graph 429/5xx, fetch, extract, embed, and vector write failures |
 | DAILY_RECONCILIATION | Daily Knowledge Activity must reconcile source → stored → index |

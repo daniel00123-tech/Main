@@ -418,10 +418,11 @@ export async function queryKnowledgeIngestionActivity(
       });
       if (!sourceKey) continue;
       const indexed = event.event_type === "indexed" || event.event_type === "reindexed";
+      const storedEvent = event.event_type === "stored" || Boolean(event.stored_at || event.stored_item_id);
       const outcome = classifyKnowledgeIngestionOutcome({
         status: event.status,
         indexingStatus: event.event_type,
-        extracted: indexed || event.event_type === "extracted",
+        extracted: indexed || event.event_type === "extracted" || event.event_type === "stored",
         indexed,
       });
       const metadata = parseProvenance(event.metadata_json);
@@ -447,10 +448,10 @@ export async function queryKnowledgeIngestionActivity(
         chunkCount: event.chunk_count,
         outcome,
         failureReason: event.skip_reason ?? event.failure_code,
-        url: isSafeHttpUrl(asText(metadata.storedUrl) || asText(metadata.stored_url))
-          ? asText(metadata.storedUrl) || asText(metadata.stored_url)
+        url: isSafeHttpUrl(asText(event.stored_url) || asText(metadata.storedUrl) || asText(metadata.stored_url))
+          ? asText(event.stored_url) || asText(metadata.storedUrl) || asText(metadata.stored_url)
           : null,
-        stored: Boolean(event.stored_at || metadata.stored || metadata.pipelineStatus === "STORED" || metadata.pipelineStatus === "STORED_NOT_INDEXED" || metadata.pipelineStatus === "INDEXED"),
+        stored: storedEvent || Boolean(metadata.stored || metadata.pipelineStatus === "STORED" || metadata.pipelineStatus === "STORED_NOT_INDEXED" || metadata.pipelineStatus === "INDEXED"),
         storedUrl: asText(event.stored_url) || asText(metadata.storedUrl) || asText(metadata.stored_url) || null,
         activityKind:
           event.event_type === "source_observed"

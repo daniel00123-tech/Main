@@ -43,6 +43,7 @@ export type MailboxRegistryRow = {
   last_checkpoint: string | null;
   last_successful_sync: string | null;
   last_attachment_scan_at: string | null;
+  last_messages_scanned?: number | null;
   last_error: string | null;
   metadata_json: string | null;
   created_at: string;
@@ -87,6 +88,10 @@ export async function ensureMailboxRegistrySchema(db: D1Database): Promise<void>
       )`,
     )
     .run();
+  await db
+    .prepare(`ALTER TABLE company_mailbox_registry ADD COLUMN last_messages_scanned INTEGER`)
+    .run()
+    .catch(() => undefined);
 }
 
 export function isPersonalExternalMailbox(address: string): boolean {
@@ -349,6 +354,7 @@ export async function markMailboxScanResult(
     success: boolean;
     graphAccessible?: boolean | null;
     error?: string | null;
+    messagesScanned?: number | null;
   },
 ): Promise<void> {
   const now = nowIso();
@@ -358,6 +364,7 @@ export async function markMailboxScanResult(
         last_attachment_scan_at = ?,
         last_successful_sync = CASE WHEN ? THEN ? ELSE last_successful_sync END,
         last_checkpoint = CASE WHEN ? AND ? IS NOT NULL THEN ? ELSE last_checkpoint END,
+        last_messages_scanned = CASE WHEN ? IS NOT NULL THEN ? ELSE last_messages_scanned END,
         graph_accessible = COALESCE(?, graph_accessible),
         last_error = ?,
         status = CASE WHEN ? THEN CASE WHEN enabled_for_attachment_ingestion = 1 THEN 'approved' ELSE status END ELSE 'error' END,
@@ -371,6 +378,8 @@ export async function markMailboxScanResult(
       input.success ? 1 : 0,
       input.checkpoint ?? null,
       input.checkpoint ?? null,
+      input.messagesScanned == null ? null : input.messagesScanned,
+      input.messagesScanned == null ? null : input.messagesScanned,
       input.graphAccessible == null ? null : input.graphAccessible ? 1 : 0,
       input.success ? null : input.error ?? "scan failed",
       input.success ? 1 : 0,

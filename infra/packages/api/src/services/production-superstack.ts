@@ -20,8 +20,9 @@ import { classifyTurnFailures } from "./intelligence/failure-telemetry";
 import { inspectIntelligenceProvider } from "./intelligence/provider";
 import { resolveRequestPricingPolicy } from "./customer-request-pricing";
 import { DAILY_IMPROVEMENT_CONTRACT } from "./daily-improvement/constants";
-import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
-import { discoverKnowledgeIntakeTarget, isKnowledgeIntakePath } from "./knowledge-intake";
+import { ingestApprovedOutlookAttachments, resolveMailboxIngestWindow } from "./outlook-attachment-ingest";
+import { discoverKnowledgeIntakeTarget, isKnowledgeIntakePath, knowledgeIntakeFolderSegments } from "./knowledge-intake";
+import { KNOWLEDGE_INGESTION_EVENT_TYPES } from "./knowledge-ingestion-events";
 import {
   computeNextWarehouseSlot,
   describeWarehouseSchedule,
@@ -219,6 +220,15 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (typeof discoverKnowledgeIntakeTarget !== "function" || !isKnowledgeIntakePath("INFRA Knowledge Intake/Email Attachments")) {
     throw new Error("knowledge intake landing zone missing");
+  }
+  if (!KNOWLEDGE_INGESTION_EVENT_TYPES.includes("stored")) {
+    throw new Error("knowledge ingestion ledger must record stored events");
+  }
+  if (typeof resolveMailboxIngestWindow !== "function") {
+    throw new Error("mailbox ingest checkpoint window missing");
+  }
+  if (!knowledgeIntakeFolderSegments("finance@example.com", new Date("2026-09-04T00:00:00.000Z"), true).includes("_quarantine")) {
+    throw new Error("unsafe attachments must land in the intake quarantine folder");
   }
   if (defaultIngestionPolicyForCompany("co_el") !== "INCLUDE") {
     throw new Error("EL mailbox ingestion default must be INCLUDE");

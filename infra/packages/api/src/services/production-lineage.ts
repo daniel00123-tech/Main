@@ -29,6 +29,7 @@ export const PRODUCTION_SUPERSTACK_CAPABILITIES = [
   "mailbox_ingestion_default_include",
   "mailbox_scan_failed_semantics",
   "business_data_warehouse",
+  "attachment_intake_standard",
 ] as const;
 
 export type ProductionLineage = {

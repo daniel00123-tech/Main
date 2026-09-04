@@ -193,6 +193,13 @@ describe("knowledge ingestion window and classification", () => {
         indexed: false,
       }),
     ).toBe("failed");
+    expect(
+      classifyKnowledgeIngestionOutcome({
+        indexingStatus: "stored",
+        extracted: true,
+        indexed: false,
+      }),
+    ).toBe("extracted");
     expect(safeIngestionFailureReason({ indexingStatus: "unsupported" })).toBe("unsupported format");
     expect(safeIngestionFailureReason({ indexingStatus: "failed", extracted: false })).toBe("empty content");
     expect(safeIngestionFailureReason({ status: "excluded_protected" })).toBe(
