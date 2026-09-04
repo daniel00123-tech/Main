@@ -192,7 +192,7 @@ function extractFunctionCalls(
     const row = item as Record<string, unknown>;
     const type = String(row.type ?? "");
     if (type !== "function_call" && type !== "tool_call") continue;
-    const name = String(row.name ?? "").trim();
+    const name = normaliseOpenAiToolName(row.name);
     if (!name) continue;
     calls.push({ name, arguments: parseArgs(row.arguments ?? row.input) });
   }
@@ -287,6 +287,13 @@ function emptyFailure(
     },
     failure,
   };
+}
+
+export function normaliseOpenAiToolName(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .replace(/^functions\./, "")
+    .replace(/^tools\./, "");
 }
 
 function numberOrNull(value: unknown): number | null {

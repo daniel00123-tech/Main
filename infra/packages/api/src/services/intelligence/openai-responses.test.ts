@@ -3,6 +3,7 @@ import {
   classifyOpenAiHttpFailure,
   extractOpenAiResponses,
   hasOpenAiApiKey,
+  normaliseOpenAiToolName,
   redactOpenAiError,
   runOpenAiResponses,
 } from "./openai-responses.js";
@@ -47,5 +48,10 @@ describe("openai responses adapter", () => {
     });
     expect(extracted.toolCalls?.[0]?.name).toBe("outlook_list_messages");
     expect(extracted.usage?.cachedTokens).toBe(4);
+    const prefixed = extractOpenAiResponses({
+      output: [{ type: "function_call", name: "functions.list_documents", arguments: "{}" }],
+    });
+    expect(prefixed.toolCalls?.[0]?.name).toBe("list_documents");
+    expect(normaliseOpenAiToolName("functions.list_documents")).toBe("list_documents");
   });
 });

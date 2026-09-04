@@ -1,7 +1,7 @@
 import { newId, nowIso } from "../../db/mappers.js";
 import { resolveBrainPolicy } from "./brain-policy.js";
 import { sanitiseEvidenceForModel, stripSecretsFromText } from "./evidence.js";
-import { inspectOpenAiKey, redactOpenAiError, runOpenAiResponses } from "./openai-responses.js";
+import { inspectOpenAiKey, normaliseOpenAiToolName, redactOpenAiError, runOpenAiResponses } from "./openai-responses.js";
 import type {
   IntelligenceConversationState,
   IntelligenceEnv,
@@ -103,8 +103,9 @@ export async function evaluateOpenAiShadow(input: {
     system: stripSecretsFromText(
       [
         "Shadow evaluation only. Do not address the customer.",
-        "Reuse the authorised evidence below. Do not invent live business fetches.",
-        "If evidence already answers a draft, edit, or recall, do not propose Outlook or Xero tools.",
+        "Propose the INFRA tool you would call. Do not execute anything.",
+        "If authorised evidence already answers a draft, edit, or recall, do not propose Outlook or Xero.",
+        "If evidence is none and the user asks for inbox, Xero figures, or documents, propose the matching tool.",
         "Reply with JSON: {\"action\":\"answer\"|\"call_tool\"|\"clarify\",\"name\":\"optional_tool\",\"text\":\"short\"}",
       ].join(" "),
     ),
@@ -121,7 +122,7 @@ export async function evaluateOpenAiShadow(input: {
     userText: input.text,
   });
   const proposed = [
-    ...(result.toolCalls ?? []).map((call) => call.name),
+    ...(result.toolCalls ?? []).map((call) => normaliseOpenAiToolName(call.name)),
     ...toolNamesFromStructured(result.structured),
   ].filter(Boolean);
   return {
@@ -215,7 +216,7 @@ export function shouldRunOpenAiShadow(input: {
 
 function toolNamesFromStructured(structured: Record<string, unknown> | null | undefined): string[] {
   if (!structured) return [];
-  const name = String(structured.name ?? structured.tool ?? "").trim();
+  const name = normaliseOpenAiToolName(structured.name ?? structured.tool);
   if (structured.action === "call_tool" && name) return [name];
   return name ? [name] : [];
 }

@@ -12,6 +12,7 @@ import { resolveBrainPolicy } from "../services/intelligence/brain-policy.js";
 import { inspectOpenAiKey } from "../services/intelligence/openai-responses.js";
 import {
   listRecentShadowEvals,
+  persistShadowEval,
   runOpenAiConnectivitySmoke,
 } from "../services/intelligence/shadow-eval.js";
 
@@ -57,6 +58,29 @@ routes.post("/api/internal/openai-brain-smoke", async (c) => {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
   }
   const smoke = await runOpenAiConnectivitySmoke(c.env);
+  if (smoke.success) {
+    await persistShadowEval(
+      c.env.DB,
+      {
+        provider: "openai",
+        model: smoke.model,
+        latencyMs: smoke.latencyMs,
+        promptTokens: smoke.promptTokens,
+        completionTokens: smoke.completionTokens,
+        cachedTokens: smoke.cachedTokens,
+        estimatedCostUsd: smoke.estimatedCostUsd,
+        costBasis: smoke.costBasis,
+        correlationId: smoke.correlationId,
+        toolProposal: [],
+        failure: smoke.failure,
+        reusedEvidence: false,
+        executedLiveTools: false,
+        userVisibleProvider: "cloudflare",
+      },
+      "co_el",
+      "smoke",
+    );
+  }
   return c.json({
     ok: smoke.ok,
     action: "smoke",
@@ -98,6 +122,9 @@ routes.post("/api/internal/openai-brain-shadow-bench", async (c) => {
     ? all.filter((row) => body.ids!.includes(row.id))
     : all.slice(Math.max(0, Number(body.offset ?? 0)), Math.max(0, Number(body.offset ?? 0)) + Math.min(4, Math.max(1, Number(body.limit ?? 4))));
   const scored = await scoreLiveOpenAiShadowSlice(c.env, selected);
+  for (const row of scored.rows) {
+    await persistShadowEval(c.env.DB, row.shadow, "co_el", "shadow_bench");
+  }
   return c.json({
     ok: true,
     action: "slice",
