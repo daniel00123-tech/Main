@@ -12,7 +12,7 @@ export type UsageSpendSummary = {
 
 export function usageClientCategory(clientKind: string): UsageSpendCategory {
   const kind = clientKind.toLowerCase();
-  if (["chatgpt", "claude", "infra-mcp", "infra-gateway", "whatsapp"].includes(kind)) {
+  if (["chatgpt", "claude", "infra-mcp", "infra-gateway", "whatsapp", "portal_chat"].includes(kind)) {
     return "ai";
   }
   if (["action-engine", "automation", "automations"].includes(kind)) {

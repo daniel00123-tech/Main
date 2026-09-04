@@ -334,7 +334,8 @@ export async function getUsageCommercialSummary(
              THEN COALESCE(customer_charge_cents, 0) - underlying_cost_cents
            ELSE NULL
          END) AS gross_profit
-       FROM usage_records ${clause}`,
+       FROM usage_records ${clause}
+       ${clause ? "AND" : "WHERE"} NOT (parent_request_id IS NOT NULL AND IFNULL(action, '') != 'customer.request' AND IFNULL(customer_charge_cents, 0) = 0)`,
     )
     .bind(...binds)
     .first();
@@ -374,6 +375,8 @@ export async function getUsageCommercialSummary(
   };
 }
 
+const CHILD_TELEMETRY_SQL = `(parent_request_id IS NOT NULL AND IFNULL(action, '') != 'customer.request' AND IFNULL(customer_charge_cents, 0) = 0)`;
+
 export async function getUsageSummary(db: D1Database, companyId: string) {
   const now = new Date();
   const startOfDay = new Date(
@@ -387,28 +390,32 @@ export async function getUsageSummary(db: D1Database, companyId: string) {
     db
       .prepare(
         `SELECT COUNT(*) AS count FROM usage_records
-         WHERE company_id = ? AND recorded_at >= ?`,
+         WHERE company_id = ? AND recorded_at >= ?
+           AND NOT ${CHILD_TELEMETRY_SQL}`,
       )
       .bind(companyId, startOfDay)
       .first(),
     db
       .prepare(
         `SELECT COUNT(*) AS count FROM usage_records
-         WHERE company_id = ? AND recorded_at >= ?`,
+         WHERE company_id = ? AND recorded_at >= ?
+           AND NOT ${CHILD_TELEMETRY_SQL}`,
       )
       .bind(companyId, startOfMonth)
       .first(),
     db
       .prepare(
         `SELECT COUNT(*) AS count FROM usage_records
-         WHERE company_id = ? AND recorded_at >= ? AND success = 1`,
+         WHERE company_id = ? AND recorded_at >= ? AND success = 1
+           AND NOT ${CHILD_TELEMETRY_SQL}`,
       )
       .bind(companyId, startOfMonth)
       .first(),
     db
       .prepare(
         `SELECT COUNT(*) AS count FROM usage_records
-         WHERE company_id = ? AND recorded_at >= ? AND success = 0`,
+         WHERE company_id = ? AND recorded_at >= ? AND success = 0
+           AND NOT ${CHILD_TELEMETRY_SQL}`,
       )
       .bind(companyId, startOfMonth)
       .first(),
@@ -464,6 +471,11 @@ export async function getUsageBreakdowns(
   let chargeCentsThisMonth = 0;
 
   for (const row of result.results ?? []) {
+    const parentId = row.parent_request_id ? String(row.parent_request_id) : "";
+    const action = row.action ? String(row.action) : "";
+    if (parentId && action !== "customer.request" && Number(row.customer_charge_cents ?? 0) === 0) {
+      continue;
+    }
     const metadata = (() => {
       try {
         return JSON.parse(String(row.metadata_json ?? "{}")) as Record<string, unknown>;

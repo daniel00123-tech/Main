@@ -100,7 +100,7 @@ export default function PortalUsagePage() {
     <div className="portal-page">
       <PortalPageHeader
         title="Usage"
-        description="What your company used and what it cost this month."
+        description="Each customer request is billed at £0.03. Internal tool steps stay expandable and do not add extra charges."
       />
 
       <PortalPageBody
@@ -178,9 +178,9 @@ export default function PortalUsagePage() {
 
         <CollapsibleBlock title="Understanding your usage" summary="What these numbers mean">
           <p className="muted small" style={{ margin: 0 }}>
-            Charges reflect INFRA usage recorded against your company balance. AI activity through
-            ChatGPT or Claude is usually the largest category. Focus on failed requests if the
-            success rate drops unexpectedly.
+            EL Business charges £0.03 per submitted customer request on WhatsApp, Portal Chat, and
+            ChatGPT — not per tool. Expand a row to see internal steps. Historical rows keep their
+            original amounts.
           </p>
         </CollapsibleBlock>
 
@@ -192,6 +192,7 @@ export default function PortalUsagePage() {
           <option value="claude">Claude</option>
           <option value="portal">Portal</option>
           <option value="portal_chat">Portal Chat</option>
+          <option value="whatsapp">WhatsApp</option>
         </Select>
         <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All results</option>
@@ -214,7 +215,15 @@ export default function PortalUsagePage() {
               <MobileRecordCard key={item.id} onClick={() => setDetailItem(item)}>
                 <div className="mobile-record-header">
                   <div className="mobile-record-title">{item.label}</div>
-                  <StatusBadge status={item.status === "error" ? "failed" : "completed"} />
+                  <StatusBadge
+                    status={
+                      item.status === "denied"
+                        ? "denied"
+                        : item.status === "error"
+                          ? "failed"
+                          : "completed"
+                    }
+                  />
                 </div>
                 <dl className="mobile-record-meta">
                   <div>
@@ -266,7 +275,15 @@ export default function PortalUsagePage() {
                         </td>
                         <td>{humanClient(item.clientKind)}</td>
                         <td>
-                          <StatusBadge status={item.status === "error" ? "failed" : "completed"} />
+                          <StatusBadge
+                            status={
+                              item.status === "denied"
+                                ? "denied"
+                                : item.status === "error"
+                                  ? "failed"
+                                  : "completed"
+                            }
+                          />
                         </td>
                         <td className="num">{formatCurrency(item.customerChargeCents)}</td>
                       </tr>

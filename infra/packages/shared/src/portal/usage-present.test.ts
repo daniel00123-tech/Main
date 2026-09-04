@@ -42,4 +42,8 @@ describe("usageClientCategory", () => {
   it("classifies chatgpt as AI", () => {
     expect(usageClientCategory("chatgpt")).toBe("ai");
   });
+
+  it("classifies portal chat as AI", () => {
+    expect(usageClientCategory("portal_chat")).toBe("ai");
+  });
 });

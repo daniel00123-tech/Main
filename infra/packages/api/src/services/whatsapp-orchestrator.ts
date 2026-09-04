@@ -17,6 +17,12 @@ import { DEFAULT_QUALITY_RUNTIME } from "./quality-loop/runtime-config";
 import { qualitySystemGuidance } from "./quality-loop/runtime-policy";
 import type { QualityRuntimeConfig } from "./quality-loop/types";
 import { recordUsageEvent } from "./usage";
+import {
+  classifyElTraffic,
+  isLiveElBillingEnv,
+  settleElCustomerRequest,
+  shouldChargeElCustomerRequest,
+} from "./el-customer-billing";
 import { inspectWhatsAppAssets, outboundAiEnabled } from "./whatsapp-assets";
 import { capabilityReplyForCompany, listConnectedConnectorIds } from "./whatsapp-capabilities";
 import {
@@ -577,8 +583,28 @@ async function handleWhatsAppInboundMessageInner(
     marks.firstVisibleAt = Date.now();
     marks.finalSentAt = Date.now();
     const companyId = conversation?.companyId ?? identity.memberships[0]?.companyId ?? "unknown";
+    const greetingRequestId = newId("int");
     if (companyId !== "unknown") {
       await rememberTurn(env, identity.user.id, companyId, conversation?.turns ?? [], earlyText, reply);
+      const greetingTraffic = classifyElTraffic({
+        sourceClient: "whatsapp",
+        wamid: item.wamid,
+        actorEmail: identity.user.email,
+      });
+      if (isLiveElBillingEnv(env) && shouldChargeElCustomerRequest(companyId, greetingTraffic)) {
+        await settleElCustomerRequest(env.DB, {
+          companyId,
+          requestId: greetingRequestId,
+          userId: identity.user.id,
+          actorEmail: identity.user.email,
+          sourceClient: "whatsapp",
+          channel: "whatsapp",
+          trafficClass: greetingTraffic,
+          outcome: "completed",
+          summary: earlyText.slice(0, 120),
+          metadata: { wamid: item.wamid, cheapPath: true },
+        });
+      }
     }
     await recordAuditEvent(env.DB, {
       companyId: companyId === "unknown" ? null : companyId,
@@ -606,7 +632,7 @@ async function handleWhatsAppInboundMessageInner(
       replySent: sent.ok,
       publicReply: reply,
       toolName: null,
-      interactionId: null,
+      interactionId: companyId === "unknown" ? null : greetingRequestId,
       outcome: "answered",
       intent: "greeting",
       acknowledgementSent: false,
@@ -676,6 +702,42 @@ async function handleWhatsAppInboundMessageInner(
   }
 
   marks.identityResolvedAt = Date.now();
+  const interactionId = newId("int");
+  const whatsappTraffic = classifyElTraffic({
+    sourceClient: "whatsapp",
+    wamid: item.wamid,
+    actorEmail: identity.user.email,
+  });
+  if (isLiveElBillingEnv(env) && shouldChargeElCustomerRequest(companyDecision.companyId, whatsappTraffic)) {
+    const settled = await settleElCustomerRequest(env.DB, {
+      companyId: companyDecision.companyId,
+      requestId: interactionId,
+      userId: identity.user.id,
+      actorEmail: identity.user.email,
+      sourceClient: "whatsapp",
+      channel: "whatsapp",
+      trafficClass: whatsappTraffic,
+      outcome: "accepted",
+      summary: inboundResolved.text.trim().slice(0, 120),
+      metadata: { wamid: item.wamid },
+    });
+    if (settled.insufficientCredit) {
+      const reply = "Your INFRA credit balance is empty. Add credit to continue.";
+      const sent = await maybeSendReply(env, sender, reply);
+      return {
+        handled: true,
+        duplicate: false,
+        identityFound: true,
+        companyId: companyDecision.companyId,
+        userId: identity.user.id,
+        replySent: sent.ok,
+        publicReply: reply,
+        toolName: null,
+        interactionId,
+        outcome: "answered",
+      };
+    }
+  }
   const sameCompany = conversation?.companyId === companyDecision.companyId;
   const priorTurns = sameCompany ? conversation?.turns ?? [] : [];
   let entities = inferEntitiesFromTurns(
@@ -977,7 +1039,6 @@ async function handleWhatsAppInboundMessageInner(
   }
 
   const sessionUser = await toSessionUser(env.DB, dbUser);
-  const interactionId = newId("int");
   const needsWork = !plan.skipTools;
   const alreadyAcked = await inboundAlreadyAcknowledged(env, item.wamid);
   let acknowledgementSent = Boolean(inboundResolved.acknowledgementSent) || alreadyAcked;
