@@ -6,7 +6,7 @@ import {
   SYSTEM_META_TOOLS,
   buildConversationState,
   executeSystemMetaTool,
-  permittedToolsForConnectors,
+  buildAllowedToolCatalogue,
   runIntelligenceTurn,
   withResolvedBusinessDates,
   enrichDocumentQuery,
@@ -18,6 +18,7 @@ import {
   type IntelligenceToolResult,
   type IntelligenceTurnResult,
   clipBusinessToolData,
+  executePublicWebSearch,
   looksPermissionDenied,
   isGenericRetryCopy,
   synthesizeFromToolCalls,
@@ -142,7 +143,12 @@ export async function executeWhatsAppIntelligence(
     companyId: input.companyId,
     role: membership?.role ?? null,
     connectors,
-    permittedTools: permittedToolsForConnectors(connectors),
+    permittedTools: buildAllowedToolCatalogue({
+      role: membership?.role ?? null,
+      companyId: input.companyId,
+      connectors,
+      channel: "whatsapp",
+    }),
     lastToolName: input.memory.lastTool,
     lastToolSummary: input.memory.lastAnswerText ? input.memory.lastAnswerText.slice(0, 240) : null,
     userCorrection,
@@ -767,6 +773,9 @@ function createWhatsAppIntelligenceRuntime(
   return {
     async executeTool(call: IntelligenceToolCall): Promise<IntelligenceToolResult> {
       const started = Date.now();
+      if (call.name === "web_search") {
+        return executePublicWebSearch(call);
+      }
       if (SYSTEM_META_TOOLS.has(call.name)) {
         return runSystemMetaTool(env, input, call, started);
       }

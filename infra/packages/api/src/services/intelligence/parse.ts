@@ -209,8 +209,11 @@ export function validateToolRequest(name: string, args: Record<string, unknown>)
   if (clean === "outlook_search_mailbox" && !String(next.query ?? "").trim()) {
     return { ok: false, name: clean, arguments: next, reason: "query_required" };
   }
-  if (clean === "xero_get_invoice" && !String(next.invoice_id ?? next.id ?? "").trim()) {
+  if (clean === "xero_get_invoice" && !String(next.invoice_id ?? next.id ?? next.invoiceNumber ?? "").trim()) {
     return { ok: false, name: clean, arguments: next, reason: "invoice_id_required" };
+  }
+  if (clean === "web_search" && !String(next.query ?? next.q ?? "").trim()) {
+    return { ok: false, name: clean, arguments: next, reason: "query_required" };
   }
   return { ok: true, name: clean, arguments: next };
 }

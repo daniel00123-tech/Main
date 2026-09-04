@@ -1,4 +1,13 @@
 export { INTELLIGENCE_TOOLS, INTELLIGENCE_TOOL_NAMES, GATEWAY_TOOL_ALIASES, SYSTEM_META_TOOLS, describeToolCatalogue, permittedToolsForConnectors } from "./catalogue.js";
+export { buildAllowedToolCatalogue, authorizeToolCall, deniedToolResult } from "./tool-auth.js";
+export { executePublicWebSearch, looksLikePublicWebAsk, isPrivateBusinessWebQuery } from "./web-search.js";
+export { classifyTurnFailures, clusterKey } from "./failure-telemetry.js";
+export {
+  persistEngineeringFailures,
+  listEngineeringSupervisorFeed,
+  shouldOpenEngineeringWorkItem,
+  ENGINEERING_SUPERVISOR_CONTRACT,
+} from "./dev-failure-queue.js";
 export { matchFastPath, isFastPathTurn, matchOpenSourceFastPath } from "./fast-path.js";
 export { classifyScope, isCorpusInventoryAsk, detectNamedDocumentSwitch } from "./scope.js";
 export {
@@ -66,6 +75,8 @@ export { runEvaluationSuite, policyCompleter, v1FragileCompleter } from "./eval/
 export { runOfflineBenchmarks, probeWorkersAiModels, selectWinningModel } from "./eval/benchmark.js";
 export { frozenElCases, compareFrozenBrains, scoreFrozenBenchmark } from "./eval/el-frozen-benchmark.js";
 export type {
+  EngineeringFailureCategory,
+  EngineeringFailureEvent,
   IntelligenceChannel,
   IntelligenceConfidence,
   IntelligenceConversationState,

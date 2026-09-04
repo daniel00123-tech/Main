@@ -267,6 +267,17 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     outputShape: "{ lastSyncAt, bySource }",
     permission: "company knowledge read",
   },
+  {
+    name: "web_search",
+    description: "Approved public web search for live public information only.",
+    whenToUse:
+      "Weather, public news, public company info, or a public website. Never a substitute for Xero, Outlook, SharePoint, or internal procedures.",
+    whenNotToUse:
+      "Do not use for private Xero, emails, SharePoint, customer records, holiday entitlement, or company procedures when internal knowledge exists. Business systems outrank public web.",
+    parameters: { query: { description: "Public web query", required: true } },
+    outputShape: "{ source: 'public_web', heading, abstract, results }",
+    permission: "public web",
+  },
 ];
 
 export const INTELLIGENCE_TOOL_NAMES = new Set(INTELLIGENCE_TOOLS.map((tool) => tool.name));
@@ -292,6 +303,7 @@ export const GATEWAY_TOOL_ALIASES: Record<string, string> = {
   xero_get_organisation: "xero_get_organisation",
   ask_document: "ask_document",
   list_documents: "list_documents",
+  web_search: "web_search",
 };
 
 const XERO_TOOLS = new Set(INTELLIGENCE_TOOLS.filter((tool) => tool.name.startsWith("xero_")).map((tool) => tool.name));

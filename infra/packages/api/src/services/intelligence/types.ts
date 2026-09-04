@@ -28,6 +28,38 @@ export type ResponseTerminal =
   | "UPSTREAM_FAILURE"
   | "CLARIFICATION_REQUIRED";
 
+export type EvidenceSufficiency = "ENOUGH_TO_ANSWER" | "NEEDS_MORE_INFORMATION";
+
+export type EngineeringFailureCategory =
+  | "WRONG_TOOL"
+  | "TOOL_FAILED"
+  | "UPSTREAM_TIMEOUT"
+  | "NO_FINAL_RESPONSE"
+  | "SYNTHESIS_CONTRADICTION"
+  | "EVIDENCE_DROPPED"
+  | "UNEXPECTED_NO_RESULT"
+  | "DUPLICATE_TOOL_CALL"
+  | "USER_CORRECTION_AFTER_BAD_ROUTE"
+  | "FALLBACK_USED"
+  | "QUALITY_GUARD_REPAIR"
+  | "LOW_CONFIDENCE_FINAL";
+
+export type EngineeringFailureEvent = {
+  id: string;
+  correlationId: string;
+  companyId: string | null;
+  channel: string;
+  capability: string | null;
+  tool: string | null;
+  model: string | null;
+  provider: IntelligenceModelUsage["provider"] | string | null;
+  category: EngineeringFailureCategory;
+  latencyMs: number;
+  outcome: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
 export type ResponseGuardCheck = {
   id:
     | "tool_success_not_reported_as_failure"
@@ -222,6 +254,8 @@ export type IntelligenceTurnResult = {
   guardChecks?: ResponseGuardCheck[];
   /** Parallel OpenAI evaluation. Never shown to the customer. */
   shadowEval?: ShadowEvalRecord | null;
+  sufficiency?: EvidenceSufficiency | null;
+  engineeringEvents?: EngineeringFailureEvent[];
 };
 
 export type IntelligenceToolParam = {
