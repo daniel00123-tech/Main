@@ -280,11 +280,11 @@ export function scoreGlobalSearchHit(
   const generic = new Set(["policy", "document", "documents", "file", "files", "report", "profile", "summary"]);
   for (const term of terms) {
     const weight = generic.has(term) ? 1 : 4;
-    if (title.includes(term)) score += weight;
-    else if (filename.includes(term)) score += Math.max(1, weight - 1);
-    else if (path.includes(term)) score += 2;
-    else if (snippet.includes(term)) score += 1;
-    else if (expandTerm(term).some((alt) => title.includes(alt) || snippet.includes(alt))) score += 1;
+    if (termMatchesHay(title, term)) score += weight;
+    else if (termMatchesHay(filename, term)) score += Math.max(1, weight - 1);
+    else if (termMatchesHay(path, term)) score += 2;
+    else if (termMatchesHay(snippet, term)) score += 1;
+    else if (expandTerm(term).some((alt) => termMatchesHay(title, alt) || termMatchesHay(snippet, alt))) score += 1;
   }
   if (context?.preferredClass && classified === context.preferredClass) score += 1;
   if (context?.currentDocumentId && hit.id && hit.id === context.currentDocumentId) score += 2;
@@ -324,7 +324,14 @@ export function rejectWeakSearchHits<T extends { title: string; snippet?: string
       : [];
   if (!kept.length) return [];
   if (isProcessOrPolicyQuery(query)) {
-    const processLike = kept.filter((row) => looksLikeProcessOrPolicyDocument(row.hit));
+    const generic = new Set(["process", "procedure", "policy", "document", "documents"]);
+    const distinctive = queryTerms(query).filter((term) => !generic.has(term));
+    const processLike = kept.filter((row) => {
+      if (!looksLikeProcessOrPolicyDocument(row.hit)) return false;
+      if (!distinctive.length) return true;
+      const hay = `${row.hit.title} ${row.hit.snippet ?? ""}`.toLowerCase();
+      return distinctive.some((term) => termMatchesHay(hay, term) || expandTerm(term).some((alt) => termMatchesHay(hay, alt)));
+    });
     return processLike.map((row) => row.hit);
   }
   return kept.map((row) => row.hit);
@@ -636,6 +643,12 @@ export function queryTerms(query: string): string[] {
 
 function expandTerm(term: string): string[] {
   return SYNONYMS[term] ?? [];
+}
+
+function termMatchesHay(hay: string, term: string): boolean {
+  if (!term) return false;
+  if (term.length <= 2) return new RegExp(`\\b${term}\\b`, "i").test(hay);
+  return hay.includes(term);
 }
 
 function scoreChunk(chunk: DocumentChunk, terms: string[], query: string): number {

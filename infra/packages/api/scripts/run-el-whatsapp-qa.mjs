@@ -67,7 +67,7 @@ function chunk(ids, size) {
   return out;
 }
 
-const report = { api: API, worker: "ccdb679d-d8d6-4372-9e34-c45eb80bf8dd", turns: [], errors: [] };
+const report = { api: API, worker: "3158c849-2d46-4519-811e-4b1af66e267f", turns: [], errors: [] };
 for (const [conversation, ids] of Object.entries(CONVERSATIONS)) {
   let memory = null;
   for (const idsChunk of chunk(ids, 2)) {

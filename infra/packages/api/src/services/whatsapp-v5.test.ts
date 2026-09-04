@@ -338,6 +338,12 @@ describe("WhatsApp V5 buttons, PII, ranking, and model boundary", () => {
       "What is the PO process?",
     );
     expect(kept.map((hit) => hit.id)).toEqual(["proc"]);
+    expect(
+      rejectWeakSearchHits(
+        [{ id: "hs", title: "Health and Safety Policy (2).docx", snippet: "health and safety policy statement" }],
+        "What is the PO process?",
+      ),
+    ).toEqual([]);
   });
 
   it("rejects weak global hits below the confidence threshold", () => {
