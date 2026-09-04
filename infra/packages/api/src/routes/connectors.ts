@@ -1228,7 +1228,12 @@ connectors.post("/api/internal/portal-chat-acceptance", async (c) => {
   }
   try {
     const { runPortalChatAcceptance } = await import("../services/portal-chat-acceptance");
-    return c.json(await runPortalChatAcceptance(c.env));
+    const requested = String(c.req.query("suite") ?? "director_memory");
+    const suite =
+      requested === "director_systems" || requested === "office" || requested === "parity"
+        ? requested
+        : "director_memory";
+    return c.json(await runPortalChatAcceptance(c.env, suite));
   } catch (err) {
     return c.json(
       { error: err instanceof Error ? err.message : "Portal chat acceptance failed" },
