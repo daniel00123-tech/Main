@@ -84,7 +84,7 @@ export function extractOutlookMessages(data: unknown): Array<{
   return raw
     .filter(isRecord)
     .map((message) => ({
-      id: asString(message.id ?? message.messageId),
+      id: asString(message.id ?? message.messageId ?? message.emailId ?? message.email_id ?? message.internetMessageId),
       subject: asString(message.subject) || "(no subject)",
       from: outlookFrom(message.from ?? message.sender),
       receivedDateTime: asString(message.receivedDateTime ?? message.received ?? message.date),

@@ -269,6 +269,9 @@ export function businessToolForIntent(
     if (/outstanding|owes|unpaid/i.test(query)) {
       return { toolName: "xero_search_invoices", arguments: { query, unpaidOnly: true, limit: 25 } };
     }
+    if (/\b(invoice|invoices)\b/i.test(query) && /\b(po|purchase.?order)\b/i.test(query)) {
+      return { toolName: "xero_search_invoices", arguments: { query: "PO", invoiceType: "ACCREC", limit: 50 } };
+    }
     if (
       /raised today|invoices? (raised |issued |invoiced )?(today|yesterday|this month)|what did we invoice|make up .{0,40}sales|invoice numbers/i.test(
         query,

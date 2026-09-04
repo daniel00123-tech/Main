@@ -26,7 +26,7 @@ function slimCustomer(value: unknown): unknown {
 function slimMessage(value: unknown): unknown {
   if (!isRecord(value)) return value;
   return {
-    id: value.id ?? value.messageId ?? null,
+    id: value.id ?? value.messageId ?? value.emailId ?? value.email_id ?? value.internetMessageId ?? null,
     subject: value.subject ?? null,
     from: value.from ?? value.sender ?? null,
     receivedDateTime: value.receivedDateTime ?? value.received ?? value.date ?? null,
@@ -41,7 +41,7 @@ export function clipBusinessToolData(value: unknown, toolName = ""): unknown {
   if (isRecord(value)) {
     if (toolName === "outlook_get_message" || ("body" in value && /^outlook_/.test(toolName))) {
       return {
-        id: value.id ?? value.messageId ?? null,
+        id: value.id ?? value.messageId ?? value.emailId ?? value.email_id ?? value.internetMessageId ?? null,
         mailboxAddress: value.mailboxAddress ?? value.mailbox ?? null,
         subject: value.subject ?? null,
         from: value.from ?? value.sender ?? null,

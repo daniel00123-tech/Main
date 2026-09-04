@@ -240,9 +240,17 @@ describe("EL WhatsApp deterministic campaign behaviours", () => {
     expect(result.text).toMatch(/Nailah Toyer/);
   });
 
+  it("routes Xero invoices with PO references to invoice search", () => {
+    const decision = classifyScope(
+      "Show Xero invoices with PO references.",
+      buildConversationState({ userText: "Show Xero invoices with PO references." }),
+    );
+    expect(decision.tool).toBe("xero_search_invoices");
+  });
+
   it("replans corrections from Xero to email and email to Xero", async () => {
     const toEmail = classifyScope("No, I meant email.", xeroState("No, I meant email."));
-    expect(toEmail.tool).toMatch(/^outlook_/);
+    expect(toEmail.tool).toBe("outlook_list_messages");
     expect(toEmail.tool).not.toMatch(/^xero_/);
     const toXero = classifyScope("No, I meant Xero.", emailState("No, I meant Xero."));
     expect(toXero.tool).toMatch(/^xero_/);
