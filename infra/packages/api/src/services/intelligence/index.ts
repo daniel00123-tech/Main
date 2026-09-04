@@ -4,7 +4,10 @@ export { classifyScope, isCorpusInventoryAsk, detectNamedDocumentSwitch, pickMai
 export {
   GENERIC_RETRY_COPY,
   classifyReadTerminal,
+  extractFirstMessageId,
+  extractOutlookMessages,
   isGenericRetryCopy,
+  looksPermissionDenied,
   synthesizeFromToolCalls,
   synthesizeToolResult,
 } from "./verbalise-business.js";
@@ -25,6 +28,7 @@ export {
   userAskedRefresh,
 } from "./normalise.js";
 export type { BusinessResultFamily, NormalisedBusinessResult } from "./normalise.js";
+export { clipBusinessToolData } from "./clip-tool-data.js";
 export { verbaliseSystemMeta, isSystemMetaTool, executeSystemMetaTool } from "./system-meta.js";
 export { resolveBusinessPeriod, withResolvedBusinessDates, businessSystemArgs } from "./periods.js";
 export { enrichDocumentQuery } from "./query-enrichment.js";

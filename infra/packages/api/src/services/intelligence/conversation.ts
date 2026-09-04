@@ -63,6 +63,18 @@ function remember(state: IntelligenceConversationState, text: string): string {
     const amount = state.lastAnswerText.match(/£\s?[\d,]+(?:\.\d{2})?/);
     if (amount) return `The amount I mentioned was ${amount[0]}.`;
   }
+  if (/^when\b/i.test(text) && state.lastAnswerText) {
+    const when =
+      state.lastAnswerText.match(/\d{4}-\d{2}-\d{2}/)?.[0] ||
+      state.lastAnswerText.match(/\b(today|yesterday|this month|last month|this week)\b/i)?.[0];
+    if (when) return `That was ${when}.`;
+    return simplify(state.lastAnswerText);
+  }
+  if (/^who\b/i.test(text) && state.lastAnswerText) {
+    const from = state.lastAnswerText.match(/\bfrom ([^.(]+)/i)?.[1];
+    if (from) return `That was from ${from.trim()}.`;
+    return simplify(state.lastAnswerText);
+  }
   if (lastAsk) {
     return `We were talking about ${describeUserAsk(lastAsk)}${
       state.currentDocument ? `, and I still have ${state.currentDocument.title} as context` : ""

@@ -56,7 +56,7 @@ function isDocumentAboutSystem(query: string): boolean {
 }
 
 function isLiveDataOrAction(query: string): boolean {
-  return /\b(tell me|show me|how much|how many|what are|what were|what is|total|outstanding|overdue|raised|today|this month|sales|invoices?|revenue|profit|p&l|pnl|balance sheet|who owes|aged|mailbox|inbox|emails?|jobs?|work orders?|tickets?|make a payment|pay |on xero)\b/.test(
+  return /\b(tell me|show me|how much|how many|what are|what were|what is|total|outstanding|overdue|raised|today|this month|sales|invoices?|revenue|profit|p&l|pnl|balance sheet|who owes|aged|mailbox|inbox|emails?|emailed|emials|jobs?|work orders?|tickets?|make a payment|pay |on xero)\b/.test(
     query,
   );
 }
@@ -219,10 +219,7 @@ export function resolveBusinessSystemIntent(
   const emailPreferred =
     /\b(meant e-?mails?|not xero|instead of xero|e-?mails?, not)\b/.test(q) ||
     (emailAt >= 0 && (xeroAt < 0 || emailAt <= xeroAt));
-  if (
-    (emailAt >= 0 || /\b(info|finance) message\b/.test(q) || /\bnewest info\b/.test(q)) &&
-    emailPreferred
-  ) {
+  if ((emailAt >= 0 || /\b(info|finance) message\b/.test(q) || /\bnewest info\b/.test(q)) && emailPreferred) {
     return {
       capability: /\bfinance\b/.test(q) ? "finance_mailbox" : "info_mailbox",
       connectorDefinitionId: "conn_outlook_shared",
@@ -266,11 +263,16 @@ export function businessToolForIntent(
     if (/overdue/i.test(query)) {
       return { toolName: "xero_list_overdue_invoices", arguments: { query, limit: 25 } };
     }
-    if (/outstanding|owes/i.test(query)) {
+    if (/\bhow much\b/i.test(query) && /invoiced|sales|revenue/i.test(query)) {
+      return { toolName: "xero_sales_summary", arguments: { query } };
+    }
+    if (/outstanding|owes|unpaid/i.test(query)) {
       return { toolName: "xero_search_invoices", arguments: { query, unpaidOnly: true, limit: 25 } };
     }
     if (
-      /raised today|invoices? (raised |issued |invoiced )?today|invoice numbers/i.test(query)
+      /raised today|invoices? (raised |issued |invoiced )?(today|yesterday|this month)|what did we invoice|make up .{0,40}sales|invoice numbers/i.test(
+        query,
+      )
     ) {
       return {
         toolName: "xero_search_invoices",

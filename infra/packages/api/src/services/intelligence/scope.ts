@@ -72,6 +72,8 @@ const REPHRASE =
   /\b(explain(?: that| this| it| your last answer)? more simply|more simply|make (that|it|this|your last answer)( \w+)? (shorter|simpler|brief)|in fewer words|more detail on (that|your last|what you said)|say that again|explain again|put (that|it) another way)\b/i;
 const MORE_DETAIL =
   /^(please )?(can you |could you )?(give me |tell me )?(more details?|more info(?:rmation)?|tell me more)([.?!]*$| about (that|this|it|the same|the (last|previous|current))\b.*)/i;
+const SHORT_REPHRASE = /^(more detail|what exactly)[.?!]*$/i;
+const SHORT_MEMORY = /^(when|who)[.?!]*$/i;
 const MEMORY =
   /\b(what (were|are) we (just )?(talking about|doing)|what did i (just )?ask|what did you (just )?(tell|say)|remind me( what we (just )?asked)?|which source|source (url|link)|last document i asked|the amount again|who (was that|sent that)|when did (it|that) arrive|when was that (email|one|message)|who sent that one)\b/i;
 const CAPABILITY =
@@ -80,7 +82,7 @@ const CONNECTOR =
   /\b(what systems? (are )?(connected|linked)|which (live )?systems?|what(?:'s| is) connected|connectors?|(is|are) (\w+) (connected|linked)|do (we|i|you) have (xero|sharepoint|drive|email|bigchange) connected|systems can you (actually )?use)\b/i;
 const FINANCE =
   /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables|who owes)\b/i;
-const EMAIL = /\b(e-?mails?|emials?|mailbox|outlook|inbox|any mail)\b/i;
+const EMAIL = /\b(e-?mails?|emials?|emaills|emailed|mailbox|outlook|inbox|any mail)\b/i;
 const WRITE =
   /\b(create .{0,24}(invoices?|bills?|credits?)|approve |send(?: this| the)? invoices?|send e-?mails?|can you send e-?mails?|delete |void |allocate |raise an invoice|write to|update (the )?(invoice|bill|contact)|credit notes?)\b/i;
 const FIND =
@@ -155,8 +157,13 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
     namedExplicitly: /\bxero\b/i.test(text),
     reason: "domain_language" as const,
   };
-  const mapped = businessToolForIntent(intent, text);
-  if (mapped?.toolName) return mapped.toolName;
+  const mapped = businessToolForIntent(
+    intent.capability === "xero" || intent.capability === "payments"
+      ? intent
+      : { ...intent, capability: "xero", connectorDefinitionId: "conn_xero" },
+    text,
+  );
+  if (mapped?.toolName?.startsWith("xero_")) return mapped.toolName;
   if (/overdue|owes/i.test(text)) return "xero_list_overdue_invoices";
   if (/outstanding/i.test(text)) return "xero_search_invoices";
   if (/p&l|pnl|profit/i.test(text)) return "xero_profit_and_loss";
@@ -167,8 +174,12 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
 }
 
 export function pickMailboxTool(text: string): string {
+  if (/\bfrom\s+[A-Za-z]{2,}|containing|has \w+ sent|with \w+ in the subject\b/i.test(text)) {
+    return "outlook_search_mailbox";
+  }
+  if (/\b(full|body|what does .{0,40}(say|said))\b/i.test(text)) return "outlook_list_messages";
   if (
-    /\b(newest|latest|most recent(?:ly)?|last email|recent email|emailed .{0,40}recent|last (five|5|few) emails?)\b/i.test(
+    /\b(newest|latest|most recent(?:ly)?|last email|recent email|emailed .{0,40}recent|last (five|5|few) emails?|last \d|unread|arrived today|who emailed)\b/i.test(
       text,
     )
   ) {
@@ -187,9 +198,9 @@ function extractFeatures(text: string): ScopeFeatures {
     systemLocus: SYSTEM_LOCUS.test(trimmed),
     companyLocus: COMPANY_LOCUS.test(trimmed),
     discourse: DISCOURSE.test(trimmed),
-    rephraseLastAnswer: REPHRASE.test(trimmed) && !MORE_DETAIL.test(trimmed),
+    rephraseLastAnswer: (REPHRASE.test(trimmed) || SHORT_REPHRASE.test(trimmed)) && !MORE_DETAIL.test(trimmed),
     moreDetail: MORE_DETAIL.test(trimmed),
-    memoryRecall: MEMORY.test(trimmed),
+    memoryRecall: MEMORY.test(trimmed) || SHORT_MEMORY.test(trimmed),
     capabilityAsk: CAPABILITY.test(trimmed),
     connectorAsk: CONNECTOR.test(trimmed),
     financeAsk: FINANCE.test(trimmed),
@@ -236,6 +247,12 @@ function detectScopeSwitch(text: string): ScopeSwitch {
   if (/\b(i meant|no,? i meant) (the )?(company )?(documents?|files?|knowledge)\b/i.test(text)) {
     return "company";
   }
+  if (/\b(i )?meant (the )?(xero|sales|invoices?)\b/i.test(text) && !/\b(email|mailbox|outlook|inbox)\b/i.test(text)) {
+    return "business";
+  }
+  if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text)) {
+    return "email";
+  }
   if (/\b(emails?|mailbox|outlook|inbox)\b/i.test(text) && !/\b(company files?|company documents?|company knowledge)\b/i.test(text)) {
     if (
       /\b(instead|switch|search|check|from|meant)\b/i.test(text) ||
@@ -245,14 +262,14 @@ function detectScopeSwitch(text: string): ScopeSwitch {
     }
   }
   if (
-    /\bxero\b|\b(invoices?|sales figures)\b/i.test(text) &&
-    /\b(switch|instead|use|from|check)\b/i.test(text) &&
+    (/\bxero\b/i.test(text) || /\b(finance|invoices?|sales figures)\b/i.test(text)) &&
+    /\b(switch|instead|use|from|check|meant)\b/i.test(text) &&
     !/\b(emails?|mailbox|outlook|inbox)\b/i.test(text)
   ) {
     return "business";
   }
   if (
-    /\b(emails?|mailbox|outlook)\b/i.test(text) &&
+    /\b(emails?|emials|mailbox|outlook)\b/i.test(text) &&
     /\b(instead|switch|search|check|from|meant)\b/i.test(text) &&
     !/\b(company files?|company documents?|company knowledge)\b/i.test(text)
   ) {
@@ -380,6 +397,19 @@ export function classifyScope(
     });
   }
 
+  if (
+    /\b(sales|xero)\b/i.test(text) &&
+    /\b(and then|then show|and show)\b/i.test(text) &&
+    /\b(email|inbox)\b/i.test(text) &&
+    !features.writeIntent
+  ) {
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: "xero_sales_summary",
+      lastAnswerTopic: "finance",
+      lastUserIntent: "finance",
+    });
+  }
+
   const businessIntent = resolveBusinessSystemIntent(text);
   const mailboxIntent =
     businessIntent?.capability === "finance_mailbox" ||
@@ -390,6 +420,25 @@ export function classifyScope(
     mailboxIntent &&
     !features.connectorAsk &&
     !features.capabilityAsk &&
+    !features.writeIntent
+  ) {
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: pickMailboxTool(text),
+      lastAnswerTopic: "email",
+      lastUserIntent: "email",
+    });
+  }
+  if (/\bemails? behind\b/i.test(text) && !features.writeIntent) {
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: "outlook_search_mailbox",
+      lastAnswerTopic: "email",
+      lastUserIntent: "email",
+    });
+  }
+  if (
+    (lastTopic === "email" || state.currentBusinessSystem === "email") &&
+    PERIOD_FOLLOW.test(text) &&
+    !features.financeAsk &&
     !features.writeIntent
   ) {
     return decide("BUSINESS_SYSTEM", features, {

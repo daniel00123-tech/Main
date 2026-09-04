@@ -491,7 +491,17 @@ function canonicalArgKey(name: string, args: Record<string, unknown>): string {
 }
 
 function outlookMessages(data: Record<string, unknown>): Array<Record<string, unknown>> {
-  const rows = Array.isArray(data.messages) ? data.messages : Array.isArray(data.results) ? data.results : [];
+  const rows = Array.isArray(data.messages)
+    ? data.messages
+    : Array.isArray(data.emails)
+      ? data.emails
+      : Array.isArray(data.results)
+        ? data.results
+        : Array.isArray(data.value)
+          ? data.value
+          : data.subject || data.body || data.bodyPreview || data.id
+            ? [data]
+            : [];
   return rows.filter(isRecord).sort((a, b) => {
     const left = String(a.receivedDateTime ?? a.received ?? a.date ?? "");
     const right = String(b.receivedDateTime ?? b.received ?? b.date ?? "");

@@ -407,9 +407,13 @@ function gatewayArguments(
   }
   if (toolName === "xero_get_invoice") {
     const invoiceNumber = String(
-      args.invoiceNumber ?? args.invoice_id ?? args.invoiceId ?? args.id ?? "",
+      args.invoiceNumber ?? args.invoice_number ?? args.invoice_id ?? args.invoiceId ?? args.id ?? "",
     ).trim();
-    return { invoiceNumber, invoice_id: invoiceNumber, invoiceId: invoiceNumber };
+    const invoiceId = String(args.invoice_id ?? args.invoiceId ?? "").trim();
+    return {
+      ...(invoiceNumber ? { invoiceNumber, invoice_id: invoiceId || invoiceNumber, invoiceId: invoiceId || invoiceNumber } : {}),
+      ...(invoiceId && !invoiceNumber ? { invoice_id: invoiceId, invoiceId } : {}),
+    };
   }
   return { ...args };
 }
