@@ -1,6 +1,7 @@
 import { FormEvent, useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { InfraBrand } from "../components/InfraBrand";
 
 export default function ForgotPasswordPage() {
   const emailId = useId();
@@ -60,13 +61,7 @@ export default function ForgotPasswordPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="brand-block" style={{ padding: 0 }}>
-          <div className="brand-mark">IN</div>
-          <div className="brand-text">
-            <span className="brand-name">INFRA</span>
-            <span className="brand-context">Company portal</span>
-          </div>
-        </div>
+        <InfraBrand showStack context="Company portal" size={36} />
         <h1>Reset password</h1>
         <p className="login-intro">
           Enter your email address and we&apos;ll provide a secure link to choose a new password.
@@ -141,6 +136,8 @@ export default function ForgotPasswordPage() {
 
         <p className="muted small" style={{ marginTop: 20 }}>
           <Link to="/portal/login">Back to sign in</Link>
+          {" · "}
+          <Link to="/privacy">Privacy Policy</Link>
         </p>
       </div>
     </div>

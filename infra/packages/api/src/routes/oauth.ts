@@ -6,6 +6,7 @@ import { loadLiveCompanyActor } from "../auth/live-identity";
 import {
   consumeAuthorizationCode,
   consumeRefreshToken,
+  revokeRefreshTokenByValue,
   createAuthorizationCode,
   ensureDefaultChatgptClient,
   getOauthClient,
@@ -26,6 +27,7 @@ import { getCompanyById, getCompanyBySlug } from "../services/control-plane";
 import {
   infraBrowserPublicBase,
   infraMcpGatewayUrl,
+  oauthAuthorizeContinueUrl,
   oauthLoginRedirectUrl,
 } from "../services/public-urls";
 
@@ -186,7 +188,7 @@ oauth.get("/oauth/authorize", async (c) => {
     ).filter(Boolean);
     const list = options
       .map((item) => {
-        const url = new URL(c.req.url);
+        const url = new URL(oauthAuthorizeContinueUrl(c.env, c.req.raw));
         url.searchParams.set("company", item!.slug);
         return `<p><a class="btn" href="${escapeHtml(url.toString())}">${escapeHtml(item!.name)}</a></p>`;
       })
@@ -355,7 +357,7 @@ oauth.post("/oauth/revoke", async (c) => {
   const token = String(params.token ?? "");
   const clientId = String(params.client_id ?? "");
   if (token && clientId) {
-    await consumeRefreshToken(c.env.DB, token, clientId);
+    await revokeRefreshTokenByValue(c.env.DB, token, clientId);
   }
   return c.body(null, 200);
 });

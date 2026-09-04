@@ -103,7 +103,7 @@ export default function SettingsPage() {
             <SectionCard title="General">
               <div className="drawer-row">
                 <dt>Platform display name</dt>
-                <dd>INFRA</dd>
+                <dd>Infra</dd>
               </div>
               <div className="drawer-row">
                 <dt>Default currency</dt>
@@ -208,7 +208,7 @@ export default function SettingsPage() {
             <SectionCard title="Platform environment">
               <div className="drawer-row">
                 <dt>Product</dt>
-                <dd>INFRA</dd>
+                <dd>Infra</dd>
               </div>
               <div className="drawer-row">
                 <dt>Environment</dt>

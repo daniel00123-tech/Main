@@ -29,6 +29,11 @@ import {
 import type { Env } from "../env";
 import { getValidXeroAccessToken } from "./xero";
 import { isXeroToolName, isXeroWriteToolName, prepareXeroMcpExecution } from "./xero-tools";
+import { executeCompanyMcpXeroRead } from "./xero-company-mcp";
+import { getConnectorInstance } from "./control-plane";
+import { extractIntentText } from "@infra/shared";
+import { withResolvedBusinessDates } from "./intelligence/periods";
+import { nowIso } from "../db/mappers";
 
 type ReadHandlerName = (typeof XERO_READ_TOOL_HANDLERS)[keyof typeof XERO_READ_TOOL_HANDLERS];
 
@@ -144,6 +149,7 @@ export async function executeXeroReadToolOnInfra(
     toolName: string;
     arguments?: Record<string, unknown>;
     actor: string;
+    actorUserId?: string | null;
   },
 ): Promise<
   | { ok: true; result: Record<string, unknown>; latencyMs: number }
@@ -154,6 +160,11 @@ export async function executeXeroReadToolOnInfra(
   }
 
   const started = Date.now();
+  const intentText = [extractIntentText(input.arguments), input.arguments?.period, input.arguments?.query]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(" ");
+  const resolvedArgs = withResolvedBusinessDates(input.toolName, input.arguments ?? {}, intentText);
+
   const prepared = await prepareXeroMcpExecution({
     env,
     companyId: input.companyId,
@@ -168,6 +179,18 @@ export async function executeXeroReadToolOnInfra(
     };
   }
 
+  const instance = await getConnectorInstance(env.DB, prepared.instanceId);
+  const useCompanyMcp = !instance?.credentialRefId;
+  if (useCompanyMcp) {
+    return executeCompanyMcpXeroRead(env, {
+      companyId: input.companyId,
+      toolName: input.toolName,
+      arguments: resolvedArgs,
+      actor: input.actor,
+      actorUserId: input.actorUserId,
+    });
+  }
+
   const token = await getValidXeroAccessToken({
     env,
     companyId: input.companyId,
@@ -176,6 +199,15 @@ export async function executeXeroReadToolOnInfra(
     reason: "mcp_resolve",
   });
   if (!token.ok) {
+    if (token.body.code === "CREDENTIAL_REF_FORBIDDEN") {
+      return executeCompanyMcpXeroRead(env, {
+        companyId: input.companyId,
+        toolName: input.toolName,
+        arguments: resolvedArgs,
+        actor: input.actor,
+        actorUserId: input.actorUserId,
+      });
+    }
     return {
       ok: false,
       status: token.status,
@@ -211,7 +243,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_sales_summary") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const fromDate = String(args.fromDate ?? "");
       const toDate = String(args.toDate ?? "");
       const xeroToken = { accessToken: token.accessToken, tenantId: token.tenantId };
@@ -228,7 +260,17 @@ export async function executeXeroReadToolOnInfra(
         result: {
           organisationName: token.payload.organisationName,
           currencyCode,
+          currency: currencyCode,
           semantics: SALES_SEMANTICS,
+          source: "Xero",
+          retrieved_at: nowIso(),
+          period: {
+            fromDate,
+            toDate,
+            label: typeof args.periodLabel === "string" ? args.periodLabel : `${fromDate} to ${toDate}`,
+          },
+          sales_total: aggregated.totalSales,
+          invoice_count: aggregated.qualifyingTransactionCount,
           summary: {
             fromDate,
             toDate,
@@ -244,7 +286,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_profit_and_loss") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const fromDate = String(args.fromDate ?? "");
       const toDate = String(args.toDate ?? "");
       const payload = await profitAndLossWithFetch(
@@ -282,7 +324,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_top_customers") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const limit = Math.min(Math.max(1, Number(args.limit ?? 3)), 20);
       const fromDate = String(args.fromDate ?? "");
       const toDate = String(args.toDate ?? "");
@@ -308,7 +350,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_list_contacts") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const payload = await listContactsWithFetch(fetchConfig, {
           query: args.query != null ? String(args.query) : undefined,
           contactType: args.contactType != null ? String(args.contactType) : undefined,
@@ -325,7 +367,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_get_contact") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const contactId = String(args.contactId ?? "").trim();
       if (!contactId) {
         return { ok: false, status: 409, error: "contactId is required", code: "VALIDATION_FAILED" };
@@ -342,7 +384,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_list_accounts") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const payload = await listAccountsWithFetch(fetchConfig, {
         accountType: args.accountType != null ? String(args.accountType) : undefined,
       });
@@ -357,7 +399,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_search_invoices") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const payload = await searchInvoicesWithFetch(fetchConfig, {
         query: args.query != null ? String(args.query) : undefined,
         status: args.status != null ? String(args.status) : undefined,
@@ -370,18 +412,32 @@ export async function executeXeroReadToolOnInfra(
         toDate: args.toDate != null ? String(args.toDate) : undefined,
         limit: args.limit != null ? Number(args.limit) : undefined,
       });
+      const invoices = Array.isArray(payload.invoices) ? payload.invoices : [];
+      const invoiceNumbers = invoices
+        .map((row) => {
+          if (!row || typeof row !== "object") return null;
+          const rec = row as Record<string, unknown>;
+          const number = rec.invoiceNumber ?? rec.InvoiceNumber;
+          return typeof number === "string" && number.trim() ? number.trim() : null;
+        })
+        .filter((value): value is string => Boolean(value));
       return {
         ok: true,
         latencyMs: Date.now() - started,
         result: {
           organisationName: token.payload.organisationName,
+          source: "Xero",
+          retrieved_at: nowIso(),
+          fromDate: args.fromDate != null ? String(args.fromDate) : null,
+          toDate: args.toDate != null ? String(args.toDate) : null,
+          invoice_numbers: invoiceNumbers,
           ...payload,
         },
       };
     }
 
     if (input.toolName === "xero_get_invoice") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const payload = await getInvoiceWithFetch(fetchConfig, {
         invoiceId: args.invoiceId != null ? String(args.invoiceId) : undefined,
         invoiceNumber: args.invoiceNumber != null ? String(args.invoiceNumber) : undefined,
@@ -397,7 +453,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_list_overdue_invoices") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const payload = await listOverdueInvoicesWithFetch(fetchConfig, {
         contactId: args.contactId != null ? String(args.contactId) : undefined,
         effectiveDate: args.effectiveDate != null ? String(args.effectiveDate) : undefined,
@@ -414,7 +470,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_list_payments") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const payload = await listPaymentsWithFetch(fetchConfig, {
         since: args.since != null ? String(args.since) : undefined,
         toDate: args.toDate != null ? String(args.toDate) : undefined,
@@ -432,7 +488,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_list_bank_transactions") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const payload = await listBankTransactionsWithFetch(fetchConfig, {
         since: args.since != null ? String(args.since) : undefined,
         toDate: args.toDate != null ? String(args.toDate) : undefined,
@@ -449,7 +505,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_balance_sheet") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const payload = await balanceSheetWithFetch(fetchConfig, {
         date: args.date != null ? String(args.date) : undefined,
       });
@@ -464,7 +520,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_aged_receivables") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const payload = await agedReceivablesWithFetch(fetchConfig, {
         reportType: args.reportType != null ? String(args.reportType) : undefined,
         date: args.date != null ? String(args.date) : undefined,
@@ -481,7 +537,7 @@ export async function executeXeroReadToolOnInfra(
     }
 
     if (input.toolName === "xero_top_suppliers") {
-      const args = input.arguments ?? {};
+      const args = resolvedArgs;
       const payload = await topSuppliersWithFetch(fetchConfig, {
         fromDate: args.fromDate != null ? String(args.fromDate) : undefined,
         toDate: args.toDate != null ? String(args.toDate) : undefined,

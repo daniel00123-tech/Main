@@ -91,7 +91,9 @@ export type AuditEventType =
   | "invitation.sent"
   | "invitation.queued"
   | "invitation.resent"
-  | "invitation.cancelled";
+  | "invitation.cancelled"
+  | "invitation.accepted"
+  | "invitation.reconciled";
 
 export type UserStatus = "active" | "disabled";
 
@@ -178,6 +180,8 @@ export interface CreateCompanyInput {
   modules?: string[];
   adminEmail?: string | null;
   adminDisplayName?: string | null;
+  /** Required when creating a new first admin. International E.164, e.g. +447700900123 */
+  adminMobile?: string | null;
 }
 
 export interface McpEnvironment {
@@ -225,6 +229,9 @@ export interface InfraUser {
   isPlatformAdmin: boolean;
   status: UserStatus;
   lastLoginAt?: string | null;
+  mobileE164?: string | null;
+  mobileVerified?: boolean;
+  mobileVerificationRequired?: boolean;
   memberships: Array<{
     companyId: string;
     role: CompanyRole;
@@ -482,6 +489,25 @@ export interface UsageSummary {
   byChannel?: UsageBreakdownRow[];
   byConnector?: UsageBreakdownRow[];
   byTool?: UsageBreakdownRow[];
+}
+
+/** Admin commercial usage rollup. Raw failed includes expected denials. */
+export interface UsageCommercialSummary {
+  requests: number;
+  successful: number;
+  failed: number;
+  denied: number;
+  operationalFailed: number;
+  noResults: number;
+  customerChargesCents: number;
+  underlyingCostsCents: number | null;
+  providerCostKnown: boolean;
+  providerCostUnavailableReason: string | null;
+  grossProfitCents: number | null;
+  grossMarginBps: number | null;
+  rawSuccessRate: number | null;
+  operationalSuccessRate: number | null;
+  customerMeaningfulSuccessRate: number | null;
 }
 
 /** Customer-facing rollup of one or more usage operations that share interaction_id. */

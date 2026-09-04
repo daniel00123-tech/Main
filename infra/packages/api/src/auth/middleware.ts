@@ -9,6 +9,7 @@ import {
   type SessionUser,
 } from "./session";
 import { getUserById } from "./users";
+import { sessionCookieDomainForHost } from "@infra/shared";
 
 export type AuthVariables = {
   user: SessionUser;
@@ -73,19 +74,45 @@ function isCrossOriginCookies(env: { COOKIE_CROSS_ORIGIN?: string }): boolean {
   return env.COOKIE_CROSS_ORIGIN === "true";
 }
 
-function portalCookieDomain(env: {
-  PORTAL_COOKIE_DOMAIN?: string;
-  PORTAL_BASE_DOMAIN?: string;
+function requestHostname(c: {
+  req: { url: string; header?: (name: string) => string | undefined };
 }): string | null {
-  const explicit = env.PORTAL_COOKIE_DOMAIN?.trim();
-  if (explicit) return explicit.startsWith(".") ? explicit : `.${explicit}`;
-  const base = env.PORTAL_BASE_DOMAIN?.trim();
-  if (base) return `.${base}`;
+  const header = typeof c.req.header === "function" ? c.req.header.bind(c.req) : undefined;
+  const candidates = [
+    header?.("Origin"),
+    header?.("Referer"),
+    header?.("X-Forwarded-Host")
+      ? `${header?.("X-Forwarded-Proto") === "http" ? "http" : "https"}://${header?.("X-Forwarded-Host")}`
+      : null,
+    c.req.url,
+  ];
+  for (const value of candidates) {
+    if (!value) continue;
+    try {
+      return new URL(value).hostname.toLowerCase();
+    } catch {
+      /* try next */
+    }
+  }
   return null;
 }
 
+function portalCookieDomain(
+  env: {
+    PORTAL_COOKIE_DOMAIN?: string;
+    PORTAL_BASE_DOMAIN?: string;
+  },
+  hostname: string | null,
+): string | null {
+  const fromHost = sessionCookieDomainForHost(hostname);
+  if (!fromHost) return null;
+  const explicit = env.PORTAL_COOKIE_DOMAIN?.trim();
+  if (explicit) return explicit.startsWith(".") ? explicit : `.${explicit}`;
+  return fromHost;
+}
+
 function sessionCookieOptions(c: {
-  req: { url: string };
+  req: { url: string; header?: (name: string) => string | undefined };
   env: { COOKIE_CROSS_ORIGIN?: string; PORTAL_COOKIE_DOMAIN?: string; PORTAL_BASE_DOMAIN?: string };
 }) {
   const secure = isSecureRequest(new URL(c.req.url));
@@ -93,14 +120,14 @@ function sessionCookieOptions(c: {
   return {
     secure,
     crossOrigin,
-    cookieDomain: crossOrigin ? null : portalCookieDomain(c.env),
+    cookieDomain: crossOrigin ? null : portalCookieDomain(c.env, requestHostname(c)),
   };
 }
 
 export function setSessionCookie(
   c: {
     header: (name: string, value: string) => void;
-    req: { url: string };
+    req: { url: string; header?: (name: string) => string | undefined };
     env: {
       COOKIE_CROSS_ORIGIN?: string;
       PORTAL_COOKIE_DOMAIN?: string;
@@ -118,7 +145,7 @@ export function setSessionCookie(
 
 export function clearSessionCookie(c: {
   header: (name: string, value: string) => void;
-  req: { url: string };
+  req: { url: string; header?: (name: string) => string | undefined };
   env: {
     COOKIE_CROSS_ORIGIN?: string;
     PORTAL_COOKIE_DOMAIN?: string;

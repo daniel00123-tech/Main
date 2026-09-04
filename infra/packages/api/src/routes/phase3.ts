@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { CompanyRole } from "@infra/shared";
+import { RESERVED_INFRA_EMAIL_ALIASES, type CompanyRole } from "@infra/shared";
 import type { Env } from "../env";
 import {
   requireAuth,
@@ -19,9 +19,9 @@ import {
   validateNewPassword,
 } from "../auth/password-setup";
 import { getCompanyEmailConfig } from "../services/email/company-config";
+import { resolvePlatformEmailIdentity } from "../services/email/platform-identity";
 import { sendTransactionalEmail } from "../services/email/send-transactional";
 import { renderTestEmail } from "../services/email-outbox";
-import { exchangeMailSendRbacGuide } from "../services/email/providers/microsoft-graph";
 import {
   getCompanyBySlug,
   listMcpEnvironments,
@@ -113,7 +113,7 @@ import {
   getAiUserConnection,
   isAiChannelEnabled,
   oauthIssuer,
-  revokeRefreshTokensForUser,
+  revokeHumanOauthGrant,
   setAiChannelEnabled,
 } from "../auth/mcp-oauth";
 import { registerCommand6Routes } from "./command6";
@@ -214,6 +214,7 @@ phase3.post("/api/gateway/v1/execute", async (c) => {
   const result = await executeGatewayRequest(c.env, {
     actor: actorResult,
     companyId,
+    waitUntil: (promise) => c.executionCtx.waitUntil(promise),
     toolName: body.toolName,
     arguments: body.arguments,
     mcpEnvironmentId: body.mcpEnvironmentId,
@@ -255,7 +256,9 @@ phase3.all("/api/gateway/v1/mcp", async (c) => {
   const sessionUser = token
     ? await verifySessionToken(token, c.env.SESSION_SECRET)
     : null;
-  return handleInfraMcpHttp(c.env, c.req.raw, sessionUser);
+  return handleInfraMcpHttp(c.env, c.req.raw, sessionUser, (promise) =>
+    c.executionCtx.waitUntil(promise),
+  );
 });
 
 phase3.get("/api/gateway/v1/health", (c) =>
@@ -743,7 +746,10 @@ phase3.post("/api/stripe/webhook", async (c) => {
     return c.json(
       {
         error: "Stripe is not configured",
-        requiredSecrets: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
+        requiredSecrets: [
+          "STRIPE_SECRET_KEY",
+          "STRIPE_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET_INFRASTACK",
+        ],
       },
       503,
     );
@@ -800,6 +806,7 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
     role?: CompanyRole;
     teamId?: string;
     customRoleId?: string;
+    mobile?: string;
   }>();
 
   if (!body.email || !body.displayName || !body.role) {
@@ -821,6 +828,7 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
         teamId: body.teamId,
         customRoleId: body.customRoleId,
         origin,
+        mobile: body.mobile,
       }),
     );
 
@@ -866,6 +874,15 @@ phase3.post("/api/companies/:slug/users/invite", requireAuth, async (c) => {
         },
         409,
       );
+    }
+    if (err instanceof Error && (err as Error & { code?: string }).code === "INVALID_MOBILE") {
+      return c.json({ error: err.message, code: "INVALID_MOBILE" }, 400);
+    }
+    if (err instanceof Error && (err as Error & { code?: string }).code === "MOBILE_COLLISION") {
+      return c.json({ error: err.message, code: "MOBILE_COLLISION" }, 409);
+    }
+    if (err instanceof Error && (err as Error & { code?: string }).code === "USER_ALREADY_MEMBER") {
+      return c.json({ error: err.message, code: "USER_ALREADY_MEMBER" }, 409);
     }
     throw err;
   }
@@ -1595,7 +1612,7 @@ phase3.post(
     }
     const clientType = c.req.param("clientType");
     const user = c.get("user");
-    await revokeRefreshTokensForUser(c.env.DB, user.userId, company.id);
+    await revokeHumanOauthGrant(c.env.DB, user.userId, company.id);
     await c.env.DB.prepare(
       `UPDATE ai_user_connections
        SET status = 'revoked', updated_at = ?
@@ -1631,6 +1648,8 @@ phase3.post(
         "disabled",
       );
     }
+    const { revokeHumanOauthForCompany } = await import("../auth/mcp-oauth");
+    await revokeHumanOauthForCompany(c.env.DB, company.id, clientType);
     await c.env.DB.prepare(
       `UPDATE ai_client_connections
        SET status = 'ready_to_connect', service_identity_id = NULL, updated_at = ?
@@ -2115,23 +2134,24 @@ phase3.get("/api/companies/:slug/email/config", requireAuth, async (c) => {
   }
 
   const config = await getCompanyEmailConfig(c.env.DB, company.id);
-  if (!config) {
-    return c.json({
-      enabled: false,
-      provider: null,
-      sender: null,
-      healthStatus: "configuration_required",
-    });
-  }
+  const identity = resolvePlatformEmailIdentity(c.env);
 
   return c.json({
-    enabled: config.enabled,
-    provider: config.provider === "microsoft365" ? "Microsoft 365" : config.provider,
-    sender: `${config.senderDisplayName} <${config.senderAddress}>`,
-    healthStatus: config.healthStatus,
-    allowedTypes: config.allowedTypes,
-    lastSentAt: config.lastSentAt,
-    lastErrorCategory: config.lastErrorCategory,
+    enabled: true,
+    provider: "Cloudflare Email Service",
+    sender: identity.formatted,
+    healthStatus: config?.healthStatus ?? "healthy",
+    allowedTypes: config?.allowedTypes ?? [
+      "PASSWORD_RESET",
+      "USER_INVITATION",
+      "TEST_EMAIL",
+      "XERO_SALES_REPORT",
+      "DOCUMENT_ACTIVITY_REPORT",
+    ],
+    lastSentAt: config?.lastSentAt ?? null,
+    lastErrorCategory: config?.lastErrorCategory ?? null,
+    reservedAliases: RESERVED_INFRA_EMAIL_ALIASES,
+    noReply: true,
   });
 });
 
@@ -2165,7 +2185,7 @@ phase3.post("/api/companies/:slug/email/test", requireAuth, async (c) => {
     emailId: result.id,
     provider: result.provider,
     error: result.error,
-    microsoftSetup: result.failureCategory === "permission" ? exchangeMailSendRbacGuide() : undefined,
+    sender: resolvePlatformEmailIdentity(c.env).formatted,
   });
 });
 

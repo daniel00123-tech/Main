@@ -124,7 +124,7 @@ async function runGatewaySearch(
     )
     .run();
 
-  const base = (env.INFRA_PUBLIC_API_URL ?? "https://infra-api.daniel-dwyer123.workers.dev").replace(
+  const base = (env.INFRA_PUBLIC_API_URL ?? "https://api.infrastack.app").replace(
     /\/$/,
     "",
   );
@@ -604,7 +604,7 @@ export async function runCmd15Regression(env: Env): Promise<Record<string, unkno
   const coalSearch = await runGatewaySearch(env, pilot.companyId, "Coal Search");
   const vanPolicy = await runGatewaySearch(env, pilot.companyId, "Company Van Policy");
 
-  const base = (env.INFRA_PUBLIC_API_URL ?? "https://infra-api.daniel-dwyer123.workers.dev").replace(/\/$/, "");
+  const base = (env.INFRA_PUBLIC_API_URL ?? "https://api.infrastack.app").replace(/\/$/, "");
   const healthRes = await fetch(`${base}/health`);
   const readyRes = await fetch(`${base}/ready`);
   const health = (await healthRes.json().catch(() => ({}))) as { status?: string };

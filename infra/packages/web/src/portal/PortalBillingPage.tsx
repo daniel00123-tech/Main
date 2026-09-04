@@ -2,12 +2,15 @@ import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Button,
+  DataCard,
   EmptyState,
   ErrorState,
+  HelpHint,
   Input,
   KpiStrip,
   KeyValue,
   LoadingState,
+  MobileRecordList,
   Notice,
   SectionCard,
   Tabs,
@@ -16,7 +19,7 @@ import {
 } from "../components";
 import { api } from "../api";
 import { humanLedgerType } from "../lib/format";
-import { PortalPageHeader, ProductCard } from "./components";
+import { PortalPageHeader } from "./components";
 import { usePortalCompany } from "./usePortalCompany";
 
 type TopUpRecord = {
@@ -30,30 +33,7 @@ type TopUpRecord = {
   stripeMode?: string | null;
 };
 
-type BillingTab = "overview" | "payment" | "auto-topup" | "transactions" | "invoices" | "addons";
-
-const ADDON_PRODUCTS = [
-  {
-    name: "Priority data refresh",
-    benefit: "Faster knowledge and connector sync cycles for time-sensitive operations.",
-    price: "Pricing TBC",
-  },
-  {
-    name: "Enhanced analytics",
-    benefit: "Deeper usage insights and exportable reports for finance and operations teams.",
-    price: "Pricing TBC",
-  },
-  {
-    name: "Additional knowledge capacity",
-    benefit: "Expanded document indexing limits for larger company knowledge bases.",
-    price: "Pricing TBC",
-  },
-  {
-    name: "Premium support",
-    benefit: "Priority response for connector, billing, and AI connection issues.",
-    price: "Pricing TBC",
-  },
-];
+type BillingTab = "overview" | "payment" | "auto-topup" | "transactions" | "invoices";
 
 export default function PortalBillingPage() {
   const { company, loading, error } = usePortalCompany();
@@ -79,8 +59,14 @@ export default function PortalBillingPage() {
   const tabParam = searchParams.get("tab");
 
   useEffect(() => {
-    if (tabParam === "payment" || tabParam === "auto-topup" || tabParam === "overview") {
-      setTab(tabParam as BillingTab);
+    if (
+      tabParam === "payment" ||
+      tabParam === "auto-topup" ||
+      tabParam === "overview" ||
+      tabParam === "transactions" ||
+      tabParam === "invoices"
+    ) {
+      setTab(tabParam);
     }
   }, [tabParam]);
 
@@ -310,11 +296,10 @@ export default function PortalBillingPage() {
         onChange={(id) => setTab(id as BillingTab)}
         tabs={[
           { id: "overview", label: "Overview" },
-          { id: "payment", label: "Payment method" },
+          { id: "payment", label: "Payment" },
           { id: "auto-topup", label: "Auto top-up" },
-          { id: "transactions", label: "Transactions" },
+          { id: "transactions", label: "Activity" },
           { id: "invoices", label: "Payments" },
-          { id: "addons", label: "Add-ons" },
         ]}
       />
 
@@ -333,9 +318,9 @@ export default function PortalBillingPage() {
                       : "Low balance — add credit",
               },
               {
-                label: "Non-purchased credit",
+                label: "Promotional credit",
                 value: formatCurrency(wallet.wallet.testCreditCents ?? 0, wallet.wallet.currency),
-                hint: "Promotional and test credit",
+                hint: "Credit added by Infra that you did not purchase",
               },
               {
                 label: "Spend this month",
@@ -343,15 +328,15 @@ export default function PortalBillingPage() {
                 hint: "Usage charges this month",
               },
               {
-                label: "Paid credit",
+                label: "Purchased credit",
                 value: formatCurrency(wallet.wallet.paidCreditCents ?? 0, wallet.wallet.currency),
-                hint: "Credit you've paid for",
+                hint: "Credit paid for by card",
               },
               {
                 label: "Auto top-up",
                 value: autoTopUp?.enabled ? "On" : "Off",
                 hint: autoTopUp?.enabled
-                  ? `Below ${formatCurrency(autoTopUp.thresholdCents ?? 0)} → add ${formatCurrency(autoTopUp.amountCents ?? 0)}`
+                  ? `When your balance drops below ${formatCurrency(autoTopUp.thresholdCents ?? 0)}, automatically add ${formatCurrency(autoTopUp.amountCents ?? 0)}.`
                   : "Not enabled yet",
               },
             ]}
@@ -531,14 +516,23 @@ export default function PortalBillingPage() {
       {tab === "auto-topup" ? (
         <SectionCard
           title="Auto top-up"
-          description="Automatically add credit when your balance falls below the amount you choose."
+          description={
+            <>
+              When your balance drops below £{autoTopUpThresholdPounds}, automatically add £
+              {autoTopUpAmountPounds}.
+              <HelpHint label="How auto top-up works">
+                Infra charges your saved card and adds that amount as purchased credit. You can turn
+                this off at any time.
+              </HelpHint>
+            </>
+          }
         >
           {autoTopUp?.enabled ? (
             <div className="billing-auto-topup-status">
               <KeyValue label="Auto top-up" value="On" />
               <KeyValue
-                label="Settings"
-                value={`Below ${formatCurrency(autoTopUp.thresholdCents ?? autoTopUpThresholdPounds * 100, wallet.wallet.currency)} → add ${formatCurrency(autoTopUp.amountCents ?? autoTopUpAmountPounds * 100, wallet.wallet.currency)}`}
+                label="Rule"
+                value={`When your balance drops below ${formatCurrency(autoTopUp.thresholdCents ?? autoTopUpThresholdPounds * 100, wallet.wallet.currency)}, automatically add ${formatCurrency(autoTopUp.amountCents ?? autoTopUpAmountPounds * 100, wallet.wallet.currency)}.`}
               />
               <KeyValue
                 label="Saved card"
@@ -623,10 +617,26 @@ export default function PortalBillingPage() {
       {tab === "transactions" ? (
         <SectionCard title="Transaction history">
           {wallet.ledger.length === 0 ? (
-            <EmptyState title="No transactions yet" description="Credits and usage charges will appear here." />
+            <EmptyState
+              title="No transactions yet"
+              description="This page shows credit added and usage charged. It is empty until your company starts using Infra."
+            />
           ) : (
             <>
-              <div className="table-wrap">
+              <div className="mobile-cards">
+                <MobileRecordList>
+                  {wallet.ledger.slice(0, ledgerLimit).map((entry) => (
+                    <DataCard
+                      key={entry.id}
+                      title={entry.description ?? humanLedgerType(entry.entryType)}
+                      subtitle={humanLedgerType(entry.entryType)}
+                      metric={formatCurrency(entry.amountCents, wallet.wallet.currency)}
+                      timestamp={formatDate(entry.createdAt)}
+                    />
+                  ))}
+                </MobileRecordList>
+              </div>
+              <div className="desktop-table table-wrap">
                 <table className="table compact">
                   <thead>
                     <tr>
@@ -680,7 +690,38 @@ export default function PortalBillingPage() {
               description="Your card payments and credits added to your account will appear here."
             />
           ) : (
-            <div className="table-wrap">
+            <>
+            <div className="mobile-cards">
+              <MobileRecordList>
+                {payments.map((p) => {
+                  const stripeMode = p.stripeMode ? String(p.stripeMode) : null;
+                  const isTestStripeTopUp =
+                    stripeMode === "test" ||
+                    (p.entryType === "top_up" && p.creditClass === "test");
+                  const typeLabel =
+                    p.entryType === "top_up"
+                      ? isTestStripeTopUp
+                        ? "Top-up (Test)"
+                        : "Top-up"
+                      : p.creditClass === "test"
+                        ? "Promotional credit"
+                        : p.creditClass === "paid"
+                          ? "Purchased credit"
+                          : String(p.entryType);
+                  return (
+                    <DataCard
+                      key={String(p.id)}
+                      title={typeLabel}
+                      subtitle={String(p.description ?? "")}
+                      status={p.receiptUrl ? <a href={String(p.receiptUrl)} target="_blank" rel="noreferrer">Receipt</a> : undefined}
+                      metric={formatCurrency(Number(p.amountCents), wallet.wallet.currency)}
+                      timestamp={formatDate(String(p.date))}
+                    />
+                  );
+                })}
+              </MobileRecordList>
+            </div>
+            <div className="desktop-table table-wrap">
               <table className="table compact">
                 <thead>
                   <tr>
@@ -705,7 +746,7 @@ export default function PortalBillingPage() {
                         : p.creditClass === "test"
                           ? "Promotional credit"
                           : p.creditClass === "paid"
-                            ? "Top-up"
+                            ? "Purchased credit"
                             : String(p.entryType);
                     return (
                     <tr key={String(p.id)}>
@@ -728,6 +769,7 @@ export default function PortalBillingPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
           <div style={{ marginTop: 16 }}>
             <Notice tone="info">
@@ -737,26 +779,6 @@ export default function PortalBillingPage() {
         </SectionCard>
       ) : null}
 
-      {tab === "addons" ? (
-        <SectionCard title="Add-ons & upgrades" description="Optional services to extend your INFRA subscription.">
-          <div className="product-grid">
-            {ADDON_PRODUCTS.map((product) => (
-              <ProductCard
-                key={product.name}
-                name={product.name}
-                benefit={product.benefit}
-                price={product.price}
-                status="coming_soon"
-                action={
-                  <Button type="button" variant="secondary" size="sm" disabled>
-                    Coming soon
-                  </Button>
-                }
-              />
-            ))}
-          </div>
-        </SectionCard>
-      ) : null}
     </>
   );
 }

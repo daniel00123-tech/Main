@@ -62,7 +62,7 @@ export async function createPasswordSetupToken(
   db: D1Database,
   userId: string,
   purpose: "password_setup" | "password_reset" = "password_setup",
-): Promise<{ token: string; expiresAt: string }> {
+): Promise<{ id: string; token: string; expiresAt: string }> {
   await invalidateActiveSetupTokensForUser(db, userId);
 
   const token = generateSetupTokenValue();
@@ -80,7 +80,7 @@ export async function createPasswordSetupToken(
     .bind(id, userId, tokenHash, purpose, expiresAt, createdAt)
     .run();
 
-  return { token, expiresAt };
+  return { id, token, expiresAt };
 }
 
 export async function findValidSetupToken(
