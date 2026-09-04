@@ -108,7 +108,12 @@ export function scoreOvernightTurn(input: {
   if (!reply.trim() && !input.question.expectedDeny) defects.push("NO_FINAL_ANSWER");
   if (input.latencyMs > 45_000) defects.push("SLOW_RESPONSE");
 
-  const firstAnswer = Boolean(reply.trim()) && !genericRetry;
+  const yearClarify =
+    /\b(which year|different year|or an earlier year|20\d{2} or a different year)\b/i.test(reply) &&
+    tools.some((name) => name.startsWith("warehouse_"));
+  if (yearClarify) defects.push("YEAR_CLARIFY_AFTER_WAREHOUSE");
+
+  const firstAnswer = Boolean(reply.trim()) && !genericRetry && !yearClarify;
   const grounded = !hallucination && (input.question.expectedDeny || tools.length > 0 || input.question.expectedSource === "none");
   const unique = [...new Set(defects)];
   const perfect =

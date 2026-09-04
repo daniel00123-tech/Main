@@ -128,6 +128,28 @@ export function clipBusinessToolData(value: unknown, toolName = ""): unknown {
         invoice: slimInvoice(value.invoice ?? value),
       };
     }
+    if (toolName.startsWith("warehouse_") || value.source === "xero_warehouse") {
+      const mid = isRecord(value.result) ? value.result : value;
+      const inner = isRecord(mid.result) ? { ...mid, ...mid.result } : mid;
+      const months = Array.isArray(inner.months) ? inner.months : [];
+      const customers = Array.isArray(inner.customers) ? inner.customers : [];
+      const invoices = Array.isArray(inner.invoices) ? inner.invoices : [];
+      return {
+        source: "xero_warehouse",
+        fromDate: inner.fromDate ?? null,
+        toDate: inner.toDate ?? null,
+        sales: inner.sales ?? null,
+        invoiceCount: inner.invoiceCount ?? null,
+        overdue: inner.overdue ?? null,
+        outstanding: inner.outstanding ?? null,
+        warehouseAsOf: inner.warehouseAsOf ?? inner.warehouse_as_of ?? null,
+        completenessStatus: inner.completenessStatus ?? inner.completeness_status ?? null,
+        warning: typeof inner.warning === "string" ? inner.warning.slice(0, 240) : null,
+        months: months.slice(-12),
+        customers: customers.slice(0, 8).map(slimCustomer),
+        invoices: invoices.slice(0, 8).map(slimInvoice),
+      };
+    }
     if (/^xero_/.test(toolName) || "sales_total" in value || value.source === "Xero") {
       const summary = isRecord(value.summary) ? value.summary : {};
       return {

@@ -9,6 +9,7 @@ import { isCompoundBusinessAsk } from "../intelligence/orchestrator";
 import { WAREHOUSE_TOOL_NAMES } from "../warehouse/standard";
 import { OVERNIGHT_PRIMARY, OVERNIGHT_ALL, FRESH_RETEST_SETS, questionsForStage } from "./bank";
 import { scoreOvernightTurn, scoreChannel } from "./score";
+import { synthesizeToolResult } from "../intelligence/verbalise-business";
 
 const NOW = new Date("2026-09-04T12:00:00.000Z");
 
@@ -131,5 +132,53 @@ describe("overnight scoring", () => {
     expect(charged.perfect).toBe(false);
     expect(charged.defects).toContain("TEST_TRAFFIC_CHARGED");
     expect(scoreChannel("whatsapp", [denied, charged]).score).toBeLessThan(10);
+
+    const yearAsk = scoreOvernightTurn({
+      question: {
+        id: "WH01",
+        channel: "warehouse",
+        text: "What were sales in March?",
+        actor: "director",
+        family: "xero_warehouse",
+        expectedToolPrefix: "warehouse_",
+        expectedSource: "xero_warehouse",
+        expectedDeny: false,
+      },
+      tools: ["warehouse_sales_analysis"],
+      reply: "Which year’s March would you like—March 2026 or an earlier year?",
+      denied: false,
+      charged: false,
+      latencyMs: 1200,
+    });
+    expect(yearAsk.perfect).toBe(false);
+    expect(yearAsk.firstAnswer).toBe(false);
+    expect(yearAsk.defects).toContain("YEAR_CLARIFY_AFTER_WAREHOUSE");
+  });
+});
+
+describe("warehouse synthesis from nested gateway payloads", () => {
+  it("reads months from result.result and names the completed month", () => {
+    const text = synthesizeToolResult(
+      {
+        name: "warehouse_sales_analysis",
+        ok: true,
+        latencyMs: 10,
+        data: {
+          correlationId: "c1",
+          result: {
+            ok: true,
+            result: {
+              months: [{ month: "2026-03", sales: 4120, invoiceCount: 18, completeness: "COMPLETE" }],
+              warehouseAsOf: "2026-09-04T21:20:43.573Z",
+              completenessStatus: "COMPLETE",
+            },
+          },
+        },
+      },
+      "What were sales in March?",
+    );
+    expect(text).toMatch(/2026-03/);
+    expect(text).toMatch(/4,120|4120/);
+    expect(text).not.toMatch(/which year/i);
   });
 });
