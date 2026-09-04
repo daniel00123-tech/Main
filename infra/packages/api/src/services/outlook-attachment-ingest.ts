@@ -875,6 +875,12 @@ async function buildNamedPersonReports(
     if (row?.mailbox_address) {
       graphAccessible = row.graph_accessible == null ? null : row.graph_accessible === 1;
     }
+    const scanned = input.mailboxReports.find(
+      (item) =>
+        String(item.mailboxAddress ?? "").toLowerCase() ===
+        (user?.mailboxAddress ?? row?.mailbox_address ?? "").toLowerCase(),
+    );
+    const scannedAttachments = Array.isArray(scanned?.attachments) ? scanned!.attachments : [];
     reports.push({
       name,
       mailboxAddress: user?.mailboxAddress ?? row?.mailbox_address ?? null,
@@ -882,9 +888,9 @@ async function buildNamedPersonReports(
       approvedForAttachmentIngestion: row?.enabled_for_attachment_ingestion === 1,
       graphAccessible,
       mailSearchEnabled: row?.enabled_for_mail_search === 1,
-      messagesWithAttachmentsInWindow: 0,
-      attachmentsFound: 0,
-      indexed: 0,
+      messagesWithAttachmentsInWindow: Number(scanned?.messagesWithAttachments ?? 0),
+      attachmentsFound: scannedAttachments.length || Number(scanned?.messagesWithAttachments ?? 0),
+      indexed: scannedAttachments.filter((item) => asRecord(item)?.status === "indexed").length,
       policy: user
         ? row?.enabled_for_attachment_ingestion === 1
           ? "director-approved work mailbox: attachments ingested; Portal chat search remains off"
