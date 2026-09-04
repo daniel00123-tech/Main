@@ -332,5 +332,44 @@ describe("knowledge ingestion window and classification", () => {
     expect(populated.text).toContain("FAILED / NEEDS ATTENTION");
     expect(populated.text).toContain("extraction failed");
     expect(populated.html).toContain("https://elvex-my.sharepoint.com/personal/a/Jobs.xlsx");
+
+    const corrected = renderKnowledgeIngestionReportEmail({
+      companyDisplayName: "EL Business",
+      reportDateLabel: "4 September 2026",
+      windowFromLabel: "3 September 2026 18:39 Europe/London",
+      windowToLabel: "4 September 2026 18:39 Europe/London",
+      manual: true,
+      discoveredCount: 2,
+      indexedCount: 0,
+      chunkTotal: null,
+      updatedCount: 0,
+      sourceObservedCount: 2,
+      missedCount: 2,
+      sourceCounts: [{ label: "Email attachments", count: 2 }],
+      documents: [
+        {
+          title: "Attachment on: Quote request",
+          sourceLabel: "Email attachments",
+          indexed: false,
+          chunkCount: null,
+          modifiedAt: "2026-09-04T15:41:18Z",
+          url: null,
+          location: null,
+          mailbox: "info@elvexpropertyservices.com",
+          parentSubject: "Quote request",
+          sender: null,
+          failureReason: "EL Outlook attachments are not auto-ingested into company knowledge",
+        },
+      ],
+      failures: [],
+      omittedDocuments: 0,
+      portalUrl: "https://app.infrastack.app/portal/el-business/automations",
+      subjectOverride: "INFRA — EL Business Daily Knowledge Activity — Corrected Test",
+      correctionPreamble: "This corrects the 4 September 2026 manual test that reported zero new documents.",
+    });
+    expect(corrected.subject).toBe("INFRA — EL Business Daily Knowledge Activity — Corrected Test");
+    expect(corrected.text).toContain("Source activity not indexed: 2");
+    expect(corrected.text).toContain("This corrects the 4 September 2026 manual test");
+    expect(corrected.html).toContain("Source activity not indexed");
   });
 });

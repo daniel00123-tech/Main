@@ -85,8 +85,53 @@ export async function recordKnowledgeIngestionEvent(
   input: KnowledgeIngestionEventInput,
 ): Promise<string> {
   await ensureKnowledgeIngestionEventsSchema(db);
-  const id = newId("kie");
   const now = nowIso();
+  const existing = input.providerItemId
+    ? await db
+        .prepare(
+          `SELECT id FROM knowledge_ingestion_events
+           WHERE company_id = ? AND source_type = ? AND event_type = ?
+             AND IFNULL(provider_item_id,'') = ?
+           ORDER BY created_at DESC LIMIT 1`,
+        )
+        .bind(input.companyId, input.sourceType, input.eventType, input.providerItemId)
+        .first<{ id: string }>()
+    : null;
+  if (existing?.id) {
+    await db
+      .prepare(
+        `UPDATE knowledge_ingestion_events
+         SET status = ?, filename = COALESCE(?, filename), content_hash = COALESCE(?, content_hash),
+             mailbox_address = COALESCE(?, mailbox_address), mime_type = COALESCE(?, mime_type),
+             size_bytes = COALESCE(?, size_bytes), chunk_count = COALESCE(?, chunk_count),
+             skip_reason = COALESCE(?, skip_reason), failure_code = COALESCE(?, failure_code),
+             source_modified_at = COALESCE(?, source_modified_at), fetched_at = COALESCE(?, fetched_at),
+             extracted_at = COALESCE(?, extracted_at), indexed_at = COALESCE(?, indexed_at),
+             metadata_json = COALESCE(?, metadata_json), updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(
+        input.eventType,
+        input.filename ?? null,
+        input.contentHash ?? null,
+        input.mailboxAddress ?? null,
+        input.mimeType ?? null,
+        input.sizeBytes ?? null,
+        input.chunkCount ?? null,
+        input.skipReason ?? null,
+        input.failureCode ?? null,
+        input.sourceModifiedAt ?? null,
+        input.fetchedAt ?? null,
+        input.extractedAt ?? null,
+        input.indexedAt ?? null,
+        input.metadata ? JSON.stringify(input.metadata) : null,
+        now,
+        existing.id,
+      )
+      .run();
+    return existing.id;
+  }
+  const id = newId("kie");
   await db
     .prepare(
       `INSERT INTO knowledge_ingestion_events (
@@ -144,6 +189,7 @@ export type KnowledgeIngestionEventRow = {
   source_modified_at: string | null;
   indexed_at: string | null;
   created_at: string;
+  metadata_json: string | null;
 };
 
 export async function listKnowledgeIngestionEvents(
@@ -155,7 +201,7 @@ export async function listKnowledgeIngestionEvents(
     .prepare(
       `SELECT id, company_id, source_type, event_type, status, provider_item_id, parent_message_id,
               filename, mailbox_address, mime_type, size_bytes, chunk_count, skip_reason,
-              failure_code, discovered_at, source_modified_at, indexed_at, created_at
+              failure_code, discovered_at, source_modified_at, indexed_at, created_at, metadata_json
        FROM knowledge_ingestion_events
        WHERE company_id = ?
          AND (

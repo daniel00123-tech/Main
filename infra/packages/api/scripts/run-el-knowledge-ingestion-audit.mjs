@@ -32,6 +32,8 @@ const res = await fetch("https://api.infrastack.app/api/internal/el-knowledge-in
     windowFrom: "2026-09-03T17:39:03.388Z",
     windowTo: "2026-09-04T17:39:03.388Z",
     persistEvents: true,
+    includeCurrentWindow: true,
+    sendCorrectedEmail: process.env.SEND_CORRECTED_EMAIL === "1",
   }),
   signal: AbortSignal.timeout(180_000),
 });

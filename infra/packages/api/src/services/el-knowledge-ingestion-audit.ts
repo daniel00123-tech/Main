@@ -3,21 +3,42 @@
  * Reads Graph/MCP source activity and INFRA/MCP index metadata. No secret output.
  */
 
-import { ELVEX_INFO_MAILBOXES, timestampInWindow } from "@infra/shared";
+import {
+  ELVEX_INFO_MAILBOXES,
+  automationRecipientEmailOf,
+  capKnowledgeList,
+  formatCivilDateLong,
+  isValidRecipientEmail,
+  renderKnowledgeIngestionReportEmail,
+  timestampInWindow,
+  zonedCivilParts,
+} from "@infra/shared";
 import type { Env } from "../env";
+import { executeRegisteredMcpTool, getCompanyById, listMcpEnvironments } from "./control-plane";
 import { queryKnowledgeIngestionActivity } from "./automation-engine/knowledge-ingestion-query";
+import { getAutomationDefinition } from "./automation-engine/store";
 import { executeListDocuments } from "./document-catalogue";
+import { ELVEX_QUERY_TOOL } from "./document-fetch";
+import { sendTransactionalEmail } from "./email/send-transactional";
 import { recordKnowledgeIngestionEvent } from "./knowledge-ingestion-events";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { isOutlookAttachmentRetrievable } from "./microsoft-outlook-graph";
+import { extractHitList, unwrapToolPayload } from "./mcp-knowledge-standard";
+import { newId, nowIso } from "../db/mappers";
+import { portalOrigin } from "./public-urls";
 
 export const EL_KNOWLEDGE_AUDIT_WINDOW = {
   from: "2026-09-03T17:39:03.388Z",
   to: "2026-09-04T17:39:03.388Z",
 } as const;
 
+export const EL_KNOWLEDGE_CORRECTED_SUBJECT =
+  "INFRA — EL Business Daily Knowledge Activity — Corrected Test";
+
 const COMPANY_ID = "co_el";
+const AUTOMATION_ID = "aut_b00ab912-845b-49b4-9609-cbedeeea6ddf";
 const MAILBOXES = ["info@elvexpropertyservices.com", "finance@elvexpropertyservices.com"] as const;
+const TIMEZONE = "Europe/London";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -31,9 +52,33 @@ function messageTime(row: Record<string, unknown>): string | null {
   return asText(row.receivedDateTime) || asText(row.sentDateTime) || asText(row.date) || null;
 }
 
+function sqlIso(value: Date): string {
+  return value.toISOString().replace(/'/g, "");
+}
+
+function sqlLite(value: Date): string {
+  return sqlIso(value).replace("T", " ").replace(/\.\d+Z$/, "").replace("Z", "");
+}
+
+function rowsFromQueryPayload(payload: unknown): Record<string, unknown>[] {
+  const unwrapped = unwrapToolPayload(payload);
+  if (!asRecord(unwrapped)) return [];
+  const record = asRecord(unwrapped)!;
+  if (Array.isArray(record.rows)) return record.rows.filter((row): row is Record<string, unknown> => Boolean(asRecord(row)));
+  if (Array.isArray(record.results)) return record.results.filter((row): row is Record<string, unknown> => Boolean(asRecord(row)));
+  return extractHitList(unwrapped);
+}
+
 export async function runElKnowledgeIngestionAudit(
   env: Env,
-  input?: { windowFrom?: string; windowTo?: string; persistEvents?: boolean; actor?: string },
+  input?: {
+    windowFrom?: string;
+    windowTo?: string;
+    persistEvents?: boolean;
+    actor?: string;
+    sendCorrectedEmail?: boolean;
+    includeCurrentWindow?: boolean;
+  },
 ): Promise<Record<string, unknown>> {
   const windowFrom = new Date(input?.windowFrom ?? EL_KNOWLEDGE_AUDIT_WINDOW.from);
   const windowTo = new Date(input?.windowTo ?? EL_KNOWLEDGE_AUDIT_WINDOW.to);
@@ -42,23 +87,45 @@ export async function runElKnowledgeIngestionAudit(
 
   const outlook = await auditOutlookMailboxes(env, windowFrom, windowTo, persist, actor);
   const files = await auditDriveCatalogue(env, windowFrom, windowTo, persist, actor);
+  const mcpIndex = await auditMcpIndex(env, windowFrom, windowTo, actor);
   const report = await queryKnowledgeIngestionActivity(env, {
     companyId: COMPANY_ID,
     windowFrom,
     windowTo,
   });
 
-  const sourceCandidates =
-    outlook.attachments + files.onedriveInWindow + files.sharepointInWindow;
+  const sourceCandidates = outlook.attachments + files.onedriveInWindow + files.sharepointInWindow;
   const discovered = report.discoveredCount;
   const indexed = report.indexedCount;
-  const missed = Math.max(0, outlook.knowledgeSuitable - outlook.indexed) + files.onedriveMissed + files.sharepointMissed;
+  const missed = outlook.missed + files.onedriveMissed + files.sharepointMissed;
 
-  return {
+  let currentWindow: Record<string, unknown> | null = null;
+  if (input?.includeCurrentWindow !== false) {
+    const currentTo = new Date();
+    const currentReport = await queryKnowledgeIngestionActivity(env, {
+      companyId: COMPANY_ID,
+      windowFrom: windowTo,
+      windowTo: currentTo,
+    });
+    currentWindow = {
+      windowFrom: windowTo.toISOString(),
+      windowTo: currentTo.toISOString(),
+      discoveredCount: currentReport.discoveredCount,
+      indexedCount: currentReport.indexedCount,
+      updatedCount: currentReport.updatedCount,
+      sourceObservedCount: currentReport.sourceObservedCount,
+      missedCount: currentReport.missedCount,
+      failedCount: currentReport.failedCount,
+      sourceCounts: currentReport.sourceCounts,
+      emailed: false,
+    };
+  }
+
+  const payload: Record<string, unknown> = {
     companyId: COMPANY_ID,
     windowFrom: windowFrom.toISOString(),
     windowTo: windowTo.toISOString(),
-    timezone: "Europe/London",
+    timezone: TIMEZONE,
     outlook,
     onedrive: {
       createdOrModifiedInWindow: files.onedriveInWindow,
@@ -66,6 +133,8 @@ export async function runElKnowledgeIngestionAudit(
       indexedOrReindexed: files.onedriveIndexed,
       missed: files.onedriveMissed,
       newestIndexedModifiedAt: files.onedriveNewestModified,
+      catalogueInWindow: mcpIndex.onedriveInWindow,
+      catalogueTotal: mcpIndex.onedriveTotal,
     },
     sharepoint: {
       createdOrModifiedInWindow: files.sharepointInWindow,
@@ -73,6 +142,8 @@ export async function runElKnowledgeIngestionAudit(
       indexedOrReindexed: files.sharepointIndexed,
       missed: files.sharepointMissed,
       catalogueStatus: files.sharepointStatus,
+      catalogueInWindow: mcpIndex.sharepointInWindow,
+      catalogueTotal: mcpIndex.sharepointTotal,
     },
     otherM365: { teams: "not_a_configured_source", personalDrivesOutsideCatalogue: files.otherPersonalNote },
     totals: {
@@ -87,9 +158,11 @@ export async function runElKnowledgeIngestionAudit(
       missed,
     },
     report,
+    mcpIndex,
+    currentWindow,
     pipeline: {
       emailAttachmentAutoIngest: "NO",
-      sharepointAutoIngest: files.sharepointStatus === "connected_empty" ? "PARTIAL" : "PARTIAL",
+      sharepointAutoIngest: "PARTIAL",
       onedriveAutoIngest: "PARTIAL",
       infraMicrosoftSourcesForEl: 0,
       elMcpVectorize: "not_provisioned",
@@ -99,10 +172,131 @@ export async function runElKnowledgeIngestionAudit(
         "EL OneDrive catalogue last source-modified row is 2026-08-18. Main drive last_synced_at 2026-08-30 with no delta_link.",
         "SharePoint drives have delta checkpoints but item_count 0 and no microsoft_index_items rows.",
         "Approved attachment types: pdf/docx/xlsx/txt/csv. Inline images and signatures are excluded.",
+        "Company MCP does not expose outlook_list_attachments / outlook_get_attachment.",
       ],
     },
     allowlistedMailboxes: [...ELVEX_INFO_MAILBOXES],
+    auditedMailboxes: [...MAILBOXES],
   };
+
+  if (input?.sendCorrectedEmail) {
+    payload.correctedEmail = await sendElKnowledgeCorrectedTestEmail(env, {
+      report,
+      windowFrom,
+      windowTo,
+      outlook,
+    });
+  }
+
+  return payload;
+}
+
+export async function sendElKnowledgeCorrectedTestEmail(
+  env: Env,
+  input: {
+    report: Awaited<ReturnType<typeof queryKnowledgeIngestionActivity>>;
+    windowFrom: Date;
+    windowTo: Date;
+    outlook: Record<string, unknown>;
+  },
+): Promise<Record<string, unknown>> {
+  const existing = await env.DB.prepare(
+    `SELECT id, status FROM email_outbox
+     WHERE company_id = ? AND subject = ?
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(COMPANY_ID, EL_KNOWLEDGE_CORRECTED_SUBJECT)
+    .first<{ id: string; status: string }>();
+  if (existing?.id && (existing.status === "sent" || existing.status === "sending")) {
+    return { sent: false, skipped: true, reason: "already_sent", emailId: existing.id };
+  }
+
+  const company = await getCompanyById(env.DB, COMPANY_ID);
+  const automation = await getAutomationDefinition(env.DB, COMPANY_ID, AUTOMATION_ID);
+  const recipient = automationRecipientEmailOf(automation?.configuration ?? null);
+  if (!company || !recipient || !isValidRecipientEmail(recipient)) {
+    return { sent: false, skipped: false, reason: "recipient_unavailable" };
+  }
+
+  const listed = capKnowledgeList(input.report.documents);
+  const failures = input.report.documents.filter((item) => item.outcome === "failed");
+  const windowFromLabel = formatWindowLabel(input.windowFrom.toISOString());
+  const windowToLabel = formatWindowLabel(input.windowTo.toISOString());
+  const outlookMessages = Number(input.outlook.messagesWithAttachments ?? 0);
+  const email = renderKnowledgeIngestionReportEmail({
+    companyDisplayName: company.name,
+    reportDateLabel: "4 September 2026",
+    windowFromLabel,
+    windowToLabel,
+    manual: true,
+    discoveredCount: input.report.discoveredCount,
+    indexedCount: input.report.indexedCount,
+    chunkTotal: input.report.chunkTotal,
+    duplicateCount: input.report.duplicateCount,
+    failedCount: input.report.failedCount,
+    updatedCount: input.report.updatedCount,
+    sourceObservedCount: input.report.sourceObservedCount,
+    missedCount: input.report.missedCount,
+    sourceCounts: input.report.sourceCounts.map((row) => ({ label: row.label, count: row.count })),
+    documents: listed.items.map((item) => ({
+      title: item.title,
+      sourceLabel: item.sourceLabel,
+      indexed: item.indexed,
+      chunkCount: item.chunkCount,
+      modifiedAt: item.modifiedAt,
+      url: item.url,
+      location: item.location,
+      mailbox: item.mailbox,
+      parentSubject: item.parentSubject,
+      sender: item.sender,
+      failureReason: item.failureReason,
+    })),
+    failures: failures.map((item) => ({
+      title: item.title,
+      sourceLabel: item.sourceLabel,
+      indexed: item.indexed,
+      chunkCount: item.chunkCount,
+      modifiedAt: item.modifiedAt,
+      url: item.url,
+      location: item.location,
+      mailbox: item.mailbox,
+      parentSubject: item.parentSubject,
+      sender: item.sender,
+      failureReason: item.failureReason,
+    })),
+    omittedDocuments: listed.omitted,
+    portalUrl: `${portalOrigin(env)}/portal/${company.slug}/automations`,
+    subjectOverride: EL_KNOWLEDGE_CORRECTED_SUBJECT,
+    correctionPreamble: `This corrects the 4 September 2026 manual test that reported zero new documents. Indexed knowledge in this window remains 0. Source activity that was not ingested: ${outlookMessages} Outlook message(s) with attachments, 0 OneDrive files created/modified in the catalogue, 0 SharePoint catalogue rows.`,
+  });
+
+  const delivery = await sendTransactionalEmail(env, env.DB, {
+    companyId: COMPANY_ID,
+    type: "DOCUMENT_ACTIVITY_REPORT",
+    recipient,
+    subject: EL_KNOWLEDGE_CORRECTED_SUBJECT,
+    bodyText: email.text,
+    bodyHtml: email.html,
+    actor: "system:el-knowledge-ingestion-audit",
+  });
+
+  return {
+    sent: delivery.sent,
+    skipped: false,
+    emailId: delivery.id,
+    recipient,
+    subject: EL_KNOWLEDGE_CORRECTED_SUBJECT,
+    error: delivery.error ?? null,
+  };
+}
+
+function formatWindowLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const parts = zonedCivilParts(date, TIMEZONE);
+  const day = `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+  const time = `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
+  return `${formatCivilDateLong(day)} ${time} ${TIMEZONE}`;
 }
 
 async function auditOutlookMailboxes(
@@ -116,6 +310,7 @@ async function auditOutlookMailboxes(
   let messagesWithAttachments = 0;
   let attachments = 0;
   let knowledgeSuitable = 0;
+  let unresolvedParts = 0;
   let indexed = 0;
   for (const mailboxAddress of MAILBOXES) {
     const listed = await executeOutlookReadTool(env, {
@@ -135,43 +330,74 @@ async function auditOutlookMailboxes(
         arguments: { mailboxAddress, messageId: asText(message.id) },
         actor,
       });
+      const listedAttachmentsTool = await executeOutlookReadTool(env, {
+        companyId: COMPANY_ID,
+        toolName: "outlook_list_attachments",
+        arguments: { mailboxAddress, messageId: asText(message.id) },
+        actor,
+      });
       const detail = got.ok ? asRecord(got.result) : null;
-      const listedAttachments = extractAttachments(detail ?? message);
-      const suitable = listedAttachments.filter((item) =>
-        isOutlookAttachmentRetrievable(asText(item.contentType) || null, asText(item.name) || asText(item.filename)),
+      const fromGet = extractAttachments(detail ?? message);
+      const fromList =
+        listedAttachmentsTool.ok && asRecord(listedAttachmentsTool.result)
+          ? extractAttachments(asRecord(listedAttachmentsTool.result)!)
+          : [];
+      const listedAttachments = fromList.length ? fromList : fromGet;
+      const suitable = listedAttachments.filter(
+        (item) =>
+          !item.isInline &&
+          isOutlookAttachmentRetrievable(asText(item.contentType) || null, asText(item.name) || asText(item.filename)),
       );
+      const observedCount = listedAttachments.length || (message.hasAttachments ? 1 : 0);
       messagesWithAttachments += 1;
-      attachments += listedAttachments.length || (message.hasAttachments ? 1 : 0);
-      knowledgeSuitable += suitable.length || (listedAttachments.length === 0 && message.hasAttachments ? 0 : 0);
-      if (persist && (suitable.length > 0 || (message.hasAttachments && listedAttachments.length === 0))) {
+      attachments += observedCount;
+      knowledgeSuitable += suitable.length;
+      if (listedAttachments.length === 0 && message.hasAttachments) unresolvedParts += 1;
+      const subject = asText(message.subject);
+      if (persist && observedCount > 0) {
         await recordKnowledgeIngestionEvent(env.DB, {
           companyId: COMPANY_ID,
           sourceType: "outlook_attachments",
           eventType: "source_observed",
           providerItemId: asText(message.id),
           parentMessageId: asText(message.id),
-          filename: suitable[0] ? asText(suitable[0].name) || asText(suitable[0].filename) : null,
+          filename: suitable[0]
+            ? asText(suitable[0].name) || asText(suitable[0].filename)
+            : subject
+              ? `Attachment on: ${subject}`
+              : "Email attachment (name unavailable)",
           mailboxAddress,
           sourceModifiedAt: messageTime(message),
-          skipReason: "EL Outlook attachments are not auto-ingested into company knowledge",
+          skipReason:
+            listedAttachmentsTool.ok === false
+              ? "EL Outlook attachments are not auto-ingested; company MCP has no attachment list/fetch tool"
+              : "EL Outlook attachments are not auto-ingested into company knowledge",
+          failureCode: listedAttachmentsTool.ok ? null : asText(listedAttachmentsTool.code) || "OUTLOOK_MCP_ATTACHMENT_TOOL_MISSING",
           metadata: {
-            subject: asText(message.subject),
+            subject,
+            from: asText(message.from),
             hasAttachments: true,
             attachmentCount: listedAttachments.length,
             suitableCount: suitable.length,
+            unresolvedParts: listedAttachments.length === 0 && Boolean(message.hasAttachments),
             via: "company_mcp",
+            listAttachmentsCode: listedAttachmentsTool.ok ? null : listedAttachmentsTool.code,
           },
         });
       }
       attachmentDetails.push({
         messageId: asText(message.id),
-        subject: asText(message.subject),
+        subject,
         from: asText(message.from),
         receivedDateTime: messageTime(message),
         hasAttachments: Boolean(message.hasAttachments),
         attachmentCount: listedAttachments.length,
         suitableCount: suitable.length,
         names: suitable.map((item) => asText(item.name) || asText(item.filename)).filter(Boolean),
+        listAttachments:
+          listedAttachmentsTool.ok === false
+            ? { ok: false, code: listedAttachmentsTool.code }
+            : { ok: true, count: fromList.length },
       });
     }
     mailboxes.push({
@@ -184,13 +410,15 @@ async function auditOutlookMailboxes(
       error: listed.ok ? null : listed.message,
     });
   }
+  const discovered = knowledgeSuitable + unresolvedParts;
   return {
     messagesWithAttachments,
     attachments,
     knowledgeSuitable,
-    discovered: knowledgeSuitable,
+    unresolvedParts,
+    discovered,
     indexed,
-    missed: Math.max(0, knowledgeSuitable - indexed),
+    missed: Math.max(0, discovered - indexed),
     mailboxes,
   };
 }
@@ -255,6 +483,81 @@ async function auditDriveCatalogue(
     otherPersonalNote:
       "Megan Freeman OneDrive PO PDFs are fetchable on demand but are not in the Sharon OneDrive catalogue snapshot.",
     listings,
+  };
+}
+
+async function auditMcpIndex(env: Env, windowFrom: Date, windowTo: Date, actor: string) {
+  const mcp = (await listMcpEnvironments(env.DB, COMPANY_ID)).find((item) => item.enabled);
+  if (!mcp) {
+    return { ok: false, reason: "no_enabled_mcp" };
+  }
+  const sinceIso = sqlIso(windowFrom);
+  const untilIso = sqlIso(windowTo);
+  const sinceLite = sqlLite(windowFrom);
+  const untilLite = sqlLite(windowTo);
+  const now = nowIso();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO mcp_tool_allowlist
+      (id, company_id, mcp_environment_id, tool_name, risk_class, enabled, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'low_risk', 1, ?, ?)`,
+  )
+    .bind(newId("allow"), COMPANY_ID, mcp.id, ELVEX_QUERY_TOOL, now, now)
+    .run();
+
+  const runSql = async (sql: string) => {
+    const execution = await executeRegisteredMcpTool(env, {
+      mcpId: mcp.id,
+      toolName: ELVEX_QUERY_TOOL,
+      arguments: { sql, limit: 50 },
+      actorUserId: "system",
+      actorEmail: actor,
+      sourceClient: "el-knowledge-ingestion-audit",
+      skipUsageRecording: true,
+    });
+    if (execution.status !== 200) return [];
+    return rowsFromQueryPayload("data" in execution ? execution.data?.result : execution);
+  };
+
+  const [counts, newest, sharepoint, sync] = await Promise.all([
+    runSql(
+      `SELECT source_type, COUNT(*) AS total,
+        SUM(CASE WHEN (
+          (modified_at >= '${sinceIso}' AND modified_at <= '${untilIso}')
+          OR (created_at >= '${sinceLite}' AND created_at <= '${untilLite}')
+        ) THEN 1 ELSE 0 END) AS in_window
+       FROM microsoft_index_items GROUP BY source_type`,
+    ),
+    runSql(`SELECT filename, source_type, modified_at, created_at, status FROM microsoft_index_items ORDER BY modified_at DESC LIMIT 3`),
+    runSql(`SELECT COUNT(*) AS total FROM microsoft_index_items WHERE source_type = 'sharepoint'`),
+    runSql(
+      `SELECT drive_id, source_type, item_count, last_synced_at,
+        CASE WHEN delta_link IS NULL OR length(delta_link) = 0 THEN 0 ELSE 1 END AS has_delta
+       FROM microsoft_sync_state LIMIT 20`,
+    ),
+  ]);
+
+  const onedrive = counts.find((row) => asText(row.source_type) === "onedrive");
+  const sharepointCount = counts.find((row) => asText(row.source_type) === "sharepoint");
+  return {
+    ok: true,
+    onedriveTotal: Number(onedrive?.total ?? 0),
+    onedriveInWindow: Number(onedrive?.in_window ?? 0),
+    sharepointTotal: Number(sharepointCount?.total ?? sharepoint[0]?.total ?? 0),
+    sharepointInWindow: Number(sharepointCount?.in_window ?? 0),
+    newest: newest.map((row) => ({
+      filename: asText(row.filename),
+      sourceType: asText(row.source_type),
+      modifiedAt: asText(row.modified_at),
+      createdAt: asText(row.created_at),
+      status: asText(row.status),
+    })),
+    syncState: sync.map((row) => ({
+      driveId: asText(row.drive_id).slice(0, 24),
+      sourceType: asText(row.source_type),
+      itemCount: Number(row.item_count ?? 0),
+      lastSyncedAt: asText(row.last_synced_at),
+      hasDelta: Number(row.has_delta ?? 0) === 1,
+    })),
   };
 }
 

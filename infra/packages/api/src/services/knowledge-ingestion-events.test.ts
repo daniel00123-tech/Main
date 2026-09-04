@@ -29,6 +29,35 @@ describe("knowledge ingestion ledger", () => {
     expect(inserts[0]?.[2]).toBe("outlook_attachments");
   });
 
+  it("upserts the same provider item instead of duplicating ledger rows", async () => {
+    const updates: unknown[][] = [];
+    const db = {
+      prepare: (sql: string) => ({
+        run: async () => ({ success: true }),
+        bind: (...args: unknown[]) => ({
+          run: async () => {
+            if (sql.includes("UPDATE knowledge_ingestion_events")) updates.push(args);
+            return { success: true };
+          },
+          all: async () => ({ results: [] }),
+          first: async () => (sql.includes("SELECT id FROM knowledge_ingestion_events") ? { id: "kie_existing" } : null),
+        }),
+        all: async () => ({ results: [] }),
+        first: async () => null,
+      }),
+    } as unknown as D1Database;
+
+    const id = await recordKnowledgeIngestionEvent(db, {
+      companyId: "co_el",
+      sourceType: "outlook_attachments",
+      eventType: "source_observed",
+      providerItemId: "AAMk-1",
+      filename: "Attachment on: Quote request",
+    });
+    expect(id).toBe("kie_existing");
+    expect(updates).toHaveLength(1);
+  });
+
   it("classifies updated files when created_at is older than the window", () => {
     expect(
       classifyActivityKind({

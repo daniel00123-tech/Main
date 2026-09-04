@@ -1353,6 +1353,8 @@ connectors.post("/api/internal/el-knowledge-ingestion-audit", async (c) => {
         windowFrom: typeof body.windowFrom === "string" ? body.windowFrom : undefined,
         windowTo: typeof body.windowTo === "string" ? body.windowTo : undefined,
         persistEvents: body.persistEvents !== false,
+        sendCorrectedEmail: body.sendCorrectedEmail === true,
+        includeCurrentWindow: body.includeCurrentWindow !== false,
       }),
     );
   } catch (err) {

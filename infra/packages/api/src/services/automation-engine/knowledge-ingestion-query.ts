@@ -413,16 +413,21 @@ export async function queryKnowledgeIngestionActivity(
         extracted: indexed || event.event_type === "extracted",
         indexed,
       });
+      const metadata = parseProvenance(event.metadata_json);
+      const subject = asText(metadata.subject) || asText(metadata.parentSubject);
+      const sender = asText(metadata.from) || asText(metadata.sender);
       push({
         id: event.id,
-        title: (event.filename ?? "").trim() || "Untitled document",
+        title:
+          (event.filename ?? "").trim() ||
+          (subject ? `Attachment on: ${subject}` : "Email attachment (name unavailable)"),
         sourceKey,
         sourceLabel: knowledgeIngestionSourceLabel(sourceKey),
         provider: "Microsoft 365",
         location: null,
         mailbox: event.mailbox_address,
-        parentSubject: null,
-        sender: null,
+        parentSubject: subject || null,
+        sender: sender || null,
         discoveredAt: event.discovered_at,
         modifiedAt: event.source_modified_at,
         discovered: true,

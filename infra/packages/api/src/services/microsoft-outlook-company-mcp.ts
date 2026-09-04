@@ -77,6 +77,7 @@ export function composeOutlookMessage(raw: Record<string, unknown>): Record<stri
     asNonEmptyString(raw.preview) ||
     asNonEmptyString(raw.snippet) ||
     body.slice(0, 240);
+  const attachments = extractRawAttachments(raw);
   return {
     id,
     internetMessageId: asNonEmptyString(raw.internetMessageId) || asNonEmptyString(raw.internet_message_id) || id,
@@ -87,12 +88,25 @@ export function composeOutlookMessage(raw: Record<string, unknown>): Record<stri
     receivedDateTime: asNonEmptyString(raw.receivedDateTime) || asNonEmptyString(raw.received) || asNonEmptyString(raw.date) || null,
     sentDateTime: asNonEmptyString(raw.sentDateTime) || null,
     conversationId: asNonEmptyString(raw.conversationId) || null,
-    hasAttachments: Boolean(raw.hasAttachments),
+    hasAttachments: Boolean(raw.hasAttachments) || attachments.length > 0,
+    attachments,
     body,
     bodyPreview,
     bodyContentType,
     webLink: asNonEmptyString(raw.webLink) || asNonEmptyString(raw.webUrl) || null,
   };
+}
+
+function extractRawAttachments(raw: Record<string, unknown>): Array<Record<string, unknown>> {
+  const nested = asRecord(raw.message);
+  const candidates = [raw.attachments, raw.attachmentList, nested?.attachments];
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue;
+    return candidate
+      .map((row) => asRecord(row))
+      .filter((row): row is Record<string, unknown> => Boolean(row));
+  }
+  return [];
 }
 
 export function unwrapOutlookMessage(upstream: unknown): Record<string, unknown> | null {
@@ -179,6 +193,7 @@ export function composeOutlookGetResult(
     bodyPreview: message.bodyPreview,
     bodyContentType: message.bodyContentType,
     hasAttachments: message.hasAttachments,
+    attachments: message.attachments,
     webLink: message.webLink,
     via: "company_mcp",
   };
@@ -311,6 +326,15 @@ export async function executeCompanyMcpOutlookRead(
           : null,
   });
   if (!mailbox.ok) return { ok: false, status: 404, ...mailbox };
+
+  if (input.toolName === "outlook_list_attachments" || input.toolName === "outlook_get_attachment") {
+    return {
+      ok: false,
+      status: 501,
+      code: "OUTLOOK_MCP_ATTACHMENT_TOOL_MISSING",
+      message: "Company MCP Outlook does not expose attachment list or fetch tools",
+    };
+  }
 
   const mcp = (await listMcpEnvironments(env.DB, input.companyId)).find((item) => item.enabled);
   if (!mcp) {

@@ -1,7 +1,7 @@
 import { PLATFORM_EMAIL_NO_REPLY_FOOTER } from "./identity";
 
-function escapeHtml(value: string): string {
-  return value
+function escapeHtml(value: string | null | undefined): string {
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -41,6 +41,8 @@ export type KnowledgeIngestionReportTemplateData = {
   failures: KnowledgeIngestionEmailLine[];
   omittedDocuments: number;
   portalUrl: string;
+  subjectOverride?: string;
+  correctionPreamble?: string;
 };
 
 function formatKnowledgeLine(item: KnowledgeIngestionEmailLine, index: number): string[] {
@@ -59,9 +61,11 @@ function formatKnowledgeLine(item: KnowledgeIngestionEmailLine, index: number): 
 export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionReportTemplateData) {
   const title = `${data.companyDisplayName} — Daily Knowledge Activity`;
   const datePart = data.reportDateLabel;
-  const subject = data.manual
-    ? `INFRA — ${data.companyDisplayName} Daily Knowledge Activity — ${datePart} (manual test)`
-    : `INFRA — ${data.companyDisplayName} Daily Knowledge Activity — ${datePart}`;
+  const subject =
+    data.subjectOverride?.trim() ||
+    (data.manual
+      ? `INFRA — ${data.companyDisplayName} Daily Knowledge Activity — ${datePart} (manual test)`
+      : `INFRA — ${data.companyDisplayName} Daily Knowledge Activity — ${datePart}`);
   const footer = PLATFORM_EMAIL_NO_REPLY_FOOTER;
   const range = `Reporting period: ${data.windowFromLabel} → ${data.windowToLabel}`;
   const empty = data.discoveredCount === 0 && (data.sourceObservedCount ?? 0) === 0 && (data.missedCount ?? 0) === 0;
@@ -76,6 +80,7 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
     title,
     range,
     data.manual ? "This was a manual test run. The daily schedule is unchanged." : "",
+    data.correctionPreamble ? data.correctionPreamble : "",
     "",
     empty
       ? `INFRA checked ${data.companyDisplayName} knowledge sources. No new documents were added to the knowledge base during this reporting period.`
@@ -110,6 +115,10 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
     <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.discoveredCount}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Successfully indexed</p>
     <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.indexedCount}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Updated / re-indexed</p>
+    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.updatedCount ?? 0}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Source activity not indexed</p>
+    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.sourceObservedCount ?? data.missedCount ?? 0}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">New vector chunks</p>
     <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.chunkTotal == null ? "Not recorded" : data.chunkTotal}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Duplicates/skipped</p>
@@ -163,6 +172,7 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
           <tr><td style="padding:0 24px 8px;color:#F5F9FF;font-size:22px;font-weight:700;">${escapeHtml(title)}</td></tr>
           <tr><td style="padding:0 24px 8px;color:#94A3B8;font-size:14px;">${escapeHtml(range)}</td></tr>
           ${data.manual ? `<tr><td style="padding:0 24px 16px;color:#93C5FD;font-size:13px;">Manual test run — the daily schedule is unchanged.</td></tr>` : ""}
+          ${data.correctionPreamble ? `<tr><td style="padding:0 24px 16px;color:#CBD5E1;font-size:13px;">${escapeHtml(data.correctionPreamble)}</td></tr>` : ""}
           <tr><td style="padding:0 24px;">${summaryHtml}</td></tr>
           ${sourceHtml ? `<tr><td style="padding:0 24px 8px;font-weight:600;color:#F5F9FF;">By source</td></tr><tr><td style="padding:0 24px;">${sourceHtml}</td></tr>` : ""}
           ${documentHtml ? `<tr><td style="padding:0 24px 8px;font-weight:600;color:#F5F9FF;">New knowledge</td></tr><tr><td style="padding:0 24px;">${documentHtml}</td></tr>` : ""}
