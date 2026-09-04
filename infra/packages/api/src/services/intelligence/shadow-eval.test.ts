@@ -27,6 +27,18 @@ describe("OpenAI shadow eval", () => {
     ).toBe(false);
   });
 
+  it("does not double-call OpenAI when PA or request already use it", () => {
+    const env = {
+      OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
+      OPENAI_BRAIN_ENABLED: "true",
+      OPENAI_BRAIN_MODE: "openai_shadow",
+      OPENAI_BRAIN_COMPANY_IDS: "co_el",
+    };
+    expect(shouldRunOpenAiShadow({ env, companyId: "co_el", channel: "portal_chat" })).toBe(false);
+    expect(shouldRunOpenAiShadow({ env, companyId: "co_el", channel: "whatsapp" })).toBe(false);
+    expect(shouldRunOpenAiShadow({ env, companyId: "co_el" })).toBe(true);
+  });
+
   it("keeps the Cloudflare answer when OpenAI is only shadowing", async () => {
     const result = await runIntelligenceTurn({
       env: { OPENAI_BRAIN_ENABLED: "true", OPENAI_BRAIN_MODE: "openai_shadow" },

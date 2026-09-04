@@ -134,18 +134,18 @@ The loop must not weaken RBAC, rotate secrets, expand write permissions, change 
 
 ## 12. OpenAI reasoning compatibility
 
-The reasoning provider is a shared INFRA interface with per-tenant policy:
+The reasoning provider is a shared INFRA interface with per-tenant policy and a channel role:
 
-- `cloudflare` (default for new companies)
-- `openai_shadow`
-- `openai_canary`
-- `openai_primary`
+- Roles: `pa` (Portal Chat), `request` (WhatsApp), `chatbot` (ChatGPT / MCP), `automation`, `internal`
+- Modes: `cloudflare` (default for new companies), `openai_shadow`, `openai_canary`, `openai_primary`
+
+On an allowlisted company (EL today), PA and request turns use OpenAI as the user-visible brain even when the global mode is `openai_shadow`. Unscoped / automation traffic stays shadow: Cloudflare answers, OpenAI evaluates in parallel. Caddington, HT, and future tenants stay Cloudflare until explicitly allowlisted.
 
 Cloudflare remains authoritative for transport, auth, RBAC, secrets, connectors, D1, usage, billing, audit, rate limits, deploy, and fallback.
 
-OpenAI (Responses API, Luna / Terra / Sol) plans, selects tools, interprets evidence, and synthesises. Workers AI remains the provider fallback for true provider failure only.
+OpenAI (Responses API, Luna / Terra / Sol) plans, selects tools, interprets evidence, and synthesises for PA and requests. Workers AI remains the provider fallback for true provider failure only.
 
-ChatGPT MCP stays a direct controlled-tool facade. Do not wrap ChatGPT in another model.
+ChatGPT MCP stays a direct controlled-tool facade. Do not wrap ChatGPT in another model. The chatbot is not the INFRA-hosted brain.
 
 ## 13. Test requirements
 

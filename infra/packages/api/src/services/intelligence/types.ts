@@ -1,5 +1,3 @@
-export type IntelligenceChannel = "whatsapp" | "portal" | "api";
-
 export type IntelligenceAction = "call_tool" | "answer" | "clarify";
 
 export type IntelligenceConfidence = "strong" | "partial" | "none";
@@ -18,6 +16,13 @@ export type IntelligenceScope =
   | "AMBIGUOUS";
 
 export type BrainMode = "cloudflare" | "openai_shadow" | "openai_canary" | "openai_primary";
+
+/** User-facing product role for the reasoning brain. Chatbot is never an INFRA-hosted brain. */
+export type BrainChannelRole = "pa" | "request" | "chatbot" | "automation" | "internal";
+
+export type BrainProviderName = "cloudflare" | "openai";
+
+export type IntelligenceChannel = "whatsapp" | "portal" | "portal_chat" | "chatgpt" | "mcp" | "api";
 
 export type EvidenceNeed = "NEEDS_FRESH_DATA" | "CAN_ANSWER_FROM_EXISTING_EVIDENCE";
 
@@ -259,6 +264,8 @@ export type IntelligenceTurnResult = {
   recentEvidence?: StructuredEvidence | null;
   terminal?: ResponseTerminal;
   brainMode?: BrainMode;
+  brainRole?: BrainChannelRole;
+  userVisibleBrain?: BrainProviderName;
   correlationId?: string | null;
   guardChecks?: ResponseGuardCheck[];
   /** Parallel OpenAI evaluation. Never shown to the customer. */
@@ -304,6 +311,8 @@ export type IntelligenceEnv = {
   OPENAI_BRAIN_COMPANY_IDS?: string;
   OPENAI_BRAIN_COMPANY_MODES?: string;
   OPENAI_BRAIN_CANARY_PERCENT?: string;
+  /** When true (default), allowlisted PA and request channels use OpenAI as the user-visible brain even if mode is openai_shadow. */
+  OPENAI_BRAIN_PA_REQUEST_PRIMARY?: string;
   OPENAI_MODEL_FAST?: string;
   OPENAI_MODEL_DEFAULT?: string;
   OPENAI_MODEL_REASONING?: string;

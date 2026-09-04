@@ -41,7 +41,15 @@ export {
   DEFAULT_OPENAI_TEXT_MODEL,
 } from "./provider.js";
 export { createReasoningCompleter, createOpenAiCompleter } from "./brain.js";
-export { resolveBrainPolicy, EL_COMPANY_ID, parseBrainMode, resolveTenantReasoningMode } from "./brain-policy.js";
+export {
+  resolveBrainPolicy,
+  classifyBrainChannelRole,
+  isPaOrRequestRole,
+  paRequestPrimaryEnabled,
+  EL_COMPANY_ID,
+  parseBrainMode,
+  resolveTenantReasoningMode,
+} from "./brain-policy.js";
 export {
   buildTenantToolCatalogue,
   normaliseVendorToolName,
@@ -92,6 +100,8 @@ export { exactToolCases, scoreExactToolChoiceLocal, scoreExactToolRow } from "./
 export type {
   EngineeringFailureCategory,
   EngineeringFailureEvent,
+  BrainChannelRole,
+  BrainProviderName,
   IntelligenceChannel,
   IntelligenceConfidence,
   IntelligenceConversationState,

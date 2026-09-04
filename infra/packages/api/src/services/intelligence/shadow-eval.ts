@@ -226,6 +226,7 @@ export function shouldRunOpenAiShadow(input: {
 }): boolean {
   if (input.completerInjected) return false;
   const policy = resolveBrainPolicy({ env: input.env, companyId: input.companyId, channel: input.channel });
+  if (policy.useOpenAi) return false;
   return policy.shadow && inspectOpenAiKey(input.env ?? {}).configured;
 }
 

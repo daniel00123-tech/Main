@@ -268,6 +268,8 @@ async function executeIntelligenceTurn(input: {
       ...payload,
       recentEvidence,
       brainMode: brain.policy.mode,
+      brainRole: brain.policy.role,
+      userVisibleBrain: brain.policy.userVisibleBrain,
       sufficiency:
         payload.toolCalls.some((call) => call.ok) &&
         !(isCompoundBusinessAsk(input.text) && payload.toolCalls.filter((call) => call.ok && call.name.startsWith("xero_")).length < 2)
@@ -1440,6 +1442,8 @@ function finish(
     citeSource?: boolean;
     recentEvidence?: IntelligenceTurnResult["recentEvidence"];
     brainMode?: IntelligenceTurnResult["brainMode"];
+    brainRole?: IntelligenceTurnResult["brainRole"];
+    userVisibleBrain?: IntelligenceTurnResult["userVisibleBrain"];
   },
 ): IntelligenceTurnResult {
   const last = input.modelRounds.at(-1);
@@ -1468,6 +1472,8 @@ function finish(
     fallbackUsed: Boolean(input.fallbackUsed),
     recentEvidence: input.recentEvidence ?? null,
     brainMode: input.brainMode,
+    brainRole: input.brainRole,
+    userVisibleBrain: input.userVisibleBrain,
     terminal: input.terminal,
     correlationId: last?.correlationId ?? null,
     guardChecks: input.guardChecks,
@@ -1508,6 +1514,8 @@ async function attachOpenAiShadow(
   const labeled: IntelligenceTurnResult = {
     ...result,
     brainMode: result.brainMode ?? (policy.enabled ? policy.mode : "cloudflare"),
+    brainRole: result.brainRole ?? policy.role,
+    userVisibleBrain: result.userVisibleBrain ?? policy.userVisibleBrain,
   };
   if (
     !shouldRunOpenAiShadow({

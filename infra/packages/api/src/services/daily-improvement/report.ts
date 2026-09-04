@@ -354,7 +354,7 @@ function renderText(date: string, summary: DailyReportSummary, subject: string):
       ? summary.yesterdaysFixes.map((item) => yesterdayLine(item))
       : ["No automatic deployments in the previous cycle."]),
     "",
-    "OpenAI canary is not promoted by this loop. EL remains openai_shadow unless a separate provider-promotion policy says otherwise.",
+    "EL Portal Chat (PA) and WhatsApp (requests) use OpenAI as the user-visible brain with Cloudflare fallback. ChatGPT stays on direct INFRA tools. Global mode remains openai_shadow for unscoped/automation traffic. This loop does not flip openai_primary.",
     "Drill-down: Control Centre → Quality / Engineering. Full transcripts stay in the authenticated portal.",
   ]
     .filter((line) => line !== "")
