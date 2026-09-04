@@ -86,6 +86,15 @@ routes.post("/api/internal/daily-improvement/bootstrap", async (c) => {
   return c.json(result);
 });
 
+routes.post("/api/internal/daily-improvement/corrected-report", async (c) => {
+  if (!(await verifyInternalToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as { runDate?: string };
+  const { runCorrectedDailyImprovementReport } = await import("../services/daily-improvement");
+  return c.json(await runCorrectedDailyImprovementReport(c.env, new Date(), { runDate: body.runDate }));
+});
+
 routes.post("/api/internal/automation/daily-improvement-qa", async (c) => {
   const { runDailyImprovementQa } = await import("../services/daily-improvement");
   return c.json(await runDailyImprovementQa(c.env));

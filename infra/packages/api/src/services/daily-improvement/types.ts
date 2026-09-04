@@ -4,7 +4,20 @@ import type {
   QualityScoreDimension,
 } from "./constants";
 
-export type DailyImprovementRunKind = "QA" | "REPORT" | "ENGINEERING" | "BOOTSTRAP";
+export type DailyImprovementRunKind = "QA" | "REPORT" | "ENGINEERING" | "BOOTSTRAP" | "CORRECTED_REPORT";
+
+export type QualityFinding = {
+  category: FailureCategory | string;
+  severity: DailyImprovementSeverity;
+  confidence: number;
+  expectedBehavior: string;
+  actualBehavior: string;
+  evidenceReference: string;
+  rootCauseHypothesis: string;
+  userImpact: string;
+};
+
+export type IssueLifecycle = "NEW" | "STILL_OPEN" | "FIXED" | "REGRESSED";
 
 export type EngineeringJobStatus =
   | "QUEUED"
@@ -74,6 +87,8 @@ export type DailyImprovementEvaluation = {
   trafficClass: "QUALITY";
   customerChargeCents: 0;
   createdAt: string;
+  findings: QualityFinding[];
+  interactionTrafficClass?: string | null;
 };
 
 export type DailyImprovementCluster = {
@@ -94,6 +109,9 @@ export type DailyImprovementCluster = {
   testsRequired: string | null;
   expectedBenefit: string | null;
   status: string;
+  exampleIds?: string[];
+  channels?: string[];
+  lifecycle?: IssueLifecycle;
 };
 
 export type DailyImprovementIssue = {
@@ -142,23 +160,91 @@ export type DailyReportPayload = {
   summary: DailyReportSummary;
 };
 
+export type LatencyStats = {
+  median: number | null;
+  p95: number | null;
+  max: number | null;
+};
+
+export type MetricTrend = {
+  today: number | null;
+  yesterday: number | null;
+  weekAverage: number | null;
+};
+
+export type CustomerChatSummary = {
+  company: string;
+  user: string;
+  channel: string;
+  topic: string;
+  turns: number;
+  qualityScore: number | null;
+  hasIssue: boolean;
+  outcome: string;
+  conversationId: string | null;
+};
+
 export type DailyReportSummary = {
   totalChats: number;
+  totalInteractions: number;
+  customerInteractions: number;
+  testInteractions: number;
+  shadowInteractions: number;
+  automationInternalInteractions: number;
+  customerConversations: number;
+  byTrafficClass: Record<string, number>;
   byChannel: Record<string, number>;
   byCompany: Record<string, number>;
   overallQuality: number | null;
+  testQuality: number | null;
   correctAnswerRate: number | null;
   toolSelection: number | null;
   exactTool: number | null;
   firstAnswer: number | null;
   followUp: number | null;
+  toolSelectionLabel: string;
+  exactToolLabel: string;
+  firstAnswerLabel: string;
+  followUpLabel: string;
   userRepeatRate: number | null;
   hallucinations: number;
+  hallucinationBreakdown: { customer: number; test: number; shadow: number; kinds: Record<string, number> };
   permissionIssues: number;
+  expectedPermissionDenials: number;
+  falsePermissionDenials: number;
+  permissionLeaks: number;
   failures: number;
+  customerFailures: number;
+  testFailures: number;
+  failureBreakdown: Record<string, number>;
   averageLatencyMs: number | null;
+  latency: LatencyStats;
+  customerLatency: LatencyStats;
+  testLatency: LatencyStats;
+  providerLatency: Record<string, LatencyStats>;
   providerComparison: Record<string, { count: number; quality: number | null }>;
+  trends: Record<string, MetricTrend>;
+  lifecycle: { newToday: string[]; stillOpen: string[]; fixedToday: string[]; regressed: string[] };
+  chatSummaries: CustomerChatSummary[];
   issues: DailyImprovementCluster[];
-  actionPlan: Array<{ title: string; status: string; severity: string }>;
+  actionPlan: Array<{
+    title: string;
+    status: string;
+    severity: string;
+    clusterKey: string;
+    affected: number;
+    channels: string[];
+    tenants: string[];
+    examples: string[];
+    currentBehaviour: string;
+    expectedBehaviour: string;
+    rootCause: string;
+    proposedFix: string;
+    testsRequired: string;
+    risk: string;
+  }>;
   yesterdaysFixes: Array<Record<string, unknown>>;
+  engineeringStart: string;
+  corrected?: boolean;
+  sanity: { ok: boolean; reasons: string[] };
 };

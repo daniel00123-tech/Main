@@ -211,7 +211,16 @@ export function classifyActivityKind(input: {
   indexed?: boolean;
   outcome?: KnowledgeIngestionOutcome;
 }): KnowledgeIngestionActivityKind {
-  if (input.outcome === "discovered" && input.indexed === false) return "source_observed";
+  if (input.indexed !== true) {
+    if (
+      input.outcome === "discovered" ||
+      input.outcome === "failed" ||
+      input.outcome === "skipped" ||
+      input.outcome === "duplicate"
+    ) {
+      return "source_observed";
+    }
+  }
   if (timestampInWindow(input.createdAt, input.windowStart, input.windowEnd)) return "new";
   if (
     timestampInWindow(input.modifiedAt, input.windowStart, input.windowEnd) ||
@@ -238,8 +247,11 @@ export function summariseKnowledgeIngestion(documents: KnowledgeIngestionDocumen
     }
     if (doc.outcome === "duplicate" || doc.outcome === "skipped") duplicateCount += 1;
     if (doc.outcome === "failed") failedCount += 1;
-    if (doc.activityKind === "updated") updatedCount += 1;
-    if (doc.activityKind === "source_observed" || (doc.discovered && !doc.indexed && doc.outcome === "discovered")) {
+    if (doc.activityKind === "updated" && (doc.indexed || doc.outcome === "indexed")) updatedCount += 1;
+    if (
+      doc.activityKind === "source_observed" ||
+      (doc.discovered && !doc.indexed && (doc.outcome === "discovered" || doc.outcome === "failed"))
+    ) {
       sourceObservedCount += 1;
     }
   }

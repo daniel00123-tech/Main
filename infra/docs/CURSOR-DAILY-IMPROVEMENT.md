@@ -5,14 +5,16 @@ Owner: INFRA platform (not EL-specific)
 
 ## What the Worker can do
 
-- Persist one canonical parent interaction per genuine customer request
+- Persist every captured turn with a reliable `traffic_class` (customer / test / shadow / automation / internal)
 - Run the 16:30 Europe/London QA window
-- Send the 17:00 Daily Improvement Report
+- Send the 17:00 Daily Improvement Report (headline metrics = `CUSTOMER_REQUEST` only)
+- Refuse to send a report that shows bad metrics and “no improvements”
 - Enqueue clustered engineering jobs at 17:05
 - Expose pull APIs:
   - `GET /api/internal/cursor-engineering/jobs`
   - `POST /api/internal/cursor-engineering/claim`
   - `POST /api/internal/cursor-engineering/complete`
+  - `POST /api/internal/daily-improvement/corrected-report` (one corrected email per date; no spam)
 
 Auth: existing `X-CMD13-Acceptance-Token` (cmd13 acceptance tokens). No new Worker.
 

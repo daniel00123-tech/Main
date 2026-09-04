@@ -9,6 +9,7 @@ import {
   XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
 } from "./templates";
 import {
+  classifyActivityKind,
   classifyKnowledgeIngestionOutcome,
   classifyKnowledgeIngestionSource,
   classifyKnowledgePipelineHealth,
@@ -249,13 +250,23 @@ describe("knowledge ingestion window and classification", () => {
       duplicateCount: 0,
       failedCount: 1,
       updatedCount: 0,
-      sourceObservedCount: 0,
-      missedCount: 0,
+      sourceObservedCount: 1,
+      missedCount: 1,
     });
     expect(groupKnowledgeSourceCounts([
       { sourceKey: "onedrive" } as never,
       { sourceKey: "onedrive" } as never,
     ])).toEqual([{ key: "onedrive", label: "OneDrive", count: 2 }]);
+    expect(
+      classifyActivityKind({
+        createdAt: "2026-09-04T18:41:13.276Z",
+        modifiedAt: "2026-09-04T15:41:18Z",
+        windowStart: new Date("2026-09-03T17:39:03.388Z"),
+        windowEnd: new Date("2026-09-04T17:39:03.388Z"),
+        indexed: false,
+        outcome: "failed",
+      }),
+    ).toBe("source_observed");
   });
 
   it("renders empty and failed knowledge activity emails", () => {

@@ -50,6 +50,10 @@ export function reportSubject(date: string): string {
   return `INFRA — Daily AI Quality & Improvement Report — ${date}`;
 }
 
+export function correctedReportSubject(date: string): string {
+  return `INFRA — Corrected Daily AI Quality & Improvement Report — ${date}`;
+}
+
 export function timezoneLabel(): string {
   return DAILY_IMPROVEMENT_TIMEZONE;
 }

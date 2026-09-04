@@ -860,18 +860,25 @@ async function buildNamedPersonReports(
   const wanted = ["Michael", "Sharon", "Lauren"];
   const reports: NamedPersonMailboxReport[] = [];
   for (const name of wanted) {
+    const needle = `${name.toLowerCase()}@`;
     const user = input.discoveredUsers.find((row) => row.displayName.toLowerCase() === name.toLowerCase());
-    const row = user
-      ? input.registry.find((item) => item.mailbox_address.toLowerCase() === user.mailboxAddress.toLowerCase())
-      : null;
+    const row =
+      (user
+        ? input.registry.find((item) => item.mailbox_address.toLowerCase() === user.mailboxAddress.toLowerCase())
+        : null) ??
+      input.registry.find(
+        (item) =>
+          (item.display_name ?? "").toLowerCase() === name.toLowerCase() ||
+          item.mailbox_address.toLowerCase().startsWith(needle),
+      );
     let graphAccessible: boolean | null = null;
     if (row?.mailbox_address) {
       graphAccessible = row.graph_accessible == null ? null : row.graph_accessible === 1;
     }
     reports.push({
       name,
-      mailboxAddress: user?.mailboxAddress ?? null,
-      mailboxFound: Boolean(user),
+      mailboxAddress: user?.mailboxAddress ?? row?.mailbox_address ?? null,
+      mailboxFound: Boolean(user || row),
       approvedForAttachmentIngestion: row?.enabled_for_attachment_ingestion === 1,
       graphAccessible,
       mailSearchEnabled: row?.enabled_for_mail_search === 1,
@@ -879,7 +886,9 @@ async function buildNamedPersonReports(
       attachmentsFound: 0,
       indexed: 0,
       policy: user
-        ? "personal_work mailbox exists as a company user; existing EL policy approves only shared info/finance mailboxes for knowledge ingest"
+        ? row?.enabled_for_attachment_ingestion === 1
+          ? "director-approved work mailbox: attachments ingested; Portal chat search remains off"
+          : "personal_work mailbox exists as a company user; not approved for attachment ingest"
         : "no company membership mailbox found; not invented",
     });
   }
