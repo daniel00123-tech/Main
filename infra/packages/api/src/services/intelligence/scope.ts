@@ -220,11 +220,20 @@ function detectScopeSwitch(text: string): ScopeSwitch {
   if (/\b(whole system|on the system|entire system|the platform)\b/i.test(text)) {
     return "system";
   }
-  if (/\b\bxero\b|\b(finance|invoices?|sales figures)\b/i.test(text) && /\b(switch|instead|use|from|in|check)\b/i.test(text)) {
-    return "business";
+  if (/\b(emails?|mailbox|outlook|inbox)\b/i.test(text)) {
+    if (
+      /\b(instead|switch|search|check|from|meant)\b/i.test(text) ||
+      /\b(finance inbox|info inbox|finance@|info@)\b/i.test(text)
+    ) {
+      return "email";
+    }
   }
-  if (/\b(emails?|mailbox|outlook)\b/i.test(text) && /\b(instead|switch|search|check|from|meant)\b/i.test(text)) {
-    return "email";
+  if (
+    /\bxero\b|\b(invoices?|sales figures)\b/i.test(text) &&
+    /\b(switch|instead|use|from|check)\b/i.test(text) &&
+    !/\b(emails?|mailbox|outlook|inbox)\b/i.test(text)
+  ) {
+    return "business";
   }
   return null;
 }

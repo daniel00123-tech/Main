@@ -265,45 +265,6 @@ export async function runIntelligenceTurn(input: {
     }
   }
 
-  if (shouldForceScopedTool(scoped) && scoped.tool && toolCalls.length === 0) {
-    const forced = await input.runtime.executeTool({
-      name: scoped.tool,
-      arguments: prepareToolArguments(scoped.tool, {}, input.text, workingState, scoped.scope),
-    });
-    toolCalls.push(forced);
-    adoptFromTool(
-      forced,
-      toolCalls,
-      () => currentDocument,
-      (doc) => {
-        currentDocument = doc;
-      },
-      evidenceDocumentIds,
-      input.buttonHint,
-    );
-    transcript.push(formatToolTranscript(forced));
-    const forcedTerminal = terminalFromToolCalls(toolCalls);
-    if (forcedTerminal && toolCalls.every((call) => !call.ok)) {
-      return finish({
-        kind: "failed",
-        text: forcedTerminal,
-        confidence: "none",
-        offerSearchOther: false,
-        toolCalls,
-        currentDocument,
-        evidenceDocumentIds,
-        clarification: false,
-        modelRounds,
-        route: "INTELLIGENT",
-        scope: scoped.scope,
-        lastAnswerTopic: scoped.lastAnswerTopic,
-        lastUserIntent: scoped.lastUserIntent,
-        qualityFlags: [...qualityFlags],
-        repaired,
-      });
-    }
-  }
-
   const system = `${SECURITY_AND_PROTOCOL}\nDecided scope: ${scoped.scope}. Current document is context, not a mandatory search target.\nTools:\n${describeToolCatalogue(permitted)}`;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
@@ -363,7 +324,11 @@ export async function runIntelligenceTurn(input: {
     }
 
     let decision = recovered.decision;
-    if (decision.action === "invalid" && !completion.text.trim() && toolCalls.length === 0) {
+    if (
+      decision.action === "invalid" &&
+      toolCalls.length === 0 &&
+      (shouldForceScopedTool(scoped, input.text) || !completion.text.trim())
+    ) {
       const bootstrap = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
       if (bootstrap) {
         toolCalls.push(bootstrap);
@@ -409,7 +374,7 @@ export async function runIntelligenceTurn(input: {
     }
 
     if (decision.action === "clarify") {
-      if (toolCalls.length === 0 && shouldForceScopedTool(scoped)) {
+      if (toolCalls.length === 0 && shouldForceScopedTool(scoped, input.text)) {
         const bootstrap = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
         if (bootstrap) {
           toolCalls.push(bootstrap);
@@ -431,7 +396,7 @@ export async function runIntelligenceTurn(input: {
         qualityFlags.add("bad_clarification");
       }
       const foundTitles = searchHitTitles(toolCalls);
-      if (foundTitles.length && shouldForceScopedTool(scoped)) {
+      if (foundTitles.length && shouldForceScopedTool(scoped, input.text)) {
         const hits = searchHits(toolCalls.find((call) => call.name === "search_company_knowledge")?.data);
         if (hits.length === 1 && !currentDocument) {
           const only = hits[0] && typeof hits[0] === "object" ? (hits[0] as { id?: string; title?: string; url?: string }) : null;
@@ -490,6 +455,24 @@ export async function runIntelligenceTurn(input: {
     }
 
     if (decision.action === "answer") {
+      if (toolCalls.length === 0 && shouldForceScopedTool(scoped, input.text)) {
+        const bootstrap = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+        if (bootstrap) {
+          toolCalls.push(bootstrap);
+          adoptFromTool(
+            bootstrap,
+            toolCalls,
+            () => currentDocument,
+            (doc) => {
+              currentDocument = doc;
+            },
+            evidenceDocumentIds,
+            input.buttonHint,
+          );
+          transcript.push(formatToolTranscript(bootstrap));
+          continue;
+        }
+      }
       if (needsClarification(toolCalls, currentDocument, workingState) && decision.confidence === "strong") {
         qualityFlags.add("missing_clarification");
       }
@@ -523,6 +506,23 @@ export async function runIntelligenceTurn(input: {
         repaired,
         fallbackUsed: modelRounds.some((row) => row.fallbackUsed),
       });
+    }
+  }
+
+  if (toolCalls.length === 0 && shouldForceScopedTool(scoped, input.text)) {
+    const lastChance = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+    if (lastChance) {
+      toolCalls.push(lastChance);
+      adoptFromTool(
+        lastChance,
+        toolCalls,
+        () => currentDocument,
+        (doc) => {
+          currentDocument = doc;
+        },
+        evidenceDocumentIds,
+        input.buttonHint,
+      );
     }
   }
 
@@ -728,11 +728,21 @@ function looksLikeNewDocumentSearch(text: string): boolean {
   );
 }
 
-function shouldForceScopedTool(scoped: ScopeDecision): boolean {
+function shouldForceScopedTool(scoped: ScopeDecision, text = ""): boolean {
   if (scoped.scope === "AMBIGUOUS" || scoped.scope === "GENERAL_CONVERSATION" || scoped.scope === "CONTROLLED_ACTION") {
     return false;
   }
-  return Boolean(scoped.tool);
+  if (!scoped.tool) return false;
+  if (scoped.scope === "COMPANY_KNOWLEDGE") {
+    return Boolean(
+      scoped.features.findDocument ||
+        scoped.features.companyLocus ||
+        scoped.lastUserIntent === "find_document" ||
+        scoped.lastUserIntent === "named_document_switch" ||
+        /\b(process|procedure|policy|handbook|manual|purchase order|po process)\b/i.test(text),
+    );
+  }
+  return true;
 }
 
 function looksLikeFinanceRead(text: string): boolean {

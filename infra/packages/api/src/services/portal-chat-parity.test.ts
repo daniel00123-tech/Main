@@ -255,7 +255,10 @@ describe("Portal Chat scoped tool execution", () => {
           usage: { provider: "workers-ai", model: "test", latencyMs: 1, promptTokens: 0, completionTokens: 0, estimatedCostUsd: 0 },
         }),
       });
-      expect(result.toolCalls.some((call) => call.name === row.tool)).toBe(true);
+      expect(
+        result.toolCalls.map((call) => call.name),
+        `${row.text} tools=${result.toolCalls.map((call) => call.name).join(",")} text=${result.text}`,
+      ).toContain(row.tool);
       expect(result.text).not.toMatch(/I need another moment/i);
       expect(result.text.length).toBeGreaterThan(10);
     }
