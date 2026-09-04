@@ -114,7 +114,7 @@ describe("scope classifier", () => {
       lastSuccessfulTool: "xero_sales_summary",
     });
     const correction = classifyScope("No, I meant email.", afterXero);
-    expect(correction.tool).toBe("outlook_search_mailbox");
+    expect(correction.tool).toBe("outlook_list_messages");
     expect(correction.tool).not.toMatch(/^xero_/);
   });
 

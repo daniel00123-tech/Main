@@ -170,6 +170,9 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
 }
 
 function pickMailboxTool(text: string): string {
+  if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text) && !/\b(from|containing|search|find|sharon|po)\b/i.test(text)) {
+    return "outlook_list_messages";
+  }
   if (/\bfrom\s+[A-Za-z]{2,}|containing|has \w+ sent|with \w+ in the subject\b/i.test(text)) {
     return "outlook_search_mailbox";
   }

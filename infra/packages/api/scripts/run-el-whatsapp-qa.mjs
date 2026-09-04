@@ -18,13 +18,22 @@ const CONVERSATIONS = {
 };
 
 function d1(command) {
-  const out = execFileSync(
-    "npx",
-    ["wrangler", "d1", "execute", "infra-control-plane", "--remote", "--json", "--command", command],
-    { cwd: apiDir, encoding: "utf8" },
-  );
-  const parsed = JSON.parse(out);
-  return parsed[0]?.results ?? [];
+  let lastErr;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const out = execFileSync(
+        "npx",
+        ["wrangler", "d1", "execute", "infra-control-plane", "--remote", "--json", "--command", command],
+        { cwd: apiDir, encoding: "utf8" },
+      );
+      const parsed = JSON.parse(out);
+      return parsed[0]?.results ?? [];
+    } catch (err) {
+      lastErr = err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000 * (attempt + 1));
+    }
+  }
+  throw lastErr;
 }
 
 function mintAcceptanceToken() {
