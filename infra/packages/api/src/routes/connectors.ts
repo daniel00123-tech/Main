@@ -1397,6 +1397,18 @@ connectors.post("/api/internal/el-microsoft-sp-verify", async (c) => {
   }
 });
 
+connectors.post("/api/internal/el-michael-mailbox-forensic", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runElMichaelMailboxForensic } = await import("../services/el-michael-mailbox-forensic");
+    return c.json(await runElMichaelMailboxForensic(c.env));
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "EL Michael mailbox forensic failed" }, 500);
+  }
+});
+
 connectors.post("/api/internal/el-mailbox-live-access", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
