@@ -891,11 +891,11 @@ async function buildNamedPersonReports(
       messagesWithAttachmentsInWindow: Number(scanned?.messagesWithAttachments ?? 0),
       attachmentsFound: scannedAttachments.length || Number(scanned?.messagesWithAttachments ?? 0),
       indexed: scannedAttachments.filter((item) => asRecord(item)?.status === "indexed").length,
-      policy: user
-        ? row?.enabled_for_attachment_ingestion === 1
-          ? "director-approved work mailbox: attachments ingested; Portal chat search remains off"
-          : "personal_work mailbox exists as a company user; not approved for attachment ingest"
-        : "no company membership mailbox found; not invented",
+      policy: row?.enabled_for_attachment_ingestion === 1
+        ? "director-approved work mailbox: attachments ingested; Portal chat search remains off"
+        : user || row
+          ? "personal_work mailbox exists as a company user; not approved for attachment ingest"
+          : "no company membership mailbox found; not invented",
     });
   }
   return reports;
