@@ -7,6 +7,7 @@
 import { INTELLIGENCE_TOOLS, permittedToolsForConnectors, toolFamilyOf } from "./catalogue.js";
 import { authorizeToolCall, buildAllowedToolCatalogue } from "./tool-auth.js";
 import type { IntelligenceToolSpec } from "./types.js";
+import { classifyQueryFreshness } from "../warehouse/freshness.js";
 
 export type PlatformCapability =
   | "EMAIL_SEARCH"
@@ -17,6 +18,7 @@ export type PlatformCapability =
   | "ACCOUNTING_INVOICE_GET"
   | "ACCOUNTING_CONTACTS"
   | "ACCOUNTING_REPORTS"
+  | "ACCOUNTING_WAREHOUSE"
   | "KNOWLEDGE_SEARCH"
   | "KNOWLEDGE_READ"
   | "CATALOGUE_LIST"
@@ -43,6 +45,8 @@ export const VENDOR_TOOL_ALIASES: Record<string, string> = {
   analyse_xero_sales: "xero_sales_summary",
   analyze_xero_sales: "xero_sales_summary",
   get_xero_sales: "xero_sales_summary",
+  xero_sales: "xero_sales_summary",
+  get_sales_summary: "xero_sales_summary",
   search_emails: "outlook_search_mailbox",
   search_mailbox: "outlook_search_mailbox",
   list_emails: "outlook_list_messages",
@@ -50,8 +54,11 @@ export const VENDOR_TOOL_ALIASES: Record<string, string> = {
   get_email: "outlook_get_message",
   get_message: "outlook_get_message",
   search_knowledge: "search_company_knowledge",
+  search_docs: "search_company_knowledge",
+  query_company_knowledge: "search_company_knowledge",
   list_files: "list_documents",
   list_recent_files: "list_documents",
+  list_company_documents: "list_documents",
 };
 
 const CONNECTOR_CAPABILITIES: Record<string, PlatformCapability[]> = {
@@ -61,12 +68,14 @@ const CONNECTOR_CAPABILITIES: Record<string, PlatformCapability[]> = {
     "ACCOUNTING_INVOICE_GET",
     "ACCOUNTING_CONTACTS",
     "ACCOUNTING_REPORTS",
+    "ACCOUNTING_WAREHOUSE",
   ],
   conn_outlook_shared: ["EMAIL_SEARCH", "EMAIL_LIST", "EMAIL_READ"],
   conn_microsoft: ["EMAIL_SEARCH", "EMAIL_LIST", "EMAIL_READ", "CATALOGUE_LIST", "KNOWLEDGE_SEARCH"],
   conn_sharepoint: ["CATALOGUE_LIST", "KNOWLEDGE_SEARCH", "KNOWLEDGE_READ"],
   conn_onedrive: ["CATALOGUE_LIST", "KNOWLEDGE_SEARCH", "KNOWLEDGE_READ"],
   conn_google_drive: ["CATALOGUE_LIST", "KNOWLEDGE_SEARCH", "KNOWLEDGE_READ"],
+  conn_microsoft_365: ["CATALOGUE_LIST", "KNOWLEDGE_SEARCH", "KNOWLEDGE_READ"],
   conn_bigchange: ["JOB_SEARCH"],
   conn_commusoft: ["JOB_SEARCH"],
   conn_freshdesk: ["TICKET_SEARCH"],
@@ -88,6 +97,11 @@ const TOOL_CAPABILITY: Record<string, PlatformCapability> = {
   xero_aged_receivables: "ACCOUNTING_REPORTS",
   xero_balance_sheet: "ACCOUNTING_REPORTS",
   xero_get_organisation: "ACCOUNTING_REPORTS",
+  warehouse_sales_analysis: "ACCOUNTING_WAREHOUSE",
+  warehouse_invoice_analysis: "ACCOUNTING_WAREHOUSE",
+  warehouse_receivables_analysis: "ACCOUNTING_WAREHOUSE",
+  warehouse_customer_analysis: "ACCOUNTING_WAREHOUSE",
+  warehouse_query: "ACCOUNTING_WAREHOUSE",
   search_company_knowledge: "KNOWLEDGE_SEARCH",
   search: "KNOWLEDGE_SEARCH",
   search_document: "KNOWLEDGE_READ",
@@ -129,6 +143,7 @@ export function capabilitiesForConnectors(connectors: string[]): Set<PlatformCap
       out.add("ACCOUNTING_SALES");
       out.add("ACCOUNTING_INVOICE_SEARCH");
       out.add("ACCOUNTING_INVOICE_GET");
+      out.add("ACCOUNTING_WAREHOUSE");
     }
   }
   return out;
@@ -208,6 +223,8 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
     found.add("ACCOUNTING_REPORTS");
   } else if (accounting && /\b(contact named|customer named|who is)\b/i.test(value)) {
     found.add("ACCOUNTING_CONTACTS");
+  } else if (accounting && classifyQueryFreshness(value) === "HISTORICAL_ANALYTICAL") {
+    found.add("ACCOUNTING_WAREHOUSE");
   } else if (accounting) found.add("ACCOUNTING_SALES");
   if (catalogue) found.add("CATALOGUE_LIST");
   if (knowledge) found.add("KNOWLEDGE_SEARCH");
@@ -233,6 +250,8 @@ export function defaultToolForCapability(capability: PlatformCapability): string
       return "xero_search_contacts";
     case "ACCOUNTING_REPORTS":
       return "xero_profit_and_loss";
+    case "ACCOUNTING_WAREHOUSE":
+      return "warehouse_sales_analysis";
     case "KNOWLEDGE_SEARCH":
       return "search_company_knowledge";
     case "KNOWLEDGE_READ":

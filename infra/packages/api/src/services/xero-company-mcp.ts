@@ -156,6 +156,18 @@ export function mapArgsForCompanyXeroTool(
   if (forwarded.limit == null) {
     forwarded.limit = forwarded.top;
   }
+  const page = Number(args.page);
+  if (Number.isFinite(page) && page >= 1) {
+    forwarded.page = Math.trunc(page);
+  }
+  const offset = Number(args.offset ?? args.skip);
+  if (Number.isFinite(offset) && offset >= 0) {
+    forwarded.offset = Math.trunc(offset);
+    forwarded.skip = forwarded.offset;
+  }
+  if (typeof args.cursor === "string" && args.cursor.trim()) {
+    forwarded.cursor = args.cursor.trim();
+  }
   return forwarded;
 }
 

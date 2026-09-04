@@ -54,6 +54,7 @@ import {
 import { withActionControlTools, isActionControlTool, actionControlToolAllowed } from "./mcp-action-tools";
 import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
 import { withXeroReadTools } from "./xero-read-tools";
+import { withWarehouseTools } from "./warehouse/tools";
 import { ASK_DOCUMENT_TOOL, withAskDocumentTool } from "./ask-document";
 import { LIST_DOCUMENTS_TOOL, rewriteKnowledgeCallForCatalogue, withDocumentCatalogueTools } from "./document-catalogue";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
@@ -174,6 +175,16 @@ export function enrichMcpToolDescription(
       "Use this tool to retrieve live Xero sales/invoice data for a date period. Use for current sales, sales today, this month, last month, or a comparison (call once per period). Do not use company knowledge search for live Xero financial totals. If INFRA returns permission_denied, the Xero connection may still be healthy — the signed-in user is not allowed to view Xero financial data. Do not treat permission_denied as zero sales. Read-only.",
     xero_top_customers:
       "Return top customers by qualifying ACCREC sales revenue for a date range. Purchase-side documents never count as customers. Amounts use currencyCode (e.g. GBP). Read-only.",
+    warehouse_sales_analysis:
+      "Historical/analytical Xero sales from the INFRA warehouse. Use for monthly trends, last-six-months comparisons, and period totals already synced. Not for sales right now — call xero_sales_summary. Read-only. Evidence source is xero_warehouse.",
+    warehouse_invoice_analysis:
+      "Historical invoice lists from the warehouse. For whether a named invoice has been paid yet, call xero_get_invoice. Read-only.",
+    warehouse_receivables_analysis:
+      "Warehouse overdue/outstanding trends and snapshots. For who is overdue right now, call xero_list_overdue_invoices. Read-only.",
+    warehouse_customer_analysis:
+      "Highest-value customers over a warehouse period. Read-only.",
+    warehouse_query:
+      "Controlled warehouse aggregation (approved metrics only — never SQL). Falls back to live Xero when the warehouse is missing, stale, or degraded.",
     xero_create_draft_invoice:
       "Create a draft invoice in Xero. Financial write — requires scope upgrade, permission, and production write activation.",
     xero_create_credit_note:
@@ -595,10 +606,10 @@ export async function handleInfraMcpJsonRpc(
           name: "infra-gateway",
           version: "1.0.0",
           instructions:
-            "All tool calls are authorised, metered, and billed by INFRA. For live Xero sales, invoices, outstanding, overdue, or customer totals use xero_sales_summary, xero_search_invoices, xero_get_invoice, xero_list_overdue_invoices, or xero_top_customers. Do not use search, fetch, or database_summary for live Xero financial figures. Use search then fetch only for company knowledge documents. Do not call company MCP endpoints directly.",
+            "All tool calls are authorised, metered, and billed by INFRA. For historical Xero analytics (trends, monthly sales, overdue movement, top customers over a period) use warehouse_* tools. For current/live Xero sales, invoices, outstanding, overdue, or a named invoice status use xero_sales_summary, xero_search_invoices, xero_get_invoice, xero_list_overdue_invoices, or xero_top_customers. Do not use search, fetch, or database_summary for Xero financial figures. Use search then fetch only for company knowledge documents. Do not call company MCP endpoints directly.",
         },
         instructions:
-          "All tool calls are authorised, metered, and billed by INFRA. For live Xero sales, invoices, outstanding, overdue, or customer totals use xero_sales_summary, xero_search_invoices, xero_get_invoice, xero_list_overdue_invoices, or xero_top_customers. Do not use search, fetch, or database_summary for live Xero financial figures. Use search then fetch only for company knowledge documents. Do not call company MCP endpoints directly.",
+          "All tool calls are authorised, metered, and billed by INFRA. For historical Xero analytics use warehouse_* tools. For current/live Xero sales, invoices, outstanding, overdue, or a named invoice status use xero_sales_summary, xero_search_invoices, xero_get_invoice, xero_list_overdue_invoices, or xero_top_customers. Do not use search, fetch, or database_summary for Xero financial figures. Use search then fetch only for company knowledge documents. Do not call company MCP endpoints directly.",
       }),
       httpStatus: 200,
     };
@@ -695,9 +706,12 @@ export async function handleInfraMcpJsonRpc(
         withAutomationControlTools(
           withDocumentCatalogueTools(
             withAskDocumentTool(
-              withXeroReadTools(
-                withOutlookReadTools(
-                  withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
+              withWarehouseTools(
+                withXeroReadTools(
+                  withOutlookReadTools(
+                    withActionControlTools(withStandardKnowledgeTools(tools), identityScopes),
+                    identityScopes,
+                  ),
                   identityScopes,
                 ),
                 identityScopes,
@@ -761,9 +775,12 @@ export async function handleInfraMcpJsonRpc(
         withAutomationControlTools(
           withDocumentCatalogueTools(
             withAskDocumentTool(
-              withXeroReadTools(
-                withOutlookReadTools(
-                  withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+              withWarehouseTools(
+                withXeroReadTools(
+                  withOutlookReadTools(
+                    withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+                    identityScopes,
+                  ),
                   identityScopes,
                 ),
                 identityScopes,

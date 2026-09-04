@@ -151,6 +151,8 @@ function personLine(
       name,
       mailboxAddress: person.mailboxAddress,
       excluded: person.excluded,
+      scanStatus: person.scanStatus,
+      scanLabel: person.messagesScannedLabel,
       messagesScanned: person.messagesScanned,
       attachments: person.attachmentsFound,
       indexed: person.indexed,
@@ -161,11 +163,18 @@ function personLine(
     (row) => String(row.mailboxAddress ?? "").toLowerCase() === (fallbackAddress ?? "").toLowerCase(),
   );
   const attachments = Array.isArray(scanned?.attachments) ? scanned!.attachments : [];
+  const scanFailed = scanned?.ok === false || Boolean(scanned?.scanFailed);
   return {
     name,
     mailboxAddress: fallbackAddress ?? null,
     excluded: false,
-    messagesScanned: Number(scanned?.messagesScanned ?? 0),
+    scanStatus: scanFailed ? "FAILED" : scanned ? "HEALTHY" : "COVERAGE_GAP",
+    scanLabel: scanFailed
+      ? `SCAN FAILED — ${String(scanned?.errorCode ?? scanned?.error ?? "MAILBOX_SCAN_FAILED")}`
+      : scanned && Number(scanned.messagesScanned ?? 0) === 0
+        ? "0 (successful empty scan)"
+        : undefined,
+    messagesScanned: scanFailed ? null : scanned ? Number(scanned.messagesScanned ?? 0) : null,
     attachments: attachments.length,
     indexed: attachments.filter((item) => {
       const rec = item && typeof item === "object" ? (item as Record<string, unknown>) : null;

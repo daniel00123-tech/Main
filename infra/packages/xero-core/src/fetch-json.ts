@@ -38,12 +38,16 @@ export async function xeroGetJson<T>(
   config: XeroFetchConfig,
   path: string,
   query?: Record<string, string | number | boolean | undefined>,
+  options?: { headers?: Record<string, string> },
 ): Promise<T> {
   const fetchImpl = config.fetchImpl ?? fetch;
   const url = buildXeroUrl(config.apiBaseUrl ?? XERO_AUTH.apiBaseUrl, path, query);
   let response: Response;
   try {
-    response = await fetchImpl(url, { method: "GET", headers: xeroHeaders(config) });
+    response = await fetchImpl(url, {
+      method: "GET",
+      headers: { ...xeroHeaders(config), ...(options?.headers ?? {}) },
+    });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new XeroApiError({

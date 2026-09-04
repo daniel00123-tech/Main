@@ -46,6 +46,10 @@ vi.mock("./microsoft-outlook-read", () => ({
   executeOutlookReadTool: hoisted.executeOutlook,
 }));
 
+vi.mock("./microsoft-outlook-company-mcp", () => ({
+  executeCompanyMcpOutlookRead: hoisted.executeOutlook,
+}));
+
 vi.mock("./control-plane", () => ({
   listMcpEnvironments: hoisted.listMcp,
 }));
@@ -73,17 +77,20 @@ vi.mock("./microsoft-acceptance-knowledge-search", () => ({
   runProductionKnowledgeSearch: hoisted.search,
 }));
 
-import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
+import {
+  ingestApprovedOutlookAttachments,
+  resolveMailboxIngestWindow,
+} from "./outlook-attachment-ingest";
 
-function dbStub() {
+function dbStub(options?: { onFirst?: (sql: string, binds: unknown[]) => unknown }) {
   return {
-    prepare: () => ({
-      bind: () => ({
-        first: async () => null,
+    prepare: (sql: string) => ({
+      bind: (...binds: unknown[]) => ({
+        first: async () => options?.onFirst?.(sql, binds) ?? null,
         all: async () => ({ results: [] }),
         run: async () => ({ success: true }),
       }),
-      first: async () => null,
+      first: async () => options?.onFirst?.(sql, []) ?? null,
       all: async () => ({ results: [] }),
       run: async () => ({ success: true }),
     }),
@@ -665,5 +672,233 @@ describe("Outlook attachment ingest", () => {
       expect.anything(),
       expect.objectContaining({ success: false, checkpoint: null }),
     );
+  });
+
+  it("never renders a Graph-fail + empty MCP list as Messages scanned: 0", async () => {
+    hoisted.listApproved.mockResolvedValue([
+      {
+        id: "mbx_michael",
+        company_id: "co_el",
+        mailbox_address: "michael@elvexpropertyservices.com",
+        mailbox_type: "user_mailbox",
+        display_name: "Michael",
+        last_checkpoint: null,
+        last_attachment_scan_at: null,
+        enabled_for_attachment_ingestion: 1,
+      },
+    ]);
+    hoisted.listRegistry.mockResolvedValue([
+      {
+        mailbox_address: "michael@elvexpropertyservices.com",
+        display_name: "Michael",
+        enabled_for_attachment_ingestion: 1,
+        enabled_for_mail_search: 0,
+        graph_accessible: 0,
+        last_attachment_scan_at: null,
+      },
+    ]);
+    hoisted.resolveGraph.mockResolvedValue({
+      ok: false,
+      code: "AADSTS7000229",
+      message: "The client application is missing service principal in the tenant",
+    });
+    hoisted.executeOutlook.mockResolvedValue({
+      ok: true,
+      result: { messages: [] },
+    });
+
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-08-28T19:00:00.000Z"),
+        windowTo: new Date("2026-09-04T20:00:00.000Z"),
+      },
+    );
+    const michael = result.namedPeople.find((row) => row.name === "Michael");
+    expect(michael?.scanStatus).toBe("FAILED");
+    expect(michael?.messagesScanned).toBeNull();
+    expect(michael?.messagesScannedLabel).toMatch(/SCAN FAILED/i);
+    expect(michael?.messagesScannedLabel).not.toBe("0");
+    expect(hoisted.markScan).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        success: false,
+        checkpoint: null,
+        mailboxAddress: "michael@elvexpropertyservices.com",
+      }),
+    );
+  });
+
+  it("renders a Graph-proven empty mailbox as successful zero, not SCAN FAILED", async () => {
+    hoisted.listApproved.mockResolvedValue([
+      {
+        id: "mbx_lauren",
+        company_id: "co_el",
+        mailbox_address: "lauren@elvexpropertyservices.com",
+        mailbox_type: "user_mailbox",
+        display_name: "Lauren",
+        last_checkpoint: null,
+        last_attachment_scan_at: null,
+        enabled_for_attachment_ingestion: 1,
+      },
+    ]);
+    hoisted.listRegistry.mockResolvedValue([
+      {
+        mailbox_address: "lauren@elvexpropertyservices.com",
+        display_name: "Lauren",
+        enabled_for_attachment_ingestion: 1,
+        enabled_for_mail_search: 0,
+        graph_accessible: 1,
+        last_attachment_scan_at: "2026-09-04T20:00:00.000Z",
+      },
+    ]);
+    hoisted.listMessages.mockResolvedValue([]);
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-08-28T19:00:00.000Z"),
+        windowTo: new Date("2026-09-04T20:00:00.000Z"),
+      },
+    );
+    const lauren = result.namedPeople.find((row) => row.name === "Lauren");
+    expect(lauren?.scanStatus).toBe("HEALTHY");
+    expect(lauren?.messagesScanned).toBe(0);
+    expect(lauren?.messagesScannedLabel).toBe("0 (successful empty scan)");
+    expect(hoisted.markScan).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ success: true, mailboxAddress: "lauren@elvexpropertyservices.com" }),
+    );
+  });
+
+  it("records a stored ledger event before indexing and does not store hash duplicates", async () => {
+    hoisted.listApproved.mockResolvedValue([
+      {
+        id: "mbx_finance",
+        company_id: "co_el",
+        mailbox_address: "finance@elvexpropertyservices.com",
+        mailbox_type: "shared_mailbox",
+        last_checkpoint: null,
+      },
+      {
+        id: "mbx_michael",
+        company_id: "co_el",
+        mailbox_address: "michael@elvexpropertyservices.com",
+        mailbox_type: "user_mailbox",
+        last_checkpoint: null,
+      },
+    ]);
+    hoisted.listMessages.mockResolvedValue([
+      {
+        id: "msg-remit",
+        subject: "RE: Remittance and CIS statement",
+        hasAttachments: true,
+        receivedDateTime: "2026-09-03T10:32:31Z",
+        from: { emailAddress: { address: "ellie@barons-group.org" } },
+      },
+    ]);
+    hoisted.listAttachments.mockResolvedValue([
+      { id: "att-remit", name: "remittance.pdf", contentType: "application/pdf", size: 12_000, isInline: false },
+    ]);
+    hoisted.getAttachment.mockResolvedValue({
+      name: "remittance.pdf",
+      contentType: "application/pdf",
+      size: 12_000,
+      contentBytes: btoa("identical-remittance"),
+    });
+    let hashLookups = 0;
+    const result = await ingestApprovedOutlookAttachments(
+      {
+        DB: dbStub({
+          onFirst: (sql) => {
+            if (sql.includes("content_hash") && sql.includes("indexed")) {
+              hashLookups += 1;
+              if (hashLookups > 1) {
+                return {
+                  id: "kie_orig",
+                  chunk_count: 4,
+                  stored_item_id: "drive-item-1",
+                  stored_url: "https://elvex.sharepoint.com/remittance.pdf",
+                  stored_at: "2026-09-03T10:40:00.000Z",
+                };
+              }
+            }
+            return null;
+          },
+        }),
+      } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-08-28T19:00:00.000Z"),
+        windowTo: new Date("2026-09-04T20:00:00.000Z"),
+      },
+    );
+
+    expect(result.counts.attachmentsIndexed).toBe(1);
+    expect(result.counts.duplicates).toBe(1);
+    expect(result.counts.attachmentsStored).toBe(1);
+    expect(hoisted.store).toHaveBeenCalledTimes(1);
+    expect(hoisted.upload).toHaveBeenCalledTimes(1);
+    expect(hoisted.recordEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ eventType: "stored", filename: "remittance.pdf" }),
+    );
+    expect(hoisted.recordEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ eventType: "duplicate", skipReason: "duplicate_content_hash" }),
+    );
+  });
+
+  it("quarantines unsafe executables instead of extracting them", async () => {
+    hoisted.listMessages.mockResolvedValue([
+      {
+        id: "msg-exe",
+        subject: "install",
+        hasAttachments: true,
+        receivedDateTime: "2026-09-04T12:00:00Z",
+        from: { emailAddress: { address: "a@example.com" } },
+      },
+    ]);
+    hoisted.listAttachments.mockResolvedValue([
+      { id: "att-exe", name: "setup.exe", contentType: "application/x-msdownload", size: 80_000, isInline: false },
+    ]);
+    hoisted.getAttachment.mockResolvedValue({
+      name: "setup.exe",
+      contentType: "application/x-msdownload",
+      size: 80_000,
+      contentBytes: btoa("MZ executable"),
+    });
+
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-09-03T17:39:03.388Z"),
+        windowTo: new Date("2026-09-04T17:39:03.388Z"),
+      },
+    );
+    expect(result.counts.attachmentsStored).toBe(1);
+    expect(result.counts.unsupported).toBe(1);
+    expect(result.counts.attachmentsIndexed).toBe(0);
+    expect(hoisted.store).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ filename: "setup.exe", quarantine: true }),
+    );
+    expect(hoisted.upload).not.toHaveBeenCalled();
+  });
+
+  it("uses the mailbox checkpoint for incremental windows and caps first-run lookback at 7 days", () => {
+    const now = new Date("2026-09-04T20:00:00.000Z");
+    const first = resolveMailboxIngestWindow({ now });
+    expect(first.usedCheckpoint).toBe(false);
+    expect(now.getTime() - first.windowFrom.getTime()).toBe(7 * 24 * 60 * 60 * 1000);
+
+    const incremental = resolveMailboxIngestWindow({
+      now,
+      lastCheckpoint: "2026-09-04T14:00:00.000Z",
+    });
+    expect(incremental.usedCheckpoint).toBe(true);
+    expect(incremental.windowFrom.toISOString()).toBe("2026-09-04T13:58:00.000Z");
   });
 });

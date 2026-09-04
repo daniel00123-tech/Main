@@ -51,6 +51,9 @@ function flagState(env: Env) {
   const elRequest = resolveBrainPolicy({ env, companyId: "co_el", channel: "whatsapp" });
   const elChatbot = resolveBrainPolicy({ env, companyId: "co_el", channel: "chatgpt" });
   const caddington = resolveBrainPolicy({ env, companyId: "co_caddington" });
+  const caddingtonPa = resolveBrainPolicy({ env, companyId: "co_caddington", channel: "portal_chat" });
+  const caddingtonRequest = resolveBrainPolicy({ env, companyId: "co_caddington", channel: "whatsapp" });
+  const caddingtonChatbot = resolveBrainPolicy({ env, companyId: "co_caddington", channel: "chatgpt" });
   const ht = resolveBrainPolicy({ env, companyId: "co_ht" });
   const publicDecision = (row: ReturnType<typeof resolveBrainPolicy>) => ({
     mode: row.mode,
@@ -68,6 +71,9 @@ function flagState(env: Env) {
     elRequest: publicDecision(elRequest),
     elChatbot: publicDecision(elChatbot),
     caddington: publicDecision(caddington),
+    caddingtonPa: publicDecision(caddingtonPa),
+    caddingtonRequest: publicDecision(caddingtonRequest),
+    caddingtonChatbot: publicDecision(caddingtonChatbot),
     ht: publicDecision(ht),
   };
 }

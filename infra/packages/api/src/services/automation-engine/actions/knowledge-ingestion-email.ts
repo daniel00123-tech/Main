@@ -22,29 +22,69 @@ import { portalOrigin } from "../../public-urls";
 import { recordUsageEvent } from "../../usage";
 import { queryKnowledgeIngestionActivity } from "../knowledge-ingestion-query";
 import { getAutomationRun, listAutomationRuns } from "../store";
-import { listApprovedAttachmentMailboxes, listExcludedAttachmentMailboxes } from "../../mailbox-registry";
+import {
+  listApprovedAttachmentMailboxes,
+  listCompanyMailboxRegistry,
+  listExcludedAttachmentMailboxes,
+} from "../../mailbox-registry";
+import { formatMailboxScanCount, mailboxScanHealth } from "../../mailbox-scan-status";
+import { ingestApprovedOutlookAttachments } from "../../outlook-attachment-ingest";
 import { AutomationActionError } from "./errors";
 import type { AutomationActionResult, AutomationExecutionContext } from "./types";
 
 async function mailboxPolicySnapshot(
   db: D1Database | undefined,
   companyId: string,
-): Promise<{ eligible: number; excluded: number; excludedNames: string[] }> {
-  if (!db) return { eligible: 0, excluded: 0, excludedNames: [] };
+): Promise<{
+  eligible: number;
+  excluded: number;
+  excludedNames: string[];
+  headline: string;
+  healthLines: Array<{ name: string; status: string; scannedLabel: string; attachments?: number; indexed?: number; failed?: number }>;
+}> {
+  if (!db) return { eligible: 0, excluded: 0, excludedNames: [], headline: "MAILBOX COVERAGE GAP", healthLines: [] };
   try {
-    const [eligible, excluded] = await Promise.all([
+    const [eligible, excluded, registry] = await Promise.all([
       listApprovedAttachmentMailboxes(db, companyId),
       listExcludedAttachmentMailboxes(db, companyId),
+      listCompanyMailboxRegistry(db, companyId),
     ]);
+    const healthLines = registry.map((row) => {
+      const failed = Boolean(row.last_error) || row.status === "error";
+      const health = mailboxScanHealth({
+        excluded: row.enabled_for_attachment_ingestion !== 1,
+        scanned: Boolean(row.last_attachment_scan_at),
+        scanFailed: failed,
+        lastScanAt: row.last_attachment_scan_at,
+        graphFailed: row.graph_accessible === 0,
+      });
+      return {
+        name: row.display_name || row.mailbox_address,
+        status: health,
+        scannedLabel: formatMailboxScanCount({
+          health,
+          messagesScanned:
+            failed || !row.last_attachment_scan_at
+              ? null
+              : row.last_messages_scanned ?? 0,
+          errorCode: row.last_error,
+        }),
+      };
+    });
+    const failedIncluded = healthLines.filter((row) => row.status === "FAILED" || row.status === "COVERAGE_GAP");
     return {
       eligible: eligible.length,
       excluded: excluded.length,
       excludedNames: excluded
         .map((row) => row.display_name || row.mailbox_address)
         .filter((value): value is string => Boolean(value)),
+      headline: failedIncluded.length
+        ? "MAILBOX SCAN FAILED"
+        : "SUCCESSFUL SCAN WITH ZERO",
+      healthLines,
     };
   } catch {
-    return { eligible: 0, excluded: 0, excludedNames: [] };
+    return { eligible: 0, excluded: 0, excludedNames: [], headline: "MAILBOX COVERAGE GAP", healthLines: [] };
   }
 }
 
@@ -94,6 +134,18 @@ export async function executeKnowledgeIngestionDailyEmail(
     completedAt: lastSuccessful?.completedAt ?? null,
   });
 
+  let ingest: Awaited<ReturnType<typeof ingestApprovedOutlookAttachments>> | null = null;
+  try {
+    ingest = await ingestApprovedOutlookAttachments(env, {
+      companyId: ctx.companyId,
+      windowFrom: window.from,
+      windowTo: window.to,
+      actor: `automation:${ctx.runId}:knowledge-intake`,
+    });
+  } catch {
+    ingest = null;
+  }
+
   let report;
   try {
     report = await queryKnowledgeIngestionActivity(env, {
@@ -126,8 +178,8 @@ export async function executeKnowledgeIngestionDailyEmail(
     correlationId: `${ctx.runId}:knowledge`,
     requestId: `automation_knowledge_${ctx.runId}`,
     metadata: {
-      readOnly: true,
-      triggeredProviderScan: false,
+      readOnly: false,
+      triggeredProviderScan: Boolean(ingest),
       windowFrom: report.windowFrom,
       windowTo: report.windowTo,
       trigger: triggerType,
@@ -166,9 +218,15 @@ export async function executeKnowledgeIngestionDailyEmail(
     failedCount: report.failedCount,
     legitimateSkipCount: legitimateSkips,
   });
-  const mailboxesScanned = [
-    ...new Set(report.documents.map((item) => item.mailbox).filter((item): item is string => Boolean(item))),
-  ];
+  const mailboxesScanned = ingest?.mailboxes?.length
+    ? ingest.mailboxes
+        .map((row) => (typeof row.mailboxAddress === "string" ? row.mailboxAddress : ""))
+        .filter(Boolean)
+    : [
+        ...new Set(
+          report.documents.map((item) => item.mailbox).filter((item): item is string => Boolean(item)),
+        ),
+      ];
   const mailboxPolicy = await mailboxPolicySnapshot(env.DB, ctx.companyId);
   const portalUrl = `${portalOrigin(env)}/portal/${company.slug}/automations`;
   const email = renderKnowledgeIngestionReportEmail({
@@ -219,18 +277,28 @@ export async function executeKnowledgeIngestionDailyEmail(
     mailboxesExcluded: mailboxPolicy.excluded,
     mailboxesExcludedNames: mailboxPolicy.excludedNames,
     mailboxesScanned,
-    messagesScanned: 0,
-    messagesWithAttachments: report.documents.filter((item) => item.sourceKey === "outlook_attachments").length,
-    attachmentsDiscovered: outlookDocs.length,
-    attachmentsStored: outlookDocs.filter((item) => item.stored).length,
-    attachmentsIndexed: outlookDocs.filter((item) => item.indexed).length,
-    attachmentsDeduped: outlookDocs.filter((item) => item.outcome === "duplicate").length,
-    attachmentsSkipped: outlookDocs.filter((item) => item.outcome === "skipped" || item.outcome === "duplicate").length,
-    attachmentsSkippedJunk: outlookDocs.filter((item) => item.outcome === "skipped" && !item.stored).length,
-    attachmentsUnsupported: outlookDocs.filter(
-      (item) => item.stored && (item.failureReason === "UNSUPPORTED_TYPE" || item.failureReason === "unsupported format"),
-    ).length,
-    attachmentsFailed: outlookDocs.filter((item) => item.outcome === "failed").length,
+    mailboxHeadline: mailboxPolicy.headline,
+    mailboxHealthLines: mailboxPolicy.healthLines,
+    messagesScanned: ingest?.counts.messagesScanned ?? 0,
+    messagesWithAttachments:
+      ingest?.counts.messagesWithAttachments ??
+      report.documents.filter((item) => item.sourceKey === "outlook_attachments").length,
+    attachmentsDiscovered: ingest?.counts.attachmentsDiscovered ?? outlookDocs.length,
+    attachmentsStored: ingest?.counts.attachmentsStored ?? outlookDocs.filter((item) => item.stored).length,
+    attachmentsIndexed: ingest?.counts.attachmentsIndexed ?? outlookDocs.filter((item) => item.indexed).length,
+    attachmentsDeduped: ingest?.counts.duplicates ?? outlookDocs.filter((item) => item.outcome === "duplicate").length,
+    attachmentsSkipped:
+      ingest?.counts.skipped ??
+      outlookDocs.filter((item) => item.outcome === "skipped" || item.outcome === "duplicate").length,
+    attachmentsSkippedJunk:
+      ingest?.counts.skippedJunk ??
+      outlookDocs.filter((item) => item.outcome === "skipped" && !item.stored).length,
+    attachmentsUnsupported:
+      ingest?.counts.unsupported ??
+      outlookDocs.filter(
+        (item) => item.stored && (item.failureReason === "UNSUPPORTED_TYPE" || item.failureReason === "unsupported format"),
+      ).length,
+    attachmentsFailed: ingest?.counts.failed ?? outlookDocs.filter((item) => item.outcome === "failed").length,
     onedriveIndexed: report.documents.filter((item) => item.sourceKey === "onedrive" && item.indexed).length,
     sharepointIndexed: report.documents.filter((item) => item.sourceKey === "sharepoint" && item.indexed).length,
     pipelineHealth,
@@ -258,7 +326,7 @@ export async function executeKnowledgeIngestionDailyEmail(
     scannedSourceTypes: report.scannedSourceTypes,
     sourcesQueried: report.sourcesQueried,
     recipientEmail: recipient,
-    triggeredProviderScan: false,
+    triggeredProviderScan: Boolean(ingest),
     emailSent: false,
     customerSummary: "Knowledge activity report generated",
   };

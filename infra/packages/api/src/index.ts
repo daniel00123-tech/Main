@@ -98,6 +98,7 @@ import qualityLoopRoutes from "./routes/quality-loop";
 import dailyImprovementRoutes from "./routes/daily-improvement";
 import knowledgeIntakeRoutes from "./routes/knowledge-intake";
 import portalChatRoutes from "./routes/portal-chat";
+import warehouseRoutes from "./routes/warehouse";
 import { publicProductionLineage } from "./services/production-lineage";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -121,6 +122,7 @@ app.route("/", qualityLoopRoutes);
 app.route("/", dailyImprovementRoutes);
 app.route("/", knowledgeIntakeRoutes);
 app.route("/", portalChatRoutes);
+app.route("/", warehouseRoutes);
 
 app.use("*", async (c, next) => {
   await bootstrapPlatformAdminIfNeeded(
@@ -1281,6 +1283,29 @@ const worker = {
         success: false,
         error: err instanceof Error ? err.message : "Reaper failed",
       });
+    }
+
+    if (runWhatsAppMinute) {
+      try {
+        const { maybeRunWarehouseSyncs } = await import("./services/warehouse/sync");
+        const warehouse = await maybeRunWarehouseSyncs(env, new Date());
+        if (warehouse.actions.length) {
+          await recordPlatformHeartbeat(env.DB, {
+            key: "warehouse_xero_sync",
+            label: "Xero warehouse sync",
+            success: warehouse.actions.every((row) => row.status !== "failed"),
+            error: null,
+            detail: warehouse,
+          });
+        }
+      } catch (err) {
+        await recordPlatformHeartbeat(env.DB, {
+          key: "warehouse_xero_sync",
+          label: "Xero warehouse sync",
+          success: false,
+          error: err instanceof Error ? err.message : "Warehouse sync failed",
+        });
+      }
     }
 
     if (runWhatsAppMinute) {

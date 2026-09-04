@@ -79,6 +79,7 @@ export default function CompanyDetailPage() {
   const [testArtefacts, setTestArtefacts] = useState<
     Awaited<ReturnType<typeof api.listXeroTestArtefacts>> | null
   >(null);
+  const [warehouse, setWarehouse] = useState<Awaited<ReturnType<typeof api.getWarehouse>>["warehouse"] | null>(null);
 
   async function load() {
     setLoading(true);
@@ -98,7 +99,7 @@ export default function CompanyDetailPage() {
 
   useEffect(() => {
     if (!overview) return;
-    if (tab !== "users" && tab !== "commercial" && tab !== "overview" && tab !== "permissions" && tab !== "approvals" && tab !== "settings") return;
+    if (tab !== "users" && tab !== "commercial" && tab !== "overview" && tab !== "permissions" && tab !== "approvals" && tab !== "settings" && tab !== "connectors") return;
     setTabDataLoading(true);
     void (async () => {
       try {
@@ -129,6 +130,10 @@ export default function CompanyDetailPage() {
           setTestArtefacts(
             await api.listXeroTestArtefacts(overview.company.slug, "INFRA-").catch(() => null),
           );
+        }
+        if ((tab === "connectors" || tab === "overview") && user?.isPlatformAdmin) {
+          const wh = await api.getWarehouse(overview.company.id).catch(() => null);
+          setWarehouse(wh?.warehouse ?? null);
         }
       } catch {
         /* non-blocking tab data */
@@ -851,6 +856,56 @@ export default function CompanyDetailPage() {
               </div>
             )}
           </SectionCard>
+
+          {user?.isPlatformAdmin && warehouse ? (
+            <SectionCard
+              title="Xero Warehouse"
+              description="Structured historical Xero analytics. Xero remains the system of record."
+            >
+              <MetricGrid cols={3}>
+                <MetricCard label="Status" value={warehouse.status} />
+                <MetricCard
+                  label="Last successful batch"
+                  value={
+                    warehouse.lastSuccessfulBatch?.completedAt
+                      ? formatDate(warehouse.lastSuccessfulBatch.completedAt)
+                      : warehouse.lastSuccessfulSync
+                        ? formatDate(warehouse.lastSuccessfulSync)
+                        : "Never"
+                  }
+                />
+                <MetricCard label="Next scheduled sync" value={formatDate(warehouse.nextScheduledSync)} />
+              </MetricGrid>
+              <div className="muted small" style={{ marginTop: 12 }}>
+                Historical range: {warehouse.historicalRange.from ?? "n/a"} → {warehouse.historicalRange.to ?? "n/a"}
+                {warehouse.records
+                  ? ` · invoices ${warehouse.records.invoices} · lines ${warehouse.records.invoiceLines} · contacts ${warehouse.records.contacts} · payments ${warehouse.records.payments}`
+                  : ""}
+              </div>
+              <div className="muted small">
+                Months complete: {warehouse.monthsComplete?.length ? warehouse.monthsComplete.join(", ") : "none yet"}
+                {" · "}
+                Months partial:{" "}
+                {warehouse.monthsPartial?.length
+                  ? warehouse.monthsPartial.map((row) => `${row.month} ${row.status} (${row.recordsRetrieved})`).join(", ")
+                  : "none"}
+              </div>
+              {warehouse.remainingWorkEstimate ? (
+                <div className="muted small">{warehouse.remainingWorkEstimate}</div>
+              ) : null}
+              <div className="muted small">
+                Reconciliation:{" "}
+                {warehouse.latestReconciliation
+                  ? warehouse.latestReconciliation.passed
+                    ? `passed (MTD ${warehouse.latestReconciliation.mtdSalesWarehouse} vs live ${warehouse.latestReconciliation.mtdSalesLive})`
+                    : `diverged (${warehouse.latestReconciliation.divergence.join(", ") || "unknown"})`
+                  : "none yet"}
+              </div>
+              {warehouse.failures.length ? (
+                <div className="muted small">Latest failure: {warehouse.failures[0]?.failureCode ?? warehouse.failures[0]?.status}</div>
+              ) : null}
+            </SectionCard>
+          ) : null}
 
           {user?.isPlatformAdmin &&
           connectorInstances.some((c) => c.connectorDefinitionId === "conn_microsoft_365") ? (

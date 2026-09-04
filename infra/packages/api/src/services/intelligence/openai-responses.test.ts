@@ -3,6 +3,7 @@ import {
   classifyOpenAiHttpFailure,
   extractOpenAiResponses,
   hasOpenAiApiKey,
+  isTrueProviderFailure,
   normaliseOpenAiToolName,
   redactOpenAiError,
   runOpenAiResponses,
@@ -22,6 +23,13 @@ describe("openai responses adapter", () => {
     expect(classifyOpenAiHttpFailure(401)).toBe("invalid_key");
     expect(classifyOpenAiHttpFailure(429)).toBe("rate_limit");
     expect(classifyOpenAiHttpFailure(503)).toBe("upstream_5xx");
+    expect(isTrueProviderFailure("timeout")).toBe(true);
+    expect(isTrueProviderFailure("upstream_5xx")).toBe(true);
+    expect(isTrueProviderFailure("rate_limit")).toBe(true);
+    expect(isTrueProviderFailure("unavailable")).toBe(true);
+    expect(isTrueProviderFailure("invalid_key")).toBe(false);
+    expect(isTrueProviderFailure("missing_key")).toBe(false);
+    expect(isTrueProviderFailure("malformed")).toBe(false);
   });
 
   it("redacts secrets from adapter errors", () => {

@@ -9,6 +9,7 @@ import { newId, nowIso } from "../db/mappers";
 export const KNOWLEDGE_INGESTION_EVENT_TYPES = [
   "discovered",
   "fetched",
+  "stored",
   "extracted",
   "indexed",
   "reindexed",

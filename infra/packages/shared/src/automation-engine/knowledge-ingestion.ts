@@ -142,6 +142,7 @@ export function classifyKnowledgeIngestionOutcome(input: {
   if (input.indexed || indexing === "indexed" || (input.extracted && status === "catalogue")) {
     return "indexed";
   }
+  if (indexing === "stored" || status === "stored") return "extracted";
   if (input.extracted) return "extracted";
   if (status === "skipped" || status === "excluded") return "skipped";
   return "discovered";

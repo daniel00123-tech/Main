@@ -7,6 +7,8 @@ import type {
 } from "./types.js";
 
 export const EL_COMPANY_ID = "co_el";
+export const CADDINGTON_COMPANY_ID = "co_caddington";
+export const HT_COMPANY_ID = "co_ht";
 /** Empty by default so a new tenant is Cloudflare until explicitly promoted. */
 export const OPENAI_BRAIN_DEFAULT_COMPANIES: readonly string[] = [];
 

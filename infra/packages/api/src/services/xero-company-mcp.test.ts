@@ -153,6 +153,17 @@ describe("company MCP Xero mapping", () => {
     expect(mapArgsForCompanyXeroTool("xero_sales_summary", "analyse_xero_sales", { fromDate: "2026-09-01" })).toEqual({
       months: 6,
     });
+    expect(
+      mapArgsForCompanyXeroTool("xero_list_contacts", "search_xero_contacts", {
+        limit: 100,
+        page: 2,
+        offset: 50,
+      }),
+    ).toMatchObject({
+      top: 50,
+      page: 2,
+      offset: 50,
+    });
   });
 
   it("treats EL Xero tool-error payloads as upstream failure, not empty sales", () => {

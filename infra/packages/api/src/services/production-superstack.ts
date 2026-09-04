@@ -20,10 +20,21 @@ import { classifyTurnFailures } from "./intelligence/failure-telemetry";
 import { inspectIntelligenceProvider } from "./intelligence/provider";
 import { resolveRequestPricingPolicy } from "./customer-request-pricing";
 import { DAILY_IMPROVEMENT_CONTRACT } from "./daily-improvement/constants";
-import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
-import { discoverKnowledgeIntakeTarget, isKnowledgeIntakePath } from "./knowledge-intake";
+import { ingestApprovedOutlookAttachments, resolveMailboxIngestWindow } from "./outlook-attachment-ingest";
+import { discoverKnowledgeIntakeTarget, isKnowledgeIntakePath, knowledgeIntakeFolderSegments } from "./knowledge-intake";
+import { KNOWLEDGE_INGESTION_EVENT_TYPES } from "./knowledge-ingestion-events";
+import {
+  computeNextWarehouseSlot,
+  describeWarehouseSchedule,
+  isWarehouseToolName,
+  warehouseSlotsPerWeek,
+} from "./warehouse";
 import { defaultIngestionPolicyForCompany } from "./mailbox-ingestion-policy";
 import { runElMailboxAttachmentBackfill } from "./mailbox-attachment-backfill";
+import { verifyElMicrosoftServicePrincipal } from "./el-microsoft-sp-verify";
+import { formatMailboxScanCount } from "./mailbox-scan-status";
+import { runElMailboxScanRepair } from "./mailbox-scan-repair";
+import { probeElMailboxLiveAccess } from "./mailbox-live-access";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -71,15 +82,15 @@ export function assertProductionSuperstackCapabilities(): {
   if (PRODUCTION_SUPERSTACK_CAPABILITIES.length < 9) {
     throw new Error("capability marker list incomplete");
   }
-  const brain = resolveBrainPolicy({ companyId: "co_caddington" });
+  const brain = resolveBrainPolicy({ companyId: "co_ht" });
   if (brain.useOpenAi) {
-    throw new Error("openai brain must not activate for non-EL tenants by default");
+    throw new Error("openai brain must not activate for HT or unlisted tenants by default");
   }
   const shadowEnv = {
     OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
     OPENAI_BRAIN_ENABLED: "true",
     OPENAI_BRAIN_MODE: "openai_shadow",
-    OPENAI_BRAIN_COMPANY_IDS: "co_el",
+    OPENAI_BRAIN_COMPANY_IDS: "co_el,co_caddington",
   };
   const shadow = resolveBrainPolicy({
     env: shadowEnv,
@@ -102,6 +113,37 @@ export function assertProductionSuperstackCapabilities(): {
   const chatbot = resolveBrainPolicy({ env: shadowEnv, companyId: "co_el", channel: "chatgpt" });
   if (chatbot.useOpenAi || chatbot.reason !== "chatgpt_stays_direct_tools") {
     throw new Error("ChatGPT must stay on direct INFRA tools, not the hosted OpenAI brain");
+  }
+  const cadPa = resolveBrainPolicy({ env: shadowEnv, companyId: "co_caddington", channel: "portal_chat" });
+  if (!cadPa.useOpenAi || cadPa.userVisibleBrain !== "openai" || cadPa.role !== "pa") {
+    throw new Error("Caddington Portal Chat PA must use OpenAI as the user-visible brain");
+  }
+  const cadRequest = resolveBrainPolicy({ env: shadowEnv, companyId: "co_caddington", channel: "whatsapp" });
+  if (!cadRequest.useOpenAi || cadRequest.userVisibleBrain !== "openai" || cadRequest.role !== "request") {
+    throw new Error("Caddington WhatsApp requests must use OpenAI as the user-visible brain");
+  }
+  const cadChatbot = resolveBrainPolicy({ env: shadowEnv, companyId: "co_caddington", channel: "chatgpt" });
+  if (cadChatbot.useOpenAi || cadChatbot.reason !== "chatgpt_stays_direct_tools") {
+    throw new Error("Caddington ChatGPT must stay on direct INFRA tools, not the hosted OpenAI brain");
+  }
+  const cadUnscoped = resolveBrainPolicy({ env: shadowEnv, companyId: "co_caddington" });
+  if (cadUnscoped.useOpenAi || !cadUnscoped.shadow) {
+    throw new Error("unscoped Caddington must keep Cloudflare user-visible under openai_shadow");
+  }
+  const htPa = resolveBrainPolicy({ env: shadowEnv, companyId: "co_ht", channel: "whatsapp" });
+  if (htPa.useOpenAi) {
+    throw new Error("HT must not receive OpenAI PA/request");
+  }
+  const cadCatalogue = buildTenantToolCatalogue({
+    companyId: "co_caddington",
+    connectors: ["conn_xero", "conn_google_drive", "conn_microsoft_365"],
+    role: "company_admin",
+  });
+  if (cadCatalogue.tools.some((name) => name.startsWith("outlook_"))) {
+    throw new Error("Caddington catalogue must not expose EL Outlook tools");
+  }
+  if (!cadCatalogue.tools.includes("xero_sales_summary") || !cadCatalogue.tools.includes("search_company_knowledge")) {
+    throw new Error("Caddington catalogue must include native Xero reads and knowledge");
   }
   const officeTools = buildAllowedToolCatalogue({
     role: "office_staff",
@@ -179,6 +221,15 @@ export function assertProductionSuperstackCapabilities(): {
   if (typeof discoverKnowledgeIntakeTarget !== "function" || !isKnowledgeIntakePath("INFRA Knowledge Intake/Email Attachments")) {
     throw new Error("knowledge intake landing zone missing");
   }
+  if (!KNOWLEDGE_INGESTION_EVENT_TYPES.includes("stored")) {
+    throw new Error("knowledge ingestion ledger must record stored events");
+  }
+  if (typeof resolveMailboxIngestWindow !== "function") {
+    throw new Error("mailbox ingest checkpoint window missing");
+  }
+  if (!knowledgeIntakeFolderSegments("finance@example.com", new Date("2026-09-04T00:00:00.000Z"), true).includes("_quarantine")) {
+    throw new Error("unsafe attachments must land in the intake quarantine folder");
+  }
   if (defaultIngestionPolicyForCompany("co_el") !== "INCLUDE") {
     throw new Error("EL mailbox ingestion default must be INCLUDE");
   }
@@ -187,6 +238,34 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (typeof runElMailboxAttachmentBackfill !== "function") {
     throw new Error("EL mailbox attachment backfill missing");
+  }
+  if (typeof verifyElMicrosoftServicePrincipal !== "function") {
+    throw new Error("EL Microsoft service-principal verify missing");
+  }
+  if (typeof runElMailboxScanRepair !== "function" || typeof probeElMailboxLiveAccess !== "function") {
+    throw new Error("EL mailbox live access / scan repair missing");
+  }
+  if (!formatMailboxScanCount({ health: "FAILED", messagesScanned: 0, errorCode: "X" }).includes("SCAN FAILED")) {
+    throw new Error("failed mailbox scans must not render as zero");
+  }
+  if (!isWarehouseToolName("warehouse_sales_analysis") || warehouseSlotsPerWeek() !== 37) {
+    throw new Error("business data warehouse schedule or tools missing");
+  }
+  const schedule = describeWarehouseSchedule();
+  if (schedule.overnight || schedule.hourly || schedule.extraWeekend || schedule.timezone !== "Europe/London") {
+    throw new Error("warehouse schedule must stay Europe/London weekday/weekend slots");
+  }
+  const summer = computeNextWarehouseSlot(new Date("2026-07-07T05:00:00.000Z"));
+  if (summer.hour !== 7) {
+    throw new Error("warehouse next slot must remain 07:00 Europe/London in BST");
+  }
+  const officeWarehouse = buildAllowedToolCatalogue({
+    role: "office_staff",
+    companyId: "co_el",
+    connectors: ["conn_xero", "conn_outlook_shared"],
+  });
+  if (officeWarehouse.some((name) => name.startsWith("warehouse_"))) {
+    throw new Error("preauth catalogue must not offer warehouse Xero to office_staff");
   }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };
