@@ -4,8 +4,32 @@ import {
   composeOutlookListResult,
   composeOutlookMessage,
   mapOutlookGetArgs,
+  resolveCompanyOutlookMailbox,
   unwrapOutlookMessage,
 } from "./microsoft-outlook-company-mcp";
+
+describe("company MCP Outlook mailbox routing", () => {
+  it("does not remap Michael or Sharon onto the info shared mailbox", () => {
+    expect(
+      resolveCompanyOutlookMailbox({
+        companyId: "co_el",
+        mailboxAddress: "michael@elvexpropertyservices.com",
+      }),
+    ).toEqual({ ok: true, mailboxAddress: "michael@elvexpropertyservices.com" });
+    expect(
+      resolveCompanyOutlookMailbox({
+        companyId: "co_el",
+        mailboxAddress: "sharon@elvexpropertyservices.com",
+      }),
+    ).toEqual({ ok: true, mailboxAddress: "sharon@elvexpropertyservices.com" });
+    expect(
+      resolveCompanyOutlookMailbox({
+        companyId: "co_el",
+        mailboxAddress: "info@elvexpropertyservices.com",
+      }),
+    ).toEqual({ ok: true, mailboxAddress: "info@elvexpropertyservices.com" });
+  });
+});
 
 describe("company MCP Outlook get composition", () => {
   it("maps get arguments to id aliases used by company MCPs", () => {

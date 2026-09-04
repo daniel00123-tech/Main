@@ -22,29 +22,65 @@ import { portalOrigin } from "../../public-urls";
 import { recordUsageEvent } from "../../usage";
 import { queryKnowledgeIngestionActivity } from "../knowledge-ingestion-query";
 import { getAutomationRun, listAutomationRuns } from "../store";
-import { listApprovedAttachmentMailboxes, listExcludedAttachmentMailboxes } from "../../mailbox-registry";
+import {
+  listApprovedAttachmentMailboxes,
+  listCompanyMailboxRegistry,
+  listExcludedAttachmentMailboxes,
+} from "../../mailbox-registry";
+import { formatMailboxScanCount, mailboxScanHealth } from "../../mailbox-scan-status";
 import { AutomationActionError } from "./errors";
 import type { AutomationActionResult, AutomationExecutionContext } from "./types";
 
 async function mailboxPolicySnapshot(
   db: D1Database | undefined,
   companyId: string,
-): Promise<{ eligible: number; excluded: number; excludedNames: string[] }> {
-  if (!db) return { eligible: 0, excluded: 0, excludedNames: [] };
+): Promise<{
+  eligible: number;
+  excluded: number;
+  excludedNames: string[];
+  headline: string;
+  healthLines: Array<{ name: string; status: string; scannedLabel: string; attachments?: number; indexed?: number; failed?: number }>;
+}> {
+  if (!db) return { eligible: 0, excluded: 0, excludedNames: [], headline: "MAILBOX COVERAGE GAP", healthLines: [] };
   try {
-    const [eligible, excluded] = await Promise.all([
+    const [eligible, excluded, registry] = await Promise.all([
       listApprovedAttachmentMailboxes(db, companyId),
       listExcludedAttachmentMailboxes(db, companyId),
+      listCompanyMailboxRegistry(db, companyId),
     ]);
+    const healthLines = registry.map((row) => {
+      const failed = Boolean(row.last_error) || row.status === "error";
+      const health = mailboxScanHealth({
+        excluded: row.enabled_for_attachment_ingestion !== 1,
+        scanned: Boolean(row.last_attachment_scan_at),
+        scanFailed: failed,
+        lastScanAt: row.last_attachment_scan_at,
+        graphFailed: row.graph_accessible === 0,
+      });
+      return {
+        name: row.display_name || row.mailbox_address,
+        status: health,
+        scannedLabel: formatMailboxScanCount({
+          health,
+          messagesScanned: failed || !row.last_attachment_scan_at ? null : 0,
+          errorCode: row.last_error,
+        }),
+      };
+    });
+    const failedIncluded = healthLines.filter((row) => row.status === "FAILED" || row.status === "COVERAGE_GAP");
     return {
       eligible: eligible.length,
       excluded: excluded.length,
       excludedNames: excluded
         .map((row) => row.display_name || row.mailbox_address)
         .filter((value): value is string => Boolean(value)),
+      headline: failedIncluded.length
+        ? "MAILBOX SCAN FAILED"
+        : "SUCCESSFUL SCAN WITH ZERO",
+      healthLines,
     };
   } catch {
-    return { eligible: 0, excluded: 0, excludedNames: [] };
+    return { eligible: 0, excluded: 0, excludedNames: [], headline: "MAILBOX COVERAGE GAP", healthLines: [] };
   }
 }
 
@@ -219,6 +255,8 @@ export async function executeKnowledgeIngestionDailyEmail(
     mailboxesExcluded: mailboxPolicy.excluded,
     mailboxesExcludedNames: mailboxPolicy.excludedNames,
     mailboxesScanned,
+    mailboxHeadline: mailboxPolicy.headline,
+    mailboxHealthLines: mailboxPolicy.healthLines,
     messagesScanned: 0,
     messagesWithAttachments: report.documents.filter((item) => item.sourceKey === "outlook_attachments").length,
     attachmentsDiscovered: outlookDocs.length,

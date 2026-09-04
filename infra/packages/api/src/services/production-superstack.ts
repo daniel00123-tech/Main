@@ -31,6 +31,9 @@ import {
 import { defaultIngestionPolicyForCompany } from "./mailbox-ingestion-policy";
 import { runElMailboxAttachmentBackfill } from "./mailbox-attachment-backfill";
 import { verifyElMicrosoftServicePrincipal } from "./el-microsoft-sp-verify";
+import { formatMailboxScanCount } from "./mailbox-scan-status";
+import { runElMailboxScanRepair } from "./mailbox-scan-repair";
+import { probeElMailboxLiveAccess } from "./mailbox-live-access";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -228,6 +231,12 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (typeof verifyElMicrosoftServicePrincipal !== "function") {
     throw new Error("EL Microsoft service-principal verify missing");
+  }
+  if (typeof runElMailboxScanRepair !== "function" || typeof probeElMailboxLiveAccess !== "function") {
+    throw new Error("EL mailbox live access / scan repair missing");
+  }
+  if (!formatMailboxScanCount({ health: "FAILED", messagesScanned: 0, errorCode: "X" }).includes("SCAN FAILED")) {
+    throw new Error("failed mailbox scans must not render as zero");
   }
   if (!isWarehouseToolName("warehouse_sales_analysis") || warehouseSlotsPerWeek() !== 37) {
     throw new Error("business data warehouse schedule or tools missing");

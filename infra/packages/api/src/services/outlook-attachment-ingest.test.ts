@@ -46,6 +46,10 @@ vi.mock("./microsoft-outlook-read", () => ({
   executeOutlookReadTool: hoisted.executeOutlook,
 }));
 
+vi.mock("./microsoft-outlook-company-mcp", () => ({
+  executeCompanyMcpOutlookRead: hoisted.executeOutlook,
+}));
+
 vi.mock("./control-plane", () => ({
   listMcpEnvironments: hoisted.listMcp,
 }));
@@ -664,6 +668,104 @@ describe("Outlook attachment ingest", () => {
     expect(hoisted.markScan).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ success: false, checkpoint: null }),
+    );
+  });
+
+  it("never renders a Graph-fail + empty MCP list as Messages scanned: 0", async () => {
+    hoisted.listApproved.mockResolvedValue([
+      {
+        id: "mbx_michael",
+        company_id: "co_el",
+        mailbox_address: "michael@elvexpropertyservices.com",
+        mailbox_type: "user_mailbox",
+        display_name: "Michael",
+        last_checkpoint: null,
+        last_attachment_scan_at: null,
+        enabled_for_attachment_ingestion: 1,
+      },
+    ]);
+    hoisted.listRegistry.mockResolvedValue([
+      {
+        mailbox_address: "michael@elvexpropertyservices.com",
+        display_name: "Michael",
+        enabled_for_attachment_ingestion: 1,
+        enabled_for_mail_search: 0,
+        graph_accessible: 0,
+        last_attachment_scan_at: null,
+      },
+    ]);
+    hoisted.resolveGraph.mockResolvedValue({
+      ok: false,
+      code: "AADSTS7000229",
+      message: "The client application is missing service principal in the tenant",
+    });
+    hoisted.executeOutlook.mockResolvedValue({
+      ok: true,
+      result: { messages: [] },
+    });
+
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-08-28T19:00:00.000Z"),
+        windowTo: new Date("2026-09-04T20:00:00.000Z"),
+      },
+    );
+    const michael = result.namedPeople.find((row) => row.name === "Michael");
+    expect(michael?.scanStatus).toBe("FAILED");
+    expect(michael?.messagesScanned).toBeNull();
+    expect(michael?.messagesScannedLabel).toMatch(/SCAN FAILED/i);
+    expect(michael?.messagesScannedLabel).not.toBe("0");
+    expect(hoisted.markScan).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        success: false,
+        checkpoint: null,
+        mailboxAddress: "michael@elvexpropertyservices.com",
+      }),
+    );
+  });
+
+  it("renders a Graph-proven empty mailbox as successful zero, not SCAN FAILED", async () => {
+    hoisted.listApproved.mockResolvedValue([
+      {
+        id: "mbx_lauren",
+        company_id: "co_el",
+        mailbox_address: "lauren@elvexpropertyservices.com",
+        mailbox_type: "user_mailbox",
+        display_name: "Lauren",
+        last_checkpoint: null,
+        last_attachment_scan_at: null,
+        enabled_for_attachment_ingestion: 1,
+      },
+    ]);
+    hoisted.listRegistry.mockResolvedValue([
+      {
+        mailbox_address: "lauren@elvexpropertyservices.com",
+        display_name: "Lauren",
+        enabled_for_attachment_ingestion: 1,
+        enabled_for_mail_search: 0,
+        graph_accessible: 1,
+        last_attachment_scan_at: "2026-09-04T20:00:00.000Z",
+      },
+    ]);
+    hoisted.listMessages.mockResolvedValue([]);
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-08-28T19:00:00.000Z"),
+        windowTo: new Date("2026-09-04T20:00:00.000Z"),
+      },
+    );
+    const lauren = result.namedPeople.find((row) => row.name === "Lauren");
+    expect(lauren?.scanStatus).toBe("HEALTHY");
+    expect(lauren?.messagesScanned).toBe(0);
+    expect(lauren?.messagesScannedLabel).toBe("0 (successful empty scan)");
+    expect(hoisted.markScan).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ success: true, mailboxAddress: "lauren@elvexpropertyservices.com" }),
     );
   });
 });
