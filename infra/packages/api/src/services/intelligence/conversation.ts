@@ -1,3 +1,4 @@
+import { answerFromExistingEvidence } from "./evidence.js";
 import type { IntelligenceConversationState, IntelligenceDocumentRef } from "./types.js";
 import type { ScopeDecision } from "./scope.js";
 
@@ -29,6 +30,8 @@ export function answerGeneralConversation(
   state: IntelligenceConversationState,
   decision: ScopeDecision,
 ): string {
+  const fromEvidence = answerFromExistingEvidence(text, state);
+  if (fromEvidence) return fromEvidence;
   const previous = (state.lastAnswerText || "").trim();
   if (decision.lastUserIntent === "rephrase") {
     if (!previous) return "I don't have a previous answer to rephrase. Ask the question again and I will.";

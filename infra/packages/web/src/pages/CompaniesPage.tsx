@@ -375,7 +375,7 @@ export default function CompaniesPage() {
       },
       {
         label: "Open company portal",
-        onClick: () => navigate(`/portal/${company.slug}/dashboard`),
+        onClick: () => navigate(`/portal/${company.slug}/chat`),
       },
       {
         label: busy ? "Updating…" : company.status === "suspended" ? "Reactivate" : "Suspend",
@@ -546,7 +546,7 @@ export default function CompaniesPage() {
                   </td>
                   <td>
                     <Link
-                      to={`/portal/${company.slug}/dashboard`}
+                      to={`/portal/${company.slug}/chat`}
                       className="button button-secondary button-small"
                     >
                       Portal
@@ -643,7 +643,7 @@ export default function CompaniesPage() {
                 variant="primary"
                 onClick={() => {
                   closeWizard();
-                  navigate(`/portal/${createdSlug}/dashboard`);
+                  navigate(`/portal/${createdSlug}/chat`);
                 }}
               >
                 Open portal
@@ -811,12 +811,12 @@ export default function CompaniesPage() {
                 </label>
                 <div className="info-banner" style={{ margin: 0 }}>
                   <div className="muted small">Portal path</div>
-                  <code className="mono">/portal/{effectiveSlug || "…"}/dashboard</code>
+                  <code className="mono">/portal/{effectiveSlug || "…"}/chat</code>
                   <div className="muted small" style={{ marginTop: 8 }}>
                     Portal URL
                   </div>
                   <code className="mono">
-                    {INFRA_PORTAL_ORIGIN}/portal/{effectiveSlug || "…"}/dashboard
+                    {INFRA_PORTAL_ORIGIN}/portal/{effectiveSlug || "…"}/chat
                   </code>
                   <div className="muted small" style={{ marginTop: 8 }}>
                     Legacy hostname (temporary)
@@ -900,7 +900,7 @@ export default function CompaniesPage() {
                 <ReviewRow label="Slug" value={effectiveSlug || "—"} mono />
                 <ReviewRow
                   label="Portal URL"
-                  value={`${INFRA_PORTAL_ORIGIN}/portal/${effectiveSlug || "—"}/dashboard`}
+                  value={`${INFRA_PORTAL_ORIGIN}/portal/${effectiveSlug || "—"}/chat`}
                   mono
                 />
                 <ReviewRow
@@ -1037,7 +1037,7 @@ function CompanyCard({
       </Link>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
         <Link
-          to={`/portal/${company.slug}/dashboard`}
+          to={`/portal/${company.slug}/chat`}
           className="button button-secondary button-small"
         >
           Company portal

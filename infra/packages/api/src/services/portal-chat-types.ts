@@ -1,4 +1,5 @@
-import type { IntelligenceDocumentRef, IntelligenceScope } from "./intelligence/types.js";
+import { titleFromUserText as sharedTitleFromUserText } from "@infra/shared";
+import type { IntelligenceDocumentRef, IntelligenceScope, StructuredEvidence } from "./intelligence/types.js";
 
 export const PORTAL_CHAT_SOURCE_CLIENT = "portal_chat";
 
@@ -15,6 +16,7 @@ export type PortalChatContext = {
   lastAnswerTopic?: string | null;
   lastUserIntent?: string | null;
   lastAnswerText?: string | null;
+  recentEvidence?: StructuredEvidence | null;
 };
 
 export type PortalChatConversationSummary = {
@@ -24,6 +26,9 @@ export type PortalChatConversationSummary = {
   title: string;
   createdAt: string;
   updatedAt: string;
+  lastMessagePreview?: string | null;
+  lastMessageAt?: string | null;
+  messageCount?: number;
 };
 
 export type PortalChatMessage = {
@@ -47,6 +52,15 @@ export type PortalChatMessageMetadata = {
   controlledAction?: boolean;
   citeSource?: boolean;
   terminal?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  brainMode?: string | null;
+  shadowProvider?: string | null;
+  shadowModel?: string | null;
+  shadowLatencyMs?: number | null;
+  shadowPromptTokens?: number | null;
+  shadowCompletionTokens?: number | null;
+  shadowToolProposal?: string[];
 };
 
 export type PortalChatConversation = PortalChatConversationSummary & {
@@ -73,10 +87,8 @@ export function emptyPortalChatContext(): PortalChatContext {
   };
 }
 
-export function titleFromUserText(text: string): string {
-  const cleaned = text.replace(/\s+/g, " ").trim();
-  if (!cleaned) return "New chat";
-  return cleaned.length > 48 ? `${cleaned.slice(0, 45)}…` : cleaned;
+export function titleFromUserText(text: string, now = new Date()): string {
+  return sharedTitleFromUserText(text, now);
 }
 
 export function toolStatusLabel(toolName: string): string | null {
@@ -84,6 +96,9 @@ export function toolStatusLabel(toolName: string): string | null {
   if (/outlook|mailbox|email/i.test(toolName)) return "Checking email…";
   if (toolName === "search_company_knowledge" || toolName === "search") {
     return "Searching company files…";
+  }
+  if (/web_search|search_web|tavily|brave/i.test(toolName)) {
+    return "Searching the web…";
   }
   if (toolName === "search_document" || toolName === "get_knowledge_document" || toolName === "fetch") {
     return "Reading the document…";

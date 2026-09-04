@@ -118,8 +118,19 @@ export interface Env {
   WHATSAPP_OUTBOUND_AI_ENABLED?: string;
   /** Cloudflare Workers AI binding — preferred WhatsApp voice transcription. */
   AI?: { run: (model: string, inputs: Record<string, unknown>) => Promise<unknown> };
-  /** Optional OpenAI Whisper / grounded-QA fallback. Set via wrangler secret put — never commit. */
+  /** Optional OpenAI Whisper / grounded-QA fallback / reasoning brain. Set via wrangler secret put — never commit. */
   OPENAI_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
+  /** Master switch for the OpenAI reasoning brain. Default off. */
+  OPENAI_BRAIN_ENABLED?: string;
+  /** cloudflare | openai_shadow | openai_canary | openai_primary */
+  OPENAI_BRAIN_MODE?: string;
+  /** Comma-separated company ids. Default co_el only. */
+  OPENAI_BRAIN_COMPANY_IDS?: string;
+  OPENAI_BRAIN_CANARY_PERCENT?: string;
+  OPENAI_MODEL_FAST?: string;
+  OPENAI_MODEL_DEFAULT?: string;
+  OPENAI_MODEL_REASONING?: string;
   /** Optional Workers AI / OpenAI text model for document-grounded WhatsApp answers. */
   WHATSAPP_GROUNDED_MODEL?: string;
   /** Optional Workers AI fallback for Conversational Intelligence V1.1. */

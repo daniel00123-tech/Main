@@ -4,8 +4,9 @@ import { Building2, Globe } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api";
 import { Button, EmptyState, ErrorState, LoadingState, PageHeader, SearchInput, StatusBadge } from "../components";
+import { portalChatPath, resolvePortalEntryTarget } from "../portal/portal-home";
 
-/** Platform administrators choose a company before entering the portal. */
+/** Choose a company before entering Chat. Platform admins and multi-company users. */
 export default function PortalCompanyPickerPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -16,13 +17,21 @@ export default function PortalCompanyPickerPage() {
 
   useEffect(() => {
     if (!user) return;
-    if (!user.isPlatformAdmin) {
-      navigate("/portal", { replace: true });
-      return;
-    }
     void (async () => {
       try {
-        setCompanies(await api.getCompanies());
+        const list = await api.getCompanies();
+        setCompanies(list);
+        if (!user.isPlatformAdmin) {
+          const target = resolvePortalEntryTarget({
+            isPlatformAdmin: false,
+            membershipCompanyIds: user.memberships.map((membership) => membership.companyId),
+            companies: list,
+          });
+          if (target !== "/portal/select") {
+            navigate(target, { replace: true });
+            return;
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to load companies");
       } finally {
@@ -43,13 +52,14 @@ export default function PortalCompanyPickerPage() {
 
   if (loading) return <LoadingState label="Loading companies…" />;
   if (error) return <ErrorState title="Unable to open portal" description={error} />;
-  if (!user?.isPlatformAdmin) return null;
+  if (!user) return null;
+  if (!user.isPlatformAdmin && companies.length < 2) return null;
 
   return (
     <div className="portal-picker-page">
       <PageHeader
         title="Company portal"
-        description="Select a company to open its portal. Platform administrators can switch companies at any time from inside the portal."
+        description="Select a company to open Chat. You can switch companies again from the company portal."
       />
       <SearchInput
         value={query}
@@ -82,7 +92,7 @@ export default function PortalCompanyPickerPage() {
                   type="button"
                   variant="primary"
                   size="sm"
-                  onClick={() => navigate(`/portal/${company.slug}/dashboard`)}
+                  onClick={() => navigate(portalChatPath(company.slug))}
                 >
                   <Globe size={14} /> Open portal
                 </Button>

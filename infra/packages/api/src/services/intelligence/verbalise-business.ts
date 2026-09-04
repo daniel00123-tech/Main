@@ -256,6 +256,19 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     return `Across your documents I can see: ${titles.join("; ")}.`;
   }
 
+  if (call.name === "web_search") {
+    const record = isRecord(call.data) ? call.data : {};
+    const heading = asString(record.heading);
+    const abstract = asString(record.abstract);
+    if (abstract) return heading ? `${heading}: ${abstract}` : abstract;
+    const results = Array.isArray(record.results) ? record.results.filter(isRecord) : [];
+    const first = results[0];
+    if (first && asString(first.snippet)) {
+      return asString(first.title) ? `${asString(first.title)}: ${asString(first.snippet)}` : asString(first.snippet);
+    }
+    return "I checked public web sources and didn’t find a clear answer.";
+  }
+
   if (call.name === "list_documents") {
     const record = isRecord(call.data) ? call.data : {};
     const docs = Array.isArray(record.documents) ? record.documents : Array.isArray(record.results) ? record.results : [];
@@ -274,9 +287,13 @@ export function synthesizeFromToolCalls(
 ): string {
   const denied = toolCalls.find((call) => looksPermissionDenied(call));
   if (denied) return synthesizeToolResult(denied, question);
-  const xero = toolCalls.find((call) => call.ok && /^xero_/.test(call.name));
+  const xeroCalls = toolCalls.filter((call) => call.ok && /^xero_/.test(call.name));
   const outlook = toolCalls.find((call) => call.ok && /outlook/i.test(call.name));
-  if (xero && outlook && /\b(and then|then show|and show)\b/i.test(question)) {
+  if (xeroCalls.length >= 2 && /\b(compare|versus|better than|last month|previous)\b/i.test(question)) {
+    return xeroCalls.map((call) => synthesizeToolResult(call, question)).join(" ");
+  }
+  const xero = xeroCalls[0];
+  if (xero && outlook && /\b(and then|then show|and show|and the|then the)\b/i.test(question)) {
     return `${synthesizeToolResult(xero, question)} ${synthesizeToolResult(outlook, question)}`;
   }
   const lastOk = [...toolCalls].reverse().find((call) => call.ok);

@@ -6,7 +6,7 @@ import {
   SYSTEM_META_TOOLS,
   buildConversationState,
   executeSystemMetaTool,
-  permittedToolsForConnectors,
+  buildAllowedToolCatalogue,
   runIntelligenceTurn,
   withResolvedBusinessDates,
   enrichDocumentQuery,
@@ -18,6 +18,7 @@ import {
   type IntelligenceToolResult,
   type IntelligenceTurnResult,
   clipBusinessToolData,
+  executePublicWebSearch,
   looksPermissionDenied,
   isGenericRetryCopy,
   synthesizeFromToolCalls,
@@ -142,7 +143,12 @@ export async function executeWhatsAppIntelligence(
     companyId: input.companyId,
     role: membership?.role ?? null,
     connectors,
-    permittedTools: permittedToolsForConnectors(connectors),
+    permittedTools: buildAllowedToolCatalogue({
+      role: membership?.role ?? null,
+      companyId: input.companyId,
+      connectors,
+      channel: "whatsapp",
+    }),
     lastToolName: input.memory.lastTool,
     lastToolSummary: input.memory.lastAnswerText ? input.memory.lastAnswerText.slice(0, 240) : null,
     userCorrection,
@@ -155,6 +161,7 @@ export async function executeWhatsAppIntelligence(
     lastAnswerTopic: input.memory.lastAnswerTopic ?? null,
     lastUserIntent: input.memory.lastUserIntent ?? null,
     lastAnswerText: input.memory.lastAnswerText ?? null,
+    recentEvidence: input.memory.recentEvidence ?? null,
   });
   let result = await runIntelligenceTurn({
     env,
@@ -164,6 +171,7 @@ export async function executeWhatsAppIntelligence(
     channel: "whatsapp",
     buttonHint: buttonAction,
     completer: input.completer,
+    waitUntil: input.waitUntil,
   });
   if (
     result.kind === "failed" ||
@@ -471,6 +479,7 @@ function mergeEntitiesFromIntelligence(
     lastSuccessfulTool: result.toolCalls.find((call) => call.ok)?.name ?? prior.lastSuccessfulTool ?? null,
     lastAnswerTopic: result.lastAnswerTopic ?? prior.lastAnswerTopic ?? null,
     lastUserIntent: result.lastUserIntent ?? prior.lastUserIntent ?? null,
+    recentEvidence: result.recentEvidence ?? prior.recentEvidence ?? null,
   });
 }
 
@@ -765,6 +774,9 @@ function createWhatsAppIntelligenceRuntime(
   return {
     async executeTool(call: IntelligenceToolCall): Promise<IntelligenceToolResult> {
       const started = Date.now();
+      if (call.name === "web_search") {
+        return executePublicWebSearch(call);
+      }
       if (SYSTEM_META_TOOLS.has(call.name)) {
         return runSystemMetaTool(env, input, call, started);
       }

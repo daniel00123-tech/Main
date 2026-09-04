@@ -6,7 +6,7 @@ import { userHasCompanyAccess } from "../permissions/service";
 import { getCompanyById } from "./control-plane";
 import {
   buildConversationState,
-  permittedToolsForConnectors,
+  buildAllowedToolCatalogue,
   runIntelligenceTurn,
   type IntelligenceCompleter,
   type IntelligenceDocumentRef,
@@ -21,6 +21,7 @@ import {
   isGenericRetryCopy,
   synthesizeFromToolCalls,
 } from "./intelligence/verbalise-business.js";
+import { displayConversationTitle, messagePreview } from "@infra/shared";
 import {
   classifyElTraffic,
   isLiveElBillingEnv,
@@ -137,7 +138,22 @@ export async function listPortalConversations(
     )
     .bind(companyId, userId, Math.min(Math.max(limit, 1), 80))
     .all<Record<string, unknown>>();
-  return (rows.results ?? []).map(rowToSummary);
+  const summaries = (rows.results ?? []).map(rowToSummary);
+  const visible: PortalChatConversationSummary[] = [];
+  for (const summary of summaries) {
+    const messages = await listPortalMessages(db, summary.id, companyId);
+    if (messages.length === 0) continue;
+    const firstUser = messages.find((message) => message.role === "user");
+    const last = messages[messages.length - 1];
+    visible.push({
+      ...summary,
+      title: displayConversationTitle(summary.title, firstUser?.content),
+      lastMessagePreview: messagePreview(last?.content) || null,
+      lastMessageAt: last?.createdAt ?? summary.updatedAt,
+      messageCount: messages.length,
+    });
+  }
+  return visible;
 }
 
 export async function createPortalConversation(
@@ -284,7 +300,12 @@ export async function sendPortalChatMessage(
     companyName: company?.name ?? null,
     role: membership?.role ?? null,
     connectors,
-    permittedTools: permittedToolsForConnectors(connectors),
+    permittedTools: buildAllowedToolCatalogue({
+      role: membership?.role ?? null,
+      companyId: input.companyId,
+      connectors,
+      channel: "portal",
+    }),
     lastToolName: conversation.context.lastToolName,
     lastToolSummary: conversation.context.lastToolSummary,
     recentDocuments: conversation.context.recentDocuments,
@@ -294,6 +315,7 @@ export async function sendPortalChatMessage(
     lastAnswerTopic: conversation.context.lastAnswerTopic,
     lastUserIntent: conversation.context.lastUserIntent,
     lastAnswerText: conversation.context.lastAnswerText,
+    recentEvidence: conversation.context.recentEvidence,
   });
 
   const runtime = createPortalChatRuntime(env, {
@@ -314,6 +336,7 @@ export async function sendPortalChatMessage(
     runtime,
     channel: "portal",
     completer: input.completer,
+    waitUntil: input.waitUntil,
   });
   result = {
     ...result,
@@ -445,7 +468,16 @@ function metadataFromTurn(result: IntelligenceTurnResult): PortalChatMessageMeta
     permissionDenied: result.toolCalls.some((call) => isPermissionDenial(call.error, call.data)),
     controlledAction: result.kind === "controlled_action",
     citeSource: result.citeSource,
-    terminal: classifyReadTerminal(result.toolCalls, result.text, result.kind),
+    terminal: result.terminal ?? classifyReadTerminal(result.toolCalls, result.text, result.kind),
+    provider: result.provider,
+    model: result.model,
+    brainMode: result.brainMode ?? null,
+    shadowProvider: result.shadowEval?.provider ?? null,
+    shadowModel: result.shadowEval?.model ?? null,
+    shadowLatencyMs: result.shadowEval?.latencyMs ?? null,
+    shadowPromptTokens: result.shadowEval?.promptTokens ?? null,
+    shadowCompletionTokens: result.shadowEval?.completionTokens ?? null,
+    shadowToolProposal: result.shadowEval?.toolProposal ?? [],
   };
 }
 
@@ -474,6 +506,7 @@ function contextFromTurn(
     lastAnswerTopic: result.lastAnswerTopic ?? prior.lastAnswerTopic ?? null,
     lastUserIntent: result.lastUserIntent ?? prior.lastUserIntent ?? null,
     lastAnswerText: reply.slice(0, 1_200),
+    recentEvidence: result.recentEvidence ?? prior.recentEvidence ?? null,
   };
 }
 
@@ -573,6 +606,10 @@ function parseContext(raw: unknown): PortalChatContext {
     lastAnswerTopic: typeof parsed.lastAnswerTopic === "string" ? parsed.lastAnswerTopic : null,
     lastUserIntent: typeof parsed.lastUserIntent === "string" ? parsed.lastUserIntent : null,
     lastAnswerText: typeof parsed.lastAnswerText === "string" ? parsed.lastAnswerText : null,
+    recentEvidence:
+      parsed.recentEvidence && typeof parsed.recentEvidence === "object"
+        ? (parsed.recentEvidence as PortalChatContext["recentEvidence"])
+        : null,
   };
 }
 

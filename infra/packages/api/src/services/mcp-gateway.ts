@@ -1,6 +1,10 @@
 /**
  * INFRA MCP protocol facade (Streamable HTTP).
  *
+ * ChatGPT stays a direct controlled-tool facade (Decision B).
+ * Portal Chat and WhatsApp use the shared reasoning provider; ChatGPT does not
+ * wrap another model on top of ChatGPT. Do not route MCP through OpenAIBrain.
+ *
  * ChatGPT / Claude must connect HERE (not to company MCP directly)
  * so every tools/call is authenticated, authorised, metered, and ledgered.
  *

@@ -1,3 +1,4 @@
+import type { StructuredEvidence } from "./intelligence/types.js";
 import { classifyDocument, extractTypedFacts } from "./whatsapp-grounded-qa";
 
 export type WhatsAppDocumentClass =
@@ -45,6 +46,7 @@ export type WhatsAppEntityMemory = {
   lastSuccessfulTool?: string | null;
   lastAnswerTopic?: string | null;
   lastUserIntent?: string | null;
+  recentEvidence?: StructuredEvidence | null;
 };
 
 const EMPTY: WhatsAppEntityMemory = {};
@@ -86,6 +88,7 @@ export function serializeEntityMemory(memory: WhatsAppEntityMemory): string {
     lastSuccessfulTool: memory.lastSuccessfulTool ?? memory.lastTool ?? null,
     lastAnswerTopic: memory.lastAnswerTopic ?? null,
     lastUserIntent: memory.lastUserIntent ?? null,
+    recentEvidence: memory.recentEvidence ?? null,
   });
 }
 
@@ -233,6 +236,7 @@ export function mergeEntityMemory(
     lastSuccessfulTool: next.lastSuccessfulTool !== undefined ? next.lastSuccessfulTool : prior.lastSuccessfulTool,
     lastAnswerTopic: next.lastAnswerTopic !== undefined ? next.lastAnswerTopic : prior.lastAnswerTopic,
     lastUserIntent: next.lastUserIntent !== undefined ? next.lastUserIntent : prior.lastUserIntent,
+    recentEvidence: next.recentEvidence !== undefined ? next.recentEvidence : prior.recentEvidence,
   };
 }
 
