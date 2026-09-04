@@ -46,6 +46,8 @@ export type KnowledgeIngestionDocument = {
   outcome: KnowledgeIngestionOutcome;
   failureReason: string | null;
   url: string | null;
+  stored?: boolean;
+  storedUrl?: string | null;
   activityKind?: KnowledgeIngestionActivityKind;
 };
 

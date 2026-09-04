@@ -690,6 +690,76 @@ export async function uploadTextFileToDrive(
   );
 }
 
+const SIMPLE_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
+
+export async function uploadBinaryFileToDrive(
+  config: MicrosoftGraphConfig,
+  driveId: string,
+  parentId: string,
+  fileName: string,
+  bytes: ArrayBuffer,
+  contentType?: string | null,
+): Promise<GraphDriveItem> {
+  const mime = contentType?.trim() || "application/octet-stream";
+  if (bytes.byteLength <= SIMPLE_UPLOAD_MAX_BYTES) {
+    return graphRequest<GraphDriveItem>(
+      config,
+      `/drives/${driveId}/items/${parentId}:/${encodeURIComponent(fileName)}:/content`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": mime },
+        body: bytes,
+      },
+    );
+  }
+
+  const session = await graphRequest<{ uploadUrl?: string }>(
+    config,
+    `/drives/${driveId}/items/${parentId}:/${encodeURIComponent(fileName)}:/createUploadSession`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        item: {
+          "@microsoft.graph.conflictBehavior": "rename",
+          name: fileName,
+        },
+      }),
+    },
+  );
+  if (!session.uploadUrl) throw new Error("Graph upload session missing uploadUrl");
+
+  const CHUNK = 5 * 1024 * 1024;
+  let offset = 0;
+  let last: GraphDriveItem | null = null;
+  const view = new Uint8Array(bytes);
+  while (offset < view.byteLength) {
+    const end = Math.min(offset + CHUNK, view.byteLength);
+    const slice = view.subarray(offset, end);
+    const response = await fetch(session.uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Length": String(slice.byteLength),
+        "Content-Range": `bytes ${offset}-${end - 1}/${view.byteLength}`,
+      },
+      body: slice,
+    });
+    if (!response.ok && response.status !== 202) {
+      const body = await response.text().catch(() => "");
+      throw new MicrosoftGraphError(
+        `Microsoft Graph upload session error ${response.status}: ${body.slice(0, 300)}`,
+        response.status,
+      );
+    }
+    if (response.status === 200 || response.status === 201) {
+      last = (await response.json()) as GraphDriveItem;
+    }
+    offset = end;
+  }
+  if (!last?.id) throw new Error("Graph upload session completed without an item");
+  return last;
+}
+
 export async function updateTextFileContent(
   config: MicrosoftGraphConfig,
   driveId: string,

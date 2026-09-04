@@ -39,6 +39,10 @@ export type KnowledgeIngestionEventInput = {
   fetchedAt?: string | null;
   extractedAt?: string | null;
   indexedAt?: string | null;
+  storedAt?: string | null;
+  storedItemId?: string | null;
+  storedUrl?: string | null;
+  retryCount?: number | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -78,6 +82,14 @@ export async function ensureKnowledgeIngestionEventsSchema(db: D1Database): Prom
        ON knowledge_ingestion_events(company_id, created_at)`,
     )
     .run();
+  for (const column of [
+    "ALTER TABLE knowledge_ingestion_events ADD COLUMN stored_at TEXT",
+    "ALTER TABLE knowledge_ingestion_events ADD COLUMN stored_item_id TEXT",
+    "ALTER TABLE knowledge_ingestion_events ADD COLUMN stored_url TEXT",
+    "ALTER TABLE knowledge_ingestion_events ADD COLUMN retry_count INTEGER",
+  ]) {
+    await db.prepare(column).run().catch(() => undefined);
+  }
 }
 
 export async function recordKnowledgeIngestionEvent(
@@ -107,6 +119,8 @@ export async function recordKnowledgeIngestionEvent(
              skip_reason = COALESCE(?, skip_reason), failure_code = COALESCE(?, failure_code),
              source_modified_at = COALESCE(?, source_modified_at), fetched_at = COALESCE(?, fetched_at),
              extracted_at = COALESCE(?, extracted_at), indexed_at = COALESCE(?, indexed_at),
+             stored_at = COALESCE(?, stored_at), stored_item_id = COALESCE(?, stored_item_id),
+             stored_url = COALESCE(?, stored_url), retry_count = COALESCE(?, retry_count),
              metadata_json = COALESCE(?, metadata_json), updated_at = ?
          WHERE id = ?`,
       )
@@ -124,6 +138,10 @@ export async function recordKnowledgeIngestionEvent(
         input.fetchedAt ?? null,
         input.extractedAt ?? null,
         input.indexedAt ?? null,
+        input.storedAt ?? null,
+        input.storedItemId ?? null,
+        input.storedUrl ?? null,
+        input.retryCount ?? null,
         input.metadata ? JSON.stringify(input.metadata) : null,
         now,
         existing.id,
@@ -138,8 +156,9 @@ export async function recordKnowledgeIngestionEvent(
         id, company_id, source_type, event_type, status, provider_item_id, parent_message_id,
         filename, content_hash, mailbox_address, mime_type, size_bytes, chunk_count,
         skip_reason, failure_code, discovered_at, source_modified_at, fetched_at,
-        extracted_at, indexed_at, metadata_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        extracted_at, indexed_at, stored_at, stored_item_id, stored_url, retry_count,
+        metadata_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -162,6 +181,10 @@ export async function recordKnowledgeIngestionEvent(
       input.fetchedAt ?? null,
       input.extractedAt ?? null,
       input.indexedAt ?? null,
+      input.storedAt ?? null,
+      input.storedItemId ?? null,
+      input.storedUrl ?? null,
+      input.retryCount ?? null,
       input.metadata ? JSON.stringify(input.metadata) : null,
       now,
       now,
@@ -179,6 +202,7 @@ export type KnowledgeIngestionEventRow = {
   provider_item_id: string | null;
   parent_message_id: string | null;
   filename: string | null;
+  content_hash: string | null;
   mailbox_address: string | null;
   mime_type: string | null;
   size_bytes: number | null;
@@ -188,6 +212,10 @@ export type KnowledgeIngestionEventRow = {
   discovered_at: string | null;
   source_modified_at: string | null;
   indexed_at: string | null;
+  stored_at: string | null;
+  stored_item_id: string | null;
+  stored_url: string | null;
+  retry_count: number | null;
   created_at: string;
   metadata_json: string | null;
 };
@@ -223,8 +251,9 @@ export async function listKnowledgeIngestionEvents(
   const result = await db
     .prepare(
       `SELECT id, company_id, source_type, event_type, status, provider_item_id, parent_message_id,
-              filename, mailbox_address, mime_type, size_bytes, chunk_count, skip_reason,
-              failure_code, discovered_at, source_modified_at, indexed_at, created_at, metadata_json
+              filename, content_hash, mailbox_address, mime_type, size_bytes, chunk_count, skip_reason,
+              failure_code, discovered_at, source_modified_at, indexed_at, stored_at, stored_item_id,
+              stored_url, retry_count, created_at, metadata_json
        FROM knowledge_ingestion_events
        WHERE company_id = ?
          AND (
@@ -301,4 +330,26 @@ export async function recordJobIngestionEvent(
     indexedAt: mapped === "indexed" ? nowIso() : null,
     metadata: { jobStatus: input.status },
   });
+}
+
+export async function listRecentKnowledgeIntakeEvents(
+  db: D1Database,
+  input: { companyId: string; limit?: number },
+): Promise<KnowledgeIngestionEventRow[]> {
+  await ensureKnowledgeIngestionEventsSchema(db);
+  const result = await db
+    .prepare(
+      `SELECT id, company_id, source_type, event_type, status, provider_item_id, parent_message_id,
+              filename, content_hash, mailbox_address, mime_type, size_bytes, chunk_count, skip_reason,
+              failure_code, discovered_at, source_modified_at, indexed_at, stored_at, stored_item_id,
+              stored_url, retry_count, created_at, metadata_json
+       FROM knowledge_ingestion_events
+       WHERE company_id = ?
+         AND source_type IN ('outlook_attachments', 'outlook_attachment')
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .bind(input.companyId, input.limit ?? 100)
+    .all<KnowledgeIngestionEventRow>();
+  return result.results ?? [];
 }

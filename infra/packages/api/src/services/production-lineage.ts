@@ -25,6 +25,7 @@ export const PRODUCTION_SUPERSTACK_CAPABILITIES = [
   "daily_improvement_loop",
   "outlook_attachment_ingest",
   "openai_pa_request_brain",
+  "knowledge_intake_landing_zone",
 ] as const;
 
 export type ProductionLineage = {

@@ -12,6 +12,8 @@ import type { Env } from "../env";
 import { listMcpEnvironments } from "./control-plane";
 import { nowIso } from "../db/mappers";
 import { recordKnowledgeIngestionEvent } from "./knowledge-ingestion-events";
+import { storeOriginalInKnowledgeIntake } from "./knowledge-intake";
+import { runProductionKnowledgeSearch } from "./microsoft-acceptance-knowledge-search";
 import {
   discoverCompanyUserMailboxes,
   listApprovedAttachmentMailboxes,
@@ -45,13 +47,17 @@ export type AttachmentIngestCounts = {
   messagesWithAttachments: number;
   attachmentsDiscovered: number;
   attachmentsFetched: number;
+  attachmentsStored: number;
   attachmentsExtracted: number;
   attachmentsIndexed: number;
   chunksAdded: number;
   skipped: number;
+  skippedJunk: number;
+  unsupported: number;
   failed: number;
   recovered: number;
   duplicates: number;
+  retries: number;
 };
 
 export type NamedPersonMailboxReport = {
@@ -63,7 +69,9 @@ export type NamedPersonMailboxReport = {
   mailSearchEnabled: boolean;
   messagesWithAttachmentsInWindow: number;
   attachmentsFound: number;
+  stored: number;
   indexed: number;
+  failures: number;
   policy: string;
 };
 
@@ -116,13 +124,17 @@ function emptyCounts(): AttachmentIngestCounts {
     messagesWithAttachments: 0,
     attachmentsDiscovered: 0,
     attachmentsFetched: 0,
+    attachmentsStored: 0,
     attachmentsExtracted: 0,
     attachmentsIndexed: 0,
     chunksAdded: 0,
     skipped: 0,
+    skippedJunk: 0,
+    unsupported: 0,
     failed: 0,
     recovered: 0,
     duplicates: 0,
+    retries: 0,
   };
 }
 
@@ -355,6 +367,33 @@ async function fetchAttachmentBytes(
   };
 }
 
+async function verifyIndexedDocumentRetrievable(
+  env: Env,
+  input: { companyId: string; filename: string; documentId: number; actor: string },
+): Promise<{ ok: boolean; hitCount: number; reason: string | null }> {
+  const query = input.filename.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() || input.filename;
+  try {
+    const search = await runProductionKnowledgeSearch(env, {
+      companyId: input.companyId,
+      query,
+      limit: 8,
+      actor: input.actor,
+    });
+    if (!search.ok) return { ok: false, hitCount: 0, reason: search.error ?? "knowledge search failed" };
+    const matched = search.hits.some((hit) => {
+      const title = (hit.title ?? "").toLowerCase();
+      const id = String(hit.documentId ?? "");
+      return id === String(input.documentId) || title.includes(input.filename.toLowerCase()) || title.includes(query.toLowerCase());
+    });
+    if (!matched && search.hitCount === 0) {
+      return { ok: false, hitCount: 0, reason: "knowledge retrieval returned no hits" };
+    }
+    return { ok: matched || search.hitCount > 0, hitCount: search.hitCount, reason: matched ? null : "filename not in top hits" };
+  } catch (err) {
+    return { ok: false, hitCount: 0, reason: err instanceof Error ? err.message : "retrieval verify failed" };
+  }
+}
+
 async function ingestOneAttachment(
   env: Env,
   input: {
@@ -368,9 +407,10 @@ async function ingestOneAttachment(
     recoverExisting: boolean;
   },
 ): Promise<{
-  status: "indexed" | "skipped" | "failed" | "duplicate";
+  status: "indexed" | "skipped" | "failed" | "duplicate" | "stored_not_indexed";
   chunks: number;
   recovered: boolean;
+  stored: boolean;
   skipReason: string | null;
   failureCode: string | null;
 }> {
@@ -400,7 +440,7 @@ async function ingestOneAttachment(
     metadata: { subject, from: sender, attachmentId: input.attachment.id },
   });
 
-  if (!filter.ingest) {
+  if (filter.classification === "junk" || !filter.store) {
     await recordKnowledgeIngestionEvent(env.DB, {
       companyId: input.companyId,
       sourceType: "outlook_attachments",
@@ -412,12 +452,13 @@ async function ingestOneAttachment(
       skipReason: filter.skipReason,
       failureCode: filter.failureCode,
       sourceModifiedAt: messageTime(input.message),
-      metadata: { subject, from: sender },
+      metadata: { subject, from: sender, pipelineStatus: "SKIPPED", classification: filter.classification },
     });
     return {
       status: "skipped",
       chunks: 0,
       recovered: false,
+      stored: false,
       skipReason: filter.skipReason,
       failureCode: filter.failureCode,
     };
@@ -429,6 +470,7 @@ async function ingestOneAttachment(
       status: already.event_type === "duplicate" ? "duplicate" : "indexed",
       chunks: already.chunk_count ?? 0,
       recovered: false,
+      stored: true,
       skipReason: "already_indexed",
       failureCode: null,
     };
@@ -469,7 +511,7 @@ async function ingestOneAttachment(
       sourceModifiedAt: messageTime(input.message),
       metadata: { subject, from: sender, stop: "FETCH" },
     });
-    return { status: "failed", chunks: 0, recovered: false, skipReason: message, failureCode: "FETCH_FAILED" };
+    return { status: "failed", chunks: 0, recovered: false, stored: false, skipReason: message, failureCode: "FETCH_FAILED" };
   }
 
   const contentHash = await sha256Hex(fetched.bytes);
@@ -489,6 +531,67 @@ async function ingestOneAttachment(
     metadata: { subject, from: sender, via: fetched.via },
   });
 
+  const storedAt = nowIso();
+  const stored = await storeOriginalInKnowledgeIntake(env, {
+    companyId: input.companyId,
+    mailboxAddress: input.mailbox.mailbox_address,
+    filename: fetched.name,
+    mimeType: fetched.contentType,
+    bytes: fetched.bytes,
+    contentHash,
+    attachmentId: input.attachment.id,
+    receivedAt: messageTime(input.message) ? new Date(messageTime(input.message)!) : new Date(),
+    actor: input.actor,
+  });
+  if (!stored.ok) {
+    await recordKnowledgeIngestionEvent(env.DB, {
+      companyId: input.companyId,
+      sourceType: "outlook_attachments",
+      eventType: "failed",
+      providerItemId,
+      filename: fetched.name,
+      contentHash,
+      mailboxAddress: input.mailbox.mailbox_address,
+      failureCode: stored.code,
+      skipReason: stored.message,
+      sourceModifiedAt: messageTime(input.message),
+      metadata: { subject, from: sender, pipelineStatus: "FAILED_RETRYABLE", stop: "STORE" },
+    });
+    return {
+      status: "failed",
+      chunks: 0,
+      recovered: false,
+      stored: false,
+      skipReason: stored.message,
+      failureCode: stored.code,
+    };
+  }
+
+  await recordKnowledgeIngestionEvent(env.DB, {
+    companyId: input.companyId,
+    sourceType: "outlook_attachments",
+    eventType: "extracted",
+    providerItemId,
+    parentMessageId: input.message.id,
+    filename: fetched.name,
+    contentHash,
+    mailboxAddress: input.mailbox.mailbox_address,
+    mimeType: fetched.contentType,
+    sizeBytes: fetched.bytes.byteLength,
+    storedAt,
+    storedItemId: stored.storedItemId,
+    storedUrl: stored.storedUrl,
+    sourceModifiedAt: messageTime(input.message),
+    metadata: {
+      subject,
+      from: sender,
+      pipelineStatus: "STORED",
+      storeVia: stored.via,
+      landingZoneReady: stored.landingZoneReady,
+      warning: stored.warning,
+    },
+  });
+
   const hashed = await findIndexedByHash(env.DB, input.companyId, contentHash);
   if (hashed) {
     await recordKnowledgeIngestionEvent(env.DB, {
@@ -502,15 +605,59 @@ async function ingestOneAttachment(
       mailboxAddress: input.mailbox.mailbox_address,
       chunkCount: hashed.chunk_count,
       skipReason: "duplicate_content_hash",
+      storedAt,
+      storedItemId: stored.storedItemId,
+      storedUrl: stored.storedUrl,
       sourceModifiedAt: messageTime(input.message),
-      metadata: { subject, from: sender, originalEventId: hashed.id },
+      metadata: {
+        subject,
+        from: sender,
+        originalEventId: hashed.id,
+        pipelineStatus: "STORED",
+        storeVia: stored.via,
+      },
     });
     return {
       status: "duplicate",
       chunks: hashed.chunk_count ?? 0,
       recovered: false,
+      stored: true,
       skipReason: "duplicate_content_hash",
       failureCode: null,
+    };
+  }
+
+  if (!filter.ingest) {
+    await recordKnowledgeIngestionEvent(env.DB, {
+      companyId: input.companyId,
+      sourceType: "outlook_attachments",
+      eventType: "skipped",
+      providerItemId,
+      parentMessageId: input.message.id,
+      filename: fetched.name,
+      contentHash,
+      mailboxAddress: input.mailbox.mailbox_address,
+      skipReason: filter.skipReason,
+      failureCode: filter.failureCode,
+      storedAt,
+      storedItemId: stored.storedItemId,
+      storedUrl: stored.storedUrl,
+      sourceModifiedAt: messageTime(input.message),
+      metadata: {
+        subject,
+        from: sender,
+        pipelineStatus: "STORED_NOT_INDEXED",
+        classification: filter.classification,
+        storeVia: stored.via,
+      },
+    });
+    return {
+      status: "stored_not_indexed",
+      chunks: 0,
+      recovered: false,
+      stored: true,
+      skipReason: filter.skipReason,
+      failureCode: filter.failureCode,
     };
   }
 
@@ -526,9 +673,20 @@ async function ingestOneAttachment(
       mailboxAddress: input.mailbox.mailbox_address,
       failureCode: "MCP_UNAVAILABLE",
       skipReason: "Business MCP unavailable",
+      storedAt,
+      storedItemId: stored.storedItemId,
+      storedUrl: stored.storedUrl,
       sourceModifiedAt: messageTime(input.message),
+      metadata: { subject, pipelineStatus: "FAILED_RETRYABLE", stop: "INDEX" },
     });
-    return { status: "failed", chunks: 0, recovered: false, skipReason: "Business MCP unavailable", failureCode: "MCP_UNAVAILABLE" };
+    return {
+      status: "failed",
+      chunks: 0,
+      recovered: false,
+      stored: true,
+      skipReason: "Business MCP unavailable",
+      failureCode: "MCP_UNAVAILABLE",
+    };
   }
 
   const externalId = buildMicrosoftMailExternalId({
@@ -556,6 +714,9 @@ async function ingestOneAttachment(
   provenance.source_type = "outlook_attachment";
   provenance.content_hash = contentHash;
   provenance.chunk_count = null;
+  provenance.stored_provider_item_id = stored.storedItemId;
+  provenance.stored_url = stored.storedUrl;
+  provenance.stored_at = storedAt;
 
   let upload;
   try {
@@ -571,6 +732,7 @@ async function ingestOneAttachment(
           sourceType: "outlook_attachments",
           companyId: input.companyId,
           topic: String(provenance.sourceLabel),
+          knowledgeIntake: true,
         },
         autoIndex: true,
       }),
@@ -587,10 +749,20 @@ async function ingestOneAttachment(
       mailboxAddress: input.mailbox.mailbox_address,
       failureCode: "INDEX_WRITE_FAILED",
       skipReason: message,
+      storedAt,
+      storedItemId: stored.storedItemId,
+      storedUrl: stored.storedUrl,
       sourceModifiedAt: messageTime(input.message),
-      metadata: { subject, stop: "INDEX" },
+      metadata: { subject, stop: "INDEX", pipelineStatus: "FAILED_RETRYABLE" },
     });
-    return { status: "failed", chunks: 0, recovered: false, skipReason: message, failureCode: "INDEX_WRITE_FAILED" };
+    return {
+      status: "failed",
+      chunks: 0,
+      recovered: false,
+      stored: true,
+      skipReason: message,
+      failureCode: "INDEX_WRITE_FAILED",
+    };
   }
 
   if (!upload.ok) {
@@ -604,17 +776,105 @@ async function ingestOneAttachment(
       mailboxAddress: input.mailbox.mailbox_address,
       failureCode: upload.code,
       skipReason: upload.message,
+      storedAt,
+      storedItemId: stored.storedItemId,
+      storedUrl: stored.storedUrl,
       sourceModifiedAt: messageTime(input.message),
-      metadata: { subject, stop: "EXTRACT_OR_INDEX" },
+      metadata: { subject, stop: "EXTRACT_OR_INDEX", pipelineStatus: "FAILED_RETRYABLE" },
     });
-    return { status: "failed", chunks: 0, recovered: false, skipReason: upload.message, failureCode: upload.code };
+    return {
+      status: "failed",
+      chunks: 0,
+      recovered: false,
+      stored: true,
+      skipReason: upload.message,
+      failureCode: upload.code,
+    };
   }
 
-  const chunks = upload.indexed ? 1 : 0;
+  const chunks = upload.chunksIndexed ?? (upload.indexed ? 1 : 0);
+  if (!upload.indexed) {
+    await recordKnowledgeIngestionEvent(env.DB, {
+      companyId: input.companyId,
+      sourceType: "outlook_attachments",
+      eventType: "extracted",
+      providerItemId,
+      parentMessageId: input.message.id,
+      filename: fetched.name,
+      contentHash,
+      mailboxAddress: input.mailbox.mailbox_address,
+      mimeType: fetched.contentType,
+      sizeBytes: fetched.bytes.byteLength,
+      chunkCount: chunks,
+      extractedAt: nowIso(),
+      storedAt,
+      storedItemId: stored.storedItemId,
+      storedUrl: stored.storedUrl,
+      sourceModifiedAt: messageTime(input.message),
+      metadata: {
+        subject,
+        from: sender,
+        knowledgeDocumentId: upload.documentId,
+        externalId,
+        pipelineStatus: "STORED_NOT_INDEXED",
+        documentStatus: upload.documentStatus ?? null,
+      },
+    });
+    return {
+      status: "failed",
+      chunks,
+      recovered: input.recoverExisting,
+      stored: true,
+      skipReason: upload.documentStatus ?? "not indexed",
+      failureCode: "NOT_INDEXED",
+    };
+  }
+
+  const verified = await verifyIndexedDocumentRetrievable(env, {
+    companyId: input.companyId,
+    filename: fetched.name,
+    documentId: upload.documentId,
+    actor: input.actor,
+  });
+  if (!verified.ok) {
+    await recordKnowledgeIngestionEvent(env.DB, {
+      companyId: input.companyId,
+      sourceType: "outlook_attachments",
+      eventType: "extracted",
+      providerItemId,
+      parentMessageId: input.message.id,
+      filename: fetched.name,
+      contentHash,
+      mailboxAddress: input.mailbox.mailbox_address,
+      chunkCount: chunks,
+      extractedAt: nowIso(),
+      storedAt,
+      storedItemId: stored.storedItemId,
+      storedUrl: stored.storedUrl,
+      sourceModifiedAt: messageTime(input.message),
+      metadata: {
+        subject,
+        from: sender,
+        knowledgeDocumentId: upload.documentId,
+        pipelineStatus: "STORED",
+        retrievalVerified: false,
+        retrievalReason: verified.reason,
+      },
+    });
+    return {
+      status: "failed",
+      chunks,
+      recovered: input.recoverExisting,
+      stored: true,
+      skipReason: verified.reason ?? "retrieval verification failed",
+      failureCode: "RETRIEVAL_UNVERIFIED",
+    };
+  }
+
   await recordKnowledgeIngestionEvent(env.DB, {
     companyId: input.companyId,
     sourceType: "outlook_attachments",
-    eventType: upload.indexed ? "indexed" : "extracted",
+    eventType: "indexed",
     providerItemId,
     parentMessageId: input.message.id,
     filename: fetched.name,
@@ -624,7 +884,10 @@ async function ingestOneAttachment(
     sizeBytes: fetched.bytes.byteLength,
     chunkCount: chunks,
     extractedAt: nowIso(),
-    indexedAt: upload.indexed ? nowIso() : null,
+    indexedAt: nowIso(),
+    storedAt,
+    storedItemId: stored.storedItemId,
+    storedUrl: stored.storedUrl,
     sourceModifiedAt: messageTime(input.message),
     metadata: {
       subject,
@@ -633,15 +896,20 @@ async function ingestOneAttachment(
       externalId,
       extractionQuality: upload.extractionQuality ?? null,
       documentStatus: upload.documentStatus ?? null,
+      pipelineStatus: "INDEXED",
+      retrievalVerified: true,
+      storeVia: stored.via,
+      storedUrl: stored.storedUrl,
     },
   });
 
   return {
-    status: upload.indexed ? "indexed" : "failed",
+    status: "indexed",
     chunks,
     recovered: input.recoverExisting,
-    skipReason: upload.indexed ? null : upload.documentStatus ?? "not indexed",
-    failureCode: upload.indexed ? null : "NOT_INDEXED",
+    stored: true,
+    skipReason: null,
+    failureCode: null,
   };
 }
 
@@ -770,17 +1038,27 @@ export async function ingestApprovedOutlookAttachments(
         });
         if (result.status === "indexed") {
           counts.attachmentsFetched += 1;
+          if (result.stored) counts.attachmentsStored += 1;
           counts.attachmentsExtracted += 1;
           counts.attachmentsIndexed += 1;
           counts.chunksAdded += result.chunks;
           if (result.recovered) counts.recovered += 1;
         } else if (result.status === "duplicate") {
           counts.attachmentsFetched += 1;
+          if (result.stored) counts.attachmentsStored += 1;
           counts.duplicates += 1;
+          counts.skipped += 1;
+        } else if (result.status === "stored_not_indexed") {
+          counts.attachmentsFetched += 1;
+          counts.attachmentsStored += 1;
+          counts.unsupported += 1;
           counts.skipped += 1;
         } else if (result.status === "skipped") {
           counts.skipped += 1;
+          counts.skippedJunk += 1;
         } else {
+          counts.attachmentsFetched += 1;
+          if (result.stored) counts.attachmentsStored += 1;
           counts.failed += 1;
           mailboxFailures += 1;
         }
@@ -795,6 +1073,7 @@ export async function ingestApprovedOutlookAttachments(
           sender: message.from?.emailAddress?.address ?? null,
           received: messageTime(message),
           status: result.status,
+          stored: result.stored,
           skipReason: result.skipReason,
           failureCode: result.failureCode,
         });
@@ -890,7 +1169,12 @@ async function buildNamedPersonReports(
       mailSearchEnabled: row?.enabled_for_mail_search === 1,
       messagesWithAttachmentsInWindow: Number(scanned?.messagesWithAttachments ?? 0),
       attachmentsFound: scannedAttachments.length || Number(scanned?.messagesWithAttachments ?? 0),
+      stored: scannedAttachments.filter((item) => {
+        const status = asText(asRecord(item)?.status);
+        return status === "indexed" || status === "duplicate" || status === "stored_not_indexed" || Boolean(asRecord(item)?.stored);
+      }).length,
       indexed: scannedAttachments.filter((item) => asRecord(item)?.status === "indexed").length,
+      failures: scannedAttachments.filter((item) => asRecord(item)?.status === "failed").length,
       policy: row?.enabled_for_attachment_ingestion === 1
         ? "director-approved work mailbox: attachments ingested; Portal chat search remains off"
         : user || row
