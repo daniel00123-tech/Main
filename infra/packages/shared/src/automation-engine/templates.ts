@@ -67,7 +67,7 @@ export const AUTOMATION_TEMPLATES: AutomationTemplateDefinition[] = [
     type: "KNOWLEDGE_INGESTION_DAILY_EMAIL",
     label: "Daily knowledge activity",
     description:
-      "Receive a daily summary of newly discovered and indexed company knowledge since the previous successful run.",
+      "Receive a simple daily email of what INFRA found and successfully synchronised from Microsoft 365 and company knowledge.",
     system: "Knowledge",
     defaultName: "Daily knowledge activity",
     defaultSchedule: { frequency: "daily", hour: 8, minute: 0 },

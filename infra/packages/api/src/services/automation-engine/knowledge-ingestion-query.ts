@@ -7,6 +7,7 @@ import {
   classifyActivityKind,
   classifyKnowledgeIngestionOutcome,
   classifyKnowledgeIngestionSource,
+  classifyReconciliationStage,
   groupKnowledgeSourceCounts,
   isSafeHttpUrl,
   knowledgeIngestionSourceLabel,
@@ -174,6 +175,7 @@ function documentFromInfraRow(
       outcome,
     }),
     url: isSafeHttpUrl(row.web_url) ? row.web_url : null,
+    stored: extracted || indexed,
     activityKind: classifyActivityKind({
       createdAt: row.created_at,
       modifiedAt: row.modified_at,
@@ -183,6 +185,7 @@ function documentFromInfraRow(
       indexed,
       outcome,
     }),
+    stage: classifyReconciliationStage({ indexed, stored: extracted || indexed, extracted, outcome }),
   };
 }
 
@@ -250,6 +253,7 @@ function documentFromMcpIndexRow(
       outcome,
     }),
     url: isSafeHttpUrl(url) ? url : null,
+    stored: extractedFlag || indexed,
     activityKind: classifyActivityKind({
       createdAt,
       modifiedAt,
@@ -257,6 +261,12 @@ function documentFromMcpIndexRow(
       windowStart: windowFrom,
       windowEnd: windowTo,
       indexed,
+      outcome,
+    }),
+    stage: classifyReconciliationStage({
+      indexed,
+      stored: extractedFlag || indexed,
+      extracted: extractedFlag,
       outcome,
     }),
   };
@@ -453,6 +463,20 @@ export async function queryKnowledgeIngestionActivity(
           : null,
         stored: storedEvent || Boolean(metadata.stored || metadata.pipelineStatus === "STORED" || metadata.pipelineStatus === "STORED_NOT_INDEXED" || metadata.pipelineStatus === "INDEXED"),
         storedUrl: asText(event.stored_url) || asText(metadata.storedUrl) || asText(metadata.stored_url) || null,
+        retryCount: event.retry_count,
+        stage: classifyReconciliationStage({
+          indexed,
+          stored:
+            storedEvent ||
+            Boolean(
+              metadata.stored ||
+                metadata.pipelineStatus === "STORED" ||
+                metadata.pipelineStatus === "STORED_NOT_INDEXED" ||
+                metadata.pipelineStatus === "INDEXED",
+            ),
+          extracted: indexed || event.event_type === "extracted" || event.event_type === "stored",
+          outcome,
+        }),
         activityKind:
           event.event_type === "source_observed"
             ? "source_observed"

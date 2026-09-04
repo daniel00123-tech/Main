@@ -1,19 +1,21 @@
 /**
- * Daily knowledge-ingestion email — read-only INFRA/MCP records + transactional email.
+ * Daily Microsoft sync / knowledge-ingestion email.
+ * Same automation identity and 08:00 Europe/London schedule.
  */
 
 import {
   KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE,
   automationRecipientEmailOf,
+  buildMicrosoftSyncReportEmailData,
   capKnowledgeList,
-  classifyKnowledgePipelineHealth,
   formatCivilDateLong,
   isManualAutomationRunTrigger,
   isValidRecipientEmail,
-  knowledgeIngestionGapWarning,
   renderKnowledgeIngestionReportEmail,
   resolveKnowledgeIngestionWindow,
   zonedCivilParts,
+  type MicrosoftSyncDriveCheck,
+  type MicrosoftSyncMailboxCheck,
 } from "@infra/shared";
 import type { Env } from "../../../env";
 import { getCompanyById } from "../../control-plane";
@@ -27,64 +29,105 @@ import {
   listCompanyMailboxRegistry,
   listExcludedAttachmentMailboxes,
 } from "../../mailbox-registry";
-import { formatMailboxScanCount, mailboxScanHealth } from "../../mailbox-scan-status";
+import { mailboxScanHealth } from "../../mailbox-scan-status";
 import { ingestApprovedOutlookAttachments } from "../../outlook-attachment-ingest";
+import { listMicrosoftSources } from "../../microsoft-sync";
 import { AutomationActionError } from "./errors";
 import type { AutomationActionResult, AutomationExecutionContext } from "./types";
 
-async function mailboxPolicySnapshot(
+async function collectMailboxChecks(
   db: D1Database | undefined,
   companyId: string,
-): Promise<{
-  eligible: number;
-  excluded: number;
-  excludedNames: string[];
-  headline: string;
-  healthLines: Array<{ name: string; status: string; scannedLabel: string; attachments?: number; indexed?: number; failed?: number }>;
-}> {
-  if (!db) return { eligible: 0, excluded: 0, excludedNames: [], headline: "MAILBOX COVERAGE GAP", healthLines: [] };
+  ingest: Awaited<ReturnType<typeof ingestApprovedOutlookAttachments>> | null,
+): Promise<MicrosoftSyncMailboxCheck[]> {
+  if (!db) return [];
   try {
-    const [eligible, excluded, registry] = await Promise.all([
+    const [approved, excluded, registry] = await Promise.all([
       listApprovedAttachmentMailboxes(db, companyId),
       listExcludedAttachmentMailboxes(db, companyId),
       listCompanyMailboxRegistry(db, companyId),
     ]);
-    const healthLines = registry.map((row) => {
-      const failed = Boolean(row.last_error) || row.status === "error";
+    const ingestByAddress = new Map<string, Record<string, unknown>>();
+    for (const row of ingest?.mailboxes ?? []) {
+      const address = typeof row.mailboxAddress === "string" ? row.mailboxAddress.toLowerCase() : "";
+      if (address) ingestByAddress.set(address, row);
+    }
+    const seen = new Set<string>();
+    const rows = [...approved, ...excluded, ...registry];
+    const checks: MicrosoftSyncMailboxCheck[] = [];
+    for (const row of rows) {
+      const address = row.mailbox_address.toLowerCase();
+      if (seen.has(address)) continue;
+      seen.add(address);
+      const ingestRow = ingestByAddress.get(address);
+      const excludedRow = row.enabled_for_attachment_ingestion !== 1;
+      const ingestFailed = Boolean(ingestRow?.scanFailed);
+      const registryFailed = Boolean(row.last_error) || row.status === "error";
       const health = mailboxScanHealth({
-        excluded: row.enabled_for_attachment_ingestion !== 1,
-        scanned: Boolean(row.last_attachment_scan_at),
-        scanFailed: failed,
+        excluded: excludedRow,
+        scanned: Boolean(ingestRow) || Boolean(row.last_attachment_scan_at),
+        scanFailed: ingestFailed || (!ingestRow && registryFailed),
         lastScanAt: row.last_attachment_scan_at,
         graphFailed: row.graph_accessible === 0,
       });
-      return {
+      const failed = !excludedRow && (health === "FAILED" || health === "COVERAGE_GAP" || ingestFailed);
+      const checked = !excludedRow && !failed && (Boolean(ingestRow) || Boolean(row.last_attachment_scan_at));
+      checks.push({
         name: row.display_name || row.mailbox_address,
-        status: health,
-        scannedLabel: formatMailboxScanCount({
-          health,
-          messagesScanned:
-            failed || !row.last_attachment_scan_at
-              ? null
-              : row.last_messages_scanned ?? 0,
-          errorCode: row.last_error,
-        }),
-      };
-    });
-    const failedIncluded = healthLines.filter((row) => row.status === "FAILED" || row.status === "COVERAGE_GAP");
-    return {
-      eligible: eligible.length,
-      excluded: excluded.length,
-      excludedNames: excluded
-        .map((row) => row.display_name || row.mailbox_address)
-        .filter((value): value is string => Boolean(value)),
-      headline: failedIncluded.length
-        ? "MAILBOX SCAN FAILED"
-        : "SUCCESSFUL SCAN WITH ZERO",
-      healthLines,
-    };
+        address: row.mailbox_address,
+        approved: !excludedRow,
+        excluded: excludedRow,
+        checked,
+        failed,
+        rawError: excludedRow ? null : row.last_error,
+      });
+    }
+    return checks;
   } catch {
-    return { eligible: 0, excluded: 0, excludedNames: [], headline: "MAILBOX COVERAGE GAP", healthLines: [] };
+    return [];
+  }
+}
+
+async function collectDriveChecks(
+  db: D1Database | undefined,
+  companyId: string,
+  documents: Array<{ sourceKey: string }>,
+): Promise<{ onedrive: MicrosoftSyncDriveCheck; sharepoint: MicrosoftSyncDriveCheck }> {
+  const empty = (failed: boolean): MicrosoftSyncDriveCheck => ({
+    configured: true,
+    checked: false,
+    failed,
+    newItemCount: null,
+  });
+  if (!db) return { onedrive: empty(true), sharepoint: empty(true) };
+  try {
+    const sources = await listMicrosoftSources(db, companyId);
+    const summarise = (type: "onedrive" | "sharepoint"): MicrosoftSyncDriveCheck => {
+      const rows = sources.filter(
+        (row) => row.sourceType === type && row.inclusionStatus === "included",
+      );
+      const inWindow = documents.filter((doc) => doc.sourceKey === type).length;
+      if (rows.length === 0) {
+        return { configured: false, checked: false, failed: true, newItemCount: null };
+      }
+      const anyError = rows.some((row) => row.syncStatus === "error" || Boolean(row.lastError));
+      const anySynced = rows.some((row) => Boolean(row.lastSyncAt) && row.syncStatus !== "error");
+      if (anyError && !anySynced) {
+        return { configured: true, checked: false, failed: true, newItemCount: null };
+      }
+      if (!anySynced) {
+        return { configured: true, checked: false, failed: true, newItemCount: null };
+      }
+      return {
+        configured: true,
+        checked: true,
+        failed: anyError,
+        newItemCount: anyError ? null : inWindow,
+      };
+    };
+    return { onedrive: summarise("onedrive"), sharepoint: summarise("sharepoint") };
+  } catch {
+    return { onedrive: empty(true), sharepoint: empty(true) };
   }
 }
 
@@ -195,115 +238,26 @@ export async function executeKnowledgeIngestionDailyEmail(
     `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`,
   );
   const listed = capKnowledgeList(report.documents);
-  const failures = report.documents.filter((item) => item.outcome === "failed");
-  const outlookDocs = report.documents.filter((item) => item.sourceKey === "outlook_attachments");
-  const legitimateSkips = report.documents.filter(
-    (item) =>
-      item.outcome === "skipped" ||
-      item.outcome === "duplicate" ||
-      item.failureReason === "UNSUPPORTED_TYPE" ||
-      item.failureReason === "unsupported format",
-  ).length;
-  const pipelineHealth = classifyKnowledgePipelineHealth({
-    jobOk: true,
-    discoveredCount: report.discoveredCount,
-    indexedCount: report.indexedCount,
-    failedCount: report.failedCount,
-    skippedCount: report.duplicateCount,
-    legitimateSkipCount: legitimateSkips,
-  });
-  const gapWarning = knowledgeIngestionGapWarning({
-    discoveredCount: report.discoveredCount,
-    indexedCount: report.indexedCount,
-    failedCount: report.failedCount,
-    legitimateSkipCount: legitimateSkips,
-  });
-  const mailboxesScanned = ingest?.mailboxes?.length
-    ? ingest.mailboxes
-        .map((row) => (typeof row.mailboxAddress === "string" ? row.mailboxAddress : ""))
-        .filter(Boolean)
-    : [
-        ...new Set(
-          report.documents.map((item) => item.mailbox).filter((item): item is string => Boolean(item)),
-        ),
-      ];
-  const mailboxPolicy = await mailboxPolicySnapshot(env.DB, ctx.companyId);
+  const mailboxChecks = await collectMailboxChecks(env.DB, ctx.companyId, ingest);
+  const drives = await collectDriveChecks(env.DB, ctx.companyId, report.documents);
   const portalUrl = `${portalOrigin(env)}/portal/${company.slug}/automations`;
-  const email = renderKnowledgeIngestionReportEmail({
+  const emailData = buildMicrosoftSyncReportEmailData({
     companyDisplayName: company.name,
     reportDateLabel,
     windowFromLabel: formatWindowLabel(report.windowFrom, timeZone),
     windowToLabel: formatWindowLabel(report.windowTo, timeZone),
     manual,
-    discoveredCount: report.discoveredCount,
-    indexedCount: report.indexedCount,
-    chunkTotal: report.chunkTotal,
-    duplicateCount: report.duplicateCount,
-    failedCount: report.failedCount,
-    updatedCount: report.updatedCount,
-    sourceObservedCount: report.sourceObservedCount,
-    missedCount: report.missedCount,
-    sourceCounts: report.sourceCounts.map((row) => ({ label: row.label, count: row.count })),
-    documents: listed.items.map((item) => ({
-      title: item.title,
-      sourceLabel: item.sourceLabel,
-      indexed: item.indexed,
-      stored: item.stored,
-      chunkCount: item.chunkCount,
-      modifiedAt: item.modifiedAt,
-      url: item.url,
-      location: item.location,
-      mailbox: item.mailbox,
-      parentSubject: item.parentSubject,
-      sender: item.sender,
-      failureReason: item.failureReason,
-    })),
-    failures: failures.map((item) => ({
-      title: item.title,
-      sourceLabel: item.sourceLabel,
-      indexed: item.indexed,
-      chunkCount: item.chunkCount,
-      modifiedAt: item.modifiedAt,
-      url: item.url,
-      location: item.location,
-      mailbox: item.mailbox,
-      parentSubject: item.parentSubject,
-      sender: item.sender,
-      failureReason: item.failureReason,
-    })),
-    omittedDocuments: listed.omitted,
+    runId: ctx.runId,
     portalUrl,
-    mailboxesEligible: mailboxPolicy.eligible,
-    mailboxesExcluded: mailboxPolicy.excluded,
-    mailboxesExcludedNames: mailboxPolicy.excludedNames,
-    mailboxesScanned,
-    mailboxHeadline: mailboxPolicy.headline,
-    mailboxHealthLines: mailboxPolicy.healthLines,
-    messagesScanned: ingest?.counts.messagesScanned ?? 0,
-    messagesWithAttachments:
-      ingest?.counts.messagesWithAttachments ??
-      report.documents.filter((item) => item.sourceKey === "outlook_attachments").length,
-    attachmentsDiscovered: ingest?.counts.attachmentsDiscovered ?? outlookDocs.length,
-    attachmentsStored: ingest?.counts.attachmentsStored ?? outlookDocs.filter((item) => item.stored).length,
-    attachmentsIndexed: ingest?.counts.attachmentsIndexed ?? outlookDocs.filter((item) => item.indexed).length,
-    attachmentsDeduped: ingest?.counts.duplicates ?? outlookDocs.filter((item) => item.outcome === "duplicate").length,
-    attachmentsSkipped:
-      ingest?.counts.skipped ??
-      outlookDocs.filter((item) => item.outcome === "skipped" || item.outcome === "duplicate").length,
-    attachmentsSkippedJunk:
-      ingest?.counts.skippedJunk ??
-      outlookDocs.filter((item) => item.outcome === "skipped" && !item.stored).length,
-    attachmentsUnsupported:
-      ingest?.counts.unsupported ??
-      outlookDocs.filter(
-        (item) => item.stored && (item.failureReason === "UNSUPPORTED_TYPE" || item.failureReason === "unsupported format"),
-      ).length,
-    attachmentsFailed: ingest?.counts.failed ?? outlookDocs.filter((item) => item.outcome === "failed").length,
-    onedriveIndexed: report.documents.filter((item) => item.sourceKey === "onedrive" && item.indexed).length,
-    sharepointIndexed: report.documents.filter((item) => item.sourceKey === "sharepoint" && item.indexed).length,
-    pipelineHealth,
-    gapWarning,
+    jobOk: true,
+    documents: listed.items,
+    mailboxChecks,
+    onedrive: drives.onedrive,
+    sharepoint: drives.sharepoint,
+    chunkTotal: report.chunkTotal,
+    omittedDocuments: listed.omitted,
   });
+  const email = renderKnowledgeIngestionReportEmail(emailData);
 
   const resultBase = {
     handler: KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE,
@@ -327,8 +281,14 @@ export async function executeKnowledgeIngestionDailyEmail(
     sourcesQueried: report.sourcesQueried,
     recipientEmail: recipient,
     triggeredProviderScan: Boolean(ingest),
+    microsoftSyncStatus: emailData.status,
+    sourcesChecked: emailData.sourcesChecked,
+    successfullyAdded: emailData.successfullyAdded,
+    stillProcessing: emailData.stillProcessing,
+    notSynchronised: emailData.notSynchronised,
+    retriesQueued: emailData.retryCount,
     emailSent: false,
-    customerSummary: "Knowledge activity report generated",
+    customerSummary: "Microsoft sync report generated",
   };
 
   const delivery = await sendTransactionalEmail(env, env.DB, {
@@ -346,20 +306,20 @@ export async function executeKnowledgeIngestionDailyEmail(
       ...resultBase,
       emailId: delivery.id,
       emailError: delivery.error,
-      customerSummary: "Knowledge activity report generated, email not sent",
+      customerSummary: "Microsoft sync report generated, email not sent",
     });
   }
 
   return {
-    summary: manual ? "Knowledge activity report sent (manual test)" : "Knowledge activity report sent",
+    summary: manual ? "Microsoft sync report sent (manual test)" : "Microsoft sync report sent",
     result: {
       ...resultBase,
       emailSent: true,
       emailId: delivery.id,
       emailSubject: email.subject,
       customerSummary: manual
-        ? "Knowledge activity report sent (manual test)"
-        : "Knowledge activity report sent",
+        ? "Microsoft sync report sent (manual test)"
+        : "Microsoft sync report sent",
     },
   };
 }
