@@ -194,6 +194,13 @@ export function synthesizeFromToolCalls(
 ): string {
   const denied = toolCalls.find((call) => looksPermissionDenied(call));
   if (denied) return synthesizeToolResult(denied, question);
+  const sales = toolCalls.filter((call) => call.ok && call.name === "xero_sales_summary");
+  if (sales.length >= 2 && /\b(compar|versus|vs\.?|how did)\b/i.test(question)) {
+    const parts = sales
+      .map((call) => normaliseBusinessResult(call.name, call.data).summaryText)
+      .filter((text) => text.trim());
+    if (parts.length >= 2) return parts.join(" ");
+  }
   const lastOk = [...toolCalls].reverse().find((call) => call.ok);
   if (lastOk) return synthesizeToolResult(lastOk, question);
   const last = toolCalls.at(-1);

@@ -29,7 +29,7 @@ export function isCampaignSuite(value: string): value is CampaignSuite {
   return (CAMPAIGN_SUITES as readonly string[]).includes(value);
 }
 
-function clip(text: string, max = 220): string {
+function clip(text: string, max = 480): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 

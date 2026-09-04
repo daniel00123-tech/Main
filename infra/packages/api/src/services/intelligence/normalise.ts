@@ -209,9 +209,14 @@ function normaliseXero(tool: string, data: unknown): NormalisedBusinessResult {
   const topName =
     customers[0] && isRecord(customers[0]) ? firstString(customers[0].name, customers[0].contactName) : null;
 
-  const isInvoiceDetail = tool === "xero_get_invoice" && Boolean(invoice || invoiceNumber);
+  const isInvoiceDetail = tool === "xero_get_invoice" && Boolean(invoice);
+  const invoiceMissing =
+    tool === "xero_get_invoice" &&
+    !invoice &&
+    (unwrapped.found === false || unwrapped.no_results === true || Boolean(invoiceNumber));
   const isTopCustomers = tool === "xero_top_customers" && customers.length > 0;
   const sufficient =
+    invoiceMissing ||
     isInvoiceDetail ||
     isTopCustomers ||
     typeof amount === "number" ||
@@ -219,7 +224,11 @@ function normaliseXero(tool: string, data: unknown): NormalisedBusinessResult {
     (tool === "xero_list_overdue_invoices" && invoiceCount != null);
 
   let summaryText = "I reached Xero, but nothing readable came back.";
-  if (isInvoiceDetail) {
+  if (invoiceMissing) {
+    summaryText = invoiceNumber
+      ? `I could not find invoice ${invoiceNumber} in Xero.`
+      : "I could not find that invoice in Xero.";
+  } else if (isInvoiceDetail) {
     const total = firstMoney(invoice?.Total, invoice?.total, invoice?.AmountDue, amount);
     const who = firstString(isRecord(invoice?.Contact) ? invoice.Contact.Name : null, invoice?.contactName);
     summaryText = `Invoice ${invoiceNumber ?? "record"} is ${
@@ -238,7 +247,15 @@ function normaliseXero(tool: string, data: unknown): NormalisedBusinessResult {
     const window = period ? ` for ${period}` : "";
     summaryText = `Xero sales${window} are ${formatMoney(amount, currency)}${invoices}.`;
   } else if (invoiceCount != null) {
-    summaryText = `Xero returned ${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"}${period ? ` for ${period}` : ""}.`;
+    const listed = invoicePreview(unwrapped, currency);
+    const kind =
+      tool === "xero_list_overdue_invoices"
+        ? "overdue invoice"
+        : /outstanding|unpaid/i.test(String(unwrapped.query ?? ""))
+          ? "outstanding invoice"
+          : "invoice";
+    const head = `Xero returned ${invoiceCount} ${kind}${invoiceCount === 1 ? "" : "s"}${period ? ` for ${period}` : ""}`;
+    summaryText = listed ? `${head}, including ${listed}.` : `${head}.`;
   }
 
   const compact = {
@@ -483,6 +500,31 @@ function catalogueItems(data: Record<string, unknown>): Array<Record<string, unk
           ? data.files
           : [];
   return rows.filter(isRecord);
+}
+
+function invoicePreview(data: Record<string, unknown>, currency: string): string | null {
+  const rows = Array.isArray(data.invoices)
+    ? data.invoices
+    : Array.isArray(data.invoice_numbers)
+      ? data.invoice_numbers
+      : [];
+  const parts = rows
+    .slice(0, 5)
+    .map((row) => {
+      if (typeof row === "string" && row.trim()) return row.trim();
+      if (!isRecord(row)) return null;
+      const number = firstString(row.InvoiceNumber, row.invoiceNumber, row.documentNumber);
+      const who = firstString(
+        isRecord(row.Contact) ? row.Contact.Name : null,
+        row.contactName,
+        isRecord(row.contact) ? row.contact.name : null,
+      );
+      const total = firstMoney(row.AmountDue, row.Total, row.total, row.amount);
+      if (!number && !who) return null;
+      return `${number ?? "invoice"}${who ? ` (${who})` : ""}${total != null ? ` ${formatMoney(total, currency)}` : ""}`;
+    })
+    .filter((value): value is string => Boolean(value));
+  return parts.length ? parts.join("; ") : null;
 }
 
 function firstMoney(...values: unknown[]): number | null {

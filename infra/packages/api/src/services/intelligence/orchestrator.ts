@@ -903,6 +903,16 @@ function prepareToolArguments(
   scope?: IntelligenceScope | null,
 ): Record<string, unknown> {
   let next = { ...args };
+  if (name === "xero_get_invoice") {
+    const invoiceNumber =
+      String(next.invoiceNumber ?? next.invoice_id ?? next.invoiceId ?? "").trim() ||
+      text.match(/\bINV-\d+\b/i)?.[0] ||
+      "";
+    if (invoiceNumber) {
+      next.invoiceNumber = invoiceNumber;
+      next.invoice_id = invoiceNumber;
+    }
+  }
   if (needsBusinessDates(name)) {
     next = withResolvedBusinessDates(name, next, text);
   }
@@ -1009,11 +1019,35 @@ async function runDeterministicRead(
   const toolName = scoped.tool;
   if (!toolName || !INTELLIGENCE_TOOL_NAMES.has(toolName)) return null;
   void permitted;
+  const intent = resolveBusinessSystemIntent(text);
+  const mapped = intent ? businessToolForIntent(intent, text) : null;
+  const seed =
+    mapped?.toolName === toolName && mapped.arguments && typeof mapped.arguments === "object"
+      ? { ...mapped.arguments }
+      : {};
+  const args = prepareToolArguments(toolName, seed, text, state, scoped.scope);
   const result = await runtime.executeTool({
     name: toolName,
-    arguments: prepareToolArguments(toolName, {}, text, state, scoped.scope),
+    arguments: args,
   });
   const toolCalls = [result];
+  if (
+    result.ok &&
+    toolName === "xero_sales_summary" &&
+    args.comparisonRequested === true &&
+    typeof args.comparisonFromDate === "string" &&
+    typeof args.comparisonToDate === "string"
+  ) {
+    const compare = await runtime.executeTool({
+      name: toolName,
+      arguments: {
+        fromDate: args.comparisonFromDate,
+        toDate: args.comparisonToDate,
+        periodLabel: args.comparisonLabel ?? "comparison period",
+      },
+    });
+    toolCalls.push(compare);
+  }
   if (result.ok && (toolName === "search_company_knowledge" || toolName === "search")) {
     const hits = searchHits(result.data);
     const first = hits[0] && typeof hits[0] === "object" ? (hits[0] as { id?: string; title?: string }) : null;

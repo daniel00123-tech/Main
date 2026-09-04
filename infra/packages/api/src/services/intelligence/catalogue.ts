@@ -126,6 +126,19 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     permission: "xero read",
   },
   {
+    name: "xero_top_customers",
+    description: "Rank live Xero customers by sales for a real date range.",
+    whenToUse: "User asks for top, biggest, or ranked customers this month/quarter.",
+    whenNotToUse: "Not for documents. Not for inventing a customer list.",
+    parameters: {
+      fromDate: { description: "Inclusive start date YYYY-MM-DD in Europe/London" },
+      toDate: { description: "Inclusive end date YYYY-MM-DD in Europe/London" },
+      limit: { type: "number", description: "How many customers to return, default 5" },
+    },
+    outputShape: "{ customers: [{ name, total }] }",
+    permission: "xero read",
+  },
+  {
     name: "xero_search_contacts",
     description: "Search Xero contacts.",
     whenToUse: "User asks who a customer/supplier is in Xero.",
@@ -256,6 +269,7 @@ export const GATEWAY_TOOL_ALIASES: Record<string, string> = {
   xero_list_overdue_invoices: "xero_list_overdue_invoices",
   xero_get_invoice: "xero_get_invoice",
   xero_search_invoices: "xero_search_invoices",
+  xero_top_customers: "xero_top_customers",
   xero_search_contacts: "xero_search_contacts",
   xero_profit_and_loss: "xero_profit_and_loss",
   xero_aged_receivables: "xero_aged_receivables",

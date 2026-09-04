@@ -36,6 +36,7 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_get_invoice",
   "xero_search_contacts",
   "xero_list_overdue_invoices",
+  "xero_top_customers",
   "xero_aged_receivables",
   "outlook_search_mailbox",
   "outlook_list_messages",
@@ -405,7 +406,10 @@ function gatewayArguments(
     return { id, documentRef: id };
   }
   if (toolName === "xero_get_invoice") {
-    return { invoice_id: String(args.invoice_id ?? args.id ?? "").trim() };
+    const invoiceNumber = String(
+      args.invoiceNumber ?? args.invoice_id ?? args.invoiceId ?? args.id ?? "",
+    ).trim();
+    return { invoiceNumber, invoice_id: invoiceNumber, invoiceId: invoiceNumber };
   }
   return { ...args };
 }

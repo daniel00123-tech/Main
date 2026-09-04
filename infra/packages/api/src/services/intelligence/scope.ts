@@ -167,7 +167,11 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
 }
 
 export function pickMailboxTool(text: string): string {
-  if (/\b(newest|latest|most recent(?:ly)?|last email|recent email|emailed .{0,40}recent)\b/i.test(text)) {
+  if (
+    /\b(newest|latest|most recent(?:ly)?|last email|recent email|emailed .{0,40}recent|last (five|5|few) emails?)\b/i.test(
+      text,
+    )
+  ) {
     return "outlook_list_messages";
   }
   return "outlook_search_mailbox";

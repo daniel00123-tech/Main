@@ -62,6 +62,31 @@ describe("structured business result normalisation", () => {
     expect(normalised.summaryText).toMatch(/£99\.00/);
   });
 
+  it("names the first outstanding invoices instead of only a count", () => {
+    const normalised = normaliseBusinessResult("xero_search_invoices", {
+      source: "Xero",
+      count: 2,
+      invoices: [
+        { InvoiceNumber: "INV-1", Total: 100, Contact: { Name: "Acme" } },
+        { InvoiceNumber: "INV-2", Total: 50, Contact: { Name: "Beta" } },
+      ],
+    });
+    expect(normalised.sufficient).toBe(true);
+    expect(normalised.summaryText).toMatch(/INV-1/);
+    expect(normalised.summaryText).toMatch(/Acme/);
+  });
+
+  it("says honestly when a named invoice is missing", () => {
+    const normalised = normaliseBusinessResult("xero_get_invoice", {
+      invoiceNumber: "INV-00000",
+      found: false,
+      no_results: true,
+      invoice: null,
+    });
+    expect(normalised.sufficient).toBe(true);
+    expect(normalised.summaryText).toMatch(/could not find invoice INV-00000/i);
+  });
+
   it("treats one newest Outlook message as sufficient", () => {
     const normalised = normaliseBusinessResult("outlook_list_messages", {
       mailboxAddress: "info@elvexpropertyservices.com",

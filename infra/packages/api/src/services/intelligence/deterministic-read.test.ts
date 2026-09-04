@@ -117,6 +117,74 @@ describe("deterministic business and knowledge reads", () => {
     expect(result.text).toMatch(/4,554|4554/);
   });
 
+  it("looks up a named invoice number instead of the first search row", async () => {
+    const { runtime: exec, calls } = runtime(() => ({
+      source: "Xero",
+      invoice: { InvoiceNumber: "INV-02268", Total: 120, Contact: { Name: "Acme" } },
+      invoiceNumber: "INV-02268",
+      found: true,
+    }));
+    const result = await runIntelligenceTurn({
+      text: "Show me invoice INV-02268.",
+      state: buildConversationState({
+        userText: "Show me invoice INV-02268.",
+        connectors: ["conn_xero"],
+      }),
+      runtime: exec,
+      completer: silentCompleter,
+      channel: "portal",
+    });
+    expect(calls[0]?.name).toBe("xero_get_invoice");
+    expect(String(calls[0]?.arguments.invoiceNumber ?? calls[0]?.arguments.invoice_id ?? "")).toMatch(/INV-02268/i);
+    expect(result.text).toMatch(/INV-02268/);
+    expect(result.text).not.toMatch(/INV-02276/);
+  });
+
+  it("runs xero_top_customers for a ranking ask", async () => {
+    const { runtime: exec, calls } = runtime(() => ({
+      source: "Xero",
+      customers: [{ name: "Acme Ltd", total: 1200 }, { name: "Beta", total: 800 }],
+    }));
+    const result = await runIntelligenceTurn({
+      text: "Who are our top customers this month?",
+      state: buildConversationState({
+        userText: "Who are our top customers this month?",
+        connectors: ["conn_xero"],
+      }),
+      runtime: exec,
+      completer: silentCompleter,
+      channel: "portal",
+    });
+    expect(calls[0]?.name).toBe("xero_top_customers");
+    expect(result.text).toMatch(/Acme/);
+  });
+
+  it("runs two dated sales reads for a month comparison", async () => {
+    const { runtime: exec, calls } = runtime((_name, args) => ({
+      source: "Xero",
+      sales_total: String(args.fromDate ?? "").endsWith("-01") && String(args.toDate ?? "").slice(8) !== "01" ? 23000 : 5000,
+      invoice_count: 10,
+      currencyCode: "GBP",
+      period: { fromDate: args.fromDate, toDate: args.toDate, label: args.periodLabel },
+    }));
+    const result = await runIntelligenceTurn({
+      text: "How did last month compare with this month?",
+      state: buildConversationState({
+        userText: "How did last month compare with this month?",
+        connectors: ["conn_xero"],
+        lastAnswerTopic: "finance",
+        currentScope: "BUSINESS_SYSTEM",
+        currentBusinessSystem: "xero",
+        lastSuccessfulTool: "xero_sales_summary",
+      }),
+      runtime: exec,
+      completer: silentCompleter,
+      channel: "portal",
+    });
+    expect(calls.filter((call) => call.name === "xero_sales_summary")).toHaveLength(2);
+    expect(result.text).toMatch(/£/);
+  });
+
   it("searches company knowledge for the PO process without extra tools", async () => {
     const { runtime: exec, calls } = runtime((name) => {
       if (name === "get_knowledge_document") {

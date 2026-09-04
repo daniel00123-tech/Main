@@ -279,11 +279,32 @@ export function composeInfraXeroReadResult(
   }
 
   if (desired === "xero_get_invoice") {
-    const invoice = invoices[0] ?? (asRecord(upstream.invoice) ?? null);
+    const wanted = String(args.invoiceNumber ?? args.invoice_id ?? args.invoiceId ?? args.query ?? "")
+      .trim()
+      .toLowerCase();
+    const matched = invoices.find((row) => {
+      const number = String(row.InvoiceNumber ?? row.invoiceNumber ?? row.documentNumber ?? "")
+        .trim()
+        .toLowerCase();
+      return Boolean(wanted && number && number === wanted);
+    });
+    const invoice = matched ?? (wanted ? null : (invoices[0] ?? asRecord(upstream.invoice) ?? null));
+    const invoiceNumber =
+      (invoice?.InvoiceNumber ?? invoice?.invoiceNumber ?? args.invoiceNumber ?? null) as string | null;
+    if (wanted && !invoice) {
+      return {
+        ...base,
+        invoice: null,
+        invoiceNumber: args.invoiceNumber ?? args.invoice_id ?? null,
+        found: false,
+        no_results: true,
+      };
+    }
     return {
       ...base,
       invoice,
-      invoiceNumber: invoice?.InvoiceNumber ?? invoice?.invoiceNumber ?? args.invoiceNumber ?? null,
+      invoiceNumber,
+      found: Boolean(invoice),
     };
   }
 

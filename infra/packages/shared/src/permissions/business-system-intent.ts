@@ -233,6 +233,19 @@ export function resolveBusinessSystemIntent(
 
   const connectorsForDomain = companyConnectors === undefined ? catalogueOperationalConnectors() : companyConnectors;
   const hasXero = connectorsForDomain.some((connector) => connector.definitionId === "conn_xero");
+  if (
+    hasXero &&
+    /\b(compar(e|ed|ing)|versus|vs\.?|how did)\b/.test(q) &&
+    /\b(this month|last month|this quarter|last quarter|sales|invoices?)\b/.test(q) &&
+    !/\b(documents?|files?|emails?|mailbox)\b/.test(q)
+  ) {
+    return {
+      capability: "xero",
+      connectorDefinitionId: "conn_xero",
+      namedExplicitly: /\bxero\b/.test(q),
+      reason: "domain_language",
+    };
+  }
   if (hasXero && XERO_DOMAIN.test(q)) {
     return {
       capability: "xero",

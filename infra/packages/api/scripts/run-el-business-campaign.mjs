@@ -28,9 +28,9 @@ function mintAcceptanceToken() {
   return token;
 }
 
-const token = mintAcceptanceToken();
 const report = { api: API, startedAt: new Date().toISOString(), suites: [] };
 for (const suite of SUITES) {
+  const token = mintAcceptanceToken();
   const res = await fetch(`${API}/api/internal/el-business-campaign?suite=${encodeURIComponent(suite)}`, {
     method: "POST",
     headers: {
