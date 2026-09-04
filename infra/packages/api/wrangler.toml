@@ -47,7 +47,15 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # WHATSAPP_ACCESS_TOKEN (Cloud API user token — wrangler secret put)
 # WHATSAPP_REGISTRATION_PIN (optional 6-digit Cloud API two-step PIN — wrangler secret put)
 # META_APP_SECRET (X-Hub-Signature-256 — wrangler secret put)
-# OPENAI_API_KEY (optional Whisper fallback if Workers AI is unavailable — wrangler secret put)
+# OPENAI_API_KEY (optional Whisper + OpenAI reasoning brain — wrangler secret put, never commit)
+# Feature stays off until OPENAI_BRAIN_ENABLED=true and a secret exists.
+OPENAI_BRAIN_ENABLED = "false"
+OPENAI_BRAIN_MODE = "cloudflare"
+OPENAI_BRAIN_COMPANY_IDS = "co_el"
+OPENAI_BRAIN_CANARY_PERCENT = "10"
+OPENAI_MODEL_FAST = "gpt-5.6-luna"
+OPENAI_MODEL_DEFAULT = "gpt-5.6-terra"
+OPENAI_MODEL_REASONING = "gpt-5.6-sol"
 EMAIL_FROM_NAME = "Infra"
 EMAIL_FROM_ADDRESS = "noreply@infrastack.app"
 WHATSAPP_PHONE_NUMBER_ID = "1338434179351224"

@@ -1,4 +1,4 @@
-import type { IntelligenceDocumentRef, IntelligenceScope } from "./intelligence/types.js";
+import type { IntelligenceDocumentRef, IntelligenceScope, StructuredEvidence } from "./intelligence/types.js";
 
 export const PORTAL_CHAT_SOURCE_CLIENT = "portal_chat";
 
@@ -15,6 +15,7 @@ export type PortalChatContext = {
   lastAnswerTopic?: string | null;
   lastUserIntent?: string | null;
   lastAnswerText?: string | null;
+  recentEvidence?: StructuredEvidence | null;
 };
 
 export type PortalChatConversationSummary = {
@@ -47,6 +48,9 @@ export type PortalChatMessageMetadata = {
   controlledAction?: boolean;
   citeSource?: boolean;
   terminal?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  brainMode?: string | null;
 };
 
 export type PortalChatConversation = PortalChatConversationSummary & {

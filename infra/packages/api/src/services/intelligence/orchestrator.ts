@@ -2,7 +2,19 @@ import { businessToolForIntent, ELVEX_FINANCE_MAILBOXES, resolveBusinessSystemIn
 import { describeToolCatalogue, INTELLIGENCE_TOOL_NAMES, SYSTEM_META_TOOLS } from "./catalogue.js";
 import { answerGeneralConversation, answerSelectedDocumentFollowUp } from "./conversation.js";
 import { parseIntelligenceDecision, recoverDecision, validateToolRequest } from "./parse.js";
-import { createDefaultCompleter, type IntelligenceCompleter } from "./provider.js";
+import { createReasoningCompleter } from "./brain.js";
+import {
+  answerFromExistingEvidence,
+  classifyEvidenceNeed,
+  extractEvidenceFromTools,
+  mergeEvidence,
+  recordSuccessfulCall,
+  sanitiseEvidenceForModel,
+  shouldReuseSuccessfulTool,
+} from "./evidence.js";
+import type { IntelligenceCompleter } from "./provider.js";
+import { applyGuardToTurn } from "./response-guard.js";
+import { resolveBrainPolicy } from "./brain-policy.js";
 import { routeIntelligenceTurn } from "./router.js";
 import { classifyScope, persistableScope, type ScopeDecision } from "./scope.js";
 import { formatConversationState } from "./state.js";
@@ -147,7 +159,7 @@ export async function runIntelligenceTurn(input: {
   }
 
   if (scoped.scope === "GENERAL_CONVERSATION" && scoped.noTool && !input.state.userCorrection) {
-    return emptyResult({
+    return guardedEmpty({
       kind: "answer",
       text: answerGeneralConversation(input.text, input.state, scoped),
       confidence: "strong",
@@ -157,10 +169,41 @@ export async function runIntelligenceTurn(input: {
       lastAnswerTopic: scoped.lastAnswerTopic ?? input.state.lastAnswerTopic ?? "conversation",
       lastUserIntent: scoped.lastUserIntent,
       currentDocument,
-    });
+    }, input.text, input.state.recentEvidence);
   }
 
-  const completer = input.completer ?? createDefaultCompleter(input.env ?? {});
+  if (
+    classifyEvidenceNeed(input.text, input.state) === "CAN_ANSWER_FROM_EXISTING_EVIDENCE" &&
+    !input.state.userCorrection
+  ) {
+    const reused = answerFromExistingEvidence(input.text, { ...input.state, currentDocument });
+    if (reused) {
+      return guardedEmpty({
+        kind: "answer",
+        text: reused,
+        confidence: "strong",
+        offerSearchOther: false,
+        route: "INTELLIGENT",
+        scope: "GENERAL_CONVERSATION",
+        lastAnswerTopic: scoped.lastAnswerTopic ?? input.state.lastAnswerTopic,
+        lastUserIntent: scoped.lastUserIntent || "existing_evidence",
+        currentDocument,
+      }, input.text, input.state.recentEvidence);
+    }
+  }
+
+  const brain = input.completer
+    ? {
+        completer: input.completer,
+        policy: resolveBrainPolicy({ env: input.env, companyId: input.state.companyId, channel: input.channel }),
+      }
+    : createReasoningCompleter({
+        env: input.env,
+        companyId: input.state.companyId,
+        channel: input.channel,
+        userText: input.text,
+      });
+  const completer = brain.completer;
   const toolCalls: IntelligenceToolResult[] = [];
   const modelRounds: IntelligenceModelUsage[] = [];
   const qualityFlags = new Set<IntelligenceQualityFlag>();
@@ -169,11 +212,28 @@ export async function runIntelligenceTurn(input: {
   const transcript: string[] = [];
   let repaired = false;
   const permitted = input.state.permittedTools.length ? input.state.permittedTools : [...INTELLIGENCE_TOOL_NAMES];
+  let recentEvidence = mergeEvidence(input.state.recentEvidence, extractEvidenceFromTools([]));
+  const finishTurn = (
+    payload: Omit<
+      IntelligenceTurnResult,
+      "totalModelMs" | "totalToolMs" | "provider" | "model" | "estimatedCostUsd" | "citeSource"
+    > & {
+      citeSource?: boolean;
+    },
+  ): IntelligenceTurnResult => {
+    const assembled = finish({
+      ...payload,
+      recentEvidence,
+      brainMode: brain.policy.mode,
+    });
+    return applyGuardToTurn(assembled, input.text);
+  };
   const workingState = {
     ...input.state,
     currentDocument,
     currentScope: persistableScope(scoped.scope) ?? input.state.currentScope,
     lastUserIntent: scoped.lastUserIntent,
+    recentEvidence,
   };
 
   if (
@@ -210,7 +270,7 @@ export async function runIntelligenceTurn(input: {
           .filter(Boolean),
       ),
     ].slice(0, 3);
-    return finish({
+    return finishTurn({
       kind: titles.length ? "answer" : "clarify",
       text: titles.length
         ? `Across your documents I can see: ${titles.join("; ")}. Which should I open?`
@@ -246,7 +306,7 @@ export async function runIntelligenceTurn(input: {
         currentDocument = listed;
         if (!evidenceDocumentIds.includes(listed.id)) evidenceDocumentIds.push(listed.id);
       }
-      return finish({
+      return finishTurn({
         kind: "answer",
         text: meta.text,
         confidence: "strong",
@@ -267,7 +327,7 @@ export async function runIntelligenceTurn(input: {
     }
   }
 
-  if (shouldRunDeterministicRead(scoped, input.text)) {
+  if (shouldRunDeterministicRead(scoped, input.text, workingState)) {
     const read = await runDeterministicRead(input.runtime, scoped, input.text, workingState, permitted);
     if (read) {
       const doc =
@@ -279,7 +339,9 @@ export async function runIntelligenceTurn(input: {
         currentDocument = doc;
         if (!evidenceDocumentIds.includes(doc.id)) evidenceDocumentIds.push(doc.id);
       }
-      return finish({
+      recentEvidence = mergeEvidence(recentEvidence, extractEvidenceFromTools(read.toolCalls));
+      workingState.recentEvidence = recentEvidence;
+      return finishTurn({
         kind: read.ok ? "answer" : "failed",
         text: read.text,
         confidence: read.ok ? "strong" : "none",
@@ -317,6 +379,7 @@ export async function runIntelligenceTurn(input: {
       input.buttonHint === "search_other_docs"
         ? "The user asked to look in other documents. Call search_company_knowledge. Do not stay on the current document."
         : "",
+      `Retained structured evidence:\n${sanitiseEvidenceForModel(recentEvidence)}`,
       transcript.length ? `Evidence so far:\n${transcript.join("\n\n")}` : "Evidence so far: none yet",
       round === 0
         ? "Decide: enough information? If yes, answer or clarify. If not, call one tool."
@@ -390,8 +453,14 @@ export async function runIntelligenceTurn(input: {
         name: validated.name,
         arguments: prepareToolArguments(validated.name, validated.arguments, input.text, workingState, scoped.scope),
       };
+      if (shouldReuseSuccessfulTool(call, recentEvidence)) {
+        transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
+        continue;
+      }
       const result = await input.runtime.executeTool(call);
       toolCalls.push(result);
+      recentEvidence = recordSuccessfulCall(mergeEvidence(recentEvidence, extractEvidenceFromTools([result])), call, result);
+      workingState.recentEvidence = recentEvidence;
       const doc = documentFromToolResult(result);
       if (doc) {
         if (shouldAdoptDocument(validated.name, input.state.currentDocument, doc, input.buttonHint)) {
@@ -402,7 +471,7 @@ export async function runIntelligenceTurn(input: {
       if (looksIrrelevant(result, currentDocument)) qualityFlags.add("irrelevant_result");
       transcript.push(formatToolTranscript(result));
       if (shouldStopAfterRead(scoped, result)) {
-        return finish({
+        return finishTurn({
           kind: result.ok ? "answer" : "failed",
           text: synthesizeToolResult(result, input.text),
           confidence: result.ok ? "strong" : "none",
@@ -460,7 +529,7 @@ export async function runIntelligenceTurn(input: {
             if (!evidenceDocumentIds.includes(currentDocument.id)) evidenceDocumentIds.push(currentDocument.id);
           }
         }
-        return finish({
+        return finishTurn({
           kind: "answer",
           text:
             foundTitles.length === 1
@@ -483,7 +552,7 @@ export async function runIntelligenceTurn(input: {
         });
       }
       if (toolCalls.some((call) => call.ok) && scoped.scope === "BUSINESS_SYSTEM") {
-        return finish({
+        return finishTurn({
           kind: "answer",
           text: synthesizeFromToolCalls(toolCalls, input.text),
           confidence: "strong",
@@ -502,7 +571,7 @@ export async function runIntelligenceTurn(input: {
           fallbackUsed: modelRounds.some((row) => row.fallbackUsed),
         });
       }
-      return finish({
+      return finishTurn({
         kind: "clarify",
         text: decision.text.trim() || "Can you give me a little more detail so I look in the right place?",
         confidence: "partial",
@@ -532,7 +601,7 @@ export async function runIntelligenceTurn(input: {
       }
       const metaData = toolCalls.find((call) => SYSTEM_META_TOOLS.has(call.name))?.data;
       if (metaData && inventedCount(decision.text, metaData)) qualityFlags.add("count_invented");
-      return finish({
+      return finishTurn({
         kind: "answer",
         text: decision.text.trim(),
         confidence: decision.confidence,
@@ -572,7 +641,7 @@ export async function runIntelligenceTurn(input: {
         evidenceDocumentIds,
         input.buttonHint,
       );
-      return finish({
+      return finishTurn({
         kind: lastChance.ok ? "answer" : "failed",
         text: synthesizeToolResult(lastChance, input.text),
         confidence: lastChance.ok ? "strong" : "none",
@@ -594,7 +663,7 @@ export async function runIntelligenceTurn(input: {
   }
 
   if (toolCalls.length === 0 && modelRounds.every((round) => !round.model || round.provider === "none")) {
-    return finish({
+    return finishTurn({
       kind: "failed",
       text: "I couldn't complete that just now. Try again in a moment.",
       confidence: "none",
@@ -614,7 +683,7 @@ export async function runIntelligenceTurn(input: {
   }
 
   if (toolCalls.length > 0) {
-    return finish({
+    return finishTurn({
       kind: "failed",
       text: fallbackFromEvidence(toolCalls, currentDocument, input.text),
       confidence: "partial",
@@ -634,7 +703,7 @@ export async function runIntelligenceTurn(input: {
     });
   }
 
-  return finish({
+  return finishTurn({
     kind: "failed",
     text: GENERIC_RETRY_COPY,
     confidence: "none",
@@ -971,8 +1040,9 @@ function isProcessOrPolicyAsk(text: string): boolean {
   return /\b(process|procedure|policy|how do we)\b/i.test(text);
 }
 
-function shouldRunDeterministicRead(scoped: ScopeDecision, text: string): boolean {
+function shouldRunDeterministicRead(scoped: ScopeDecision, text: string, state?: IntelligenceConversationState): boolean {
   if (scoped.clarify || !scoped.tool) return false;
+  if (state && classifyEvidenceNeed(text, state) === "CAN_ANSWER_FROM_EXISTING_EVIDENCE") return false;
   if (scoped.scope === "BUSINESS_SYSTEM") return true;
   return scoped.scope === "COMPANY_KNOWLEDGE" && scoped.tool === "search_company_knowledge" && isProcessOrPolicyAsk(text);
 }
@@ -1033,10 +1103,15 @@ async function runDeterministicRead(
       ok: xero.ok || outlook.ok,
     };
   }
-  const result = await runtime.executeTool({
+  const planned = {
     name: toolName,
     arguments: prepareToolArguments(toolName, {}, text, state, scoped.scope),
-  });
+  };
+  if (shouldReuseSuccessfulTool(planned, state.recentEvidence)) {
+    const reused = answerFromExistingEvidence(text, state);
+    return { text: reused || (state.lastAnswerText ?? ""), toolCalls: [], ok: true };
+  }
+  const result = await runtime.executeTool(planned);
   const toolCalls = [result];
   if (result.ok && (toolName === "search_company_knowledge" || toolName === "search")) {
     const hits = searchHits(result.data);
@@ -1184,6 +1259,8 @@ function finish(
     "totalModelMs" | "totalToolMs" | "provider" | "model" | "estimatedCostUsd" | "citeSource"
   > & {
     citeSource?: boolean;
+    recentEvidence?: IntelligenceTurnResult["recentEvidence"];
+    brainMode?: IntelligenceTurnResult["brainMode"];
   },
 ): IntelligenceTurnResult {
   const last = input.modelRounds.at(-1);
@@ -1210,7 +1287,26 @@ function finish(
     qualityFlags: input.qualityFlags ?? [],
     repaired: Boolean(input.repaired),
     fallbackUsed: Boolean(input.fallbackUsed),
+    recentEvidence: input.recentEvidence ?? null,
+    brainMode: input.brainMode,
+    terminal: input.terminal,
+    correlationId: last?.correlationId ?? null,
+    guardChecks: input.guardChecks,
   };
+}
+
+function guardedEmpty(
+  input: Parameters<typeof emptyResult>[0],
+  question: string,
+  evidence?: IntelligenceTurnResult["recentEvidence"],
+): IntelligenceTurnResult {
+  return applyGuardToTurn(
+    {
+      ...emptyResult(input),
+      recentEvidence: evidence ?? null,
+    },
+    question,
+  );
 }
 
 export function normalizeConfidence(value: unknown): IntelligenceConfidence {

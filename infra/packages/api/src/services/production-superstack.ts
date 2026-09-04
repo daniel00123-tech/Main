@@ -10,6 +10,7 @@ import { withXeroReadTools } from "./xero-read-tools";
 import { withOutlookReadTools } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { PRODUCTION_SUPERSTACK_CAPABILITIES, readGeneratedLineage } from "./production-lineage";
+import { resolveBrainPolicy } from "./intelligence/brain-policy";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -56,6 +57,10 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (PRODUCTION_SUPERSTACK_CAPABILITIES.length < 9) {
     throw new Error("capability marker list incomplete");
+  }
+  const brain = resolveBrainPolicy({ companyId: "co_caddington" });
+  if (brain.useOpenAi) {
+    throw new Error("openai brain must not activate for non-EL tenants by default");
   }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };
