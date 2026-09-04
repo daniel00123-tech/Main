@@ -287,7 +287,13 @@ export function rewriteHistoricalAccountingTool(
     return { name: "warehouse_customer_analysis", arguments: args };
   }
   if (name === "xero_search_invoices" || (name.startsWith("xero_") && /\bhow many invoices\b/i.test(text))) {
-    return { name: "warehouse_invoice_analysis", arguments: args };
+    return {
+      name: "warehouse_invoice_analysis",
+      arguments: {
+        ...args,
+        aggregation: /\bhow many invoices\b/i.test(text) ? "invoice_count" : args.aggregation,
+      },
+    };
   }
   if (name === "xero_sales_summary") {
     const aggregation =
