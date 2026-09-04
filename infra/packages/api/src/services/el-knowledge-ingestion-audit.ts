@@ -38,7 +38,7 @@ export const EL_KNOWLEDGE_AUDIT_WINDOW = {
 } as const;
 
 export const EL_KNOWLEDGE_CORRECTED_SUBJECT =
-  "INFRA — EL Business Daily Knowledge Activity — Attachment landing-zone confirmation";
+  "INFRA — EL Business Daily Knowledge Activity — superseded by scheduled daily report";
 
 const COMPANY_ID = "co_el";
 const AUTOMATION_ID = "aut_b00ab912-845b-49b4-9609-cbedeeea6ddf";
@@ -207,13 +207,11 @@ export async function runElKnowledgeIngestionAudit(
   };
 
   if (input?.sendCorrectedEmail) {
-    payload.correctedEmail = await sendElKnowledgeCorrectedTestEmail(env, {
-      report,
-      windowFrom,
-      windowTo,
-      outlook,
-      ingest,
-    });
+    payload.correctedEmail = {
+      sent: false,
+      skipped: true,
+      reason: "use_daily_knowledge_activity_automation",
+    };
   }
 
   return payload;
@@ -432,8 +430,8 @@ async function auditOutlookMailboxes(
           sourceModifiedAt: messageTime(message),
           skipReason:
             listedAttachmentsTool.ok === false
-              ? "EL Outlook attachments are not auto-ingested; company MCP has no attachment list/fetch tool"
-              : "EL Outlook attachments are not auto-ingested into company knowledge",
+              ? "Source observation only; attachment list/fetch tool missing on company MCP"
+              : "Source observation only; attachment ingest is the approved-mailbox pipeline",
           failureCode: listedAttachmentsTool.ok ? null : asText(listedAttachmentsTool.code) || "OUTLOOK_MCP_ATTACHMENT_TOOL_MISSING",
           metadata: {
             subject,

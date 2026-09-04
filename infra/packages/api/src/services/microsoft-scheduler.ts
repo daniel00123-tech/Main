@@ -12,7 +12,10 @@ import {
 } from "./microsoft-graph-subscriptions";
 import { provisionOutlookMailboxGraphSubscriptions } from "./microsoft-outlook-notifications";
 import { syncOutlookMailbox } from "./microsoft-outlook-sync";
-import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
+import {
+  ingestApprovedOutlookAttachments,
+  MAILBOX_INGEST_MAX_LOOKBACK_MS,
+} from "./outlook-attachment-ingest";
 
 export async function runMicrosoftScheduledSync(env: Env): Promise<{
   companies: number;
@@ -93,7 +96,7 @@ export async function runMicrosoftScheduledSync(env: Env): Promise<{
     `SELECT DISTINCT company_id FROM company_mailbox_registry WHERE enabled_for_attachment_ingestion = 1`,
   ).all<{ company_id: string }>();
   const windowTo = new Date();
-  const windowFrom = new Date(windowTo.getTime() - 6 * 60 * 60 * 1000);
+  const windowFrom = new Date(windowTo.getTime() - MAILBOX_INGEST_MAX_LOOKBACK_MS);
   for (const row of registryCompanies.results ?? []) {
     if (row.company_id === "co_caddington" || row.company_id === "co_ht") continue;
     try {
@@ -102,6 +105,7 @@ export async function runMicrosoftScheduledSync(env: Env): Promise<{
         windowFrom,
         windowTo,
         actor: "system:microsoft-scheduler",
+        useMailboxCheckpoints: true,
       });
       sourcesSynced++;
     } catch (err) {

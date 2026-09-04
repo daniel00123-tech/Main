@@ -24,6 +24,20 @@ import {
 
 export const KNOWLEDGE_INTAKE_ROOT = "INFRA Knowledge Intake";
 export const KNOWLEDGE_INTAKE_EMAIL_FOLDER = "Email Attachments";
+export const KNOWLEDGE_INTAKE_QUARANTINE_FOLDER = "_quarantine";
+
+export function knowledgeIntakeFolderSegments(
+  mailboxAddress: string,
+  receivedAt: Date,
+  quarantine = false,
+): string[] {
+  const year = String(receivedAt.getUTCFullYear());
+  const month = String(receivedAt.getUTCMonth() + 1).padStart(2, "0");
+  const mailbox = mailboxFolderSegment(mailboxAddress);
+  return quarantine
+    ? [KNOWLEDGE_INTAKE_EMAIL_FOLDER, KNOWLEDGE_INTAKE_QUARANTINE_FOLDER, mailbox, year, month]
+    : [KNOWLEDGE_INTAKE_EMAIL_FOLDER, mailbox, year, month];
+}
 
 export type KnowledgeIntakeTargetRow = {
   id: string;
@@ -321,12 +335,10 @@ async function ensureMailboxMonthFolder(
   rootFolderId: string,
   mailboxAddress: string,
   receivedAt: Date,
+  quarantine = false,
 ): Promise<string> {
-  const year = String(receivedAt.getUTCFullYear());
-  const month = String(receivedAt.getUTCMonth() + 1).padStart(2, "0");
-  const mailbox = mailboxFolderSegment(mailboxAddress);
   let parentId = rootFolderId;
-  for (const segment of [KNOWLEDGE_INTAKE_EMAIL_FOLDER, mailbox, year, month]) {
+  for (const segment of knowledgeIntakeFolderSegments(mailboxAddress, receivedAt, quarantine)) {
     parentId = await ensureChildFolder(config, driveId, parentId, segment);
   }
   return parentId;
@@ -344,6 +356,7 @@ export async function storeOriginalInKnowledgeIntake(
     attachmentId: string;
     receivedAt?: Date | null;
     actor?: string;
+    quarantine?: boolean;
   },
 ): Promise<KnowledgeIntakeStoreResult> {
   const actor = input.actor ?? "system:knowledge-intake";
@@ -361,6 +374,7 @@ export async function storeOriginalInKnowledgeIntake(
           target.root_folder_id,
           input.mailboxAddress,
           receivedAt,
+          input.quarantine === true,
         );
         const item = await uploadBinaryFileToDrive(
           graph.config,

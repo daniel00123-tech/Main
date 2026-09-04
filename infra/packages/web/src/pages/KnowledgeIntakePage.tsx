@@ -79,6 +79,10 @@ export default function KnowledgeIntakePage() {
               <li key={mailbox.address}>
                 {mailbox.address} — ingest {mailbox.attachmentKnowledge ? "on" : "off"}, chat{" "}
                 {mailbox.chatSearch ? "on" : "off"}
+                {` · Graph ${mailbox.graphAccessible === 1 ? "YES" : mailbox.graphAccessible === 0 ? "NO" : "unknown"}`}
+                {mailbox.lastScan ? ` · last scan ${mailbox.lastScan}` : ""}
+                {mailbox.lastCheckpoint ? ` · checkpoint ${mailbox.lastCheckpoint}` : ""}
+                {mailbox.lastMessagesScanned != null ? ` · messages ${mailbox.lastMessagesScanned}` : ""}
                 {mailbox.lastError ? ` · ${mailbox.lastError}` : ""}
               </li>
             ))}
