@@ -11,6 +11,7 @@ import {
   loadDashboard,
   provisionDailyImprovementAutomations,
 } from "../services/daily-improvement";
+import { listQualityLoopRecipients, sendQualityLoopEmail } from "../services/quality-loop/email";
 
 const routes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -112,6 +113,30 @@ routes.post("/api/internal/automation/daily-improvement-engineering", async (c) 
 
 routes.post("/api/internal/automation/ensure-daily-improvement", async (c) => {
   return c.json(await provisionDailyImprovementAutomations(c.env.DB));
+});
+
+routes.post("/api/internal/daily-improvement/campaign-review", async (c) => {
+  if (!(await verifyInternalToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    subject?: string;
+    bodyText?: string;
+    bodyHtml?: string;
+  };
+  const subject = String(body.subject ?? "").trim();
+  const bodyText = String(body.bodyText ?? "").trim();
+  if (!subject || !bodyText) return c.json({ error: "subject and bodyText required" }, 400);
+  const recipients = await listQualityLoopRecipients(c.env.DB, c.env);
+  const sent = await sendQualityLoopEmail(c.env, c.env.DB, {
+    subject,
+    bodyText,
+    bodyHtml: String(body.bodyHtml ?? "").trim() || `<pre style="font-family:Georgia,serif;white-space:pre-wrap">${bodyText.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>`,
+    recipients,
+    eventType: "daily_improvement.campaign_review_sent",
+    resourceId: `campaign-${new Date().toISOString().slice(0, 10)}`,
+  });
+  return c.json({ ok: sent.sent, recipients, subject, error: sent.error ?? null, contract: DAILY_IMPROVEMENT_CONTRACT });
 });
 
 export default routes;

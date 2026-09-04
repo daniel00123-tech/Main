@@ -73,6 +73,42 @@ describe("deterministic business and knowledge reads", () => {
     expect(result.toolCalls[0]?.ok).toBe(true);
   });
 
+  it("keeps the deterministic Outlook read under the OpenAI PA brain and still synthesises from evidence", async () => {
+    const { runtime: exec, calls } = runtime(() => ({
+      mailboxAddress: "info@elvexpropertyservices.com",
+      messages: [
+        {
+          subject: "Site visit tomorrow",
+          from: "client@example.com",
+          receivedDateTime: "2026-09-04T09:12:00Z",
+        },
+      ],
+    }));
+    const result = await runIntelligenceTurn({
+      env: {
+        OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
+        OPENAI_BRAIN_ENABLED: "true",
+        OPENAI_BRAIN_MODE: "openai_shadow",
+        OPENAI_BRAIN_COMPANY_IDS: "co_el",
+      },
+      text: "What is the newest email in the info inbox?",
+      state: buildConversationState({
+        userText: "What is the newest email in the info inbox?",
+        companyId: "co_el",
+        connectors: ["conn_outlook_shared"],
+        permittedTools: ["outlook_list_messages", "outlook_search_mailbox", "search_company_knowledge"],
+      }),
+      runtime: exec,
+      completer: silentCompleter,
+      channel: "portal_chat",
+    });
+    expect(calls[0]?.name).toBe("outlook_list_messages");
+    expect(isGenericRetryCopy(result.text)).toBe(false);
+    expect(result.text).toMatch(/Site visit tomorrow/);
+    expect(result.userVisibleBrain).toBe("openai");
+    expect(result.brainRole).toBe("pa");
+  });
+
   it("does not mask a successful Outlook tool with the generic retry", async () => {
     const { runtime: exec } = runtime(() => ({
       mailboxAddress: "finance@elvexpropertyservices.com",

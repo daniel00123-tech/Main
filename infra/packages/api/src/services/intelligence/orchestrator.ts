@@ -38,6 +38,7 @@ import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
 import {
   GENERIC_RETRY_COPY,
   extractFirstMessageId,
+  isGenericRetryCopy,
   synthesizeFromToolCalls,
   synthesizeToolResult,
 } from "./verbalise-business.js";
@@ -256,6 +257,7 @@ async function executeIntelligenceTurn(input: {
     mergeEvidence(input.state.recentEvidence, extractEvidenceFromTools([])),
     input.state.companyId,
   );
+  let deterministicVerbalise: string | null = null;
   const finishTurn = (
     payload: Omit<
       IntelligenceTurnResult,
@@ -264,8 +266,13 @@ async function executeIntelligenceTurn(input: {
       citeSource?: boolean;
     },
   ): IntelligenceTurnResult => {
+    const grounded =
+      deterministicVerbalise && (!payload.text.trim() || isGenericRetryCopy(payload.text))
+        ? deterministicVerbalise
+        : payload.text;
     const assembled = finish({
       ...payload,
+      text: grounded,
       recentEvidence,
       brainMode: brain.policy.mode,
       brainRole: brain.policy.role,
@@ -404,11 +411,7 @@ async function executeIntelligenceTurn(input: {
     }
   }
 
-  if (
-    !brain.policy.useOpenAi &&
-    !isCompoundBusinessAsk(input.text) &&
-    shouldRunDeterministicRead(scoped, input.text, workingState)
-  ) {
+  if (!isCompoundBusinessAsk(input.text) && shouldRunDeterministicRead(scoped, input.text, workingState)) {
     const read = await runDeterministicRead(runtime, scoped, input.text, workingState, permitted);
     if (read) {
       const doc =
@@ -422,24 +425,28 @@ async function executeIntelligenceTurn(input: {
       }
       recentEvidence = mergeEvidence(recentEvidence, extractEvidenceFromTools(read.toolCalls));
       workingState.recentEvidence = recentEvidence;
-      return finishTurn({
-        kind: read.ok ? "answer" : "failed",
-        text: read.text,
-        confidence: read.ok ? "strong" : "none",
-        offerSearchOther: Boolean(currentDocument),
-        toolCalls: read.toolCalls,
-        currentDocument,
-        evidenceDocumentIds,
-        clarification: false,
-        modelRounds: [],
-        route: "INTELLIGENT",
-        scope: scoped.scope,
-        lastAnswerTopic: scoped.lastAnswerTopic,
-        lastUserIntent: scoped.lastUserIntent,
-        qualityFlags: [...qualityFlags],
-        repaired,
-        fallbackUsed: false,
-      });
+      toolCalls.push(...read.toolCalls);
+      if (read.ok && read.text) deterministicVerbalise = read.text;
+      if (!brain.policy.useOpenAi) {
+        return finishTurn({
+          kind: read.ok ? "answer" : "failed",
+          text: read.text,
+          confidence: read.ok ? "strong" : "none",
+          offerSearchOther: Boolean(currentDocument),
+          toolCalls,
+          currentDocument,
+          evidenceDocumentIds,
+          clarification: false,
+          modelRounds: [],
+          route: "INTELLIGENT",
+          scope: scoped.scope,
+          lastAnswerTopic: scoped.lastAnswerTopic,
+          lastUserIntent: scoped.lastUserIntent,
+          qualityFlags: [...qualityFlags],
+          repaired,
+          fallbackUsed: false,
+        });
+      }
     }
   }
 
@@ -462,6 +469,9 @@ async function executeIntelligenceTurn(input: {
         : "",
       `Retained structured evidence:\n${sanitiseEvidenceForModel(recentEvidence)}`,
       transcript.length ? `Evidence so far:\n${transcript.join("\n\n")}` : "Evidence so far: none yet",
+      deterministicVerbalise
+        ? "A deterministic authorised read already executed. Do not call the same tool again. Synthesise from retained evidence unless a second authorised capability is still missing."
+        : "",
       round === 0
         ? "Decide: enough information? If yes, answer or clarify. If not, call one tool."
         : "Reassess the evidence. Call one more tool only if needed, otherwise synthesise the answer.",
