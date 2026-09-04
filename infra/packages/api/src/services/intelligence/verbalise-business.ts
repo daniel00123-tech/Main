@@ -1,3 +1,4 @@
+import { normaliseBusinessResult } from "./normalise.js";
 import type { IntelligenceToolResult } from "./types.js";
 
 export const GENERIC_RETRY_COPY = "I need another moment to finish that. Try asking once more.";
@@ -110,7 +111,12 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     return "Your current permissions don’t allow this action.";
   }
   if (looksTimeout(call)) {
-    return "I need another moment to finish that. Try asking once more.";
+    if (/outlook|mailbox|email/i.test(call.name)) return "Outlook is unreachable just now.";
+    if (/^xero_/.test(call.name)) return "I couldn’t reach Xero just now.";
+    if (/knowledge|search|fetch|list_documents|get_knowledge/i.test(call.name)) {
+      return "I couldn’t reach company files just now.";
+    }
+    return "That connected system is unreachable just now.";
   }
   if (!call.ok) {
     if (/outlook|mailbox|email/i.test(call.name)) return "I couldn’t reach Email just now.";
@@ -122,6 +128,8 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
   }
 
   if (/outlook/i.test(call.name)) {
+    const normalised = normaliseBusinessResult(call.name, call.data);
+    if (normalised.sufficient && normalised.summaryText) return normalised.summaryText;
     const messages = extractOutlookMessages(call.data);
     if (!messages.length) return "I couldn’t find any matching emails.";
     const newest = messages[0]!;
@@ -139,24 +147,14 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
   }
 
   if (call.name === "xero_sales_summary" || call.name.startsWith("xero_")) {
+    const normalised = normaliseBusinessResult(call.name, call.data);
+    if (normalised.summaryText && normalised.sufficient) return normalised.summaryText;
     const record = isRecord(call.data) ? call.data : {};
-    const summary = isRecord(record.summary) ? record.summary : {};
-    const total = record.sales_total ?? summary.totalSales ?? record.total;
-    const count = record.invoice_count ?? summary.transactionCount ?? record.count;
-    const period = isRecord(record.period) ? record.period : {};
-    const fromDate = asString(period.fromDate ?? summary.fromDate ?? record.fromDate);
-    const toDate = asString(period.toDate ?? summary.toDate ?? record.toDate);
-    const currency = asString(record.currencyCode ?? record.currency ?? summary.currencyCode) || "GBP";
-    if (typeof total === "number" || typeof total === "string") {
-      const range = fromDate && toDate ? ` from ${fromDate} to ${toDate}` : "";
-      const invoices = typeof count === "number" ? ` across ${count} invoice${count === 1 ? "" : "s"}` : "";
-      return `Xero sales${range} are ${formatMoney(total, currency)}${invoices}.`;
-    }
     if (typeof record.summary === "string" && record.summary.trim()) return record.summary.trim();
     if (Array.isArray(record.invoices) && record.invoices.length === 0) {
       return "I couldn’t find any matching invoices.";
     }
-    return "I retrieved the Xero figures. Ask if you want a specific invoice or period.";
+    return normalised.summaryText || "I retrieved the Xero figures. Ask if you want a specific invoice or period.";
   }
 
   if (call.name === "get_knowledge_document" || call.name === "fetch") {

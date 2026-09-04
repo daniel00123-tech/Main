@@ -11,6 +11,22 @@ import { parseCatalogueIntent, verbaliseDocumentCatalogue } from "../document-ca
 import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
 import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
 import { GENERIC_RETRY_COPY, synthesizeFromToolCalls, synthesizeToolResult } from "./verbalise-business.js";
+import {
+  defaultMailboxForText,
+  isFollowUpFiller,
+  isHollowAssistantText,
+  previousSubstantiveUserText,
+  terminalFromToolCalls,
+} from "./evidence.js";
+import {
+  answerContainsStructuredEvidence,
+  findReusableSuccess,
+  formatNormalisedTranscript,
+  isSufficientBusinessResult,
+  isTransientToolFailure,
+  normaliseBusinessResult,
+  userAskedRefresh,
+} from "./normalise.js";
 import type {
   IntelligenceChannel,
   IntelligenceConfidence,
@@ -126,6 +142,27 @@ export async function runIntelligenceTurn(input: {
     });
   }
 
+  if (
+    scoped.lastUserIntent === "more_detail" &&
+    isFollowUpFiller(input.text) &&
+    isHollowAssistantText(input.state.lastAnswerText)
+  ) {
+    const prior =
+      previousSubstantiveUserText(input.state.recentTurns ?? [], input.text) ||
+      previousUserText(input.state, input.text);
+    if (prior && prior.trim() !== input.text.trim()) {
+      return runIntelligenceTurn({
+        ...input,
+        text: prior,
+        state: {
+          ...input.state,
+          lastUserText: prior,
+          lastAnswerText: null,
+        },
+      });
+    }
+  }
+
   if (scoped.scope === "GENERAL_CONVERSATION" && scoped.noTool && !input.state.userCorrection) {
     return emptyResult({
       kind: "answer",
@@ -142,6 +179,7 @@ export async function runIntelligenceTurn(input: {
 
   const completer = input.completer ?? createDefaultCompleter(input.env ?? {});
   const toolCalls: IntelligenceToolResult[] = [];
+  const executed: Array<{ call: IntelligenceToolCall; result: IntelligenceToolResult }> = [];
   const modelRounds: IntelligenceModelUsage[] = [];
   const qualityFlags = new Set<IntelligenceQualityFlag>();
   if (input.state.userCorrection) qualityFlags.add("user_correction");
@@ -289,6 +327,9 @@ export async function runIntelligenceTurn(input: {
         ? "The user asked to look in other documents. Call search_company_knowledge. Do not stay on the current document."
         : "",
       transcript.length ? `Evidence so far:\n${transcript.join("\n\n")}` : "Evidence so far: none yet",
+      toolCalls.some((call) => call.ok && isSufficientBusinessResult(call))
+        ? "A successful business-system result is already present. Do not call the same tool again. Answer from the structured evidence."
+        : "",
       round === 0
         ? "Decide: enough information? If yes, answer or clarify. If not, call one tool."
         : "Reassess the evidence. Call one more tool only if needed, otherwise synthesise the answer.",
@@ -330,14 +371,35 @@ export async function runIntelligenceTurn(input: {
     }
 
     let decision = recovered.decision;
-    if (decision.action === "invalid" && !completion.text.trim() && toolCalls.length === 0) {
-      const bootstrap = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+    if (
+      decision.action === "invalid" &&
+      toolCalls.length === 0 &&
+      (shouldForceScopedTool(scoped, input.text) || !completion.text.trim())
+    ) {
+      const bootstrap = await runScopedTool(
+        input.runtime,
+        workingState,
+        input.text,
+        input.buttonHint,
+        scoped,
+        executed,
+        toolCalls,
+      );
       if (bootstrap) {
-        toolCalls.push(bootstrap);
         adoptFromTool(bootstrap, toolCalls, () => currentDocument, (doc) => {
           currentDocument = doc;
         }, evidenceDocumentIds, input.buttonHint);
-        transcript.push(formatToolTranscript(bootstrap));
+        transcript.push(formatNormalisedTranscript(bootstrap));
+        const early = finishIfSufficient(bootstrap, {
+          toolCalls,
+          currentDocument,
+          evidenceDocumentIds,
+          modelRounds,
+          scoped,
+          qualityFlags,
+          repaired,
+        });
+        if (early) return early;
         continue;
       }
     }
@@ -361,8 +423,24 @@ export async function runIntelligenceTurn(input: {
         name: validated.name,
         arguments: prepareToolArguments(validated.name, validated.arguments, input.text, workingState, scoped.scope),
       };
-      const result = await input.runtime.executeTool(call);
-      toolCalls.push(result);
+      const result = await executeUniqueTool(input.runtime, call, executed, toolCalls, input.text);
+      if (!result) {
+        transcript.push(`Reused previous successful ${call.name} result.`);
+        const lastOk = [...toolCalls].reverse().find((row) => row.ok && row.name === call.name);
+        if (lastOk) {
+          const early = finishIfSufficient(lastOk, {
+            toolCalls,
+            currentDocument,
+            evidenceDocumentIds,
+            modelRounds,
+            scoped,
+            qualityFlags,
+            repaired,
+          });
+          if (early) return early;
+        }
+        continue;
+      }
       const doc = documentFromToolResult(result);
       if (doc) {
         if (shouldAdoptDocument(validated.name, input.state.currentDocument, doc, input.buttonHint)) {
@@ -371,35 +449,32 @@ export async function runIntelligenceTurn(input: {
         if (!evidenceDocumentIds.includes(doc.id)) evidenceDocumentIds.push(doc.id);
       }
       if (looksIrrelevant(result, currentDocument)) qualityFlags.add("irrelevant_result");
-      transcript.push(formatToolTranscript(result));
-      if (shouldStopAfterRead(scoped, result)) {
-        return finish({
-          kind: result.ok ? "answer" : "failed",
-          text: synthesizeToolResult(result, input.text),
-          confidence: result.ok ? "strong" : "none",
-          offerSearchOther: Boolean(currentDocument),
-          toolCalls,
-          currentDocument,
-          evidenceDocumentIds,
-          clarification: false,
-          modelRounds,
-          route: "INTELLIGENT",
-          scope: scoped.scope,
-          lastAnswerTopic: scoped.lastAnswerTopic,
-          lastUserIntent: scoped.lastUserIntent,
-          qualityFlags: [...qualityFlags],
-          repaired,
-          fallbackUsed: modelRounds.some((row) => row.fallbackUsed),
-        });
-      }
+      transcript.push(formatNormalisedTranscript(result));
+      const early = finishIfSufficient(result, {
+        toolCalls,
+        currentDocument,
+        evidenceDocumentIds,
+        modelRounds,
+        scoped,
+        qualityFlags,
+        repaired,
+      });
+      if (early) return early;
       continue;
     }
 
     if (decision.action === "clarify") {
-      if (toolCalls.length === 0 && shouldForceScopedTool(scoped)) {
-        const bootstrap = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+      if (toolCalls.length === 0 && shouldForceScopedTool(scoped, input.text)) {
+        const bootstrap = await runScopedTool(
+          input.runtime,
+          workingState,
+          input.text,
+          input.buttonHint,
+          scoped,
+          executed,
+          toolCalls,
+        );
         if (bootstrap) {
-          toolCalls.push(bootstrap);
           adoptFromTool(
             bootstrap,
             toolCalls,
@@ -410,7 +485,17 @@ export async function runIntelligenceTurn(input: {
             evidenceDocumentIds,
             input.buttonHint,
           );
-          transcript.push(formatToolTranscript(bootstrap));
+          transcript.push(formatNormalisedTranscript(bootstrap));
+          const early = finishIfSufficient(bootstrap, {
+            toolCalls,
+            currentDocument,
+            evidenceDocumentIds,
+            modelRounds,
+            scoped,
+            qualityFlags,
+            repaired,
+          });
+          if (early) return early;
           continue;
         }
       }
@@ -418,7 +503,7 @@ export async function runIntelligenceTurn(input: {
         qualityFlags.add("bad_clarification");
       }
       const foundTitles = searchHitTitles(toolCalls);
-      if (foundTitles.length && shouldForceScopedTool(scoped)) {
+      if (foundTitles.length && shouldForceScopedTool(scoped, input.text)) {
         const hits = searchHits(toolCalls.find((call) => call.name === "search_company_knowledge")?.data);
         if (hits.length === 1 && !currentDocument) {
           const only = hits[0] && typeof hits[0] === "object" ? (hits[0] as { id?: string; title?: string; url?: string }) : null;
@@ -494,6 +579,41 @@ export async function runIntelligenceTurn(input: {
     }
 
     if (decision.action === "answer") {
+      if (toolCalls.length === 0 && shouldForceScopedTool(scoped, input.text)) {
+        const bootstrap = await runScopedTool(
+          input.runtime,
+          workingState,
+          input.text,
+          input.buttonHint,
+          scoped,
+          executed,
+          toolCalls,
+        );
+        if (bootstrap) {
+          adoptFromTool(
+            bootstrap,
+            toolCalls,
+            () => currentDocument,
+            (doc) => {
+              currentDocument = doc;
+            },
+            evidenceDocumentIds,
+            input.buttonHint,
+          );
+          transcript.push(formatNormalisedTranscript(bootstrap));
+          const early = finishIfSufficient(bootstrap, {
+            toolCalls,
+            currentDocument,
+            evidenceDocumentIds,
+            modelRounds,
+            scoped,
+            qualityFlags,
+            repaired,
+          });
+          if (early) return early;
+          continue;
+        }
+      }
       if (needsClarification(toolCalls, currentDocument, workingState) && decision.confidence === "strong") {
         qualityFlags.add("missing_clarification");
       }
@@ -503,9 +623,10 @@ export async function runIntelligenceTurn(input: {
       }
       const metaData = toolCalls.find((call) => SYSTEM_META_TOOLS.has(call.name))?.data;
       if (metaData && inventedCount(decision.text, metaData)) qualityFlags.add("count_invented");
+      const grounded = terminalFromToolCalls(toolCalls);
       return finish({
         kind: "answer",
-        text: decision.text.trim(),
+        text: chooseGroundedAnswer(decision.text, grounded, toolCalls),
         confidence: decision.confidence,
         offerSearchOther: decision.offer_search_other || decision.confidence === "none",
         toolCalls,
@@ -525,14 +646,17 @@ export async function runIntelligenceTurn(input: {
     }
   }
 
-  if (
-    toolCalls.length === 0 &&
-    shouldForceScopedTool(scoped) &&
-    (scoped.scope === "BUSINESS_SYSTEM" || isProcessOrPolicyAsk(input.text))
-  ) {
-    const lastChance = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+  if (toolCalls.length === 0 && shouldForceScopedTool(scoped, input.text)) {
+    const lastChance = await runScopedTool(
+      input.runtime,
+      workingState,
+      input.text,
+      input.buttonHint,
+      scoped,
+      executed,
+      toolCalls,
+    );
     if (lastChance) {
-      toolCalls.push(lastChance);
       adoptFromTool(
         lastChance,
         toolCalls,
@@ -543,28 +667,34 @@ export async function runIntelligenceTurn(input: {
         evidenceDocumentIds,
         input.buttonHint,
       );
-      return finish({
-        kind: lastChance.ok ? "answer" : "failed",
-        text: synthesizeToolResult(lastChance, input.text),
-        confidence: lastChance.ok ? "strong" : "none",
-        offerSearchOther: Boolean(currentDocument),
-        toolCalls,
-        currentDocument,
-        evidenceDocumentIds,
-        clarification: false,
-        modelRounds,
-        route: "INTELLIGENT",
-        scope: scoped.scope,
-        lastAnswerTopic: scoped.lastAnswerTopic,
-        lastUserIntent: scoped.lastUserIntent,
-        qualityFlags: [...qualityFlags, "fallback"],
-        repaired,
-        fallbackUsed: true,
-      });
     }
   }
 
-  if (toolCalls.length === 0 && modelRounds.every((round) => !round.model || round.provider === "none")) {
+  const evidenceText =
+    terminalFromToolCalls(toolCalls) ?? fallbackFromEvidence(toolCalls, currentDocument, input.text);
+
+  if (toolCalls.length > 0) {
+    return finish({
+      kind: toolCalls.some((call) => call.ok) ? "answer" : "failed",
+      text: evidenceText,
+      confidence: toolCalls.some((call) => call.ok) ? "partial" : "none",
+      offerSearchOther: Boolean(currentDocument),
+      toolCalls,
+      currentDocument,
+      evidenceDocumentIds,
+      clarification: false,
+      modelRounds,
+      route: "INTELLIGENT",
+      scope: scoped.scope,
+      lastAnswerTopic: scoped.lastAnswerTopic,
+      lastUserIntent: scoped.lastUserIntent,
+      qualityFlags: [...qualityFlags, "fallback"],
+      repaired,
+      fallbackUsed: true,
+    });
+  }
+
+  if (modelRounds.every((round) => !round.model || round.provider === "none")) {
     return finish({
       kind: "failed",
       text: "I couldn't complete that just now. Try again in a moment.",
@@ -584,30 +714,9 @@ export async function runIntelligenceTurn(input: {
     });
   }
 
-  if (toolCalls.length > 0) {
-    return finish({
-      kind: "failed",
-      text: fallbackFromEvidence(toolCalls, currentDocument, input.text),
-      confidence: "partial",
-      offerSearchOther: Boolean(currentDocument),
-      toolCalls,
-      currentDocument,
-      evidenceDocumentIds,
-      clarification: false,
-      modelRounds,
-      route: "INTELLIGENT",
-      scope: scoped.scope,
-      lastAnswerTopic: scoped.lastAnswerTopic,
-      lastUserIntent: scoped.lastUserIntent,
-      qualityFlags: [...qualityFlags, "fallback"],
-      repaired,
-      fallbackUsed: true,
-    });
-  }
-
   return finish({
     kind: "failed",
-    text: GENERIC_RETRY_COPY,
+    text: scopedToolFailure(scoped.scope, scoped.lastAnswerTopic) || GENERIC_RETRY_COPY,
     confidence: "none",
     offerSearchOther: Boolean(currentDocument),
     toolCalls,
@@ -689,19 +798,22 @@ function searchHitTitles(toolCalls: IntelligenceToolResult[]): string[] {
   ].slice(0, 3);
 }
 
+function scopedToolFailure(scope: IntelligenceScope | undefined, topic: string | null): string {
+  if (scope === "BUSINESS_SYSTEM" && topic === "email") return "I couldn’t retrieve that mailbox just now.";
+  if (scope === "BUSINESS_SYSTEM") return "I couldn’t retrieve Xero data just now.";
+  if (scope === "COMPANY_KNOWLEDGE" || scope === "CURRENT_DOCUMENT") {
+    return "I couldn’t search company files just now.";
+  }
+  return "I couldn't complete that just now. Try again in a moment.";
+}
+
 function fallbackFromEvidence(
   toolCalls: IntelligenceToolResult[],
   current: IntelligenceDocumentRef | null,
   question = "",
 ): string {
-  const business = toolCalls.find(
-    (call) =>
-      call.name.startsWith("xero_") ||
-      /outlook/i.test(call.name) ||
-      call.name === "search_company_knowledge" ||
-      call.name === "list_documents",
-  );
-  if (business) return synthesizeFromToolCalls(toolCalls, question);
+  const fromTools = terminalFromToolCalls(toolCalls) ?? (toolCalls.length ? synthesizeFromToolCalls(toolCalls, question) : null);
+  if (fromTools) return fromTools;
   const last = [...toolCalls].reverse().find((call) => call.ok);
   const doc = last ? documentFromToolResult(last) : current;
   if (doc) {
@@ -711,6 +823,7 @@ function fallbackFromEvidence(
   if (hits.length > 1) {
     return "A few documents could match that. Which file did you mean?";
   }
+  if (!toolCalls.length) return scopedToolFailure(undefined, null);
   return "I couldn't finish a grounded answer from the evidence I retrieved. Try naming the file.";
 }
 
@@ -761,62 +874,25 @@ function looksLikeNewDocumentSearch(text: string): boolean {
   );
 }
 
-function shouldForceScopedTool(scoped: ScopeDecision): boolean {
+function shouldForceScopedTool(scoped: ScopeDecision, text = ""): boolean {
   if (scoped.scope === "AMBIGUOUS" || scoped.scope === "GENERAL_CONVERSATION" || scoped.scope === "CONTROLLED_ACTION") {
     return false;
   }
-  return Boolean(scoped.tool);
+  if (!scoped.tool) return false;
+  if (scoped.scope === "COMPANY_KNOWLEDGE") {
+    return Boolean(
+      scoped.features.findDocument ||
+        scoped.features.companyLocus ||
+        scoped.lastUserIntent === "find_document" ||
+        scoped.lastUserIntent === "named_document_switch" ||
+        /\b(process|procedure|policy|handbook|manual|purchase order|po process)\b/i.test(text),
+    );
+  }
+  return true;
 }
 
 function looksLikeFinanceRead(text: string): boolean {
   return /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables)\b/i.test(text);
-}
-
-async function bootstrapRetrieval(
-  runtime: IntelligenceRuntime,
-  state: IntelligenceConversationState,
-  text: string,
-  buttonHint?: string | null,
-  scoped?: ScopeDecision,
-): Promise<IntelligenceToolResult | null> {
-  if (scoped?.scope === "GENERAL_CONVERSATION" || scoped?.scope === "AMBIGUOUS") return null;
-  if (scoped?.scope === "SYSTEM_META" || scoped?.scope === "CONNECTOR_CAPABILITY") {
-    return runtime.executeTool({ name: scoped.tool || "get_company_system_summary", arguments: {} });
-  }
-  if (scoped?.tool === "list_documents") {
-    return runtime.executeTool({
-      name: "list_documents",
-      arguments: prepareToolArguments("list_documents", {}, text, state, scoped.scope),
-    });
-  }
-  if (looksLikeFinanceRead(text) || scoped?.scope === "BUSINESS_SYSTEM") {
-    const toolName = scoped?.tool || "xero_sales_summary";
-    return runtime.executeTool({
-      name: toolName,
-      arguments: prepareToolArguments(toolName, {}, text, state, scoped?.scope),
-    });
-  }
-  if (
-    buttonHint === "search_other_docs" ||
-    scoped?.scope === "COMPANY_KNOWLEDGE" ||
-    !state.currentDocument ||
-    looksLikeNewDocumentSearch(text)
-  ) {
-    return runtime.executeTool({ name: "search_company_knowledge", arguments: { query: text } });
-  }
-  if (scoped?.scope && scoped.scope !== "CURRENT_DOCUMENT" && scoped.scope !== "RECENT_ENTITY") {
-    return runtime.executeTool({ name: "search_company_knowledge", arguments: { query: text } });
-  }
-  return runtime.executeTool({
-    name: "search_document",
-    arguments: prepareToolArguments(
-      "search_document",
-      { document_id: state.currentDocument.id, query: text },
-      text,
-      state,
-      scoped?.scope ?? "CURRENT_DOCUMENT",
-    ),
-  });
 }
 
 function prepareToolArguments(
@@ -866,6 +942,20 @@ function prepareToolArguments(
       include_descriptions: next.include_descriptions ?? parsed.includeDescriptions,
       titleContains: next.titleContains ?? parsed.titleContains,
     };
+  }
+  if (name === "outlook_search_mailbox" || name === "outlook_list_messages") {
+    next.mailboxAddress = String(next.mailboxAddress ?? next.mailbox ?? defaultMailboxForText(text)).trim();
+    if (name === "outlook_search_mailbox" && !String(next.query ?? "").trim()) {
+      next.query = text.trim() || "newest";
+    }
+    if (name === "outlook_list_messages") {
+      next.limit = next.limit ?? 5;
+    }
+    return next;
+  }
+  if (name === "search_company_knowledge" && !String(next.query ?? "").trim()) {
+    next.query = text.trim();
+    return next;
   }
   if (name === "search_document") {
     const enriched = enrichDocumentQuery(String(next.query ?? text), {
@@ -1017,9 +1107,142 @@ async function runDeterministicMeta(
   return { text: textOut, toolCalls: [result], modelRounds, flags };
 }
 
-function formatToolTranscript(result: IntelligenceToolResult): string {
-  const payload = JSON.stringify(result.ok ? result.data : { error: result.error ?? "tool_failed" });
-  return `${result.name} (${result.ok ? "ok" : "error"}, ${result.latencyMs}ms): ${payload.slice(0, 2_400)}`;
+async function executeUniqueTool(
+  runtime: IntelligenceRuntime,
+  call: IntelligenceToolCall,
+  executed: Array<{ call: IntelligenceToolCall; result: IntelligenceToolResult }>,
+  toolCalls: IntelligenceToolResult[],
+  userText: string,
+): Promise<IntelligenceToolResult | null> {
+  const prior = findReusableSuccess(executed, call);
+  if (prior && !userAskedRefresh(userText)) {
+    const failedSame = [...executed].reverse().find(
+      (row) => row.call.name === call.name && !row.result.ok && isTransientToolFailure(row.result),
+    );
+    if (!failedSame) return null;
+  }
+  const result = await runtime.executeTool(call);
+  executed.push({ call, result });
+  toolCalls.push(result);
+  return result;
+}
+
+async function runScopedTool(
+  runtime: IntelligenceRuntime,
+  state: IntelligenceConversationState,
+  text: string,
+  buttonHint: string | null | undefined,
+  scoped: ScopeDecision | undefined,
+  executed: Array<{ call: IntelligenceToolCall; result: IntelligenceToolResult }>,
+  toolCalls: IntelligenceToolResult[],
+): Promise<IntelligenceToolResult | null> {
+  const planned = await planScopedTool(state, text, buttonHint, scoped);
+  if (!planned) return null;
+  return executeUniqueTool(runtime, planned, executed, toolCalls, text);
+}
+
+async function planScopedTool(
+  state: IntelligenceConversationState,
+  text: string,
+  buttonHint: string | null | undefined,
+  scoped?: ScopeDecision,
+): Promise<IntelligenceToolCall | null> {
+  if (scoped?.scope === "GENERAL_CONVERSATION" || scoped?.scope === "AMBIGUOUS") return null;
+  if (scoped?.scope === "SYSTEM_META" || scoped?.scope === "CONNECTOR_CAPABILITY") {
+    return { name: scoped.tool || "get_company_system_summary", arguments: {} };
+  }
+  if (scoped?.tool === "list_documents") {
+    return {
+      name: "list_documents",
+      arguments: prepareToolArguments("list_documents", {}, text, state, scoped.scope),
+    };
+  }
+  if (looksLikeFinanceRead(text) || scoped?.scope === "BUSINESS_SYSTEM") {
+    const toolName = scoped?.tool || "xero_sales_summary";
+    return {
+      name: toolName,
+      arguments: prepareToolArguments(toolName, {}, text, state, scoped?.scope),
+    };
+  }
+  if (
+    buttonHint === "search_other_docs" ||
+    scoped?.scope === "COMPANY_KNOWLEDGE" ||
+    !state.currentDocument ||
+    looksLikeNewDocumentSearch(text)
+  ) {
+    return { name: "search_company_knowledge", arguments: { query: text } };
+  }
+  if (scoped?.scope && scoped.scope !== "CURRENT_DOCUMENT" && scoped.scope !== "RECENT_ENTITY") {
+    return { name: "search_company_knowledge", arguments: { query: text } };
+  }
+  if (!state.currentDocument) return { name: "search_company_knowledge", arguments: { query: text } };
+  return {
+    name: "search_document",
+    arguments: prepareToolArguments(
+      "search_document",
+      { document_id: state.currentDocument.id, query: text },
+      text,
+      state,
+      scoped?.scope ?? "CURRENT_DOCUMENT",
+    ),
+  };
+}
+
+function finishIfSufficient(
+  result: IntelligenceToolResult,
+  input: {
+    toolCalls: IntelligenceToolResult[];
+    currentDocument: IntelligenceDocumentRef | null;
+    evidenceDocumentIds: string[];
+    modelRounds: IntelligenceModelUsage[];
+    scoped: ScopeDecision;
+    qualityFlags: Set<IntelligenceQualityFlag>;
+    repaired: boolean;
+  },
+): IntelligenceTurnResult | null {
+  if (!isSufficientBusinessResult(result)) return null;
+  const grounded = terminalFromToolCalls(input.toolCalls) ?? normaliseBusinessResult(result.name, result.data).summaryText;
+  return finish({
+    kind: result.ok ? "answer" : "failed",
+    text: grounded,
+    confidence: result.ok ? "strong" : "none",
+    offerSearchOther: false,
+    toolCalls: input.toolCalls,
+    currentDocument: input.currentDocument,
+    evidenceDocumentIds: input.evidenceDocumentIds,
+    clarification: false,
+    modelRounds: input.modelRounds,
+    route: "INTELLIGENT",
+    scope: input.scoped.scope,
+    lastAnswerTopic: input.scoped.lastAnswerTopic,
+    lastUserIntent: input.scoped.lastUserIntent,
+    qualityFlags: [...input.qualityFlags],
+    repaired: input.repaired,
+    fallbackUsed: input.modelRounds.some((row) => row.fallbackUsed),
+  });
+}
+
+function chooseGroundedAnswer(
+  modelText: string,
+  grounded: string | null,
+  toolCalls: IntelligenceToolResult[],
+): string {
+  const trimmed = String(modelText ?? "").trim();
+  if (!grounded) return trimmed;
+  if (isHollowAssistantText(trimmed)) return grounded;
+  if (/I reached Xero/i.test(trimmed) && /£|invoice|sales/i.test(grounded)) return grounded;
+  const lastOk = [...toolCalls].reverse().find((call) => call.ok && isSufficientBusinessResult(call));
+  if (lastOk) {
+    const normalised = normaliseBusinessResult(lastOk.name, lastOk.data);
+    if (normalised.sufficient && !answerContainsStructuredEvidence(trimmed, normalised)) return grounded;
+  }
+  if (
+    /permission|not allow|don’t allow|don't allow|do not have access/i.test(trimmed) &&
+    toolCalls.some((call) => call.ok)
+  ) {
+    return grounded;
+  }
+  return trimmed;
 }
 
 function emptyResult(

@@ -1,6 +1,6 @@
 export { INTELLIGENCE_TOOLS, INTELLIGENCE_TOOL_NAMES, GATEWAY_TOOL_ALIASES, SYSTEM_META_TOOLS, describeToolCatalogue, permittedToolsForConnectors } from "./catalogue.js";
 export { matchFastPath, isFastPathTurn, matchOpenSourceFastPath } from "./fast-path.js";
-export { classifyScope, isCorpusInventoryAsk, detectNamedDocumentSwitch } from "./scope.js";
+export { classifyScope, isCorpusInventoryAsk, detectNamedDocumentSwitch, pickMailboxTool } from "./scope.js";
 export {
   GENERIC_RETRY_COPY,
   classifyReadTerminal,
@@ -8,6 +8,23 @@ export {
   synthesizeFromToolCalls,
   synthesizeToolResult,
 } from "./verbalise-business.js";
+export {
+  isExplicitPermissionDenial,
+  isHollowAssistantText,
+  previousSubstantiveUserText,
+  summariseOutlookEvidence,
+  summariseXeroEvidence,
+  terminalFromToolCalls,
+} from "./evidence.js";
+export {
+  compactBusinessToolData,
+  equivalentToolArgs,
+  findReusableSuccess,
+  isSufficientBusinessResult,
+  normaliseBusinessResult,
+  userAskedRefresh,
+} from "./normalise.js";
+export type { BusinessResultFamily, NormalisedBusinessResult } from "./normalise.js";
 export { verbaliseSystemMeta, isSystemMetaTool, executeSystemMetaTool } from "./system-meta.js";
 export { resolveBusinessPeriod, withResolvedBusinessDates, businessSystemArgs } from "./periods.js";
 export { enrichDocumentQuery } from "./query-enrichment.js";

@@ -7,6 +7,17 @@ import { verbaliseSystemMeta, inventedCount, resetSystemMetaCache, loadDocumentI
 import type { IntelligenceRuntime, IntelligenceToolResult } from "./types.js";
 
 describe("scope classifier", () => {
+  it("routes newest-inbox asks to list, not semantic search", () => {
+    for (const text of [
+      "What is the newest email in the info inbox?",
+      "What is the newest email in the finance inbox?",
+    ]) {
+      const decision = classifyScope(text, buildConversationState({ userText: text }));
+      expect(decision.scope).toBe("BUSINESS_SYSTEM");
+      expect(decision.tool).toBe("outlook_list_messages");
+    }
+  });
+
   it("ranks explicit Xero data questions as BUSINESS_SYSTEM", () => {
     for (const text of [
       "tell me on xero what our sales are",
@@ -159,7 +170,7 @@ describe("scope classifier", () => {
     expect(classifyScope("Give me more detail.", afterPo)).toMatchObject({
       scope: "GENERAL_CONVERSATION",
       noTool: true,
-      lastUserIntent: "rephrase",
+      lastUserIntent: "more_detail",
     });
     expect(classifyScope("What were we talking about?", afterPo)).toMatchObject({
       scope: "GENERAL_CONVERSATION",

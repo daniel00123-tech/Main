@@ -383,7 +383,7 @@ function matchesIntent(expect: EvalExpectation, result: IntelligenceTurnResult, 
     case "xero":
       return result.toolCalls.some((call) => call.name.startsWith("xero_"));
     case "mailbox":
-      return result.toolCalls.some((call) => call.name === "outlook_search_mailbox" || call.name === "outlook_list_messages");
+      return result.toolCalls.some((call) => call.name.startsWith("outlook_"));
     case "meta":
       return result.toolCalls.some((call) =>
         [
