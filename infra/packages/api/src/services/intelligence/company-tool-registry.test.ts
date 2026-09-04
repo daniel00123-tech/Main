@@ -100,6 +100,9 @@ describe("company tool registry", () => {
     expect(detectRequestedCapabilities("Look in the inbox for an invoice PDF")).not.toContain("ACCOUNTING_INVOICE_SEARCH");
     expect(wantsMultiCapabilityRead("Look in the inbox for an invoice PDF")).toBe(false);
     expect(detectRequestedCapabilities("Newest document")).toContain("CATALOGUE_LIST");
+    expect(detectRequestedCapabilities("What were sales in March?")).toContain("ACCOUNTING_WAREHOUSE");
+    expect(detectRequestedCapabilities("What are sales right now?")).toContain("ACCOUNTING_SALES");
+    expect(detectRequestedCapabilities("What are sales right now?")).not.toContain("ACCOUNTING_WAREHOUSE");
     expect(capabilityForPlatformTool("outlook_search_mailbox")).toBe("EMAIL_SEARCH");
   });
 

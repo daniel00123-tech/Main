@@ -143,6 +143,7 @@ routes.post("/api/companies/:slug/chat/conversations/:id/messages", requireAuth,
         sessionUser: ctx.access.sessionUser,
         conversationId: c.req.param("id"),
         text: readMessageText(body),
+        userAgent: c.req.header("User-Agent") ?? null,
         waitUntil: (promise) => c.executionCtx.waitUntil(promise),
       }),
     );
@@ -163,6 +164,7 @@ routes.post("/api/companies/:slug/chat/messages", requireAuth, async (c) => {
         sessionUser: ctx.access.sessionUser,
         conversationId: typeof body.conversationId === "string" ? body.conversationId : null,
         text: readMessageText(body),
+        userAgent: c.req.header("User-Agent") ?? null,
         waitUntil: (promise) => c.executionCtx.waitUntil(promise),
       }),
     );
@@ -181,6 +183,7 @@ routes.post("/api/companies/:slug/chat/conversations/:id/messages/stream", requi
     sessionUser: ctx.access.sessionUser,
     conversationId: c.req.param("id"),
     text: readMessageText(body),
+    userAgent: c.req.header("User-Agent") ?? null,
   });
 });
 
@@ -193,6 +196,7 @@ routes.post("/api/companies/:slug/chat/messages/stream", requireAuth, async (c) 
     sessionUser: ctx.access.sessionUser,
     conversationId: typeof body.conversationId === "string" ? body.conversationId : null,
     text: readMessageText(body),
+    userAgent: c.req.header("User-Agent") ?? null,
   });
 });
 

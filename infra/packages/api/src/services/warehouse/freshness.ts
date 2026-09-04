@@ -3,9 +3,11 @@
  * Concepts, not phrase patches. Uncertain → truthful freshness, do not invent.
  */
 
+import { getZonedParts } from "../automation-engine/schedule";
 import {
   WAREHOUSE_FRESH_ENOUGH_MS,
   WAREHOUSE_STALE_AFTER_MS,
+  WAREHOUSE_TIMEZONE,
   warehouseHealthIsServable,
   type WarehouseCompleteness,
   type WarehouseEvidence,
@@ -13,7 +15,36 @@ import {
   type WarehouseHealth,
 } from "./standard";
 
-export function classifyQueryFreshness(text: string): WarehouseFreshnessClass {
+const MONTH_NAMES = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+] as const;
+
+function mentionedCompletedMonth(text: string, now: Date): boolean {
+  const lower = text.toLowerCase();
+  const parts = getZonedParts(now, WAREHOUSE_TIMEZONE);
+  const yearMatch = lower.match(/\b(20\d{2})\b/);
+  const year = yearMatch ? Number(yearMatch[1]) : parts.year;
+  for (let index = 0; index < MONTH_NAMES.length; index += 1) {
+    if (!new RegExp(`\\b${MONTH_NAMES[index]}\\b`).test(lower)) continue;
+    const month = index + 1;
+    if (year < parts.year) return true;
+    if (year === parts.year && month < parts.month) return true;
+  }
+  return false;
+}
+
+export function classifyQueryFreshness(text: string, now = new Date()): WarehouseFreshnessClass {
   const value = String(text ?? "").trim();
   if (!value) return "UNCERTAIN";
 
@@ -25,10 +56,11 @@ export function classifyQueryFreshness(text: string): WarehouseFreshnessClass {
     /\b(is|has) invoice\b.+\b(paid|voided|authorised|outstanding)\b/i.test(value);
 
   const historical =
-    /\b(each month|month by month|over time|trend|trends|last (six|6|three|3|twelve|12) months|last year|this quarter|same point last|compare .+ (month|quarter|year)|highest-value customers over|proportion of invoiced|end of each month|historical|over this period)\b/i.test(
+    /\b(each month|month by month|month[- ]over[- ]month|over time|trend|trends|last (six|6|three|3|twelve|12) (completed )?months|last (few )?months|last year|previous month|last month|this quarter|same point last|compare .+ (month|quarter|year)|highest-value customers over|proportion of invoiced|end of each month|historical|over this period)\b/i.test(
       value,
     ) ||
-    /\bhow has (overdue|outstanding|debt|sales) (moved|changed|changed over)\b/i.test(value);
+    /\bhow has (overdue|outstanding|debt|sales) (moved|changed|changed over)\b/i.test(value) ||
+    mentionedCompletedMonth(value, now);
 
   const currentButMaybeFresh =
     /\b(this month|mtd|month to date|sales today|current mtd)\b/i.test(value) &&
@@ -40,6 +72,17 @@ export function classifyQueryFreshness(text: string): WarehouseFreshnessClass {
   if (currentButMaybeFresh) return "CURRENT_BUT_WAREHOUSE_FRESH_ENOUGH";
   if (currentLive && historical) return "UNCERTAIN";
   return "UNCERTAIN";
+}
+
+export function expectedAccountingSource(
+  text: string,
+  now = new Date(),
+): "xero_warehouse" | "xero_live" | "uncertain" {
+  const freshness = classifyQueryFreshness(text, now);
+  if (freshness === "HISTORICAL_ANALYTICAL") return "xero_warehouse";
+  if (freshness === "CURRENT_LIVE_STATE") return "xero_live";
+  if (freshness === "CURRENT_BUT_WAREHOUSE_FRESH_ENOUGH") return "xero_live";
+  return "uncertain";
 }
 
 export function warehouseIsStale(lastSuccessfulSync: string | null | undefined, now = Date.now()): boolean {

@@ -22,29 +22,7 @@ import { identityFromMetadata, lookupKnowledgeSourceUrl, persistDiscoveredSource
 import { chunksFromFetchPayload, queryTerms, rejectWeakSearchHits, searchDocument } from "./whatsapp-grounded-qa";
 import { FETCH_TIMEOUT_MS, KNOWLEDGE_SEARCH_TIMEOUT_MS, MCP_TIMEOUT_MS, withBoundedTimeout } from "./whatsapp-timeouts";
 import { PORTAL_CHAT_SOURCE_CLIENT, toolStatusLabel, type PortalChatContext, type PortalChatStatusEvent } from "./portal-chat-types";
-
-const ALLOWED_GATEWAY_TOOLS = new Set([
-  "search",
-  COMPANY_KNOWLEDGE_SEARCH_TOOL,
-  "fetch",
-  COMPANY_KNOWLEDGE_READ_TOOL,
-  "database_summary",
-  "system_health",
-  "xero_search_invoices",
-  "xero_get_organisation",
-  "xero_sales_summary",
-  "xero_profit_and_loss",
-  "xero_get_invoice",
-  "xero_search_contacts",
-  "xero_list_overdue_invoices",
-  "xero_aged_receivables",
-  "xero_top_customers",
-  "outlook_search_mailbox",
-  "outlook_list_messages",
-  "outlook_get_message",
-  "ask_document",
-  "list_documents",
-]);
+import { BUSINESS_GATEWAY_TOOL_SET, businessGatewayTimeoutMs } from "./intelligence/business-gateway-tools";
 
 export type PortalChatGatewayFn = (
   env: Env,
@@ -62,6 +40,7 @@ export function createPortalChatRuntime(
     waitUntil?: (promise: Promise<unknown>) => void;
     onStatus?: (status: PortalChatStatusEvent) => void;
     executeGateway?: PortalChatGatewayFn;
+    trafficClass?: string | null;
   },
 ): IntelligenceRuntime {
   const fetchCache = new Map<string, ReturnType<typeof toStandardFetchPayload>>();
@@ -84,7 +63,7 @@ export function createPortalChatRuntime(
       }
 
       const gatewayName = GATEWAY_TOOL_ALIASES[call.name] ?? call.name;
-      if (!ALLOWED_GATEWAY_TOOLS.has(gatewayName)) {
+      if (!BUSINESS_GATEWAY_TOOL_SET.has(gatewayName)) {
         return { name: call.name, ok: false, latencyMs: Date.now() - started, data: null, error: "tool_not_permitted" };
       }
 
@@ -94,9 +73,7 @@ export function createPortalChatRuntime(
           ? KNOWLEDGE_SEARCH_TIMEOUT_MS
           : gatewayName === COMPANY_KNOWLEDGE_READ_TOOL || gatewayName === "fetch"
             ? FETCH_TIMEOUT_MS
-            : /^(outlook_|xero_|list_documents)/.test(gatewayName)
-              ? 20_000
-              : MCP_TIMEOUT_MS;
+            : businessGatewayTimeoutMs(gatewayName, MCP_TIMEOUT_MS);
 
       const fetched = await withBoundedTimeout(
         gateway(env, {
@@ -108,6 +85,7 @@ export function createPortalChatRuntime(
           interactionId: input.interactionId,
           parentRequestId: input.interactionId,
           customerRequestId: input.interactionId,
+          trafficClass: input.trafficClass ?? undefined,
           waitUntil: input.waitUntil,
         }),
         timeoutMs,
@@ -290,6 +268,7 @@ async function runSearchDocument(
     interactionId: string;
     context: PortalChatContext;
     waitUntil?: (promise: Promise<unknown>) => void;
+    trafficClass?: string | null;
   },
   call: IntelligenceToolCall,
   started: number,
@@ -319,6 +298,7 @@ async function runSearchDocument(
         interactionId: input.interactionId,
         parentRequestId: input.interactionId,
         customerRequestId: input.interactionId,
+        trafficClass: input.trafficClass ?? undefined,
         waitUntil: input.waitUntil,
       }),
       FETCH_TIMEOUT_MS,

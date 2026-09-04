@@ -3,7 +3,12 @@
  * A standalone feature branch that dropped a critical surface fails these imports/checks.
  */
 
-import { classifyUsageOutcome, elvexCan, resolveBusinessSystemIntent } from "@infra/shared";
+import {
+  classifyUsageOutcome,
+  elvexCan,
+  friendlyIngestionReason,
+  resolveBusinessSystemIntent,
+} from "@infra/shared";
 import { sendPortalChatMessage } from "./portal-chat";
 import { handleInfraMcpJsonRpc } from "./mcp-gateway";
 import { withXeroReadTools } from "./xero-read-tools";
@@ -261,6 +266,16 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (!formatMailboxScanCount({ health: "FAILED", messagesScanned: 0, errorCode: "X" }).includes("SCAN FAILED")) {
     throw new Error("failed mailbox scans must not render as zero");
+  }
+  if (!PRODUCTION_SUPERSTACK_CAPABILITIES.includes("microsoft_sync_report_plain_english")) {
+    throw new Error("microsoft sync report capability missing");
+  }
+  if (
+    friendlyIngestionReason("AADSTS7000229").includes("AADSTS") ||
+    friendlyIngestionReason("ATTACHMENT_ENUM_FAILED").includes("ATTACHMENT_ENUM") ||
+    friendlyIngestionReason("MICROSOFT_TOKEN_DENIED").includes("TOKEN_DENIED")
+  ) {
+    throw new Error("customer Microsoft sync copy must not expose Graph or ingest error codes");
   }
   if (!isWarehouseToolName("warehouse_sales_analysis") || warehouseSlotsPerWeek() !== 37) {
     throw new Error("business data warehouse schedule or tools missing");

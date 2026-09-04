@@ -1296,6 +1296,29 @@ connectors.post("/api/internal/el-whatsapp-qa", async (c) => {
   }
 });
 
+connectors.post("/api/internal/overnight-qa", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      stage?: string;
+      ids?: string[];
+      sendEmail?: boolean;
+    };
+    const { runOvernightQa } = await import("../services/overnight-qa/campaign");
+    return c.json(
+      await runOvernightQa(c.env, {
+        stage: body.stage,
+        ids: Array.isArray(body.ids) ? body.ids.map(String) : undefined,
+        sendEmail: body.sendEmail === true,
+      }),
+    );
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Overnight QA failed" }, 500);
+  }
+});
+
 connectors.post("/api/internal/document-catalogue-acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

@@ -62,6 +62,8 @@ export async function runOfficeStaffRbacAcceptance(env: Env): Promise<Record<str
     companyId: COMPANY_ID,
     sessionUser,
     text: "Tell me our Xero sales this month.",
+    trafficClass: "TEST",
+    userAgent: "InfraAcceptance/1.0",
   });
   async function ask(text: string, conversationId?: string) {
     return sendPortalChatMessage(env, {
@@ -69,6 +71,8 @@ export async function runOfficeStaffRbacAcceptance(env: Env): Promise<Record<str
       sessionUser,
       conversationId,
       text,
+      trafficClass: "TEST",
+      userAgent: "InfraAcceptance/1.0",
     });
   }
   const timedOut = (reply: string) => /need another moment|try asking once more|couldn.?t process/i.test(reply);

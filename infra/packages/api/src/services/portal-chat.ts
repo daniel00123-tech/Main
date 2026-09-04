@@ -224,6 +224,8 @@ export async function sendPortalChatMessage(
     completer?: IntelligenceCompleter;
     executeGateway?: PortalChatGatewayFn;
     connectors?: string[];
+    trafficClass?: string | null;
+    userAgent?: string | null;
   },
 ): Promise<PortalChatTurnResult> {
   const text = input.text.replace(/\s+/g, " ").trim();
@@ -263,6 +265,8 @@ export async function sendPortalChatMessage(
   const trafficClass = classifyElTraffic({
     sourceClient: "portal_chat",
     actorEmail: input.sessionUser.email,
+    trafficClass: input.trafficClass,
+    userAgent: input.userAgent,
   });
   if (isLiveElBillingEnv(env) && shouldChargeElCustomerRequest(input.companyId, trafficClass)) {
     const settled = await settleElCustomerRequest(env.DB, {
@@ -328,6 +332,7 @@ export async function sendPortalChatMessage(
     waitUntil: input.waitUntil,
     onStatus: input.onStatus,
     executeGateway: input.executeGateway,
+    trafficClass,
   });
 
   let result = await runIntelligenceTurn({
