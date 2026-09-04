@@ -1237,6 +1237,21 @@ connectors.post("/api/internal/portal-chat-acceptance", async (c) => {
   }
 });
 
+connectors.post("/api/internal/portal-chat-read-acceptance", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runPortalChatReadAcceptance } = await import("../services/portal-chat-read-acceptance");
+    return c.json(await runPortalChatReadAcceptance(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Portal chat read acceptance failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/document-catalogue-acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

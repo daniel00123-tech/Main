@@ -55,10 +55,12 @@ function remember(state: IntelligenceConversationState, text: string): string {
     const amount = state.lastAnswerText.match(/£\s?[\d,]+(?:\.\d{2})?/);
     if (amount) return `The amount I mentioned was ${amount[0]}.`;
   }
-  if (state.lastAnswerTopic) {
-    return `We were talking about ${humanTopic(state.lastAnswerTopic)}${
+  if (state.lastAnswerTopic || state.lastAnswerText) {
+    const topic = humanTopic(state.lastAnswerTopic || "conversation");
+    const detail = state.lastAnswerText ? ` ${simplify(state.lastAnswerText)}` : "";
+    return `We were talking about ${topic}${
       state.currentDocument ? `, and I still have ${state.currentDocument.title} as context` : ""
-    }.`;
+    }.${detail}`;
   }
   if (state.currentDocument) {
     return `We had ${state.currentDocument.title} as the current file.`;
@@ -77,6 +79,7 @@ function humanTopic(topic: string): string {
     email: "email",
     automations: "automations",
     conversation: "the previous answer",
+    "the PO process": "the PO process",
   };
   return labels[topic] ?? topic.replace(/_/g, " ");
 }

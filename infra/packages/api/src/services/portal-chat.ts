@@ -17,6 +17,11 @@ import { listConnectedConnectorIds } from "./whatsapp-capabilities";
 import { createPortalChatRuntime, type PortalChatGatewayFn } from "./portal-chat-runtime";
 import { publicToolErrorMessage } from "./public-errors";
 import {
+  classifyReadTerminal,
+  isGenericRetryCopy,
+  synthesizeFromToolCalls,
+} from "./intelligence/verbalise-business.js";
+import {
   emptyPortalChatContext,
   titleFromUserText,
   type PortalChatContext,
@@ -348,9 +353,13 @@ export function polishPortalReply(result: IntelligenceTurnResult, question: stri
     return publicToolErrorMessage(status, raw).message;
   }
   let text = (result.text ?? "").trim();
+  if (isGenericRetryCopy(text) && result.toolCalls.length > 0) {
+    text = synthesizeFromToolCalls(result.toolCalls, question);
+  }
   if (!text) {
-    if (result.kind === "failed") return "INFRA couldn’t process that request just now. Please try again.";
-    text = "I'm here — what would help?";
+    if (result.toolCalls.length > 0) text = synthesizeFromToolCalls(result.toolCalls, question);
+    else if (result.kind === "failed") return "INFRA couldn’t process that request just now. Please try again.";
+    else text = "I'm here — what would help?";
   }
   const sourceUrl = result.currentDocument?.url ?? null;
   const wantsSource =
@@ -361,6 +370,8 @@ export function polishPortalReply(result: IntelligenceTurnResult, question: stri
   }
   return text;
 }
+
+export { classifyReadTerminal, isGenericRetryCopy } from "./intelligence/verbalise-business.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -404,6 +415,7 @@ function metadataFromTurn(result: IntelligenceTurnResult): PortalChatMessageMeta
     permissionDenied: result.toolCalls.some((call) => isPermissionDenial(call.error, call.data)),
     controlledAction: result.kind === "controlled_action",
     citeSource: result.citeSource,
+    terminal: classifyReadTerminal(result.toolCalls, result.text, result.kind),
   };
 }
 

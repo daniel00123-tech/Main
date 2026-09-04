@@ -72,6 +72,18 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     permission: "outlook shared mailbox read",
   },
   {
+    name: "outlook_list_messages",
+    description: "List the newest messages in an included shared mailbox (read only).",
+    whenToUse: "User asks for the newest, latest, or recent email in an inbox they may read.",
+    whenNotToUse: "Not for Drive/SharePoint documents. Writes are forbidden. Use search when they name a sender or subject.",
+    parameters: {
+      mailboxAddress: { description: "Included shared mailbox SMTP if known" },
+      limit: { type: "number", description: "How many recent messages to return, default 5" },
+    },
+    outputShape: "{ mailboxAddress, messages: [{ subject, from, receivedDateTime }] }",
+    permission: "outlook shared mailbox read",
+  },
+  {
     name: "xero_sales_summary",
     description: "Read Xero sales/invoice summary for a real date range.",
     whenToUse: "User asks about sales, invoices, or overdue amounts in general.",
@@ -239,6 +251,7 @@ export const GATEWAY_TOOL_ALIASES: Record<string, string> = {
   database_summary: "database_summary",
   system_health: "system_health",
   outlook_search_mailbox: "outlook_search_mailbox",
+  outlook_list_messages: "outlook_list_messages",
   xero_sales_summary: "xero_sales_summary",
   xero_list_overdue_invoices: "xero_list_overdue_invoices",
   xero_get_invoice: "xero_get_invoice",
@@ -275,7 +288,7 @@ export function permittedToolsForConnectors(connectors: string[]): string[] {
   const hasMailbox = connectors.some((id) => /outlook|microsoft|mailbox/i.test(id));
   return INTELLIGENCE_TOOLS.filter((tool) => {
     if (XERO_TOOLS.has(tool.name)) return hasXero;
-    if (tool.name === "outlook_search_mailbox") return hasMailbox;
+    if (tool.name === "outlook_search_mailbox" || tool.name === "outlook_list_messages") return hasMailbox;
     return true;
   }).map((tool) => tool.name);
 }

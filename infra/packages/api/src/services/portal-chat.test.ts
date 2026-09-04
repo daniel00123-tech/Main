@@ -7,6 +7,7 @@ import type { IntelligenceChannel } from "./intelligence/types.js";
 import {
   createPortalConversation,
   getPortalConversation,
+  isGenericRetryCopy,
   isPermissionDenial,
   listPortalConversations,
   polishPortalReply,
@@ -319,6 +320,33 @@ describe("shared intelligence across ChatGPT, WhatsApp, and portal chat", () => 
     expect(result.assistantMessage.content).not.toMatch(/£\s?\d/);
   });
 
+  it("synthesises Xero sales from a bulky payload without the generic retry", async () => {
+    const result = await sendPortalChatMessage({ DB: memoryDb() } as Env, {
+      companyId: "co_el",
+      sessionUser: user("director"),
+      text: "What are our Xero sales this month?",
+      connectors: ["conn_xero"],
+      executeGateway: async () =>
+        ({
+          status: 200,
+          result: {
+            source: "Xero",
+            sales_total: 4554,
+            invoice_count: 27,
+            currencyCode: "GBP",
+            period: { fromDate: "2026-09-01", toDate: "2026-09-04" },
+            transactions: Array.from({ length: 80 }, (_, index) => ({
+              invoiceNumber: `INV-${index}`,
+              notes: "x".repeat(80),
+            })),
+          },
+        }) as never,
+    });
+    expect(isGenericRetryCopy(result.assistantMessage.content)).toBe(false);
+    expect(result.assistantMessage.content).toMatch(/4,554|4554/);
+    expect(result.assistantMessage.metadata.toolNames).toContain("xero_sales_summary");
+  });
+
   it("live membership denial takes effect immediately", async () => {
     const db = memoryDb();
     db.memberships.push({
@@ -402,5 +430,40 @@ describe("portal chat polish", () => {
         "What are our Xero sales this month?",
       ),
     ).toBe("Sales this month are £4,554.");
+  });
+
+  it("does not keep the generic retry when Outlook already succeeded", () => {
+    expect(
+      polishPortalReply(
+        {
+          kind: "failed",
+          text: "I need another moment to finish that. Try asking once more.",
+          confidence: "none",
+          offerSearchOther: false,
+          toolCalls: [
+            {
+              name: "outlook_list_messages",
+              ok: true,
+              latencyMs: 90,
+              data: {
+                mailboxAddress: "info@elvexpropertyservices.com",
+                messages: [{ subject: "Keys for 12 High Street", from: "tenant@example.com", receivedDateTime: "2026-09-04T08:40:00Z" }],
+              },
+            },
+          ],
+          currentDocument: null,
+          evidenceDocumentIds: [],
+          clarification: false,
+          citeSource: false,
+          modelRounds: [],
+          totalModelMs: 80,
+          totalToolMs: 90,
+          provider: "workers-ai",
+          model: "llama",
+          estimatedCostUsd: 0,
+        },
+        "What is the newest email in the info inbox?",
+      ),
+    ).toMatch(/Keys for 12 High Street/);
   });
 });
