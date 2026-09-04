@@ -11,8 +11,21 @@ import { probeMailboxReadAccess } from "./microsoft-outlook-graph";
 const tenantCache = new Map<string, string | null>();
 
 export type OutlookGraphAccess =
-  | { ok: true; accessToken: string; tenantId: string; source: string }
-  | { ok: false; code: string; message: string };
+  | { ok: true; accessToken: string; tenantId: string; source: string; clientId?: string | null }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      tenantId?: string | null;
+      clientId?: string | null;
+      httpStatus?: number;
+      aadError?: string | null;
+      aadErrorCodes?: number[];
+      correlationId?: string | null;
+      traceId?: string | null;
+      timestamp?: string | null;
+      tokenUrl?: string | null;
+    };
 
 function domainOfMailbox(mailboxAddress: string): string | null {
   const at = mailboxAddress.lastIndexOf("@");
@@ -46,11 +59,12 @@ export async function discoverEntraTenantIdFromDomain(domain: string): Promise<s
 
 export async function resolveOutlookGraphAccess(
   env: Env,
-  input: { companyId: string; mailboxAddress: string; actor?: string },
+  input: { companyId: string; mailboxAddress: string; actor?: string; bypassCache?: boolean },
 ): Promise<OutlookGraphAccess> {
   const companyToken = await acquireMicrosoftAppToken(env, {
     companyId: input.companyId,
     actor: input.actor,
+    bypassCache: input.bypassCache,
   });
   if (companyToken.ok) {
     return {
@@ -58,6 +72,7 @@ export async function resolveOutlookGraphAccess(
       accessToken: companyToken.accessToken,
       tenantId: companyToken.tenantId,
       source: `company_app:${companyToken.authMode}`,
+      clientId: String(env.MICROSOFT_CLIENT_ID ?? "").trim() || null,
     };
   }
 
@@ -85,12 +100,25 @@ export async function resolveOutlookGraphAccess(
     return { ok: false, code: "MICROSOFT_NOT_CONFIGURED", message: companyToken.message };
   }
 
-  const domainToken = await acquireMicrosoftAppToken(env, { tenantId, actor: input.actor });
+  const domainToken = await acquireMicrosoftAppToken(env, {
+    tenantId,
+    actor: input.actor,
+    bypassCache: input.bypassCache,
+  });
   if (!domainToken.ok) {
     return {
       ok: false,
       code: domainToken.code,
       message: domainToken.message,
+      tenantId,
+      clientId: clientId || null,
+      httpStatus: "httpStatus" in domainToken ? domainToken.httpStatus : undefined,
+      aadError: "aadError" in domainToken ? domainToken.aadError : null,
+      aadErrorCodes: "aadErrorCodes" in domainToken ? domainToken.aadErrorCodes : [],
+      correlationId: "correlationId" in domainToken ? domainToken.correlationId : null,
+      traceId: "traceId" in domainToken ? domainToken.traceId : null,
+      timestamp: "timestamp" in domainToken ? domainToken.timestamp : null,
+      tokenUrl: "tokenUrl" in domainToken ? domainToken.tokenUrl : null,
     };
   }
   return {
@@ -98,6 +126,7 @@ export async function resolveOutlookGraphAccess(
     accessToken: domainToken.accessToken,
     tenantId: domainToken.tenantId,
     source: "platform_app_domain_tenant",
+    clientId,
   };
 }
 

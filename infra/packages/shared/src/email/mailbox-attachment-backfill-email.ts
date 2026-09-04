@@ -15,7 +15,9 @@ export type MailboxBackfillPersonLine = {
   name: string;
   mailboxAddress?: string | null;
   excluded?: boolean;
-  messagesScanned?: number;
+  scanStatus?: "HEALTHY" | "DEGRADED" | "FAILED" | "EXCLUDED" | "COVERAGE_GAP";
+  scanLabel?: string;
+  messagesScanned?: number | null;
   attachments?: number;
   indexed?: number;
   failed?: number;
@@ -60,12 +62,22 @@ export function renderMailboxAttachmentBackfillEmail(data: MailboxBackfillEmailD
   const subject = EL_MAILBOX_ATTACHMENT_BACKFILL_SUBJECT;
   const footer = PLATFORM_EMAIL_NO_REPLY_FOOTER;
   const personLines = data.people.flatMap((person) => {
-    if (person.excluded) {
+    if (person.excluded || person.scanStatus === "EXCLUDED") {
       return [`${person.name}`, "Excluded", ""];
     }
+    const scanned =
+      person.scanLabel ||
+      (person.scanStatus === "FAILED"
+        ? "SCAN FAILED"
+        : person.scanStatus === "COVERAGE_GAP"
+          ? "MAILBOX COVERAGE GAP"
+          : person.messagesScanned === 0
+            ? "0 (successful empty scan)"
+            : String(person.messagesScanned ?? "SCAN FAILED"));
     return [
       person.name,
-      `Messages scanned: ${person.messagesScanned ?? 0}`,
+      `Health: ${person.scanStatus ?? "UNKNOWN"}`,
+      `Messages scanned: ${scanned}`,
       `Attachments: ${person.attachments ?? 0}`,
       `Indexed: ${person.indexed ?? 0}`,
       `Failed: ${person.failed ?? 0}`,
@@ -126,10 +138,19 @@ export function renderMailboxAttachmentBackfillEmail(data: MailboxBackfillEmailD
 
   const personHtml = data.people
     .map((person) => {
-      if (person.excluded) {
+      if (person.excluded || person.scanStatus === "EXCLUDED") {
         return `<p style="margin:0 0 12px;color:#CBD5E1;"><strong style="color:#F5F9FF;">${escapeHtml(person.name)}</strong><br />Excluded</p>`;
       }
-      return `<p style="margin:0 0 12px;color:#CBD5E1;"><strong style="color:#F5F9FF;">${escapeHtml(person.name)}</strong><br />Messages scanned: ${person.messagesScanned ?? 0}<br />Attachments: ${person.attachments ?? 0}<br />Indexed: ${person.indexed ?? 0}<br />Failed: ${person.failed ?? 0}</p>`;
+      const scanned =
+        person.scanLabel ||
+        (person.scanStatus === "FAILED"
+          ? "SCAN FAILED"
+          : person.scanStatus === "COVERAGE_GAP"
+            ? "MAILBOX COVERAGE GAP"
+            : person.messagesScanned === 0
+              ? "0 (successful empty scan)"
+              : String(person.messagesScanned ?? "SCAN FAILED"));
+      return `<p style="margin:0 0 12px;color:#CBD5E1;"><strong style="color:#F5F9FF;">${escapeHtml(person.name)}</strong><br />Health: ${escapeHtml(person.scanStatus ?? "UNKNOWN")}<br />Messages scanned: ${escapeHtml(scanned)}<br />Attachments: ${person.attachments ?? 0}<br />Indexed: ${person.indexed ?? 0}<br />Failed: ${person.failed ?? 0}</p>`;
     })
     .join("");
 

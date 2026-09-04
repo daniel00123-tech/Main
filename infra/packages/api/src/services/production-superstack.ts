@@ -24,6 +24,9 @@ import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
 import { discoverKnowledgeIntakeTarget, isKnowledgeIntakePath } from "./knowledge-intake";
 import { defaultIngestionPolicyForCompany } from "./mailbox-ingestion-policy";
 import { runElMailboxAttachmentBackfill } from "./mailbox-attachment-backfill";
+import { formatMailboxScanCount } from "./mailbox-scan-status";
+import { runElMailboxScanRepair } from "./mailbox-scan-repair";
+import { probeElMailboxLiveAccess } from "./mailbox-live-access";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -218,6 +221,12 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (typeof runElMailboxAttachmentBackfill !== "function") {
     throw new Error("EL mailbox attachment backfill missing");
+  }
+  if (typeof runElMailboxScanRepair !== "function" || typeof probeElMailboxLiveAccess !== "function") {
+    throw new Error("EL mailbox live access / scan repair missing");
+  }
+  if (!formatMailboxScanCount({ health: "FAILED", messagesScanned: 0, errorCode: "X" }).includes("SCAN FAILED")) {
+    throw new Error("failed mailbox scans must not render as zero");
   }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };

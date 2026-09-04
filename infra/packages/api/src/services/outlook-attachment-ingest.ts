@@ -29,6 +29,7 @@ import {
   uploadMicrosoftDocumentToKnowledge,
 } from "./microsoft-knowledge-bridge";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
+import { executeCompanyMcpOutlookRead } from "./microsoft-outlook-company-mcp";
 import {
   getMessageAttachmentContent,
   listMailboxMessages,
@@ -38,6 +39,7 @@ import {
 } from "./microsoft-outlook-graph";
 import { MicrosoftGraphError } from "./microsoft-graph";
 import { resolveOutlookGraphAccess } from "./outlook-graph-access";
+import { formatMailboxScanCount, mailboxScanHealth, type MailboxScanHealth } from "./mailbox-scan-status";
 
 const MAX_MESSAGES_PER_MAILBOX = 200;
 const MAX_RETRIES = 4;
@@ -71,7 +73,10 @@ export type NamedPersonMailboxReport = {
   approvedForAttachmentIngestion: boolean;
   graphAccessible: boolean | null;
   mailSearchEnabled: boolean;
-  messagesScanned: number;
+  messagesScanned: number | null;
+  messagesScannedLabel: string;
+  scanStatus: MailboxScanHealth;
+  errorCode: string | null;
   messagesWithAttachmentsInWindow: number;
   attachmentsFound: number;
   fetched: number;
@@ -231,38 +236,21 @@ async function discoverMessagesViaGraph(
   };
 }
 
-async function discoverMessagesViaMcp(
-  env: Env,
-  input: {
-    companyId: string;
-    mailboxAddress: string;
-    windowFrom: Date;
-    windowTo: Date;
-    actor: string;
-  },
-): Promise<
-  | { ok: true; messages: GraphMailMessageDetail[]; messagesScanned: number }
-  | { ok: false; code: string; message: string }
-> {
-  const listed = await executeOutlookReadTool(env, {
-    companyId: input.companyId,
-    toolName: "outlook_list_messages",
-    arguments: { mailboxAddress: input.mailboxAddress, limit: MAX_MESSAGES_PER_MAILBOX },
-    actor: input.actor,
-  });
-  if (!listed.ok) return { ok: false, code: listed.code, message: listed.message };
-  const record = asRecord(listed.result);
-  const rows = Array.isArray(record?.messages) ? record!.messages : [];
+function mapMcpListRows(
+  rows: unknown[],
+  windowFrom: Date,
+  windowTo: Date,
+): { messages: GraphMailMessageDetail[]; messagesScanned: number } {
   const inWindow = rows
     .map((row) => asRecord(row))
     .filter((row): row is Record<string, unknown> => Boolean(row))
     .filter((row) =>
-      timestampInWindow(asText(row.receivedDateTime) || asText(row.sentDateTime), input.windowFrom, input.windowTo),
+      timestampInWindow(asText(row.receivedDateTime) || asText(row.sentDateTime), windowFrom, windowTo),
     );
   const messages = inWindow
-    .filter((row) => Boolean(row.hasAttachments))
+    .filter((row) => Boolean(row.hasAttachments) || Boolean(row.attachments))
     .map((row) => ({
-      id: asText(row.id),
+      id: asText(row.id) || asText(row.messageId),
       subject: asText(row.subject) || null,
       bodyPreview: asText(row.bodyPreview) || null,
       from: typeof row.from === "string" ? { emailAddress: { address: row.from } } : null,
@@ -277,7 +265,89 @@ async function discoverMessagesViaMcp(
       webLink: asText(row.webLink) || null,
       parentFolderId: null,
     }));
-  return { ok: true, messages, messagesScanned: inWindow.length };
+  return { messages, messagesScanned: inWindow.length };
+}
+
+async function discoverMessagesViaMcp(
+  env: Env,
+  input: {
+    companyId: string;
+    mailboxAddress: string;
+    windowFrom: Date;
+    windowTo: Date;
+    actor: string;
+  },
+): Promise<
+  | { ok: true; messages: GraphMailMessageDetail[]; messagesScanned: number; via: string }
+  | { ok: false; code: string; message: string }
+> {
+  const attempts: Array<{ toolName: string; arguments: Record<string, unknown>; label: string }> = [
+    {
+      toolName: "outlook_list_messages",
+      arguments: { mailboxAddress: input.mailboxAddress, mailbox: input.mailboxAddress, limit: MAX_MESSAGES_PER_MAILBOX },
+      label: "company_mcp_list",
+    },
+    {
+      toolName: "outlook_search_mailbox",
+      arguments: {
+        mailboxAddress: input.mailboxAddress,
+        mailbox: input.mailboxAddress,
+        query: "hasAttachments:yes",
+        limit: MAX_MESSAGES_PER_MAILBOX,
+      },
+      label: "company_mcp_search_attachments",
+    },
+    {
+      toolName: "outlook_search_mailbox",
+      arguments: {
+        mailboxAddress: input.mailboxAddress,
+        mailbox: input.mailboxAddress,
+        query: input.mailboxAddress,
+        limit: MAX_MESSAGES_PER_MAILBOX,
+      },
+      label: "company_mcp_search_address",
+    },
+  ];
+  let lastError: { code: string; message: string } | null = null;
+  for (const attempt of attempts) {
+    const listed = await executeCompanyMcpOutlookRead(env, {
+      companyId: input.companyId,
+      toolName: attempt.toolName,
+      arguments: attempt.arguments,
+      actor: input.actor,
+    }).catch(async (err: unknown) => {
+      const fallback = await executeOutlookReadTool(env, {
+        companyId: input.companyId,
+        toolName: attempt.toolName,
+        arguments: attempt.arguments,
+        actor: input.actor,
+      });
+      if (!fallback.ok) {
+        return {
+          ok: false as const,
+          status: fallback.status,
+          code: fallback.code,
+          message: `${fallback.message}; ${err instanceof Error ? err.message : "direct mcp failed"}`,
+        };
+      }
+      return fallback;
+    });
+    if (!listed.ok) {
+      lastError = { code: listed.code, message: listed.message };
+      continue;
+    }
+    const record = asRecord(listed.result);
+    const rows = Array.isArray(record?.messages) ? record!.messages : [];
+    const mapped = mapMcpListRows(rows, input.windowFrom, input.windowTo);
+    if (mapped.messagesScanned > 0 || mapped.messages.length > 0) {
+      return { ok: true, ...mapped, via: attempt.label };
+    }
+    if (rows.length > 0) {
+      return { ok: true, ...mapped, via: attempt.label };
+    }
+  }
+  if (lastError) return { ok: false, code: lastError.code, message: lastError.message };
+  return { ok: true, messages: [], messagesScanned: 0, via: "company_mcp_empty" };
 }
 
 type ListedAttachment = GraphMailAttachment & { contentId?: string | null; contentBytes?: string | null };
@@ -992,13 +1062,16 @@ export async function ingestApprovedOutlookAttachments(
     let graph: { accessToken: string; tenantId: string } | null = null;
     let discoverVia = "none";
     let discoverError: string | null = null;
+    let errorCode: string | null = null;
+    let provenEmpty = false;
 
-    let messagesScanned = 0;
+    let messagesScanned: number | null = null;
     if (graphDiscover.ok) {
       messages = graphDiscover.messages;
       messagesScanned = graphDiscover.messagesScanned;
       graph = { accessToken: graphDiscover.accessToken, tenantId: graphDiscover.tenantId };
       discoverVia = "graph";
+      provenEmpty = graphDiscover.messagesScanned === 0;
     } else {
       const mcpDiscover = await discoverMessagesViaMcp(env, {
         companyId: input.companyId,
@@ -1007,31 +1080,44 @@ export async function ingestApprovedOutlookAttachments(
         windowTo: input.windowTo,
         actor,
       });
-      if (mcpDiscover.ok) {
+      if (mcpDiscover.ok && (mcpDiscover.messagesScanned > 0 || mcpDiscover.messages.length > 0)) {
         messages = mcpDiscover.messages;
         messagesScanned = mcpDiscover.messagesScanned;
-        discoverVia = "company_mcp";
+        discoverVia = mcpDiscover.via;
         discoverError = graphDiscover.ok === false ? graphDiscover.message : null;
+        errorCode = graphDiscover.ok === false ? graphDiscover.code : null;
       } else {
-        discoverError = `${graphDiscover.ok === false ? graphDiscover.message : ""}; ${mcpDiscover.message}`;
+        const mcpNote = mcpDiscover.ok
+          ? "MCP listed this mailbox as empty after Graph auth failed — empty is unproven"
+          : mcpDiscover.message;
+        errorCode = mcpDiscover.ok ? "MCP_EMPTY_UNPROVEN" : mcpDiscover.code;
+        discoverError = `${graphDiscover.ok === false ? graphDiscover.message : ""}; ${mcpNote}`;
         await markMailboxScanResult(env.DB, {
           companyId: input.companyId,
           mailboxAddress: mailbox.mailbox_address,
+          checkpoint: null,
           success: false,
           graphAccessible: false,
-          error: discoverError,
+          error: `${errorCode}: ${discoverError}`,
         });
         mailboxReports.push({
           mailboxAddress: mailbox.mailbox_address,
           mailboxType: mailbox.mailbox_type,
           ok: false,
+          scanned: true,
+          scanFailed: true,
+          scanStatus: "FAILED",
+          messagesScanned: null,
+          scannedLabel: formatMailboxScanCount({ health: "FAILED", messagesScanned: null, errorCode }),
           error: discoverError,
+          errorCode,
+          discoverVia: mcpDiscover.ok ? mcpDiscover.via : "none",
         });
         continue;
       }
     }
 
-    counts.messagesScanned += messagesScanned;
+    counts.messagesScanned += messagesScanned ?? 0;
     counts.messagesWithAttachments += messages.length;
     const attachmentSummaries: Array<Record<string, unknown>> = [];
     let latestCheckpoint = mailbox.last_checkpoint;
@@ -1125,22 +1211,41 @@ export async function ingestApprovedOutlookAttachments(
     }
 
     const scanOk = mailboxFailures === 0;
+    const health = mailboxScanHealth({
+      scanned: true,
+      scanFailed: !scanOk && mailboxFailures === 0 && !provenEmpty,
+      graphFailed: !graph && Boolean(discoverError),
+      fetchFailed: mailboxFailures > 0,
+      messagesScanned,
+      failures: mailboxFailures,
+      lastScanAt: mailbox.last_attachment_scan_at,
+    });
     await markMailboxScanResult(env.DB, {
       companyId: input.companyId,
       mailboxAddress: mailbox.mailbox_address,
       checkpoint: scanOk ? latestCheckpoint : null,
       success: scanOk,
       graphAccessible: Boolean(graph),
-      error: scanOk ? null : discoverError || `attachment ingest incomplete (${mailboxFailures} failed)`,
+      error: scanOk ? null : errorCode || discoverError || `attachment ingest incomplete (${mailboxFailures} failed)`,
     });
     mailboxReports.push({
       mailboxAddress: mailbox.mailbox_address,
       mailboxType: mailbox.mailbox_type,
       ok: scanOk,
+      scanned: true,
+      scanFailed: !scanOk,
+      scanStatus: health,
       discoverVia,
       graphAccessible: Boolean(graph),
       graphNote: discoverError,
+      errorCode: scanOk ? null : errorCode,
       messagesScanned,
+      scannedLabel: formatMailboxScanCount({
+        health,
+        messagesScanned,
+        errorCode: scanOk ? null : errorCode,
+      }),
+      provenEmpty,
       messagesWithAttachments: messages.length,
       attachments: attachmentSummaries,
       failed: mailboxFailures,
@@ -1212,6 +1317,30 @@ async function buildNamedPersonReports(
     );
     const scannedAttachments = Array.isArray(scanned?.attachments) ? scanned!.attachments : [];
     const included = row?.enabled_for_attachment_ingestion === 1 && !excluded;
+    const scanFailed = Boolean(scanned?.scanFailed) || scanned?.ok === false;
+    const health = mailboxScanHealth({
+      excluded: !included,
+      scanned: Boolean(scanned),
+      scanFailed,
+      lastScanAt: row?.last_attachment_scan_at,
+      graphFailed: scanned?.graphAccessible === false,
+      fetchFailed: Number(scanned?.failed ?? 0) > 0,
+      messagesScanned: scanned && scanned.messagesScanned != null ? Number(scanned.messagesScanned) : null,
+      failures: Number(scanned?.failed ?? 0),
+    });
+    const errorCode = scanFailed
+      ? asText(scanned?.errorCode) || asText(scanned?.error) || "MAILBOX_SCAN_FAILED"
+      : included && !scanned
+        ? "MAILBOX_COVERAGE_GAP"
+        : null;
+    const messagesScanned =
+      scanFailed || health === "COVERAGE_GAP" || health === "FAILED"
+        ? null
+        : scanned && scanned.messagesScanned != null
+          ? Number(scanned.messagesScanned)
+          : included
+            ? null
+            : 0;
     reports.push({
       name,
       mailboxAddress: user?.mailboxAddress ?? row?.mailbox_address ?? null,
@@ -1219,7 +1348,10 @@ async function buildNamedPersonReports(
       approvedForAttachmentIngestion: included,
       graphAccessible,
       mailSearchEnabled: row?.enabled_for_mail_search === 1,
-      messagesScanned: Number(scanned?.messagesScanned ?? 0),
+      messagesScanned,
+      messagesScannedLabel: formatMailboxScanCount({ health, messagesScanned, errorCode }),
+      scanStatus: health,
+      errorCode,
       messagesWithAttachmentsInWindow: Number(scanned?.messagesWithAttachments ?? 0),
       attachmentsFound: scannedAttachments.length || Number(scanned?.messagesWithAttachments ?? 0),
       fetched: scannedAttachments.filter((item) => {
