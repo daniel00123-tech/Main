@@ -1,3 +1,4 @@
+import { businessToolForIntent, resolveBusinessSystemIntent } from "@infra/shared";
 import { describeToolCatalogue, INTELLIGENCE_TOOL_NAMES, SYSTEM_META_TOOLS } from "./catalogue.js";
 import { answerGeneralConversation } from "./conversation.js";
 import { parseIntelligenceDecision, recoverDecision, validateToolRequest } from "./parse.js";
@@ -9,6 +10,7 @@ import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "
 import { parseCatalogueIntent, verbaliseDocumentCatalogue } from "../document-catalogue.js";
 import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
 import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
+import { GENERIC_RETRY_COPY, synthesizeFromToolCalls, synthesizeToolResult } from "./verbalise-business.js";
 import type {
   IntelligenceChannel,
   IntelligenceConfidence,
@@ -236,6 +238,39 @@ export async function runIntelligenceTurn(input: {
     }
   }
 
+  if (shouldRunDeterministicRead(scoped, input.text)) {
+    const read = await runDeterministicRead(input.runtime, scoped, input.text, workingState, permitted);
+    if (read) {
+      const doc =
+        [...read.toolCalls]
+          .reverse()
+          .map((call) => documentFromToolResult(call))
+          .find((item) => item) ?? null;
+      if (doc) {
+        currentDocument = doc;
+        if (!evidenceDocumentIds.includes(doc.id)) evidenceDocumentIds.push(doc.id);
+      }
+      return finish({
+        kind: read.ok ? "answer" : "failed",
+        text: read.text,
+        confidence: read.ok ? "strong" : "none",
+        offerSearchOther: Boolean(currentDocument),
+        toolCalls: read.toolCalls,
+        currentDocument,
+        evidenceDocumentIds,
+        clarification: false,
+        modelRounds: [],
+        route: "INTELLIGENT",
+        scope: scoped.scope,
+        lastAnswerTopic: scoped.lastAnswerTopic,
+        lastUserIntent: scoped.lastUserIntent,
+        qualityFlags: [...qualityFlags],
+        repaired,
+        fallbackUsed: false,
+      });
+    }
+  }
+
   const system = `${SECURITY_AND_PROTOCOL}\nDecided scope: ${scoped.scope}. Current document is context, not a mandatory search target.\nTools:\n${describeToolCatalogue(permitted)}`;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
@@ -337,6 +372,26 @@ export async function runIntelligenceTurn(input: {
       }
       if (looksIrrelevant(result, currentDocument)) qualityFlags.add("irrelevant_result");
       transcript.push(formatToolTranscript(result));
+      if (shouldStopAfterRead(scoped, result)) {
+        return finish({
+          kind: result.ok ? "answer" : "failed",
+          text: synthesizeToolResult(result, input.text),
+          confidence: result.ok ? "strong" : "none",
+          offerSearchOther: Boolean(currentDocument),
+          toolCalls,
+          currentDocument,
+          evidenceDocumentIds,
+          clarification: false,
+          modelRounds,
+          route: "INTELLIGENT",
+          scope: scoped.scope,
+          lastAnswerTopic: scoped.lastAnswerTopic,
+          lastUserIntent: scoped.lastUserIntent,
+          qualityFlags: [...qualityFlags],
+          repaired,
+          fallbackUsed: modelRounds.some((row) => row.fallbackUsed),
+        });
+      }
       continue;
     }
 
@@ -399,7 +454,24 @@ export async function runIntelligenceTurn(input: {
         });
       }
       if (toolCalls.some((call) => call.ok) && scoped.scope === "BUSINESS_SYSTEM") {
-        continue;
+        return finish({
+          kind: "answer",
+          text: synthesizeFromToolCalls(toolCalls, input.text),
+          confidence: "strong",
+          offerSearchOther: Boolean(currentDocument),
+          toolCalls,
+          currentDocument,
+          evidenceDocumentIds,
+          clarification: false,
+          modelRounds,
+          route: "INTELLIGENT",
+          scope: scoped.scope,
+          lastAnswerTopic: scoped.lastAnswerTopic,
+          lastUserIntent: scoped.lastUserIntent,
+          qualityFlags: [...qualityFlags],
+          repaired,
+          fallbackUsed: modelRounds.some((row) => row.fallbackUsed),
+        });
       }
       return finish({
         kind: "clarify",
@@ -453,6 +525,45 @@ export async function runIntelligenceTurn(input: {
     }
   }
 
+  if (
+    toolCalls.length === 0 &&
+    shouldForceScopedTool(scoped) &&
+    (scoped.scope === "BUSINESS_SYSTEM" || isProcessOrPolicyAsk(input.text))
+  ) {
+    const lastChance = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+    if (lastChance) {
+      toolCalls.push(lastChance);
+      adoptFromTool(
+        lastChance,
+        toolCalls,
+        () => currentDocument,
+        (doc) => {
+          currentDocument = doc;
+        },
+        evidenceDocumentIds,
+        input.buttonHint,
+      );
+      return finish({
+        kind: lastChance.ok ? "answer" : "failed",
+        text: synthesizeToolResult(lastChance, input.text),
+        confidence: lastChance.ok ? "strong" : "none",
+        offerSearchOther: Boolean(currentDocument),
+        toolCalls,
+        currentDocument,
+        evidenceDocumentIds,
+        clarification: false,
+        modelRounds,
+        route: "INTELLIGENT",
+        scope: scoped.scope,
+        lastAnswerTopic: scoped.lastAnswerTopic,
+        lastUserIntent: scoped.lastUserIntent,
+        qualityFlags: [...qualityFlags, "fallback"],
+        repaired,
+        fallbackUsed: true,
+      });
+    }
+  }
+
   if (toolCalls.length === 0 && modelRounds.every((round) => !round.model || round.provider === "none")) {
     return finish({
       kind: "failed",
@@ -476,7 +587,7 @@ export async function runIntelligenceTurn(input: {
   if (toolCalls.length > 0) {
     return finish({
       kind: "failed",
-      text: fallbackFromEvidence(toolCalls, currentDocument),
+      text: fallbackFromEvidence(toolCalls, currentDocument, input.text),
       confidence: "partial",
       offerSearchOther: Boolean(currentDocument),
       toolCalls,
@@ -496,7 +607,7 @@ export async function runIntelligenceTurn(input: {
 
   return finish({
     kind: "failed",
-    text: "I need another moment to finish that. Try asking once more.",
+    text: GENERIC_RETRY_COPY,
     confidence: "none",
     offerSearchOther: Boolean(currentDocument),
     toolCalls,
@@ -581,7 +692,16 @@ function searchHitTitles(toolCalls: IntelligenceToolResult[]): string[] {
 function fallbackFromEvidence(
   toolCalls: IntelligenceToolResult[],
   current: IntelligenceDocumentRef | null,
+  question = "",
 ): string {
+  const business = toolCalls.find(
+    (call) =>
+      call.name.startsWith("xero_") ||
+      /outlook/i.test(call.name) ||
+      call.name === "search_company_knowledge" ||
+      call.name === "list_documents",
+  );
+  if (business) return synthesizeFromToolCalls(toolCalls, question);
   const last = [...toolCalls].reverse().find((call) => call.ok);
   const doc = last ? documentFromToolResult(last) : current;
   if (doc) {
@@ -710,6 +830,30 @@ function prepareToolArguments(
   if (needsBusinessDates(name)) {
     next = withResolvedBusinessDates(name, next, text);
   }
+  if (name === "search_company_knowledge" || name === "search") {
+    next.query = String(next.query ?? next.q ?? "").trim() || text.trim();
+    return next;
+  }
+  if (name === "outlook_list_messages" || name === "outlook_search_mailbox") {
+    const intent = resolveBusinessSystemIntent(text);
+    const mapped = intent ? businessToolForIntent(intent, text) : null;
+    const mailbox =
+      (typeof next.mailboxAddress === "string" && next.mailboxAddress.trim()) ||
+      (typeof mapped?.arguments.mailboxAddress === "string" ? mapped.arguments.mailboxAddress : "") ||
+      "";
+    if (name === "outlook_list_messages") {
+      return {
+        mailboxAddress: mailbox || undefined,
+        limit: Number(next.limit ?? mapped?.arguments.limit ?? 5),
+      };
+    }
+    const query = String(next.query ?? "").trim() || text.trim() || "inbox";
+    return {
+      mailboxAddress: mailbox || undefined,
+      query,
+      limit: Number(next.limit ?? 5),
+    };
+  }
   if (name === "list_documents") {
     const parsed = parseCatalogueIntent(text);
     return {
@@ -748,6 +892,59 @@ function shouldRunDeterministicMeta(scoped: ScopeDecision): boolean {
       !scoped.clarify) ||
     scoped.tool === "list_documents"
   );
+}
+
+function isProcessOrPolicyAsk(text: string): boolean {
+  return /\b(process|procedure|policy|how do we)\b/i.test(text);
+}
+
+function shouldRunDeterministicRead(scoped: ScopeDecision, text: string): boolean {
+  if (scoped.clarify || !scoped.tool) return false;
+  if (scoped.scope === "BUSINESS_SYSTEM") return true;
+  return scoped.scope === "COMPANY_KNOWLEDGE" && scoped.tool === "search_company_knowledge" && isProcessOrPolicyAsk(text);
+}
+
+function shouldStopAfterRead(scoped: ScopeDecision, result: IntelligenceToolResult): boolean {
+  void result;
+  return scoped.scope === "BUSINESS_SYSTEM";
+}
+
+async function runDeterministicRead(
+  runtime: IntelligenceRuntime,
+  scoped: ScopeDecision,
+  text: string,
+  state: IntelligenceConversationState,
+  permitted: string[],
+): Promise<{ text: string; toolCalls: IntelligenceToolResult[]; ok: boolean } | null> {
+  const toolName = scoped.tool;
+  if (!toolName || !INTELLIGENCE_TOOL_NAMES.has(toolName)) return null;
+  void permitted;
+  const result = await runtime.executeTool({
+    name: toolName,
+    arguments: prepareToolArguments(toolName, {}, text, state, scoped.scope),
+  });
+  const toolCalls = [result];
+  if (result.ok && (toolName === "search_company_knowledge" || toolName === "search")) {
+    const hits = searchHits(result.data);
+    const first = hits[0] && typeof hits[0] === "object" ? (hits[0] as { id?: string; title?: string }) : null;
+    if (hits.length === 1 && first?.id) {
+      const fetched = await runtime.executeTool({
+        name: "get_knowledge_document",
+        arguments: { document_id: String(first.id) },
+      });
+      toolCalls.push(fetched);
+      return {
+        text: synthesizeFromToolCalls(toolCalls, text),
+        toolCalls,
+        ok: fetched.ok || result.ok,
+      };
+    }
+  }
+  return {
+    text: synthesizeFromToolCalls(toolCalls, text),
+    toolCalls,
+    ok: result.ok,
+  };
 }
 
 async function runDeterministicMeta(

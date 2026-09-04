@@ -46,6 +46,7 @@ export type PortalChatMessageMetadata = {
   permissionDenied?: boolean;
   controlledAction?: boolean;
   citeSource?: boolean;
+  terminal?: string | null;
 };
 
 export type PortalChatConversation = PortalChatConversationSummary & {

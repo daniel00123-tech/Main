@@ -136,6 +136,37 @@ describe("scope classifier", () => {
       "get_document_index_stats",
     );
   });
+
+  it("routes newest inbox asks to list_messages and follow-ups to memory/rephrase", () => {
+    expect(
+      classifyScope(
+        "What is the newest email in the info inbox?",
+        buildConversationState({ userText: "What is the newest email in the info inbox?" }),
+      ),
+    ).toMatchObject({ scope: "BUSINESS_SYSTEM", tool: "outlook_list_messages" });
+    expect(
+      classifyScope(
+        "What is the newest email in the finance inbox?",
+        buildConversationState({ userText: "What is the newest email in the finance inbox?" }),
+      ),
+    ).toMatchObject({ scope: "BUSINESS_SYSTEM", tool: "outlook_list_messages" });
+    const afterPo = buildConversationState({
+      userText: "Give me more detail.",
+      lastAnswerTopic: "the PO process",
+      lastAnswerText: "POs need two signatures.",
+      lastUserIntent: "company_knowledge",
+    });
+    expect(classifyScope("Give me more detail.", afterPo)).toMatchObject({
+      scope: "GENERAL_CONVERSATION",
+      noTool: true,
+      lastUserIntent: "rephrase",
+    });
+    expect(classifyScope("What were we talking about?", afterPo)).toMatchObject({
+      scope: "GENERAL_CONVERSATION",
+      noTool: true,
+      lastUserIntent: "memory",
+    });
+  });
 });
 
 describe("system meta intelligence", () => {

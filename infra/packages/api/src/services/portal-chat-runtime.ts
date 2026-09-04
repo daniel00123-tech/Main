@@ -37,6 +37,7 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_list_overdue_invoices",
   "xero_aged_receivables",
   "outlook_search_mailbox",
+  "outlook_list_messages",
   "outlook_get_message",
   "ask_document",
   "list_documents",
@@ -87,7 +88,9 @@ export function createPortalChatRuntime(
           ? KNOWLEDGE_SEARCH_TIMEOUT_MS
           : gatewayName === COMPANY_KNOWLEDGE_READ_TOOL || gatewayName === "fetch"
             ? FETCH_TIMEOUT_MS
-            : MCP_TIMEOUT_MS;
+            : /^(outlook_|xero_)/.test(gatewayName)
+              ? 20_000
+              : MCP_TIMEOUT_MS;
 
       const fetched = await withBoundedTimeout(
         gateway(env, {

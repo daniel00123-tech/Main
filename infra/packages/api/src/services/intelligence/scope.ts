@@ -68,7 +68,7 @@ const COMPANY_LOCUS =
 const DISCOURSE =
   /^(hi|hello|hey|hiya|yo|morning|thanks|thank you|cheers|ta|thx|ty)\b|^(how are you|how(?:'s|s) it going)\b|\b(that(?:'s| is) useful|that helps|great thanks|appreciate (it|that)|i don'?t (understand|follow)|what do you mean|why did you ask|can you (give|show) (me )?an example)\b/i;
 const REPHRASE =
-  /\b(explain(?: that| this| it| your last answer)? more simply|more simply|make (that|it|this|your last answer)( \w+)? (shorter|simpler|brief)|in fewer words|more detail on (that|your last|what you said)|say that again|explain again|put (that|it) another way)\b/i;
+  /\b(explain(?: that| this| it| your last answer)? more simply|more simply|make (that|it|this|your last answer)( \w+)? (shorter|simpler|brief)|in fewer words|more detail(s)?( on (that|your last|what you said))?|give me more (detail|details|info|information)|say that again|explain again|put (that|it) another way)\b/i;
 const MEMORY =
   /\b(what (were|are) we talking about|what did i (just )?ask|what did you (just )?(tell|say)|remind me|which source|last document i asked|the amount again)\b/i;
 const CAPABILITY =
@@ -154,6 +154,11 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
   return "xero_sales_summary";
 }
 
+function pickMailboxTool(text: string): string {
+  if (/\b(newest|latest)\b/i.test(text)) return "outlook_list_messages";
+  return "outlook_search_mailbox";
+}
+
 function extractFeatures(text: string): ScopeFeatures {
   const trimmed = text.trim();
   return {
@@ -209,7 +214,11 @@ function detectScopeSwitch(text: string): ScopeSwitch {
   if (/\b(whole system|on the system|entire system|the platform)\b/i.test(text)) {
     return "system";
   }
-  if (/\b\bxero\b|\b(finance|invoices?|sales figures)\b/i.test(text) && /\b(switch|instead|use|from|in|check)\b/i.test(text)) {
+  if (
+    (/\bxero\b/i.test(text) || /\b(finance|invoices?|sales figures)\b/i.test(text)) &&
+    /\b(switch|instead|use|check)\b/i.test(text) &&
+    !/\b(emails?|mailbox|outlook|inbox)\b/i.test(text)
+  ) {
     return "business";
   }
   if (/\b(emails?|mailbox|outlook)\b/i.test(text) && /\b(instead|switch|search|check|from|meant)\b/i.test(text)) {
@@ -324,6 +333,23 @@ export function classifyScope(
   }
 
   const businessIntent = resolveBusinessSystemIntent(text);
+  const mailboxIntent =
+    businessIntent?.capability === "finance_mailbox" ||
+    businessIntent?.capability === "info_mailbox" ||
+    businessIntent?.connectorDefinitionId === "conn_outlook_shared";
+  if (
+    businessIntent &&
+    mailboxIntent &&
+    !features.connectorAsk &&
+    !features.capabilityAsk &&
+    !features.writeIntent
+  ) {
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: pickMailboxTool(text),
+      lastAnswerTopic: "email",
+      lastUserIntent: "email",
+    });
+  }
   if (
     businessIntent &&
     !features.connectorAsk &&
@@ -331,6 +357,7 @@ export function classifyScope(
     !features.systemLocus &&
     !features.companyLocus &&
     !switchTo &&
+    !features.emailAsk &&
     businessIntent.capability !== "admin" &&
     businessIntent.capability !== "restricted_knowledge"
   ) {
@@ -347,7 +374,7 @@ export function classifyScope(
       businessIntent.connectorDefinitionId === "conn_outlook_shared"
     ) {
       return decide("BUSINESS_SYSTEM", features, {
-        tool: "outlook_search_mailbox",
+        tool: pickMailboxTool(text),
         lastAnswerTopic: "email",
         lastUserIntent: "email",
       });
@@ -593,7 +620,7 @@ export function classifyScope(
 
   if (switchTo === "email" || (features.emailAsk && !features.currentLocus && !hasCurrent)) {
     return decide("BUSINESS_SYSTEM", features, {
-      tool: "outlook_search_mailbox",
+      tool: pickMailboxTool(text),
       lastAnswerTopic: "email",
       lastUserIntent: "email",
     });
@@ -659,7 +686,7 @@ export function classifyScope(
 
   return decide("COMPANY_KNOWLEDGE", features, {
     tool: "search_company_knowledge",
-    lastAnswerTopic: "company_knowledge",
+    lastAnswerTopic: /\b(po process|purchase order)\b/i.test(text) ? "the PO process" : "company_knowledge",
     lastUserIntent: "company_knowledge",
   });
 }

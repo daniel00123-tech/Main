@@ -83,7 +83,7 @@ export function mockedToolRuntime(): IntelligenceRuntime {
       if (call.name.startsWith("xero_")) {
         return { name: call.name, ok: true, latencyMs: started, data: { summary: "Sales 12k, overdue 2 invoices." } };
       }
-      if (call.name === "outlook_search_mailbox") {
+      if (call.name === "outlook_search_mailbox" || call.name === "outlook_list_messages") {
         return { name: call.name, ok: true, latencyMs: started, data: { messages: [{ subject: "Invoice scan" }] } };
       }
       if (call.name === "get_document_index_stats") {
@@ -383,7 +383,7 @@ function matchesIntent(expect: EvalExpectation, result: IntelligenceTurnResult, 
     case "xero":
       return result.toolCalls.some((call) => call.name.startsWith("xero_"));
     case "mailbox":
-      return result.toolCalls.some((call) => call.name === "outlook_search_mailbox");
+      return result.toolCalls.some((call) => call.name === "outlook_search_mailbox" || call.name === "outlook_list_messages");
     case "meta":
       return result.toolCalls.some((call) =>
         [
