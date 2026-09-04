@@ -6,7 +6,9 @@
 import type { Env } from "../env";
 import { newId, nowIso } from "../db/mappers";
 import { getCompanyById } from "./control-plane";
+import { ELVEX_INFO_MAILBOXES } from "@infra/shared";
 import { acquireMicrosoftAppToken } from "./microsoft-auth";
+import { resolveOutlookGraphAccess } from "./outlook-graph-access";
 import {
   ensureDriveFolderByPath,
   graphPost,
@@ -211,7 +213,15 @@ async function resolveGraphConfig(
   if (companyToken.ok) {
     return { ok: true, config: { accessToken: companyToken.accessToken, tenantId: companyToken.tenantId } };
   }
-  return { ok: false, code: companyToken.code, message: companyToken.message };
+  const outlook = await resolveOutlookGraphAccess(env, {
+    companyId,
+    mailboxAddress: ELVEX_INFO_MAILBOXES[0],
+    actor,
+  });
+  if (outlook.ok) {
+    return { ok: true, config: { accessToken: outlook.accessToken, tenantId: outlook.tenantId } };
+  }
+  return { ok: false, code: outlook.code || companyToken.code, message: outlook.message || companyToken.message };
 }
 
 export async function discoverKnowledgeIntakeTarget(

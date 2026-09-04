@@ -26,6 +26,7 @@ export const PRODUCTION_SUPERSTACK_CAPABILITIES = [
   "outlook_attachment_ingest",
   "openai_pa_request_brain",
   "knowledge_intake_landing_zone",
+  "mailbox_ingestion_default_include",
 ] as const;
 
 export type ProductionLineage = {

@@ -338,8 +338,17 @@ describe("knowledge ingestion window and classification", () => {
       ],
       omittedDocuments: 0,
       portalUrl: "https://app.infrastack.app/portal/el-business/automations",
+      mailboxesEligible: 5,
+      mailboxesExcluded: 2,
+      mailboxesExcludedNames: ["William", "Ella"],
+      mailboxesScanned: ["finance@elvexpropertyservices.com", "info@elvexpropertyservices.com"],
+      messagesScanned: 40,
     });
     expect(populated.subject).toBe("INFRA — EL Business Daily Knowledge Activity — 4 September 2026");
+    expect(populated.text).toContain("MAILBOXES ELIGIBLE: 5");
+    expect(populated.text).toContain("MAILBOXES EXCLUDED: 2");
+    expect(populated.text).toContain("William: excluded by policy");
+    expect(populated.text).toContain("MESSAGES SCANNED: 40");
     expect(populated.text).toContain("Successfully indexed: 1");
     expect(populated.text).toContain("Chunks: 8");
     expect(populated.text).toContain("FAILED / NEEDS ATTENTION");
