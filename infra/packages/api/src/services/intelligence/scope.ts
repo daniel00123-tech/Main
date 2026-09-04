@@ -715,7 +715,7 @@ export function classifyScope(
     return decide("COMPANY_KNOWLEDGE", features, {
       tool: "search_company_knowledge",
       clearCurrentDocument: hasCurrent,
-      lastAnswerTopic: "company_knowledge",
+      lastAnswerTopic: /\b(po process|purchase order)\b/i.test(text) ? "the PO process" : "company_knowledge",
       lastUserIntent: "process_or_policy",
     });
   }
