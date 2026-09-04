@@ -167,7 +167,18 @@ export function wantsMultiCapabilityRead(text: string): boolean {
   const families = new Set(detectRequestedCapabilities(text).map(capabilityFamily));
   families.delete("SYSTEM");
   families.delete("WEB");
-  return families.size >= 2 && /\b(and|then|also|plus)\b/i.test(text);
+  if (families.size < 2) return false;
+  if (families.has("KNOWLEDGE") && families.has("ACCOUNTING") && families.size === 2) {
+    if (!/\b(xero|invoice|outlook|inbox|mailbox|emails?)\b/i.test(text)) return false;
+  }
+  return (
+    /\b(and|then|also|plus)\b/i.test(text) ||
+    /[,;]/.test(text) ||
+    /\?\s+\S/.test(text) ||
+    (families.has("EMAIL") && families.has("ACCOUNTING")) ||
+    (families.has("EMAIL") && families.has("KNOWLEDGE")) ||
+    (families.has("ACCOUNTING") && families.has("CATALOGUE"))
+  );
 }
 
 export function detectRequestedCapabilities(text: string): PlatformCapability[] {
@@ -177,7 +188,7 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
     /\b(emails?|inbox|mailbox|outlook|unread mail)\b/i.test(value) ||
     /\b(newest|latest|recent).{0,20}(emails?|mail|inbox|mailbox)\b/i.test(value);
   const accounting =
-    /\b(xero|sales|revenue|invoic|overdue|p&l|pnl|profit|aged (receivable|payable)|top customers?)\b/i.test(value);
+    /\b(xero|sales|revenue|invoices?|overdue|outstanding|p&l|pnl|profit|aged (receivable|payable)|top customers?)\b/i.test(value);
   const catalogue =
     /\b(newest|latest|recent).{0,24}(file|document|onedrive|sharepoint)\b/i.test(value) ||
     /\b(list|show).{0,16}(files|documents)\b/i.test(value) ||
@@ -188,8 +199,12 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
   const web = /\b(weather|forecast|public holiday|news headline)\b/i.test(value);
   if (email) found.add(/\b(search|from|containing|about|look in)\b/i.test(value) ? "EMAIL_SEARCH" : "EMAIL_LIST");
   if (accounting && /\b(INV-|invoice (id|number)|find invoice)\b/i.test(value)) found.add("ACCOUNTING_INVOICE_GET");
-  else if (accounting && /\b(overdue|search invoices|invoices with|po reference)\b/i.test(value)) {
+  else if (accounting && /\b(overdue|outstanding|unpaid|search invoices|invoices with|po reference)\b/i.test(value)) {
     found.add("ACCOUNTING_INVOICE_SEARCH");
+  } else if (accounting && /\b(p&l|pnl|profit and loss|aged (receivable|payable)|balance sheet)\b/i.test(value)) {
+    found.add("ACCOUNTING_REPORTS");
+  } else if (accounting && /\b(contact named|customer named|who is)\b/i.test(value)) {
+    found.add("ACCOUNTING_CONTACTS");
   } else if (accounting) found.add("ACCOUNTING_SALES");
   if (catalogue) found.add("CATALOGUE_LIST");
   if (knowledge) found.add("KNOWLEDGE_SEARCH");

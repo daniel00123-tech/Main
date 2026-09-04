@@ -77,6 +77,7 @@ import {
 } from "./interactions";
 import { sanitizeCustomerError } from "./secrets";
 import { scheduleQualityAudit } from "./quality-auditor";
+import { channelFromSourceClient, scheduleDailyImprovementCapture } from "./daily-improvement/audit";
 import {
   isXeroToolName,
   isXeroWriteToolName,
@@ -897,6 +898,20 @@ export async function executeGatewayRequest(
     }
 
     scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
+    if (sourceClient === "chatgpt" || sourceClient === "claude") {
+      scheduleDailyImprovementCapture(env, input.waitUntil, {
+        interactionId: interaction.interactionId,
+        companyId: input.companyId,
+        userId: input.actor.type === "user" ? actorId : null,
+        channel: channelFromSourceClient(sourceClient),
+        toolsRequested: [input.toolName],
+        toolsExecuted: [],
+        terminalState: "PERMISSION_DENIED",
+        correlationId,
+        trafficClass: elTrafficClass,
+        sourceClient,
+      });
+    }
     return {
       status: 403 as const,
       error: permissionReason ?? "Your current permissions don’t allow this action.",
@@ -1393,6 +1408,22 @@ export async function executeGatewayRequest(
       });
     }
     scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
+    if (sourceClient === "chatgpt" || sourceClient === "claude") {
+      scheduleDailyImprovementCapture(env, input.waitUntil, {
+        interactionId: interaction.interactionId,
+        companyId: input.companyId,
+        userId: input.actor.type === "user" ? actorId : null,
+        channel: channelFromSourceClient(sourceClient),
+        toolsRequested: [input.toolName],
+        toolsExecuted: success ? [input.toolName] : [],
+        terminalState: success ? "ANSWER" : "UPSTREAM_FAILURE",
+        latencyMs,
+        correlationId,
+        customerChargeCents: charge.customerChargeCents ?? 0,
+        trafficClass: elTrafficClass,
+        sourceClient,
+      });
+    }
 
     await recordAuditEvent(env.DB, {
       companyId: input.companyId,

@@ -12,6 +12,7 @@ import {
 } from "./mcp-knowledge-standard";
 import { UNKNOWN_WHATSAPP_ACCOUNT_MESSAGE, tryNormalizeE164 } from "./phone";
 import { scheduleQualityAudit } from "./quality-auditor";
+import { scheduleDailyImprovementCapture } from "./daily-improvement";
 import { resolveActiveWhatsAppRuntime } from "./quality-loop";
 import { DEFAULT_QUALITY_RUNTIME } from "./quality-loop/runtime-config";
 import { qualitySystemGuidance } from "./quality-loop/runtime-policy";
@@ -1520,6 +1521,22 @@ async function handleWhatsAppInboundMessageInner(
       });
     }
     scheduleQualityAudit(env, options?.waitUntil, interactionId);
+    scheduleDailyImprovementCapture(env, options?.waitUntil, {
+      interactionId,
+      companyId: companyDecision.companyId,
+      userId: identity.user.id,
+      role: identity.memberships.find((row) => row.companyId === companyDecision.companyId)?.role ?? null,
+      channel: "whatsapp",
+      conversationId: interactionContextId ?? item.from ?? null,
+      userMessage: text,
+      assistantAnswer: polished,
+      toolsRequested: answered.toolName ? [answered.toolName] : [],
+      toolsExecuted: answered.toolName ? [answered.toolName] : [],
+      terminalState: sent.ok ? answered.outcome : "NO_FINAL_RESPONSE",
+      latencyMs: latency.totalMs,
+      trafficClass: "CUSTOMER_REQUEST",
+      sourceClient: "whatsapp",
+    });
     await recordAuditEvent(env.DB, {
       companyId: companyDecision.companyId,
       eventType: sent.ok ? "whatsapp.inbound_identified" : "whatsapp.outbound_failed",

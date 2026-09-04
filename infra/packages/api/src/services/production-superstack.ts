@@ -19,6 +19,7 @@ import { isolateEvidenceForCompany } from "./intelligence/tenant-isolation";
 import { classifyTurnFailures } from "./intelligence/failure-telemetry";
 import { inspectIntelligenceProvider } from "./intelligence/provider";
 import { resolveRequestPricingPolicy } from "./customer-request-pricing";
+import { DAILY_IMPROVEMENT_CONTRACT } from "./daily-improvement/constants";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -139,6 +140,21 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (resolveRequestPricingPolicy("co_el")?.chargeCents !== 3) {
     throw new Error("EL request-level pricing must remain 3p");
+  }
+  if (DAILY_IMPROVEMENT_CONTRACT.cursorInCustomerPath) {
+    throw new Error("daily improvement must not put Cursor on the customer path");
+  }
+  if (DAILY_IMPROVEMENT_CONTRACT.requiresHumanApproval) {
+    throw new Error("daily improvement must not wait for a human approval button");
+  }
+  if (DAILY_IMPROVEMENT_CONTRACT.autoPromoteProvider) {
+    throw new Error("daily improvement must not auto-promote OpenAI shadow/canary/primary");
+  }
+  if (DAILY_IMPROVEMENT_CONTRACT.qaCustomerChargeCents !== 0) {
+    throw new Error("QA/engineering must not customer-bill");
+  }
+  if (DAILY_IMPROVEMENT_CONTRACT.elCustomerRequestCents !== 3) {
+    throw new Error("daily improvement must not infer a new EL price");
   }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };

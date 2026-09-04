@@ -6,6 +6,9 @@ import type { Env } from "../../env";
 import {
   isValidRecipientEmail,
   type AutomationActionType,
+  DAILY_IMPROVEMENT_ENGINEERING_TEMPLATE,
+  DAILY_IMPROVEMENT_QA_TEMPLATE,
+  DAILY_IMPROVEMENT_REPORT_TEMPLATE,
   DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE,
   KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE,
   XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
@@ -52,6 +55,13 @@ export function validateAutomationConfiguration(
   if (actionType === "internal") {
     const handler = configuration.handler;
     if (typeof handler !== "string" || !handler.trim()) return "Internal action requires handler";
+    if (
+      handler === DAILY_IMPROVEMENT_QA_TEMPLATE ||
+      handler === DAILY_IMPROVEMENT_REPORT_TEMPLATE ||
+      handler === DAILY_IMPROVEMENT_ENGINEERING_TEMPLATE
+    ) {
+      return null;
+    }
     if (
       handler === XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE ||
       handler === DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE ||

@@ -11,11 +11,17 @@ export const DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE =
   "document_activity_daily_email" as const;
 export const KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE =
   "knowledge_ingestion_daily_email" as const;
+export const DAILY_IMPROVEMENT_QA_TEMPLATE = "daily_improvement_qa" as const;
+export const DAILY_IMPROVEMENT_REPORT_TEMPLATE = "daily_improvement_report" as const;
+export const DAILY_IMPROVEMENT_ENGINEERING_TEMPLATE = "daily_improvement_engineering" as const;
 
 export type AutomationTemplateKey =
   | typeof XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE
   | typeof DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE
-  | typeof KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE;
+  | typeof KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE
+  | typeof DAILY_IMPROVEMENT_QA_TEMPLATE
+  | typeof DAILY_IMPROVEMENT_REPORT_TEMPLATE
+  | typeof DAILY_IMPROVEMENT_ENGINEERING_TEMPLATE;
 
 export type AutomationTemplateDefinition = {
   key: string;
@@ -68,6 +74,45 @@ export const AUTOMATION_TEMPLATES: AutomationTemplateDefinition[] = [
     defaultTimezone: "Europe/London",
     actionType: "internal",
     available: true,
+  },
+  {
+    key: DAILY_IMPROVEMENT_QA_TEMPLATE,
+    type: "DAILY_IMPROVEMENT_QA",
+    label: "Daily AI quality window",
+    description:
+      "Platform-wide QA over genuine customer interactions since the previous completed window. Not a customer template.",
+    system: "Quality",
+    defaultName: "INFRA Daily improvement QA",
+    defaultSchedule: { frequency: "daily", hour: 16, minute: 30 },
+    defaultTimezone: "Europe/London",
+    actionType: "internal",
+    available: false,
+  },
+  {
+    key: DAILY_IMPROVEMENT_REPORT_TEMPLATE,
+    type: "DAILY_IMPROVEMENT_REPORT",
+    label: "Daily AI quality report",
+    description:
+      "Sends the 17:00 Europe/London INFRA Daily Improvement Report. Informational only — no approval required.",
+    system: "Quality",
+    defaultName: "INFRA Daily improvement report",
+    defaultSchedule: { frequency: "daily", hour: 17, minute: 0 },
+    defaultTimezone: "Europe/London",
+    actionType: "internal",
+    available: false,
+  },
+  {
+    key: DAILY_IMPROVEMENT_ENGINEERING_TEMPLATE,
+    type: "DAILY_IMPROVEMENT_ENGINEERING",
+    label: "Daily automatic engineering",
+    description:
+      "Starts the asynchronous Cursor/dev engineering cycle. Does not run on the customer path.",
+    system: "Quality",
+    defaultName: "INFRA Daily improvement engineering",
+    defaultSchedule: { frequency: "daily", hour: 17, minute: 5 },
+    defaultTimezone: "Europe/London",
+    actionType: "internal",
+    available: false,
   },
   {
     key: "weekly_outstanding_invoices",

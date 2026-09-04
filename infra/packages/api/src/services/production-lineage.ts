@@ -22,6 +22,7 @@ export const PRODUCTION_SUPERSTACK_CAPABILITIES = [
   "tenant_registry",
   "tool_registry",
   "failure_telemetry",
+  "daily_improvement_loop",
 ] as const;
 
 export type ProductionLineage = {

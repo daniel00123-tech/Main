@@ -1952,6 +1952,31 @@ export const api = {
       `/api/platform/quality-loop/proposals/${encodeURIComponent(id)}/rollback`,
       { method: "POST", body: JSON.stringify({}) },
     ),
+  getDailyImprovement: (query?: {
+    tenant?: string;
+    channel?: string;
+    provider?: string;
+    model?: string;
+    severity?: string;
+    capability?: string;
+  }) =>
+    fetchJson<{
+      ok: boolean;
+      todayInteractions: number;
+      qualityScore: number | null;
+      clusters: Array<{
+        id: string;
+        clusterKey: string;
+        title: string;
+        severity: string;
+        interactionCount: number;
+        tenantCount: number;
+        status: string;
+        category: string;
+      }>;
+      engineeringQueue: Array<Record<string, unknown>>;
+      deployments: Array<Record<string, unknown>>;
+    }>(`/api/platform/daily-improvement${toQuery(query)}`),
 };
 
 export type QualityLoopHistory = {

@@ -73,6 +73,11 @@ describe("company tool registry", () => {
     expect(wantsMultiCapabilityRead("What are sales this month and what is the newest info email?")).toBe(true);
     expect(wantsMultiCapabilityRead("What are our sales and then show the latest finance email?")).toBe(true);
     expect(wantsMultiCapabilityRead("What are our Xero sales this month?")).toBe(false);
+    expect(wantsMultiCapabilityRead("Xero sales this month, latest finance email")).toBe(true);
+    expect(wantsMultiCapabilityRead("What is the sales process?")).toBe(false);
+    expect(detectRequestedCapabilities("outstanding invoices")).toContain("ACCOUNTING_INVOICE_SEARCH");
+    expect(detectRequestedCapabilities("profit and loss this month")).toContain("ACCOUNTING_REPORTS");
+    expect(detectRequestedCapabilities("find invoice INV-1042")).toContain("ACCOUNTING_INVOICE_GET");
     expect(detectRequestedCapabilities("Newest document")).toContain("CATALOGUE_LIST");
     expect(capabilityForPlatformTool("outlook_search_mailbox")).toBe("EMAIL_SEARCH");
   });

@@ -68,11 +68,16 @@ export default function QualityIssuesPage() {
     <>
       <PageHeader
         title="Quality"
-        description="Evidence-backed issues from conversations. Improvement Reviews can auto-apply LOW/MEDIUM WhatsApp config only after you approve."
+        description="Evidence-backed issues from conversations. Daily improvement runs automatically at 17:00 — no approval button."
         actions={
-          <Link className="button button-secondary button-small" to="/quality/improvements">
-            Improvement Reviews
-          </Link>
+          <>
+            <Link className="button button-secondary button-small" to="/quality/engineering">
+              Daily improvement
+            </Link>
+            <Link className="button button-secondary button-small" to="/quality/improvements">
+              Improvement Reviews
+            </Link>
+          </>
         }
       />
       <FilterBar className="filter-bar-mobile-stack">

@@ -90,6 +90,12 @@ describe("Automation action validation", () => {
     expect(validateAutomationConfiguration("internal", { handler: "noop" })).toBeNull();
   });
 
+  it("allows platform daily-improvement handlers without a recipient", () => {
+    expect(validateAutomationConfiguration("internal", { handler: "daily_improvement_qa" })).toBeNull();
+    expect(validateAutomationConfiguration("internal", { handler: "daily_improvement_report" })).toBeNull();
+    expect(validateAutomationConfiguration("internal", { handler: "daily_improvement_engineering" })).toBeNull();
+  });
+
   it("requires a recipient for the daily sales email template", () => {
     expect(
       validateAutomationConfiguration("internal", {
