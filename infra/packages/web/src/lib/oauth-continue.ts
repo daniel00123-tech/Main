@@ -8,14 +8,23 @@ export function safeOauthContinueUrl(next: string | null | undefined): string | 
     if (url.protocol !== "https:" && url.protocol !== "http:") return null;
     if (url.pathname !== "/oauth/authorize") return null;
     const host = url.hostname.toLowerCase();
+    // Resume on the portal origin so the session cookie is sent.
+    // workers.dev / api.infrastack.app continue URLs caused a post-login 404.
+    if (
+      host.endsWith(".workers.dev") ||
+      host === "api.infrastack.app" ||
+      host === "mcp.infrastack.app"
+    ) {
+      return `${url.pathname}${url.search}`;
+    }
     if (
       host === "app.infrastack.app" ||
-      host.endsWith(".infrastack.app") ||
-      host.endsWith(".workers.dev") ||
+      host === "infrastack.app" ||
+      host.endsWith(".infra-web.pages.dev") ||
       host === "localhost" ||
       host === "127.0.0.1"
     ) {
-      return url.toString();
+      return `${url.pathname}${url.search}`;
     }
   } catch {
     return null;

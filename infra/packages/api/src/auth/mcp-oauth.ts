@@ -435,6 +435,111 @@ export async function revokeRefreshTokensForUser(
     .run();
 }
 
+export async function revokeAccessJtisForUser(
+  db: D1Database,
+  userId: string,
+  companyId: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE oauth_access_jti
+       SET revoked_at = ?
+       WHERE user_id = ? AND company_id = ? AND revoked_at IS NULL`,
+    )
+    .bind(nowIso(), userId, companyId)
+    .run();
+}
+
+export async function revokeHumanOauthGrant(
+  db: D1Database,
+  userId: string,
+  companyId: string,
+): Promise<void> {
+  await revokeRefreshTokensForUser(db, userId, companyId);
+  await revokeAccessJtisForUser(db, userId, companyId);
+  await db
+    .prepare(
+      `UPDATE ai_user_connections
+       SET status = 'revoked', updated_at = ?
+       WHERE user_id = ? AND company_id = ? AND status = 'connected'`,
+    )
+    .bind(nowIso(), userId, companyId)
+    .run();
+}
+
+export async function revokeHumanOauthForCompany(
+  db: D1Database,
+  companyId: string,
+  channel?: string,
+): Promise<void> {
+  const now = nowIso();
+  if (channel) {
+    await db
+      .prepare(
+        `UPDATE oauth_refresh_tokens
+         SET revoked_at = ?
+         WHERE company_id = ? AND channel = ? AND revoked_at IS NULL`,
+      )
+      .bind(now, companyId, channel)
+      .run();
+  } else {
+    await db
+      .prepare(
+        `UPDATE oauth_refresh_tokens
+         SET revoked_at = ?
+         WHERE company_id = ? AND revoked_at IS NULL`,
+      )
+      .bind(now, companyId)
+      .run();
+  }
+  await db
+    .prepare(
+      `UPDATE oauth_access_jti
+       SET revoked_at = ?
+       WHERE company_id = ? AND revoked_at IS NULL`,
+    )
+    .bind(now, companyId)
+    .run();
+  if (channel) {
+    await db
+      .prepare(
+        `UPDATE ai_user_connections
+         SET status = 'revoked', updated_at = ?
+         WHERE company_id = ? AND client_type = ? AND status = 'connected'`,
+      )
+      .bind(now, companyId, channel)
+      .run();
+  } else {
+    await db
+      .prepare(
+        `UPDATE ai_user_connections
+         SET status = 'revoked', updated_at = ?
+         WHERE company_id = ? AND status = 'connected'`,
+      )
+      .bind(now, companyId)
+      .run();
+  }
+}
+
+export async function revokeRefreshTokenByValue(
+  db: D1Database,
+  token: string,
+  clientId: string,
+): Promise<{ userId: string; companyId: string } | null> {
+  const consumed = await consumeRefreshToken(db, token, clientId);
+  if ("error" in consumed) return null;
+  await db
+    .prepare(
+      `UPDATE oauth_refresh_tokens
+       SET revoked_at = ?
+       WHERE token_hash = ? AND revoked_at IS NULL`,
+    )
+    .bind(nowIso(), await sha256Hex(token))
+    .run();
+  await revokeAccessJtisForUser(db, consumed.userId, consumed.companyId);
+  return { userId: consumed.userId, companyId: consumed.companyId };
+}
+
 export async function recordAccessJti(
   db: D1Database,
   input: { jti: string; userId: string; companyId: string },
@@ -455,6 +560,22 @@ export async function isAccessJtiRevoked(db: D1Database, jti: string): Promise<b
     .bind(jti)
     .first();
   return Boolean(row?.revoked_at);
+}
+
+export async function touchAiUserConnection(
+  db: D1Database,
+  companyId: string,
+  userId: string,
+  clientType: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE ai_user_connections
+       SET last_used_at = ?, updated_at = ?
+       WHERE company_id = ? AND user_id = ? AND client_type = ? AND status = 'connected'`,
+    )
+    .bind(nowIso(), nowIso(), companyId, userId, clientType)
+    .run();
 }
 
 export async function upsertAiUserConnection(
