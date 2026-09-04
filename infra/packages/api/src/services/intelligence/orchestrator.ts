@@ -22,6 +22,12 @@ import {
 import type { IntelligenceCompleter } from "./provider.js";
 import { applyGuardToTurn } from "./response-guard.js";
 import { resolveBrainPolicy } from "./brain-policy.js";
+import {
+  defaultToolForCapability,
+  detectRequestedCapabilities,
+  wantsMultiCapabilityRead,
+} from "./company-tool-registry.js";
+import { stampEvidenceTenant } from "./tenant-isolation.js";
 import { routeIntelligenceTurn } from "./router.js";
 import { classifyScope, persistableScope, type ScopeDecision } from "./scope.js";
 import { formatConversationState } from "./state.js";
@@ -246,7 +252,10 @@ async function executeIntelligenceTurn(input: {
     channel: input.channel ?? null,
   };
   const runtime = wrapAuthorizedRuntime(input.runtime, authCtx);
-  let recentEvidence = mergeEvidence(input.state.recentEvidence, extractEvidenceFromTools([]));
+  let recentEvidence = stampEvidenceTenant(
+    mergeEvidence(input.state.recentEvidence, extractEvidenceFromTools([])),
+    input.state.companyId,
+  );
   const finishTurn = (
     payload: Omit<
       IntelligenceTurnResult,
@@ -1218,7 +1227,7 @@ function wantsFullEmail(text: string): boolean {
 }
 
 function wantsSalesThenFinanceEmail(text: string): boolean {
-  return /\b(sales|xero)\b/i.test(text) && /\b(and then|then show|and show)\b/i.test(text) && /\b(email|inbox)\b/i.test(text);
+  return wantsMultiCapabilityRead(text);
 }
 
 async function runDeterministicRead(
@@ -1231,27 +1240,40 @@ async function runDeterministicRead(
   const toolName = scoped.tool;
   if (!toolName || !INTELLIGENCE_TOOL_NAMES.has(toolName)) return null;
   void permitted;
-  if (wantsSalesThenFinanceEmail(text)) {
-    const xero = await runtime.executeTool({
-      name: "xero_sales_summary",
-      arguments: prepareToolArguments("xero_sales_summary", {}, text, state, scoped.scope),
+  if (wantsMultiCapabilityRead(text)) {
+    const toolCalls: IntelligenceToolResult[] = [];
+    const seen = new Set<string>();
+    const capabilityOrder = ["ACCOUNTING", "EMAIL", "CATALOGUE", "KNOWLEDGE", "WEB", "SYSTEM"];
+    const requested = detectRequestedCapabilities(text).sort((left, right) => {
+      const a = capabilityOrder.findIndex((item) => left.startsWith(item) || left === item);
+      const b = capabilityOrder.findIndex((item) => right.startsWith(item) || right === item);
+      return (a < 0 ? 99 : a) - (b < 0 ? 99 : b);
     });
-    const outlook = await runtime.executeTool({
-      name: "outlook_list_messages",
-      arguments: prepareToolArguments(
-        "outlook_list_messages",
-        { mailboxAddress: ELVEX_FINANCE_MAILBOXES[0], limit: 5 },
-        "latest finance email",
-        state,
-        scoped.scope,
-      ),
-    });
-    const toolCalls = [xero, outlook];
-    return {
-      text: synthesizeFromToolCalls(toolCalls, text),
-      toolCalls,
-      ok: xero.ok || outlook.ok,
-    };
+    for (const capability of requested) {
+      const name = defaultToolForCapability(capability);
+      if (!name || seen.has(name) || !INTELLIGENCE_TOOL_NAMES.has(name)) continue;
+      if (permitted.length && !permitted.includes(name)) continue;
+      seen.add(name);
+      const extra =
+        name === "outlook_list_messages" && /\bfinance\b/i.test(text)
+          ? { mailboxAddress: ELVEX_FINANCE_MAILBOXES[0], limit: 5 }
+          : name.startsWith("outlook_")
+            ? { limit: 5 }
+            : {};
+      toolCalls.push(
+        await runtime.executeTool({
+          name,
+          arguments: prepareToolArguments(name, extra, text, state, scoped.scope),
+        }),
+      );
+    }
+    if (toolCalls.length) {
+      return {
+        text: synthesizeFromToolCalls(toolCalls, text),
+        toolCalls,
+        ok: toolCalls.some((call) => call.ok),
+      };
+    }
   }
   const planned = {
     name: toolName,

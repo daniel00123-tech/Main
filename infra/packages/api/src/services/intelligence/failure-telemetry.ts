@@ -98,9 +98,19 @@ export function classifyTurnFailures(input: {
     events.push(event(base, "NO_FINAL_RESPONSE", { kind: result.kind }));
   }
 
+  const denied = result.toolCalls.filter((call) => !call.ok && looksPermissionDenied(call));
+  for (const call of denied) {
+    events.push(
+      event(
+        { ...base, tool: call.name, capability: capabilityFromTool(call.name) },
+        "RBAC_DENIAL",
+        { errorClass: call.error ?? "permission_denied" },
+      ),
+    );
+  }
   const failed = result.toolCalls.filter((call) => !call.ok && !looksPermissionDenied(call));
   for (const call of failed) {
-    const category: EngineeringFailureCategory = call.error === "timeout" ? "UPSTREAM_TIMEOUT" : "TOOL_FAILED";
+    const category: EngineeringFailureCategory = call.error === "timeout" ? "UPSTREAM_TIMEOUT" : "UPSTREAM_FAILURE";
     events.push(
       event(
         { ...base, tool: call.name, capability: capabilityFromTool(call.name), latencyMs: call.latencyMs },

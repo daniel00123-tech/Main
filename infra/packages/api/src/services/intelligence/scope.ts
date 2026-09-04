@@ -363,9 +363,9 @@ export function classifyScope(
   }
 
   if (
-    /\b(sales|xero)\b/i.test(text) &&
-    /\b(and then|then show|and show)\b/i.test(text) &&
-    /\b(email|inbox)\b/i.test(text) &&
+    /\b(sales|xero|revenue)\b/i.test(text) &&
+    /\b(and|then)\b/i.test(text) &&
+    /\b(email|inbox|mailbox)\b/i.test(text) &&
     !features.writeIntent
   ) {
     return decide("BUSINESS_SYSTEM", features, {

@@ -2,7 +2,8 @@ import { hasOpenAiApiKey } from "./openai-responses.js";
 import type { BrainMode, IntelligenceEnv } from "./types.js";
 
 export const EL_COMPANY_ID = "co_el";
-export const OPENAI_BRAIN_DEFAULT_COMPANIES = [EL_COMPANY_ID] as const;
+/** Empty by default so a new tenant is Cloudflare until explicitly promoted. */
+export const OPENAI_BRAIN_DEFAULT_COMPANIES: readonly string[] = [];
 
 export type BrainDecision = {
   mode: BrainMode;
@@ -29,6 +30,32 @@ export function openaiBrainAllowlist(env: IntelligenceEnv): string[] {
     .filter(Boolean);
 }
 
+/** Per-company mode map, e.g. "co_el=openai_shadow,co_future=cloudflare". */
+export function openaiCompanyModeMap(env: IntelligenceEnv): Record<string, BrainMode> {
+  const raw = String((env as IntelligenceEnv & { OPENAI_BRAIN_COMPANY_MODES?: string }).OPENAI_BRAIN_COMPANY_MODES ?? "").trim();
+  if (!raw) return {};
+  const out: Record<string, BrainMode> = {};
+  for (const part of raw.split(",")) {
+    const [id, mode] = part.split("=").map((item) => item.trim());
+    if (id && mode) out[id] = parseBrainMode(mode);
+  }
+  return out;
+}
+
+export function resolveTenantReasoningMode(input: {
+  env?: IntelligenceEnv | null;
+  companyId?: string | null;
+}): BrainMode {
+  const env = input.env ?? {};
+  const companyId = String(input.companyId ?? "").trim();
+  if (!companyId) return "cloudflare";
+  const mapped = openaiCompanyModeMap(env)[companyId];
+  if (mapped) return mapped;
+  const allow = openaiBrainAllowlist(env);
+  if (!allow.includes(companyId)) return "cloudflare";
+  return parseBrainMode(env.OPENAI_BRAIN_MODE);
+}
+
 export function resolveBrainPolicy(input: {
   env?: IntelligenceEnv | null;
   companyId?: string | null;
@@ -39,9 +66,9 @@ export function resolveBrainPolicy(input: {
   const companyId = String(input.companyId ?? "").trim() || null;
   const enabledFlag = /^(1|true|yes)$/i.test(String(env.OPENAI_BRAIN_ENABLED ?? "").trim());
   const configured = hasOpenAiApiKey(env);
+  const requested = resolveTenantReasoningMode({ env, companyId });
   const allow = openaiBrainAllowlist(env);
-  const requested = parseBrainMode(env.OPENAI_BRAIN_MODE);
-  const elOnly = !companyId || allow.includes(companyId);
+  const promoted = Boolean(companyId && (allow.includes(companyId) || openaiCompanyModeMap(env)[companyId]));
 
   if (!enabledFlag) {
     return deny(companyId, "flag_off");
@@ -49,8 +76,8 @@ export function resolveBrainPolicy(input: {
   if (!configured) {
     return deny(companyId, "missing_key");
   }
-  if (!elOnly) {
-    return deny(companyId, "tenant_not_allowlisted");
+  if (!promoted) {
+    return deny(companyId, companyId ? "tenant_not_allowlisted" : "missing_company");
   }
   if (input.channel === "chatgpt" || input.channel === "mcp") {
     return deny(companyId, "chatgpt_stays_direct_tools");

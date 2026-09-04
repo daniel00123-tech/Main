@@ -18,6 +18,7 @@ import {
 } from "./promotional-grants";
 import { markUsageSettled, recordUsageEvent } from "./usage";
 import { persistInteraction, refreshInteractionTotals } from "./interactions";
+import { companyUsesRequestLevelPricing } from "./customer-request-pricing";
 
 export const EL_COMPANY_ID = "co_el";
 export const EL_CUSTOMER_REQUEST_ACTION = "customer.request";
@@ -206,7 +207,7 @@ export function shouldChargeElCustomerRequest(
   companyId: string | null | undefined,
   trafficClass: ElTrafficClass,
 ): boolean {
-  return isElCompany(companyId) && trafficClass === "CUSTOMER_REQUEST";
+  return companyUsesRequestLevelPricing(companyId) && trafficClass === "CUSTOMER_REQUEST";
 }
 
 export function elChildUsageShouldDebit(): boolean {

@@ -1,7 +1,8 @@
 import { withBoundedTimeout } from "../whatsapp-timeouts.js";
 import { cloudflareToolDefs } from "./schema.js";
 import { extractJsonObject } from "./parse.js";
-import { estimateOpenAiCostUsd, pickOpenAiTier, resolveOpenAiModel } from "./openai-models.js";
+import { estimateOpenAiCostUsd, resolveOpenAiModel } from "./openai-models.js";
+import { recommendModelTier } from "./complexity-router.js";
 import type { IntelligenceEnv, IntelligenceModelUsage } from "./types.js";
 
 export const OPENAI_RESPONSES_TIMEOUT_MS = 14_000;
@@ -66,10 +67,10 @@ export async function runOpenAiResponses(
   },
 ): Promise<OpenAiResponsesResult> {
   const started = Date.now();
-  const tier = pickOpenAiTier({
+  const tier = recommendModelTier({
     mode: input.mode,
     userText: input.userText ?? input.user,
-    hasFreshBusinessQuestion: /\b(xero|sales|invoice|outlook|inbox|email)\b/i.test(input.user),
+    hasFreshBusinessQuestion: /\b(xero|sales|invoice|outlook|inbox|email|document|policy)\b/i.test(input.user),
   });
   const model = resolveOpenAiModel(env, tier);
   if (!hasOpenAiApiKey(env)) {

@@ -52,6 +52,8 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 OPENAI_BRAIN_ENABLED = "true"
 OPENAI_BRAIN_MODE = "openai_shadow"
 OPENAI_BRAIN_COMPANY_IDS = "co_el"
+# Optional per-company override. Unlisted companies stay Cloudflare.
+# OPENAI_BRAIN_COMPANY_MODES = "co_el=openai_shadow"
 OPENAI_BRAIN_CANARY_PERCENT = "10"
 OPENAI_MODEL_FAST = "gpt-5.6-luna"
 OPENAI_MODEL_DEFAULT = "gpt-5.6-terra"
