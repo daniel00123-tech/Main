@@ -10,7 +10,11 @@ import {
   extractHitList,
   unwrapToolPayload,
 } from "./mcp-knowledge-standard";
-import { fetchCompanyKnowledgeDocument, usableDocumentTitle as usableFetchedTitle } from "./document-fetch";
+import {
+  ELVEX_QUERY_TOOL,
+  fetchCompanyKnowledgeDocument,
+  usableDocumentTitle as usableFetchedTitle,
+} from "./document-fetch";
 import { executeRegisteredMcpTool, listMcpEnvironments } from "./control-plane";
 import { listMcpTools } from "./mcp-client";
 import { resolveMcpFetcher } from "./mcp-client";
@@ -296,7 +300,8 @@ export function parseCatalogueIntent(text: string, now = new Date()): CatalogueQ
   }
 
   const limitMatch = text.match(/\b(latest|newest|last|top)\s+(\d{1,3})\b/i) ?? text.match(/\b(\d{1,3})\s+(files?|documents?|pdfs?)\b/i);
-  const limit = clampLimit(limitMatch?.[2] ?? limitMatch?.[1] ?? (/newest document|most recently/i.test(text) ? 1 : 10));
+  const singularNewest = /\b(newest|latest|most recently(?: modified)?)(?: \w+){0,3} documents?\b/i.test(text) && !/\b(ten|files|documents)\b/i.test(text);
+  const limit = clampLimit(limitMatch?.[2] ?? limitMatch?.[1] ?? (singularNewest ? 1 : 10));
 
   let fileType: string | null = null;
   if (/\bpdfs?\b/i.test(text)) fileType = "pdf";
@@ -569,6 +574,7 @@ function documentsFromMcpPayload(payload: unknown, query: CatalogueQuery, allowR
         .concat(Array.isArray(payload.documents) ? payload.documents : [])
         .concat(Array.isArray(payload.items) ? payload.items : [])
         .concat(Array.isArray(payload.files) ? payload.files : [])
+        .concat(Array.isArray(payload.rows) ? payload.rows : [])
         .concat(Array.isArray(payload.value) ? payload.value : [])
     : [];
   const records = [...hits, ...extra.filter(isRecord)];
@@ -602,6 +608,8 @@ function documentsFromMcpPayload(payload: unknown, query: CatalogueQuery, allowR
     if (!inDateRange(sortTs, query.dateFrom, query.dateTo)) continue;
     const id =
       asNonEmpty(hit.id) ||
+      asNonEmpty(hit.item_id) ||
+      asNonEmpty(hit.itemId) ||
       asNonEmpty(hit.documentId) ||
       asNonEmpty(hit.document_id) ||
       asNonEmpty(hit.external_id) ||
@@ -760,6 +768,60 @@ async function queryCompanyMcpCatalogue(
   }
 
   return { documents: dedupeDocuments(documents), backend };
+}
+
+async function queryElvexIndexCatalogue(
+  env: Env,
+  companyId: string,
+  query: CatalogueQuery,
+  allowRestricted: boolean,
+  actor: string,
+  actorUserId?: string | null,
+): Promise<{ documents: CatalogueDocument[]; backend: string[] }> {
+  const mcp = (await listMcpEnvironments(env.DB, companyId)).find((item) => item.enabled);
+  if (!mcp) return { documents: [], backend: [] };
+  const now = nowIso();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO mcp_tool_allowlist
+      (id, company_id, mcp_environment_id, tool_name, risk_class, enabled, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'low_risk', 1, ?, ?)`,
+  )
+    .bind(newId("allow"), companyId, mcp.id, ELVEX_QUERY_TOOL, now, now)
+    .run();
+  const limit = Math.min(query.limit * 4, 40);
+  const statements = [
+    `SELECT item_id, drive_id, filename, web_url, source_type, path, mime_type, size, status, last_modified
+     FROM microsoft_index_items WHERE status = 'catalogue'
+     ORDER BY datetime(last_modified) DESC LIMIT ${limit}`,
+    `SELECT item_id, drive_id, filename, web_url, source_type, path, mime_type, size, status
+     FROM microsoft_index_items WHERE status = 'catalogue' LIMIT ${limit}`,
+  ];
+  let payload: unknown = null;
+  for (const sql of statements) {
+    const execution = await executeRegisteredMcpTool(env, {
+      mcpId: mcp.id,
+      toolName: ELVEX_QUERY_TOOL,
+      arguments: { sql, limit },
+      actorUserId: actorUserId ?? "system",
+      actorEmail: actor,
+      sourceClient: "infra-document-catalogue",
+      skipUsageRecording: true,
+    });
+    if (execution.status === 200) {
+      payload = unwrapToolPayload("data" in execution ? execution.data?.result : execution);
+      break;
+    }
+  }
+  if (!payload) return { documents: [], backend: [] };
+  const documents = documentsFromMcpPayload(payload, { ...query, source: "all" }, allowRestricted)
+    .map((doc) => {
+      const source = classifyMicrosoftFileSource(doc.url);
+      return query.source === "all" || sourceMatches(query.source, source) || sourceMatches(query.source, doc.source)
+        ? { ...doc, source: source === "onedrive" ? "onedrive" : doc.source }
+        : null;
+    })
+    .filter((doc): doc is CatalogueDocument => Boolean(doc));
+  return { documents: dedupeDocuments(documents), backend: documents.length ? ["elvex_index_catalogue"] : [] };
 }
 
 function dedupeDocuments(items: CatalogueDocument[]): CatalogueDocument[] {
@@ -955,25 +1017,39 @@ export async function executeListDocuments(
     !isElvexCompany({ id: input.companyId }) || elvexCan(input.role ?? null, "knowledge.restricted.read");
 
   const infraItems = await queryInfraKnowledgeItems(env.DB, input.companyId, query, allowRestricted);
-  const mcpPromise = withBudget(
-    queryCompanyMcpCatalogue(env, input.companyId, query, allowRestricted, input.actor, input.actorUserId),
-    4_000,
-    { documents: [] as CatalogueDocument[], backend: ["mcp_catalogue_budget"] },
+  const indexPromise = queryElvexIndexCatalogue(
+    env,
+    input.companyId,
+    query,
+    allowRestricted,
+    input.actor,
+    input.actorUserId,
   );
   const graphPromise = queryGraphCatalogue(env, input.companyId, query, input.actor);
-  const [mcp, graphItems] = await Promise.all([mcpPromise, graphPromise]);
-  let documents = dedupeDocuments([...infraItems, ...mcp.documents, ...graphItems]);
+  const [index, graphItems] = await Promise.all([indexPromise, graphPromise]);
+  let documents = dedupeDocuments([...infraItems, ...index.documents, ...graphItems]);
   const backend = [
     ...(infraItems.length ? ["microsoft_knowledge_items"] : []),
-    ...mcp.backend,
+    ...index.backend,
     ...(graphItems.length ? ["microsoft_graph"] : []),
   ];
+
+  if (documents.length === 0) {
+    const mcp = await withBudget(
+      queryCompanyMcpCatalogue(env, input.companyId, query, allowRestricted, input.actor, input.actorUserId),
+      10_000,
+      { documents: [] as CatalogueDocument[], backend: ["mcp_catalogue_budget"] },
+    );
+    documents = dedupeDocuments([...documents, ...mcp.documents]);
+    backend.push(...mcp.backend);
+  }
 
   if (documents.length === 0 && query.source === "onedrive") {
     const broadened: CatalogueQuery = { ...query, source: "all" };
     const infraAll = await queryInfraKnowledgeItems(env.DB, input.companyId, broadened, allowRestricted);
+    const indexAll = await queryElvexIndexCatalogue(env, input.companyId, broadened, allowRestricted, input.actor, input.actorUserId);
     const graphAll = await queryGraphCatalogue(env, input.companyId, broadened, input.actor);
-    documents = dedupeDocuments([...infraAll, ...graphAll]);
+    documents = dedupeDocuments([...infraAll, ...indexAll.documents, ...graphAll]);
     if (documents.length) backend.push("microsoft_fallback_after_onedrive_empty");
   }
 

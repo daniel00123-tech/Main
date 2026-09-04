@@ -112,7 +112,7 @@ async function auditDocument(
     chunkCount: fetched.diagnostics.chunkCount,
     extractedChars: text.length,
     extractedPreview: text.replace(/\s+/g, " ").trim().slice(0, 240),
-    hasProcessLanguage: /\b(process|procedure|policy|procurement|purchase order)\b/i.test(text),
+    hasProcessLanguage: /\b(process|procedure|policy|guidance|handbook|how to raise)\b/i.test(text),
     mentionsPurchaseOrder: hay.includes("purchase order") || /\bpo\b/.test(hay),
     backend: fetched.diagnostics.backend,
     providerId: fetched.diagnostics.providerId,

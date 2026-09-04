@@ -47,6 +47,7 @@ describe("document catalogue intent", () => {
     expect(latest.source).toBe("onedrive");
     expect(latest.dateField).toBe("modified_at");
     expect(latest.limit).toBe(1);
+    expect(parseCatalogueIntent("Find the newest OneDrive document.", now).limit).toBe(1);
 
     const ten = parseCatalogueIntent("Show me the latest ten files.", now);
     expect(ten.limit).toBe(10);
