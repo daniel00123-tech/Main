@@ -319,6 +319,13 @@ export async function processMicrosoftFileJob(
     return;
   }
 
+  const { isKnowledgeIntakePath } = await import("./knowledge-intake");
+  if (isKnowledgeIntakePath(job.relative_path) || isKnowledgeIntakePath(job.file_name)) {
+    await completeJob(env.DB, job.id, "skipped_unchanged");
+    await finalizeMicrosoftSyncRunIfComplete(env, job.sync_run_id, job.source_id);
+    return;
+  }
+
   if (options?.deadLetter) {
     await env.DB.prepare(
       `UPDATE microsoft_file_jobs SET status = 'dead_letter', updated_at = ?, completed_at = ? WHERE id = ?`,

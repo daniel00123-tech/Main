@@ -121,8 +121,13 @@ export async function executeKnowledgeIngestionDailyEmail(
   );
   const listed = capKnowledgeList(report.documents);
   const failures = report.documents.filter((item) => item.outcome === "failed");
+  const outlookDocs = report.documents.filter((item) => item.sourceKey === "outlook_attachments");
   const legitimateSkips = report.documents.filter(
-    (item) => item.outcome === "skipped" || item.outcome === "duplicate",
+    (item) =>
+      item.outcome === "skipped" ||
+      item.outcome === "duplicate" ||
+      item.failureReason === "UNSUPPORTED_TYPE" ||
+      item.failureReason === "unsupported format",
   ).length;
   const pipelineHealth = classifyKnowledgePipelineHealth({
     jobOk: true,
@@ -161,6 +166,7 @@ export async function executeKnowledgeIngestionDailyEmail(
       title: item.title,
       sourceLabel: item.sourceLabel,
       indexed: item.indexed,
+      stored: item.stored,
       chunkCount: item.chunkCount,
       modifiedAt: item.modifiedAt,
       url: item.url,
@@ -187,12 +193,18 @@ export async function executeKnowledgeIngestionDailyEmail(
     portalUrl,
     mailboxesScanned,
     messagesWithAttachments: report.documents.filter((item) => item.sourceKey === "outlook_attachments").length,
-    attachmentsDiscovered: report.documents.filter((item) => item.sourceKey === "outlook_attachments").length,
-    attachmentsIndexed: report.documents.filter((item) => item.sourceKey === "outlook_attachments" && item.indexed).length,
-    attachmentsSkipped: report.documents.filter(
-      (item) => item.sourceKey === "outlook_attachments" && (item.outcome === "skipped" || item.outcome === "duplicate"),
+    attachmentsDiscovered: outlookDocs.length,
+    attachmentsStored: outlookDocs.filter((item) => item.stored).length,
+    attachmentsIndexed: outlookDocs.filter((item) => item.indexed).length,
+    attachmentsDeduped: outlookDocs.filter((item) => item.outcome === "duplicate").length,
+    attachmentsSkipped: outlookDocs.filter((item) => item.outcome === "skipped" || item.outcome === "duplicate").length,
+    attachmentsSkippedJunk: outlookDocs.filter((item) => item.outcome === "skipped" && !item.stored).length,
+    attachmentsUnsupported: outlookDocs.filter(
+      (item) => item.stored && (item.failureReason === "UNSUPPORTED_TYPE" || item.failureReason === "unsupported format"),
     ).length,
-    attachmentsFailed: report.documents.filter((item) => item.sourceKey === "outlook_attachments" && item.outcome === "failed").length,
+    attachmentsFailed: outlookDocs.filter((item) => item.outcome === "failed").length,
+    onedriveIndexed: report.documents.filter((item) => item.sourceKey === "onedrive" && item.indexed).length,
+    sharepointIndexed: report.documents.filter((item) => item.sourceKey === "sharepoint" && item.indexed).length,
     pipelineHealth,
     gapWarning,
   });

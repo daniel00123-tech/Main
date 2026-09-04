@@ -447,7 +447,11 @@ export async function queryKnowledgeIngestionActivity(
         chunkCount: event.chunk_count,
         outcome,
         failureReason: event.skip_reason ?? event.failure_code,
-        url: null,
+        url: isSafeHttpUrl(asText(metadata.storedUrl) || asText(metadata.stored_url))
+          ? asText(metadata.storedUrl) || asText(metadata.stored_url)
+          : null,
+        stored: Boolean(event.stored_at || metadata.stored || metadata.pipelineStatus === "STORED" || metadata.pipelineStatus === "STORED_NOT_INDEXED" || metadata.pipelineStatus === "INDEXED"),
+        storedUrl: asText(event.stored_url) || asText(metadata.storedUrl) || asText(metadata.stored_url) || null,
         activityKind:
           event.event_type === "source_observed"
             ? "source_observed"

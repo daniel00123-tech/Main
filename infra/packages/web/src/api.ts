@@ -1977,7 +1977,51 @@ export const api = {
       engineeringQueue: Array<Record<string, unknown>>;
       deployments: Array<Record<string, unknown>>;
     }>(`/api/platform/daily-improvement${toQuery(query)}`),
-};
+  getKnowledgeIntake: (query: { companyId: string }) =>
+    fetchJson<{
+      ok: boolean;
+      companyId: string;
+      target: {
+        status: string;
+        site_id: string | null;
+        drive_id: string | null;
+        root_folder_path: string | null;
+        web_url: string | null;
+        last_error: string | null;
+      } | null;
+      mailboxes: Array<{
+        address: string;
+        type: string;
+        chatSearch: boolean;
+        attachmentDiscovery: boolean;
+        attachmentKnowledge: boolean;
+        status: string;
+        graphAccessible: number | null;
+        lastScan: string | null;
+        lastSuccessfulSync: string | null;
+        lastError: string | null;
+      }>;
+      attachments: Array<{
+        id: string;
+        filename: string | null;
+        mailbox: string | null;
+        subject: unknown;
+        status: unknown;
+        eventType: string;
+        stored: boolean;
+        indexed: boolean;
+        duplicate: boolean;
+        failed: boolean;
+        retrying: boolean;
+        chunks: number | null;
+        skipReason: string | null;
+        failureCode: string | null;
+        storedUrl: string | null;
+        receivedAt: string | null;
+        createdAt: string;
+      }>;
+    }>(`/api/platform/knowledge-intake${toQuery(query)}`),
+  };
 
 export type QualityLoopHistory = {
   id: string;

@@ -12,6 +12,7 @@ export type KnowledgeIngestionEmailLine = {
   title: string;
   sourceLabel: string;
   indexed: boolean;
+  stored?: boolean;
   chunkCount: number | null;
   modifiedAt: string | null;
   url: string | null;
@@ -46,15 +47,26 @@ export type KnowledgeIngestionReportTemplateData = {
   mailboxesScanned?: string[];
   messagesWithAttachments?: number;
   attachmentsDiscovered?: number;
+  attachmentsStored?: number;
   attachmentsIndexed?: number;
+  attachmentsDeduped?: number;
   attachmentsSkipped?: number;
+  attachmentsSkippedJunk?: number;
+  attachmentsUnsupported?: number;
   attachmentsFailed?: number;
+  onedriveIndexed?: number;
+  sharepointIndexed?: number;
   pipelineHealth?: "healthy" | "degraded" | "failed";
   gapWarning?: string | null;
 };
 
 function formatKnowledgeLine(item: KnowledgeIngestionEmailLine, index: number): string[] {
-  const lines = [`${index}. ${item.title}`, `   Source: ${item.sourceLabel}`, `   Indexed: ${item.indexed ? "Yes" : "No"}`];
+  const lines = [
+    `${index}. ${item.title}`,
+    `   Source: ${item.sourceLabel}`,
+    `   Stored: ${item.stored === false ? "No" : item.stored ? "Yes" : item.indexed ? "Yes" : "Unknown"}`,
+    `   Indexed: ${item.indexed ? "Yes" : "No"}`,
+  ];
   if (typeof item.chunkCount === "number") lines.push(`   Chunks: ${item.chunkCount}`);
   if (item.mailbox) lines.push(`   Mailbox: ${item.mailbox}`);
   if (item.parentSubject) lines.push(`   Email: ${item.parentSubject}`);
@@ -111,9 +123,15 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
           ...mailboxLines,
           `Email messages with attachments: ${data.messagesWithAttachments ?? 0}`,
           `Attachments discovered: ${data.attachmentsDiscovered ?? data.discoveredCount}`,
+          `Attachments stored: ${data.attachmentsStored ?? 0}`,
           `Attachments indexed: ${data.attachmentsIndexed ?? data.indexedCount}`,
+          `Attachments deduped: ${data.attachmentsDeduped ?? 0}`,
           `Attachments skipped: ${data.attachmentsSkipped ?? data.duplicateCount}`,
+          `Attachments skipped (junk): ${data.attachmentsSkippedJunk ?? 0}`,
+          `Attachments unsupported: ${data.attachmentsUnsupported ?? 0}`,
           `Attachments failed: ${data.attachmentsFailed ?? data.failedCount}`,
+          `OneDrive files indexed: ${data.onedriveIndexed ?? 0}`,
+          `SharePoint files indexed: ${data.sharepointIndexed ?? 0}`,
           "",
           ...(sourceLines.length ? ["BY SOURCE", "", ...sourceLines, ""] : []),
           ...(documentLines.length ? ["NEW KNOWLEDGE", "", ...documentLines] : []),
@@ -151,8 +169,12 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
     <p style="margin:0 0 12px;font-size:14px;color:#CBD5E1;">${escapeHtml((data.mailboxesScanned ?? []).join(", ") || "none")}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Email messages with attachments</p>
     <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.messagesWithAttachments ?? 0}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Attachments discovered / indexed / skipped / failed</p>
-    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#F5F9FF;">${data.attachmentsDiscovered ?? data.discoveredCount} / ${data.attachmentsIndexed ?? data.indexedCount} / ${data.attachmentsSkipped ?? data.duplicateCount} / ${data.attachmentsFailed ?? data.failedCount}</p>`;
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Attachments discovered / stored / indexed / deduped / skipped / failed</p>
+    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#F5F9FF;">${data.attachmentsDiscovered ?? data.discoveredCount} / ${data.attachmentsStored ?? 0} / ${data.attachmentsIndexed ?? data.indexedCount} / ${data.attachmentsDeduped ?? 0} / ${data.attachmentsSkipped ?? data.duplicateCount} / ${data.attachmentsFailed ?? data.failedCount}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Junk skipped / unsupported stored</p>
+    <p style="margin:0 0 12px;font-size:16px;font-weight:600;color:#F5F9FF;">${data.attachmentsSkippedJunk ?? 0} / ${data.attachmentsUnsupported ?? 0}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">OneDrive / SharePoint indexed</p>
+    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#F5F9FF;">${data.onedriveIndexed ?? 0} / ${data.sharepointIndexed ?? 0}</p>`;
 
   const sourceHtml = data.sourceCounts
     .map(
@@ -166,6 +188,7 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
     .map((item, index) => {
       const meta = [
         `Source: ${escapeHtml(item.sourceLabel)}`,
+        `Stored: ${item.stored === false ? "No" : item.stored ? "Yes" : item.indexed ? "Yes" : "Unknown"}`,
         `Indexed: ${item.indexed ? "Yes" : "No"}`,
         typeof item.chunkCount === "number" ? `Chunks: ${item.chunkCount}` : null,
         item.mailbox ? `Mailbox: ${escapeHtml(item.mailbox)}` : null,

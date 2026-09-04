@@ -18,6 +18,7 @@ export type KnowledgeUploadResult =
       requiresOcr?: boolean;
       extractionQuality?: string;
       documentStatus?: string;
+      chunksIndexed?: number;
     }
   | { ok: false; code: string; message: string };
 
@@ -204,6 +205,7 @@ export async function uploadMicrosoftDocumentToKnowledge(
     let requiresOcr = false;
     let extractionQuality: string | undefined;
     let documentStatus: string | undefined;
+    let chunksIndexed: number | undefined;
 
     if (input.autoIndex !== false) {
       const indexResult = await indexKnowledgeDocumentUntilComplete(
@@ -223,6 +225,7 @@ export async function uploadMicrosoftDocumentToKnowledge(
       requiresOcr = indexResult.requiresOcr;
       extractionQuality = indexResult.extractionQuality;
       documentStatus = indexResult.documentStatus;
+      chunksIndexed = indexResult.chunksIndexed;
 
       if (requiresOcr) {
         const { applyOcrFallbackIfRequired, azureOcrReady } = await import("./ocr/knowledge-ocr");
@@ -257,6 +260,7 @@ export async function uploadMicrosoftDocumentToKnowledge(
       requiresOcr,
       extractionQuality,
       documentStatus,
+      chunksIndexed,
     };
   } catch (err) {
     return {

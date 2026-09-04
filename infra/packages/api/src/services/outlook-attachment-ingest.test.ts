@@ -14,6 +14,8 @@ const hoisted = vi.hoisted(() => ({
   listMcp: vi.fn(),
   upload: vi.fn(),
   recordEvent: vi.fn(async () => "kie_1"),
+  store: vi.fn(),
+  search: vi.fn(),
 }));
 
 vi.mock("./mailbox-registry", () => ({
@@ -56,6 +58,15 @@ vi.mock("./knowledge-ingestion-events", () => ({
   recordKnowledgeIngestionEvent: hoisted.recordEvent,
 }));
 
+vi.mock("./knowledge-intake", () => ({
+  storeOriginalInKnowledgeIntake: hoisted.store,
+  isKnowledgeIntakePath: (path?: string | null) => /INFRA Knowledge Intake/i.test(path ?? ""),
+}));
+
+vi.mock("./microsoft-acceptance-knowledge-search", () => ({
+  runProductionKnowledgeSearch: hoisted.search,
+}));
+
 import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
 
 function dbStub() {
@@ -87,7 +98,24 @@ describe("Outlook attachment ingest", () => {
     hoisted.listRegistry.mockResolvedValue([]);
     hoisted.markScan.mockResolvedValue(undefined);
     hoisted.listMcp.mockResolvedValue([{ id: "mcp_el_primary", enabled: true, serviceBindingRef: "EL_BUSINESS_MCP" }]);
-    hoisted.upload.mockResolvedValue({ ok: true, documentId: 91, indexed: true, documentStatus: "indexed" });
+    hoisted.upload.mockResolvedValue({ ok: true, documentId: 91, indexed: true, documentStatus: "indexed", chunksIndexed: 4 });
+    hoisted.store.mockResolvedValue({
+      ok: true,
+      via: "durable_fallback",
+      storedItemId: "fallback:hash",
+      storedUrl: null,
+      storedFilename: "stored.pdf",
+      siteId: null,
+      driveId: null,
+      folderId: null,
+      landingZoneReady: false,
+      warning: "LANDING_ZONE_GRAPH_UNAVAILABLE",
+    });
+    hoisted.search.mockResolvedValue({
+      ok: true,
+      hitCount: 1,
+      hits: [{ title: "quote.pdf", documentId: 91, snippet: "quote" }],
+    });
     hoisted.listApproved.mockResolvedValue([
       {
         id: "mbx_info",
@@ -138,7 +166,10 @@ describe("Outlook attachment ingest", () => {
     expect(result.counts.mailboxesScanned).toBe(1);
     expect(result.counts.attachmentsDiscovered).toBe(2);
     expect(result.counts.attachmentsIndexed).toBe(1);
+    expect(result.counts.attachmentsStored).toBe(1);
     expect(result.counts.skipped).toBe(1);
+    expect(result.counts.skippedJunk).toBe(1);
+    expect(hoisted.store).toHaveBeenCalledTimes(1);
     expect(result.namedPeople.map((row) => row.name)).toEqual(["Michael", "Sharon", "Lauren"]);
     expect(result.namedPeople.every((row) => row.approvedForAttachmentIngestion === false)).toBe(true);
     expect(hoisted.upload).toHaveBeenCalledTimes(1);
@@ -374,5 +405,80 @@ describe("Outlook attachment ingest", () => {
     expect(result.companyId).toBe("co_el");
     expect(result.counts.mailboxesScanned).toBe(0);
     expect(hoisted.listApproved).toHaveBeenCalledWith(expect.anything(), "co_el");
+  });
+
+  it("stores an unsupported business file without indexing it", async () => {
+    hoisted.listMessages.mockResolvedValue([
+      {
+        id: "msg-zip",
+        subject: "CIS pack",
+        hasAttachments: true,
+        receivedDateTime: "2026-09-04T11:32:00Z",
+        from: { emailAddress: { address: "ellie@barons-group.org" } },
+      },
+    ]);
+    hoisted.listAttachments.mockResolvedValue([
+      { id: "att-zip", name: "statements.zip", contentType: "application/zip", size: 40_000, isInline: false },
+    ]);
+    hoisted.getAttachment.mockResolvedValue({
+      name: "statements.zip",
+      contentType: "application/zip",
+      size: 40_000,
+      contentBytes: btoa("PK zip"),
+    });
+
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-09-03T17:39:03.388Z"),
+        windowTo: new Date("2026-09-04T17:39:03.388Z"),
+      },
+    );
+    expect(result.counts.attachmentsStored).toBe(1);
+    expect(result.counts.unsupported).toBe(1);
+    expect(result.counts.attachmentsIndexed).toBe(0);
+    expect(hoisted.store).toHaveBeenCalledTimes(1);
+    expect(hoisted.upload).not.toHaveBeenCalled();
+  });
+
+  it("does not mark Indexed=Yes when retrieval verification fails", async () => {
+    hoisted.listMessages.mockResolvedValue([
+      {
+        id: "msg-docx",
+        subject: "How to guide",
+        hasAttachments: true,
+        receivedDateTime: "2026-04-04T10:00:00Z",
+        from: { emailAddress: { address: "william@example.com" } },
+      },
+    ]);
+    hoisted.listAttachments.mockResolvedValue([
+      {
+        id: "att-docx",
+        name: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        size: 59_000,
+        isInline: false,
+      },
+    ]);
+    hoisted.getAttachment.mockResolvedValue({
+      name: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      size: 59_000,
+      contentBytes: btoa("docx"),
+    });
+    hoisted.search.mockResolvedValue({ ok: true, hitCount: 0, hits: [] });
+
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-04-01T00:00:00.000Z"),
+        windowTo: new Date("2026-09-04T17:39:03.388Z"),
+      },
+    );
+    expect(result.counts.attachmentsStored).toBe(1);
+    expect(result.counts.attachmentsIndexed).toBe(0);
+    expect(result.counts.failed).toBe(1);
   });
 });

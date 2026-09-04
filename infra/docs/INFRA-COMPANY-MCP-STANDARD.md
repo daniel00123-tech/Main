@@ -165,3 +165,30 @@ EL is the reference validation tenant, not the only tenant that can use the stac
 One canonical `infra-api` superstack. Tenant feature branches must not last-deploy-wins over shared capabilities. `npm run deploy` fails if WhatsApp, OAuth, MCP, Portal Chat, OpenAI provider, Cloudflare provider, RBAC, usage, billing, automation, quality, daily improvement, tenant registry, tool registry, or failure telemetry is missing.
 
 No new Worker. No secret rotation as part of MCP onboarding unless the connector itself requires a new secret ref.
+
+## 15. Email attachment knowledge intake
+
+Attachment ingestion is a platform capability. New tenants inherit the architecture automatically. It stays disabled until a Microsoft connector exists, approved mailboxes are configured, and a knowledge-intake destination is configured. Do not ingest every mailbox.
+
+Required company-MCP / INFRA facade capabilities:
+
+| Capability | Meaning |
+| --- | --- |
+| EMAIL_ATTACHMENT_DISCOVERY | List attachment-bearing messages on approved mailboxes |
+| ATTACHMENT_FETCH | Fetch attachment bytes through controlled backend credentials |
+| KNOWLEDGE_INTAKE_STORAGE | Save each original attachment to the tenant Microsoft 365 landing zone |
+| PROVENANCE | Retain mailbox / message / attachment / stored-item identity without email body text |
+| INGESTION_EVENTS | Append-only ledger: discovered → fetched → stored → extracted → indexed |
+| INDEX_STATUS | INDEXED only after extract + chunks + vector write + retrieval verification |
+| RETRY | Bounded retry for Graph 429/5xx, fetch, extract, embed, and vector write failures |
+| DAILY_RECONCILIATION | Daily Knowledge Activity must reconcile source → stored → index |
+
+Rules:
+
+- One attachment = one knowledge document. Never concatenate attachments.
+- Store the original file first. An indexing failure must not lose the file.
+- Filter signature logos, tracking pixels, and email chrome. Store unsupported business files as `STORED_NOT_INDEXED`.
+- Deduplicate by content hash plus provider identity: one indexed content object, multiple provenance links.
+- Do not automatically vectorise entire email bodies as part of attachment intake.
+- Landing-zone copies must not be re-indexed as ordinary OneDrive/SharePoint files.
+- EL is the first implementation of this standard, not a bespoke exception.

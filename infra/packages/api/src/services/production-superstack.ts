@@ -21,6 +21,7 @@ import { inspectIntelligenceProvider } from "./intelligence/provider";
 import { resolveRequestPricingPolicy } from "./customer-request-pricing";
 import { DAILY_IMPROVEMENT_CONTRACT } from "./daily-improvement/constants";
 import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
+import { discoverKnowledgeIntakeTarget, isKnowledgeIntakePath } from "./knowledge-intake";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -172,6 +173,9 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (typeof ingestApprovedOutlookAttachments !== "function") {
     throw new Error("outlook attachment ingest missing");
+  }
+  if (typeof discoverKnowledgeIntakeTarget !== "function" || !isKnowledgeIntakePath("INFRA Knowledge Intake/Email Attachments")) {
+    throw new Error("knowledge intake landing zone missing");
   }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };

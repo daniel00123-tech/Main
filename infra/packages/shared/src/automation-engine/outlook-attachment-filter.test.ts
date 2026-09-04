@@ -52,13 +52,37 @@ describe("Outlook attachment knowledge filter", () => {
     ).toBe("SKIP_CALENDAR_CHROME");
   });
 
-  it("rejects unsupported archives", () => {
-    expect(
-      classifyOutlookAttachmentForKnowledge({
-        filename: "payload.zip",
-        mimeType: "application/zip",
-        sizeBytes: 40_000,
-      }).failureCode,
-    ).toBe("UNSUPPORTED_FORMAT");
+  it("stores unsupported archives without indexing them", () => {
+    const result = classifyOutlookAttachmentForKnowledge({
+      filename: "payload.zip",
+      mimeType: "application/zip",
+      sizeBytes: 40_000,
+    });
+    expect(result.failureCode).toBe("UNSUPPORTED_TYPE");
+    expect(result.store).toBe(true);
+    expect(result.ingest).toBe(false);
+    expect(result.classification).toBe("unsupported");
+  });
+
+  it("quarantines executables and does not extract them", () => {
+    const result = classifyOutlookAttachmentForKnowledge({
+      filename: "setup.exe",
+      mimeType: "application/x-msdownload",
+      sizeBytes: 80_000,
+    });
+    expect(result.classification).toBe("unsafe");
+    expect(result.store).toBe(true);
+    expect(result.ingest).toBe(false);
+  });
+
+  it("does not store inline logos", () => {
+    const result = classifyOutlookAttachmentForKnowledge({
+      filename: "image001.png",
+      mimeType: "image/png",
+      isInline: true,
+      sizeBytes: 2_000,
+    });
+    expect(result.classification).toBe("junk");
+    expect(result.store).toBe(false);
   });
 });
