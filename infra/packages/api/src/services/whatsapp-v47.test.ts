@@ -207,20 +207,22 @@ describe("WhatsApp V4.7 follow-up and feedback planning", () => {
     expect(isNegativeResultFeedback("find Coal Search")).toBe(false);
     const poor = planWhatsAppTurn({
       text: "that’s not what I asked",
-      memory: LAST_DOC,
+      memory: { ...LAST_DOC, lastUserQuestion: "find Coal Search" },
       connectors: ["conn_microsoft_365"],
     });
-    expect(poor.action).toBe("clarify");
-    expect(poor.skipTools).toBe(true);
-    expect(poor.tool).toBeNull();
-    expect(poor.clarification).toMatch(/still have/i);
+    expect(poor.action).toBe("knowledge");
+    expect(poor.intent).toBe("replan");
+    expect(poor.skipTools).toBe(false);
+    expect(poor.useMemory).toBe(false);
+    expect(poor.query).toBe("find Coal Search");
     const other = planWhatsAppTurn({
       text: "not really good, this is about something else not to do with it",
-      memory: LAST_DOC,
+      memory: { ...LAST_DOC, lastSearchQuery: "van policy" },
       connectors: ["conn_microsoft_365"],
     });
-    expect(other.action).toBe("clarify");
-    expect(other.skipTools).toBe(true);
+    expect(other.action).toBe("knowledge");
+    expect(other.intent).toBe("replan");
+    expect(other.query).toBe("van policy");
   });
 
   it("still searches a newly named document", () => {

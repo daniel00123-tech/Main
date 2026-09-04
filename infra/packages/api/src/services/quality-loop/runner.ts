@@ -9,11 +9,12 @@ import {
   shouldRunCadence,
 } from "./cadence";
 import { qualityConfirmationEmail, qualityReviewEmail, qualityRollbackEmail, listQualityLoopRecipients, sendQualityLoopEmail } from "./email";
+import { buildQualityCentre } from "./centre";
 import { assertTenantIsolation, evaluateWhatsAppConversation, threadFromAudit } from "./evaluator";
 import { groupQualityPatterns } from "./patterns";
 import { proposeImprovements } from "./proposals";
 import { replayProposal } from "./replay";
-import { applyApprovedProposal, canaryShouldRollback, promoteOrRollbackCanary } from "./apply";
+import { applyApprovedProposal, canaryShouldRollback, promoteOrRollbackCanary, resolveActiveWhatsAppRuntime } from "./apply";
 import {
   completeQualityRun,
   createReviewToken,
@@ -28,6 +29,7 @@ import {
   updateQualityLoopConfig,
   updateProposalStatus,
   insertHistory,
+  getProposal,
 } from "./store";
 import type { ConversationThread, QualityLoopKind, QualityLoopMetrics, QualityProposalDraft } from "./types";
 
@@ -79,9 +81,10 @@ export async function runQualityLoop(
 
   try {
     const threads = await loadWhatsAppThreads(env.DB, input.period.from, input.period.to);
+    const runtime = await resolveActiveWhatsAppRuntime(env, {}).catch(() => null);
     const evaluations = [];
     for (const thread of threads) {
-      const evaluation = evaluateWhatsAppConversation(thread);
+      const evaluation = evaluateWhatsAppConversation(thread, runtime ?? undefined);
       if (evaluation.evidence) {
         evaluation.evidence.companyId = thread.companyId;
       }
@@ -227,6 +230,15 @@ export async function decideProposal(
   env: Env,
   input: { proposalId: string; decision: "approve" | "reject" | "defer"; actor: string; runId?: string },
 ) {
+  const existing = await getProposal(env.DB, input.proposalId);
+  if (input.decision === "approve" && existing && (existing.status === "canary" || existing.status === "promoted")) {
+    const apply = await applyApprovedProposal(env, {
+      proposalId: input.proposalId,
+      actor: input.actor,
+      runId: input.runId,
+    });
+    return { status: apply.status, apply };
+  }
   const status = input.decision === "approve" ? "approved" : input.decision === "reject" ? "rejected" : "deferred";
   await updateProposalStatus(env.DB, input.proposalId, status);
   await insertHistory(env.DB, {
@@ -268,6 +280,106 @@ export async function approveRecommended(env: Env, input: { runId: string; actor
       eventType: "quality_loop.approval_confirmed",
       resourceId: input.runId,
     });
+  }
+  return results;
+}
+
+export async function sendPersistedQualityReview(
+  env: Env,
+  input?: { runId?: string | null; actor?: string },
+): Promise<{ sent: boolean; runId: string | null; error?: string; reviewUrl?: string }> {
+  const centre = await buildQualityCentre(env.DB, { runId: input?.runId });
+  const bundle = centre.latest;
+  if (!bundle) return { sent: false, runId: null, error: "No persisted quality run" };
+  const origin = (env.PORTAL_PUBLIC_ORIGIN || "https://app.infrastack.app").replace(/\/$/, "");
+  const reviewUrl = `${origin}/quality/improvements?run=${encodeURIComponent(bundle.run.id)}`;
+  const metrics = (bundle.run.metrics ?? {}) as QualityLoopMetrics;
+  const applied = bundle.proposals.filter((row) => row.status === "canary" || row.status === "promoted");
+  const pending = bundle.proposals.filter((row) => row.status === "pending_approval");
+  const appliedNote = applied.length
+    ? `${applied.length} approved improvement${applied.length === 1 ? "" : "s"} ${applied.every((row) => row.status === "promoted") ? "are promoted" : "are live on the Caddington canary"}. ${
+        pending.length
+          ? `${pending.length} item${pending.length === 1 ? "" : "s"} still need review — Accept records them; clicking this email does not apply changes.`
+          : "Nothing new is waiting to auto-apply. Open the page to confirm the applied state."
+      }`
+    : pending.length
+      ? `${pending.length} improvement${pending.length === 1 ? "" : "s"} still pending review. Clicking this email does not apply changes.`
+      : "No pending auto-apply proposals. Open the page to review the latest score and remaining engineering items.";
+  const email = qualityReviewEmail({
+    date: new Date().toISOString().slice(0, 10),
+    kind: (bundle.run.kind as QualityLoopKind) || "manual",
+    cadence: centre.cadence,
+    periodFrom: bundle.run.periodFrom,
+    periodTo: bundle.run.periodTo,
+    metrics: {
+      messagesAnalysed: Number(metrics.messagesAnalysed ?? 0),
+      conversationsAnalysed: Number(metrics.conversationsAnalysed ?? centre.kpis.conversationsAnalysed ?? 0),
+      qualityAverage: Number(metrics.qualityAverage ?? centre.kpis.qualityAverage ?? 0),
+      failedRate: Number(metrics.failedRate ?? centre.kpis.failedRate ?? 0),
+      rephraseRate: Number(metrics.rephraseRate ?? 0),
+      ackLatencyMs: metrics.ackLatencyMs ?? null,
+      finalLatencyMs: metrics.finalLatencyMs ?? null,
+      openProposals: pending.length,
+      approvedProposals: applied.length,
+      deployedProposals: applied.filter((row) => row.status === "promoted").length,
+      rolledBackProposals: Number(metrics.rolledBackProposals ?? 0),
+      evaluatorCostCents: Number(metrics.evaluatorCostCents ?? 0),
+    },
+    failures: bundle.failedConversations.slice(0, 8).map((row) => {
+      const flags = Array.isArray(row.flags) ? (row.flags as Array<{ category?: string; evidence?: string; polarity?: string }>) : [];
+      const flag = flags.find((item) => item.polarity === "negative") ?? flags[0];
+      return {
+        companyLabel: row.companyId === "co_caddington" ? "Caddington" : "Company",
+        category: flag?.category ?? "quality",
+        snippet: flag?.evidence ?? "See interaction detail",
+        interactionId: row.interactionId,
+      };
+    }),
+    patterns: bundle.patterns
+      .filter((pattern) => pattern.companyId != null)
+      .map((pattern) => ({
+        title: pattern.title,
+        count: pattern.occurrenceCount,
+        rootCause: pattern.rootCause ?? "",
+      })),
+    proposals: bundle.proposals.map((row) => ({
+      title: row.title,
+      risk: row.risk,
+      autoApplyable: row.autoApplyable,
+      engineeringRequired: row.engineeringRequired,
+      status: row.status,
+    })),
+    reviewUrl,
+    appliedNote,
+  });
+  const recipients = await listQualityLoopRecipients(env.DB, env);
+  const delivered = await sendQualityLoopEmail(env, env.DB, {
+    ...email,
+    recipients,
+    eventType: "quality_loop.persisted_review",
+    resourceId: bundle.run.id,
+  });
+  return { sent: delivered.sent, runId: bundle.run.id, error: delivered.error, reviewUrl };
+}
+
+export const DANIEL_APPROVED_APPLY_ACTOR =
+  "system:quality-apply authorised by Daniel 2026-08-31 (daniel.dwyer123@gmail.com)";
+
+export async function applyAuthorisedSafeProposals(
+  env: Env,
+  input: { proposalIds: string[]; actor?: string; runId?: string | null },
+) {
+  const actor = input.actor ?? DANIEL_APPROVED_APPLY_ACTOR;
+  const results = [];
+  for (const proposalId of input.proposalIds) {
+    results.push(
+      await decideProposal(env, {
+        proposalId,
+        decision: "approve",
+        actor,
+        runId: input.runId ?? undefined,
+      }),
+    );
   }
   return results;
 }

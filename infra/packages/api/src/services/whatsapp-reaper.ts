@@ -141,10 +141,12 @@ export async function sweepStuckWhatsAppTurns(env: Env): Promise<{ scanned: numb
 
 export async function applyWhatsAppWatchdogStage(
   env: Env,
-  input: { eventId: string; wamid: string | null; stage: "t5" | "t10" | "t15" | "t30" | "t60"; receivedAt: string },
+  input: { eventId: string; wamid: string | null; stage: "t2" | "t5" | "t10" | "t15" | "t30" | "t60"; receivedAt: string },
 ): Promise<{ acted: boolean; reason: string }> {
   const targetMs =
-    input.stage === "t5"
+    input.stage === "t2"
+      ? 2_000
+      : input.stage === "t5"
       ? 5_000
       : input.stage === "t10"
         ? 10_000
@@ -213,6 +215,25 @@ export async function applyWhatsAppWatchdogStage(
   const visible = Boolean(row?.first_visible_at || row?.reply_sent_at || row?.acknowledgement_sent_at);
   const sender = row?.sender_e164 || senderFromPayload(row?.payload_json);
   const now = new Date().toISOString();
+
+  if (input.stage === "t2") {
+    if (visible) return { acted: false, reason: "already_visible" };
+    if (sender && outboundAiEnabled(env)) {
+      await sendWhatsAppText(env, {
+        toE164: sender,
+        body: FIRST_RESPONSE_FAILSAFE_COPY,
+        inCustomerServiceWindow: true,
+      }).catch(() => undefined);
+    }
+    await stampWhatsAppLifecycle(env, wamid, {
+      state: "acknowledged",
+      firstVisibleAt: now,
+      acknowledgementSentAt: now,
+      ackSendOk: sender ? 1 : 0,
+      lastError: "watchdog_t2",
+    });
+    return { acted: true, reason: "t2_first_visible" };
+  }
 
   if (input.stage === "t5") {
     await stampWhatsAppLifecycle(env, wamid, { watchdog5sAt: now });
@@ -381,7 +402,7 @@ export async function applyWhatsAppWatchdogStage(
 
 async function requeueWatchdog(
   env: Env,
-  input: { eventId: string; wamid: string | null; stage: "t5" | "t10" | "t15" | "t30" | "t60"; receivedAt: string },
+  input: { eventId: string; wamid: string | null; stage: "t2" | "t5" | "t10" | "t15" | "t30" | "t60"; receivedAt: string },
   remainingMs: number,
 ): Promise<void> {
   const delaySeconds = Math.max(1, Math.ceil(remainingMs / 1000));

@@ -10,9 +10,12 @@ import {
   getRunBundle,
   maybeRunQualityLoop,
   resolveReviewToken,
+  sendPersistedQualityReview,
+  applyAuthorisedSafeProposals,
+  DANIEL_APPROVED_APPLY_ACTOR,
 } from "../services/quality-loop";
 import { applyApprovedProposal, previewProposal, rollbackProposal } from "../services/quality-loop/apply";
-import { getProposal, listHistoryForProposal } from "../services/quality-loop/store";
+import { consumeQualityOperatorJob, getProposal, listHistoryForProposal } from "../services/quality-loop/store";
 
 const routes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -197,6 +200,39 @@ routes.post("/api/platform/quality-loop/run", requireAuth, requirePlatformAdmin,
 routes.get("/api/platform/quality-loop/config", requireAuth, requirePlatformAdmin, async (c) => {
   const config = await ensureQualityLoopConfig(c.env.DB);
   return c.json(config);
+});
+
+routes.post("/api/internal/quality-loop/operator", async (c) => {
+  const token =
+    c.req.header("x-quality-operator-token") ||
+    c.req.header("Authorization")?.replace(/^Bearer\s+/i, "") ||
+    "";
+  const job = await consumeQualityOperatorJob(c.env.DB, token);
+  if (!job) return c.json({ error: "Invalid or expired operator token" }, 403);
+  const payload = job.payload;
+  const proposalIds = Array.isArray(payload.proposalIds)
+    ? payload.proposalIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const runId = typeof payload.runId === "string" ? payload.runId : null;
+  const actor = DANIEL_APPROVED_APPLY_ACTOR;
+  const apply = proposalIds.length
+    ? await applyAuthorisedSafeProposals(c.env, { proposalIds, actor, runId })
+    : [];
+  const review = await sendPersistedQualityReview(c.env, { runId, actor });
+  await recordAuditEvent(c.env.DB, {
+    companyId: null,
+    eventType: "quality_loop.operator_apply",
+    actor,
+    resourceType: "quality_operator_job",
+    resourceId: job.id,
+    detail: {
+      authorisedBy: "Daniel 2026-08-31",
+      proposalIds,
+      apply,
+      review,
+    },
+  });
+  return c.json({ ok: true, apply, review });
 });
 
 export default routes;

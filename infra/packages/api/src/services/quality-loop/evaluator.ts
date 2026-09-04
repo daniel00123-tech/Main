@@ -10,7 +10,9 @@ import {
   type DimensionScore,
   type QualityDimension,
   type QualityFlag,
+  type QualityRuntimeConfig,
 } from "./types";
+import { CUSTOMER_PROGRESS_BUDGET_MS } from "./runtime-policy";
 
 export function emptyDimensions(): Record<QualityDimension, DimensionScore> {
   return Object.fromEntries(QUALITY_DIMENSIONS.map((key) => [key, { score: 100, evidence: [] as string[] }])) as Record<
@@ -71,14 +73,21 @@ export function threadFromAudit(input: {
   };
 }
 
-export function evaluateWhatsAppConversation(thread: ConversationThread): ConversationEvaluation {
+export function evaluateWhatsAppConversation(
+  thread: ConversationThread,
+  runtime?: Pick<QualityRuntimeConfig, "thresholds">,
+): ConversationEvaluation {
   const dimensions = emptyDimensions();
   const flags: QualityFlag[] = [];
+  const firstVisibleLimit = runtime?.thresholds.ackWarningMs ?? 3_000;
+  const slowTotalLimit = runtime?.thresholds.slowTotalMs ?? CUSTOMER_PROGRESS_BUDGET_MS;
   const evidence: Record<string, unknown> = {
     companyId: thread.companyId,
     conversationKey: thread.conversationKey,
     channel: thread.channel,
     evaluatorVersion: QUALITY_LOOP_EVALUATOR_VERSION,
+    firstVisibleLimit,
+    slowTotalLimit,
   };
 
   if (!thread.finalSent) {
@@ -94,12 +103,12 @@ export function evaluateWhatsAppConversation(thread: ConversationThread): Conver
     penalise(dimensions, "latency", 25, "Greeting took more than 2 seconds.");
     flags.push(neg("greeting_slow", "high", 0.95, "Greeting exceeded the 2s WhatsApp UX budget."));
   }
-  if (!thread.acknowledgementSent && (thread.firstVisibleMs ?? 0) >= 3_000 && thread.toolNames.length > 0) {
+  if (!thread.acknowledgementSent && (thread.firstVisibleMs ?? 0) >= firstVisibleLimit && thread.toolNames.length > 0) {
     penalise(dimensions, "ux", 20, "Slow tool turn had no typing or text acknowledgement.");
     flags.push(neg("no_ack_on_slow_turn", "high", 0.85, "No ack/typing on a slow recognised-user turn."));
   }
-  if ((thread.firstVisibleMs ?? 0) >= 3_000) {
-    penalise(dimensions, "latency", 15, "First visible response exceeded 3 seconds.");
+  if ((thread.firstVisibleMs ?? 0) >= firstVisibleLimit) {
+    penalise(dimensions, "latency", 15, `First visible response exceeded ${Math.round(firstVisibleLimit / 1000)} seconds.`);
     flags.push(neg("first_visible_slow", "high", 0.85, `First visible ${thread.firstVisibleMs}ms.`));
   }
   if (thread.qualitySignals.includes("whatsapp_rephrase_before_answer")) {
@@ -145,9 +154,9 @@ export function evaluateWhatsAppConversation(thread: ConversationThread): Conver
     flags.push(neg("missing_source_url", "medium", 0.85, "Missing source URL after an explicit ask."));
   }
   const latency = thread.totalMs ?? thread.firstVisibleMs ?? 0;
-  if (latency >= 30_000) {
-    penalise(dimensions, "latency", latency >= 60_000 ? 35 : 20, `Turn took ${latency}ms.`);
-    flags.push(neg("excessive_latency", latency >= 60_000 ? "high" : "medium", 0.85, `Latency ${latency}ms.`));
+  if (latency >= Math.min(30_000, slowTotalLimit)) {
+    penalise(dimensions, "latency", latency >= CUSTOMER_PROGRESS_BUDGET_MS ? 35 : 20, `Turn took ${latency}ms.`);
+    flags.push(neg("excessive_latency", latency >= CUSTOMER_PROGRESS_BUDGET_MS ? "high" : "medium", 0.85, `Latency ${latency}ms.`));
   }
   if (thread.qualitySignals.includes("whatsapp_unnecessary_tool") || thread.qualitySignals.includes("whatsapp_wrong_tool")) {
     penalise(dimensions, "tool_correctness", 20, "Planner used the wrong or an unnecessary tool.");

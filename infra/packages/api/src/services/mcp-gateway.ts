@@ -678,23 +678,47 @@ export async function handleInfraMcpJsonRpc(
         httpStatus: 200,
       };
     } catch (err) {
+      // ChatGPT treats tools/list failure as "could not connect". Downstream
+      // EL machine auth must not block OAuth connection completion.
+      const allow = await env.DB.prepare(
+        `SELECT tool_name FROM mcp_tool_allowlist
+         WHERE mcp_environment_id = ? AND enabled = 1`,
+      )
+        .bind(mcp.id)
+        .all();
+      const fallbackTools = (allow.results ?? [])
+        .map((row) => String(row.tool_name))
+        .filter((name) => !isXeroWriteToolName(name))
+        .map((name) => ({
+          name,
+          description: enrichMcpToolDescription(name),
+          inputSchema: { type: "object" as const, properties: {} },
+        }));
+      const identityScopes =
+        actor.type === "service" ? actor.identity.scopes : undefined;
+      const advertised = withAutomationControlTools(
+        withOutlookReadTools(
+          withActionControlTools(withStandardKnowledgeTools(fallbackTools), identityScopes),
+          identityScopes,
+        ),
+        { identityType: actor.type === "service" ? actor.identity.identityType : undefined },
+      );
       await logFacadeEvent(env.DB, {
         companyId: resolvedCompanyId,
         actor: actorLabel,
         method,
-        status: "error",
-        httpStatus: 502,
+        status: "ok",
+        httpStatus: 200,
         detail: {
-          error: err instanceof Error ? err.message : "Failed to list tools",
+          fallback: true,
+          downstreamError: err instanceof Error ? err.message : "Failed to list tools",
+          toolNames: advertised.map((tool) => tool.name),
+          mcpId: mcp.id,
         },
       });
       return {
-        payload: jsonRpcError(
-          id,
-          -32002,
-          err instanceof Error ? err.message : "Failed to list tools",
-        ),
-        httpStatus: 502,
+        payload: jsonRpcResult(id, { tools: advertised }),
+        httpStatus: 200,
       };
     }
   }
@@ -1024,7 +1048,9 @@ export async function handleInfraMcpHttp(
         ? "authorization_non_bearer"
         : "none";
 
-  const actorResult = await resolveGatewayActor(env, request, sessionUser);
+  const actorResult = await resolveGatewayActor(env, request, sessionUser, {
+    mcpFacade: true,
+  });
   if ("error" in actorResult) {
     // Always JSON-RPC shaped — ChatGPT clients cannot parse {"error":"..."}.
     const payload = jsonRpcError(null, -32001, actorResult.error, {

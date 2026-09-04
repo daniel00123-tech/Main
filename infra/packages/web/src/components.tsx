@@ -250,8 +250,8 @@ export function Button({
   return (
     <button
       className={`button button-${v}${size === "sm" ? " button-small" : ""} ${className}`.trim()}
-      disabled={props.disabled || loading}
       {...props}
+      disabled={Boolean(props.disabled || loading)}
     >
       {loading ? "Working…" : children}
     </button>

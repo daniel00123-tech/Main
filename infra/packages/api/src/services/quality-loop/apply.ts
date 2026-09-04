@@ -15,6 +15,54 @@ import {
 } from "./store";
 import { CADDINGTON_COMPANY_ID, HIGH_RISK_PROPOSAL_KEYS, type QualityRuntimeConfig } from "./types";
 
+export function resolveApplyBase(active: {
+  canary?: { config: unknown } | null;
+  promoted?: { config: unknown } | null;
+}): QualityRuntimeConfig {
+  const promoted = (active.promoted?.config as QualityRuntimeConfig | undefined) ?? undefined;
+  const canary = (active.canary?.config as QualityRuntimeConfig | undefined) ?? undefined;
+  return {
+    ...DEFAULT_QUALITY_RUNTIME,
+    ...(promoted ?? {}),
+    ...(canary ?? {}),
+    prompts: {
+      ...DEFAULT_QUALITY_RUNTIME.prompts,
+      ...(promoted?.prompts ?? {}),
+      ...(canary?.prompts ?? {}),
+    },
+    planner: {
+      ...DEFAULT_QUALITY_RUNTIME.planner,
+      ...(promoted?.planner ?? {}),
+      ...(canary?.planner ?? {}),
+    },
+    responseRules: {
+      ...DEFAULT_QUALITY_RUNTIME.responseRules,
+      ...(promoted?.responseRules ?? {}),
+      ...(canary?.responseRules ?? {}),
+    },
+    thresholds: {
+      ...DEFAULT_QUALITY_RUNTIME.thresholds,
+      ...(promoted?.thresholds ?? {}),
+      ...(canary?.thresholds ?? {}),
+    },
+    ranking: {
+      ...DEFAULT_QUALITY_RUNTIME.ranking,
+      ...(promoted?.ranking ?? {}),
+      ...(canary?.ranking ?? {}),
+    },
+    suggestedActions: {
+      ...DEFAULT_QUALITY_RUNTIME.suggestedActions,
+      ...(promoted?.suggestedActions ?? {}),
+      ...(canary?.suggestedActions ?? {}),
+    },
+    guidance: {
+      ...DEFAULT_QUALITY_RUNTIME.guidance,
+      ...(promoted?.guidance ?? {}),
+      ...(canary?.guidance ?? {}),
+    },
+  };
+}
+
 export function isSafeAutoApplyPatch(patches: Array<{ path: string; value: unknown }>): boolean {
   return patches.every((patch) => {
     const path = patch.path.toLowerCase();
@@ -76,7 +124,7 @@ export async function previewProposal(env: Env, proposalId: string) {
     patchPaths: patches.map((item) => item.path),
   });
   const active = await getActiveRuntimeRow(env.DB);
-  const base = (active.promoted?.config as QualityRuntimeConfig | undefined) ?? DEFAULT_QUALITY_RUNTIME;
+  const base = resolveApplyBase(active);
   const next = applyClass === "AUTO_APPLY_SAFE" ? applyRuntimePatches(base, patches) : base;
   const validation = applyClass === "AUTO_APPLY_SAFE" ? await validateBeforePromote(next) : { ok: false, reason: "Not auto-applyable" };
   const history = await listHistoryForProposal(env.DB, proposal.id);
@@ -160,7 +208,7 @@ export async function applyApprovedProposal(
   });
 
   const active = await getActiveRuntimeRow(env.DB);
-  const base = (active.promoted?.config as QualityRuntimeConfig | undefined) ?? DEFAULT_QUALITY_RUNTIME;
+  const base = resolveApplyBase(active);
   const next = applyRuntimePatches(base, patches);
   const validation = await validateBeforePromote(next);
   if (!validation.ok) {

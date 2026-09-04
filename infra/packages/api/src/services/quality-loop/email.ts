@@ -16,8 +16,15 @@ export function qualityReviewEmail(input: {
   metrics: QualityLoopMetrics;
   failures: Array<{ companyLabel: string; category: string; snippet: string; interactionId?: string | null }>;
   patterns: Array<{ title: string; count: number; rootCause: string }>;
-  proposals: Array<{ title: string; risk: string; autoApplyable: boolean; engineeringRequired: boolean }>;
+  proposals: Array<{
+    title: string;
+    risk: string;
+    autoApplyable: boolean;
+    engineeringRequired: boolean;
+    status?: string;
+  }>;
   reviewUrl: string;
+  appliedNote?: string | null;
 }): { subject: string; bodyText: string; bodyHtml: string } {
   const subject = qualityReviewSubject(input.date);
   const failureLines = input.failures.slice(0, 8).map(
@@ -25,11 +32,14 @@ export function qualityReviewEmail(input: {
   );
   const patternLines = input.patterns.slice(0, 8).map((row) => `• ${row.title} (${row.count}) — ${row.rootCause}`);
   const proposalLines = input.proposals.slice(0, 8).map((row) => {
-    const gate = row.engineeringRequired
-      ? "ENGINEERING CHANGE REQUIRED"
-      : row.autoApplyable
-        ? `${row.risk.toUpperCase()} — can auto-apply after approval`
-        : `${row.risk.toUpperCase()} — report only`;
+    const applied = row.status === "canary" || row.status === "promoted";
+    const gate = applied
+      ? `${row.status.toUpperCase()} — already applied`
+      : row.engineeringRequired
+        ? "ENGINEERING CHANGE REQUIRED"
+        : row.autoApplyable
+          ? `${row.risk.toUpperCase()} — can auto-apply after approval`
+          : `${row.risk.toUpperCase()} — report only`;
     return `• ${row.title} (${gate})`;
   });
   const bodyText = [
@@ -40,6 +50,7 @@ export function qualityReviewEmail(input: {
     "Executive summary",
     `${input.metrics.conversationsAnalysed} WhatsApp conversations analysed · quality ${input.metrics.qualityAverage.toFixed(1)} · failed ${(input.metrics.failedRate * 100).toFixed(0)}% · rephrase ${(input.metrics.rephraseRate * 100).toFixed(0)}%`,
     `Ack ${fmtMs(input.metrics.ackLatencyMs)} · final ${fmtMs(input.metrics.finalLatencyMs)} · evaluator overhead ${input.metrics.evaluatorCostCents}p`,
+    ...(input.appliedNote ? ["", input.appliedNote] : []),
     "",
     "Focused failures (not the good chats)",
     ...(failureLines.length ? failureLines : ["None flagged this period."]),
@@ -60,6 +71,7 @@ export function qualityReviewEmail(input: {
       <h1 style="margin:0 0 12px;font-size:22px">${escapeHtml(subject)}</h1>
       <p style="margin:0 0 16px">${escapeHtml(input.cadence)} · ${escapeHtml(input.periodFrom.slice(0, 10))} to ${escapeHtml(input.periodTo.slice(0, 10))}</p>
       <p><strong>${input.metrics.conversationsAnalysed}</strong> conversations · quality <strong>${input.metrics.qualityAverage.toFixed(1)}</strong> · failed <strong>${(input.metrics.failedRate * 100).toFixed(0)}%</strong></p>
+      ${input.appliedNote ? `<p><strong>${escapeHtml(input.appliedNote)}</strong></p>` : ""}
       <h2 style="font-size:16px">Focused failures</h2>
       ${listHtml(failureLines, "None flagged this period.")}
       <h2 style="font-size:16px">Patterns</h2>
