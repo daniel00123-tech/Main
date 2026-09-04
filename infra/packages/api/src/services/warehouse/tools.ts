@@ -23,7 +23,7 @@ export const WAREHOUSE_TOOL_SCHEMAS: Array<{
   {
     name: "warehouse_sales_analysis",
     description:
-      "Historical/analytical Xero sales from the INFRA warehouse (monthly totals, period comparisons, trends). Not for right-now sales — use xero_sales_summary for current live figures. Read-only. Returns source=xero_warehouse and warehouse_as_of.",
+      "Historical/analytical Xero sales from the INFRA warehouse (monthly totals, period comparisons, trends). Not for right-now sales — use xero_sales_summary for current live figures. Read-only. Returns source=xero_warehouse, warehouse_as_of, and completeness_status. Never treat PARTIAL/BACKFILLING months as complete totals.",
     inputSchema: {
       type: "object",
       properties: {

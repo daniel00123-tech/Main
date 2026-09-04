@@ -865,8 +865,14 @@ export default function CompanyDetailPage() {
               <MetricGrid cols={3}>
                 <MetricCard label="Status" value={warehouse.status} />
                 <MetricCard
-                  label="Last successful sync"
-                  value={warehouse.lastSuccessfulSync ? formatDate(warehouse.lastSuccessfulSync) : "Never"}
+                  label="Last successful batch"
+                  value={
+                    warehouse.lastSuccessfulBatch?.completedAt
+                      ? formatDate(warehouse.lastSuccessfulBatch.completedAt)
+                      : warehouse.lastSuccessfulSync
+                        ? formatDate(warehouse.lastSuccessfulSync)
+                        : "Never"
+                  }
                 />
                 <MetricCard label="Next scheduled sync" value={formatDate(warehouse.nextScheduledSync)} />
               </MetricGrid>
@@ -876,6 +882,17 @@ export default function CompanyDetailPage() {
                   ? ` · invoices ${warehouse.records.invoices} · lines ${warehouse.records.invoiceLines} · contacts ${warehouse.records.contacts} · payments ${warehouse.records.payments}`
                   : ""}
               </div>
+              <div className="muted small">
+                Months complete: {warehouse.monthsComplete?.length ? warehouse.monthsComplete.join(", ") : "none yet"}
+                {" · "}
+                Months partial:{" "}
+                {warehouse.monthsPartial?.length
+                  ? warehouse.monthsPartial.map((row) => `${row.month} ${row.status} (${row.recordsRetrieved})`).join(", ")
+                  : "none"}
+              </div>
+              {warehouse.remainingWorkEstimate ? (
+                <div className="muted small">{warehouse.remainingWorkEstimate}</div>
+              ) : null}
               <div className="muted small">
                 Reconciliation:{" "}
                 {warehouse.latestReconciliation

@@ -144,13 +144,15 @@ export default function SystemHealthPage() {
         status:
           !wh || wh.status === "NEVER_SYNCED"
             ? "not_configured"
-            : wh.status === "HEALTHY"
+            : wh.status === "HEALTHY" || wh.status === "COMPLETE"
               ? "operational"
-              : wh.status === "DEGRADED"
+              : wh.status === "BACKFILLING" || wh.status === "PARTIAL"
                 ? "degraded"
-                : "unavailable",
+                : wh.status === "DEGRADED"
+                  ? "degraded"
+                  : "unavailable",
         detail: wh
-          ? `${wh.status} · last ${wh.lastSuccessfulSync ?? "never"} · next ${wh.nextScheduledSync}`
+          ? `${wh.status} · complete ${wh.monthsComplete?.length ?? 0} · partial ${wh.monthsPartial?.length ?? 0} · last ${wh.lastSuccessfulSync ?? "never"} · next ${wh.nextScheduledSync}`
           : "Warehouse status unavailable",
         lastCheck,
       });

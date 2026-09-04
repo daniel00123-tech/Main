@@ -6,7 +6,7 @@ import { computeNextWarehouseSyncUtcIso } from "../services/warehouse/schedule";
 import { createD1WarehouseRepository } from "../services/warehouse/store";
 import { continueWarehouseSync, runWarehouseBackfill } from "../services/warehouse/sync";
 import { warehouseControlCentreView } from "../services/warehouse/status";
-import { sendWarehouseLiveEmail } from "../services/warehouse/email";
+import { sendWarehouseBackfillCompleteEmail } from "../services/warehouse/email";
 import { WAREHOUSE_EL_COMPANY_ID } from "../services/warehouse/standard";
 
 const routes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
@@ -45,10 +45,10 @@ routes.post("/api/internal/warehouse/backfill", async (c) => {
   if (
     body.notify &&
     result.source &&
-    result.source.status === "HEALTHY" &&
-    result.source.checkpoint?.mode === "incremental"
+    result.source.checkpoint?.completeness === "COMPLETE" &&
+    !result.source.checkpoint.completionEmailSent
   ) {
-    email = await sendWarehouseLiveEmail(c.env, { source: result.source, run: result.run ?? null });
+    email = await sendWarehouseBackfillCompleteEmail(c.env, { source: result.source, run: result.run ?? null });
   }
   return c.json({
     ok: Boolean(result.ran && result.run && result.run.status !== "failed"),
@@ -71,10 +71,10 @@ routes.post("/api/internal/warehouse/continue", async (c) => {
   if (
     body.notify &&
     result.source &&
-    result.source.status === "HEALTHY" &&
-    result.source.checkpoint?.mode === "incremental"
+    result.source.checkpoint?.completeness === "COMPLETE" &&
+    !result.source.checkpoint.completionEmailSent
   ) {
-    email = await sendWarehouseLiveEmail(c.env, { source: result.source, run: result.run ?? null });
+    email = await sendWarehouseBackfillCompleteEmail(c.env, { source: result.source, run: result.run ?? null });
   }
   return c.json({
     ok: Boolean(result.ran && result.run && result.run.status !== "failed"),

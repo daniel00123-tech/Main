@@ -20,6 +20,9 @@ import { getConnectorInstance } from "../../control-plane";
 import { executeXeroReadToolOnInfra } from "../../xero-read-execution";
 import { extractRawSalesDocuments } from "../../xero-company-mcp";
 import {
+  COMPANY_MCP_RESULT_CAP,
+  WAREHOUSE_CURRENT_WINDOWS_PER_RUN,
+  WAREHOUSE_HISTORICAL_WINDOWS_PER_RUN,
   WAREHOUSE_MAX_PAGES,
   WAREHOUSE_PAGE_SIZE,
   WAREHOUSE_RECONCILE_ABS_TOLERANCE,
@@ -32,6 +35,15 @@ import {
   type WarehouseXeroInvoiceLine,
   type WarehouseXeroPayment,
 } from "../standard";
+import {
+  addDays,
+  applyWindowResult,
+  calendarWindow,
+  remainingIncompleteWindows,
+  seedProgressiveCheckpoint,
+  summariseCompleteness,
+  windowHitsCap,
+} from "../windows";
 import type { WarehouseConnectorAdapter, WarehouseExtract, WarehouseLiveTotals } from "./types";
 
 const INACTIVE_STATUSES = new Set(["VOIDED", "DELETED"]);
@@ -377,12 +389,116 @@ function coerceInvoiceRaw(row: Record<string, unknown>): Record<string, unknown>
   };
 }
 
+function collectSearchRows(result: Record<string, unknown>): Record<string, unknown>[] {
+  if (Array.isArray(result.invoices)) return result.invoices as Record<string, unknown>[];
+  return extractRawSalesDocuments(result).map((doc) => ({
+    InvoiceID: doc.documentId ?? doc.documentNumber,
+    InvoiceNumber: doc.documentNumber,
+    Type: doc.transactionType,
+    Status: doc.status,
+    Date: doc.date,
+    Total: doc.total,
+    Contact: { ContactID: doc.contactId, Name: doc.contactName },
+    documentKind: doc.documentKind,
+  }));
+}
+
+function absorbSalesRows(
+  companyId: string,
+  nowIso: string,
+  rows: Record<string, unknown>[],
+  invoices: Map<string, WarehouseXeroInvoice>,
+  invoiceLines: WarehouseXeroInvoiceLine[],
+  creditNotes: Map<string, WarehouseXeroCreditNote>,
+): number {
+  let accepted = 0;
+  for (const raw of rows) {
+    const kind = String(raw.Type ?? raw.type ?? raw.documentKind ?? "");
+    if (/credit/i.test(kind) || raw.documentKind === "credit_note") {
+      const note = normaliseCreditNote(companyId, coerceInvoiceRaw(raw), nowIso);
+      if (note.creditNoteId) {
+        creditNotes.set(note.creditNoteId, note);
+        accepted += 1;
+      }
+      continue;
+    }
+    const mapped = normaliseInvoice(companyId, coerceInvoiceRaw(raw), nowIso);
+    if (!mapped.invoice.invoiceId) continue;
+    invoices.set(mapped.invoice.invoiceId, mapped.invoice);
+    invoiceLines.push(...mapped.lines);
+    accepted += 1;
+  }
+  return accepted;
+}
+
+async function searchCompanyMcpWindow(input: {
+  env: Env;
+  companyId: string;
+  from: string;
+  to: string;
+}): Promise<Record<string, unknown>[]> {
+  const search = await executeXeroReadToolOnInfra(input.env, {
+    companyId: input.companyId,
+    toolName: "xero_search_invoices",
+    arguments: { fromDate: input.from, toDate: input.to, limit: COMPANY_MCP_RESULT_CAP },
+    actor: "system:warehouse",
+  });
+  if (!search.ok) {
+    throw Object.assign(new Error(search.error), { code: search.code ?? "WAREHOUSE_XERO_UNAVAILABLE" });
+  }
+  return collectSearchRows(search.result);
+}
+
+async function extractContactsPage(input: {
+  env: Env;
+  companyId: string;
+  nowIso: string;
+  page: number;
+}): Promise<{ contacts: WarehouseXeroContact[]; hitCap: boolean; pageAdvanced: boolean }> {
+  const offset = Math.max(0, (input.page - 1) * COMPANY_MCP_RESULT_CAP);
+  const contactResult = await executeXeroReadToolOnInfra(input.env, {
+    companyId: input.companyId,
+    toolName: "xero_list_contacts",
+    arguments: { limit: COMPANY_MCP_RESULT_CAP, page: input.page, offset },
+    actor: "system:warehouse",
+  });
+  if (!contactResult.ok) {
+    return { contacts: [], hitCap: false, pageAdvanced: false };
+  }
+  const list = Array.isArray(contactResult.result.contacts)
+    ? (contactResult.result.contacts as Record<string, unknown>[])
+    : [];
+  const contacts: WarehouseXeroContact[] = [];
+  for (const raw of list) {
+    const mapped = normaliseContact(
+      input.companyId,
+      {
+        ContactID: raw.ContactID ?? raw.contactId,
+        Name: raw.Name ?? raw.name ?? raw.displayName,
+        ContactStatus: raw.ContactStatus ?? raw.status,
+        IsCustomer: raw.IsCustomer ?? raw.isCustomer,
+        IsSupplier: raw.IsSupplier ?? raw.isSupplier,
+        AccountNumber: raw.AccountNumber ?? raw.accountNumber,
+        UpdatedDateUTC: raw.UpdatedDateUTC,
+      },
+      input.nowIso,
+    );
+    if (mapped.contactId) contacts.push(mapped);
+  }
+  return {
+    contacts,
+    hitCap: windowHitsCap(contacts.length),
+    pageAdvanced: contacts.length > 0,
+  };
+}
+
 async function extractXeroViaInfraReads(input: {
   env: Env;
   companyId: string;
   checkpoint: WarehouseCheckpoint | null;
   now: Date;
   trigger: "scheduled" | "backfill" | "manual";
+  storedInvoices?: Array<{ invoiceDate: string | null }>;
 }): Promise<WarehouseExtract> {
   const nowIso = input.now.toISOString();
   const org = await executeXeroReadToolOnInfra(input.env, {
@@ -396,102 +512,102 @@ async function extractXeroViaInfraReads(input: {
       ? (org.result.organisation as Record<string, unknown>)
       : null;
   const fy = financialYearWindow(orgRecord, input.now);
-  const historyFrom = input.checkpoint?.historyFrom ?? fy.historicalFrom;
+  const historyFrom =
+    input.trigger === "backfill" && !input.checkpoint
+      ? fy.historicalFrom
+      : input.checkpoint?.historyFrom ?? fy.historicalFrom;
   const historyTo = fy.historicalTo;
-  const cursor =
-    input.trigger === "backfill" && !input.checkpoint?.backfillCursor
-      ? historyFrom
-      : input.checkpoint?.backfillCursor ?? historyFrom;
-  const incrementalFrom =
-    input.checkpoint?.mode === "incremental" && input.checkpoint.sourceTimestamp
-      ? londonDateParts(new Date(Date.parse(input.checkpoint.sourceTimestamp) - 2 * 24 * 60 * 60 * 1000)).today
-      : cursor;
-  const windows = dateWindows(
-    input.checkpoint?.mode === "incremental" ? incrementalFrom : cursor,
+  const dates = londonDateParts(input.now);
+  const seeded = seedProgressiveCheckpoint(
+    input.checkpoint,
+    input.storedInvoices ?? [],
+    historyFrom,
     historyTo,
   );
   const started = Date.now();
-  const invoices: WarehouseXeroInvoice[] = [];
+  const invoices = new Map<string, WarehouseXeroInvoice>();
   const invoiceLines: WarehouseXeroInvoiceLine[] = [];
-  const creditNotes: WarehouseXeroCreditNote[] = [];
-  let truncated = false;
-  let nextCursor: string | null = null;
-  for (const window of windows) {
-    if (Date.now() - started > 22_000) {
-      truncated = true;
-      nextCursor = window.from;
-      break;
-    }
-    const search = await executeXeroReadToolOnInfra(input.env, {
+  const creditNotes = new Map<string, WarehouseXeroCreditNote>();
+  let months = seeded.months ?? [];
+  let grain = seeded.windowGrain ?? "month";
+  let cursor = seeded.backfillCursor ?? null;
+  let lastAttempted: string | null = null;
+  let lastCompleted: string | null = seeded.lastCompletedWindow ?? null;
+  let windowsUsed = 0;
+
+  const runWindow = async (from: string, to: string, windowGrain: typeof grain) => {
+    lastAttempted = `${from}:${to}`;
+    const rows = await searchCompanyMcpWindow({
+      env: input.env,
       companyId: input.companyId,
-      toolName: "xero_search_invoices",
-      arguments: { fromDate: window.from, toDate: window.to, limit: 100 },
-      actor: "system:warehouse",
+      from,
+      to,
     });
-    if (!search.ok) {
-      throw Object.assign(new Error(search.error), { code: search.code ?? "WAREHOUSE_XERO_UNAVAILABLE" });
-    }
-    const rows = Array.isArray(search.result.invoices)
-      ? (search.result.invoices as Record<string, unknown>[])
-      : extractRawSalesDocuments(search.result).map((doc) => ({
-          InvoiceID: doc.documentId ?? doc.documentNumber,
-          InvoiceNumber: doc.documentNumber,
-          Type: doc.transactionType,
-          Status: doc.status,
-          Date: doc.date,
-          Total: doc.total,
-          Contact: { ContactID: doc.contactId, Name: doc.contactName },
-        }));
-    for (const raw of rows) {
-      const kind = String(raw.Type ?? raw.type ?? raw.documentKind ?? "");
-      if (/credit/i.test(kind) || raw.documentKind === "credit_note") {
-        const note = normaliseCreditNote(input.companyId, coerceInvoiceRaw(raw), nowIso);
-        if (note.creditNoteId) creditNotes.push({ ...note, creditNoteId: note.creditNoteId || String(raw.CreditNoteID ?? raw.documentId ?? "") });
+    const fetched = absorbSalesRows(input.companyId, nowIso, rows, invoices, invoiceLines, creditNotes);
+    const applied = applyWindowResult(months, { from, to }, fetched, windowGrain);
+    months = applied.months;
+    lastCompleted = `${from}:${to}`;
+    windowsUsed += 1;
+    return { fetched, applied };
+  };
+
+  const currentWin = calendarWindow(dates.monthStart, dates.today, "month");
+  if (currentWin) {
+    let currentGrain: "month" | "week" | "day" = "month";
+    let currentCursor: string | null = currentWin.from;
+    let currentBudget = WAREHOUSE_CURRENT_WINDOWS_PER_RUN;
+    while (currentCursor && currentCursor <= dates.today && currentBudget > 0 && Date.now() - started < 22_000) {
+      const piece = calendarWindow(currentCursor, dates.today, currentGrain);
+      if (!piece) break;
+      const { applied } = await runWindow(piece.from, piece.to, currentGrain);
+      if (applied.possiblyTruncated && applied.nextGrain !== currentGrain) {
+        currentGrain = applied.nextGrain;
+        currentCursor = applied.nextCursor;
+        currentBudget -= 1;
         continue;
       }
-      const mapped = normaliseInvoice(input.companyId, coerceInvoiceRaw(raw), nowIso);
-      if (!mapped.invoice.invoiceId) continue;
-      invoices.push(mapped.invoice);
-      invoiceLines.push(...mapped.lines);
+      currentCursor = applied.nextCursor && applied.nextCursor <= dates.today ? applied.nextCursor : null;
+      currentBudget -= 1;
+      if (!applied.possiblyTruncated && currentGrain !== "month" && currentCursor && currentCursor.slice(8, 10) === "01") {
+        break;
+      }
     }
   }
 
-  const contacts: WarehouseXeroContact[] = [];
-  const payments: WarehouseXeroPayment[] = [];
-  const continuation = Boolean(input.checkpoint?.backfillCursor);
-  if (!continuation) {
-    const contactResult = await executeXeroReadToolOnInfra(input.env, {
+  let contacts: WarehouseXeroContact[] = [];
+  let contactsStatus = seeded.contactsStatus ?? "BACKFILLING";
+  let contactPageNext = seeded.contactPage ?? 1;
+  let contactsRetrieved = seeded.contactsRetrieved ?? 0;
+  if (
+    (contactsStatus === "BACKFILLING" || contactsStatus === "PARTIAL") &&
+    Date.now() - started < 22_000
+  ) {
+    const page = seeded.contactPage ?? 1;
+    const contactPage = await extractContactsPage({
+      env: input.env,
       companyId: input.companyId,
-      toolName: "xero_list_contacts",
-      arguments: { limit: 100 },
-      actor: "system:warehouse",
+      nowIso,
+      page,
     });
-    if (contactResult.ok) {
-      const list = Array.isArray(contactResult.result.contacts)
-        ? (contactResult.result.contacts as Record<string, unknown>[])
-        : [];
-      for (const raw of list) {
-        const mapped = normaliseContact(
-          input.companyId,
-          {
-            ContactID: raw.ContactID ?? raw.contactId,
-            Name: raw.Name ?? raw.name ?? raw.displayName,
-            ContactStatus: raw.ContactStatus ?? raw.status,
-            IsCustomer: raw.IsCustomer ?? raw.isCustomer,
-            IsSupplier: raw.IsSupplier ?? raw.isSupplier,
-            AccountNumber: raw.AccountNumber ?? raw.accountNumber,
-            UpdatedDateUTC: raw.UpdatedDateUTC,
-          },
-          nowIso,
-        );
-        if (mapped.contactId) contacts.push(mapped);
-      }
+    contacts = contactPage.contacts;
+    contactsRetrieved = (seeded.contactsRetrieved ?? 0) + contactPage.contacts.length;
+    if (!contactPage.hitCap) {
+      contactsStatus = "COMPLETE";
+    } else if (contactPage.pageAdvanced) {
+      contactsStatus = "BACKFILLING";
+      contactPageNext = page + 1;
+    } else {
+      contactsStatus = "PARTIAL";
     }
+  }
 
+  const payments: WarehouseXeroPayment[] = [];
+  let paymentsStatus = seeded.paymentsStatus ?? "unknown";
+  if (paymentsStatus !== "unavailable" && Date.now() - started < 22_000) {
     const paymentResult = await executeXeroReadToolOnInfra(input.env, {
       companyId: input.companyId,
       toolName: "xero_list_payments",
-      arguments: { since: historyFrom, toDate: historyTo, limit: 100 },
+      arguments: { since: historyFrom, toDate: historyTo, limit: COMPANY_MCP_RESULT_CAP },
       actor: "system:warehouse",
     });
     if (paymentResult.ok) {
@@ -502,18 +618,47 @@ async function extractXeroViaInfraReads(input: {
         const mapped = normalisePayment(input.companyId, raw, nowIso);
         if (mapped.paymentId) payments.push(mapped);
       }
+      paymentsStatus = "available";
+    } else if (paymentResult.code === "XERO_TOOL_NOT_IMPLEMENTED") {
+      paymentsStatus = "unavailable";
     }
   }
 
-  const backfillIncomplete = Boolean(nextCursor);
+  while (
+    cursor &&
+    cursor < dates.monthStart &&
+    cursor <= historyTo &&
+    windowsUsed < WAREHOUSE_CURRENT_WINDOWS_PER_RUN + WAREHOUSE_HISTORICAL_WINDOWS_PER_RUN &&
+    Date.now() - started < 22_000
+  ) {
+    const historicalTo = addDays(dates.monthStart, -1);
+    const win = calendarWindow(cursor, historicalTo < historyTo ? historicalTo : historyTo, grain);
+    if (!win) {
+      cursor = null;
+      break;
+    }
+    const { applied } = await runWindow(win.from, win.to, grain);
+    cursor = applied.nextCursor && applied.nextCursor < dates.monthStart ? applied.nextCursor : null;
+    grain = applied.nextGrain;
+    if (cursor && cursor.slice(8, 10) === "01" && !applied.possiblyTruncated) {
+      grain = grain === "day" ? "week" : grain === "week" ? "month" : grain;
+    }
+  }
+
+  const completeness = summariseCompleteness(months);
+  const remaining = remainingIncompleteWindows(months, historyTo, grain);
+  const invoiceLinesStatus = invoiceLines.length > 0 ? "available" : (seeded.invoiceLinesStatus === "available" ? "available" : "unavailable");
+  const creditNotesStatus = creditNotes.size > 0 ? "available" : (seeded.creditNotesStatus === "available" ? "available" : "unavailable");
+  const historicalIncomplete = completeness !== "COMPLETE";
+
   return {
-    invoices,
+    invoices: [...invoices.values()],
     invoiceLines,
     contacts,
     payments,
-    creditNotes,
-    recordsRead: invoices.length + invoiceLines.length + contacts.length + payments.length + creditNotes.length,
-    truncated: truncated || backfillIncomplete,
+    creditNotes: [...creditNotes.values()],
+    recordsRead: invoices.size + invoiceLines.length + contacts.length + payments.length + creditNotes.size,
+    truncated: historicalIncomplete,
     organisation: {
       name: orgRecord?.Name ? String(orgRecord.Name) : null,
       currency: orgRecord?.BaseCurrency ? String(orgRecord.BaseCurrency) : "GBP",
@@ -522,7 +667,7 @@ async function extractXeroViaInfraReads(input: {
       historicalTo: historyTo,
     },
     checkpoint: {
-      mode: backfillIncomplete ? "backfill" : "incremental",
+      mode: historicalIncomplete ? "backfill" : "incremental",
       invoicesUpdatedAfter: nowIso,
       contactsUpdatedAfter: nowIso,
       paymentsUpdatedAfter: nowIso,
@@ -530,7 +675,25 @@ async function extractXeroViaInfraReads(input: {
       historyFrom,
       historyTo,
       sourceTimestamp: nowIso,
-      backfillCursor: nextCursor,
+      backfillCursor: cursor,
+      windowFrom: cursor,
+      windowTo: historyTo,
+      lastCompletedWindow: lastCompleted,
+      lastAttemptedWindow: lastAttempted,
+      remainingWindows: remaining,
+      recordsRetrieved: (seeded.recordsRetrieved ?? 0) + invoices.size,
+      completeness,
+      windowGrain: grain,
+      months,
+      contactsStatus,
+      contactPage: contactPageNext,
+      contactsRetrieved,
+      completionEmailSent: seeded.completionEmailSent ?? false,
+      historicalComplete: completeness === "COMPLETE",
+      invoiceLinesStatus,
+      paymentsStatus,
+      creditNotesStatus,
+      paginationMode: "window_subdivision",
     },
   };
 }
@@ -549,6 +712,7 @@ export async function extractXeroWarehouse(input: {
   checkpoint: WarehouseCheckpoint | null;
   now: Date;
   trigger: "scheduled" | "backfill" | "manual";
+  storedInvoices?: Array<{ invoiceDate: string | null }>;
 }): Promise<WarehouseExtract> {
   const prepared = await prepareXeroMcpExecution({
     env: input.env,
@@ -668,6 +832,14 @@ export async function extractXeroWarehouse(input: {
       historyFrom: backfill ? fy.historicalFrom : input.checkpoint?.historyFrom ?? fy.historicalFrom,
       historyTo: fy.historicalTo,
       sourceTimestamp,
+      completeness: truncated ? "PARTIAL" : "COMPLETE",
+      historicalComplete: !truncated,
+      paginationMode: "true_page",
+      invoiceLinesStatus: invoiceLines.length > 0 ? "available" : "unavailable",
+      paymentsStatus: payments.length > 0 ? "available" : "unavailable",
+      creditNotesStatus: creditNotes.length > 0 ? "available" : "unavailable",
+      contactsStatus: contactPage.truncated ? "PARTIAL" : "COMPLETE",
+      completionEmailSent: input.checkpoint?.completionEmailSent ?? false,
     },
   };
 }
@@ -735,6 +907,7 @@ export function createXeroWarehouseAdapter(env: Env): WarehouseConnectorAdapter 
         checkpoint: input.checkpoint,
         now: input.now,
         trigger: input.trigger,
+        storedInvoices: input.storedInvoices,
       }),
     liveTotals: (input) => liveXeroTotals({ env, companyId: input.companyId, now: input.now }),
   };

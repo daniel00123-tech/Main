@@ -7,8 +7,50 @@ export const WAREHOUSE_TIMEZONE = "Europe/London";
 export const WAREHOUSE_EL_COMPANY_ID = "co_el";
 export const WAREHOUSE_XERO_CONNECTOR = "xero";
 
-export const WAREHOUSE_HEALTH = ["HEALTHY", "DEGRADED", "FAILED", "NEVER_SYNCED"] as const;
+export const WAREHOUSE_HEALTH = [
+  "HEALTHY",
+  "COMPLETE",
+  "BACKFILLING",
+  "PARTIAL",
+  "DEGRADED",
+  "FAILED",
+  "NEVER_SYNCED",
+] as const;
 export type WarehouseHealth = (typeof WAREHOUSE_HEALTH)[number];
+
+export const WAREHOUSE_COMPLETENESS = [
+  "NEVER_SYNCED",
+  "BACKFILLING",
+  "PARTIAL",
+  "COMPLETE",
+  "DEGRADED",
+  "FAILED",
+] as const;
+export type WarehouseCompleteness = (typeof WAREHOUSE_COMPLETENESS)[number];
+
+export const WAREHOUSE_MONTH_STATUS_CODES = [
+  "NEVER_SYNCED",
+  "BACKFILLING",
+  "PARTIAL",
+  "COMPLETE",
+  "POSSIBLY_TRUNCATED",
+  "DEGRADED",
+  "FAILED",
+] as const;
+export type WarehouseMonthStatusCode = (typeof WAREHOUSE_MONTH_STATUS_CODES)[number];
+
+export type WarehouseWindowGrain = "month" | "week" | "day";
+
+export type WarehouseMonthStatus = {
+  month: string;
+  status: WarehouseMonthStatusCode;
+  recordsRetrieved: number;
+  lastCompletedWindow?: string | null;
+  nextWindowFrom?: string | null;
+  possiblyTruncated?: boolean;
+};
+
+export type WarehouseEntityAvailability = "available" | "unavailable" | "unknown";
 
 export const WAREHOUSE_SYNC_STATUSES = [
   "running",
@@ -60,6 +102,12 @@ export const WAREHOUSE_RECONCILE_ABS_TOLERANCE = 0.02;
 export const WAREHOUSE_SNAPSHOT_RETENTION_DAYS = 365 * 3;
 export const WAREHOUSE_MAX_PAGES = 50;
 export const WAREHOUSE_PAGE_SIZE = 100;
+/** Company MCP / INFRA facade hard cap. 50 per call is acceptable; 50 per month forever is not. */
+export const COMPANY_MCP_RESULT_CAP = 50;
+/** Historical catch-up windows per scheduled slot after current-month freshness. */
+export const WAREHOUSE_HISTORICAL_WINDOWS_PER_RUN = 6;
+/** Extra current-month subdivision windows so freshness stays ahead of history. */
+export const WAREHOUSE_CURRENT_WINDOWS_PER_RUN = 4;
 
 export const WAREHOUSE_WEEKDAY_HOURS = [7, 9, 11, 13, 15, 17, 19] as const;
 export const WAREHOUSE_WEEKEND_HOURS = [12] as const;
@@ -77,6 +125,25 @@ export type WarehouseCheckpoint = {
   sourceTimestamp?: string | null;
   /** Next YYYY-MM-DD still needed during chunked company-MCP backfill. */
   backfillCursor?: string | null;
+  windowFrom?: string | null;
+  windowTo?: string | null;
+  lastCompletedWindow?: string | null;
+  lastAttemptedWindow?: string | null;
+  remainingWindows?: number;
+  recordsRetrieved?: number;
+  recordsUpserted?: number;
+  completeness?: WarehouseCompleteness;
+  windowGrain?: WarehouseWindowGrain;
+  months?: WarehouseMonthStatus[];
+  contactsStatus?: WarehouseCompleteness;
+  contactPage?: number;
+  contactsRetrieved?: number;
+  completionEmailSent?: boolean;
+  historicalComplete?: boolean;
+  invoiceLinesStatus?: WarehouseEntityAvailability;
+  paymentsStatus?: WarehouseEntityAvailability;
+  creditNotesStatus?: WarehouseEntityAvailability;
+  paginationMode?: "true_page" | "window_subdivision" | "none";
 };
 
 export type WarehouseSource = {
@@ -249,9 +316,29 @@ export type WarehouseEvidence = {
   warehouseAsOf: string | null;
   freshnessClass: WarehouseFreshnessClass;
   health: WarehouseHealth;
+  completenessStatus: WarehouseCompleteness;
   companyId: string;
   connector: string;
 };
+
+export function warehouseHealthIsServable(health: WarehouseHealth): boolean {
+  return health === "HEALTHY" || health === "COMPLETE" || health === "BACKFILLING" || health === "PARTIAL";
+}
+
+export function deriveWarehouseHealth(input: {
+  completeness: WarehouseCompleteness;
+  reconcilePassed: boolean;
+  liveUnavailable?: boolean;
+}): WarehouseHealth {
+  if (input.liveUnavailable) return "DEGRADED";
+  if (!input.reconcilePassed) return "DEGRADED";
+  if (input.completeness === "COMPLETE") return "HEALTHY";
+  if (input.completeness === "PARTIAL") return "PARTIAL";
+  if (input.completeness === "BACKFILLING") return "BACKFILLING";
+  if (input.completeness === "FAILED") return "FAILED";
+  if (input.completeness === "DEGRADED") return "DEGRADED";
+  return input.completeness === "NEVER_SYNCED" ? "NEVER_SYNCED" : "BACKFILLING";
+}
 
 export const EMPTY_RECORD_COUNTS: WarehouseRecordCounts = {
   invoices: 0,

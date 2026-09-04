@@ -7,5 +7,6 @@ export * from "./tools";
 export * from "./sync";
 export * from "./status";
 export * from "./email";
+export * from "./windows";
 export { createXeroWarehouseAdapter } from "./adapters/xero";
 export { buildReconciliation } from "./adapters/types";

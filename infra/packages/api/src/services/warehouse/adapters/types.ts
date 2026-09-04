@@ -47,6 +47,7 @@ export type WarehouseConnectorAdapter = {
     checkpoint: WarehouseCheckpoint | null;
     now: Date;
     trigger: "scheduled" | "backfill" | "manual";
+    storedInvoices?: Array<{ invoiceDate: string | null }>;
   }): Promise<WarehouseExtract>;
   liveTotals?(input: { companyId: string; now: Date }): Promise<WarehouseLiveTotals>;
 };

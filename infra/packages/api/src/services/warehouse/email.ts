@@ -54,6 +54,62 @@ export function warehouseLiveEmail(input: {
   return { subject, bodyText, bodyHtml };
 }
 
+export function warehouseBackfillCompleteEmail(input: {
+  source: WarehouseSource;
+  run: WarehouseSyncRun | null;
+  nextSync: string;
+}): { subject: string; bodyText: string; bodyHtml: string } {
+  const counts = input.source.recordCounts;
+  const months = input.source.checkpoint?.months ?? [];
+  const complete = months.filter((row) => row.status === "COMPLETE");
+  const subject = "INFRA — EL Xero Warehouse Historical Backfill Complete";
+  const lines = [
+    "INFRA EL Xero warehouse historical backfill has reached COMPLETE.",
+    "",
+    `Date range: ${input.source.historicalFrom ?? "n/a"} → ${input.source.historicalTo ?? "n/a"}`,
+    `Invoices stored: ${counts.invoices}`,
+    `Contacts stored: ${counts.contacts} (${input.source.checkpoint?.contactsStatus ?? "unknown"})`,
+    `Invoice lines: ${counts.invoiceLines} (${input.source.checkpoint?.invoiceLinesStatus ?? "unknown"})`,
+    `Payments: ${counts.payments} (${input.source.checkpoint?.paymentsStatus ?? "unknown"})`,
+    `Credit notes: ${counts.creditNotes} (${input.source.checkpoint?.creditNotesStatus ?? "unknown"})`,
+    `Months complete: ${complete.map((row) => row.month).join(", ") || "n/a"}`,
+    `Completeness: ${input.source.checkpoint?.completeness ?? input.source.status}`,
+    `Proof: every month window returned fewer than the 50-row company-MCP cap, or was subdivided until that was proven.`,
+    `Last successful sync: ${input.source.lastSuccessfulSync ?? "n/a"}`,
+    `Next scheduled sync: ${input.nextSync}`,
+    "",
+    "Limitations:",
+    "• Completeness is against the authorised company-MCP Xero path, not a native Xero page dump.",
+    "• Invoice lines / payments / credit notes are included only when that path actually returned them.",
+    "• Current-month figures still reconcile against live Xero; warehouse remains AUTOMATION / 0 EL 3p.",
+    "• This email is sent once. Incremental sync continues on the existing London schedule.",
+  ];
+  const bodyText = lines.join("\n");
+  const bodyHtml = `<div style="font-family:Georgia,serif;line-height:1.45"><h1>EL Xero Warehouse Historical Backfill Complete</h1><pre style="white-space:pre-wrap">${bodyText
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")}</pre></div>`;
+  return { subject, bodyText, bodyHtml };
+}
+
+export async function sendWarehouseBackfillCompleteEmail(
+  env: Env,
+  input: { source: WarehouseSource; run: WarehouseSyncRun | null },
+): Promise<{ sent: boolean; recipients: string[]; error?: string }> {
+  const recipients = await listQualityLoopRecipients(env.DB, env);
+  const content = warehouseBackfillCompleteEmail({
+    source: input.source,
+    run: input.run,
+    nextSync: computeNextWarehouseSyncUtcIso(),
+  });
+  const result = await sendQualityLoopEmail(env, env.DB, {
+    ...content,
+    recipients,
+    eventType: "warehouse.backfill_complete",
+    resourceId: input.run?.syncId ?? "warehouse_v12_complete",
+  });
+  return { sent: result.sent, recipients, error: result.error };
+}
+
 export async function sendWarehouseLiveEmail(
   env: Env,
   input: { source: WarehouseSource; run: WarehouseSyncRun | null },

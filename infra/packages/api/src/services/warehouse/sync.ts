@@ -13,12 +13,15 @@ import {
   WAREHOUSE_LOCK_TTL_MS,
   WAREHOUSE_RECONCILE_ABS_TOLERANCE,
   WAREHOUSE_XERO_CONNECTOR,
+  deriveWarehouseHealth,
   type WarehouseHealth,
   type WarehouseKpiSnapshot,
   type WarehouseSource,
   type WarehouseSyncRun,
   type WarehouseTrigger,
 } from "./standard";
+import { recountMonthRecords, summariseCompleteness } from "./windows";
+import { sendWarehouseBackfillCompleteEmail } from "./email";
 import { computeNextWarehouseSyncUtcIso, currentWarehouseSlot, warehouseScheduleIdempotencyKey } from "./schedule";
 import {
   createD1WarehouseRepository,
@@ -121,11 +124,13 @@ export async function runWarehouseSync(input: {
   await input.repo.upsertSource(source);
 
   try {
+    const storedInvoices = await input.repo.listInvoices(input.companyId, { currentOnly: false });
     const extract = await input.adapter.extract({
       companyId: input.companyId,
       checkpoint: source.checkpoint,
       now,
       trigger: input.trigger === "backfill" ? "backfill" : input.trigger,
+      storedInvoices,
     });
     run.recordsRead = extract.recordsRead;
     for (const invoice of extract.invoices) {
@@ -163,13 +168,26 @@ export async function runWarehouseSync(input: {
     const dates = londonDateParts(now);
     const metrics = computeWarehouseSalesMetrics(invoices, creditNotes, dates);
     const asOf = now.toISOString();
+    const persistedInvoices = await input.repo.listInvoices(input.companyId, { currentOnly: false });
+    const months = recountMonthRecords(extract.checkpoint.months ?? [], persistedInvoices);
+    const completeness = extract.checkpoint.completeness ?? summariseCompleteness(months);
+    extract.checkpoint.months = months;
+    extract.checkpoint.completeness = completeness;
+    extract.checkpoint.recordsRetrieved = persistedInvoices.length;
+    extract.checkpoint.historicalComplete = completeness === "COMPLETE";
+
     await input.repo.writeSnapshot({
       companyId: input.companyId,
       connector,
       snapshotType: "xero_sales_snapshot",
       asOf,
       syncId: run.syncId,
-      payload: { salesMtd: metrics.salesMtd, salesToday: metrics.salesToday, invoiceCountMtd: metrics.invoiceCountMtd },
+      payload: {
+        salesMtd: metrics.salesMtd,
+        salesToday: metrics.salesToday,
+        invoiceCountMtd: metrics.invoiceCountMtd,
+        completeness,
+      },
       createdAt: asOf,
     });
     await input.repo.writeSnapshot({
@@ -178,7 +196,7 @@ export async function runWarehouseSync(input: {
       snapshotType: "xero_receivables_snapshot",
       asOf,
       syncId: run.syncId,
-      payload: { outstanding: metrics.outstanding },
+      payload: { outstanding: metrics.outstanding, completeness },
       createdAt: asOf,
     });
     await input.repo.writeSnapshot({
@@ -187,7 +205,7 @@ export async function runWarehouseSync(input: {
       snapshotType: "xero_overdue_snapshot",
       asOf,
       syncId: run.syncId,
-      payload: { overdue: metrics.overdue, overdueCount: metrics.overdueCount },
+      payload: { overdue: metrics.overdue, overdueCount: metrics.overdueCount, completeness },
       createdAt: asOf,
     });
     await input.repo.writeSnapshot({
@@ -196,7 +214,7 @@ export async function runWarehouseSync(input: {
       snapshotType: "xero_customer_snapshot",
       asOf,
       syncId: run.syncId,
-      payload: { topCustomers: metrics.topCustomers },
+      payload: { topCustomers: metrics.topCustomers, completeness },
       createdAt: asOf,
     });
     const kpi: WarehouseKpiSnapshot = {
@@ -239,20 +257,16 @@ export async function runWarehouseSync(input: {
     });
     run.reconciliation = reconciliation;
     const counts = await input.repo.countRecords(input.companyId, connector);
-    const health: WarehouseHealth = extract.truncated
-      ? "DEGRADED"
-      : live.unavailable
-        ? "DEGRADED"
-        : reconciliation.passed
-          ? "HEALTHY"
-          : "DEGRADED";
-    run.status = health === "HEALTHY" ? "success" : "degraded";
+    const health: WarehouseHealth = deriveWarehouseHealth({
+      completeness,
+      reconcilePassed: reconciliation.passed,
+      liveUnavailable: live.unavailable,
+    });
+    run.status = health === "DEGRADED" || health === "FAILED" ? "degraded" : "success";
     run.failureCode = health === "DEGRADED"
-      ? extract.truncated
-        ? "WAREHOUSE_SYNC_FAILED"
-        : live.unavailable
-          ? "WAREHOUSE_XERO_UNAVAILABLE"
-          : "WAREHOUSE_RECONCILIATION_FAILED"
+      ? live.unavailable
+        ? "WAREHOUSE_XERO_UNAVAILABLE"
+        : "WAREHOUSE_RECONCILIATION_FAILED"
       : null;
     run.checkpointAfter = JSON.stringify(extract.checkpoint);
     run.completedAt = new Date().toISOString();
@@ -278,6 +292,20 @@ export async function runWarehouseSync(input: {
       updatedAt: asOf,
     };
     await input.repo.upsertSource(next);
+    if (
+      completeness === "COMPLETE" &&
+      !extract.checkpoint.completionEmailSent &&
+      input.env
+    ) {
+      const emailed = await sendWarehouseBackfillCompleteEmail(input.env, {
+        source: next,
+        run,
+      });
+      if (emailed.sent) {
+        next.checkpoint = { ...extract.checkpoint, completionEmailSent: true };
+        await input.repo.upsertSource(next);
+      }
+    }
     if (health === "DEGRADED" && input.env) {
       await persistWarehouseFailure(input.env, {
         companyId: input.companyId,
@@ -348,12 +376,11 @@ export async function maybeRunWarehouseSyncs(
   const source = await ensureWarehouseSource(repo, WAREHOUSE_EL_COMPANY_ID, WAREHOUSE_XERO_CONNECTOR);
   const slot = currentWarehouseSlot(now);
   const nextSync = computeNextWarehouseSyncUtcIso(now);
-  const continueBackfill = source.checkpoint?.mode === "backfill" && Boolean(source.checkpoint.backfillCursor);
-  if (!slot && !continueBackfill && source.status !== "NEVER_SYNCED") return { actions: [], nextSync };
+  if (!slot && source.status !== "NEVER_SYNCED") return { actions: [], nextSync };
 
   if (slot) {
     const existing = await repo.findSyncBySlot(WAREHOUSE_EL_COMPANY_ID, WAREHOUSE_XERO_CONNECTOR, slot.utcIso);
-    if (existing && !continueBackfill) {
+    if (existing) {
       return {
         actions: [{ companyId: WAREHOUSE_EL_COMPANY_ID, skipped: "duplicate_slot", syncId: existing.syncId }],
         nextSync,
@@ -367,7 +394,7 @@ export async function maybeRunWarehouseSyncs(
     adapter,
     companyId: WAREHOUSE_EL_COMPANY_ID,
     connector: WAREHOUSE_XERO_CONNECTOR,
-    trigger: continueBackfill || source.status === "NEVER_SYNCED" || source.status === "FAILED" ? "backfill" : "scheduled",
+    trigger: source.status === "NEVER_SYNCED" || source.status === "FAILED" ? "backfill" : "scheduled",
     scheduledFor: slot?.utcIso ?? null,
     now,
     env,

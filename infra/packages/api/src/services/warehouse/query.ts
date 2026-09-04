@@ -10,9 +10,11 @@ import type { WarehouseRepository } from "./store";
 import {
   WAREHOUSE_XERO_CONNECTOR,
   warehouseChildDebitCents,
+  type WarehouseCompleteness,
   type WarehouseFreshnessClass,
   type WarehouseHealth,
 } from "./standard";
+import { rangeCompleteness } from "./windows";
 
 export const WAREHOUSE_AGGREGATIONS = [
   "sales_by_month",
@@ -82,12 +84,26 @@ export async function executeWarehouseQuery(
   const freshnessClass = input.freshnessClass ?? classifyQueryFreshness(input.intentText ?? "");
   const source = await repo.getSource(input.companyId, input.connector ?? WAREHOUSE_XERO_CONNECTOR);
   const health: WarehouseHealth = source?.status ?? "NEVER_SYNCED";
+  const completenessStatus: WarehouseCompleteness =
+    source?.checkpoint?.completeness ??
+    (health === "HEALTHY" || health === "COMPLETE"
+      ? "COMPLETE"
+      : health === "BACKFILLING"
+        ? "BACKFILLING"
+        : health === "PARTIAL"
+          ? "PARTIAL"
+          : health === "FAILED"
+            ? "FAILED"
+            : health === "DEGRADED"
+              ? "DEGRADED"
+              : "NEVER_SYNCED");
   const evidence = buildWarehouseEvidence({
     companyId: input.companyId,
     connector: input.connector ?? WAREHOUSE_XERO_CONNECTOR,
     health,
     warehouseAsOf: source?.warehouseLastUpdatedAt ?? null,
     freshnessClass,
+    completenessStatus,
   });
   if (!validated.ok) {
     return {
@@ -138,15 +154,28 @@ export async function executeWarehouseQuery(
     monthStart: dates.monthStart,
   });
 
+  const months = source?.checkpoint?.months ?? [];
+  const rangeStatus = months.length ? rangeCompleteness(months, fromDate, toDate) : completenessStatus;
+  const partialRange = rangeStatus === "PARTIAL" || rangeStatus === "BACKFILLING" || rangeStatus === "NEVER_SYNCED";
+  const monthStatusByKey = new Map(months.map((row) => [row.month, row.status]));
+
   let payload: Record<string, unknown> = {};
   switch (aggregation) {
     case "sales_by_month": {
-      const buckets = new Map<string, { month: string; sales: number; invoiceCount: number }>();
+      const buckets = new Map<
+        string,
+        { month: string; sales: number; invoiceCount: number; completeness: string }
+      >();
       for (const invoice of invoices) {
         const key = monthKey(invoice.invoiceDate);
         if (!key || invoice.type !== "ACCREC" || !invoice.isCurrent) continue;
         if (invoice.status === "VOIDED" || invoice.status === "DELETED" || invoice.status === "DRAFT") continue;
-        const bucket = buckets.get(key) ?? { month: key, sales: 0, invoiceCount: 0 };
+        const bucket = buckets.get(key) ?? {
+          month: key,
+          sales: 0,
+          invoiceCount: 0,
+          completeness: monthStatusByKey.get(key) ?? rangeStatus,
+        };
         bucket.sales += invoice.total ?? 0;
         bucket.invoiceCount += 1;
         buckets.set(key, bucket);
@@ -154,7 +183,12 @@ export async function executeWarehouseQuery(
       for (const note of creditNotes) {
         const key = monthKey(note.creditDate);
         if (!key || note.type !== "ACCRECCREDIT" || !note.isCurrent) continue;
-        const bucket = buckets.get(key) ?? { month: key, sales: 0, invoiceCount: 0 };
+        const bucket = buckets.get(key) ?? {
+          month: key,
+          sales: 0,
+          invoiceCount: 0,
+          completeness: monthStatusByKey.get(key) ?? rangeStatus,
+        };
         bucket.sales -= Math.abs(note.total ?? 0);
         buckets.set(key, bucket);
       }
@@ -228,14 +262,21 @@ export async function executeWarehouseQuery(
   return {
     ok: true,
     customerChargeCents: warehouseChildDebitCents(),
-    evidence,
+    evidence: { ...evidence, completenessStatus: rangeStatus },
     result: {
       ...payload,
       fromDate,
       toDate,
       source: "xero_warehouse",
       warehouseAsOf: source?.warehouseLastUpdatedAt,
+      warehouse_as_of: source?.warehouseLastUpdatedAt,
       health,
+      completeness_status: rangeStatus,
+      completenessStatus: rangeStatus,
+      partial: partialRange,
+      warning: partialRange
+        ? "Warehouse month(s) in this range are still backfilling. Totals are grounded but not complete. Do not treat them as authoritative period sales."
+        : undefined,
     },
   };
 }

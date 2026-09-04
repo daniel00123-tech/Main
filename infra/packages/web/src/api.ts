@@ -1969,6 +1969,22 @@ export const api = {
           creditNotes: number;
           snapshots: number;
         } | null;
+        completeness?: string;
+        health?: string;
+        monthsComplete?: string[];
+        monthsPartial?: Array<{ month: string; status: string; recordsRetrieved: number; nextWindowFrom: string | null }>;
+        remainingWindows?: number | null;
+        remainingWorkEstimate?: string | null;
+        lastSuccessfulBatch?: {
+          syncId: string;
+          completedAt: string | null;
+          recordsRead: number;
+          recordsUpserted: number;
+        } | null;
+        contactsStatus?: string | null;
+        invoiceLinesStatus?: string | null;
+        paymentsStatus?: string | null;
+        creditNotesStatus?: string | null;
         historicalRange: { from: string | null; to: string | null };
         latestReconciliation: {
           passed: boolean;

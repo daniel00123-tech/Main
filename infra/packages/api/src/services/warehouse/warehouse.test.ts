@@ -28,6 +28,17 @@ import {
   stableXeroEntityId,
 } from "./adapters/xero";
 import {
+  applyWindowResult,
+  inferMonthStatuses,
+  planCatchupWindows,
+  seedProgressiveCheckpoint,
+  summariseCompleteness,
+  windowHitsCap,
+  windowIsComplete,
+} from "./windows";
+import { COMPANY_MCP_RESULT_CAP, deriveWarehouseHealth } from "./standard";
+import { warehouseBackfillCompleteEmail } from "./email";
+import {
   WAREHOUSE_EL_COMPANY_ID,
   WAREHOUSE_RECONCILE_ABS_TOLERANCE,
   WAREHOUSE_TIMEZONE,
@@ -86,6 +97,7 @@ function extractFrom(invoices: WarehouseXeroInvoice[], extras?: Partial<Warehous
       sourceTimestamp: "2026-09-04T10:00:00.000Z",
       historyFrom: "2025-04-01",
       historyTo: "2026-09-04",
+      completeness: "COMPLETE",
     },
   };
 }
@@ -562,5 +574,230 @@ describe("xero normalisers", () => {
       tolerance: WAREHOUSE_RECONCILE_ABS_TOLERANCE,
     });
     expect(rec.passed).toBe(true);
+  });
+});
+
+describe("progressive backfill windows", () => {
+  it("treats 49 as complete and 50 as a cap hit", () => {
+    expect(windowIsComplete(49)).toBe(true);
+    expect(windowHitsCap(50)).toBe(true);
+    expect(windowHitsCap(51)).toBe(true);
+    expect(COMPANY_MCP_RESULT_CAP).toBe(50);
+  });
+
+  it("subdivides a 50-result month and completes after finer windows", () => {
+    let months = inferMonthStatuses(
+      Array.from({ length: 50 }, (_, i) => ({ invoiceDate: `2026-03-${String((i % 28) + 1).padStart(2, "0")}` })),
+      "2026-03-01",
+      "2026-03-31",
+    );
+    expect(months[0]?.status).toBe("PARTIAL");
+    const capped = applyWindowResult(months, { from: "2026-03-01", to: "2026-03-31" }, 50, "month");
+    expect(capped.nextGrain).toBe("week");
+    expect(capped.nextCursor).toBe("2026-03-01");
+    months = capped.months;
+    const week = applyWindowResult(months, { from: "2026-03-01", to: "2026-03-07" }, 20, "week");
+    expect(week.possiblyTruncated).toBe(false);
+    expect(week.nextCursor).toBe("2026-03-08");
+  });
+
+  it("covers 51, 100 and 250 records across multi-window catch-up without treating a cap page as complete", () => {
+    const dates = Array.from({ length: 250 }, (_, i) => {
+      const day = (i % 28) + 1;
+      const month = i < 51 ? "03" : i < 100 ? "04" : "05";
+      return `2026-${month}-${String(day).padStart(2, "0")}`;
+    });
+    const records = dates.map((invoiceDate, i) => ({ id: `INV-${i}`, invoiceDate }));
+    const fetchWindow = (from: string, to: string) =>
+      records.filter((row) => row.invoiceDate >= from && row.invoiceDate <= to).slice(0, 50);
+    let cursor: string | null = "2026-03-01";
+    let grain: "month" | "week" | "day" = "month";
+    let months = inferMonthStatuses(
+      records.slice(0, 50).map((row) => ({ invoiceDate: row.invoiceDate })),
+      "2026-03-01",
+      "2026-05-31",
+    );
+    expect(summariseCompleteness(months)).toBe("PARTIAL");
+    let seen = 0;
+    const ids = new Set<string>();
+    for (let step = 0; step < 40 && cursor && cursor <= "2026-05-31"; step += 1) {
+      const rows = fetchWindow(cursor, cursor <= "2026-03-31" ? "2026-03-31" : cursor);
+      seen += rows.length;
+      for (const row of rows) ids.add(row.id);
+      const applied = applyWindowResult(months, { from: cursor, to: rows.length ? rows[rows.length - 1]!.invoiceDate : cursor }, rows.length, grain);
+      months = applied.months;
+      cursor = applied.nextCursor;
+      grain = applied.nextGrain;
+      if (!cursor) break;
+    }
+    expect(ids.size).toBeGreaterThan(50);
+    expect(windowHitsCap(50)).toBe(true);
+    expect(seen).toBeGreaterThanOrEqual(51);
+  });
+
+  it("resumes from checkpoint and does not restart the historical range", () => {
+    const seeded = seedProgressiveCheckpoint(
+      {
+        mode: "backfill",
+        historyFrom: "2025-04-01",
+        historyTo: "2026-09-04",
+        backfillCursor: "2026-03-01",
+        sourceTimestamp: "2026-09-04T10:00:00.000Z",
+        months: [
+          { month: "2026-03", status: "PARTIAL", recordsRetrieved: 50, nextWindowFrom: "2026-03-01" },
+          { month: "2026-09", status: "COMPLETE", recordsRetrieved: 32, nextWindowFrom: null },
+        ],
+        completeness: "PARTIAL",
+      },
+      [{ invoiceDate: "2026-03-20" }, { invoiceDate: "2026-09-02" }],
+      "2025-04-01",
+      "2026-09-04",
+    );
+    expect(seeded.backfillCursor).toBe("2026-03-01");
+    expect(seeded.historyFrom).toBe("2025-04-01");
+    const plan = planCatchupWindows({
+      cursor: seeded.backfillCursor ?? null,
+      grain: "week",
+      historyTo: "2026-09-04",
+      currentMonthStart: "2026-09-01",
+      budget: 3,
+    });
+    expect(plan[0]?.from).toBe("2026-03-01");
+    expect(plan.every((win) => win.from < "2026-09-01")).toBe(true);
+  });
+
+  it("plans current month separately from historical catch-up", () => {
+    const historical = planCatchupWindows({
+      cursor: "2026-03-01",
+      grain: "week",
+      historyTo: "2026-09-04",
+      currentMonthStart: "2026-09-01",
+      budget: 2,
+    });
+    expect(historical[0]?.from).toBe("2026-03-01");
+    expect(historical.some((win) => win.from >= "2026-09-01")).toBe(false);
+  });
+
+  it("does not mark incomplete history as DEGRADED", () => {
+    expect(deriveWarehouseHealth({ completeness: "BACKFILLING", reconcilePassed: true })).toBe("BACKFILLING");
+    expect(deriveWarehouseHealth({ completeness: "PARTIAL", reconcilePassed: true })).toBe("PARTIAL");
+    expect(deriveWarehouseHealth({ completeness: "COMPLETE", reconcilePassed: true })).toBe("HEALTHY");
+    expect(deriveWarehouseHealth({ completeness: "COMPLETE", reconcilePassed: false })).toBe("DEGRADED");
+  });
+});
+
+describe("partial month query safety + resume sync", () => {
+  it("flags a PARTIAL month and does not present it as complete", async () => {
+    const repo = createMemoryWarehouseRepository();
+    const source = newWarehouseSource({ companyId: WAREHOUSE_EL_COMPANY_ID, connector: WAREHOUSE_XERO_CONNECTOR });
+    source.status = "PARTIAL";
+    source.lastSuccessfulSync = "2026-09-04T10:00:00.000Z";
+    source.warehouseLastUpdatedAt = source.lastSuccessfulSync;
+    source.checkpoint = {
+      mode: "backfill",
+      completeness: "PARTIAL",
+      historyFrom: "2025-04-01",
+      historyTo: "2026-09-04",
+      backfillCursor: "2026-03-08",
+      months: [
+        { month: "2026-03", status: "PARTIAL", recordsRetrieved: 50, nextWindowFrom: "2026-03-08" },
+        { month: "2026-09", status: "COMPLETE", recordsRetrieved: 32, nextWindowFrom: null },
+      ],
+    };
+    await repo.upsertSource(source);
+    for (let i = 0; i < 50; i += 1) {
+      await repo.upsertInvoice(
+        invoice({
+          invoiceId: `MAR-${i}`,
+          invoiceDate: "2026-03-20",
+          total: 10,
+          amountDue: 0,
+          amountPaid: 10,
+          status: "PAID",
+        }),
+      );
+    }
+    const march = await executeWarehouseQuery(repo, {
+      companyId: WAREHOUSE_EL_COMPANY_ID,
+      aggregation: "sales_total",
+      fromDate: "2026-03-01",
+      toDate: "2026-03-31",
+      freshnessClass: "HISTORICAL_ANALYTICAL",
+    });
+    expect(march.ok).toBe(true);
+    expect(march.evidence.completenessStatus).toBe("PARTIAL");
+    expect(march.result?.completeness_status).toBe("PARTIAL");
+    expect(march.result?.partial).toBe(true);
+    expect(String(march.result?.warning ?? "")).toMatch(/backfilling/i);
+    expect(march.result?.sales).toBe(500);
+    expect(march.customerChargeCents).toBe(0);
+
+    const september = await executeWarehouseQuery(repo, {
+      companyId: WAREHOUSE_EL_COMPANY_ID,
+      aggregation: "sales_total",
+      fromDate: "2026-09-01",
+      toDate: "2026-09-04",
+      freshnessClass: "HISTORICAL_ANALYTICAL",
+    });
+    expect(september.result?.completeness_status).toBe("COMPLETE");
+    expect(september.result?.partial).toBe(false);
+  });
+
+  it("continues historical catch-up from the checkpoint and upserts the same id", async () => {
+    const repo = createMemoryWarehouseRepository();
+    const source = newWarehouseSource({ companyId: WAREHOUSE_EL_COMPANY_ID, connector: WAREHOUSE_XERO_CONNECTOR });
+    source.checkpoint = {
+      mode: "backfill",
+      historyFrom: "2025-04-01",
+      historyTo: "2026-09-04",
+      backfillCursor: "2026-03-08",
+      completeness: "PARTIAL",
+      months: [{ month: "2026-03", status: "PARTIAL", recordsRetrieved: 50, nextWindowFrom: "2026-03-08" }],
+    };
+    await repo.upsertSource(source);
+    await repo.upsertInvoice(invoice({ invoiceId: "INV-DUP", invoiceDate: "2026-03-20", total: 10 }));
+    const result = await continueWarehouseSync({
+      env: undefined as never,
+      repo,
+      adapter: adapter(
+        [
+          extractFrom([invoice({ invoiceId: "INV-DUP", invoiceDate: "2026-03-20", total: 15, amountDue: 15 })], {
+            checkpoint: {
+              mode: "backfill",
+              historyFrom: "2025-04-01",
+              historyTo: "2026-09-04",
+              backfillCursor: "2026-03-15",
+              completeness: "PARTIAL",
+              sourceTimestamp: "2026-09-04T21:00:00.000Z",
+              months: [{ month: "2026-03", status: "BACKFILLING", recordsRetrieved: 51, nextWindowFrom: "2026-03-15" }],
+            },
+          }),
+        ],
+        { mtdSales: 0, invoiceCount: 0, outstanding: 15, overdue: 0 },
+      ),
+      now: new Date("2026-09-04T21:00:00.000Z"),
+    });
+    expect(result.source?.checkpoint?.backfillCursor).toBe("2026-03-15");
+    expect(result.source?.checkpoint?.historyFrom).toBe("2025-04-01");
+    expect(await repo.getInvoice(WAREHOUSE_EL_COMPANY_ID, "INV-DUP")).toMatchObject({ total: 15 });
+    expect((await repo.listInvoices(WAREHOUSE_EL_COMPANY_ID)).filter((row) => row.invoiceId === "INV-DUP")).toHaveLength(1);
+    expect(result.source?.status).not.toBe("DEGRADED");
+  });
+
+  it("keeps warehouse sync off the EL 3p tariff and documents one completion email", () => {
+    expect(warehouseTrafficClass()).toBe("AUTOMATION");
+    expect(warehouseChildDebitCents()).toBe(0);
+    const mail = warehouseBackfillCompleteEmail({
+      source: {
+        ...newWarehouseSource({ companyId: WAREHOUSE_EL_COMPANY_ID, connector: WAREHOUSE_XERO_CONNECTOR }),
+        historicalFrom: "2025-04-01",
+        historicalTo: "2026-09-04",
+        recordCounts: { invoices: 400, invoiceLines: 0, contacts: 80, payments: 0, creditNotes: 0, snapshots: 10 },
+        checkpoint: { mode: "incremental", completeness: "COMPLETE", completionEmailSent: false },
+      },
+      run: null,
+      nextSync: "2026-09-05T06:00:00.000Z",
+    });
+    expect(mail.subject).toBe("INFRA — EL Xero Warehouse Historical Backfill Complete");
   });
 });

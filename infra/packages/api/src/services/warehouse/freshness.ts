@@ -6,6 +6,8 @@
 import {
   WAREHOUSE_FRESH_ENOUGH_MS,
   WAREHOUSE_STALE_AFTER_MS,
+  warehouseHealthIsServable,
+  type WarehouseCompleteness,
   type WarehouseEvidence,
   type WarehouseFreshnessClass,
   type WarehouseHealth,
@@ -69,6 +71,9 @@ export function preferredSource(input: {
       ? "explain"
       : "live";
   }
+  if (!warehouseHealthIsServable(input.health) && input.health !== "HEALTHY") {
+    return "live";
+  }
   if (warehouseIsStale(input.lastSuccessfulSync, now) && input.freshnessClass !== "HISTORICAL_ANALYTICAL") {
     return "live";
   }
@@ -95,6 +100,9 @@ export function canServeWarehouse(input: {
   if (input.health === "DEGRADED") {
     return { serve: false, reason: "WAREHOUSE_RECONCILIATION_FAILED" };
   }
+  if (!warehouseHealthIsServable(input.health)) {
+    return { serve: false, reason: "WAREHOUSE_QUERY_FAILED" };
+  }
   if (
     warehouseIsStale(input.lastSuccessfulSync, input.now) &&
     input.freshnessClass !== "HISTORICAL_ANALYTICAL"
@@ -110,13 +118,28 @@ export function buildWarehouseEvidence(input: {
   health: WarehouseHealth;
   warehouseAsOf: string | null;
   freshnessClass: WarehouseFreshnessClass;
+  completenessStatus?: WarehouseCompleteness;
   source?: WarehouseEvidence["source"];
 }): WarehouseEvidence {
+  const completenessStatus =
+    input.completenessStatus ??
+    (input.health === "HEALTHY" || input.health === "COMPLETE"
+      ? "COMPLETE"
+      : input.health === "BACKFILLING"
+        ? "BACKFILLING"
+        : input.health === "PARTIAL"
+          ? "PARTIAL"
+          : input.health === "FAILED"
+            ? "FAILED"
+            : input.health === "DEGRADED"
+              ? "DEGRADED"
+              : "NEVER_SYNCED");
   return {
     source: input.source ?? "xero_warehouse",
     warehouseAsOf: input.warehouseAsOf,
     freshnessClass: input.freshnessClass,
     health: input.health,
+    completenessStatus,
     companyId: input.companyId,
     connector: input.connector,
   };
