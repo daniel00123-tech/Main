@@ -195,7 +195,7 @@ export function createPortalChatRuntime(
         name: call.name,
         ok: true,
         latencyMs: Date.now() - started,
-        data: clipToolData(fetched.value.result),
+        data: clipToolData(fetched.value.result, gatewayName),
       };
     },
   };
@@ -398,7 +398,37 @@ function gatewayArguments(
   return { ...args };
 }
 
-function clipToolData(value: unknown): unknown {
+function clipToolData(value: unknown, toolName = ""): unknown {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if (/^outlook_/.test(toolName) || Array.isArray(record.messages)) {
+      const messages = Array.isArray(record.messages) ? record.messages : [];
+      return {
+        mailboxAddress: record.mailboxAddress ?? record.mailbox ?? null,
+        count: record.count ?? messages.length,
+        messages: messages.slice(0, 5).map((message) => {
+          if (!message || typeof message !== "object") return message;
+          const row = message as Record<string, unknown>;
+          return {
+            subject: row.subject ?? null,
+            from: row.from ?? row.sender ?? null,
+            receivedDateTime: row.receivedDateTime ?? row.received ?? row.date ?? null,
+          };
+        }),
+      };
+    }
+    if (/^xero_/.test(toolName) || "sales_total" in record || record.source === "Xero") {
+      const summary = record.summary && typeof record.summary === "object" ? record.summary : {};
+      return {
+        source: record.source ?? "Xero",
+        sales_total: record.sales_total ?? (summary as { totalSales?: unknown }).totalSales,
+        invoice_count: record.invoice_count ?? (summary as { transactionCount?: unknown }).transactionCount,
+        currencyCode: record.currencyCode ?? record.currency,
+        period: record.period ?? null,
+        summary,
+      };
+    }
+  }
   const raw = JSON.stringify(value ?? null);
   if (raw.length <= 3_500) return value;
   return { preview: raw.slice(0, 3_500), truncated: true };
