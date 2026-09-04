@@ -111,4 +111,20 @@ describe("permission service", () => {
     );
     expect(decision.allowed).toBe(false);
   });
+
+  it("keeps office_staff info mailbox allowed and admin/payments denied", async () => {
+    expect(
+      (
+        await evaluateActionPermission(mockDb, william, "co_el", "outlook.search" as never, {
+          mailboxAddress: "info@elvexpropertyservices.com",
+        })
+      ).allowed,
+    ).toBe(true);
+    expect((await evaluateActionPermission(mockDb, william, "co_el", "admin.users.manage" as never)).allowed).toBe(
+      false,
+    );
+    expect(
+      (await evaluateActionPermission(mockDb, william, "co_el", "xero.payments.allocate")).allowed,
+    ).toBe(false);
+  });
 });

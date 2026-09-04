@@ -47,6 +47,7 @@ import { updateAutoTopUpSettings } from "../services/company-settings";
 import { listLedgerEntries } from "../services/ledger";
 import { listPlatformUsage } from "../services/usage";
 import { portalOrigin } from "../services/public-urls";
+import { listWhatsAppInbox } from "../services/whatsapp-ops";
 
 type AppEnv = { Bindings: Env; Variables: AuthVariables };
 
@@ -361,7 +362,14 @@ export function registerCommand6Routes(app: Hono<AppEnv>) {
     if (!canManageCompany(c.get("user"), company.id)) {
       return c.json({ error: "Company administrator access required" }, 403);
     }
-    await cancelInvitation(c.env.DB, company.id, c.req.param("id"));
+    try {
+      await cancelInvitation(c.env.DB, company.id, c.req.param("id"));
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : "Unable to cancel invitation" },
+        400,
+      );
+    }
     await recordAuditEvent(c.env.DB, {
       companyId: company.id,
       eventType: "invitation.cancelled",
@@ -525,7 +533,24 @@ export function registerCommand6Routes(app: Hono<AppEnv>) {
       ]),
     );
 
+    const whatsappInbox = await listWhatsAppInbox(c.env).catch(() => ({
+      items: [],
+      stuckCount: 0,
+      processingCount: 0,
+      failedCount: 0,
+      consecutiveFailedReplies: 0,
+      metrics: undefined,
+    }));
+
     return c.json({
+      whatsapp: {
+        stuckCount: whatsappInbox.stuckCount,
+        processingCount: whatsappInbox.processingCount,
+        failedCount: whatsappInbox.failedCount,
+        consecutiveFailedReplies: whatsappInbox.consecutiveFailedReplies,
+        incidents: whatsappInbox.items.filter((item) => item.stuck || item.status === "failed").slice(0, 40),
+        metrics: "metrics" in whatsappInbox ? whatsappInbox.metrics : undefined,
+      },
       failures: (rows.results ?? []).map((row) => {
         const companyId = String(row.company_id);
         const meta = companyMap.get(companyId);

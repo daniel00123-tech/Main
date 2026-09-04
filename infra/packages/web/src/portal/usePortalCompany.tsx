@@ -11,6 +11,7 @@ import { useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api";
 import type { Company, CompanyOverview, CompanyRole } from "@infra/shared";
+import { isReservedProductionHost } from "@infra/shared";
 
 type PortalCompanyContextValue = {
   user: ReturnType<typeof useAuth>["user"];
@@ -33,6 +34,7 @@ function resolveHostSubdomain(): string | null {
   // e.g. caddington.infra-web.pages.dev or caddington.localhost
   const parts = host.split(".");
   if (host === "localhost" || host === "127.0.0.1") return null;
+  if (isReservedProductionHost(host)) return null;
   if (host.endsWith("pages.dev") && parts.length >= 4) {
     // {sub}.{project}.pages.dev
     return parts[0] === "www" ? null : parts[0];

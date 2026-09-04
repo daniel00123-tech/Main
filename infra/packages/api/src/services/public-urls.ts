@@ -1,6 +1,14 @@
 import type { Env } from "../env";
-
-const DEFAULT_PORTAL_BASE_DOMAIN = "infra-web.pages.dev";
+import {
+  INFRA_API_ORIGIN,
+  INFRA_MCP_ENDPOINT,
+  INFRA_MCP_ORIGIN,
+  INFRA_PORTAL_ORIGIN,
+  LEGACY_API_ORIGIN,
+  LEGACY_PORTAL_BASE_DOMAIN,
+  hostnameOf,
+  isReservedProductionHost,
+} from "@infra/shared";
 
 /** Derive the public INFRA API base URL (no trailing slash). */
 export function infraPublicApiBase(env: Env, requestUrl?: string | URL | null): string {
@@ -14,16 +22,30 @@ export function infraPublicApiBase(env: Env, requestUrl?: string | URL | null): 
       /* fall through */
     }
   }
-  return "https://infra-api.daniel-dwyer123.workers.dev";
+  return INFRA_API_ORIGIN;
+}
+
+export function infraPublicMcpOrigin(env: Env): string {
+  const fromEnv = env.INFRA_PUBLIC_MCP_URL?.trim().replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+  return INFRA_MCP_ORIGIN;
 }
 
 export function portalBaseDomain(env: Env): string {
-  return env.PORTAL_BASE_DOMAIN?.trim() || DEFAULT_PORTAL_BASE_DOMAIN;
+  return env.PORTAL_BASE_DOMAIN?.trim() || LEGACY_PORTAL_BASE_DOMAIN;
 }
 
 export function portalOrigin(env: Env, requestOrigin?: string | null): string {
-  if (requestOrigin?.trim()) return requestOrigin.trim().replace(/\/$/, "");
-  return `https://${portalBaseDomain(env)}`;
+  if (requestOrigin?.trim()) {
+    try {
+      return new URL(requestOrigin.trim()).origin;
+    } catch {
+      return requestOrigin.trim().replace(/\/$/, "");
+    }
+  }
+  const fromEnv = env.PORTAL_PUBLIC_ORIGIN?.trim().replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+  return INFRA_PORTAL_ORIGIN;
 }
 
 export function portalHostForSubdomain(env: Env, subdomain: string): string {
@@ -32,11 +54,47 @@ export function portalHostForSubdomain(env: Env, subdomain: string): string {
 
 function isBrowserPublicHost(host: string): boolean {
   const hostname = host.toLowerCase();
+  // api./mcp. and company MCP hosts are not the portal. Sending OAuth login
+  // there produces a worker 404 ("Page not found") after INFRA sign-in.
+  if (
+    hostname === "api.infrastack.app" ||
+    hostname === "mcp.infrastack.app" ||
+    hostname.endsWith(".workers.dev")
+  ) {
+    return false;
+  }
   return (
     hostname === "app.infrastack.app" ||
-    hostname.endsWith(".infrastack.app") ||
+    hostname === "infrastack.app" ||
     hostname.endsWith(".infra-web.pages.dev")
   );
+}
+
+/** First-party /oauth/authorize path+query so the portal session cookie is sent. */
+export function oauthAuthorizeContinuePath(request: Request): string {
+  const incoming = new URL(request.url);
+  const path = incoming.pathname === "/oauth/authorize" ? incoming.pathname : "/oauth/authorize";
+  return `${path}${incoming.search}`;
+}
+
+/** Absolute authorize URL on the portal origin (never workers.dev / api.). */
+export function oauthAuthorizeContinueUrl(env: Env, request: Request): string {
+  const browserBase = infraBrowserPublicBase(env, request.url, request);
+  const origin = isBrowserPublicHost(new URL(`${browserBase}/`).hostname)
+    ? browserBase.replace(/\/$/, "")
+    : INFRA_PORTAL_ORIGIN;
+  return `${origin}${oauthAuthorizeContinuePath(request)}`;
+}
+
+/** Login URL used when /oauth/authorize has no INFRA session. */
+export function oauthLoginRedirectUrl(env: Env, request: Request): string {
+  const browserBase = infraBrowserPublicBase(env, request.url, request);
+  const loginOrigin = isBrowserPublicHost(new URL(`${browserBase}/`).hostname)
+    ? browserBase.replace(/\/$/, "")
+    : INFRA_PORTAL_ORIGIN;
+  const login = new URL("/portal/login", `${loginOrigin}/`);
+  login.searchParams.set("next", oauthAuthorizeContinuePath(request));
+  return login.toString();
 }
 
 /**
@@ -67,27 +125,6 @@ export function infraBrowserPublicBase(
   return infraPublicApiBase(env, requestUrl);
 }
 
-export function oauthAuthorizeContinueUrl(
-  env: Env,
-  request: Request,
-): string {
-  const incoming = new URL(request.url);
-  const browserBase = infraBrowserPublicBase(env, request.url, request);
-  return `${browserBase}${incoming.pathname}${incoming.search}`;
-}
-
-/** Login URL used when /oauth/authorize has no INFRA session. */
-export function oauthLoginRedirectUrl(env: Env, request: Request): string {
-  const browserBase = infraBrowserPublicBase(env, request.url, request);
-  const loginOrigin =
-    browserBase.includes("infrastack.app") || browserBase.includes("pages.dev")
-      ? browserBase
-      : "https://app.infrastack.app";
-  const login = new URL("/portal/login", `${loginOrigin}/`);
-  login.searchParams.set("next", oauthAuthorizeContinueUrl(env, request));
-  return login.toString();
-}
-
 export function infraMcpGatewayUrl(
   env: Env,
   requestUrl?: string | URL | null,
@@ -98,4 +135,12 @@ export function infraMcpGatewayUrl(
 
 export function infraGatewayExecuteUrl(env: Env, requestUrl?: string | URL | null): string {
   return `${infraPublicApiBase(env, requestUrl)}/api/gateway/v1/execute`;
+}
+
+export { INFRA_MCP_ENDPOINT, LEGACY_API_ORIGIN };
+
+export function isCompanyPortalHostname(hostname: string | null | undefined): boolean {
+  const host = hostnameOf(hostname);
+  if (!host || isReservedProductionHost(host)) return false;
+  return host.split(".").length >= 3;
 }

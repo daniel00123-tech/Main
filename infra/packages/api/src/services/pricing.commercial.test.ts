@@ -156,4 +156,11 @@ describe("commercial pricing engine", () => {
     );
     expect(result.customerChargeCents).toBe(7);
   });
+
+  it("does not invent a Xero read tariff — missing rule is zero_charge", () => {
+    const result = calculateChargeCents(null, { success: true, policy: null });
+    expect(result.billable).toBe(false);
+    expect(result.customerChargeCents).toBeNull();
+    expect(result.pricingRuleId).toBeNull();
+  });
 });

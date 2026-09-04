@@ -529,7 +529,7 @@ async function buildSubsystemHealth(
       summary:
         outboundEmailState === "UNKNOWN"
           ? "Not configured for this tenant"
-          : `Caddington sender health: ${outboundEmailState.replace(/_/g, " ").toLowerCase()}`,
+          : `Infra sender health: ${outboundEmailState.replace(/_/g, " ").toLowerCase()}`,
       lastCheckedAt: checkedAt,
     },
   ];
@@ -709,7 +709,25 @@ export async function buildCompanyOperationalSummaries(
   return summaries;
 }
 
+export async function getCachedPlatformInfrastructureUsage(env: Env) {
+  const { rememberSafeRead } = await import("./observability/safe-cache");
+  const { getPlatformInfrastructureUsage } = await import("./observability/infrastructure-usage");
+  let loaded = false;
+  const snapshot = await rememberSafeRead("platform_ops_usage", "platform", 30_000, async () => {
+    loaded = true;
+    return getPlatformInfrastructureUsage(env.DB);
+  });
+  return { ...snapshot, cacheHit: !loaded };
+}
+
 export async function getPlatformOperationalHealth(env: Env): Promise<PlatformOperationalHealth> {
+  const { rememberSafeRead } = await import("./observability/safe-cache");
+  return rememberSafeRead("platform_ops_health", "platform", 30_000, () =>
+    computePlatformOperationalHealth(env),
+  );
+}
+
+async function computePlatformOperationalHealth(env: Env): Promise<PlatformOperationalHealth> {
   const db = env.DB;
   const checkedAt = nowIso();
   const nowMs = Date.now();
@@ -743,7 +761,7 @@ export async function getPlatformOperationalHealth(env: Env): Promise<PlatformOp
     ...incidents.map((i) => i.severity),
   ]);
 
-  return {
+  const health: PlatformOperationalHealth = {
     checkedAt,
     overallState,
     overallSeverity,
@@ -768,6 +786,23 @@ export async function getPlatformOperationalHealth(env: Env): Promise<PlatformOp
     permissionDenialsLast24h: security.permissionDenialsLast24h,
     usageAnomalyFlags: usageAnomalies,
   };
+
+  try {
+    const { getPlatformInfrastructureUsage } = await import("./observability/infrastructure-usage");
+    const usage = await getPlatformInfrastructureUsage(db);
+    health.infrastructure = {
+      requests24h: usage.requests24h,
+      requestSuccessRate: usage.requestSuccessRate,
+      avgDurationMs: usage.avgDurationMs,
+      automationRuns24h: usage.automationRuns24h,
+      microsoftPending: usage.microsoftPending,
+      microsoftDeadLetter24h: usage.microsoftDeadLetter24h,
+    };
+  } catch {
+    // Usage snapshot is additive; health still returns without it.
+  }
+
+  return health;
 }
 
 export async function runBillingReconciliationDiagnostic(db: D1Database): Promise<{
