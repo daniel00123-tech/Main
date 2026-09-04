@@ -36,7 +36,6 @@ type GraphUser = {
 type GraphFolder = {
   id: string;
   displayName: string;
-  wellKnownName?: string | null;
   parentFolderId?: string | null;
   childFolderCount?: number;
   totalItemCount?: number;
@@ -115,7 +114,7 @@ async function listMichaelCandidates(config: MicrosoftGraphConfig): Promise<Grap
 async function listFolders(config: MicrosoftGraphConfig, mailbox: string): Promise<GraphFolder[]> {
   const root = await graphGet<{ value?: GraphFolder[] }>(
     config,
-    `/users/${encodeURIComponent(mailbox)}/mailFolders?$select=id,displayName,wellKnownName,parentFolderId,childFolderCount,totalItemCount&$top=50`,
+    `/users/${encodeURIComponent(mailbox)}/mailFolders?$select=id,displayName,parentFolderId,childFolderCount,totalItemCount&$top=50`,
   );
   const folders = [...(root.value ?? [])];
   const extras: GraphFolder[] = [];
@@ -124,7 +123,7 @@ async function listFolders(config: MicrosoftGraphConfig, mailbox: string): Promi
       try {
         const children = await graphGet<{ value?: GraphFolder[] }>(
           config,
-          `/users/${encodeURIComponent(mailbox)}/mailFolders/${folder.id}/childFolders?$select=id,displayName,wellKnownName,parentFolderId,childFolderCount,totalItemCount&$top=50`,
+          `/users/${encodeURIComponent(mailbox)}/mailFolders/${folder.id}/childFolders?$select=id,displayName,parentFolderId,childFolderCount,totalItemCount&$top=50`,
         );
         extras.push(...(children.value ?? []));
       } catch {
@@ -186,13 +185,12 @@ async function listMailboxWideMessages(
 }
 
 function folderIsInbox(folder: GraphFolder): boolean {
-  return /^(inbox)$/i.test(folder.wellKnownName || "") || /^inbox$/i.test(folder.displayName || "");
+  return /^inbox$/i.test(folder.displayName || "");
 }
 
 function folderIsWellKnown(folder: GraphFolder): boolean {
-  const known = (folder.wellKnownName || folder.displayName || "").toLowerCase();
-  return /^(inbox|archive|sentitems|sent items|deleteditems|deleted items|drafts|junkemail|junk email|conversationhistory|conversation history)$/.test(
-    known,
+  return /^(inbox|archive|sent items|sentitems|deleted items|deleteditems|drafts|junk email|junkemail|conversation history)$/i.test(
+    folder.displayName || "",
   );
 }
 
