@@ -3,6 +3,7 @@ import {
   buildTenantToolCatalogue,
   capabilityForPlatformTool,
   detectRequestedCapabilities,
+  rewriteExactAccountingTool,
   normaliseVendorToolName,
   secondRbacAllows,
   standardToolContracts,
@@ -104,6 +105,10 @@ describe("company tool registry", () => {
     expect(detectRequestedCapabilities("What are sales right now?")).toContain("ACCOUNTING_SALES");
     expect(detectRequestedCapabilities("What are sales right now?")).not.toContain("ACCOUNTING_WAREHOUSE");
     expect(capabilityForPlatformTool("outlook_search_mailbox")).toBe("EMAIL_SEARCH");
+    expect(rewriteExactAccountingTool("xero_search_invoices", { query: "INV-02268" }, "Look up invoice INV-02268")).toEqual({
+      name: "xero_get_invoice",
+      arguments: { query: "INV-02268", invoiceNumber: "INV-02268" },
+    });
   });
 
   it("does not register future CRM capabilities until a connector exists", () => {

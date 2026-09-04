@@ -3,6 +3,7 @@ import { classifyElTraffic, shouldChargeElCustomerRequest } from "../el-customer
 import { classifyQueryFreshness, expectedAccountingSource } from "../warehouse/freshness";
 import { detectRequestedCapabilities } from "../intelligence/company-tool-registry";
 import { BUSINESS_GATEWAY_TOOL_SET, isAllowedBusinessGatewayTool } from "../intelligence/business-gateway-tools";
+import { isCompoundBusinessAsk } from "../intelligence/orchestrator";
 import { WAREHOUSE_TOOL_NAMES } from "../warehouse/standard";
 import { OVERNIGHT_PRIMARY, OVERNIGHT_ALL, FRESH_RETEST_SETS, questionsForStage } from "./bank";
 import { scoreOvernightTurn, scoreChannel } from "./score";
@@ -59,6 +60,13 @@ describe("warehouse vs live routing concepts", () => {
     expect(expectedAccountingSource("What are sales right now?", NOW)).toBe("xero_live");
     expect(detectRequestedCapabilities("What were sales in March?")).toContain("ACCOUNTING_WAREHOUSE");
     expect(detectRequestedCapabilities("What are sales right now?")).not.toContain("ACCOUNTING_WAREHOUSE");
+  });
+
+  it("does not treat a single last-month question as a two-period compound ask", () => {
+    expect(isCompoundBusinessAsk("What did last month's invoiced sales come to?")).toBe(false);
+    expect(isCompoundBusinessAsk("What were sales in March?")).toBe(false);
+    expect(isCompoundBusinessAsk("compare Xero sales this month versus last month")).toBe(true);
+    expect(isCompoundBusinessAsk("sales this month and were they better than last month")).toBe(true);
   });
 
   it("allows warehouse tools on the shared WhatsApp/Portal gateway allow-list", () => {
