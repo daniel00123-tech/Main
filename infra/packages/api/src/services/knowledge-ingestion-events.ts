@@ -192,6 +192,29 @@ export type KnowledgeIngestionEventRow = {
   metadata_json: string | null;
 };
 
+export function knowledgeIngestionEventInWindow(
+  row: {
+    source_modified_at?: string | null;
+    indexed_at?: string | null;
+    discovered_at?: string | null;
+    created_at?: string | null;
+  },
+  windowFrom: string,
+  windowTo: string,
+): boolean {
+  const start = Date.parse(windowFrom);
+  const end = Date.parse(windowTo);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+  const inRange = (value?: string | null) => {
+    if (!value) return false;
+    const ts = Date.parse(value);
+    return Number.isFinite(ts) && ts >= start && ts <= end;
+  };
+  if (row.source_modified_at) return inRange(row.source_modified_at);
+  if (row.indexed_at) return inRange(row.indexed_at);
+  return inRange(row.discovered_at) || inRange(row.created_at);
+}
+
 export async function listKnowledgeIngestionEvents(
   db: D1Database,
   input: { companyId: string; windowFrom: string; windowTo: string; limit?: number },
@@ -205,10 +228,12 @@ export async function listKnowledgeIngestionEvents(
        FROM knowledge_ingestion_events
        WHERE company_id = ?
          AND (
-           created_at BETWEEN ? AND ?
-           OR discovered_at BETWEEN ? AND ?
-           OR source_modified_at BETWEEN ? AND ?
-           OR indexed_at BETWEEN ? AND ?
+           (source_modified_at IS NOT NULL AND source_modified_at BETWEEN ? AND ?)
+           OR (indexed_at IS NOT NULL AND indexed_at BETWEEN ? AND ?)
+           OR (
+             source_modified_at IS NULL AND indexed_at IS NULL
+             AND COALESCE(discovered_at, created_at) BETWEEN ? AND ?
+           )
          )
        ORDER BY created_at DESC
        LIMIT ?`,
@@ -221,12 +246,12 @@ export async function listKnowledgeIngestionEvents(
       input.windowTo,
       input.windowFrom,
       input.windowTo,
-      input.windowFrom,
-      input.windowTo,
       input.limit ?? 400,
     )
     .all<KnowledgeIngestionEventRow>();
-  return result.results ?? [];
+  return (result.results ?? []).filter((row) =>
+    knowledgeIngestionEventInWindow(row, input.windowFrom, input.windowTo),
+  );
 }
 
 export async function recordJobIngestionEvent(

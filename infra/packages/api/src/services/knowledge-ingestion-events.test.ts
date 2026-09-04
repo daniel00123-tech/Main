@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyActivityKind, timestampInWindow } from "@infra/shared";
-import { recordKnowledgeIngestionEvent } from "./knowledge-ingestion-events";
+import { knowledgeIngestionEventInWindow, recordKnowledgeIngestionEvent } from "./knowledge-ingestion-events";
 
 describe("knowledge ingestion ledger", () => {
   it("records a tenant-scoped event without leaking other companies", async () => {
@@ -70,6 +70,21 @@ describe("knowledge ingestion ledger", () => {
     ).toBe("updated");
     expect(
       timestampInWindow("2026-08-18T15:23:09Z", new Date("2026-09-03T17:39:03.388Z"), new Date("2026-09-04T17:39:03.388Z")),
+    ).toBe(false);
+  });
+
+  it("windows source_observed rows on source time, not ledger write time", () => {
+    const row = {
+      source_modified_at: "2026-09-04T15:41:18Z",
+      discovered_at: "2026-09-04T18:41:13.276Z",
+      created_at: "2026-09-04T18:41:13.276Z",
+      indexed_at: null,
+    };
+    expect(
+      knowledgeIngestionEventInWindow(row, "2026-09-03T17:39:03.388Z", "2026-09-04T17:39:03.388Z"),
+    ).toBe(true);
+    expect(
+      knowledgeIngestionEventInWindow(row, "2026-09-04T17:39:03.388Z", "2026-09-05T07:00:00.000Z"),
     ).toBe(false);
   });
 });
