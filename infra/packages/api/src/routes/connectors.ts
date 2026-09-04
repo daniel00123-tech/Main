@@ -1341,6 +1341,21 @@ connectors.post("/api/internal/el-knowledge-onedrive-diagnostic", async (c) => {
   }
 });
 
+connectors.post("/api/internal/el-microsoft-sp-verify", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { verifyElMicrosoftServicePrincipal } = await import("../services/el-microsoft-sp-verify");
+    return c.json(await verifyElMicrosoftServicePrincipal(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "EL Microsoft SP verify failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/el-mailbox-attachment-backfill", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

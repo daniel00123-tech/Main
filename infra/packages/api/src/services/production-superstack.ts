@@ -30,6 +30,7 @@ import {
 } from "./warehouse";
 import { defaultIngestionPolicyForCompany } from "./mailbox-ingestion-policy";
 import { runElMailboxAttachmentBackfill } from "./mailbox-attachment-backfill";
+import { verifyElMicrosoftServicePrincipal } from "./el-microsoft-sp-verify";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -224,6 +225,9 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (typeof runElMailboxAttachmentBackfill !== "function") {
     throw new Error("EL mailbox attachment backfill missing");
+  }
+  if (typeof verifyElMicrosoftServicePrincipal !== "function") {
+    throw new Error("EL Microsoft service-principal verify missing");
   }
   if (!isWarehouseToolName("warehouse_sales_analysis") || warehouseSlotsPerWeek() !== 37) {
     throw new Error("business data warehouse schedule or tools missing");
