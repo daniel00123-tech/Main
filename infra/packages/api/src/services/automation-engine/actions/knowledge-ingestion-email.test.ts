@@ -31,6 +31,28 @@ vi.mock("../store", () => ({
   listAutomationRuns: vi.fn(async () => []),
 }));
 
+vi.mock("../../outlook-attachment-ingest", () => ({
+  ingestApprovedOutlookAttachments: vi.fn(async () => ({
+    companyId: "co_el",
+    counts: {
+      messagesScanned: 11,
+      messagesWithAttachments: 3,
+      attachmentsDiscovered: 3,
+      attachmentsStored: 0,
+      attachmentsIndexed: 0,
+      duplicates: 0,
+      skipped: 0,
+      skippedJunk: 0,
+      unsupported: 0,
+      failed: 3,
+    },
+    mailboxes: [],
+    excludedMailboxes: [],
+    namedPeople: [],
+    registry: [],
+  })),
+}));
+
 import { sendTransactionalEmail } from "../../email/send-transactional";
 import { queryKnowledgeIngestionActivity } from "../knowledge-ingestion-query";
 import { executeKnowledgeIngestionDailyEmail } from "./knowledge-ingestion-email";
@@ -103,7 +125,9 @@ describe("knowledge ingestion daily email", () => {
     });
     expect(String(sent?.subject)).toContain("EL Business Daily Knowledge Activity");
     expect(String(sent?.subject)).toContain("manual test");
-    expect(String(sent?.bodyText)).toContain("No new documents were added");
+    expect(String(sent?.bodyText)).toMatch(/MESSAGES SCANNED:\s*11/);
+    expect(String(sent?.bodyText)).toContain("Attachments discovered: 3");
+    expect(String(sent?.bodyText)).toContain("Attachments failed: 3");
     expect(String(sent?.bodyText)).not.toMatch(/Caddington|co_caddington|HT Business/i);
   });
 

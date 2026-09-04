@@ -28,6 +28,7 @@ import {
   listExcludedAttachmentMailboxes,
 } from "../../mailbox-registry";
 import { formatMailboxScanCount, mailboxScanHealth } from "../../mailbox-scan-status";
+import { ingestApprovedOutlookAttachments } from "../../outlook-attachment-ingest";
 import { AutomationActionError } from "./errors";
 import type { AutomationActionResult, AutomationExecutionContext } from "./types";
 
@@ -62,7 +63,10 @@ async function mailboxPolicySnapshot(
         status: health,
         scannedLabel: formatMailboxScanCount({
           health,
-          messagesScanned: failed || !row.last_attachment_scan_at ? null : 0,
+          messagesScanned:
+            failed || !row.last_attachment_scan_at
+              ? null
+              : row.last_messages_scanned ?? 0,
           errorCode: row.last_error,
         }),
       };
@@ -130,6 +134,18 @@ export async function executeKnowledgeIngestionDailyEmail(
     completedAt: lastSuccessful?.completedAt ?? null,
   });
 
+  let ingest: Awaited<ReturnType<typeof ingestApprovedOutlookAttachments>> | null = null;
+  try {
+    ingest = await ingestApprovedOutlookAttachments(env, {
+      companyId: ctx.companyId,
+      windowFrom: window.from,
+      windowTo: window.to,
+      actor: `automation:${ctx.runId}:knowledge-intake`,
+    });
+  } catch {
+    ingest = null;
+  }
+
   let report;
   try {
     report = await queryKnowledgeIngestionActivity(env, {
@@ -162,8 +178,8 @@ export async function executeKnowledgeIngestionDailyEmail(
     correlationId: `${ctx.runId}:knowledge`,
     requestId: `automation_knowledge_${ctx.runId}`,
     metadata: {
-      readOnly: true,
-      triggeredProviderScan: false,
+      readOnly: false,
+      triggeredProviderScan: Boolean(ingest),
       windowFrom: report.windowFrom,
       windowTo: report.windowTo,
       trigger: triggerType,
@@ -257,18 +273,26 @@ export async function executeKnowledgeIngestionDailyEmail(
     mailboxesScanned,
     mailboxHeadline: mailboxPolicy.headline,
     mailboxHealthLines: mailboxPolicy.healthLines,
-    messagesScanned: 0,
-    messagesWithAttachments: report.documents.filter((item) => item.sourceKey === "outlook_attachments").length,
-    attachmentsDiscovered: outlookDocs.length,
-    attachmentsStored: outlookDocs.filter((item) => item.stored).length,
-    attachmentsIndexed: outlookDocs.filter((item) => item.indexed).length,
-    attachmentsDeduped: outlookDocs.filter((item) => item.outcome === "duplicate").length,
-    attachmentsSkipped: outlookDocs.filter((item) => item.outcome === "skipped" || item.outcome === "duplicate").length,
-    attachmentsSkippedJunk: outlookDocs.filter((item) => item.outcome === "skipped" && !item.stored).length,
-    attachmentsUnsupported: outlookDocs.filter(
-      (item) => item.stored && (item.failureReason === "UNSUPPORTED_TYPE" || item.failureReason === "unsupported format"),
-    ).length,
-    attachmentsFailed: outlookDocs.filter((item) => item.outcome === "failed").length,
+    messagesScanned: ingest?.counts.messagesScanned ?? 0,
+    messagesWithAttachments:
+      ingest?.counts.messagesWithAttachments ??
+      report.documents.filter((item) => item.sourceKey === "outlook_attachments").length,
+    attachmentsDiscovered: ingest?.counts.attachmentsDiscovered ?? outlookDocs.length,
+    attachmentsStored: ingest?.counts.attachmentsStored ?? outlookDocs.filter((item) => item.stored).length,
+    attachmentsIndexed: ingest?.counts.attachmentsIndexed ?? outlookDocs.filter((item) => item.indexed).length,
+    attachmentsDeduped: ingest?.counts.duplicates ?? outlookDocs.filter((item) => item.outcome === "duplicate").length,
+    attachmentsSkipped:
+      ingest?.counts.skipped ??
+      outlookDocs.filter((item) => item.outcome === "skipped" || item.outcome === "duplicate").length,
+    attachmentsSkippedJunk:
+      ingest?.counts.skippedJunk ??
+      outlookDocs.filter((item) => item.outcome === "skipped" && !item.stored).length,
+    attachmentsUnsupported:
+      ingest?.counts.unsupported ??
+      outlookDocs.filter(
+        (item) => item.stored && (item.failureReason === "UNSUPPORTED_TYPE" || item.failureReason === "unsupported format"),
+      ).length,
+    attachmentsFailed: ingest?.counts.failed ?? outlookDocs.filter((item) => item.outcome === "failed").length,
     onedriveIndexed: report.documents.filter((item) => item.sourceKey === "onedrive" && item.indexed).length,
     sharepointIndexed: report.documents.filter((item) => item.sourceKey === "sharepoint" && item.indexed).length,
     pipelineHealth,
@@ -296,7 +320,7 @@ export async function executeKnowledgeIngestionDailyEmail(
     scannedSourceTypes: report.scannedSourceTypes,
     sourcesQueried: report.sourcesQueried,
     recipientEmail: recipient,
-    triggeredProviderScan: false,
+    triggeredProviderScan: Boolean(ingest),
     emailSent: false,
     customerSummary: "Knowledge activity report generated",
   };

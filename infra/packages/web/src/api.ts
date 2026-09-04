@@ -2028,6 +2028,8 @@ export const api = {
         status: string;
         graphAccessible: number | null;
         lastScan: string | null;
+        lastCheckpoint: string | null;
+        lastMessagesScanned: number | null;
         lastSuccessfulSync: string | null;
         lastError: string | null;
       }>;
