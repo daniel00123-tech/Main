@@ -1,6 +1,6 @@
 /** Written by scripts/write-production-lineage.mjs immediately before production deploy. */
 export const GENERATED_PRODUCTION_LINEAGE = {
-  gitSha: "e1fcf3deffe7b0fce61abdfef7a0983ddc0188c8",
-  branch: "cursor/el-outlook-attach-landing-b8da",
-  generatedAt: "2026-09-04T19:57:26.315Z",
+  gitSha: "eee6a690a77c8234fdcc53e9cbeecd8214b8d07f",
+  branch: "cursor/el-openai-feedback-loop-8d24",
+  generatedAt: "2026-09-04T20:19:38.125Z",
 } as const;
