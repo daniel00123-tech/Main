@@ -4,6 +4,7 @@ import { executeGatewayRequest } from "./gateway";
 import {
   GATEWAY_TOOL_ALIASES,
   SYSTEM_META_TOOLS,
+  compactBusinessToolData,
   executeSystemMetaTool,
   enrichDocumentQuery,
 } from "./intelligence/index";
@@ -199,7 +200,7 @@ export function createPortalChatRuntime(
         name: call.name,
         ok: true,
         latencyMs: Date.now() - started,
-        data: clipToolData(fetched.value.result),
+        data: compactBusinessToolData(call.name, fetched.value.result),
       };
     },
   };
@@ -407,8 +408,3 @@ function gatewayArguments(
   return { ...args };
 }
 
-function clipToolData(value: unknown): unknown {
-  const raw = JSON.stringify(value ?? null);
-  if (raw.length <= 3_500) return value;
-  return { preview: raw.slice(0, 3_500), truncated: true };
-}

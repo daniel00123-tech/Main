@@ -1227,12 +1227,9 @@ connectors.post("/api/internal/portal-chat-acceptance", async (c) => {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
   }
   try {
-    const { runPortalChatAcceptance } = await import("../services/portal-chat-acceptance");
+    const { isPortalChatAcceptanceSuite, runPortalChatAcceptance } = await import("../services/portal-chat-acceptance");
     const requested = String(c.req.query("suite") ?? "director_memory");
-    const suite =
-      requested === "director_systems" || requested === "office" || requested === "parity"
-        ? requested
-        : "director_memory";
+    const suite = isPortalChatAcceptanceSuite(requested) ? requested : "director_memory";
     return c.json(await runPortalChatAcceptance(c.env, suite));
   } catch (err) {
     return c.json(

@@ -9,8 +9,11 @@ import {
   permittedToolsForConnectors,
   runIntelligenceTurn,
   withResolvedBusinessDates,
+  compactBusinessToolData,
   enrichDocumentQuery,
+  isSufficientBusinessResult,
   summariseOutlookEvidence,
+  summariseXeroEvidence,
   type IntelligenceCompleter,
   type IntelligenceDocumentRef,
   type IntelligenceRuntime,
@@ -503,17 +506,20 @@ async function recoverFailedIntelligenceTurn(
     failed.lastAnswerTopic === "email" ||
     /\b(emails?|inbox|mailbox|outlook)\b/i.test(input.originalText)
   ) {
+    const existingOutlook = toolCalls.find((call) => call.ok && call.name.startsWith("outlook_") && isSufficientBusinessResult(call));
     const mailbox = /\bfinance\b/i.test(input.originalText)
       ? "finance@elvexpropertyservices.com"
       : "info@elvexpropertyservices.com";
     const newest = /\b(newest|latest|most recent|last email)\b/i.test(input.originalText);
-    const outlook = await runtime.executeTool({
-      name: newest ? "outlook_list_messages" : "outlook_search_mailbox",
-      arguments: newest
-        ? { mailboxAddress: mailbox, limit: 5 }
-        : { query: input.originalText, mailboxAddress: mailbox },
-    });
-    toolCalls.push(outlook);
+    const outlook =
+      existingOutlook ??
+      (await runtime.executeTool({
+        name: newest ? "outlook_list_messages" : "outlook_search_mailbox",
+        arguments: newest
+          ? { mailboxAddress: mailbox, limit: 5 }
+          : { query: input.originalText, mailboxAddress: mailbox },
+      }));
+    if (!existingOutlook) toolCalls.push(outlook);
     return {
       ...failed,
       kind: outlook.ok ? "answer" : "failed",
@@ -531,16 +537,19 @@ async function recoverFailedIntelligenceTurn(
     };
   }
   if (/\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover)\b/i.test(input.originalText) || failed.scope === "BUSINESS_SYSTEM") {
-    const xero = await runtime.executeTool({
-      name: "xero_sales_summary",
-      arguments: withResolvedBusinessDates("xero_sales_summary", {}, input.originalText),
-    });
-    toolCalls.push(xero);
+    const existingXero = toolCalls.find((call) => call.ok && call.name.startsWith("xero_") && isSufficientBusinessResult(call));
+    const xero =
+      existingXero ??
+      (await runtime.executeTool({
+        name: "xero_sales_summary",
+        arguments: withResolvedBusinessDates("xero_sales_summary", {}, input.originalText),
+      }));
+    if (!existingXero) toolCalls.push(xero);
     return {
       ...failed,
       kind: xero.ok ? "answer" : "failed",
       text: xero.ok
-        ? summariseXeroEvidence(xero.data)
+        ? summariseXeroEvidence(xero.data, xero.name)
         : "I couldn't read Xero just now.",
       confidence: xero.ok ? "partial" : "none",
       offerSearchOther: false,
@@ -898,7 +907,7 @@ function createWhatsAppIntelligenceRuntime(
         name: call.name,
         ok: true,
         latencyMs: Date.now() - started,
-        data: clipToolData(fetched.value.result),
+        data: compactBusinessToolData(call.name, fetched.value.result),
       };
     },
   };
@@ -1022,21 +1031,6 @@ function gatewayArguments(
   return { ...args };
 }
 
-function summariseXeroEvidence(data: unknown): string {
-  if (!data || typeof data !== "object") return "I have the latest permitted Xero sales figures, but nothing readable came back.";
-  const raw = JSON.stringify(data);
-  const amounts = raw.match(/£\s?[\d,]+(?:\.\d{2})?|[\d,]+\.\d{2}/g)?.slice(0, 4) ?? [];
-  if (amounts.length) {
-    return `From Xero, the figures I can see include ${amounts.join(", ")}. Ask if you want overdue invoices or a named invoice.`;
-  }
-  return "I reached Xero. Ask for overdue invoices, a named invoice, or P&L if you want a specific cut.";
-}
-
-function clipToolData(value: unknown): unknown {
-  const raw = JSON.stringify(value ?? null);
-  if (raw.length <= 3_500) return value;
-  return { preview: raw.slice(0, 3_500), truncated: true };
-}
 
 async function runShadowEval(
   env: Env,

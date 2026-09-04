@@ -7,7 +7,16 @@ import { fileURLToPath } from "node:url";
 
 const API = "https://api.infrastack.app";
 const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SUITES = ["director_memory", "director_systems", "office", "parity"];
+const SUITES = [
+  "director_memory",
+  "director_systems",
+  "director_xero",
+  "director_mail",
+  "director_knowledge",
+  "director_corrections",
+  "office",
+  "parity",
+];
 
 function d1(command) {
   const out = execFileSync(

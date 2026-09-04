@@ -9,6 +9,15 @@ export {
   summariseXeroEvidence,
   terminalFromToolCalls,
 } from "./evidence.js";
+export {
+  compactBusinessToolData,
+  equivalentToolArgs,
+  findReusableSuccess,
+  isSufficientBusinessResult,
+  normaliseBusinessResult,
+  userAskedRefresh,
+} from "./normalise.js";
+export type { BusinessResultFamily, NormalisedBusinessResult } from "./normalise.js";
 export { verbaliseSystemMeta, isSystemMetaTool, executeSystemMetaTool } from "./system-meta.js";
 export { resolveBusinessPeriod, withResolvedBusinessDates, businessSystemArgs } from "./periods.js";
 export { enrichDocumentQuery } from "./query-enrichment.js";

@@ -18,7 +18,30 @@ const SHARON_USER_ID = "user_949bcd80-e74e-449a-a280-da475fe18ace";
 const API = "https://api.infrastack.app";
 const APP = "https://app.infrastack.app";
 
-export type PortalChatAcceptanceSuite = "director_memory" | "director_systems" | "office" | "parity";
+export type PortalChatAcceptanceSuite =
+  | "director_memory"
+  | "director_systems"
+  | "director_xero"
+  | "director_mail"
+  | "director_knowledge"
+  | "director_corrections"
+  | "office"
+  | "parity";
+
+const SUITES: PortalChatAcceptanceSuite[] = [
+  "director_memory",
+  "director_systems",
+  "director_xero",
+  "director_mail",
+  "director_knowledge",
+  "director_corrections",
+  "office",
+  "parity",
+];
+
+export function isPortalChatAcceptanceSuite(value: string): value is PortalChatAcceptanceSuite {
+  return SUITES.includes(value as PortalChatAcceptanceSuite);
+}
 
 function clip(text: string, max = 280): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
@@ -67,15 +90,23 @@ async function turn(
   });
   const content = result.assistantMessage.content;
   const tools = result.assistantMessage.metadata.toolNames ?? [];
+  const successfulTools = result.assistantMessage.metadata.successfulTools ?? [];
   return {
     conversationId: result.conversation.id,
     scope: result.assistantMessage.metadata.scope,
     tools,
+    successfulTools,
+    duplicateSuccessfulCalls: result.assistantMessage.metadata.duplicateSuccessfulCalls ?? 0,
     permissionDenied: Boolean(result.assistantMessage.metadata.permissionDenied),
     reply: clip(content),
+    fullReply: content,
     category: category(content, tools, Boolean(result.assistantMessage.metadata.permissionDenied)),
     leaksAmount: /£\s?[\d,]/.test(content),
     hollowRetry: /I need another moment to finish that/i.test(content),
+    reachedXeroOnly: /I reached Xero/i.test(content) && !/£\s?[\d,]/.test(content),
+    firstAnswerUseful: /£\s?[\d,]|\binvoice|no matching messages|newest email|I found |permissions don’t allow|permissions don't allow|could not find/i.test(
+      content,
+    ),
   };
 }
 
@@ -100,6 +131,10 @@ export async function runPortalChatAcceptance(
   suite: PortalChatAcceptanceSuite = "director_memory",
 ): Promise<Record<string, unknown>> {
   if (suite === "director_systems") return runDirectorSystems(env);
+  if (suite === "director_xero") return runDirectorXero(env);
+  if (suite === "director_mail") return runDirectorMail(env);
+  if (suite === "director_knowledge") return runDirectorKnowledge(env);
+  if (suite === "director_corrections") return runDirectorCorrections(env);
   if (suite === "office") return runOfficeSuite(env);
   if (suite === "parity") return runParitySuite(env);
   return runDirectorMemory(env);
@@ -166,6 +201,7 @@ async function runDirectorMemory(env: Env): Promise<Record<string, unknown>> {
       status: httpSend.status,
       not404: httpSend.status !== 404,
     },
+    turnCount: 5,
     director: { hello, recall, moreDetail, companyFiles: files },
     outcome: pass ? "PASS" : "PARTIAL",
   };
@@ -185,9 +221,14 @@ async function runDirectorSystems(env: Env): Promise<Record<string, unknown>> {
 
   const pass =
     (policy.xeroSales
-      ? xero.category !== "permission_denied" && xero.tools.includes("xero_sales_summary") && !xero.hollowRetry
+      ? xero.category !== "permission_denied" &&
+        xero.tools.includes("xero_sales_summary") &&
+        !xero.hollowRetry &&
+        !xero.reachedXeroOnly &&
+        xero.duplicateSuccessfulCalls === 0
       : xero.category === "permission_denied") &&
     !xeroFollow.hollowRetry &&
+    xeroFollow.duplicateSuccessfulCalls === 0 &&
     (policy.infoMail ? info.category !== "hollow_retry" && info.tools.some((name) => name.startsWith("outlook_")) : true) &&
     (policy.financeMail
       ? finance.category !== "hollow_retry" && finance.tools.some((name) => name.startsWith("outlook_"))
@@ -197,9 +238,143 @@ async function runDirectorSystems(env: Env): Promise<Record<string, unknown>> {
     suite: "director_systems",
     williamRole: william.role,
     directorPolicy: policy,
+    turnCount: 4,
     director: { xero, xeroFollow, infoInbox: info, financeInbox: finance },
     outcome: pass ? "PASS" : "PARTIAL",
   };
+}
+
+async function runDirectorXero(env: Env): Promise<Record<string, unknown>> {
+  const { william } = await loadActors(env);
+  if (!william?.active) {
+    return { suite: "director_xero", error: "William live actor missing or inactive", outcome: "PARTIAL" };
+  }
+  const williamUser = liveActorToSessionUser(william);
+  const thisMonth = await turn(env, williamUser, "What are our Xero sales this month?");
+  const more = await turn(env, williamUser, "give me more detail", thisMonth.conversationId);
+  const memory = await turn(env, williamUser, "What were we talking about?", thisMonth.conversationId);
+  const lastMonth = await turn(env, williamUser, "What were Xero sales last month?");
+  const customers = await turn(env, williamUser, "Who are our top Xero customers?");
+  const turns = [thisMonth, more, memory, lastMonth, customers];
+  const pass =
+    thisMonth.tools.includes("xero_sales_summary") &&
+    !thisMonth.reachedXeroOnly &&
+    thisMonth.firstAnswerUseful &&
+    thisMonth.duplicateSuccessfulCalls === 0 &&
+    !thisMonth.hollowRetry &&
+    more.duplicateSuccessfulCalls === 0 &&
+    !more.hollowRetry &&
+    /xero|sales|month/i.test(memory.reply) &&
+    lastMonth.tools.some((name) => name.startsWith("xero_")) &&
+    lastMonth.duplicateSuccessfulCalls === 0 &&
+    customers.tools.some((name) => name.startsWith("xero_")) &&
+    turns.every((row) => !row.hollowRetry);
+  return {
+    suite: "director_xero",
+    turnCount: turns.length,
+    director: { thisMonth, moreDetail: more, memory, lastMonth, topCustomers: customers },
+    outcome: pass ? "PASS" : "PARTIAL",
+  };
+}
+
+async function runDirectorMail(env: Env): Promise<Record<string, unknown>> {
+  const { william } = await loadActors(env);
+  if (!william?.active) {
+    return { suite: "director_mail", error: "William live actor missing or inactive", outcome: "PARTIAL" };
+  }
+  const williamUser = liveActorToSessionUser(william);
+  const info = await turn(env, williamUser, "What is the newest email in the info inbox?");
+  const more = await turn(env, williamUser, "give me more detail", info.conversationId);
+  const memory = await turn(env, williamUser, "What were we talking about?", info.conversationId);
+  const finance = await turn(env, williamUser, "What is the newest email in the finance inbox?");
+  const newest = await turn(env, williamUser, "What is the newest email?");
+  const search = await turn(env, williamUser, "Search emails");
+  const turns = [info, more, memory, finance, newest, search];
+  const pass =
+    info.tools.some((name) => name.startsWith("outlook_")) &&
+    info.duplicateSuccessfulCalls === 0 &&
+    !info.hollowRetry &&
+    more.duplicateSuccessfulCalls === 0 &&
+    /email|inbox|info/i.test(memory.reply) &&
+    finance.tools.some((name) => name.startsWith("outlook_")) &&
+    finance.duplicateSuccessfulCalls === 0 &&
+    newest.tools.some((name) => name.startsWith("outlook_")) &&
+    search.tools.some((name) => name.startsWith("outlook_")) &&
+    turns.every((row) => !row.hollowRetry && row.category !== "xero");
+  return {
+    suite: "director_mail",
+    turnCount: turns.length,
+    director: { infoInbox: info, moreDetail: more, memory, financeInbox: finance, newestEmail: newest, searchEmails: search },
+    outcome: pass ? "PASS" : "PARTIAL",
+  };
+}
+
+async function runDirectorKnowledge(env: Env): Promise<Record<string, unknown>> {
+  const { william } = await loadActors(env);
+  if (!william?.active) {
+    return { suite: "director_knowledge", error: "William live actor missing or inactive", outcome: "PARTIAL" };
+  }
+  const williamUser = liveActorToSessionUser(william);
+  const po = await turn(env, williamUser, "What is the PO process?");
+  const more = await turn(env, williamUser, "give me more detail", po.conversationId);
+  const memory = await turn(env, williamUser, "What were we talking about?", po.conversationId);
+  const files = await turn(env, williamUser, "Search company files for purchase ordering");
+  const onedrive = await turn(env, williamUser, "Find the newest OneDrive document.");
+  const verdict = classifyKnowledgeMiss(po);
+  const turns = [po, more, memory, files, onedrive];
+  const pass =
+    !po.tools.some((name) => name.startsWith("xero_") || name.startsWith("outlook_")) &&
+    !po.hollowRetry &&
+    po.duplicateSuccessfulCalls === 0 &&
+    /PO process|purchase|document|file/i.test(memory.reply) &&
+    onedrive.tools.includes("list_documents") &&
+    turns.every((row) => !row.hollowRetry);
+  return {
+    suite: "director_knowledge",
+    turnCount: turns.length,
+    poProcess: { ...po, verdict },
+    director: { po, moreDetail: more, memory, purchaseOrdering: files, newestOneDrive: onedrive },
+    outcome: pass ? "PASS" : "PARTIAL",
+  };
+}
+
+async function runDirectorCorrections(env: Env): Promise<Record<string, unknown>> {
+  const { william } = await loadActors(env);
+  if (!william?.active) {
+    return { suite: "director_corrections", error: "William live actor missing or inactive", outcome: "PARTIAL" };
+  }
+  const williamUser = liveActorToSessionUser(william);
+  const onedrive = await turn(env, williamUser, "Find the newest OneDrive document.");
+  const correction = await turn(env, williamUser, "No, I meant email.", onedrive.conversationId);
+  const sharonMail = await turn(env, williamUser, "How many emails has Sharon sent today?");
+  const turns = [onedrive, correction, sharonMail];
+  const pass =
+    onedrive.tools.includes("list_documents") &&
+    correction.tools.some((name) => name.startsWith("outlook_")) &&
+    sharonMail.tools.some((name) => name.startsWith("outlook_")) &&
+    turns.every((row) => !row.hollowRetry && row.duplicateSuccessfulCalls === 0);
+  return {
+    suite: "director_corrections",
+    turnCount: turns.length,
+    director: { newestOneDrive: onedrive, meantEmail: correction, sharonEmailsToday: sharonMail },
+    outcome: pass ? "PASS" : "PARTIAL",
+  };
+}
+
+function classifyKnowledgeMiss(row: {
+  tools: string[];
+  fullReply: string;
+  category: string;
+}): "A_no_document" | "B_index_miss" | "C_ranking_miss" | "D_title_only" | "E_text_missing" | "found" {
+  const text = row.fullReply;
+  if (/I found |Across your documents|purchase order|PO process/i.test(text) && !/could not find/i.test(text)) {
+    if (/what do you want from it|which should I open/i.test(text)) return "D_title_only";
+    return "found";
+  }
+  if (row.tools.includes("search_company_knowledge") && /could not find/i.test(text)) return "B_index_miss";
+  if (!row.tools.includes("search_company_knowledge")) return "A_no_document";
+  if (/could not find|no matching/i.test(text)) return "C_ranking_miss";
+  return "E_text_missing";
 }
 
 async function runOfficeSuite(env: Env): Promise<Record<string, unknown>> {
@@ -223,7 +398,7 @@ async function runOfficeSuite(env: Env): Promise<Record<string, unknown>> {
     noHollowRetry: ![officeKnowledge, officeInfo, officeXero, officeFinance].some((row) => row.hollowRetry),
   };
   const pass = office.xeroDenied && office.financeDenied && office.noHollowRetry;
-  return { suite: "office", officeStaff: office, outcome: pass ? "PASS" : "PARTIAL" };
+  return { suite: "office", turnCount: 4, officeStaff: office, outcome: pass ? "PASS" : "PARTIAL" };
 }
 
 async function runParitySuite(env: Env): Promise<Record<string, unknown>> {
