@@ -50,7 +50,7 @@ export function buildConversationState(input: {
     companyName: input.companyName ?? null,
     role: input.role ?? null,
     connectors: (input.connectors ?? []).slice(0, 12),
-    permittedTools: (input.permittedTools ?? []).slice(0, 24),
+    permittedTools: (input.permittedTools ?? []).slice(0, 48),
     entities,
     currentDocument,
     recentDocuments: (input.recentDocuments ?? [])

@@ -7,6 +7,7 @@ import {
   clipBusinessToolData,
   executeSystemMetaTool,
   enrichDocumentQuery,
+  executePublicWebSearch,
 } from "./intelligence/index";
 import type { IntelligenceRuntime, IntelligenceToolCall, IntelligenceToolResult } from "./intelligence/types.js";
 import {
@@ -72,6 +73,9 @@ export function createPortalChatRuntime(
       const status = toolStatusLabel(call.name);
       if (status) input.onStatus?.({ label: status, tool: call.name });
 
+      if (call.name === "web_search") {
+        return executePublicWebSearch(call);
+      }
       if (SYSTEM_META_TOOLS.has(call.name)) {
         return runSystemMeta(env, input, call, started);
       }

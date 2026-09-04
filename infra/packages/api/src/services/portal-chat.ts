@@ -6,7 +6,7 @@ import { userHasCompanyAccess } from "../permissions/service";
 import { getCompanyById } from "./control-plane";
 import {
   buildConversationState,
-  permittedToolsForConnectors,
+  buildAllowedToolCatalogue,
   runIntelligenceTurn,
   type IntelligenceCompleter,
   type IntelligenceDocumentRef,
@@ -254,7 +254,12 @@ export async function sendPortalChatMessage(
     companyName: company?.name ?? null,
     role: membership?.role ?? null,
     connectors,
-    permittedTools: permittedToolsForConnectors(connectors),
+    permittedTools: buildAllowedToolCatalogue({
+      role: membership?.role ?? null,
+      companyId: input.companyId,
+      connectors,
+      channel: "portal",
+    }),
     lastToolName: conversation.context.lastToolName,
     lastToolSummary: conversation.context.lastToolSummary,
     recentDocuments: conversation.context.recentDocuments,

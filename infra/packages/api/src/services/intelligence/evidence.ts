@@ -45,6 +45,7 @@ export function classifyEvidenceNeed(
 ): EvidenceNeed {
   const evidence = state.recentEvidence ?? emptyEvidence();
   if (isFreshListingAsk(text) && !isDraftOrEdit(text) && !isRecall(text)) return "NEEDS_FRESH_DATA";
+  if (isFreshBusinessSystemAsk(text)) return "NEEDS_FRESH_DATA";
   if (isPeriodCompareMissing(text, evidence.recentXero)) return "NEEDS_FRESH_DATA";
   if (canUseExisting(text, state, evidence)) return "CAN_ANSWER_FROM_EXISTING_EVIDENCE";
   return "NEEDS_FRESH_DATA";
@@ -85,17 +86,25 @@ function isFreshListingAsk(text: string): boolean {
   );
 }
 
+export function isFreshBusinessSystemAsk(text: string): boolean {
+  return (
+    /\b(xero|sales|overdue|invoice|revenue|profit|p&l|pnl)\b/i.test(text) &&
+    !/\b(that|those|the figures|the sales|reply|shorter|friendlier)\b/i.test(text)
+  );
+}
+
 function isEmailFollowUp(
   text: string,
   state: Pick<IntelligenceConversationState, "lastAnswerTopic" | "currentBusinessSystem">,
   evidence: StructuredEvidence,
 ): boolean {
   if (!evidence.recentEmail) return false;
-  const aboutEmail =
-    state.lastAnswerTopic === "email" ||
-    state.currentBusinessSystem === "email" ||
-    /\b(that email|the email|this email|reply|they asking|who sent)\b/i.test(text);
-  return aboutEmail && !isFreshListingAsk(text);
+  if (isFreshBusinessSystemAsk(text) && !/\b(email|inbox|outlook|mailbox|reply)\b/i.test(text)) return false;
+  const explicit = /\b(that email|the email|this email|reply|they asking|who sent)\b/i.test(text);
+  const draftOrRecall = isDraftOrEdit(text) || isRecall(text);
+  if (!explicit && !draftOrRecall) return false;
+  void state;
+  return !isFreshListingAsk(text);
 }
 
 function isXeroFollowUpWithoutNewPeriod(

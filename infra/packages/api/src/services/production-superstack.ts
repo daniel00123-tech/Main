@@ -11,6 +11,9 @@ import { withOutlookReadTools } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { PRODUCTION_SUPERSTACK_CAPABILITIES, readGeneratedLineage } from "./production-lineage";
 import { resolveBrainPolicy } from "./intelligence/brain-policy";
+import { authorizeToolCall, buildAllowedToolCatalogue } from "./intelligence/tool-auth";
+import { looksLikePublicWebAsk } from "./intelligence/web-search";
+import { ENGINEERING_SUPERVISOR_CONTRACT } from "./intelligence/dev-failure-queue";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -75,6 +78,35 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (!shadow.shadow) {
     throw new Error("openai_shadow must evaluate OpenAI in parallel");
+  }
+  const officeTools = buildAllowedToolCatalogue({
+    role: "office_staff",
+    companyId: "co_el",
+    connectors: ["conn_xero", "conn_outlook_shared"],
+  });
+  if (officeTools.some((name) => name.startsWith("xero_"))) {
+    throw new Error("preauth catalogue must not offer Xero to office_staff");
+  }
+  const toolDenied = authorizeToolCall(
+    {
+      role: "office_staff",
+      companyId: "co_el",
+      connectors: ["conn_xero", "conn_outlook_shared"],
+      permittedTools: officeTools,
+    },
+    { name: "xero_sales_summary", arguments: {} },
+  );
+  if (toolDenied.allowed) {
+    throw new Error("second RBAC check must deny office_staff Xero");
+  }
+  if (!looksLikePublicWebAsk("what's the weather in London")) {
+    throw new Error("public web weather must not route to company MCP");
+  }
+  if (ENGINEERING_SUPERVISOR_CONTRACT.cursorInCustomerPath) {
+    throw new Error("Cursor must not sit in the customer turn");
+  }
+  if (ENGINEERING_SUPERVISOR_CONTRACT.autoDeployFromSingleFailure) {
+    throw new Error("must not auto-deploy from a single customer failure");
   }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };

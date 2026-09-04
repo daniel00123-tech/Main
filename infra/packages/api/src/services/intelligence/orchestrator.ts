@@ -1,5 +1,10 @@
 import { businessToolForIntent, ELVEX_FINANCE_MAILBOXES, resolveBusinessSystemIntent } from "@infra/shared";
 import { describeToolCatalogue, INTELLIGENCE_TOOL_NAMES, SYSTEM_META_TOOLS } from "./catalogue.js";
+import { authorizeToolCall, buildAllowedToolCatalogue, deniedToolResult } from "./tool-auth.js";
+import { executePublicWebSearch, looksLikePublicWebAsk, verbaliseWebSearch, webSearchQuery } from "./web-search.js";
+import { classifyTurnFailures } from "./failure-telemetry.js";
+import { persistEngineeringFailures } from "./dev-failure-queue.js";
+import { isElvexRole } from "@infra/shared";
 import { answerGeneralConversation, answerSelectedDocumentFollowUp } from "./conversation.js";
 import { parseIntelligenceDecision, recoverDecision, validateToolRequest } from "./parse.js";
 import { createReasoningCompleter } from "./brain.js";
@@ -8,6 +13,7 @@ import {
   answerFromExistingEvidence,
   classifyEvidenceNeed,
   extractEvidenceFromTools,
+  isFreshBusinessSystemAsk,
   mergeEvidence,
   recordSuccessfulCall,
   sanitiseEvidenceForModel,
@@ -57,6 +63,9 @@ Search a document only when the question is about that file's contents.
 Search company knowledge to find or compare documents by meaning.
 Use list_documents for newest/latest/uploaded/recently modified file lists — never substitute semantic search.
 Use Xero or email only when asked and those systems are connected.
+Use web_search only for live public information (weather, public news, public websites). Never for private Xero, emails, SharePoint, or internal procedures.
+After each tool, decide ENOUGH_TO_ANSWER vs NEEDS_MORE_INFORMATION. Compound questions may need a second authorised read (for example this month and last month).
+Do not repeat a successful tool with the same arguments. Business/private systems outrank public web.
 Clarify if ambiguous. Honour corrections and scope switches. Never invent facts, counts, or URLs.
 No D1, Vectorize, or MCP jargon unless an authorised admin asks a technical ops question.
 Write like a colleague: answer first, short, no question-echo.
@@ -73,7 +82,8 @@ export async function runIntelligenceTurn(input: {
   waitUntil?: (promise: Promise<unknown>) => void;
 }): Promise<IntelligenceTurnResult> {
   const result = await executeIntelligenceTurn(input);
-  return attachOpenAiShadow(input, result);
+  const shadowed = await attachOpenAiShadow(input, result);
+  return attachEngineeringFeedback(input, shadowed);
 }
 
 async function executeIntelligenceTurn(input: {
@@ -226,7 +236,15 @@ async function executeIntelligenceTurn(input: {
   const evidenceDocumentIds: string[] = [];
   const transcript: string[] = [];
   let repaired = false;
-  const permitted = input.state.permittedTools.length ? input.state.permittedTools : [...INTELLIGENCE_TOOL_NAMES];
+  const permitted = resolvePermittedTools(input.state);
+  const authCtx = {
+    role: input.state.role,
+    companyId: input.state.companyId,
+    connectors: input.state.connectors,
+    permittedTools: permitted,
+    channel: input.channel ?? null,
+  };
+  const runtime = wrapAuthorizedRuntime(input.runtime, authCtx);
   let recentEvidence = mergeEvidence(input.state.recentEvidence, extractEvidenceFromTools([]));
   const finishTurn = (
     payload: Omit<
@@ -240,6 +258,13 @@ async function executeIntelligenceTurn(input: {
       ...payload,
       recentEvidence,
       brainMode: brain.policy.mode,
+      sufficiency:
+        payload.toolCalls.some((call) => call.ok) &&
+        !(isCompoundBusinessAsk(input.text) && payload.toolCalls.filter((call) => call.ok && call.name.startsWith("xero_")).length < 2)
+          ? "ENOUGH_TO_ANSWER"
+          : payload.toolCalls.length
+            ? "NEEDS_MORE_INFORMATION"
+            : null,
     });
     return applyGuardToTurn(assembled, input.text);
   };
@@ -267,7 +292,7 @@ async function executeIntelligenceTurn(input: {
     const query = input.state.userCorrection
       ? (namedShift ? input.text : priorUser) || input.text
       : [input.state.currentDocument?.title, priorUser].filter(Boolean).join(" — ") || input.text;
-    const search = await input.runtime.executeTool({
+    const search = await runtime.executeTool({
       name: "search_company_knowledge",
       arguments: { query },
     });
@@ -306,8 +331,33 @@ async function executeIntelligenceTurn(input: {
     });
   }
 
+  if (looksLikePublicWebAsk(input.text)) {
+    const web = await runtime.executeTool({
+      name: "web_search",
+      arguments: { query: webSearchQuery(input.text) },
+    });
+    toolCalls.push(web);
+    return finishTurn({
+      kind: web.ok ? "answer" : "failed",
+      text: web.ok ? verbaliseWebSearch(web.data, input.text) : synthesizeToolResult(web, input.text),
+      confidence: web.ok ? "strong" : "none",
+      offerSearchOther: false,
+      toolCalls,
+      currentDocument,
+      evidenceDocumentIds,
+      clarification: false,
+      modelRounds: [],
+      route: "INTELLIGENT",
+      scope: "GENERAL_CONVERSATION",
+      lastAnswerTopic: "public_web",
+      lastUserIntent: "public_web",
+      qualityFlags: [...qualityFlags],
+      repaired: false,
+    });
+  }
+
   if (shouldRunDeterministicMeta(scoped)) {
-    const meta = await runDeterministicMeta(input.runtime, scoped, input.text, completer, permitted, qualityFlags);
+    const meta = await runDeterministicMeta(runtime, scoped, input.text, completer, permitted, qualityFlags);
     if (meta) {
       if (input.state.userCorrection && scoped.clearCurrentDocument && meta.toolCalls[0]?.name === input.state.lastSuccessfulTool) {
         qualityFlags.add("correction_ignored");
@@ -342,8 +392,12 @@ async function executeIntelligenceTurn(input: {
     }
   }
 
-  if (shouldRunDeterministicRead(scoped, input.text, workingState)) {
-    const read = await runDeterministicRead(input.runtime, scoped, input.text, workingState, permitted);
+  if (
+    !brain.policy.useOpenAi &&
+    !isCompoundBusinessAsk(input.text) &&
+    shouldRunDeterministicRead(scoped, input.text, workingState)
+  ) {
+    const read = await runDeterministicRead(runtime, scoped, input.text, workingState, permitted);
     if (read) {
       const doc =
         [...read.toolCalls]
@@ -438,7 +492,7 @@ async function executeIntelligenceTurn(input: {
 
     let decision = recovered.decision;
     if (decision.action === "invalid" && !completion.text.trim() && toolCalls.length === 0) {
-      const bootstrap = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+      const bootstrap = await bootstrapRetrieval(runtime, workingState, input.text, input.buttonHint, scoped);
       if (bootstrap) {
         toolCalls.push(bootstrap);
         adoptFromTool(bootstrap, toolCalls, () => currentDocument, (doc) => {
@@ -472,7 +526,7 @@ async function executeIntelligenceTurn(input: {
         transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
         continue;
       }
-      const result = await input.runtime.executeTool(call);
+      const result = await runtime.executeTool(call);
       toolCalls.push(result);
       recentEvidence = recordSuccessfulCall(mergeEvidence(recentEvidence, extractEvidenceFromTools([result])), call, result);
       workingState.recentEvidence = recentEvidence;
@@ -485,7 +539,7 @@ async function executeIntelligenceTurn(input: {
       }
       if (looksIrrelevant(result, currentDocument)) qualityFlags.add("irrelevant_result");
       transcript.push(formatToolTranscript(result));
-      if (shouldStopAfterRead(scoped, result)) {
+      if (shouldStopAfterRead(scoped, result, input.text)) {
         return finishTurn({
           kind: result.ok ? "answer" : "failed",
           text: synthesizeToolResult(result, input.text),
@@ -510,7 +564,7 @@ async function executeIntelligenceTurn(input: {
 
     if (decision.action === "clarify") {
       if (toolCalls.length === 0 && shouldForceScopedTool(scoped)) {
-        const bootstrap = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+        const bootstrap = await bootstrapRetrieval(runtime, workingState, input.text, input.buttonHint, scoped);
         if (bootstrap) {
           toolCalls.push(bootstrap);
           adoptFromTool(
@@ -643,7 +697,7 @@ async function executeIntelligenceTurn(input: {
     shouldForceScopedTool(scoped) &&
     (scoped.scope === "BUSINESS_SYSTEM" || isProcessOrPolicyAsk(input.text))
   ) {
-    const lastChance = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+    const lastChance = await bootstrapRetrieval(runtime, workingState, input.text, input.buttonHint, scoped);
     if (lastChance) {
       toolCalls.push(lastChance);
       adoptFromTool(
@@ -1062,9 +1116,87 @@ function shouldRunDeterministicRead(scoped: ScopeDecision, text: string, state?:
   return scoped.scope === "COMPANY_KNOWLEDGE" && scoped.tool === "search_company_knowledge" && isProcessOrPolicyAsk(text);
 }
 
-function shouldStopAfterRead(scoped: ScopeDecision, result: IntelligenceToolResult): boolean {
+function shouldStopAfterRead(scoped: ScopeDecision, result: IntelligenceToolResult, text = ""): boolean {
   void result;
+  if (isCompoundBusinessAsk(text)) return false;
   return scoped.scope === "BUSINESS_SYSTEM";
+}
+
+function isCompoundBusinessAsk(text: string): boolean {
+  return (
+    /\b(and|compare|versus|vs\.?|better than|last month|previous month|this month and)\b/i.test(text) &&
+    /\b(sales|xero|invoice|revenue|overdue|profit|month)\b/i.test(text)
+  );
+}
+
+function resolvePermittedTools(state: IntelligenceConversationState): string[] {
+  const rebuilt = buildAllowedToolCatalogue({
+    role: state.role,
+    companyId: state.companyId,
+    connectors: state.connectors,
+  });
+  if (isElvexRole(state.role)) {
+    if (state.permittedTools.length) {
+      return rebuilt.filter((name) => state.permittedTools.includes(name) || name === "web_search");
+    }
+    return rebuilt;
+  }
+  if (state.permittedTools.length) {
+    return state.permittedTools.includes("web_search") ? state.permittedTools : [...state.permittedTools, "web_search"];
+  }
+  if (state.connectors.length) return rebuilt;
+  return [...INTELLIGENCE_TOOL_NAMES];
+}
+
+function wrapAuthorizedRuntime(
+  runtime: IntelligenceRuntime,
+  ctx: { role?: string | null; companyId?: string | null; connectors: string[]; permittedTools: string[]; channel?: string | null },
+): IntelligenceRuntime {
+  return {
+    async executeTool(call) {
+      const auth = authorizeToolCall(ctx, call);
+      if (!auth.allowed) return deniedToolResult(call, auth);
+      if (call.name === "web_search") {
+        const executed = await runtime.executeTool(call).catch(() => null);
+        if (!executed || executed.error === "tool_not_permitted") return executePublicWebSearch(call);
+        return executed;
+      }
+      return runtime.executeTool(call);
+    },
+  };
+}
+
+async function attachEngineeringFeedback(
+  input: {
+    env?: IntelligenceEnv;
+    text: string;
+    state: IntelligenceConversationState;
+    channel?: IntelligenceChannel;
+    waitUntil?: (promise: Promise<unknown>) => void;
+  },
+  result: IntelligenceTurnResult,
+): Promise<IntelligenceTurnResult> {
+  const events = classifyTurnFailures({
+    result,
+    question: input.text,
+    companyId: input.state.companyId,
+    channel: input.channel,
+    role: input.state.role,
+  });
+  const labeled: IntelligenceTurnResult = {
+    ...result,
+    engineeringEvents: events,
+    correlationId: result.correlationId ?? events[0]?.correlationId ?? result.correlationId,
+  };
+  if (!events.length) return labeled;
+  const db = (input.env as IntelligenceEnv & { DB?: Parameters<typeof persistEngineeringFailures>[0] } | undefined)?.DB;
+  const job = persistEngineeringFailures(db, events);
+  if (input.waitUntil) {
+    input.waitUntil(job.catch(() => undefined));
+    return labeled;
+  }
+  await job.catch(() => undefined);
+  return labeled;
 }
 
 function mailboxSearchQuery(text: string, args: Record<string, unknown>): string {
@@ -1122,9 +1254,16 @@ async function runDeterministicRead(
     name: toolName,
     arguments: prepareToolArguments(toolName, {}, text, state, scoped.scope),
   };
-  if (shouldReuseSuccessfulTool(planned, state.recentEvidence)) {
+  if (shouldReuseSuccessfulTool(planned, state.recentEvidence) && !isFreshBusinessSystemAsk(text)) {
     const reused = answerFromExistingEvidence(text, state);
-    return { text: reused || (state.lastAnswerText ?? ""), toolCalls: [], ok: true };
+    if (reused) return { text: reused, toolCalls: [], ok: true };
+    if (state.recentEvidence?.recentXero?.summary && /^xero_/.test(toolName)) {
+      return { text: `Xero: ${state.recentEvidence.recentXero.summary}`, toolCalls: [], ok: true };
+    }
+    if (state.recentEvidence?.recentEmail && /outlook/i.test(toolName)) {
+      const email = state.recentEvidence.recentEmail;
+      return { text: `The newest email is “${email.subject}” from ${email.from}.`, toolCalls: [], ok: true };
+    }
   }
   const result = await runtime.executeTool(planned);
   const toolCalls = [result];
@@ -1307,6 +1446,7 @@ function finish(
     terminal: input.terminal,
     correlationId: last?.correlationId ?? null,
     guardChecks: input.guardChecks,
+    sufficiency: input.sufficiency ?? null,
   };
 }
 
