@@ -90,7 +90,7 @@ export function createPortalChatRuntime(
           ? KNOWLEDGE_SEARCH_TIMEOUT_MS
           : gatewayName === COMPANY_KNOWLEDGE_READ_TOOL || gatewayName === "fetch"
             ? FETCH_TIMEOUT_MS
-            : /^(outlook_|xero_)/.test(gatewayName)
+            : /^(outlook_|xero_|list_documents)/.test(gatewayName)
               ? 20_000
               : MCP_TIMEOUT_MS;
 

@@ -1262,6 +1262,7 @@ connectors.post("/api/internal/el-whatsapp-qa", async (c) => {
       conversation?: string;
       memory?: Record<string, unknown>;
       actor?: string;
+      texts?: Array<{ id: string; text: string; family?: string; expectedToolPrefix?: string | null }>;
     };
     const { runElWhatsAppQaSlice } = await import("../services/el-whatsapp-qa/campaign");
     return c.json(
@@ -1277,6 +1278,14 @@ connectors.post("/api/internal/el-whatsapp-qa", async (c) => {
           | undefined,
         memory: body.memory as never,
         actor: body.actor === "office_staff" ? "office_staff" : "director",
+        texts: Array.isArray(body.texts)
+          ? body.texts.map((row) => ({
+              id: String(row.id),
+              text: String(row.text),
+              family: row.family as never,
+              expectedToolPrefix: row.expectedToolPrefix ?? null,
+            }))
+          : undefined,
       }),
     );
   } catch (err) {
@@ -1312,6 +1321,21 @@ connectors.post("/api/internal/knowledge-qa-acceptance", async (c) => {
   } catch (err) {
     return c.json(
       { error: err instanceof Error ? err.message : "Knowledge Q&A acceptance failed" },
+      500,
+    );
+  }
+});
+
+connectors.post("/api/internal/el-knowledge-onedrive-diagnostic", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { runElKnowledgeOnedriveDiagnostic } = await import("../services/el-knowledge-onedrive-diagnostic");
+    return c.json(await runElKnowledgeOnedriveDiagnostic(c.env));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "EL knowledge/OneDrive diagnostic failed" },
       500,
     );
   }

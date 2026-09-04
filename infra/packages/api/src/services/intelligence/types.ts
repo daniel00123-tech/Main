@@ -57,6 +57,9 @@ export type IntelligenceDocumentRef = {
   title: string;
   url?: string | null;
   source?: string | null;
+  modifiedAt?: string | null;
+  createdAt?: string | null;
+  modifiedBy?: string | null;
 };
 
 export type IntelligenceConversationState = {

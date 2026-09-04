@@ -27,6 +27,7 @@ export type CampaignSlice = {
   memory?: WhatsAppEntityMemory;
   actor?: FrozenQuestion["actor"];
   simulateFailure?: boolean;
+  texts?: Array<{ id: string; text: string; family?: FrozenQuestion["family"]; expectedToolPrefix?: string | null }>;
 };
 
 async function loadRoleActor(env: Env, role: "director" | "office_staff", emails: string[]) {
@@ -51,6 +52,18 @@ async function loadRoleActor(env: Env, role: "director" | "office_staff", emails
 }
 
 function questionsForSlice(slice: CampaignSlice): FrozenQuestion[] {
+  if (slice.texts?.length) {
+    return slice.texts.map((row) => ({
+      id: row.id,
+      section: "C",
+      text: row.text,
+      actor: slice.actor === "office_staff" ? "office_staff" : "director",
+      conversation: "mixed",
+      family: row.family ?? "knowledge",
+      expectedToolPrefix: row.expectedToolPrefix ?? null,
+      expectedDeny: false,
+    }));
+  }
   let rows = EL_BUSINESS_WHATSAPP_50_V1;
   if (slice.ids?.length) rows = rows.filter((row) => slice.ids!.includes(row.id));
   if (slice.conversation) rows = rows.filter((row) => row.conversation === slice.conversation);

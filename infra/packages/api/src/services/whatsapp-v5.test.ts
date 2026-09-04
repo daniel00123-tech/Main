@@ -6,6 +6,7 @@ import { documentEntityFromHit } from "./whatsapp-entities";
 import {
   NONE_IN_DOCUMENT_REPLY,
   classifyDocument,
+  queryTerms,
   rejectWeakSearchHits,
   runGroundedQa,
   searchDocument,
@@ -321,6 +322,28 @@ describe("WhatsApp V5 buttons, PII, ranking, and model boundary", () => {
       "CV 2015",
     );
     expect(kept[0]?.id).toBe("cv");
+  });
+
+  it("keeps standalone two-letter acronyms such as PO in query terms", () => {
+    expect(queryTerms("What is the PO process?")).toEqual(expect.arrayContaining(["po", "process"]));
+    expect(queryTerms("When?")).toEqual([]);
+  });
+
+  it("does not treat individual PO invoices as a process document", () => {
+    const kept = rejectWeakSearchHits(
+      [
+        { id: "afpo", title: "AFPO11888.pdf", snippet: "Purchase order for materials INV-02268" },
+        { id: "proc", title: "Purchase ordering process.pdf", snippet: "How we raise a purchase order" },
+      ],
+      "What is the PO process?",
+    );
+    expect(kept.map((hit) => hit.id)).toEqual(["proc"]);
+    expect(
+      rejectWeakSearchHits(
+        [{ id: "hs", title: "Health and Safety Policy (2).docx", snippet: "health and safety policy statement" }],
+        "What is the PO process?",
+      ),
+    ).toEqual([]);
   });
 
   it("rejects weak global hits below the confidence threshold", () => {

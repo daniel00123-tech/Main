@@ -137,6 +137,21 @@ describe("scope classifier", () => {
     );
   });
 
+  it("keeps selected-file follow-ups on the current catalogue document", () => {
+    const state = buildConversationState({
+      userText: "Who modified it?",
+      currentDocument: { id: "doc_new", title: "Newest.xlsx", url: "https://example.test/file" },
+      lastAnswerTopic: "document_catalogue",
+      currentScope: "COMPANY_KNOWLEDGE",
+    });
+    expect(classifyScope("Who modified it?", state).scope).toBe("CURRENT_DOCUMENT");
+    expect(classifyScope("When was it changed?", state).scope).toBe("CURRENT_DOCUMENT");
+    expect(classifyScope("Open it.", state).scope).toBe("CURRENT_DOCUMENT");
+    expect(classifyScope("What is it about?", state).scope).toBe("CURRENT_DOCUMENT");
+    expect(classifyScope("What is our health and safety policy?", state).tool).toBe("search_company_knowledge");
+    expect(classifyScope("What is our health and safety policy?", state).clearCurrentDocument).toBe(true);
+  });
+
   it("routes newest inbox asks to list_messages and follow-ups to memory/rephrase", () => {
     expect(
       classifyScope(

@@ -1,5 +1,28 @@
-import type { IntelligenceConversationState } from "./types.js";
+import type { IntelligenceConversationState, IntelligenceDocumentRef } from "./types.js";
 import type { ScopeDecision } from "./scope.js";
+
+export function answerSelectedDocumentFollowUp(
+  text: string,
+  document: IntelligenceDocumentRef | null,
+): string | null {
+  if (!document) return null;
+  if (/\b(open (it|the (file|document|link|url))|source (url|link)|the (url|link)|download it)\b/i.test(text)) {
+    return document.url
+      ? `${document.title}: ${document.url}`
+      : `I have ${document.title} selected, but no source URL is available.`;
+  }
+  if (/\bwho (modified|changed|updated|edited)\b/i.test(text)) {
+    return document.modifiedBy
+      ? `${document.title} was last modified by ${document.modifiedBy}.`
+      : `The catalogue does not include who last modified ${document.title}.`;
+  }
+  if (/\bwhen (was it |was this )?(changed|modified|updated)\b/i.test(text)) {
+    return document.modifiedAt
+      ? `${document.title} was last modified at ${document.modifiedAt}.`
+      : `The modified time for ${document.title} is not available.`;
+  }
+  return null;
+}
 
 export function answerGeneralConversation(
   text: string,

@@ -577,6 +577,53 @@ describe("V1.1 structured recovery and correction", () => {
   });
 });
 
+describe("catalogue newest/latest follow-up", () => {
+  it("adopts the newest listed file and answers metadata follow-ups without a new search", async () => {
+    const { runtime, calls } = recordingRuntime((name) => {
+      if (name === "list_documents") {
+        return {
+          status: "ok",
+          source: "onedrive",
+          dateField: "modified_at",
+          documents: [
+            {
+              id: "doc_jobs",
+              title: "Elvex Jobs.xlsx",
+              source: "onedrive",
+              modifiedAt: "2026-09-01T15:23:09Z",
+              modifiedBy: null,
+              url: "https://elvex-my.sharepoint.com/personal/a/Elvex%20Jobs.xlsx",
+            },
+          ],
+        };
+      }
+      return {};
+    });
+    const listed = await runIntelligenceTurn({
+      text: "Find the newest OneDrive document.",
+      state: buildConversationState({ userText: "Find the newest OneDrive document." }),
+      runtime,
+    });
+    expect(calls[0]?.name).toBe("list_documents");
+    expect(listed.currentDocument?.id).toBe("doc_jobs");
+    expect(listed.text).toMatch(/Elvex Jobs\.xlsx/);
+
+    const who = await runIntelligenceTurn({
+      text: "Who modified it?",
+      state: buildConversationState({
+        userText: "Who modified it?",
+        currentDocument: listed.currentDocument,
+        lastAnswerTopic: "document_catalogue",
+        currentScope: "COMPANY_KNOWLEDGE",
+      }),
+      runtime,
+    });
+    expect(who.text).toMatch(/does not include who last modified/i);
+    expect(who.toolCalls).toEqual([]);
+    expect(who.scope).toBe("CURRENT_DOCUMENT");
+  });
+});
+
 describe("V1.1 evaluation harness", () => {
   it("covers at least 100 natural-language cases and scores the policy completer", async () => {
     const { evaluationCases } = await import("./eval/cases.js");

@@ -705,6 +705,21 @@ export function classifyScope(
     });
   }
 
+  if (
+    /\b(process|procedure|policy|how do we)\b/i.test(text) &&
+    !features.currentLocus &&
+    !features.financeAsk &&
+    !features.emailAsk &&
+    !features.writeIntent
+  ) {
+    return decide("COMPANY_KNOWLEDGE", features, {
+      tool: "search_company_knowledge",
+      clearCurrentDocument: hasCurrent,
+      lastAnswerTopic: "company_knowledge",
+      lastUserIntent: "process_or_policy",
+    });
+  }
+
   if (hasCurrent && !features.systemLocus && !features.companyLocus && !features.financeAsk && !features.capabilityAsk) {
     if (/\b(where did you get|source (url|link)|open the source)\b/i.test(text)) {
       return decide("CURRENT_DOCUMENT", features, {

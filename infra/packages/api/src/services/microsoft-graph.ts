@@ -39,6 +39,7 @@ export type GraphDriveItem = {
   mimeType?: string | null;
   lastModifiedDateTime: string | null;
   createdDateTime?: string | null;
+  lastModifiedBy?: { user?: { displayName?: string; email?: string } };
   eTag?: string | null;
   cTag?: string | null;
   folder?: { childCount: number } | null;
@@ -143,28 +144,77 @@ export async function searchRecentDriveItems(
   input: { top?: number; source?: "onedrive" | "sharepoint" | "all" },
 ): Promise<GraphDriveItem[]> {
   const size = Math.min(Math.max(input.top ?? 10, 1), 50);
-  const payload = await graphPost<{
-    value?: Array<{ hitsContainers?: Array<{ hits?: Array<{ resource?: GraphDriveItem }> }> }>;
-  }>(config, "/search/query", {
-    requests: [
-      {
-        entityTypes: ["driveItem"],
-        query: { queryString: "isDocument=true" },
-        from: 0,
-        size,
-        sortProperties: [{ name: "lastModifiedDateTime", isDescending: true }],
-      },
-    ],
-  });
-  const items: GraphDriveItem[] = [];
-  for (const request of payload.value ?? []) {
-    for (const container of request.hitsContainers ?? []) {
-      for (const hit of container.hits ?? []) {
-        if (hit.resource?.id && hit.resource.name) items.push(hit.resource);
+  try {
+    const payload = await graphPost<{
+      value?: Array<{ hitsContainers?: Array<{ hits?: Array<{ resource?: GraphDriveItem }> }> }>;
+    }>(config, "/search/query", {
+      requests: [
+        {
+          entityTypes: ["driveItem"],
+          query: { queryString: "isDocument=true" },
+          from: 0,
+          size,
+          sortProperties: [{ name: "lastModifiedDateTime", isDescending: true }],
+        },
+      ],
+    });
+    const items: GraphDriveItem[] = [];
+    for (const request of payload.value ?? []) {
+      for (const container of request.hitsContainers ?? []) {
+        for (const hit of container.hits ?? []) {
+          if (hit.resource?.id && hit.resource.name) items.push(hit.resource);
+        }
       }
     }
+    if (items.length) return items.slice(0, size);
+  } catch {
+    // App-only /search/query is often unavailable; fall through to drive listing.
   }
-  return items;
+  return listRecentDriveItemsFromDrives(config, size, input.source);
+}
+
+async function listRecentDriveItemsFromDrives(
+  config: MicrosoftGraphConfig,
+  size: number,
+  source?: "onedrive" | "sharepoint" | "all",
+): Promise<GraphDriveItem[]> {
+  const drives: GraphDrive[] = [];
+  const seen = new Set<string>();
+  const add = (drive: GraphDrive | null) => {
+    if (!drive?.id || seen.has(drive.id)) return;
+    if (source === "onedrive" && drive.driveType && drive.driveType !== "personal" && drive.driveType !== "business") {
+      if (!/personal|onedrive/i.test(`${drive.driveType} ${drive.webUrl ?? ""}`)) return;
+    }
+    if (source === "sharepoint" && /personal|onedrive/i.test(`${drive.driveType ?? ""} ${drive.webUrl ?? ""}`)) return;
+    seen.add(drive.id);
+    drives.push(drive);
+  };
+  try {
+    for (const drive of await listAllDrives(config)) add(drive);
+  } catch {
+    /* tenant /drives may be empty for personal-only tenants */
+  }
+  if (drives.length < 4) {
+    try {
+      for (const drive of await listUserOneDrives(config, { maxUsers: 4 })) add(drive);
+    } catch {
+      /* User.Read.All may be missing */
+    }
+  }
+  const items: GraphDriveItem[] = [];
+  for (const drive of drives.slice(0, 8)) {
+    try {
+      const children = await listDriveChildren(config, drive.id);
+      for (const child of children) {
+        if (!child.folder && child.id && child.name) items.push(child);
+      }
+    } catch {
+      continue;
+    }
+  }
+  return items
+    .sort((left, right) => String(right.lastModifiedDateTime ?? "").localeCompare(String(left.lastModifiedDateTime ?? "")))
+    .slice(0, size);
 }
 
 export async function graphGetAll<T>(

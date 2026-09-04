@@ -10,7 +10,11 @@ import {
   extractHitList,
   unwrapToolPayload,
 } from "./mcp-knowledge-standard";
-import { fetchCompanyKnowledgeDocument, usableDocumentTitle as usableFetchedTitle } from "./document-fetch";
+import {
+  ELVEX_QUERY_TOOL,
+  fetchCompanyKnowledgeDocument,
+  usableDocumentTitle as usableFetchedTitle,
+} from "./document-fetch";
 import { executeRegisteredMcpTool, listMcpEnvironments } from "./control-plane";
 import { listMcpTools } from "./mcp-client";
 import { resolveMcpFetcher } from "./mcp-client";
@@ -37,6 +41,7 @@ export type CatalogueDocument = {
   source: string;
   createdAt: string | null;
   modifiedAt: string | null;
+  modifiedBy: string | null;
   fileType: string | null;
   url: string;
   description: string;
@@ -295,7 +300,8 @@ export function parseCatalogueIntent(text: string, now = new Date()): CatalogueQ
   }
 
   const limitMatch = text.match(/\b(latest|newest|last|top)\s+(\d{1,3})\b/i) ?? text.match(/\b(\d{1,3})\s+(files?|documents?|pdfs?)\b/i);
-  const limit = clampLimit(limitMatch?.[2] ?? limitMatch?.[1] ?? (/newest document|most recently/i.test(text) ? 1 : 10));
+  const singularNewest = /\b(newest|latest|most recently(?: modified)?)(?: \w+){0,3} documents?\b/i.test(text) && !/\b(ten|files|documents)\b/i.test(text);
+  const limit = clampLimit(limitMatch?.[2] ?? limitMatch?.[1] ?? (singularNewest ? 1 : 10));
 
   let fileType: string | null = null;
   if (/\bpdfs?\b/i.test(text)) fileType = "pdf";
@@ -329,6 +335,28 @@ function sourceMatches(requested: CatalogueSource, actual: string): boolean {
   if (requested === "drive") return value === "google_drive" || value === "gdrive" || value === "drive";
   if (requested === "email") return value === "outlook_shared" || value === "email" || value.includes("outlook");
   return false;
+}
+
+/** Personal OneDrive often lives on sharepoint.com/personal or *-my.sharepoint.com. */
+export function classifyMicrosoftFileSource(webUrl: string | null | undefined): "onedrive" | "sharepoint" {
+  const url = String(webUrl ?? "");
+  if (/onedrive\.live\.com|1drv\.ms|[-.]my\.sharepoint\.com|\/personal\//i.test(url)) return "onedrive";
+  return "sharepoint";
+}
+
+function withBudget<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    work
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        resolve(fallback);
+      });
+  });
 }
 
 function fileTypeMatches(fileType: string | null, mime: string | null, title: string): boolean {
@@ -515,9 +543,16 @@ async function queryInfraKnowledgeItems(
     documents.push({
       id: row.knowledge_document_id != null ? String(row.knowledge_document_id) : row.external_item_id || row.id,
       title: row.title,
-      source: row.source_type,
+      source: classifyMicrosoftFileSource(url) === "onedrive" && row.source_type === "sharepoint"
+        ? "onedrive"
+        : row.source_type,
       createdAt,
       modifiedAt,
+      modifiedBy:
+        asNonEmpty(provenance.lastModifiedBy) ||
+        asNonEmpty(provenance.modifiedBy) ||
+        asNonEmpty(provenance.lastModifiedByName) ||
+        null,
       fileType: fileTypeFrom(row.mime_type, row.title),
       url,
       description: "",
@@ -539,6 +574,7 @@ function documentsFromMcpPayload(payload: unknown, query: CatalogueQuery, allowR
         .concat(Array.isArray(payload.documents) ? payload.documents : [])
         .concat(Array.isArray(payload.items) ? payload.items : [])
         .concat(Array.isArray(payload.files) ? payload.files : [])
+        .concat(Array.isArray(payload.rows) ? payload.rows : [])
         .concat(Array.isArray(payload.value) ? payload.value : [])
     : [];
   const records = [...hits, ...extra.filter(isRecord)];
@@ -572,6 +608,8 @@ function documentsFromMcpPayload(payload: unknown, query: CatalogueQuery, allowR
     if (!inDateRange(sortTs, query.dateFrom, query.dateTo)) continue;
     const id =
       asNonEmpty(hit.id) ||
+      asNonEmpty(hit.item_id) ||
+      asNonEmpty(hit.itemId) ||
       asNonEmpty(hit.documentId) ||
       asNonEmpty(hit.document_id) ||
       asNonEmpty(hit.external_id) ||
@@ -581,14 +619,22 @@ function documentsFromMcpPayload(payload: unknown, query: CatalogueQuery, allowR
     const described = snippet
       ? describeFromIndexedText(snippet, title)
       : { description: "", descriptionSource: "unavailable" as const };
+    const url = collectProviderHttpUrl(hit, provenance);
+    const classified = classifyMicrosoftFileSource(url);
     documents.push({
       id,
       title,
-      source,
+      source: classified === "onedrive" && source === "sharepoint" ? "onedrive" : source,
       createdAt,
       modifiedAt,
+      modifiedBy:
+        asNonEmpty(hit.modifiedBy) ||
+        asNonEmpty(hit.lastModifiedBy) ||
+        asNonEmpty(provenance.modifiedBy) ||
+        asNonEmpty(provenance.lastModifiedBy) ||
+        null,
       fileType: fileTypeFrom(mime, title),
-      url: collectProviderHttpUrl(hit, provenance),
+      url,
       description: described.description,
       descriptionSource: described.descriptionSource,
       sortTimestamp: sortTs,
@@ -724,6 +770,60 @@ async function queryCompanyMcpCatalogue(
   return { documents: dedupeDocuments(documents), backend };
 }
 
+async function queryElvexIndexCatalogue(
+  env: Env,
+  companyId: string,
+  query: CatalogueQuery,
+  allowRestricted: boolean,
+  actor: string,
+  actorUserId?: string | null,
+): Promise<{ documents: CatalogueDocument[]; backend: string[] }> {
+  const mcp = (await listMcpEnvironments(env.DB, companyId)).find((item) => item.enabled);
+  if (!mcp) return { documents: [], backend: [] };
+  const now = nowIso();
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO mcp_tool_allowlist
+      (id, company_id, mcp_environment_id, tool_name, risk_class, enabled, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'low_risk', 1, ?, ?)`,
+  )
+    .bind(newId("allow"), companyId, mcp.id, ELVEX_QUERY_TOOL, now, now)
+    .run();
+  const limit = Math.min(query.limit * 4, 40);
+  const statements = [
+    `SELECT item_id, drive_id, filename, web_url, source_type, path, mime_type, size, status, last_modified
+     FROM microsoft_index_items WHERE status = 'catalogue'
+     ORDER BY datetime(last_modified) DESC LIMIT ${limit}`,
+    `SELECT item_id, drive_id, filename, web_url, source_type, path, mime_type, size, status
+     FROM microsoft_index_items WHERE status = 'catalogue' LIMIT ${limit}`,
+  ];
+  let payload: unknown = null;
+  for (const sql of statements) {
+    const execution = await executeRegisteredMcpTool(env, {
+      mcpId: mcp.id,
+      toolName: ELVEX_QUERY_TOOL,
+      arguments: { sql, limit },
+      actorUserId: actorUserId ?? "system",
+      actorEmail: actor,
+      sourceClient: "infra-document-catalogue",
+      skipUsageRecording: true,
+    });
+    if (execution.status === 200) {
+      payload = unwrapToolPayload("data" in execution ? execution.data?.result : execution);
+      break;
+    }
+  }
+  if (!payload) return { documents: [], backend: [] };
+  const documents = documentsFromMcpPayload(payload, { ...query, source: "all" }, allowRestricted)
+    .map((doc) => {
+      const source = classifyMicrosoftFileSource(doc.url);
+      return query.source === "all" || sourceMatches(query.source, source) || sourceMatches(query.source, doc.source)
+        ? { ...doc, source: source === "onedrive" ? "onedrive" : doc.source }
+        : null;
+    })
+    .filter((doc): doc is CatalogueDocument => Boolean(doc));
+  return { documents: dedupeDocuments(documents), backend: documents.length ? ["elvex_index_catalogue"] : [] };
+}
+
 function dedupeDocuments(items: CatalogueDocument[]): CatalogueDocument[] {
   const seen = new Set<string>();
   const out: CatalogueDocument[] = [];
@@ -775,9 +875,10 @@ async function queryGraphCatalogue(
       .map((item) => ({
         id: item.id,
         title: item.name,
-        source: /[-.]my\.sharepoint\.com/i.test(item.webUrl ?? "") ? "onedrive" : "sharepoint",
+        source: classifyMicrosoftFileSource(item.webUrl),
         createdAt: item.createdDateTime ?? null,
         modifiedAt: item.lastModifiedDateTime,
+        modifiedBy: item.lastModifiedBy?.user?.displayName || item.lastModifiedBy?.user?.email || null,
         fileType: fileTypeFrom(item.file?.mimeType ?? item.mimeType ?? null, item.name),
         url: item.webUrl && /^https?:\/\//i.test(item.webUrl) ? item.webUrl : "",
         description: "",
@@ -811,7 +912,7 @@ async function attachDescriptions(
     return;
   }
   const started = Date.now();
-  const budgetMs = 18_000;
+  const budgetMs = 6_000;
   for (const doc of documents) {
     if (doc.descriptionSource === "indexed_content" && doc.description) continue;
     if (Date.now() - started > budgetMs) {
@@ -916,22 +1017,51 @@ export async function executeListDocuments(
     !isElvexCompany({ id: input.companyId }) || elvexCan(input.role ?? null, "knowledge.restricted.read");
 
   const infraItems = await queryInfraKnowledgeItems(env.DB, input.companyId, query, allowRestricted);
-  const mcp = await queryCompanyMcpCatalogue(env, input.companyId, query, allowRestricted, input.actor, input.actorUserId);
-  let documents = dedupeDocuments([...infraItems, ...mcp.documents]);
+  const indexPromise = queryElvexIndexCatalogue(
+    env,
+    input.companyId,
+    query,
+    allowRestricted,
+    input.actor,
+    input.actorUserId,
+  );
+  const graphPromise = queryGraphCatalogue(env, input.companyId, query, input.actor);
+  const [index, graphItems] = await Promise.all([indexPromise, graphPromise]);
+  let documents = dedupeDocuments([...infraItems, ...index.documents, ...graphItems]);
   const backend = [
     ...(infraItems.length ? ["microsoft_knowledge_items"] : []),
-    ...mcp.backend,
+    ...index.backend,
+    ...(graphItems.length ? ["microsoft_graph"] : []),
   ];
 
   if (documents.length === 0) {
-    const graphItems = await queryGraphCatalogue(env, input.companyId, query, input.actor);
-    documents = graphItems;
-    if (graphItems.length) backend.push("microsoft_graph");
+    const mcp = await withBudget(
+      queryCompanyMcpCatalogue(env, input.companyId, query, allowRestricted, input.actor, input.actorUserId),
+      10_000,
+      { documents: [] as CatalogueDocument[], backend: ["mcp_catalogue_budget"] },
+    );
+    documents = dedupeDocuments([...documents, ...mcp.documents]);
+    backend.push(...mcp.backend);
+  }
+
+  if (documents.length === 0 && query.source === "onedrive") {
+    const broadened: CatalogueQuery = { ...query, source: "all" };
+    const infraAll = await queryInfraKnowledgeItems(env.DB, input.companyId, broadened, allowRestricted);
+    const indexAll = await queryElvexIndexCatalogue(env, input.companyId, broadened, allowRestricted, input.actor, input.actorUserId);
+    const graphAll = await queryGraphCatalogue(env, input.companyId, broadened, input.actor);
+    documents = dedupeDocuments([...infraAll, ...indexAll.documents, ...graphAll]);
+    if (documents.length) backend.push("microsoft_fallback_after_onedrive_empty");
   }
 
   documents = sortDocuments(documents, query).slice(0, query.limit);
   if (query.includeDescriptions && documents.length) {
-    await attachDescriptions(env, input.companyId, documents, input.actor, input.actorUserId);
+    await attachDescriptions(env, input.companyId, documents.slice(0, 3), input.actor, input.actorUserId);
+    for (const doc of documents) {
+      if (!doc.description) {
+        doc.description = `Description unavailable — only the filename “${usableCatalogueTitle(doc.title)}” is available.`;
+        doc.descriptionSource = "filename_only";
+      }
+    }
   } else {
     for (const doc of documents) {
       if (!doc.description) {
@@ -974,24 +1104,33 @@ export async function executeListDocuments(
   };
 }
 
+function unwrapCataloguePayload(data: unknown): Record<string, unknown> | null {
+  if (!isRecord(data)) return null;
+  if (Array.isArray(data.documents)) return data;
+  if (isRecord(data.result) && Array.isArray(data.result.documents)) return data.result;
+  return data;
+}
+
 export function verbaliseDocumentCatalogue(data: unknown, question: string): string {
-  if (!isRecord(data)) return "I could not read the document catalogue just now.";
-  if (data.status === "not_connected") return String(data.message ?? "That source is not connected.");
-  if (data.status === "connected_empty") return String(data.message ?? "No catalogue rows are available.");
-  const docs = Array.isArray(data.documents) ? data.documents.filter(isRecord) : [];
-  if (!docs.length) return String(data.message ?? "No documents matched that catalogue query.");
-  const reason = asNonEmpty(data.dateFieldReason);
+  const payload = unwrapCataloguePayload(data);
+  if (!payload) return "I could not read the document catalogue just now.";
+  if (payload.status === "not_connected") return String(payload.message ?? "That source is not connected.");
+  if (payload.status === "connected_empty") return String(payload.message ?? "No catalogue rows are available.");
+  const docs = Array.isArray(payload.documents) ? payload.documents.filter(isRecord) : [];
+  if (!docs.length) return String(payload.message ?? "No documents matched that catalogue query.");
+  const reason = asNonEmpty(payload.dateFieldReason);
   const lines = docs.map((doc, index) => {
     const title = usableCatalogueTitle(typeof doc.title === "string" ? doc.title : null);
     const when = asNonEmpty(doc.modifiedAt) || asNonEmpty(doc.createdAt) || "timestamp unavailable";
     const source = asNonEmpty(doc.source) || "unknown";
     const type = asNonEmpty(doc.fileType);
     const url = asNonEmpty(doc.url);
+    const modifiedBy = asNonEmpty(doc.modifiedBy);
     const description = asNonEmpty(doc.description);
-    return `${index + 1}. ${title} (${source}${type ? `, ${type}` : ""}, ${when})${url ? ` — ${url}` : ""}${description ? `\n   ${description}` : ""}`;
+    return `${index + 1}. ${title} (${source}${type ? `, ${type}` : ""}, ${when}${modifiedBy ? `, ${modifiedBy}` : ""})${url ? ` — ${url}` : ""}${description ? `\n   ${description}` : ""}`;
   });
   const header = /\bnewest document\b/i.test(question)
-    ? `Newest ${asNonEmpty(data.source) && data.source !== "all" ? `${data.source} ` : ""}document:`
+    ? `Newest ${asNonEmpty(payload.source) && payload.source !== "all" ? `${payload.source} ` : ""}document:`
     : `Latest ${docs.length} document${docs.length === 1 ? "" : "s"}:`;
   return [header, ...lines, reason].filter(Boolean).join("\n");
 }
