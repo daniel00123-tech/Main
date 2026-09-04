@@ -9,10 +9,13 @@ export const XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE =
   "xero_month_to_date_sales_email" as const;
 export const DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE =
   "document_activity_daily_email" as const;
+export const KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE =
+  "knowledge_ingestion_daily_email" as const;
 
 export type AutomationTemplateKey =
   | typeof XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE
-  | typeof DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE;
+  | typeof DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE
+  | typeof KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE;
 
 export type AutomationTemplateDefinition = {
   key: string;
@@ -49,6 +52,19 @@ export const AUTOMATION_TEMPLATES: AutomationTemplateDefinition[] = [
     system: "Documents",
     defaultName: "Daily document activity",
     defaultSchedule: { frequency: "daily", hour: 12, minute: 0 },
+    defaultTimezone: "Europe/London",
+    actionType: "internal",
+    available: true,
+  },
+  {
+    key: KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE,
+    type: "KNOWLEDGE_INGESTION_DAILY_EMAIL",
+    label: "Daily knowledge activity",
+    description:
+      "Receive a daily summary of newly discovered and indexed company knowledge since the previous successful run.",
+    system: "Knowledge",
+    defaultName: "Daily knowledge activity",
+    defaultSchedule: { frequency: "daily", hour: 8, minute: 0 },
     defaultTimezone: "Europe/London",
     actionType: "internal",
     available: true,
