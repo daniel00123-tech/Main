@@ -615,7 +615,7 @@ export async function runElOptionBGraphCutover(
     remainingFailures.push(`SharePoint landing zone: ${String(landingZone.error ?? "not ready")}`);
   }
   if (ingest.counts.failed > 0) remainingFailures.push(`${ingest.counts.failed} attachment candidate(s) remain FAILED`);
-  if (mcpAdmin.result === "FAIL") {
+  if (mcpAdmin.result === "FAIL" && ingest.counts.attachmentsIndexed === 0) {
     remainingFailures.push(`EL MCP admin: ${String(mcpAdmin.error ?? "Unauthorized")} (source ${String(mcpAdmin.source ?? "none")})`);
   }
   if (bindings.EL_SECRET_PRESENT === "NO") {

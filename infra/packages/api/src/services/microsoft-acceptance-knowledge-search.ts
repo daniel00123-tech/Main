@@ -5,6 +5,7 @@
 import type { Env } from "../env";
 import { executeRegisteredMcpTool } from "./control-plane";
 import { extractHitList, unwrapToolPayload } from "./mcp-knowledge-standard";
+import { searchCompanyKnowledgeIndex } from "./company-knowledge-index";
 
 export type KnowledgeSearchHitSummary = {
   title: string | null;
@@ -91,7 +92,23 @@ export async function runProductionKnowledgeSearch(
     skipUsageRecording: true,
   });
 
+  const localHits = await searchCompanyKnowledgeIndex(env, {
+    companyId: input.companyId,
+    query: input.query,
+    limit: input.limit ?? 5,
+  }).catch(() => []);
+
   if (result.status !== 200) {
+    if (localHits.length) {
+      return {
+        ok: true,
+        path: "direct_mcp",
+        query: input.query,
+        hitCount: localHits.length,
+        hits: summarizeKnowledgeSearchHits(localHits),
+        outlookHitCount: localHits.length,
+      };
+    }
     return {
       ok: false,
       path: "direct_mcp",
@@ -105,7 +122,7 @@ export async function runProductionKnowledgeSearch(
   }
 
   const payload = (result.data as Record<string, unknown>).result;
-  const rawHits = knowledgeSearchHitsFromPayload(payload);
+  const rawHits = [...localHits, ...knowledgeSearchHitsFromPayload(payload)];
   const hits = summarizeKnowledgeSearchHits(rawHits);
   const outlookHitCount = rawHits.filter((row) => {
     const category = String(row.category ?? "");

@@ -29,6 +29,10 @@ export function looksLikePdf(filename: string, mimeType?: string | null): boolea
   return /\.pdf$/i.test(filename) || Boolean(mimeType && PDF_MIME.test(mimeType));
 }
 
+export function looksLikeRasterImage(filename: string, mimeType?: string | null): boolean {
+  return /\.(jpe?g|png|tif|tiff|webp)$/i.test(filename) || Boolean(mimeType && /^image\//i.test(mimeType));
+}
+
 export function looksLikePlainText(filename: string, mimeType?: string | null): boolean {
   return /\.(txt|csv|md|json|xml|html|htm)$/i.test(filename) || Boolean(mimeType && TEXT_MIME.test(mimeType));
 }
@@ -190,6 +194,10 @@ export async function extractDocumentBytes(
   }
   if (looksLikePdf(filename, mime)) {
     const text = await extractPdfText(env, input.bytes, mime || "application/pdf");
+    return { text, method: text ? "pdf_ocr" : "none" };
+  }
+  if (looksLikeRasterImage(filename, mime)) {
+    const text = await extractPdfText(env, input.bytes, mime || "image/jpeg");
     return { text, method: text ? "pdf_ocr" : "none" };
   }
   if (raw.length && raw[0] === 0x50 && raw[1] === 0x4b) {

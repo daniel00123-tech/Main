@@ -7,6 +7,10 @@ import type { Env } from "../env";
 import type { McpEnvironment } from "@infra/shared";
 import { resolveMcpFetcher } from "./mcp-client";
 import { resolveMcpAdminAuthHeader } from "./mcp-admin-bridge";
+import {
+  indexExtractedDocumentLocally,
+  shouldUseLocalCompanyKnowledgeIndex,
+} from "./company-knowledge-index";
 
 export type KnowledgeUploadResult =
   | {
@@ -173,6 +177,34 @@ export async function uploadMicrosoftDocumentToKnowledge(
     autoIndex?: boolean;
   },
 ): Promise<KnowledgeUploadResult> {
+  if (shouldUseLocalCompanyKnowledgeIndex(mcp)) {
+    const local = await indexExtractedDocumentLocally(env, {
+      companyId: String(input.metadata.companyId ?? ""),
+      externalId: input.externalId,
+      filename: input.filename,
+      title: input.title,
+      mimeType: input.mimeType,
+      bytes: input.bytes,
+      storedItemId: typeof input.metadata.stored_provider_item_id === "string"
+        ? input.metadata.stored_provider_item_id
+        : null,
+      storedUrl: typeof input.metadata.stored_url === "string" ? input.metadata.stored_url : null,
+      metadata: input.metadata,
+    });
+    if (!local.ok) {
+      return { ok: false, code: local.code, message: local.message };
+    }
+    return {
+      ok: true,
+      documentId: local.documentId,
+      externalId: input.externalId,
+      indexed: local.indexed,
+      chunksIndexed: local.chunksIndexed,
+      extractionQuality: local.extractionMethod,
+      documentStatus: local.documentStatus,
+    };
+  }
+
   try {
     const form = new FormData();
     form.append("file", new Blob([input.bytes], { type: input.mimeType ?? "application/octet-stream" }), input.filename);
