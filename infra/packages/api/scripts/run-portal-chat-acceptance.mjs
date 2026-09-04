@@ -41,16 +41,16 @@ async function runSuite(token, suite) {
   return { httpStatus: res.status, suite, body };
 }
 
-const token = mintAcceptanceToken();
 const suites = {};
 for (const suite of SUITES) {
-  suites[suite] = await runSuite(token, suite);
+  suites[suite] = await runSuite(mintAcceptanceToken(), suite);
 }
 
+const officeStaffToken = mintAcceptanceToken();
 const officeStaff = await fetch(`${API}/api/internal/office-staff-rbac-acceptance`, {
   method: "POST",
   headers: {
-    "X-CMD13-Acceptance-Token": token,
+    "X-CMD13-Acceptance-Token": officeStaffToken,
     "Content-Type": "application/json",
   },
   signal: AbortSignal.timeout(240_000),
