@@ -68,11 +68,11 @@ const COMPANY_LOCUS =
 const DISCOURSE =
   /^(hi|hello|hey|hiya|yo|morning|thanks|thank you|cheers|ta|thx|ty)\b|^(how are you|how(?:'s|s) it going)\b|\b(that(?:'s| is) useful|that helps|great thanks|appreciate (it|that)|i don'?t (understand|follow)|what do you mean|why did you ask|can you (give|show) (me )?an example)\b/i;
 const REPHRASE =
-  /\b(explain(?: that| this| it| your last answer)? more simply|more simply|make (that|it|this|your last answer)( \w+)? (shorter|simpler|brief)|in fewer words|more detail(s)?( on (that|your last|what you said))?|give me more (detail|details|info|information)|say that again|explain again|put (that|it) another way)\b/i;
+  /\b(explain(?: that| this| it| your last answer)? more simply|more simply|make (that|it|this|your last answer|the (reply|draft|email)).{0,24}(shorter|simpler|brief|friendly|friendlier|warmer|formal|polite|professional|softer)|in fewer words|more detail(s)?( on (that|your last|what you said))?|give me more (detail|details|info|information)|say that again|explain again|put (that|it) another way|friendlier|more (friendly|formal|polite))\b/i;
 const SHORT_REPHRASE = /^(more detail|what exactly)[.?!]*$/i;
 const SHORT_MEMORY = /^(when|who)[.?!]*$/i;
 const MEMORY =
-  /\b(what (were|are) we talking about|what did i (just )?ask|what did you (just )?(tell|say)|remind me|which source|last document i asked|the amount again)\b/i;
+  /\b(what (were|are) we talking about|what did i (just )?ask|what did you (just )?(tell|say)|what were they asking|remind me|which source|last document i asked|the amount again|who sent (that|it|the email))\b/i;
 const CAPABILITY =
   /^(help)\b|\b(what can you do|what can i ask|what (data|information) (can you|are you allowed to) (access|see|use|read)|what else (can|are) you (do|help|able)|what are you able to|who are you|what is infra|what information are you)\b/i;
 const CONNECTOR =

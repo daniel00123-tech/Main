@@ -264,6 +264,7 @@ export async function sendPortalChatMessage(
     lastAnswerTopic: conversation.context.lastAnswerTopic,
     lastUserIntent: conversation.context.lastUserIntent,
     lastAnswerText: conversation.context.lastAnswerText,
+    recentEvidence: conversation.context.recentEvidence,
   });
 
   const runtime = createPortalChatRuntime(env, {
@@ -415,7 +416,10 @@ function metadataFromTurn(result: IntelligenceTurnResult): PortalChatMessageMeta
     permissionDenied: result.toolCalls.some((call) => isPermissionDenial(call.error, call.data)),
     controlledAction: result.kind === "controlled_action",
     citeSource: result.citeSource,
-    terminal: classifyReadTerminal(result.toolCalls, result.text, result.kind),
+    terminal: result.terminal ?? classifyReadTerminal(result.toolCalls, result.text, result.kind),
+    provider: result.provider,
+    model: result.model,
+    brainMode: result.brainMode ?? null,
   };
 }
 
@@ -444,6 +448,7 @@ function contextFromTurn(
     lastAnswerTopic: result.lastAnswerTopic ?? prior.lastAnswerTopic ?? null,
     lastUserIntent: result.lastUserIntent ?? prior.lastUserIntent ?? null,
     lastAnswerText: reply.slice(0, 1_200),
+    recentEvidence: result.recentEvidence ?? prior.recentEvidence ?? null,
   };
 }
 
@@ -543,6 +548,10 @@ function parseContext(raw: unknown): PortalChatContext {
     lastAnswerTopic: typeof parsed.lastAnswerTopic === "string" ? parsed.lastAnswerTopic : null,
     lastUserIntent: typeof parsed.lastUserIntent === "string" ? parsed.lastUserIntent : null,
     lastAnswerText: typeof parsed.lastAnswerText === "string" ? parsed.lastAnswerText : null,
+    recentEvidence:
+      parsed.recentEvidence && typeof parsed.recentEvidence === "object"
+        ? (parsed.recentEvidence as PortalChatContext["recentEvidence"])
+        : null,
   };
 }
 

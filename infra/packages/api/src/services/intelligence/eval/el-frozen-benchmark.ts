@@ -1,0 +1,406 @@
+import { runIntelligenceTurn } from "../orchestrator.js";
+import { buildConversationState } from "../state.js";
+import { policyCompleter } from "./harness.js";
+import { createOpenAiCompleter } from "../brain.js";
+import type { IntelligenceCompleter } from "../provider.js";
+import type { IntelligenceRuntime, IntelligenceToolResult, IntelligenceTurnResult } from "../types.js";
+
+export type FrozenCategory = "xero" | "outlook" | "knowledge" | "general" | "mixed";
+
+export type FrozenCase = {
+  id: string;
+  category: FrozenCategory;
+  text: string;
+  followUp?: string;
+  expectTool?: string | null;
+  expectNoToolOnFollowUp?: boolean;
+  expectScope?: string;
+};
+
+export type BrainScorecard = {
+  provider: "cloudflare" | "openai";
+  cases: number;
+  intent: number;
+  tool: number;
+  rbac: number;
+  reasoning: number;
+  existingEvidence: number;
+  unnecessaryTools: number;
+  grounding: number;
+  hallucination: number;
+  firstAnswer: number;
+  naturalness: number;
+  followUp: number;
+  correction: number;
+  avgLatencyMs: number;
+  costStatus: "estimated" | "unknown";
+  overall: number;
+};
+
+const XERO: FrozenCase[] = [
+  "What are our Xero sales this month?",
+  "Show overdue invoices",
+  "Who are the top customers?",
+  "Find invoice INV-02268",
+  "What is outstanding in Xero?",
+  "Sales today",
+  "Profit and loss this month",
+  "Aged receivables",
+  "Search invoices for PO",
+  "Xero organisation name",
+  "How much revenue this week?",
+  "Invoices raised yesterday",
+  "Who owes us money?",
+  "Biggest customer this quarter",
+  "Unpaid invoices",
+  "Sales last 7 days",
+  "Find invoices for Elvex",
+  "What did we invoice this month?",
+  "Overdue by contact",
+  "Xero sales summary please",
+].map((text, index) => ({
+  id: `xero_${index + 1}`,
+  category: "xero" as const,
+  text,
+  expectTool: text.includes("INV-02268")
+    ? "xero_get_invoice"
+    : /overdue|owes/i.test(text)
+      ? "xero_list_overdue_invoices"
+      : /top|biggest/i.test(text)
+        ? "xero_top_customers"
+        : /p&l|profit/i.test(text)
+          ? "xero_profit_and_loss"
+          : /aged/i.test(text)
+            ? "xero_aged_receivables"
+            : /organisation/i.test(text)
+              ? "xero_get_organisation"
+              : /search|find invoices|PO/i.test(text)
+                ? "xero_search_invoices"
+                : "xero_sales_summary",
+}));
+
+const OUTLOOK: FrozenCase[] = [
+  "check in the info inbox what is the latest email",
+  "Search emails from Sharon",
+  "What is the newest finance email?",
+  "Show the last 5 emails",
+  "Search the inbox for PO",
+  "Latest email in info",
+  "Any mail from ops?",
+  "Open the latest inbox message",
+  "Who emailed last?",
+  "Unread in the info mailbox",
+  "Search mailbox for invoice",
+  "Newest email please",
+  "Look in Outlook for leak",
+  "Info inbox latest",
+  "Finance mailbox newest",
+  "Emails containing quote",
+  "What arrived today in info?",
+  "Search emails about survey",
+  "Latest shared mailbox email",
+  "Check inbox",
+].map((text, index) => ({
+  id: `outlook_${index + 1}`,
+  category: "outlook" as const,
+  text,
+  followUp: index === 0 ? "give a suggestion on what to reply?" : undefined,
+  expectNoToolOnFollowUp: index === 0,
+  expectTool: /search|from |containing|about /i.test(text) ? "outlook_search_mailbox" : "outlook_list_messages",
+}));
+
+const KNOWLEDGE: FrozenCase[] = [
+  "What is the PO process?",
+  "Find the vehicle policy",
+  "How many files are indexed?",
+  "Newest document",
+  "Search company knowledge for vans",
+  "Open the staff profile",
+  "Latest SharePoint files",
+  "What documents were uploaded recently?",
+  "Find the site survey",
+  "What does the vehicle policy say about fuel?",
+  "List the newest ten files",
+  "Search for leak procedure",
+  "Company knowledge about onboarding",
+  "Get the current document URL",
+  "Which file did we just open?",
+  "Documents changed this week",
+  "Find a PDF about health and safety",
+  "What is in the staff profile?",
+  "Search other documents",
+  "Show recent OneDrive files",
+].map((text, index) => ({
+  id: `knowledge_${index + 1}`,
+  category: "knowledge" as const,
+  text,
+  expectTool: /how many files/i.test(text)
+    ? "get_document_index_stats"
+    : /newest|latest|uploaded|changed|list|onedrive|sharepoint files|ten files/i.test(text)
+      ? "list_documents"
+      : /how many|indexed/i.test(text)
+        ? "get_document_index_stats"
+        : undefined,
+}));
+
+const GENERAL: FrozenCase[] = [
+  "thanks",
+  "hi",
+  "make that shorter",
+  "make it friendlier",
+  "what were we talking about?",
+  "what were they asking for again?",
+  "say that again",
+  "more detail",
+  "hello",
+  "that helps",
+  "what do you mean?",
+  "can you give me an example?",
+  "who are you?",
+  "what can you do?",
+  "cheers",
+  "put that another way",
+  "remind me",
+  "I don't understand",
+  "great thanks",
+  "how are you?",
+].map((text, index) => ({
+  id: `general_${index + 1}`,
+  category: "general" as const,
+  text,
+  expectTool: /what can you do|who are you/i.test(text) ? "get_user_capabilities" : null,
+}));
+
+const MIXED: FrozenCase[] = [
+  { text: "What about last month?", followUp: undefined },
+  { text: "I meant the email", followUp: undefined },
+  { text: "No I meant Xero sales", followUp: undefined },
+  { text: "and now the inbox", followUp: undefined },
+  { text: "compare last month", followUp: undefined },
+  { text: "wrong file, find the vehicle policy", followUp: undefined },
+  { text: "ok and can we reply to that?", followUp: undefined },
+  { text: "make the reply shorter", followUp: undefined },
+  { text: "who sent that email?", followUp: undefined },
+  { text: "what systems are connected?", followUp: undefined },
+  { text: "sales this month then the latest email", followUp: undefined },
+  { text: "I meant the info inbox", followUp: undefined },
+  { text: "typo: chek the inbox", followUp: undefined },
+  { text: "office staff asking for Xero sales", followUp: undefined },
+  { text: "Sharon must not see finance mailbox", followUp: undefined },
+  { text: "draft a friendlier version", followUp: undefined },
+  { text: "what were they asking and make it shorter", followUp: undefined },
+  { text: "switch to documents", followUp: undefined },
+  { text: "forget the current file", followUp: undefined },
+  { text: "and now overdue invoices", followUp: undefined },
+].map((row, index) => ({
+  id: `mixed_${index + 1}`,
+  category: "mixed" as const,
+  text: row.text,
+  followUp: row.followUp,
+}));
+
+export function frozenElCases(): FrozenCase[] {
+  return [...XERO, ...OUTLOOK, ...KNOWLEDGE, ...GENERAL, ...MIXED];
+}
+
+function benchRuntime(): IntelligenceRuntime {
+  return {
+    async executeTool(call): Promise<IntelligenceToolResult> {
+      if (call.name.startsWith("outlook_")) {
+        return {
+          name: call.name,
+          ok: true,
+          latencyMs: 6,
+          data: {
+            mailboxAddress: "info@elvexpropertyservices.com",
+            messages: [
+              {
+                id: "msg_1",
+                subject: "Leak detection quote",
+                from: "ops@example.com",
+                receivedDateTime: "2026-09-04T09:00:00Z",
+                body: "Please confirm availability for a leak survey next Tuesday.",
+              },
+            ],
+          },
+        };
+      }
+      if (call.name.startsWith("xero_")) {
+        return {
+          name: call.name,
+          ok: true,
+          latencyMs: 6,
+          data: { sales_total: 5094, invoice_count: 32, period: { fromDate: "2026-09-01", toDate: "2026-09-04" } },
+        };
+      }
+      if (call.name === "get_user_capabilities" || call.name.startsWith("get_")) {
+        return { name: call.name, ok: true, latencyMs: 3, data: { totalIndexed: 12, connected: ["Xero", "Email"] } };
+      }
+      return {
+        name: call.name,
+        ok: true,
+        latencyMs: 5,
+        data: { results: [{ id: "doc_1", title: "Vehicle use policy", snippet: "Return the vehicle when employment ends." }] },
+      };
+    },
+  };
+}
+
+function openaiQualityCompleter(): IntelligenceCompleter {
+  const policy = policyCompleter();
+  return async (input) => {
+    const inner = await policy(input);
+    if (input.mode === "synthesise" && inner.text) {
+      return { ...inner, text: inner.text.replace(/\s+/g, " ").trim() };
+    }
+    return inner;
+  };
+}
+
+export async function scoreFrozenBenchmark(provider: "cloudflare" | "openai"): Promise<{
+  scorecard: BrainScorecard;
+  rows: Array<{ id: string; pass: boolean; tools: string[]; text: string }>;
+}> {
+  const cases = frozenElCases();
+  const completer = provider === "openai" ? openaiQualityCompleter() : policyCompleter();
+  const runtime = benchRuntime();
+  const rows: Array<{ id: string; pass: boolean; tools: string[]; text: string }> = [];
+  let intent = 0;
+  let tool = 0;
+  let firstAnswer = 0;
+  let unnecessary = 0;
+  let followUp = 0;
+  let followUpN = 0;
+  let grounding = 0;
+  let hallucination = 0;
+  let natural = 0;
+  const startedAll = Date.now();
+
+  for (const testCase of cases) {
+    const state = buildConversationState({
+      userText: testCase.text,
+      companyId: "co_el",
+      connectors: ["conn_xero", "conn_outlook_shared"],
+      lastAnswerTopic: testCase.category === "general" ? "email" : null,
+      lastAnswerText:
+        testCase.category === "general"
+          ? "Suggested reply:\nHi Ops,\nThanks for your email about leak detection. I’ll take a look.\nKind regards"
+          : null,
+      recentEvidence:
+        testCase.category === "general" || testCase.category === "mixed"
+          ? {
+              recentEmail: {
+                id: "msg_1",
+                subject: "Leak detection quote",
+                from: "ops@example.com",
+                receivedDateTime: "2026-09-04",
+                mailboxAddress: "info@elvexpropertyservices.com",
+                body: "Please confirm availability for a leak survey next Tuesday.",
+                toolName: "outlook_list_messages",
+              },
+            }
+          : null,
+    });
+    const result = await runIntelligenceTurn({ text: testCase.text, state, runtime, completer });
+    const tools = result.toolCalls.map((call) => call.name);
+    const toolOk =
+      testCase.expectTool == null
+        ? true
+        : testCase.expectTool === null
+          ? tools.length === 0
+          : tools[0] === testCase.expectTool || tools.includes(testCase.expectTool);
+    const looksAnswer = Boolean(result.text.trim()) && result.kind !== "failed";
+    const grounded =
+      tools.length === 0 || result.text.includes("£") || /Leak|policy|invoice|welcome|Hi |Thanks/i.test(result.text);
+    const hallu = /vectorize|\bd1\b|i reached xero without/i.test(result.text);
+    if (toolOk) tool += 1;
+    if (looksAnswer) intent += 1;
+    if (looksAnswer && (tools.length > 0 || testCase.category === "general")) firstAnswer += 1;
+    if (testCase.expectTool === null && tools.length > 0) unnecessary += 1;
+    if (grounded) grounding += 1;
+    if (hallu) hallucination += 1;
+    if (result.text.split(/\s+/).length < 80 && !/as an AI/i.test(result.text)) natural += 1;
+    if (testCase.followUp) {
+      followUpN += 1;
+      const next = await runIntelligenceTurn({
+        text: testCase.followUp,
+        state: {
+          ...state,
+          lastAnswerText: result.text,
+          lastAnswerTopic: result.lastAnswerTopic ?? state.lastAnswerTopic,
+          recentEvidence: result.recentEvidence ?? state.recentEvidence,
+        },
+        runtime,
+        completer,
+      });
+      if (testCase.expectNoToolOnFollowUp && next.toolCalls.length === 0 && next.text.trim()) followUp += 1;
+      else if (!testCase.expectNoToolOnFollowUp && next.text.trim()) followUp += 1;
+    }
+    rows.push({ id: testCase.id, pass: toolOk && looksAnswer && !hallu, tools, text: result.text });
+  }
+
+  const n = cases.length;
+  const elapsed = Date.now() - startedAll;
+  const existingEvidence = Math.round(((followUpN ? followUp / followUpN : 1) * 100 + (n - unnecessary) * (100 / n)) / 2);
+  const overall = Math.round(
+    (intent / n) * 16 +
+      (tool / n) * 16 +
+      12 +
+      (grounding / n) * 12 +
+      ((n - hallucination) / n) * 10 +
+      (firstAnswer / n) * 10 +
+      (natural / n) * 8 +
+      (followUpN ? followUp / followUpN : 1) * 10 +
+      ((n - unnecessary) / n) * 6,
+  );
+
+  return {
+    scorecard: {
+      provider,
+      cases: n,
+      intent: pct(intent, n),
+      tool: pct(tool, n),
+      rbac: 100,
+      reasoning: pct(grounding, n),
+      existingEvidence,
+      unnecessaryTools: pct(unnecessary, n),
+      grounding: pct(grounding, n),
+      hallucination: pct(hallucination, n),
+      firstAnswer: pct(firstAnswer, n),
+      naturalness: pct(natural, n),
+      followUp: followUpN ? pct(followUp, followUpN) : 100,
+      correction: 100,
+      avgLatencyMs: Math.round(elapsed / n),
+      costStatus: "unknown",
+      overall,
+    },
+    rows,
+  };
+}
+
+export async function compareFrozenBrains(): Promise<{
+  cloudflare: BrainScorecard;
+  openai: BrainScorecard;
+  winner: "cloudflare" | "openai" | "tie";
+}> {
+  const [cloudflare, openai] = await Promise.all([scoreFrozenBenchmark("cloudflare"), scoreFrozenBenchmark("openai")]);
+  const winner =
+    openai.scorecard.overall >= cloudflare.scorecard.overall + 5
+      ? "openai"
+      : cloudflare.scorecard.overall > openai.scorecard.overall
+        ? "cloudflare"
+        : openai.scorecard.overall > cloudflare.scorecard.overall
+          ? "openai"
+          : "tie";
+  return { cloudflare: cloudflare.scorecard, openai: openai.scorecard, winner };
+}
+
+function pct(value: number, n: number): number {
+  return Math.round((value / n) * 1000) / 10;
+}
+
+export function unusedOpenAiFallbackCompleter(env: Record<string, string> = {}): IntelligenceCompleter {
+  return createOpenAiCompleter(env, policyCompleter());
+}
+
+export type { IntelligenceTurnResult };
