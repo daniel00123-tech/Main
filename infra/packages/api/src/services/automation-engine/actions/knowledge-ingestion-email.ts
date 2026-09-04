@@ -218,9 +218,15 @@ export async function executeKnowledgeIngestionDailyEmail(
     failedCount: report.failedCount,
     legitimateSkipCount: legitimateSkips,
   });
-  const mailboxesScanned = [
-    ...new Set(report.documents.map((item) => item.mailbox).filter((item): item is string => Boolean(item))),
-  ];
+  const mailboxesScanned = ingest?.mailboxes?.length
+    ? ingest.mailboxes
+        .map((row) => (typeof row.mailboxAddress === "string" ? row.mailboxAddress : ""))
+        .filter(Boolean)
+    : [
+        ...new Set(
+          report.documents.map((item) => item.mailbox).filter((item): item is string => Boolean(item)),
+        ),
+      ];
   const mailboxPolicy = await mailboxPolicySnapshot(env.DB, ctx.companyId);
   const portalUrl = `${portalOrigin(env)}/portal/${company.slug}/automations`;
   const email = renderKnowledgeIngestionReportEmail({
