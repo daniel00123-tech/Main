@@ -251,6 +251,7 @@ export async function syncOutlookMailbox(
           message.id,
         );
         for (const attachment of attachments) {
+          if (attachment.isInline) continue;
           if (!isOutlookAttachmentRetrievable(attachment.contentType, attachment.name)) continue;
           const attachmentItemId = `${message.id}|${attachment.id}`;
           const attachmentVersion = `${versionTag}|${attachment.size}`;

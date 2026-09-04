@@ -1341,6 +1341,28 @@ connectors.post("/api/internal/el-knowledge-onedrive-diagnostic", async (c) => {
   }
 });
 
+connectors.post("/api/internal/el-knowledge-ingestion-audit", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { runElKnowledgeIngestionAudit } = await import("../services/el-knowledge-ingestion-audit");
+    return c.json(
+      await runElKnowledgeIngestionAudit(c.env, {
+        windowFrom: typeof body.windowFrom === "string" ? body.windowFrom : undefined,
+        windowTo: typeof body.windowTo === "string" ? body.windowTo : undefined,
+        persistEvents: body.persistEvents !== false,
+      }),
+    );
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "EL knowledge ingestion audit failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/ocr/acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

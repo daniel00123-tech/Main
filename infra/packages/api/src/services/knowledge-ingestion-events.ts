@@ -1,0 +1,233 @@
+/**
+ * Tenant-aware knowledge ingestion event ledger.
+ * Used by daily activity reporting and future company MCPs.
+ */
+
+import type { Env } from "../env";
+import { newId, nowIso } from "../db/mappers";
+
+export const KNOWLEDGE_INGESTION_EVENT_TYPES = [
+  "discovered",
+  "fetched",
+  "extracted",
+  "indexed",
+  "reindexed",
+  "skipped",
+  "duplicate",
+  "failed",
+  "source_observed",
+] as const;
+
+export type KnowledgeIngestionEventType = (typeof KNOWLEDGE_INGESTION_EVENT_TYPES)[number];
+
+export type KnowledgeIngestionEventInput = {
+  companyId: string;
+  sourceType: string;
+  eventType: KnowledgeIngestionEventType;
+  providerItemId?: string | null;
+  parentMessageId?: string | null;
+  filename?: string | null;
+  contentHash?: string | null;
+  mailboxAddress?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  chunkCount?: number | null;
+  skipReason?: string | null;
+  failureCode?: string | null;
+  discoveredAt?: string | null;
+  sourceModifiedAt?: string | null;
+  fetchedAt?: string | null;
+  extractedAt?: string | null;
+  indexedAt?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export async function ensureKnowledgeIngestionEventsSchema(db: D1Database): Promise<void> {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS knowledge_ingestion_events (
+        id TEXT PRIMARY KEY,
+        company_id TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        provider_item_id TEXT,
+        parent_message_id TEXT,
+        filename TEXT,
+        content_hash TEXT,
+        mailbox_address TEXT,
+        mime_type TEXT,
+        size_bytes INTEGER,
+        chunk_count INTEGER,
+        skip_reason TEXT,
+        failure_code TEXT,
+        discovered_at TEXT,
+        source_modified_at TEXT,
+        fetched_at TEXT,
+        extracted_at TEXT,
+        indexed_at TEXT,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+    )
+    .run();
+  await db
+    .prepare(
+      `CREATE INDEX IF NOT EXISTS idx_knowledge_ingestion_events_company_window
+       ON knowledge_ingestion_events(company_id, created_at)`,
+    )
+    .run();
+}
+
+export async function recordKnowledgeIngestionEvent(
+  db: D1Database,
+  input: KnowledgeIngestionEventInput,
+): Promise<string> {
+  await ensureKnowledgeIngestionEventsSchema(db);
+  const id = newId("kie");
+  const now = nowIso();
+  await db
+    .prepare(
+      `INSERT INTO knowledge_ingestion_events (
+        id, company_id, source_type, event_type, status, provider_item_id, parent_message_id,
+        filename, content_hash, mailbox_address, mime_type, size_bytes, chunk_count,
+        skip_reason, failure_code, discovered_at, source_modified_at, fetched_at,
+        extracted_at, indexed_at, metadata_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      id,
+      input.companyId,
+      input.sourceType,
+      input.eventType,
+      input.eventType,
+      input.providerItemId ?? null,
+      input.parentMessageId ?? null,
+      input.filename ?? null,
+      input.contentHash ?? null,
+      input.mailboxAddress ?? null,
+      input.mimeType ?? null,
+      input.sizeBytes ?? null,
+      input.chunkCount ?? null,
+      input.skipReason ?? null,
+      input.failureCode ?? null,
+      input.discoveredAt ?? now,
+      input.sourceModifiedAt ?? null,
+      input.fetchedAt ?? null,
+      input.extractedAt ?? null,
+      input.indexedAt ?? null,
+      input.metadata ? JSON.stringify(input.metadata) : null,
+      now,
+      now,
+    )
+    .run();
+  return id;
+}
+
+export type KnowledgeIngestionEventRow = {
+  id: string;
+  company_id: string;
+  source_type: string;
+  event_type: string;
+  status: string;
+  provider_item_id: string | null;
+  parent_message_id: string | null;
+  filename: string | null;
+  mailbox_address: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  chunk_count: number | null;
+  skip_reason: string | null;
+  failure_code: string | null;
+  discovered_at: string | null;
+  source_modified_at: string | null;
+  indexed_at: string | null;
+  created_at: string;
+};
+
+export async function listKnowledgeIngestionEvents(
+  db: D1Database,
+  input: { companyId: string; windowFrom: string; windowTo: string; limit?: number },
+): Promise<KnowledgeIngestionEventRow[]> {
+  await ensureKnowledgeIngestionEventsSchema(db);
+  const result = await db
+    .prepare(
+      `SELECT id, company_id, source_type, event_type, status, provider_item_id, parent_message_id,
+              filename, mailbox_address, mime_type, size_bytes, chunk_count, skip_reason,
+              failure_code, discovered_at, source_modified_at, indexed_at, created_at
+       FROM knowledge_ingestion_events
+       WHERE company_id = ?
+         AND (
+           created_at BETWEEN ? AND ?
+           OR discovered_at BETWEEN ? AND ?
+           OR source_modified_at BETWEEN ? AND ?
+           OR indexed_at BETWEEN ? AND ?
+         )
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .bind(
+      input.companyId,
+      input.windowFrom,
+      input.windowTo,
+      input.windowFrom,
+      input.windowTo,
+      input.windowFrom,
+      input.windowTo,
+      input.windowFrom,
+      input.windowTo,
+      input.limit ?? 400,
+    )
+    .all<KnowledgeIngestionEventRow>();
+  return result.results ?? [];
+}
+
+export async function recordJobIngestionEvent(
+  env: Pick<Env, "DB">,
+  input: {
+    companyId: string;
+    sourceType: string;
+    status: string;
+    filename?: string | null;
+    providerItemId?: string | null;
+    parentMessageId?: string | null;
+    mailboxAddress?: string | null;
+    mimeType?: string | null;
+    sizeBytes?: number | null;
+    chunkCount?: number | null;
+    skipReason?: string | null;
+    sourceModifiedAt?: string | null;
+  },
+): Promise<void> {
+  const mapped =
+    input.status === "indexed"
+      ? "indexed"
+      : input.status === "skipped_unchanged"
+        ? "duplicate"
+        : input.status === "unsupported"
+          ? "skipped"
+          : input.status === "failed" || input.status === "dead_letter"
+            ? "failed"
+            : input.status === "catalogue_only"
+              ? "extracted"
+              : null;
+  if (!mapped) return;
+  await recordKnowledgeIngestionEvent(env.DB, {
+    companyId: input.companyId,
+    sourceType: input.sourceType,
+    eventType: mapped,
+    providerItemId: input.providerItemId,
+    parentMessageId: input.parentMessageId,
+    filename: input.filename,
+    mailboxAddress: input.mailboxAddress,
+    mimeType: input.mimeType,
+    sizeBytes: input.sizeBytes,
+    chunkCount: input.chunkCount,
+    skipReason: input.skipReason ?? (mapped === "duplicate" ? "unchanged" : null),
+    failureCode: mapped === "failed" ? input.status : null,
+    sourceModifiedAt: input.sourceModifiedAt,
+    indexedAt: mapped === "indexed" ? nowIso() : null,
+    metadata: { jobStatus: input.status },
+  });
+}

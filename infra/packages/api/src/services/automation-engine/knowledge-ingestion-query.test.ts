@@ -19,16 +19,18 @@ vi.mock("../control-plane", () => control);
 import { queryKnowledgeIngestionActivity } from "./knowledge-ingestion-query";
 
 function mockDb(rowsBySql: Array<{ match?: RegExp; rows: Array<Record<string, unknown>> }>) {
+  const exec = (sql: string) => ({
+    all: async () => {
+      const hit = rowsBySql.find((item) => !item.match || item.match.test(sql));
+      return { results: hit?.rows ?? [] };
+    },
+    run: async () => ({ success: true }),
+    first: async () => null,
+  });
   return {
     prepare: vi.fn((sql: string) => ({
-      bind: () => ({
-        all: async () => {
-          const hit = rowsBySql.find((item) => !item.match || item.match.test(sql));
-          return { results: hit?.rows ?? [] };
-        },
-        run: async () => ({ success: true }),
-        first: async () => null,
-      }),
+      ...exec(sql),
+      bind: () => exec(sql),
     })),
   } as unknown as D1Database;
 }
@@ -145,6 +147,41 @@ describe("knowledge ingestion query", () => {
     expect(report.documents[1]?.failureReason).toBe("empty content");
     expect(report.scannedSourceTypes).toEqual(["onedrive"]);
     expect(report.chunkTotal).toBe(4);
+  });
+
+  it("counts existing files modified in-window as updated knowledge", async () => {
+    const env = {
+      DB: mockDb([
+        {
+          match: /microsoft_knowledge_items/,
+          rows: [
+            {
+              id: "ms_el_old",
+              title: "Elvex Jobs.xlsx",
+              source_type: "onedrive",
+              knowledge_document_id: 3,
+              created_at: "2026-08-30T11:09:52.000Z",
+              modified_at: "2026-09-04T10:11:00.000Z",
+              indexed_at: "2026-08-30T11:10:00.000Z",
+              indexing_status: "indexed",
+              external_id: "msod-old",
+              external_item_id: "item-old",
+              web_url: "https://elvex-my.sharepoint.com/personal/a/Jobs.xlsx",
+              path: "/Elvex Jobs.xlsx",
+              provenance_json: "{}",
+            },
+          ],
+        },
+      ]),
+    } as never;
+    const report = await queryKnowledgeIngestionActivity(env, {
+      companyId: "co_el",
+      windowFrom: new Date("2026-09-03T17:39:03.388Z"),
+      windowTo: new Date("2026-09-04T17:39:03.388Z"),
+    });
+    expect(report.documents).toHaveLength(1);
+    expect(report.documents[0]?.activityKind).toBe("updated");
+    expect(report.updatedCount).toBe(1);
   });
 
   it("fails only when no knowledge store can be queried", async () => {

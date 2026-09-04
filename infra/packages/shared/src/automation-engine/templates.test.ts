@@ -246,6 +246,9 @@ describe("knowledge ingestion window and classification", () => {
       chunkTotal: 14,
       duplicateCount: 0,
       failedCount: 1,
+      updatedCount: 0,
+      sourceObservedCount: 0,
+      missedCount: 0,
     });
     expect(groupKnowledgeSourceCounts([
       { sourceKey: "onedrive" } as never,

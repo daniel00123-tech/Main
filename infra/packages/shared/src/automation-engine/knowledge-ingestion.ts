@@ -25,6 +25,8 @@ export type KnowledgeIngestionSourceCount = {
   count: number;
 };
 
+export type KnowledgeIngestionActivityKind = "new" | "updated" | "source_observed";
+
 export type KnowledgeIngestionDocument = {
   id: string;
   title: string;
@@ -44,6 +46,7 @@ export type KnowledgeIngestionDocument = {
   outcome: KnowledgeIngestionOutcome;
   failureReason: string | null;
   url: string | null;
+  activityKind?: KnowledgeIngestionActivityKind;
 };
 
 const SOURCE_LABELS: Record<KnowledgeIngestionSourceKey, string> = {
@@ -199,12 +202,34 @@ export function groupKnowledgeSourceCounts(
     }));
 }
 
+export function classifyActivityKind(input: {
+  createdAt?: string | null;
+  modifiedAt?: string | null;
+  indexedAt?: string | null;
+  windowStart: Date;
+  windowEnd: Date;
+  indexed?: boolean;
+  outcome?: KnowledgeIngestionOutcome;
+}): KnowledgeIngestionActivityKind {
+  if (input.outcome === "discovered" && input.indexed === false) return "source_observed";
+  if (timestampInWindow(input.createdAt, input.windowStart, input.windowEnd)) return "new";
+  if (
+    timestampInWindow(input.modifiedAt, input.windowStart, input.windowEnd) ||
+    timestampInWindow(input.indexedAt, input.windowStart, input.windowEnd)
+  ) {
+    return "updated";
+  }
+  return "new";
+}
+
 export function summariseKnowledgeIngestion(documents: KnowledgeIngestionDocument[]) {
   let indexedCount = 0;
   let chunkTotal = 0;
   let chunksKnown = false;
   let duplicateCount = 0;
   let failedCount = 0;
+  let updatedCount = 0;
+  let sourceObservedCount = 0;
   for (const doc of documents) {
     if (doc.indexed || doc.outcome === "indexed") indexedCount += 1;
     if (typeof doc.chunkCount === "number" && Number.isFinite(doc.chunkCount)) {
@@ -213,6 +238,10 @@ export function summariseKnowledgeIngestion(documents: KnowledgeIngestionDocumen
     }
     if (doc.outcome === "duplicate" || doc.outcome === "skipped") duplicateCount += 1;
     if (doc.outcome === "failed") failedCount += 1;
+    if (doc.activityKind === "updated") updatedCount += 1;
+    if (doc.activityKind === "source_observed" || (doc.discovered && !doc.indexed && doc.outcome === "discovered")) {
+      sourceObservedCount += 1;
+    }
   }
   return {
     discoveredCount: documents.length,
@@ -220,5 +249,8 @@ export function summariseKnowledgeIngestion(documents: KnowledgeIngestionDocumen
     chunkTotal: chunksKnown ? chunkTotal : null,
     duplicateCount,
     failedCount,
+    updatedCount,
+    sourceObservedCount,
+    missedCount: sourceObservedCount,
   };
 }

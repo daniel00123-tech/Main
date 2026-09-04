@@ -4,6 +4,7 @@
  */
 
 import {
+  classifyActivityKind,
   classifyKnowledgeIngestionOutcome,
   classifyKnowledgeIngestionSource,
   groupKnowledgeSourceCounts,
@@ -14,6 +15,7 @@ import {
   timestampInWindow,
   type KnowledgeIngestionDocument,
 } from "@infra/shared";
+import { listKnowledgeIngestionEvents } from "../knowledge-ingestion-events";
 import type { Env } from "../../env";
 import { getCompanyById, listMcpEnvironments, executeRegisteredMcpTool } from "../control-plane";
 import { ELVEX_QUERY_TOOL } from "../document-fetch";
@@ -32,6 +34,9 @@ export type KnowledgeIngestionReport = {
   chunkTotal: number | null;
   duplicateCount: number;
   failedCount: number;
+  updatedCount: number;
+  sourceObservedCount: number;
+  missedCount: number;
   sourcesQueried: string[];
   sourcesUnavailable: string[];
   scannedSourceTypes: string[];
@@ -120,7 +125,8 @@ function documentFromInfraRow(
 ): KnowledgeIngestionDocument | null {
   if (
     !timestampInWindow(row.created_at, windowFrom, windowTo) &&
-    !timestampInWindow(row.indexed_at, windowFrom, windowTo)
+    !timestampInWindow(row.indexed_at, windowFrom, windowTo) &&
+    !timestampInWindow(row.modified_at, windowFrom, windowTo)
   ) {
     return null;
   }
@@ -168,6 +174,15 @@ function documentFromInfraRow(
       outcome,
     }),
     url: isSafeHttpUrl(row.web_url) ? row.web_url : null,
+    activityKind: classifyActivityKind({
+      createdAt: row.created_at,
+      modifiedAt: row.modified_at,
+      indexedAt: row.indexed_at,
+      windowStart: windowFrom,
+      windowEnd: windowTo,
+      indexed,
+      outcome,
+    }),
   };
 }
 
@@ -178,7 +193,12 @@ function documentFromMcpIndexRow(
 ): KnowledgeIngestionDocument | null {
   const createdAt = asText(row.created_at) || asText(row.createdAt) || null;
   const indexedAt = asText(row.indexed_at) || asText(row.indexedAt) || null;
-  if (!timestampInWindow(createdAt, windowFrom, windowTo) && !timestampInWindow(indexedAt, windowFrom, windowTo)) {
+  const modifiedAt = asText(row.modified_at) || asText(row.modifiedAt) || asText(row.updated_at) || null;
+  if (
+    !timestampInWindow(createdAt, windowFrom, windowTo) &&
+    !timestampInWindow(indexedAt, windowFrom, windowTo) &&
+    !timestampInWindow(modifiedAt, windowFrom, windowTo)
+  ) {
     return null;
   }
   const sourceKey = classifyKnowledgeIngestionSource({
@@ -217,7 +237,7 @@ function documentFromMcpIndexRow(
     parentSubject: asText(row.parent_subject) || asText(row.email_subject) || null,
     sender: asText(row.sender) || null,
     discoveredAt: createdAt,
-    modifiedAt: asText(row.modified_at) || asText(row.modifiedAt) || null,
+    modifiedAt,
     discovered: true,
     extracted: extractedFlag,
     indexed,
@@ -230,6 +250,15 @@ function documentFromMcpIndexRow(
       outcome,
     }),
     url: isSafeHttpUrl(url) ? url : null,
+    activityKind: classifyActivityKind({
+      createdAt,
+      modifiedAt,
+      indexedAt,
+      windowStart: windowFrom,
+      windowEnd: windowTo,
+      indexed,
+      outcome,
+    }),
   };
 }
 
@@ -294,12 +323,9 @@ export async function queryKnowledgeIngestionActivity(
         length(ifnull(search_text,'')) AS extracted_chars
       FROM microsoft_index_items
       WHERE (
-        created_at >= '${sinceIso}' OR created_at >= '${sinceLite}'
-        OR indexed_at >= '${sinceIso}' OR indexed_at >= '${sinceLite}'
-      )
-      AND (
-        created_at <= '${untilIso}' OR created_at <= '${untilLite}'
-        OR indexed_at <= '${untilIso}' OR indexed_at <= '${untilLite}'
+        (created_at >= '${sinceLite}' AND created_at <= '${untilLite}')
+        OR (modified_at >= '${sinceIso}' AND modified_at <= '${untilIso}')
+        OR (updated_at >= '${sinceLite}' AND updated_at <= '${untilLite}')
       )
       LIMIT 200`;
     const fallbackSql = `SELECT item_id, filename, source_type, web_url, path, owner_upn, mime_type, status,
@@ -307,8 +333,8 @@ export async function queryKnowledgeIngestionActivity(
         CASE WHEN search_text IS NOT NULL AND length(trim(search_text)) > 0 THEN 1 ELSE 0 END AS extracted,
         length(ifnull(search_text,'')) AS extracted_chars
       FROM microsoft_index_items
-      WHERE (created_at >= '${sinceIso}' OR created_at >= '${sinceLite}')
-        AND (created_at <= '${untilIso}' OR created_at <= '${untilLite}')
+      WHERE (modified_at >= '${sinceIso}' AND modified_at <= '${untilIso}')
+         OR (created_at >= '${sinceLite}' AND created_at <= '${untilLite}')
       LIMIT 200`;
     const typesSql = `SELECT DISTINCT source_type FROM microsoft_index_items LIMIT 20`;
     let indexRows = await queryCompanyMcpSql(env, {
@@ -367,6 +393,65 @@ export async function queryKnowledgeIngestionActivity(
     sourcesUnavailable.push("company_mcp");
   }
 
+  try {
+    const events = await listKnowledgeIngestionEvents(env.DB, {
+      companyId: input.companyId,
+      windowFrom: input.windowFrom.toISOString(),
+      windowTo: input.windowTo.toISOString(),
+    });
+    sourcesQueried.push("knowledge_ingestion_events");
+    for (const event of events) {
+      const sourceKey = classifyKnowledgeIngestionSource({
+        sourceType: event.source_type,
+        itemKind: event.source_type === "outlook_attachments" ? "mail_attachment" : null,
+      });
+      if (!sourceKey) continue;
+      const indexed = event.event_type === "indexed" || event.event_type === "reindexed";
+      const outcome = classifyKnowledgeIngestionOutcome({
+        status: event.status,
+        indexingStatus: event.event_type,
+        extracted: indexed || event.event_type === "extracted",
+        indexed,
+      });
+      push({
+        id: event.id,
+        title: (event.filename ?? "").trim() || "Untitled document",
+        sourceKey,
+        sourceLabel: knowledgeIngestionSourceLabel(sourceKey),
+        provider: "Microsoft 365",
+        location: null,
+        mailbox: event.mailbox_address,
+        parentSubject: null,
+        sender: null,
+        discoveredAt: event.discovered_at,
+        modifiedAt: event.source_modified_at,
+        discovered: true,
+        extracted: outcome === "extracted" || indexed,
+        indexed,
+        chunkCount: event.chunk_count,
+        outcome,
+        failureReason: event.skip_reason ?? event.failure_code,
+        url: null,
+        activityKind:
+          event.event_type === "source_observed"
+            ? "source_observed"
+            : event.event_type === "reindexed"
+              ? "updated"
+              : classifyActivityKind({
+                  createdAt: event.discovered_at,
+                  modifiedAt: event.source_modified_at,
+                  indexedAt: event.indexed_at,
+                  windowStart: input.windowFrom,
+                  windowEnd: input.windowTo,
+                  indexed,
+                  outcome,
+                }),
+      });
+    }
+  } catch {
+    sourcesUnavailable.push("knowledge_ingestion_events");
+  }
+
   if (sourcesQueried.length === 0) {
     throw new Error("DOCUMENT_STORE_UNAVAILABLE");
   }
@@ -384,6 +469,9 @@ export async function queryKnowledgeIngestionActivity(
     chunkTotal: summary.chunkTotal,
     duplicateCount: summary.duplicateCount,
     failedCount: summary.failedCount,
+    updatedCount: summary.updatedCount,
+    sourceObservedCount: summary.sourceObservedCount,
+    missedCount: summary.missedCount,
     sourcesQueried,
     sourcesUnavailable,
     scannedSourceTypes: [...scannedSourceTypes],

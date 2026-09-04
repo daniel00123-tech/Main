@@ -33,6 +33,9 @@ export type KnowledgeIngestionReportTemplateData = {
   chunkTotal: number | null;
   duplicateCount: number;
   failedCount: number;
+  updatedCount?: number;
+  sourceObservedCount?: number;
+  missedCount?: number;
   sourceCounts: Array<{ label: string; count: number }>;
   documents: KnowledgeIngestionEmailLine[];
   failures: KnowledgeIngestionEmailLine[];
@@ -61,7 +64,7 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
     : `INFRA — ${data.companyDisplayName} Daily Knowledge Activity — ${datePart}`;
   const footer = PLATFORM_EMAIL_NO_REPLY_FOOTER;
   const range = `Reporting period: ${data.windowFromLabel} → ${data.windowToLabel}`;
-  const empty = data.discoveredCount === 0;
+  const empty = data.discoveredCount === 0 && (data.sourceObservedCount ?? 0) === 0 && (data.missedCount ?? 0) === 0;
   const sourceLines = data.sourceCounts.map((row) => `${row.label}: ${row.count}`);
   const documentLines = data.documents.flatMap((item, index) => [...formatKnowledgeLine(item, index + 1), ""]);
   const failureLines = data.failures.map(
@@ -81,6 +84,8 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
           "",
           `New documents discovered: ${data.discoveredCount}`,
           `Successfully indexed: ${data.indexedCount}`,
+          `Updated / re-indexed: ${data.updatedCount ?? 0}`,
+          `Source activity not indexed: ${data.sourceObservedCount ?? data.missedCount ?? 0}`,
           `New vector chunks: ${data.chunkTotal == null ? "not recorded" : String(data.chunkTotal)}`,
           `Duplicates/skipped: ${data.duplicateCount}`,
           `Failed ingestion: ${data.failedCount}`,
