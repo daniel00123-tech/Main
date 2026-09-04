@@ -61,7 +61,7 @@ const CORPUS =
 const CONTENT_MENTION =
   /\b(mention|mentions|mentioned|about|contain|contains|containing|say|says|talk(?:s|ing)? about|cover(?:s|ing)?|refer(?:s|ring)? to)\b/i;
 const CURRENT_LOCUS =
-  /\b(this (document|doc|file)|that (document|doc|file)|the current (document|doc|file)|in (this|that|it|the file|the document)|only this (file|document|one)|just this (file|document)|inside (this|that) (file|document)|this one)\b/i;
+  /\b(this (document|doc|file)|that (same )?(document|doc|file)|the current (document|doc|file)|in (this|that|it|the file|the document)|only this (file|document|one)|just this (file|document)|inside (this|that) (file|document)|this one|the same (document|file|one))\b/i;
 const SYSTEM_LOCUS =
   /\b(on the system|in the system|the system|indexed|company[- ]wide|in total|across (the )?(system|company|everything)|whole system|entire system|everywhere|the platform|system (document )?count|system total|all (of )?(the )?(files|documents|docs) (on|in) (the )?(system|company))\b/i;
 const COMPANY_LOCUS =
@@ -71,7 +71,7 @@ const DISCOURSE =
 const REPHRASE =
   /\b(explain(?: that| this| it| your last answer)? more simply|more simply|make (that|it|this|your last answer)( \w+)? (shorter|simpler|brief)|in fewer words|more detail on (that|your last|what you said)|say that again|explain again|put (that|it) another way)\b/i;
 const MORE_DETAIL =
-  /^(please )?(can you |could you )?(give me |tell me )?(more details?|more info(?:rmation)?|tell me more)[.?!]*$/i;
+  /^(please )?(can you |could you )?(give me |tell me )?(more details?|more info(?:rmation)?|tell me more)([.?!]*$| about (that|this|it|the same|the (last|previous|current))\b.*)/i;
 const MEMORY =
   /\b(what (were|are) we (just )?(talking about|doing)|what did i (just )?ask|what did you (just )?(tell|say)|remind me( what we (just )?asked)?|which source|source (url|link)|last document i asked|the amount again|who (was that|sent that)|when did (it|that) arrive|when was that (email|one|message)|who sent that one)\b/i;
 const CAPABILITY =
