@@ -100,4 +100,41 @@ describe("failure telemetry and supervisor clustering", () => {
     const stored = await persistEngineeringFailures(db, events);
     expect(stored.stored).toBeGreaterThan(0);
   });
+
+  it("records EXPECTED_TOOL_MISSING, FIRST_ANSWER_INCOMPLETE, and DUPLICATE_TOOL", () => {
+    const missing = classifyTurnFailures({
+      question: "What are our Xero sales this month?",
+      companyId: "co_el",
+      result: turn({
+        kind: "answer",
+        text: "I can look that up.",
+        lastAnswerTopic: null,
+        toolCalls: [],
+      }),
+    });
+    expect(missing.some((event) => event.category === "EXPECTED_TOOL_MISSING")).toBe(true);
+
+    const incomplete = classifyTurnFailures({
+      question: "sales this month",
+      result: turn({
+        kind: "answer",
+        text: "Can you give me a little more detail so I look in the right place?",
+        toolCalls: [{ name: "xero_sales_summary", ok: true, latencyMs: 8, data: { sales_total: 5094 } }],
+      }),
+    });
+    expect(incomplete.some((event) => event.category === "FIRST_ANSWER_INCOMPLETE")).toBe(true);
+
+    const dupes = classifyTurnFailures({
+      question: "sales",
+      result: turn({
+        kind: "answer",
+        text: "Sales are £5,094.",
+        toolCalls: [
+          { name: "xero_sales_summary", ok: true, latencyMs: 4, data: { sales_total: 5094 } },
+          { name: "xero_sales_summary", ok: true, latencyMs: 4, data: { sales_total: 5094 } },
+        ],
+      }),
+    });
+    expect(dupes.some((event) => event.category === "DUPLICATE_TOOL")).toBe(true);
+  });
 });

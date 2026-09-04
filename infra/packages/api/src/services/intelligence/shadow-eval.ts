@@ -1,7 +1,9 @@
 import { newId, nowIso } from "../../db/mappers.js";
+import { CURRENT_BUSINESS_DATA_PROTOCOL, INTELLIGENCE_TOOL_NAMES } from "./catalogue.js";
 import { resolveBrainPolicy } from "./brain-policy.js";
-import { sanitiseEvidenceForModel, stripSecretsFromText } from "./evidence.js";
+import { classifyEvidenceNeed, sanitiseEvidenceForModel, stripSecretsFromText } from "./evidence.js";
 import { inspectOpenAiKey, normaliseOpenAiToolName, redactOpenAiError, runOpenAiResponses } from "./openai-responses.js";
+import { classifyScope } from "./scope.js";
 import type {
   IntelligenceConversationState,
   IntelligenceEnv,
@@ -99,31 +101,44 @@ export async function evaluateOpenAiShadow(input: {
   const reusedEvidence = evidence !== "none";
   const correlationId = input.correlationId || input.live.correlationId || `openai-shadow-${Date.now().toString(36)}`;
   const permitted = input.state.permittedTools.length ? input.state.permittedTools : undefined;
+  const scoped = classifyScope(input.text, input.state);
+  const evidenceNeed = classifyEvidenceNeed(input.text, input.state);
+  const requireTool =
+    evidenceNeed === "NEEDS_FRESH_DATA" &&
+    (scoped.scope === "BUSINESS_SYSTEM" ||
+      scoped.scope === "COMPANY_KNOWLEDGE" ||
+      scoped.scope === "SYSTEM_META" ||
+      scoped.scope === "CONNECTOR_CAPABILITY");
   const result = await runOpenAiResponses(input.env, {
     system: stripSecretsFromText(
       [
-        "Shadow evaluation only. Do not address the customer.",
-        "Propose the INFRA tool you would call. Do not execute anything.",
-        "If authorised evidence already answers a draft, edit, or recall, do not propose Outlook or Xero.",
-        "If evidence is none and the user asks for inbox, Xero figures, or documents, propose the matching tool.",
-        "Reply with JSON: {\"action\":\"answer\"|\"call_tool\"|\"clarify\",\"name\":\"optional_tool\",\"text\":\"short\"}",
-      ].join(" "),
+        "Shadow evaluation only. Do not address the customer and do not execute tools yourself.",
+        CURRENT_BUSINESS_DATA_PROTOCOL,
+        "If a tool is required, emit a native function call for that INFRA tool. Do not write a prose or JSON answer instead of the function call.",
+        "Only reply with JSON {\"action\":\"answer\",\"text\":\"short\"} when no INFRA tool is required.",
+        "If you must name a tool in JSON, use {\"action\":\"call_tool\",\"name\":\"exact_tool_name\",\"arguments\":{}}.",
+      ].join("\n"),
     ),
     user: stripSecretsFromText(
       [
         `User: ${input.text}`,
+        `Scope: ${scoped.scope}. Evidence need: ${evidenceNeed}.`,
         `Authorised evidence:\n${evidence}`,
-        `Cloudflare already answered the customer. Propose the tool or answer you would have chosen.`,
+        requireTool
+          ? "This turn depends on current company data that is not in evidence. Call the matching INFRA function now."
+          : "If evidence already answers this turn, do not call a business tool.",
       ].join("\n\n"),
     ),
     permittedTools: permitted,
-    mode: reusedEvidence ? "synthesise" : "decide",
+    mode: reusedEvidence && !requireTool ? "synthesise" : "decide",
     correlationId,
     userText: input.text,
+    toolChoice: requireTool ? "required" : "auto",
   });
   const proposed = [
     ...(result.toolCalls ?? []).map((call) => normaliseOpenAiToolName(call.name)),
     ...toolNamesFromStructured(result.structured),
+    ...toolNamesFromText(result.text),
   ].filter(Boolean);
   return {
     provider: "openai",
@@ -218,7 +233,12 @@ function toolNamesFromStructured(structured: Record<string, unknown> | null | un
   if (!structured) return [];
   const name = normaliseOpenAiToolName(structured.name ?? structured.tool);
   if (structured.action === "call_tool" && name) return [name];
-  return name ? [name] : [];
+  return name && INTELLIGENCE_TOOL_NAMES.has(name) ? [name] : [];
+}
+
+function toolNamesFromText(text: string): string[] {
+  const blob = String(text ?? "");
+  return [...INTELLIGENCE_TOOL_NAMES].filter((name) => blob.includes(name));
 }
 
 export function publicShadowFields(record: ShadowEvalRecord | null | undefined): {

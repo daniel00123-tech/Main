@@ -7,7 +7,11 @@ import {
   scoreEmailFollowUpShadow,
   scoreFrozenBenchmark,
   scoreLiveOpenAiShadowSlice,
+  scoreMixedToolShadow,
+  scoreNoToolConversationShadow,
+  scoreXeroFollowUpShadow,
 } from "../services/intelligence/eval/el-frozen-benchmark.js";
+import { scoreExactToolChoiceShadow } from "../services/intelligence/eval/exact-tool-bench.js";
 import { resolveBrainPolicy } from "../services/intelligence/brain-policy.js";
 import { inspectOpenAiKey } from "../services/intelligence/openai-responses.js";
 import {
@@ -102,6 +106,41 @@ routes.post("/api/internal/openai-brain-shadow-bench", async (c) => {
   if (action === "email_sequence") {
     const sequence = await scoreEmailFollowUpShadow(c.env);
     return c.json({ ok: true, action, flags: flagState(c.env), sequence, userVisibleAnswers: "cloudflare" });
+  }
+  if (action === "xero_sequence") {
+    const sequence = await scoreXeroFollowUpShadow(c.env);
+    return c.json({ ok: true, action, flags: flagState(c.env), sequence, userVisibleAnswers: "cloudflare" });
+  }
+  if (action === "mixed_tool") {
+    const sequence = await scoreMixedToolShadow(c.env);
+    return c.json({ ok: true, action, flags: flagState(c.env), sequence, userVisibleAnswers: "cloudflare" });
+  }
+  if (action === "no_tool") {
+    const sequence = await scoreNoToolConversationShadow(c.env);
+    return c.json({ ok: true, action, flags: flagState(c.env), sequence, userVisibleAnswers: "cloudflare" });
+  }
+  if (action === "exact_tool") {
+    const scored = await scoreExactToolChoiceShadow(c.env);
+    return c.json({
+      ok: true,
+      action,
+      flags: flagState(c.env),
+      source: scored.source,
+      scorecard: scored.scorecard,
+      rows: scored.rows.map((row) => ({
+        id: row.id,
+        family: row.family,
+        required: row.required,
+        expectedFamilies: row.expectedFamilies,
+        actualFamilies: row.actualFamilies,
+        tools: row.tools,
+        familyOk: row.familyOk,
+        requiredOk: row.requiredOk,
+        inboxNoTool: row.inboxNoTool,
+        xeroNoTool: row.xeroNoTool,
+      })),
+      userVisibleAnswers: "cloudflare",
+    });
   }
   if (action === "cloudflare_mock") {
     const scored = await scoreFrozenBenchmark("cloudflare");

@@ -1,4 +1,4 @@
-export { INTELLIGENCE_TOOLS, INTELLIGENCE_TOOL_NAMES, GATEWAY_TOOL_ALIASES, SYSTEM_META_TOOLS, describeToolCatalogue, permittedToolsForConnectors } from "./catalogue.js";
+export { INTELLIGENCE_TOOLS, INTELLIGENCE_TOOL_NAMES, GATEWAY_TOOL_ALIASES, SYSTEM_META_TOOLS, CURRENT_BUSINESS_DATA_PROTOCOL, describeToolCatalogue, permittedToolsForConnectors, formatToolForModel, toolFamilyOf } from "./catalogue.js";
 export { buildAllowedToolCatalogue, authorizeToolCall, deniedToolResult } from "./tool-auth.js";
 export { executePublicWebSearch, looksLikePublicWebAsk, isPrivateBusinessWebQuery } from "./web-search.js";
 export { classifyTurnFailures, clusterKey } from "./failure-telemetry.js";
@@ -58,7 +58,14 @@ export {
   runOpenAiConnectivitySmoke,
   shouldRunOpenAiShadow,
 } from "./shadow-eval.js";
-export { scoreLiveOpenAiShadowSlice, EMAIL_FOLLOWUP_SEQUENCE } from "./eval/el-frozen-benchmark.js";
+export {
+  scoreLiveOpenAiShadowSlice,
+  EMAIL_FOLLOWUP_SEQUENCE,
+  XERO_FOLLOWUP_SEQUENCE,
+  frozenElCases,
+  compareFrozenBrains,
+  scoreFrozenBenchmark,
+} from "./eval/el-frozen-benchmark.js";
 export { OPENAI_MODEL_FAST, OPENAI_MODEL_DEFAULT, OPENAI_MODEL_REASONING, resolveOpenAiModel } from "./openai-models.js";
 export { buildConversationState, formatConversationState } from "./state.js";
 export { routeIntelligenceTurn } from "./router.js";
@@ -73,7 +80,7 @@ export { evaluationCases } from "./eval/cases.js";
 export { scopeEvaluationCases } from "./eval/scope-cases.js";
 export { runEvaluationSuite, policyCompleter, v1FragileCompleter } from "./eval/harness.js";
 export { runOfflineBenchmarks, probeWorkersAiModels, selectWinningModel } from "./eval/benchmark.js";
-export { frozenElCases, compareFrozenBrains, scoreFrozenBenchmark } from "./eval/el-frozen-benchmark.js";
+export { exactToolCases, scoreExactToolChoiceLocal, scoreExactToolRow } from "./eval/exact-tool-bench.js";
 export type {
   EngineeringFailureCategory,
   EngineeringFailureEvent,

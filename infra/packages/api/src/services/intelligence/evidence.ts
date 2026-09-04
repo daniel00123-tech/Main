@@ -88,7 +88,7 @@ function isFreshListingAsk(text: string): boolean {
 
 export function isFreshBusinessSystemAsk(text: string): boolean {
   return (
-    /\b(xero|sales|overdue|invoice|revenue|profit|p&l|pnl)\b/i.test(text) &&
+    /\b(xero|sales|overdue|invoice|revenue|profit|p&l|pnl|top customers?|biggest customers?)\b/i.test(text) &&
     !/\b(that|those|the figures|the sales|reply|shorter|friendlier)\b/i.test(text)
   );
 }
