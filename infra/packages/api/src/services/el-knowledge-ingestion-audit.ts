@@ -4,11 +4,14 @@
  */
 
 import {
+  ELVEX_FINANCE_MAILBOXES,
   ELVEX_INFO_MAILBOXES,
   automationRecipientEmailOf,
   capKnowledgeList,
+  classifyKnowledgePipelineHealth,
   formatCivilDateLong,
   isValidRecipientEmail,
+  knowledgeIngestionGapWarning,
   renderKnowledgeIngestionReportEmail,
   timestampInWindow,
   zonedCivilParts,
@@ -23,7 +26,9 @@ import { sendTransactionalEmail } from "./email/send-transactional";
 import { recordKnowledgeIngestionEvent } from "./knowledge-ingestion-events";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { isOutlookAttachmentRetrievable } from "./microsoft-outlook-graph";
-import { extractHitList, unwrapToolPayload } from "./mcp-knowledge-standard";
+import { extractHitList, toStandardSearchPayload, unwrapToolPayload } from "./mcp-knowledge-standard";
+import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
+import { seedPolicyMailboxes } from "./mailbox-registry";
 import { newId, nowIso } from "../db/mappers";
 import { portalOrigin } from "./public-urls";
 
@@ -33,7 +38,7 @@ export const EL_KNOWLEDGE_AUDIT_WINDOW = {
 } as const;
 
 export const EL_KNOWLEDGE_CORRECTED_SUBJECT =
-  "INFRA — EL Business Daily Knowledge Activity — Corrected Test";
+  "INFRA — EL Business Daily Knowledge Activity — Attachment ingest repair";
 
 const COMPANY_ID = "co_el";
 const AUTOMATION_ID = "aut_b00ab912-845b-49b4-9609-cbedeeea6ddf";
@@ -85,7 +90,16 @@ export async function runElKnowledgeIngestionAudit(
   const persist = input?.persistEvents !== false;
   const actor = input?.actor ?? "system:el-knowledge-ingestion-audit";
 
-  const outlook = await auditOutlookMailboxes(env, windowFrom, windowTo, persist, actor);
+  await seedPolicyMailboxes(env.DB, COMPANY_ID);
+  const ingest = await ingestApprovedOutlookAttachments(env, {
+    companyId: COMPANY_ID,
+    windowFrom,
+    windowTo,
+    actor,
+    recoverExisting: true,
+  });
+  const retrievalProof = await proveAttachmentKnowledgeRetrieval(env, ingest, actor);
+  const outlook = await auditOutlookMailboxes(env, windowFrom, windowTo, false, actor);
   const files = await auditDriveCatalogue(env, windowFrom, windowTo, persist, actor);
   const mcpIndex = await auditMcpIndex(env, windowFrom, windowTo, actor);
   const report = await queryKnowledgeIngestionActivity(env, {
@@ -161,22 +175,34 @@ export async function runElKnowledgeIngestionAudit(
     mcpIndex,
     currentWindow,
     pipeline: {
-      emailAttachmentAutoIngest: "NO",
+      emailAttachmentAutoIngest: "YES_APPROVED_MAILBOXES",
       sharepointAutoIngest: "PARTIAL",
       onedriveAutoIngest: "PARTIAL",
-      infraMicrosoftSourcesForEl: 0,
-      elMcpVectorize: "not_provisioned",
-      elMcpR2: "not_provisioned",
+      ingestCounts: ingest.counts,
+      namedPeople: ingest.namedPeople,
+      registry: ingest.registry.map((row) => ({
+        mailboxAddress: row.mailbox_address,
+        mailboxType: row.mailbox_type,
+        enabledForMailSearch: row.enabled_for_mail_search === 1,
+        enabledForAttachmentIngestion: row.enabled_for_attachment_ingestion === 1,
+        sensitivity: row.sensitivity,
+        status: row.status,
+        lastCheckpoint: row.last_checkpoint,
+        lastSuccessfulSync: row.last_successful_sync,
+        graphAccessible: row.graph_accessible,
+        lastError: row.last_error,
+      })),
       notes: [
-        "EL Outlook read uses company MCP. INFRA microsoft_connector_sources has no co_el rows, so the 6-hour INFRA ingest cron never runs for EL.",
-        "EL OneDrive catalogue last source-modified row is 2026-08-18. Main drive last_synced_at 2026-08-30 with no delta_link.",
-        "SharePoint drives have delta checkpoints but item_count 0 and no microsoft_index_items rows.",
-        "Approved attachment types: pdf/docx/xlsx/txt/csv. Inline images and signatures are excluded.",
-        "Company MCP does not expose outlook_list_attachments / outlook_get_attachment.",
+        "Approved EL knowledge mailboxes come from existing shared-mailbox policy (info@ and finance@), not personal user inboxes.",
+        "Michael/Sharon/Lauren exist as company users. Their personal mailboxes are registered as available and are not auto-ingested.",
+        "Attachment bytes use existing Microsoft credentials via Graph when the tenant is reachable; company MCP remains the knowledge write boundary.",
+        "Email bodies are not auto-vectorised on this path.",
       ],
     },
-    allowlistedMailboxes: [...ELVEX_INFO_MAILBOXES],
-    auditedMailboxes: [...MAILBOXES],
+    allowlistedMailboxes: [...ELVEX_INFO_MAILBOXES, ...ELVEX_FINANCE_MAILBOXES],
+    auditedMailboxes: ingest.mailboxes.map((row) => row.mailboxAddress),
+    ingest,
+    retrievalProof,
   };
 
   if (input?.sendCorrectedEmail) {
@@ -185,6 +211,7 @@ export async function runElKnowledgeIngestionAudit(
       windowFrom,
       windowTo,
       outlook,
+      ingest,
     });
   }
 
@@ -198,6 +225,7 @@ export async function sendElKnowledgeCorrectedTestEmail(
     windowFrom: Date;
     windowTo: Date;
     outlook: Record<string, unknown>;
+    ingest?: Awaited<ReturnType<typeof ingestApprovedOutlookAttachments>>;
   },
 ): Promise<Record<string, unknown>> {
   const existing = await env.DB.prepare(
@@ -222,7 +250,27 @@ export async function sendElKnowledgeCorrectedTestEmail(
   const failures = input.report.documents.filter((item) => item.outcome === "failed");
   const windowFromLabel = formatWindowLabel(input.windowFrom.toISOString());
   const windowToLabel = formatWindowLabel(input.windowTo.toISOString());
-  const outlookMessages = Number(input.outlook.messagesWithAttachments ?? 0);
+  const outlookMessages = Number(input.ingest?.counts.messagesWithAttachments ?? input.outlook.messagesWithAttachments ?? 0);
+  const legitimateSkips = input.report.documents.filter(
+    (item) => item.outcome === "skipped" || item.outcome === "duplicate",
+  ).length;
+  const pipelineHealth = classifyKnowledgePipelineHealth({
+    jobOk: true,
+    discoveredCount: input.report.discoveredCount,
+    indexedCount: input.report.indexedCount,
+    failedCount: input.report.failedCount,
+    skippedCount: input.report.duplicateCount,
+    legitimateSkipCount: legitimateSkips,
+  });
+  const gapWarning = knowledgeIngestionGapWarning({
+    discoveredCount: input.report.discoveredCount,
+    indexedCount: input.report.indexedCount,
+    failedCount: input.report.failedCount,
+    legitimateSkipCount: legitimateSkips,
+  });
+  const mailboxesScanned =
+    input.ingest?.mailboxes.map((row) => String(row.mailboxAddress ?? "")).filter(Boolean) ??
+    [...ELVEX_INFO_MAILBOXES, ...ELVEX_FINANCE_MAILBOXES];
   const email = renderKnowledgeIngestionReportEmail({
     companyDisplayName: company.name,
     reportDateLabel: "4 September 2026",
@@ -267,7 +315,15 @@ export async function sendElKnowledgeCorrectedTestEmail(
     omittedDocuments: listed.omitted,
     portalUrl: `${portalOrigin(env)}/portal/${company.slug}/automations`,
     subjectOverride: EL_KNOWLEDGE_CORRECTED_SUBJECT,
-    correctionPreamble: `This corrects the 4 September 2026 manual test that reported zero new documents. Indexed knowledge in this window remains 0. Source activity that was not ingested: ${outlookMessages} Outlook message(s) with attachments, 0 OneDrive files created/modified in the catalogue, 0 SharePoint catalogue rows.`,
+    correctionPreamble: `This corrects the 4 September 2026 manual test that reported zero new documents. Repair backfill scanned approved EL shared mailboxes only. Mailboxes scanned: ${mailboxesScanned.join(", ")}. Messages with attachments: ${outlookMessages}. Indexed this run: ${input.ingest?.counts.attachmentsIndexed ?? input.report.indexedCount}. OneDrive created/modified in catalogue: 0. SharePoint catalogue rows: 0. Vector chunks added: ${input.ingest?.counts.chunksAdded ?? input.report.chunkTotal ?? 0}.`,
+    mailboxesScanned,
+    messagesWithAttachments: outlookMessages,
+    attachmentsDiscovered: input.ingest?.counts.attachmentsDiscovered ?? input.report.discoveredCount,
+    attachmentsIndexed: input.ingest?.counts.attachmentsIndexed ?? input.report.indexedCount,
+    attachmentsSkipped: input.ingest?.counts.skipped ?? input.report.duplicateCount,
+    attachmentsFailed: input.ingest?.counts.failed ?? input.report.failedCount,
+    pipelineHealth,
+    gapWarning,
   });
 
   const delivery = await sendTransactionalEmail(env, env.DB, {
@@ -558,6 +614,50 @@ async function auditMcpIndex(env: Env, windowFrom: Date, windowTo: Date, actor: 
       lastSyncedAt: asText(row.last_synced_at),
       hasDelta: Number(row.has_delta ?? 0) === 1,
     })),
+  };
+}
+
+async function proveAttachmentKnowledgeRetrieval(
+  env: Env,
+  ingest: Awaited<ReturnType<typeof ingestApprovedOutlookAttachments>>,
+  actor: string,
+): Promise<Record<string, unknown>> {
+  const mcp = (await listMcpEnvironments(env.DB, COMPANY_ID)).find((item) => item.enabled);
+  if (!mcp) return { ok: false, reason: "no_enabled_mcp" };
+  const queries = [
+    "Anthropic receipt 2275-0489-5290",
+    "Quote request 19 Lewis Street Pentre",
+  ];
+  const proofs = [];
+  for (const query of queries) {
+    const search = await executeRegisteredMcpTool(env, {
+      mcpId: mcp.id,
+      toolName: "search_company_knowledge",
+      arguments: { query },
+      actorUserId: "system",
+      actorEmail: actor,
+      sourceClient: "el-outlook-attachment-ingest",
+      skipUsageRecording: true,
+    });
+    const hits = toStandardSearchPayload("data" in search ? search.data?.result : search).results;
+    proofs.push({
+      query,
+      hitCount: hits.length,
+      top: hits.slice(0, 3).map((hit) => ({
+        id: hit.id ?? null,
+        title: hit.title,
+        snippetChars: String(hit.snippet ?? "").length,
+        hasSnippet: Boolean(hit.snippet && String(hit.snippet).trim()),
+      })),
+      retrieved: hits.some((hit) => Boolean(hit.snippet && String(hit.snippet).trim())),
+    });
+  }
+  return {
+    ok: true,
+    indexedCount: ingest.counts.attachmentsIndexed,
+    chunkCount: ingest.counts.chunksAdded,
+    proofs,
+    vectorRetrieval: proofs.some((row) => row.retrieved),
   };
 }
 

@@ -43,6 +43,14 @@ export type KnowledgeIngestionReportTemplateData = {
   portalUrl: string;
   subjectOverride?: string;
   correctionPreamble?: string;
+  mailboxesScanned?: string[];
+  messagesWithAttachments?: number;
+  attachmentsDiscovered?: number;
+  attachmentsIndexed?: number;
+  attachmentsSkipped?: number;
+  attachmentsFailed?: number;
+  pipelineHealth?: "healthy" | "degraded" | "failed";
+  gapWarning?: string | null;
 };
 
 function formatKnowledgeLine(item: KnowledgeIngestionEmailLine, index: number): string[] {
@@ -74,6 +82,8 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
   const failureLines = data.failures.map(
     (item) => `- ${item.title}${item.failureReason ? ` — ${item.failureReason}` : ""}`,
   );
+  const health = data.pipelineHealth ?? "healthy";
+  const mailboxLines = (data.mailboxesScanned ?? []).map((address) => `   - ${address}`);
 
   const text = [
     "INFRA",
@@ -95,11 +105,23 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
           `Duplicates/skipped: ${data.duplicateCount}`,
           `Failed ingestion: ${data.failedCount}`,
           "",
+          "MAILBOX SCAN",
+          "",
+          `Mailboxes scanned: ${(data.mailboxesScanned ?? []).length}`,
+          ...mailboxLines,
+          `Email messages with attachments: ${data.messagesWithAttachments ?? 0}`,
+          `Attachments discovered: ${data.attachmentsDiscovered ?? data.discoveredCount}`,
+          `Attachments indexed: ${data.attachmentsIndexed ?? data.indexedCount}`,
+          `Attachments skipped: ${data.attachmentsSkipped ?? data.duplicateCount}`,
+          `Attachments failed: ${data.attachmentsFailed ?? data.failedCount}`,
+          "",
           ...(sourceLines.length ? ["BY SOURCE", "", ...sourceLines, ""] : []),
           ...(documentLines.length ? ["NEW KNOWLEDGE", "", ...documentLines] : []),
           ...(failureLines.length ? ["FAILED / NEEDS ATTENTION", "", ...failureLines, ""] : []),
         ].join("\n"),
     "",
+    data.gapWarning ? data.gapWarning : "",
+    `Job run: completed. Pipeline health: ${health}.`,
     "This run completed successfully.",
     "",
     `View Infra: ${data.portalUrl}`,
@@ -124,7 +146,13 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Duplicates/skipped</p>
     <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.duplicateCount}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Failed ingestion</p>
-    <p style="margin:0 0 16px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.failedCount}</p>`;
+    <p style="margin:0 0 16px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.failedCount}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Mailboxes scanned</p>
+    <p style="margin:0 0 12px;font-size:14px;color:#CBD5E1;">${escapeHtml((data.mailboxesScanned ?? []).join(", ") || "none")}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Email messages with attachments</p>
+    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.messagesWithAttachments ?? 0}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Attachments discovered / indexed / skipped / failed</p>
+    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#F5F9FF;">${data.attachmentsDiscovered ?? data.discoveredCount} / ${data.attachmentsIndexed ?? data.indexedCount} / ${data.attachmentsSkipped ?? data.duplicateCount} / ${data.attachmentsFailed ?? data.failedCount}</p>`;
 
   const sourceHtml = data.sourceCounts
     .map(
@@ -182,7 +210,13 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
               : ""
           }
           ${failureHtml ? `<tr><td style="padding:0 24px 8px;font-weight:600;color:#F5F9FF;">Failed / needs attention</td></tr><tr><td style="padding:0 24px;">${failureHtml}</td></tr>` : ""}
-          <tr><td style="padding:8px 24px 16px;color:#94A3B8;font-size:13px;">This run completed successfully.</td></tr>
+          ${
+            data.gapWarning
+              ? `<tr><td style="padding:0 24px 12px;color:#FCA5A5;font-weight:600;">${escapeHtml(data.gapWarning)}</td></tr>`
+              : ""
+          }
+          <tr><td style="padding:8px 24px 8px;color:#CBD5E1;font-size:13px;">Job run: completed. Pipeline health: ${escapeHtml(health)}.</td></tr>
+          <tr><td style="padding:0 24px 16px;color:#94A3B8;font-size:13px;">This run completed successfully.</td></tr>
           <tr><td style="padding:0 24px 8px;"><a href="${escapeHtml(data.portalUrl)}" style="display:inline-block;background:#2F80FF;color:#FFFFFF;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">View Infra</a></td></tr>
           <tr><td style="padding:20px 24px 24px;color:#94A3B8;font-size:12px;">${escapeHtml(footer)}</td></tr>
         </table>

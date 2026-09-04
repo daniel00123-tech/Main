@@ -11,8 +11,10 @@ import {
 import {
   classifyKnowledgeIngestionOutcome,
   classifyKnowledgeIngestionSource,
+  classifyKnowledgePipelineHealth,
   groupKnowledgeSourceCounts,
   isSafeHttpUrl,
+  knowledgeIngestionGapWarning,
   resolveKnowledgeIngestionWindow,
   safeIngestionFailureReason,
   summariseKnowledgeIngestion,
@@ -371,5 +373,40 @@ describe("knowledge ingestion window and classification", () => {
     expect(corrected.text).toContain("Source activity not indexed: 2");
     expect(corrected.text).toContain("This corrects the 4 September 2026 manual test");
     expect(corrected.html).toContain("Source activity not indexed");
+  });
+
+  it("marks discovered>0 indexed=0 as a degraded attachment gap unless every item was a legitimate skip", () => {
+    expect(
+      classifyKnowledgePipelineHealth({
+        jobOk: true,
+        discoveredCount: 2,
+        indexedCount: 0,
+        failedCount: 2,
+      }),
+    ).toBe("degraded");
+    expect(
+      knowledgeIngestionGapWarning({
+        discoveredCount: 2,
+        indexedCount: 0,
+        failedCount: 2,
+      }),
+    ).toBe("WARNING — ATTACHMENT INGESTION GAP");
+    expect(
+      classifyKnowledgePipelineHealth({
+        jobOk: true,
+        discoveredCount: 2,
+        indexedCount: 0,
+        failedCount: 0,
+        legitimateSkipCount: 2,
+      }),
+    ).toBe("healthy");
+    expect(
+      classifyKnowledgePipelineHealth({
+        jobOk: false,
+        discoveredCount: 0,
+        indexedCount: 0,
+        failedCount: 0,
+      }),
+    ).toBe("failed");
   });
 });

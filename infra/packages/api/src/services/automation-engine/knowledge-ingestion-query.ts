@@ -280,13 +280,24 @@ export async function queryKnowledgeIngestionActivity(
   const sourcesQueried: string[] = [];
   const scannedSourceTypes = new Set<string>();
   const documents: KnowledgeIngestionDocument[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
 
+  const rank = (doc: KnowledgeIngestionDocument) => {
+    if (doc.indexed || doc.outcome === "indexed") return 4;
+    if (doc.outcome === "extracted") return 3;
+    if (doc.outcome === "failed") return 2;
+    if (doc.outcome === "skipped" || doc.outcome === "duplicate") return 1;
+    return 0;
+  };
   const push = (doc: KnowledgeIngestionDocument | null) => {
     if (!doc) return;
-    const key = `${doc.sourceKey}:${doc.id}:${doc.title}`;
-    if (seen.has(key)) return;
-    seen.add(key);
+    const key = `${doc.sourceKey}:${doc.parentSubject ?? ""}:${doc.mailbox ?? ""}:${doc.title}`;
+    const existingIndex = seen.get(key);
+    if (existingIndex != null) {
+      if (rank(doc) > rank(documents[existingIndex]!)) documents[existingIndex] = doc;
+      return;
+    }
+    seen.set(key, documents.length);
     documents.push(doc);
   };
 

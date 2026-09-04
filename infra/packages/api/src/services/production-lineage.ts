@@ -23,6 +23,7 @@ export const PRODUCTION_SUPERSTACK_CAPABILITIES = [
   "tool_registry",
   "failure_telemetry",
   "daily_improvement_loop",
+  "outlook_attachment_ingest",
 ] as const;
 
 export type ProductionLineage = {

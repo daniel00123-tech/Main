@@ -20,6 +20,7 @@ import { classifyTurnFailures } from "./intelligence/failure-telemetry";
 import { inspectIntelligenceProvider } from "./intelligence/provider";
 import { resolveRequestPricingPolicy } from "./customer-request-pricing";
 import { DAILY_IMPROVEMENT_CONTRACT } from "./daily-improvement/constants";
+import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -155,6 +156,9 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (DAILY_IMPROVEMENT_CONTRACT.elCustomerRequestCents !== 3) {
     throw new Error("daily improvement must not infer a new EL price");
+  }
+  if (typeof ingestApprovedOutlookAttachments !== "function") {
+    throw new Error("outlook attachment ingest missing");
   }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };

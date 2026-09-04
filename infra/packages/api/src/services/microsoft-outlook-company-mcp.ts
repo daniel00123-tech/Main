@@ -14,6 +14,13 @@ import { executeRegisteredMcpTool, listMcpEnvironments } from "./control-plane";
 import { listMcpTools } from "./mcp-client";
 import { unwrapToolPayload } from "./mcp-knowledge-standard";
 import { newId, nowIso } from "../db/mappers";
+import { listApprovedAttachmentMailboxes, seedPolicyMailboxes } from "./mailbox-registry";
+import {
+  getMessageAttachmentContent,
+  isOutlookAttachmentRetrievable,
+  listMessageAttachments,
+} from "./microsoft-outlook-graph";
+import { resolveOutlookGraphAccess } from "./outlook-graph-access";
 
 const ELVEX_EMAIL_READ_TOOLS = ["search_elvex_email", "get_elvex_email"] as const;
 
@@ -328,6 +335,14 @@ export async function executeCompanyMcpOutlookRead(
   if (!mailbox.ok) return { ok: false, status: 404, ...mailbox };
 
   if (input.toolName === "outlook_list_attachments" || input.toolName === "outlook_get_attachment") {
+    const graphFallback = await executeCompanyGraphAttachmentRead(env, {
+      companyId: input.companyId,
+      toolName: input.toolName,
+      mailboxAddress: mailbox.mailboxAddress,
+      arguments: input.arguments,
+      actor: input.actor,
+    });
+    if (graphFallback) return graphFallback;
     return {
       ok: false,
       status: 501,
@@ -490,4 +505,94 @@ export async function executeCompanyMcpOutlookRead(
       toolName: forwardName,
     },
   };
+}
+
+async function executeCompanyGraphAttachmentRead(
+  env: Env,
+  input: {
+    companyId: string;
+    toolName: "outlook_list_attachments" | "outlook_get_attachment";
+    mailboxAddress: string;
+    arguments: Record<string, unknown>;
+    actor: string;
+  },
+): Promise<{ ok: true; result: unknown } | { ok: false; status: number; code: string; message: string } | null> {
+  await seedPolicyMailboxes(env.DB, input.companyId);
+  const approved = await listApprovedAttachmentMailboxes(env.DB, input.companyId);
+  const allowed = approved.some(
+    (row) => row.mailbox_address.toLowerCase() === input.mailboxAddress.toLowerCase(),
+  );
+  if (!allowed) {
+    return {
+      ok: false,
+      status: 403,
+      code: "OUTLOOK_MAILBOX_NOT_APPROVED_FOR_INGEST",
+      message: "Mailbox is not approved for attachment ingestion",
+    };
+  }
+
+  const access = await resolveOutlookGraphAccess(env, {
+    companyId: input.companyId,
+    mailboxAddress: input.mailboxAddress,
+    actor: input.actor,
+  });
+  if (!access.ok) return null;
+  const config = { accessToken: access.accessToken, tenantId: access.tenantId };
+  const messageId = asNonEmptyString(input.arguments.messageId) || asNonEmptyString(input.arguments.id);
+  if (!messageId) {
+    return { ok: false, status: 400, code: "OUTLOOK_MESSAGE_ID_REQUIRED", message: "messageId is required" };
+  }
+
+  try {
+    if (input.toolName === "outlook_list_attachments") {
+      const attachments = await listMessageAttachments(config, input.mailboxAddress, messageId);
+      return {
+        ok: true,
+        result: {
+          mailboxAddress: input.mailboxAddress,
+          messageId,
+          via: "graph_fallback",
+          attachments: attachments.map((attachment) => ({
+            id: attachment.id,
+            name: attachment.name,
+            contentType: attachment.contentType,
+            size: attachment.size,
+            isInline: attachment.isInline ?? false,
+            retrievable: isOutlookAttachmentRetrievable(attachment.contentType, attachment.name),
+          })),
+        },
+      };
+    }
+    const attachmentId = asNonEmptyString(input.arguments.attachmentId);
+    if (!attachmentId) {
+      return {
+        ok: false,
+        status: 400,
+        code: "OUTLOOK_ATTACHMENT_IDS_REQUIRED",
+        message: "messageId and attachmentId are required",
+      };
+    }
+    const attachment = await getMessageAttachmentContent(
+      config,
+      input.mailboxAddress,
+      messageId,
+      attachmentId,
+    );
+    return {
+      ok: true,
+      result: {
+        mailboxAddress: input.mailboxAddress,
+        messageId,
+        attachmentId,
+        name: attachment.name,
+        contentType: attachment.contentType,
+        size: attachment.size,
+        contentBytesBase64: attachment.contentBytes,
+        via: "graph_fallback",
+        promoteToKnowledgeSupported: true,
+      },
+    };
+  } catch {
+    return null;
+  }
 }

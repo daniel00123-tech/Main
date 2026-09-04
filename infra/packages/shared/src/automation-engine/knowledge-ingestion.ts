@@ -254,3 +254,35 @@ export function summariseKnowledgeIngestion(documents: KnowledgeIngestionDocumen
     missedCount: sourceObservedCount,
   };
 }
+
+export type KnowledgePipelineHealth = "healthy" | "degraded" | "failed";
+
+export function classifyKnowledgePipelineHealth(input: {
+  jobOk: boolean;
+  discoveredCount: number;
+  indexedCount: number;
+  failedCount: number;
+  skippedCount?: number;
+  legitimateSkipCount?: number;
+}): KnowledgePipelineHealth {
+  if (!input.jobOk) return "failed";
+  const unexplained =
+    input.discoveredCount > 0 &&
+    input.indexedCount === 0 &&
+    (input.legitimateSkipCount ?? 0) < input.discoveredCount;
+  if (input.failedCount > 0 || unexplained) return "degraded";
+  return "healthy";
+}
+
+export function knowledgeIngestionGapWarning(input: {
+  discoveredCount: number;
+  indexedCount: number;
+  failedCount: number;
+  legitimateSkipCount?: number;
+}): string | null {
+  if (input.discoveredCount <= 0 || input.indexedCount > 0) return null;
+  if ((input.legitimateSkipCount ?? 0) >= input.discoveredCount && input.failedCount === 0) {
+    return null;
+  }
+  return "WARNING — ATTACHMENT INGESTION GAP";
+}

@@ -1341,6 +1341,34 @@ connectors.post("/api/internal/el-knowledge-onedrive-diagnostic", async (c) => {
   }
 });
 
+connectors.post("/api/internal/el-outlook-attachment-ingest", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { ingestApprovedOutlookAttachments } = await import("../services/outlook-attachment-ingest");
+    const companyId = typeof body.companyId === "string" ? body.companyId : "co_el";
+    if (companyId !== "co_el") {
+      return c.json({ error: "EL attachment ingest is scoped to co_el" }, 403);
+    }
+    return c.json(
+      await ingestApprovedOutlookAttachments(c.env, {
+        companyId,
+        windowFrom: new Date(typeof body.windowFrom === "string" ? body.windowFrom : "2026-09-03T17:39:03.388Z"),
+        windowTo: new Date(typeof body.windowTo === "string" ? body.windowTo : "2026-09-04T17:39:03.388Z"),
+        actor: "system:el-outlook-attachment-ingest",
+        recoverExisting: body.recoverExisting !== false,
+      }),
+    );
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "EL Outlook attachment ingest failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/el-knowledge-ingestion-audit", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
