@@ -28,6 +28,7 @@ export * from "./email/types";
 export * from "./email/identity";
 export * from "./email/templates";
 export * from "./email/knowledge-ingestion-email";
+export * from "./email/mailbox-attachment-backfill-email";
 export * from "./action-engine";
 export * from "./automation-engine";
 export * from "./permissions/role-presets";

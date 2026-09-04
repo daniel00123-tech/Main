@@ -22,8 +22,31 @@ import { portalOrigin } from "../../public-urls";
 import { recordUsageEvent } from "../../usage";
 import { queryKnowledgeIngestionActivity } from "../knowledge-ingestion-query";
 import { getAutomationRun, listAutomationRuns } from "../store";
+import { listApprovedAttachmentMailboxes, listExcludedAttachmentMailboxes } from "../../mailbox-registry";
 import { AutomationActionError } from "./errors";
 import type { AutomationActionResult, AutomationExecutionContext } from "./types";
+
+async function mailboxPolicySnapshot(
+  db: D1Database | undefined,
+  companyId: string,
+): Promise<{ eligible: number; excluded: number; excludedNames: string[] }> {
+  if (!db) return { eligible: 0, excluded: 0, excludedNames: [] };
+  try {
+    const [eligible, excluded] = await Promise.all([
+      listApprovedAttachmentMailboxes(db, companyId),
+      listExcludedAttachmentMailboxes(db, companyId),
+    ]);
+    return {
+      eligible: eligible.length,
+      excluded: excluded.length,
+      excludedNames: excluded
+        .map((row) => row.display_name || row.mailbox_address)
+        .filter((value): value is string => Boolean(value)),
+    };
+  } catch {
+    return { eligible: 0, excluded: 0, excludedNames: [] };
+  }
+}
 
 const STORE_FAILURE_MESSAGE = "We couldn't retrieve knowledge ingestion activity.";
 const EMAIL_FAILURE_MESSAGE = "We couldn't send the knowledge activity email.";
@@ -146,6 +169,7 @@ export async function executeKnowledgeIngestionDailyEmail(
   const mailboxesScanned = [
     ...new Set(report.documents.map((item) => item.mailbox).filter((item): item is string => Boolean(item))),
   ];
+  const mailboxPolicy = await mailboxPolicySnapshot(env.DB, ctx.companyId);
   const portalUrl = `${portalOrigin(env)}/portal/${company.slug}/automations`;
   const email = renderKnowledgeIngestionReportEmail({
     companyDisplayName: company.name,
@@ -191,7 +215,11 @@ export async function executeKnowledgeIngestionDailyEmail(
     })),
     omittedDocuments: listed.omitted,
     portalUrl,
+    mailboxesEligible: mailboxPolicy.eligible,
+    mailboxesExcluded: mailboxPolicy.excluded,
+    mailboxesExcludedNames: mailboxPolicy.excludedNames,
     mailboxesScanned,
+    messagesScanned: 0,
     messagesWithAttachments: report.documents.filter((item) => item.sourceKey === "outlook_attachments").length,
     attachmentsDiscovered: outlookDocs.length,
     attachmentsStored: outlookDocs.filter((item) => item.stored).length,

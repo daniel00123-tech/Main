@@ -44,7 +44,11 @@ export type KnowledgeIngestionReportTemplateData = {
   portalUrl: string;
   subjectOverride?: string;
   correctionPreamble?: string;
+  mailboxesEligible?: number;
+  mailboxesExcluded?: number;
+  mailboxesExcludedNames?: string[];
   mailboxesScanned?: string[];
+  messagesScanned?: number;
   messagesWithAttachments?: number;
   attachmentsDiscovered?: number;
   attachmentsStored?: number;
@@ -119,8 +123,12 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
           "",
           "MAILBOX SCAN",
           "",
-          `Mailboxes scanned: ${(data.mailboxesScanned ?? []).length}`,
+          `MAILBOXES ELIGIBLE: ${data.mailboxesEligible ?? (data.mailboxesScanned ?? []).length}`,
+          `MAILBOXES SCANNED: ${(data.mailboxesScanned ?? []).length}`,
+          `MAILBOXES EXCLUDED: ${data.mailboxesExcluded ?? 0}`,
           ...mailboxLines,
+          ...(data.mailboxesExcludedNames ?? []).map((name) => `   - ${name}: excluded by policy`),
+          `MESSAGES SCANNED: ${data.messagesScanned ?? 0}`,
           `Email messages with attachments: ${data.messagesWithAttachments ?? 0}`,
           `Attachments discovered: ${data.attachmentsDiscovered ?? data.discoveredCount}`,
           `Attachments stored: ${data.attachmentsStored ?? 0}`,
@@ -165,8 +173,18 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
     <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.duplicateCount}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Failed ingestion</p>
     <p style="margin:0 0 16px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.failedCount}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Mailboxes scanned</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">MAILBOXES ELIGIBLE / SCANNED / EXCLUDED</p>
+    <p style="margin:0 0 12px;font-size:16px;font-weight:600;color:#F5F9FF;">${data.mailboxesEligible ?? (data.mailboxesScanned ?? []).length} / ${(data.mailboxesScanned ?? []).length} / ${data.mailboxesExcluded ?? 0}</p>
     <p style="margin:0 0 12px;font-size:14px;color:#CBD5E1;">${escapeHtml((data.mailboxesScanned ?? []).join(", ") || "none")}</p>
+    ${
+      (data.mailboxesExcludedNames ?? []).length
+        ? `<p style="margin:0 0 12px;font-size:13px;color:#94A3B8;">${escapeHtml(
+            (data.mailboxesExcludedNames ?? []).map((name) => `${name}: excluded by policy`).join("; "),
+          )}</p>`
+        : ""
+    }
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">MESSAGES SCANNED</p>
+    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.messagesScanned ?? 0}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Email messages with attachments</p>
     <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.messagesWithAttachments ?? 0}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Attachments discovered / stored / indexed / deduped / skipped / failed</p>

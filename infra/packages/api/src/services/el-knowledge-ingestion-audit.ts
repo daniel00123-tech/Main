@@ -194,9 +194,9 @@ export async function runElKnowledgeIngestionAudit(
         lastError: row.last_error,
       })),
       notes: [
-        "Approved EL knowledge mailboxes: info@, finance@, plus director-approved work inboxes michael@ and sharon@.",
-        "Michael/Sharon attachment ingest is on. Portal chat search of those personal inboxes stays off (RBAC unchanged).",
-        "Lauren/Ella/William personal inboxes remain registered but not auto-ingested.",
+        "EL mailbox attachment ingestion default is INCLUDE. William and Ella are explicit exclusions.",
+        "Lauren and future EL users inherit INCLUDE automatically. Shared mailboxes stay included.",
+        "Portal chat search of personal work inboxes stays off (RBAC unchanged).",
         "Email bodies are not auto-vectorised. OneDrive catalogue is still the Sharon snapshot unless owner metadata says otherwise.",
       ],
     },
