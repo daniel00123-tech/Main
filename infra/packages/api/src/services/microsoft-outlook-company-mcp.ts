@@ -254,6 +254,14 @@ function pickCompanyOutlookTool(
     );
     return match ?? null;
   }
+  if (desired === "outlook_list_attachments" || desired === "outlook_get_attachment") {
+    const exact = available.find((name) => name === desired);
+    if (exact) return exact;
+    const match = available.find(
+      (name) => /attach/i.test(name) && !isWriteLikeTool(name) && (desired.includes("list") ? /list|search/i.test(name) : /get|read|fetch/i.test(name)),
+    );
+    return match ?? null;
+  }
   return null;
 }
 
@@ -342,6 +350,16 @@ export async function executeCompanyMcpOutlookRead(
       arguments: input.arguments,
       actor: input.actor,
     });
+    if (graphFallback?.ok) return graphFallback;
+    const mcpExpand = await tryCompanyMcpMessageAttachments(env, {
+      companyId: input.companyId,
+      toolName: input.toolName,
+      mailboxAddress: mailbox.mailboxAddress,
+      arguments: input.arguments,
+      actor: input.actor,
+      actorUserId: input.actorUserId,
+    });
+    if (mcpExpand) return mcpExpand;
     if (graphFallback) return graphFallback;
     return {
       ok: false,
@@ -536,7 +554,9 @@ async function executeCompanyGraphAttachmentRead(
     mailboxAddress: input.mailboxAddress,
     actor: input.actor,
   });
-  if (!access.ok) return null;
+  if (!access.ok) {
+    return { ok: false, status: 502, code: access.code, message: access.message };
+  }
   const config = { accessToken: access.accessToken, tenantId: access.tenantId };
   const messageId = asNonEmptyString(input.arguments.messageId) || asNonEmptyString(input.arguments.id);
   if (!messageId) {
@@ -592,7 +612,105 @@ async function executeCompanyGraphAttachmentRead(
         promoteToKnowledgeSupported: true,
       },
     };
-  } catch {
-    return null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Graph attachment read failed";
+    return {
+      ok: false,
+      status: 502,
+      code: "OUTLOOK_GRAPH_ATTACHMENT_READ_FAILED",
+      message,
+    };
   }
+}
+
+async function tryCompanyMcpMessageAttachments(
+  env: Env,
+  input: {
+    companyId: string;
+    toolName: "outlook_list_attachments" | "outlook_get_attachment";
+    mailboxAddress: string;
+    arguments: Record<string, unknown>;
+    actor: string;
+    actorUserId?: string | null;
+  },
+): Promise<{ ok: true; result: unknown } | { ok: false; status: number; code: string; message: string } | null> {
+  const mcp = (await listMcpEnvironments(env.DB, input.companyId)).find((item) => item.enabled);
+  if (!mcp) return null;
+  let listedNames: string[] = [];
+  try {
+    const listed = await listMcpTools(env, mcp.endpointUrl, mcp.authSecretRef, mcp.serviceBindingRef);
+    listedNames = listed.tools.map((tool) => tool.name);
+  } catch {
+    listedNames = [...ELVEX_EMAIL_READ_TOOLS];
+  }
+  const attachmentTool = pickCompanyOutlookTool(listedNames, input.toolName);
+  const getName =
+    attachmentTool ??
+    pickCompanyOutlookTool(listedNames, "outlook_get_message") ??
+    "get_elvex_email";
+  if (isWriteLikeTool(getName)) return null;
+  await ensureEmailToolsAllowlisted(env.DB, input.companyId, mcp.id, [getName, ...ELVEX_EMAIL_READ_TOOLS]);
+  const messageId = asNonEmptyString(input.arguments.messageId) || asNonEmptyString(input.arguments.id);
+  if (!messageId) return null;
+  const forwarded: Record<string, unknown> = {
+    mailbox: input.mailboxAddress,
+    ...mapOutlookGetArgs({ messageId }),
+    includeAttachments: true,
+    expand: "attachments",
+    attachments: true,
+  };
+  if (input.toolName === "outlook_get_attachment") {
+    const attachmentId = asNonEmptyString(input.arguments.attachmentId);
+    if (attachmentId) forwarded.attachmentId = attachmentId;
+  }
+  const execution = await executeRegisteredMcpTool(env, {
+    mcpId: mcp.id,
+    toolName: getName,
+    arguments: forwarded,
+    actorUserId: input.actorUserId ?? "system",
+    actorEmail: input.actor,
+    sourceClient: "infra-outlook-attachments",
+    skipUsageRecording: true,
+  });
+  if (execution.status !== 200) return null;
+  const upstream = "data" in execution ? execution.data?.result : undefined;
+  const composed = composeOutlookGetResult(upstream, input.mailboxAddress);
+  const attachments = Array.isArray(composed.attachments) ? composed.attachments : [];
+  if (input.toolName === "outlook_list_attachments") {
+    if (!attachments.length) return null;
+    return {
+      ok: true,
+      result: {
+        mailboxAddress: input.mailboxAddress,
+        messageId,
+        via: "company_mcp_get_expand",
+        toolName: getName,
+        attachments,
+      },
+    };
+  }
+  const wanted = asNonEmptyString(input.arguments.attachmentId);
+  const match = attachments
+    .map((row) => asRecord(row))
+    .find((row) => row && (asNonEmptyString(row.id) === wanted || asNonEmptyString(row.attachmentId) === wanted));
+  const encoded =
+    (match ? asNonEmptyString(match.contentBytesBase64) || asNonEmptyString(match.contentBytes) : "") ||
+    asNonEmptyString(asRecord(upstream)?.contentBytesBase64) ||
+    asNonEmptyString(asRecord(upstream)?.contentBytes);
+  if (!encoded) return null;
+  return {
+    ok: true,
+    result: {
+      mailboxAddress: input.mailboxAddress,
+      messageId,
+      attachmentId: wanted,
+      name: match ? asNonEmptyString(match.name) || asNonEmptyString(match.filename) : "attachment",
+      contentType: match ? asNonEmptyString(match.contentType) || asNonEmptyString(match.mimeType) : null,
+      size: match ? Number(match.size ?? 0) : 0,
+      contentBytesBase64: encoded,
+      via: "company_mcp_get_expand",
+      toolName: getName,
+      promoteToKnowledgeSupported: true,
+    },
+  };
 }

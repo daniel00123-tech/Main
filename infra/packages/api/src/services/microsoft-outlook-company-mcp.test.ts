@@ -25,6 +25,34 @@ describe("company MCP Outlook get composition", () => {
     });
   });
 
+  it("keeps attachment bytes from a company MCP get payload", () => {
+    const composed = composeOutlookGetResult(
+      {
+        id: "AAMk-1",
+        subject: "Fw: Your receipt from Anthropic, PBC #2275-0489-5290",
+        hasAttachments: true,
+        attachments: [
+          {
+            id: "att-1",
+            name: "receipt.pdf",
+            contentType: "application/pdf",
+            size: 2048,
+            contentBytes: "JVBERi0=",
+          },
+        ],
+      },
+      "finance@elvexpropertyservices.com",
+    );
+    expect(composed.hasAttachments).toBe(true);
+    expect(composed.attachments).toEqual([
+      expect.objectContaining({
+        id: "att-1",
+        name: "receipt.pdf",
+        contentBytes: "JVBERi0=",
+      }),
+    ]);
+  });
+
   it("unwraps a single EL get_elvex_email object that is not wrapped in messages[]", () => {
     const bare = unwrapOutlookMessage({
       id: "AAMk-1",

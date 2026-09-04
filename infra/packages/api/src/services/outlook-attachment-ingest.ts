@@ -243,6 +243,23 @@ async function discoverMessagesViaMcp(
   return { ok: true, messages };
 }
 
+type ListedAttachment = GraphMailAttachment & { contentId?: string | null; contentBytes?: string | null };
+
+function mapListedAttachments(rows: unknown[]): ListedAttachment[] {
+  return rows
+    .map((row) => asRecord(row))
+    .filter((row): row is Record<string, unknown> => Boolean(row))
+    .map((row) => ({
+      id: asText(row.id) || asText(row.attachmentId),
+      name: asText(row.name) || asText(row.filename),
+      contentType: asText(row.contentType) || asText(row.mimeType) || null,
+      size: Number(row.size ?? row.sizeBytes ?? 0),
+      isInline: Boolean(row.isInline),
+      contentId: asText(row.contentId) || asText(row.contentID) || null,
+      contentBytes: asText(row.contentBytesBase64) || asText(row.contentBytes) || null,
+    }));
+}
+
 async function listAttachmentsForMessage(
   env: Env,
   input: {
@@ -252,7 +269,7 @@ async function listAttachmentsForMessage(
     actor: string;
     graph?: { accessToken: string; tenantId: string } | null;
   },
-): Promise<{ attachments: Array<GraphMailAttachment & { contentId?: string | null }>; via: string }> {
+): Promise<{ attachments: ListedAttachment[]; via: string }> {
   if (input.graph) {
     const attachments = await withBoundedRetry(() =>
       listMessageAttachments(input.graph!, input.mailboxAddress, input.messageId),
@@ -265,23 +282,30 @@ async function listAttachmentsForMessage(
     arguments: { mailboxAddress: input.mailboxAddress, messageId: input.messageId },
     actor: input.actor,
   });
-  if (!listed.ok) return { attachments: [], via: listed.code };
-  const record = asRecord(listed.result);
-  const rows = Array.isArray(record?.attachments) ? record!.attachments : [];
-  return {
-    via: "outlook_read",
-    attachments: rows
-      .map((row) => asRecord(row))
-      .filter((row): row is Record<string, unknown> => Boolean(row))
-      .map((row) => ({
-        id: asText(row.id) || asText(row.attachmentId),
-        name: asText(row.name) || asText(row.filename),
-        contentType: asText(row.contentType) || asText(row.mimeType) || null,
-        size: Number(row.size ?? row.sizeBytes ?? 0),
-        isInline: Boolean(row.isInline),
-        contentId: asText(row.contentId) || asText(row.contentID) || null,
-      })),
-  };
+  if (listed.ok) {
+    const record = asRecord(listed.result);
+    const rows = Array.isArray(record?.attachments) ? record!.attachments : [];
+    const attachments = mapListedAttachments(rows);
+    if (attachments.length) return { via: asText(record?.via) || "outlook_read", attachments };
+  }
+  const expanded = await executeOutlookReadTool(env, {
+    companyId: input.companyId,
+    toolName: "outlook_get_message",
+    arguments: {
+      mailboxAddress: input.mailboxAddress,
+      messageId: input.messageId,
+      includeAttachments: true,
+      expand: "attachments",
+    },
+    actor: input.actor,
+  });
+  if (expanded.ok) {
+    const record = asRecord(expanded.result);
+    const rows = Array.isArray(record?.attachments) ? record!.attachments : [];
+    const attachments = mapListedAttachments(rows);
+    if (attachments.length) return { via: "company_mcp_get_expand", attachments };
+  }
+  return { attachments: [], via: listed.ok ? "ATTACHMENT_ENUM_EMPTY" : listed.code };
 }
 
 async function fetchAttachmentBytes(
@@ -337,7 +361,7 @@ async function ingestOneAttachment(
     companyId: string;
     mailbox: MailboxRegistryRow;
     message: GraphMailMessageDetail;
-    attachment: GraphMailAttachment & { contentId?: string | null };
+    attachment: ListedAttachment;
     actor: string;
     graph?: { accessToken: string; tenantId: string } | null;
     tenantId: string | null;
@@ -412,14 +436,24 @@ async function ingestOneAttachment(
 
   let fetched;
   try {
-    fetched = await fetchAttachmentBytes(env, {
-      companyId: input.companyId,
-      mailboxAddress: input.mailbox.mailbox_address,
-      messageId: input.message.id,
-      attachmentId: input.attachment.id,
-      actor: input.actor,
-      graph: input.graph,
-    });
+    if (input.attachment.contentBytes) {
+      fetched = {
+        bytes: decodeBase64Bytes(input.attachment.contentBytes),
+        name: input.attachment.name,
+        contentType: input.attachment.contentType,
+        size: input.attachment.size,
+        via: "inline_list",
+      };
+    } else {
+      fetched = await fetchAttachmentBytes(env, {
+        companyId: input.companyId,
+        mailboxAddress: input.mailbox.mailbox_address,
+        messageId: input.message.id,
+        attachmentId: input.attachment.id,
+        actor: input.actor,
+        graph: input.graph,
+      });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "fetch failed";
     await recordKnowledgeIngestionEvent(env.DB, {
@@ -691,6 +725,7 @@ export async function ingestApprovedOutlookAttachments(
     counts.messagesWithAttachments += messages.length;
     const attachmentSummaries: Array<Record<string, unknown>> = [];
     let latestCheckpoint = mailbox.last_checkpoint;
+    let mailboxFailures = 0;
 
     for (const message of messages) {
       if (!message.id) continue;
@@ -704,6 +739,7 @@ export async function ingestApprovedOutlookAttachments(
       if (listed.attachments.length === 0 && message.hasAttachments) {
         counts.attachmentsDiscovered += 1;
         counts.failed += 1;
+        mailboxFailures += 1;
         await recordKnowledgeIngestionEvent(env.DB, {
           companyId: input.companyId,
           sourceType: "outlook_attachments",
@@ -746,6 +782,7 @@ export async function ingestApprovedOutlookAttachments(
           counts.skipped += 1;
         } else {
           counts.failed += 1;
+          mailboxFailures += 1;
         }
         attachmentSummaries.push({
           messageId: message.id,
@@ -766,22 +803,25 @@ export async function ingestApprovedOutlookAttachments(
       if (when && (!latestCheckpoint || when > latestCheckpoint)) latestCheckpoint = when;
     }
 
+    const scanOk = mailboxFailures === 0;
     await markMailboxScanResult(env.DB, {
       companyId: input.companyId,
       mailboxAddress: mailbox.mailbox_address,
-      checkpoint: latestCheckpoint,
-      success: true,
+      checkpoint: scanOk ? latestCheckpoint : null,
+      success: scanOk,
       graphAccessible: Boolean(graph),
+      error: scanOk ? null : discoverError || `attachment ingest incomplete (${mailboxFailures} failed)`,
     });
     mailboxReports.push({
       mailboxAddress: mailbox.mailbox_address,
       mailboxType: mailbox.mailbox_type,
-      ok: true,
+      ok: scanOk,
       discoverVia,
       graphAccessible: Boolean(graph),
       graphNote: discoverError,
       messagesWithAttachments: messages.length,
       attachments: attachmentSummaries,
+      failed: mailboxFailures,
     });
   }
 
@@ -835,6 +875,12 @@ async function buildNamedPersonReports(
     if (row?.mailbox_address) {
       graphAccessible = row.graph_accessible == null ? null : row.graph_accessible === 1;
     }
+    const scanned = input.mailboxReports.find(
+      (item) =>
+        String(item.mailboxAddress ?? "").toLowerCase() ===
+        (user?.mailboxAddress ?? row?.mailbox_address ?? "").toLowerCase(),
+    );
+    const scannedAttachments = Array.isArray(scanned?.attachments) ? scanned!.attachments : [];
     reports.push({
       name,
       mailboxAddress: user?.mailboxAddress ?? row?.mailbox_address ?? null,
@@ -842,14 +888,14 @@ async function buildNamedPersonReports(
       approvedForAttachmentIngestion: row?.enabled_for_attachment_ingestion === 1,
       graphAccessible,
       mailSearchEnabled: row?.enabled_for_mail_search === 1,
-      messagesWithAttachmentsInWindow: 0,
-      attachmentsFound: 0,
-      indexed: 0,
-      policy: user
-        ? row?.enabled_for_attachment_ingestion === 1
-          ? "director-approved work mailbox: attachments ingested; Portal chat search remains off"
-          : "personal_work mailbox exists as a company user; not approved for attachment ingest"
-        : "no company membership mailbox found; not invented",
+      messagesWithAttachmentsInWindow: Number(scanned?.messagesWithAttachments ?? 0),
+      attachmentsFound: scannedAttachments.length || Number(scanned?.messagesWithAttachments ?? 0),
+      indexed: scannedAttachments.filter((item) => asRecord(item)?.status === "indexed").length,
+      policy: row?.enabled_for_attachment_ingestion === 1
+        ? "director-approved work mailbox: attachments ingested; Portal chat search remains off"
+        : user || row
+          ? "personal_work mailbox exists as a company user; not approved for attachment ingest"
+          : "no company membership mailbox found; not invented",
     });
   }
   return reports;
