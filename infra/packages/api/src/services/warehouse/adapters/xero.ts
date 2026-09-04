@@ -584,10 +584,8 @@ async function extractXeroViaInfraReads(input: {
   let contactsStatus = seeded.contactsStatus ?? "BACKFILLING";
   let contactPageNext = seeded.contactPage ?? 1;
   let contactsRetrieved = seeded.contactsRetrieved ?? 0;
-  if (
-    (contactsStatus === "BACKFILLING" || contactsStatus === "PARTIAL") &&
-    Date.now() - started < 22_000
-  ) {
+  let contactFingerprint = seeded.contactFingerprint ?? null;
+  if (contactsStatus === "BACKFILLING" && Date.now() - started < 22_000) {
     const page = seeded.contactPage ?? 1;
     const contactPage = await extractContactsPage({
       env: input.env,
@@ -596,15 +594,27 @@ async function extractXeroViaInfraReads(input: {
       page,
     });
     contacts = contactPage.contacts;
-    contactsRetrieved = (seeded.contactsRetrieved ?? 0) + contactPage.contacts.length;
+    const fingerprint = contacts
+      .map((row) => row.contactId)
+      .sort()
+      .join(",");
+    const samePage = Boolean(seeded.contactFingerprint && fingerprint && fingerprint === seeded.contactFingerprint);
     if (!contactPage.hitCap) {
       contactsStatus = "COMPLETE";
+      contactsRetrieved = (seeded.contactsRetrieved ?? 0) + contactPage.contacts.length;
+    } else if (samePage) {
+      contactsStatus = "PARTIAL";
+      contactPageNext = page;
+      contactsRetrieved = seeded.contactsRetrieved ?? contacts.length;
     } else if (contactPage.pageAdvanced) {
       contactsStatus = "BACKFILLING";
       contactPageNext = page + 1;
+      contactsRetrieved = (seeded.contactsRetrieved ?? 0) + contactPage.contacts.length;
     } else {
       contactsStatus = "PARTIAL";
+      contactsRetrieved = seeded.contactsRetrieved ?? contacts.length;
     }
+    contactFingerprint = fingerprint || seeded.contactFingerprint || null;
   }
 
   const payments: WarehouseXeroPayment[] = [];
@@ -694,6 +704,7 @@ async function extractXeroViaInfraReads(input: {
       contactsStatus,
       contactPage: contactPageNext,
       contactsRetrieved,
+      contactFingerprint,
       completionEmailSent: seeded.completionEmailSent ?? false,
       historicalComplete: completeness === "COMPLETE",
       invoiceLinesStatus,

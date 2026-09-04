@@ -53,6 +53,7 @@ export async function warehouseControlCentreView(
         ? `${source.checkpoint.remainingWindows} bounded windows remaining (50 records/call; no calendar ETA)`
         : null,
     contactsStatus: source?.checkpoint?.contactsStatus ?? null,
+    contactPage: source?.checkpoint?.contactPage ?? null,
     invoiceLinesStatus: source?.checkpoint?.invoiceLinesStatus ?? null,
     paymentsStatus: source?.checkpoint?.paymentsStatus ?? null,
     creditNotesStatus: source?.checkpoint?.creditNotesStatus ?? null,

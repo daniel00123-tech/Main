@@ -138,6 +138,7 @@ export type WarehouseCheckpoint = {
   contactsStatus?: WarehouseCompleteness;
   contactPage?: number;
   contactsRetrieved?: number;
+  contactFingerprint?: string | null;
   completionEmailSent?: boolean;
   historicalComplete?: boolean;
   invoiceLinesStatus?: WarehouseEntityAvailability;
