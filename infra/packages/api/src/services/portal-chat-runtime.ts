@@ -37,6 +37,7 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_list_overdue_invoices",
   "xero_aged_receivables",
   "outlook_search_mailbox",
+  "outlook_list_messages",
   "outlook_get_message",
   "ask_document",
   "list_documents",
@@ -53,6 +54,7 @@ export function createPortalChatRuntime(
     companyId: string;
     sessionUser: SessionUser;
     interactionId: string;
+    membershipId?: string | null;
     context: PortalChatContext;
     connectors: string[];
     waitUntil?: (promise: Promise<unknown>) => void;
@@ -91,7 +93,12 @@ export function createPortalChatRuntime(
 
       const fetched = await withBoundedTimeout(
         gateway(env, {
-          actor: { type: "user", user: input.sessionUser, channel: "portal" },
+          actor: {
+            type: "user",
+            user: input.sessionUser,
+            channel: "portal",
+            membershipId: input.membershipId ?? undefined,
+          },
           companyId: input.companyId,
           toolName: gatewayName,
           arguments: args,
@@ -299,7 +306,12 @@ async function runSearchDocument(
   if (!payload) {
     const fetched = await withBoundedTimeout(
       gateway(env, {
-        actor: { type: "user", user: input.sessionUser, channel: "portal" },
+        actor: {
+          type: "user",
+          user: input.sessionUser,
+          channel: "portal",
+          membershipId: input.membershipId ?? undefined,
+        },
         companyId: input.companyId,
         toolName: COMPANY_KNOWLEDGE_READ_TOOL,
         arguments: { documentRef: documentId, id: documentId },

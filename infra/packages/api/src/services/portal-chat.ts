@@ -265,6 +265,7 @@ export async function sendPortalChatMessage(
     companyId: input.companyId,
     sessionUser: input.sessionUser,
     interactionId,
+    membershipId: membership?.membershipId ?? null,
     context: conversation.context,
     connectors,
     waitUntil: input.waitUntil,
@@ -381,7 +382,7 @@ export function isPermissionDenial(error?: string | null, data?: unknown): boole
   const err = [error, record.error, record.code, record.reason]
     .filter((value): value is string => typeof value === "string")
     .join(" ");
-  return /permission_denied|user_not_authorised|not allowed for your role|office staff permissions|your current permissions don’t allow|your current permissions don't allow/i.test(
+  return /permission_denied|user_not_authorised|not allowed for your role|office staff permissions|your current permissions don’t allow|your current permissions don't allow|elvex role does not grant|blocked by your company permissions/i.test(
     err,
   );
 }

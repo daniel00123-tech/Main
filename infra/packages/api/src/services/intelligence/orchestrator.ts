@@ -9,6 +9,13 @@ import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "
 import { parseCatalogueIntent, verbaliseDocumentCatalogue } from "../document-catalogue.js";
 import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
 import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
+import {
+  defaultMailboxForText,
+  isFollowUpFiller,
+  isHollowAssistantText,
+  previousSubstantiveUserText,
+  terminalFromToolCalls,
+} from "./evidence.js";
 import type {
   IntelligenceChannel,
   IntelligenceConfidence,
@@ -124,6 +131,28 @@ export async function runIntelligenceTurn(input: {
     });
   }
 
+  if (
+    scoped.lastUserIntent === "more_detail" &&
+    isFollowUpFiller(input.text)
+  ) {
+    const prior =
+      previousSubstantiveUserText(input.state.recentTurns ?? [], input.text) ||
+      previousUserText(input.state, input.text);
+    if (prior && prior.trim() !== input.text.trim()) {
+      return runIntelligenceTurn({
+        ...input,
+        text: prior,
+        state: {
+          ...input.state,
+          lastUserText: prior,
+          lastAnswerText: isHollowAssistantText(input.state.lastAnswerText)
+            ? null
+            : input.state.lastAnswerText,
+        },
+      });
+    }
+  }
+
   if (scoped.scope === "GENERAL_CONVERSATION" && scoped.noTool && !input.state.userCorrection) {
     return emptyResult({
       kind: "answer",
@@ -232,6 +261,45 @@ export async function runIntelligenceTurn(input: {
         qualityFlags: [...qualityFlags, ...meta.flags],
         repaired,
         fallbackUsed: meta.modelRounds.some((row) => row.fallbackUsed),
+      });
+    }
+  }
+
+  if (shouldForceScopedTool(scoped) && scoped.tool && toolCalls.length === 0) {
+    const forced = await input.runtime.executeTool({
+      name: scoped.tool,
+      arguments: prepareToolArguments(scoped.tool, {}, input.text, workingState, scoped.scope),
+    });
+    toolCalls.push(forced);
+    adoptFromTool(
+      forced,
+      toolCalls,
+      () => currentDocument,
+      (doc) => {
+        currentDocument = doc;
+      },
+      evidenceDocumentIds,
+      input.buttonHint,
+    );
+    transcript.push(formatToolTranscript(forced));
+    const forcedTerminal = terminalFromToolCalls(toolCalls);
+    if (forcedTerminal && toolCalls.every((call) => !call.ok)) {
+      return finish({
+        kind: "failed",
+        text: forcedTerminal,
+        confidence: "none",
+        offerSearchOther: false,
+        toolCalls,
+        currentDocument,
+        evidenceDocumentIds,
+        clarification: false,
+        modelRounds,
+        route: "INTELLIGENT",
+        scope: scoped.scope,
+        lastAnswerTopic: scoped.lastAnswerTopic,
+        lastUserIntent: scoped.lastUserIntent,
+        qualityFlags: [...qualityFlags],
+        repaired,
       });
     }
   }
@@ -431,9 +499,14 @@ export async function runIntelligenceTurn(input: {
       }
       const metaData = toolCalls.find((call) => SYSTEM_META_TOOLS.has(call.name))?.data;
       if (metaData && inventedCount(decision.text, metaData)) qualityFlags.add("count_invented");
+      const grounded = terminalFromToolCalls(toolCalls);
+      const modelDeniedToolsThatWorked =
+        /permission|not allow|don’t allow|don't allow|do not have access/i.test(decision.text) &&
+        toolCalls.some((call) => call.ok) &&
+        Boolean(grounded);
       return finish({
         kind: "answer",
-        text: decision.text.trim(),
+        text: String(modelDeniedToolsThatWorked && grounded ? grounded : decision.text).trim(),
         confidence: decision.confidence,
         offerSearchOther: decision.offer_search_other || decision.confidence === "none",
         toolCalls,
@@ -453,7 +526,30 @@ export async function runIntelligenceTurn(input: {
     }
   }
 
-  if (toolCalls.length === 0 && modelRounds.every((round) => !round.model || round.provider === "none")) {
+  const evidenceText = terminalFromToolCalls(toolCalls) ?? fallbackFromEvidence(toolCalls, currentDocument);
+
+  if (toolCalls.length > 0) {
+    return finish({
+      kind: toolCalls.some((call) => call.ok) ? "answer" : "failed",
+      text: evidenceText,
+      confidence: toolCalls.some((call) => call.ok) ? "partial" : "none",
+      offerSearchOther: Boolean(currentDocument),
+      toolCalls,
+      currentDocument,
+      evidenceDocumentIds,
+      clarification: false,
+      modelRounds,
+      route: "INTELLIGENT",
+      scope: scoped.scope,
+      lastAnswerTopic: scoped.lastAnswerTopic,
+      lastUserIntent: scoped.lastUserIntent,
+      qualityFlags: [...qualityFlags, "fallback"],
+      repaired,
+      fallbackUsed: true,
+    });
+  }
+
+  if (modelRounds.every((round) => !round.model || round.provider === "none")) {
     return finish({
       kind: "failed",
       text: "I couldn't complete that just now. Try again in a moment.",
@@ -473,30 +569,9 @@ export async function runIntelligenceTurn(input: {
     });
   }
 
-  if (toolCalls.length > 0) {
-    return finish({
-      kind: "failed",
-      text: fallbackFromEvidence(toolCalls, currentDocument),
-      confidence: "partial",
-      offerSearchOther: Boolean(currentDocument),
-      toolCalls,
-      currentDocument,
-      evidenceDocumentIds,
-      clarification: false,
-      modelRounds,
-      route: "INTELLIGENT",
-      scope: scoped.scope,
-      lastAnswerTopic: scoped.lastAnswerTopic,
-      lastUserIntent: scoped.lastUserIntent,
-      qualityFlags: [...qualityFlags, "fallback"],
-      repaired,
-      fallbackUsed: true,
-    });
-  }
-
   return finish({
     kind: "failed",
-    text: "I need another moment to finish that. Try asking once more.",
+    text: scopedToolFailure(scoped.scope, scoped.lastAnswerTopic),
     confidence: "none",
     offerSearchOther: Boolean(currentDocument),
     toolCalls,
@@ -578,10 +653,21 @@ function searchHitTitles(toolCalls: IntelligenceToolResult[]): string[] {
   ].slice(0, 3);
 }
 
+function scopedToolFailure(scope: IntelligenceScope | undefined, topic: string | null): string {
+  if (scope === "BUSINESS_SYSTEM" && topic === "email") return "I couldn’t retrieve that mailbox just now.";
+  if (scope === "BUSINESS_SYSTEM") return "I couldn’t retrieve Xero data just now.";
+  if (scope === "COMPANY_KNOWLEDGE" || scope === "CURRENT_DOCUMENT") {
+    return "I couldn’t search company files just now.";
+  }
+  return "I couldn't complete that just now. Try again in a moment.";
+}
+
 function fallbackFromEvidence(
   toolCalls: IntelligenceToolResult[],
   current: IntelligenceDocumentRef | null,
 ): string {
+  const fromTools = terminalFromToolCalls(toolCalls);
+  if (fromTools) return fromTools;
   const last = [...toolCalls].reverse().find((call) => call.ok);
   const doc = last ? documentFromToolResult(last) : current;
   if (doc) {
@@ -591,6 +677,7 @@ function fallbackFromEvidence(
   if (hits.length > 1) {
     return "A few documents could match that. Which file did you mean?";
   }
+  if (!toolCalls.length) return scopedToolFailure(undefined, null);
   return "I couldn't finish a grounded answer from the evidence I retrieved. Try naming the file.";
 }
 
@@ -722,6 +809,20 @@ function prepareToolArguments(
       include_descriptions: next.include_descriptions ?? parsed.includeDescriptions,
       titleContains: next.titleContains ?? parsed.titleContains,
     };
+  }
+  if (name === "outlook_search_mailbox" || name === "outlook_list_messages") {
+    next.mailboxAddress = String(next.mailboxAddress ?? next.mailbox ?? defaultMailboxForText(text)).trim();
+    if (name === "outlook_search_mailbox" && !String(next.query ?? "").trim()) {
+      next.query = text.trim() || "newest";
+    }
+    if (name === "outlook_list_messages") {
+      next.limit = next.limit ?? 5;
+    }
+    return next;
+  }
+  if (name === "search_company_knowledge" && !String(next.query ?? "").trim()) {
+    next.query = text.trim();
+    return next;
   }
   if (name === "search_document") {
     const enriched = enrichDocumentQuery(String(next.query ?? text), {

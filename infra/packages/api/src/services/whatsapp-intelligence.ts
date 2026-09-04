@@ -10,6 +10,7 @@ import {
   runIntelligenceTurn,
   withResolvedBusinessDates,
   enrichDocumentQuery,
+  summariseOutlookEvidence,
   type IntelligenceCompleter,
   type IntelligenceDocumentRef,
   type IntelligenceRuntime,
@@ -68,6 +69,7 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_list_overdue_invoices",
   "xero_aged_receivables",
   "outlook_search_mailbox",
+  "outlook_list_messages",
   "ask_document",
   "list_documents",
 ]);
@@ -497,6 +499,37 @@ async function recoverFailedIntelligenceTurn(
       offerSearchOther: false,
     };
   }
+  if (
+    failed.lastAnswerTopic === "email" ||
+    /\b(emails?|inbox|mailbox|outlook)\b/i.test(input.originalText)
+  ) {
+    const mailbox = /\bfinance\b/i.test(input.originalText)
+      ? "finance@elvexpropertyservices.com"
+      : "info@elvexpropertyservices.com";
+    const newest = /\b(newest|latest|most recent|last email)\b/i.test(input.originalText);
+    const outlook = await runtime.executeTool({
+      name: newest ? "outlook_list_messages" : "outlook_search_mailbox",
+      arguments: newest
+        ? { mailboxAddress: mailbox, limit: 5 }
+        : { query: input.originalText, mailboxAddress: mailbox },
+    });
+    toolCalls.push(outlook);
+    return {
+      ...failed,
+      kind: outlook.ok ? "answer" : "failed",
+      text: outlook.ok
+        ? summariseOutlookEvidence(outlook.data)
+        : /403|permission/i.test(`${outlook.error ?? ""} ${JSON.stringify(outlook.data ?? "")}`)
+          ? "I don't have permission to read that mailbox."
+          : "Outlook is unreachable just now.",
+      confidence: outlook.ok ? "partial" : "none",
+      offerSearchOther: false,
+      toolCalls,
+      currentDocument: current,
+      evidenceDocumentIds,
+      clarification: false,
+    };
+  }
   if (/\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover)\b/i.test(input.originalText) || failed.scope === "BUSINESS_SYSTEM") {
     const xero = await runtime.executeTool({
       name: "xero_sales_summary",
@@ -508,7 +541,7 @@ async function recoverFailedIntelligenceTurn(
       kind: xero.ok ? "answer" : "failed",
       text: xero.ok
         ? summariseXeroEvidence(xero.data)
-        : "I couldn't read Xero just now. Try again in a moment.",
+        : "I couldn't read Xero just now.",
       confidence: xero.ok ? "partial" : "none",
       offerSearchOther: false,
       toolCalls,

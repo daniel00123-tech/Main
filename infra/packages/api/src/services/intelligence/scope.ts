@@ -22,6 +22,7 @@ export type ScopeFeatures = {
   companyLocus: boolean;
   discourse: boolean;
   rephraseLastAnswer: boolean;
+  moreDetail: boolean;
   memoryRecall: boolean;
   capabilityAsk: boolean;
   connectorAsk: boolean;
@@ -69,6 +70,8 @@ const DISCOURSE =
   /^(hi|hello|hey|hiya|yo|morning|thanks|thank you|cheers|ta|thx|ty)\b|^(how are you|how(?:'s|s) it going)\b|\b(that(?:'s| is) useful|that helps|great thanks|appreciate (it|that)|i don'?t (understand|follow)|what do you mean|why did you ask|can you (give|show) (me )?an example)\b/i;
 const REPHRASE =
   /\b(explain(?: that| this| it| your last answer)? more simply|more simply|make (that|it|this|your last answer)( \w+)? (shorter|simpler|brief)|in fewer words|more detail on (that|your last|what you said)|say that again|explain again|put (that|it) another way)\b/i;
+const MORE_DETAIL =
+  /^(please )?(can you |could you )?(give me |tell me )?(more details?|more info(?:rmation)?|tell me more)[.?!]*$/i;
 const MEMORY =
   /\b(what (were|are) we talking about|what did i (just )?ask|what did you (just )?(tell|say)|remind me|which source|last document i asked|the amount again)\b/i;
 const CAPABILITY =
@@ -154,6 +157,13 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
   return "xero_sales_summary";
 }
 
+export function pickMailboxTool(text: string): string {
+  if (/\b(newest|latest|most recent|last email|recent email)\b/i.test(text)) {
+    return "outlook_list_messages";
+  }
+  return "outlook_search_mailbox";
+}
+
 function extractFeatures(text: string): ScopeFeatures {
   const trimmed = text.trim();
   return {
@@ -164,7 +174,8 @@ function extractFeatures(text: string): ScopeFeatures {
     systemLocus: SYSTEM_LOCUS.test(trimmed),
     companyLocus: COMPANY_LOCUS.test(trimmed),
     discourse: DISCOURSE.test(trimmed),
-    rephraseLastAnswer: REPHRASE.test(trimmed),
+    rephraseLastAnswer: REPHRASE.test(trimmed) && !MORE_DETAIL.test(trimmed),
+    moreDetail: MORE_DETAIL.test(trimmed),
     memoryRecall: MEMORY.test(trimmed),
     capabilityAsk: CAPABILITY.test(trimmed),
     connectorAsk: CONNECTOR.test(trimmed),
@@ -347,7 +358,7 @@ export function classifyScope(
       businessIntent.connectorDefinitionId === "conn_outlook_shared"
     ) {
       return decide("BUSINESS_SYSTEM", features, {
-        tool: "outlook_search_mailbox",
+        tool: pickMailboxTool(text),
         lastAnswerTopic: "email",
         lastUserIntent: "email",
       });
@@ -417,6 +428,15 @@ export function classifyScope(
       matchedDocument: namedRecent,
       lastAnswerTopic: "document",
       lastUserIntent: "restore_recent",
+    });
+  }
+
+  if (features.moreDetail) {
+    return decide("GENERAL_CONVERSATION", features, {
+      tool: null,
+      noTool: true,
+      lastAnswerTopic: lastTopic,
+      lastUserIntent: "more_detail",
     });
   }
 
@@ -593,7 +613,7 @@ export function classifyScope(
 
   if (switchTo === "email" || (features.emailAsk && !features.currentLocus && !hasCurrent)) {
     return decide("BUSINESS_SYSTEM", features, {
-      tool: "outlook_search_mailbox",
+      tool: pickMailboxTool(text),
       lastAnswerTopic: "email",
       lastUserIntent: "email",
     });

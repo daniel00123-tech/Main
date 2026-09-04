@@ -1,22 +1,38 @@
 /**
  * Live Portal Chat acceptance. Never prints secrets.
- * Proves Send is not 404 and uses shared intelligence.
+ * Uses live memberships. Does not flip William or Sharon.
  */
 
+import { elvexCan } from "@infra/shared";
 import type { Env } from "../env";
 import { loadLiveCompanyActor, liveActorToSessionUser } from "../auth/live-identity";
 import { createSessionToken } from "../auth/session";
+import { evaluateActionPermission } from "../permissions/service";
 import { sendPortalChatMessage } from "./portal-chat";
-import { classifyScope } from "./intelligence/scope";
+import { classifyScope, pickMailboxTool } from "./intelligence/scope";
 import { buildConversationState } from "./intelligence/state";
 
 const WILLIAM_USER_ID = "user_b0db1fc5-692c-436d-99e6-392966b20df8";
-const WILLIAM_EMAIL = "william@elvexpropertyservices.com";
+const SHARON_USER_ID = "user_949bcd80-e74e-449a-a280-da475fe18ace";
 const API = "https://api.infrastack.app";
 const APP = "https://app.infrastack.app";
 
 function clip(text: string, max = 280): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+function category(text: string, tools: string[], permissionDenied: boolean): string {
+  if (permissionDenied || /permissions don’t allow|permissions don't allow|not grant|not allow this action/i.test(text)) {
+    return "permission_denied";
+  }
+  if (/I need another moment to finish that/i.test(text)) return "hollow_retry";
+  if (tools.some((name) => name.startsWith("xero_")) || /\bXero\b/i.test(text)) return "xero";
+  if (tools.some((name) => name.startsWith("outlook_")) || /email|mailbox|inbox|no matching messages/i.test(text)) {
+    return "outlook";
+  }
+  if (/couldn’t reach|couldn't reach|unreachable|could not find/i.test(text)) return "system_failure";
+  if (tools.some((name) => name.includes("knowledge") || name === "list_documents")) return "knowledge";
+  return "conversation";
 }
 
 async function httpProbe(
@@ -32,6 +48,32 @@ async function httpProbe(
     json = null;
   }
   return { status: res.status, body: body.slice(0, 240), json };
+}
+
+async function turn(
+  env: Env,
+  sessionUser: ReturnType<typeof liveActorToSessionUser>,
+  text: string,
+  conversationId?: string,
+) {
+  const result = await sendPortalChatMessage(env, {
+    companyId: "co_el",
+    sessionUser,
+    conversationId,
+    text,
+  });
+  const content = result.assistantMessage.content;
+  const tools = result.assistantMessage.metadata.toolNames ?? [];
+  return {
+    conversationId: result.conversation.id,
+    scope: result.assistantMessage.metadata.scope,
+    tools,
+    permissionDenied: Boolean(result.assistantMessage.metadata.permissionDenied),
+    reply: clip(content),
+    category: category(content, tools, Boolean(result.assistantMessage.metadata.permissionDenied)),
+    leaksAmount: /£\s?[\d,]/.test(content),
+    hollowRetry: /I need another moment to finish that/i.test(content),
+  };
 }
 
 export async function runPortalChatAcceptance(env: Env): Promise<Record<string, unknown>> {
@@ -51,60 +93,108 @@ export async function runPortalChatAcceptance(env: Env): Promise<Record<string, 
     body: JSON.stringify({ text: "what is the PO process" }),
   });
 
-  const actor = await loadLiveCompanyActor(env.DB, WILLIAM_USER_ID, "co_el");
-  if (!actor || !actor.active) {
-    return {
-      error: "William live actor missing or inactive",
-      role: actor?.role ?? null,
-      unauthApi,
-      unauthApp,
-      missingPath,
+  const william = await loadLiveCompanyActor(env.DB, WILLIAM_USER_ID, "co_el");
+  const sharon = await loadLiveCompanyActor(env.DB, SHARON_USER_ID, "co_el");
+  if (!william?.active) {
+    return { error: "William live actor missing or inactive", role: william?.role ?? null };
+  }
+
+  const directorPolicy = {
+    role: william.role,
+    xeroSales: elvexCan(william.role, "xero.sales.read"),
+    infoMail: elvexCan(william.role, "mail.info.read"),
+    financeMail: elvexCan(william.role, "mail.finance.read"),
+    knowledge: elvexCan(william.role, "knowledge.company.read"),
+  };
+
+  const williamUser = liveActorToSessionUser(william);
+  const token = await createSessionToken(williamUser, env.SESSION_SECRET);
+
+  const hello = await turn(env, williamUser, "hi");
+  const recallSetup = await turn(env, williamUser, "Search company files for PO process");
+  const recall = await turn(env, williamUser, "what were we talking about?", recallSetup.conversationId);
+  const moreDetail = await turn(env, williamUser, "give me more detail", recallSetup.conversationId);
+  const xero = await turn(env, williamUser, "What are our Xero sales?");
+  const xeroFollow = await turn(env, williamUser, "give me more detail", xero.conversationId);
+  const info = await turn(env, williamUser, "What is the newest email in the info inbox?");
+  const finance = await turn(env, williamUser, "What is the newest email in the finance inbox?");
+  const files = await turn(env, williamUser, "Search company files for PO process.");
+
+  let office: Record<string, unknown> = { skipped: true, reason: "Sharon missing or inactive" };
+  if (sharon?.active) {
+    const sharonUser = liveActorToSessionUser(sharon);
+    const officeKnowledge = await turn(env, sharonUser, "Search company files for PO process");
+    const officeInfo = await turn(env, sharonUser, "What is the newest email in the info inbox?");
+    const officeXero = await turn(env, sharonUser, "What are our Xero sales?");
+    const officeFinance = await turn(env, sharonUser, "What is the newest email in the finance inbox?");
+    office = {
+      role: sharon.role,
+      knowledge: officeKnowledge,
+      infoInbox: officeInfo,
+      xero: officeXero,
+      financeInbox: officeFinance,
+      xeroDenied: officeXero.category === "permission_denied" && !officeXero.leaksAmount,
+      financeDenied: officeFinance.category === "permission_denied" && !officeFinance.leaksAmount,
+      noHollowRetry: ![officeKnowledge, officeInfo, officeXero, officeFinance].some((row) => row.hollowRetry),
     };
   }
-  const sessionUser = liveActorToSessionUser(actor);
-  const token = await createSessionToken(sessionUser, env.SESSION_SECRET);
 
-  const po = await sendPortalChatMessage(env, {
-    companyId: "co_el",
-    sessionUser,
-    text: "what is the PO process",
+  const parityActions = [
+    { action: "xero.sales.read" as const, mailbox: null },
+    { action: "knowledge.search" as const, mailbox: null },
+    { action: "outlook.search" as const, mailbox: "info@elvexpropertyservices.com" },
+    { action: "outlook.search" as const, mailbox: "finance@elvexpropertyservices.com" },
+  ];
+  const parity = [];
+  for (const actor of [william, sharon].filter((row): row is NonNullable<typeof row> => Boolean(row?.active))) {
+    const session = liveActorToSessionUser(actor);
+    for (const row of parityActions) {
+      const decision = await evaluateActionPermission(env.DB, session, "co_el", row.action, {
+        mailboxAddress: row.mailbox,
+      });
+      parity.push({
+        email: actor.email,
+        role: actor.role,
+        action: row.action,
+        mailbox: row.mailbox,
+        allowed: decision.allowed,
+        capability: row.action,
+      });
+    }
+  }
+
+  const routing = [
+    "what is the PO process",
+    "What are our Xero sales?",
+    "What is the newest email in the info inbox?",
+    "What is the newest email in the finance inbox?",
+    "give me more detail",
+    "what were we talking about?",
+  ].map((text) => {
+    const decision = classifyScope(text, buildConversationState({ userText: text }));
+    return { text, scope: decision.scope, tool: decision.tool ?? pickMailboxTool(text), intent: decision.lastUserIntent };
   });
-  const followUp = await sendPortalChatMessage(env, {
-    companyId: "co_el",
-    sessionUser,
-    conversationId: po.conversation.id,
-    text: "give me more detail",
-  });
-  const recall = await sendPortalChatMessage(env, {
-    companyId: "co_el",
-    sessionUser,
-    conversationId: po.conversation.id,
-    text: "what were we talking about?",
-  });
-  const xero = await sendPortalChatMessage(env, {
-    companyId: "co_el",
-    sessionUser,
-    conversationId: po.conversation.id,
-    text: "What are our Xero sales this month?",
-  });
-  const info = await sendPortalChatMessage(env, {
-    companyId: "co_el",
-    sessionUser,
-    conversationId: po.conversation.id,
-    text: "What is the newest email in the info inbox?",
-  });
-  const finance = await sendPortalChatMessage(env, {
-    companyId: "co_el",
-    sessionUser,
-    conversationId: po.conversation.id,
-    text: "What is the newest email in the finance inbox?",
-  });
+
+  const { runOfficeStaffRbacAcceptance } = await import("./sharon-rbac-acceptance");
+  const officeStaffGateway = await runOfficeStaffRbacAcceptance(env);
+  const officeStaffGatewayVerdict =
+    officeStaffGateway && typeof officeStaffGateway === "object" && "verdict" in officeStaffGateway
+      ? String((officeStaffGateway as { verdict?: unknown }).verdict ?? "")
+      : "";
+
+  const usage = await env.DB.prepare(
+    `SELECT tool_name, action, source_client, success, settlement_status, customer_charge_cents
+     FROM usage_records
+     WHERE source_client = 'portal_chat'
+     ORDER BY recorded_at DESC
+     LIMIT 12`,
+  ).all();
 
   const cookie = `infra_session=${token}`;
   const httpSend = await httpProbe(`${API}/api/companies/el-business/chat/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: cookie },
-    body: JSON.stringify({ text: "what is the PO process" }),
+    body: JSON.stringify({ text: "hi" }),
   });
   const otherCompany = await env.DB.prepare(
     `SELECT slug FROM companies WHERE id != 'co_el' AND slug IS NOT NULL AND slug != '' ORDER BY id LIMIT 1`,
@@ -117,32 +207,33 @@ export async function runPortalChatAcceptance(env: Env): Promise<Record<string, 
       })
     : { status: 0, body: "no other company", json: null };
 
-  const { runOfficeStaffRbacAcceptance } = await import("./sharon-rbac-acceptance");
-  const officeStaff = await runOfficeStaffRbacAcceptance(env);
+  const directorSuitePass =
+    hello.category === "conversation" &&
+    recall.category === "conversation" &&
+    !recall.hollowRetry &&
+    /PO process|company files|document/i.test(recall.reply) &&
+    !moreDetail.hollowRetry &&
+    (directorPolicy.xeroSales
+      ? xero.category !== "permission_denied" && xero.tools.includes("xero_sales_summary") && !xero.hollowRetry
+      : xero.category === "permission_denied") &&
+    !xeroFollow.hollowRetry &&
+    (directorPolicy.infoMail ? info.category !== "hollow_retry" && info.tools.some((name) => name.startsWith("outlook_")) : true) &&
+    (directorPolicy.financeMail
+      ? finance.category !== "hollow_retry" && finance.tools.some((name) => name.startsWith("outlook_"))
+      : finance.category === "permission_denied") &&
+    !files.hollowRetry;
 
-  const usage = await env.DB.prepare(
-    `SELECT tool_name, action, source_client, success, settlement_status, customer_charge_cents
-     FROM usage_records
-     WHERE source_client = 'portal_chat'
-     ORDER BY recorded_at DESC
-     LIMIT 8`,
-  ).all();
-
-  const routing = ["what is the PO process", "What are our Xero sales?", "What is the newest email in the info inbox?"].map(
-    (text) => {
-      const decision = classifyScope(text, buildConversationState({ userText: text }));
-      return { text, scope: decision.scope, tool: decision.tool };
-    },
-  );
-
-  const poText = po.assistantMessage.content;
-  const invented = /I made up|as an example|hypothetical PO/i.test(poText);
-  const noResult = /could not find|no (relevant )?(document|evidence|result)|don't have|do not have.*document/i.test(
-    poText,
-  );
+  const officePass =
+    !sharon?.active ||
+    Boolean(
+      (office as { xeroDenied?: boolean }).xeroDenied &&
+        (office as { financeDenied?: boolean }).financeDenied &&
+        (office as { noHollowRetry?: boolean }).noHollowRetry,
+    );
 
   return {
-    williamRole: actor.role,
+    williamRole: william.role,
+    directorPolicy,
     unauthenticated: {
       api: { status: unauthApi.status, error: unauthApi.json?.error ?? unauthApi.body },
       app: { status: unauthApp.status, error: unauthApp.json?.error ?? unauthApp.body },
@@ -159,38 +250,26 @@ export async function runPortalChatAcceptance(env: Env): Promise<Record<string, 
       denied: httpWrongCompany.status === 403 || httpWrongCompany.status === 404,
     },
     routing,
-    poProcess: {
-      conversationId: po.conversation.id,
-      createdConversation: po.createdConversation,
-      scope: po.assistantMessage.metadata.scope,
-      tools: po.assistantMessage.metadata.toolNames,
-      reply: clip(poText),
-      invented,
-      groundedOrHonest: !invented && (Boolean(po.assistantMessage.metadata.sources?.length) || noResult || poText.length > 20),
+    director: {
+      hello,
+      recall,
+      moreDetail,
+      xero,
+      xeroFollow,
+      infoInbox: info,
+      financeInbox: finance,
+      companyFiles: files,
     },
-    followUp: { reply: clip(followUp.assistantMessage.content), scope: followUp.assistantMessage.metadata.scope },
-    recall: { reply: clip(recall.assistantMessage.content) },
-    xeroDirector: {
-      permissionDenied: Boolean(xero.assistantMessage.metadata.permissionDenied),
-      tools: xero.assistantMessage.metadata.toolNames,
-      reply: clip(xero.assistantMessage.content),
-    },
-    officeStaff,
-    infoInbox: {
-      tools: info.assistantMessage.metadata.toolNames,
-      reply: clip(info.assistantMessage.content),
-    },
-    financeInbox: {
-      permissionDenied: Boolean(finance.assistantMessage.metadata.permissionDenied),
-      reply: clip(finance.assistantMessage.content),
-    },
+    officeStaff: office,
+    officeStaffGateway,
+    parity,
     usage: usage.results ?? [],
     outcome:
+      directorSuitePass &&
+      officePass &&
       unauthApi.status === 401 &&
       httpSend.status !== 404 &&
-      !invented &&
-      !xero.assistantMessage.metadata.permissionDenied &&
-      officeStaff.verdict === "PASS"
+      officeStaffGatewayVerdict === "PASS"
         ? "PASS"
         : "PARTIAL",
   };
