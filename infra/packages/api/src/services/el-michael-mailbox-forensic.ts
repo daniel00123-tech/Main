@@ -198,15 +198,27 @@ async function listAttachments(
   config: MicrosoftGraphConfig,
   mailbox: string,
   messageId: string,
-): Promise<GraphAttachment[]> {
+): Promise<{ attachments: GraphAttachment[]; error: string | null }> {
   try {
-    const page = await graphGet<{ value?: GraphAttachment[] }>(
+    const page = await graphGet<{ value?: Array<GraphAttachment & { contentBytes?: string }> }>(
       config,
-      `/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType,size,isInline,contentId`,
+      `/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}/attachments`,
     );
-    return page.value ?? [];
-  } catch {
-    return [];
+    const attachments = (page.value ?? []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      contentType: row.contentType,
+      size: row.size,
+      isInline: row.isInline,
+      contentId: row.contentId,
+      "@odata.type": row["@odata.type"],
+    }));
+    return { attachments, error: null };
+  } catch (err) {
+    return {
+      attachments: [],
+      error: err instanceof Error ? err.message.slice(0, 220) : String(err).slice(0, 220),
+    };
   }
 }
 
@@ -215,7 +227,8 @@ async function hiddenAttachmentProbe(
   mailbox: string,
   message: GraphMessage,
 ): Promise<{ attachmentCount: number; cloudLinks: number; kinds: string[] }> {
-  const attachments = await listAttachments(config, mailbox, message.id);
+  const listed = await listAttachments(config, mailbox, message.id);
+  const attachments = listed.attachments;
   let cloudLinks = 0;
   try {
     const full = await graphGet<GraphMessage>(
@@ -339,7 +352,19 @@ async function inspectMailbox(
     };
   };
 
-  const flagged = messages.filter((row) => row.hasAttachments);
+  const flagged = [...messages]
+    .filter((row) => row.hasAttachments)
+    .sort((left, right) => {
+      const rank = (row: (typeof messages)[number]) => {
+        if (row.scannedByPolicy) return 0;
+        if (/davies|invoice/i.test(row.folderName)) return 1;
+        if (/^completed$/i.test(row.folderName)) return 2;
+        if (/^sent items$/i.test(row.folderName)) return 3;
+        return 4;
+      };
+      return rank(left) - rank(right);
+    })
+    .slice(0, 80);
   const attachmentRows = [];
   const exclusions = [];
   let graphAttachments = 0;
@@ -347,8 +372,11 @@ async function inspectMailbox(
   let inline = 0;
   let unsupported = 0;
   let reference = 0;
+  let attachmentListError: string | null = null;
   for (const message of flagged) {
-    const atts = await listAttachments(config, mailbox, message.id);
+    const listed = await listAttachments(config, mailbox, message.id);
+    if (listed.error && !attachmentListError) attachmentListError = listed.error;
+    const atts = listed.attachments;
     graphAttachments += atts.length;
     for (const att of atts) {
       const classified = classifyRow(att);
@@ -421,6 +449,7 @@ async function inspectMailbox(
     },
     folders: folderReports,
     graphAttachments,
+    attachmentListError,
     eligibleBusinessAttachments: eligible,
     inlineOrSignature: inline,
     unsupported,
@@ -530,6 +559,12 @@ export async function runElMichaelMailboxForensic(env: Env): Promise<Record<stri
   } else if (michael.unsupported > 0 && michael.eligibleBusinessAttachments === 0) {
     rootCause = "F. UNSUPPORTED_TYPE";
     explanation = "Attachments were present but none were a supported business file type.";
+  } else if (michael.attachmentListError) {
+    rootCause = "I. GRAPH_ATTACHMENT_ENUM_BUG";
+    explanation = `Attachment-bearing messages were found, but Graph attachment listing failed: ${michael.attachmentListError}`;
+  } else if (michael.windowCounts["30d"].hasAttachmentsTrue > 0 && michael.graphAttachments === 0) {
+    rootCause = "I. GRAPH_ATTACHMENT_ENUM_BUG";
+    explanation = "Messages report hasAttachments=true but the attachments endpoint returned none.";
   } else if (michael.hiddenAttachmentsOrLinks.some((row) => row.graphAttachmentsFound > 0)) {
     rootCause = "I. GRAPH_ATTACHMENT_ENUM_BUG";
     explanation = "hasAttachments=false on at least one message that still returned attachments from the attachments endpoint.";
