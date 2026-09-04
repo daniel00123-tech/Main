@@ -1,6 +1,6 @@
 /** Written by scripts/write-production-lineage.mjs immediately before production deploy. */
 export const GENERATED_PRODUCTION_LINEAGE = {
-  gitSha: "729ba563eab9efadfd08e4fff4683e52fd4582a8",
-  branch: "cursor/el-portal-chat-latency-b8da",
-  generatedAt: "2026-09-04T14:43:50.882Z",
+  gitSha: "dc92852cc61c7e7cebdbee8fb45df5dce5776bc3",
+  branch: "cursor/infra-portal-chat-polish-d3d8",
+  generatedAt: "2026-09-04T14:47:00.383Z",
 } as const;
