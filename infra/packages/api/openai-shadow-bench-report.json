@@ -1,0 +1,3630 @@
+{
+  "api": "https://api.infrastack.app",
+  "startedAt": "2026-09-04T17:42:08.082Z",
+  "smoke": {
+    "httpStatus": 200,
+    "body": {
+      "ok": true,
+      "action": "smoke",
+      "flags": {
+        "keyConfigured": true,
+        "el": {
+          "mode": "openai_shadow",
+          "shadow": true,
+          "useOpenAi": false,
+          "reason": "openai_shadow"
+        },
+        "caddington": {
+          "mode": "cloudflare",
+          "shadow": false,
+          "useOpenAi": false,
+          "reason": "tenant_not_allowlisted"
+        },
+        "ht": {
+          "mode": "cloudflare",
+          "shadow": false,
+          "useOpenAi": false,
+          "reason": "tenant_not_allowlisted"
+        }
+      },
+      "smoke": {
+        "ok": true,
+        "success": true,
+        "model": "gpt-5.6-luna",
+        "latencyMs": 1287,
+        "promptTokens": 32,
+        "completionTokens": 21,
+        "cachedTokens": 0,
+        "estimatedCostUsd": 0.000031599999999999996,
+        "costBasis": "estimated",
+        "correlationId": "openai-smoke-mtn8r9x5",
+        "failure": null,
+        "replyClass": "pong",
+        "keyConfigured": true,
+        "businessConnectorsUsed": false
+      },
+      "userVisibleAnswers": "cloudflare"
+    }
+  },
+  "flags": {
+    "keyConfigured": true,
+    "el": {
+      "mode": "openai_shadow",
+      "shadow": true,
+      "useOpenAi": false,
+      "reason": "openai_shadow"
+    },
+    "caddington": {
+      "mode": "cloudflare",
+      "shadow": false,
+      "useOpenAi": false,
+      "reason": "tenant_not_allowlisted"
+    },
+    "ht": {
+      "mode": "cloudflare",
+      "shadow": false,
+      "useOpenAi": false,
+      "reason": "tenant_not_allowlisted"
+    }
+  },
+  "cloudflareMock": {
+    "provider": "cloudflare",
+    "cases": 100,
+    "intent": 100,
+    "tool": 86,
+    "rbac": 100,
+    "reasoning": 69,
+    "existingEvidence": 100,
+    "unnecessaryTools": 0,
+    "grounding": 69,
+    "hallucination": 0,
+    "firstAnswer": 100,
+    "naturalness": 100,
+    "followUp": 100,
+    "correction": 100,
+    "avgLatencyMs": 0,
+    "costStatus": "unknown",
+    "overall": 94
+  },
+  "slices": [
+    {
+      "offset": 0,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 75,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 1589,
+        "costStatus": "estimated",
+        "overall": 96
+      },
+      "rows": [
+        {
+          "id": "xero_1",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_sales_summary"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 6354,
+          "promptTokens": 4468,
+          "completionTokens": 393,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.013652,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_2",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_list_overdue_invoices"
+          ],
+          "shadowTools": [
+            "xero_list_overdue_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1486,
+          "promptTokens": 4463,
+          "completionTokens": 34,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009334000000000002,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_3",
+          "pass": false,
+          "cloudflareTools": [
+            "xero_top_customers"
+          ],
+          "shadowTools": [
+            "xero_search_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 3504,
+          "promptTokens": 4465,
+          "completionTokens": 147,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.010694,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_4",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_get_invoice"
+          ],
+          "shadowTools": [
+            "xero_get_invoice"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1574,
+          "promptTokens": 4466,
+          "completionTokens": 38,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009388,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 4,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 50,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 1210,
+        "costStatus": "estimated",
+        "overall": 92
+      },
+      "rows": [
+        {
+          "id": "xero_5",
+          "pass": false,
+          "cloudflareTools": [
+            "xero_search_invoices"
+          ],
+          "shadowTools": [
+            "xero_list_overdue_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 2150,
+          "promptTokens": 4466,
+          "completionTokens": 40,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009412,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_6",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_sales_summary"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1372,
+          "promptTokens": 4462,
+          "completionTokens": 36,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009356000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_7",
+          "pass": false,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "web_search"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 4840,
+          "promptTokens": 4465,
+          "completionTokens": 208,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.011426,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_8",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_aged_receivables"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1840,
+          "promptTokens": 4465,
+          "completionTokens": 32,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009314000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 8,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 50,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 1563,
+        "costStatus": "estimated",
+        "overall": 92
+      },
+      "rows": [
+        {
+          "id": "xero_9",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_search_invoices"
+          ],
+          "shadowTools": [
+            "xero_search_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1364,
+          "promptTokens": 4464,
+          "completionTokens": 40,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009408,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_10",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_get_organisation"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1550,
+          "promptTokens": 4464,
+          "completionTokens": 30,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009288,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_11",
+          "pass": false,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "web_search"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 6251,
+          "promptTokens": 4465,
+          "completionTokens": 339,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.012998000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_12",
+          "pass": false,
+          "cloudflareTools": [
+            "xero_search_invoices"
+          ],
+          "shadowTools": [
+            "xero_search_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1634,
+          "promptTokens": 4464,
+          "completionTokens": 66,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.00972,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 12,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 75,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 2060,
+        "costStatus": "estimated",
+        "overall": 96
+      },
+      "rows": [
+        {
+          "id": "xero_13",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_search_invoices"
+          ],
+          "shadowTools": [
+            "xero_list_overdue_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1994,
+          "promptTokens": 4464,
+          "completionTokens": 23,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009204,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_14",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_top_customers"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 5349,
+          "promptTokens": 4464,
+          "completionTokens": 305,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.012588,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_15",
+          "pass": false,
+          "cloudflareTools": [
+            "xero_search_invoices"
+          ],
+          "shadowTools": [
+            "xero_list_overdue_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1278,
+          "promptTokens": 4463,
+          "completionTokens": 23,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009202000000000002,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_16",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_sales_summary"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 8240,
+          "promptTokens": 4465,
+          "completionTokens": 428,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.014066,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 16,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 1053,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "xero_17",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_search_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1653,
+          "promptTokens": 4466,
+          "completionTokens": 46,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009484000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_18",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_search_invoices"
+          ],
+          "shadowTools": [
+            "xero_sales_summary"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 4212,
+          "promptTokens": 4466,
+          "completionTokens": 222,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.011596,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_19",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_list_overdue_invoices"
+          ],
+          "shadowTools": [
+            "xero_list_overdue_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1508,
+          "promptTokens": 4464,
+          "completionTokens": 36,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.00936,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "xero_20",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_sales_summary"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 2315,
+          "promptTokens": 4465,
+          "completionTokens": 105,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.010190000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 20,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 1694,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "outlook_1",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 2916,
+          "promptTokens": 4470,
+          "completionTokens": 138,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.010596,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_2",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "outlook_search_mailbox"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1483,
+          "promptTokens": 4464,
+          "completionTokens": 42,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009432,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_3",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1335,
+          "promptTokens": 4466,
+          "completionTokens": 39,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0094,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_4",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1340,
+          "promptTokens": 4466,
+          "completionTokens": 42,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009436,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 24,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 373,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "outlook_5",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "outlook_search_mailbox"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1373,
+          "promptTokens": 4465,
+          "completionTokens": 52,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009554,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_6",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1036,
+          "promptTokens": 4464,
+          "completionTokens": 26,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.00924,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_7",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "outlook_search_mailbox"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1207,
+          "promptTokens": 4464,
+          "completionTokens": 29,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009276,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_8",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1491,
+          "promptTokens": 4465,
+          "completionTokens": 47,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009494,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 28,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 1700,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "outlook_9",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1082,
+          "promptTokens": 4463,
+          "completionTokens": 24,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009214000000000002,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_10",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1406,
+          "promptTokens": 4466,
+          "completionTokens": 26,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009244,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_11",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "outlook_search_mailbox"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 6801,
+          "promptTokens": 4464,
+          "completionTokens": 41,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.00942,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_12",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1158,
+          "promptTokens": 4464,
+          "completionTokens": 41,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.00942,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 32,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 75,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 730,
+        "costStatus": "estimated",
+        "overall": 96
+      },
+      "rows": [
+        {
+          "id": "outlook_13",
+          "pass": false,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "outlook_search_mailbox"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1298,
+          "promptTokens": 4465,
+          "completionTokens": 28,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009266,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_14",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1022,
+          "promptTokens": 4463,
+          "completionTokens": 26,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009238000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_15",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1155,
+          "promptTokens": 4463,
+          "completionTokens": 26,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009238000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_16",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "outlook_search_mailbox"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 2920,
+          "promptTokens": 4463,
+          "completionTokens": 41,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009418000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 36,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 342,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "outlook_17",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1138,
+          "promptTokens": 4468,
+          "completionTokens": 26,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009248000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_18",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "outlook_search_mailbox"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1367,
+          "promptTokens": 4464,
+          "completionTokens": 27,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009252,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_19",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1153,
+          "promptTokens": 4464,
+          "completionTokens": 24,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009216,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "outlook_20",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1014,
+          "promptTokens": 4462,
+          "completionTokens": 24,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009212000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 40,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 461,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "knowledge_1",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge",
+            "get_knowledge_document"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1130,
+          "promptTokens": 4468,
+          "completionTokens": 29,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009284,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_2",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge",
+            "get_knowledge_document"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1349,
+          "promptTokens": 4467,
+          "completionTokens": 36,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009366000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_3",
+          "pass": true,
+          "cloudflareTools": [
+            "get_document_index_stats"
+          ],
+          "shadowTools": [
+            "get_document_index_stats"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1724,
+          "promptTokens": 4465,
+          "completionTokens": 16,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009122,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_4",
+          "pass": true,
+          "cloudflareTools": [
+            "list_documents"
+          ],
+          "shadowTools": [
+            "list_documents"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1842,
+          "promptTokens": 4466,
+          "completionTokens": 38,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009388,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 44,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 399,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "knowledge_5",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1342,
+          "promptTokens": 4468,
+          "completionTokens": 35,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009356000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_6",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1243,
+          "promptTokens": 4467,
+          "completionTokens": 25,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009234000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_7",
+          "pass": true,
+          "cloudflareTools": [
+            "list_documents"
+          ],
+          "shadowTools": [
+            "list_documents"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1594,
+          "promptTokens": 4467,
+          "completionTokens": 55,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009594000000000002,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_8",
+          "pass": true,
+          "cloudflareTools": [
+            "list_documents"
+          ],
+          "shadowTools": [
+            "list_documents"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1404,
+          "promptTokens": 4468,
+          "completionTokens": 50,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009536000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 48,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 360,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "knowledge_9",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1420,
+          "promptTokens": 4467,
+          "completionTokens": 25,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009234000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_10",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge",
+            "get_knowledge_document"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1207,
+          "promptTokens": 4471,
+          "completionTokens": 38,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009398,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_11",
+          "pass": true,
+          "cloudflareTools": [
+            "list_documents"
+          ],
+          "shadowTools": [
+            "list_documents"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1382,
+          "promptTokens": 4468,
+          "completionTokens": 38,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009392000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_12",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge",
+            "get_knowledge_document"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1441,
+          "promptTokens": 4467,
+          "completionTokens": 39,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009402,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 52,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 758,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "knowledge_13",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1237,
+          "promptTokens": 4467,
+          "completionTokens": 25,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009234000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_14",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1680,
+          "promptTokens": 4468,
+          "completionTokens": 55,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009596,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_15",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 2097,
+          "promptTokens": 4469,
+          "completionTokens": 89,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.010006000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_16",
+          "pass": true,
+          "cloudflareTools": [
+            "list_documents"
+          ],
+          "shadowTools": [
+            "list_documents"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 3030,
+          "promptTokens": 4467,
+          "completionTokens": 92,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.010038000000000002,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 56,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 477,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "knowledge_17",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1659,
+          "promptTokens": 4470,
+          "completionTokens": 62,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009684,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_18",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1651,
+          "promptTokens": 4469,
+          "completionTokens": 39,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009406000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_19",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1906,
+          "promptTokens": 4466,
+          "completionTokens": 51,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009544,
+          "failure": null,
+          "reusedEvidence": false
+        },
+        {
+          "id": "knowledge_20",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "list_documents"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1287,
+          "promptTokens": 4468,
+          "completionTokens": 39,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009404000000000001,
+          "failure": null,
+          "reusedEvidence": false
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 60,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 543,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "general_1",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1586,
+          "promptTokens": 4501,
+          "completionTokens": 16,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009194,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_2",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1572,
+          "promptTokens": 4501,
+          "completionTokens": 37,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009446,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_3",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2172,
+          "promptTokens": 4507,
+          "completionTokens": 98,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.001019,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_4",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2109,
+          "promptTokens": 4508,
+          "completionTokens": 83,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0010012,
+          "failure": null,
+          "reusedEvidence": true
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 64,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 595,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "general_5",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1901,
+          "promptTokens": 4509,
+          "completionTokens": 65,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009798,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_6",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2378,
+          "promptTokens": 4510,
+          "completionTokens": 27,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009344,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_7",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1968,
+          "promptTokens": 4503,
+          "completionTokens": 93,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0010122,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_8",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2273,
+          "promptTokens": 4506,
+          "completionTokens": 113,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0010368,
+          "failure": null,
+          "reusedEvidence": true
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 68,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 582,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "general_9",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1191,
+          "promptTokens": 4501,
+          "completionTokens": 40,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009482,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_10",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 951,
+          "promptTokens": 4502,
+          "completionTokens": 16,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009196,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_11",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1621,
+          "promptTokens": 4504,
+          "completionTokens": 75,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009908,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_12",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2328,
+          "promptTokens": 4506,
+          "completionTokens": 111,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0010344,
+          "failure": null,
+          "reusedEvidence": true
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 72,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 513,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "general_13",
+          "pass": true,
+          "cloudflareTools": [
+            "get_user_capabilities"
+          ],
+          "shadowTools": [
+            "get_user_capabilities"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1551,
+          "promptTokens": 4510,
+          "completionTokens": 27,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009344,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_14",
+          "pass": true,
+          "cloudflareTools": [
+            "get_user_capabilities"
+          ],
+          "shadowTools": [
+            "get_user_capabilities"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1159,
+          "promptTokens": 4511,
+          "completionTokens": 29,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.00937,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_15",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1197,
+          "promptTokens": 4501,
+          "completionTokens": 33,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009398,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_16",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2053,
+          "promptTokens": 4504,
+          "completionTokens": 85,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0010028,
+          "failure": null,
+          "reusedEvidence": true
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 76,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 457,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "general_17",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1828,
+          "promptTokens": 4506,
+          "completionTokens": 94,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.001014,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_18",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1748,
+          "promptTokens": 4503,
+          "completionTokens": 82,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009989999999999999,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_19",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1199,
+          "promptTokens": 4502,
+          "completionTokens": 16,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009196,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "general_20",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1536,
+          "promptTokens": 4503,
+          "completionTokens": 50,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009606,
+          "failure": null,
+          "reusedEvidence": true
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 80,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 984,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "mixed_1",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "list_documents"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 2223,
+          "promptTokens": 4512,
+          "completionTokens": 119,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.010452000000000001,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_2",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1720,
+          "promptTokens": 4506,
+          "completionTokens": 93,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0010128,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_3",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_sales_summary"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 3934,
+          "promptTokens": 4511,
+          "completionTokens": 210,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.011542,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_4",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1527,
+          "promptTokens": 4509,
+          "completionTokens": 48,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009594000000000002,
+          "failure": null,
+          "reusedEvidence": true
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 84,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 711,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "mixed_5",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 2044,
+          "promptTokens": 4511,
+          "completionTokens": 93,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.010138000000000001,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_6",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge",
+            "get_knowledge_document"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1643,
+          "promptTokens": 4515,
+          "completionTokens": 36,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009462000000000002,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_7",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2844,
+          "promptTokens": 4512,
+          "completionTokens": 167,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0011028,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_8",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2578,
+          "promptTokens": 4508,
+          "completionTokens": 112,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.001036,
+          "failure": null,
+          "reusedEvidence": true
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 88,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 598,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "mixed_9",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1511,
+          "promptTokens": 4506,
+          "completionTokens": 56,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009684,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_10",
+          "pass": true,
+          "cloudflareTools": [
+            "get_connector_status"
+          ],
+          "shadowTools": [
+            "get_connector_status"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1239,
+          "promptTokens": 4511,
+          "completionTokens": 15,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009202,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_11",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_list_messages"
+          ],
+          "shadowTools": [
+            "xero_sales_summary"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 2392,
+          "promptTokens": 4512,
+          "completionTokens": 131,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.010596000000000001,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_12",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1225,
+          "promptTokens": 4510,
+          "completionTokens": 33,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009416,
+          "failure": null,
+          "reusedEvidence": true
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 92,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 1515,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "mixed_13",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "outlook_list_messages"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 2731,
+          "promptTokens": 4510,
+          "completionTokens": 53,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009656,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_14",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_sales_summary"
+          ],
+          "shadowTools": [
+            "xero_search_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 6060,
+          "promptTokens": 4512,
+          "completionTokens": 236,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.011856,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_15",
+          "pass": true,
+          "cloudflareTools": [
+            "outlook_search_mailbox"
+          ],
+          "shadowTools": [
+            "get_user_capabilities"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 2720,
+          "promptTokens": 4511,
+          "completionTokens": 126,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.010534,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_16",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 2052,
+          "promptTokens": 4509,
+          "completionTokens": 108,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0010314,
+          "failure": null,
+          "reusedEvidence": true
+        }
+      ],
+      "source": "LIVE_API"
+    },
+    {
+      "offset": 96,
+      "scorecard": {
+        "provider": "openai",
+        "cases": 4,
+        "intent": 100,
+        "tool": 100,
+        "rbac": 100,
+        "reasoning": 100,
+        "existingEvidence": 100,
+        "unnecessaryTools": 0,
+        "grounding": 100,
+        "hallucination": 0,
+        "firstAnswer": 100,
+        "naturalness": 100,
+        "followUp": 100,
+        "correction": 100,
+        "avgLatencyMs": 825,
+        "costStatus": "estimated",
+        "overall": 100
+      },
+      "rows": [
+        {
+          "id": "mixed_17",
+          "pass": true,
+          "cloudflareTools": [],
+          "shadowTools": [],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-luna",
+          "latencyMs": 1529,
+          "promptTokens": 4512,
+          "completionTokens": 65,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.0009804,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_18",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "get_document_index_stats"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1435,
+          "promptTokens": 4511,
+          "completionTokens": 61,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009754,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_19",
+          "pass": true,
+          "cloudflareTools": [
+            "search_company_knowledge"
+          ],
+          "shadowTools": [
+            "search_company_knowledge"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 3298,
+          "promptTokens": 4512,
+          "completionTokens": 134,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.010632,
+          "failure": null,
+          "reusedEvidence": true
+        },
+        {
+          "id": "mixed_20",
+          "pass": true,
+          "cloudflareTools": [
+            "xero_list_overdue_invoices"
+          ],
+          "shadowTools": [
+            "xero_list_overdue_invoices"
+          ],
+          "userVisibleProvider": "cloudflare",
+          "model": "gpt-5.6-terra",
+          "latencyMs": 1918,
+          "promptTokens": 4509,
+          "completionTokens": 34,
+          "costBasis": "estimated",
+          "estimatedCostUsd": 0.009426000000000002,
+          "failure": null,
+          "reusedEvidence": true
+        }
+      ],
+      "source": "LIVE_API"
+    }
+  ],
+  "emailSequence": {
+    "source": "LIVE_API",
+    "userVisible": "cloudflare",
+    "turns": [
+      {
+        "id": "email_seq_1",
+        "text": "check in the info inbox what is the latest email",
+        "cloudflareTools": [
+          "outlook_list_messages"
+        ],
+        "shadowTools": [
+          "outlook_list_messages"
+        ],
+        "shadowFailure": null,
+        "userVisibleProvider": "cloudflare",
+        "outlookCalls": 1
+      },
+      {
+        "id": "email_seq_2",
+        "text": "give a suggestion on what to reply?",
+        "cloudflareTools": [],
+        "shadowTools": [],
+        "shadowFailure": null,
+        "userVisibleProvider": "cloudflare",
+        "outlookCalls": 0
+      },
+      {
+        "id": "email_seq_3",
+        "text": "make that shorter",
+        "cloudflareTools": [],
+        "shadowTools": [],
+        "shadowFailure": null,
+        "userVisibleProvider": "cloudflare",
+        "outlookCalls": 0
+      },
+      {
+        "id": "email_seq_4",
+        "text": "make it friendlier",
+        "cloudflareTools": [],
+        "shadowTools": [],
+        "shadowFailure": null,
+        "userVisibleProvider": "cloudflare",
+        "outlookCalls": 0
+      },
+      {
+        "id": "email_seq_5",
+        "text": "what were they asking for again?",
+        "cloudflareTools": [],
+        "shadowTools": [],
+        "shadowFailure": null,
+        "userVisibleProvider": "cloudflare",
+        "outlookCalls": 0
+      },
+      {
+        "id": "email_seq_6",
+        "text": "who sent that email?",
+        "cloudflareTools": [],
+        "shadowTools": [],
+        "shadowFailure": null,
+        "userVisibleProvider": "cloudflare",
+        "outlookCalls": 0
+      },
+      {
+        "id": "email_seq_7",
+        "text": "Give a professional reply",
+        "cloudflareTools": [],
+        "shadowTools": [],
+        "shadowFailure": null,
+        "userVisibleProvider": "cloudflare",
+        "outlookCalls": 0
+      }
+    ],
+    "outlookLiveCalls": 1,
+    "extraOutlookAfterFirst": false
+  },
+  "errors": [],
+  "xeroSequence": {
+    "source": "LIVE_API",
+    "userVisible": "cloudflare",
+    "turns": [
+      {
+        "id": "xero_seq_1",
+        "text": "What are our Xero sales this month?",
+        "cloudflareTools": [
+          "xero_sales_summary"
+        ],
+        "shadowTools": [
+          "xero_sales_summary"
+        ],
+        "shadowFailure": null
+      },
+      {
+        "id": "xero_seq_2",
+        "text": "How does that compare to last month?",
+        "cloudflareTools": [
+          "search_company_knowledge"
+        ],
+        "shadowTools": [
+          "xero_sales_summary"
+        ],
+        "shadowFailure": null
+      },
+      {
+        "id": "xero_seq_3",
+        "text": "Who are the top customers?",
+        "cloudflareTools": [
+          "xero_top_customers"
+        ],
+        "shadowTools": [
+          "xero_top_customers"
+        ],
+        "shadowFailure": null
+      },
+      {
+        "id": "xero_seq_4",
+        "text": "make that shorter",
+        "cloudflareTools": [],
+        "shadowTools": [],
+        "shadowFailure": null
+      }
+    ],
+    "xeroOnFirst": true,
+    "extraXeroOnLast": false
+  },
+  "mixedTool": {
+    "source": "LIVE_API",
+    "userVisible": "cloudflare",
+    "text": "What are sales this month and what is the newest info email?",
+    "cloudflareTools": [
+      "xero_sales_summary"
+    ],
+    "shadowTools": [
+      "outlook_list_messages"
+    ],
+    "families": [
+      "xero",
+      "outlook"
+    ],
+    "oneFinalAnswer": true
+  },
+  "noToolConversation": {
+    "source": "LIVE_API",
+    "userVisible": "cloudflare",
+    "turns": [
+      {
+        "id": "notool_1",
+        "text": "Give a professional reply",
+        "shadowTools": [],
+        "usedBusinessTool": false
+      },
+      {
+        "id": "notool_2",
+        "text": "make that shorter",
+        "shadowTools": [],
+        "usedBusinessTool": false
+      },
+      {
+        "id": "notool_3",
+        "text": "Explain that simply",
+        "shadowTools": [
+          "search_company_knowledge"
+        ],
+        "usedBusinessTool": true
+      },
+      {
+        "id": "notool_4",
+        "text": "What is 2+2?",
+        "shadowTools": [
+          "search_company_knowledge"
+        ],
+        "usedBusinessTool": true
+      },
+      {
+        "id": "notool_5",
+        "text": "Brainstorm a few ways to say thanks",
+        "shadowTools": [
+          "search_company_knowledge"
+        ],
+        "usedBusinessTool": true
+      }
+    ],
+    "businessTools": 3
+  },
+  "exactTool": {
+    "scorecard": {
+      "cases": 50,
+      "familyAgreement": 94,
+      "requiredAgreement": 96,
+      "overall": 95,
+      "inboxNoTool": 1,
+      "xeroNoTool": 0,
+      "knowledgeToXero": 0,
+      "emailToXero": 0,
+      "byFamily": {
+        "outlook": 90,
+        "xero": 100,
+        "knowledge": 100,
+        "catalogue": 100,
+        "mixed": 80
+      }
+    },
+    "rows": [
+      {
+        "id": "outlook_latest_inbox",
+        "family": "outlook",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_list_messages"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "outlook_newest_shared",
+        "family": "outlook",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_list_messages"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "outlook_last_five",
+        "family": "outlook",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_list_messages"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "outlook_unread",
+        "family": "outlook",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_list_messages"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "outlook_arrived_today",
+        "family": "outlook",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_list_messages"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "outlook_from_person",
+        "family": "outlook",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_search_mailbox"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "outlook_search_po",
+        "family": "outlook",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_search_mailbox"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "outlook_containing",
+        "family": "outlook",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_search_mailbox"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "outlook_topic",
+        "family": "outlook",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [],
+        "tools": [],
+        "familyOk": false,
+        "requiredOk": false,
+        "inboxNoTool": true,
+        "xeroNoTool": false
+      },
+      {
+        "id": "outlook_about",
+        "family": "outlook",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_search_mailbox"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "xero_sales_month",
+        "family": "xero",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_sales_summary"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "xero_revenue_week",
+        "family": "xero",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_sales_summary"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "xero_sales_7d",
+        "family": "xero",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_search_invoices"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "xero_summary",
+        "family": "xero",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_search_invoices"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "xero_overdue",
+        "family": "xero",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_list_overdue_invoices"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "xero_owes",
+        "family": "xero",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_list_overdue_invoices"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "xero_top",
+        "family": "xero",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_search_invoices"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "xero_biggest",
+        "family": "xero",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_top_customers"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "xero_pnl",
+        "family": "xero",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_profit_and_loss"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "xero_invoice",
+        "family": "xero",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_get_invoice"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "knowledge_po",
+        "family": "knowledge",
+        "required": true,
+        "expectedFamilies": [
+          "knowledge"
+        ],
+        "actualFamilies": [
+          "knowledge"
+        ],
+        "tools": [
+          "search_company_knowledge"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "knowledge_vehicle",
+        "family": "knowledge",
+        "required": true,
+        "expectedFamilies": [
+          "knowledge"
+        ],
+        "actualFamilies": [
+          "knowledge"
+        ],
+        "tools": [
+          "search_company_knowledge"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "knowledge_vans",
+        "family": "knowledge",
+        "required": true,
+        "expectedFamilies": [
+          "knowledge"
+        ],
+        "actualFamilies": [
+          "knowledge"
+        ],
+        "tools": [
+          "search_company_knowledge"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "knowledge_fuel",
+        "family": "knowledge",
+        "required": true,
+        "expectedFamilies": [
+          "knowledge"
+        ],
+        "actualFamilies": [
+          "knowledge"
+        ],
+        "tools": [
+          "search_company_knowledge"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "knowledge_hs",
+        "family": "knowledge",
+        "required": true,
+        "expectedFamilies": [
+          "knowledge"
+        ],
+        "actualFamilies": [
+          "knowledge"
+        ],
+        "tools": [
+          "search_company_knowledge"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "knowledge_onboarding",
+        "family": "knowledge",
+        "required": true,
+        "expectedFamilies": [
+          "knowledge"
+        ],
+        "actualFamilies": [
+          "knowledge"
+        ],
+        "tools": [
+          "search_company_knowledge"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "knowledge_leak",
+        "family": "knowledge",
+        "required": true,
+        "expectedFamilies": [
+          "knowledge"
+        ],
+        "actualFamilies": [
+          "knowledge"
+        ],
+        "tools": [
+          "search_company_knowledge"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "knowledge_survey",
+        "family": "knowledge",
+        "required": true,
+        "expectedFamilies": [
+          "knowledge"
+        ],
+        "actualFamilies": [
+          "knowledge"
+        ],
+        "tools": [
+          "search_company_knowledge"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "knowledge_other",
+        "family": "knowledge",
+        "required": true,
+        "expectedFamilies": [
+          "knowledge"
+        ],
+        "actualFamilies": [
+          "knowledge"
+        ],
+        "tools": [
+          "search_company_knowledge"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "knowledge_profile",
+        "family": "knowledge",
+        "required": true,
+        "expectedFamilies": [
+          "knowledge"
+        ],
+        "actualFamilies": [
+          "knowledge"
+        ],
+        "tools": [
+          "search_company_knowledge"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "catalogue_newest",
+        "family": "catalogue",
+        "required": true,
+        "expectedFamilies": [
+          "catalogue"
+        ],
+        "actualFamilies": [
+          "catalogue"
+        ],
+        "tools": [
+          "list_documents"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "catalogue_sharepoint",
+        "family": "catalogue",
+        "required": true,
+        "expectedFamilies": [
+          "catalogue"
+        ],
+        "actualFamilies": [
+          "catalogue"
+        ],
+        "tools": [
+          "list_documents"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "catalogue_ten",
+        "family": "catalogue",
+        "required": true,
+        "expectedFamilies": [
+          "catalogue"
+        ],
+        "actualFamilies": [
+          "catalogue"
+        ],
+        "tools": [
+          "list_documents"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "catalogue_changed",
+        "family": "catalogue",
+        "required": true,
+        "expectedFamilies": [
+          "catalogue"
+        ],
+        "actualFamilies": [
+          "catalogue"
+        ],
+        "tools": [
+          "list_documents"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "catalogue_onedrive",
+        "family": "catalogue",
+        "required": true,
+        "expectedFamilies": [
+          "catalogue"
+        ],
+        "actualFamilies": [
+          "catalogue"
+        ],
+        "tools": [
+          "list_documents"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "catalogue_uploaded",
+        "family": "catalogue",
+        "required": true,
+        "expectedFamilies": [
+          "catalogue"
+        ],
+        "actualFamilies": [
+          "catalogue"
+        ],
+        "tools": [
+          "list_documents"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "catalogue_count",
+        "family": "catalogue",
+        "required": true,
+        "expectedFamilies": [
+          "catalogue"
+        ],
+        "actualFamilies": [
+          "catalogue"
+        ],
+        "tools": [
+          "get_document_index_stats"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "catalogue_connected",
+        "family": "catalogue",
+        "required": true,
+        "expectedFamilies": [
+          "catalogue"
+        ],
+        "actualFamilies": [
+          "catalogue"
+        ],
+        "tools": [
+          "get_connector_status"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "catalogue_sync",
+        "family": "catalogue",
+        "required": true,
+        "expectedFamilies": [
+          "catalogue"
+        ],
+        "actualFamilies": [
+          "catalogue"
+        ],
+        "tools": [
+          "get_recent_sync_status"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "catalogue_caps",
+        "family": "catalogue",
+        "required": true,
+        "expectedFamilies": [
+          "catalogue"
+        ],
+        "actualFamilies": [
+          "catalogue"
+        ],
+        "tools": [
+          "get_user_capabilities"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "mixed_sales_and_inbox",
+        "family": "mixed",
+        "required": true,
+        "expectedFamilies": [
+          "xero",
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_list_messages"
+        ],
+        "familyOk": false,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "mixed_meant_email",
+        "family": "mixed",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_list_messages"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "mixed_meant_xero",
+        "family": "mixed",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_search_invoices"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "mixed_wrong_file",
+        "family": "mixed",
+        "required": true,
+        "expectedFamilies": [
+          "knowledge"
+        ],
+        "actualFamilies": [
+          "knowledge"
+        ],
+        "tools": [
+          "search_company_knowledge"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "mixed_now_overdue",
+        "family": "mixed",
+        "required": true,
+        "expectedFamilies": [
+          "xero"
+        ],
+        "actualFamilies": [
+          "xero"
+        ],
+        "tools": [
+          "xero_list_overdue_invoices"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "mixed_meant_inbox",
+        "family": "mixed",
+        "required": true,
+        "expectedFamilies": [
+          "outlook"
+        ],
+        "actualFamilies": [
+          "outlook"
+        ],
+        "tools": [
+          "outlook_list_messages"
+        ],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "mixed_shorter",
+        "family": "mixed",
+        "required": false,
+        "expectedFamilies": [],
+        "actualFamilies": [],
+        "tools": [],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "mixed_professional",
+        "family": "mixed",
+        "required": false,
+        "expectedFamilies": [],
+        "actualFamilies": [],
+        "tools": [],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "mixed_explain",
+        "family": "mixed",
+        "required": false,
+        "expectedFamilies": [],
+        "actualFamilies": [],
+        "tools": [],
+        "familyOk": true,
+        "requiredOk": true,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      },
+      {
+        "id": "mixed_arithmetic",
+        "family": "mixed",
+        "required": false,
+        "expectedFamilies": [],
+        "actualFamilies": [
+          "catalogue"
+        ],
+        "tools": [
+          "get_user_capabilities"
+        ],
+        "familyOk": false,
+        "requiredOk": false,
+        "inboxNoTool": false,
+        "xeroNoTool": false
+      }
+    ]
+  },
+  "openaiLive": {
+    "source": "LIVE_API",
+    "cases": 100,
+    "intent": 100,
+    "tool": 93,
+    "grounding": 100,
+    "firstAnswer": 100,
+    "naturalness": 100,
+    "followUp": 100,
+    "unnecessaryTools": 0,
+    "hallucination": 0,
+    "avgLatencyMs": 884,
+    "promptTokens": 448247,
+    "completionTokens": 7356,
+    "estimatedCostUsd": 0.771394,
+    "costBasis": "estimated",
+    "failures": 0,
+    "costInputs": {
+      "promptTokens": 448247,
+      "completionTokens": 7356,
+      "rates": "published gpt-5.6-luna/terra/sol from developers.openai.com/api/docs/models"
+    }
+  },
+  "finishedAt": "2026-09-04T17:48:15.611Z"
+}
