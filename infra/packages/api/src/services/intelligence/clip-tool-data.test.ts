@@ -33,4 +33,31 @@ describe("clipBusinessToolData catalogue", () => {
     expect(clipped).not.toHaveProperty("truncated");
     expect(clipBusinessToolData(bulky).documents).toHaveLength(8);
   });
+
+  it("keeps nested warehouse months instead of truncating the gateway wrapper", () => {
+    const bulky = {
+      correlationId: "c1",
+      toolName: "warehouse_sales_analysis",
+      result: {
+        ok: true,
+        evidence: { source: "xero_warehouse", warehouseAsOf: "2026-09-04T21:20:43.573Z", completenessStatus: "COMPLETE" },
+        result: {
+          months: [{ month: "2026-03", sales: 4120, invoiceCount: 18, completeness: "COMPLETE" }],
+          fromDate: "2026-03-01",
+          toDate: "2026-03-31",
+          source: "xero_warehouse",
+          warehouseAsOf: "2026-09-04T21:20:43.573Z",
+          completenessStatus: "COMPLETE",
+          padding: "x".repeat(4000),
+        },
+      },
+    };
+    const clipped = clipBusinessToolData(bulky, "warehouse_sales_analysis") as {
+      months: Array<{ month: string; sales: number }>;
+      source: string;
+    };
+    expect(clipped.source).toBe("xero_warehouse");
+    expect(clipped.months[0]).toMatchObject({ month: "2026-03", sales: 4120 });
+    expect(clipped).not.toHaveProperty("truncated");
+  });
 });

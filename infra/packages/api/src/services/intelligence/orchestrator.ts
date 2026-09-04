@@ -41,6 +41,7 @@ import {
   GENERIC_RETRY_COPY,
   extractFirstMessageId,
   isGenericRetryCopy,
+  isSpuriousYearClarify,
   synthesizeFromToolCalls,
   synthesizeToolResult,
 } from "./verbalise-business.js";
@@ -269,7 +270,12 @@ async function executeIntelligenceTurn(input: {
     },
   ): IntelligenceTurnResult => {
     const grounded =
-      deterministicVerbalise && (!payload.text.trim() || isGenericRetryCopy(payload.text))
+      deterministicVerbalise &&
+      (!payload.text.trim() ||
+        isGenericRetryCopy(payload.text) ||
+        (isSpuriousYearClarify(payload.text) &&
+          (classifyQueryFreshness(input.text) === "HISTORICAL_ANALYTICAL" ||
+            payload.toolCalls.some((call) => call.ok && call.name.startsWith("warehouse_")))))
         ? deterministicVerbalise
         : payload.text;
     const assembled = finish({
@@ -433,7 +439,11 @@ async function executeIntelligenceTurn(input: {
       workingState.recentEvidence = recentEvidence;
       toolCalls.push(...read.toolCalls);
       if (read.ok && read.text) deterministicVerbalise = read.text;
-      if (!brain.policy.useOpenAi) {
+      const warehouseAnswered =
+        read.ok &&
+        read.toolCalls.some((call) => call.ok && call.name.startsWith("warehouse_")) &&
+        classifyQueryFreshness(input.text) === "HISTORICAL_ANALYTICAL";
+      if (!brain.policy.useOpenAi || warehouseAnswered) {
         return finishTurn({
           kind: read.ok ? "answer" : "failed",
           text: read.text,
