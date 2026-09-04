@@ -109,6 +109,7 @@ export type PortalChatConversation = {
   title: string;
   createdAt: string;
   updatedAt: string;
+  preview?: string | null;
   context?: {
     currentDocument?: { id: string; title: string; url?: string | null } | null;
     recentDocuments?: Array<{ id: string; title: string; url?: string | null }>;

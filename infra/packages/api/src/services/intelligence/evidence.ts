@@ -126,6 +126,7 @@ function isTimeout(result: IntelligenceToolResult): boolean {
 }
 
 export function defaultMailboxForText(text: string): string {
+  if (/\bmy inbox\b/i.test(text)) return "";
   if (/\bfinance\b/i.test(text)) return ELVEX_FINANCE_MAILBOXES[0];
   return ELVEX_INFO_MAILBOXES[0];
 }

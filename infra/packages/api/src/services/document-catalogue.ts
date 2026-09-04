@@ -238,6 +238,9 @@ export function rewriteKnowledgeCallForCatalogue(
 
 export function isCatalogueListingAsk(text: string): boolean {
   const trimmed = text.trim();
+  if (/\b(e-?mails?|emials?|inbox|mailbox|outlook)\b/i.test(trimmed) && !/\b(documents?|files?|attachments?|onedrive|sharepoint)\b/i.test(trimmed)) {
+    return false;
+  }
   if (!RECENCY.test(trimmed) && !/\b(uploaded|added since|changed this|changed today)\b/i.test(trimmed)) {
     return false;
   }

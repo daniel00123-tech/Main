@@ -21,6 +21,7 @@ import { identityFromMetadata, lookupKnowledgeSourceUrl, persistDiscoveredSource
 import { chunksFromFetchPayload, queryTerms, rejectWeakSearchHits, searchDocument } from "./whatsapp-grounded-qa";
 import { FETCH_TIMEOUT_MS, KNOWLEDGE_SEARCH_TIMEOUT_MS, MCP_TIMEOUT_MS, withBoundedTimeout } from "./whatsapp-timeouts";
 import { PORTAL_CHAT_SOURCE_CLIENT, toolStatusLabel, type PortalChatContext, type PortalChatStatusEvent } from "./portal-chat-types";
+import { executeWebSearch, WEB_SEARCH_TOOL } from "./intelligence/web-search.js";
 
 const ALLOWED_GATEWAY_TOOLS = new Set([
   "search",
@@ -75,6 +76,9 @@ export function createPortalChatRuntime(
 
       if (SYSTEM_META_TOOLS.has(call.name)) {
         return runSystemMeta(env, input, call, started);
+      }
+      if (call.name === WEB_SEARCH_TOOL) {
+        return runWebSearch(env, input, call, started);
       }
       if (call.name === "search_document") {
         return runSearchDocument(env, input, call, started, fetchCache, gateway);
@@ -206,6 +210,47 @@ export function createPortalChatRuntime(
         data: compactBusinessToolData(call.name, fetched.value.result),
       };
     },
+  };
+}
+
+async function runWebSearch(
+  env: Env,
+  input: { companyId: string; sessionUser: SessionUser; interactionId: string; context: PortalChatContext },
+  call: IntelligenceToolCall,
+  started: number,
+): Promise<IntelligenceToolResult> {
+  const query = String(call.arguments.query ?? call.arguments.q ?? "").trim();
+  const privateHints = [
+    input.context.lastAnswerText ?? "",
+    input.context.lastToolSummary ?? "",
+    input.context.lastMailboxAddress ?? "",
+    input.context.currentDocument?.title ?? "",
+  ].filter(Boolean);
+  const result = await executeWebSearch(query, privateHints);
+  await Promise.resolve(
+    recordUsageEvent(env.DB, {
+      companyId: input.companyId,
+      userId: input.sessionUser.userId,
+      actorEmail: input.sessionUser.email,
+      resourceType: "web_search",
+      resourceId: WEB_SEARCH_TOOL,
+      toolName: WEB_SEARCH_TOOL,
+      action: "web_search",
+      success: result.ok,
+      durationMs: Date.now() - started,
+      sourceClient: PORTAL_CHAT_SOURCE_CLIENT,
+      requestId: `web_${input.interactionId}_${started}`,
+      interactionId: input.interactionId,
+      settlementStatus: "zero_charge",
+      metadata: { lane: "web_search", provider: result.provider, channel: "portal" },
+    }),
+  ).catch(() => undefined);
+  return {
+    name: WEB_SEARCH_TOOL,
+    ok: result.ok,
+    latencyMs: Date.now() - started,
+    data: result,
+    error: result.ok ? undefined : result.error,
   };
 }
 

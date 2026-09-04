@@ -1,6 +1,8 @@
 import type { IntelligenceConversationState } from "./types.js";
 import type { ScopeDecision } from "./scope.js";
 import { describeUserAsk, isHollowAssistantText, previousSubstantiveUserText } from "./evidence.js";
+import { answerArithmetic } from "./utterance.js";
+import { WEB_SEARCH_UNAVAILABLE } from "./web-search.js";
 
 export function answerGeneralConversation(
   text: string,
@@ -26,6 +28,11 @@ export function answerGeneralConversation(
   if (/^(thanks|thank you|cheers|ta|thx|ty|that(?:'s| is) useful|that helps|great thanks)\b/i.test(text.trim())) {
     return "You're welcome.";
   }
+  const arithmetic = answerArithmetic(text);
+  if (arithmetic) return arithmetic;
+  if (/\b(weather|latest news|who won)\b/i.test(text)) {
+    return WEB_SEARCH_UNAVAILABLE;
+  }
   if (/^(hi|hello|hey|hiya|morning)\b/i.test(text.trim())) {
     return "Hi — what do you need?";
   }
@@ -37,7 +44,10 @@ export function answerGeneralConversation(
     return "I was trying to work out which system or document you wanted. Tell me which one and I'll continue.";
   }
   if (/\b(example|what else can you help)\b/i.test(text)) {
-    return "Ask about a document, a connected finance figure, or how many files are indexed. I will only use systems that are connected.";
+    return "Ask about a document, a connected finance figure, live public information, or how many files are indexed. I will only use systems that are connected, plus a public web lookup when you ask for current public facts.";
+  }
+  if (/\b(explain|what does .{1,40} mean|help me (write|draft|brainstorm))\b/i.test(text) && !previous) {
+    return "I can help with that. Give me the snippet or the question and I’ll keep it conversational.";
   }
   return previous ? "Happy to keep going from there — what do you want next?" : "What do you need?";
 }

@@ -26,6 +26,7 @@ import {
   synthesizeFromToolCalls,
 } from "./intelligence/index";
 import { recordUsageEvent } from "./usage";
+import { executeWebSearch, WEB_SEARCH_TOOL } from "./intelligence/web-search.js";
 import { collectQualityFlags } from "./intelligence/quality.js";
 import {
   COMPANY_KNOWLEDGE_READ_TOOL,
@@ -797,6 +798,35 @@ function createWhatsAppIntelligenceRuntime(
       const started = Date.now();
       if (SYSTEM_META_TOOLS.has(call.name)) {
         return runSystemMetaTool(env, input, call, started);
+      }
+      if (call.name === WEB_SEARCH_TOOL) {
+        const query = String(call.arguments.query ?? call.arguments.q ?? "").trim();
+        const result = await executeWebSearch(query, [input.memory.lastAnswerText ?? ""]);
+        await Promise.resolve(
+          recordUsageEvent(env.DB, {
+            companyId: input.companyId,
+            userId: input.sessionUser.userId,
+            actorEmail: input.sessionUser.email,
+            resourceType: "web_search",
+            resourceId: WEB_SEARCH_TOOL,
+            toolName: WEB_SEARCH_TOOL,
+            action: "web_search",
+            success: result.ok,
+            durationMs: Date.now() - started,
+            sourceClient: "whatsapp",
+            requestId: `web_${input.interactionId}_${started}`,
+            interactionId: input.interactionId,
+            settlementStatus: "zero_charge",
+            metadata: { lane: "web_search", provider: result.provider, channel: "whatsapp" },
+          }),
+        ).catch(() => undefined);
+        return {
+          name: WEB_SEARCH_TOOL,
+          ok: result.ok,
+          latencyMs: Date.now() - started,
+          data: result,
+          error: result.ok ? undefined : result.error,
+        };
       }
       if (call.name === "search_document") {
         return runSearchDocument(env, input, call, started);

@@ -2,6 +2,9 @@ import { businessToolForIntent, resolveBusinessSystemIntent } from "@infra/share
 import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "./types.js";
 import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
 import { isCatalogueListingAsk } from "../document-catalogue.js";
+import { isEmailBodyFollowUp, isPersonalInboxAsk, resolveMailboxAsk } from "./mailbox.js";
+import { isArithmeticAsk, isWritingOrBrainstormAsk } from "./utterance.js";
+import { isLivePublicInformationAsk } from "./web-search.js";
 
 export type ScopeSwitch =
   | "company"
@@ -173,7 +176,10 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
   return "xero_sales_summary";
 }
 
-export function pickMailboxTool(text: string): string {
+export function pickMailboxTool(text: string, lastSuccessfulTool?: string | null): string {
+  if (/\b(what about|how about|and now|ok what about)\b/i.test(text) && !/\b(from|containing|has \w+ sent|subject)\b/i.test(text)) {
+    return lastSuccessfulTool === "outlook_search_mailbox" ? "outlook_search_mailbox" : "outlook_list_messages";
+  }
   if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text) && !/\b(from|containing|search|find|sharon|po)\b/i.test(text)) {
     return "outlook_list_messages";
   }
@@ -345,6 +351,8 @@ export function classifyScope(
     | "recentDocuments"
     | "currentBusinessSystem"
     | "lastSuccessfulTool"
+    | "lastMailboxAddress"
+    | "lastEmailMessageId"
   >,
 ): ScopeDecision {
   const features = extractFeatures(text);
@@ -359,6 +367,41 @@ export function classifyScope(
       tool: null,
       noTool: true,
       lastUserIntent: "controlled_action",
+    });
+  }
+
+  if (isPersonalInboxAsk(text)) {
+    const mailbox = resolveMailboxAsk(text, {
+      lastMailboxAddress: state.lastMailboxAddress,
+      lastAnswerTopic: lastTopic,
+      currentBusinessSystem: state.currentBusinessSystem,
+    });
+    if (mailbox.kind === "clarify") {
+      return decide("AMBIGUOUS", features, {
+        tool: null,
+        noTool: true,
+        clarify: true,
+        clarifyText: mailbox.text,
+        lastAnswerTopic: "email",
+        lastUserIntent: "email",
+      });
+    }
+  }
+
+  if (isArithmeticAsk(text) || isWritingOrBrainstormAsk(text)) {
+    return decide("GENERAL_CONVERSATION", features, {
+      tool: null,
+      noTool: true,
+      lastAnswerTopic: "conversation",
+      lastUserIntent: "conversation",
+    });
+  }
+
+  if (isLivePublicInformationAsk(text) && !features.emailAsk && !features.financeAsk) {
+    return decide("GENERAL_CONVERSATION", features, {
+      tool: "web_search",
+      lastAnswerTopic: "web",
+      lastUserIntent: "live_web",
     });
   }
 
@@ -426,7 +469,7 @@ export function classifyScope(
     !features.writeIntent
   ) {
     return decide("BUSINESS_SYSTEM", features, {
-      tool: pickMailboxTool(text),
+      tool: pickMailboxTool(text, state.lastSuccessfulTool),
       lastAnswerTopic: "email",
       lastUserIntent: "email",
     });
@@ -445,7 +488,7 @@ export function classifyScope(
     !features.writeIntent
   ) {
     return decide("BUSINESS_SYSTEM", features, {
-      tool: pickMailboxTool(text),
+      tool: pickMailboxTool(text, state.lastSuccessfulTool),
       lastAnswerTopic: "email",
       lastUserIntent: "email",
     });
@@ -474,7 +517,7 @@ export function classifyScope(
       businessIntent.connectorDefinitionId === "conn_outlook_shared"
     ) {
       return decide("BUSINESS_SYSTEM", features, {
-        tool: pickMailboxTool(text),
+        tool: pickMailboxTool(text, state.lastSuccessfulTool),
         lastAnswerTopic: "email",
         lastUserIntent: "email",
       });
@@ -494,7 +537,35 @@ export function classifyScope(
     });
   }
 
-  if (isCatalogueListingAsk(text) && !features.financeAsk && !features.writeIntent) {
+  if (
+    (lastTopic === "email" || state.currentBusinessSystem === "email" || state.currentBusinessSystem === "outlook") &&
+    (isEmailBodyFollowUp(text) || /\b(what about|how about|and now)\b/i.test(text)) &&
+    !features.financeAsk &&
+    !features.writeIntent
+  ) {
+    const mailbox = resolveMailboxAsk(text, {
+      lastMailboxAddress: state.lastMailboxAddress,
+      lastAnswerTopic: lastTopic,
+      currentBusinessSystem: state.currentBusinessSystem,
+    });
+    if (mailbox.kind === "clarify") {
+      return decide("AMBIGUOUS", features, {
+        tool: null,
+        noTool: true,
+        clarify: true,
+        clarifyText: mailbox.text,
+        lastAnswerTopic: "email",
+        lastUserIntent: "email",
+      });
+    }
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: isEmailBodyFollowUp(text) && state.lastEmailMessageId ? "outlook_get_message" : pickMailboxTool(text, state.lastSuccessfulTool),
+      lastAnswerTopic: "email",
+      lastUserIntent: "email",
+    });
+  }
+
+  if (isCatalogueListingAsk(text) && !features.financeAsk && !features.emailAsk && !features.writeIntent) {
     return decide("COMPANY_KNOWLEDGE", features, {
       tool: "list_documents",
       lastAnswerTopic: "document_catalogue",
@@ -727,9 +798,9 @@ export function classifyScope(
     });
   }
 
-  if (switchTo === "email" || (features.emailAsk && !features.currentLocus && !hasCurrent)) {
+  if (switchTo === "email" || (features.emailAsk && !features.currentLocus)) {
     return decide("BUSINESS_SYSTEM", features, {
-      tool: pickMailboxTool(text),
+      tool: pickMailboxTool(text, state.lastSuccessfulTool),
       lastAnswerTopic: "email",
       lastUserIntent: "email",
     });
@@ -752,7 +823,14 @@ export function classifyScope(
     });
   }
 
-  if (hasCurrent && !features.systemLocus && !features.companyLocus && !features.financeAsk && !features.capabilityAsk) {
+  if (
+    hasCurrent &&
+    !features.systemLocus &&
+    !features.companyLocus &&
+    !features.financeAsk &&
+    !features.emailAsk &&
+    !features.capabilityAsk
+  ) {
     if (/\b(where did you get|source (url|link)|open the source)\b/i.test(text)) {
       return decide("CURRENT_DOCUMENT", features, {
         tool: "get_knowledge_document",
@@ -790,6 +868,14 @@ export function classifyScope(
       restoreRecentDocument: true,
       lastAnswerTopic: "document",
       lastUserIntent: "recent_entity",
+    });
+  }
+
+  if (isLivePublicInformationAsk(text)) {
+    return decide("GENERAL_CONVERSATION", features, {
+      tool: "web_search",
+      lastAnswerTopic: "web",
+      lastUserIntent: "live_web",
     });
   }
 

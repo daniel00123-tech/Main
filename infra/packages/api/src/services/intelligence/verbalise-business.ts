@@ -1,5 +1,6 @@
 import { normaliseBusinessResult } from "./normalise.js";
 import type { IntelligenceToolResult } from "./types.js";
+import { WEB_SEARCH_UNAVAILABLE, verbaliseWebSearch } from "./web-search.js";
 
 export const GENERIC_RETRY_COPY = "I need another moment to finish that. Try asking once more.";
 
@@ -123,6 +124,7 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     return "Your current permissions don’t allow this action.";
   }
   if (looksTimeout(call)) {
+    if (call.name === "web_search") return WEB_SEARCH_UNAVAILABLE;
     if (/outlook|mailbox|email/i.test(call.name)) return "Outlook is unreachable just now.";
     if (/^xero_/.test(call.name)) return "I couldn’t reach Xero just now.";
     if (/knowledge|search|fetch|list_documents|get_knowledge/i.test(call.name)) {
@@ -131,6 +133,7 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     return "That connected system is unreachable just now.";
   }
   if (!call.ok) {
+    if (call.name === "web_search") return WEB_SEARCH_UNAVAILABLE;
     if (/outlook|mailbox|email/i.test(call.name)) return "I couldn’t reach Email just now.";
     if (/^xero_/.test(call.name)) return "I couldn’t reach Xero just now.";
     if (/knowledge|search|fetch|list_documents|get_knowledge/i.test(call.name)) {
@@ -163,7 +166,15 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     }
     const normalised = normaliseBusinessResult(call.name, call.data);
     if (normalised.sufficient && normalised.summaryText && messages.length) return normalised.summaryText;
-    if (!messages.length) return "I couldn’t find any matching emails.";
+    if (!messages.length) {
+      const record = isRecord(call.data) ? call.data : {};
+      const box = asString(record.mailboxAddress ?? record.mailbox);
+      const hadQuery = Boolean(asString(record.query));
+      if (hadQuery) return `No emails matched that search${box ? ` in ${box}` : ""}.`;
+      return box
+        ? `I checked ${box} and there are no messages to show.`
+        : "I checked that mailbox and there are no messages to show.";
+    }
     if (/\b(newest|latest|last|most recently|unread)\b/i.test(question) || messages.length === 1) {
       return `The newest email${mailbox} is “${newest.subject}”${from}${when}.`;
     }
@@ -254,6 +265,17 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     return `Across your documents I can see: ${titles.join("; ")}.`;
   }
 
+  if (call.name === "web_search") {
+    const record = isRecord(call.data) ? call.data : {};
+    return verbaliseWebSearch({
+      ok: true,
+      provider: (record.provider as "open-meteo" | "duckduckgo" | "none") || "none",
+      query: asString(record.query),
+      summary: asString(record.summary) || WEB_SEARCH_UNAVAILABLE,
+      sourceUrl: asString(record.sourceUrl) || null,
+    });
+  }
+
   if (call.name === "list_documents") {
     const record = isRecord(call.data) ? call.data : {};
     const docs = Array.isArray(record.documents) ? record.documents : Array.isArray(record.results) ? record.results : [];
@@ -288,6 +310,7 @@ export function synthesizeFromToolCalls(
   if (lastOk) return synthesizeToolResult(lastOk, question);
   const last = toolCalls.at(-1);
   if (last) return synthesizeToolResult(last, question);
+  if (/\b(weather|latest news|who won|website)\b/i.test(question)) return WEB_SEARCH_UNAVAILABLE;
   return GENERIC_RETRY_COPY;
 }
 

@@ -123,7 +123,10 @@ export async function listPortalConversations(
   await ensurePortalChatSchema(db);
   const rows = await db
     .prepare(
-      `SELECT id, company_id, user_id, title, created_at, updated_at
+      `SELECT id, company_id, user_id, title, created_at, updated_at,
+              (SELECT content FROM portal_conversation_messages
+               WHERE conversation_id = portal_conversations.id
+               ORDER BY created_at DESC LIMIT 1) AS preview
        FROM portal_conversations
        WHERE company_id = ? AND user_id = ?
        ORDER BY updated_at DESC
@@ -264,6 +267,8 @@ export async function sendPortalChatMessage(
     lastAnswerTopic: conversation.context.lastAnswerTopic,
     lastUserIntent: conversation.context.lastUserIntent,
     lastAnswerText: conversation.context.lastAnswerText,
+    lastMailboxAddress: conversation.context.lastMailboxAddress,
+    lastEmailMessageId: conversation.context.lastEmailMessageId,
   });
 
   const runtime = createPortalChatRuntime(env, {
@@ -356,6 +361,9 @@ export function polishPortalReply(result: IntelligenceTurnResult, question: stri
   let text = (result.text ?? "").trim();
   if (isGenericRetryCopy(text) && result.toolCalls.length > 0) {
     text = synthesizeFromToolCalls(result.toolCalls, question);
+  }
+  if (isGenericRetryCopy(text) && /\b(weather|latest news|who won|website)\b/i.test(question)) {
+    text = "Live web access is unavailable just now, so I can’t check current public information.";
   }
   if (!text) {
     if (result.toolCalls.length > 0) text = synthesizeFromToolCalls(result.toolCalls, question);
@@ -470,7 +478,36 @@ function contextFromTurn(
     lastAnswerTopic: result.lastAnswerTopic ?? prior.lastAnswerTopic ?? null,
     lastUserIntent: result.lastUserIntent ?? prior.lastUserIntent ?? null,
     lastAnswerText: reply.slice(0, 1_200),
+    lastMailboxAddress: mailboxFromTurn(result) ?? prior.lastMailboxAddress ?? null,
+    lastEmailMessageId: emailIdFromTurn(result) ?? prior.lastEmailMessageId ?? null,
   };
+}
+
+function mailboxFromTurn(result: IntelligenceTurnResult): string | null {
+  for (const call of [...result.toolCalls].reverse()) {
+    const data = isRecord(call.data) ? call.data : {};
+    const mailbox = data.mailboxAddress ?? data.mailbox;
+    if (typeof mailbox === "string" && mailbox.trim()) return mailbox.trim();
+  }
+  return null;
+}
+
+function emailIdFromTurn(result: IntelligenceTurnResult): string | null {
+  for (const call of [...result.toolCalls].reverse()) {
+    const id = extractFirstMessageIdSafe(call.data);
+    if (id) return id;
+  }
+  return null;
+}
+
+function extractFirstMessageIdSafe(data: unknown): string | null {
+  const record = isRecord(data) ? data : {};
+  const direct = record.id ?? record.messageId;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const messages = Array.isArray(record.messages) ? record.messages : Array.isArray(record.emails) ? record.emails : [];
+  const first = messages.find((item) => isRecord(item));
+  const id = first ? first.id ?? first.messageId : null;
+  return typeof id === "string" && id.trim() ? id.trim() : null;
 }
 
 function mergeRecentDocuments(
@@ -536,6 +573,9 @@ function rowToSummary(row: Record<string, unknown> | PortalChatConversationSumma
     title: String(row.title ?? "New chat"),
     createdAt: String("createdAt" in row && row.createdAt ? row.createdAt : (row as Record<string, unknown>).created_at ?? ""),
     updatedAt: String("updatedAt" in row && row.updatedAt ? row.updatedAt : (row as Record<string, unknown>).updated_at ?? ""),
+    preview: typeof (row as Record<string, unknown>).preview === "string"
+      ? String((row as Record<string, unknown>).preview).slice(0, 80)
+      : null,
   };
 }
 
@@ -569,6 +609,8 @@ function parseContext(raw: unknown): PortalChatContext {
     lastAnswerTopic: typeof parsed.lastAnswerTopic === "string" ? parsed.lastAnswerTopic : null,
     lastUserIntent: typeof parsed.lastUserIntent === "string" ? parsed.lastUserIntent : null,
     lastAnswerText: typeof parsed.lastAnswerText === "string" ? parsed.lastAnswerText : null,
+    lastMailboxAddress: typeof parsed.lastMailboxAddress === "string" ? parsed.lastMailboxAddress : null,
+    lastEmailMessageId: typeof parsed.lastEmailMessageId === "string" ? parsed.lastEmailMessageId : null,
   };
 }
 

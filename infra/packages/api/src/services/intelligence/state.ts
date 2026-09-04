@@ -24,6 +24,8 @@ export function buildConversationState(input: {
   lastAnswerTopic?: string | null;
   lastUserIntent?: string | null;
   lastAnswerText?: string | null;
+  lastMailboxAddress?: string | null;
+  lastEmailMessageId?: string | null;
 }): IntelligenceConversationState {
   const currentDocument = compactDoc(input.currentDocument);
   const entities = (input.entities ?? [])
@@ -61,6 +63,8 @@ export function buildConversationState(input: {
     lastAnswerTopic: input.lastAnswerTopic ?? null,
     lastUserIntent: input.lastUserIntent ?? null,
     lastAnswerText: input.lastAnswerText ? input.lastAnswerText.slice(0, 1_200) : null,
+    lastMailboxAddress: input.lastMailboxAddress ?? null,
+    lastEmailMessageId: input.lastEmailMessageId ?? null,
     recentTurns: (input.recentTurns ?? [])
       .filter((turn) => turn.text.trim())
       .slice(-MAX_HISTORY_TURNS)

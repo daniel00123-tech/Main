@@ -79,6 +79,8 @@ export type IntelligenceConversationState = {
   lastAnswerTopic?: string | null;
   lastUserIntent?: string | null;
   lastAnswerText?: string | null;
+  lastMailboxAddress?: string | null;
+  lastEmailMessageId?: string | null;
   recentTurns: Array<{ role: "user" | "assistant"; text: string }>;
   lastUserText: string;
   lastToolName?: string | null;

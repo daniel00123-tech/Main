@@ -5,6 +5,9 @@ import { parseIntelligenceDecision, recoverDecision, validateToolRequest } from 
 import { createDefaultCompleter, type IntelligenceCompleter } from "./provider.js";
 import { routeIntelligenceTurn } from "./router.js";
 import { classifyScope, persistableScope, type ScopeDecision } from "./scope.js";
+import { isNewestEmailAsk, resolveMailboxAsk } from "./mailbox.js";
+import { normaliseUserUtterance } from "./utterance.js";
+import { WEB_SEARCH_TOOL } from "./web-search.js";
 import { formatConversationState } from "./state.js";
 import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "./system-meta.js";
 import { parseCatalogueIntent, verbaliseDocumentCatalogue } from "../document-catalogue.js";
@@ -74,6 +77,7 @@ export async function runIntelligenceTurn(input: {
   buttonHint?: string | null;
   completer?: IntelligenceCompleter;
 }): Promise<IntelligenceTurnResult> {
+  input = { ...input, text: normaliseUserUtterance(input.text) };
   const routed = routeIntelligenceTurn({ text: input.text, state: input.state, buttonHint: input.buttonHint });
   if (routed.route === "FAST_LOCAL" && routed.localText) {
     const local = emptyResult({
@@ -925,23 +929,37 @@ function prepareToolArguments(
     next.query = String(next.query ?? next.q ?? "").trim() || text.trim();
     return next;
   }
+  if (name === WEB_SEARCH_TOOL) {
+    next.query = String(next.query ?? next.q ?? "").trim() || text.trim();
+    return next;
+  }
   if (name === "outlook_list_messages" || name === "outlook_search_mailbox" || name === "outlook_get_message") {
     const intent = resolveBusinessSystemIntent(text);
     const mapped = intent ? businessToolForIntent(intent, text) : null;
+    const resolved = resolveMailboxAsk(text, {
+      lastMailboxAddress: state.lastMailboxAddress,
+      lastAnswerTopic: state.lastAnswerTopic,
+      currentBusinessSystem: state.currentBusinessSystem,
+    });
     const mailbox =
       (typeof next.mailboxAddress === "string" && next.mailboxAddress.trim()) ||
       (typeof mapped?.arguments.mailboxAddress === "string" ? mapped.arguments.mailboxAddress : "") ||
+      (resolved.kind === "resolved" ? resolved.mailboxAddress : "") ||
       "";
     if (name === "outlook_get_message") {
       return {
         mailboxAddress: mailbox || undefined,
-        messageId: String(next.messageId ?? next.id ?? "").trim() || undefined,
+        messageId:
+          String(next.messageId ?? next.id ?? state.lastEmailMessageId ?? "").trim() || undefined,
       };
     }
     if (name === "outlook_list_messages") {
+      const newest = isNewestEmailAsk(text);
       return {
         mailboxAddress: mailbox || undefined,
-        limit: Number(next.limit ?? mapped?.arguments.limit ?? (/\blast 5|last five\b/i.test(text) ? 5 : 5)),
+        limit: /\blast 5|last five\b/i.test(text) ? 5 : newest ? 1 : Number(next.limit ?? mapped?.arguments.limit ?? 5),
+        newest: true,
+        sort: "newest",
       };
     }
     return {
@@ -1029,6 +1047,7 @@ function isProcessOrPolicyAsk(text: string): boolean {
 
 function shouldRunDeterministicRead(scoped: ScopeDecision, text: string): boolean {
   if (scoped.clarify || !scoped.tool) return false;
+  if (scoped.tool === WEB_SEARCH_TOOL) return true;
   if (scoped.scope === "BUSINESS_SYSTEM") return true;
   return scoped.scope === "COMPANY_KNOWLEDGE" && scoped.tool === "search_company_knowledge" && isProcessOrPolicyAsk(text);
 }

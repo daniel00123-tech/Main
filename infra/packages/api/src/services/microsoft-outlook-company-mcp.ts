@@ -227,11 +227,20 @@ function pickCompanyOutlookTool(
     const match = available.find((name) => /email|outlook|mailbox|mail/i.test(name) && /get|read|fetch/i.test(name) && !isWriteLikeTool(name));
     return match ?? null;
   }
-  if (desired === "outlook_search_mailbox" || desired === "outlook_list_messages") {
+  if (desired === "outlook_list_messages") {
+    if (names.has("outlook_list_messages")) return "outlook_list_messages";
+    const listLike = available.find(
+      (name) => /email|outlook|mailbox|mail/i.test(name) && /list/i.test(name) && !isWriteLikeTool(name),
+    );
+    if (listLike) return listLike;
     if (names.has("search_elvex_email")) return "search_elvex_email";
-    if (desired === "outlook_list_messages" && names.has("outlook_list_messages")) {
-      return "outlook_list_messages";
-    }
+    if (names.has("outlook_search_mailbox")) return "outlook_search_mailbox";
+    return available.find(
+      (name) => /email|outlook|mailbox|mail/i.test(name) && /search|list/i.test(name) && !isWriteLikeTool(name),
+    ) ?? null;
+  }
+  if (desired === "outlook_search_mailbox") {
+    if (names.has("search_elvex_email")) return "search_elvex_email";
     if (names.has("outlook_search_mailbox")) return "outlook_search_mailbox";
     const match = available.find(
       (name) => /email|outlook|mailbox|mail/i.test(name) && /search|list/i.test(name) && !isWriteLikeTool(name),
@@ -367,8 +376,12 @@ export async function executeCompanyMcpOutlookRead(
   };
   if (!isGet) {
     forwarded.folder = typeof input.arguments.folderName === "string" ? input.arguments.folderName : "inbox";
-    forwarded.limit = limit;
+    forwarded.limit = Number.isFinite(limit) && limit > 0 ? limit : input.toolName === "outlook_list_messages" ? 1 : 5;
     if (query && input.toolName !== "outlook_list_messages") forwarded.query = query;
+    if (input.toolName === "outlook_list_messages") {
+      forwarded.newest = true;
+      forwarded.sort = "newest";
+    }
   } else {
     Object.assign(forwarded, getArgs, { mailbox: mailbox.mailboxAddress });
   }
@@ -431,26 +444,32 @@ export async function executeCompanyMcpOutlookRead(
     !isGet &&
     input.toolName === "outlook_list_messages" &&
     Number(composed.count ?? 0) === 0 &&
-    !query
+    !query &&
+    forwardName !== "outlook_list_messages"
   ) {
-    const relisted = await executeRegisteredMcpTool(env, {
-      mcpId: mcp.id,
-      toolName: forwardName,
-      arguments: {
-        ...forwarded,
-        query: "received>=2020-01-01",
-        newest: true,
-      },
-      actorUserId: input.actorUserId ?? "system",
-      actorEmail: input.actor,
-      sourceClient: "infra-outlook",
-      skipUsageRecording: true,
-    });
-    if (relisted.status === 200) {
-      composed = composeOutlookListResult(
-        "data" in relisted ? relisted.data?.result : undefined,
-        mailbox.mailboxAddress,
-      );
+    const listedNamesHasList = listedNames.includes("outlook_list_messages");
+    if (listedNamesHasList) {
+      const relisted = await executeRegisteredMcpTool(env, {
+        mcpId: mcp.id,
+        toolName: "outlook_list_messages",
+        arguments: {
+          mailbox: mailbox.mailboxAddress,
+          folder: forwarded.folder,
+          limit: forwarded.limit,
+          newest: true,
+          sort: "newest",
+        },
+        actorUserId: input.actorUserId ?? "system",
+        actorEmail: input.actor,
+        sourceClient: "infra-outlook",
+        skipUsageRecording: true,
+      });
+      if (relisted.status === 200) {
+        composed = composeOutlookListResult(
+          "data" in relisted ? relisted.data?.result : undefined,
+          mailbox.mailboxAddress,
+        );
+      }
     }
   }
 

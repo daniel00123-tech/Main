@@ -10,7 +10,16 @@ import {
 } from "../components";
 import { api, type PortalChatConversation, type PortalChatMessage, type PortalChatTurnResult } from "../api";
 import { usePortalCompany } from "./usePortalCompany";
-import { followUpHints, linkifyChatText, portalChatLayout, portalChatShellClass } from "./chat-layout";
+import {
+  composerInputLocked,
+  composerSendLocked,
+  filterConversations,
+  followUpHints,
+  groupConversations,
+  linkifyChatText,
+  portalChatLayout,
+  portalChatShellClass,
+} from "./chat-layout";
 
 export default function PortalChatPage() {
   const { company, loading, error } = usePortalCompany();
@@ -26,8 +35,12 @@ export default function PortalChatPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [listQuery, setListQuery] = useState("");
+  const [queuedCount, setQueuedCount] = useState(0);
   const scroller = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const busyRef = useRef(false);
+  const queueRef = useRef<string[]>([]);
 
   const messages = active?.messages ?? [];
   const currentDocument = active?.context?.currentDocument ?? null;
@@ -93,9 +106,15 @@ export default function PortalChatPage() {
   }
 
   async function send(text = draft) {
-    if (!company || busy) return;
+    if (!company) return;
     const trimmed = text.replace(/\s+/g, " ").trim();
     if (!trimmed) return;
+    if (busyRef.current) {
+      queueRef.current.push(trimmed);
+      setQueuedCount(queueRef.current.length);
+      if (text === draft) setDraft("");
+      return;
+    }
     const optimistic: PortalChatMessage = {
       id: `local_${Date.now()}`,
       conversationId: activeId ?? "pending",
@@ -106,9 +125,11 @@ export default function PortalChatPage() {
       createdAt: new Date().toISOString(),
       metadata: {},
     };
-    setDraft("");
+    if (text === draft) setDraft("");
+    busyRef.current = true;
     setBusy(true);
     setStatus("Thinking…");
+    inputRef.current?.focus();
     setActive((current) =>
       current
         ? { ...current, messages: [...(current.messages ?? []), optimistic] }
@@ -138,8 +159,16 @@ export default function PortalChatPage() {
       );
       setDraft(trimmed);
     } finally {
+      busyRef.current = false;
       setBusy(false);
       setStatus(null);
+      const next = queueRef.current.shift();
+      setQueuedCount(queueRef.current.length);
+      if (next) {
+        void send(next);
+      } else {
+        inputRef.current?.focus();
+      }
     }
   }
 
@@ -184,6 +213,9 @@ export default function PortalChatPage() {
   if (loading) return <LoadingState label="Opening chat…" />;
   if (error || !company) return <ErrorState title="Chat unavailable" description={error ?? undefined} />;
 
+  const visibleConversations = filterConversations(conversations, listQuery);
+  const groupedConversations = groupConversations(visibleConversations);
+
   const sidebar = (
     <aside className="portal-chat-sidebar" aria-label="Chat history">
       <div className="portal-chat-sidebar-head">
@@ -192,41 +224,58 @@ export default function PortalChatPage() {
           <Plus size={16} /> New chat
         </Button>
       </div>
+      <input
+        className="input portal-chat-search"
+        value={listQuery}
+        onChange={(event) => setListQuery(event.target.value)}
+        placeholder="Search conversations"
+        aria-label="Search conversations"
+      />
       {conversations.length === 0 ? (
         <EmptyState title="No chats yet" description="Start a conversation with INFRA for this company." />
+      ) : visibleConversations.length === 0 ? (
+        <EmptyState title="No matching chats" description="Try a different search." />
       ) : (
         <ul className="portal-chat-history">
-          {conversations.map((row) => (
-            <li key={row.id}>
-              {renameId === row.id ? (
-                <form className="portal-chat-rename" onSubmit={(event) => void submitRename(event)}>
-                  <input
-                    className="input"
-                    value={renameValue}
-                    onChange={(event) => setRenameValue(event.target.value)}
-                    aria-label="Chat title"
-                    autoFocus
-                  />
-                  <Button type="submit" size="sm">
-                    Save
-                  </Button>
-                </form>
-              ) : (
-                <button
-                  type="button"
-                  className={`portal-chat-history-item${row.id === activeId ? " is-active" : ""}`}
-                  onClick={() => {
-                    setActiveId(row.id);
-                    setHistoryOpen(false);
-                  }}
-                  onDoubleClick={() => {
-                    setRenameId(row.id);
-                    setRenameValue(row.title);
-                  }}
-                >
-                  <span>{row.title}</span>
-                </button>
-              )}
+          {groupedConversations.map((group) => (
+            <li key={group.label}>
+              <p className="portal-chat-group-label">{group.label}</p>
+              <ul className="portal-chat-history">
+                {group.items.map((row) => (
+                  <li key={row.id}>
+                    {renameId === row.id ? (
+                      <form className="portal-chat-rename" onSubmit={(event) => void submitRename(event)}>
+                        <input
+                          className="input"
+                          value={renameValue}
+                          onChange={(event) => setRenameValue(event.target.value)}
+                          aria-label="Chat title"
+                          autoFocus
+                        />
+                        <Button type="submit" size="sm">
+                          Save
+                        </Button>
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`portal-chat-history-item${row.id === activeId ? " is-active" : ""}`}
+                        onClick={() => {
+                          setActiveId(row.id);
+                          setHistoryOpen(false);
+                        }}
+                        onDoubleClick={() => {
+                          setRenameId(row.id);
+                          setRenameValue(row.title);
+                        }}
+                      >
+                        <span>{row.title}</span>
+                        {row.preview ? <span className="portal-chat-history-preview">{row.preview}</span> : null}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
         </ul>
@@ -280,6 +329,11 @@ export default function PortalChatPage() {
           ) : null}
         </div>
 
+        {queuedCount ? (
+          <p className="portal-chat-queued" role="status">
+            {queuedCount} message{queuedCount === 1 ? "" : "s"} queued
+          </p>
+        ) : null}
         {hints.length && !busy ? (
           <div className="portal-chat-followups">
             {hints.map((hint) =>
@@ -311,7 +365,7 @@ export default function PortalChatPage() {
             onChange={(event) => setDraft(event.target.value)}
             placeholder="Message INFRA…"
             aria-label="Message"
-            disabled={busy}
+            disabled={composerInputLocked(busy)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -319,7 +373,7 @@ export default function PortalChatPage() {
               }
             }}
           />
-          <Button type="submit" variant="primary" disabled={busy || !draft.trim()} aria-label="Send">
+          <Button type="submit" variant="primary" disabled={composerSendLocked(draft)} aria-label="Send">
             <Send size={16} /> {isMobile ? "" : "Send"}
           </Button>
         </form>

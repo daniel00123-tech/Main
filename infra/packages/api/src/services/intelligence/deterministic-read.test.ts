@@ -255,7 +255,7 @@ describe("deterministic business and knowledge reads", () => {
       },
       completer: silentCompleter,
     });
-    expect(empty.text).toMatch(/couldn.?t find any matching emails|No matching messages in info@/i);
+    expect(empty.text).toMatch(/no messages to show|couldn.?t find any matching emails|No matching messages in info@/i);
     const down = await runIntelligenceTurn({
       text: "What is the newest email in the info inbox?",
       state: buildConversationState({ userText: "What is the newest email in the info inbox?" }),

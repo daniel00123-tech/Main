@@ -267,6 +267,18 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     outputShape: "{ lastSyncAt, bySource }",
     permission: "company knowledge read",
   },
+  {
+    name: "web_search",
+    description: "Read-only public web / live information lookup.",
+    whenToUse: "Weather, current public news, sports scores, or other live public-web facts.",
+    whenNotToUse:
+      "Never for Xero, Outlook, company files, invoices, or private EL data. Business systems always outrank this.",
+    parameters: {
+      query: { description: "Public-web question only", required: true },
+    },
+    outputShape: "{ summary, sourceUrl }",
+    permission: "public web read",
+  },
 ];
 
 export const INTELLIGENCE_TOOL_NAMES = new Set(INTELLIGENCE_TOOLS.map((tool) => tool.name));
