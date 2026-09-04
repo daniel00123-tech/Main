@@ -141,7 +141,14 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     const when = newest.receivedDateTime ? ` (${newest.receivedDateTime})` : "";
     const from = newest.from ? ` from ${newest.from}` : "";
     if (call.name === "outlook_get_message" || (/\b(full|body|what does .{0,40}(say|said))\b/i.test(question) && newest.body)) {
-      const excerpt = newest.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 420);
+      const excerpt = newest.body
+        .replace(/<!--[\s\S]*?-->/g, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 420);
       return excerpt
         ? `The latest email${mailbox} is “${newest.subject}”${from}${when}. It says: ${excerpt}`
         : `The latest email${mailbox} is “${newest.subject}”${from}${when}.`;
