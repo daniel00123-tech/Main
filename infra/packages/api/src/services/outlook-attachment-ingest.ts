@@ -839,7 +839,9 @@ async function buildNamedPersonReports(
       attachmentsFound: 0,
       indexed: 0,
       policy: user
-        ? "personal_work mailbox exists as a company user; existing EL policy approves only shared info/finance mailboxes for knowledge ingest"
+        ? row?.enabled_for_attachment_ingestion === 1
+          ? "director-approved work mailbox: attachments ingested; Portal chat search remains off"
+          : "personal_work mailbox exists as a company user; not approved for attachment ingest"
         : "no company membership mailbox found; not invented",
     });
   }

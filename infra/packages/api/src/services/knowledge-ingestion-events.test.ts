@@ -69,6 +69,16 @@ describe("knowledge ingestion ledger", () => {
       }),
     ).toBe("updated");
     expect(
+      classifyActivityKind({
+        createdAt: "2026-09-04T18:41:13.276Z",
+        modifiedAt: "2026-09-04T15:41:18Z",
+        windowStart: new Date("2026-09-03T17:39:03.388Z"),
+        windowEnd: new Date("2026-09-04T17:39:03.388Z"),
+        indexed: false,
+        outcome: "failed",
+      }),
+    ).toBe("source_observed");
+    expect(
       timestampInWindow("2026-08-18T15:23:09Z", new Date("2026-09-03T17:39:03.388Z"), new Date("2026-09-04T17:39:03.388Z")),
     ).toBe(false);
   });

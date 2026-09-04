@@ -38,7 +38,7 @@ export const EL_KNOWLEDGE_AUDIT_WINDOW = {
 } as const;
 
 export const EL_KNOWLEDGE_CORRECTED_SUBJECT =
-  "INFRA — EL Business Daily Knowledge Activity — Attachment ingest repair";
+  "INFRA — EL Business Daily Knowledge Activity — Staff mailbox confirmation";
 
 const COMPANY_ID = "co_el";
 const AUTOMATION_ID = "aut_b00ab912-845b-49b4-9609-cbedeeea6ddf";
@@ -149,6 +149,7 @@ export async function runElKnowledgeIngestionAudit(
       newestIndexedModifiedAt: files.onedriveNewestModified,
       catalogueInWindow: mcpIndex.onedriveInWindow,
       catalogueTotal: mcpIndex.onedriveTotal,
+      staffOwners: mcpIndex.staffOwners ?? [],
     },
     sharepoint: {
       createdOrModifiedInWindow: files.sharepointInWindow,
@@ -193,10 +194,10 @@ export async function runElKnowledgeIngestionAudit(
         lastError: row.last_error,
       })),
       notes: [
-        "Approved EL knowledge mailboxes come from existing shared-mailbox policy (info@ and finance@), not personal user inboxes.",
-        "Michael/Sharon/Lauren exist as company users. Their personal mailboxes are registered as available and are not auto-ingested.",
-        "Attachment bytes use existing Microsoft credentials via Graph when the tenant is reachable; company MCP remains the knowledge write boundary.",
-        "Email bodies are not auto-vectorised on this path.",
+        "Approved EL knowledge mailboxes: info@, finance@, plus director-approved work inboxes michael@ and sharon@.",
+        "Michael/Sharon attachment ingest is on. Portal chat search of those personal inboxes stays off (RBAC unchanged).",
+        "Lauren/Ella/William personal inboxes remain registered but not auto-ingested.",
+        "Email bodies are not auto-vectorised. OneDrive catalogue is still the Sharon snapshot unless owner metadata says otherwise.",
       ],
     },
     allowlistedMailboxes: [...ELVEX_INFO_MAILBOXES, ...ELVEX_FINANCE_MAILBOXES],
@@ -315,7 +316,7 @@ export async function sendElKnowledgeCorrectedTestEmail(
     omittedDocuments: listed.omitted,
     portalUrl: `${portalOrigin(env)}/portal/${company.slug}/automations`,
     subjectOverride: EL_KNOWLEDGE_CORRECTED_SUBJECT,
-    correctionPreamble: `This corrects the 4 September 2026 manual test that reported zero new documents. Repair backfill scanned approved EL shared mailboxes only. Mailboxes scanned: ${mailboxesScanned.join(", ")}. Messages with attachments: ${outlookMessages}. Indexed this run: ${input.ingest?.counts.attachmentsIndexed ?? input.report.indexedCount}. OneDrive created/modified in catalogue: 0. SharePoint catalogue rows: 0. Vector chunks added: ${input.ingest?.counts.chunksAdded ?? input.report.chunkTotal ?? 0}.`,
+    correctionPreamble: `Updated/re-indexed does not mean attachments were indexed. That count is only for existing files INFRA actually reprocessed. This confirmation now scans info@, finance@, michael@ and sharon@. Portal chat still cannot search personal inboxes. Mailboxes scanned: ${mailboxesScanned.join(", ")}. Messages with attachments: ${outlookMessages}. Successfully indexed this run: ${input.ingest?.counts.attachmentsIndexed ?? input.report.indexedCount}. Failed: ${input.ingest?.counts.failed ?? input.report.failedCount}. OneDrive catalogue files created/modified in window: 0. SharePoint catalogue rows: 0.`,
     mailboxesScanned,
     messagesWithAttachments: outlookMessages,
     attachmentsDiscovered: input.ingest?.counts.attachmentsDiscovered ?? input.report.discoveredCount,
@@ -574,7 +575,7 @@ async function auditMcpIndex(env: Env, windowFrom: Date, windowTo: Date, actor: 
     return rowsFromQueryPayload("data" in execution ? execution.data?.result : execution);
   };
 
-  const [counts, newest, sharepoint, sync] = await Promise.all([
+  const [counts, newest, sharepoint, sync, owners] = await Promise.all([
     runSql(
       `SELECT source_type, COUNT(*) AS total,
         SUM(CASE WHEN (
@@ -589,6 +590,19 @@ async function auditMcpIndex(env: Env, windowFrom: Date, windowTo: Date, actor: 
       `SELECT drive_id, source_type, item_count, last_synced_at,
         CASE WHEN delta_link IS NULL OR length(delta_link) = 0 THEN 0 ELSE 1 END AS has_delta
        FROM microsoft_sync_state LIMIT 20`,
+    ),
+    runSql(
+      `SELECT owner_upn, COUNT(*) AS total,
+        SUM(CASE WHEN (
+          (modified_at >= '${sinceIso}' AND modified_at <= '${untilIso}')
+          OR (created_at >= '${sinceLite}' AND created_at <= '${untilLite}')
+        ) THEN 1 ELSE 0 END) AS in_window
+       FROM microsoft_index_items
+       WHERE lower(ifnull(owner_upn,'')) LIKE '%michael%'
+          OR lower(ifnull(owner_upn,'')) LIKE '%sharon%'
+          OR lower(ifnull(path,'')) LIKE '%michael%'
+          OR lower(ifnull(path,'')) LIKE '%sharon%'
+       GROUP BY owner_upn LIMIT 20`,
     ),
   ]);
 
@@ -613,6 +627,11 @@ async function auditMcpIndex(env: Env, windowFrom: Date, windowTo: Date, actor: 
       itemCount: Number(row.item_count ?? 0),
       lastSyncedAt: asText(row.last_synced_at),
       hasDelta: Number(row.has_delta ?? 0) === 1,
+    })),
+    staffOwners: owners.map((row) => ({
+      owner: asText(row.owner_upn),
+      total: Number(row.total ?? 0),
+      inWindow: Number(row.in_window ?? 0),
     })),
   };
 }

@@ -84,6 +84,12 @@ export async function ensureMailboxRegistrySchema(db: D1Database): Promise<void>
     .run();
 }
 
+/** Work-user mailboxes Daniel approved for background attachment ingest. Not Portal chat search. */
+export const ELVEX_WORK_USER_INGEST_MAILBOXES = [
+  "michael@elvexpropertyservices.com",
+  "sharon@elvexpropertyservices.com",
+] as const;
+
 export function policySeedsForCompany(companyId: string): MailboxRegistrySeed[] {
   if (!isElvexCompany({ id: companyId }) && companyId !== ELVEX_COMPANY_ID) return [];
   return [
@@ -106,6 +112,26 @@ export function policySeedsForCompany(companyId: string): MailboxRegistrySeed[] 
       sensitivity: "finance_operational",
       status: "approved",
       metadata: { source: "elvex_rbac_finance" },
+    },
+    {
+      mailboxAddress: ELVEX_WORK_USER_INGEST_MAILBOXES[0],
+      mailboxType: "user_mailbox",
+      displayName: "Michael work mailbox",
+      enabledForMailSearch: false,
+      enabledForAttachmentIngestion: true,
+      sensitivity: "personal_work",
+      status: "approved",
+      metadata: { source: "director_approved_work_user_ingest", person: "Michael" },
+    },
+    {
+      mailboxAddress: ELVEX_WORK_USER_INGEST_MAILBOXES[1],
+      mailboxType: "user_mailbox",
+      displayName: "Sharon work mailbox",
+      enabledForMailSearch: false,
+      enabledForAttachmentIngestion: true,
+      sensitivity: "personal_work",
+      status: "approved",
+      metadata: { source: "director_approved_work_user_ingest", person: "Sharon" },
     },
   ];
 }

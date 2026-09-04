@@ -70,27 +70,34 @@ function memoryDb() {
 describe("mailbox ingestion registry", () => {
   it("seeds EL shared policy mailboxes without hardcoding them into generic list logic", () => {
     const seeds = policySeedsForCompany("co_el");
-    expect(seeds).toHaveLength(2);
+    expect(seeds).toHaveLength(4);
     expect(seeds.every((seed) => seed.enabledForAttachmentIngestion)).toBe(true);
+    expect(seeds.filter((seed) => seed.mailboxType === "user_mailbox").map((seed) => seed.mailboxAddress)).toEqual([
+      "michael@elvexpropertyservices.com",
+      "sharon@elvexpropertyservices.com",
+    ]);
+    expect(seeds.filter((seed) => seed.mailboxType === "user_mailbox").every((seed) => seed.enabledForMailSearch === false)).toBe(
+      true,
+    );
     expect(policySeedsForCompany("co_caddington")).toEqual([]);
     expect(policySeedsForCompany("co_ht")).toEqual([]);
   });
 
-  it("does not auto-enable personal user mailboxes for attachment ingestion", async () => {
+  it("does not auto-enable unapproved personal user mailboxes for attachment ingestion", async () => {
     const db = memoryDb();
     await registerDiscoveredUserMailbox(db, {
       companyId: "co_el",
-      mailboxAddress: "sharon@elvexpropertyservices.com",
-      displayName: "Sharon",
+      mailboxAddress: "lauren@elvexpropertyservices.com",
+      displayName: "Lauren",
       role: "office_staff",
     });
     const approved = await listApprovedAttachmentMailboxes(db, "co_other");
     expect(approved).toEqual([]);
-    const sharon = (db as unknown as { rows: Array<Record<string, unknown>> }).rows.find(
-      (row) => row.mailbox_address === "sharon@elvexpropertyservices.com",
+    const lauren = (db as unknown as { rows: Array<Record<string, unknown>> }).rows.find(
+      (row) => row.mailbox_address === "lauren@elvexpropertyservices.com",
     );
-    expect(sharon?.enabled_for_attachment_ingestion).toBe(0);
-    expect(sharon?.company_id).toBe("co_el");
+    expect(lauren?.enabled_for_attachment_ingestion).toBe(0);
+    expect(lauren?.company_id).toBe("co_el");
   });
 
   it("keeps registry rows tenant-scoped", async () => {
