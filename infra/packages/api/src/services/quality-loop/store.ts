@@ -442,6 +442,16 @@ export async function insertRuntimeVersion(
   const version = Number(latest?.version ?? 0) + 1;
   const id = newId("qlrt");
   const now = nowIso();
+  if (input.status === "canary") {
+    await db
+      .prepare(
+        `UPDATE quality_runtime_config
+         SET status = 'rolled_back', rolled_back_at = ?, rollback_reason = ?
+         WHERE status = 'canary'`,
+      )
+      .bind(now, "Superseded by a newer canary")
+      .run();
+  }
   await db
     .prepare(
       `INSERT INTO quality_runtime_config (
@@ -647,6 +657,7 @@ function mapRuntime(row: Record<string, unknown>) {
     canaryPercent: Number(row.canary_percent ?? 10),
     canaryCompanyId: row.canary_company_id ? String(row.canary_company_id) : null,
     rollbackReason: row.rollback_reason ? String(row.rollback_reason) : null,
+    createdAt: row.created_at ? String(row.created_at) : "",
   };
 }
 

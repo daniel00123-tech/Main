@@ -250,6 +250,10 @@ export async function applyApprovedProposal(
   return { status: "canary", version: created.version, reason: "Canary started at 10% / Caddington first" };
 }
 
+export const CANARY_MIN_SOAK_MS = 2 * 60 * 60 * 1000;
+export const CANARY_MIN_SCORES_TO_ROLLBACK = 3;
+export const CANARY_MIN_SCORES_TO_PROMOTE = 8;
+
 export function canaryShouldRollback(input: {
   baselineQuality: number;
   canaryQuality: number;
@@ -272,6 +276,59 @@ export function canaryShouldRollback(input: {
     return { rollback: true, reason: "Latency worsened on canary" };
   }
   return { rollback: false, reason: "Canary within tolerance" };
+}
+
+export function baselineFromRunMetrics(metrics: {
+  qualityAverage?: number | null;
+  failedRate?: number | null;
+  finalLatencyMs?: number | null;
+} | null): { baselineQuality: number; baselineErrorRate: number; baselineLatencyMs: number } {
+  const quality = Number(metrics?.qualityAverage);
+  const failedRate = Number(metrics?.failedRate);
+  const latency = Number(metrics?.finalLatencyMs);
+  return {
+    baselineQuality: Number.isFinite(quality) ? quality : 80,
+    baselineErrorRate: Number.isFinite(failedRate) ? failedRate : 0.15,
+    baselineLatencyMs: Number.isFinite(latency) && latency > 0 ? latency : 20_000,
+  };
+}
+
+export function decideCanaryClose(input: {
+  canaryCreatedAt: string;
+  nowMs?: number;
+  postCanaryScores: number;
+  canaryQuality: number;
+  canaryErrorRate: number;
+  baselineQuality: number;
+  baselineErrorRate: number;
+  baselineLatencyMs?: number;
+  canaryLatencyMs?: number;
+  permissionSafetyWorsened?: boolean;
+}): { action: "hold" | "promote" | "rollback"; reason: string } {
+  const nowMs = input.nowMs ?? Date.now();
+  const started = Date.parse(input.canaryCreatedAt);
+  if (!Number.isFinite(started) || nowMs - started < CANARY_MIN_SOAK_MS) {
+    return { action: "hold", reason: "Canary still soaking; pre-canary scores are not evidence" };
+  }
+  if (input.postCanaryScores < CANARY_MIN_SCORES_TO_ROLLBACK) {
+    return { action: "hold", reason: "No post-canary conversation scores yet" };
+  }
+  const decision = canaryShouldRollback({
+    baselineQuality: input.baselineQuality,
+    canaryQuality: input.canaryQuality,
+    baselineErrorRate: input.baselineErrorRate,
+    canaryErrorRate: input.canaryErrorRate,
+    baselineLatencyMs: input.baselineLatencyMs ?? 20_000,
+    canaryLatencyMs: input.canaryLatencyMs ?? 20_000,
+    permissionSafetyWorsened: Boolean(input.permissionSafetyWorsened),
+  });
+  if (decision.rollback) {
+    return { action: "rollback", reason: decision.reason };
+  }
+  if (input.postCanaryScores < CANARY_MIN_SCORES_TO_PROMOTE) {
+    return { action: "hold", reason: "Canary within tolerance; waiting for more post-canary samples" };
+  }
+  return { action: "promote", reason: decision.reason };
 }
 
 export async function promoteOrRollbackCanary(

@@ -36,4 +36,5 @@ export * from "./permissions/billable-events";
 export * from "./permissions/xero-permissions";
 export * from "./service-identity-scopes";
 export * from "./usage-labels";
+export * from "./usage/outcome";
 export * from "./platform/urls";

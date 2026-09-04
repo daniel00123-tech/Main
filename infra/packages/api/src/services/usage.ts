@@ -314,6 +314,18 @@ export async function getUsageCommercialSummary(
          COUNT(*) AS requests,
          SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successful,
          SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed,
+         SUM(CASE
+           WHEN success = 0 AND (settlement_status = 'denied' OR json_extract(metadata_json, '$.denied') = 1)
+             THEN 1 ELSE 0
+         END) AS denied,
+         SUM(CASE
+           WHEN success = 0 AND NOT (settlement_status = 'denied' OR json_extract(metadata_json, '$.denied') = 1)
+             THEN 1 ELSE 0
+         END) AS operational_failed,
+         SUM(CASE
+           WHEN success = 1 AND json_extract(metadata_json, '$.accessOutcome') = 'empty_result'
+             THEN 1 ELSE 0
+         END) AS no_results,
          COALESCE(SUM(customer_charge_cents), 0) AS customer_charges,
          SUM(CASE WHEN cost_basis = 'actual' THEN underlying_cost_cents ELSE NULL END) AS underlying_costs,
          SUM(CASE WHEN cost_basis = 'actual' THEN 1 ELSE 0 END) AS costs_known,
@@ -332,16 +344,33 @@ export async function getUsageCommercialSummary(
   const costs = costsKnown && row?.underlying_costs != null ? Number(row.underlying_costs) : null;
   const profit =
     costsKnown && row?.gross_profit != null ? Number(row.gross_profit) : null;
+  const requests = Number(row?.requests ?? 0);
+  const successful = Number(row?.successful ?? 0);
+  const failed = Number(row?.failed ?? 0);
+  const denied = Number(row?.denied ?? 0);
+  const operationalFailed = Number(row?.operational_failed ?? 0);
+  const noResults = Number(row?.no_results ?? 0);
+  const operationalDenom = requests - denied;
   return {
-    requests: Number(row?.requests ?? 0),
-    successful: Number(row?.successful ?? 0),
-    failed: Number(row?.failed ?? 0),
+    requests,
+    successful,
+    failed,
+    denied,
+    operationalFailed,
+    noResults,
     customerChargesCents: charges,
     underlyingCostsCents: costs,
     providerCostKnown: costsKnown,
+    providerCostUnavailableReason: costsKnown
+      ? null
+      : "No usage rows have cost_basis=actual. Gateway writes unknown until a measurable rate card applies. Missing cost is not £0.",
     grossProfitCents: profit,
     grossMarginBps:
       charges > 0 && profit != null ? Math.round((profit * 10_000) / charges) : null,
+    rawSuccessRate: requests > 0 ? successful / requests : null,
+    operationalSuccessRate:
+      operationalDenom > 0 ? (operationalDenom - operationalFailed) / operationalDenom : null,
+    customerMeaningfulSuccessRate: operationalDenom > 0 ? successful / operationalDenom : null,
   };
 }
 
