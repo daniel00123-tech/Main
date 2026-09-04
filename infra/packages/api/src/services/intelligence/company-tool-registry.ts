@@ -45,6 +45,8 @@ export const VENDOR_TOOL_ALIASES: Record<string, string> = {
   analyse_xero_sales: "xero_sales_summary",
   analyze_xero_sales: "xero_sales_summary",
   get_xero_sales: "xero_sales_summary",
+  xero_sales: "xero_sales_summary",
+  get_sales_summary: "xero_sales_summary",
   search_emails: "outlook_search_mailbox",
   search_mailbox: "outlook_search_mailbox",
   list_emails: "outlook_list_messages",
@@ -52,8 +54,11 @@ export const VENDOR_TOOL_ALIASES: Record<string, string> = {
   get_email: "outlook_get_message",
   get_message: "outlook_get_message",
   search_knowledge: "search_company_knowledge",
+  search_docs: "search_company_knowledge",
+  query_company_knowledge: "search_company_knowledge",
   list_files: "list_documents",
   list_recent_files: "list_documents",
+  list_company_documents: "list_documents",
 };
 
 const CONNECTOR_CAPABILITIES: Record<string, PlatformCapability[]> = {
@@ -70,6 +75,7 @@ const CONNECTOR_CAPABILITIES: Record<string, PlatformCapability[]> = {
   conn_sharepoint: ["CATALOGUE_LIST", "KNOWLEDGE_SEARCH", "KNOWLEDGE_READ"],
   conn_onedrive: ["CATALOGUE_LIST", "KNOWLEDGE_SEARCH", "KNOWLEDGE_READ"],
   conn_google_drive: ["CATALOGUE_LIST", "KNOWLEDGE_SEARCH", "KNOWLEDGE_READ"],
+  conn_microsoft_365: ["CATALOGUE_LIST", "KNOWLEDGE_SEARCH", "KNOWLEDGE_READ"],
   conn_bigchange: ["JOB_SEARCH"],
   conn_commusoft: ["JOB_SEARCH"],
   conn_freshdesk: ["TICKET_SEARCH"],

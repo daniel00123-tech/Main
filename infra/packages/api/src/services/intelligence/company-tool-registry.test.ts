@@ -9,12 +9,16 @@ import {
   tenantHasCapability,
   wantsMultiCapabilityRead,
 } from "./company-tool-registry.js";
+import { connectorOffersMailbox } from "./catalogue.js";
 
 describe("company tool registry", () => {
   it("normalises vendor MCP names to stable INFRA tools", () => {
     expect(normaliseVendorToolName("analyse_xero_sales")).toBe("xero_sales_summary");
+    expect(normaliseVendorToolName("get_sales_summary")).toBe("xero_sales_summary");
     expect(normaliseVendorToolName("search_emails")).toBe("outlook_search_mailbox");
     expect(normaliseVendorToolName("list_recent_files")).toBe("list_documents");
+    expect(normaliseVendorToolName("list_company_documents")).toBe("list_documents");
+    expect(normaliseVendorToolName("query_company_knowledge")).toBe("search_company_knowledge");
     expect(normaliseVendorToolName("xero_sales_summary")).toBe("xero_sales_summary");
   });
 
@@ -40,6 +44,20 @@ describe("company tool registry", () => {
     });
     expect(el.tools).toEqual(expect.arrayContaining(["xero_sales_summary", "outlook_list_messages", "list_documents"]));
     expect(el.capabilities).toEqual(expect.arrayContaining(["ACCOUNTING_SALES", "EMAIL_LIST"]));
+  });
+
+  it("Caddington Microsoft 365 plus Drive does not advertise EL Outlook", () => {
+    const cad = buildTenantToolCatalogue({
+      companyId: "co_caddington",
+      connectors: ["conn_xero", "conn_google_drive", "conn_microsoft_365"],
+      role: "company_admin",
+    });
+    expect(cad.tools).toEqual(expect.arrayContaining(["xero_sales_summary", "list_documents", "search_company_knowledge"]));
+    expect(cad.tools.some((name) => name.startsWith("outlook_"))).toBe(false);
+    expect(cad.capabilities).not.toContain("EMAIL_LIST");
+    expect(connectorOffersMailbox("conn_microsoft_365")).toBe(false);
+    expect(connectorOffersMailbox("conn_outlook_shared")).toBe(true);
+    expect(connectorOffersMailbox("conn_microsoft")).toBe(true);
   });
 
   it("HT without connectors does not receive EL Xero or Outlook tools", () => {

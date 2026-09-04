@@ -77,15 +77,15 @@ export function assertProductionSuperstackCapabilities(): {
   if (PRODUCTION_SUPERSTACK_CAPABILITIES.length < 9) {
     throw new Error("capability marker list incomplete");
   }
-  const brain = resolveBrainPolicy({ companyId: "co_caddington" });
+  const brain = resolveBrainPolicy({ companyId: "co_ht" });
   if (brain.useOpenAi) {
-    throw new Error("openai brain must not activate for non-EL tenants by default");
+    throw new Error("openai brain must not activate for HT or unlisted tenants by default");
   }
   const shadowEnv = {
     OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
     OPENAI_BRAIN_ENABLED: "true",
     OPENAI_BRAIN_MODE: "openai_shadow",
-    OPENAI_BRAIN_COMPANY_IDS: "co_el",
+    OPENAI_BRAIN_COMPANY_IDS: "co_el,co_caddington",
   };
   const shadow = resolveBrainPolicy({
     env: shadowEnv,
@@ -108,6 +108,37 @@ export function assertProductionSuperstackCapabilities(): {
   const chatbot = resolveBrainPolicy({ env: shadowEnv, companyId: "co_el", channel: "chatgpt" });
   if (chatbot.useOpenAi || chatbot.reason !== "chatgpt_stays_direct_tools") {
     throw new Error("ChatGPT must stay on direct INFRA tools, not the hosted OpenAI brain");
+  }
+  const cadPa = resolveBrainPolicy({ env: shadowEnv, companyId: "co_caddington", channel: "portal_chat" });
+  if (!cadPa.useOpenAi || cadPa.userVisibleBrain !== "openai" || cadPa.role !== "pa") {
+    throw new Error("Caddington Portal Chat PA must use OpenAI as the user-visible brain");
+  }
+  const cadRequest = resolveBrainPolicy({ env: shadowEnv, companyId: "co_caddington", channel: "whatsapp" });
+  if (!cadRequest.useOpenAi || cadRequest.userVisibleBrain !== "openai" || cadRequest.role !== "request") {
+    throw new Error("Caddington WhatsApp requests must use OpenAI as the user-visible brain");
+  }
+  const cadChatbot = resolveBrainPolicy({ env: shadowEnv, companyId: "co_caddington", channel: "chatgpt" });
+  if (cadChatbot.useOpenAi || cadChatbot.reason !== "chatgpt_stays_direct_tools") {
+    throw new Error("Caddington ChatGPT must stay on direct INFRA tools, not the hosted OpenAI brain");
+  }
+  const cadUnscoped = resolveBrainPolicy({ env: shadowEnv, companyId: "co_caddington" });
+  if (cadUnscoped.useOpenAi || !cadUnscoped.shadow) {
+    throw new Error("unscoped Caddington must keep Cloudflare user-visible under openai_shadow");
+  }
+  const htPa = resolveBrainPolicy({ env: shadowEnv, companyId: "co_ht", channel: "whatsapp" });
+  if (htPa.useOpenAi) {
+    throw new Error("HT must not receive OpenAI PA/request");
+  }
+  const cadCatalogue = buildTenantToolCatalogue({
+    companyId: "co_caddington",
+    connectors: ["conn_xero", "conn_google_drive", "conn_microsoft_365"],
+    role: "company_admin",
+  });
+  if (cadCatalogue.tools.some((name) => name.startsWith("outlook_"))) {
+    throw new Error("Caddington catalogue must not expose EL Outlook tools");
+  }
+  if (!cadCatalogue.tools.includes("xero_sales_summary") || !cadCatalogue.tools.includes("search_company_knowledge")) {
+    throw new Error("Caddington catalogue must include native Xero reads and knowledge");
   }
   const officeTools = buildAllowedToolCatalogue({
     role: "office_staff",
