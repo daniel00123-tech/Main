@@ -18,7 +18,7 @@ describe("brain policy", () => {
     expect(classifyBrainChannelRole(null)).toBe("internal");
   });
 
-  it("keeps Caddington and HT on Cloudflare even when OpenAI is enabled", () => {
+  it("keeps unlisted Caddington and HT on Cloudflare even when OpenAI is enabled", () => {
     const env = {
       OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
       OPENAI_BRAIN_ENABLED: "true",
@@ -50,6 +50,36 @@ describe("brain policy", () => {
     expect(el.designatedBrain).toBe("openai");
     expect(resolveBrainPolicy({ env: SHADOW_ENV, companyId: "co_caddington" }).shadow).toBe(false);
     expect(resolveBrainPolicy({ env: SHADOW_ENV, companyId: "co_ht" }).useOpenAi).toBe(false);
+  });
+
+  const CADDINGTON_ENV = {
+    ...SHADOW_ENV,
+    OPENAI_BRAIN_COMPANY_IDS: "co_el,co_caddington",
+  };
+
+  it("makes OpenAI the user-visible brain for Caddington PA and WhatsApp after allowlist", () => {
+    const pa = resolveBrainPolicy({ env: CADDINGTON_ENV, companyId: "co_caddington", channel: "portal_chat" });
+    expect(pa.role).toBe("pa");
+    expect(pa.useOpenAi).toBe(true);
+    expect(pa.shadow).toBe(false);
+    expect(pa.userVisibleBrain).toBe("openai");
+    expect(pa.reason).toBe("pa_request_openai_brain");
+
+    const request = resolveBrainPolicy({ env: CADDINGTON_ENV, companyId: "co_caddington", channel: "whatsapp" });
+    expect(request.role).toBe("request");
+    expect(request.useOpenAi).toBe(true);
+    expect(request.userVisibleBrain).toBe("openai");
+
+    const unscoped = resolveBrainPolicy({ env: CADDINGTON_ENV, companyId: "co_caddington" });
+    expect(unscoped.useOpenAi).toBe(false);
+    expect(unscoped.shadow).toBe(true);
+    expect(unscoped.userVisibleBrain).toBe("cloudflare");
+
+    expect(resolveBrainPolicy({ env: CADDINGTON_ENV, companyId: "co_caddington", channel: "chatgpt" }).reason).toBe(
+      "chatgpt_stays_direct_tools",
+    );
+    expect(resolveBrainPolicy({ env: CADDINGTON_ENV, companyId: "co_ht", channel: "whatsapp" }).useOpenAi).toBe(false);
+    expect(resolveBrainPolicy({ env: CADDINGTON_ENV, companyId: "co_el", channel: "portal_chat" }).useOpenAi).toBe(true);
   });
 
   it("makes OpenAI the user-visible brain for EL PA and WhatsApp requests", () => {
@@ -89,7 +119,7 @@ describe("brain policy", () => {
     );
   });
 
-  it("does not promote Caddington or HT PA/request turns onto OpenAI", () => {
+  it("does not promote unlisted Caddington or HT PA/request turns onto OpenAI", () => {
     expect(resolveBrainPolicy({ env: SHADOW_ENV, companyId: "co_caddington", channel: "portal" }).useOpenAi).toBe(false);
     expect(resolveBrainPolicy({ env: SHADOW_ENV, companyId: "co_ht", channel: "whatsapp" }).useOpenAi).toBe(false);
   });

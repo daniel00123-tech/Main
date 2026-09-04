@@ -1,4 +1,4 @@
-export { INTELLIGENCE_TOOLS, INTELLIGENCE_TOOL_NAMES, GATEWAY_TOOL_ALIASES, SYSTEM_META_TOOLS, CURRENT_BUSINESS_DATA_PROTOCOL, describeToolCatalogue, permittedToolsForConnectors, formatToolForModel, toolFamilyOf } from "./catalogue.js";
+export { INTELLIGENCE_TOOLS, INTELLIGENCE_TOOL_NAMES, GATEWAY_TOOL_ALIASES, SYSTEM_META_TOOLS, CURRENT_BUSINESS_DATA_PROTOCOL, describeToolCatalogue, permittedToolsForConnectors, connectorOffersMailbox, formatToolForModel, toolFamilyOf } from "./catalogue.js";
 export { buildAllowedToolCatalogue, authorizeToolCall, deniedToolResult } from "./tool-auth.js";
 export { executePublicWebSearch, looksLikePublicWebAsk, isPrivateBusinessWebQuery } from "./web-search.js";
 export { classifyTurnFailures, clusterKey } from "./failure-telemetry.js";
@@ -47,6 +47,8 @@ export {
   isPaOrRequestRole,
   paRequestPrimaryEnabled,
   EL_COMPANY_ID,
+  CADDINGTON_COMPANY_ID,
+  HT_COMPANY_ID,
   parseBrainMode,
   resolveTenantReasoningMode,
 } from "./brain-policy.js";

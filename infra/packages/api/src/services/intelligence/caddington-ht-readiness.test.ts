@@ -11,16 +11,31 @@ const SHADOW_ENV = {
   OPENAI_BRAIN_COMPANY_IDS: "co_el",
 };
 
+const CADDINGTON_ENV = {
+  ...SHADOW_ENV,
+  OPENAI_BRAIN_COMPANY_IDS: "co_el,co_caddington",
+};
+
 describe("Caddington shared-architecture readiness", () => {
-  it("stays on Cloudflare and can flow through the shared catalogue", () => {
-    const policy = resolveBrainPolicy({ env: SHADOW_ENV, companyId: "co_caddington" });
-    expect(policy.mode).toBe("cloudflare");
-    expect(policy.useOpenAi).toBe(false);
-    expect(policy.shadow).toBe(false);
+  it("promotes PA/request onto OpenAI while keeping ChatGPT direct and pricing unchanged", () => {
+    const unscoped = resolveBrainPolicy({ env: CADDINGTON_ENV, companyId: "co_caddington" });
+    expect(unscoped.mode).toBe("openai_shadow");
+    expect(unscoped.useOpenAi).toBe(false);
+    expect(unscoped.shadow).toBe(true);
+
+    const pa = resolveBrainPolicy({ env: CADDINGTON_ENV, companyId: "co_caddington", channel: "portal" });
+    expect(pa.useOpenAi).toBe(true);
+    expect(pa.userVisibleBrain).toBe("openai");
+    expect(resolveBrainPolicy({ env: CADDINGTON_ENV, companyId: "co_caddington", channel: "whatsapp" }).useOpenAi).toBe(
+      true,
+    );
+    expect(resolveBrainPolicy({ env: CADDINGTON_ENV, companyId: "co_caddington", channel: "chatgpt" }).reason).toBe(
+      "chatgpt_stays_direct_tools",
+    );
 
     const catalogue = buildTenantToolCatalogue({
       companyId: "co_caddington",
-      connectors: ["conn_xero", "conn_google_drive"],
+      connectors: ["conn_xero", "conn_google_drive", "conn_microsoft_365"],
       role: "director",
     });
     expect(catalogue.tools).toEqual(expect.arrayContaining(["xero_sales_summary", "list_documents", "search_company_knowledge"]));
