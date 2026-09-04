@@ -2,7 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../env";
 import { classifyUsageResource } from "./customer-economics";
 import { detectQualitySignals } from "./quality-auditor";
-import { ACK_VARIANTS_V4, applyCustomerTone, countEmojis, documentResultCopy, welcomeFoundationReply } from "./whatsapp-tone";
+import {
+  ACK_VARIANTS_V4,
+  applyCustomerTone,
+  countEmojis,
+  documentResultCopy,
+  voiceFailureReply,
+  voiceTranscriptEcho,
+  welcomeFoundationReply,
+  VOICE_ACK,
+  VOICE_EMPTY,
+  VOICE_HEARD_LABEL,
+  VOICE_UPSTREAM,
+  WHATSAPP_TEXT_CHAR_LIMIT,
+} from "./whatsapp-tone";
 import {
   isSafeButtonId,
   mapButtonToUserText,
@@ -172,6 +185,22 @@ describe("WhatsApp V4 tone", () => {
     expect(countEmojis(applyCustomerTone("Thanks 👍 ✅ 📄 🔎 extra"))).toBeLessThanOrEqual(2);
     expect(applyCustomerTone("REQUEST ACCEPTED Executing MCP query")).not.toMatch(/REQUEST ACCEPTED|Executing MCP/i);
     expect(welcomeFoundationReply("Daniel")).toMatch(/Hi Daniel/);
+    expect(VOICE_ACK).toMatch(/just listening to it/i);
+    expect(voiceTranscriptEcho("Find the Coal Search document").body).toBe(
+      `${VOICE_HEARD_LABEL}\n\nFind the Coal Search document`,
+    );
+    expect(voiceTranscriptEcho("Find the Coal Search document").truncated).toBe(false);
+    const long = "word ".repeat(1200).trim();
+    const echoed = voiceTranscriptEcho(long);
+    expect(echoed.truncated).toBe(true);
+    expect(echoed.body).toMatch(/\(truncated\)/);
+    expect(echoed.body.length).toBeLessThanOrEqual(WHATSAPP_TEXT_CHAR_LIMIT);
+    expect(echoed.body.startsWith(VOICE_HEARD_LABEL)).toBe(true);
+    expect(echoed.body).toContain(echoed.heardText);
+    expect(voiceFailureReply("empty")).toBe(VOICE_EMPTY);
+    expect(voiceFailureReply("provider_error")).toBe(VOICE_UPSTREAM);
+    expect(voiceFailureReply("empty")).not.toMatch(/this is what i heard/i);
+    expect(voiceFailureReply("provider_error")).not.toMatch(/this is what i heard/i);
   });
 
   it("structures document results answer-first", () => {
@@ -480,7 +509,7 @@ describe("WhatsApp V4 orchestration", () => {
     expect(write.publicReply).toMatch(/didn’t recognise that option/i);
   });
 
-  it("transcribes a recognised voice note into the same brain and does not echo the transcript", async () => {
+  it("transcribes a recognised voice note, echoes the real words, then uses the same brain", async () => {
     downloadWhatsAppMedia.mockResolvedValue({
       ok: true,
       bytes: new Uint8Array([1, 2, 3]),
@@ -523,9 +552,24 @@ describe("WhatsApp V4 orchestration", () => {
       mimeType: "audio/ogg; codecs=opus",
     });
     expect(voice.acknowledgementSent).toBe(true);
-    expect(sendWhatsAppTextMock.mock.calls.some((call) => String(call[1]?.body ?? "").includes("voice note"))).toBe(true);
+    const outboundBodies = sendWhatsAppTextMock.mock.calls.map((call) => String(call[1]?.body ?? ""));
+    expect(outboundBodies.some((body) => body.includes(VOICE_ACK) || /just listening to it/i.test(body))).toBe(true);
+    expect(voice.transcript).toBe("Find the Coal Search document");
+    expect(voice.transcriptEchoSent).toBe(true);
+    expect(voice.transcriptEchoBody).toBe(`${VOICE_HEARD_LABEL}\n\nFind the Coal Search document`);
+    expect(outboundBodies).toContain(voice.transcriptEchoBody);
     expect(voice.publicReply).toMatch(/Coal Search/i);
-    expect(voice.publicReply).not.toMatch(/Find the Coal Search document/);
+    expect(voice.publicReply).not.toBe(voice.transcriptEchoBody);
+    const transcribeUsage = recordUsageEvent.mock.calls.find((call) => {
+      const row = call[1] as { resourceType?: string; metadata?: { transcript?: string; transcriptEchoBody?: string } };
+      return row?.resourceType === "whatsapp_transcription";
+    });
+    expect((transcribeUsage?.[1] as { metadata?: { transcript?: string; transcriptEchoBody?: string } })?.metadata).toEqual(
+      expect.objectContaining({
+        transcript: "Find the Coal Search document",
+        transcriptEchoBody: voice.transcriptEchoBody,
+      }),
+    );
     const follow = await handleWhatsAppInboundMessage(runtime, inbound("summarise it"));
     expect(follow.publicReply).toMatch(/Coal Search/i);
   });
@@ -572,7 +616,90 @@ describe("WhatsApp V4 orchestration", () => {
       mediaId: "MEDIAFAIL1",
       mimeType: "audio/ogg",
     });
-    expect(result.publicReply).toMatch(/couldn’t clearly understand/i);
+    expect(result.publicReply).toMatch(/couldn’t hear any words/i);
+    expect(result.publicReply).not.toMatch(/this is what i heard/i);
+    expect(result.transcript).toBeFalsy();
+    expect(result.transcriptEchoBody).toBeFalsy();
+    expect(result.transcriptEchoSent).toBeFalsy();
+    const outboundBodies = sendWhatsAppTextMock.mock.calls.map((call) => String(call[1]?.body ?? ""));
+    expect(outboundBodies.some((body) => /this is what i heard/i.test(body))).toBe(false);
+    expect(outboundBodies.some((body) => /Find the|Coal Search/i.test(body))).toBe(false);
+    expect(executeGatewayRequest).not.toHaveBeenCalled();
+  });
+
+  it("says so honestly when transcription is upstream-failed and does not invent words", async () => {
+    downloadWhatsAppMedia.mockResolvedValue({
+      ok: true,
+      bytes: new Uint8Array([1, 2, 3]),
+      mimeType: "audio/ogg",
+      bytesLength: 3,
+    });
+    transcribeWhatsAppAudioMock.mockResolvedValue({
+      ok: false,
+      provider: "workers-ai",
+      model: "@cf/openai/whisper-tiny-en",
+      reason: "provider_error",
+      message: "workers_ai_failed",
+      inputBytes: 3,
+      durationSeconds: 2,
+    });
+    const result = await handleWhatsAppInboundMessage(env(), {
+      ...inbound(""),
+      type: "audio",
+      inputKind: "voice",
+      mediaId: "MEDIAFAIL2",
+      mimeType: "audio/ogg",
+    });
+    expect(result.publicReply).toMatch(/couldn’t listen to it just now/i);
+    expect(result.publicReply).not.toMatch(/this is what i heard/i);
+    expect(result.transcriptEchoBody).toBeFalsy();
+    expect(executeGatewayRequest).not.toHaveBeenCalled();
+  });
+
+  it("truncates a long transcript with an honest note and keeps the stored echo matching outbound", async () => {
+    const longTranscript = "please find the coal search document ".repeat(200).trim();
+    downloadWhatsAppMedia.mockResolvedValue({
+      ok: true,
+      bytes: new Uint8Array([1, 2, 3]),
+      mimeType: "audio/ogg; codecs=opus",
+      bytesLength: 3,
+    });
+    transcribeWhatsAppAudioMock.mockResolvedValue({
+      ok: true,
+      provider: "workers-ai",
+      model: "@cf/openai/whisper-tiny-en",
+      durationSeconds: 40,
+      inputBytes: 3,
+      text: longTranscript,
+      confidence: null,
+      costBasis: "unknown",
+      costCents: null,
+    });
+    executeGatewayRequest.mockResolvedValue({
+      status: 200,
+      result: { results: [{ id: "coal", title: "Coal Search.pdf", snippet: "coal search payment" }] },
+    });
+    const voice = await handleWhatsAppInboundMessage(env(), {
+      ...inbound(""),
+      type: "audio",
+      inputKind: "voice",
+      mediaId: "MEDIALONG1",
+      mimeType: "audio/ogg; codecs=opus",
+    });
+    expect(voice.transcript).toBe(longTranscript);
+    expect(voice.transcriptEchoBody).toMatch(/\(truncated\)/);
+    expect(voice.transcriptEchoBody?.length).toBeLessThanOrEqual(4000);
+    expect(sendWhatsAppTextMock.mock.calls.map((call) => String(call[1]?.body ?? ""))).toContain(voice.transcriptEchoBody);
+    expect(voice.transcriptEchoBody).toContain("please find the coal search document");
+  });
+
+  it("does not send a listening or transcript echo on the text-message path", async () => {
+    const result = await handleWhatsAppInboundMessage(env(), inbound("Help"));
+    const outboundBodies = sendWhatsAppTextMock.mock.calls.map((call) => String(call[1]?.body ?? ""));
+    expect(result.outcome).toBe("answered");
+    expect(outboundBodies.some((body) => /just listening to it/i.test(body))).toBe(false);
+    expect(outboundBodies.some((body) => /this is what i heard/i.test(body))).toBe(false);
+    expect(result.transcriptEchoSent).toBeFalsy();
     expect(executeGatewayRequest).not.toHaveBeenCalled();
   });
 });
