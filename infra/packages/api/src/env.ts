@@ -69,11 +69,21 @@ export interface Env {
   EMAIL_LIVE_TEST_KEY?: string;
   /** Feature flag — auto top-up execution (test mode only until operator approval) */
   AUTO_TOPUP_EXECUTION_ENABLED?: string;
-  /** Microsoft 365 app registration — Worker secrets only */
+  /** Microsoft 365 app registration — Worker secrets only (Caddington / shared platform identity) */
   MICROSOFT_TENANT_ID?: string;
   MICROSOFT_CLIENT_ID?: string;
   MICROSOFT_CLIENT_SECRET?: string;
   MICROSOFT_REDIRECT_URI?: string;
+  /**
+   * Optional per-company Microsoft identities (Option B).
+   * Public IDs may be vars. Client secret stays in Cloudflare secret storage.
+   * Do not overwrite the global MICROSOFT_* triplet.
+   */
+  EL_MICROSOFT_TENANT_ID?: string;
+  EL_MICROSOFT_CLIENT_ID?: string;
+  EL_MICROSOFT_CLIENT_SECRET?: string;
+  EL_MS_CLIENT_SECRET?: string;
+  EL_MICROSOFT_APP_DISPLAY_NAME?: string;
   /** When true, use platform multitenant Entra app; tenant ID comes from connector instance after admin consent */
   MICROSOFT_MULTITENANT_APP?: string;
   /** Per-company MCP admin tokens for knowledge bridge (e.g. CADDINGTON_ADMIN_TOKEN, HT_BUSINESS_MCP_ADMIN_TOKEN) */

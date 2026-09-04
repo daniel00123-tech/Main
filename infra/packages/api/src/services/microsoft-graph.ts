@@ -277,6 +277,7 @@ export async function listSites(config: MicrosoftGraphConfig, search = "*"): Pro
   const queries = [
     search,
     "Communication",
+    "Elvex",
     "Caddington",
   ].filter((q, i, arr) => arr.indexOf(q) === i);
 

@@ -8,7 +8,8 @@ import { platformMultitenantAppEnabled } from "./microsoft-credentials";
 import { discoverEntraTenantIdFromDomain } from "./outlook-graph-access";
 
 export const EL_GRAPH_TENANT_ID = "af32e619-3647-44a2-85d9-1c45457c0e91";
-export const EL_GRAPH_APP_ID = "e5fd0533-ce51-43b8-999c-152f1e268246";
+export const EL_GRAPH_APP_ID = "18ec6a91-f043-4f63-8800-64135af48c4e";
+export const EL_GRAPH_APP_DISPLAY_NAME = "INFRA - Elvex MCP";
 
 type TokenAttempt = {
   ok: boolean;
@@ -161,31 +162,36 @@ async function queryServicePrincipal(
 }
 
 export async function verifyElMicrosoftServicePrincipal(env: Env): Promise<Record<string, unknown>> {
-  const boundClientId = trim(env.MICROSOFT_CLIENT_ID);
+  const nativeClientId = trim(env.EL_MICROSOFT_CLIENT_ID) || EL_GRAPH_APP_ID;
+  const nativeTenantId = trim(env.EL_MICROSOFT_TENANT_ID) || EL_GRAPH_TENANT_ID;
+  const nativeSecret = trim(env.EL_MICROSOFT_CLIENT_SECRET) || trim(env.EL_MS_CLIENT_SECRET);
+  const boundClientId = nativeClientId;
   const boundHomeTenant = trim(env.MICROSOFT_TENANT_ID);
-  const boundSecret = trim(env.MICROSOFT_CLIENT_SECRET);
+  const boundSecret = nativeSecret;
   const domainTenant = await discoverEntraTenantIdFromDomain("elvexpropertyservices.com");
 
   const bindingAudit = {
     boundClientId: boundClientId || null,
     boundHomeTenantId: boundHomeTenant || null,
     clientIdMatchesExpected: boundClientId === EL_GRAPH_APP_ID,
-    homeTenantIsElTenant: boundHomeTenant === EL_GRAPH_TENANT_ID,
+    homeTenantIsElTenant: nativeTenantId === EL_GRAPH_TENANT_ID,
     clientSecretConfigured: Boolean(boundSecret),
-    tenantIdConfigured: Boolean(boundHomeTenant),
+    tenantIdConfigured: Boolean(nativeTenantId),
     clientIdConfigured: Boolean(boundClientId),
+    usedGlobalMicrosoftSecret: false,
+    identityDisplayName: EL_GRAPH_APP_DISPLAY_NAME,
     multitenantAppEnabled: platformMultitenantAppEnabled(env),
-    elCompanyMicrosoft365Row: "missing",
+    elCompanyMicrosoft365Row: "tenant_native_option_b",
     tokenEndpointUsedForEl: `https://login.microsoftonline.com/${EL_GRAPH_TENANT_ID}/oauth2/v2.0/token`,
-    wrongTenantBinding: boundHomeTenant ? boundHomeTenant !== EL_GRAPH_TENANT_ID : null,
+    wrongTenantBinding: nativeTenantId ? nativeTenantId !== EL_GRAPH_TENANT_ID : null,
     wrongClientIdBinding: boundClientId ? boundClientId !== EL_GRAPH_APP_ID : true,
   };
 
   if (!boundClientId || !boundSecret) {
     return {
-      expected: { tenantId: EL_GRAPH_TENANT_ID, appId: EL_GRAPH_APP_ID },
+      expected: { tenantId: EL_GRAPH_TENANT_ID, appId: EL_GRAPH_APP_ID, displayName: EL_GRAPH_APP_DISPLAY_NAME },
       bindingAudit,
-      tokenElTenant: { ok: false, error: "MICROSOFT_NOT_CONFIGURED" },
+      tokenElTenant: { ok: false, error: "MICROSOFT_TENANT_SECRET_MISSING" },
       servicePrincipal: {
         exists: "UNKNOWN",
         objectId: null,
@@ -194,7 +200,8 @@ export async function verifyElMicrosoftServicePrincipal(env: Env): Promise<Recor
         accountEnabled: null,
         queryStatus: "NO_CREDENTIALS",
       },
-      blocker: "Worker Microsoft client id or secret is not bound. Secrets were not rotated.",
+      blocker:
+        "EL-native Worker secret EL_MICROSOFT_CLIENT_SECRET is not bound on infra-api. Global MICROSOFT_CLIENT_SECRET was not used. Secrets were not rotated.",
     };
   }
 

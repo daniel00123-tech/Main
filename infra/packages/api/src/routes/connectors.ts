@@ -1341,6 +1341,24 @@ connectors.post("/api/internal/el-knowledge-onedrive-diagnostic", async (c) => {
   }
 });
 
+connectors.post("/api/internal/el-option-b-cutover", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { runElOptionBGraphCutover } = await import("../services/el-option-b-cutover");
+    return c.json(
+      await runElOptionBGraphCutover(c.env, {
+        actor: "system:el-option-b-cutover",
+        sendEmail: body.sendEmail !== false,
+      }),
+    );
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "EL Option B cutover failed" }, 500);
+  }
+});
+
 connectors.post("/api/internal/el-microsoft-sp-verify", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

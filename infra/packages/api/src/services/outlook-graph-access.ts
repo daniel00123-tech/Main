@@ -6,6 +6,7 @@
 import type { Env } from "../env";
 import { acquireMicrosoftAppToken, microsoftAppConfigured } from "./microsoft-auth";
 import { platformSaaSAppCredentials } from "./microsoft-credentials";
+import { loadMicrosoftTenantIdentity } from "./microsoft-tenant-identity";
 import { probeMailboxReadAccess } from "./microsoft-outlook-graph";
 
 const tenantCache = new Map<string, string | null>();
@@ -71,8 +72,29 @@ export async function resolveOutlookGraphAccess(
       ok: true,
       accessToken: companyToken.accessToken,
       tenantId: companyToken.tenantId,
-      source: `company_app:${companyToken.authMode}`,
-      clientId: String(env.MICROSOFT_CLIENT_ID ?? "").trim() || null,
+      source:
+        companyToken.identityKind === "tenant_native"
+          ? `tenant_native:${companyToken.displayName ?? companyToken.clientId ?? "company"}`
+          : `company_app:${companyToken.authMode}`,
+      clientId: companyToken.clientId ?? (String(env.MICROSOFT_CLIENT_ID ?? "").trim() || null),
+    };
+  }
+
+  const nativeIdentity = await loadMicrosoftTenantIdentity(env, env.DB, input.companyId);
+  if (nativeIdentity) {
+    return {
+      ok: false,
+      code: companyToken.code,
+      message: companyToken.message,
+      tenantId: nativeIdentity.tenantId,
+      clientId: nativeIdentity.clientId,
+      httpStatus: "httpStatus" in companyToken ? companyToken.httpStatus : undefined,
+      aadError: "aadError" in companyToken ? companyToken.aadError : null,
+      aadErrorCodes: "aadErrorCodes" in companyToken ? companyToken.aadErrorCodes : [],
+      correlationId: "correlationId" in companyToken ? companyToken.correlationId : null,
+      traceId: "traceId" in companyToken ? companyToken.traceId : null,
+      timestamp: "timestamp" in companyToken ? companyToken.timestamp : null,
+      tokenUrl: "tokenUrl" in companyToken ? companyToken.tokenUrl : null,
     };
   }
 
