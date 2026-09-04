@@ -285,6 +285,7 @@ export async function sendPortalChatMessage(
     runtime,
     channel: "portal",
     completer: input.completer,
+    waitUntil: input.waitUntil,
   });
   result = {
     ...result,
@@ -420,6 +421,12 @@ function metadataFromTurn(result: IntelligenceTurnResult): PortalChatMessageMeta
     provider: result.provider,
     model: result.model,
     brainMode: result.brainMode ?? null,
+    shadowProvider: result.shadowEval?.provider ?? null,
+    shadowModel: result.shadowEval?.model ?? null,
+    shadowLatencyMs: result.shadowEval?.latencyMs ?? null,
+    shadowPromptTokens: result.shadowEval?.promptTokens ?? null,
+    shadowCompletionTokens: result.shadowEval?.completionTokens ?? null,
+    shadowToolProposal: result.shadowEval?.toolProposal ?? [],
   };
 }
 

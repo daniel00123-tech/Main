@@ -51,6 +51,12 @@ export type PortalChatMessageMetadata = {
   provider?: string | null;
   model?: string | null;
   brainMode?: string | null;
+  shadowProvider?: string | null;
+  shadowModel?: string | null;
+  shadowLatencyMs?: number | null;
+  shadowPromptTokens?: number | null;
+  shadowCompletionTokens?: number | null;
+  shadowToolProposal?: string[];
 };
 
 export type PortalChatConversation = PortalChatConversationSummary & {

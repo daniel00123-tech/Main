@@ -75,13 +75,14 @@ export async function runOpenAiResponses(
     return emptyFailure(started, model, "missing_key", input.correlationId);
   }
 
+  const tools = openaiToolsPayload(input.permittedTools);
   const payload = {
     model,
     instructions: clip(input.system, MAX_INSTRUCTION_CHARS),
     input: clip(input.user, MAX_INPUT_CHARS),
     store: false,
     max_output_tokens: input.mode === "synthesise" ? 700 : 640,
-    tools: openaiToolsPayload(input.permittedTools),
+    ...(tools ? { tools } : {}),
     metadata: input.correlationId ? { infra_correlation_id: input.correlationId } : undefined,
   };
 
@@ -99,7 +100,8 @@ export async function runOpenAiResponses(
   return emptyFailure(started, model, first.failure ?? "unavailable", input.correlationId);
 }
 
-function openaiToolsPayload(permitted?: string[]): Array<Record<string, unknown>> {
+function openaiToolsPayload(permitted?: string[]): Array<Record<string, unknown>> | undefined {
+  if (Array.isArray(permitted) && permitted.length === 0) return undefined;
   return cloudflareToolDefs(permitted).map((tool) => ({
     type: "function",
     name: tool.name,

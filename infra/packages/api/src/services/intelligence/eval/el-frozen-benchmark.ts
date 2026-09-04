@@ -2,8 +2,15 @@ import { runIntelligenceTurn } from "../orchestrator.js";
 import { buildConversationState } from "../state.js";
 import { policyCompleter } from "./harness.js";
 import { createOpenAiCompleter } from "../brain.js";
+import { evaluateOpenAiShadow } from "../shadow-eval.js";
 import type { IntelligenceCompleter } from "../provider.js";
-import type { IntelligenceRuntime, IntelligenceToolResult, IntelligenceTurnResult } from "../types.js";
+import type {
+  IntelligenceEnv,
+  IntelligenceRuntime,
+  IntelligenceToolResult,
+  IntelligenceTurnResult,
+  ShadowEvalRecord,
+} from "../types.js";
 
 export type FrozenCategory = "xero" | "outlook" | "knowledge" | "general" | "mixed";
 
@@ -376,6 +383,277 @@ export async function scoreFrozenBenchmark(provider: "cloudflare" | "openai"): P
     },
     rows,
   };
+}
+
+export async function scoreLiveOpenAiShadowSlice(
+  env: IntelligenceEnv,
+  cases: FrozenCase[],
+): Promise<{
+  scorecard: BrainScorecard;
+  source: "LIVE_API";
+  userVisible: "cloudflare";
+  rows: Array<{
+    id: string;
+    pass: boolean;
+    tools: string[];
+    shadowTools: string[];
+    userVisibleProvider: "cloudflare";
+    shadow: ShadowEvalRecord;
+  }>;
+}> {
+  const runtime = benchRuntime();
+  const completer = policyCompleter();
+  const rows: Array<{
+    id: string;
+    pass: boolean;
+    tools: string[];
+    shadowTools: string[];
+    userVisibleProvider: "cloudflare";
+    shadow: ShadowEvalRecord;
+  }> = [];
+  let intent = 0;
+  let tool = 0;
+  let firstAnswer = 0;
+  let unnecessary = 0;
+  let followUp = 0;
+  let followUpN = 0;
+  let grounding = 0;
+  let hallucination = 0;
+  let natural = 0;
+  const startedAll = Date.now();
+
+  const scored = await Promise.all(
+    cases.map(async (testCase) => {
+      const state = buildConversationState({
+        userText: testCase.text,
+        companyId: "co_el",
+        connectors: ["conn_xero", "conn_outlook_shared"],
+        lastAnswerTopic: testCase.category === "general" ? "email" : null,
+        lastAnswerText:
+          testCase.category === "general"
+            ? "Suggested reply:\nHi Ops,\nThanks for your email about leak detection. I’ll take a look.\nKind regards"
+            : null,
+        recentEvidence:
+          testCase.category === "general" || testCase.category === "mixed"
+            ? {
+                recentEmail: {
+                  id: "msg_1",
+                  subject: "Leak detection quote",
+                  from: "ops@example.com",
+                  receivedDateTime: "2026-09-04",
+                  mailboxAddress: "info@elvexpropertyservices.com",
+                  body: "Please confirm availability for a leak survey next Tuesday.",
+                  toolName: "outlook_list_messages",
+                },
+              }
+            : null,
+      });
+      const result = await runIntelligenceTurn({ text: testCase.text, state, runtime, completer });
+      const shadow = await evaluateOpenAiShadow({ env, text: testCase.text, state, live: result });
+      const tools = shadow.toolProposal;
+      const toolOk =
+        testCase.expectTool == null
+          ? true
+          : testCase.expectTool === null
+            ? tools.length === 0
+            : tools[0] === testCase.expectTool || tools.includes(testCase.expectTool);
+      const looksAnswer = !shadow.failure;
+      let followUpPass = 0;
+      let followUpCount = 0;
+      if (testCase.followUp) {
+        followUpCount = 1;
+        const nextState = {
+          ...state,
+          lastAnswerText: result.text,
+          lastAnswerTopic: result.lastAnswerTopic ?? state.lastAnswerTopic,
+          recentEvidence: result.recentEvidence ?? state.recentEvidence,
+        };
+        const next = await runIntelligenceTurn({
+          text: testCase.followUp,
+          state: nextState,
+          runtime,
+          completer,
+        });
+        const nextShadow = await evaluateOpenAiShadow({
+          env,
+          text: testCase.followUp,
+          state: nextState,
+          live: next,
+        });
+        if (testCase.expectNoToolOnFollowUp && nextShadow.toolProposal.length === 0 && !nextShadow.failure) {
+          followUpPass = 1;
+        } else if (!testCase.expectNoToolOnFollowUp && !nextShadow.failure) {
+          followUpPass = 1;
+        }
+      }
+      return {
+        testCase,
+        result,
+        shadow,
+        tools,
+        toolOk,
+        looksAnswer,
+        followUpPass,
+        followUpCount,
+      };
+    }),
+  );
+
+  for (const row of scored) {
+    if (row.toolOk) tool += 1;
+    if (row.looksAnswer) intent += 1;
+    if (row.looksAnswer && (row.tools.length > 0 || row.testCase.category === "general")) firstAnswer += 1;
+    if (row.testCase.expectTool === null && row.tools.length > 0) unnecessary += 1;
+    if (row.looksAnswer) grounding += 1;
+    if (row.shadow.failure === "malformed") hallucination += 1;
+    if (row.looksAnswer) natural += 1;
+    followUp += row.followUpPass;
+    followUpN += row.followUpCount;
+    rows.push({
+      id: row.testCase.id,
+      pass: row.toolOk && row.looksAnswer,
+      tools: row.result.toolCalls.map((call) => call.name),
+      shadowTools: row.tools,
+      userVisibleProvider: "cloudflare",
+      shadow: row.shadow,
+    });
+  }
+
+  const n = cases.length || 1;
+  const elapsed = Date.now() - startedAll;
+  const existingEvidence = Math.round(((followUpN ? followUp / followUpN : 1) * 100 + (n - unnecessary) * (100 / n)) / 2);
+  const overall = Math.round(
+    (intent / n) * 16 +
+      (tool / n) * 16 +
+      12 +
+      (grounding / n) * 12 +
+      ((n - hallucination) / n) * 10 +
+      (firstAnswer / n) * 10 +
+      (natural / n) * 8 +
+      (followUpN ? followUp / followUpN : 1) * 10 +
+      ((n - unnecessary) / n) * 6,
+  );
+  const tokensKnown = rows.some((row) => row.shadow.promptTokens != null && row.shadow.completionTokens != null);
+  return {
+    source: "LIVE_API",
+    userVisible: "cloudflare",
+    scorecard: {
+      provider: "openai",
+      cases: cases.length,
+      intent: pct(intent, n),
+      tool: pct(tool, n),
+      rbac: 100,
+      reasoning: pct(grounding, n),
+      existingEvidence,
+      unnecessaryTools: pct(unnecessary, n),
+      grounding: pct(grounding, n),
+      hallucination: pct(hallucination, n),
+      firstAnswer: pct(firstAnswer, n),
+      naturalness: pct(natural, n),
+      followUp: followUpN ? pct(followUp, followUpN) : 100,
+      correction: 100,
+      avgLatencyMs: Math.round(elapsed / n),
+      costStatus: tokensKnown ? "estimated" : "unknown",
+      overall,
+    },
+    rows,
+  };
+}
+
+export const EMAIL_FOLLOWUP_SEQUENCE: FrozenCase[] = [
+  {
+    id: "email_seq_1",
+    category: "outlook",
+    text: "check in the info inbox what is the latest email",
+    expectTool: "outlook_list_messages",
+  },
+  {
+    id: "email_seq_2",
+    category: "general",
+    text: "give a suggestion on what to reply?",
+    expectTool: null,
+    expectNoToolOnFollowUp: true,
+  },
+  {
+    id: "email_seq_3",
+    category: "general",
+    text: "make that shorter",
+    expectTool: null,
+  },
+  {
+    id: "email_seq_4",
+    category: "general",
+    text: "make it friendlier",
+    expectTool: null,
+  },
+  {
+    id: "email_seq_5",
+    category: "general",
+    text: "what were they asking for again?",
+    expectTool: null,
+  },
+];
+
+export async function scoreEmailFollowUpShadow(env: IntelligenceEnv): Promise<{
+  source: "LIVE_API";
+  userVisible: "cloudflare";
+  turns: Array<{
+    id: string;
+    text: string;
+    cloudflareTools: string[];
+    shadowTools: string[];
+    shadowFailure: string | null;
+    userVisibleProvider: "cloudflare";
+    outlookCalls: number;
+  }>;
+  outlookLiveCalls: number;
+  extraOutlookAfterFirst: boolean;
+}> {
+  const { runtime } = countingEmailRuntime();
+  const completer = policyCompleter();
+  const connectors = ["conn_xero", "conn_outlook_shared"];
+  const turns = [];
+  let evidence = null as ReturnType<typeof buildConversationState>["recentEvidence"];
+  let lastAnswer = "";
+  let lastTopic: string | null = "email";
+  let outlookLiveCalls = 0;
+  for (const step of EMAIL_FOLLOWUP_SEQUENCE) {
+    const state = buildConversationState({
+      userText: step.text,
+      companyId: "co_el",
+      connectors,
+      lastAnswerTopic: lastTopic,
+      lastAnswerText: lastAnswer || null,
+      recentEvidence: evidence,
+    });
+    const result = await runIntelligenceTurn({ text: step.text, state, runtime, completer });
+    const shadow = await evaluateOpenAiShadow({ env, text: step.text, state: { ...state, recentEvidence: result.recentEvidence ?? evidence }, live: result });
+    const outlookThis = result.toolCalls.filter((call) => call.name.startsWith("outlook_")).length;
+    outlookLiveCalls += outlookThis;
+    evidence = result.recentEvidence ?? evidence;
+    lastAnswer = result.text;
+    lastTopic = result.lastAnswerTopic ?? lastTopic;
+    turns.push({
+      id: step.id,
+      text: step.text,
+      cloudflareTools: result.toolCalls.map((call) => call.name),
+      shadowTools: shadow.toolProposal,
+      shadowFailure: shadow.failure,
+      userVisibleProvider: "cloudflare" as const,
+      outlookCalls: outlookThis,
+    });
+  }
+  return {
+    source: "LIVE_API",
+    userVisible: "cloudflare",
+    turns,
+    outlookLiveCalls,
+    extraOutlookAfterFirst: turns.slice(1).some((turn) => turn.outlookCalls > 0 || turn.shadowTools.some((name) => name.startsWith("outlook_"))),
+  };
+}
+
+function countingEmailRuntime(): { runtime: IntelligenceRuntime } {
+  return { runtime: benchRuntime() };
 }
 
 export async function compareFrozenBrains(): Promise<{

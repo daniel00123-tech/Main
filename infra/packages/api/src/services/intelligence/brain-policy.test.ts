@@ -23,6 +23,20 @@ describe("brain policy", () => {
     ).toBe(false);
   });
 
+  it("keeps openai_shadow off the user-visible path", () => {
+    const env = {
+      OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
+      OPENAI_BRAIN_ENABLED: "true",
+      OPENAI_BRAIN_MODE: "openai_shadow",
+    };
+    const el = resolveBrainPolicy({ env, companyId: "co_el" });
+    expect(el.shadow).toBe(true);
+    expect(el.useOpenAi).toBe(false);
+    expect(el.mode).toBe("openai_shadow");
+    expect(resolveBrainPolicy({ env, companyId: "co_caddington" }).shadow).toBe(false);
+    expect(resolveBrainPolicy({ env, companyId: "co_ht" }).useOpenAi).toBe(false);
+  });
+
   it("does not send ChatGPT MCP through the OpenAI brain", () => {
     const env = {
       OPENAI_API_KEY: "sk-test-key-1234567890abcdef",

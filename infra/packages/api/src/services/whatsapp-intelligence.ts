@@ -165,6 +165,7 @@ export async function executeWhatsAppIntelligence(
     channel: "whatsapp",
     buttonHint: buttonAction,
     completer: input.completer,
+    waitUntil: input.waitUntil,
   });
   if (
     result.kind === "failed" ||

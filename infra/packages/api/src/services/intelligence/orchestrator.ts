@@ -3,6 +3,7 @@ import { describeToolCatalogue, INTELLIGENCE_TOOL_NAMES, SYSTEM_META_TOOLS } fro
 import { answerGeneralConversation, answerSelectedDocumentFollowUp } from "./conversation.js";
 import { parseIntelligenceDecision, recoverDecision, validateToolRequest } from "./parse.js";
 import { createReasoningCompleter } from "./brain.js";
+import { evaluateOpenAiShadow, persistShadowEval, shouldRunOpenAiShadow } from "./shadow-eval.js";
 import {
   answerFromExistingEvidence,
   classifyEvidenceNeed,
@@ -62,6 +63,20 @@ Write like a colleague: answer first, short, no question-echo.
 `;
 
 export async function runIntelligenceTurn(input: {
+  env?: IntelligenceEnv;
+  text: string;
+  state: IntelligenceConversationState;
+  runtime: IntelligenceRuntime;
+  channel?: IntelligenceChannel;
+  buttonHint?: string | null;
+  completer?: IntelligenceCompleter;
+  waitUntil?: (promise: Promise<unknown>) => void;
+}): Promise<IntelligenceTurnResult> {
+  const result = await executeIntelligenceTurn(input);
+  return attachOpenAiShadow(input, result);
+}
+
+async function executeIntelligenceTurn(input: {
   env?: IntelligenceEnv;
   text: string;
   state: IntelligenceConversationState;
@@ -1307,6 +1322,64 @@ function guardedEmpty(
     },
     question,
   );
+}
+
+async function attachOpenAiShadow(
+  input: {
+    env?: IntelligenceEnv;
+    text: string;
+    state: IntelligenceConversationState;
+    channel?: IntelligenceChannel;
+    completer?: IntelligenceCompleter;
+    waitUntil?: (promise: Promise<unknown>) => void;
+  },
+  result: IntelligenceTurnResult,
+): Promise<IntelligenceTurnResult> {
+  const policy = resolveBrainPolicy({
+    env: input.env,
+    companyId: input.state.companyId,
+    channel: input.channel,
+  });
+  const labeled: IntelligenceTurnResult = {
+    ...result,
+    brainMode: result.brainMode ?? (policy.enabled ? policy.mode : "cloudflare"),
+  };
+  if (
+    !shouldRunOpenAiShadow({
+      env: input.env,
+      companyId: input.state.companyId,
+      channel: input.channel,
+      completerInjected: Boolean(input.completer),
+    }) ||
+    !input.env
+  ) {
+    return labeled;
+  }
+  const job = async () => {
+    const shadow = await evaluateOpenAiShadow({
+      env: input.env!,
+      text: input.text,
+      state: {
+        ...input.state,
+        recentEvidence: labeled.recentEvidence ?? input.state.recentEvidence,
+      },
+      live: labeled,
+    });
+    const db = (input.env as IntelligenceEnv & { DB?: Parameters<typeof persistShadowEval>[0] }).DB;
+    if (db && input.state.companyId) {
+      await persistShadowEval(db, shadow, input.state.companyId, input.channel ?? "api");
+    }
+    return shadow;
+  };
+  if (input.waitUntil) {
+    input.waitUntil(job().catch(() => undefined));
+    return labeled;
+  }
+  try {
+    return { ...labeled, shadowEval: await job() };
+  } catch {
+    return labeled;
+  }
 }
 
 export function normalizeConfidence(value: unknown): IntelligenceConfidence {

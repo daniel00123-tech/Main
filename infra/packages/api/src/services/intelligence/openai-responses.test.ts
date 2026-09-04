@@ -27,6 +27,12 @@ describe("openai responses adapter", () => {
     expect(redactOpenAiError("Bearer sk-abc123456789 and api_key=secret-value")).not.toMatch(/sk-abc|secret-value/);
   });
 
+  it("omits tools for a no-connector smoke prompt", async () => {
+    const result = await runOpenAiResponses({}, { system: "probe", user: "Reply with the single word pong", permittedTools: [] });
+    expect(result.failure).toBe("missing_key");
+    expect(result.usage.model).toMatch(/luna|terra|sol|gpt-/);
+  });
+
   it("extracts function calls and usage from a Responses payload", () => {
     const extracted = extractOpenAiResponses({
       output_text: "",

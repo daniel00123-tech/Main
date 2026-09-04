@@ -161,6 +161,23 @@ export type IntelligenceConversationState = {
   userCorrection?: boolean;
 };
 
+export type ShadowEvalRecord = {
+  provider: "openai";
+  model: string | null;
+  latencyMs: number;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  cachedTokens: number | null;
+  estimatedCostUsd: number | null;
+  costBasis: "estimated" | "unknown";
+  correlationId: string | null;
+  toolProposal: string[];
+  failure: string | null;
+  reusedEvidence: boolean;
+  executedLiveTools: false;
+  userVisibleProvider: "cloudflare";
+};
+
 export type IntelligenceModelUsage = {
   provider: "workers-ai" | "openai" | "none";
   model: string | null;
@@ -203,6 +220,8 @@ export type IntelligenceTurnResult = {
   brainMode?: BrainMode;
   correlationId?: string | null;
   guardChecks?: ResponseGuardCheck[];
+  /** Parallel OpenAI evaluation. Never shown to the customer. */
+  shadowEval?: ShadowEvalRecord | null;
 };
 
 export type IntelligenceToolParam = {

@@ -43,6 +43,13 @@ export {
 } from "./evidence.js";
 export { runResponseQualityGuard, applyGuardToTurn, classifyResponseTerminal } from "./response-guard.js";
 export { runOpenAiResponses, hasOpenAiApiKey, inspectOpenAiKey, extractOpenAiResponses } from "./openai-responses.js";
+export {
+  evaluateOpenAiShadow,
+  persistShadowEval,
+  runOpenAiConnectivitySmoke,
+  shouldRunOpenAiShadow,
+} from "./shadow-eval.js";
+export { scoreLiveOpenAiShadowSlice, EMAIL_FOLLOWUP_SEQUENCE } from "./eval/el-frozen-benchmark.js";
 export { OPENAI_MODEL_FAST, OPENAI_MODEL_DEFAULT, OPENAI_MODEL_REASONING, resolveOpenAiModel } from "./openai-models.js";
 export { buildConversationState, formatConversationState } from "./state.js";
 export { routeIntelligenceTurn } from "./router.js";
@@ -72,5 +79,6 @@ export type {
   IntelligenceQualityFlag,
   IntelligenceRoute,
   IntelligenceScope,
+  ShadowEvalRecord,
 } from "./types.js";
 export type { IntelligenceCompleter } from "./provider.js";

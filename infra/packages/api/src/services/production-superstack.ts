@@ -62,6 +62,20 @@ export function assertProductionSuperstackCapabilities(): {
   if (brain.useOpenAi) {
     throw new Error("openai brain must not activate for non-EL tenants by default");
   }
+  const shadow = resolveBrainPolicy({
+    env: {
+      OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
+      OPENAI_BRAIN_ENABLED: "true",
+      OPENAI_BRAIN_MODE: "openai_shadow",
+    },
+    companyId: "co_el",
+  });
+  if (shadow.useOpenAi) {
+    throw new Error("openai_shadow must keep Cloudflare as the user-visible brain");
+  }
+  if (!shadow.shadow) {
+    throw new Error("openai_shadow must evaluate OpenAI in parallel");
+  }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };
 }
