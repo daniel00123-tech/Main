@@ -448,6 +448,8 @@ function mergeEntitiesFromIntelligence(
       providerItemId: identity.providerItemId ?? lastDocument?.providerItemId,
       sourceKey: identity.sourceKey ?? lastDocument?.sourceKey,
       path: identity.path ?? lastDocument?.path,
+      modifiedAt: result.currentDocument.modifiedAt ?? lastDocument?.modifiedAt,
+      modifiedBy: result.currentDocument.modifiedBy ?? lastDocument?.modifiedBy,
     });
   }
   return mergeEntityMemory(prior, {
@@ -664,7 +666,14 @@ function documentFromLoose(data: unknown): IntelligenceDocumentRef | null {
 
 function documentRefFromEntity(doc?: WhatsAppDocumentEntity | null): IntelligenceDocumentRef | null {
   if (!doc?.id || !doc.title) return null;
-  return { id: doc.id, title: doc.title, url: doc.url, source: doc.sourceSystem };
+  return {
+    id: doc.id,
+    title: doc.title,
+    url: doc.url,
+    source: doc.sourceSystem,
+    modifiedAt: doc.modifiedAt ?? null,
+    modifiedBy: doc.modifiedBy ?? null,
+  };
 }
 
 async function runSystemMetaTool(

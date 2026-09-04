@@ -148,6 +148,8 @@ describe("scope classifier", () => {
     expect(classifyScope("When was it changed?", state).scope).toBe("CURRENT_DOCUMENT");
     expect(classifyScope("Open it.", state).scope).toBe("CURRENT_DOCUMENT");
     expect(classifyScope("What is it about?", state).scope).toBe("CURRENT_DOCUMENT");
+    expect(classifyScope("What is our health and safety policy?", state).tool).toBe("search_company_knowledge");
+    expect(classifyScope("What is our health and safety policy?", state).clearCurrentDocument).toBe(true);
   });
 
   it("routes newest inbox asks to list_messages and follow-ups to memory/rephrase", () => {

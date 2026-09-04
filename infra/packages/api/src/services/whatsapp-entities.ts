@@ -21,6 +21,8 @@ export type WhatsAppDocumentEntity = {
   sourceKey?: string | null;
   path?: string | null;
   documentClass?: WhatsAppDocumentClass | null;
+  modifiedAt?: string | null;
+  modifiedBy?: string | null;
 };
 
 export type WhatsAppEntityMemory = {
@@ -139,6 +141,8 @@ export function documentEntityFromHit(input: {
   providerItemId?: string | null;
   sourceKey?: string | null;
   path?: string | null;
+  modifiedAt?: string | null;
+  modifiedBy?: string | null;
 }): WhatsAppDocumentEntity {
   const body = String(input.text || input.snippet || "");
   const documentClass = classifyDocument({ title: input.title, text: body, path: input.path });
@@ -156,6 +160,8 @@ export function documentEntityFromHit(input: {
     sourceKey: input.sourceKey ?? null,
     path: input.path ?? null,
     documentClass,
+    modifiedAt: input.modifiedAt ?? null,
+    modifiedBy: input.modifiedBy ?? null,
   };
 }
 
