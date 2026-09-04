@@ -62,6 +62,15 @@ export type KnowledgeIngestionReportTemplateData = {
   sharepointIndexed?: number;
   pipelineHealth?: "healthy" | "degraded" | "failed";
   gapWarning?: string | null;
+  mailboxHeadline?: string | null;
+  mailboxHealthLines?: Array<{
+    name: string;
+    status: string;
+    scannedLabel: string;
+    attachments?: number;
+    indexed?: number;
+    failed?: number;
+  }>;
 };
 
 function formatKnowledgeLine(item: KnowledgeIngestionEmailLine, index: number): string[] {
@@ -100,6 +109,10 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
   );
   const health = data.pipelineHealth ?? "healthy";
   const mailboxLines = (data.mailboxesScanned ?? []).map((address) => `   - ${address}`);
+  const mailboxHealthLines = (data.mailboxHealthLines ?? []).map(
+    (row) =>
+      `   - ${row.name}: ${row.status} · scanned ${row.scannedLabel} · attachments ${row.attachments ?? 0} · indexed ${row.indexed ?? 0} · failed ${row.failed ?? 0}`,
+  );
 
   const text = [
     "INFRA",
@@ -128,7 +141,9 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
           `MAILBOXES EXCLUDED: ${data.mailboxesExcluded ?? 0}`,
           ...mailboxLines,
           ...(data.mailboxesExcludedNames ?? []).map((name) => `   - ${name}: excluded by policy`),
-          `MESSAGES SCANNED: ${data.messagesScanned ?? 0}`,
+          data.mailboxHeadline ? `MAILBOX SCAN RESULT: ${data.mailboxHeadline}` : "",
+          ...(mailboxHealthLines.length ? ["PER-MAILBOX HEALTH", "", ...mailboxHealthLines, ""] : []),
+          `MESSAGES SCANNED: ${data.mailboxHeadline?.includes("SCAN FAILED") ? data.mailboxHeadline : data.messagesScanned ?? 0}`,
           `Email messages with attachments: ${data.messagesWithAttachments ?? 0}`,
           `Attachments discovered: ${data.attachmentsDiscovered ?? data.discoveredCount}`,
           `Attachments stored: ${data.attachmentsStored ?? 0}`,

@@ -92,17 +92,30 @@ export async function resolveMicrosoftTenantId(
   return global || null;
 }
 
+export type MicrosoftTokenDenialDetail = {
+  httpStatus?: number;
+  aadError?: string | null;
+  aadErrorCodes?: number[];
+  correlationId?: string | null;
+  traceId?: string | null;
+  timestamp?: string | null;
+  tokenUrl?: string | null;
+  clientId?: string | null;
+};
+
 async function requestClientCredentialsToken(
   credentials: MicrosoftAppCredentials,
+  options?: { bypassCache?: boolean },
 ): Promise<
-  | { ok: true; accessToken: string; tenantId: string; expiresAtMs: number }
-  | { ok: false; code: string; message: string }
+  | { ok: true; accessToken: string; tenantId: string; expiresAtMs: number; cached: boolean }
+  | ({ ok: false; code: string; message: string } & MicrosoftTokenDenialDetail)
 > {
   const tenantId = credentials.tenantId.trim();
   const cacheKey = `${credentials.authMode}:${tenantId}:${credentials.clientId}`;
+  if (options?.bypassCache) tokenCache.delete(cacheKey);
   const cached = tokenCache.get(cacheKey);
   if (cached && cached.expiresAtMs > Date.now() + 60_000) {
-    return { ok: true, accessToken: cached.accessToken, tenantId, expiresAtMs: cached.expiresAtMs };
+    return { ok: true, accessToken: cached.accessToken, tenantId, expiresAtMs: cached.expiresAtMs, cached: true };
   }
 
   const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`;
@@ -133,13 +146,29 @@ async function requestClientCredentialsToken(
     expires_in?: number;
     error?: string;
     error_description?: string;
+    error_codes?: number[];
+    timestamp?: string;
+    trace_id?: string;
+    correlation_id?: string;
   };
 
   if (!response.ok || !payload.access_token) {
+    const aadCode = Array.isArray(payload.error_codes) && payload.error_codes[0]
+      ? `AADSTS${payload.error_codes[0]}`
+      : "";
+    const description = payload.error_description ?? payload.error ?? `HTTP ${response.status}`;
     return {
       ok: false,
       code: "MICROSOFT_TOKEN_DENIED",
-      message: payload.error_description ?? payload.error ?? `HTTP ${response.status}`,
+      message: aadCode && !description.includes(aadCode) ? `${aadCode}: ${description}` : description,
+      httpStatus: response.status,
+      aadError: payload.error ?? null,
+      aadErrorCodes: Array.isArray(payload.error_codes) ? payload.error_codes : [],
+      correlationId: payload.correlation_id ?? null,
+      traceId: payload.trace_id ?? null,
+      timestamp: payload.timestamp ?? new Date().toISOString(),
+      tokenUrl,
+      clientId: credentials.clientId,
     };
   }
 
@@ -152,15 +181,16 @@ async function requestClientCredentialsToken(
     accessToken: payload.access_token,
     tenantId,
     expiresAtMs,
+    cached: false,
   };
 }
 
 export async function acquireMicrosoftAppToken(
   env: Env,
-  context?: MicrosoftTokenContext,
+  context?: MicrosoftTokenContext & { bypassCache?: boolean },
 ): Promise<
-  | { ok: true; accessToken: string; tenantId: string; expiresAtMs: number; authMode: string }
-  | { ok: false; code: string; message: string }
+  | { ok: true; accessToken: string; tenantId: string; expiresAtMs: number; authMode: string; cached?: boolean }
+  | ({ ok: false; code: string; message: string } & MicrosoftTokenDenialDetail)
 > {
   if (context?.companyId) {
     const resolved = await resolveMicrosoftAppCredentials(env, env.DB, {
@@ -171,7 +201,9 @@ export async function acquireMicrosoftAppToken(
     if (!resolved.ok) {
       return { ok: false, code: resolved.code, message: resolved.message };
     }
-    const token = await requestClientCredentialsToken(resolved.credentials);
+    const token = await requestClientCredentialsToken(resolved.credentials, {
+      bypassCache: context.bypassCache,
+    });
     if (!token.ok) return token;
     return { ...token, authMode: resolved.credentials.authMode };
   }
@@ -197,13 +229,16 @@ export async function acquireMicrosoftAppToken(
     };
   }
 
-  const token = await requestClientCredentialsToken({
-    tenantId,
-    clientId: String(env.MICROSOFT_CLIENT_ID).trim(),
-    clientSecret: String(env.MICROSOFT_CLIENT_SECRET).trim(),
-    authMode: "platform_legacy",
-    credentialSource: "platform",
-  });
+  const token = await requestClientCredentialsToken(
+    {
+      tenantId,
+      clientId: String(env.MICROSOFT_CLIENT_ID).trim(),
+      clientSecret: String(env.MICROSOFT_CLIENT_SECRET).trim(),
+      authMode: "platform_legacy",
+      credentialSource: "platform",
+    },
+    { bypassCache: context?.bypassCache },
+  );
   if (!token.ok) return token;
   return { ...token, authMode: "platform_legacy" };
 }

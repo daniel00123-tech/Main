@@ -1341,6 +1341,36 @@ connectors.post("/api/internal/el-knowledge-onedrive-diagnostic", async (c) => {
   }
 });
 
+connectors.post("/api/internal/el-mailbox-live-access", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { probeElMailboxLiveAccess } = await import("../services/mailbox-live-access");
+    return c.json(await probeElMailboxLiveAccess(c.env, { actor: "system:el-mailbox-live-access" }));
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "EL mailbox live access probe failed" }, 500);
+  }
+});
+
+connectors.post("/api/internal/el-mailbox-scan-repair", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { runElMailboxScanRepair } = await import("../services/mailbox-scan-repair");
+    return c.json(
+      await runElMailboxScanRepair(c.env, {
+        actor: "system:el-mailbox-scan-repair",
+        sendEmail: body.sendEmail !== false,
+      }),
+    );
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "EL mailbox scan repair failed" }, 500);
+  }
+});
+
 connectors.post("/api/internal/el-mailbox-attachment-backfill", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

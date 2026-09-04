@@ -51,4 +51,49 @@ describe("mailbox attachment backfill email", () => {
     expect(email.text).toContain("Ella\nExcluded");
     expect(email.text).not.toMatch(/Caddington|co_caddington/i);
   });
+
+  it("renders a failed mailbox scan as SCAN FAILED instead of 0", () => {
+    const email = renderMailboxAttachmentBackfillEmail({
+      windowFromLabel: "28 August 2026 20:00 Europe/London",
+      windowToLabel: "4 September 2026 21:00 Europe/London",
+      windowFromIso: "2026-08-28T19:00:00.000Z",
+      windowToIso: "2026-09-04T20:00:00.000Z",
+      graphAuth: "FAIL",
+      graphDetail: "AADSTS7000229",
+      defaultPolicy: "INCLUDE",
+      exclusions: ["William", "Ella"],
+      mailboxesDiscovered: 7,
+      mailboxesEligible: 5,
+      mailboxesScanned: 5,
+      mailboxesExcluded: 2,
+      messagesScanned: 11,
+      messagesWithAttachments: 3,
+      attachmentsDiscovered: 3,
+      attachmentsFetched: 0,
+      attachmentsStored: 0,
+      attachmentsExtracted: 0,
+      attachmentsIndexed: 0,
+      chunksAdded: 0,
+      duplicates: 0,
+      skipped: 0,
+      failed: 3,
+      retrievalProof: "BLOCKED",
+      landingZone: "INFRA Knowledge Intake / Email Attachments",
+      remainingIssues: [],
+      people: [
+        {
+          name: "Michael",
+          scanStatus: "FAILED",
+          scanLabel: "SCAN FAILED — MCP_EMPTY_UNPROVEN",
+          messagesScanned: null,
+          attachments: 0,
+          indexed: 0,
+          failed: 0,
+        },
+      ],
+      portalUrl: "https://app.infrastack.app/portal/el-business/automations",
+    });
+    expect(email.text).toContain("SCAN FAILED — MCP_EMPTY_UNPROVEN");
+    expect(email.text).not.toMatch(/Michael\nHealth: FAILED\nMessages scanned: 0\n/);
+  });
 });
