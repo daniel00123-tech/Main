@@ -115,6 +115,8 @@ export async function runWarehouseSync(input: {
   await input.repo.insertSyncRun(run);
   source.lastAttemptedSync = now.toISOString();
   source.syncStatus = "running";
+  source.lockOwner = owner;
+  source.lockUntil = new Date(now.getTime() + WAREHOUSE_LOCK_TTL_MS).toISOString();
   source.updatedAt = now.toISOString();
   await input.repo.upsertSource(source);
 
@@ -382,6 +384,28 @@ export async function maybeRunWarehouseSyncs(
     ],
     nextSync,
   };
+}
+
+export async function continueWarehouseSync(input: {
+  env: Env;
+  companyId?: string;
+  now?: Date;
+  repo?: WarehouseRepository;
+  adapter?: WarehouseConnectorAdapter;
+}): Promise<WarehouseSyncResult> {
+  const companyId = input.companyId ?? WAREHOUSE_EL_COMPANY_ID;
+  const repo = input.repo ?? createD1WarehouseRepository(input.env.DB);
+  const adapter = input.adapter ?? createXeroWarehouseAdapter(input.env);
+  const source = await ensureWarehouseSource(repo, companyId, adapter.connector);
+  return runWarehouseSync({
+    repo,
+    adapter,
+    companyId,
+    connector: adapter.connector,
+    trigger: source.checkpoint?.mode === "backfill" ? "backfill" : "manual",
+    now: input.now,
+    env: input.env,
+  });
 }
 
 export async function runWarehouseBackfill(input: {

@@ -1285,7 +1285,7 @@ const worker = {
       });
     }
 
-    if (runWhatsAppMinute || runAutomation) {
+    if (runWhatsAppMinute) {
       try {
         const { maybeRunWarehouseSyncs } = await import("./services/warehouse/sync");
         const warehouse = await maybeRunWarehouseSyncs(env, new Date());

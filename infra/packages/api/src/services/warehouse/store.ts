@@ -120,7 +120,14 @@ export function createMemoryWarehouseRepository(): WarehouseRepository {
       return [...sources.values()].filter((row) => row.companyId === companyId).map(sourceFromMemory);
     },
     async upsertSource(source) {
-      sources.set(sourceKey(source.companyId, source.connector), sourceFromMemory(source));
+      const key = sourceKey(source.companyId, source.connector);
+      const existing = sources.get(key);
+      const next = sourceFromMemory(source);
+      if (existing) {
+        next.lockOwner = existing.lockOwner;
+        next.lockUntil = existing.lockUntil;
+      }
+      sources.set(key, next);
     },
     async tryAcquireLock(input) {
       const key = sourceKey(input.companyId, input.connector);
@@ -373,8 +380,6 @@ export function createD1WarehouseRepository(db: D1Database): WarehouseRepository
             last_reconciliation_json = excluded.last_reconciliation_json,
             last_failure_code = excluded.last_failure_code,
             record_counts_json = excluded.record_counts_json,
-            lock_owner = excluded.lock_owner,
-            lock_until = excluded.lock_until,
             updated_at = excluded.updated_at`,
         )
         .bind(

@@ -90,6 +90,16 @@ function isCurrentStatus(status: string | null | undefined): boolean {
   return !INACTIVE_STATUSES.has(String(status ?? "").toUpperCase());
 }
 
+/** Company-MCP invoice rows often have InvoiceNumber but no InvoiceID. Prefer Xero UUID, else stable number. */
+export function stableXeroEntityId(...candidates: unknown[]): string {
+  for (const value of candidates) {
+    if (value == null || value === "") continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+}
+
 export function normaliseInvoice(
   companyId: string,
   raw: Record<string, unknown>,
@@ -99,7 +109,7 @@ export function normaliseInvoice(
   const status = raw.Status ? String(raw.Status) : null;
   const invoice: WarehouseXeroInvoice = {
     companyId,
-    invoiceId: String(raw.InvoiceID ?? ""),
+    invoiceId: stableXeroEntityId(raw.InvoiceID, raw.invoiceId, raw.documentId, raw.InvoiceNumber, raw.invoiceNumber),
     invoiceNumber: raw.InvoiceNumber ? String(raw.InvoiceNumber) : null,
     type: raw.Type ? String(raw.Type) : null,
     contactId: contact.ContactID ? String(contact.ContactID) : null,
@@ -141,7 +151,7 @@ export function normaliseContact(companyId: string, raw: Record<string, unknown>
   const status = raw.ContactStatus ? String(raw.ContactStatus) : null;
   return {
     companyId,
-    contactId: String(raw.ContactID ?? ""),
+    contactId: stableXeroEntityId(raw.ContactID, raw.contactId),
     displayName: raw.Name ? String(raw.Name) : null,
     status,
     isCustomer: raw.IsCustomer == null ? null : Boolean(raw.IsCustomer),
@@ -158,7 +168,7 @@ export function normalisePayment(companyId: string, raw: Record<string, unknown>
   const status = raw.Status ? String(raw.Status) : null;
   return {
     companyId,
-    paymentId: String(raw.PaymentID ?? ""),
+    paymentId: stableXeroEntityId(raw.PaymentID, raw.paymentId),
     invoiceId: invoice.InvoiceID ? String(invoice.InvoiceID) : null,
     paymentDate: normalizeXeroDate(raw.Date),
     amount: num(raw.Amount),
@@ -180,7 +190,7 @@ export function normaliseCreditNote(
   const status = raw.Status ? String(raw.Status) : null;
   return {
     companyId,
-    creditNoteId: String(raw.CreditNoteID ?? ""),
+    creditNoteId: stableXeroEntityId(raw.CreditNoteID, raw.creditNoteId, raw.documentId, raw.CreditNoteNumber, raw.creditNoteNumber),
     creditNoteNumber: raw.CreditNoteNumber ? String(raw.CreditNoteNumber) : null,
     type: raw.Type ? String(raw.Type) : null,
     contactId: contact.ContactID ? String(contact.ContactID) : null,
@@ -344,7 +354,7 @@ export function dateWindows(fromDate: string, toDate: string): Array<{ from: str
 function coerceInvoiceRaw(row: Record<string, unknown>): Record<string, unknown> {
   const contact = (row.Contact as Record<string, unknown> | undefined) ?? {};
   return {
-    InvoiceID: row.InvoiceID ?? row.invoiceId ?? row.documentId,
+    InvoiceID: stableXeroEntityId(row.InvoiceID, row.invoiceId, row.documentId, row.InvoiceNumber, row.invoiceNumber, row.documentNumber),
     InvoiceNumber: row.InvoiceNumber ?? row.invoiceNumber ?? row.documentNumber,
     Type: row.Type ?? row.type ?? row.transactionType ?? "ACCREC",
     Status: row.Status ?? row.status ?? "AUTHORISED",
@@ -407,7 +417,7 @@ async function extractXeroViaInfraReads(input: {
   let truncated = false;
   let nextCursor: string | null = null;
   for (const window of windows) {
-    if (Date.now() - started > 18_000) {
+    if (Date.now() - started > 22_000) {
       truncated = true;
       nextCursor = window.from;
       break;
@@ -424,7 +434,7 @@ async function extractXeroViaInfraReads(input: {
     const rows = Array.isArray(search.result.invoices)
       ? (search.result.invoices as Record<string, unknown>[])
       : extractRawSalesDocuments(search.result).map((doc) => ({
-          InvoiceID: doc.documentId,
+          InvoiceID: doc.documentId ?? doc.documentNumber,
           InvoiceNumber: doc.documentNumber,
           Type: doc.transactionType,
           Status: doc.status,
@@ -432,7 +442,7 @@ async function extractXeroViaInfraReads(input: {
           Total: doc.total,
           Contact: { ContactID: doc.contactId, Name: doc.contactName },
         }));
-    if (rows.length >= 100) truncated = true;
+    if (rows.length >= 50) truncated = true;
     for (const raw of rows) {
       const kind = String(raw.Type ?? raw.type ?? raw.documentKind ?? "");
       if (/credit/i.test(kind) || raw.documentKind === "credit_note") {
@@ -448,48 +458,51 @@ async function extractXeroViaInfraReads(input: {
   }
 
   const contacts: WarehouseXeroContact[] = [];
-  const contactResult = await executeXeroReadToolOnInfra(input.env, {
-    companyId: input.companyId,
-    toolName: "xero_list_contacts",
-    arguments: { limit: 100 },
-    actor: "system:warehouse",
-  });
-  if (contactResult.ok) {
-    const list = Array.isArray(contactResult.result.contacts)
-      ? (contactResult.result.contacts as Record<string, unknown>[])
-      : [];
-    for (const raw of list) {
-      const mapped = normaliseContact(
-        input.companyId,
-        {
-          ContactID: raw.ContactID ?? raw.contactId,
-          Name: raw.Name ?? raw.name ?? raw.displayName,
-          ContactStatus: raw.ContactStatus ?? raw.status,
-          IsCustomer: raw.IsCustomer ?? raw.isCustomer,
-          IsSupplier: raw.IsSupplier ?? raw.isSupplier,
-          AccountNumber: raw.AccountNumber ?? raw.accountNumber,
-          UpdatedDateUTC: raw.UpdatedDateUTC,
-        },
-        nowIso,
-      );
-      if (mapped.contactId) contacts.push(mapped);
-    }
-  }
-
   const payments: WarehouseXeroPayment[] = [];
-  const paymentResult = await executeXeroReadToolOnInfra(input.env, {
-    companyId: input.companyId,
-    toolName: "xero_list_payments",
-    arguments: { since: historyFrom, toDate: historyTo, limit: 100 },
-    actor: "system:warehouse",
-  });
-  if (paymentResult.ok) {
-    const list = Array.isArray(paymentResult.result.payments)
-      ? (paymentResult.result.payments as Record<string, unknown>[])
-      : [];
-    for (const raw of list) {
-      const mapped = normalisePayment(input.companyId, raw, nowIso);
-      if (mapped.paymentId) payments.push(mapped);
+  const continuation = Boolean(input.checkpoint?.backfillCursor);
+  if (!continuation) {
+    const contactResult = await executeXeroReadToolOnInfra(input.env, {
+      companyId: input.companyId,
+      toolName: "xero_list_contacts",
+      arguments: { limit: 100 },
+      actor: "system:warehouse",
+    });
+    if (contactResult.ok) {
+      const list = Array.isArray(contactResult.result.contacts)
+        ? (contactResult.result.contacts as Record<string, unknown>[])
+        : [];
+      for (const raw of list) {
+        const mapped = normaliseContact(
+          input.companyId,
+          {
+            ContactID: raw.ContactID ?? raw.contactId,
+            Name: raw.Name ?? raw.name ?? raw.displayName,
+            ContactStatus: raw.ContactStatus ?? raw.status,
+            IsCustomer: raw.IsCustomer ?? raw.isCustomer,
+            IsSupplier: raw.IsSupplier ?? raw.isSupplier,
+            AccountNumber: raw.AccountNumber ?? raw.accountNumber,
+            UpdatedDateUTC: raw.UpdatedDateUTC,
+          },
+          nowIso,
+        );
+        if (mapped.contactId) contacts.push(mapped);
+      }
+    }
+
+    const paymentResult = await executeXeroReadToolOnInfra(input.env, {
+      companyId: input.companyId,
+      toolName: "xero_list_payments",
+      arguments: { since: historyFrom, toDate: historyTo, limit: 100 },
+      actor: "system:warehouse",
+    });
+    if (paymentResult.ok) {
+      const list = Array.isArray(paymentResult.result.payments)
+        ? (paymentResult.result.payments as Record<string, unknown>[])
+        : [];
+      for (const raw of list) {
+        const mapped = normalisePayment(input.companyId, raw, nowIso);
+        if (mapped.paymentId) payments.push(mapped);
+      }
     }
   }
 
@@ -683,7 +696,7 @@ export async function liveXeroTotals(input: {
     ]);
     if (!sales.ok) return { mtdSales: null, invoiceCount: null, outstanding: null, overdue: null, unavailable: true };
     const result = sales.result as Record<string, unknown>;
-    const summary = (result.summary as Record<string, unknown> | undefined) ?? result;
+    const summary = (result.summary as Record<string, unknown> | undefined) ?? {};
     const overdueResult = overdue.ok ? (overdue.result as Record<string, unknown>) : {};
     const overdueRows = Array.isArray(overdueResult.invoices) ? overdueResult.invoices : [];
     const overdueTotal = overdueRows.reduce((sum, row) => {
@@ -691,8 +704,17 @@ export async function liveXeroTotals(input: {
       return sum + Number(rec.amountDue ?? rec.AmountDue ?? rec.total ?? 0);
     }, 0);
     return {
-      mtdSales: Number(summary.totalSales ?? summary.total ?? summary.sales_total ?? 0),
-      invoiceCount: Number(summary.qualifyingTransactionCount ?? summary.count ?? summary.invoiceCount ?? 0),
+      mtdSales: Number(
+        summary.totalSales ?? result.sales_total ?? result.totalSales ?? summary.total ?? summary.sales_total ?? 0,
+      ),
+      invoiceCount: Number(
+        result.invoice_count ??
+          summary.qualifyingTransactionCount ??
+          summary.transactionCount ??
+          result.count ??
+          summary.invoiceCount ??
+          0,
+      ),
       outstanding: summary.outstanding != null ? Number(summary.outstanding) : null,
       overdue: overdue.ok ? overdueTotal : null,
       unavailable: false,

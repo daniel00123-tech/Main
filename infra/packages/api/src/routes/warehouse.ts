@@ -4,7 +4,7 @@ import { requireAuth, requirePlatformAdmin, type AuthVariables } from "../auth/m
 import type { Env } from "../env";
 import { computeNextWarehouseSyncUtcIso } from "../services/warehouse/schedule";
 import { createD1WarehouseRepository } from "../services/warehouse/store";
-import { runWarehouseBackfill } from "../services/warehouse/sync";
+import { continueWarehouseSync, runWarehouseBackfill } from "../services/warehouse/sync";
 import { warehouseControlCentreView } from "../services/warehouse/status";
 import { sendWarehouseLiveEmail } from "../services/warehouse/email";
 import { WAREHOUSE_EL_COMPANY_ID } from "../services/warehouse/standard";
@@ -42,7 +42,38 @@ routes.post("/api/internal/warehouse/backfill", async (c) => {
     companyId: body.companyId || WAREHOUSE_EL_COMPANY_ID,
   });
   let email: { sent: boolean; recipients: string[]; error?: string } | null = null;
-  if (body.notify && result.source && result.source.status !== "FAILED" && result.source.status !== "NEVER_SYNCED") {
+  if (
+    body.notify &&
+    result.source &&
+    result.source.status === "HEALTHY" &&
+    result.source.checkpoint?.mode === "incremental"
+  ) {
+    email = await sendWarehouseLiveEmail(c.env, { source: result.source, run: result.run ?? null });
+  }
+  return c.json({
+    ok: Boolean(result.ran && result.run && result.run.status !== "failed"),
+    nextSync: computeNextWarehouseSyncUtcIso(),
+    result,
+    email,
+  });
+});
+
+routes.post("/api/internal/warehouse/continue", async (c) => {
+  if (!(await verifyInternalToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  const body = (await c.req.json().catch(() => ({}))) as { companyId?: string; notify?: boolean };
+  const result = await continueWarehouseSync({
+    env: c.env,
+    companyId: body.companyId || WAREHOUSE_EL_COMPANY_ID,
+  });
+  let email: { sent: boolean; recipients: string[]; error?: string } | null = null;
+  if (
+    body.notify &&
+    result.source &&
+    result.source.status === "HEALTHY" &&
+    result.source.checkpoint?.mode === "incremental"
+  ) {
     email = await sendWarehouseLiveEmail(c.env, { source: result.source, run: result.run ?? null });
   }
   return c.json({

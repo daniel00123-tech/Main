@@ -15,7 +15,7 @@ import {
 } from "./schedule";
 import { getZonedParts } from "../automation-engine/schedule";
 import { createMemoryWarehouseRepository, newWarehouseSource } from "./store";
-import { runWarehouseSync } from "./sync";
+import { continueWarehouseSync, runWarehouseSync } from "./sync";
 import { executeWarehouseQuery, validateWarehouseQuery } from "./query";
 import { executeWarehouseTool, isWarehouseToolName, withWarehouseTools } from "./tools";
 import { buildReconciliation } from "./adapters/types";
@@ -25,6 +25,7 @@ import {
   financialYearWindow,
   normaliseInvoice,
   parseXeroTimestamp,
+  stableXeroEntityId,
 } from "./adapters/xero";
 import {
   WAREHOUSE_EL_COMPANY_ID,
@@ -235,6 +236,71 @@ describe("warehouse sync + isolation", () => {
     });
     expect((await repo.getInvoice(WAREHOUSE_EL_COMPANY_ID, "inv_1"))?.isCurrent).toBe(false);
     expect((await repo.listInvoices(WAREHOUSE_EL_COMPANY_ID, { currentOnly: true })).length).toBe(0);
+  });
+
+  it("keeps the lock after a status upsert so a second sync cannot start", async () => {
+    const repo = createMemoryWarehouseRepository();
+    const source = newWarehouseSource({ companyId: WAREHOUSE_EL_COMPANY_ID, connector: WAREHOUSE_XERO_CONNECTOR });
+    await repo.upsertSource(source);
+    const nowIso = new Date().toISOString();
+    const acquired = await repo.tryAcquireLock({
+      companyId: WAREHOUSE_EL_COMPANY_ID,
+      connector: WAREHOUSE_XERO_CONNECTOR,
+      owner: "owner-a",
+      untilIso: new Date(Date.now() + 60_000).toISOString(),
+      nowIso,
+    });
+    expect(acquired).toBe(true);
+    const running = await repo.getSource(WAREHOUSE_EL_COMPANY_ID, WAREHOUSE_XERO_CONNECTOR);
+    expect(running?.lockOwner).toBe("owner-a");
+    running!.syncStatus = "running";
+    running!.lockOwner = null;
+    running!.lockUntil = null;
+    await repo.upsertSource(running!);
+    const stillLocked = await repo.getSource(WAREHOUSE_EL_COMPANY_ID, WAREHOUSE_XERO_CONNECTOR);
+    expect(stillLocked?.lockOwner).toBe("owner-a");
+    const result = await runWarehouseSync({
+      repo,
+      adapter: adapter([extractFrom([])]),
+      companyId: WAREHOUSE_EL_COMPANY_ID,
+      trigger: "scheduled",
+    });
+    expect(result.skipped).toBe("locked");
+  });
+
+  it("continues a chunked backfill without resetting the checkpoint", async () => {
+    const repo = createMemoryWarehouseRepository();
+    const source = newWarehouseSource({ companyId: WAREHOUSE_EL_COMPANY_ID, connector: WAREHOUSE_XERO_CONNECTOR });
+    source.checkpoint = {
+      mode: "backfill",
+      historyFrom: "2025-01-01",
+      historyTo: "2026-09-04",
+      backfillCursor: "2025-05-01",
+      sourceTimestamp: "2026-09-04T20:43:04.012Z",
+    };
+    await repo.upsertSource(source);
+    const result = await continueWarehouseSync({
+      env: undefined as never,
+      repo,
+      adapter: adapter(
+        [
+          extractFrom([invoice({ invoiceId: "INV-MAY", invoiceDate: "2026-09-02", total: 80, amountDue: 80 })], {
+            checkpoint: {
+              mode: "incremental",
+              historyFrom: "2025-01-01",
+              historyTo: "2026-09-04",
+              sourceTimestamp: "2026-09-04T20:50:00.000Z",
+            },
+          }),
+        ],
+        { mtdSales: 80, invoiceCount: 1, outstanding: 80, overdue: 0 },
+      ),
+      now: new Date("2026-09-04T20:50:00.000Z"),
+    });
+    expect(result.ran).toBe(true);
+    expect(result.source?.checkpoint?.historyFrom).toBe("2025-01-01");
+    expect(result.source?.checkpoint?.mode).toBe("incremental");
+    expect((await repo.getInvoice(WAREHOUSE_EL_COMPANY_ID, "INV-MAY"))?.total).toBe(80);
   });
 
   it("records skipped_locked when a sync is already running", async () => {
@@ -471,6 +537,13 @@ describe("xero normalisers", () => {
       "2026-09-04T10:00:00.000Z",
     );
     expect(mapped.invoice.invoiceId).toBe("abc");
+    const numbered = normaliseInvoice(
+      "co_el",
+      { InvoiceNumber: "INV-88", Type: "ACCREC", Status: "AUTHORISED", Date: "2026-09-02", Total: 50 },
+      "2026-09-04T10:00:00.000Z",
+    );
+    expect(numbered.invoice.invoiceId).toBe("INV-88");
+    expect(stableXeroEntityId(null, "", "INV-88")).toBe("INV-88");
     expect(mapped.lines[0]?.accountCode).toBe("200");
     expect(parseXeroTimestamp("/Date(1756771200000)/")).toMatch(/T/);
     expect(mapped.invoice.invoiceDate).toBe("2026-09-02");
