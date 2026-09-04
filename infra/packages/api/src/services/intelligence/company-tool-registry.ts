@@ -232,6 +232,26 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
   return [...found];
 }
 
+export function rewriteExactAccountingTool(
+  name: string,
+  args: Record<string, unknown>,
+  text: string,
+): { name: string; arguments: Record<string, unknown> } {
+  const invoice = String(text ?? "").match(/\bINV-\d+\b/i);
+  if (!invoice) return { name, arguments: args };
+  if (
+    name === "xero_search_invoices" ||
+    name === "xero_sales_summary" ||
+    name === "xero_list_overdue_invoices"
+  ) {
+    if (/\b(outstanding|overdue|top customers|this month|last month)\b/i.test(text) && !/\bINV-\d+\b/i.test(text)) {
+      return { name, arguments: args };
+    }
+    return { name: "xero_get_invoice", arguments: { ...args, invoiceNumber: invoice[0] } };
+  }
+  return { name, arguments: args };
+}
+
 export function defaultToolForCapability(capability: PlatformCapability): string | null {
   switch (capability) {
     case "EMAIL_SEARCH":

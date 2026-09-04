@@ -106,8 +106,7 @@ async function mcpCall(
   }
   const denied =
     response.status === 403 ||
-    /permission|forbidden|not allowed/i.test(text) ||
-    Boolean((rpc.error as { code?: number } | undefined)?.code);
+    /permissions? don.?t allow|your .* permissions|forbidden|not allowed/i.test(text);
   return { httpStatus: response.status, text, parsed, denied };
 }
 

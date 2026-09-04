@@ -25,6 +25,7 @@ import { resolveBrainPolicy } from "./brain-policy.js";
 import {
   defaultToolForCapability,
   detectRequestedCapabilities,
+  rewriteExactAccountingTool,
   wantsMultiCapabilityRead,
 } from "./company-tool-registry.js";
 import { stampEvidenceTenant } from "./tenant-isolation.js";
@@ -279,7 +280,11 @@ async function executeIntelligenceTurn(input: {
       userVisibleBrain: brain.policy.userVisibleBrain,
       sufficiency:
         payload.toolCalls.some((call) => call.ok) &&
-        !(isCompoundBusinessAsk(input.text) && payload.toolCalls.filter((call) => call.ok && call.name.startsWith("xero_")).length < 2)
+        !(
+          isCompoundBusinessAsk(input.text) &&
+          !payload.toolCalls.some((call) => call.ok && call.name.startsWith("warehouse_")) &&
+          payload.toolCalls.filter((call) => call.ok && call.name.startsWith("xero_")).length < 2
+        )
           ? "ENOUGH_TO_ANSWER"
           : payload.toolCalls.length
             ? "NEEDS_MORE_INFORMATION"
@@ -540,9 +545,10 @@ async function executeIntelligenceTurn(input: {
       }
       if (scoped.scope === "GENERAL_CONVERSATION") qualityFlags.add("general_conversation_used_tool");
       if (scoped.lastUserIntent === "rephrase") qualityFlags.add("unnecessary_search_after_rephrase");
+      const rewritten = rewriteExactAccountingTool(validated.name, validated.arguments, input.text);
       const call: IntelligenceToolCall = {
-        name: validated.name,
-        arguments: prepareToolArguments(validated.name, validated.arguments, input.text, workingState, scoped.scope),
+        name: rewritten.name,
+        arguments: prepareToolArguments(rewritten.name, rewritten.arguments, input.text, workingState, scoped.scope),
       };
       if (shouldReuseSuccessfulTool(call, recentEvidence)) {
         transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
@@ -1144,13 +1150,14 @@ function shouldStopAfterRead(scoped: ScopeDecision, result: IntelligenceToolResu
   return scoped.scope === "BUSINESS_SYSTEM";
 }
 
-function isCompoundBusinessAsk(text: string): boolean {
+export function isCompoundBusinessAsk(text: string): boolean {
   // Sales-then-email is a deterministic two-system read, not a two-period Xero compare.
   if (wantsSalesThenFinanceEmail(text)) return false;
-  return (
-    /\b(and|compare|versus|vs\.?|better than|last month|previous month|this month and)\b/i.test(text) &&
-    /\b(sales|xero|invoice|revenue|overdue|profit|month)\b/i.test(text)
-  );
+  const compare = /\b(compare|versus|vs\.?|better than|month[- ]over[- ]month)\b/i.test(text);
+  const twoPeriods =
+    /\b(this month|current month|mtd).{0,48}(last month|previous month)\b/i.test(text) ||
+    /\b(last month|previous month).{0,48}(this month|current month|mtd)\b/i.test(text);
+  return (compare || twoPeriods) && /\b(sales|xero|invoice|revenue|overdue|profit|month)\b/i.test(text);
 }
 
 function resolvePermittedTools(state: IntelligenceConversationState): string[] {

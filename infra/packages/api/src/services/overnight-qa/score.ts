@@ -76,8 +76,13 @@ export function scoreOvernightTurn(input: {
     defects.push("UNNECESSARY_TOOL");
   }
 
+  const timeout = /timeout|aborted due to timeout/i.test(reply);
+  const unavailable = /isn.?t available through this connection|connector_not_configured/i.test(reply);
   const deniedReply = /permissions? don.?t allow|not allowed|permission_denied|don’t allow this action/i.test(reply);
-  const rbacOk = input.question.expectedDeny ? deniedReply || input.denied : !input.denied && !deniedReply;
+  const treatedDenied = (input.denied || deniedReply) && !timeout && !unavailable;
+  const rbacOk = input.question.expectedDeny ? treatedDenied : !treatedDenied;
+  if (timeout) defects.push("TIMEOUT");
+  if (unavailable && !input.question.expectedDeny) defects.push("CONNECTOR_UNAVAILABLE");
   if (!rbacOk) defects.push(input.question.expectedDeny ? "FALSE_PERMISSION_GRANT" : "FALSE_PERMISSION_DENIAL");
 
   const permissionLeak =
