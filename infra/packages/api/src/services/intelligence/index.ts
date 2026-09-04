@@ -4,10 +4,14 @@ export { classifyScope, isCorpusInventoryAsk, detectNamedDocumentSwitch } from "
 export {
   GENERIC_RETRY_COPY,
   classifyReadTerminal,
+  extractFirstMessageId,
+  extractOutlookMessages,
   isGenericRetryCopy,
+  looksPermissionDenied,
   synthesizeFromToolCalls,
   synthesizeToolResult,
 } from "./verbalise-business.js";
+export { clipBusinessToolData } from "./clip-tool-data.js";
 export { verbaliseSystemMeta, isSystemMetaTool, executeSystemMetaTool } from "./system-meta.js";
 export { resolveBusinessPeriod, withResolvedBusinessDates, businessSystemArgs } from "./periods.js";
 export { enrichDocumentQuery } from "./query-enrichment.js";

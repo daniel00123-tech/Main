@@ -95,7 +95,11 @@ export function isNegativeResultFeedback(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
   if (NEW_CORPUS_SEARCH.test(trimmed) || SUMMARY.test(trimmed) || DETAIL.test(trimmed)) return false;
-  return NEGATIVE_RESULT.test(trimmed) || /^(no|nope|nah)[,.]?\s+(that'?s |this is )?(not|wrong)/i.test(trimmed);
+  return (
+    NEGATIVE_RESULT.test(trimmed) ||
+    /^(no|nope|nah)[,.]?\s+(that'?s |this is )?(not|wrong)/i.test(trimmed) ||
+    /^(no|nope|nah)[,.]?\s+i meant\b/i.test(trimmed)
+  );
 }
 
 export function looksLikeCurrentDocumentQuestion(text: string): boolean {

@@ -4,6 +4,7 @@ import { executeGatewayRequest } from "./gateway";
 import {
   GATEWAY_TOOL_ALIASES,
   SYSTEM_META_TOOLS,
+  clipBusinessToolData,
   executeSystemMetaTool,
   enrichDocumentQuery,
 } from "./intelligence/index";
@@ -36,6 +37,7 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_search_contacts",
   "xero_list_overdue_invoices",
   "xero_aged_receivables",
+  "xero_top_customers",
   "outlook_search_mailbox",
   "outlook_list_messages",
   "outlook_get_message",
@@ -393,43 +395,16 @@ function gatewayArguments(
     return { id, documentRef: id };
   }
   if (toolName === "xero_get_invoice") {
-    return { invoice_id: String(args.invoice_id ?? args.id ?? "").trim() };
+    const invoiceNumber = String(args.invoiceNumber ?? args.invoice_number ?? "").trim();
+    const invoiceId = String(args.invoice_id ?? args.invoiceId ?? args.id ?? "").trim();
+    return {
+      ...(invoiceId ? { invoice_id: invoiceId, invoiceId } : {}),
+      ...(invoiceNumber ? { invoiceNumber } : {}),
+    };
   }
   return { ...args };
 }
 
 function clipToolData(value: unknown, toolName = ""): unknown {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const record = value as Record<string, unknown>;
-    if (/^outlook_/.test(toolName) || Array.isArray(record.messages)) {
-      const messages = Array.isArray(record.messages) ? record.messages : [];
-      return {
-        mailboxAddress: record.mailboxAddress ?? record.mailbox ?? null,
-        count: record.count ?? messages.length,
-        messages: messages.slice(0, 5).map((message) => {
-          if (!message || typeof message !== "object") return message;
-          const row = message as Record<string, unknown>;
-          return {
-            subject: row.subject ?? null,
-            from: row.from ?? row.sender ?? null,
-            receivedDateTime: row.receivedDateTime ?? row.received ?? row.date ?? null,
-          };
-        }),
-      };
-    }
-    if (/^xero_/.test(toolName) || "sales_total" in record || record.source === "Xero") {
-      const summary = record.summary && typeof record.summary === "object" ? record.summary : {};
-      return {
-        source: record.source ?? "Xero",
-        sales_total: record.sales_total ?? (summary as { totalSales?: unknown }).totalSales,
-        invoice_count: record.invoice_count ?? (summary as { transactionCount?: unknown }).transactionCount,
-        currencyCode: record.currencyCode ?? record.currency,
-        period: record.period ?? null,
-        summary,
-      };
-    }
-  }
-  const raw = JSON.stringify(value ?? null);
-  if (raw.length <= 3_500) return value;
-  return { preview: raw.slice(0, 3_500), truncated: true };
+  return clipBusinessToolData(value, toolName);
 }

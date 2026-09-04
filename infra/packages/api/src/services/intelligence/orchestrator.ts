@@ -1,4 +1,4 @@
-import { businessToolForIntent, resolveBusinessSystemIntent } from "@infra/shared";
+import { businessToolForIntent, ELVEX_FINANCE_MAILBOXES, resolveBusinessSystemIntent } from "@infra/shared";
 import { describeToolCatalogue, INTELLIGENCE_TOOL_NAMES, SYSTEM_META_TOOLS } from "./catalogue.js";
 import { answerGeneralConversation } from "./conversation.js";
 import { parseIntelligenceDecision, recoverDecision, validateToolRequest } from "./parse.js";
@@ -10,7 +10,12 @@ import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "
 import { parseCatalogueIntent, verbaliseDocumentCatalogue } from "../document-catalogue.js";
 import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
 import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
-import { GENERIC_RETRY_COPY, synthesizeFromToolCalls, synthesizeToolResult } from "./verbalise-business.js";
+import {
+  GENERIC_RETRY_COPY,
+  extractFirstMessageId,
+  synthesizeFromToolCalls,
+  synthesizeToolResult,
+} from "./verbalise-business.js";
 import type {
   IntelligenceChannel,
   IntelligenceConfidence,
@@ -834,25 +839,49 @@ function prepareToolArguments(
     next.query = String(next.query ?? next.q ?? "").trim() || text.trim();
     return next;
   }
-  if (name === "outlook_list_messages" || name === "outlook_search_mailbox") {
+  if (name === "outlook_list_messages" || name === "outlook_search_mailbox" || name === "outlook_get_message") {
     const intent = resolveBusinessSystemIntent(text);
     const mapped = intent ? businessToolForIntent(intent, text) : null;
     const mailbox =
       (typeof next.mailboxAddress === "string" && next.mailboxAddress.trim()) ||
       (typeof mapped?.arguments.mailboxAddress === "string" ? mapped.arguments.mailboxAddress : "") ||
       "";
+    if (name === "outlook_get_message") {
+      return {
+        mailboxAddress: mailbox || undefined,
+        messageId: String(next.messageId ?? next.id ?? "").trim() || undefined,
+      };
+    }
     if (name === "outlook_list_messages") {
       return {
         mailboxAddress: mailbox || undefined,
-        limit: Number(next.limit ?? mapped?.arguments.limit ?? 5),
+        limit: Number(next.limit ?? mapped?.arguments.limit ?? (/\blast 5|last five\b/i.test(text) ? 5 : 5)),
       };
     }
-    const query = String(next.query ?? "").trim() || text.trim() || "inbox";
     return {
       mailboxAddress: mailbox || undefined,
-      query,
+      query: mailboxSearchQuery(text, next),
       limit: Number(next.limit ?? 5),
     };
+  }
+  if (name === "xero_get_invoice") {
+    const match = text.match(/\bINV-\d+\b/i);
+    if (match && !String(next.invoiceNumber ?? next.invoice_id ?? "").trim()) {
+      next.invoiceNumber = match[0];
+    }
+    return next;
+  }
+  if (name === "xero_search_invoices") {
+    if (/\b(outstanding|unpaid)\b/i.test(text)) next.unpaidOnly = true;
+    if (/\boverdue\b/i.test(text)) next.overdueOnly = true;
+    if (/\b(po|purchase.?order)\b/i.test(text) && !String(next.query ?? "").trim()) next.query = "PO";
+    if (!next.invoiceType && /\b(raised|invoiced|sales)\b/i.test(text)) next.invoiceType = "ACCREC";
+    next.limit = next.limit ?? 50;
+    return next;
+  }
+  if (name === "xero_top_customers") {
+    next.limit = next.limit ?? 5;
+    return next;
   }
   if (name === "list_documents") {
     const parsed = parseCatalogueIntent(text);
@@ -909,6 +938,25 @@ function shouldStopAfterRead(scoped: ScopeDecision, result: IntelligenceToolResu
   return scoped.scope === "BUSINESS_SYSTEM";
 }
 
+function mailboxSearchQuery(text: string, args: Record<string, unknown>): string {
+  const existing = String(args.query ?? "").trim();
+  if (existing) return existing;
+  const fromName = text.match(/\bfrom\s+([A-Za-z]{3,})/i)?.[1];
+  if (fromName && !/^(us|me|the|our|info|finance)$/i.test(fromName)) return fromName;
+  if (/\bsharon\b/i.test(text)) return "Sharon";
+  if (/\b(po|purchase.?order)\b/i.test(text)) return "PO";
+  if (/\binvoice\b/i.test(text)) return "invoice";
+  return text.trim() || "inbox";
+}
+
+function wantsFullEmail(text: string): boolean {
+  return /\b(full|body|what does .{0,40}(say|said))\b/i.test(text);
+}
+
+function wantsSalesThenFinanceEmail(text: string): boolean {
+  return /\b(sales|xero)\b/i.test(text) && /\b(and then|then show|and show)\b/i.test(text) && /\b(email|inbox)\b/i.test(text);
+}
+
 async function runDeterministicRead(
   runtime: IntelligenceRuntime,
   scoped: ScopeDecision,
@@ -919,6 +967,28 @@ async function runDeterministicRead(
   const toolName = scoped.tool;
   if (!toolName || !INTELLIGENCE_TOOL_NAMES.has(toolName)) return null;
   void permitted;
+  if (wantsSalesThenFinanceEmail(text)) {
+    const xero = await runtime.executeTool({
+      name: "xero_sales_summary",
+      arguments: prepareToolArguments("xero_sales_summary", {}, text, state, scoped.scope),
+    });
+    const outlook = await runtime.executeTool({
+      name: "outlook_list_messages",
+      arguments: prepareToolArguments(
+        "outlook_list_messages",
+        { mailboxAddress: ELVEX_FINANCE_MAILBOXES[0], limit: 5 },
+        "latest finance email",
+        state,
+        scoped.scope,
+      ),
+    });
+    const toolCalls = [xero, outlook];
+    return {
+      text: synthesizeFromToolCalls(toolCalls, text),
+      toolCalls,
+      ok: xero.ok || outlook.ok,
+    };
+  }
   const result = await runtime.executeTool({
     name: toolName,
     arguments: prepareToolArguments(toolName, {}, text, state, scoped.scope),
@@ -938,6 +1008,16 @@ async function runDeterministicRead(
         toolCalls,
         ok: fetched.ok || result.ok,
       };
+    }
+  }
+  if (result.ok && wantsFullEmail(text) && /outlook_list_messages|outlook_search_mailbox/.test(toolName)) {
+    const messageId = extractFirstMessageId(result.data);
+    if (messageId) {
+      const fetched = await runtime.executeTool({
+        name: "outlook_get_message",
+        arguments: prepareToolArguments("outlook_get_message", { messageId }, text, state, scoped.scope),
+      });
+      toolCalls.push(fetched);
     }
   }
   return {

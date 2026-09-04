@@ -56,7 +56,7 @@ function isDocumentAboutSystem(query: string): boolean {
 }
 
 function isLiveDataOrAction(query: string): boolean {
-  return /\b(tell me|show me|how much|how many|what are|what were|what is|total|outstanding|overdue|raised|today|this month|sales|invoices?|revenue|profit|p&l|pnl|balance sheet|who owes|aged|mailbox|inbox|emails?|jobs?|work orders?|tickets?|make a payment|pay |on xero)\b/.test(
+  return /\b(tell me|show me|how much|how many|what are|what were|what is|total|outstanding|overdue|raised|today|this month|sales|invoices?|revenue|profit|p&l|pnl|balance sheet|who owes|aged|mailbox|inbox|emails?|emailed|emials|jobs?|work orders?|tickets?|make a payment|pay |on xero)\b/.test(
     query,
   );
 }
@@ -187,7 +187,7 @@ export function resolveBusinessSystemIntent(
     };
   }
 
-  if (/\b(emails?|emailed|mailbox|outlook|inbox)\b/.test(q) && !/\bxero\b/.test(q)) {
+  if (/\b(emails?|emailed|emials|mailbox|outlook|inbox)\b/.test(q) && !/\bxero\b/.test(q)) {
     return {
       capability: /\bfinance\b/.test(q) ? "finance_mailbox" : "info_mailbox",
       connectorDefinitionId: "conn_outlook_shared",
@@ -218,11 +218,16 @@ export function businessToolForIntent(
     if (/overdue/i.test(query)) {
       return { toolName: "xero_list_overdue_invoices", arguments: { query, limit: 25 } };
     }
-    if (/outstanding|owes/i.test(query)) {
+    if (/\bhow much\b/i.test(query) && /invoiced|sales|revenue/i.test(query)) {
+      return { toolName: "xero_sales_summary", arguments: { query } };
+    }
+    if (/outstanding|owes|unpaid/i.test(query)) {
       return { toolName: "xero_search_invoices", arguments: { query, unpaidOnly: true, limit: 25 } };
     }
     if (
-      /raised today|invoices? (raised |issued |invoiced )?today|invoice numbers/i.test(query)
+      /raised today|invoices? (raised |issued |invoiced )?(today|yesterday|this month)|what did we invoice|make up .{0,40}sales|invoice numbers/i.test(
+        query,
+      )
     ) {
       return {
         toolName: "xero_search_invoices",

@@ -84,6 +84,18 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     permission: "outlook shared mailbox read",
   },
   {
+    name: "outlook_get_message",
+    description: "Read the full body of one shared-mailbox message by id (read only).",
+    whenToUse: "User asks what an email says, or wants the full latest message after a list/search.",
+    whenNotToUse: "Not for Drive/SharePoint. Do not invent a message id.",
+    parameters: {
+      mailboxAddress: { description: "Included shared mailbox SMTP" },
+      messageId: { description: "Stable id from list or search", required: true },
+    },
+    outputShape: "{ mailboxAddress, subject, from, body }",
+    permission: "outlook shared mailbox read",
+  },
+  {
     name: "xero_sales_summary",
     description: "Read Xero sales/invoice summary for a real date range.",
     whenToUse: "User asks about sales, invoices, or overdue amounts in general.",
@@ -109,7 +121,10 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     description: "Get one Xero invoice by invoice_id.",
     whenToUse: "User names a specific invoice id.",
     whenNotToUse: "Do not invent an invoice id.",
-    parameters: { invoice_id: { description: "Xero invoice id", required: true } },
+    parameters: {
+      invoice_id: { description: "Xero invoice UUID if known" },
+      invoiceNumber: { description: "Human invoice number such as INV-02268" },
+    },
     outputShape: "{ invoice }",
     permission: "xero read",
   },
@@ -123,6 +138,19 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
       limit: { type: "number", description: "Optional cap" },
     },
     outputShape: "{ invoices }",
+    permission: "xero read",
+  },
+  {
+    name: "xero_top_customers",
+    description: "Read the top Xero customers by invoiced amount for a date range.",
+    whenToUse: "User asks who the top or biggest customers are.",
+    whenNotToUse: "Not for documents. Not for creating contacts.",
+    parameters: {
+      fromDate: { description: "Inclusive start date YYYY-MM-DD" },
+      toDate: { description: "Inclusive end date YYYY-MM-DD" },
+      limit: { type: "number", description: "How many customers, default 5" },
+    },
+    outputShape: "{ customers: [{ name, total }] }",
     permission: "xero read",
   },
   {
@@ -252,7 +280,9 @@ export const GATEWAY_TOOL_ALIASES: Record<string, string> = {
   system_health: "system_health",
   outlook_search_mailbox: "outlook_search_mailbox",
   outlook_list_messages: "outlook_list_messages",
+  outlook_get_message: "outlook_get_message",
   xero_sales_summary: "xero_sales_summary",
+  xero_top_customers: "xero_top_customers",
   xero_list_overdue_invoices: "xero_list_overdue_invoices",
   xero_get_invoice: "xero_get_invoice",
   xero_search_invoices: "xero_search_invoices",
@@ -288,7 +318,9 @@ export function permittedToolsForConnectors(connectors: string[]): string[] {
   const hasMailbox = connectors.some((id) => /outlook|microsoft|mailbox/i.test(id));
   return INTELLIGENCE_TOOLS.filter((tool) => {
     if (XERO_TOOLS.has(tool.name)) return hasXero;
-    if (tool.name === "outlook_search_mailbox" || tool.name === "outlook_list_messages") return hasMailbox;
+    if (tool.name === "outlook_search_mailbox" || tool.name === "outlook_list_messages" || tool.name === "outlook_get_message") {
+      return hasMailbox;
+    }
     return true;
   }).map((tool) => tool.name);
 }
