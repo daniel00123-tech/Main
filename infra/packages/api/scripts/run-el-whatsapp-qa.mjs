@@ -8,7 +8,14 @@ import { fileURLToPath } from "node:url";
 const API = process.env.INFRA_API_BASE || "https://infra-api.daniel-dwyer123.workers.dev";
 const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const CONVERSATIONS = ["xero", "outlook", "mixed", "rbac_office", "rbac_auth", "failure"];
+const CONVERSATIONS = {
+  xero: ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "A14", "A15", "D1", "D2", "D3", "D4", "D5", "D6", "D7"],
+  outlook: ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11", "B12", "B13", "B14", "B15"],
+  mixed: ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"],
+  rbac_office: ["E1", "E2", "E3"],
+  rbac_auth: ["E4"],
+  failure: ["E5"],
+};
 
 function d1(command) {
   const out = execFileSync(
@@ -29,7 +36,7 @@ function mintAcceptanceToken() {
   return token;
 }
 
-async function runSlice(conversation, memory) {
+async function runSlice(ids, memory) {
   const token = mintAcceptanceToken();
   const res = await fetch(`${API}/api/internal/el-whatsapp-qa`, {
     method: "POST",
@@ -38,22 +45,34 @@ async function runSlice(conversation, memory) {
       "Content-Type": "application/json",
       "User-Agent": "InfraAcceptance/1.0",
     },
-    body: JSON.stringify({ conversation, memory }),
+    body: JSON.stringify({ ids, memory }),
     signal: AbortSignal.timeout(180_000),
   });
   const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   return { httpStatus: res.status, body };
 }
 
-const report = { api: API, conversations: {} };
-let memory = null;
-for (const conversation of CONVERSATIONS) {
-  const next = conversation === "xero" || conversation === "outlook" || conversation === "mixed" ? memory : null;
-  const result = await runSlice(conversation, next);
-  report.conversations[conversation] = result;
-  memory = result.body?.memory ?? null;
-  console.log(conversation, result.httpStatus, result.body?.tallies ?? result.body?.error ?? result.body);
+function chunk(ids, size) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}
+
+const report = { api: API, worker: "ccdb679d-d8d6-4372-9e34-c45eb80bf8dd", turns: [], errors: [] };
+for (const [conversation, ids] of Object.entries(CONVERSATIONS)) {
+  let memory = null;
+  for (const idsChunk of chunk(ids, 2)) {
+    const result = await runSlice(idsChunk, memory);
+    if (result.httpStatus !== 200 || result.body?.error) {
+      report.errors.push({ conversation, ids: idsChunk, result });
+      console.error("FAIL", conversation, idsChunk, result.httpStatus, result.body?.error ?? result.body);
+      continue;
+    }
+    memory = result.body?.memory ?? memory;
+    for (const turn of result.body?.turns ?? []) report.turns.push({ conversation, ...turn });
+    console.log(conversation, idsChunk.join(","), result.body?.tallies, (result.body?.turns ?? []).map((t) => `${t.id}:${t.grade}`).join(" "));
+  }
 }
 
 writeFileSync("/tmp/el-whatsapp-qa.json", JSON.stringify(report, null, 2));
-console.log(JSON.stringify({ written: "/tmp/el-whatsapp-qa.json" }));
+console.log(JSON.stringify({ written: "/tmp/el-whatsapp-qa.json", turns: report.turns.length, errors: report.errors.length }));
