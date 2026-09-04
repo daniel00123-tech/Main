@@ -367,8 +367,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isPermissionDenial(error?: string | null, data?: unknown): boolean {
-  const blob = `${error ?? ""} ${typeof data === "string" ? data : JSON.stringify(data ?? "")}`;
-  return /403|permission|not allowed|denied|not a member|not available for your role/i.test(blob);
+  const record = isRecord(data) ? data : {};
+  if (
+    record.accessOutcome === "permission_denied" ||
+    record.denied === true ||
+    record.result === "permission_denied" ||
+    record.billingStatus === "denied"
+  ) {
+    return true;
+  }
+  const status = Number(record.status ?? record.httpStatus ?? 0);
+  if (status === 403) return true;
+  const err = [error, record.error, record.code, record.reason]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+  return /permission_denied|user_not_authorised|not allowed for your role|office staff permissions|your current permissions don’t allow|your current permissions don't allow/i.test(
+    err,
+  );
 }
 
 function metadataFromTurn(result: IntelligenceTurnResult): PortalChatMessageMetadata {

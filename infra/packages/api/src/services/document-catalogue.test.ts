@@ -9,6 +9,7 @@ import {
   isCatalogueListingAsk,
   isDocumentCatalogueTool,
   parseCatalogueIntent,
+  rewriteKnowledgeCallForCatalogue,
   sanitizeCatalogueArguments,
   withDocumentCatalogueTools,
   executeListDocuments,
@@ -51,6 +52,23 @@ describe("document catalogue intent", () => {
     const pdfs = parseCatalogueIntent("Latest SharePoint PDFs.", now);
     expect(pdfs.source).toBe("sharepoint");
     expect(pdfs.fileType).toBe("pdf");
+  });
+
+  it("rewrites ChatGPT search of newest/latest files onto list_documents", () => {
+    const newest = rewriteKnowledgeCallForCatalogue("search", {
+      query: "What's the newest document in OneDrive?",
+    });
+    expect(newest.rewritten).toBe(true);
+    expect(newest.toolName).toBe("list_documents");
+    expect(newest.arguments.source).toBe("onedrive");
+    expect(
+      rewriteKnowledgeCallForCatalogue("search_company_knowledge", {
+        query: "Show me the latest ten files.",
+      }).toolName,
+    ).toBe("list_documents");
+    expect(
+      rewriteKnowledgeCallForCatalogue("search", { query: "Find a document about boilers" }).rewritten,
+    ).toBe(false);
   });
 
   it("does not treat ingestion timestamp as the newest sort key", () => {

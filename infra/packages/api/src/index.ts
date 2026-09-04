@@ -94,6 +94,7 @@ import whatsappUxUatRoutes from "./routes/whatsapp-ux-uat";
 import intelligenceEvalRoutes from "./routes/intelligence-eval";
 import qualityLoopRoutes from "./routes/quality-loop";
 import portalChatRoutes from "./routes/portal-chat";
+import { publicProductionLineage } from "./services/production-lineage";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -133,13 +134,19 @@ app.get("/", (c) =>
   }),
 );
 
-app.get("/health", (c) =>
-  c.json({
+app.get("/health", (c) => {
+  const lineage = publicProductionLineage();
+  return c.json({
     status: "ok",
     environment: c.env.ENVIRONMENT,
-    timestamp: new Date().toISOString(),
-  }),
-);
+    timestamp: lineage.timestamp,
+    gitSha: lineage.gitSha,
+    branch: lineage.branch,
+    lineage: lineage.lineage,
+    capabilities: lineage.capabilities,
+    complete: lineage.complete,
+  });
+});
 
 app.get("/ready", async (c) => {
   try {

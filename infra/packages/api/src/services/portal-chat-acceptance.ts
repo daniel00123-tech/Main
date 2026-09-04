@@ -85,7 +85,7 @@ export async function runPortalChatAcceptance(env: Env): Promise<Record<string, 
     companyId: "co_el",
     sessionUser,
     conversationId: po.conversation.id,
-    text: "What are our Xero sales?",
+    text: "What are our Xero sales this month?",
   });
   const info = await sendPortalChatMessage(env, {
     companyId: "co_el",
@@ -117,6 +117,9 @@ export async function runPortalChatAcceptance(env: Env): Promise<Record<string, 
       })
     : { status: 0, body: "no other company", json: null };
 
+  const { runOfficeStaffRbacAcceptance } = await import("./sharon-rbac-acceptance");
+  const officeStaff = await runOfficeStaffRbacAcceptance(env);
+
   const usage = await env.DB.prepare(
     `SELECT tool_name, action, source_client, success, settlement_status, customer_charge_cents
      FROM usage_records
@@ -143,7 +146,7 @@ export async function runPortalChatAcceptance(env: Env): Promise<Record<string, 
     unauthenticated: {
       api: { status: unauthApi.status, error: unauthApi.json?.error ?? unauthApi.body },
       app: { status: unauthApp.status, error: unauthApp.json?.error ?? unauthApp.body },
-      not404: unauthApi.status === 401 && unauthApp.status === 401,
+      not404: unauthApi.status !== 404 && unauthApp.status !== 404,
     },
     missingBareChatPath: { status: missingPath.status, note: "frontend does not call /chat without /messages" },
     httpAuthenticatedSend: {
@@ -167,10 +170,12 @@ export async function runPortalChatAcceptance(env: Env): Promise<Record<string, 
     },
     followUp: { reply: clip(followUp.assistantMessage.content), scope: followUp.assistantMessage.metadata.scope },
     recall: { reply: clip(recall.assistantMessage.content) },
-    xeroOfficeStaff: {
+    xeroDirector: {
       permissionDenied: Boolean(xero.assistantMessage.metadata.permissionDenied),
+      tools: xero.assistantMessage.metadata.toolNames,
       reply: clip(xero.assistantMessage.content),
     },
+    officeStaff,
     infoInbox: {
       tools: info.assistantMessage.metadata.toolNames,
       reply: clip(info.assistantMessage.content),
@@ -184,7 +189,8 @@ export async function runPortalChatAcceptance(env: Env): Promise<Record<string, 
       unauthApi.status === 401 &&
       httpSend.status !== 404 &&
       !invented &&
-      Boolean(xero.assistantMessage.metadata.permissionDenied || /permission|not allow/i.test(xero.assistantMessage.content))
+      !xero.assistantMessage.metadata.permissionDenied &&
+      officeStaff.verdict === "PASS"
         ? "PASS"
         : "PARTIAL",
   };

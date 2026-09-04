@@ -1,3 +1,4 @@
+import { classifyUsageOutcome } from "@infra/shared";
 import { detectQualitySignals, type QualityAuditInput } from "../quality-auditor";
 import { looksLikeRawToolDump } from "../whatsapp-compress";
 import {
@@ -36,9 +37,24 @@ export function threadFromAudit(input: {
   const meta = input.audit.usage.map((row) => row.metadata ?? {}).find((row) => row.channel === "whatsapp") ?? {};
   const assistant = input.assistantMessages ?? [];
   const askedForSource = Boolean(meta.askedLink) || input.userMessages?.some((text) => /\b(link|url|source|download)\b/i.test(text));
-  const permissionDenied = Boolean(meta.permissionDenied) || (input.audit.gateway ?? []).some((row) =>
-    /permission|forbidden|unauthorized|denied|401|403/i.test(`${row.errorCode ?? ""} ${row.errorMessage ?? ""}`),
+  const usageDenied = input.audit.usage.some((row) =>
+    classifyUsageOutcome({
+      success: row.success,
+      settlementStatus: row.settlementStatus,
+      toolName: row.toolName,
+      action: row.action,
+      durationMs: row.durationMs,
+      recordedAt: row.recordedAt,
+      actorEmail: row.actorEmail,
+      metadata: row.metadata ?? null,
+    }).expectedDenial,
   );
+  const permissionDenied =
+    usageDenied ||
+    Boolean(meta.permissionDenied) ||
+    (input.audit.gateway ?? []).some((row) =>
+      /permission|forbidden|unauthorized|denied|401|403/i.test(`${row.errorCode ?? ""} ${row.errorMessage ?? ""}`),
+    );
   const permissionCorrect = permissionDenied && !meta.permissionShouldHaveSucceeded;
   return {
     companyId: input.companyId,

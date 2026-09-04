@@ -8,6 +8,28 @@ import {
 } from "./quality-auditor";
 
 describe("quality auditor", () => {
+  it("does not treat expected RBAC denials as operational quality failures", () => {
+    const signals = detectQualitySignals({
+      interactionId: "int_denied",
+      companyId: "co_el",
+      usage: [
+        {
+          toolName: "xero_sales_summary",
+          action: "xero.sales.summary",
+          success: 0,
+          settlementStatus: "denied",
+          durationMs: 80,
+          customerChargeCents: 0,
+          metadata: { denied: true, result: "permission_denied", accessOutcome: "permission_denied" },
+        },
+      ],
+      gateway: [{ errorCode: "forbidden", errorMessage: "Permission denied", status: "denied" }],
+    });
+    const categories = signals.map((s) => s.category);
+    expect(categories).not.toContain("tool_call_failed");
+    expect(categories).not.toContain("auth_permission_failure");
+  });
+
   it("detects evidence-backed tool failure, permission, timeout, and high cost", () => {
     const signals = detectQualitySignals({
       interactionId: "int_a",

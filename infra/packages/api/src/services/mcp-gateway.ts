@@ -51,7 +51,7 @@ import { withActionControlTools, isActionControlTool, actionControlToolAllowed }
 import { withOutlookReadTools, isOutlookReadTool, outlookReadToolAllowed } from "./microsoft-outlook-tools";
 import { withXeroReadTools } from "./xero-read-tools";
 import { ASK_DOCUMENT_TOOL, withAskDocumentTool } from "./ask-document";
-import { LIST_DOCUMENTS_TOOL, withDocumentCatalogueTools } from "./document-catalogue";
+import { LIST_DOCUMENTS_TOOL, rewriteKnowledgeCallForCatalogue, withDocumentCatalogueTools } from "./document-catalogue";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeActionControlTool } from "./action-engine/action-control-handler";
 import {
@@ -791,7 +791,7 @@ export async function handleInfraMcpJsonRpc(
   }
 
   if (method === "tools/call") {
-    const toolName = String(body.params?.name ?? "");
+    let toolName = String(body.params?.name ?? "");
     let args = (body.params?.arguments ?? {}) as Record<string, unknown>;
     if (!toolName) {
       return {
@@ -849,6 +849,12 @@ export async function handleInfraMcpJsonRpc(
         : undefined;
     if (isKnowledgeDiscoveryTool(toolName) && callMeta) {
       args = { ...args, __meta: callMeta };
+    }
+
+    const catalogueRewrite = rewriteKnowledgeCallForCatalogue(toolName, args);
+    if (catalogueRewrite.rewritten) {
+      toolName = catalogueRewrite.toolName;
+      args = catalogueRewrite.arguments;
     }
 
     if (actor.type === "user" && toolName === "database_summary") {

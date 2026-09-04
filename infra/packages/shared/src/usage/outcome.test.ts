@@ -195,6 +195,18 @@ describe("EL usage outcome classification (91 production failures)", () => {
     expect(outcome.operationalFailure).toBe(false);
   });
 
+  it("treats D1 integer success=0 as a failed row", () => {
+    const outcome = classifyUsageOutcome({
+      success: 0,
+      settlementStatus: "denied",
+      toolName: "xero_sales_summary",
+      metadata: { denied: true, result: "permission_denied" },
+    });
+    expect(outcome.kind).toBe("PERMISSION_DENIED");
+    expect(outcome.expectedDenial).toBe(true);
+    expect(outcome.operationalFailure).toBe(false);
+  });
+
   it("does not mark post-fix Xero failures as the old tool-mapping defect", () => {
     const outcome = classifyUsageOutcome({
       success: false,

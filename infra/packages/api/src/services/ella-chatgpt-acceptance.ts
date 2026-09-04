@@ -159,19 +159,39 @@ export async function runEllaChatgptXeroAcceptance(env: Env): Promise<Record<str
   const today = londonCivilDate();
   const cases = [
     {
-      id: "sales.september",
+      id: "sales.today",
       toolName: "xero_sales_summary",
-      args: { fromDate: "2026-09-01", toDate: today, period: "this month" },
+      args: { fromDate: today, toDate: today, period: "today" },
     },
     {
-      id: "sales.august",
+      id: "sales.this_month",
+      toolName: "xero_sales_summary",
+      args: { fromDate: `${today.slice(0, 7)}-01`, toDate: today, period: "this month" },
+    },
+    {
+      id: "sales.last_month",
       toolName: "xero_sales_summary",
       args: { fromDate: "2026-08-01", toDate: "2026-08-31", period: "last month" },
     },
     {
-      id: "invoices.september",
+      id: "invoices.today",
       toolName: "xero_search_invoices",
-      args: { fromDate: "2026-09-01", toDate: today, limit: 25 },
+      args: { fromDate: today, toDate: today, invoiceType: "ACCREC", limit: 25 },
+    },
+    {
+      id: "invoices.outstanding",
+      toolName: "xero_search_invoices",
+      args: { unpaidOnly: true, limit: 25 },
+    },
+    {
+      id: "invoices.overdue",
+      toolName: "xero_list_overdue_invoices",
+      args: { limit: 25 },
+    },
+    {
+      id: "customers.top",
+      toolName: "xero_top_customers",
+      args: { limit: 5 },
     },
     {
       id: "wrong_tool.database_summary",
@@ -198,6 +218,32 @@ export async function runEllaChatgptXeroAcceptance(env: Env): Promise<Record<str
       outcome: classify(testCase.toolName, new Set([...listed, testCase.toolName]), call.rpc, call.httpStatus),
       httpStatus: call.httpStatus,
       summary: summarize(parsed),
+    });
+  }
+
+  const invoiceNumber = results
+    .map((row) => {
+      const summary = row.summary as { invoice_numbers?: unknown; invoiceNumber?: unknown } | null;
+      const numbers = summary?.invoice_numbers;
+      if (Array.isArray(numbers) && typeof numbers[0] === "string") return numbers[0];
+      return typeof summary?.invoiceNumber === "string" ? summary.invoiceNumber : null;
+    })
+    .find((value): value is string => Boolean(value));
+  if (invoiceNumber) {
+    const call = await mcp(
+      issued.token,
+      "tools/call",
+      { name: "xero_get_invoice", arguments: { invoiceNumber } },
+      rpcId++,
+    );
+    results.push({
+      id: "invoice.known_lookup",
+      toolName: "xero_get_invoice",
+      arguments: { invoiceNumber },
+      advertised: listed.has("xero_get_invoice"),
+      outcome: classify("xero_get_invoice", listed, call.rpc, call.httpStatus),
+      httpStatus: call.httpStatus,
+      summary: summarize(tryParse(extractText(call.rpc))),
     });
   }
 

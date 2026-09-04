@@ -1,3 +1,4 @@
+import { classifyUsageOutcome, usageRowFailed } from "@infra/shared";
 import { newId, nowIso } from "../db/mappers";
 
 export const QUALITY_STATUSES = [
@@ -102,6 +103,7 @@ export interface QualityAuditInput {
     toolName?: string | null;
     action?: string | null;
     success?: boolean | number | null;
+    settlementStatus?: string | null;
     durationMs?: number | null;
     customerChargeCents?: number | null;
     underlyingCostCents?: number | null;
@@ -153,9 +155,31 @@ export function shouldSampleAudit(interactionId: string, sampleRate: number): bo
   return hash % 1000 < Math.round(rate * 1000);
 }
 
+export function usageOutcomesForAudit(input: QualityAuditInput) {
+  return input.usage.map((row) =>
+    classifyUsageOutcome({
+      success: row.success,
+      settlementStatus: row.settlementStatus,
+      toolName: row.toolName,
+      action: row.action,
+      durationMs: row.durationMs,
+      recordedAt: row.recordedAt,
+      actorEmail: row.actorEmail,
+      metadata: row.metadata ?? null,
+    }),
+  );
+}
+
 export function detectQualitySignals(input: QualityAuditInput): QualitySignal[] {
   const signals: QualitySignal[] = [];
-  const failed = input.usage.filter((row) => row.success === false || row.success === 0);
+  const outcomes = usageOutcomesForAudit(input);
+  const expectedDenialOnly =
+    outcomes.length > 0 &&
+    outcomes.some((outcome) => outcome.expectedDenial) &&
+    !outcomes.some((outcome) => outcome.operationalFailure);
+  const failed = input.usage.filter(
+    (row, index) => usageRowFailed(row.success) && !outcomes[index]?.expectedDenial,
+  );
   const gatewayFailed = (input.gateway ?? []).filter(
     (row) => row.errorCode || (row.status && row.status !== "ok" && row.status !== "completed" && row.status !== "success"),
   );
@@ -181,7 +205,7 @@ export function detectQualitySignals(input: QualityAuditInput): QualitySignal[] 
   }
 
   const auth = gatewayFailed.filter(isAuthError);
-  if (auth.length > 0) {
+  if (auth.length > 0 && !expectedDenialOnly) {
     signals.push({
       category: "auth_permission_failure",
       severity: "high",
@@ -977,7 +1001,8 @@ export async function auditInteractionById(
   const usage = await db
     .prepare(
       `SELECT tool_name, action, success, duration_ms, customer_charge_cents,
-              underlying_cost_cents, actor_email, recorded_at, metadata_json, user_id
+              underlying_cost_cents, actor_email, recorded_at, metadata_json, user_id,
+              settlement_status
        FROM usage_records WHERE interaction_id = ? ORDER BY recorded_at ASC`,
     )
     .bind(interactionId)
@@ -992,6 +1017,7 @@ export async function auditInteractionById(
       recorded_at: string;
       metadata_json: string | null;
       user_id: string | null;
+      settlement_status: string | null;
     }>();
 
   const gateway = await db
@@ -1043,6 +1069,7 @@ export async function auditInteractionById(
       toolName: row.tool_name,
       action: row.action,
       success: row.success,
+      settlementStatus: row.settlement_status,
       durationMs: row.duration_ms,
       customerChargeCents: row.customer_charge_cents,
       underlyingCostCents: row.underlying_cost_cents,

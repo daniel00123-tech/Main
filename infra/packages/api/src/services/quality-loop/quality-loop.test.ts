@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { assertTenantIsolation, evaluateWhatsAppConversation } from "./evaluator";
+import { assertTenantIsolation, evaluateWhatsAppConversation, threadFromAudit } from "./evaluator";
 import { groupQualityPatterns } from "./patterns";
 import { isHighRiskProposal, proposeImprovements } from "./proposals";
 import { replayProposal } from "./replay";
@@ -355,6 +355,31 @@ describe("quality evaluator signals", () => {
     expect(evaluation.permissionDenialCorrect).toBe(true);
     expect(evaluation.flags.some((flag) => flag.category === "permission_denial_correct")).toBe(true);
     expect(evaluation.flags.some((flag) => flag.category === "permission_ux" && flag.polarity === "negative")).toBe(false);
+  });
+
+  it("classifies D1 denied usage rows as a correct permission denial", () => {
+    const thread = threadFromAudit({
+      companyId: "co_el",
+      conversationKey: "int_denied_usage",
+      userMessages: ["Tell me our Xero sales this month."],
+      assistantMessages: ["You don’t currently have permission to access Xero financial information."],
+      audit: {
+        interactionId: "int_denied_usage",
+        companyId: "co_el",
+        usage: [
+          {
+            toolName: "xero_sales_summary",
+            success: 0,
+            settlementStatus: "denied",
+            metadata: { denied: true, result: "permission_denied" },
+          },
+        ],
+      },
+    });
+    expect(thread.permissionDenied).toBe(true);
+    expect(thread.permissionDenialCorrect).toBe(true);
+    expect(thread.qualitySignals).not.toContain("tool_call_failed");
+    expect(thread.qualitySignals).not.toContain("auth_permission_failure");
   });
 });
 
