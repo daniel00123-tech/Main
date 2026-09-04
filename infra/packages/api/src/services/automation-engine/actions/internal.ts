@@ -5,12 +5,14 @@
 import type { Env } from "../../../env";
 import {
   DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE,
+  KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE,
   XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
   type AutomationInternalConfiguration,
 } from "@infra/shared";
 import { nowIso } from "../../../db/mappers";
 import type { AutomationActionResult, AutomationExecutionContext } from "./types";
 import { executeDocumentActivityDailyEmail } from "./document-activity-email";
+import { executeKnowledgeIngestionDailyEmail } from "./knowledge-ingestion-email";
 import { executeXeroMonthToDateSalesEmail } from "./xero-sales-email";
 
 const ALLOWED_HANDLERS = new Set([
@@ -18,6 +20,7 @@ const ALLOWED_HANDLERS = new Set([
   "health_ping",
   XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
   DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE,
+  KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE,
 ]);
 
 export async function executeInternalAction(
@@ -51,6 +54,10 @@ export async function executeInternalAction(
 
   if (handler === DOCUMENT_ACTIVITY_DAILY_EMAIL_TEMPLATE) {
     return executeDocumentActivityDailyEmail(env, ctx);
+  }
+
+  if (handler === KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE) {
+    return executeKnowledgeIngestionDailyEmail(env, ctx);
   }
 
   throw new Error("Unhandled internal action");

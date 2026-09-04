@@ -39,10 +39,12 @@ import { validateAutomationConfiguration } from "../services/automation-engine/a
 import { computeNextRunUtcIso, formatScheduleLabel } from "../services/automation-engine/schedule";
 import { requestAutomationRun } from "../services/automation-engine/run-request";
 import { provisionTemplateAutomation } from "../services/automation-engine/provision-template";
+import { provisionElKnowledgeActivityAutomation } from "../services/automation-engine/provision-el-knowledge-activity";
 import {
   archiveAutomation,
   createAutomationFromPlan,
   planAutomationCreation,
+  runAutomationNow,
   AutomationControlError,
 } from "../services/automation-engine/control";
 
@@ -731,6 +733,48 @@ automations.post("/api/internal/automation/ensure-template", async (c) => {
   } catch (err) {
     return c.json(
       { error: err instanceof Error ? err.message : "Unable to provision automation" },
+      400,
+    );
+  }
+});
+
+automations.post("/api/internal/automation/ensure-el-knowledge-activity", async (c) => {
+  const body = await c.req.json<{ runNow?: boolean }>().catch(() => ({ runNow: false }));
+  try {
+    const beforeCaddington = await listAutomationDefinitions(c.env.DB, "co_caddington");
+    const automation = await provisionElKnowledgeActivityAutomation(c.env.DB, {
+      createdBy: "system:el-knowledge-activity",
+      activate: true,
+    });
+    const afterCaddington = await listAutomationDefinitions(c.env.DB, "co_caddington");
+    const caddingtonUnchanged =
+      JSON.stringify(beforeCaddington.map((item) => [item.id, item.status, item.nextRunAt, item.schedule, item.configuration])) ===
+      JSON.stringify(afterCaddington.map((item) => [item.id, item.status, item.nextRunAt, item.schedule, item.configuration]));
+    if (!body.runNow) {
+      return c.json({
+        automation: serialiseAutomation(automation),
+        caddingtonUnchanged,
+      });
+    }
+    const preservedNextRun = automation.nextRunAt;
+    const result = await runAutomationNow(c.env, {
+      companyId: "co_el",
+      automationId: automation.id,
+      actor: { label: "system:el-knowledge-activity", source: "api" },
+      triggerType: "manual",
+    });
+    const run = await getAutomationRun(c.env.DB, "co_el", result.runId);
+    const after = await getAutomationDefinition(c.env.DB, "co_el", automation.id);
+    return c.json({
+      automation: serialiseAutomation(after ?? automation),
+      run,
+      created: result.created,
+      scheduleUnchanged: after?.nextRunAt === preservedNextRun,
+      caddingtonUnchanged,
+    });
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "Unable to provision EL knowledge automation" },
       400,
     );
   }
