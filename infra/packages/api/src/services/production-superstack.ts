@@ -10,6 +10,10 @@ import { withXeroReadTools } from "./xero-read-tools";
 import { withOutlookReadTools } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { PRODUCTION_SUPERSTACK_CAPABILITIES, readGeneratedLineage } from "./production-lineage";
+import { resolveBrainPolicy } from "./intelligence/brain-policy";
+import { authorizeToolCall, buildAllowedToolCatalogue } from "./intelligence/tool-auth";
+import { looksLikePublicWebAsk } from "./intelligence/web-search";
+import { ENGINEERING_SUPERVISOR_CONTRACT } from "./intelligence/dev-failure-queue";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -56,6 +60,53 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (PRODUCTION_SUPERSTACK_CAPABILITIES.length < 9) {
     throw new Error("capability marker list incomplete");
+  }
+  const brain = resolveBrainPolicy({ companyId: "co_caddington" });
+  if (brain.useOpenAi) {
+    throw new Error("openai brain must not activate for non-EL tenants by default");
+  }
+  const shadow = resolveBrainPolicy({
+    env: {
+      OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
+      OPENAI_BRAIN_ENABLED: "true",
+      OPENAI_BRAIN_MODE: "openai_shadow",
+    },
+    companyId: "co_el",
+  });
+  if (shadow.useOpenAi) {
+    throw new Error("openai_shadow must keep Cloudflare as the user-visible brain");
+  }
+  if (!shadow.shadow) {
+    throw new Error("openai_shadow must evaluate OpenAI in parallel");
+  }
+  const officeTools = buildAllowedToolCatalogue({
+    role: "office_staff",
+    companyId: "co_el",
+    connectors: ["conn_xero", "conn_outlook_shared"],
+  });
+  if (officeTools.some((name) => name.startsWith("xero_"))) {
+    throw new Error("preauth catalogue must not offer Xero to office_staff");
+  }
+  const toolDenied = authorizeToolCall(
+    {
+      role: "office_staff",
+      companyId: "co_el",
+      connectors: ["conn_xero", "conn_outlook_shared"],
+      permittedTools: officeTools,
+    },
+    { name: "xero_sales_summary", arguments: {} },
+  );
+  if (toolDenied.allowed) {
+    throw new Error("second RBAC check must deny office_staff Xero");
+  }
+  if (!looksLikePublicWebAsk("what's the weather in London")) {
+    throw new Error("public web weather must not route to company MCP");
+  }
+  if (ENGINEERING_SUPERVISOR_CONTRACT.cursorInCustomerPath) {
+    throw new Error("Cursor must not sit in the customer turn");
+  }
+  if (ENGINEERING_SUPERVISOR_CONTRACT.autoDeployFromSingleFailure) {
+    throw new Error("must not auto-deploy from a single customer failure");
   }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };

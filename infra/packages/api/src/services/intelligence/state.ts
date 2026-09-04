@@ -1,4 +1,5 @@
-import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "./types.js";
+import { emptyEvidence, mergeEvidence } from "./evidence.js";
+import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope, StructuredEvidence } from "./types.js";
 
 const MAX_HISTORY_TURNS = 10;
 const MAX_TURN_CHARS = 360;
@@ -24,6 +25,7 @@ export function buildConversationState(input: {
   lastAnswerTopic?: string | null;
   lastUserIntent?: string | null;
   lastAnswerText?: string | null;
+  recentEvidence?: StructuredEvidence | null;
 }): IntelligenceConversationState {
   const currentDocument = compactDoc(input.currentDocument);
   const entities = (input.entities ?? [])
@@ -48,7 +50,7 @@ export function buildConversationState(input: {
     companyName: input.companyName ?? null,
     role: input.role ?? null,
     connectors: (input.connectors ?? []).slice(0, 12),
-    permittedTools: (input.permittedTools ?? []).slice(0, 24),
+    permittedTools: (input.permittedTools ?? []).slice(0, 48),
     entities,
     currentDocument,
     recentDocuments: (input.recentDocuments ?? [])
@@ -61,6 +63,7 @@ export function buildConversationState(input: {
     lastAnswerTopic: input.lastAnswerTopic ?? null,
     lastUserIntent: input.lastUserIntent ?? null,
     lastAnswerText: input.lastAnswerText ? input.lastAnswerText.slice(0, 1_200) : null,
+    recentEvidence: mergeEvidence(emptyEvidence(), input.recentEvidence),
     recentTurns: (input.recentTurns ?? [])
       .filter((turn) => turn.text.trim())
       .slice(-MAX_HISTORY_TURNS)
@@ -98,12 +101,24 @@ export function formatConversationState(state: IntelligenceConversationState): s
     `Last user intent: ${state.lastUserIntent || "none"}`,
     `Recent entities: ${entities}`,
     `Last tool: ${state.lastSuccessfulTool || state.lastToolName || "none"}${state.lastToolSummary ? ` — ${state.lastToolSummary}` : ""}`,
+    `Structured evidence:\n${formatEvidence(state.recentEvidence)}`,
     state.userCorrection ? "User correction: the previous interpretation was rejected. Reconsider and re-plan." : "",
     `Recent turns:\n${history}`,
     `User: ${state.lastUserText}`,
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function formatEvidence(evidence?: StructuredEvidence | null): string {
+  if (!evidence) return "none";
+  const bits = [
+    evidence.recentEmail ? `email “${evidence.recentEmail.subject}” from ${evidence.recentEmail.from}` : "",
+    evidence.recentXero ? `xero ${evidence.recentXero.summary}` : "",
+    evidence.recentDocument ? `document ${evidence.recentDocument.title}` : "",
+    evidence.recentCatalogueItem ? `catalogue ${evidence.recentCatalogueItem.title}` : "",
+  ].filter(Boolean);
+  return bits.length ? bits.join("; ") : "none";
 }
 
 function compactDoc(doc?: IntelligenceDocumentRef | null): IntelligenceDocumentRef | null {

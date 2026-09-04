@@ -1,8 +1,27 @@
 import { businessToolForIntent, ELVEX_FINANCE_MAILBOXES, resolveBusinessSystemIntent } from "@infra/shared";
-import { describeToolCatalogue, INTELLIGENCE_TOOL_NAMES, SYSTEM_META_TOOLS } from "./catalogue.js";
+import { CURRENT_BUSINESS_DATA_PROTOCOL, describeToolCatalogue, INTELLIGENCE_TOOL_NAMES, SYSTEM_META_TOOLS } from "./catalogue.js";
+import { authorizeToolCall, buildAllowedToolCatalogue, deniedToolResult } from "./tool-auth.js";
+import { executePublicWebSearch, looksLikePublicWebAsk, verbaliseWebSearch, webSearchQuery } from "./web-search.js";
+import { classifyTurnFailures } from "./failure-telemetry.js";
+import { persistEngineeringFailures } from "./dev-failure-queue.js";
+import { isElvexRole } from "@infra/shared";
 import { answerGeneralConversation, answerSelectedDocumentFollowUp } from "./conversation.js";
 import { parseIntelligenceDecision, recoverDecision, validateToolRequest } from "./parse.js";
-import { createDefaultCompleter, type IntelligenceCompleter } from "./provider.js";
+import { createReasoningCompleter } from "./brain.js";
+import { evaluateOpenAiShadow, persistShadowEval, shouldRunOpenAiShadow } from "./shadow-eval.js";
+import {
+  answerFromExistingEvidence,
+  classifyEvidenceNeed,
+  extractEvidenceFromTools,
+  isFreshBusinessSystemAsk,
+  mergeEvidence,
+  recordSuccessfulCall,
+  sanitiseEvidenceForModel,
+  shouldReuseSuccessfulTool,
+} from "./evidence.js";
+import type { IntelligenceCompleter } from "./provider.js";
+import { applyGuardToTurn } from "./response-guard.js";
+import { resolveBrainPolicy } from "./brain-policy.js";
 import { routeIntelligenceTurn } from "./router.js";
 import { classifyScope, persistableScope, type ScopeDecision } from "./scope.js";
 import { formatConversationState } from "./state.js";
@@ -38,18 +57,37 @@ export type { IntelligenceDecision };
 
 const SECURITY_AND_PROTOCOL = `You are INFRA's assistant. Scope first, then tools.
 Current document is context, not a command to always search it.
+${CURRENT_BUSINESS_DATA_PROTOCOL}
 Conversational turns (thanks, meaning, rephrase, what were we talking about) need no tools.
 System and index questions use system-meta tools, never the current document.
 Search a document only when the question is about that file's contents.
 Search company knowledge to find or compare documents by meaning.
 Use list_documents for newest/latest/uploaded/recently modified file lists — never substitute semantic search.
 Use Xero or email only when asked and those systems are connected.
+Use web_search only for live public information (weather, public news, public websites). Never for private Xero, emails, SharePoint, or internal procedures.
+After each tool, decide ENOUGH_TO_ANSWER vs NEEDS_MORE_INFORMATION. Compound questions may need a second authorised read (for example this month and last month).
+Do not repeat a successful tool with the same arguments. Business/private systems outrank public web.
 Clarify if ambiguous. Honour corrections and scope switches. Never invent facts, counts, or URLs.
 No D1, Vectorize, or MCP jargon unless an authorised admin asks a technical ops question.
-Write like a colleague: answer first, short, no question-echo.
+Write like a colleague: answer first, short, no question-echo. Include useful structured values in the first answer.
 `;
 
 export async function runIntelligenceTurn(input: {
+  env?: IntelligenceEnv;
+  text: string;
+  state: IntelligenceConversationState;
+  runtime: IntelligenceRuntime;
+  channel?: IntelligenceChannel;
+  buttonHint?: string | null;
+  completer?: IntelligenceCompleter;
+  waitUntil?: (promise: Promise<unknown>) => void;
+}): Promise<IntelligenceTurnResult> {
+  const result = await executeIntelligenceTurn(input);
+  const shadowed = await attachOpenAiShadow(input, result);
+  return attachEngineeringFeedback(input, shadowed);
+}
+
+async function executeIntelligenceTurn(input: {
   env?: IntelligenceEnv;
   text: string;
   state: IntelligenceConversationState;
@@ -147,7 +185,7 @@ export async function runIntelligenceTurn(input: {
   }
 
   if (scoped.scope === "GENERAL_CONVERSATION" && scoped.noTool && !input.state.userCorrection) {
-    return emptyResult({
+    return guardedEmpty({
       kind: "answer",
       text: answerGeneralConversation(input.text, input.state, scoped),
       confidence: "strong",
@@ -157,10 +195,41 @@ export async function runIntelligenceTurn(input: {
       lastAnswerTopic: scoped.lastAnswerTopic ?? input.state.lastAnswerTopic ?? "conversation",
       lastUserIntent: scoped.lastUserIntent,
       currentDocument,
-    });
+    }, input.text, input.state.recentEvidence);
   }
 
-  const completer = input.completer ?? createDefaultCompleter(input.env ?? {});
+  if (
+    classifyEvidenceNeed(input.text, input.state) === "CAN_ANSWER_FROM_EXISTING_EVIDENCE" &&
+    !input.state.userCorrection
+  ) {
+    const reused = answerFromExistingEvidence(input.text, { ...input.state, currentDocument });
+    if (reused) {
+      return guardedEmpty({
+        kind: "answer",
+        text: reused,
+        confidence: "strong",
+        offerSearchOther: false,
+        route: "INTELLIGENT",
+        scope: "GENERAL_CONVERSATION",
+        lastAnswerTopic: scoped.lastAnswerTopic ?? input.state.lastAnswerTopic,
+        lastUserIntent: scoped.lastUserIntent || "existing_evidence",
+        currentDocument,
+      }, input.text, input.state.recentEvidence);
+    }
+  }
+
+  const brain = input.completer
+    ? {
+        completer: input.completer,
+        policy: resolveBrainPolicy({ env: input.env, companyId: input.state.companyId, channel: input.channel }),
+      }
+    : createReasoningCompleter({
+        env: input.env,
+        companyId: input.state.companyId,
+        channel: input.channel,
+        userText: input.text,
+      });
+  const completer = brain.completer;
   const toolCalls: IntelligenceToolResult[] = [];
   const modelRounds: IntelligenceModelUsage[] = [];
   const qualityFlags = new Set<IntelligenceQualityFlag>();
@@ -168,12 +237,44 @@ export async function runIntelligenceTurn(input: {
   const evidenceDocumentIds: string[] = [];
   const transcript: string[] = [];
   let repaired = false;
-  const permitted = input.state.permittedTools.length ? input.state.permittedTools : [...INTELLIGENCE_TOOL_NAMES];
+  const permitted = resolvePermittedTools(input.state);
+  const authCtx = {
+    role: input.state.role,
+    companyId: input.state.companyId,
+    connectors: input.state.connectors,
+    permittedTools: permitted,
+    channel: input.channel ?? null,
+  };
+  const runtime = wrapAuthorizedRuntime(input.runtime, authCtx);
+  let recentEvidence = mergeEvidence(input.state.recentEvidence, extractEvidenceFromTools([]));
+  const finishTurn = (
+    payload: Omit<
+      IntelligenceTurnResult,
+      "totalModelMs" | "totalToolMs" | "provider" | "model" | "estimatedCostUsd" | "citeSource"
+    > & {
+      citeSource?: boolean;
+    },
+  ): IntelligenceTurnResult => {
+    const assembled = finish({
+      ...payload,
+      recentEvidence,
+      brainMode: brain.policy.mode,
+      sufficiency:
+        payload.toolCalls.some((call) => call.ok) &&
+        !(isCompoundBusinessAsk(input.text) && payload.toolCalls.filter((call) => call.ok && call.name.startsWith("xero_")).length < 2)
+          ? "ENOUGH_TO_ANSWER"
+          : payload.toolCalls.length
+            ? "NEEDS_MORE_INFORMATION"
+            : null,
+    });
+    return applyGuardToTurn(assembled, input.text);
+  };
   const workingState = {
     ...input.state,
     currentDocument,
     currentScope: persistableScope(scoped.scope) ?? input.state.currentScope,
     lastUserIntent: scoped.lastUserIntent,
+    recentEvidence,
   };
 
   if (
@@ -192,7 +293,7 @@ export async function runIntelligenceTurn(input: {
     const query = input.state.userCorrection
       ? (namedShift ? input.text : priorUser) || input.text
       : [input.state.currentDocument?.title, priorUser].filter(Boolean).join(" — ") || input.text;
-    const search = await input.runtime.executeTool({
+    const search = await runtime.executeTool({
       name: "search_company_knowledge",
       arguments: { query },
     });
@@ -210,7 +311,7 @@ export async function runIntelligenceTurn(input: {
           .filter(Boolean),
       ),
     ].slice(0, 3);
-    return finish({
+    return finishTurn({
       kind: titles.length ? "answer" : "clarify",
       text: titles.length
         ? `Across your documents I can see: ${titles.join("; ")}. Which should I open?`
@@ -231,8 +332,33 @@ export async function runIntelligenceTurn(input: {
     });
   }
 
+  if (looksLikePublicWebAsk(input.text)) {
+    const web = await runtime.executeTool({
+      name: "web_search",
+      arguments: { query: webSearchQuery(input.text) },
+    });
+    toolCalls.push(web);
+    return finishTurn({
+      kind: web.ok ? "answer" : "failed",
+      text: web.ok ? verbaliseWebSearch(web.data, input.text) : synthesizeToolResult(web, input.text),
+      confidence: web.ok ? "strong" : "none",
+      offerSearchOther: false,
+      toolCalls,
+      currentDocument,
+      evidenceDocumentIds,
+      clarification: false,
+      modelRounds: [],
+      route: "INTELLIGENT",
+      scope: "GENERAL_CONVERSATION",
+      lastAnswerTopic: "public_web",
+      lastUserIntent: "public_web",
+      qualityFlags: [...qualityFlags],
+      repaired: false,
+    });
+  }
+
   if (shouldRunDeterministicMeta(scoped)) {
-    const meta = await runDeterministicMeta(input.runtime, scoped, input.text, completer, permitted, qualityFlags);
+    const meta = await runDeterministicMeta(runtime, scoped, input.text, completer, permitted, qualityFlags);
     if (meta) {
       if (input.state.userCorrection && scoped.clearCurrentDocument && meta.toolCalls[0]?.name === input.state.lastSuccessfulTool) {
         qualityFlags.add("correction_ignored");
@@ -246,7 +372,7 @@ export async function runIntelligenceTurn(input: {
         currentDocument = listed;
         if (!evidenceDocumentIds.includes(listed.id)) evidenceDocumentIds.push(listed.id);
       }
-      return finish({
+      return finishTurn({
         kind: "answer",
         text: meta.text,
         confidence: "strong",
@@ -267,8 +393,12 @@ export async function runIntelligenceTurn(input: {
     }
   }
 
-  if (shouldRunDeterministicRead(scoped, input.text)) {
-    const read = await runDeterministicRead(input.runtime, scoped, input.text, workingState, permitted);
+  if (
+    !brain.policy.useOpenAi &&
+    !isCompoundBusinessAsk(input.text) &&
+    shouldRunDeterministicRead(scoped, input.text, workingState)
+  ) {
+    const read = await runDeterministicRead(runtime, scoped, input.text, workingState, permitted);
     if (read) {
       const doc =
         [...read.toolCalls]
@@ -279,7 +409,9 @@ export async function runIntelligenceTurn(input: {
         currentDocument = doc;
         if (!evidenceDocumentIds.includes(doc.id)) evidenceDocumentIds.push(doc.id);
       }
-      return finish({
+      recentEvidence = mergeEvidence(recentEvidence, extractEvidenceFromTools(read.toolCalls));
+      workingState.recentEvidence = recentEvidence;
+      return finishTurn({
         kind: read.ok ? "answer" : "failed",
         text: read.text,
         confidence: read.ok ? "strong" : "none",
@@ -317,6 +449,7 @@ export async function runIntelligenceTurn(input: {
       input.buttonHint === "search_other_docs"
         ? "The user asked to look in other documents. Call search_company_knowledge. Do not stay on the current document."
         : "",
+      `Retained structured evidence:\n${sanitiseEvidenceForModel(recentEvidence)}`,
       transcript.length ? `Evidence so far:\n${transcript.join("\n\n")}` : "Evidence so far: none yet",
       round === 0
         ? "Decide: enough information? If yes, answer or clarify. If not, call one tool."
@@ -360,7 +493,7 @@ export async function runIntelligenceTurn(input: {
 
     let decision = recovered.decision;
     if (decision.action === "invalid" && !completion.text.trim() && toolCalls.length === 0) {
-      const bootstrap = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+      const bootstrap = await bootstrapRetrieval(runtime, workingState, input.text, input.buttonHint, scoped);
       if (bootstrap) {
         toolCalls.push(bootstrap);
         adoptFromTool(bootstrap, toolCalls, () => currentDocument, (doc) => {
@@ -390,8 +523,14 @@ export async function runIntelligenceTurn(input: {
         name: validated.name,
         arguments: prepareToolArguments(validated.name, validated.arguments, input.text, workingState, scoped.scope),
       };
-      const result = await input.runtime.executeTool(call);
+      if (shouldReuseSuccessfulTool(call, recentEvidence)) {
+        transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
+        continue;
+      }
+      const result = await runtime.executeTool(call);
       toolCalls.push(result);
+      recentEvidence = recordSuccessfulCall(mergeEvidence(recentEvidence, extractEvidenceFromTools([result])), call, result);
+      workingState.recentEvidence = recentEvidence;
       const doc = documentFromToolResult(result);
       if (doc) {
         if (shouldAdoptDocument(validated.name, input.state.currentDocument, doc, input.buttonHint)) {
@@ -401,8 +540,8 @@ export async function runIntelligenceTurn(input: {
       }
       if (looksIrrelevant(result, currentDocument)) qualityFlags.add("irrelevant_result");
       transcript.push(formatToolTranscript(result));
-      if (shouldStopAfterRead(scoped, result)) {
-        return finish({
+      if (shouldStopAfterRead(scoped, result, input.text)) {
+        return finishTurn({
           kind: result.ok ? "answer" : "failed",
           text: synthesizeToolResult(result, input.text),
           confidence: result.ok ? "strong" : "none",
@@ -426,7 +565,7 @@ export async function runIntelligenceTurn(input: {
 
     if (decision.action === "clarify") {
       if (toolCalls.length === 0 && shouldForceScopedTool(scoped)) {
-        const bootstrap = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+        const bootstrap = await bootstrapRetrieval(runtime, workingState, input.text, input.buttonHint, scoped);
         if (bootstrap) {
           toolCalls.push(bootstrap);
           adoptFromTool(
@@ -460,7 +599,7 @@ export async function runIntelligenceTurn(input: {
             if (!evidenceDocumentIds.includes(currentDocument.id)) evidenceDocumentIds.push(currentDocument.id);
           }
         }
-        return finish({
+        return finishTurn({
           kind: "answer",
           text:
             foundTitles.length === 1
@@ -483,7 +622,7 @@ export async function runIntelligenceTurn(input: {
         });
       }
       if (toolCalls.some((call) => call.ok) && scoped.scope === "BUSINESS_SYSTEM") {
-        return finish({
+        return finishTurn({
           kind: "answer",
           text: synthesizeFromToolCalls(toolCalls, input.text),
           confidence: "strong",
@@ -502,7 +641,7 @@ export async function runIntelligenceTurn(input: {
           fallbackUsed: modelRounds.some((row) => row.fallbackUsed),
         });
       }
-      return finish({
+      return finishTurn({
         kind: "clarify",
         text: decision.text.trim() || "Can you give me a little more detail so I look in the right place?",
         confidence: "partial",
@@ -532,7 +671,7 @@ export async function runIntelligenceTurn(input: {
       }
       const metaData = toolCalls.find((call) => SYSTEM_META_TOOLS.has(call.name))?.data;
       if (metaData && inventedCount(decision.text, metaData)) qualityFlags.add("count_invented");
-      return finish({
+      return finishTurn({
         kind: "answer",
         text: decision.text.trim(),
         confidence: decision.confidence,
@@ -559,7 +698,7 @@ export async function runIntelligenceTurn(input: {
     shouldForceScopedTool(scoped) &&
     (scoped.scope === "BUSINESS_SYSTEM" || isProcessOrPolicyAsk(input.text))
   ) {
-    const lastChance = await bootstrapRetrieval(input.runtime, workingState, input.text, input.buttonHint, scoped);
+    const lastChance = await bootstrapRetrieval(runtime, workingState, input.text, input.buttonHint, scoped);
     if (lastChance) {
       toolCalls.push(lastChance);
       adoptFromTool(
@@ -572,7 +711,7 @@ export async function runIntelligenceTurn(input: {
         evidenceDocumentIds,
         input.buttonHint,
       );
-      return finish({
+      return finishTurn({
         kind: lastChance.ok ? "answer" : "failed",
         text: synthesizeToolResult(lastChance, input.text),
         confidence: lastChance.ok ? "strong" : "none",
@@ -594,7 +733,7 @@ export async function runIntelligenceTurn(input: {
   }
 
   if (toolCalls.length === 0 && modelRounds.every((round) => !round.model || round.provider === "none")) {
-    return finish({
+    return finishTurn({
       kind: "failed",
       text: "I couldn't complete that just now. Try again in a moment.",
       confidence: "none",
@@ -614,7 +753,7 @@ export async function runIntelligenceTurn(input: {
   }
 
   if (toolCalls.length > 0) {
-    return finish({
+    return finishTurn({
       kind: "failed",
       text: fallbackFromEvidence(toolCalls, currentDocument, input.text),
       confidence: "partial",
@@ -634,7 +773,7 @@ export async function runIntelligenceTurn(input: {
     });
   }
 
-  return finish({
+  return finishTurn({
     kind: "failed",
     text: GENERIC_RETRY_COPY,
     confidence: "none",
@@ -971,15 +1110,94 @@ function isProcessOrPolicyAsk(text: string): boolean {
   return /\b(process|procedure|policy|how do we)\b/i.test(text);
 }
 
-function shouldRunDeterministicRead(scoped: ScopeDecision, text: string): boolean {
+function shouldRunDeterministicRead(scoped: ScopeDecision, text: string, state?: IntelligenceConversationState): boolean {
   if (scoped.clarify || !scoped.tool) return false;
+  if (state && classifyEvidenceNeed(text, state) === "CAN_ANSWER_FROM_EXISTING_EVIDENCE") return false;
   if (scoped.scope === "BUSINESS_SYSTEM") return true;
   return scoped.scope === "COMPANY_KNOWLEDGE" && scoped.tool === "search_company_knowledge" && isProcessOrPolicyAsk(text);
 }
 
-function shouldStopAfterRead(scoped: ScopeDecision, result: IntelligenceToolResult): boolean {
+function shouldStopAfterRead(scoped: ScopeDecision, result: IntelligenceToolResult, text = ""): boolean {
   void result;
+  if (isCompoundBusinessAsk(text)) return false;
   return scoped.scope === "BUSINESS_SYSTEM";
+}
+
+function isCompoundBusinessAsk(text: string): boolean {
+  return (
+    /\b(and|compare|versus|vs\.?|better than|last month|previous month|this month and)\b/i.test(text) &&
+    /\b(sales|xero|invoice|revenue|overdue|profit|month)\b/i.test(text)
+  );
+}
+
+function resolvePermittedTools(state: IntelligenceConversationState): string[] {
+  const rebuilt = buildAllowedToolCatalogue({
+    role: state.role,
+    companyId: state.companyId,
+    connectors: state.connectors,
+  });
+  if (isElvexRole(state.role)) {
+    if (state.permittedTools.length) {
+      return rebuilt.filter((name) => state.permittedTools.includes(name) || name === "web_search");
+    }
+    return rebuilt;
+  }
+  if (state.permittedTools.length) {
+    return state.permittedTools.includes("web_search") ? state.permittedTools : [...state.permittedTools, "web_search"];
+  }
+  if (state.connectors.length) return rebuilt;
+  return [...INTELLIGENCE_TOOL_NAMES];
+}
+
+function wrapAuthorizedRuntime(
+  runtime: IntelligenceRuntime,
+  ctx: { role?: string | null; companyId?: string | null; connectors: string[]; permittedTools: string[]; channel?: string | null },
+): IntelligenceRuntime {
+  return {
+    async executeTool(call) {
+      const auth = authorizeToolCall(ctx, call);
+      if (!auth.allowed) return deniedToolResult(call, auth);
+      if (call.name === "web_search") {
+        const executed = await runtime.executeTool(call).catch(() => null);
+        if (!executed || executed.error === "tool_not_permitted") return executePublicWebSearch(call);
+        return executed;
+      }
+      return runtime.executeTool(call);
+    },
+  };
+}
+
+async function attachEngineeringFeedback(
+  input: {
+    env?: IntelligenceEnv;
+    text: string;
+    state: IntelligenceConversationState;
+    channel?: IntelligenceChannel;
+    waitUntil?: (promise: Promise<unknown>) => void;
+  },
+  result: IntelligenceTurnResult,
+): Promise<IntelligenceTurnResult> {
+  const events = classifyTurnFailures({
+    result,
+    question: input.text,
+    companyId: input.state.companyId,
+    channel: input.channel,
+    role: input.state.role,
+  });
+  const labeled: IntelligenceTurnResult = {
+    ...result,
+    engineeringEvents: events,
+    correlationId: result.correlationId ?? events[0]?.correlationId ?? result.correlationId,
+  };
+  if (!events.length) return labeled;
+  const db = (input.env as IntelligenceEnv & { DB?: Parameters<typeof persistEngineeringFailures>[0] } | undefined)?.DB;
+  const job = persistEngineeringFailures(db, events);
+  if (input.waitUntil) {
+    input.waitUntil(job.catch(() => undefined));
+    return labeled;
+  }
+  await job.catch(() => undefined);
+  return labeled;
 }
 
 function mailboxSearchQuery(text: string, args: Record<string, unknown>): string {
@@ -1033,10 +1251,22 @@ async function runDeterministicRead(
       ok: xero.ok || outlook.ok,
     };
   }
-  const result = await runtime.executeTool({
+  const planned = {
     name: toolName,
     arguments: prepareToolArguments(toolName, {}, text, state, scoped.scope),
-  });
+  };
+  if (shouldReuseSuccessfulTool(planned, state.recentEvidence) && !isFreshBusinessSystemAsk(text)) {
+    const reused = answerFromExistingEvidence(text, state);
+    if (reused) return { text: reused, toolCalls: [], ok: true };
+    if (state.recentEvidence?.recentXero?.summary && /^xero_/.test(toolName)) {
+      return { text: `Xero: ${state.recentEvidence.recentXero.summary}`, toolCalls: [], ok: true };
+    }
+    if (state.recentEvidence?.recentEmail && /outlook/i.test(toolName)) {
+      const email = state.recentEvidence.recentEmail;
+      return { text: `The newest email is “${email.subject}” from ${email.from}.`, toolCalls: [], ok: true };
+    }
+  }
+  const result = await runtime.executeTool(planned);
   const toolCalls = [result];
   if (result.ok && (toolName === "search_company_knowledge" || toolName === "search")) {
     const hits = searchHits(result.data);
@@ -1184,6 +1414,8 @@ function finish(
     "totalModelMs" | "totalToolMs" | "provider" | "model" | "estimatedCostUsd" | "citeSource"
   > & {
     citeSource?: boolean;
+    recentEvidence?: IntelligenceTurnResult["recentEvidence"];
+    brainMode?: IntelligenceTurnResult["brainMode"];
   },
 ): IntelligenceTurnResult {
   const last = input.modelRounds.at(-1);
@@ -1210,7 +1442,85 @@ function finish(
     qualityFlags: input.qualityFlags ?? [],
     repaired: Boolean(input.repaired),
     fallbackUsed: Boolean(input.fallbackUsed),
+    recentEvidence: input.recentEvidence ?? null,
+    brainMode: input.brainMode,
+    terminal: input.terminal,
+    correlationId: last?.correlationId ?? null,
+    guardChecks: input.guardChecks,
+    sufficiency: input.sufficiency ?? null,
   };
+}
+
+function guardedEmpty(
+  input: Parameters<typeof emptyResult>[0],
+  question: string,
+  evidence?: IntelligenceTurnResult["recentEvidence"],
+): IntelligenceTurnResult {
+  return applyGuardToTurn(
+    {
+      ...emptyResult(input),
+      recentEvidence: evidence ?? null,
+    },
+    question,
+  );
+}
+
+async function attachOpenAiShadow(
+  input: {
+    env?: IntelligenceEnv;
+    text: string;
+    state: IntelligenceConversationState;
+    channel?: IntelligenceChannel;
+    completer?: IntelligenceCompleter;
+    waitUntil?: (promise: Promise<unknown>) => void;
+  },
+  result: IntelligenceTurnResult,
+): Promise<IntelligenceTurnResult> {
+  const policy = resolveBrainPolicy({
+    env: input.env,
+    companyId: input.state.companyId,
+    channel: input.channel,
+  });
+  const labeled: IntelligenceTurnResult = {
+    ...result,
+    brainMode: result.brainMode ?? (policy.enabled ? policy.mode : "cloudflare"),
+  };
+  if (
+    !shouldRunOpenAiShadow({
+      env: input.env,
+      companyId: input.state.companyId,
+      channel: input.channel,
+      completerInjected: Boolean(input.completer),
+    }) ||
+    !input.env
+  ) {
+    return labeled;
+  }
+  const job = async () => {
+    const shadow = await evaluateOpenAiShadow({
+      env: input.env!,
+      text: input.text,
+      state: {
+        ...input.state,
+        recentEvidence: labeled.recentEvidence ?? input.state.recentEvidence,
+      },
+      live: labeled,
+    });
+    const db = (input.env as IntelligenceEnv & { DB?: Parameters<typeof persistShadowEval>[0] }).DB;
+    if (db && input.state.companyId) {
+      await persistShadowEval(db, shadow, input.state.companyId, input.channel ?? "api");
+    }
+    return shadow;
+  };
+  if (input.waitUntil) {
+    input.waitUntil(job().catch(() => undefined));
+    return labeled;
+  }
+  try {
+    return { ...labeled, shadowEval: await job() };
+  } catch {
+    return labeled;
+  }
 }
 
 export function normalizeConfidence(value: unknown): IntelligenceConfidence {

@@ -3,6 +3,7 @@ import whatsappRoutes from "../routes/whatsapp";
 import oauthRoutes from "../routes/oauth";
 import qualityLoopRoutes from "../routes/quality-loop";
 import portalChatRoutes from "../routes/portal-chat";
+import engineeringFailureRoutes from "../routes/engineering-failures";
 import { classifyScope } from "./intelligence/scope";
 import { buildConversationState } from "./intelligence/state";
 import { assertProductionSuperstackCapabilities } from "./production-superstack";
@@ -30,6 +31,8 @@ describe("production superstack deploy guard", () => {
     expect(portal.some((path) => path.includes("/chat/messages"))).toBe(true);
     const quality = routePaths(qualityLoopRoutes);
     expect(quality.some((path) => path.includes("/api/platform/quality-loop"))).toBe(true);
+    const engineering = routePaths(engineeringFailureRoutes);
+    expect(engineering.some((path) => path.includes("/api/internal/engineering-failures"))).toBe(true);
   });
 
   it("keeps shared channel-independent routing for email, process, and Xero", () => {
