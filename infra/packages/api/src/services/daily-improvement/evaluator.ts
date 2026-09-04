@@ -140,12 +140,12 @@ export function heuristicEvaluate(input: {
 
 export async function evaluateInteraction(
   env: Env,
-  input: { interaction: DailyImprovementInteraction; sequence: ConversationTurn[]; runId: string },
+  input: { interaction: DailyImprovementInteraction; sequence: ConversationTurn[]; runId: string; allowOpenAi?: boolean },
 ): Promise<DailyImprovementEvaluation> {
   const heuristic = heuristicEvaluate(input);
   let merged = heuristic;
   let kind: DailyImprovementEvaluation["evaluatorKind"] = "heuristic";
-  if (hasOpenAiApiKey(env)) {
+  if (input.allowOpenAi !== false && hasOpenAiApiKey(env)) {
     try {
       const openai = await openaiEvaluate(env, input, heuristic);
       merged = mergeEvaluations(heuristic, openai);

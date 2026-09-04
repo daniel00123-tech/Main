@@ -12,6 +12,8 @@ export const ENGINEERING_MINUTE = 5;
 export const MAX_ENGINEERING_JOBS_PER_CYCLE = 5;
 export const MAX_DEPLOYS_PER_CYCLE = 1;
 export const MAX_SEQUENCE_TURNS = 8;
+export const MAX_EVALUATIONS_PER_WINDOW = 80;
+export const MAX_OPENAI_EVALUATIONS_PER_WINDOW = 8;
 
 export const QUALITY_TRAFFIC_CLASS = "QUALITY" as const;
 export const ENGINEERING_TRAFFIC_CLASS = "ENGINEERING" as const;

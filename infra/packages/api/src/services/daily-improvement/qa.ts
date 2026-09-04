@@ -22,7 +22,7 @@ import {
   replaceClusters,
   replaceIssues,
 } from "./store";
-import { QUALITY_TRAFFIC_CLASS } from "./constants";
+import { MAX_EVALUATIONS_PER_WINDOW, MAX_OPENAI_EVALUATIONS_PER_WINDOW, QUALITY_TRAFFIC_CLASS } from "./constants";
 import { londonDateOf, previousCompletedQaWindow } from "./windows";
 import type { ConversationTurn } from "./types";
 
@@ -44,7 +44,9 @@ export async function runDailyImprovementQa(
   const backfilled = await backfillRecentCustomerInteractions(env.DB, window.from, window.to);
   const interactions = await listInteractionsSince(env.DB, window.from, window.to);
   const evaluations = [];
-  for (const interaction of interactions) {
+  const slice = interactions.slice(-MAX_EVALUATIONS_PER_WINDOW);
+  let openaiBudget = MAX_OPENAI_EVALUATIONS_PER_WINDOW;
+  for (const interaction of slice) {
     const prior = await listSequence(env.DB, interaction.companyId, interaction.conversationId, interaction.createdAt);
     const sequence: ConversationTurn[] = prior.flatMap((row) => {
       const turns: ConversationTurn[] = [];
@@ -52,7 +54,14 @@ export async function runDailyImprovementQa(
       if (row.assistantAnswer) turns.push({ role: "assistant", text: row.assistantAnswer, toolsExecuted: row.toolsExecuted, createdAt: row.createdAt });
       return turns;
     });
-    const evaluation = await evaluateInteraction(env, { interaction, sequence, runId: begun.id });
+    const useOpenAi = openaiBudget > 0;
+    if (useOpenAi) openaiBudget -= 1;
+    const evaluation = await evaluateInteraction(env, {
+      interaction,
+      sequence,
+      runId: begun.id,
+      allowOpenAi: useOpenAi,
+    });
     await insertEvaluation(env.DB, evaluation);
     evaluations.push(evaluation);
   }
