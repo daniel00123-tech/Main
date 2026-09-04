@@ -50,6 +50,11 @@ async function adminFetch(
   const url = `https://company-mcp.internal${path}`;
   const headers = new Headers(init.headers);
   headers.set("Authorization", auth);
+  try {
+    headers.set("Host", new URL(mcp.endpointUrl).host);
+  } catch {
+    /* keep default host */
+  }
 
   if (binding) {
     return binding.fetch(new Request(url, { ...init, headers }));

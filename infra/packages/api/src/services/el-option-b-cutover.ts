@@ -6,20 +6,27 @@
 
 import { automationRecipientEmailOf, isValidRecipientEmail } from "@infra/shared";
 import type { Env } from "../env";
-import { getCompanyById } from "./control-plane";
+import { getCompanyById, listMcpEnvironments } from "./control-plane";
 import { sendTransactionalEmail } from "./email/send-transactional";
 import { getAutomationDefinition } from "./automation-engine/store";
 import {
   discoverKnowledgeIntakeTarget,
   getKnowledgeIntakeTarget,
 } from "./knowledge-intake";
+import { resolveMcpAdminAuthHeader } from "./mcp-admin-bridge";
+import { resolveMcpFetcher } from "./mcp-client";
+import { fetchCompanyMcpConnectorSnapshot } from "./mcp-connector-mirror";
 import {
   MicrosoftGraphError,
   graphGet,
+  hostnameFromSharePointUrl,
+  listAllDrives,
   listDriveChildren,
   listSiteDrives,
   listSites,
   listTenantUsers,
+  probeGraphPath,
+  readGraphAppTokenClaims,
   type MicrosoftGraphConfig,
 } from "./microsoft-graph";
 import { resolveMicrosoftAppCredentials } from "./microsoft-credentials";
@@ -309,7 +316,10 @@ async function probeMailbox(
   }
 }
 
-async function probeSharePoint(config: MicrosoftGraphConfig): Promise<{
+async function probeSharePoint(
+  config: MicrosoftGraphConfig,
+  hostnames: string[] = [],
+): Promise<{
   result: Verdict;
   sites: Array<{ id: string; name: string | null; webUrl: string | null }>;
   drive: { id: string; name: string | null; driveType: string | null } | null;
@@ -317,38 +327,78 @@ async function probeSharePoint(config: MicrosoftGraphConfig): Promise<{
   canCreate: boolean | null;
   canUpload: boolean | null;
   canRead: boolean | null;
+  tokenRoles: string[];
+  tokenAppId: string | null;
+  pathProbes: Array<{ path: string; ok: boolean; status: number | null; requestId: string | null }>;
   error: string | null;
 }> {
+  const claims = readGraphAppTokenClaims(config.accessToken);
+  const paths = [
+    "/sites?search=Elvex&$select=id,displayName,webUrl&$top=1",
+    "/sites/root?$select=id,name,displayName,webUrl",
+    "/drives?$select=id,name,driveType,webUrl&$top=1",
+    ...hostnames.slice(0, 2).map((host) => `/sites/${host}?$select=id,name,displayName,webUrl`),
+  ];
+  const pathProbes = [];
+  for (const path of paths) {
+    const probed = await probeGraphPath(config, path);
+    pathProbes.push({
+      path: probed.path,
+      ok: probed.ok,
+      status: probed.status,
+      requestId: probed.requestId,
+    });
+  }
+  const fail = (error: string) => ({
+    result: "FAIL" as Verdict,
+    sites: [] as Array<{ id: string; name: string | null; webUrl: string | null }>,
+    drive: null,
+    canEnumerate: false,
+    canCreate: null,
+    canUpload: null,
+    canRead: null,
+    tokenRoles: claims.roles,
+    tokenAppId: claims.appId,
+    pathProbes,
+    error,
+  });
   try {
-    const sites = await listSites(config, "Elvex");
-    const site = sites.find((row) => !/personal|my\.sharepoint|onedrive/i.test(`${row.webUrl ?? ""} ${row.displayName ?? ""}`)) ?? sites[0];
-    if (!site?.id) {
-      return {
-        result: "FAIL",
-        sites: [],
-        drive: null,
-        canEnumerate: false,
-        canCreate: null,
-        canUpload: null,
-        canRead: null,
-        error: "No SharePoint site was discoverable",
-      };
-    }
-    const drives = await listSiteDrives(config, site.id);
-    const drive =
+    const sites = await listSites(config, "Elvex", hostnames);
+    let site =
+      sites.find((row) => !/personal|my\.sharepoint|onedrive/i.test(`${row.webUrl ?? ""} ${row.displayName ?? ""}`)) ??
+      sites[0];
+    let drives = site?.id ? await listSiteDrives(config, site.id).catch(() => []) : [];
+    let drive =
       drives.find((row) => row.driveType === "documentLibrary" || /documents/i.test(row.name ?? "")) ??
       drives.find((row) => row.driveType !== "personal") ??
-      drives[0];
+      drives[0] ??
+      null;
+    if (!drive?.id) {
+      const allDrives = await listAllDrives(config).catch(() => []);
+      drive =
+        allDrives.find((row) => row.driveType === "documentLibrary" || /documents/i.test(row.name ?? "")) ??
+        allDrives.find((row) => row.driveType !== "personal") ??
+        allDrives[0] ??
+        null;
+      const host = hostnameFromSharePointUrl(drive?.webUrl ?? drive?.sharePointIds?.siteUrl);
+      if (!site?.id && host) {
+        const extra = await listSites(config, "*", [host]);
+        site = extra[0] ?? site;
+      }
+      if (!site?.id && drive?.sharePointIds?.siteId) {
+        site = {
+          id: drive.sharePointIds.siteId,
+          name: drive.name,
+          displayName: drive.name,
+          webUrl: drive.webUrl,
+        };
+      }
+    }
+    if (!site?.id) return fail("No SharePoint site was discoverable");
     if (!drive?.id) {
       return {
-        result: "FAIL",
+        ...fail("No document library was discoverable"),
         sites: sites.map((row) => ({ id: row.id, name: row.displayName ?? row.name, webUrl: row.webUrl })),
-        drive: null,
-        canEnumerate: false,
-        canCreate: null,
-        canUpload: null,
-        canRead: null,
-        error: "No document library was discoverable",
       };
     }
     const children = await listDriveChildren(config, drive.id);
@@ -360,17 +410,43 @@ async function probeSharePoint(config: MicrosoftGraphConfig): Promise<{
       canCreate: null,
       canUpload: null,
       canRead: children.length >= 0,
+      tokenRoles: claims.roles,
+      tokenAppId: claims.appId,
+      pathProbes,
       error: null,
+    };
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err));
+  }
+}
+
+async function probeElMcpAdmin(env: Env): Promise<Record<string, unknown>> {
+  const mcp = (await listMcpEnvironments(env.DB, COMPANY_ID)).find((item) => item.enabled);
+  if (!mcp) return { result: "FAIL", error: "EL MCP environment not registered" };
+  const auth = resolveMcpAdminAuthHeader(env, mcp);
+  const binding = resolveMcpFetcher(env, mcp.serviceBindingRef);
+  if (!auth.authorizationHeader) {
+    return { result: "FAIL", source: auth.source, error: "No EL MCP admin token binding is present" };
+  }
+  try {
+    const headers = new Headers({ Authorization: auth.authorizationHeader, Accept: "application/json" });
+    try {
+      headers.set("Host", new URL(mcp.endpointUrl).host);
+    } catch {
+      /* ignore */
+    }
+    const request = new Request("https://company-mcp.internal/admin/health", { method: "GET", headers });
+    const response = binding ? await binding.fetch(request) : await fetch(request);
+    return {
+      result: response.ok ? "PASS" : "FAIL",
+      source: auth.source,
+      httpStatus: response.status,
+      error: response.ok ? null : `EL MCP /admin/health HTTP ${response.status}`,
     };
   } catch (err) {
     return {
       result: "FAIL",
-      sites: [],
-      drive: null,
-      canEnumerate: false,
-      canCreate: null,
-      canUpload: null,
-      canRead: null,
+      source: auth.source,
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -452,25 +528,27 @@ export async function runElOptionBGraphCutover(
       });
     }
 
-    const sp = await probeSharePoint(config);
-    sharePoint = sp;
-    if (sp.result === "PASS") {
-      const discovered = await discoverKnowledgeIntakeTarget(env, { companyId: COMPANY_ID, actor });
-      landingZone = {
-        result: discovered.status === "ready" && discovered.site_id && discovered.drive_id && discovered.root_folder_id
+    const mcp = (await listMcpEnvironments(env.DB, COMPANY_ID)).find((item) => item.enabled);
+    const snapshot = mcp ? await fetchCompanyMcpConnectorSnapshot(env, mcp).catch(() => null) : null;
+    const hostnames = [snapshot?.microsoft?.sharePointHostname].filter(
+      (value): value is string => Boolean(value && value.trim()),
+    );
+    const sp = await probeSharePoint(config, hostnames);
+    sharePoint = { ...sp, hostnames };
+    const discovered = await discoverKnowledgeIntakeTarget(env, { companyId: COMPANY_ID, actor });
+    landingZone = {
+      result:
+        discovered.status === "ready" && discovered.site_id && discovered.drive_id && discovered.root_folder_id
           ? "PASS"
           : "FAIL",
-        status: discovered.status,
-        siteId: discovered.site_id,
-        driveId: discovered.drive_id,
-        folderId: discovered.root_folder_id,
-        rootPath: discovered.root_folder_path,
-        webUrl: discovered.web_url,
-        error: discovered.last_error,
-      };
-    } else {
-      landingZone = { result: "FAIL", error: `SharePoint probe failed: ${sp.error}` };
-    }
+      status: discovered.status,
+      siteId: discovered.site_id,
+      driveId: discovered.drive_id,
+      folderId: discovered.root_folder_id,
+      rootPath: discovered.root_folder_path,
+      webUrl: discovered.web_url,
+      error: discovered.last_error ?? (sp.result === "FAIL" ? sp.error : null),
+    };
   }
 
   const window = sevenDayBackfillWindow();
@@ -529,10 +607,17 @@ export async function runElOptionBGraphCutover(
     };
   });
 
+  const mcpAdmin = await probeElMcpAdmin(env);
   const remainingFailures: string[] = [];
   if (tokenResult.result === "FAIL") remainingFailures.push(`EL token: ${tokenResult.error}`);
   if (usedSharedConnector) remainingFailures.push("Runtime still resolved the shared INFRA Business Connector");
+  if (landingZone.result === "FAIL") {
+    remainingFailures.push(`SharePoint landing zone: ${String(landingZone.error ?? "not ready")}`);
+  }
   if (ingest.counts.failed > 0) remainingFailures.push(`${ingest.counts.failed} attachment candidate(s) remain FAILED`);
+  if (mcpAdmin.result === "FAIL") {
+    remainingFailures.push(`EL MCP admin: ${String(mcpAdmin.error ?? "Unauthorized")} (source ${String(mcpAdmin.source ?? "none")})`);
+  }
   if (bindings.EL_SECRET_PRESENT === "NO") {
     remainingFailures.push("EL_MS_CLIENT_SECRET is not bound on infra-api");
   }
@@ -640,6 +725,7 @@ export async function runElOptionBGraphCutover(
     mailboxes,
     sharePoint,
     landingZone,
+    mcpAdmin,
     windowFrom: window.from.toISOString(),
     windowTo: window.to.toISOString(),
     ingest,
