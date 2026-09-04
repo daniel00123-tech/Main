@@ -1,5 +1,6 @@
 import type { IntelligenceConversationState } from "./types.js";
 import type { ScopeDecision } from "./scope.js";
+import { describeUserAsk, isHollowAssistantText, previousSubstantiveUserText } from "./evidence.js";
 
 export function answerGeneralConversation(
   text: string,
@@ -12,6 +13,12 @@ export function answerGeneralConversation(
     if (/\b(shorter|brief|fewer words)\b/i.test(text)) return shorten(previous);
     if (/\bmore detail\b/i.test(text)) return `${previous}\nI can go back to the source if you want more than that summary.`;
     return simplify(previous);
+  }
+  if (decision.lastUserIntent === "more_detail") {
+    if (previous && !isHollowAssistantText(previous)) {
+      return `${previous}\nI can go back to the source if you want more than that summary.`;
+    }
+    return "I don't have a previous answer to expand. Ask the question again and I will.";
   }
   if (decision.lastUserIntent === "memory") {
     return remember(state, text);
@@ -36,16 +43,17 @@ export function answerGeneralConversation(
 }
 
 function remember(state: IntelligenceConversationState, text: string): string {
+  const lastAsk = previousSubstantiveUserText(state.recentTurns ?? [], text);
   if (/\blast document|which (file|document)\b/i.test(text) && state.currentDocument) {
     return `The last document we used was ${state.currentDocument.title}.`;
   }
   if (/\bgo back|previous\b/i.test(text) && state.recentDocuments[0]) {
     return `Before that we had ${state.recentDocuments[0].title}. I can open it again if you want.`;
   }
-  if (/\bwhat did i (just )?ask\b/i.test(text) && state.lastUserIntent) {
-    return `You asked about ${humanTopic(state.lastAnswerTopic || state.lastUserIntent)}.`;
+  if (/\bwhat did i (just )?ask\b/i.test(text) && (lastAsk || state.lastUserIntent)) {
+    return `You asked about ${lastAsk ? describeUserAsk(lastAsk) : humanTopic(state.lastAnswerTopic || state.lastUserIntent || "that")}.`;
   }
-  if (/\bwhat did you (just )?(tell|say)|remind me\b/i.test(text) && state.lastAnswerText) {
+  if (/\bwhat did you (just )?(tell|say)|remind me\b/i.test(text) && state.lastAnswerText && !isHollowAssistantText(state.lastAnswerText)) {
     return simplify(state.lastAnswerText);
   }
   if (/\bwhich source\b/i.test(text) && state.currentDocument?.source) {
@@ -55,7 +63,12 @@ function remember(state: IntelligenceConversationState, text: string): string {
     const amount = state.lastAnswerText.match(/£\s?[\d,]+(?:\.\d{2})?/);
     if (amount) return `The amount I mentioned was ${amount[0]}.`;
   }
-  if (state.lastAnswerTopic) {
+  if (lastAsk) {
+    return `We were talking about ${describeUserAsk(lastAsk)}${
+      state.currentDocument ? `, and I still have ${state.currentDocument.title} as context` : ""
+    }.`;
+  }
+  if (state.lastAnswerTopic && !isHollowAssistantText(state.lastAnswerText)) {
     return `We were talking about ${humanTopic(state.lastAnswerTopic)}${
       state.currentDocument ? `, and I still have ${state.currentDocument.title} as context` : ""
     }.`;

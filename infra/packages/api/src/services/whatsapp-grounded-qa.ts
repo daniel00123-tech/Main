@@ -80,13 +80,17 @@ const STOP = new Set([
   "something",
 ]);
 
-const KEEP_SHORT = new Set(["cv", "uk", "hr", "qa", "it"]);
+const KEEP_SHORT = new Set(["cv", "uk", "hr", "qa", "it", "po"]);
 const SYNONYMS: Record<string, string[]> = {
   van: ["vehicle", "vehicles", "fleet", "car"],
   vehicle: ["van", "vehicles", "fleet"],
   drive: ["driver", "driving", "driven"],
   fuel: ["petrol", "diesel", "mileage", "litre"],
   sales: ["selling", "sold"],
+  po: ["purchase", "purchasing", "procurement"],
+  purchase: ["po", "purchasing", "procurement"],
+  purchasing: ["purchase", "procurement", "po"],
+  procurement: ["purchase", "purchasing", "po"],
 };
 
 export type DocumentQaDiagnostics = {

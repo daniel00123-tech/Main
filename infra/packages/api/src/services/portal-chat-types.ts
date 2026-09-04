@@ -42,6 +42,8 @@ export type PortalChatMessageMetadata = {
   confidence?: string | null;
   scope?: string | null;
   toolNames?: string[];
+  successfulTools?: string[];
+  duplicateSuccessfulCalls?: number;
   sources?: Array<{ id: string; title: string; url?: string | null }>;
   permissionDenied?: boolean;
   controlledAction?: boolean;
