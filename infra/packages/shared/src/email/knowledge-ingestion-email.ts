@@ -1,7 +1,7 @@
 import { PLATFORM_EMAIL_NO_REPLY_FOOTER } from "./identity";
 
-function escapeHtml(value: string): string {
-  return value
+function escapeHtml(value: string | null | undefined): string {
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -33,11 +33,24 @@ export type KnowledgeIngestionReportTemplateData = {
   chunkTotal: number | null;
   duplicateCount: number;
   failedCount: number;
+  updatedCount?: number;
+  sourceObservedCount?: number;
+  missedCount?: number;
   sourceCounts: Array<{ label: string; count: number }>;
   documents: KnowledgeIngestionEmailLine[];
   failures: KnowledgeIngestionEmailLine[];
   omittedDocuments: number;
   portalUrl: string;
+  subjectOverride?: string;
+  correctionPreamble?: string;
+  mailboxesScanned?: string[];
+  messagesWithAttachments?: number;
+  attachmentsDiscovered?: number;
+  attachmentsIndexed?: number;
+  attachmentsSkipped?: number;
+  attachmentsFailed?: number;
+  pipelineHealth?: "healthy" | "degraded" | "failed";
+  gapWarning?: string | null;
 };
 
 function formatKnowledgeLine(item: KnowledgeIngestionEmailLine, index: number): string[] {
@@ -56,23 +69,28 @@ function formatKnowledgeLine(item: KnowledgeIngestionEmailLine, index: number): 
 export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionReportTemplateData) {
   const title = `${data.companyDisplayName} — Daily Knowledge Activity`;
   const datePart = data.reportDateLabel;
-  const subject = data.manual
-    ? `INFRA — ${data.companyDisplayName} Daily Knowledge Activity — ${datePart} (manual test)`
-    : `INFRA — ${data.companyDisplayName} Daily Knowledge Activity — ${datePart}`;
+  const subject =
+    data.subjectOverride?.trim() ||
+    (data.manual
+      ? `INFRA — ${data.companyDisplayName} Daily Knowledge Activity — ${datePart} (manual test)`
+      : `INFRA — ${data.companyDisplayName} Daily Knowledge Activity — ${datePart}`);
   const footer = PLATFORM_EMAIL_NO_REPLY_FOOTER;
   const range = `Reporting period: ${data.windowFromLabel} → ${data.windowToLabel}`;
-  const empty = data.discoveredCount === 0;
+  const empty = data.discoveredCount === 0 && (data.sourceObservedCount ?? 0) === 0 && (data.missedCount ?? 0) === 0;
   const sourceLines = data.sourceCounts.map((row) => `${row.label}: ${row.count}`);
   const documentLines = data.documents.flatMap((item, index) => [...formatKnowledgeLine(item, index + 1), ""]);
   const failureLines = data.failures.map(
     (item) => `- ${item.title}${item.failureReason ? ` — ${item.failureReason}` : ""}`,
   );
+  const health = data.pipelineHealth ?? "healthy";
+  const mailboxLines = (data.mailboxesScanned ?? []).map((address) => `   - ${address}`);
 
   const text = [
     "INFRA",
     title,
     range,
     data.manual ? "This was a manual test run. The daily schedule is unchanged." : "",
+    data.correctionPreamble ? data.correctionPreamble : "",
     "",
     empty
       ? `INFRA checked ${data.companyDisplayName} knowledge sources. No new documents were added to the knowledge base during this reporting period.`
@@ -81,15 +99,29 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
           "",
           `New documents discovered: ${data.discoveredCount}`,
           `Successfully indexed: ${data.indexedCount}`,
+          `Updated / re-indexed: ${data.updatedCount ?? 0}`,
+          `Source activity not indexed: ${data.sourceObservedCount ?? data.missedCount ?? 0}`,
           `New vector chunks: ${data.chunkTotal == null ? "not recorded" : String(data.chunkTotal)}`,
           `Duplicates/skipped: ${data.duplicateCount}`,
           `Failed ingestion: ${data.failedCount}`,
+          "",
+          "MAILBOX SCAN",
+          "",
+          `Mailboxes scanned: ${(data.mailboxesScanned ?? []).length}`,
+          ...mailboxLines,
+          `Email messages with attachments: ${data.messagesWithAttachments ?? 0}`,
+          `Attachments discovered: ${data.attachmentsDiscovered ?? data.discoveredCount}`,
+          `Attachments indexed: ${data.attachmentsIndexed ?? data.indexedCount}`,
+          `Attachments skipped: ${data.attachmentsSkipped ?? data.duplicateCount}`,
+          `Attachments failed: ${data.attachmentsFailed ?? data.failedCount}`,
           "",
           ...(sourceLines.length ? ["BY SOURCE", "", ...sourceLines, ""] : []),
           ...(documentLines.length ? ["NEW KNOWLEDGE", "", ...documentLines] : []),
           ...(failureLines.length ? ["FAILED / NEEDS ATTENTION", "", ...failureLines, ""] : []),
         ].join("\n"),
     "",
+    data.gapWarning ? data.gapWarning : "",
+    `Job run: completed. Pipeline health: ${health}.`,
     "This run completed successfully.",
     "",
     `View Infra: ${data.portalUrl}`,
@@ -105,12 +137,22 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
     <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.discoveredCount}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Successfully indexed</p>
     <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.indexedCount}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Updated / re-indexed</p>
+    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.updatedCount ?? 0}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Source activity not indexed</p>
+    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.sourceObservedCount ?? data.missedCount ?? 0}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">New vector chunks</p>
     <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.chunkTotal == null ? "Not recorded" : data.chunkTotal}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Duplicates/skipped</p>
     <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.duplicateCount}</p>
     <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Failed ingestion</p>
-    <p style="margin:0 0 16px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.failedCount}</p>`;
+    <p style="margin:0 0 16px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.failedCount}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Mailboxes scanned</p>
+    <p style="margin:0 0 12px;font-size:14px;color:#CBD5E1;">${escapeHtml((data.mailboxesScanned ?? []).join(", ") || "none")}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Email messages with attachments</p>
+    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.messagesWithAttachments ?? 0}</p>
+    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Attachments discovered / indexed / skipped / failed</p>
+    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#F5F9FF;">${data.attachmentsDiscovered ?? data.discoveredCount} / ${data.attachmentsIndexed ?? data.indexedCount} / ${data.attachmentsSkipped ?? data.duplicateCount} / ${data.attachmentsFailed ?? data.failedCount}</p>`;
 
   const sourceHtml = data.sourceCounts
     .map(
@@ -158,6 +200,7 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
           <tr><td style="padding:0 24px 8px;color:#F5F9FF;font-size:22px;font-weight:700;">${escapeHtml(title)}</td></tr>
           <tr><td style="padding:0 24px 8px;color:#94A3B8;font-size:14px;">${escapeHtml(range)}</td></tr>
           ${data.manual ? `<tr><td style="padding:0 24px 16px;color:#93C5FD;font-size:13px;">Manual test run — the daily schedule is unchanged.</td></tr>` : ""}
+          ${data.correctionPreamble ? `<tr><td style="padding:0 24px 16px;color:#CBD5E1;font-size:13px;">${escapeHtml(data.correctionPreamble)}</td></tr>` : ""}
           <tr><td style="padding:0 24px;">${summaryHtml}</td></tr>
           ${sourceHtml ? `<tr><td style="padding:0 24px 8px;font-weight:600;color:#F5F9FF;">By source</td></tr><tr><td style="padding:0 24px;">${sourceHtml}</td></tr>` : ""}
           ${documentHtml ? `<tr><td style="padding:0 24px 8px;font-weight:600;color:#F5F9FF;">New knowledge</td></tr><tr><td style="padding:0 24px;">${documentHtml}</td></tr>` : ""}
@@ -167,7 +210,13 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
               : ""
           }
           ${failureHtml ? `<tr><td style="padding:0 24px 8px;font-weight:600;color:#F5F9FF;">Failed / needs attention</td></tr><tr><td style="padding:0 24px;">${failureHtml}</td></tr>` : ""}
-          <tr><td style="padding:8px 24px 16px;color:#94A3B8;font-size:13px;">This run completed successfully.</td></tr>
+          ${
+            data.gapWarning
+              ? `<tr><td style="padding:0 24px 12px;color:#FCA5A5;font-weight:600;">${escapeHtml(data.gapWarning)}</td></tr>`
+              : ""
+          }
+          <tr><td style="padding:8px 24px 8px;color:#CBD5E1;font-size:13px;">Job run: completed. Pipeline health: ${escapeHtml(health)}.</td></tr>
+          <tr><td style="padding:0 24px 16px;color:#94A3B8;font-size:13px;">This run completed successfully.</td></tr>
           <tr><td style="padding:0 24px 8px;"><a href="${escapeHtml(data.portalUrl)}" style="display:inline-block;background:#2F80FF;color:#FFFFFF;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">View Infra</a></td></tr>
           <tr><td style="padding:20px 24px 24px;color:#94A3B8;font-size:12px;">${escapeHtml(footer)}</td></tr>
         </table>

@@ -95,6 +95,7 @@ import intelligenceEvalRoutes from "./routes/intelligence-eval";
 import openaiBrainRoutes from "./routes/openai-brain";
 import engineeringFailureRoutes from "./routes/engineering-failures";
 import qualityLoopRoutes from "./routes/quality-loop";
+import dailyImprovementRoutes from "./routes/daily-improvement";
 import portalChatRoutes from "./routes/portal-chat";
 import { publicProductionLineage } from "./services/production-lineage";
 
@@ -116,6 +117,7 @@ app.route("/", intelligenceEvalRoutes);
 app.route("/", openaiBrainRoutes);
 app.route("/", engineeringFailureRoutes);
 app.route("/", qualityLoopRoutes);
+app.route("/", dailyImprovementRoutes);
 app.route("/", portalChatRoutes);
 
 app.use("*", async (c, next) => {
@@ -1279,6 +1281,29 @@ const worker = {
       });
     }
 
+    if (runWhatsAppMinute) {
+      try {
+        const { maybeRunDailyImprovementWindows } = await import("./services/daily-improvement");
+        const daily = await maybeRunDailyImprovementWindows(env, new Date(), { provision: false });
+        if (daily.actions.length) {
+          await recordPlatformHeartbeat(env.DB, {
+            key: "daily_improvement",
+            label: "Daily improvement loop",
+            success: true,
+            error: null,
+            detail: daily,
+          });
+        }
+      } catch (err) {
+        await recordPlatformHeartbeat(env.DB, {
+          key: "daily_improvement",
+          label: "Daily improvement loop",
+          success: false,
+          error: err instanceof Error ? err.message : "Daily improvement failed",
+        });
+      }
+    }
+
     if (runAutomation) {
       try {
         const { maybeRunQualityLoop } = await import("./services/quality-loop");
@@ -1289,6 +1314,15 @@ const worker = {
           success: !quality.reason || quality.reason === "completed" || quality.reason.startsWith("Cadence"),
           error: quality.ran && quality.reason !== "completed" ? quality.reason : null,
           detail: { ran: quality.ran, runId: quality.runId ?? null, kind: quality.kind ?? null, reason: quality.reason },
+        });
+        const { maybeRunDailyImprovementWindows } = await import("./services/daily-improvement");
+        const daily = await maybeRunDailyImprovementWindows(env);
+        await recordPlatformHeartbeat(env.DB, {
+          key: "daily_improvement",
+          label: "Daily improvement loop",
+          success: true,
+          error: null,
+          detail: daily,
         });
       } catch (err) {
         await recordPlatformHeartbeat(env.DB, {

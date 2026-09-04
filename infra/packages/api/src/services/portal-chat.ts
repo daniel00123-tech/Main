@@ -28,6 +28,7 @@ import {
   settleElCustomerRequest,
   shouldChargeElCustomerRequest,
 } from "./el-customer-billing";
+import { scheduleDailyImprovementCapture } from "./daily-improvement";
 import {
   emptyPortalChatContext,
   titleFromUserText,
@@ -362,6 +363,31 @@ export async function sendPortalChatMessage(
     content: reply,
     metadata,
   });
+
+  scheduleDailyImprovementCapture(
+    env,
+    input.waitUntil,
+    {
+      interactionId,
+      companyId: input.companyId,
+      userId: input.sessionUser.userId,
+      role: membership?.role ?? null,
+      channel: "portal_chat",
+      conversationId,
+      userMessage: text,
+      assistantAnswer: reply,
+      toolsRequested: result.toolCalls.map((call) => call.name),
+      toolsExecuted: result.toolCalls.filter((call) => call.ok).map((call) => call.name),
+      availableCapabilities: state.permittedTools ?? [],
+      terminalState: result.terminal ?? result.kind,
+      provider: result.provider ?? null,
+      model: result.model ?? null,
+      providerMode: result.brainMode ?? null,
+      trafficClass,
+      sourceClient: "portal_chat",
+      customerChargeCents: shouldChargeElCustomerRequest(input.companyId, trafficClass) ? 3 : 0,
+    },
+  );
 
   const nextContext = contextFromTurn(conversation.context, result, reply);
   const nextTitle =

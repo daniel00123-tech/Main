@@ -153,6 +153,11 @@ describe("Outlook attachment support", () => {
     expect(isOutlookAttachmentRetrievable(null, "model.xlsx")).toBe(true);
     expect(isOutlookAttachmentRetrievable("application/zip", "archive.zip")).toBe(false);
   });
+
+  it("does not treat inline signature images as knowledge attachments", () => {
+    expect(isOutlookAttachmentRetrievable("image/png", "image001.png")).toBe(false);
+    expect(isOutlookAttachmentRetrievable("image/jpeg", "outlook-logo.jpg")).toBe(false);
+  });
 });
 
 describe("Outlook provenance formatting", () => {

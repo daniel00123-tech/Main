@@ -9,10 +9,13 @@ import {
   XERO_MONTH_TO_DATE_SALES_EMAIL_TEMPLATE,
 } from "./templates";
 import {
+  classifyActivityKind,
   classifyKnowledgeIngestionOutcome,
   classifyKnowledgeIngestionSource,
+  classifyKnowledgePipelineHealth,
   groupKnowledgeSourceCounts,
   isSafeHttpUrl,
+  knowledgeIngestionGapWarning,
   resolveKnowledgeIngestionWindow,
   safeIngestionFailureReason,
   summariseKnowledgeIngestion,
@@ -246,11 +249,24 @@ describe("knowledge ingestion window and classification", () => {
       chunkTotal: 14,
       duplicateCount: 0,
       failedCount: 1,
+      updatedCount: 0,
+      sourceObservedCount: 1,
+      missedCount: 1,
     });
     expect(groupKnowledgeSourceCounts([
       { sourceKey: "onedrive" } as never,
       { sourceKey: "onedrive" } as never,
     ])).toEqual([{ key: "onedrive", label: "OneDrive", count: 2 }]);
+    expect(
+      classifyActivityKind({
+        createdAt: "2026-09-04T18:41:13.276Z",
+        modifiedAt: "2026-09-04T15:41:18Z",
+        windowStart: new Date("2026-09-03T17:39:03.388Z"),
+        windowEnd: new Date("2026-09-04T17:39:03.388Z"),
+        indexed: false,
+        outcome: "failed",
+      }),
+    ).toBe("source_observed");
   });
 
   it("renders empty and failed knowledge activity emails", () => {
@@ -329,5 +345,79 @@ describe("knowledge ingestion window and classification", () => {
     expect(populated.text).toContain("FAILED / NEEDS ATTENTION");
     expect(populated.text).toContain("extraction failed");
     expect(populated.html).toContain("https://elvex-my.sharepoint.com/personal/a/Jobs.xlsx");
+
+    const corrected = renderKnowledgeIngestionReportEmail({
+      companyDisplayName: "EL Business",
+      reportDateLabel: "4 September 2026",
+      windowFromLabel: "3 September 2026 18:39 Europe/London",
+      windowToLabel: "4 September 2026 18:39 Europe/London",
+      manual: true,
+      discoveredCount: 2,
+      indexedCount: 0,
+      chunkTotal: null,
+      updatedCount: 0,
+      sourceObservedCount: 2,
+      missedCount: 2,
+      sourceCounts: [{ label: "Email attachments", count: 2 }],
+      documents: [
+        {
+          title: "Attachment on: Quote request",
+          sourceLabel: "Email attachments",
+          indexed: false,
+          chunkCount: null,
+          modifiedAt: "2026-09-04T15:41:18Z",
+          url: null,
+          location: null,
+          mailbox: "info@elvexpropertyservices.com",
+          parentSubject: "Quote request",
+          sender: null,
+          failureReason: "EL Outlook attachments are not auto-ingested into company knowledge",
+        },
+      ],
+      failures: [],
+      omittedDocuments: 0,
+      portalUrl: "https://app.infrastack.app/portal/el-business/automations",
+      subjectOverride: "INFRA — EL Business Daily Knowledge Activity — Corrected Test",
+      correctionPreamble: "This corrects the 4 September 2026 manual test that reported zero new documents.",
+    });
+    expect(corrected.subject).toBe("INFRA — EL Business Daily Knowledge Activity — Corrected Test");
+    expect(corrected.text).toContain("Source activity not indexed: 2");
+    expect(corrected.text).toContain("This corrects the 4 September 2026 manual test");
+    expect(corrected.html).toContain("Source activity not indexed");
+  });
+
+  it("marks discovered>0 indexed=0 as a degraded attachment gap unless every item was a legitimate skip", () => {
+    expect(
+      classifyKnowledgePipelineHealth({
+        jobOk: true,
+        discoveredCount: 2,
+        indexedCount: 0,
+        failedCount: 2,
+      }),
+    ).toBe("degraded");
+    expect(
+      knowledgeIngestionGapWarning({
+        discoveredCount: 2,
+        indexedCount: 0,
+        failedCount: 2,
+      }),
+    ).toBe("WARNING — ATTACHMENT INGESTION GAP");
+    expect(
+      classifyKnowledgePipelineHealth({
+        jobOk: true,
+        discoveredCount: 2,
+        indexedCount: 0,
+        failedCount: 0,
+        legitimateSkipCount: 2,
+      }),
+    ).toBe("healthy");
+    expect(
+      classifyKnowledgePipelineHealth({
+        jobOk: false,
+        discoveredCount: 0,
+        indexedCount: 0,
+        failedCount: 0,
+      }),
+    ).toBe("failed");
   });
 });

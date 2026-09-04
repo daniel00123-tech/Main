@@ -12,6 +12,7 @@ import {
 } from "./microsoft-graph-subscriptions";
 import { provisionOutlookMailboxGraphSubscriptions } from "./microsoft-outlook-notifications";
 import { syncOutlookMailbox } from "./microsoft-outlook-sync";
+import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
 
 export async function runMicrosoftScheduledSync(env: Env): Promise<{
   companies: number;
@@ -85,6 +86,28 @@ export async function runMicrosoftScheduledSync(env: Env): Promise<{
           `${source.displayName}: ${err instanceof Error ? err.message : "sync failed"}`,
         );
       }
+    }
+  }
+
+  const registryCompanies = await env.DB.prepare(
+    `SELECT DISTINCT company_id FROM company_mailbox_registry WHERE enabled_for_attachment_ingestion = 1`,
+  ).all<{ company_id: string }>();
+  const windowTo = new Date();
+  const windowFrom = new Date(windowTo.getTime() - 6 * 60 * 60 * 1000);
+  for (const row of registryCompanies.results ?? []) {
+    if (row.company_id === "co_caddington" || row.company_id === "co_ht") continue;
+    try {
+      await ingestApprovedOutlookAttachments(env, {
+        companyId: row.company_id,
+        windowFrom,
+        windowTo,
+        actor: "system:microsoft-scheduler",
+      });
+      sourcesSynced++;
+    } catch (err) {
+      errors.push(
+        `mailbox-registry ${row.company_id}: ${err instanceof Error ? err.message : "attachment ingest failed"}`,
+      );
     }
   }
 

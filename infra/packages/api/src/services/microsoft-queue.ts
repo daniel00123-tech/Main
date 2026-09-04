@@ -36,6 +36,7 @@ import {
 } from "./microsoft-outlook-graph";
 import { isMicrosoftDailyJobBudgetExceeded } from "./observability/runaway-limits";
 import { logInfraEvent } from "./observability/structured-log";
+import { recordJobIngestionEvent } from "./knowledge-ingestion-events";
 
 export const MICROSOFT_KNOWLEDGE_INGEST_QUEUE = "microsoft-knowledge-ingest";
 export const MICROSOFT_KNOWLEDGE_INGEST_DLQ = "microsoft-knowledge-ingest-dlq";
@@ -897,12 +898,50 @@ async function completeJob(
   status: MicrosoftFileJobStatus,
 ): Promise<void> {
   const now = nowIso();
+  const job = await db
+    .prepare(
+      `SELECT company_id, source_id, file_name, external_item_id, parent_message_id, drive_id, mime_type, size_bytes, modified_at, item_kind
+       FROM microsoft_file_jobs WHERE id = ? LIMIT 1`,
+    )
+    .bind(jobId)
+    .first<{
+      company_id: string;
+      source_id: string;
+      file_name: string;
+      external_item_id: string;
+      parent_message_id: string | null;
+      drive_id: string;
+      mime_type: string | null;
+      size_bytes: number | null;
+      modified_at: string | null;
+      item_kind: string | null;
+    }>();
   await db
     .prepare(
       `UPDATE microsoft_file_jobs SET status = ?, updated_at = ?, completed_at = ?, last_error = NULL WHERE id = ?`,
     )
     .bind(status, now, now, jobId)
     .run();
+  if (job) {
+    const source = await db
+      .prepare(`SELECT source_type, mailbox_address FROM microsoft_connector_sources WHERE id = ? LIMIT 1`)
+      .bind(job.source_id)
+      .first<{ source_type: string; mailbox_address: string | null }>();
+    const sourceType =
+      job.item_kind === "mail_attachment" ? "outlook_attachments" : (source?.source_type ?? "other_microsoft365");
+    await recordJobIngestionEvent({ DB: db } as Env, {
+      companyId: job.company_id,
+      sourceType,
+      status,
+      filename: job.file_name,
+      providerItemId: job.external_item_id,
+      parentMessageId: job.parent_message_id,
+      mailboxAddress: source?.mailbox_address ?? (job.item_kind ? job.drive_id : null),
+      mimeType: job.mime_type,
+      sizeBytes: job.size_bytes,
+      sourceModifiedAt: job.modified_at,
+    }).catch(() => undefined);
+  }
 }
 
 async function markJobFailed(db: D1Database, jobId: string, error: string): Promise<void> {

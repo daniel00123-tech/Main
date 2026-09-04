@@ -6,9 +6,11 @@ import {
   KNOWLEDGE_INGESTION_DAILY_EMAIL_TEMPLATE,
   automationRecipientEmailOf,
   capKnowledgeList,
+  classifyKnowledgePipelineHealth,
   formatCivilDateLong,
   isManualAutomationRunTrigger,
   isValidRecipientEmail,
+  knowledgeIngestionGapWarning,
   renderKnowledgeIngestionReportEmail,
   resolveKnowledgeIngestionWindow,
   zonedCivilParts,
@@ -119,6 +121,26 @@ export async function executeKnowledgeIngestionDailyEmail(
   );
   const listed = capKnowledgeList(report.documents);
   const failures = report.documents.filter((item) => item.outcome === "failed");
+  const legitimateSkips = report.documents.filter(
+    (item) => item.outcome === "skipped" || item.outcome === "duplicate",
+  ).length;
+  const pipelineHealth = classifyKnowledgePipelineHealth({
+    jobOk: true,
+    discoveredCount: report.discoveredCount,
+    indexedCount: report.indexedCount,
+    failedCount: report.failedCount,
+    skippedCount: report.duplicateCount,
+    legitimateSkipCount: legitimateSkips,
+  });
+  const gapWarning = knowledgeIngestionGapWarning({
+    discoveredCount: report.discoveredCount,
+    indexedCount: report.indexedCount,
+    failedCount: report.failedCount,
+    legitimateSkipCount: legitimateSkips,
+  });
+  const mailboxesScanned = [
+    ...new Set(report.documents.map((item) => item.mailbox).filter((item): item is string => Boolean(item))),
+  ];
   const portalUrl = `${portalOrigin(env)}/portal/${company.slug}/automations`;
   const email = renderKnowledgeIngestionReportEmail({
     companyDisplayName: company.name,
@@ -131,6 +153,9 @@ export async function executeKnowledgeIngestionDailyEmail(
     chunkTotal: report.chunkTotal,
     duplicateCount: report.duplicateCount,
     failedCount: report.failedCount,
+    updatedCount: report.updatedCount,
+    sourceObservedCount: report.sourceObservedCount,
+    missedCount: report.missedCount,
     sourceCounts: report.sourceCounts.map((row) => ({ label: row.label, count: row.count })),
     documents: listed.items.map((item) => ({
       title: item.title,
@@ -160,6 +185,16 @@ export async function executeKnowledgeIngestionDailyEmail(
     })),
     omittedDocuments: listed.omitted,
     portalUrl,
+    mailboxesScanned,
+    messagesWithAttachments: report.documents.filter((item) => item.sourceKey === "outlook_attachments").length,
+    attachmentsDiscovered: report.documents.filter((item) => item.sourceKey === "outlook_attachments").length,
+    attachmentsIndexed: report.documents.filter((item) => item.sourceKey === "outlook_attachments" && item.indexed).length,
+    attachmentsSkipped: report.documents.filter(
+      (item) => item.sourceKey === "outlook_attachments" && (item.outcome === "skipped" || item.outcome === "duplicate"),
+    ).length,
+    attachmentsFailed: report.documents.filter((item) => item.sourceKey === "outlook_attachments" && item.outcome === "failed").length,
+    pipelineHealth,
+    gapWarning,
   });
 
   const resultBase = {
@@ -177,6 +212,9 @@ export async function executeKnowledgeIngestionDailyEmail(
     chunkTotal: report.chunkTotal,
     duplicateCount: report.duplicateCount,
     failedCount: report.failedCount,
+    updatedCount: report.updatedCount,
+    sourceObservedCount: report.sourceObservedCount,
+    missedCount: report.missedCount,
     scannedSourceTypes: report.scannedSourceTypes,
     sourcesQueried: report.sourcesQueried,
     recipientEmail: recipient,

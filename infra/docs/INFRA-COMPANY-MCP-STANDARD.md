@@ -122,6 +122,16 @@ Every event includes `company_id`. Clusters are shared across tenants so one Out
 
 No auto-deploy from a single customer failure.
 
+## 11a. Daily self-improvement loop
+
+New company MCPs inherit the platform daily improvement loop automatically. There is no per-business implementation.
+
+Every genuine customer request on WhatsApp, Portal Chat, ChatGPT MCP, and future chat surfaces creates one canonical parent interaction (no secrets). At 16:30 Europe/London the Automation Engine evaluates interactions since the previous completed QA window. At 17:00 Europe/London INFRA emails the Daily Improvement Report to the existing Daniel admin recipient. The email is informational: no Approve, Confirm, or Deploy button. At 17:05 the engineering queue starts without waiting for confirmation.
+
+Cursor / the dev supervisor stays off the customer path. Defects must be reproduced before a fix. Fixes must be generic. Each fix adds a permanent regression test. Shared-platform changes must prove EL, Caddington, HT, and future tenants stay isolated. QA, engineering, tests, and shadow carry 0 customer charge. Automatic deploy is allowed only after reproduction, local tests, regression, tenant isolation, billing safety, and the canonical deploy guard. Post-deploy failure rolls back automatically.
+
+The loop must not weaken RBAC, rotate secrets, expand write permissions, change tenant pricing, or promote OpenAI `shadow → canary → primary`. The 08:00 Daily EL knowledge activity automation is a separate ingestion job and is not rescheduled by this loop.
+
 ## 12. OpenAI reasoning compatibility
 
 The reasoning provider is a shared INFRA interface with per-tenant policy:
@@ -152,6 +162,6 @@ EL is the reference validation tenant, not the only tenant that can use the stac
 
 ## 14. Deployment requirements
 
-One canonical `infra-api` superstack. Tenant feature branches must not last-deploy-wins over shared capabilities. `npm run deploy` fails if WhatsApp, OAuth, MCP, Portal Chat, OpenAI provider, Cloudflare provider, RBAC, usage, billing, automation, quality, tenant registry, tool registry, or failure telemetry is missing.
+One canonical `infra-api` superstack. Tenant feature branches must not last-deploy-wins over shared capabilities. `npm run deploy` fails if WhatsApp, OAuth, MCP, Portal Chat, OpenAI provider, Cloudflare provider, RBAC, usage, billing, automation, quality, daily improvement, tenant registry, tool registry, or failure telemetry is missing.
 
 No new Worker. No secret rotation as part of MCP onboarding unless the connector itself requires a new secret ref.

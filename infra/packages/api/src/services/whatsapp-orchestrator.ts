@@ -12,6 +12,7 @@ import {
 } from "./mcp-knowledge-standard";
 import { UNKNOWN_WHATSAPP_ACCOUNT_MESSAGE, tryNormalizeE164 } from "./phone";
 import { scheduleQualityAudit } from "./quality-auditor";
+import { scheduleDailyImprovementCapture } from "./daily-improvement";
 import { resolveActiveWhatsAppRuntime } from "./quality-loop";
 import { DEFAULT_QUALITY_RUNTIME } from "./quality-loop/runtime-config";
 import { qualitySystemGuidance } from "./quality-loop/runtime-policy";
@@ -162,7 +163,13 @@ import {
   type WhatsAppReplyButton,
 } from "./whatsapp-buttons";
 import { downloadWhatsAppMedia } from "./whatsapp-media";
-import { applyCustomerTone, UNSUPPORTED_BUTTON, VOICE_ACK, VOICE_NOT_CONFIGURED, VOICE_UNCLEAR } from "./whatsapp-tone";
+import {
+  applyCustomerTone,
+  UNSUPPORTED_BUTTON,
+  VOICE_ACK,
+  voiceFailureReply,
+  voiceTranscriptEcho,
+} from "./whatsapp-tone";
 import { transcribeWhatsAppAudio } from "./whatsapp-transcribe";
 import type { WhatsAppParsedInbound } from "./whatsapp-webhook";
 
@@ -220,6 +227,9 @@ export type WhatsAppOrchestratorResult = {
   boundEntityTitle?: string | null;
   interactionContextId?: string | null;
   usedStaleLastDocument?: boolean;
+  transcript?: string | null;
+  transcriptEchoBody?: string | null;
+  transcriptEchoSent?: boolean;
 };
 
 export function looksLikeWriteIntent(text: string): boolean {
@@ -452,6 +462,32 @@ async function handleWhatsAppInboundMessageInner(
   });
   scheduleStuckTurnWatch(options?.waitUntil, env, item.wamid);
   let firstVisibleSent = false;
+  const isVoiceInbound =
+    item.inputKind === "voice" || item.type === "audio" || item.type === "voice";
+  let voiceListeningAckSent = false;
+  if (isVoiceInbound && sender) {
+    const claimed = await claimWhatsAppAck(env, item.wamid);
+    if (claimed) {
+      const ack = await maybeSendReply(env, sender, VOICE_ACK);
+      voiceListeningAckSent = ack.ok;
+      firstVisibleSent = ack.ok || firstVisibleSent;
+      if (ack.ok) {
+        marks.acknowledgementSentAt = Date.now();
+        marks.firstVisibleAt ??= Date.now();
+        await stampWhatsAppLifecycle(env, item.wamid, {
+          state: "acknowledged",
+          acknowledgedAt: nowIso(),
+          acknowledgementSentAt: nowIso(),
+          firstVisibleAt: nowIso(),
+          ackSendOk: 1,
+          userStage: "listening_to_voice_note",
+        });
+      }
+    } else {
+      firstVisibleSent = true;
+      voiceListeningAckSent = true;
+    }
+  }
   const failsafeWork = sender
     ? sendFirstResponseFailsafe(env, {
         toE164: sender,
@@ -476,7 +512,15 @@ async function handleWhatsAppInboundMessageInner(
     item,
     sender,
     lastUserText: conversation?.turns?.slice().reverse().find((turn) => turn.role === "user")?.text ?? null,
+    listeningAckSent: voiceListeningAckSent,
   });
+  if (inboundResolved.acknowledgementSent) firstVisibleSent = true;
+  if (inboundResolved.inputKind === "voice" && inboundResolved.transcript) {
+    await stampWhatsAppLifecycle(env, item.wamid, {
+      inboundText: inboundResolved.transcript.slice(0, 4000),
+      userStage: "voice_transcribed",
+    });
+  }
   if (inboundResolved.terminalReply) {
     const sent = await maybeSendReply(env, sender, inboundResolved.terminalReply);
     firstVisibleSent = sent.ok || firstVisibleSent;
@@ -492,6 +536,8 @@ async function handleWhatsAppInboundMessageInner(
           channel: "whatsapp",
           inputKind: "voice",
           inputType: "voice",
+          transcript: inboundResolved.transcript ?? null,
+          transcriptEchoBody: inboundResolved.transcriptEchoBody ?? null,
           transcriptionProvider: inboundResolved.transcriptionProvider ?? null,
           transcriptionFailed: Boolean(inboundResolved.transcriptionFailed),
           transcriptionReason: inboundResolved.transcriptionReason ?? null,
@@ -502,6 +548,18 @@ async function handleWhatsAppInboundMessageInner(
           costLane: "whatsapp_transcription",
         },
       });
+      if (conversation?.companyId) {
+        await rememberTurn(
+          env,
+          identity.user.id,
+          conversation.companyId,
+          conversation.turns ?? [],
+          "[voice note]",
+          inboundResolved.terminalReply,
+          conversation.entities,
+          { userLimit: 4000 },
+        );
+      }
     }
     return {
       handled: true,
@@ -516,6 +574,9 @@ async function handleWhatsAppInboundMessageInner(
       outcome: inboundResolved.outcome ?? "answered",
       inputKind: inboundResolved.inputKind,
       acknowledgementSent: inboundResolved.acknowledgementSent,
+      transcript: inboundResolved.transcript ?? null,
+      transcriptEchoBody: inboundResolved.transcriptEchoBody ?? null,
+      transcriptEchoSent: Boolean(inboundResolved.transcriptEchoSent),
     };
   }
 
@@ -1272,6 +1333,10 @@ async function handleWhatsAppInboundMessageInner(
       text,
       polished,
       answered.entities,
+      {
+        extraAssistant: inboundResolved.transcriptEchoBody ?? null,
+        userLimit: inputKind === "voice" ? 4000 : 500,
+      },
     );
     const latency = summariseWhatsAppLatency(marks);
     await recordWhatsAppChannelUsage(env, {
@@ -1335,6 +1400,8 @@ async function handleWhatsAppInboundMessageInner(
         fallbackToStaleLastDocument: usedStaleLastDocument,
         buttonFailed: Boolean(sent.buttonFailed),
         transcript: inboundResolved.transcript ?? null,
+        transcriptEchoBody: inboundResolved.transcriptEchoBody ?? null,
+        transcriptEchoSent: Boolean(inboundResolved.transcriptEchoSent),
         transcriptionProvider: inboundResolved.transcriptionProvider ?? null,
         transcriptionMs: inboundResolved.transcriptionMs ?? null,
         transcriptionFailed: Boolean(inboundResolved.transcriptionFailed),
@@ -1445,6 +1512,8 @@ async function handleWhatsAppInboundMessageInner(
           inputKind: "voice",
           inputType: "voice",
           transcript: inboundResolved.transcript ?? null,
+          transcriptEchoBody: inboundResolved.transcriptEchoBody ?? null,
+          transcriptEchoSent: Boolean(inboundResolved.transcriptEchoSent),
           transcriptionProvider: inboundResolved.transcriptionProvider ?? null,
           transcriptionMs: inboundResolved.transcriptionMs ?? null,
           costLane: "whatsapp_transcription",
@@ -1452,6 +1521,23 @@ async function handleWhatsAppInboundMessageInner(
       });
     }
     scheduleQualityAudit(env, options?.waitUntil, interactionId);
+    scheduleDailyImprovementCapture(env, options?.waitUntil, {
+      interactionId,
+      companyId: companyDecision.companyId,
+      userId: identity.user.id,
+      role: identity.memberships.find((row) => row.companyId === companyDecision.companyId)?.role ?? null,
+      channel: "whatsapp",
+      conversationId: interactionContextId ?? item.from ?? null,
+      userMessage: text,
+      assistantAnswer: polished,
+      toolsRequested: answered.toolName ? [answered.toolName] : [],
+      toolsExecuted: answered.toolName ? [answered.toolName] : [],
+      terminalState: sent.ok ? answered.outcome : "NO_FINAL_RESPONSE",
+      latencyMs: latency.totalMs,
+      trafficClass: whatsappTraffic,
+      sourceClient: "whatsapp",
+      wamid: item.wamid,
+    });
     await recordAuditEvent(env.DB, {
       companyId: companyDecision.companyId,
       eventType: sent.ok ? "whatsapp.inbound_identified" : "whatsapp.outbound_failed",
@@ -1491,6 +1577,9 @@ async function handleWhatsAppInboundMessageInner(
       boundEntityTitle: primaryDoc?.title ?? boundEntityTitle,
       interactionContextId,
       usedStaleLastDocument,
+      transcript: inboundResolved.transcript ?? null,
+      transcriptEchoBody: inboundResolved.transcriptEchoBody ?? null,
+      transcriptEchoSent: Boolean(inboundResolved.transcriptEchoSent),
     };
   } catch (err) {
     console.error(
@@ -2229,7 +2318,7 @@ function formatSearchHits(
 
 async function resolveInboundUserInput(
   env: Env,
-  input: { item: WhatsAppInboundItem; sender: string; lastUserText: string | null },
+  input: { item: WhatsAppInboundItem; sender: string; lastUserText: string | null; listeningAckSent?: boolean },
 ): Promise<{
   text: string;
   inputKind: "text" | "voice" | "button";
@@ -2240,6 +2329,8 @@ async function resolveInboundUserInput(
   buttonAction?: string | null;
   contextToken?: string | null;
   transcript?: string | null;
+  transcriptEchoBody?: string | null;
+  transcriptEchoSent?: boolean;
   transcriptionProvider?: string | null;
   transcriptionMs?: number | null;
   transcriptionFailed?: boolean;
@@ -2275,14 +2366,18 @@ async function resolveInboundUserInput(
   }
 
   if (kind === "voice" || input.item.type === "audio" || input.item.type === "voice") {
-    const ack = await maybeSendReply(env, input.sender, VOICE_ACK);
+    let acknowledgementSent = Boolean(input.listeningAckSent);
+    if (!acknowledgementSent) {
+      const ack = await maybeSendReply(env, input.sender, VOICE_ACK);
+      acknowledgementSent = ack.ok;
+    }
     const downloaded = await downloadWhatsAppMedia(env, input.item.mediaId);
     if (!downloaded.ok) {
       return {
         text: "",
         inputKind: "voice",
-        acknowledgementSent: ack.ok,
-        terminalReply: VOICE_UNCLEAR,
+        acknowledgementSent,
+        terminalReply: voiceFailureReply(downloaded.reason),
         voiceDownloadFailed: true,
         voiceDownloadReason: downloaded.reason,
         transcriptionFailed: true,
@@ -2297,12 +2392,11 @@ async function resolveInboundUserInput(
     });
     const transcriptionMs = Date.now() - started;
     if (!transcribed.ok) {
-      const reply = transcribed.reason === "not_configured" ? VOICE_NOT_CONFIGURED : VOICE_UNCLEAR;
       return {
         text: "",
         inputKind: "voice",
-        acknowledgementSent: ack.ok,
-        terminalReply: reply,
+        acknowledgementSent,
+        terminalReply: voiceFailureReply(transcribed.reason),
         transcriptionProvider: transcribed.provider,
         transcriptionMs,
         transcriptionFailed: true,
@@ -2313,19 +2407,23 @@ async function resolveInboundUserInput(
       return {
         text: "",
         inputKind: "voice",
-        acknowledgementSent: ack.ok,
-        terminalReply: VOICE_UNCLEAR,
+        acknowledgementSent,
+        terminalReply: voiceFailureReply("empty"),
         transcriptionProvider: transcribed.provider,
         transcriptionMs,
         transcriptionFailed: true,
         transcriptionReason: "empty",
       };
     }
+    const echo = voiceTranscriptEcho(transcribed.text);
+    const echoSend = await maybeSendReply(env, input.sender, echo.body);
     return {
       text: transcribed.text,
       inputKind: "voice",
-      acknowledgementSent: ack.ok,
+      acknowledgementSent,
       transcript: transcribed.text,
+      transcriptEchoBody: echo.body,
+      transcriptEchoSent: echoSend.ok,
       transcriptionProvider: transcribed.provider,
       transcriptionMs,
     };
@@ -2563,14 +2661,18 @@ async function rememberTurn(
   userText: string,
   assistantText: string,
   entities?: WhatsAppEntityMemory,
+  options?: { extraAssistant?: string | null; userLimit?: number },
 ): Promise<void> {
+  const userLimit = options?.userLimit ?? 500;
+  const extra = options?.extraAssistant?.trim();
   await saveWhatsAppConversation(env, {
     userId,
     companyId,
     pendingCompanySelection: false,
     turns: [
       ...prior,
-      { role: "user", text: userText.slice(0, 500) },
+      { role: "user", text: userText.slice(0, userLimit) },
+      ...(extra ? [{ role: "assistant" as const, text: extra.slice(0, 4000) }] : []),
       { role: "assistant", text: assistantText.slice(0, 500) },
     ],
     entities,

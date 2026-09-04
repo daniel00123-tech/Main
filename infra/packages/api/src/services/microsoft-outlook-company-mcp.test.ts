@@ -88,4 +88,20 @@ describe("company MCP Outlook get composition", () => {
       subject: "Invoice",
     });
   });
+
+  it("passes attachment metadata through instead of dropping it", () => {
+    const composed = composeOutlookGetResult(
+      {
+        id: "AAMk-att",
+        subject: "Quote",
+        hasAttachments: true,
+        attachments: [{ id: "att-1", name: "quote.pdf", contentType: "application/pdf", isInline: false }],
+      },
+      "info@elvexpropertyservices.com",
+    );
+    expect(composed.hasAttachments).toBe(true);
+    expect(composed.attachments).toEqual([
+      { id: "att-1", name: "quote.pdf", contentType: "application/pdf", isInline: false },
+    ]);
+  });
 });
