@@ -1,3 +1,4 @@
+import { normaliseBusinessResult } from "./normalise.js";
 import type { IntelligenceToolResult } from "./types.js";
 
 export const GENERIC_RETRY_COPY = "I need another moment to finish that. Try asking once more.";
@@ -122,7 +123,12 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     return "Your current permissions don’t allow this action.";
   }
   if (looksTimeout(call)) {
-    return "I need another moment to finish that. Try asking once more.";
+    if (/outlook|mailbox|email/i.test(call.name)) return "Outlook is unreachable just now.";
+    if (/^xero_/.test(call.name)) return "I couldn’t reach Xero just now.";
+    if (/knowledge|search|fetch|list_documents|get_knowledge/i.test(call.name)) {
+      return "I couldn’t reach company files just now.";
+    }
+    return "That connected system is unreachable just now.";
   }
   if (!call.ok) {
     if (/outlook|mailbox|email/i.test(call.name)) return "I couldn’t reach Email just now.";
@@ -135,20 +141,22 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
 
   if (/outlook/i.test(call.name)) {
     const messages = extractOutlookMessages(call.data);
-    if (!messages.length) return "I couldn’t find any matching emails.";
-    const newest = messages[0]!;
-    const mailbox = newest.mailboxAddress ? ` in ${newest.mailboxAddress}` : "";
-    const when = newest.receivedDateTime ? ` (${newest.receivedDateTime})` : "";
-    const from = newest.from ? ` from ${newest.from}` : "";
-    if (call.name === "outlook_get_message" || (/\b(full|body|what does .{0,40}(say|said))\b/i.test(question) && newest.body)) {
+    const newest = messages[0];
+    const mailbox = newest?.mailboxAddress ? ` in ${newest.mailboxAddress}` : "";
+    const when = newest?.receivedDateTime ? ` (${newest.receivedDateTime})` : "";
+    const from = newest?.from ? ` from ${newest.from}` : "";
+    if (/\bhow many\b/i.test(question) && messages.length) {
+      return `I can see ${messages.length} matching email${messages.length === 1 ? "" : "s"} in the latest results${mailbox}.`;
+    }
+    if (newest && (call.name === "outlook_get_message" || (/\b(full|body|what does .{0,40}(say|said))\b/i.test(question) && newest.body))) {
       const excerpt = newest.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 420);
       return excerpt
         ? `The latest email${mailbox} is “${newest.subject}”${from}${when}. It says: ${excerpt}`
         : `The latest email${mailbox} is “${newest.subject}”${from}${when}.`;
     }
-    if (/\bhow many\b/i.test(question)) {
-      return `I can see ${messages.length} matching email${messages.length === 1 ? "" : "s"} in the latest results${mailbox}.`;
-    }
+    const normalised = normaliseBusinessResult(call.name, call.data);
+    if (normalised.sufficient && normalised.summaryText && messages.length) return normalised.summaryText;
+    if (!messages.length) return "I couldn’t find any matching emails.";
     if (/\b(newest|latest|last|most recently|unread)\b/i.test(question) || messages.length === 1) {
       return `The newest email${mailbox} is “${newest.subject}”${from}${when}.`;
     }
@@ -210,24 +218,14 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
   }
 
   if (call.name === "xero_sales_summary" || call.name.startsWith("xero_")) {
+    const normalised = normaliseBusinessResult(call.name, call.data);
+    if (normalised.summaryText && normalised.sufficient) return normalised.summaryText;
     const record = isRecord(call.data) ? call.data : {};
-    const summary = isRecord(record.summary) ? record.summary : {};
-    const total = record.sales_total ?? summary.totalSales ?? record.total;
-    const count = record.invoice_count ?? summary.transactionCount ?? record.count;
-    const period = isRecord(record.period) ? record.period : {};
-    const fromDate = asString(period.fromDate ?? summary.fromDate ?? record.fromDate);
-    const toDate = asString(period.toDate ?? summary.toDate ?? record.toDate);
-    const currency = asString(record.currencyCode ?? record.currency ?? summary.currencyCode) || "GBP";
-    if (typeof total === "number" || typeof total === "string") {
-      const range = fromDate && toDate ? ` from ${fromDate} to ${toDate}` : "";
-      const invoices = typeof count === "number" ? ` across ${count} invoice${count === 1 ? "" : "s"}` : "";
-      return `Xero sales${range} are ${formatMoney(total, currency)}${invoices}.`;
-    }
     if (typeof record.summary === "string" && record.summary.trim()) return record.summary.trim();
     if (Array.isArray(record.invoices) && record.invoices.length === 0) {
       return "I couldn’t find any matching invoices.";
     }
-    return "I retrieved the Xero figures. Ask if you want a specific invoice or period.";
+    return normalised.summaryText || "I retrieved the Xero figures. Ask if you want a specific invoice or period.";
   }
 
   if (call.name === "get_knowledge_document" || call.name === "fetch") {
@@ -267,6 +265,13 @@ export function synthesizeFromToolCalls(
 ): string {
   const denied = toolCalls.find((call) => looksPermissionDenied(call));
   if (denied) return synthesizeToolResult(denied, question);
+  const sales = toolCalls.filter((call) => call.ok && call.name === "xero_sales_summary");
+  if (sales.length >= 2 && /\b(compar|versus|vs\.?|how did)\b/i.test(question)) {
+    const parts = sales
+      .map((call) => normaliseBusinessResult(call.name, call.data).summaryText)
+      .filter((text) => text.trim());
+    if (parts.length >= 2) return parts.join(" ");
+  }
   const xero = toolCalls.find((call) => call.ok && /^xero_/.test(call.name));
   const outlook = toolCalls.find((call) => call.ok && /outlook/i.test(call.name));
   if (xero && outlook && /\b(and then|then show|and show)\b/i.test(question)) {

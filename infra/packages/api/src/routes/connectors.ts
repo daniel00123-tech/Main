@@ -1222,13 +1222,32 @@ connectors.post("/api/internal/office-staff-rbac-acceptance", async (c) => {
   }
 });
 
+connectors.post("/api/internal/el-business-campaign", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const { isCampaignSuite, runElBusinessCampaignSuite } = await import("../services/el-business-campaign");
+    const requested = String(c.req.query("suite") ?? "r1_xero");
+    const suite = isCampaignSuite(requested) ? requested : "r1_xero";
+    return c.json(await runElBusinessCampaignSuite(c.env, suite));
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "EL Business campaign failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/portal-chat-acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
   }
   try {
-    const { runPortalChatAcceptance } = await import("../services/portal-chat-acceptance");
-    return c.json(await runPortalChatAcceptance(c.env));
+    const { isPortalChatAcceptanceSuite, runPortalChatAcceptance } = await import("../services/portal-chat-acceptance");
+    const requested = String(c.req.query("suite") ?? "director_memory");
+    const suite = isPortalChatAcceptanceSuite(requested) ? requested : "director_memory";
+    return c.json(await runPortalChatAcceptance(c.env, suite));
   } catch (err) {
     return c.json(
       { error: err instanceof Error ? err.message : "Portal chat acceptance failed" },

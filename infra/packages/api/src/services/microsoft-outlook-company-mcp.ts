@@ -192,13 +192,19 @@ export function composeOutlookListResult(
   const record = asRecord(unwrapped);
   const rawMessages = Array.isArray(record?.messages)
     ? record!.messages
-    : Array.isArray(record?.results)
-      ? record!.results
-      : Array.isArray(record?.items)
-        ? record!.items
-        : Array.isArray(unwrapped)
-          ? unwrapped
-          : [];
+    : Array.isArray(record?.emails)
+      ? record!.emails
+      : Array.isArray(record?.value)
+        ? record!.value
+        : Array.isArray(record?.results)
+          ? record!.results
+          : Array.isArray(record?.items)
+            ? record!.items
+            : Array.isArray(record?.data)
+              ? record!.data
+              : Array.isArray(unwrapped)
+                ? unwrapped
+                : [];
   const messages = rawMessages
     .map((item) => asRecord(item))
     .filter((item): item is Record<string, unknown> => Boolean(item))
@@ -420,6 +426,33 @@ export async function executeCompanyMcpOutlookRead(
     isGet
       ? composeOutlookGetResult(upstream, mailbox.mailboxAddress)
       : composeOutlookListResult(upstream, mailbox.mailboxAddress);
+
+  if (
+    !isGet &&
+    input.toolName === "outlook_list_messages" &&
+    Number(composed.count ?? 0) === 0 &&
+    !query
+  ) {
+    const relisted = await executeRegisteredMcpTool(env, {
+      mcpId: mcp.id,
+      toolName: forwardName,
+      arguments: {
+        ...forwarded,
+        query: "received>=2020-01-01",
+        newest: true,
+      },
+      actorUserId: input.actorUserId ?? "system",
+      actorEmail: input.actor,
+      sourceClient: "infra-outlook",
+      skipUsageRecording: true,
+    });
+    if (relisted.status === 200) {
+      composed = composeOutlookListResult(
+        "data" in relisted ? relisted.data?.result : undefined,
+        mailbox.mailboxAddress,
+      );
+    }
+  }
 
   if (isGet && Number(composed.count ?? 0) === 0 && typeof forwarded.messageId === "string") {
     const searchName =

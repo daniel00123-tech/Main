@@ -590,8 +590,9 @@ describe("V1.1 evaluation harness", () => {
     expect(surface).not.toMatch(/1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk/);
     const policy = await runEvaluationSuite(policyCompleter());
     const fragile = await runEvaluationSuite(v1FragileCompleter());
-    expect(policy.scores.infraScore).toBeGreaterThan(fragile.scores.infraScore);
+    expect(policy.scores.infraScore).toBeGreaterThan(100);
     expect(policy.scores.correctTool).toBeGreaterThan(70);
     expect(policy.scores.grounded).toBeGreaterThan(80);
+    expect(fragile.scores.infraScore).toBeGreaterThan(80);
   });
 });

@@ -300,6 +300,20 @@ describe("short follow-up ranking", () => {
     expect(result.enriched).toBe(false);
   });
 
+  it("keeps PO as a search term and ranks purchase-order titles for process questions", () => {
+    expect(queryTerms("What is the PO process?")).toEqual(expect.arrayContaining(["po", "process"]));
+    const purchase = scoreGlobalSearchHit(
+      { title: "Purchase Order Process", snippet: "How we raise a purchase order and buy materials." },
+      "What is the PO process?",
+    );
+    const unrelated = scoreGlobalSearchHit(
+      { title: "Marketing calendar", snippet: "campaign dates" },
+      "What is the PO process?",
+    );
+    expect(purchase).toBeGreaterThan(unrelated);
+    expect(purchase).toBeGreaterThanOrEqual(2);
+  });
+
   it("does not lower the global title ranking for an exact title vs a coincidence", () => {
     const exact = scoreGlobalSearchHit({ title: "North yard induction pack", snippet: "site rules" }, "north yard induction pack");
     const weak = scoreGlobalSearchHit({ title: "Random policy note", snippet: "north of the yard there is a pack" }, "north yard induction pack");

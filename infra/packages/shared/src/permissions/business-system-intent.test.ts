@@ -96,6 +96,20 @@ describe("resolveBusinessSystemIntent", () => {
       "xero",
     );
     expect(resolveBusinessSystemIntent("Find the newest OneDrive document.", { connectors: EL_CONNECTORS })).toBeNull();
+    expect(resolveBusinessSystemIntent("Search info for INV-02268.", { connectors: EL_CONNECTORS })?.capability).toBe(
+      "info_mailbox",
+    );
+    expect(
+      resolveBusinessSystemIntent("What invoices are overdue and then show me the newest info email?", {
+        connectors: EL_CONNECTORS,
+      })?.capability,
+    ).toBe("xero");
+    expect(
+      resolveBusinessSystemIntent("Sorry — I meant emails, not Xero.", { connectors: EL_CONNECTORS })?.capability,
+    ).toBe("info_mailbox");
+    expect(
+      resolveBusinessSystemIntent("Search company files for the last email subject.", { connectors: EL_CONNECTORS }),
+    ).toBeNull();
     expect(resolveBusinessSystemIntent("No, I meant email.", { connectors: EL_CONNECTORS })?.capability).toBe(
       "info_mailbox",
     );
