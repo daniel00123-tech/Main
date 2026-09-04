@@ -990,6 +990,16 @@ export async function handleInfraMcpJsonRpc(
       interactionId: interactionHints.interactionId,
       parentRequestId: interactionHints.parentRequestId,
       mcpSessionId: interactionHints.mcpSessionId,
+      customerRequestId:
+        request.headers.get("X-Infra-Customer-Request-Id")?.trim() ||
+        interactionHints.parentRequestId ||
+        interactionHints.interactionId,
+      conversationId:
+        request.headers.get("openai-conversation-id")?.trim() ||
+        request.headers.get("OpenAI-Conversation-ID")?.trim() ||
+        request.headers.get("x-openai-conversation-id")?.trim() ||
+        null,
+      trafficClass: request.headers.get("X-Infra-Traffic-Class"),
     });
 
     if (result.status !== 200) {

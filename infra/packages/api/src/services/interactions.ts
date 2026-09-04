@@ -2,7 +2,7 @@ import type { UsageRecord } from "@infra/shared";
 import { newId } from "../db/mappers";
 
 const CHATGPT_REUSED_RPC_ID = "0";
-const TRUSTED_INTERACTION_ID = /^int_[a-zA-Z0-9_-]{6,128}$/;
+const TRUSTED_INTERACTION_ID = /^(int|pint|creq)_[a-zA-Z0-9_-]{6,128}$/;
 
 export interface InteractionResolution {
   interactionId: string;
@@ -90,6 +90,8 @@ export function labelForOperation(operation: string): string {
       return "Connection check";
     case "database_summary":
       return "Business data summary";
+    case "customer.request":
+      return "Customer request";
     default:
       return operation.replace(/[._]/g, " ");
   }
@@ -116,7 +118,10 @@ export function clientKindLabel(kind: string | null | undefined): string {
 
 export function labelInteraction(records: UsageRecord[]): string {
   if (records.length === 0) return "AI request";
-  const operations = records.map((r) => r.action ?? r.toolName ?? "");
+  const operations = records
+    .filter((r) => (r.action ?? r.toolName) !== "customer.request")
+    .map((r) => r.action ?? r.toolName ?? "");
+  if (operations.length === 0) return "Customer request";
   const onlyKnowledge =
     operations.length > 0 &&
     operations.every(
@@ -170,7 +175,9 @@ export function groupOperationsIntoInteractions(
   const order: string[] = [];
 
   for (const record of records) {
-    const key = record.interactionId ?? `ungrouped:${record.id}`;
+    const key = record.parentRequestId
+      ? `parent:${record.parentRequestId}`
+      : record.interactionId ?? `ungrouped:${record.id}`;
     if (!groups.has(key)) {
       groups.set(key, []);
       order.push(key);
@@ -194,11 +201,16 @@ export function groupOperationsIntoInteractions(
     const providerCost = providerKnown
       ? known.reduce((sum, r) => sum + (r.underlyingCostCents ?? 0), 0)
       : null;
+    const denied = operations.some(
+      (r) =>
+        r.settlementStatus === "denied" ||
+        (r.metadata && (r.metadata as { denied?: boolean }).denied === true),
+    );
     const failed = operations.some((r) => r.success === false);
     const last = operations[operations.length - 1]!;
 
     return {
-      id: first.interactionId ?? first.id,
+      id: first.parentRequestId ?? first.interactionId ?? first.id,
       companyId: first.companyId,
       actorType: first.userId ? "user" : "service",
       actorId: first.userId ?? null,
@@ -207,7 +219,7 @@ export function groupOperationsIntoInteractions(
       mcpId: first.mcpEnvironmentId ?? null,
       mcpSessionId: first.mcpSessionId ?? null,
       label: labelInteraction(operations),
-      status: failed ? "error" : "completed",
+      status: denied ? "denied" : failed ? "error" : "completed",
       currency: "GBP",
       operationCount: operations.length,
       customerChargeCents: charge,

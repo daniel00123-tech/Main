@@ -1,5 +1,6 @@
 /** Customer-friendly labels for technical tool/action identifiers. */
 const ACTION_LABELS: Record<string, string> = {
+  "customer.request": "Customer request",
   "knowledge.search": "Search company knowledge",
   "knowledge.read": "Read company knowledge",
   "knowledge.catalogue": "List document catalogue",

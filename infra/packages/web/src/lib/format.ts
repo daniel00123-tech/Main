@@ -179,6 +179,7 @@ export function humanLedgerType(type: string): string {
 export function humanOperation(action?: string | null, toolName?: string | null): string {
   const key = action ?? toolName ?? "";
   const map: Record<string, string> = {
+    "customer.request": "Customer request",
     "knowledge.search": "Knowledge Search",
     "knowledge.read": "Knowledge Document Read",
     "system.health": "Connection check",

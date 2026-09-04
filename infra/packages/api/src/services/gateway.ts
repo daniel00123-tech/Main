@@ -62,6 +62,14 @@ import {
 } from "../permissions/service";
 import { decideTestBilling } from "./billing-policy";
 import {
+  classifyElTraffic,
+  isElCompany,
+  resolveElCustomerRequestId,
+  settleElCustomerRequest,
+  shouldChargeElCustomerRequest,
+  usageRequestIdForElRequest,
+} from "./el-customer-billing";
+import {
   labelForOperation,
   persistInteraction,
   refreshInteractionTotals,
@@ -298,6 +306,10 @@ export async function executeGatewayRequest(
     interactionId?: string | null;
     parentRequestId?: string | null;
     mcpSessionId?: string | null;
+    customerRequestId?: string | null;
+    conversationId?: string | null;
+    trafficClass?: string | null;
+    chargeable?: boolean;
     waitUntil?: (promise: Promise<unknown>) => void;
   },
 ) {
@@ -306,9 +318,9 @@ export async function executeGatewayRequest(
     ? `req_${input.clientRequestId.trim()}`
     : newId("req");
   const clientRequestId = input.clientRequestId?.trim() || null;
-  const interaction = resolveInteractionIds({
-    headerInteractionId: input.interactionId,
-    parentRequestId: input.parentRequestId,
+  let interaction = resolveInteractionIds({
+    headerInteractionId: input.interactionId ?? input.customerRequestId,
+    parentRequestId: input.parentRequestId ?? input.customerRequestId,
     mcpSessionId: input.mcpSessionId,
   });
   const started = Date.now();
@@ -329,6 +341,32 @@ export async function executeGatewayRequest(
         : input.actor.channel ?? "infra-gateway"),
     input.actor.type === "user" ? "portal" : "service",
   );
+  const elTrafficClass = classifyElTraffic({
+    trafficClass: input.trafficClass,
+    sourceClient,
+    actorEmail: input.actor.type === "user" ? input.actor.user.email : input.actor.identity.name,
+    chargeable: input.chargeable,
+    skipUsageRecording: input.requireCredit === false && input.chargeable !== true,
+  });
+  const elCustomerBilling = isElCompany(input.companyId);
+  if (elCustomerBilling) {
+    const resolved = await resolveElCustomerRequestId(env.DB, {
+      companyId: input.companyId,
+      userId: input.actor.type === "user" ? input.actor.user.userId : null,
+      sourceClient,
+      explicitId: input.customerRequestId ?? input.parentRequestId ?? input.interactionId,
+      interactionId: interaction.interactionId,
+      parentRequestId: interaction.parentRequestId,
+      conversationId: input.conversationId,
+      mcpSessionId: interaction.mcpSessionId,
+      trafficClass: elTrafficClass,
+    });
+    interaction = {
+      ...interaction,
+      interactionId: resolved.requestId,
+      parentRequestId: resolved.requestId,
+    };
+  }
 
   const humanServiceMasquerade =
     input.actor.type === "service" &&
@@ -832,7 +870,31 @@ export async function executeGatewayRequest(
         result: "permission_denied",
       },
       settlementStatus: "denied",
+      customerChargeCents: null,
     });
+
+    if (elCustomerBilling && shouldChargeElCustomerRequest(input.companyId, elTrafficClass)) {
+      const settled = await settleElCustomerRequest(env.DB, {
+        companyId: input.companyId,
+        requestId: interaction.interactionId,
+        userId: input.actor.type === "user" ? actorId : null,
+        actorEmail: actorLabel,
+        sourceClient,
+        trafficClass: elTrafficClass,
+        outcome: "permission_denied",
+        summary: input.toolName,
+      });
+      if (settled.insufficientCredit) {
+        return {
+          status: 402 as const,
+          error: "Your INFRA credit balance is empty. Add credit to continue.",
+          correlationId,
+          requestId,
+          balanceCents: settled.balanceBeforeCents,
+          requiredCents: settled.customerChargeCents,
+        };
+      }
+    }
 
     scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
     return {
@@ -898,13 +960,31 @@ export async function executeGatewayRequest(
 
   const policy = await resolvePricingPolicy(env.DB, input.companyId);
   const pricing = await resolvePricingRule(env.DB, input.companyId, action);
-  const estimated = calculateChargeCents(pricing, {
-    success: true,
-    underlyingCostCents: null,
-    costBasis: "unknown",
-    policy,
-  });
+  const estimated = elCustomerBilling
+    ? {
+        billable: shouldChargeElCustomerRequest(input.companyId, elTrafficClass),
+        customerChargeCents: shouldChargeElCustomerRequest(input.companyId, elTrafficClass)
+          ? 3
+          : null,
+      }
+    : calculateChargeCents(pricing, {
+        success: true,
+        underlyingCostCents: null,
+        costBasis: "unknown",
+        policy,
+      });
   let creditCheckPassed: boolean | null = null;
+  if (elCustomerBilling && shouldChargeElCustomerRequest(input.companyId, elTrafficClass)) {
+    const already = await env.DB.prepare(
+      `SELECT id FROM usage_records WHERE request_id = ? LIMIT 1`,
+    )
+      .bind(usageRequestIdForElRequest(interaction.interactionId))
+      .first();
+    if (already) {
+      estimated.billable = false;
+      estimated.customerChargeCents = null;
+    }
+  }
 
   if (
     input.requireCredit !== false &&
@@ -1178,13 +1258,24 @@ export async function executeGatewayRequest(
     },
   });
 
-  // Underlying provider cost unknown until rate items + metering quantities exist
-  const charge = calculateChargeCents(pricing, {
+  // Underlying provider cost unknown until rate items + metering quantities exist.
+  // EL commercial settlement is the parent customer.request (3p), never this tool row.
+  let charge = calculateChargeCents(pricing, {
     success,
     underlyingCostCents: null,
     costBasis: "unknown",
     policy,
   });
+  if (elCustomerBilling) {
+    charge = {
+      ...charge,
+      billable: false,
+      customerChargeCents: null,
+      calculatedSellingCents: 0,
+      grossProfitCents: null,
+      pricingLabel: "el_child_observability",
+    };
+  }
 
   await recordAuditEvent(env.DB, {
     companyId: input.companyId,
@@ -1281,6 +1372,26 @@ export async function executeGatewayRequest(
     });
     usageRecordId = usage.id;
     await refreshInteractionTotals(env.DB, interaction.interactionId);
+    if (elCustomerBilling && shouldChargeElCustomerRequest(input.companyId, elTrafficClass)) {
+      const outcome =
+        "accessOutcome" in execution && execution.accessOutcome === "empty_result"
+          ? "no_result"
+          : success
+            ? "completed"
+            : execution.status >= 500
+              ? "upstream_failure"
+              : "provider_failure";
+      await settleElCustomerRequest(env.DB, {
+        companyId: input.companyId,
+        requestId: interaction.interactionId,
+        userId: input.actor.type === "user" ? actorId : null,
+        actorEmail: actorLabel,
+        sourceClient,
+        trafficClass: elTrafficClass,
+        outcome,
+        summary: input.toolName,
+      });
+    }
     scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
 
     await recordAuditEvent(env.DB, {
@@ -1589,6 +1700,7 @@ function humanSource(source: string): string {
 
 function humanAction(action: string): string {
   const map: Record<string, string> = {
+    "customer.request": "Customer request",
     "knowledge.search": "Knowledge Search",
     "knowledge.read": "Knowledge Read",
     "knowledge.catalogue": "Document Catalogue",

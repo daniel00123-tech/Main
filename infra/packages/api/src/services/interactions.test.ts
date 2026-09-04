@@ -57,6 +57,15 @@ describe("resolveInteractionIds", () => {
     expect(resolved.clientInteractionRef).toBe("int_prompt_abc123");
   });
 
+  it("preserves portal and EL customer-request ids", () => {
+    expect(
+      resolveInteractionIds({ headerInteractionId: "pint_portal_turn_1" }).interactionId,
+    ).toBe("pint_portal_turn_1");
+    expect(
+      resolveInteractionIds({ headerInteractionId: "creq_el_request_1" }).interactionId,
+    ).toBe("creq_el_request_1");
+  });
+
   it("does not use company or MCP ids as grouping keys", () => {
     const resolved = resolveInteractionIds({
       headerInteractionId: "mcp_caddington_primary",

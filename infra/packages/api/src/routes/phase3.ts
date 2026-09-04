@@ -43,6 +43,7 @@ import {
   listPricingPolicies,
   listPricingRules,
 } from "../services/pricing";
+import { ensureElCustomerPricing } from "../services/el-customer-billing";
 import {
   approveProviderRateCard,
   createManualPricingReviewProposal,
@@ -1875,6 +1876,7 @@ phase3.get("/api/companies/:slug/credentials", requireAuth, async (c) => {
 
 phase3.get("/api/commercial/summary", requireAuth, requirePlatformAdmin, async (c) => {
   await ensureDefaultPricing(c.env.DB);
+  await ensureElCustomerPricing(c.env.DB);
   await ensureProviderCostCatalogue(c.env.DB);
   const [usage, policies, rules, cards, exceptions] = await Promise.all([
     getUsageCommercialSummary(c.env.DB),
@@ -1993,6 +1995,7 @@ phase3.get(
 
 phase3.get("/api/commercial/pricing-rules", requireAuth, requirePlatformAdmin, async (c) => {
   await ensureDefaultPricing(c.env.DB);
+  await ensureElCustomerPricing(c.env.DB);
   return c.json({
     policies: await listPricingPolicies(c.env.DB),
     rules: await listPricingRules(c.env.DB),
@@ -2187,6 +2190,20 @@ phase3.post("/api/companies/:slug/email/test", requireAuth, async (c) => {
     error: result.error,
     sender: resolvePlatformEmailIdentity(c.env).formatted,
   });
+});
+
+phase3.post("/api/internal/billing/el-customer-request-suite", async (c) => {
+  const body = await c.req.json<{ reverse?: boolean }>().catch(() => ({ reverse: true }));
+  const { runElBillingCampaign } = await import("../services/el-billing-campaign");
+  try {
+    const result = await runElBillingCampaign(c.env.DB, { reverse: body.reverse !== false });
+    return c.json(result);
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "EL billing suite failed" },
+      500,
+    );
+  }
 });
 
 export default phase3;

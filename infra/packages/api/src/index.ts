@@ -121,7 +121,9 @@ app.use("*", async (c, next) => {
     c.env.INITIAL_PLATFORM_ADMIN_PASSWORD,
   );
   const { ensureDefaultPricing } = await import("./services/pricing");
+  const { ensureElCustomerPricing } = await import("./services/el-customer-billing");
   await ensureDefaultPricing(c.env.DB);
+  await ensureElCustomerPricing(c.env.DB);
   await next();
 });
 
@@ -989,10 +991,10 @@ app.get("/api/companies/:slug/usage", requireAuth, async (c) => {
 
   const limit = Number(c.req.query("limit") ?? "50");
   const [records, summary] = await Promise.all([
-    listUsageRecords(c.env.DB, company.id, limit),
+    listUsageRecords(c.env.DB, company.id, Math.max(limit, 200)),
     getUsageSummary(c.env.DB, company.id),
   ]);
-  const interactions = groupOperationsIntoInteractions(records);
+  const interactions = groupOperationsIntoInteractions(records).slice(0, limit);
 
   return c.json({ companyId: company.id, summary, records, interactions });
 });

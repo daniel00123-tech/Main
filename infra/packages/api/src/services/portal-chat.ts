@@ -22,6 +22,12 @@ import {
   synthesizeFromToolCalls,
 } from "./intelligence/verbalise-business.js";
 import {
+  classifyElTraffic,
+  isLiveElBillingEnv,
+  settleElCustomerRequest,
+  shouldChargeElCustomerRequest,
+} from "./el-customer-billing";
+import {
   emptyPortalChatContext,
   titleFromUserText,
   type PortalChatContext,
@@ -237,6 +243,30 @@ export async function sendPortalChatMessage(
   });
 
   const interactionId = newId("pint");
+  const trafficClass = classifyElTraffic({
+    sourceClient: "portal_chat",
+    actorEmail: input.sessionUser.email,
+  });
+  if (isLiveElBillingEnv(env) && shouldChargeElCustomerRequest(input.companyId, trafficClass)) {
+    const settled = await settleElCustomerRequest(env.DB, {
+      companyId: input.companyId,
+      requestId: interactionId,
+      userId: input.sessionUser.userId,
+      actorEmail: input.sessionUser.email,
+      sourceClient: "portal_chat",
+      channel: "portal_chat",
+      conversationId,
+      trafficClass,
+      outcome: "accepted",
+      summary: text.slice(0, 120),
+    });
+    if (settled.insufficientCredit) {
+      throw new PortalChatError(
+        "Your INFRA credit balance is empty. Add credit to continue.",
+        402,
+      );
+    }
+  }
   const connectors = input.connectors ?? (await listConnectedConnectorIds(env, input.companyId));
   const company = await getCompanyById(env.DB, input.companyId).catch(() => null);
   const membership = input.sessionUser.memberships.find((row) => row.companyId === input.companyId);

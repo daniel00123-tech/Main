@@ -80,6 +80,12 @@ export const BILLABLE_EVENT_MATRIX: BillableTreatment[] = [
     notes: "Must appear on Usage as denied / non-billable",
   },
   {
+    event: "EL customer.request (co_el only)",
+    recordsUsage: true,
+    walletDebit: true,
+    notes: "Prospective EL commercial tariff: 3p per genuine user turn. Child tools do not debit.",
+  },
+  {
     event: "admin verification / AI connection test",
     recordsUsage: true,
     walletDebit: false,
