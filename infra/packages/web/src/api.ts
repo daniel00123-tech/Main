@@ -1525,11 +1525,18 @@ export const api = {
         requests: number;
         successful: number;
         failed: number;
+        denied?: number;
+        operationalFailed?: number;
+        noResults?: number;
         customerChargesCents: number;
         underlyingCostsCents: number | null;
         providerCostKnown?: boolean;
+        providerCostUnavailableReason?: string | null;
         grossProfitCents: number | null;
         grossMarginBps: number | null;
+        rawSuccessRate?: number | null;
+        operationalSuccessRate?: number | null;
+        customerMeaningfulSuccessRate?: number | null;
       };
       records: UsageRecord[];
       interactions?: UsageInteraction[];

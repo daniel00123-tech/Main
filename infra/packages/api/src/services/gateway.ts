@@ -1261,6 +1261,11 @@ export async function executeGatewayRequest(
         balanceBeforeCents: balanceBefore.balanceCents,
         interactionId: interaction.interactionId,
         interactionSourcedFrom: interaction.sourcedFrom,
+        accessOutcome:
+          "accessOutcome" in execution ? execution.accessOutcome ?? null : success ? "allowed" : "technical_failure",
+        error:
+          !success && "error" in execution && typeof execution.error === "string" ? execution.error : null,
+        code: !success && "code" in execution ? execution.code ?? null : null,
       },
       settlementStatus:
         decideTestBilling({

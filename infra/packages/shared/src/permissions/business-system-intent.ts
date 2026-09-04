@@ -105,7 +105,7 @@ function capabilityForDefinition(definitionId: string, query: string): Protected
 }
 
 const XERO_DOMAIN =
-  /\b(sales|invoices?|invoiced|outstanding|overdue|p&l|pnl|profit and loss|balance sheet|aged receivables|revenue|turnover|who owes|raised today|customers?|spend)\b/;
+  /\b(sales|invoices?|invoiced|outstanding|overdue|p&l|pnl|profit and loss|balance sheet|aged receivables|revenue|turnover|who owes|raised today|customers?|spend|inv-\d+)\b/;
 
 export function catalogueOperationalConnectors(): CompanyConnectorHint[] {
   return CONNECTOR_CATALOGUE.filter((connector) =>
@@ -187,7 +187,7 @@ export function resolveBusinessSystemIntent(
     };
   }
 
-  if (/\b(emails?|mailbox|outlook|inbox)\b/.test(q) && !/\bxero\b/.test(q)) {
+  if (/\b(emails?|emailed|mailbox|outlook|inbox)\b/.test(q) && !/\bxero\b/.test(q)) {
     return {
       capability: /\bfinance\b/.test(q) ? "finance_mailbox" : "info_mailbox",
       connectorDefinitionId: "conn_outlook_shared",
