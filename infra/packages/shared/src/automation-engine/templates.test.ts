@@ -20,6 +20,9 @@ import {
   safeIngestionFailureReason,
   summariseKnowledgeIngestion,
 } from "./knowledge-ingestion";
+import {
+  buildMicrosoftSyncReportEmailData,
+} from "./microsoft-sync-report";
 import { renderKnowledgeIngestionReportEmail } from "../email/knowledge-ingestion-email";
 import {
   classifyDocumentActivity,
@@ -276,130 +279,73 @@ describe("knowledge ingestion window and classification", () => {
     ).toBe("source_observed");
   });
 
-  it("renders empty and failed knowledge activity emails", () => {
-    const empty = renderKnowledgeIngestionReportEmail({
-      companyDisplayName: "EL Business",
-      reportDateLabel: "4 September 2026",
-      windowFromLabel: "3 September 2026 18:00 Europe/London",
-      windowToLabel: "4 September 2026 18:00 Europe/London",
-      manual: true,
-      discoveredCount: 0,
-      indexedCount: 0,
-      chunkTotal: null,
-      duplicateCount: 0,
-      failedCount: 0,
-      sourceCounts: [],
-      documents: [],
-      failures: [],
-      omittedDocuments: 0,
-      portalUrl: "https://app.infrastack.app/portal/el-business/automations",
-    });
-    expect(empty.subject).toBe(
-      "INFRA — EL Business Daily Knowledge Activity — 4 September 2026 (manual test)",
+  it("renders the customer Microsoft sync report without jargon", () => {
+    const empty = renderKnowledgeIngestionReportEmail(
+      buildMicrosoftSyncReportEmailData({
+        companyDisplayName: "EL Business",
+        reportDateLabel: "4 September 2026",
+        windowFromLabel: "3 September 2026 18:00 Europe/London",
+        windowToLabel: "4 September 2026 18:00 Europe/London",
+        manual: true,
+        portalUrl: "https://app.infrastack.app/portal/el-business/automations",
+        documents: [],
+        mailboxChecks: [
+          { name: "EL info shared mailbox", approved: true, excluded: false, checked: true, failed: false },
+        ],
+        onedrive: { configured: true, checked: true, failed: false, newItemCount: 0 },
+        sharepoint: { configured: true, checked: true, failed: false, newItemCount: 0 },
+      }),
     );
-    expect(empty.text).toContain("No new documents were added to the knowledge base");
-    expect(empty.text).toContain("This run completed successfully.");
+    expect(empty.subject).toBe("INFRA — EL Business Microsoft Sync Report — Test");
+    expect(empty.text).toContain("no new files");
+    expect(empty.text).toContain("daily 08:00 Europe/London schedule is unchanged");
     expect(empty.text).not.toMatch(/Caddington|co_caddington|HT Business/i);
+    expect(empty.text).not.toMatch(/vector|AADSTS|MCP|D1/i);
 
-    const populated = renderKnowledgeIngestionReportEmail({
-      companyDisplayName: "EL Business",
-      reportDateLabel: "4 September 2026",
-      windowFromLabel: "3 September 2026 08:00 Europe/London",
-      windowToLabel: "4 September 2026 08:00 Europe/London",
-      manual: false,
-      discoveredCount: 1,
-      indexedCount: 1,
-      chunkTotal: 8,
-      duplicateCount: 0,
-      failedCount: 1,
-      sourceCounts: [{ label: "OneDrive", count: 1 }],
-      documents: [
-        {
-          title: "Jobs.xlsx",
-          sourceLabel: "OneDrive",
-          indexed: true,
-          chunkCount: 8,
-          modifiedAt: "2026-08-18T15:23:09Z",
-          url: "https://elvex-my.sharepoint.com/personal/a/Jobs.xlsx",
-          location: null,
-          mailbox: null,
-          parentSubject: null,
-          sender: null,
-          failureReason: null,
-        },
-      ],
-      failures: [
-        {
-          title: "Broken.pdf",
-          sourceLabel: "OneDrive",
-          indexed: false,
-          chunkCount: null,
-          modifiedAt: null,
-          url: null,
-          location: null,
-          mailbox: null,
-          parentSubject: null,
-          sender: null,
-          failureReason: "extraction failed",
-        },
-      ],
-      omittedDocuments: 0,
-      portalUrl: "https://app.infrastack.app/portal/el-business/automations",
-      mailboxesEligible: 5,
-      mailboxesExcluded: 2,
-      mailboxesExcludedNames: ["William", "Ella"],
-      mailboxesScanned: ["finance@elvexpropertyservices.com", "info@elvexpropertyservices.com"],
-      messagesScanned: 40,
-    });
-    expect(populated.subject).toBe("INFRA — EL Business Daily Knowledge Activity — 4 September 2026");
-    expect(populated.text).toContain("MAILBOXES ELIGIBLE: 5");
-    expect(populated.text).toContain("MAILBOXES EXCLUDED: 2");
-    expect(populated.text).toContain("William: excluded by policy");
-    expect(populated.text).toContain("MESSAGES SCANNED: 40");
-    expect(populated.text).toContain("Successfully indexed: 1");
-    expect(populated.text).toContain("Chunks: 8");
-    expect(populated.text).toContain("FAILED / NEEDS ATTENTION");
-    expect(populated.text).toContain("extraction failed");
-    expect(populated.html).toContain("https://elvex-my.sharepoint.com/personal/a/Jobs.xlsx");
-
-    const corrected = renderKnowledgeIngestionReportEmail({
-      companyDisplayName: "EL Business",
-      reportDateLabel: "4 September 2026",
-      windowFromLabel: "3 September 2026 18:39 Europe/London",
-      windowToLabel: "4 September 2026 18:39 Europe/London",
-      manual: true,
-      discoveredCount: 2,
-      indexedCount: 0,
-      chunkTotal: null,
-      updatedCount: 0,
-      sourceObservedCount: 2,
-      missedCount: 2,
-      sourceCounts: [{ label: "Email attachments", count: 2 }],
-      documents: [
-        {
-          title: "Attachment on: Quote request",
-          sourceLabel: "Email attachments",
-          indexed: false,
-          chunkCount: null,
-          modifiedAt: "2026-09-04T15:41:18Z",
-          url: null,
-          location: null,
-          mailbox: "info@elvexpropertyservices.com",
-          parentSubject: "Quote request",
-          sender: null,
-          failureReason: "EL Outlook attachments are not auto-ingested into company knowledge",
-        },
-      ],
-      failures: [],
-      omittedDocuments: 0,
-      portalUrl: "https://app.infrastack.app/portal/el-business/automations",
-      subjectOverride: "INFRA — EL Business Daily Knowledge Activity — Corrected Test",
-      correctionPreamble: "This corrects the 4 September 2026 manual test that reported zero new documents.",
-    });
-    expect(corrected.subject).toBe("INFRA — EL Business Daily Knowledge Activity — Corrected Test");
-    expect(corrected.text).toContain("Source activity not indexed: 2");
-    expect(corrected.text).toContain("This corrects the 4 September 2026 manual test");
-    expect(corrected.html).toContain("Source activity not indexed");
+    const populated = renderKnowledgeIngestionReportEmail(
+      buildMicrosoftSyncReportEmailData({
+        companyDisplayName: "EL Business",
+        reportDateLabel: "4 September 2026",
+        windowFromLabel: "3 September 2026 08:00 Europe/London",
+        windowToLabel: "4 September 2026 08:00 Europe/London",
+        manual: false,
+        portalUrl: "https://app.infrastack.app/portal/el-business/automations",
+        documents: [
+          {
+            title: "Jobs.xlsx",
+            sourceLabel: "OneDrive",
+            indexed: true,
+            stored: true,
+            outcome: "indexed",
+            modifiedAt: "2026-08-18T15:23:09Z",
+            chunkCount: 8,
+          },
+          {
+            title: "Broken.pdf",
+            sourceLabel: "OneDrive",
+            indexed: false,
+            stored: true,
+            outcome: "failed",
+            failureReason: "extraction failed",
+          },
+        ],
+        mailboxChecks: [
+          { name: "EL finance shared mailbox", approved: true, excluded: false, checked: true, failed: false },
+          { name: "William", approved: false, excluded: true, checked: false, failed: false },
+          { name: "Ella", approved: false, excluded: true, checked: false, failed: false },
+        ],
+        onedrive: { configured: true, checked: true, failed: false, newItemCount: 2 },
+        sharepoint: { configured: true, checked: true, failed: false, newItemCount: 0 },
+        chunkTotal: 8,
+      }),
+    );
+    expect(populated.subject).toBe("INFRA — EL Business Microsoft Sync Report — 4 September 2026");
+    expect(populated.text).toContain("Added to INFRA knowledge");
+    expect(populated.text).toContain("William and Ella are not included, as requested.");
+    expect(populated.text).toContain("Searchable sections added: 8");
+    expect(populated.text).toContain("NEEDS ATTENTION");
+    expect(populated.text).toContain("INFRA saved the file but could not add it to knowledge yet.");
+    expect(populated.text).not.toMatch(/vectoris|AADSTS|ATTACHMENT_ENUM_FAILED/i);
   });
 
   it("marks discovered>0 indexed=0 as a degraded attachment gap unless every item was a legitimate skip", () => {

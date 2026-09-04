@@ -239,9 +239,15 @@ export function knowledgeIngestionEventInWindow(
     const ts = Date.parse(value);
     return Number.isFinite(ts) && ts >= start && ts <= end;
   };
-  if (row.source_modified_at) return inRange(row.source_modified_at);
-  if (row.indexed_at) return inRange(row.indexed_at);
-  return inRange(row.discovered_at) || inRange(row.created_at);
+  if (
+    inRange(row.created_at) ||
+    inRange(row.discovered_at) ||
+    inRange(row.indexed_at) ||
+    inRange(row.stored_at)
+  ) {
+    return true;
+  }
+  return inRange(row.source_modified_at);
 }
 
 export async function listKnowledgeIngestionEvents(
@@ -258,18 +264,21 @@ export async function listKnowledgeIngestionEvents(
        FROM knowledge_ingestion_events
        WHERE company_id = ?
          AND (
-           (source_modified_at IS NOT NULL AND source_modified_at BETWEEN ? AND ?)
-           OR (indexed_at IS NOT NULL AND indexed_at BETWEEN ? AND ?)
-           OR (
-             source_modified_at IS NULL AND indexed_at IS NULL
-             AND COALESCE(discovered_at, created_at) BETWEEN ? AND ?
-           )
+           created_at BETWEEN ? AND ?
+           OR discovered_at BETWEEN ? AND ?
+           OR indexed_at BETWEEN ? AND ?
+           OR stored_at BETWEEN ? AND ?
+           OR (source_modified_at IS NOT NULL AND source_modified_at BETWEEN ? AND ?)
          )
        ORDER BY created_at DESC
        LIMIT ?`,
     )
     .bind(
       input.companyId,
+      input.windowFrom,
+      input.windowTo,
+      input.windowFrom,
+      input.windowTo,
       input.windowFrom,
       input.windowTo,
       input.windowFrom,

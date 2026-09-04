@@ -49,6 +49,8 @@ export type KnowledgeIngestionDocument = {
   stored?: boolean;
   storedUrl?: string | null;
   activityKind?: KnowledgeIngestionActivityKind;
+  retryCount?: number | null;
+  stage?: "FOUND" | "STORED" | "INDEXED";
 };
 
 const SOURCE_LABELS: Record<KnowledgeIngestionSourceKey, string> = {
