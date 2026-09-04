@@ -442,7 +442,6 @@ async function extractXeroViaInfraReads(input: {
           Total: doc.total,
           Contact: { ContactID: doc.contactId, Name: doc.contactName },
         }));
-    if (rows.length >= 50) truncated = true;
     for (const raw of rows) {
       const kind = String(raw.Type ?? raw.type ?? raw.documentKind ?? "");
       if (/credit/i.test(kind) || raw.documentKind === "credit_note") {
@@ -703,6 +702,8 @@ export async function liveXeroTotals(input: {
       const rec = row as Record<string, unknown>;
       return sum + Number(rec.amountDue ?? rec.AmountDue ?? rec.total ?? 0);
     }, 0);
+    const companyMcp = result.via === "company_mcp" || overdueResult.via === "company_mcp";
+    const overdueCapped = overdueRows.length >= 50;
     return {
       mtdSales: Number(
         summary.totalSales ?? result.sales_total ?? result.totalSales ?? summary.total ?? summary.sales_total ?? 0,
@@ -716,7 +717,7 @@ export async function liveXeroTotals(input: {
           0,
       ),
       outstanding: summary.outstanding != null ? Number(summary.outstanding) : null,
-      overdue: overdue.ok ? overdueTotal : null,
+      overdue: overdue.ok && !companyMcp && !overdueCapped ? overdueTotal : null,
       unavailable: false,
     };
   } catch {

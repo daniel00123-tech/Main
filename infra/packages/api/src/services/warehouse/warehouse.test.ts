@@ -556,8 +556,8 @@ describe("xero normalisers", () => {
     const metrics = computeWarehouseSalesMetrics([mapped.invoice], [], { today: "2026-09-04", monthStart: "2026-09-01" });
     expect(metrics.salesMtd).toBeGreaterThan(0);
     const rec = buildReconciliation({
-      warehouse: { mtdSales: 10, invoiceCount: 1, outstanding: 10, overdue: 0 },
-      live: { mtdSales: 10, invoiceCount: 1, outstanding: 10, overdue: 0 },
+      warehouse: { mtdSales: 10, invoiceCount: 1, outstanding: 10, overdue: 20 },
+      live: { mtdSales: 10, invoiceCount: 1, outstanding: null, overdue: null },
       comparedAt: "x",
       tolerance: WAREHOUSE_RECONCILE_ABS_TOLERANCE,
     });
