@@ -56,6 +56,8 @@ export {
   buildTenantToolCatalogue,
   normaliseVendorToolName,
   detectRequestedCapabilities,
+  rewriteAccountingTool,
+  rewriteHistoricalAccountingTool,
   wantsMultiCapabilityRead,
 } from "./company-tool-registry.js";
 export { isolateEvidenceForCompany, stampEvidenceTenant } from "./tenant-isolation.js";

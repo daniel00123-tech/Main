@@ -191,6 +191,12 @@ describe("warehouse freshness policy", () => {
     expect(classifyQueryFreshness("Has invoice INV-123 been paid yet?")).toBe("CURRENT_LIVE_STATE");
     expect(classifyQueryFreshness("What is the newest invoice?")).toBe("CURRENT_LIVE_STATE");
     expect(classifyQueryFreshness("Tell me about the weather")).toBe("UNCERTAIN");
+    const now = new Date("2026-09-04T12:00:00.000Z");
+    expect(classifyQueryFreshness("What were sales in March?", now)).toBe("HISTORICAL_ANALYTICAL");
+    expect(classifyQueryFreshness("How many invoices did we raise in April?", now)).toBe("HISTORICAL_ANALYTICAL");
+    expect(classifyQueryFreshness("What did last month's sales come to?", now)).toBe("HISTORICAL_ANALYTICAL");
+    expect(classifyQueryFreshness("Summarise the last 3 completed months", now)).toBe("HISTORICAL_ANALYTICAL");
+    expect(classifyQueryFreshness("What are overdue invoices right now?", now)).toBe("CURRENT_LIVE_STATE");
   });
 
   it("prefers live when stale/degraded and warehouse when historical healthy", () => {

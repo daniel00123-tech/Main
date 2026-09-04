@@ -203,6 +203,110 @@ function findExplicitPeriod(hay: string): Omit<ResolvedPeriod, "comparisonReques
   return null;
 }
 
+const MONTH_TOKEN =
+  "january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec";
+
+type NamedCalendarMonth = { month: number; year?: number; label: string };
+
+function monthLabel(month: number, year: number): string {
+  const names = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  return `${names[month - 1] ?? `month ${month}`} ${year}`;
+}
+
+function parseLastCompletedMonthCount(hay: string): number | null {
+  const match = hay.match(/\b(?:last|past|previous) (\d+|three|six|few) (completed )?months\b/);
+  if (!match) {
+    if (/\bover the last (few )?months\b/.test(hay) || /\blast few completed months\b/.test(hay)) return 3;
+    return null;
+  }
+  const token = match[1];
+  if (token === "few" || token === "three") return 3;
+  if (token === "six") return 6;
+  const count = Number(token);
+  if (!Number.isFinite(count) || count < 1 || count > 36) return null;
+  return count;
+}
+
+function lastCompletedMonthsRange(civil: CivilDate, count: number): Omit<ResolvedPeriod, "comparisonRequested" | "comparisonSupported"> {
+  const end = addMonths(startOfMonth(civil), -1);
+  const start = addMonths(end, -(Math.max(1, count) - 1));
+  return range(startOfMonth(start), endOfMonth(end), `last ${count} completed months`);
+}
+
+function namedCalendarMonths(hay: string): NamedCalendarMonth[] {
+  const found: NamedCalendarMonth[] = [];
+  const re = new RegExp(`\\b(${MONTH_TOKEN})\\.?\\s*(20\\d{2})?\\b`, "gi");
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(hay))) {
+    const month = MONTH_NAMES[match[1].toLowerCase().replace(".", "")];
+    if (!month) continue;
+    found.push({
+      month,
+      year: match[2] ? Number(match[2]) : undefined,
+      label: match[0],
+    });
+  }
+  return found;
+}
+
+function namedMonthRange(named: NamedCalendarMonth, civil: CivilDate): Omit<ResolvedPeriod, "comparisonRequested" | "comparisonSupported"> {
+  if (named.year) {
+    const start = { year: named.year, month: named.month, day: 1 };
+    if (named.year === civil.year && named.month === civil.month) {
+      return range(start, civil, monthLabel(named.month, named.year));
+    }
+    return range(start, endOfMonth(start), monthLabel(named.month, named.year));
+  }
+  if (named.month === civil.month) {
+    return range(startOfMonth(civil), civil, monthLabel(named.month, civil.year));
+  }
+  const year = named.month < civil.month ? civil.year : civil.year - 1;
+  const start = { year, month: named.month, day: 1 };
+  return range(start, endOfMonth(start), monthLabel(named.month, year));
+}
+
+function resolveNamedCalendarMonths(
+  hay: string,
+  civil: CivilDate,
+): {
+  primary: Omit<ResolvedPeriod, "comparisonRequested" | "comparisonSupported">;
+  comparison?: ResolvedPeriod["comparison"];
+} {
+  const named = namedCalendarMonths(hay);
+  if (!named.length) {
+    return { primary: range(startOfMonth(civil), civil, "this month") };
+  }
+  if (named.length === 1) {
+    return { primary: namedMonthRange(named[0]!, civil) };
+  }
+  const first = namedMonthRange(named[0]!, civil);
+  const second = namedMonthRange(named[1]!, civil);
+  const [earlier, later] = first.fromDate <= second.fromDate ? [first, second] : [second, first];
+  if (/\b(compar(e|ed|ing)|versus|vs\.?|against|with)\b/.test(hay)) {
+    return { primary: later, comparison: { ...earlier } };
+  }
+  return {
+    primary: range(
+      { year: Number(earlier.fromDate.slice(0, 4)), month: Number(earlier.fromDate.slice(5, 7)), day: Number(earlier.fromDate.slice(8, 10)) },
+      { year: Number(later.toDate.slice(0, 4)), month: Number(later.toDate.slice(5, 7)), day: Number(later.toDate.slice(8, 10)) },
+      `${earlier.label} to ${later.label}`,
+    ),
+  };
+}
+
 export function resolveBusinessPeriod(
   text: string,
   now = new Date(),
@@ -269,6 +373,24 @@ export function resolveBusinessPeriod(
     const prev = addMonths(startOfMonth(civil), -1);
     primary = range(startOfMonth(prev), endOfMonth(prev), "last month");
     pnl = { periods: 1, timeframe: "MONTH" };
+  } else if (parseLastCompletedMonthCount(hay) != null) {
+    const count = parseLastCompletedMonthCount(hay) ?? 3;
+    const resolved = lastCompletedMonthsRange(civil, count);
+    primary = resolved;
+    pnl = { periods: count, timeframe: "MONTH" };
+  } else if (namedCalendarMonths(hay).length) {
+    const resolved = resolveNamedCalendarMonths(hay, civil);
+    primary = resolved.primary;
+    comparison = resolved.comparison ?? comparison;
+    if (resolved.comparison) {
+      pnl = { periods: 2, timeframe: "MONTH" };
+    } else {
+      pnl = { periods: 1, timeframe: "MONTH" };
+    }
+  } else if (/\b(historical period|across completed months|completed months)\b/.test(hay) && !/\bthis month\b/.test(hay)) {
+    const resolved = lastCompletedMonthsRange(civil, 6);
+    primary = resolved;
+    pnl = { periods: 6, timeframe: "MONTH" };
   } else {
     primary = range(startOfMonth(civil), civil, "this month");
     pnl = { periods: 1, timeframe: "MONTH" };
@@ -334,7 +456,11 @@ export function needsBusinessDates(toolName: string | null | undefined): boolean
     toolName === "xero_top_customers" ||
     toolName === "xero_top_suppliers" ||
     toolName === "xero_list_payments" ||
-    toolName === "xero_list_bank_transactions"
+    toolName === "xero_list_bank_transactions" ||
+    toolName === "warehouse_sales_analysis" ||
+    toolName === "warehouse_invoice_analysis" ||
+    toolName === "warehouse_customer_analysis" ||
+    toolName === "warehouse_query"
   );
 }
 

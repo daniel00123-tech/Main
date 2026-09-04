@@ -25,6 +25,7 @@ import { resolveBrainPolicy } from "./brain-policy.js";
 import {
   defaultToolForCapability,
   detectRequestedCapabilities,
+  rewriteAccountingTool,
   wantsMultiCapabilityRead,
 } from "./company-tool-registry.js";
 import { stampEvidenceTenant } from "./tenant-isolation.js";
@@ -35,10 +36,12 @@ import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "
 import { parseCatalogueIntent, verbaliseDocumentCatalogue } from "../document-catalogue.js";
 import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
 import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
+import { classifyQueryFreshness } from "../warehouse/freshness.js";
 import {
   GENERIC_RETRY_COPY,
   extractFirstMessageId,
   isGenericRetryCopy,
+  isSpuriousYearClarify,
   synthesizeFromToolCalls,
   synthesizeToolResult,
 } from "./verbalise-business.js";
@@ -267,7 +270,12 @@ async function executeIntelligenceTurn(input: {
     },
   ): IntelligenceTurnResult => {
     const grounded =
-      deterministicVerbalise && (!payload.text.trim() || isGenericRetryCopy(payload.text))
+      deterministicVerbalise &&
+      (!payload.text.trim() ||
+        isGenericRetryCopy(payload.text) ||
+        (isSpuriousYearClarify(payload.text) &&
+          (classifyQueryFreshness(input.text) === "HISTORICAL_ANALYTICAL" ||
+            payload.toolCalls.some((call) => call.ok && call.name.startsWith("warehouse_")))))
         ? deterministicVerbalise
         : payload.text;
     const assembled = finish({
@@ -279,7 +287,11 @@ async function executeIntelligenceTurn(input: {
       userVisibleBrain: brain.policy.userVisibleBrain,
       sufficiency:
         payload.toolCalls.some((call) => call.ok) &&
-        !(isCompoundBusinessAsk(input.text) && payload.toolCalls.filter((call) => call.ok && call.name.startsWith("xero_")).length < 2)
+        !(
+          isCompoundBusinessAsk(input.text) &&
+          !payload.toolCalls.some((call) => call.ok && call.name.startsWith("warehouse_")) &&
+          payload.toolCalls.filter((call) => call.ok && call.name.startsWith("xero_")).length < 2
+        )
           ? "ENOUGH_TO_ANSWER"
           : payload.toolCalls.length
             ? "NEEDS_MORE_INFORMATION"
@@ -427,7 +439,11 @@ async function executeIntelligenceTurn(input: {
       workingState.recentEvidence = recentEvidence;
       toolCalls.push(...read.toolCalls);
       if (read.ok && read.text) deterministicVerbalise = read.text;
-      if (!brain.policy.useOpenAi) {
+      const warehouseAnswered =
+        read.ok &&
+        read.toolCalls.some((call) => call.ok && call.name.startsWith("warehouse_")) &&
+        classifyQueryFreshness(input.text) === "HISTORICAL_ANALYTICAL";
+      if (!brain.policy.useOpenAi || warehouseAnswered) {
         return finishTurn({
           kind: read.ok ? "answer" : "failed",
           text: read.text,
@@ -540,9 +556,10 @@ async function executeIntelligenceTurn(input: {
       }
       if (scoped.scope === "GENERAL_CONVERSATION") qualityFlags.add("general_conversation_used_tool");
       if (scoped.lastUserIntent === "rephrase") qualityFlags.add("unnecessary_search_after_rephrase");
+      const rewritten = rewriteAccountingTool(validated.name, validated.arguments, input.text);
       const call: IntelligenceToolCall = {
-        name: validated.name,
-        arguments: prepareToolArguments(validated.name, validated.arguments, input.text, workingState, scoped.scope),
+        name: rewritten.name,
+        arguments: prepareToolArguments(rewritten.name, rewritten.arguments, input.text, workingState, scoped.scope),
       };
       if (shouldReuseSuccessfulTool(call, recentEvidence)) {
         transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
@@ -585,7 +602,10 @@ async function executeIntelligenceTurn(input: {
     }
 
     if (decision.action === "clarify") {
-      if (toolCalls.length === 0 && shouldForceScopedTool(scoped)) {
+      if (
+        toolCalls.length === 0 &&
+        (shouldForceScopedTool(scoped) || looksLikeSpuriousPeriodClarify(input.text, decision.text))
+      ) {
         const bootstrap = await bootstrapRetrieval(runtime, workingState, input.text, input.buttonHint, scoped);
         if (bootstrap) {
           toolCalls.push(bootstrap);
@@ -981,6 +1001,15 @@ function looksLikeFinanceRead(text: string): boolean {
   return /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables)\b/i.test(text);
 }
 
+function looksLikeSpuriousPeriodClarify(userText: string, clarifyText: string): boolean {
+  return (
+    classifyQueryFreshness(userText) === "HISTORICAL_ANALYTICAL" &&
+    /\b(which year|different year|20\d{2} or|which (january|february|march|april|may|june|july|august|september|october|november|december))\b/i.test(
+      clarifyText,
+    )
+  );
+}
+
 async function bootstrapRetrieval(
   runtime: IntelligenceRuntime,
   state: IntelligenceConversationState,
@@ -999,10 +1028,10 @@ async function bootstrapRetrieval(
     });
   }
   if (looksLikeFinanceRead(text) || scoped?.scope === "BUSINESS_SYSTEM") {
-    const toolName = scoped?.tool || "xero_sales_summary";
+    const rewritten = rewriteAccountingTool(scoped?.tool || "xero_sales_summary", {}, text);
     return runtime.executeTool({
-      name: toolName,
-      arguments: prepareToolArguments(toolName, {}, text, state, scoped?.scope),
+      name: rewritten.name,
+      arguments: prepareToolArguments(rewritten.name, rewritten.arguments, text, state, scoped?.scope),
     });
   }
   if (
@@ -1144,13 +1173,16 @@ function shouldStopAfterRead(scoped: ScopeDecision, result: IntelligenceToolResu
   return scoped.scope === "BUSINESS_SYSTEM";
 }
 
-function isCompoundBusinessAsk(text: string): boolean {
+export function isCompoundBusinessAsk(text: string): boolean {
   // Sales-then-email is a deterministic two-system read, not a two-period Xero compare.
   if (wantsSalesThenFinanceEmail(text)) return false;
-  return (
-    /\b(and|compare|versus|vs\.?|better than|last month|previous month|this month and)\b/i.test(text) &&
-    /\b(sales|xero|invoice|revenue|overdue|profit|month)\b/i.test(text)
-  );
+  // Historical analytical windows are one warehouse read, not two live Xero calls.
+  if (classifyQueryFreshness(text) === "HISTORICAL_ANALYTICAL") return false;
+  const compare = /\b(compare|versus|vs\.?|better than|month[- ]over[- ]month)\b/i.test(text);
+  const twoPeriods =
+    /\b(this month|current month|mtd).{0,48}(last month|previous month)\b/i.test(text) ||
+    /\b(last month|previous month).{0,48}(this month|current month|mtd)\b/i.test(text);
+  return (compare || twoPeriods) && /\b(sales|xero|invoice|revenue|overdue|profit|month)\b/i.test(text);
 }
 
 function resolvePermittedTools(state: IntelligenceConversationState): string[] {
@@ -1287,9 +1319,10 @@ async function runDeterministicRead(
       };
     }
   }
+  const rewritten = rewriteAccountingTool(toolName, {}, text);
   const planned = {
-    name: toolName,
-    arguments: prepareToolArguments(toolName, {}, text, state, scoped.scope),
+    name: rewritten.name,
+    arguments: prepareToolArguments(rewritten.name, rewritten.arguments, text, state, scoped.scope),
   };
   if (shouldReuseSuccessfulTool(planned, state.recentEvidence) && !isFreshBusinessSystemAsk(text)) {
     const reused = answerFromExistingEvidence(text, state);

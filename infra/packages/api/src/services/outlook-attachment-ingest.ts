@@ -514,10 +514,14 @@ async function verifyIndexedDocumentRetrievable(
       const id = String(hit.documentId ?? "");
       return id === String(input.documentId) || title.includes(input.filename.toLowerCase()) || title.includes(query.toLowerCase());
     });
-    if (!matched && search.hitCount === 0) {
-      return { ok: false, hitCount: 0, reason: "knowledge retrieval returned no hits" };
+    if (!matched) {
+      return {
+        ok: false,
+        hitCount: search.hitCount,
+        reason: search.hitCount === 0 ? "knowledge retrieval returned no hits" : "filename not in top hits",
+      };
     }
-    return { ok: matched || search.hitCount > 0, hitCount: search.hitCount, reason: matched ? null : "filename not in top hits" };
+    return { ok: true, hitCount: search.hitCount, reason: null };
   } catch (err) {
     return { ok: false, hitCount: 0, reason: err instanceof Error ? err.message : "retrieval verify failed" };
   }
