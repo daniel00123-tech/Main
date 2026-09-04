@@ -305,9 +305,9 @@ export async function runOvernightSlice(
         denied: (answer.intelligence?.toolCalls ?? []).some((call) => /permission/i.test(String(call.error ?? ""))),
         charged,
         latencyMs: Date.now() - started,
-        payloadSource: query.evidence.source,
-        warehouseAsOf: query.evidence.warehouseAsOf,
-        completeness: query.evidence.completenessStatus,
+        payloadSource: tools.some((name) => name.startsWith("warehouse_")) ? query.evidence.source : null,
+        warehouseAsOf: tools.some((name) => name.startsWith("warehouse_")) ? query.evidence.warehouseAsOf : null,
+        completeness: tools.some((name) => name.startsWith("warehouse_")) ? query.evidence.completenessStatus : null,
         liveXeroAlsoCalled: tools.some((name) => name.startsWith("xero_")) && expected === "xero_warehouse",
       });
       turns.push(scored);
