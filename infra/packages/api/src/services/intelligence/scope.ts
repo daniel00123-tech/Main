@@ -1,4 +1,4 @@
-import { resolveBusinessSystemIntent } from "@infra/shared";
+import { businessToolForIntent, resolveBusinessSystemIntent } from "@infra/shared";
 import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "./types.js";
 import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
 import { isCatalogueListingAsk } from "../document-catalogue.js";
@@ -69,6 +69,8 @@ const DISCOURSE =
   /^(hi|hello|hey|hiya|yo|morning|thanks|thank you|cheers|ta|thx|ty)\b|^(how are you|how(?:'s|s) it going)\b|\b(that(?:'s| is) useful|that helps|great thanks|appreciate (it|that)|i don'?t (understand|follow)|what do you mean|why did you ask|can you (give|show) (me )?an example)\b/i;
 const REPHRASE =
   /\b(explain(?: that| this| it| your last answer)? more simply|more simply|make (that|it|this|your last answer)( \w+)? (shorter|simpler|brief)|in fewer words|more detail(s)?( on (that|your last|what you said))?|give me more (detail|details|info|information)|say that again|explain again|put (that|it) another way)\b/i;
+const SHORT_REPHRASE = /^(more detail|what exactly)[.?!]*$/i;
+const SHORT_MEMORY = /^(when|who)[.?!]*$/i;
 const MEMORY =
   /\b(what (were|are) we talking about|what did i (just )?ask|what did you (just )?(tell|say)|remind me|which source|last document i asked|the amount again)\b/i;
 const CAPABILITY =
@@ -77,7 +79,7 @@ const CONNECTOR =
   /\b(what systems? (are )?(connected|linked)|which (live )?systems?|what(?:'s| is) connected|connectors?|(is|are) (xero|sharepoint|drive|email|outlook) (connected|linked)|do (we|i|you) have (xero|sharepoint|drive|email) connected|systems can you (actually )?use)\b/i;
 const FINANCE =
   /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables|who owes)\b/i;
-const EMAIL = /\b(emails?|mailbox|outlook|inbox|any mail)\b/i;
+const EMAIL = /\b(emails?|emailed|emials|emaills|mailbox|outlook|inbox|any mail|e-mails?)\b/i;
 const WRITE =
   /\b(create (an? )?(invoice|bill|credit)|approve |send(?: this| the)? invoice|delete |void |allocate |raise an invoice|write to|update (the )?(invoice|bill|contact)|credit note)\b/i;
 const FIND =
@@ -146,6 +148,19 @@ function isFinancePeriodFollowUp(
 }
 
 function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): string {
+  const intent = resolveBusinessSystemIntent(text) ?? {
+    capability: "xero" as const,
+    connectorDefinitionId: "conn_xero",
+    namedExplicitly: /\bxero\b/i.test(text),
+    reason: "domain_language" as const,
+  };
+  const mapped = businessToolForIntent(
+    intent.capability === "xero" || intent.capability === "payments"
+      ? intent
+      : { ...intent, capability: "xero", connectorDefinitionId: "conn_xero" },
+    text,
+  );
+  if (mapped?.toolName.startsWith("xero_")) return mapped.toolName;
   if (/overdue|owes/i.test(text)) return "xero_list_overdue_invoices";
   if (/p&l|pnl|profit/i.test(text)) return "xero_profit_and_loss";
   if (/aged/i.test(text)) return "xero_aged_receivables";
@@ -155,7 +170,16 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
 }
 
 function pickMailboxTool(text: string): string {
-  if (/\b(newest|latest)\b/i.test(text)) return "outlook_list_messages";
+  if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text) && !/\b(from|containing|search|find|sharon|po)\b/i.test(text)) {
+    return "outlook_list_messages";
+  }
+  if (/\bfrom\s+[A-Za-z]{2,}|containing|has \w+ sent|with \w+ in the subject\b/i.test(text)) {
+    return "outlook_search_mailbox";
+  }
+  if (/\b(full|body|what does .{0,40}(say|said))\b/i.test(text)) return "outlook_list_messages";
+  if (/\b(newest|latest|last \d|last five|unread|most recently|arrived today|last 5|who emailed)\b/i.test(text)) {
+    return "outlook_list_messages";
+  }
   return "outlook_search_mailbox";
 }
 
@@ -169,8 +193,8 @@ function extractFeatures(text: string): ScopeFeatures {
     systemLocus: SYSTEM_LOCUS.test(trimmed),
     companyLocus: COMPANY_LOCUS.test(trimmed),
     discourse: DISCOURSE.test(trimmed),
-    rephraseLastAnswer: REPHRASE.test(trimmed),
-    memoryRecall: MEMORY.test(trimmed),
+    rephraseLastAnswer: REPHRASE.test(trimmed) || SHORT_REPHRASE.test(trimmed),
+    memoryRecall: MEMORY.test(trimmed) || SHORT_MEMORY.test(trimmed),
     capabilityAsk: CAPABILITY.test(trimmed),
     connectorAsk: CONNECTOR.test(trimmed),
     financeAsk: FINANCE.test(trimmed),
@@ -214,14 +238,20 @@ function detectScopeSwitch(text: string): ScopeSwitch {
   if (/\b(whole system|on the system|entire system|the platform)\b/i.test(text)) {
     return "system";
   }
+  if (/\b(i )?meant (the )?(xero|sales|invoices?)\b/i.test(text) && !/\b(email|mailbox|outlook|inbox)\b/i.test(text)) {
+    return "business";
+  }
+  if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text)) {
+    return "email";
+  }
   if (
     (/\bxero\b/i.test(text) || /\b(finance|invoices?|sales figures)\b/i.test(text)) &&
-    /\b(switch|instead|use|check)\b/i.test(text) &&
+    /\b(switch|instead|use|check|meant)\b/i.test(text) &&
     !/\b(emails?|mailbox|outlook|inbox)\b/i.test(text)
   ) {
     return "business";
   }
-  if (/\b(emails?|mailbox|outlook)\b/i.test(text) && /\b(instead|switch|search|check|from|meant)\b/i.test(text)) {
+  if (/\b(emails?|emials|mailbox|outlook)\b/i.test(text) && /\b(instead|switch|search|check|from|meant)\b/i.test(text)) {
     return "email";
   }
   return null;
@@ -332,6 +362,19 @@ export function classifyScope(
     });
   }
 
+  if (
+    /\b(sales|xero)\b/i.test(text) &&
+    /\b(and then|then show|and show)\b/i.test(text) &&
+    /\b(email|inbox)\b/i.test(text) &&
+    !features.writeIntent
+  ) {
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: "xero_sales_summary",
+      lastAnswerTopic: "finance",
+      lastUserIntent: "finance",
+    });
+  }
+
   const businessIntent = resolveBusinessSystemIntent(text);
   const mailboxIntent =
     businessIntent?.capability === "finance_mailbox" ||
@@ -342,6 +385,25 @@ export function classifyScope(
     mailboxIntent &&
     !features.connectorAsk &&
     !features.capabilityAsk &&
+    !features.writeIntent
+  ) {
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: pickMailboxTool(text),
+      lastAnswerTopic: "email",
+      lastUserIntent: "email",
+    });
+  }
+  if (/\bemails? behind\b/i.test(text) && !features.writeIntent) {
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: "outlook_search_mailbox",
+      lastAnswerTopic: "email",
+      lastUserIntent: "email",
+    });
+  }
+  if (
+    (lastTopic === "email" || state.currentBusinessSystem === "email") &&
+    PERIOD_FOLLOW.test(text) &&
+    !features.financeAsk &&
     !features.writeIntent
   ) {
     return decide("BUSINESS_SYSTEM", features, {

@@ -17,6 +17,10 @@ import {
   type IntelligenceToolCall,
   type IntelligenceToolResult,
   type IntelligenceTurnResult,
+  clipBusinessToolData,
+  looksPermissionDenied,
+  isGenericRetryCopy,
+  synthesizeFromToolCalls,
 } from "./intelligence/index";
 import { recordUsageEvent } from "./usage";
 import { collectQualityFlags } from "./intelligence/quality.js";
@@ -67,8 +71,10 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_search_contacts",
   "xero_list_overdue_invoices",
   "xero_aged_receivables",
+  "xero_top_customers",
   "outlook_search_mailbox",
   "outlook_list_messages",
+  "outlook_get_message",
   "ask_document",
   "list_documents",
 ]);
@@ -397,6 +403,11 @@ function polishIntelligenceReply(
   question: string,
 ): string {
   let text = result.text.trim();
+  if (result.toolCalls.some((call) => looksPermissionDenied(call))) {
+    text = synthesizeFromToolCalls(result.toolCalls, question);
+  } else if (result.toolCalls.length > 0 && (isGenericRetryCopy(text) || !text)) {
+    text = synthesizeFromToolCalls(result.toolCalls, question);
+  }
   if (result.kind === "failed" && !text) {
     text = "I couldn't complete that just now. Try again in a moment.";
   }
@@ -766,7 +777,9 @@ function createWhatsAppIntelligenceRuntime(
           ? KNOWLEDGE_SEARCH_TIMEOUT_MS
           : gatewayName === COMPANY_KNOWLEDGE_READ_TOOL || gatewayName === "fetch"
             ? FETCH_TIMEOUT_MS
-            : MCP_TIMEOUT_MS;
+            : /^(outlook_|xero_)/.test(gatewayName)
+              ? 20_000
+              : MCP_TIMEOUT_MS;
       const fetched = await withBoundedTimeout(
         executeGatewayRequest(env, {
           actor: { type: "user", user: input.sessionUser },
@@ -866,7 +879,7 @@ function createWhatsAppIntelligenceRuntime(
         name: call.name,
         ok: true,
         latencyMs: Date.now() - started,
-        data: clipToolData(fetched.value.result),
+        data: clipBusinessToolData(fetched.value.result, gatewayName),
       };
     },
   };
@@ -985,7 +998,12 @@ function gatewayArguments(
     return { id, documentRef: id };
   }
   if (toolName === "xero_get_invoice") {
-    return { invoice_id: String(args.invoice_id ?? args.id ?? "").trim() };
+    const invoiceNumber = String(args.invoiceNumber ?? args.invoice_number ?? "").trim();
+    const invoiceId = String(args.invoice_id ?? args.invoiceId ?? args.id ?? "").trim();
+    return {
+      ...(invoiceId ? { invoice_id: invoiceId, invoiceId } : {}),
+      ...(invoiceNumber ? { invoiceNumber } : {}),
+    };
   }
   return { ...args };
 }
@@ -1001,9 +1019,7 @@ function summariseXeroEvidence(data: unknown): string {
 }
 
 function clipToolData(value: unknown): unknown {
-  const raw = JSON.stringify(value ?? null);
-  if (raw.length <= 3_500) return value;
-  return { preview: raw.slice(0, 3_500), truncated: true };
+  return clipBusinessToolData(value);
 }
 
 async function runShadowEval(

@@ -1252,6 +1252,41 @@ connectors.post("/api/internal/portal-chat-read-acceptance", async (c) => {
   }
 });
 
+connectors.post("/api/internal/el-whatsapp-qa", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      ids?: string[];
+      conversation?: string;
+      memory?: Record<string, unknown>;
+      actor?: string;
+    };
+    const { runElWhatsAppQaSlice } = await import("../services/el-whatsapp-qa/campaign");
+    return c.json(
+      await runElWhatsAppQaSlice(c.env, {
+        ids: Array.isArray(body.ids) ? body.ids.map(String) : undefined,
+        conversation: body.conversation as
+          | "xero"
+          | "outlook"
+          | "mixed"
+          | "rbac_office"
+          | "rbac_auth"
+          | "failure"
+          | undefined,
+        memory: body.memory as never,
+        actor: body.actor === "office_staff" ? "office_staff" : "director",
+      }),
+    );
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "EL WhatsApp QA campaign failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/document-catalogue-acceptance", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

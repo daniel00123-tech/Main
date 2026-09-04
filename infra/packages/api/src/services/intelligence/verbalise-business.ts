@@ -58,11 +58,15 @@ function looksTimeout(call: IntelligenceToolResult): boolean {
   return call.error === "timeout" || /timed? ?out|aborted/i.test(blob);
 }
 
+export { looksPermissionDenied };
+
 export function extractOutlookMessages(data: unknown): Array<{
+  id: string;
   subject: string;
   from: string;
   receivedDateTime: string;
   mailboxAddress: string;
+  body: string;
 }> {
   const record = isRecord(data) ? data : {};
   const nested = isRecord(record.preview) ? record.preview : record;
@@ -71,17 +75,25 @@ export function extractOutlookMessages(data: unknown): Array<{
     ? nested.messages
     : Array.isArray(record.messages)
       ? record.messages
-      : nested.message
-        ? [nested.message]
-        : [];
+      : nested.subject || nested.body || nested.id
+        ? [nested]
+        : nested.message
+          ? [nested.message]
+          : [];
   return raw
     .filter(isRecord)
     .map((message) => ({
+      id: asString(message.id ?? message.messageId ?? message.emailId ?? message.email_id ?? message.internetMessageId),
       subject: asString(message.subject) || "(no subject)",
       from: outlookFrom(message.from ?? message.sender),
       receivedDateTime: asString(message.receivedDateTime ?? message.received ?? message.date),
       mailboxAddress: mailbox || asString(message.mailboxAddress),
+      body: asString(message.body ?? message.bodyPreview).slice(0, 800),
     }));
+}
+
+export function extractFirstMessageId(data: unknown): string {
+  return extractOutlookMessages(data).find((message) => message.id)?.id ?? "";
 }
 
 function formatMoney(value: unknown, currency = "GBP"): string {
@@ -128,14 +140,80 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     const mailbox = newest.mailboxAddress ? ` in ${newest.mailboxAddress}` : "";
     const when = newest.receivedDateTime ? ` (${newest.receivedDateTime})` : "";
     const from = newest.from ? ` from ${newest.from}` : "";
-    if (/\b(newest|latest|last)\b/i.test(question) || messages.length === 1) {
+    if (call.name === "outlook_get_message" || (/\b(full|body|what does .{0,40}(say|said))\b/i.test(question) && newest.body)) {
+      const excerpt = newest.body
+        .replace(/<!--[\s\S]*?-->/g, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 420);
+      return excerpt
+        ? `The latest email${mailbox} is “${newest.subject}”${from}${when}. It says: ${excerpt}`
+        : `The latest email${mailbox} is “${newest.subject}”${from}${when}.`;
+    }
+    if (/\bhow many\b/i.test(question)) {
+      return `I can see ${messages.length} matching email${messages.length === 1 ? "" : "s"} in the latest results${mailbox}.`;
+    }
+    if (/\b(newest|latest|last|most recently|unread)\b/i.test(question) || messages.length === 1) {
       return `The newest email${mailbox} is “${newest.subject}”${from}${when}.`;
     }
     const listed = messages
-      .slice(0, 3)
+      .slice(0, 5)
       .map((message) => `“${message.subject}”${message.from ? ` from ${message.from}` : ""}`)
       .join("; ");
     return `I found ${messages.length} email${messages.length === 1 ? "" : "s"}${mailbox}: ${listed}.`;
+  }
+
+  if (call.name === "xero_get_invoice") {
+    const record = isRecord(call.data) ? call.data : {};
+    const invoice = isRecord(record.invoice) ? record.invoice : record;
+    const number = asString(invoice.invoiceNumber ?? invoice.InvoiceNumber ?? invoice.invoice_number);
+    const contact = asString(
+      isRecord(invoice.contact) ? invoice.contact.name : invoice.contact ?? invoice.ContactName,
+    );
+    const total = invoice.total ?? invoice.Total ?? invoice.amount;
+    const status = asString(invoice.status ?? invoice.Status);
+    if (number || typeof total === "number" || typeof total === "string") {
+      const who = contact ? ` for ${contact}` : "";
+      const amount = typeof total === "number" || typeof total === "string" ? ` ${formatMoney(total)}` : "";
+      const state = status ? ` (${status})` : "";
+      return `Xero invoice ${number || "requested"}${who}${amount}${state}.`;
+    }
+    return "I retrieved that Xero invoice.";
+  }
+
+  if (call.name === "xero_top_customers") {
+    const record = isRecord(call.data) ? call.data : {};
+    const customers = Array.isArray(record.customers) ? record.customers.filter(isRecord) : [];
+    if (!customers.length) return "I couldn’t find top customers for that period.";
+    const listed = customers
+      .slice(0, 5)
+      .map((row) => {
+        const name = asString(row.name ?? row.contact ?? row.ContactName) || "Unknown";
+        const total = row.total ?? row.amount ?? row.sales_total;
+        return typeof total === "number" || typeof total === "string" ? `${name} ${formatMoney(total)}` : name;
+      })
+      .join("; ");
+    return `Top customers this period: ${listed}.`;
+  }
+
+  if (call.name === "xero_search_invoices" || call.name === "xero_list_overdue_invoices") {
+    const record = isRecord(call.data) ? call.data : {};
+    const invoices = Array.isArray(record.invoices) ? record.invoices.filter(isRecord) : [];
+    if (!invoices.length) return "I couldn’t find any matching invoices.";
+    const listed = invoices
+      .slice(0, 5)
+      .map((row) => {
+        const number = asString(row.invoiceNumber ?? row.InvoiceNumber ?? row.invoice_number);
+        const contact = asString(isRecord(row.contact) ? row.contact.name : row.contact ?? row.ContactName);
+        const total = row.total ?? row.Total ?? row.amount;
+        const amount = typeof total === "number" || typeof total === "string" ? ` ${formatMoney(total)}` : "";
+        return `${number || "invoice"}${contact ? ` ${contact}` : ""}${amount}`;
+      })
+      .join("; ");
+    return `I found ${invoices.length} invoice${invoices.length === 1 ? "" : "s"}: ${listed}.`;
   }
 
   if (call.name === "xero_sales_summary" || call.name.startsWith("xero_")) {
@@ -196,6 +274,11 @@ export function synthesizeFromToolCalls(
 ): string {
   const denied = toolCalls.find((call) => looksPermissionDenied(call));
   if (denied) return synthesizeToolResult(denied, question);
+  const xero = toolCalls.find((call) => call.ok && /^xero_/.test(call.name));
+  const outlook = toolCalls.find((call) => call.ok && /outlook/i.test(call.name));
+  if (xero && outlook && /\b(and then|then show|and show)\b/i.test(question)) {
+    return `${synthesizeToolResult(xero, question)} ${synthesizeToolResult(outlook, question)}`;
+  }
   const lastOk = [...toolCalls].reverse().find((call) => call.ok);
   if (lastOk) return synthesizeToolResult(lastOk, question);
   const last = toolCalls.at(-1);
