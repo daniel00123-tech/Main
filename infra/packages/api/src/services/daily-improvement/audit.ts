@@ -1,14 +1,11 @@
 import { newId, nowIso } from "../../db/mappers";
-import type { Env } from "../../env";
-import { CUSTOMER_TRAFFIC_CLASS, NON_CUSTOMER_TRAFFIC } from "./constants";
+import { CUSTOMER_TRAFFIC_CLASS } from "./constants";
 import { evidenceRefsOnly, stripSecrets } from "./redact";
 import { upsertInteraction } from "./store";
+import { classifyDailyTraffic, isGenuineCustomerTraffic } from "./traffic";
 import type { DailyImprovementInteraction } from "./types";
 
-export function isGenuineCustomerTraffic(trafficClass?: string | null): boolean {
-  if (!trafficClass) return true;
-  return !NON_CUSTOMER_TRAFFIC.has(trafficClass.toUpperCase());
-}
+export { isGenuineCustomerTraffic } from "./traffic";
 
 export function channelFromSourceClient(sourceClient?: string | null): string {
   const value = String(sourceClient ?? "").toLowerCase();
@@ -25,9 +22,23 @@ export async function recordDailyImprovementInteraction(
     interactionId: string;
     companyId: string;
     channel: string;
+    userAgent?: string | null;
+    actorEmail?: string | null;
+    wamid?: string | null;
   },
 ): Promise<void> {
-  if (!isGenuineCustomerTraffic(input.trafficClass)) return;
+  const trafficClass = classifyDailyTraffic({
+    trafficClass: input.trafficClass,
+    sourceClient: input.sourceClient ?? input.channel,
+    userAgent: input.userAgent,
+    actorEmail: input.actorEmail,
+    userId: input.userId,
+    userMessage: input.userMessage,
+    customerChargeCents: input.customerChargeCents,
+    providerMode: input.providerMode,
+    correlationId: input.correlationId,
+    wamid: input.wamid,
+  });
   const row: DailyImprovementInteraction = {
     id: input.id ?? newId("dii"),
     interactionId: input.interactionId,
@@ -53,14 +64,14 @@ export async function recordDailyImprovementInteraction(
     providerCostCents: input.providerCostCents ?? null,
     qualityResult: input.qualityResult ?? null,
     correlationId: input.correlationId ?? null,
-    trafficClass: input.trafficClass ?? CUSTOMER_TRAFFIC_CLASS,
+    trafficClass,
     sourceClient: input.sourceClient ?? input.channel,
   };
   await upsertInteraction(db, row);
 }
 
 export function scheduleDailyImprovementCapture(
-  env: Pick<Env, "DB">,
+  env: Pick<{ DB: D1Database }, "DB">,
   waitUntil: ((promise: Promise<unknown>) => void) | undefined,
   input: Parameters<typeof recordDailyImprovementInteraction>[1],
 ): void {
@@ -83,15 +94,50 @@ export async function backfillRecentCustomerInteractions(
   return stored;
 }
 
+export async function reclassifyStoredInteractions(
+  db: D1Database,
+  fromIso: string,
+  toIso: string,
+): Promise<number> {
+  const rows = await db
+    .prepare(
+      `SELECT interaction_id, user_message, source_client, traffic_class, customer_charge_cents, correlation_id, provider_mode, user_id
+       FROM daily_improvement_interactions
+       WHERE created_at >= ? AND created_at < ?`,
+    )
+    .bind(fromIso, toIso)
+    .all<Record<string, unknown>>();
+  let updated = 0;
+  for (const row of rows.results ?? []) {
+    const next = classifyDailyTraffic({
+      trafficClass: row.traffic_class ? String(row.traffic_class) : null,
+      sourceClient: row.source_client ? String(row.source_client) : null,
+      userMessage: row.user_message ? String(row.user_message) : null,
+      customerChargeCents: row.customer_charge_cents != null ? Number(row.customer_charge_cents) : null,
+      correlationId: row.correlation_id ? String(row.correlation_id) : null,
+      providerMode: row.provider_mode ? String(row.provider_mode) : null,
+      userId: row.user_id ? String(row.user_id) : null,
+    });
+    if (next === String(row.traffic_class ?? CUSTOMER_TRAFFIC_CLASS)) continue;
+    await db
+      .prepare(`UPDATE daily_improvement_interactions SET traffic_class = ? WHERE interaction_id = ?`)
+      .bind(next, String(row.interaction_id))
+      .run();
+    updated += 1;
+  }
+  return updated;
+}
+
 async function backfillPortal(db: D1Database, fromIso: string, toIso: string): Promise<number> {
   let stored = 0;
   try {
     const users = await db
       .prepare(
-        `SELECT id, conversation_id, company_id, user_id, content, created_at
-         FROM portal_conversation_messages
-         WHERE role = 'user' AND created_at >= ? AND created_at < ?
-         ORDER BY created_at ASC LIMIT 400`,
+        `SELECT m.id, m.conversation_id, m.company_id, m.user_id, m.content, m.created_at, u.email AS actor_email
+         FROM portal_conversation_messages m
+         LEFT JOIN users u ON u.id = m.user_id
+         WHERE m.role = 'user' AND m.created_at >= ? AND m.created_at < ?
+         ORDER BY m.created_at ASC LIMIT 400`,
       )
       .bind(fromIso, toIso)
       .all<Record<string, unknown>>();
@@ -114,7 +160,7 @@ async function backfillPortal(db: D1Database, fromIso: string, toIso: string): P
         userMessage: String(user.content ?? ""),
         assistantAnswer: assistant?.content ?? null,
         terminalState: assistant ? "ANSWER" : "NO_FINAL_RESPONSE",
-        trafficClass: CUSTOMER_TRAFFIC_CLASS,
+        actorEmail: user.actor_email ? String(user.actor_email) : null,
         sourceClient: "portal_chat",
       });
       stored += 1;
@@ -143,8 +189,6 @@ async function backfillUsageParents(db: D1Database, fromIso: string, toIso: stri
       .all<Record<string, unknown>>();
     for (const row of rows.results ?? []) {
       const meta = safeMeta(row.metadata);
-      const trafficClass = String(meta.trafficClass ?? CUSTOMER_TRAFFIC_CLASS);
-      if (!isGenuineCustomerTraffic(trafficClass)) continue;
       await recordDailyImprovementInteraction(db, {
         interactionId: String(row.interaction_id),
         companyId: String(row.company_id),
@@ -160,8 +204,10 @@ async function backfillUsageParents(db: D1Database, fromIso: string, toIso: stri
         correlationId: row.correlation_id ? String(row.correlation_id) : null,
         terminalState: typeof meta.outcome === "string" ? meta.outcome : null,
         userMessage: typeof meta.summary === "string" ? meta.summary : null,
-        trafficClass,
+        trafficClass: typeof meta.trafficClass === "string" ? meta.trafficClass : undefined,
         sourceClient: String(row.source_client ?? ""),
+        actorEmail: typeof meta.actorEmail === "string" ? meta.actorEmail : null,
+        wamid: typeof meta.wamid === "string" ? meta.wamid : null,
       });
       stored += 1;
     }

@@ -1534,8 +1534,9 @@ async function handleWhatsAppInboundMessageInner(
       toolsExecuted: answered.toolName ? [answered.toolName] : [],
       terminalState: sent.ok ? answered.outcome : "NO_FINAL_RESPONSE",
       latencyMs: latency.totalMs,
-      trafficClass: "CUSTOMER_REQUEST",
+      trafficClass: whatsappTraffic,
       sourceClient: "whatsapp",
+      wamid: item.wamid,
     });
     await recordAuditEvent(env.DB, {
       companyId: companyDecision.companyId,

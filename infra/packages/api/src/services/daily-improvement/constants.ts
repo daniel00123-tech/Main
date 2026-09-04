@@ -20,7 +20,19 @@ export const ENGINEERING_TRAFFIC_CLASS = "ENGINEERING" as const;
 export const TEST_TRAFFIC_CLASS = "TEST" as const;
 export const CUSTOMER_TRAFFIC_CLASS = "CUSTOMER_REQUEST" as const;
 
-export const NON_CUSTOMER_TRAFFIC = new Set([
+export const DAILY_TRAFFIC_CLASSES = [
+  "CUSTOMER_REQUEST",
+  "TEST",
+  "SHADOW",
+  "QUALITY",
+  "AUTOMATION",
+  "HEALTH",
+  "ENGINEERING",
+  "INTERNAL",
+] as const;
+export type DailyTrafficClass = (typeof DAILY_TRAFFIC_CLASSES)[number];
+
+export const NON_CUSTOMER_TRAFFIC = new Set<string>([
   "TEST",
   "SHADOW",
   "QUALITY",
@@ -29,6 +41,8 @@ export const NON_CUSTOMER_TRAFFIC = new Set([
   "HEALTH",
   "ENGINEERING",
 ]);
+
+export const NON_DEFECT_CATEGORIES = new Set<string>(["EXPECTED_PERMISSION_DENIAL"]);
 
 export const CHANNELS = ["whatsapp", "portal_chat", "chatgpt", "claude"] as const;
 export type DailyImprovementChannel = (typeof CHANNELS)[number] | string;
@@ -90,6 +104,15 @@ export const FAILURE_CATEGORIES = [
   "MIXED_MULTI_TOOL",
   "XERO_EXACT_TOOL_SELECTION",
   "MANUAL_INFRASTRUCTURE_ACTION",
+  "TOOL_SELECTION_DEGRADATION",
+  "EXACT_TOOL_DEGRADATION",
+  "FOLLOW_UP_CONTEXT_FAILURE",
+  "EXCESSIVE_USER_REPAIR",
+  "RBAC_RESPONSE_CONTRADICTION",
+  "RELIABILITY_DEGRADATION",
+  "PERFORMANCE_DEGRADATION",
+  "EXPECTED_PERMISSION_DENIAL",
+  "QUALITY_SCORE_DEGRADATION",
 ] as const;
 
 export type FailureCategory = (typeof FAILURE_CATEGORIES)[number];

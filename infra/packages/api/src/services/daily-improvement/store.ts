@@ -100,13 +100,25 @@ export async function getRun(
   db: D1Database,
   runDate: string,
   kind: DailyImprovementRunKind,
-): Promise<{ id: string; status: string; summary: Record<string, unknown> } | null> {
+): Promise<{
+  id: string;
+  status: string;
+  summary: Record<string, unknown>;
+  windowFrom?: string | null;
+  windowTo?: string | null;
+} | null> {
   const row = await db
-    .prepare(`SELECT id, status, summary_json FROM daily_improvement_runs WHERE run_date = ? AND kind = ?`)
+    .prepare(`SELECT id, status, summary_json, window_from, window_to FROM daily_improvement_runs WHERE run_date = ? AND kind = ?`)
     .bind(runDate, kind)
-    .first<{ id: string; status: string; summary_json: string }>();
+    .first<{ id: string; status: string; summary_json: string; window_from: string | null; window_to: string | null }>();
   if (!row) return null;
-  return { id: row.id, status: row.status, summary: parseJsonObject(row.summary_json) };
+  return {
+    id: row.id,
+    status: row.status,
+    summary: parseJsonObject(row.summary_json),
+    windowFrom: row.window_from,
+    windowTo: row.window_to,
+  };
 }
 
 export async function upsertInteraction(db: D1Database, row: DailyImprovementInteraction): Promise<void> {
@@ -141,7 +153,8 @@ export async function upsertInteraction(db: D1Database, row: DailyImprovementInt
            quality_result = COALESCE(?, quality_result),
            correlation_id = COALESCE(?, correlation_id),
            conversation_id = COALESCE(?, conversation_id),
-           role = COALESCE(?, role)
+           role = COALESCE(?, role),
+           traffic_class = COALESCE(?, traffic_class)
          WHERE interaction_id = ?`,
       )
       .bind(
@@ -162,6 +175,7 @@ export async function upsertInteraction(db: D1Database, row: DailyImprovementInt
         row.correlationId,
         row.conversationId,
         row.role,
+        row.trafficClass,
         row.interactionId,
       )
       .run();
@@ -213,15 +227,16 @@ export async function listInteractionsSince(
   db: D1Database,
   fromIso: string,
   toIso: string,
+  options?: { customerOnly?: boolean },
 ): Promise<DailyImprovementInteraction[]> {
-  const rows = await db
-    .prepare(
-      `SELECT * FROM daily_improvement_interactions
+  const sql = options?.customerOnly
+    ? `SELECT * FROM daily_improvement_interactions
        WHERE created_at >= ? AND created_at < ? AND traffic_class = 'CUSTOMER_REQUEST'
-       ORDER BY created_at ASC`,
-    )
-    .bind(fromIso, toIso)
-    .all<Record<string, unknown>>();
+       ORDER BY created_at ASC`
+    : `SELECT * FROM daily_improvement_interactions
+       WHERE created_at >= ? AND created_at < ?
+       ORDER BY created_at ASC`;
+  const rows = await db.prepare(sql).bind(fromIso, toIso).all<Record<string, unknown>>();
   return (rows.results ?? []).map(mapInteraction);
 }
 
@@ -279,7 +294,7 @@ export async function insertEvaluation(db: D1Database, evaluation: DailyImprovem
       evaluation.scores.USER_EFFORT,
       JSON.stringify(evaluation.failureCategories),
       evaluation.severity,
-      evaluation.notes,
+      persistNotes(evaluation),
       evaluation.evaluatorModel,
       evaluation.evaluatorKind,
       evaluation.createdAt,
@@ -300,6 +315,7 @@ export async function replaceClusters(
   runId: string,
   clusters: DailyImprovementCluster[],
 ): Promise<void> {
+  await db.prepare(`DELETE FROM daily_improvement_clusters WHERE run_id = ?`).bind(runId).run().catch(() => undefined);
   for (const cluster of clusters) {
     await db
       .prepare(
@@ -318,7 +334,12 @@ export async function replaceClusters(
         cluster.severity,
         cluster.interactionCount,
         cluster.tenantCount,
-        JSON.stringify(cluster.companyIds),
+        JSON.stringify({
+          companyIds: cluster.companyIds,
+          channels: cluster.channels ?? [],
+          exampleIds: cluster.exampleIds ?? [],
+          lifecycle: cluster.lifecycle ?? "NEW",
+        }),
         cluster.currentBehaviour,
         cluster.expectedBehaviour,
         cluster.rootCause,
@@ -335,6 +356,10 @@ export async function replaceClusters(
 }
 
 export async function replaceIssues(db: D1Database, issues: DailyImprovementIssue[]): Promise<void> {
+  const runId = issues[0]?.runId;
+  if (runId) {
+    await db.prepare(`DELETE FROM daily_improvement_issues WHERE run_id = ?`).bind(runId).run().catch(() => undefined);
+  }
   for (const issue of issues) {
     await db
       .prepare(
@@ -378,13 +403,35 @@ export async function enqueueEngineeringJobs(
   for (const job of jobs) {
     const existing = await db
       .prepare(
-        `SELECT id FROM daily_improvement_engineering_jobs
+        `SELECT id, severity FROM daily_improvement_engineering_jobs
          WHERE cluster_key = ? AND status IN ('QUEUED','CLAIMED','REPRODUCING','FIXING','TESTING','READY_TO_DEPLOY')
          LIMIT 1`,
       )
       .bind(job.cluster.clusterKey)
-      .first();
-    if (existing) continue;
+      .first<{ id: string; severity: string }>();
+    if (existing) {
+      await db
+        .prepare(
+          `UPDATE daily_improvement_engineering_jobs
+           SET title = ?, severity = ?, job_spec_json = ?, updated_at = ?, issue_id = COALESCE(issue_id, ?)
+           WHERE id = ?`,
+        )
+        .bind(
+          job.cluster.title,
+          worseSeverity(existing.severity, job.cluster.severity),
+          JSON.stringify({
+            ...job.spec,
+            affectedCount: job.cluster.interactionCount,
+            lastSeen: nowIso(),
+            qualityClusterId: job.cluster.id,
+          }),
+          nowIso(),
+          job.issue.id,
+          existing.id,
+        )
+        .run();
+      continue;
+    }
     await db
       .prepare(
         `INSERT INTO daily_improvement_engineering_jobs (
@@ -656,16 +703,21 @@ function mapEvaluation(row: Record<string, unknown>): DailyImprovementEvaluation
     scores,
     failureCategories: asStringList(parseJsonArray(String(row.failure_categories_json ?? "[]"))) as FailureCategory[],
     severity: (row.severity ? String(row.severity) : null) as DailyImprovementSeverity | null,
-    notes: row.notes ? String(row.notes) : null,
+    notes: notesFromStored(row.notes),
     evaluatorModel: row.evaluator_model ? String(row.evaluator_model) : null,
     evaluatorKind: (row.evaluator_kind as DailyImprovementEvaluation["evaluatorKind"]) ?? "heuristic",
     trafficClass: "QUALITY",
     customerChargeCents: 0,
     createdAt: String(row.created_at),
+    findings: findingsFromStored(row.notes),
   };
 }
 
 function mapCluster(row: Record<string, unknown>): DailyImprovementCluster {
+  const packed = parseJsonObject(String(row.company_ids_json ?? "{}"));
+  const companyIds = Array.isArray(packed.companyIds)
+    ? asStringList(packed.companyIds)
+    : asStringList(parseJsonArray(String(row.company_ids_json ?? "[]")));
   return {
     id: String(row.id),
     runId: row.run_id ? String(row.run_id) : null,
@@ -675,7 +727,10 @@ function mapCluster(row: Record<string, unknown>): DailyImprovementCluster {
     severity: String(row.severity) as DailyImprovementSeverity,
     interactionCount: Number(row.interaction_count ?? 0),
     tenantCount: Number(row.tenant_count ?? 0),
-    companyIds: asStringList(parseJsonArray(String(row.company_ids_json ?? "[]"))),
+    companyIds,
+    channels: asStringList(packed.channels),
+    exampleIds: asStringList(packed.exampleIds),
+    lifecycle: (typeof packed.lifecycle === "string" ? packed.lifecycle : "NEW") as DailyImprovementCluster["lifecycle"],
     currentBehaviour: row.current_behaviour ? String(row.current_behaviour) : null,
     expectedBehaviour: row.expected_behaviour ? String(row.expected_behaviour) : null,
     rootCause: row.root_cause ? String(row.root_cause) : null,
@@ -684,6 +739,78 @@ function mapCluster(row: Record<string, unknown>): DailyImprovementCluster {
     testsRequired: row.tests_required ? String(row.tests_required) : null,
     expectedBenefit: row.expected_benefit ? String(row.expected_benefit) : null,
     status: String(row.status ?? "OPEN"),
+  };
+}
+
+function persistNotes(evaluation: DailyImprovementEvaluation): string {
+  return JSON.stringify({
+    notes: evaluation.notes,
+    findings: evaluation.findings ?? [],
+    interactionTrafficClass: evaluation.interactionTrafficClass ?? null,
+  });
+}
+
+function notesFromStored(raw: unknown): string | null {
+  const text = raw ? String(raw) : "";
+  if (!text) return null;
+  if (text.startsWith("{")) {
+    const parsed = parseJsonObject(text);
+    return typeof parsed.notes === "string" ? parsed.notes : text;
+  }
+  return text;
+}
+
+function findingsFromStored(raw: unknown): DailyImprovementEvaluation["findings"] {
+  const text = raw ? String(raw) : "";
+  if (!text.startsWith("{")) return [];
+  const parsed = parseJsonObject(text);
+  if (!Array.isArray(parsed.findings)) return [];
+  return parsed.findings.filter((item): item is DailyImprovementEvaluation["findings"][number] => {
+    return Boolean(item && typeof item === "object" && "category" in (item as object));
+  }) as DailyImprovementEvaluation["findings"];
+}
+
+function worseSeverity(current: string, next: string): string {
+  const rank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 } as Record<string, number>;
+  return (rank[next] ?? 9) < (rank[current] ?? 9) ? next : current;
+}
+
+export async function listRecentReportSummaries(db: D1Database, beforeDate: string, limit = 7) {
+  const rows = await db
+    .prepare(
+      `SELECT run_date, summary_json FROM daily_improvement_runs
+       WHERE kind IN ('REPORT','CORRECTED_REPORT') AND run_date < ? AND status = 'completed'
+       ORDER BY run_date DESC LIMIT ?`,
+    )
+    .bind(beforeDate, limit)
+    .all<{ run_date: string; summary_json: string }>();
+  return (rows.results ?? []).map((row) => ({
+    runDate: row.run_date,
+    summary: parseJsonObject(row.summary_json),
+  }));
+}
+
+export async function listOpenEngineeringKeys(db: D1Database): Promise<{
+  openKeys: Set<string>;
+  deployedTodayKeys: Set<string>;
+}> {
+  const open = await db
+    .prepare(
+      `SELECT cluster_key FROM daily_improvement_engineering_jobs
+       WHERE status IN ('QUEUED','CLAIMED','REPRODUCING','FIXING','TESTING','READY_TO_DEPLOY','CARRIED')`,
+    )
+    .all<{ cluster_key: string }>()
+    .catch(() => ({ results: [] as Array<{ cluster_key: string }> }));
+  const deployed = await db
+    .prepare(
+      `SELECT cluster_key FROM daily_improvement_engineering_jobs
+       WHERE status = 'DEPLOYED' AND updated_at >= date('now')`,
+    )
+    .all<{ cluster_key: string }>()
+    .catch(() => ({ results: [] as Array<{ cluster_key: string }> }));
+  return {
+    openKeys: new Set((open.results ?? []).map((row) => row.cluster_key).filter(Boolean)),
+    deployedTodayKeys: new Set((deployed.results ?? []).map((row) => row.cluster_key).filter(Boolean)),
   };
 }
 
