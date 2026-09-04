@@ -30,6 +30,7 @@ import {
 import {
   applyWindowResult,
   inferMonthStatuses,
+  markCurrentMonthCaughtUp,
   planCatchupWindows,
   seedProgressiveCheckpoint,
   summariseCompleteness,
@@ -676,6 +677,16 @@ describe("progressive backfill windows", () => {
     });
     expect(historical[0]?.from).toBe("2026-03-01");
     expect(historical.some((win) => win.from >= "2026-09-01")).toBe(false);
+  });
+
+  it("marks an under-cap current month complete as of today", () => {
+    const months = markCurrentMonthCaughtUp(
+      [{ month: "2026-09", status: "BACKFILLING", recordsRetrieved: 32, nextWindowFrom: "2026-09-05" }],
+      "2026-09-01",
+      32,
+    );
+    expect(months[0]?.status).toBe("COMPLETE");
+    expect(months[0]?.nextWindowFrom).toBeNull();
   });
 
   it("does not mark incomplete history as DEGRADED", () => {

@@ -39,6 +39,7 @@ import {
   addDays,
   applyWindowResult,
   calendarWindow,
+  markCurrentMonthCaughtUp,
   remainingIncompleteWindows,
   seedProgressiveCheckpoint,
   summariseCompleteness,
@@ -556,10 +557,12 @@ async function extractXeroViaInfraReads(input: {
     let currentGrain: "month" | "week" | "day" = "month";
     let currentCursor: string | null = currentWin.from;
     let currentBudget = WAREHOUSE_CURRENT_WINDOWS_PER_RUN;
+    let currentFetched = 0;
     while (currentCursor && currentCursor <= dates.today && currentBudget > 0 && Date.now() - started < 22_000) {
       const piece = calendarWindow(currentCursor, dates.today, currentGrain);
       if (!piece) break;
-      const { applied } = await runWindow(piece.from, piece.to, currentGrain);
+      const { fetched, applied } = await runWindow(piece.from, piece.to, currentGrain);
+      currentFetched += fetched;
       if (applied.possiblyTruncated && applied.nextGrain !== currentGrain) {
         currentGrain = applied.nextGrain;
         currentCursor = applied.nextCursor;
@@ -571,6 +574,9 @@ async function extractXeroViaInfraReads(input: {
       if (!applied.possiblyTruncated && currentGrain !== "month" && currentCursor && currentCursor.slice(8, 10) === "01") {
         break;
       }
+    }
+    if (currentGrain === "month" || !currentCursor || currentCursor > dates.today) {
+      months = markCurrentMonthCaughtUp(months, dates.monthStart, currentFetched);
     }
   }
 

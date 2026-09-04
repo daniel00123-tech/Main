@@ -339,6 +339,27 @@ export function planCatchupWindows(input: {
   return out;
 }
 
+export function markCurrentMonthCaughtUp(
+  months: WarehouseMonthStatus[],
+  monthStart: string,
+  fetched: number,
+  cap = COMPANY_MCP_RESULT_CAP,
+): WarehouseMonthStatus[] {
+  const key = monthKey(monthStart);
+  if (!key || windowHitsCap(fetched, cap)) return months;
+  return months.map((row) =>
+    row.month === key
+      ? {
+          ...row,
+          status: "COMPLETE",
+          nextWindowFrom: null,
+          possiblyTruncated: false,
+          lastCompletedWindow: row.lastCompletedWindow ?? `${monthStart}:current`,
+        }
+      : row,
+  );
+}
+
 export function historicalCatchupNeeded(checkpoint: WarehouseCheckpoint | null | undefined): boolean {
   if (!checkpoint) return true;
   if (checkpoint.backfillCursor) return true;
