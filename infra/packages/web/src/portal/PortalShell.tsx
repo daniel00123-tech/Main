@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Bot,
   ChartColumn,
@@ -110,6 +110,7 @@ function PortalShellInner() {
   const { user, logout } = useAuth();
   const { company, membership, loading, error, companies } = usePortalCompany();
   const navigate = useNavigate();
+  const location = useLocation();
   const [collapsed, setCollapsed] = useSidebarCollapsed("infra.portal.sidebar.collapsed");
   const isMobile = useMediaQuery("(max-width: 900px)");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -185,10 +186,12 @@ function PortalShellInner() {
     return <ErrorState title="Portal unavailable" description={error ?? undefined} />;
   }
 
+  const chatRoute = /\/chat\/?$/.test(location.pathname);
   const showLabels = isMobile || !collapsed;
   const shellClass = [
     "app-shell",
     "portal-shell",
+    chatRoute ? "portal-shell--chat" : "",
     !isMobile && collapsed ? "nav-collapsed" : "",
     isMobile && mobileOpen ? "mobile-nav-open" : "",
   ]

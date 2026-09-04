@@ -142,13 +142,13 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
   },
   {
     name: "xero_top_customers",
-    description: "Read the top Xero customers by invoiced amount for a date range.",
-    whenToUse: "User asks who the top or biggest customers are.",
-    whenNotToUse: "Not for documents. Not for creating contacts.",
+    description: "Rank live Xero customers by sales for a real date range.",
+    whenToUse: "User asks for top, biggest, or ranked customers this month/quarter.",
+    whenNotToUse: "Not for documents. Not for inventing a customer list.",
     parameters: {
-      fromDate: { description: "Inclusive start date YYYY-MM-DD" },
-      toDate: { description: "Inclusive end date YYYY-MM-DD" },
-      limit: { type: "number", description: "How many customers, default 5" },
+      fromDate: { description: "Inclusive start date YYYY-MM-DD in Europe/London" },
+      toDate: { description: "Inclusive end date YYYY-MM-DD in Europe/London" },
+      limit: { type: "number", description: "How many customers to return, default 5" },
     },
     outputShape: "{ customers: [{ name, total }] }",
     permission: "xero read",
@@ -266,6 +266,18 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
     parameters: {},
     outputShape: "{ lastSyncAt, bySource }",
     permission: "company knowledge read",
+  },
+  {
+    name: "web_search",
+    description: "Read-only public web / live information lookup.",
+    whenToUse: "Weather, current public news, sports scores, or other live public-web facts.",
+    whenNotToUse:
+      "Never for Xero, Outlook, company files, invoices, or private EL data. Business systems always outrank this.",
+    parameters: {
+      query: { description: "Public-web question only", required: true },
+    },
+    outputShape: "{ summary, sourceUrl }",
+    permission: "public web read",
   },
 ];
 

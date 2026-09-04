@@ -168,7 +168,31 @@ export function resolveBusinessSystemIntent(
       reason: "named_connector",
     };
   }
+  if (
+    /\b(search|find|show|look(?:ing)? (?:in|at|through)) (the )?(info|finance)(\s+(inbox|mailbox|emails?))? for\b/.test(
+      q,
+    ) ||
+    /\b(info|finance) (inbox|mailbox) for\b/.test(q)
+  ) {
+    return {
+      capability: /\bfinance\b/.test(q) ? "finance_mailbox" : "info_mailbox",
+      connectorDefinitionId: "conn_outlook_shared",
+      namedExplicitly: true,
+      reason: "named_connector",
+    };
+  }
   if (isDocumentAboutSystem(q) && !/\b(tell me|show me|how much|what are our|what is outstanding|raised today|this month)\b/.test(q)) {
+    return null;
+  }
+  if (/\b(meant e-?mails?|e-?mails?, not xero|not xero)\b/.test(q) && /\b(e-?mails?|mailbox|outlook|inbox)\b/.test(q)) {
+    return {
+      capability: /\bfinance\b/.test(q) ? "finance_mailbox" : "info_mailbox",
+      connectorDefinitionId: "conn_outlook_shared",
+      namedExplicitly: true,
+      reason: "named_connector",
+    };
+  }
+  if (/\b(company files?|company documents?|company knowledge)\b/.test(q) && /\b(search|find|look)\b/.test(q)) {
     return null;
   }
 
@@ -187,7 +211,15 @@ export function resolveBusinessSystemIntent(
     };
   }
 
-  if (/\b(emails?|emailed|emials|mailbox|outlook|inbox)\b/.test(q) && !/\bxero\b/.test(q)) {
+  if (/\b(company files?|company documents?|company knowledge)\b/.test(q) && /\b(search|find|look)\b/.test(q)) {
+    return null;
+  }
+  const emailAt = q.search(/\b(e-?mails?|emials?|emailed|mailbox|outlook|inbox|info message)\b/);
+  const xeroAt = q.search(/\b(overdue|outstanding|invoices?|xero|sales)\b/);
+  const emailPreferred =
+    /\b(meant e-?mails?|not xero|instead of xero|e-?mails?, not)\b/.test(q) ||
+    (emailAt >= 0 && (xeroAt < 0 || emailAt <= xeroAt));
+  if ((emailAt >= 0 || /\b(info|finance) message\b/.test(q) || /\bnewest info\b/.test(q)) && emailPreferred) {
     return {
       capability: /\bfinance\b/.test(q) ? "finance_mailbox" : "info_mailbox",
       connectorDefinitionId: "conn_outlook_shared",
@@ -198,6 +230,19 @@ export function resolveBusinessSystemIntent(
 
   const connectorsForDomain = companyConnectors === undefined ? catalogueOperationalConnectors() : companyConnectors;
   const hasXero = connectorsForDomain.some((connector) => connector.definitionId === "conn_xero");
+  if (
+    hasXero &&
+    /\b(compar(e|ed|ing)|versus|vs\.?|how did)\b/.test(q) &&
+    /\b(this month|last month|this quarter|last quarter|sales|invoices?)\b/.test(q) &&
+    !/\b(documents?|files?|emails?|mailbox)\b/.test(q)
+  ) {
+    return {
+      capability: "xero",
+      connectorDefinitionId: "conn_xero",
+      namedExplicitly: /\bxero\b/.test(q),
+      reason: "domain_language",
+    };
+  }
   if (hasXero && XERO_DOMAIN.test(q)) {
     return {
       capability: "xero",
@@ -241,8 +286,11 @@ export function businessToolForIntent(
       const match = query.match(/\bINV-\d+\b/i);
       return { toolName: "xero_get_invoice", arguments: { invoiceNumber: match?.[0], query } };
     }
-    if (/\btop(?:\s+\d+|\s+five|\s+5|\s+ten)?\s+customers?\b/i.test(query)) {
+    if (/\b(top(?:\s+\d+|\s+five|\s+5|\s+ten)?\s+customers?|biggest customers?|rank (our |the )?.{0,12}customers?)\b/i.test(query)) {
       return { toolName: "xero_top_customers", arguments: { query, limit: 5 } };
+    }
+    if (/\b(what|which|show|list) invoices\b/i.test(query) && !/\bINV-\d+/i.test(query)) {
+      return { toolName: "xero_search_invoices", arguments: { query, invoiceType: "ACCREC", limit: 25 } };
     }
     return {
       toolName: "xero_sales_summary",

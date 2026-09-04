@@ -1,7 +1,51 @@
 export const PORTAL_CHAT_MOBILE_MAX = 900;
 
+export type ConversationDateGroup = "Today" | "Yesterday" | "Previous 7 days" | "Older";
+
 export function portalChatLayout(width: number): "mobile" | "desktop" {
   return width < PORTAL_CHAT_MOBILE_MAX ? "mobile" : "desktop";
+}
+
+export function composerInputLocked(_busy: boolean): boolean {
+  return false;
+}
+
+export function composerSendLocked(draft: string): boolean {
+  return !draft.replace(/\s+/g, " ").trim();
+}
+
+export function conversationDateGroup(iso: string, now = new Date()): ConversationDateGroup {
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return "Older";
+  const startOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const dayDiff = Math.round((startOfDay(now) - startOfDay(then)) / 86_400_000);
+  if (dayDiff <= 0) return "Today";
+  if (dayDiff === 1) return "Yesterday";
+  if (dayDiff <= 7) return "Previous 7 days";
+  return "Older";
+}
+
+export function groupConversations<T extends { updatedAt: string }>(
+  rows: T[],
+): Array<{ label: ConversationDateGroup; items: T[] }> {
+  const order: ConversationDateGroup[] = ["Today", "Yesterday", "Previous 7 days", "Older"];
+  const buckets = new Map<ConversationDateGroup, T[]>();
+  for (const label of order) buckets.set(label, []);
+  for (const row of rows) {
+    buckets.get(conversationDateGroup(row.updatedAt))!.push(row);
+  }
+  return order
+    .map((label) => ({ label, items: buckets.get(label) ?? [] }))
+    .filter((group) => group.items.length > 0);
+}
+
+export function filterConversations<T extends { title: string; preview?: string | null }>(
+  rows: T[],
+  query: string,
+): T[] {
+  const needle = query.replace(/\s+/g, " ").trim().toLowerCase();
+  if (!needle) return rows;
+  return rows.filter((row) => `${row.title} ${row.preview ?? ""}`.toLowerCase().includes(needle));
 }
 
 export function portalChatShellClass(layout: "mobile" | "desktop", historyOpen: boolean): string {

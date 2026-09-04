@@ -207,7 +207,7 @@ export function validateToolRequest(name: string, args: Record<string, unknown>)
     return { ok: false, name: clean, arguments: next, reason: "document_id_required" };
   }
   if (clean === "outlook_search_mailbox" && !String(next.query ?? "").trim()) {
-    return { ok: false, name: clean, arguments: next, reason: "query_required" };
+    next.query = "newest";
   }
   if (clean === "xero_get_invoice" && !String(next.invoice_id ?? next.id ?? "").trim()) {
     return { ok: false, name: clean, arguments: next, reason: "invoice_id_required" };

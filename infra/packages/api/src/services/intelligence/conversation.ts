@@ -1,5 +1,8 @@
 import type { IntelligenceConversationState } from "./types.js";
 import type { ScopeDecision } from "./scope.js";
+import { describeUserAsk, isHollowAssistantText, previousSubstantiveUserText } from "./evidence.js";
+import { answerArithmetic } from "./utterance.js";
+import { WEB_SEARCH_UNAVAILABLE } from "./web-search.js";
 
 export function answerGeneralConversation(
   text: string,
@@ -13,11 +16,22 @@ export function answerGeneralConversation(
     if (/\bmore detail\b/i.test(text)) return `${previous}\nI can go back to the source if you want more than that summary.`;
     return simplify(previous);
   }
+  if (decision.lastUserIntent === "more_detail") {
+    if (previous && !isHollowAssistantText(previous)) {
+      return `${previous}\nI can go back to the source if you want more than that summary.`;
+    }
+    return "I don't have a previous answer to expand. Ask the question again and I will.";
+  }
   if (decision.lastUserIntent === "memory") {
     return remember(state, text);
   }
   if (/^(thanks|thank you|cheers|ta|thx|ty|that(?:'s| is) useful|that helps|great thanks)\b/i.test(text.trim())) {
     return "You're welcome.";
+  }
+  const arithmetic = answerArithmetic(text);
+  if (arithmetic) return arithmetic;
+  if (/\b(weather|latest news|who won)\b/i.test(text)) {
+    return WEB_SEARCH_UNAVAILABLE;
   }
   if (/^(hi|hello|hey|hiya|morning)\b/i.test(text.trim())) {
     return "Hi — what do you need?";
@@ -30,22 +44,26 @@ export function answerGeneralConversation(
     return "I was trying to work out which system or document you wanted. Tell me which one and I'll continue.";
   }
   if (/\b(example|what else can you help)\b/i.test(text)) {
-    return "Ask about a document, a connected finance figure, or how many files are indexed. I will only use systems that are connected.";
+    return "Ask about a document, a connected finance figure, live public information, or how many files are indexed. I will only use systems that are connected, plus a public web lookup when you ask for current public facts.";
+  }
+  if (/\b(explain|what does .{1,40} mean|help me (write|draft|brainstorm))\b/i.test(text) && !previous) {
+    return "I can help with that. Give me the snippet or the question and I’ll keep it conversational.";
   }
   return previous ? "Happy to keep going from there — what do you want next?" : "What do you need?";
 }
 
 function remember(state: IntelligenceConversationState, text: string): string {
+  const lastAsk = previousSubstantiveUserText(state.recentTurns ?? [], text);
   if (/\blast document|which (file|document)\b/i.test(text) && state.currentDocument) {
     return `The last document we used was ${state.currentDocument.title}.`;
   }
   if (/\bgo back|previous\b/i.test(text) && state.recentDocuments[0]) {
     return `Before that we had ${state.recentDocuments[0].title}. I can open it again if you want.`;
   }
-  if (/\bwhat did i (just )?ask\b/i.test(text) && state.lastUserIntent) {
-    return `You asked about ${humanTopic(state.lastAnswerTopic || state.lastUserIntent)}.`;
+  if (/\bwhat did i (just )?ask\b/i.test(text) && (lastAsk || state.lastUserIntent)) {
+    return `You asked about ${lastAsk ? describeUserAsk(lastAsk) : humanTopic(state.lastAnswerTopic || state.lastUserIntent || "that")}.`;
   }
-  if (/\bwhat did you (just )?(tell|say)|remind me\b/i.test(text) && state.lastAnswerText) {
+  if (/\bwhat did you (just )?(tell|say)|remind me\b/i.test(text) && state.lastAnswerText && !isHollowAssistantText(state.lastAnswerText)) {
     return simplify(state.lastAnswerText);
   }
   if (/\bwhich source\b/i.test(text) && state.currentDocument?.source) {
@@ -67,12 +85,15 @@ function remember(state: IntelligenceConversationState, text: string): string {
     if (from) return `That was from ${from.trim()}.`;
     return simplify(state.lastAnswerText);
   }
-  if (state.lastAnswerTopic || state.lastAnswerText) {
-    const topic = humanTopic(state.lastAnswerTopic || "conversation");
-    const detail = state.lastAnswerText ? ` ${simplify(state.lastAnswerText)}` : "";
-    return `We were talking about ${topic}${
+  if (lastAsk) {
+    return `We were talking about ${describeUserAsk(lastAsk)}${
       state.currentDocument ? `, and I still have ${state.currentDocument.title} as context` : ""
-    }.${detail}`;
+    }.`;
+  }
+  if (state.lastAnswerTopic && !isHollowAssistantText(state.lastAnswerText)) {
+    return `We were talking about ${humanTopic(state.lastAnswerTopic)}${
+      state.currentDocument ? `, and I still have ${state.currentDocument.title} as context` : ""
+    }.`;
   }
   if (state.currentDocument) {
     return `We had ${state.currentDocument.title} as the current file.`;

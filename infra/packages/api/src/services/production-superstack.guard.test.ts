@@ -43,5 +43,11 @@ describe("production superstack deploy guard", () => {
       classifyScope("Tell me Xero sales this month.", buildConversationState({ userText: "Tell me Xero sales this month." }))
         .tool,
     ).toMatch(/^xero_/);
+    const financeInbox = classifyScope(
+      "What is the newest email in the finance inbox?",
+      buildConversationState({ userText: "What is the newest email in the finance inbox?" }),
+    );
+    expect(financeInbox.tool).toBe("outlook_list_messages");
+    expect(financeInbox.tool).not.toMatch(/^xero_/);
   });
 });

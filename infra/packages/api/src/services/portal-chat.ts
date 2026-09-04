@@ -123,7 +123,10 @@ export async function listPortalConversations(
   await ensurePortalChatSchema(db);
   const rows = await db
     .prepare(
-      `SELECT id, company_id, user_id, title, created_at, updated_at
+      `SELECT id, company_id, user_id, title, created_at, updated_at,
+              (SELECT content FROM portal_conversation_messages
+               WHERE conversation_id = portal_conversations.id
+               ORDER BY created_at DESC LIMIT 1) AS preview
        FROM portal_conversations
        WHERE company_id = ? AND user_id = ?
        ORDER BY updated_at DESC
@@ -264,12 +267,15 @@ export async function sendPortalChatMessage(
     lastAnswerTopic: conversation.context.lastAnswerTopic,
     lastUserIntent: conversation.context.lastUserIntent,
     lastAnswerText: conversation.context.lastAnswerText,
+    lastMailboxAddress: conversation.context.lastMailboxAddress,
+    lastEmailMessageId: conversation.context.lastEmailMessageId,
   });
 
   const runtime = createPortalChatRuntime(env, {
     companyId: input.companyId,
     sessionUser: input.sessionUser,
     interactionId,
+    membershipId: membership?.membershipId ?? null,
     context: conversation.context,
     connectors,
     waitUntil: input.waitUntil,
@@ -356,6 +362,9 @@ export function polishPortalReply(result: IntelligenceTurnResult, question: stri
   if (isGenericRetryCopy(text) && result.toolCalls.length > 0) {
     text = synthesizeFromToolCalls(result.toolCalls, question);
   }
+  if (isGenericRetryCopy(text) && /\b(weather|latest news|who won|website)\b/i.test(question)) {
+    text = "Live web access is unavailable just now, so I can’t check current public information.";
+  }
   if (!text) {
     if (result.toolCalls.length > 0) text = synthesizeFromToolCalls(result.toolCalls, question);
     else if (result.kind === "failed") return "INFRA couldn’t process that request just now. Please try again.";
@@ -377,6 +386,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function countDuplicateSuccessfulCalls(toolCalls: IntelligenceTurnResult["toolCalls"]): number {
+  const seen = new Map<string, number>();
+  for (const call of toolCalls) {
+    if (!call.ok) continue;
+    const data = isRecord(call.data) ? call.data : {};
+    const period = isRecord(data.period) ? data.period : {};
+    const key = [
+      call.name,
+      String(data.fromDate ?? period.fromDate ?? data.period ?? ""),
+      String(data.toDate ?? period.toDate ?? ""),
+      String(data.invoiceNumber ?? data.invoice_id ?? ""),
+      String(data.query ?? ""),
+      String(data.mailboxAddress ?? ""),
+    ].join("|");
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
+  let extra = 0;
+  for (const count of seen.values()) {
+    if (count > 1) extra += count - 1;
+  }
+  return extra;
+}
+
 export function isPermissionDenial(error?: string | null, data?: unknown): boolean {
   const record = isRecord(data) ? data : {};
   if (
@@ -392,7 +424,7 @@ export function isPermissionDenial(error?: string | null, data?: unknown): boole
   const err = [error, record.error, record.code, record.reason]
     .filter((value): value is string => typeof value === "string")
     .join(" ");
-  return /permission_denied|user_not_authorised|not allowed for your role|office staff permissions|your current permissions don’t allow|your current permissions don't allow/i.test(
+  return /permission_denied|user_not_authorised|not allowed for your role|office staff permissions|your current permissions don’t allow|your current permissions don't allow|elvex role does not grant|blocked by your company permissions/i.test(
     err,
   );
 }
@@ -411,6 +443,8 @@ function metadataFromTurn(result: IntelligenceTurnResult): PortalChatMessageMeta
     confidence: result.confidence,
     scope: result.scope ?? null,
     toolNames: result.toolCalls.map((call) => call.name),
+    successfulTools: result.toolCalls.filter((call) => call.ok).map((call) => call.name),
+    duplicateSuccessfulCalls: countDuplicateSuccessfulCalls(result.toolCalls),
     sources,
     permissionDenied: result.toolCalls.some((call) => isPermissionDenial(call.error, call.data)),
     controlledAction: result.kind === "controlled_action",
@@ -444,7 +478,36 @@ function contextFromTurn(
     lastAnswerTopic: result.lastAnswerTopic ?? prior.lastAnswerTopic ?? null,
     lastUserIntent: result.lastUserIntent ?? prior.lastUserIntent ?? null,
     lastAnswerText: reply.slice(0, 1_200),
+    lastMailboxAddress: mailboxFromTurn(result) ?? prior.lastMailboxAddress ?? null,
+    lastEmailMessageId: emailIdFromTurn(result) ?? prior.lastEmailMessageId ?? null,
   };
+}
+
+function mailboxFromTurn(result: IntelligenceTurnResult): string | null {
+  for (const call of [...result.toolCalls].reverse()) {
+    const data = isRecord(call.data) ? call.data : {};
+    const mailbox = data.mailboxAddress ?? data.mailbox;
+    if (typeof mailbox === "string" && mailbox.trim()) return mailbox.trim();
+  }
+  return null;
+}
+
+function emailIdFromTurn(result: IntelligenceTurnResult): string | null {
+  for (const call of [...result.toolCalls].reverse()) {
+    const id = extractFirstMessageIdSafe(call.data);
+    if (id) return id;
+  }
+  return null;
+}
+
+function extractFirstMessageIdSafe(data: unknown): string | null {
+  const record = isRecord(data) ? data : {};
+  const direct = record.id ?? record.messageId;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const messages = Array.isArray(record.messages) ? record.messages : Array.isArray(record.emails) ? record.emails : [];
+  const first = messages.find((item) => isRecord(item));
+  const id = first ? first.id ?? first.messageId : null;
+  return typeof id === "string" && id.trim() ? id.trim() : null;
 }
 
 function mergeRecentDocuments(
@@ -510,6 +573,9 @@ function rowToSummary(row: Record<string, unknown> | PortalChatConversationSumma
     title: String(row.title ?? "New chat"),
     createdAt: String("createdAt" in row && row.createdAt ? row.createdAt : (row as Record<string, unknown>).created_at ?? ""),
     updatedAt: String("updatedAt" in row && row.updatedAt ? row.updatedAt : (row as Record<string, unknown>).updated_at ?? ""),
+    preview: typeof (row as Record<string, unknown>).preview === "string"
+      ? String((row as Record<string, unknown>).preview).slice(0, 80)
+      : null,
   };
 }
 
@@ -543,6 +609,8 @@ function parseContext(raw: unknown): PortalChatContext {
     lastAnswerTopic: typeof parsed.lastAnswerTopic === "string" ? parsed.lastAnswerTopic : null,
     lastUserIntent: typeof parsed.lastUserIntent === "string" ? parsed.lastUserIntent : null,
     lastAnswerText: typeof parsed.lastAnswerText === "string" ? parsed.lastAnswerText : null,
+    lastMailboxAddress: typeof parsed.lastMailboxAddress === "string" ? parsed.lastMailboxAddress : null,
+    lastEmailMessageId: typeof parsed.lastEmailMessageId === "string" ? parsed.lastEmailMessageId : null,
   };
 }
 

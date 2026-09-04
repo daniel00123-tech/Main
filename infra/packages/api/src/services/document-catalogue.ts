@@ -208,7 +208,7 @@ export function sanitizeCatalogueArguments(args: Record<string, unknown>): Catal
 }
 
 const RECENCY =
-  /\b(newest|latest|most recent|recently (modified|changed|updated|added|uploaded)|newly (added|uploaded)|just (added|uploaded)|uploaded|added (today|yesterday|this week|since)|changed (today|yesterday|this week)|what (was|were) (uploaded|added|changed)|what changed|the latest( \d+| ten| few)?)\b/i;
+  /\b(newest|latest|most recent|recently (modified|changed|updated|added|uploaded)|modified most recently|newly (added|uploaded)|just (added|uploaded)|uploaded|added (today|yesterday|this week|since)|changed (today|yesterday|this week)|what (was|were) (uploaded|added|changed)|what changed|the latest( \d+| ten| few)?)\b/i;
 const CATALOGUE_NOUN =
   /\b(documents?|files?|pdfs?|spreadsheets?|docx?|policies|policy|the latest( \d+| ten| few)?)\b/i;
 const ABOUT_TOPIC = /\b(about|mention|contain|talk(?:s|ing)? about|cover(?:s|ing)?)\b/i;
@@ -238,10 +238,13 @@ export function rewriteKnowledgeCallForCatalogue(
 
 export function isCatalogueListingAsk(text: string): boolean {
   const trimmed = text.trim();
+  if (/\b(e-?mails?|emials?|inbox|mailbox|outlook)\b/i.test(trimmed) && !/\b(documents?|files?|attachments?|onedrive|sharepoint)\b/i.test(trimmed)) {
+    return false;
+  }
   if (!RECENCY.test(trimmed) && !/\b(uploaded|added since|changed this|changed today)\b/i.test(trimmed)) {
     return false;
   }
-  if (FIND.test(trimmed) && ABOUT_TOPIC.test(trimmed)) return false;
+  if (FIND.test(trimmed) && ABOUT_TOPIC.test(trimmed) && !RECENCY.test(trimmed)) return false;
   if (/\bhow many\b/i.test(trimmed) && !RECENCY.test(trimmed)) return false;
   return (
     CATALOGUE_NOUN.test(trimmed) ||

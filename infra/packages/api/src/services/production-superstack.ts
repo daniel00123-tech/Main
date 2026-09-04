@@ -46,6 +46,12 @@ export function assertProductionSuperstackCapabilities(): {
   if (resolveBusinessSystemIntent("Tell me Xero sales this month.", EL)?.capability !== "xero") {
     throw new Error("Xero business routing missing");
   }
+  if (
+    resolveBusinessSystemIntent("What is the newest email in the finance inbox?", EL)?.capability !==
+    "finance_mailbox"
+  ) {
+    throw new Error("finance inbox must stay on Outlook, not Xero");
+  }
   const denied = classifyUsageOutcome({
     success: 0,
     settlementStatus: "denied",
