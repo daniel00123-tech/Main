@@ -56,6 +56,26 @@ describe("company MCP Outlook get composition", () => {
     expect(empty.messages).toEqual([]);
   });
 
+  it("reads company-MCP email lists from emails[] or Graph value[]", () => {
+    const fromEmails = composeOutlookListResult(
+      {
+        emails: [
+          { id: "AAMk-email", subject: "PO received", from: "sharon@elvexpropertyservices.com" },
+        ],
+      },
+      "info@elvexpropertyservices.com",
+    );
+    expect(fromEmails.count).toBe(1);
+    expect((fromEmails.messages as Array<{ subject: string }>)[0]?.subject).toBe("PO received");
+
+    const fromValue = composeOutlookListResult(
+      { value: [{ id: "AAMk-value", subject: "Finance pack", from: "ap@example.com" }] },
+      "finance@elvexpropertyservices.com",
+    );
+    expect(fromValue.count).toBe(1);
+    expect((fromValue.messages as Array<{ subject: string }>)[0]?.subject).toBe("Finance pack");
+  });
+
   it("normalises list rows so later get calls receive a stable id", () => {
     const listed = composeOutlookListResult(
       {

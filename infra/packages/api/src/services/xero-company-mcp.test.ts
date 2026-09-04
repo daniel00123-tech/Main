@@ -94,6 +94,39 @@ describe("company MCP Xero mapping", () => {
     expect(listed.invoice_numbers).toEqual(["INV-9"]);
   });
 
+  it("returns an honest no-result when the requested invoice number is not in the search payload", () => {
+    const missed = composeInfraXeroReadResult(
+      "xero_get_invoice",
+      { invoiceNumber: "INV-02268" },
+      {
+        invoices: [
+          { InvoiceNumber: "INV-02276", Type: "ACCREC", Status: "AUTHORISED", Total: 36 },
+        ],
+      },
+      "search_xero_invoices",
+    );
+    expect(missed.found).toBe(false);
+    expect(missed.no_results).toBe(true);
+    expect(missed.invoice).toBeNull();
+    expect(missed.invoiceNumber).toBe("INV-02268");
+  });
+
+  it("selects the matching invoice number from a search payload", () => {
+    const hit = composeInfraXeroReadResult(
+      "xero_get_invoice",
+      { invoiceNumber: "INV-02268" },
+      {
+        invoices: [
+          { InvoiceNumber: "INV-02276", Type: "ACCREC", Status: "AUTHORISED", Total: 36 },
+          { InvoiceNumber: "INV-02268", Type: "ACCREC", Status: "AUTHORISED", Total: 120, Contact: { Name: "Acme" } },
+        ],
+      },
+      "search_xero_invoices",
+    );
+    expect(hit.found).toBe(true);
+    expect(hit.invoiceNumber).toBe("INV-02268");
+  });
+
   it("does not invent sales totals from a narrative-only analyse result", () => {
     const raw = extractRawSalesDocuments({ analysis: "Sales look healthy", text: "no invoices" });
     expect(raw).toEqual([]);

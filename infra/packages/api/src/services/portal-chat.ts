@@ -270,6 +270,7 @@ export async function sendPortalChatMessage(
     companyId: input.companyId,
     sessionUser: input.sessionUser,
     interactionId,
+    membershipId: membership?.membershipId ?? null,
     context: conversation.context,
     connectors,
     waitUntil: input.waitUntil,
@@ -377,6 +378,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function countDuplicateSuccessfulCalls(toolCalls: IntelligenceTurnResult["toolCalls"]): number {
+  const seen = new Map<string, number>();
+  for (const call of toolCalls) {
+    if (!call.ok) continue;
+    const data = isRecord(call.data) ? call.data : {};
+    const period = isRecord(data.period) ? data.period : {};
+    const key = [
+      call.name,
+      String(data.fromDate ?? period.fromDate ?? data.period ?? ""),
+      String(data.toDate ?? period.toDate ?? ""),
+      String(data.invoiceNumber ?? data.invoice_id ?? ""),
+      String(data.query ?? ""),
+      String(data.mailboxAddress ?? ""),
+    ].join("|");
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
+  let extra = 0;
+  for (const count of seen.values()) {
+    if (count > 1) extra += count - 1;
+  }
+  return extra;
+}
+
 export function isPermissionDenial(error?: string | null, data?: unknown): boolean {
   const record = isRecord(data) ? data : {};
   if (
@@ -392,7 +416,7 @@ export function isPermissionDenial(error?: string | null, data?: unknown): boole
   const err = [error, record.error, record.code, record.reason]
     .filter((value): value is string => typeof value === "string")
     .join(" ");
-  return /permission_denied|user_not_authorised|not allowed for your role|office staff permissions|your current permissions don’t allow|your current permissions don't allow/i.test(
+  return /permission_denied|user_not_authorised|not allowed for your role|office staff permissions|your current permissions don’t allow|your current permissions don't allow|elvex role does not grant|blocked by your company permissions/i.test(
     err,
   );
 }
@@ -411,6 +435,8 @@ function metadataFromTurn(result: IntelligenceTurnResult): PortalChatMessageMeta
     confidence: result.confidence,
     scope: result.scope ?? null,
     toolNames: result.toolCalls.map((call) => call.name),
+    successfulTools: result.toolCalls.filter((call) => call.ok).map((call) => call.name),
+    duplicateSuccessfulCalls: countDuplicateSuccessfulCalls(result.toolCalls),
     sources,
     permissionDenied: result.toolCalls.some((call) => isPermissionDenial(call.error, call.data)),
     controlledAction: result.kind === "controlled_action",

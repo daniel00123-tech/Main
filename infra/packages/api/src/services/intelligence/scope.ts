@@ -22,6 +22,7 @@ export type ScopeFeatures = {
   companyLocus: boolean;
   discourse: boolean;
   rephraseLastAnswer: boolean;
+  moreDetail: boolean;
   memoryRecall: boolean;
   capabilityAsk: boolean;
   connectorAsk: boolean;
@@ -60,28 +61,30 @@ const CORPUS =
 const CONTENT_MENTION =
   /\b(mention|mentions|mentioned|about|contain|contains|containing|say|says|talk(?:s|ing)? about|cover(?:s|ing)?|refer(?:s|ring)? to)\b/i;
 const CURRENT_LOCUS =
-  /\b(this (document|doc|file)|that (document|doc|file)|the current (document|doc|file)|in (this|that|it|the file|the document)|only this (file|document|one)|just this (file|document)|inside (this|that) (file|document)|this one)\b/i;
+  /\b(this (document|doc|file)|that (same )?(document|doc|file)|the current (document|doc|file)|in (this|that|it|the file|the document)|only this (file|document|one)|just this (file|document)|inside (this|that) (file|document)|this one|the same (document|file|one))\b/i;
 const SYSTEM_LOCUS =
   /\b(on the system|in the system|the system|indexed|company[- ]wide|in total|across (the )?(system|company|everything)|whole system|entire system|everywhere|the platform|system (document )?count|system total|all (of )?(the )?(files|documents|docs) (on|in) (the )?(system|company))\b/i;
 const COMPANY_LOCUS =
-  /\b(all documents|all (the )?files|across (all )?(documents|files|docs)|search everywhere|the whole (library|corpus|set)|every (document|file)|company knowledge|other documents)\b/i;
+  /\b(all documents|all (the )?files|across (all )?(documents|files|docs)|search everywhere|the whole (library|corpus|set)|every (document|file)|company knowledge|company (documents?|files)|other documents)\b/i;
 const DISCOURSE =
   /^(hi|hello|hey|hiya|yo|morning|thanks|thank you|cheers|ta|thx|ty)\b|^(how are you|how(?:'s|s) it going)\b|\b(that(?:'s| is) useful|that helps|great thanks|appreciate (it|that)|i don'?t (understand|follow)|what do you mean|why did you ask|can you (give|show) (me )?an example)\b/i;
 const REPHRASE =
-  /\b(explain(?: that| this| it| your last answer)? more simply|more simply|make (that|it|this|your last answer)( \w+)? (shorter|simpler|brief)|in fewer words|more detail(s)?( on (that|your last|what you said))?|give me more (detail|details|info|information)|say that again|explain again|put (that|it) another way)\b/i;
+  /\b(explain(?: that| this| it| your last answer)? more simply|more simply|make (that|it|this|your last answer)( \w+)? (shorter|simpler|brief)|in fewer words|more detail on (that|your last|what you said)|say that again|explain again|put (that|it) another way)\b/i;
+const MORE_DETAIL =
+  /^(please )?(can you |could you )?(give me |tell me )?(more details?|more info(?:rmation)?|tell me more)([.?!]*$| about (that|this|it|the same|the (last|previous|current))\b.*)/i;
 const SHORT_REPHRASE = /^(more detail|what exactly)[.?!]*$/i;
 const SHORT_MEMORY = /^(when|who)[.?!]*$/i;
 const MEMORY =
-  /\b(what (were|are) we talking about|what did i (just )?ask|what did you (just )?(tell|say)|remind me|which source|last document i asked|the amount again)\b/i;
+  /\b(what (were|are) we (just )?(talking about|doing)|what did i (just )?ask|what did you (just )?(tell|say)|remind me( what we (just )?asked)?|which source|source (url|link)|last document i asked|the amount again|who (was that|sent that)|when did (it|that) arrive|when was that (email|one|message)|who sent that one)\b/i;
 const CAPABILITY =
-  /^(help)\b|\b(what can you do|what can i ask|what (data|information) (can you|are you allowed to) (access|see|use|read)|what else (can|are) you (do|help|able)|what are you able to|who are you|what is infra|what information are you)\b/i;
+  /^(help)\b|\b(what can you (do|help)|what are you allowed to do|what can i ask|what (data|information) (can you|are you allowed to) (access|see|use|read)|what else (can|are) you (do|help|able)|what are you able to|who are you|what is infra|what information are you|can you (access|use) xero|can you read e-?mails?|if xero is (down|unavailable)|what should you say)\b/i;
 const CONNECTOR =
-  /\b(what systems? (are )?(connected|linked)|which (live )?systems?|what(?:'s| is) connected|connectors?|(is|are) (xero|sharepoint|drive|email|outlook) (connected|linked)|do (we|i|you) have (xero|sharepoint|drive|email) connected|systems can you (actually )?use)\b/i;
+  /\b(what systems? (are )?(connected|linked)|which (live )?systems?|what(?:'s| is) connected|connectors?|(is|are) (\w+) (connected|linked)|do (we|i|you) have (xero|sharepoint|drive|email|bigchange) connected|systems can you (actually )?use)\b/i;
 const FINANCE =
   /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables|who owes)\b/i;
-const EMAIL = /\b(emails?|emailed|emials|emaills|mailbox|outlook|inbox|any mail|e-mails?)\b/i;
+const EMAIL = /\b(e-?mails?|emials?|emaills|emailed|mailbox|outlook|inbox|any mail)\b/i;
 const WRITE =
-  /\b(create (an? )?(invoice|bill|credit)|approve |send(?: this| the)? invoice|delete |void |allocate |raise an invoice|write to|update (the )?(invoice|bill|contact)|credit note)\b/i;
+  /\b(create .{0,24}(invoices?|bills?|credits?)|approve |send(?: this| the)? invoices?|send e-?mails?|can you send e-?mails?|delete |void |allocate |raise an invoice|write to|update (the )?(invoice|bill|contact)|credit notes?)\b/i;
 const FIND =
   /\b((can you |could you |please )?(find|search|look(?:ing)? (for|up)|pull up)|have we got|where is)\b/i;
 const NAMED_SWITCH_VERB =
@@ -129,7 +132,7 @@ function isNamedDocumentFind(trimmed: string): boolean {
 }
 
 const PERIOD_FOLLOW =
-  /\b(today|yesterday|(this|last|past|previous)( \d+)? (days?|weeks?|months?|quarters?|years?))\b|\b(what about|how about|and) (this|last|yesterday|today|it)\b|\b(compare|versus|\bvs\.?\b) (them|that|this|last|the)\b/i;
+  /\b(today|yesterday|(this|last|past|previous)( \d+)? (days?|weeks?|months?|quarters?|years?)|month before( that)?|before that)\b|\b(what about|how about|and) (this|last|yesterday|today|it|the month)\b|\b(compare|versus|\bvs\.?\b) (them|that|this|last|the)\b/i;
 
 function isFinancePeriodFollowUp(
   text: string,
@@ -160,8 +163,9 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
       : { ...intent, capability: "xero", connectorDefinitionId: "conn_xero" },
     text,
   );
-  if (mapped?.toolName.startsWith("xero_")) return mapped.toolName;
+  if (mapped?.toolName?.startsWith("xero_")) return mapped.toolName;
   if (/overdue|owes/i.test(text)) return "xero_list_overdue_invoices";
+  if (/outstanding/i.test(text)) return "xero_search_invoices";
   if (/p&l|pnl|profit/i.test(text)) return "xero_profit_and_loss";
   if (/aged/i.test(text)) return "xero_aged_receivables";
   if (/INV-|\binvoice\b.*\d/i.test(text)) return "xero_get_invoice";
@@ -169,7 +173,7 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
   return "xero_sales_summary";
 }
 
-function pickMailboxTool(text: string): string {
+export function pickMailboxTool(text: string): string {
   if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text) && !/\b(from|containing|search|find|sharon|po)\b/i.test(text)) {
     return "outlook_list_messages";
   }
@@ -177,7 +181,11 @@ function pickMailboxTool(text: string): string {
     return "outlook_search_mailbox";
   }
   if (/\b(full|body|what does .{0,40}(say|said))\b/i.test(text)) return "outlook_list_messages";
-  if (/\b(newest|latest|last \d|last five|unread|most recently|arrived today|last 5|who emailed)\b/i.test(text)) {
+  if (
+    /\b(newest|latest|most recent(?:ly)?|last email|recent email|emailed .{0,40}recent|last (five|5|few) emails?|last \d|unread|arrived today|who emailed)\b/i.test(
+      text,
+    )
+  ) {
     return "outlook_list_messages";
   }
   return "outlook_search_mailbox";
@@ -193,7 +201,8 @@ function extractFeatures(text: string): ScopeFeatures {
     systemLocus: SYSTEM_LOCUS.test(trimmed),
     companyLocus: COMPANY_LOCUS.test(trimmed),
     discourse: DISCOURSE.test(trimmed),
-    rephraseLastAnswer: REPHRASE.test(trimmed) || SHORT_REPHRASE.test(trimmed),
+    rephraseLastAnswer: (REPHRASE.test(trimmed) || SHORT_REPHRASE.test(trimmed)) && !MORE_DETAIL.test(trimmed),
+    moreDetail: MORE_DETAIL.test(trimmed),
     memoryRecall: MEMORY.test(trimmed) || SHORT_MEMORY.test(trimmed),
     capabilityAsk: CAPABILITY.test(trimmed),
     connectorAsk: CONNECTOR.test(trimmed),
@@ -238,20 +247,35 @@ function detectScopeSwitch(text: string): ScopeSwitch {
   if (/\b(whole system|on the system|entire system|the platform)\b/i.test(text)) {
     return "system";
   }
+  if (/\b(i meant|no,? i meant) (the )?(company )?(documents?|files?|knowledge)\b/i.test(text)) {
+    return "company";
+  }
   if (/\b(i )?meant (the )?(xero|sales|invoices?)\b/i.test(text) && !/\b(email|mailbox|outlook|inbox)\b/i.test(text)) {
     return "business";
   }
   if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text)) {
     return "email";
   }
+  if (/\b(emails?|mailbox|outlook|inbox)\b/i.test(text) && !/\b(company files?|company documents?|company knowledge)\b/i.test(text)) {
+    if (
+      /\b(instead|switch|search|check|from|meant)\b/i.test(text) ||
+      /\b(finance inbox|info inbox|finance@|info@)\b/i.test(text)
+    ) {
+      return "email";
+    }
+  }
   if (
     (/\bxero\b/i.test(text) || /\b(finance|invoices?|sales figures)\b/i.test(text)) &&
-    /\b(switch|instead|use|check|meant)\b/i.test(text) &&
+    /\b(switch|instead|use|from|check|meant)\b/i.test(text) &&
     !/\b(emails?|mailbox|outlook|inbox)\b/i.test(text)
   ) {
     return "business";
   }
-  if (/\b(emails?|emials|mailbox|outlook)\b/i.test(text) && /\b(instead|switch|search|check|from|meant)\b/i.test(text)) {
+  if (
+    /\b(emails?|emials|mailbox|outlook)\b/i.test(text) &&
+    /\b(instead|switch|search|check|from|meant)\b/i.test(text) &&
+    !/\b(company files?|company documents?|company knowledge)\b/i.test(text)
+  ) {
     return "email";
   }
   return null;
@@ -335,6 +359,20 @@ export function classifyScope(
       tool: null,
       noTool: true,
       lastUserIntent: "controlled_action",
+    });
+  }
+
+  if (
+    (lastTopic === "email" || state.currentBusinessSystem === "outlook") &&
+    features.memoryRecall &&
+    !features.findDocument &&
+    !features.writeIntent
+  ) {
+    return decide("GENERAL_CONVERSATION", features, {
+      tool: null,
+      noTool: true,
+      lastAnswerTopic: "email",
+      lastUserIntent: "memory",
     });
   }
 
@@ -506,6 +544,15 @@ export function classifyScope(
       matchedDocument: namedRecent,
       lastAnswerTopic: "document",
       lastUserIntent: "restore_recent",
+    });
+  }
+
+  if (features.moreDetail) {
+    return decide("GENERAL_CONVERSATION", features, {
+      tool: null,
+      noTool: true,
+      lastAnswerTopic: lastTopic,
+      lastUserIntent: "more_detail",
     });
   }
 

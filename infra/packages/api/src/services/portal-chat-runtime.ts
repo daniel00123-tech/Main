@@ -4,7 +4,7 @@ import { executeGatewayRequest } from "./gateway";
 import {
   GATEWAY_TOOL_ALIASES,
   SYSTEM_META_TOOLS,
-  clipBusinessToolData,
+  compactBusinessToolData,
   executeSystemMetaTool,
   enrichDocumentQuery,
 } from "./intelligence/index";
@@ -36,8 +36,8 @@ const ALLOWED_GATEWAY_TOOLS = new Set([
   "xero_get_invoice",
   "xero_search_contacts",
   "xero_list_overdue_invoices",
-  "xero_aged_receivables",
   "xero_top_customers",
+  "xero_aged_receivables",
   "outlook_search_mailbox",
   "outlook_list_messages",
   "outlook_get_message",
@@ -56,6 +56,7 @@ export function createPortalChatRuntime(
     companyId: string;
     sessionUser: SessionUser;
     interactionId: string;
+    membershipId?: string | null;
     context: PortalChatContext;
     connectors: string[];
     waitUntil?: (promise: Promise<unknown>) => void;
@@ -96,7 +97,12 @@ export function createPortalChatRuntime(
 
       const fetched = await withBoundedTimeout(
         gateway(env, {
-          actor: { type: "user", user: input.sessionUser, channel: "portal" },
+          actor: {
+            type: "user",
+            user: input.sessionUser,
+            channel: "portal",
+            membershipId: input.membershipId ?? undefined,
+          },
           companyId: input.companyId,
           toolName: gatewayName,
           arguments: args,
@@ -197,7 +203,7 @@ export function createPortalChatRuntime(
         name: call.name,
         ok: true,
         latencyMs: Date.now() - started,
-        data: clipToolData(fetched.value.result, gatewayName),
+        data: compactBusinessToolData(call.name, fetched.value.result),
       };
     },
   };
@@ -304,7 +310,12 @@ async function runSearchDocument(
   if (!payload) {
     const fetched = await withBoundedTimeout(
       gateway(env, {
-        actor: { type: "user", user: input.sessionUser, channel: "portal" },
+        actor: {
+          type: "user",
+          user: input.sessionUser,
+          channel: "portal",
+          membershipId: input.membershipId ?? undefined,
+        },
         companyId: input.companyId,
         toolName: COMPANY_KNOWLEDGE_READ_TOOL,
         arguments: { documentRef: documentId, id: documentId },
@@ -395,16 +406,15 @@ function gatewayArguments(
     return { id, documentRef: id };
   }
   if (toolName === "xero_get_invoice") {
-    const invoiceNumber = String(args.invoiceNumber ?? args.invoice_number ?? "").trim();
-    const invoiceId = String(args.invoice_id ?? args.invoiceId ?? args.id ?? "").trim();
+    const invoiceNumber = String(
+      args.invoiceNumber ?? args.invoice_number ?? args.invoice_id ?? args.invoiceId ?? args.id ?? "",
+    ).trim();
+    const invoiceId = String(args.invoice_id ?? args.invoiceId ?? "").trim();
     return {
-      ...(invoiceId ? { invoice_id: invoiceId, invoiceId } : {}),
-      ...(invoiceNumber ? { invoiceNumber } : {}),
+      ...(invoiceNumber ? { invoiceNumber, invoice_id: invoiceId || invoiceNumber, invoiceId: invoiceId || invoiceNumber } : {}),
+      ...(invoiceId && !invoiceNumber ? { invoice_id: invoiceId, invoiceId } : {}),
     };
   }
   return { ...args };
 }
 
-function clipToolData(value: unknown, toolName = ""): unknown {
-  return clipBusinessToolData(value, toolName);
-}
