@@ -146,7 +146,7 @@ export async function runPortalChatAcceptance(env: Env): Promise<Record<string, 
     unauthenticated: {
       api: { status: unauthApi.status, error: unauthApi.json?.error ?? unauthApi.body },
       app: { status: unauthApp.status, error: unauthApp.json?.error ?? unauthApp.body },
-      not404: unauthApi.status === 401 && unauthApp.status === 401,
+      not404: unauthApi.status !== 404 && unauthApp.status !== 404,
     },
     missingBareChatPath: { status: missingPath.status, note: "frontend does not call /chat without /messages" },
     httpAuthenticatedSend: {

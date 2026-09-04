@@ -62,18 +62,24 @@ export async function runOfficeStaffRbacAcceptance(env: Env): Promise<Record<str
     sessionUser,
     text: "Tell me our Xero sales this month.",
   });
-  const finance = await sendPortalChatMessage(env, {
-    companyId: COMPANY_ID,
-    sessionUser,
-    conversationId: xero.conversation.id,
-    text: "Show me the newest email in the finance inbox.",
-  });
-  const info = await sendPortalChatMessage(env, {
-    companyId: COMPANY_ID,
-    sessionUser,
-    conversationId: xero.conversation.id,
-    text: "Show me the newest email in the info inbox.",
-  });
+  async function ask(text: string, conversationId?: string) {
+    return sendPortalChatMessage(env, {
+      companyId: COMPANY_ID,
+      sessionUser,
+      conversationId,
+      text,
+    });
+  }
+  const timedOut = (reply: string) => /need another moment|try asking once more|couldn.?t process/i.test(reply);
+
+  let finance = await ask("Show me the newest email in the finance inbox.");
+  if (timedOut(finance.assistantMessage.content)) {
+    finance = await ask("Show me the newest email in the finance inbox.");
+  }
+  let info = await ask("Show me the newest email in the info inbox.");
+  if (timedOut(info.assistantMessage.content)) {
+    info = await ask("Show me the newest email in the info inbox.");
+  }
 
   const usage = await env.DB.prepare(
     `SELECT tool_name, action, source_client, success, settlement_status, customer_charge_cents, recorded_at

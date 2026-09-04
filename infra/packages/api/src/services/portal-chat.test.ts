@@ -364,4 +364,43 @@ describe("portal chat polish", () => {
     expect(text).toMatch(/permission denied/i);
     expect(isPermissionDenial("permission denied", { status: 403 })).toBe(true);
   });
+
+  it("does not treat a successful Xero payload as a permission denial", () => {
+    expect(
+      isPermissionDenial(null, {
+        source: "Xero",
+        sales_total: 4554,
+        invoices: [{ invoiceNumber: "INV-02268", status: "AUTHORISED", reference: "payment not denied" }],
+      }),
+    ).toBe(false);
+    expect(
+      polishPortalReply(
+        {
+          kind: "answered",
+          text: "Sales this month are £4,554.",
+          confidence: "high",
+          offerSearchOther: false,
+          toolCalls: [
+            {
+              name: "xero_sales_summary",
+              ok: true,
+              latencyMs: 40,
+              data: { source: "Xero", sales_total: 4554, notes: "none denied" },
+            },
+          ],
+          currentDocument: null,
+          evidenceDocumentIds: [],
+          clarification: false,
+          citeSource: false,
+          modelRounds: [],
+          totalModelMs: 0,
+          totalToolMs: 40,
+          provider: "none",
+          model: null,
+          estimatedCostUsd: 0,
+        },
+        "What are our Xero sales this month?",
+      ),
+    ).toBe("Sales this month are £4,554.");
+  });
 });
