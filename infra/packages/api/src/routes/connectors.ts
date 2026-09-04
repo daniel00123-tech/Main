@@ -1341,6 +1341,29 @@ connectors.post("/api/internal/el-knowledge-onedrive-diagnostic", async (c) => {
   }
 });
 
+connectors.post("/api/internal/el-mailbox-attachment-backfill", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { runElMailboxAttachmentBackfill } = await import("../services/mailbox-attachment-backfill");
+    return c.json(
+      await runElMailboxAttachmentBackfill(c.env, {
+        windowFrom: typeof body.windowFrom === "string" ? body.windowFrom : undefined,
+        windowTo: typeof body.windowTo === "string" ? body.windowTo : undefined,
+        actor: "system:el-mailbox-attachment-backfill",
+        sendEmail: body.sendEmail !== false,
+      }),
+    );
+  } catch (err) {
+    return c.json(
+      { error: err instanceof Error ? err.message : "EL mailbox attachment backfill failed" },
+      500,
+    );
+  }
+});
+
 connectors.post("/api/internal/el-outlook-attachment-ingest", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);

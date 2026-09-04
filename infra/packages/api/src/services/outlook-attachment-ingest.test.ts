@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   listApproved: vi.fn(),
+  listExcluded: vi.fn(),
   seedPolicy: vi.fn(),
   discoverUsers: vi.fn(),
   listRegistry: vi.fn(),
@@ -20,6 +21,7 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock("./mailbox-registry", () => ({
   listApprovedAttachmentMailboxes: hoisted.listApproved,
+  listExcludedAttachmentMailboxes: hoisted.listExcluded,
   seedPolicyMailboxes: hoisted.seedPolicy,
   discoverCompanyUserMailboxes: hoisted.discoverUsers,
   listCompanyMailboxRegistry: hoisted.listRegistry,
@@ -98,8 +100,24 @@ describe("Outlook attachment ingest", () => {
       { mailboxAddress: "michael@elvexpropertyservices.com", displayName: "Michael", userId: "u1", role: "finance_team" },
       { mailboxAddress: "sharon@elvexpropertyservices.com", displayName: "Sharon", userId: "u2", role: "office_staff" },
       { mailboxAddress: "lauren@elvexpropertyservices.com", displayName: "Lauren", userId: "u3", role: "office_staff" },
+      { mailboxAddress: "william@elvexpropertyservices.com", displayName: "William", userId: "u4", role: "director" },
+      { mailboxAddress: "ella@elvexpropertyservices.com", displayName: "Ella Mae", userId: "u5", role: "director" },
     ]);
     hoisted.listRegistry.mockResolvedValue([]);
+    hoisted.listExcluded.mockResolvedValue([
+      {
+        mailbox_address: "william@elvexpropertyservices.com",
+        mailbox_type: "user_mailbox",
+        display_name: "William",
+        enabled_for_attachment_ingestion: 0,
+      },
+      {
+        mailbox_address: "ella@elvexpropertyservices.com",
+        mailbox_type: "user_mailbox",
+        display_name: "Ella Mae",
+        enabled_for_attachment_ingestion: 0,
+      },
+    ]);
     hoisted.markScan.mockResolvedValue(undefined);
     hoisted.listMcp.mockResolvedValue([{ id: "mcp_el_primary", enabled: true, serviceBindingRef: "EL_BUSINESS_MCP" }]);
     hoisted.upload.mockResolvedValue({ ok: true, documentId: 91, indexed: true, documentStatus: "indexed", chunksIndexed: 4 });
@@ -174,8 +192,10 @@ describe("Outlook attachment ingest", () => {
     expect(result.counts.skipped).toBe(1);
     expect(result.counts.skippedJunk).toBe(1);
     expect(hoisted.store).toHaveBeenCalledTimes(1);
-    expect(result.namedPeople.map((row) => row.name)).toEqual(["Michael", "Sharon", "Lauren"]);
-    expect(result.namedPeople.every((row) => row.approvedForAttachmentIngestion === false)).toBe(true);
+    expect(result.namedPeople.map((row) => row.name)).toEqual(["Michael", "Sharon", "Lauren", "William", "Ella"]);
+    expect(result.namedPeople.find((row) => row.name === "William")?.excluded).toBe(true);
+    expect(result.namedPeople.find((row) => row.name === "Ella")?.excluded).toBe(true);
+    expect(result.counts.mailboxesExcluded).toBe(2);
     expect(hoisted.upload).toHaveBeenCalledTimes(1);
   });
 
@@ -484,5 +504,166 @@ describe("Outlook attachment ingest", () => {
     expect(result.counts.attachmentsStored).toBe(1);
     expect(result.counts.attachmentsIndexed).toBe(0);
     expect(result.counts.failed).toBe(1);
+  });
+
+  it("includes Lauren by inherited default and never scans William or Ella", async () => {
+    hoisted.listApproved.mockResolvedValue([
+      {
+        id: "mbx_lauren",
+        company_id: "co_el",
+        mailbox_address: "lauren@elvexpropertyservices.com",
+        mailbox_type: "user_mailbox",
+        last_checkpoint: null,
+      },
+    ]);
+    hoisted.listRegistry.mockResolvedValue([
+      {
+        mailbox_address: "lauren@elvexpropertyservices.com",
+        display_name: "Lauren",
+        enabled_for_attachment_ingestion: 1,
+        enabled_for_mail_search: 0,
+        graph_accessible: 0,
+      },
+      {
+        mailbox_address: "william@elvexpropertyservices.com",
+        display_name: "William",
+        enabled_for_attachment_ingestion: 0,
+        enabled_for_mail_search: 0,
+        graph_accessible: null,
+      },
+    ]);
+    hoisted.listMessages.mockResolvedValue([]);
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-08-28T19:00:00.000Z"),
+        windowTo: new Date("2026-09-04T20:00:00.000Z"),
+      },
+    );
+    expect(result.namedPeople.find((row) => row.name === "Lauren")?.approvedForAttachmentIngestion).toBe(true);
+    expect(result.namedPeople.find((row) => row.name === "William")?.excluded).toBe(true);
+    expect(result.namedPeople.find((row) => row.name === "Ella")?.excluded).toBe(true);
+    expect(hoisted.listMessages).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ mailboxAddress: "lauren@elvexpropertyservices.com" }),
+    );
+    expect(JSON.stringify(hoisted.listMessages.mock.calls)).not.toMatch(/william@|ella@/i);
+  });
+
+  it("indexes XLSX and DOCX business documents", async () => {
+    hoisted.listMessages.mockResolvedValue([
+      {
+        id: "msg-docs",
+        subject: "CIS pack",
+        hasAttachments: true,
+        receivedDateTime: "2026-09-03T10:32:31Z",
+        from: { emailAddress: { address: "ellie@barons-group.org" } },
+      },
+    ]);
+    hoisted.listAttachments.mockResolvedValue([
+      {
+        id: "att-xlsx",
+        name: "remittance.xlsx",
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        size: 12_000,
+        isInline: false,
+      },
+      {
+        id: "att-docx",
+        name: "statement.docx",
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        size: 15_000,
+        isInline: false,
+      },
+    ]);
+    hoisted.getAttachment.mockImplementation(async (_cfg: unknown, _mbx: string, _msg: string, attachmentId: string) => ({
+      name: attachmentId === "att-xlsx" ? "remittance.xlsx" : "statement.docx",
+      contentType:
+        attachmentId === "att-xlsx"
+          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      size: 12_000,
+      contentBytes: btoa(attachmentId),
+    }));
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-09-01T00:00:00.000Z"),
+        windowTo: new Date("2026-09-04T20:00:00.000Z"),
+      },
+    );
+    expect(result.counts.attachmentsIndexed).toBe(2);
+  });
+
+  it("skips unsafe executables without fetching forever", async () => {
+    hoisted.listMessages.mockResolvedValue([
+      {
+        id: "msg-exe",
+        subject: "tool",
+        hasAttachments: true,
+        receivedDateTime: "2026-09-04T12:00:00Z",
+        from: { emailAddress: { address: "a@example.com" } },
+      },
+    ]);
+    hoisted.listAttachments.mockResolvedValue([
+      { id: "att-exe", name: "setup.exe", contentType: "application/x-msdownload", size: 40_000, isInline: false },
+    ]);
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-09-01T00:00:00.000Z"),
+        windowTo: new Date("2026-09-04T20:00:00.000Z"),
+      },
+    );
+    expect(result.counts.skipped).toBe(1);
+    expect(result.counts.attachmentsIndexed).toBe(0);
+    expect(result.counts.unsupported).toBe(1);
+  });
+
+  it("records a storage failure without advancing as indexed", async () => {
+    hoisted.store.mockResolvedValueOnce({
+      ok: false,
+      code: "LANDING_ZONE_UPLOAD_FAILED",
+      message: "temporary storage failure",
+      via: "none",
+      storedItemId: null,
+      storedUrl: null,
+      warning: "LANDING_ZONE_UPLOAD_FAILED",
+    });
+    hoisted.listMessages.mockResolvedValue([
+      {
+        id: "msg-store",
+        subject: "quote",
+        hasAttachments: true,
+        receivedDateTime: "2026-09-04T15:41:18Z",
+        from: { emailAddress: { address: "site@example.com" } },
+      },
+    ]);
+    hoisted.listAttachments.mockResolvedValue([
+      { id: "att-pdf", name: "quote.pdf", contentType: "application/pdf", size: 20_000, isInline: false },
+    ]);
+    hoisted.getAttachment.mockResolvedValue({
+      name: "quote.pdf",
+      contentType: "application/pdf",
+      size: 20_000,
+      contentBytes: pdfBytes,
+    });
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-09-01T00:00:00.000Z"),
+        windowTo: new Date("2026-09-04T20:00:00.000Z"),
+      },
+    );
+    expect(result.counts.failed).toBeGreaterThan(0);
+    expect(result.counts.attachmentsIndexed).toBe(0);
+    expect(hoisted.markScan).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ success: false, checkpoint: null }),
+    );
   });
 });

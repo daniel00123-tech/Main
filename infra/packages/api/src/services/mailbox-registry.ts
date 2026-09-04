@@ -12,6 +12,11 @@ import {
 } from "@infra/shared";
 import type { Env } from "../env";
 import { newId, nowIso } from "../db/mappers";
+import {
+  ensureCompanyIngestionPolicy,
+  resolveMailboxIngestionPolicy,
+  seedElvexIngestionExclusions,
+} from "./mailbox-ingestion-policy";
 
 export const MAILBOX_REGISTRY_TYPES = [
   "shared_mailbox",
@@ -84,12 +89,16 @@ export async function ensureMailboxRegistrySchema(db: D1Database): Promise<void>
     .run();
 }
 
-/** Work-user mailboxes Daniel approved for background attachment ingest. Not Portal chat search. */
-export const ELVEX_WORK_USER_INGEST_MAILBOXES = [
-  "michael@elvexpropertyservices.com",
-  "sharon@elvexpropertyservices.com",
-] as const;
+export function isPersonalExternalMailbox(address: string): boolean {
+  const email = address.trim().toLowerCase();
+  return email.endsWith("@gmail.com") || email.endsWith("@googlemail.com");
+}
 
+/**
+ * Shared operational mailboxes only. Individual user mailboxes are discovered
+ * from company_memberships and inherit the tenant default INCLUDE/EXCLUDE
+ * plus explicit overrides (EL: William/Ella excluded).
+ */
 export function policySeedsForCompany(companyId: string): MailboxRegistrySeed[] {
   if (!isElvexCompany({ id: companyId }) && companyId !== ELVEX_COMPANY_ID) return [];
   return [
@@ -112,26 +121,6 @@ export function policySeedsForCompany(companyId: string): MailboxRegistrySeed[] 
       sensitivity: "finance_operational",
       status: "approved",
       metadata: { source: "elvex_rbac_finance" },
-    },
-    {
-      mailboxAddress: ELVEX_WORK_USER_INGEST_MAILBOXES[0],
-      mailboxType: "user_mailbox",
-      displayName: "Michael work mailbox",
-      enabledForMailSearch: false,
-      enabledForAttachmentIngestion: true,
-      sensitivity: "personal_work",
-      status: "approved",
-      metadata: { source: "director_approved_work_user_ingest", person: "Michael" },
-    },
-    {
-      mailboxAddress: ELVEX_WORK_USER_INGEST_MAILBOXES[1],
-      mailboxType: "user_mailbox",
-      displayName: "Sharon work mailbox",
-      enabledForMailSearch: false,
-      enabledForAttachmentIngestion: true,
-      sensitivity: "personal_work",
-      status: "approved",
-      metadata: { source: "director_approved_work_user_ingest", person: "Sharon" },
     },
   ];
 }
@@ -225,31 +214,83 @@ export async function registerDiscoveredUserMailbox(
     displayName?: string | null;
     mailboxId?: string | null;
     role?: string | null;
+    userId?: string | null;
   },
 ): Promise<string> {
-  const existing = await db
-    .prepare(
-      `SELECT id, enabled_for_attachment_ingestion FROM company_mailbox_registry
-       WHERE company_id = ? AND lower(mailbox_address) = lower(?) LIMIT 1`,
-    )
-    .bind(input.companyId, input.mailboxAddress)
-    .first<{ id: string; enabled_for_attachment_ingestion: number }>();
-  if (existing?.id) return existing.id;
+  const decision = await resolveMailboxIngestionPolicy(db, input.companyId, {
+    mailboxAddress: input.mailboxAddress,
+    mailboxId: input.mailboxId ?? input.userId ?? null,
+    displayName: input.displayName ?? null,
+    userId: input.userId ?? input.mailboxId ?? null,
+  });
+  const included = decision.effective === "INCLUDE";
   return upsertMailboxRegistryRow(db, input.companyId, {
     mailboxAddress: input.mailboxAddress,
     mailboxType: "user_mailbox",
     displayName: input.displayName ?? null,
-    mailboxId: input.mailboxId ?? null,
+    mailboxId: input.mailboxId ?? input.userId ?? null,
     enabledForMailSearch: false,
-    enabledForAttachmentIngestion: false,
+    enabledForAttachmentIngestion: included,
     sensitivity: "personal_work",
-    status: "available",
+    status: included ? "approved" : "available",
     metadata: {
       source: "company_membership",
       role: input.role ?? null,
-      policy: "personal_user_mailbox_not_auto_ingested",
+      ingestion_policy: decision.effective,
+      ingestion_override: decision.policy,
+      ingestion_reason: decision.reason,
+      user_id: input.userId ?? input.mailboxId ?? null,
     },
   });
+}
+
+export async function applyIngestionPolicyToRegistry(db: D1Database, companyId: string): Promise<void> {
+  await ensureMailboxRegistrySchema(db);
+  await ensureCompanyIngestionPolicy(db, companyId);
+  if (isElvexCompany({ id: companyId }) || companyId === ELVEX_COMPANY_ID) {
+    await seedElvexIngestionExclusions(db, companyId);
+  }
+  const rows = await db
+    .prepare(`SELECT * FROM company_mailbox_registry WHERE company_id = ?`)
+    .bind(companyId)
+    .all<MailboxRegistryRow>();
+  const now = nowIso();
+  for (const row of rows.results ?? []) {
+    if (isPersonalExternalMailbox(row.mailbox_address)) {
+      if (row.enabled_for_attachment_ingestion === 1 || row.status !== "denied") {
+        await db
+          .prepare(
+            `UPDATE company_mailbox_registry
+                SET enabled_for_attachment_ingestion = 0, status = 'denied', updated_at = ?
+              WHERE id = ?`,
+          )
+          .bind(now, row.id)
+          .run();
+      }
+      continue;
+    }
+    const decision = await resolveMailboxIngestionPolicy(db, companyId, {
+      mailboxAddress: row.mailbox_address,
+      mailboxId: row.mailbox_id,
+      displayName: row.display_name,
+      userId: row.mailbox_id,
+    });
+    const included = decision.effective === "INCLUDE";
+    const wantStatus = included ? "approved" : row.status === "denied" ? "denied" : "available";
+    if (row.enabled_for_attachment_ingestion === (included ? 1 : 0) && row.status === wantStatus) {
+      continue;
+    }
+    await db
+      .prepare(
+        `UPDATE company_mailbox_registry
+            SET enabled_for_attachment_ingestion = ?,
+                status = ?,
+                updated_at = ?
+          WHERE id = ?`,
+      )
+      .bind(included ? 1 : 0, wantStatus, now, row.id)
+      .run();
+  }
 }
 
 export async function listApprovedAttachmentMailboxes(
@@ -258,10 +299,28 @@ export async function listApprovedAttachmentMailboxes(
 ): Promise<MailboxRegistryRow[]> {
   await ensureMailboxRegistrySchema(db);
   await seedPolicyMailboxes(db, companyId);
+  await applyIngestionPolicyToRegistry(db, companyId);
   const result = await db
     .prepare(
       `SELECT * FROM company_mailbox_registry
        WHERE company_id = ? AND enabled_for_attachment_ingestion = 1
+       ORDER BY mailbox_address`,
+    )
+    .bind(companyId)
+    .all<MailboxRegistryRow>();
+  return (result.results ?? []).filter((row) => !isPersonalExternalMailbox(row.mailbox_address));
+}
+
+export async function listExcludedAttachmentMailboxes(
+  db: D1Database,
+  companyId: string,
+): Promise<MailboxRegistryRow[]> {
+  await ensureMailboxRegistrySchema(db);
+  await applyIngestionPolicyToRegistry(db, companyId);
+  const result = await db
+    .prepare(
+      `SELECT * FROM company_mailbox_registry
+       WHERE company_id = ? AND enabled_for_attachment_ingestion = 0
        ORDER BY mailbox_address`,
     )
     .bind(companyId)
@@ -334,13 +393,13 @@ export async function discoverCompanyUserMailboxes(
   )
     .bind(companyId)
     .all<{ id: string; email: string; display_name: string; role: string }>();
-  const approved = new Set(
+  const sharedSeeds = new Set(
     policySeedsForCompany(companyId).map((seed) => seed.mailboxAddress.toLowerCase()),
   );
   const rows: Array<{ mailboxAddress: string; displayName: string; userId: string; role: string }> = [];
   for (const row of result.results ?? []) {
     const email = (row.email ?? "").trim().toLowerCase();
-    if (!email || approved.has(email) || email.endsWith("@gmail.com") || email.endsWith("@googlemail.com")) {
+    if (!email || sharedSeeds.has(email) || isPersonalExternalMailbox(email)) {
       continue;
     }
     rows.push({
@@ -354,6 +413,7 @@ export async function discoverCompanyUserMailboxes(
       mailboxAddress: email,
       displayName: row.display_name,
       mailboxId: row.id,
+      userId: row.id,
       role: row.role,
     });
   }

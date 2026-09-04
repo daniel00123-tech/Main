@@ -22,6 +22,8 @@ import { resolveRequestPricingPolicy } from "./customer-request-pricing";
 import { DAILY_IMPROVEMENT_CONTRACT } from "./daily-improvement/constants";
 import { ingestApprovedOutlookAttachments } from "./outlook-attachment-ingest";
 import { discoverKnowledgeIntakeTarget, isKnowledgeIntakePath } from "./knowledge-intake";
+import { defaultIngestionPolicyForCompany } from "./mailbox-ingestion-policy";
+import { runElMailboxAttachmentBackfill } from "./mailbox-attachment-backfill";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -176,6 +178,15 @@ export function assertProductionSuperstackCapabilities(): {
   }
   if (typeof discoverKnowledgeIntakeTarget !== "function" || !isKnowledgeIntakePath("INFRA Knowledge Intake/Email Attachments")) {
     throw new Error("knowledge intake landing zone missing");
+  }
+  if (defaultIngestionPolicyForCompany("co_el") !== "INCLUDE") {
+    throw new Error("EL mailbox ingestion default must be INCLUDE");
+  }
+  if (defaultIngestionPolicyForCompany("co_caddington") !== "EXCLUDE") {
+    throw new Error("must not apply EL mailbox INCLUDE default to Caddington");
+  }
+  if (typeof runElMailboxAttachmentBackfill !== "function") {
+    throw new Error("EL mailbox attachment backfill missing");
   }
   readGeneratedLineage();
   return { ok: true, capabilities: PRODUCTION_SUPERSTACK_CAPABILITIES };

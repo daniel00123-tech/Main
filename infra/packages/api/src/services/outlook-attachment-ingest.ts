@@ -18,6 +18,7 @@ import {
   discoverCompanyUserMailboxes,
   listApprovedAttachmentMailboxes,
   listCompanyMailboxRegistry,
+  listExcludedAttachmentMailboxes,
   markMailboxScanResult,
   seedPolicyMailboxes,
   type MailboxRegistryRow,
@@ -38,12 +39,15 @@ import {
 import { MicrosoftGraphError } from "./microsoft-graph";
 import { resolveOutlookGraphAccess } from "./outlook-graph-access";
 
-const MAX_MESSAGES_PER_MAILBOX = 80;
+const MAX_MESSAGES_PER_MAILBOX = 200;
 const MAX_RETRIES = 4;
 const TRANSIENT_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 export type AttachmentIngestCounts = {
+  mailboxesEligible: number;
   mailboxesScanned: number;
+  mailboxesExcluded: number;
+  messagesScanned: number;
   messagesWithAttachments: number;
   attachmentsDiscovered: number;
   attachmentsFetched: number;
@@ -67,12 +71,15 @@ export type NamedPersonMailboxReport = {
   approvedForAttachmentIngestion: boolean;
   graphAccessible: boolean | null;
   mailSearchEnabled: boolean;
+  messagesScanned: number;
   messagesWithAttachmentsInWindow: number;
   attachmentsFound: number;
+  fetched: number;
   stored: number;
   indexed: number;
   failures: number;
   policy: string;
+  excluded: boolean;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -120,7 +127,10 @@ function messageTime(row: { receivedDateTime?: string | null; sentDateTime?: str
 
 function emptyCounts(): AttachmentIngestCounts {
   return {
+    mailboxesEligible: 0,
     mailboxesScanned: 0,
+    mailboxesExcluded: 0,
+    messagesScanned: 0,
     messagesWithAttachments: 0,
     attachmentsDiscovered: 0,
     attachmentsFetched: 0,
@@ -183,7 +193,14 @@ async function discoverMessagesViaGraph(
     actor: string;
   },
 ): Promise<
-  | { ok: true; source: "graph"; messages: GraphMailMessageDetail[]; tenantId: string; accessToken: string }
+  | {
+      ok: true;
+      source: "graph";
+      messages: GraphMailMessageDetail[];
+      messagesScanned: number;
+      tenantId: string;
+      accessToken: string;
+    }
   | { ok: false; code: string; message: string }
 > {
   const access = await resolveOutlookGraphAccess(env, {
@@ -198,15 +215,17 @@ async function discoverMessagesViaGraph(
       { mailboxAddress: input.mailboxAddress, top: MAX_MESSAGES_PER_MAILBOX },
     ),
   );
-  const messages = listed.filter((row) => {
-    if (!row.hasAttachments || row["@removed"]) return false;
+  const inWindow = listed.filter((row) => {
+    if (row["@removed"]) return false;
     const when = messageTime(row);
     return when ? timestampInWindow(when, input.windowFrom, input.windowTo) : false;
   });
+  const messages = inWindow.filter((row) => Boolean(row.hasAttachments));
   return {
     ok: true,
     source: "graph",
     messages,
+    messagesScanned: inWindow.length,
     tenantId: access.tenantId,
     accessToken: access.accessToken,
   };
@@ -221,7 +240,10 @@ async function discoverMessagesViaMcp(
     windowTo: Date;
     actor: string;
   },
-): Promise<{ ok: true; messages: GraphMailMessageDetail[] } | { ok: false; code: string; message: string }> {
+): Promise<
+  | { ok: true; messages: GraphMailMessageDetail[]; messagesScanned: number }
+  | { ok: false; code: string; message: string }
+> {
   const listed = await executeOutlookReadTool(env, {
     companyId: input.companyId,
     toolName: "outlook_list_messages",
@@ -231,11 +253,14 @@ async function discoverMessagesViaMcp(
   if (!listed.ok) return { ok: false, code: listed.code, message: listed.message };
   const record = asRecord(listed.result);
   const rows = Array.isArray(record?.messages) ? record!.messages : [];
-  const messages = rows
+  const inWindow = rows
     .map((row) => asRecord(row))
     .filter((row): row is Record<string, unknown> => Boolean(row))
+    .filter((row) =>
+      timestampInWindow(asText(row.receivedDateTime) || asText(row.sentDateTime), input.windowFrom, input.windowTo),
+    );
+  const messages = inWindow
     .filter((row) => Boolean(row.hasAttachments))
-    .filter((row) => timestampInWindow(asText(row.receivedDateTime) || asText(row.sentDateTime), input.windowFrom, input.windowTo))
     .map((row) => ({
       id: asText(row.id),
       subject: asText(row.subject) || null,
@@ -252,7 +277,7 @@ async function discoverMessagesViaMcp(
       webLink: asText(row.webLink) || null,
       parentFolderId: null,
     }));
-  return { ok: true, messages };
+  return { ok: true, messages, messagesScanned: inWindow.length };
 }
 
 type ListedAttachment = GraphMailAttachment & { contentId?: string | null; contentBytes?: string | null };
@@ -926,6 +951,7 @@ export async function ingestApprovedOutlookAttachments(
   companyId: string;
   counts: AttachmentIngestCounts;
   mailboxes: Array<Record<string, unknown>>;
+  excludedMailboxes: Array<Record<string, unknown>>;
   namedPeople: NamedPersonMailboxReport[];
   registry: MailboxRegistryRow[];
 }> {
@@ -934,8 +960,19 @@ export async function ingestApprovedOutlookAttachments(
   await seedPolicyMailboxes(env.DB, input.companyId);
   const discoveredUsers = await discoverCompanyUserMailboxes(env, input.companyId);
   const approved = await listApprovedAttachmentMailboxes(env.DB, input.companyId);
+  const excluded = await listExcludedAttachmentMailboxes(env.DB, input.companyId);
   const counts = emptyCounts();
+  counts.mailboxesEligible = approved.length;
+  counts.mailboxesExcluded = excluded.length;
   const mailboxReports: Array<Record<string, unknown>> = [];
+  const excludedReports = excluded.map((mailbox) => ({
+    mailboxAddress: mailbox.mailbox_address,
+    mailboxType: mailbox.mailbox_type,
+    displayName: mailbox.display_name,
+    excluded: true,
+    scanned: false,
+    reason: "explicit exclusion or inherit-default EXCLUDE",
+  }));
 
   for (const mailbox of approved) {
     counts.mailboxesScanned += 1;
@@ -956,8 +993,10 @@ export async function ingestApprovedOutlookAttachments(
     let discoverVia = "none";
     let discoverError: string | null = null;
 
+    let messagesScanned = 0;
     if (graphDiscover.ok) {
       messages = graphDiscover.messages;
+      messagesScanned = graphDiscover.messagesScanned;
       graph = { accessToken: graphDiscover.accessToken, tenantId: graphDiscover.tenantId };
       discoverVia = "graph";
     } else {
@@ -970,6 +1009,7 @@ export async function ingestApprovedOutlookAttachments(
       });
       if (mcpDiscover.ok) {
         messages = mcpDiscover.messages;
+        messagesScanned = mcpDiscover.messagesScanned;
         discoverVia = "company_mcp";
         discoverError = graphDiscover.ok === false ? graphDiscover.message : null;
       } else {
@@ -991,6 +1031,7 @@ export async function ingestApprovedOutlookAttachments(
       }
     }
 
+    counts.messagesScanned += messagesScanned;
     counts.messagesWithAttachments += messages.length;
     const attachmentSummaries: Array<Record<string, unknown>> = [];
     let latestCheckpoint = mailbox.last_checkpoint;
@@ -1099,6 +1140,7 @@ export async function ingestApprovedOutlookAttachments(
       discoverVia,
       graphAccessible: Boolean(graph),
       graphNote: discoverError,
+      messagesScanned,
       messagesWithAttachments: messages.length,
       attachments: attachmentSummaries,
       failed: mailboxFailures,
@@ -1111,6 +1153,7 @@ export async function ingestApprovedOutlookAttachments(
     discoveredUsers,
     registry,
     mailboxReports,
+    excludedReports,
     windowFrom: input.windowFrom,
     windowTo: input.windowTo,
     actor,
@@ -1120,6 +1163,7 @@ export async function ingestApprovedOutlookAttachments(
     companyId: input.companyId,
     counts,
     mailboxes: mailboxReports,
+    excludedMailboxes: excludedReports,
     namedPeople,
     registry,
   };
@@ -1132,23 +1176,24 @@ async function buildNamedPersonReports(
     discoveredUsers: Array<{ mailboxAddress: string; displayName: string; userId: string; role: string }>;
     registry: MailboxRegistryRow[];
     mailboxReports: Array<Record<string, unknown>>;
+    excludedReports: Array<Record<string, unknown>>;
     windowFrom: Date;
     windowTo: Date;
     actor: string;
   },
 ): Promise<NamedPersonMailboxReport[]> {
-  const wanted = ["Michael", "Sharon", "Lauren"];
+  const wanted = ["Michael", "Sharon", "Lauren", "William", "Ella"];
   const reports: NamedPersonMailboxReport[] = [];
   for (const name of wanted) {
     const needle = `${name.toLowerCase()}@`;
-    const user = input.discoveredUsers.find((row) => row.displayName.toLowerCase() === name.toLowerCase());
+    const user = input.discoveredUsers.find((row) => row.displayName.toLowerCase().startsWith(name.toLowerCase()));
     const row =
       (user
         ? input.registry.find((item) => item.mailbox_address.toLowerCase() === user.mailboxAddress.toLowerCase())
         : null) ??
       input.registry.find(
         (item) =>
-          (item.display_name ?? "").toLowerCase() === name.toLowerCase() ||
+          (item.display_name ?? "").toLowerCase().startsWith(name.toLowerCase()) ||
           item.mailbox_address.toLowerCase().startsWith(needle),
       );
     let graphAccessible: boolean | null = null;
@@ -1160,26 +1205,40 @@ async function buildNamedPersonReports(
         String(item.mailboxAddress ?? "").toLowerCase() ===
         (user?.mailboxAddress ?? row?.mailbox_address ?? "").toLowerCase(),
     );
+    const excluded = input.excludedReports.some(
+      (item) =>
+        String(item.mailboxAddress ?? "").toLowerCase() ===
+        (user?.mailboxAddress ?? row?.mailbox_address ?? "").toLowerCase(),
+    );
     const scannedAttachments = Array.isArray(scanned?.attachments) ? scanned!.attachments : [];
+    const included = row?.enabled_for_attachment_ingestion === 1 && !excluded;
     reports.push({
       name,
       mailboxAddress: user?.mailboxAddress ?? row?.mailbox_address ?? null,
       mailboxFound: Boolean(user || row),
-      approvedForAttachmentIngestion: row?.enabled_for_attachment_ingestion === 1,
+      approvedForAttachmentIngestion: included,
       graphAccessible,
       mailSearchEnabled: row?.enabled_for_mail_search === 1,
+      messagesScanned: Number(scanned?.messagesScanned ?? 0),
       messagesWithAttachmentsInWindow: Number(scanned?.messagesWithAttachments ?? 0),
       attachmentsFound: scannedAttachments.length || Number(scanned?.messagesWithAttachments ?? 0),
+      fetched: scannedAttachments.filter((item) => {
+        const status = asText(asRecord(item)?.status);
+        return status === "indexed" || status === "duplicate" || status === "stored_not_indexed" || status === "failed";
+      }).length,
       stored: scannedAttachments.filter((item) => {
         const status = asText(asRecord(item)?.status);
         return status === "indexed" || status === "duplicate" || status === "stored_not_indexed" || Boolean(asRecord(item)?.stored);
       }).length,
       indexed: scannedAttachments.filter((item) => asRecord(item)?.status === "indexed").length,
       failures: scannedAttachments.filter((item) => asRecord(item)?.status === "failed").length,
-      policy: row?.enabled_for_attachment_ingestion === 1
-        ? "director-approved work mailbox: attachments ingested; Portal chat search remains off"
+      excluded: !included,
+      policy: included
+        ? "inherit company default INCLUDE; Portal chat search remains off for personal work mailboxes"
         : user || row
-          ? "personal_work mailbox exists as a company user; not approved for attachment ingest"
+          ? name === "William" || name === "Ella"
+            ? "explicit EXCLUDE: attachment knowledge ingest off; product access/roles unchanged"
+            : "excluded by company mailbox ingestion policy"
           : "no company membership mailbox found; not invented",
     });
   }
