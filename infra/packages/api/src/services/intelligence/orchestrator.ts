@@ -25,7 +25,7 @@ import { resolveBrainPolicy } from "./brain-policy.js";
 import {
   defaultToolForCapability,
   detectRequestedCapabilities,
-  rewriteExactAccountingTool,
+  rewriteAccountingTool,
   wantsMultiCapabilityRead,
 } from "./company-tool-registry.js";
 import { stampEvidenceTenant } from "./tenant-isolation.js";
@@ -36,6 +36,7 @@ import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "
 import { parseCatalogueIntent, verbaliseDocumentCatalogue } from "../document-catalogue.js";
 import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
 import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
+import { classifyQueryFreshness } from "../warehouse/freshness.js";
 import {
   GENERIC_RETRY_COPY,
   extractFirstMessageId,
@@ -545,7 +546,7 @@ async function executeIntelligenceTurn(input: {
       }
       if (scoped.scope === "GENERAL_CONVERSATION") qualityFlags.add("general_conversation_used_tool");
       if (scoped.lastUserIntent === "rephrase") qualityFlags.add("unnecessary_search_after_rephrase");
-      const rewritten = rewriteExactAccountingTool(validated.name, validated.arguments, input.text);
+      const rewritten = rewriteAccountingTool(validated.name, validated.arguments, input.text);
       const call: IntelligenceToolCall = {
         name: rewritten.name,
         arguments: prepareToolArguments(rewritten.name, rewritten.arguments, input.text, workingState, scoped.scope),
@@ -591,7 +592,10 @@ async function executeIntelligenceTurn(input: {
     }
 
     if (decision.action === "clarify") {
-      if (toolCalls.length === 0 && shouldForceScopedTool(scoped)) {
+      if (
+        toolCalls.length === 0 &&
+        (shouldForceScopedTool(scoped) || looksLikeSpuriousPeriodClarify(input.text, decision.text))
+      ) {
         const bootstrap = await bootstrapRetrieval(runtime, workingState, input.text, input.buttonHint, scoped);
         if (bootstrap) {
           toolCalls.push(bootstrap);
@@ -987,6 +991,15 @@ function looksLikeFinanceRead(text: string): boolean {
   return /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables)\b/i.test(text);
 }
 
+function looksLikeSpuriousPeriodClarify(userText: string, clarifyText: string): boolean {
+  return (
+    classifyQueryFreshness(userText) === "HISTORICAL_ANALYTICAL" &&
+    /\b(which year|different year|20\d{2} or|which (january|february|march|april|may|june|july|august|september|october|november|december))\b/i.test(
+      clarifyText,
+    )
+  );
+}
+
 async function bootstrapRetrieval(
   runtime: IntelligenceRuntime,
   state: IntelligenceConversationState,
@@ -1005,10 +1018,10 @@ async function bootstrapRetrieval(
     });
   }
   if (looksLikeFinanceRead(text) || scoped?.scope === "BUSINESS_SYSTEM") {
-    const toolName = scoped?.tool || "xero_sales_summary";
+    const rewritten = rewriteAccountingTool(scoped?.tool || "xero_sales_summary", {}, text);
     return runtime.executeTool({
-      name: toolName,
-      arguments: prepareToolArguments(toolName, {}, text, state, scoped?.scope),
+      name: rewritten.name,
+      arguments: prepareToolArguments(rewritten.name, rewritten.arguments, text, state, scoped?.scope),
     });
   }
   if (
@@ -1294,9 +1307,10 @@ async function runDeterministicRead(
       };
     }
   }
+  const rewritten = rewriteAccountingTool(toolName, {}, text);
   const planned = {
-    name: toolName,
-    arguments: prepareToolArguments(toolName, {}, text, state, scoped.scope),
+    name: rewritten.name,
+    arguments: prepareToolArguments(rewritten.name, rewritten.arguments, text, state, scoped.scope),
   };
   if (shouldReuseSuccessfulTool(planned, state.recentEvidence) && !isFreshBusinessSystemAsk(text)) {
     const reused = answerFromExistingEvidence(text, state);

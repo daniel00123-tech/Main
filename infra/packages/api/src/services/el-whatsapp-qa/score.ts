@@ -71,8 +71,14 @@ export function scoreTurn(input: {
   const expected = input.question.expectedToolPrefix;
   const firstTool = tools[0] ?? null;
 
-  if (expected && firstTool && !firstTool.startsWith(expected.replace(/_$/, "")) && !firstTool.startsWith(expected)) {
-    if (expected.startsWith("xero_") && !firstTool.startsWith("xero_")) {
+  if (
+    expected &&
+    firstTool &&
+    !firstTool.startsWith(expected.replace(/_$/, "")) &&
+    !firstTool.startsWith(expected) &&
+    !(expected.startsWith("xero_") && firstTool.startsWith("warehouse_"))
+  ) {
+    if (expected.startsWith("xero_") && !firstTool.startsWith("xero_") && !firstTool.startsWith("warehouse_")) {
       misroute = true;
       categories.push(firstTool.startsWith("search") || firstTool.includes("knowledge") ? "A" : "A");
     } else if (expected.startsWith("outlook_") && firstTool.startsWith("xero_")) {

@@ -127,6 +127,7 @@ export function questionsForStage(stage: string, ids?: string[]): OvernightQuest
     routing: OVERNIGHT_ROUTING,
     primary: OVERNIGHT_PRIMARY,
     all: OVERNIGHT_ALL,
+    retest: FRESH_RETEST_SETS[0] ?? [],
   };
   const rows = map[stage] ?? OVERNIGHT_PRIMARY;
   if (ids?.length) return rows.filter((row) => ids.includes(row.id));

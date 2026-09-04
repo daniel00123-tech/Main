@@ -2,6 +2,7 @@ import { businessToolForIntent, resolveBusinessSystemIntent } from "@infra/share
 import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "./types.js";
 import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
 import { isCatalogueListingAsk } from "../document-catalogue.js";
+import { rewriteAccountingTool } from "./company-tool-registry.js";
 
 export type ScopeSwitch =
   | "company"
@@ -160,13 +161,16 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
       : { ...intent, capability: "xero", connectorDefinitionId: "conn_xero" },
     text,
   );
-  if (mapped?.toolName.startsWith("xero_")) return mapped.toolName;
-  if (/overdue|owes/i.test(text)) return "xero_list_overdue_invoices";
-  if (/p&l|pnl|profit/i.test(text)) return "xero_profit_and_loss";
-  if (/aged/i.test(text)) return "xero_aged_receivables";
-  if (/INV-|\binvoice\b.*\d/i.test(text)) return "xero_get_invoice";
-  if (lastSuccessfulTool && /^xero_/.test(lastSuccessfulTool)) return lastSuccessfulTool;
-  return "xero_sales_summary";
+  let name = mapped?.toolName ?? "";
+  if (!name.startsWith("xero_") && !name.startsWith("warehouse_")) {
+    if (/overdue|owes/i.test(text)) name = "xero_list_overdue_invoices";
+    else if (/p&l|pnl|profit/i.test(text)) name = "xero_profit_and_loss";
+    else if (/aged/i.test(text)) name = "xero_aged_receivables";
+    else if (/INV-|\binvoice\b.*\d/i.test(text)) name = "xero_get_invoice";
+    else if (lastSuccessfulTool && /^(xero_|warehouse_)/.test(lastSuccessfulTool)) name = lastSuccessfulTool;
+    else name = "xero_sales_summary";
+  }
+  return rewriteAccountingTool(name, {}, text).name;
 }
 
 function pickMailboxTool(text: string): string {

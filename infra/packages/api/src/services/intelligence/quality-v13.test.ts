@@ -205,7 +205,7 @@ describe("Xero natural periods", () => {
     expect(calls[0]?.arguments.toDate).not.toBe("");
   });
 
-  it("keeps a period follow-up on Xero after a finance turn", async () => {
+  it("routes a last-month follow-up to the warehouse after a finance turn", async () => {
     const state = buildConversationState({
       userText: "What about last month?",
       lastAnswerTopic: "finance",
@@ -216,13 +216,37 @@ describe("Xero natural periods", () => {
     });
     expect(classifyScope("What about last month?", state)).toMatchObject({
       scope: "BUSINESS_SYSTEM",
-      tool: "xero_sales_summary",
+      tool: "warehouse_sales_analysis",
     });
     const { runtime, calls } = recordingRuntime();
     await runIntelligenceTurn({ text: "What about last month?", state, runtime });
-    expect(calls[0]?.name).toBe("xero_sales_summary");
+    expect(calls[0]?.name).toBe("warehouse_sales_analysis");
     expect(calls[0]?.arguments.fromDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(calls[0]?.arguments.toDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("resolves a named completed month to that month, not the current month", () => {
+    const now = new Date("2026-09-04T12:00:00.000Z");
+    expect(resolveBusinessPeriod("What were sales in March?", now)).toMatchObject({
+      fromDate: "2026-03-01",
+      toDate: "2026-03-31",
+    });
+    expect(resolveBusinessPeriod("What were April sales?", now)).toMatchObject({
+      fromDate: "2026-04-01",
+      toDate: "2026-04-30",
+    });
+    expect(resolveBusinessPeriod("What were May sales?", now)).toMatchObject({
+      fromDate: "2026-05-01",
+      toDate: "2026-05-31",
+    });
+    expect(resolveBusinessPeriod("Summarise sales for the last 3 completed months.", now)).toMatchObject({
+      fromDate: "2026-06-01",
+      toDate: "2026-08-31",
+    });
+    expect(withResolvedBusinessDates("warehouse_sales_analysis", {}, "What were sales in March?", now)).toMatchObject({
+      fromDate: "2026-03-01",
+      toDate: "2026-03-31",
+    });
   });
 });
 

@@ -360,7 +360,7 @@ function cases(): LoopCase[] {
 function familyOf(result: IntelligenceTurnResult): string | null {
   if (result.toolCalls.some((call) => call.name === "web_search")) return "web";
   if (result.toolCalls.some((call) => call.name === "list_documents")) return "catalogue";
-  if (result.toolCalls.some((call) => call.name.startsWith("xero_"))) return "xero";
+  if (result.toolCalls.some((call) => call.name.startsWith("xero_") || call.name.startsWith("warehouse_"))) return "xero";
   if (result.toolCalls.some((call) => /outlook/.test(call.name))) return "outlook";
   if (result.toolCalls.some((call) => /knowledge|search_document/.test(call.name))) return "knowledge";
   return result.toolCalls.length ? result.toolCalls[0]!.name : "none";

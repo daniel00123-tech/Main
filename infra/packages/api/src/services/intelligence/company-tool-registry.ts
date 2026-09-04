@@ -252,6 +252,67 @@ export function rewriteExactAccountingTool(
   return { name, arguments: args };
 }
 
+/**
+ * Named completed months and historical windows belong on warehouse_* tools.
+ * Exact live invoice status and current-state asks stay on xero_*.
+ */
+export function rewriteHistoricalAccountingTool(
+  name: string,
+  args: Record<string, unknown>,
+  text: string,
+  now = new Date(),
+): { name: string; arguments: Record<string, unknown> } {
+  if (classifyQueryFreshness(text, now) !== "HISTORICAL_ANALYTICAL") {
+    return { name, arguments: args };
+  }
+  if (
+    name === "xero_get_invoice" ||
+    name === "xero_get_organisation" ||
+    name.startsWith("warehouse_") ||
+    (/\bINV-\d+\b/i.test(text) && !/\bhow many invoices\b/i.test(text))
+  ) {
+    return { name, arguments: args };
+  }
+  if (
+    name === "xero_list_overdue_invoices" ||
+    name === "xero_aged_receivables" ||
+    (name.startsWith("xero_") && /\b(overdue|outstanding|debt).{0,48}(moved|over the last|trend|histor)/i.test(text))
+  ) {
+    return {
+      name: "warehouse_receivables_analysis",
+      arguments: { ...args, aggregation: args.aggregation ?? "overdue_total" },
+    };
+  }
+  if (name === "xero_top_customers" || (name.startsWith("xero_") && /\b(top|highest-value) customers?\b/i.test(text))) {
+    return { name: "warehouse_customer_analysis", arguments: args };
+  }
+  if (name === "xero_search_invoices" || (name.startsWith("xero_") && /\bhow many invoices\b/i.test(text))) {
+    return { name: "warehouse_invoice_analysis", arguments: args };
+  }
+  if (name === "xero_sales_summary") {
+    const aggregation =
+      typeof args.aggregation === "string"
+        ? args.aggregation
+        : /\b(each month|month by month|month[- ]over[- ]month|trend|last \d+|last (three|six|few) months|completed months)\b/i.test(
+            text,
+          )
+          ? "sales_by_month"
+          : "sales_total";
+    return { name: "warehouse_sales_analysis", arguments: { ...args, aggregation } };
+  }
+  return { name, arguments: args };
+}
+
+export function rewriteAccountingTool(
+  name: string,
+  args: Record<string, unknown>,
+  text: string,
+  now = new Date(),
+): { name: string; arguments: Record<string, unknown> } {
+  const exact = rewriteExactAccountingTool(name, args, text);
+  return rewriteHistoricalAccountingTool(exact.name, exact.arguments, text, now);
+}
+
 export function defaultToolForCapability(capability: PlatformCapability): string | null {
   switch (capability) {
     case "EMAIL_SEARCH":
