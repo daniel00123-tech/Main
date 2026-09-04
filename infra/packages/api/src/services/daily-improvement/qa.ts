@@ -114,6 +114,7 @@ export async function runDailyImprovementQa(
     eventType: "qa.completed",
     detail: { runId: begun.id, evaluated: evaluations.length, backfilled, clusters: clusters.length, counts },
   });
+  await markConfigTimestamp(env, "last_qa_at");
   return { ran: true, runId: begun.id, reason: "completed", evaluated: evaluations.length, clusters: clusters.length };
 }
 
@@ -142,6 +143,7 @@ export async function runDailyImprovementReport(
     summary: { ...payload.summary, recipients: sent.recipients, emailError: sent.error ?? null },
     emailSentAt: sent.sent ? new Date().toISOString() : null,
   });
+  if (sent.sent) await markConfigTimestamp(env, "last_report_at");
   return {
     sent: sent.sent,
     runId: begun.id,
@@ -231,6 +233,7 @@ export async function runDailyImprovementEngineering(
     status: "completed",
     summary: { queued: cycle.queued, runner: cycle.blocker, maxDeploys: cycle.maxDeploys },
   });
+  await markConfigTimestamp(env, "last_engineering_at");
   return { started: true, runId: begun.id, queued: cycle.queued, reason: "queued" };
 }
 
