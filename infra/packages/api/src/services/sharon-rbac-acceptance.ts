@@ -3,9 +3,10 @@
  * Does not change anyone's lasting role. GATED if no portal session identity exists.
  */
 
-import { elvexCan } from "@infra/shared";
+import { ELVEX_FINANCE_MAILBOXES, ELVEX_INFO_MAILBOXES, elvexCan } from "@infra/shared";
 import type { Env } from "../env";
 import { loadLiveCompanyActor, liveActorToSessionUser } from "../auth/live-identity";
+import { executeGatewayRequest } from "./gateway";
 import { sendPortalChatMessage } from "./portal-chat";
 
 const COMPANY_ID = "co_el";
@@ -81,6 +82,27 @@ export async function runOfficeStaffRbacAcceptance(env: Env): Promise<Record<str
     info = await ask("Show me the newest email in the info inbox.");
   }
 
+  const gwActor = {
+    type: "user" as const,
+    user: sessionUser,
+    membershipId: actor.membershipId,
+    channel: "portal_chat",
+  };
+  const financeGw = await executeGatewayRequest(env, {
+    actor: gwActor,
+    companyId: COMPANY_ID,
+    toolName: "outlook_list_messages",
+    arguments: { mailboxAddress: ELVEX_FINANCE_MAILBOXES[0], limit: 1 },
+    sourceClient: "portal_chat",
+  });
+  const infoGw = await executeGatewayRequest(env, {
+    actor: gwActor,
+    companyId: COMPANY_ID,
+    toolName: "outlook_list_messages",
+    arguments: { mailboxAddress: ELVEX_INFO_MAILBOXES[0], limit: 1 },
+    sourceClient: "portal_chat",
+  });
+
   const usage = await env.DB.prepare(
     `SELECT tool_name, action, source_client, success, settlement_status, customer_charge_cents, recorded_at
      FROM usage_records
@@ -94,11 +116,18 @@ export async function runOfficeStaffRbacAcceptance(env: Env): Promise<Record<str
   const xeroDenied =
     Boolean(xero.assistantMessage.metadata.permissionDenied) ||
     /permission|not allow|don.?t currently have permission/i.test(xero.assistantMessage.content);
+  const financeGwDenied =
+    financeGw.status === 403 ||
+    ("accessOutcome" in financeGw && financeGw.accessOutcome === "permission_denied");
   const financeDenied =
+    financeGwDenied ||
     Boolean(finance.assistantMessage.metadata.permissionDenied) ||
     /permission|not allow|don.?t currently have permission/i.test(finance.assistantMessage.content);
   const xeroTools = (xero.assistantMessage.metadata.toolNames ?? []).join(",");
-  const leakedFinance = /subject|from:|finance@/i.test(finance.assistantMessage.content) && !financeDenied;
+  const leakedFinance =
+    (financeGw.status === 200 && "result" in financeGw) ||
+    (/subject|from:|finance@/i.test(finance.assistantMessage.content) && !financeDenied);
+  const infoGwAllowed = infoGw.status === 200;
   const charged = (usage.results ?? []).some(
     (row) => Number(row.customer_charge_cents ?? 0) > 0 && /xero|outlook|finance/i.test(`${row.tool_name} ${row.action}`),
   );
@@ -120,18 +149,27 @@ export async function runOfficeStaffRbacAcceptance(env: Env): Promise<Record<str
     },
     finance: {
       permissionDenied: financeDenied,
+      gatewayStatus: financeGw.status,
+      accessOutcome: "accessOutcome" in financeGw ? financeGw.accessOutcome : null,
       leaked: leakedFinance,
-      reply: clip(finance.assistantMessage.content),
+      chatReply: clip(finance.assistantMessage.content),
     },
     info: {
       tools: info.assistantMessage.metadata.toolNames,
-      reply: clip(info.assistantMessage.content),
-      allowed: !info.assistantMessage.metadata.permissionDenied,
+      gatewayStatus: infoGw.status,
+      chatReply: clip(info.assistantMessage.content),
+      allowed: infoGwAllowed || !info.assistantMessage.metadata.permissionDenied,
     },
     usage: usage.results ?? [],
     charged,
     verdict:
-      xeroDenied && financeDenied && !leakedFinance && !knowledgeUsedForXero && !charged && !elvexCan(actor.role, "xero.sales.read")
+      xeroDenied &&
+      financeGwDenied &&
+      infoGwAllowed &&
+      !leakedFinance &&
+      !knowledgeUsedForXero &&
+      !charged &&
+      !elvexCan(actor.role, "xero.sales.read")
         ? "PASS"
         : "FAIL",
   };
