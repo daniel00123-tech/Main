@@ -1124,6 +1124,8 @@ function shouldStopAfterRead(scoped: ScopeDecision, result: IntelligenceToolResu
 }
 
 function isCompoundBusinessAsk(text: string): boolean {
+  // Sales-then-email is a deterministic two-system read, not a two-period Xero compare.
+  if (wantsSalesThenFinanceEmail(text)) return false;
   return (
     /\b(and|compare|versus|vs\.?|better than|last month|previous month|this month and)\b/i.test(text) &&
     /\b(sales|xero|invoice|revenue|overdue|profit|month)\b/i.test(text)
