@@ -1,6 +1,6 @@
 /** Written by scripts/write-production-lineage.mjs immediately before production deploy. */
 export const GENERATED_PRODUCTION_LINEAGE = {
-  gitSha: "35c33cfb48fbafe7cd2f987d0d905000cd85e576",
+  gitSha: "a8bf475e6df255fb617523b2f6d2a78f697a15d2",
   branch: "cursor/el-native-graph-option-b-b8da",
-  generatedAt: "2026-09-04T21:40:53.212Z",
+  generatedAt: "2026-09-04T21:53:34.419Z",
 } as const;
