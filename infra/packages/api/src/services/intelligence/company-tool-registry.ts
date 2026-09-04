@@ -187,8 +187,11 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
   const email =
     /\b(emails?|inbox|mailbox|outlook|unread mail)\b/i.test(value) ||
     /\b(newest|latest|recent).{0,20}(emails?|mail|inbox|mailbox)\b/i.test(value);
-  const accounting =
-    /\b(xero|sales|revenue|invoices?|overdue|outstanding|p&l|pnl|profit|aged (receivable|payable)|top customers?)\b/i.test(value);
+  const mailboxScoped = /\b(inbox|mailbox|outlook|emails?)\b/i.test(value);
+  const accountingCore =
+    /\b(xero|sales|revenue|overdue|outstanding|p&l|pnl|profit|aged (receivable|payable)|top customers?)\b/i.test(value);
+  const invoiceNoun = /\b(invoices?|invoiced)\b/i.test(value);
+  const accounting = accountingCore || (invoiceNoun && !mailboxScoped);
   const catalogue =
     /\b(newest|latest|recent).{0,24}(file|document|onedrive|sharepoint)\b/i.test(value) ||
     /\b(list|show).{0,16}(files|documents)\b/i.test(value) ||

@@ -64,8 +64,12 @@ export function scheduleDailyImprovementCapture(
   waitUntil: ((promise: Promise<unknown>) => void) | undefined,
   input: Parameters<typeof recordDailyImprovementInteraction>[1],
 ): void {
-  const work = recordDailyImprovementInteraction(env.DB, input).catch(() => undefined);
-  if (waitUntil) waitUntil(work);
+  try {
+    const work = recordDailyImprovementInteraction(env.DB, input).catch(() => undefined);
+    if (waitUntil) waitUntil(work);
+  } catch {
+    /* Audit must never fail a customer turn. */
+  }
 }
 
 export async function backfillRecentCustomerInteractions(

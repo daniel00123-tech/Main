@@ -78,6 +78,9 @@ describe("company tool registry", () => {
     expect(detectRequestedCapabilities("outstanding invoices")).toContain("ACCOUNTING_INVOICE_SEARCH");
     expect(detectRequestedCapabilities("profit and loss this month")).toContain("ACCOUNTING_REPORTS");
     expect(detectRequestedCapabilities("find invoice INV-1042")).toContain("ACCOUNTING_INVOICE_GET");
+    expect(detectRequestedCapabilities("Look in the inbox for an invoice PDF")).toContain("EMAIL_SEARCH");
+    expect(detectRequestedCapabilities("Look in the inbox for an invoice PDF")).not.toContain("ACCOUNTING_INVOICE_SEARCH");
+    expect(wantsMultiCapabilityRead("Look in the inbox for an invoice PDF")).toBe(false);
     expect(detectRequestedCapabilities("Newest document")).toContain("CATALOGUE_LIST");
     expect(capabilityForPlatformTool("outlook_search_mailbox")).toBe("EMAIL_SEARCH");
   });
