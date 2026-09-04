@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChartColumn, Download } from "lucide-react";
-import type { Company, UsageInteraction, UsageRecord } from "@infra/shared";
+import { classifyUsageOutcome, type Company, type UsageInteraction, type UsageRecord } from "@infra/shared";
 import { api } from "../api";
 import { useAdminScope } from "../context/AdminScopeContext";
 import {
@@ -48,11 +48,18 @@ export default function UsagePage() {
     requests: number;
     successful: number;
     failed: number;
+    denied?: number;
+    operationalFailed?: number;
+    noResults?: number;
     customerChargesCents: number;
     underlyingCostsCents: number | null;
     providerCostKnown?: boolean;
+    providerCostUnavailableReason?: string | null;
     grossProfitCents: number | null;
     grossMarginBps: number | null;
+    rawSuccessRate?: number | null;
+    operationalSuccessRate?: number | null;
+    customerMeaningfulSuccessRate?: number | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -185,6 +192,17 @@ export default function UsagePage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = rows;
+    if (successFilter === "denied") {
+      list = list.filter((r) => classifyUsageFailure(r) === "PERMISSION");
+    }
+    if (successFilter === "operational") {
+      list = list.filter(
+        (r) => r.success === false && classifyUsageFailure(r) !== "PERMISSION",
+      );
+    }
+    if (successFilter === "no_results") {
+      list = list.filter((r) => r.metadata?.accessOutcome === "empty_result");
+    }
     if (failureCategory) {
       list = list.filter(
         (r) => classifyUsageFailure(r) === failureCategory,
@@ -200,13 +218,15 @@ export default function UsagePage() {
         (r.requestId ?? "").toLowerCase().includes(q) ||
         humanActor(r.actorEmail ?? r.userId).toLowerCase().includes(q),
     );
-  }, [rows, query, failureCategory]);
+  }, [rows, query, failureCategory, successFilter]);
 
   const totals = useMemo(() => {
-    if (summary && !query.trim()) return summary;
-    const requests = filtered.length;
-    const successful = filtered.filter((r) => r.success !== false).length;
-    const failed = filtered.filter((r) => r.success === false).length;
+    const requestsFromRows = filtered.length;
+    const successfulFromRows = filtered.filter((r) => r.success !== false).length;
+    const failedFromRows = filtered.filter((r) => r.success === false).length;
+    const deniedFromRows = filtered.filter((r) => classifyUsageFailure(r) === "PERMISSION").length;
+    const operationalFromRows = failedFromRows - deniedFromRows;
+    const noResultsFromRows = filtered.filter((r) => r.metadata?.accessOutcome === "empty_result").length;
     const customerChargesCents = filtered.reduce(
       (sum, r) => sum + (r.customerChargeCents ?? 0),
       0,
@@ -224,25 +244,63 @@ export default function UsagePage() {
           return sum + (r.customerChargeCents ?? 0) - r.underlyingCostCents;
         }, 0)
       : 0;
+    const useSummary = Boolean(summary && !query.trim() && !successFilter && !failureCategory);
+    const requests = useSummary ? summary!.requests : requestsFromRows;
+    const successful = useSummary ? summary!.successful : successfulFromRows;
+    const failed = useSummary ? summary!.failed : failedFromRows;
+    const denied = useSummary ? summary!.denied ?? deniedFromRows : deniedFromRows;
+    const operationalFailed = useSummary
+      ? summary!.operationalFailed ?? operationalFromRows
+      : operationalFromRows;
+    const noResults = useSummary ? summary!.noResults ?? noResultsFromRows : noResultsFromRows;
+    const operationalDenom = requests - denied;
     return {
       requests,
       successful,
       failed,
-      customerChargesCents,
-      underlyingCostsCents,
-      providerCostKnown: costsKnown,
-      grossProfitCents,
-      grossMarginBps:
-        customerChargesCents > 0
+      denied,
+      operationalFailed,
+      noResults,
+      customerChargesCents: useSummary ? summary!.customerChargesCents : customerChargesCents,
+      underlyingCostsCents: useSummary ? summary!.underlyingCostsCents : underlyingCostsCents,
+      providerCostKnown: useSummary ? Boolean(summary!.providerCostKnown) : costsKnown,
+      providerCostUnavailableReason: useSummary ? summary!.providerCostUnavailableReason : null,
+      grossProfitCents: useSummary ? summary!.grossProfitCents : grossProfitCents,
+      grossMarginBps: useSummary
+        ? summary!.grossMarginBps
+        : customerChargesCents > 0
           ? Math.round((grossProfitCents * 10_000) / customerChargesCents)
           : null,
+      rawSuccessRate: useSummary
+        ? summary!.rawSuccessRate ?? (requests > 0 ? successful / requests : null)
+        : requests > 0
+          ? successful / requests
+          : null,
+      operationalSuccessRate: useSummary
+        ? summary!.operationalSuccessRate ??
+          (operationalDenom > 0 ? (operationalDenom - operationalFailed) / operationalDenom : null)
+        : operationalDenom > 0
+          ? (operationalDenom - operationalFailed) / operationalDenom
+          : null,
+      customerMeaningfulSuccessRate: useSummary
+        ? summary!.customerMeaningfulSuccessRate ??
+          (operationalDenom > 0 ? successful / operationalDenom : null)
+        : operationalDenom > 0
+          ? successful / operationalDenom
+          : null,
     };
-  }, [filtered, summary, query]);
+  }, [filtered, summary, query, successFilter, failureCategory]);
 
   const successRate =
-    totals.requests > 0 ? Math.round((totals.successful / totals.requests) * 100) : null;
+    totals.operationalSuccessRate != null
+      ? Math.round(totals.operationalSuccessRate * 100)
+      : null;
+  const rawSuccessRate =
+    totals.rawSuccessRate != null ? Math.round(totals.rawSuccessRate * 100) : null;
   const highFailureRate =
-    totals.requests > 0 && totals.failed / totals.requests > 0.25;
+    (totals.operationalFailed ?? 0) > 0 &&
+    totals.requests > 0 &&
+    (totals.operationalFailed ?? 0) / Math.max(1, totals.requests - (totals.denied ?? 0)) > 0.25;
 
   async function exportCsv() {
     setExporting(true);
@@ -280,7 +338,7 @@ export default function UsagePage() {
     <>
       <PageHeader
         title="Usage"
-        description="Analytics and audit trail for customer charges, success rates, and operational failures."
+        description="Customer charges, operational success, expected permission denials, and provider cost. Denials are not outages."
         actions={
           <Button type="button" variant="secondary" size="sm" loading={exporting} onClick={() => void exportCsv()}>
             <Download size={14} /> Export CSV
@@ -298,14 +356,14 @@ export default function UsagePage() {
           }
         />
         <MetricCard
-          label="Success rate"
+          label="Operational success"
           value={successRate != null ? `${successRate}%` : "—"}
-          hint={`${formatNumber(totals.successful)} ok · ${formatNumber(totals.failed)} failed`}
+          hint={`${formatNumber(totals.successful)} executed ok · ${formatNumber(totals.operationalFailed ?? 0)} operational failures. Expected denials are excluded.`}
         />
         <MetricCard
-          label="Failed requests"
-          value={formatNumber(totals.failed)}
-          hint={highFailureRate ? "Abnormally high — review failure categories" : undefined}
+          label="Expected denials"
+          value={formatNumber(totals.denied ?? 0)}
+          hint="RBAC / permission blocks. Audited and not billed — not outages."
         />
       </MetricGrid>
 
@@ -321,7 +379,8 @@ export default function UsagePage() {
           hint={
             totals.providerCostKnown
               ? undefined
-              : "Shown when provider rate cards have measurable unit costs. Missing cost is not treated as £0."
+              : totals.providerCostUnavailableReason ??
+                "Shown when provider rate cards have measurable unit costs. Missing cost is not treated as £0."
           }
         />
         <MetricCard
@@ -339,6 +398,16 @@ export default function UsagePage() {
               ? `${(totals.grossMarginBps / 100).toFixed(1)}%`
               : "—"
           }
+        />
+        <MetricCard
+          label="Raw success (incl. denials as failed)"
+          value={rawSuccessRate != null ? `${rawSuccessRate}%` : "—"}
+          hint={`${formatNumber(totals.failed)} raw failed rows · ${formatNumber(totals.noResults ?? 0)} valid no-results`}
+        />
+        <MetricCard
+          label="Operational failures"
+          value={formatNumber(totals.operationalFailed ?? 0)}
+          hint={highFailureRate ? "High operational failure share — review categories" : "Timeouts, upstream, and application errors"}
         />
         <MetricCard label="Successful requests" value={formatNumber(totals.successful)} />
         </MetricGrid>
@@ -363,7 +432,10 @@ export default function UsagePage() {
         <Select value={successFilter} onChange={(e) => setSuccessFilter(e.target.value)}>
           <option value="">Success & failure</option>
           <option value="success">Successful</option>
-          <option value="failed">Failed</option>
+          <option value="failed">All failed (incl. denials)</option>
+          <option value="denied">Expected denials</option>
+          <option value="operational">Operational failures</option>
+          <option value="no_results">Valid no-results</option>
         </Select>
         <Select value={failureCategory} onChange={(e) => setFailureCategory(e.target.value)}>
           <option value="">All failure types</option>
@@ -611,6 +683,23 @@ function UsageDetail({
         value={humanOperation(row.action, row.toolName)}
       />
       <KeyValue
+        label="Outcome"
+        value={(() => {
+          const outcome = classifyUsageOutcome(row);
+          if (outcome.expectedDenial) return "Expected denial";
+          if (outcome.noResults) return "Valid no-results";
+          if (outcome.kind === "SUCCESS") return "Success";
+          if (outcome.historicalHint === "xero_tool_mapping") {
+            return "Historical — Xero tool mapping (current regression passes)";
+          }
+          if (outcome.historicalHint === "knowledge_timeout") {
+            return "Historical — knowledge timeout cluster";
+          }
+          if (outcome.historicalHint === "isolation_probe") return "Historical — isolation probe";
+          return outcome.kind.replace(/_/g, " ").toLowerCase();
+        })()}
+      />
+      <KeyValue
         label="Failure category"
         value={
           classifyUsageFailure(row)
@@ -620,7 +709,17 @@ function UsageDetail({
       />
       <KeyValue
         label="Status"
-        value={<StatusBadge status={row.success !== false ? "completed" : "failed"} />}
+        value={
+          <StatusBadge
+            status={
+              classifyUsageOutcome(row).expectedDenial
+                ? "denied"
+                : row.success !== false
+                  ? "completed"
+                  : "failed"
+            }
+          />
+        }
       />
       <KeyValue label="Recorded" value={formatRelativeTime(row.recordedAt)} />
       <KeyValue

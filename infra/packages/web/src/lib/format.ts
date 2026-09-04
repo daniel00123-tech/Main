@@ -3,6 +3,10 @@
  * Keeps technical IDs out of primary UI surfaces.
  */
 
+import { classifyUsageOutcome, type UsageFailureCategory } from "@infra/shared";
+
+export type { UsageFailureCategory };
+
 const EVENT_LABELS: Record<string, string> = {
   "auth.login": "Signed in",
   "auth.logout": "Signed out",
@@ -219,40 +223,17 @@ export function humanClient(source?: string | null): string {
   return map[source] ?? source;
 }
 
-export type UsageFailureCategory =
-  | "AUTHENTICATION"
-  | "PERMISSION"
-  | "MISSING_CAPABILITY"
-  | "VALIDATION"
-  | "UPSTREAM_API"
-  | "RATE_LIMIT"
-  | "TIMEOUT"
-  | "INSUFFICIENT_CREDIT"
-  | "INFRA_INTERNAL"
-  | "USER_INPUT"
-  | "UNKNOWN";
-
 export function classifyUsageFailure(input: {
   success?: boolean;
   action?: string | null;
   toolName?: string | null;
+  settlementStatus?: string | null;
+  durationMs?: number | null;
+  recordedAt?: string | null;
+  actorEmail?: string | null;
   metadata?: Record<string, unknown>;
 }): UsageFailureCategory | null {
-  if (input.success !== false) return null;
-  const meta = input.metadata ?? {};
-  const code = String(meta.code ?? meta.errorCode ?? meta.reasonCode ?? "").toUpperCase();
-  const message = String(meta.error ?? meta.message ?? meta.publicError ?? "").toLowerCase();
-  if (code.includes("401") || message.includes("auth") || code.includes("AUTH")) return "AUTHENTICATION";
-  if (code.includes("403") || code.includes("PERMISSION") || code.includes("SCOPE")) return "PERMISSION";
-  if (code.includes("402") || message.includes("insufficient credit")) return "INSUFFICIENT_CREDIT";
-  if (code.includes("404") && message.includes("tool")) return "MISSING_CAPABILITY";
-  if (code.includes("VALID") || message.includes("validation")) return "VALIDATION";
-  if (code.includes("429") || message.includes("rate limit")) return "RATE_LIMIT";
-  if (code.includes("TIMEOUT") || message.includes("timeout")) return "TIMEOUT";
-  if (code.includes("502") || code.includes("503") || message.includes("upstream")) return "UPSTREAM_API";
-  if (message.includes("user") || message.includes("input")) return "USER_INPUT";
-  if (code.includes("INTERNAL") || message.includes("internal")) return "INFRA_INTERNAL";
-  return "UNKNOWN";
+  return classifyUsageOutcome(input).failureCategory;
 }
 
 export function humanFailureCategory(category: UsageFailureCategory): string {
