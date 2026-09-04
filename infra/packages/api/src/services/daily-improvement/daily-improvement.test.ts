@@ -278,6 +278,8 @@ describe("daily improvement report", () => {
 describe("traffic classification", () => {
   it("does not treat frozen-bench prompts as genuine customer chat", () => {
     expect(looksLikeAutomatedTestPrompt("What are our Xero sales this month?")).toBe(true);
+    expect(looksLikeAutomatedTestPrompt("Tell me our Xero sales this month.")).toBe(true);
+    expect(looksLikeAutomatedTestPrompt("Show me the newest email in the info inbox.")).toBe(true);
     expect(classifyDailyTraffic({ userMessage: "What are our Xero sales this month?", sourceClient: "portal_chat" })).toBe(
       "TEST",
     );

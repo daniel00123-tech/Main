@@ -92,6 +92,14 @@ const TEST_PROMPT_FINGERPRINTS = new Set(
     "What are our outstanding invoices?",
     "compare Xero sales this month versus last month",
     "Tell me Xero sales this month.",
+    "Tell me our Xero sales this month.",
+    "What are our Xero sales?",
+    "Show me the newest email in the info inbox.",
+    "Show me the newest email in the finance inbox.",
+    "What is the newest email in the info inbox?",
+    "What is the newest email in the finance inbox?",
+    "Search company files for PO process.",
+    "Search company files for PO process",
   ].map(normalisePrompt),
 );
 
