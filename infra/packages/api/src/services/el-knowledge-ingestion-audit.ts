@@ -38,7 +38,7 @@ export const EL_KNOWLEDGE_AUDIT_WINDOW = {
 } as const;
 
 export const EL_KNOWLEDGE_CORRECTED_SUBJECT =
-  "INFRA — EL Business Daily Knowledge Activity — Staff mailbox confirmation";
+  "INFRA — EL Business Daily Knowledge Activity — Attachment landing-zone confirmation";
 
 const COMPANY_ID = "co_el";
 const AUTOMATION_ID = "aut_b00ab912-845b-49b4-9609-cbedeeea6ddf";
@@ -291,6 +291,7 @@ export async function sendElKnowledgeCorrectedTestEmail(
       title: item.title,
       sourceLabel: item.sourceLabel,
       indexed: item.indexed,
+      stored: item.stored,
       chunkCount: item.chunkCount,
       modifiedAt: item.modifiedAt,
       url: item.url,
@@ -316,12 +317,16 @@ export async function sendElKnowledgeCorrectedTestEmail(
     omittedDocuments: listed.omitted,
     portalUrl: `${portalOrigin(env)}/portal/${company.slug}/automations`,
     subjectOverride: EL_KNOWLEDGE_CORRECTED_SUBJECT,
-    correctionPreamble: `Updated/re-indexed does not mean attachments were indexed. That count is only for existing files INFRA actually reprocessed. This confirmation now scans info@, finance@, michael@ and sharon@. Portal chat still cannot search personal inboxes. Mailboxes scanned: ${mailboxesScanned.join(", ")}. Messages with attachments: ${outlookMessages}. Successfully indexed this run: ${input.ingest?.counts.attachmentsIndexed ?? input.report.indexedCount}. Failed: ${input.ingest?.counts.failed ?? input.report.failedCount}. OneDrive catalogue files created/modified in window: 0. SharePoint catalogue rows: 0.`,
+    correctionPreamble: `Store-first landing zone is now on the shared INFRA pipeline. Originals are saved before index. One attachment remains one document. Graph landing-zone writes stay blocked if the tenant service principal is missing; originals are still retained via the durable knowledge-store fallback. Portal chat still cannot search personal inboxes. Mailboxes scanned: ${mailboxesScanned.join(", ")}. Messages with attachments: ${outlookMessages}. Stored: ${input.ingest?.counts.attachmentsStored ?? 0}. Indexed this run: ${input.ingest?.counts.attachmentsIndexed ?? input.report.indexedCount}. Deduped: ${input.ingest?.counts.duplicates ?? 0}. Failed: ${input.ingest?.counts.failed ?? input.report.failedCount}.`,
     mailboxesScanned,
     messagesWithAttachments: outlookMessages,
     attachmentsDiscovered: input.ingest?.counts.attachmentsDiscovered ?? input.report.discoveredCount,
+    attachmentsStored: input.ingest?.counts.attachmentsStored ?? 0,
     attachmentsIndexed: input.ingest?.counts.attachmentsIndexed ?? input.report.indexedCount,
+    attachmentsDeduped: input.ingest?.counts.duplicates ?? 0,
     attachmentsSkipped: input.ingest?.counts.skipped ?? input.report.duplicateCount,
+    attachmentsSkippedJunk: input.ingest?.counts.skippedJunk ?? 0,
+    attachmentsUnsupported: input.ingest?.counts.unsupported ?? 0,
     attachmentsFailed: input.ingest?.counts.failed ?? input.report.failedCount,
     pipelineHealth,
     gapWarning,
