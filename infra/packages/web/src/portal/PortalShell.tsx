@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Bot,
   ChartColumn,
@@ -32,6 +32,7 @@ import { api } from "../api";
 import { PortalCompanyProvider, usePortalCompany } from "./usePortalCompany";
 import { PortalNotificationBell } from "./PortalNotificationBell";
 import { PortalCompanyHomeLink } from "./PortalCompanyHomeLink";
+import { companyNavOrder, portalChatPath } from "./portal-home";
 import { InfraBrand } from "../components/InfraBrand";
 import { filterCustomerActions } from "../lib/customer-visibility";
 
@@ -45,8 +46,8 @@ type NavItem = {
 };
 
 const ALL_NAV: NavItem[] = [
+  { path: "chat", label: "Chat", icon: <MessageSquare size={18} />, section: "overview" },
   { path: "dashboard", label: "Overview", icon: <LayoutDashboard size={18} />, section: "overview" },
-  { path: "chat", label: "Chat", icon: <MessageSquare size={18} />, section: "work" },
   { path: "ai-connections", label: "AI", icon: <Bot size={18} />, section: "work" },
   {
     path: "automations",
@@ -110,6 +111,8 @@ function PortalShellInner() {
   const { user, logout } = useAuth();
   const { company, membership, loading, error, companies } = usePortalCompany();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isChatRoute = /\/chat(?:\/|$)/.test(location.pathname);
   const [collapsed, setCollapsed] = useSidebarCollapsed("infra.portal.sidebar.collapsed");
   const isMobile = useMediaQuery("(max-width: 900px)");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -160,9 +163,9 @@ function PortalShellInner() {
         if (!item.roles) return true;
         if (user?.isPlatformAdmin) return true;
         return item.roles.includes(role);
-      }).map((item) =>
-        item.path === "actions" ? { ...item, badgeCount: pendingApprovals } : item,
-      ),
+      })
+        .sort((left, right) => companyNavOrder().indexOf(left.path) - companyNavOrder().indexOf(right.path))
+        .map((item) => (item.path === "actions" ? { ...item, badgeCount: pendingApprovals } : item)),
     [role, user?.isPlatformAdmin, pendingApprovals],
   );
 
@@ -189,6 +192,7 @@ function PortalShellInner() {
   const shellClass = [
     "app-shell",
     "portal-shell",
+    isChatRoute ? "portal-shell--chat" : "",
     !isMobile && collapsed ? "nav-collapsed" : "",
     isMobile && mobileOpen ? "mobile-nav-open" : "",
   ]
@@ -260,7 +264,7 @@ function PortalShellInner() {
               className="input"
               value={company.slug}
               onChange={(e) => {
-                navigate(`/portal/${e.target.value}/dashboard`);
+                navigate(portalChatPath(e.target.value));
                 setMobileOpen(false);
               }}
             >

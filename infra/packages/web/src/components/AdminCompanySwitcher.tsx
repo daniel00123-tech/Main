@@ -125,7 +125,7 @@ export default function AdminCompanySwitcher() {
                       active={scope.mode === "company" && scope.companySlug === company.slug}
                       onSelect={() => selectCompany(company)}
                       onAdmin={() => navigate(`/companies/${company.slug}`)}
-                      onPortal={() => navigate(`/portal/${company.slug}/dashboard`)}
+                      onPortal={() => navigate(`/portal/${company.slug}/chat`)}
                     />
                   ))}
                 </div>
@@ -142,7 +142,7 @@ export default function AdminCompanySwitcher() {
                       active={scope.mode === "company" && scope.companySlug === company.slug}
                       onSelect={() => selectCompany(company)}
                       onAdmin={() => navigate(`/companies/${company.slug}`)}
-                      onPortal={() => navigate(`/portal/${company.slug}/dashboard`)}
+                      onPortal={() => navigate(`/portal/${company.slug}/chat`)}
                     />
                   ))
                 )}

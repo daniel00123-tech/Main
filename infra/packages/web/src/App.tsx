@@ -363,9 +363,10 @@ export default function App() {
         <Route path="/portal/automations" element={<PortalEntryRedirect />} />
         <Route path="/portal/chat" element={<PortalEntryRedirect />} />
         <Route path="/portal/:companySlug" element={<PortalShell />}>
-          <Route index element={<PortalDashboardPage />} />
+          <Route index element={<Navigate to="chat" replace />} />
           <Route path="dashboard" element={<PortalDashboardPage />} />
           <Route path="chat" element={<PortalChatPage />} />
+          <Route path="chat/:conversationId" element={<PortalChatPage />} />
           <Route path="connectors" element={<PortalConnectorsPage />} />
           <Route path="microsoft-365" element={<PortalMicrosoft365Page />} />
           <Route path="ai-connections" element={<PortalAiConnectionsPage />} />
