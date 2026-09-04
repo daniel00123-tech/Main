@@ -34,7 +34,7 @@ const res = await fetch(`${API}${path}`, {
     "User-Agent": "InfraAcceptance/1.0",
   },
   body: JSON.stringify(body),
-  signal: AbortSignal.timeout(180_000),
+  signal: AbortSignal.timeout(540_000),
 });
 const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
 const report = { api: API, path, httpStatus: res.status, body: json };
