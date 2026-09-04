@@ -155,6 +155,7 @@ export async function executeWhatsAppIntelligence(
     lastAnswerTopic: input.memory.lastAnswerTopic ?? null,
     lastUserIntent: input.memory.lastUserIntent ?? null,
     lastAnswerText: input.memory.lastAnswerText ?? null,
+    recentEvidence: input.memory.recentEvidence ?? null,
   });
   let result = await runIntelligenceTurn({
     env,
@@ -164,6 +165,7 @@ export async function executeWhatsAppIntelligence(
     channel: "whatsapp",
     buttonHint: buttonAction,
     completer: input.completer,
+    waitUntil: input.waitUntil,
   });
   if (
     result.kind === "failed" ||
@@ -471,6 +473,7 @@ function mergeEntitiesFromIntelligence(
     lastSuccessfulTool: result.toolCalls.find((call) => call.ok)?.name ?? prior.lastSuccessfulTool ?? null,
     lastAnswerTopic: result.lastAnswerTopic ?? prior.lastAnswerTopic ?? null,
     lastUserIntent: result.lastUserIntent ?? prior.lastUserIntent ?? null,
+    recentEvidence: result.recentEvidence ?? prior.recentEvidence ?? null,
   });
 }
 

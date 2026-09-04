@@ -35,7 +35,7 @@ export function inspectIntelligenceProvider(env: IntelligenceEnv): {
   return { provider: "none", model: null, configured: false };
 }
 
-export function createDefaultCompleter(env: IntelligenceEnv): IntelligenceCompleter {
+export function createCloudflareCompleter(env: IntelligenceEnv): IntelligenceCompleter {
   return async (input) => {
     const started = Date.now();
     const route = resolveModelRoute(env);
@@ -91,9 +91,14 @@ function usageFrom(
     promptTokens,
     completionTokens,
     estimatedCostUsd: estimateWorkersAiCostUsd(model, promptTokens, completionTokens),
+    costBasis: "estimated",
     fallbackUsed,
     malformed: !output.trim(),
   };
+}
+
+export function createDefaultCompleter(env: IntelligenceEnv): IntelligenceCompleter {
+  return createCloudflareCompleter(env);
 }
 
 export function estimateTokens(text: string): number {

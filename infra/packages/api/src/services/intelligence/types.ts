@@ -17,6 +17,77 @@ export type IntelligenceScope =
   | "CONTROLLED_ACTION"
   | "AMBIGUOUS";
 
+export type BrainMode = "cloudflare" | "openai_shadow" | "openai_canary" | "openai_primary";
+
+export type EvidenceNeed = "NEEDS_FRESH_DATA" | "CAN_ANSWER_FROM_EXISTING_EVIDENCE";
+
+export type ResponseTerminal =
+  | "ANSWER"
+  | "PERMISSION_DENIED"
+  | "NO_RESULTS"
+  | "UPSTREAM_FAILURE"
+  | "CLARIFICATION_REQUIRED";
+
+export type ResponseGuardCheck = {
+  id:
+    | "tool_success_not_reported_as_failure"
+    | "data_exists_not_no_result"
+    | "not_wrong_system_email_to_xero"
+    | "not_wrong_system_xero_to_knowledge"
+    | "successful_result_not_discarded"
+    | "not_generic_retry_after_success"
+    | "not_blank"
+    | "permission_uses_access_outcome"
+    | "live_claim_has_evidence"
+    | "xero_mentions_figures"
+    | "not_permission_from_payload_words"
+    | "not_contradictory_blank";
+  ok: boolean;
+};
+
+export type RecentEmailEvidence = {
+  id: string;
+  subject: string;
+  from: string;
+  receivedDateTime: string;
+  mailboxAddress: string;
+  body: string;
+  toolName: string;
+};
+
+export type RecentXeroEvidence = {
+  toolName: string;
+  total: number | null;
+  count: number | null;
+  fromDate: string | null;
+  toDate: string | null;
+  currency: string;
+  summary: string;
+  label: string;
+};
+
+export type RecentDocumentEvidence = {
+  id: string;
+  title: string;
+  url?: string | null;
+  excerpt: string;
+  source?: string | null;
+};
+
+export type RecentCatalogueEvidence = {
+  id: string;
+  title: string;
+  source?: string | null;
+};
+
+export type StructuredEvidence = {
+  recentEmail?: RecentEmailEvidence | null;
+  recentXero?: RecentXeroEvidence | null;
+  recentDocument?: RecentDocumentEvidence | null;
+  recentCatalogueItem?: RecentCatalogueEvidence | null;
+  lastSuccessfulCalls?: Array<{ name: string; argsHash: string; summary: string }>;
+};
+
 export type IntelligenceQualityFlag =
   | "malformed_model_response"
   | "fallback"
@@ -82,11 +153,29 @@ export type IntelligenceConversationState = {
   lastAnswerTopic?: string | null;
   lastUserIntent?: string | null;
   lastAnswerText?: string | null;
+  recentEvidence?: StructuredEvidence | null;
   recentTurns: Array<{ role: "user" | "assistant"; text: string }>;
   lastUserText: string;
   lastToolName?: string | null;
   lastToolSummary?: string | null;
   userCorrection?: boolean;
+};
+
+export type ShadowEvalRecord = {
+  provider: "openai";
+  model: string | null;
+  latencyMs: number;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  cachedTokens: number | null;
+  estimatedCostUsd: number | null;
+  costBasis: "estimated" | "unknown";
+  correlationId: string | null;
+  toolProposal: string[];
+  failure: string | null;
+  reusedEvidence: boolean;
+  executedLiveTools: false;
+  userVisibleProvider: "cloudflare";
 };
 
 export type IntelligenceModelUsage = {
@@ -95,7 +184,10 @@ export type IntelligenceModelUsage = {
   latencyMs: number;
   promptTokens: number | null;
   completionTokens: number | null;
+  cachedTokens?: number | null;
   estimatedCostUsd: number | null;
+  costBasis?: "estimated" | "unknown";
+  correlationId?: string | null;
   fallbackUsed?: boolean;
   malformed?: boolean;
 };
@@ -123,6 +215,13 @@ export type IntelligenceTurnResult = {
   qualityFlags?: IntelligenceQualityFlag[];
   repaired?: boolean;
   fallbackUsed?: boolean;
+  recentEvidence?: StructuredEvidence | null;
+  terminal?: ResponseTerminal;
+  brainMode?: BrainMode;
+  correlationId?: string | null;
+  guardChecks?: ResponseGuardCheck[];
+  /** Parallel OpenAI evaluation. Never shown to the customer. */
+  shadowEval?: ShadowEvalRecord | null;
 };
 
 export type IntelligenceToolParam = {
@@ -149,6 +248,13 @@ export type IntelligenceEnv = {
   AI?: { run: (model: string, inputs: Record<string, unknown>) => Promise<unknown> };
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
+  OPENAI_BRAIN_ENABLED?: string;
+  OPENAI_BRAIN_MODE?: string;
+  OPENAI_BRAIN_COMPANY_IDS?: string;
+  OPENAI_BRAIN_CANARY_PERCENT?: string;
+  OPENAI_MODEL_FAST?: string;
+  OPENAI_MODEL_DEFAULT?: string;
+  OPENAI_MODEL_REASONING?: string;
   WHATSAPP_GROUNDED_MODEL?: string;
   INTELLIGENCE_FALLBACK_MODEL?: string;
   INTELLIGENCE_ESCALATE_MODEL?: string;

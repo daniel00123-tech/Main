@@ -92,6 +92,7 @@ import emailLiveTestRoutes from "./routes/email-live-test";
 import whatsappRoutes from "./routes/whatsapp";
 import whatsappUxUatRoutes from "./routes/whatsapp-ux-uat";
 import intelligenceEvalRoutes from "./routes/intelligence-eval";
+import openaiBrainRoutes from "./routes/openai-brain";
 import qualityLoopRoutes from "./routes/quality-loop";
 import portalChatRoutes from "./routes/portal-chat";
 import { publicProductionLineage } from "./services/production-lineage";
@@ -111,6 +112,7 @@ app.route("/", emailLiveTestRoutes);
 app.route("/", whatsappRoutes);
 app.route("/", whatsappUxUatRoutes);
 app.route("/", intelligenceEvalRoutes);
+app.route("/", openaiBrainRoutes);
 app.route("/", qualityLoopRoutes);
 app.route("/", portalChatRoutes);
 

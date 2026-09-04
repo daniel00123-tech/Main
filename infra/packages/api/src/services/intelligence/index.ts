@@ -23,6 +23,7 @@ export {
 } from "./orchestrator.js";
 export {
   createDefaultCompleter,
+  createCloudflareCompleter,
   inspectIntelligenceProvider,
   estimateCostUsd,
   estimateTokens,
@@ -30,6 +31,26 @@ export {
   FALLBACK_WORKERS_AI_TEXT_MODEL,
   DEFAULT_OPENAI_TEXT_MODEL,
 } from "./provider.js";
+export { createReasoningCompleter, createOpenAiCompleter } from "./brain.js";
+export { resolveBrainPolicy, EL_COMPANY_ID, parseBrainMode } from "./brain-policy.js";
+export {
+  classifyEvidenceNeed,
+  canUseExisting,
+  extractEvidenceFromTools,
+  answerFromExistingEvidence,
+  shouldReuseSuccessfulTool,
+  sanitiseEvidenceForModel,
+} from "./evidence.js";
+export { runResponseQualityGuard, applyGuardToTurn, classifyResponseTerminal } from "./response-guard.js";
+export { runOpenAiResponses, hasOpenAiApiKey, inspectOpenAiKey, extractOpenAiResponses } from "./openai-responses.js";
+export {
+  evaluateOpenAiShadow,
+  persistShadowEval,
+  runOpenAiConnectivitySmoke,
+  shouldRunOpenAiShadow,
+} from "./shadow-eval.js";
+export { scoreLiveOpenAiShadowSlice, EMAIL_FOLLOWUP_SEQUENCE } from "./eval/el-frozen-benchmark.js";
+export { OPENAI_MODEL_FAST, OPENAI_MODEL_DEFAULT, OPENAI_MODEL_REASONING, resolveOpenAiModel } from "./openai-models.js";
 export { buildConversationState, formatConversationState } from "./state.js";
 export { routeIntelligenceTurn } from "./router.js";
 export { recoverDecision, validateToolRequest } from "./parse.js";
@@ -43,6 +64,7 @@ export { evaluationCases } from "./eval/cases.js";
 export { scopeEvaluationCases } from "./eval/scope-cases.js";
 export { runEvaluationSuite, policyCompleter, v1FragileCompleter } from "./eval/harness.js";
 export { runOfflineBenchmarks, probeWorkersAiModels, selectWinningModel } from "./eval/benchmark.js";
+export { frozenElCases, compareFrozenBrains, scoreFrozenBenchmark } from "./eval/el-frozen-benchmark.js";
 export type {
   IntelligenceChannel,
   IntelligenceConfidence,
@@ -57,5 +79,6 @@ export type {
   IntelligenceQualityFlag,
   IntelligenceRoute,
   IntelligenceScope,
+  ShadowEvalRecord,
 } from "./types.js";
 export type { IntelligenceCompleter } from "./provider.js";
