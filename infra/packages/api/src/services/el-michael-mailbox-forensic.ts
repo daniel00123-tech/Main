@@ -226,7 +226,7 @@ async function hiddenAttachmentProbe(
   config: MicrosoftGraphConfig,
   mailbox: string,
   message: GraphMessage,
-): Promise<{ attachmentCount: number; cloudLinks: number; kinds: string[] }> {
+): Promise<{ attachmentCount: number; cloudLinks: number; kinds: string[]; attachments: GraphAttachment[] }> {
   const listed = await listAttachments(config, mailbox, message.id);
   const attachments = listed.attachments;
   let cloudLinks = 0;
@@ -243,6 +243,7 @@ async function hiddenAttachmentProbe(
     attachmentCount: attachments.length,
     cloudLinks,
     kinds: attachments.map((row) => attachmentKind(row["@odata.type"])),
+    attachments,
   };
 }
 
@@ -427,14 +428,29 @@ async function inspectMailbox(
   for (const message of hiddenCandidates) {
     const probe = await hiddenAttachmentProbe(config, mailbox, message);
     if (probe.attachmentCount > 0 || probe.cloudLinks > 0) {
+      const classifiedHidden = [];
+      for (const att of probe.attachments) {
+        const classified = classifyRow(att);
+        classifiedHidden.push({
+          filename: att.name ?? null,
+          contentType: att.contentType ?? null,
+          size: att.size ?? null,
+          isInline: Boolean(att.isInline),
+          attachmentType: classified.kind,
+          eligible: classified.filter.ingest && classified.kind === "fileAttachment",
+          exclusionReason: classified.filter.ingest && classified.kind === "fileAttachment" ? null : classified.reason,
+        });
+      }
       hidden.push({
         subject: message.subject ?? null,
         received: message.receivedDateTime ?? null,
         folder: message.folderName,
+        scannedByCurrentIngestPolicy: message.scannedByPolicy,
         hasAttachments: false,
         graphAttachmentsFound: probe.attachmentCount,
         cloudLinks: probe.cloudLinks,
         kinds: probe.kinds,
+        attachments: classifiedHidden,
       });
     }
   }
@@ -528,7 +544,27 @@ export async function runElMichaelMailboxForensic(env: Env): Promise<Record<stri
   const sharon = await compareInbox(SHARON);
   const lauren = await compareInbox(LAUREN);
 
-  const candidatesEligible = michael.attachmentRows.filter((row) => row.eligible);
+  const hiddenEligible = (michael.hiddenAttachmentsOrLinks ?? []).flatMap((row) =>
+    (Array.isArray(row.attachments) ? row.attachments : [])
+      .filter((att) => att && att.eligible)
+      .map((att) => ({
+        subject: row.subject ?? null,
+        received: row.received ?? null,
+        folder: row.folder,
+        scannedByCurrentIngestPolicy: Boolean(row.scannedByCurrentIngestPolicy),
+        filename: att.filename,
+        attachmentType: att.attachmentType,
+        size: att.size,
+        eligible: true,
+        exclusionReason: null,
+        hasAttachmentsFlag: false,
+      })),
+  );
+  const candidatesEligible = [
+    ...hiddenEligible.filter((row) => row.scannedByCurrentIngestPolicy),
+    ...michael.attachmentRows.filter((row) => row.eligible),
+    ...hiddenEligible.filter((row) => !row.scannedByCurrentIngestPolicy),
+  ];
   const best =
     candidatesEligible[0] ??
     michael.attachmentRows.find((row) => row.attachmentType === "fileAttachment") ??
@@ -538,7 +574,11 @@ export async function runElMichaelMailboxForensic(env: Env): Promise<Record<stri
   let rootCause = "J. NO_ATTACHMENT_ACTUALLY_PRESENT";
   let explanation =
     "Michael's mailbox was readable. Across 30 days and all relevant folders, no eligible non-inline business file was found.";
-  if (candidatesEligible.length) {
+  if (hiddenEligible.some((row) => row.scannedByCurrentIngestPolicy && inWindow(row.received, windows["7d"]))) {
+    rootCause = "I. GRAPH_ATTACHMENT_ENUM_BUG";
+    explanation =
+      "Inbox messages in the current 7-day window have real file attachments, but Graph hasAttachments=false, so ingest never enumerates them.";
+  } else if (candidatesEligible.length) {
     const first = candidatesEligible[0];
     if (!first.scannedByCurrentIngestPolicy) {
       rootCause = "C. FOLDER_NOT_SCANNED";
@@ -645,14 +685,16 @@ export async function runElMichaelMailboxForensic(env: Env): Promise<Record<stri
           filename: best.filename,
           attachmentType: best.attachmentType,
           size: best.size,
-          hasAttachments: true,
+          hasAttachments: !("hasAttachmentsFlag" in best) || best.hasAttachmentsFlag !== false,
           eligible: best.eligible ? "YES" : "NO",
           reason: best.eligible
-            ? best.scannedByCurrentIngestPolicy && inWindow(best.received, windows["7d"])
-              ? "Eligible file attachment inside current Inbox + 7-day policy"
-              : !best.scannedByCurrentIngestPolicy
-                ? `Eligible file, but folder ${best.folder} is not scanned by current ingest`
-                : "Eligible file, but outside the current 7-day window"
+            ? "hasAttachmentsFlag" in best && best.hasAttachmentsFlag === false
+              ? "Eligible file on an Inbox message where Graph hasAttachments=false"
+              : best.scannedByCurrentIngestPolicy && inWindow(best.received, windows["7d"])
+                ? "Eligible file attachment inside current Inbox + 7-day policy"
+                : !best.scannedByCurrentIngestPolicy
+                  ? `Eligible file, but folder ${best.folder} is not scanned by current ingest`
+                  : "Eligible file, but outside the current 7-day window"
             : best.exclusionReason,
         }
       : null,
