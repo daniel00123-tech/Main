@@ -30,6 +30,7 @@ import {
 } from "./warehouse";
 import { defaultIngestionPolicyForCompany } from "./mailbox-ingestion-policy";
 import { runElMailboxAttachmentBackfill } from "./mailbox-attachment-backfill";
+import { verifyElMicrosoftServicePrincipal } from "./el-microsoft-sp-verify";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
