@@ -86,7 +86,7 @@ function casesForSuite(suite: CampaignSuite): CampaignCase[] {
   if (suite === "r2_xero") return ROUND2_CASES.filter((item) => item.family === "xero");
   if (suite === "r2_outlook") return ROUND2_CASES.filter((item) => item.family === "outlook");
   if (suite === "r2_knowledge") return ROUND2_CASES.filter((item) => item.family === "knowledge");
-  return ROUND2_CASES.filter((item) => item.family === "infra").slice(0, 10);
+  return ROUND2_CASES.filter((item) => item.family === "infra");
 }
 
 export async function runElBusinessCampaignSuite(env: Env, suite: CampaignSuite): Promise<Record<string, unknown>> {

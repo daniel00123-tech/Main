@@ -38,7 +38,7 @@ for (const suite of SUITES) {
       "Content-Type": "application/json",
       "User-Agent": "InfraAcceptance/1.0",
     },
-    signal: AbortSignal.timeout(240_000),
+    signal: AbortSignal.timeout(420_000),
   });
   const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
   report.suites.push({ httpStatus: res.status, suite, body });
