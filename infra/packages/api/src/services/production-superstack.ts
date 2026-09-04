@@ -226,6 +226,9 @@ export function assertProductionSuperstackCapabilities(): {
   if (typeof runElMailboxAttachmentBackfill !== "function") {
     throw new Error("EL mailbox attachment backfill missing");
   }
+  if (typeof verifyElMicrosoftServicePrincipal !== "function") {
+    throw new Error("EL Microsoft service-principal verify missing");
+  }
   if (!isWarehouseToolName("warehouse_sales_analysis") || warehouseSlotsPerWeek() !== 37) {
     throw new Error("business data warehouse schedule or tools missing");
   }
