@@ -46,7 +46,7 @@ import { resolveOutlookGraphAccess } from "./outlook-graph-access";
 const COMPANY_ID = "co_el";
 const AUTOMATION_ID = "aut_b00ab912-845b-49b4-9609-cbedeeea6ddf";
 export const EL_OPTION_B_CUTOVER_SUBJECT =
-  "INFRA — EL Business Knowledge Intake — Option B Graph Cutover Complete";
+  "INFRA — EL Business Knowledge Intake — Sync test";
 
 const APPROVED = [
   { key: "finance", hint: "finance", mailbox: "finance@elvexpropertyservices.com" },
@@ -60,6 +60,111 @@ type Verdict = "PASS" | "FAIL";
 
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderElOptionBSyncEmail(input: {
+  tokenPass: boolean;
+  mailboxes: string[];
+  landingZonePass: boolean;
+  landingZoneLabel: string;
+  counts: {
+    mailboxesScanned: number;
+    attachmentsDiscovered: number;
+    attachmentsStored: number;
+    attachmentsExtracted: number;
+    attachmentsIndexed: number;
+    chunksAdded: number;
+    skipped: number;
+    failed: number;
+  };
+  people: Array<{
+    name: string;
+    mailboxAccess: unknown;
+    messagesFound: unknown;
+    attachmentsFound: unknown;
+    attachmentsIndexed: unknown;
+  }>;
+  retrievalProof: string;
+  remainingFailures: string[];
+}): { subject: string; text: string; html: string } {
+  const subject = EL_OPTION_B_CUTOVER_SUBJECT;
+  const mailboxList = input.mailboxes.length ? input.mailboxes.join(", ") : "none yet";
+  const retrieval =
+    input.retrievalProof.startsWith("PASS")
+      ? "Yes — a real stored attachment can now be found in company knowledge search."
+      : input.retrievalProof.startsWith("BLOCKED")
+        ? "Not yet — Graph access was still blocked."
+        : "Not yet — attachments were stored, but they are not searchable until indexing finishes.";
+  const remaining = input.remainingFailures.length
+    ? input.remainingFailures.map((row) => `• ${row}`).join("\n")
+    : "None.";
+  const people = input.people
+    .map(
+      (row) =>
+        `${row.name}: mailbox ${row.mailboxAccess === "PASS" ? "OK" : "needs attention"}; ${row.messagesFound ?? 0} messages, ${row.attachmentsFound ?? 0} attachments, ${row.attachmentsIndexed ?? 0} indexed`,
+    )
+    .join("\n");
+  const text = [
+    "Hello Daniel,",
+    "",
+    "This is a one-off INFRA sync test for EL Business email-attachment knowledge intake.",
+    "",
+    input.tokenPass
+      ? "EL mail is now being read with the EL-native Microsoft app (not the shared Business Connector)."
+      : "EL mail could not be read with the EL-native Microsoft app in this run.",
+    "",
+    `Mailboxes checked: ${mailboxList}`,
+    `Knowledge Intake library: ${input.landingZonePass ? "ready" : "not ready"} — ${input.landingZoneLabel}`,
+    "",
+    "Last 7 days",
+    `• Mailboxes scanned: ${input.counts.mailboxesScanned}`,
+    `• Attachments found: ${input.counts.attachmentsDiscovered}`,
+    `• Stored in Knowledge Intake: ${input.counts.attachmentsStored}`,
+    `• Extracted: ${input.counts.attachmentsExtracted}`,
+    `• Indexed: ${input.counts.attachmentsIndexed}`,
+    `• Search chunks: ${input.counts.chunksAdded}`,
+    `• Skipped (signatures / unsupported): ${input.counts.skipped}`,
+    `• Still failed: ${input.counts.failed}`,
+    "",
+    "People",
+    people,
+    "",
+    `Can we search a real attachment? ${retrieval}`,
+    "",
+    "Still open",
+    remaining,
+    "",
+    "The daily EL knowledge activity email is unchanged (08:00 Europe/London).",
+    "Caddington and HT were not changed. No passwords or secrets are included here.",
+    "",
+    "INFRA",
+  ].join("\n");
+  const html = `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#111">
+<p>Hello Daniel,</p>
+<p>This is a one-off INFRA sync test for EL Business email-attachment knowledge intake.</p>
+<p>${escapeHtml(
+    input.tokenPass
+      ? "EL mail is now being read with the EL-native Microsoft app (not the shared Business Connector)."
+      : "EL mail could not be read with the EL-native Microsoft app in this run.",
+  )}</p>
+<p><strong>Mailboxes checked:</strong> ${escapeHtml(mailboxList)}<br/>
+<strong>Knowledge Intake library:</strong> ${escapeHtml(input.landingZonePass ? "ready" : "not ready")} — ${escapeHtml(input.landingZoneLabel)}</p>
+<p><strong>Last 7 days</strong><br/>
+Mailboxes scanned: ${input.counts.mailboxesScanned}<br/>
+Attachments found: ${input.counts.attachmentsDiscovered}<br/>
+Stored in Knowledge Intake: ${input.counts.attachmentsStored}<br/>
+Extracted: ${input.counts.attachmentsExtracted}<br/>
+Indexed: ${input.counts.attachmentsIndexed}<br/>
+Search chunks: ${input.counts.chunksAdded}<br/>
+Skipped (signatures / unsupported): ${input.counts.skipped}<br/>
+Still failed: ${input.counts.failed}</p>
+<p><strong>People</strong><br/>${escapeHtml(people).replace(/\n/g, "<br/>")}</p>
+<p><strong>Can we search a real attachment?</strong> ${escapeHtml(retrieval)}</p>
+<p><strong>Still open</strong><br/>${escapeHtml(remaining).replace(/\n/g, "<br/>")}</p>
+<p>The daily EL knowledge activity email is unchanged (08:00 Europe/London). Caddington and HT were not changed. No passwords or secrets are included here.</p>
+<p>INFRA</p>
+</div>`;
+  return { subject, text, html };
 }
 
 async function graphUser(
@@ -478,56 +583,27 @@ export async function runElOptionBGraphCutover(
     if (!recipient || !isValidRecipientEmail(recipient)) {
       emailError = "Configured admin recipient missing on Daily EL knowledge activity";
     } else {
-      const lines = [
-        "INFRA Option B Graph cutover for EL Business.",
-        "",
-        `Graph identity now used: ${EL_NATIVE_MICROSOFT_DISPLAY_NAME}`,
-        `Client ID: ${tokenResult.clientId}`,
-        `Tenant ID: ${tokenResult.tenantId}`,
-        `Token: ${tokenResult.result}`,
-        `Shared INFRA Business Connector used: NO`,
-        "",
-        `Mailboxes proven: ${mailboxes.filter((row) => row.result === "PASS").map((row) => row.key).join(", ") || "none"}`,
-        `Directory: ${String((directory as { result?: string }).result ?? "FAIL")}`,
-        `SharePoint probe: ${String(sharePoint.result ?? "FAIL")}`,
-        `Landing zone: ${String(landingZone.result ?? "FAIL")} site=${String(landingZone.siteId ?? intake?.site_id ?? "n/a")} drive=${String(landingZone.driveId ?? intake?.drive_id ?? "n/a")} folder=${String(landingZone.folderId ?? intake?.root_folder_id ?? "n/a")}`,
-        "",
-        `7-day window: ${window.from.toISOString()} → ${window.to.toISOString()}`,
-        `Mailboxes scanned: ${ingest.counts.mailboxesScanned}`,
-        `Messages with attachments: ${ingest.counts.messagesWithAttachments}`,
-        `Attachments found: ${ingest.counts.attachmentsDiscovered}`,
-        `Bytes fetched: ${ingest.counts.attachmentsFetched}`,
-        `Stored: ${ingest.counts.attachmentsStored}`,
-        `Extracted: ${ingest.counts.attachmentsExtracted}`,
-        `Indexed: ${ingest.counts.attachmentsIndexed}`,
-        `Chunks: ${ingest.counts.chunksAdded}`,
-        `Duplicates: ${ingest.counts.duplicates}`,
-        `Skipped: ${ingest.counts.skipped}`,
-        `Failed: ${ingest.counts.failed}`,
-        "",
-        `Semantic retrieval: ${retrievalProof}`,
-        "",
-        "Michael / Sharon / Lauren:",
-        ...peopleProof.map(
-          (row) =>
-            `${row.name}: directory=${row.directoryResolved} mailbox=${row.mailboxAccess} messages=${row.messagesFound} found=${row.attachmentsFound} fetched=${row.attachmentsFetched} stored=${row.attachmentsStored} indexed=${row.attachmentsIndexed}`,
-        ),
-        "",
-        remainingFailures.length ? `Remaining failures:\n- ${remainingFailures.join("\n- ")}` : "Remaining failures: none",
-        "",
-        "Daily EL knowledge activity schedule is unchanged (08:00 Europe/London).",
-        "Caddington and HT Microsoft identities were not modified.",
-        "No credentials are included in this email.",
-      ];
-      const text = lines.join("\n");
-      const html = `<p>${escapeHtml(text).replace(/\n/g, "<br/>")}</p>`;
+      const email = renderElOptionBSyncEmail({
+        tokenPass: tokenResult.result === "PASS",
+        mailboxes: mailboxes.filter((row) => row.result === "PASS").map((row) => String(row.key)),
+        landingZonePass: landingZone.result === "PASS",
+        landingZoneLabel:
+          intake?.web_url ||
+          (landingZone.result === "PASS"
+            ? "INFRA Knowledge Intake / Email Attachments"
+            : String(landingZone.error ?? intake?.last_error ?? "not configured")),
+        counts: ingest.counts,
+        people: peopleProof,
+        retrievalProof,
+        remainingFailures,
+      });
       const delivery = await sendTransactionalEmail(env, env.DB, {
         companyId: COMPANY_ID,
         type: "DOCUMENT_ACTIVITY_REPORT",
         recipient,
-        subject: EL_OPTION_B_CUTOVER_SUBJECT,
-        bodyText: text,
-        bodyHtml: html,
+        subject: email.subject,
+        bodyText: email.text,
+        bodyHtml: email.html,
         actor,
       });
       emailSent = delivery.sent;
