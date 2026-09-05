@@ -871,7 +871,20 @@ export function mergeKnowledgeSearchHits<
 }
 
 function likeNeedles(values: string[], max = 10): string[] {
-  return [...new Set(values.map(sanitizeLikeNeedle).filter((value) => value.length >= 3))].slice(0, max);
+  return [...new Set(values.map(sanitizeLikeNeedle).filter((value) => value.length >= 3 && value.length <= 48))].slice(
+    0,
+    max,
+  );
+}
+
+async function safeKnowledgeRows(
+  load: () => Promise<KnowledgeCandidateRow[]>,
+): Promise<KnowledgeCandidateRow[]> {
+  try {
+    return await load();
+  } catch {
+    return [];
+  }
 }
 
 async function fetchKnowledgeHeadingPool(
@@ -887,7 +900,7 @@ async function fetchKnowledgeHeadingPool(
     OR LOWER(COALESCE(d.title, '')) LIKE ?
   )`;
   const sql = `SELECT d.id AS document_id, d.filename, d.title, d.stored_url, d.external_id, d.metadata_json,
-            COALESCE(NULLIF(d.extracted_text, ''), c.text, '') AS text, COALESCE(c.chunk_index, 0) AS chunk_index
+            COALESCE(c.text, '') AS text, COALESCE(c.chunk_index, 0) AS chunk_index
      FROM company_knowledge_documents d
      LEFT JOIN company_knowledge_chunks c ON c.document_id = d.id AND c.chunk_index = 0
      WHERE d.company_id = ?
@@ -916,11 +929,20 @@ async function fetchKnowledgeCandidatePool(
     OR LOWER(COALESCE(d.title, '')) LIKE ?
     OR LOWER(COALESCE(d.external_id, '')) LIKE ?
     OR LOWER(COALESCE(d.metadata_json, '')) LIKE ?
-    OR LOWER(c.text) LIKE ?
+    OR EXISTS (
+      SELECT 1 FROM company_knowledge_chunks c
+      WHERE c.document_id = d.id AND LOWER(c.text) LIKE ?
+    )
   )`;
-  const sql = `SELECT d.id AS document_id, d.filename, d.title, d.stored_url, d.external_id, d.metadata_json, c.text, c.chunk_index
-     FROM company_knowledge_chunks c
-     JOIN company_knowledge_documents d ON d.id = c.document_id
+  const sql = `SELECT d.id AS document_id, d.filename, d.title, d.stored_url, d.external_id, d.metadata_json,
+            COALESCE((
+              SELECT c2.text FROM company_knowledge_chunks c2
+              WHERE c2.document_id = d.id
+              ORDER BY c2.chunk_index ASC
+              LIMIT 1
+            ), '') AS text,
+            0 AS chunk_index
+     FROM company_knowledge_documents d
      WHERE d.company_id = ?
        AND (${terms.map(() => fieldClause).join(" OR ")})
      LIMIT ?`;
@@ -954,15 +976,15 @@ export async function searchCompanyKnowledgeIndex(
   );
   const exactNeedles = likeNeedles(
     [
+      ...phraseNeedles,
       ...headingSearchNeedles(classified.original),
+      ...classified.references,
+      ...(poolHigh.length ? poolHigh : classified.highValueTokens),
       classified.normalized,
       filenameStem(classified.normalized),
       normalizeKnowledgeHeading(classified.normalized),
       classified.compact,
       compactNormalizedHeading(classified.original),
-      ...classified.references,
-      ...(poolHigh.length ? poolHigh : classified.highValueTokens),
-      ...phraseNeedles,
     ],
     10,
   );
@@ -976,14 +998,22 @@ export async function searchCompanyKnowledgeIndex(
     12,
   );
 
-  const headingRows = await fetchKnowledgeHeadingPool(env, input.companyId, headingNeedles, 40);
-  const exactRows = await fetchKnowledgeCandidatePool(env, input.companyId, exactNeedles, 40);
+  const headingRows = await safeKnowledgeRows(() =>
+    fetchKnowledgeHeadingPool(env, input.companyId, headingNeedles, 40),
+  );
+  const exactRows = await safeKnowledgeRows(() =>
+    fetchKnowledgeCandidatePool(env, input.companyId, exactNeedles, 40),
+  );
   const distinctiveRows = distinctiveNeedles.length
-    ? await fetchKnowledgeCandidatePool(env, input.companyId, distinctiveNeedles, 40)
+    ? await safeKnowledgeRows(() => fetchKnowledgeCandidatePool(env, input.companyId, distinctiveNeedles, 40))
     : [];
-  const broadRows = await fetchKnowledgeCandidatePool(env, input.companyId, broadNeedles, 80);
+  const broadRows = await safeKnowledgeRows(() =>
+    fetchKnowledgeCandidatePool(env, input.companyId, broadNeedles, 80),
+  );
   const conceptRows = family
-    ? await fetchKnowledgeHeadingPool(env, input.companyId, likeNeedles(family.documentNeedles, 8), 40)
+    ? await safeKnowledgeRows(() =>
+        fetchKnowledgeHeadingPool(env, input.companyId, likeNeedles(family.documentNeedles, 8), 40),
+      )
     : [];
   const titleNeedles = likeNeedles([
     ...classified.firstStageTokens,
@@ -992,7 +1022,7 @@ export async function searchCompanyKnowledgeIndex(
       .filter((token) => token.length >= 4 && !isYearToken(token)),
   ]);
   const titleRows = titleNeedles.length
-    ? await fetchKnowledgeHeadingPool(env, input.companyId, titleNeedles, 40)
+    ? await safeKnowledgeRows(() => fetchKnowledgeHeadingPool(env, input.companyId, titleNeedles, 40))
     : [];
 
   const merged = [...headingRows, ...exactRows, ...distinctiveRows, ...broadRows, ...conceptRows, ...titleRows];
