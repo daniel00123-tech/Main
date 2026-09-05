@@ -213,7 +213,9 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     const listed = customers
       .slice(0, 5)
       .map((row) => {
-        const name = asString(row.name ?? row.contact ?? row.ContactName) || "Unknown";
+        const name =
+          asString(row.name ?? row.contact ?? row.ContactName) ||
+          "unnamed contact (identity not present on the authorised extract)";
         const total = row.total ?? row.amount ?? row.sales_total;
         return typeof total === "number" || typeof total === "string" ? `${name} ${formatMoney(total)}` : name;
       })
@@ -293,7 +295,12 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
       const listed = inner.customers
         .filter(isRecord)
         .slice(0, 5)
-        .map((row) => `${asString(row.name)} ${formatMoney(row.total)}`)
+        .map((row) => {
+          const name =
+            asString(row.name ?? row.contact ?? row.ContactName) ||
+            "unnamed contact (identity not present on the authorised extract)";
+          return `${name} ${formatMoney(row.total)}`;
+        })
         .join("; ");
       return `Warehouse top customers: ${listed}.${suffix}`;
     }

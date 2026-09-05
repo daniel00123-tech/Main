@@ -116,6 +116,10 @@ describe("scope classifier", () => {
     const correction = classifyScope("No, I meant email.", afterXero);
     expect(correction.tool).toBe("outlook_list_messages");
     expect(correction.tool).not.toMatch(/^xero_/);
+    expect(classifyScope("No, check the inbox instead.", afterXero).tool).toMatch(/^outlook_/);
+    expect(classifyScope("I was talking about the email.", afterXero).tool).toMatch(/^outlook_/);
+    expect(classifyScope("Not Xero — the message from them.", afterXero).tool).toMatch(/^outlook_/);
+    expect(classifyScope("Sorry, I meant the document.", afterXero).tool).toBe("search_company_knowledge");
   });
 
   it("routes newest/latest file questions to list_documents, not search or index stats", () => {

@@ -125,8 +125,9 @@ export function normaliseInvoice(
     invoiceId: stableXeroEntityId(raw.InvoiceID, raw.invoiceId, raw.documentId, raw.InvoiceNumber, raw.invoiceNumber),
     invoiceNumber: raw.InvoiceNumber ? String(raw.InvoiceNumber) : null,
     type: raw.Type ? String(raw.Type) : null,
-    contactId: contact.ContactID ? String(contact.ContactID) : null,
-    contactName: contact.Name ? String(contact.Name) : null,
+    contactId: String(contact.ContactID ?? raw.ContactID ?? raw.contactId ?? "").trim() || null,
+    contactName:
+      String(contact.Name ?? contact.name ?? raw.ContactName ?? raw.contactName ?? "").trim() || null,
     status,
     invoiceDate: normalizeXeroDate(raw.Date),
     dueDate: normalizeXeroDate(raw.DueDate),
@@ -206,8 +207,9 @@ export function normaliseCreditNote(
     creditNoteId: stableXeroEntityId(raw.CreditNoteID, raw.creditNoteId, raw.documentId, raw.CreditNoteNumber, raw.creditNoteNumber),
     creditNoteNumber: raw.CreditNoteNumber ? String(raw.CreditNoteNumber) : null,
     type: raw.Type ? String(raw.Type) : null,
-    contactId: contact.ContactID ? String(contact.ContactID) : null,
-    contactName: contact.Name ? String(contact.Name) : null,
+    contactId: String(contact.ContactID ?? raw.ContactID ?? raw.contactId ?? "").trim() || null,
+    contactName:
+      String(contact.Name ?? contact.name ?? raw.ContactName ?? raw.contactName ?? "").trim() || null,
     status,
     creditDate: normalizeXeroDate(raw.Date),
     reference: raw.Reference ? String(raw.Reference) : null,

@@ -47,6 +47,22 @@ export function mergeEvidence(
   };
 }
 
+export function emailBodyRequired(text: string): boolean {
+  if (/\b(subject|who sent|when (did|was)|latest email subject|newest email subject)\b/i.test(text)) {
+    return false;
+  }
+  return (
+    /\b(what (are|were) they asking|what does .{0,40}(say|said)|what did they (ask|want|say)|summar(y|ise|ize)|draft|reply|respond|full (email|message|body)|the (email|message) (body|content|text)|what are they asking)\b/i.test(
+      text,
+    ) || isDraftOrEdit(text)
+  );
+}
+
+export function emailEvidenceHasBody(evidence: StructuredEvidence | null | undefined): boolean {
+  const body = String(evidence?.recentEmail?.body ?? "").replace(/\s+/g, " ").trim();
+  return body.length >= 40;
+}
+
 export function classifyEvidenceNeed(
   text: string,
   state: Pick<IntelligenceConversationState, "recentEvidence" | "lastAnswerText" | "lastAnswerTopic" | "currentBusinessSystem">,
@@ -55,7 +71,10 @@ export function classifyEvidenceNeed(
   if (isFreshListingAsk(text) && !isDraftOrEdit(text) && !isRecall(text)) return "NEEDS_FRESH_DATA";
   if (isFreshBusinessSystemAsk(text)) return "NEEDS_FRESH_DATA";
   if (isPeriodCompareMissing(text, evidence.recentXero)) return "NEEDS_FRESH_DATA";
-  if (canUseExisting(text, state, evidence)) return "CAN_ANSWER_FROM_EXISTING_EVIDENCE";
+  if (canUseExisting(text, state, evidence)) {
+    if (emailBodyRequired(text) && !emailEvidenceHasBody(evidence)) return "NEEDS_FRESH_DATA";
+    return "CAN_ANSWER_FROM_EXISTING_EVIDENCE";
+  }
   return "NEEDS_FRESH_DATA";
 }
 
@@ -154,7 +173,34 @@ export function shouldReuseSuccessfulTool(
   evidence: StructuredEvidence | null | undefined,
 ): boolean {
   const hash = argsFingerprint(call.name, call.arguments);
-  return Boolean(evidence?.lastSuccessfulCalls?.some((row) => row.name === call.name && row.argsHash === hash));
+  if (evidence?.lastSuccessfulCalls?.some((row) => row.name === call.name && row.argsHash === hash)) {
+    return true;
+  }
+  const invoice = String(call.arguments.invoiceNumber ?? call.arguments.invoiceId ?? "")
+    .trim()
+    .toUpperCase();
+  if (
+    invoice &&
+    /^xero_get_invoice$/.test(call.name) &&
+    evidence?.lastSuccessfulCalls?.some((row) => row.name === call.name && row.argsHash.toUpperCase().includes(invoice))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function resultIdentity(call: IntelligenceToolResult): string {
+  const record = isRecord(call.data) ? call.data : {};
+  const inner = isRecord(record.result) ? record.result : record;
+  const invoice = String(
+    inner.invoiceNumber ?? inner.InvoiceNumber ?? inner.invoice_number ?? record.invoiceNumber ?? record.InvoiceNumber ?? "",
+  )
+    .trim()
+    .toUpperCase();
+  if (invoice && /^xero_/.test(call.name)) return `${call.name}:invoice=${invoice}`;
+  const messageId = String(inner.id ?? inner.messageId ?? record.id ?? record.messageId ?? "").trim();
+  if (messageId && /outlook/.test(call.name)) return `${call.name}:msg=${messageId}`;
+  return argsFingerprint(call.name, {});
 }
 
 export function extractEvidenceFromTools(toolCalls: IntelligenceToolResult[]): StructuredEvidence {
@@ -187,7 +233,7 @@ export function extractEvidenceFromTools(toolCalls: IntelligenceToolResult[]): S
     }
     next.lastSuccessfulCalls = [
       ...(next.lastSuccessfulCalls ?? []),
-      { name: call.name, argsHash: argsFingerprint(call.name, {}), summary: clip(JSON.stringify(call.data ?? ""), 180) },
+      { name: call.name, argsHash: resultIdentity(call), summary: clip(JSON.stringify(call.data ?? ""), 180) },
     ].slice(0, 8);
   }
   return next;

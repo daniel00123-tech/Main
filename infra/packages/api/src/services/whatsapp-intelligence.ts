@@ -25,6 +25,8 @@ import {
 } from "./intelligence/index";
 import { recordUsageEvent } from "./usage";
 import { collectQualityFlags } from "./intelligence/quality.js";
+import { scheduleDailyImprovementCapture } from "./daily-improvement";
+import { classifyElTraffic, shouldChargeElCustomerRequest } from "./el-customer-billing";
 import {
   COMPANY_KNOWLEDGE_READ_TOOL,
   COMPANY_KNOWLEDGE_SEARCH_TOOL,
@@ -90,6 +92,7 @@ export async function executeWhatsAppIntelligence(
     connectors?: string[];
     qualityGuidance?: string | null;
     trafficClass?: string | null;
+    wamid?: string | null;
   },
 ): Promise<WhatsAppIntelligenceAnswer> {
   const started = Date.now();
@@ -201,6 +204,35 @@ export async function executeWhatsAppIntelligence(
   const pii = redactUnsolicitedPii(polished, input.originalText, documentClass);
   const facts = extractTypedFacts(pii.text, documentClass);
   const malformedExtraction = documentClass === "cv_resume" && Boolean(facts.amount || facts.reference);
+
+  const trafficClass = classifyElTraffic({
+    sourceClient: "whatsapp",
+    actorEmail: input.sessionUser.email,
+    trafficClass: input.trafficClass,
+    wamid: input.wamid,
+  });
+  scheduleDailyImprovementCapture(env, input.waitUntil, {
+    interactionId: input.interactionId,
+    companyId: input.companyId,
+    userId: input.sessionUser.userId,
+    role: membership?.role ?? null,
+    channel: "whatsapp",
+    userMessage: input.originalText,
+    assistantAnswer: pii.text,
+    toolsRequested: result.toolCalls.map((call) => call.name),
+    toolsExecuted: result.toolCalls.filter((call) => call.ok).map((call) => call.name),
+    availableCapabilities: state.permittedTools ?? [],
+    terminalState: result.terminal ?? result.kind,
+    provider: result.provider ?? null,
+    model: result.model ?? null,
+    providerMode: result.brainMode ?? null,
+    trafficClass,
+    sourceClient: "whatsapp",
+    actorEmail: input.sessionUser.email,
+    wamid: input.wamid ?? null,
+    customerChargeCents: shouldChargeElCustomerRequest(input.companyId, trafficClass) ? 3 : 0,
+    latencyMs: Date.now() - started,
+  });
 
   return {
     reply: pii.text,
