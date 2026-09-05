@@ -95,7 +95,7 @@ export async function runProductionKnowledgeSearch(
   const localHits = await searchCompanyKnowledgeIndex(env, {
     companyId: input.companyId,
     query: input.query,
-    limit: input.limit ?? 5,
+    limit: input.limit ?? 8,
   }).catch(() => []);
 
   if (result.status !== 200) {
