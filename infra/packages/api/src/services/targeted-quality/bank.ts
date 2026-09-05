@@ -25,21 +25,48 @@ export const TARGETED_PRIMARY: TargetedQuestion[] = [
   { id: "O09", channel: "portal", text: "When did the newest info email arrive?", actor: D, family: "outlook", expectedToolPrefix: "outlook_list_messages", expectedSource: "outlook", expectedDeny: false, subjectOnly: true },
   { id: "O10", channel: "portal", text: "Are there unread messages in the info mailbox?", actor: D, family: "outlook", expectedToolPrefix: "outlook_list_messages", expectedSource: "outlook", expectedDeny: false, subjectOnly: true },
 
-  { id: "M01", channel: "portal", text: "What does the health and safety policy say, and what is the latest info email?", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "M02", channel: "portal", text: "March sales from the warehouse and the newest info subject.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
-  { id: "M03", channel: "portal", text: "Find the vehicle policy and look up invoice INV-02268.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "M04", channel: "portal", text: "Latest finance email and any overdue invoices right now.", actor: D, family: "mixed", expectedToolPrefix: "outlook_", expectedSource: "outlook", expectedDeny: false },
-  { id: "M05", channel: "portal", text: "Search knowledge for vans and list the newest indexed file.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "M06", channel: "portal", text: "Xero sales this month plus the newest finance mailbox email.", actor: D, family: "mixed", expectedToolPrefix: "xero_", expectedSource: "xero_live", expectedDeny: false },
-  { id: "M07", channel: "portal", text: "What does the staff handbook require, and who emailed info last?", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "M08", channel: "portal", text: "Warehouse April sales and search the inbox for PO.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
-  { id: "M09", channel: "portal", text: "Company knowledge for asbestos and current Xero overdue.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "M10", channel: "portal", text: "Invoice INV-02268 status and the latest info subject.", actor: D, family: "mixed", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
-  { id: "M11", channel: "portal", text: "Health and safety policy together with March warehouse sales.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "M12", channel: "portal", text: "Newest info email body and live September sales.", actor: D, family: "mixed", expectedToolPrefix: "outlook_", expectedSource: "outlook", expectedDeny: false },
-  { id: "M13", channel: "portal", text: "Lone-working policy and top customers this month.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "M14", channel: "portal", text: "Finance admin document plus aged receivables right now.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "M15", channel: "portal", text: "Search knowledge for leak procedure and check the info inbox.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M01", channel: "portal", text: "What were March sales and what does our payment process say?", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M02", channel: "portal", text: "Latest finance email plus the health and safety accident rule.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M03", channel: "portal", text: "Any overdue invoices right now, and what does the subcontractor booking process say?", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M04", channel: "portal", text: "Look up invoice INV-02268 and summarise the finance admin procedure.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M05", channel: "portal", text: "Last month’s sales and what the remittance process requires.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M06", channel: "portal", text: "What is the newest document filename, and what were March sales?", actor: D, family: "mixed", expectedToolPrefix: "list_documents", expectedSource: "catalogue", expectedDeny: false },
+  { id: "M07", channel: "portal", text: "List recent documents and the newest info email subject.", actor: D, family: "mixed", expectedToolPrefix: "list_documents", expectedSource: "catalogue", expectedDeny: false },
+  { id: "M08", channel: "portal", text: "Warehouse sales trend and what the profit margin policy requires.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M09", channel: "portal", text: "What does the latest info email say, compared with the leak procedure in knowledge?", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M10", channel: "portal", text: "Customer invoice INV-02268 and the payment process rule.", actor: D, family: "mixed", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
+  { id: "M11", channel: "portal", text: "Tell me last month’s sales and summarise the latest finance email.", actor: D, family: "mixed", expectedToolPrefix: "outlook_", expectedSource: "outlook", expectedDeny: false },
+  { id: "M12", channel: "portal", text: "April warehouse sales together with the admin structure document.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M13", channel: "portal", text: "Current Xero sales this month and the newest finance mailbox subject.", actor: D, family: "mixed", expectedToolPrefix: "xero_", expectedSource: "xero_live", expectedDeny: false },
+  { id: "M14", channel: "portal", text: "What does Health & Safety say about gas, and who emailed info last?", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M15", channel: "portal", text: "SRFM subcontractor form coverage plus live overdue invoices.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M16", channel: "portal", text: "March warehouse figures and the subcontractor payment process.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "M17", channel: "portal", text: "Search company knowledge for asbestos and list the newest files.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M18", channel: "portal", text: "Finance admin knowledge base plus the latest info inbox subject.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M19", channel: "portal", text: "Lone-working guidance and top customers this month.", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "M20", channel: "portal", text: "What does the booking process require, and are there unread info emails?", actor: D, family: "mixed", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+
+  { id: "D01", channel: "portal", text: "Search the info inbox for anything about a quote request.", actor: D, family: "outlook", expectedToolPrefix: "outlook_search_mailbox", expectedSource: "outlook", expectedDeny: false },
+  { id: "D02", channel: "portal", text: "Look up invoice INV-02268 twice in one go — status only.", actor: D, family: "outlook", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
+  { id: "D03", channel: "portal", text: "Search company knowledge for the profit margin policy once.", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "D04", channel: "portal", text: "Warehouse March sales once, no extra live Xero.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "D05", channel: "portal", text: "Search the info mailbox for Davies and stop after one search.", actor: D, family: "outlook", expectedToolPrefix: "outlook_search_mailbox", expectedSource: "outlook", expectedDeny: false },
+  { id: "D06", channel: "portal", text: "Find invoice INV-02268 and do not fetch it again.", actor: D, family: "outlook", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
+  { id: "D07", channel: "portal", text: "Search knowledge for Finance Admin AI Knowledge Base.", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "D08", channel: "portal", text: "April warehouse sales analysis only.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "D09", channel: "portal", text: "Search info for Lewis Street quote.", actor: D, family: "outlook", expectedToolPrefix: "outlook_search_mailbox", expectedSource: "outlook", expectedDeny: false },
+  { id: "D10", channel: "portal", text: "Look up INV-02268 status from Xero.", actor: D, family: "outlook", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
+
+  { id: "C11", channel: "followup", text: "What are live Xero sales this month?", actor: D, family: "correction", expectedToolPrefix: "xero_", expectedSource: "xero_live", expectedDeny: false, sequence: "corr2", sequenceIndex: 1 },
+  { id: "C12", channel: "followup", text: "I meant the email.", actor: D, family: "correction", expectedToolPrefix: "outlook_", expectedSource: "outlook", expectedDeny: false, sequence: "corr2", sequenceIndex: 2 },
+  { id: "C13", channel: "followup", text: "No, check Outlook.", actor: D, family: "correction", expectedToolPrefix: "outlook_", expectedSource: "outlook", expectedDeny: false, sequence: "corr2", sequenceIndex: 3 },
+  { id: "C14", channel: "followup", text: "Sorry, I meant the document.", actor: D, family: "correction", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, sequence: "corr2", sequenceIndex: 4 },
+  { id: "C15", channel: "followup", text: "Not Xero, the message.", actor: D, family: "correction", expectedToolPrefix: "outlook_", expectedSource: "outlook", expectedDeny: false, sequence: "corr2", sequenceIndex: 5 },
+  { id: "C16", channel: "followup", text: "Warehouse sales for September.", actor: D, family: "correction", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false, sequence: "corr3", sequenceIndex: 1 },
+  { id: "C17", channel: "followup", text: "I meant August, not September.", actor: D, family: "correction", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false, sequence: "corr3", sequenceIndex: 2 },
+  { id: "C18", channel: "followup", text: "Show me live Xero overdue.", actor: D, family: "correction", expectedToolPrefix: "xero_", expectedSource: "xero_live", expectedDeny: false, sequence: "corr4", sequenceIndex: 1 },
+  { id: "C19", channel: "followup", text: "I meant the email.", actor: D, family: "correction", expectedToolPrefix: "outlook_", expectedSource: "outlook", expectedDeny: false, sequence: "corr4", sequenceIndex: 2 },
+  { id: "C20", channel: "followup", text: "Sorry, I meant the document.", actor: D, family: "correction", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, sequence: "corr4", sequenceIndex: 3 },
 
   { id: "F01", channel: "followup", text: "What is the newest email in the info inbox?", actor: D, family: "followup", expectedToolPrefix: "outlook_list_messages", expectedSource: "outlook", expectedDeny: false, sequence: "email_body", sequenceIndex: 1 },
   { id: "F02", channel: "followup", text: "What are they asking?", actor: D, family: "followup", expectedToolPrefix: "outlook_get_message", expectedSource: "outlook", expectedDeny: false, sequence: "email_body", sequenceIndex: 2 },
@@ -80,9 +107,11 @@ export function questionsForStage(stage: string, ids?: string[]): TargetedQuesti
   const all = TARGETED_PRIMARY;
   if (wanted.size) return all.filter((row) => wanted.has(row.id));
   const key = stage.toLowerCase();
-  if (key === "knowledge") return all.filter((row) => row.family === "knowledge");
+  if (key === "knowledge") return all.filter((row) => row.family === "knowledge" && row.id.startsWith("K"));
   if (key === "outlook") return all.filter((row) => row.family === "outlook" || row.id === "O05");
-  if (key === "mixed") return all.filter((row) => row.family === "mixed");
+  if (key === "mixed") return all.filter((row) => row.family === "mixed" && row.id.startsWith("M"));
+  if (key === "dedupe") return all.filter((row) => row.id.startsWith("D"));
+  if (key === "correction") return all.filter((row) => /^C1[1-9]$|^C20$/.test(row.id));
   if (key === "followup") return all.filter((row) => row.family === "followup" || row.family === "correction");
   if (key === "portal") return all.filter((row) => row.family === "portal");
   if (key === "telemetry") return all.filter((row) => row.family === "telemetry");

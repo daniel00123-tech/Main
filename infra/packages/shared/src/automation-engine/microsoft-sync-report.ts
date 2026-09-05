@@ -44,6 +44,10 @@ export type MicrosoftSyncMailboxCheck = {
   excluded: boolean;
   checked: boolean;
   failed: boolean;
+  degraded?: boolean;
+  filesFound?: number | null;
+  filesAdded?: number | null;
+  filesRetrying?: number | null;
   rawError?: string | null;
   folders?: MicrosoftSyncMailboxFolderCheck[];
 };
@@ -240,6 +244,18 @@ export function friendlyMailboxLine(input: MicrosoftSyncMailboxCheck): string {
     if (lines.length) return lines.join("\n");
   }
   if (input.checked && !input.failed) {
+    const found = input.filesFound;
+    const added = input.filesAdded ?? 0;
+    const retrying = input.filesRetrying ?? 0;
+    if (found != null && (found > 0 || retrying > 0)) {
+      const lines = [
+        `✅ ${input.name} — Checked successfully`,
+        `${found} ${found === 1 ? "file" : "files"} found`,
+        `${added} added`,
+      ];
+      if (retrying > 0) lines.push(`${retrying} will be retried`);
+      return lines.join("\n");
+    }
     return `✅ ${input.name}: Checked`;
   }
   return `⚠️ ${input.name}: Could not be fully checked. ${FRIENDLY_INGESTION_REASONS.sourceNotChecked} INFRA will retry automatically.`;

@@ -129,6 +129,33 @@ describe("deterministic business and knowledge reads", () => {
     expect(result.text).toMatch(/Invoice pack/);
   });
 
+  it("uses knowledge search not catalogue for sales plus payment process", async () => {
+    const { runtime: exec, calls } = runtime((name) => {
+      if (name === "search_company_knowledge") {
+        return { results: [{ id: "doc_pay", title: "Subcontractor Payment Process", snippet: "PO number required." }] };
+      }
+      if (name.startsWith("warehouse_")) {
+        return { sales_total: 12000, period: { fromDate: "2026-03-01", toDate: "2026-03-31" }, completeness: "COMPLETE" };
+      }
+      return { messages: [] };
+    });
+    const result = await runIntelligenceTurn({
+      text: "What were March sales and what does our payment process say?",
+      state: buildConversationState({
+        userText: "What were March sales and what does our payment process say?",
+        connectors: ["conn_xero", "conn_outlook_shared"],
+        permittedTools: ["warehouse_sales_analysis", "search_company_knowledge", "list_documents", "xero_sales_summary"],
+      }),
+      runtime: exec,
+      completer: silentCompleter,
+      channel: "portal",
+    });
+    expect(calls.some((call) => call.name === "search_company_knowledge")).toBe(true);
+    expect(calls.some((call) => call.name === "list_documents")).toBe(false);
+    expect(calls.filter((call) => call.name === "search_company_knowledge")).toHaveLength(1);
+    expect(isGenericRetryCopy(result.text)).toBe(false);
+  });
+
   it("calls Xero once for sales this month", async () => {
     const { runtime: exec, calls } = runtime(() => ({
       source: "Xero",

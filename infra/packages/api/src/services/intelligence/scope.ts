@@ -3,6 +3,7 @@ import type { IntelligenceConversationState, IntelligenceDocumentRef, Intelligen
 import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
 import { isCatalogueListingAsk } from "../document-catalogue.js";
 import { rewriteAccountingTool } from "./company-tool-registry.js";
+import { isSemanticKnowledgeAsk } from "./evidence-plan.js";
 
 export type ScopeSwitch =
   | "company"
@@ -488,7 +489,13 @@ export function classifyScope(
     });
   }
 
-  if (isCatalogueListingAsk(text) && !features.financeAsk && !features.writeIntent) {
+  if (
+    isCatalogueListingAsk(text) &&
+    !features.financeAsk &&
+    !features.writeIntent &&
+    !features.emailAsk &&
+    !isSemanticKnowledgeAsk(text)
+  ) {
     return decide("COMPANY_KNOWLEDGE", features, {
       tool: "list_documents",
       lastAnswerTopic: "document_catalogue",

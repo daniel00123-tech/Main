@@ -7,6 +7,7 @@ import {
   classifyReconciliationStage,
   customerCopyContainsForbiddenJargon,
   friendlyIngestionReason,
+  friendlyMailboxLine,
   friendlySourceActivityLine,
   microsoftSyncReportSubject,
 } from "./microsoft-sync-report";
@@ -46,6 +47,25 @@ function expectCustomerSafe(text: string) {
 }
 
 describe("Microsoft sync report reconciliation", () => {
+  it("describes a successful scan with retryable attachments as checked, not error", () => {
+    const line = friendlyMailboxLine({
+      name: "Michael",
+      approved: true,
+      excluded: false,
+      checked: true,
+      failed: false,
+      degraded: true,
+      filesFound: 28,
+      filesAdded: 26,
+      filesRetrying: 2,
+    });
+    expect(line).toMatch(/Checked successfully/);
+    expect(line).toMatch(/28 files found/);
+    expect(line).toMatch(/26 added/);
+    expect(line).toMatch(/2 will be retried/);
+    expect(line).not.toMatch(/ERROR/i);
+  });
+
   it("classifies FOUND → STORED → INDEXED and never treats stored-only as synchronised", () => {
     expect(classifyReconciliationStage({ indexed: false, stored: false })).toBe("FOUND");
     expect(classifyReconciliationStage({ indexed: false, stored: true })).toBe("STORED");

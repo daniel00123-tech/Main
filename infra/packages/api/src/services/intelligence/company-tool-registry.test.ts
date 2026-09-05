@@ -108,6 +108,12 @@ describe("company tool registry", () => {
     expect(detectRequestedCapabilities("What does the health and safety policy say, and what is the latest info email?")).not.toContain(
       "CATALOGUE_LIST",
     );
+    expect(detectRequestedCapabilities("What were March sales and what does our payment process say?")).toEqual(
+      expect.arrayContaining(["KNOWLEDGE_SEARCH", "ACCOUNTING_WAREHOUSE"]),
+    );
+    expect(detectRequestedCapabilities("What were March sales and what does our payment process say?")).not.toContain(
+      "CATALOGUE_LIST",
+    );
     expect(wantsMultiCapabilityRead("What does the health and safety policy say, and what is the latest info email?")).toBe(true);
     expect(wantsMultiCapabilityRead("What were March sales and what does the vehicle policy require?")).toBe(true);
     expect(defaultToolForCapability("KNOWLEDGE_SEARCH")).toBe("search_company_knowledge");

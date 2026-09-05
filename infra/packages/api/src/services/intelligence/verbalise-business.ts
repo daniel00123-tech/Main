@@ -392,15 +392,28 @@ export function synthesizeFromToolCalls(
   question: string,
 ): string {
   const denied = toolCalls.find((call) => looksPermissionDenied(call));
-  if (denied) return synthesizeToolResult(denied, question);
+  if (denied && toolCalls.every((call) => !call.ok || looksPermissionDenied(call))) {
+    return synthesizeToolResult(denied, question);
+  }
+  const pick = (test: (name: string) => boolean) =>
+    [...toolCalls].reverse().find((call) => call.ok && test(call.name));
+  const warehouse = pick((name) => name.startsWith("warehouse_"));
+  const xero = pick((name) => name.startsWith("xero_"));
+  const outlook = pick((name) => /outlook/i.test(name));
+  const knowledge = pick((name) => /knowledge|search_document|search$/.test(name));
+  const catalogue = pick((name) => name === "list_documents");
+  const parts = [warehouse ?? xero, outlook, knowledge ?? catalogue]
+    .filter((call): call is IntelligenceToolResult => Boolean(call))
+    .map((call) => synthesizeToolResult(call, question))
+    .filter(Boolean);
+  if (parts.length > 1) return parts.join(" ");
+  if (parts.length === 1) {
+    const failedOther = toolCalls.some((call) => !call.ok && !looksPermissionDenied(call));
+    return failedOther ? `${parts[0]} I couldn't finish the other part of that request.` : parts[0];
+  }
   const xeroCalls = toolCalls.filter((call) => call.ok && /^xero_/.test(call.name));
-  const outlook = toolCalls.find((call) => call.ok && /outlook/i.test(call.name));
   if (xeroCalls.length >= 2 && /\b(compare|versus|better than|last month|previous)\b/i.test(question)) {
     return xeroCalls.map((call) => synthesizeToolResult(call, question)).join(" ");
-  }
-  const xero = xeroCalls[0];
-  if (xero && outlook && /\b(and then|then show|and show|and the|then the)\b/i.test(question)) {
-    return `${synthesizeToolResult(xero, question)} ${synthesizeToolResult(outlook, question)}`;
   }
   const lastOk = [...toolCalls].reverse().find((call) => call.ok);
   if (lastOk) return synthesizeToolResult(lastOk, question);

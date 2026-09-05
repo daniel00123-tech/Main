@@ -71,7 +71,7 @@ export function scoreTargetedTurn(input: {
     }
   }
   if (input.question.family === "mixed") {
-    const knowledgeWanted = /policy|knowledge|handbook|document|procedure|guidance/i.test(input.question.text);
+    const knowledgeWanted = /policy|knowledge|handbook|document|procedure|guidance|process/i.test(input.question.text);
     if (knowledgeWanted && input.tools.includes("list_documents") && !input.tools.includes("search_company_knowledge")) {
       scored.defects = [...new Set([...scored.defects, "KNOWLEDGE_VS_CATALOGUE"])];
       scored.perfect = false;

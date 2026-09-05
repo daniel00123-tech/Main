@@ -8,6 +8,7 @@ import { INTELLIGENCE_TOOLS, permittedToolsForConnectors, toolFamilyOf } from ".
 import { authorizeToolCall, buildAllowedToolCatalogue } from "./tool-auth.js";
 import type { IntelligenceToolSpec } from "./types.js";
 import { classifyQueryFreshness } from "../warehouse/freshness.js";
+import { isExplicitCatalogueAsk, isSemanticKnowledgeAsk, minimumToolsForText } from "./evidence-plan.js";
 
 export type PlatformCapability =
   | "EMAIL_SEARCH"
@@ -179,6 +180,7 @@ export function capabilityFamily(capability: PlatformCapability): string {
 }
 
 export function wantsMultiCapabilityRead(text: string): boolean {
+  if (minimumToolsForText(text).length >= 2) return true;
   const families = new Set(detectRequestedCapabilities(text).map(capabilityFamily));
   families.delete("SYSTEM");
   families.delete("WEB");
@@ -210,16 +212,13 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
     /\b(xero|sales|revenue|overdue|outstanding|p&l|pnl|profit|aged (receivable|payable)|top customers?)\b/i.test(value);
   const invoiceNoun = /\b(invoices?|invoiced)\b/i.test(value);
   const accounting = accountingCore || (invoiceNoun && !mailboxScoped);
-  const catalogue =
-    /\b(newest|latest|recent).{0,24}(file|document|onedrive|sharepoint)\b/i.test(value) ||
-    /\b(list|show).{0,16}(files|documents)\b/i.test(value) ||
-    /\bhow many (files|documents) are indexed\b/i.test(value);
+  const catalogue = isExplicitCatalogueAsk(value);
   const knowledge =
-    /\b(process|procedure|policy|handbook|guidance|how do we|company knowledge|onboarding|health and safety|what does (the|our) .{0,48}(say|mean|require)|find (the )?(document|policy|file) (about|on|for)|in (the|our) (policy|handbook|procedure))\b/i.test(
+    isSemanticKnowledgeAsk(value) ||
+    (/\b(process|procedure|policy|handbook|guidance|how do we|company knowledge|onboarding|health and safety|what does (the|our) .{0,48}(say|mean|require)|find (the )?(document|policy|file) (about|on|for)|in (the|our) (policy|handbook|procedure))\b/i.test(
       value,
     ) &&
-    !catalogue &&
-    !(email && !/\b(policy|document|handbook|procedure|knowledge|guidance)\b/i.test(value));
+      !(email && !/\b(policy|document|handbook|procedure|knowledge|guidance)\b/i.test(value)));
   const web = /\b(weather|forecast|public holiday|news headline)\b/i.test(value);
   if (email) found.add(/\b(search|from|containing|about|look in)\b/i.test(value) ? "EMAIL_SEARCH" : "EMAIL_LIST");
   if (accounting && /\b(INV-|invoice (id|number)|find invoice)\b/i.test(value)) found.add("ACCOUNTING_INVOICE_GET");

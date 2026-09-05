@@ -22,6 +22,7 @@ import { newId, nowIso } from "../db/mappers";
 import { acquireMicrosoftAppToken } from "./microsoft-auth";
 import { searchRecentDriveItems } from "./microsoft-graph";
 import { formatCivilDate, londonCivilParts } from "./intelligence/periods";
+import { isExplicitCatalogueAsk, isSemanticKnowledgeAsk } from "./intelligence/evidence-plan";
 import { elvexCan, isElvexCompany } from "@infra/shared";
 import type { CompanyRole } from "@infra/shared";
 
@@ -243,6 +244,7 @@ export function rewriteKnowledgeCallForCatalogue(
 
 export function isCatalogueListingAsk(text: string): boolean {
   const trimmed = text.trim();
+  if (isSemanticKnowledgeAsk(trimmed) && !isExplicitCatalogueAsk(trimmed)) return false;
   if (!RECENCY.test(trimmed) && !/\b(uploaded|added since|changed this|changed today)\b/i.test(trimmed)) {
     return false;
   }

@@ -12,8 +12,10 @@ describe("targeted quality bank", () => {
     expect(TARGETED_PRIMARY.length).toBeGreaterThanOrEqual(60);
     expect(TARGETED_PRIMARY.some((row) => /^(WA|PC|MCP|FU|R1A)\d+/.test(row.id))).toBe(false);
     expect(questionsForStage("knowledge")).toHaveLength(10);
-    expect(questionsForStage("mixed").length).toBeGreaterThanOrEqual(15);
+    expect(questionsForStage("mixed").length).toBeGreaterThanOrEqual(20);
     expect(questionsForStage("followup").length).toBeGreaterThanOrEqual(10);
+    expect(questionsForStage("correction").length).toBeGreaterThanOrEqual(10);
+    expect(questionsForStage("dedupe").length).toBeGreaterThanOrEqual(10);
   });
 });
 

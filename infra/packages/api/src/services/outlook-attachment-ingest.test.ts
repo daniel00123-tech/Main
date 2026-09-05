@@ -394,9 +394,9 @@ describe("Outlook attachment ingest", () => {
     expect(hoisted.markScan).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        success: false,
-        checkpoint: null,
+        success: true,
         graphAccessible: false,
+        warning: expect.stringMatching(/DEGRADED/i),
       }),
     );
   });
@@ -712,7 +712,10 @@ describe("Outlook attachment ingest", () => {
     expect(result.counts.attachmentsIndexed).toBe(0);
     expect(hoisted.markScan).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ success: false, checkpoint: null }),
+      expect.objectContaining({
+        success: true,
+        warning: expect.stringMatching(/DEGRADED/i),
+      }),
     );
   });
 

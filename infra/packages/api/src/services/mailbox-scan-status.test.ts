@@ -17,6 +17,13 @@ describe("mailbox scan status", () => {
     expect(formatMailboxScanCount({ health: "HEALTHY", messagesScanned: 0 })).toBe("0 (successful empty scan)");
   });
 
+  it("marks a completed scan with attachment failures as degraded, not failed", () => {
+    expect(mailboxScanHealth({ scanned: true, scanFailed: false, failures: 2, fetchFailed: true, messagesScanned: 41 })).toBe(
+      "DEGRADED",
+    );
+    expect(mailboxScanHealth({ scanned: true, scanFailed: true, messagesScanned: 0 })).toBe("FAILED");
+  });
+
   it("marks an included mailbox with no scan as a coverage gap", () => {
     expect(mailboxScanHealth({ excluded: false, scanned: false, lastScanAt: null })).toBe("COVERAGE_GAP");
     expect(formatMailboxScanCount({ health: "COVERAGE_GAP", messagesScanned: null })).toBe("MAILBOX COVERAGE GAP");
