@@ -101,6 +101,14 @@ export function isExplicitCatalogueAsk(text: string): boolean {
   return EXPLICIT_CATALOGUE.test(String(text ?? ""));
 }
 
+export function isExplicitInvoiceWarehouseCompound(text: string): boolean {
+  const value = String(text ?? "");
+  if (!/\bINV-\d+\b/i.test(value)) return false;
+  if (!/\b(and|plus|also|together with)\b/i.test(value)) return false;
+  if (!/\b(warehouse|sales|revenue|figures)\b/i.test(value)) return false;
+  return MONTH_NAME.test(value) || /\b(last month|this month|previous month|q[1-4])\b/i.test(value);
+}
+
 export function decomposeEvidenceNeeds(text: string): EvidenceSubtask[] {
   const value = String(text ?? "");
   const exclusive = isExclusiveCapabilitySwitch(value);
@@ -141,6 +149,11 @@ export function decomposeEvidenceNeeds(text: string): EvidenceSubtask[] {
   if (REJECTS_FINANCE.test(value)) return [...needs];
   if (/\bINV-\d+\b/i.test(value) || /\b(find invoice|invoice (id|number))\b/i.test(value)) {
     needs.add("finance.invoice");
+  }
+  if (isExplicitInvoiceWarehouseCompound(value)) {
+    needs.add("finance.metric");
+  } else if (needs.has("finance.invoice")) {
+    // Simple INV- asks stay invoice-only unless an explicit warehouse companion is present.
   } else if (/\b(overdue|outstanding|unpaid)\b/i.test(value)) {
     needs.add("finance.overdue");
   } else if (ACCOUNTING_ASK.test(value) && !EMAIL_ASK.test(value.replace(/\b(invoice|invoices)\b/gi, " "))) {

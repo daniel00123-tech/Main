@@ -341,10 +341,13 @@ export function rejectWeakSearchHits<T extends { title: string; snippet?: string
     const distinctive = queryTerms(query).filter((term) => !generic.has(term));
     const processLike = kept.filter((row) => {
       if (hitMatchesKnowledgeConceptFamily(row.hit, query)) return true;
-      if (!looksLikeProcessOrPolicyDocument(row.hit)) return false;
-      if (!distinctive.length) return true;
       const hay = `${row.hit.title} ${row.hit.snippet ?? ""}`.toLowerCase();
-      return distinctive.some((term) => termMatchesHay(hay, term) || expandTerm(term).some((alt) => termMatchesHay(hay, alt)));
+      const distinctiveHit =
+        distinctive.length > 0 &&
+        distinctive.some((term) => termMatchesHay(hay, term) || expandTerm(term).some((alt) => termMatchesHay(hay, alt)));
+      if (distinctiveHit) return true;
+      if (!looksLikeProcessOrPolicyDocument(row.hit)) return false;
+      return !distinctive.length;
     });
     return processLike.map((row) => row.hit);
   }

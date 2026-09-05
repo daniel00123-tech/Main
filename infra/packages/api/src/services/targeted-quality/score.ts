@@ -70,6 +70,18 @@ export function scoreTargetedTurn(input: {
       scored.perfect = false;
     }
   }
+  if (/^IW\d+/.test(input.question.id)) {
+    const hasInvoice = input.tools.some((name) => name === "xero_get_invoice");
+    const hasWarehouse = input.tools.some((name) => name.startsWith("warehouse_"));
+    if (!hasInvoice) {
+      scored.defects = [...new Set([...scored.defects, "MISSING_INVOICE_LOOKUP"])];
+      scored.perfect = false;
+    }
+    if (!hasWarehouse) {
+      scored.defects = [...new Set([...scored.defects, "MISSING_WAREHOUSE_COMPANION"])];
+      scored.perfect = false;
+    }
+  }
   if (input.question.expectedSource === "xero_warehouse" || /\b(warehouse|march|april|last month).{0,40}sales\b/i.test(input.question.text)) {
     const financePresent = /£\s?[\d,]+|warehouse sales|warehouse as of/i.test(input.reply);
     if (/couldn.?t finish the other part|couldn.?t complete that just now/i.test(input.reply) && !financePresent) {

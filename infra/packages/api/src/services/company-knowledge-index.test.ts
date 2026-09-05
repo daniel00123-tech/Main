@@ -35,14 +35,18 @@ function knowledgeIndexEnv(rows: KnowledgeRow[]) {
           run: async () => ({ success: true, meta: {} }),
           first: async () => null,
           all: async () => {
-            if (!sql.includes("company_knowledge_chunks")) return { results: [] };
+            if (!sql.includes("company_knowledge_chunks") && !sql.includes("company_knowledge_documents")) {
+              return { results: [] };
+            }
             const companyId = String(binds[0]);
             const limit = Number(binds[binds.length - 1]);
             const likes = binds.slice(1, -1).map(String);
+            const headingQuery = sql.includes("extracted_text") || sql.includes("chunk_index = 0");
+            const stride = headingQuery ? 2 : 5;
             const filtered = rows.filter((row) => {
               if (row.company_id !== companyId) return false;
               return likes.some((like, index) => {
-                const field = index % 5;
+                const field = index % stride;
                 const value =
                   field === 0
                     ? row.filename ?? ""
@@ -399,5 +403,80 @@ describe("company knowledge index", () => {
     expect(ht[0]?.documentId).toBe(99);
     const htInvoice = await searchCompanyKnowledgeIndex(env, { companyId: "co_ht", query: "INV-02277" });
     expect(htInvoice).toEqual([]);
+  });
+
+  it("recalls known process documents across title, alias, and concept wording", async () => {
+    const env = knowledgeIndexEnv([
+      ...genericInvoiceFlood(40),
+      {
+        company_id: "co_el",
+        document_id: 11,
+        filename: "Subcontractor Booking process.docx",
+        title: "Subcontractor Booking process.docx",
+        stored_url: null,
+        text: "SUBCONTRACTOR BOOKING PROCESS. Book jobs in fast and protect client SLAs.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 12,
+        filename: "Subcontractor Payment Process.docx",
+        title: "Subcontractor Payment Process.docx",
+        stored_url: null,
+        text: "Subcontractor Payment & Invoice Submission Process. Every invoice needs a PO.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 16,
+        filename: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        title: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        stored_url: null,
+        text: "Finance administration guide covering supplier setup, mailbox handling, and remittance checks.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 17,
+        filename: "Nationwide Property Assistance Ltd Remittance Advice.pdf",
+        title: "Nationwide Property Assistance Ltd Remittance Advice.pdf",
+        stored_url: null,
+        text: "REMITTANCE ADVICE confirming payment of invoices this period.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 47,
+        filename: "OnCall_and_Holidays_2026 (1).xlsx",
+        title: "OnCall_and_Holidays_2026 (1).xlsx",
+        stored_url: null,
+        text: "# Sheet: On call rota\nEngineer holiday and oncall cover for 2026.",
+        chunk_index: 0,
+      },
+    ]);
+    const cases: Array<[string, number]> = [
+      ["What does the Subcontractor Booking process document say?", 11],
+      ["how do we book subcontractors?", 11],
+      ["booking process", 11],
+      ["What does the Subcontractor Payment Process say?", 12],
+      ["what is the subcontractor payment process?", 12],
+      ["payment process", 12],
+      ["What does the remittance process require?", 17],
+      ["remittance advice", 17],
+      ["what should we do when a remittance arrives?", 17],
+      ["Finance Admin knowledge document", 16],
+      ["finance administration guide", 16],
+      ["what does the finance admin guide say about supplier setup?", 16],
+      ["OnCall and Holidays", 47],
+    ];
+    for (const [query, documentId] of cases) {
+      const hits = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query });
+      expect(hits[0]?.documentId, query).toBe(documentId);
+    }
+    const lone = await searchCompanyKnowledgeIndex(env, {
+      companyId: "co_el",
+      query: "What does the lone-working policy say?",
+    });
+    expect(lone).toEqual([]);
   });
 });

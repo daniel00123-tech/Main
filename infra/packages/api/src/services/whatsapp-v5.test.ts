@@ -360,6 +360,15 @@ describe("WhatsApp V5 buttons, PII, ranking, and model boundary", () => {
       ).map((row) => row.id),
     ).toEqual(["hs"]);
     expect(rejectWeakSearchHits([hit], "What is the process for invoices?")).toEqual([]);
+    expect(
+      rejectWeakSearchHits(
+        [
+          { id: "advice", title: "Nationwide Property Assistance Ltd Remittance Advice.pdf", snippet: "REMITTANCE ADVICE" },
+          { id: "inv", title: "INV-02277.pdf", snippet: "invoice payment confirmation" },
+        ],
+        "What does the remittance process require?",
+      ).map((row) => row.id),
+    ).toEqual(["advice"]);
   });
 
   it("rejects weak global hits below the confidence threshold", () => {

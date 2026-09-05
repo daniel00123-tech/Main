@@ -1,7 +1,7 @@
 import type { Env } from "../../env";
 import { collectLiveInventory } from "../overnight-qa/inventory";
 import { backfillRecentCustomerInteractions, reconcileWhatsAppHistorical } from "../daily-improvement/audit";
-import { retryFailedOutlookAttachments } from "../outlook-attachment-ingest";
+import { retryFailedOutlookAttachments, verifyExistingIndexedKnowledgeDocument } from "../outlook-attachment-ingest";
 import { classifyDailyTraffic } from "../daily-improvement/traffic";
 import { runTargetedSlice } from "./runner";
 import { sendTargetedQualityEmail } from "./email";
@@ -105,6 +105,14 @@ export async function runTargetedQuality(
       limit: 10,
     });
     return { stage, retry, sendEmail: false };
+  }
+  if (stage === "oncall-verify") {
+    const verify = await verifyExistingIndexedKnowledgeDocument(env, {
+      companyId: "co_el",
+      filename: "OnCall_and_Holidays_2026 (1).xlsx",
+      actor: "system:oncall-isolated-verify",
+    });
+    return { stage, verify, sendEmail: false };
   }
   if (stage === "ledger") {
     const backfill = await backfillMissingMailboxFailureLedger(env.DB, {

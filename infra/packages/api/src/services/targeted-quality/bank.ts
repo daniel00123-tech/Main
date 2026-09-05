@@ -145,6 +145,45 @@ export const KNOWLEDGE_RECALL_QUESTIONS: TargetedQuestion[] = [
   { id: "KR10", channel: "portal", text: "What does the Finance Admin AI Knowledge Base cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
 ];
 
+export const KNOWN_DOC_RECALL_QUESTIONS: TargetedQuestion[] = [
+  { id: "KD01", channel: "portal", text: "What does the Health & Safety Policy say about reporting an accident?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD02", channel: "portal", text: "What is our health and safety policy?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD03", channel: "portal", text: "How do we report an accident at work?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD04", channel: "portal", text: "Is there a Finance Admin knowledge document, and what does it cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD05", channel: "portal", text: "What does the Finance Admin AI Knowledge Base cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD06", channel: "portal", text: "What does the finance administration guide say about supplier setup?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD07", channel: "portal", text: "What does the Subcontractor Payment Process say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD08", channel: "portal", text: "What is the subcontractor payment process?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD09", channel: "portal", text: "Search company knowledge for the payment process.", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD10", channel: "portal", text: "What does the Subcontractor Booking process document say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD11", channel: "portal", text: "How do we book subcontractors?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD12", channel: "portal", text: "What does the booking process require?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD13", channel: "portal", text: "What does the remittance process require?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD14", channel: "portal", text: "What should we do when a remittance arrives?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD15", channel: "portal", text: "Find the remittance advice documents.", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD16", channel: "portal", text: "What does Admin Structure September 2026 cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD17", channel: "portal", text: "What does the SRFM Sub Contractor MASTER document cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD18", channel: "portal", text: "What does the SRFM supplier form cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD19", channel: "portal", text: "What does the Profit Margin Policy say about invoices or job references?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KD20", channel: "portal", text: "What does the finance admin knowledge base say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+];
+
+export const HONEST_NO_RESULT_QUESTIONS: TargetedQuestion[] = [
+  { id: "NR01", channel: "portal", text: "What does the lone-working policy say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, honestNoResultOk: true },
+  { id: "NR02", channel: "portal", text: "What does the intergalactic onboarding fees zzzxq-99999 policy say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, honestNoResultOk: true },
+  { id: "NR03", channel: "portal", text: "Search company knowledge for the martian asbestos teleportation protocol.", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, honestNoResultOk: true },
+  { id: "NR04", channel: "portal", text: "What does the unicorn fleet carbon offset handbook require?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, honestNoResultOk: true },
+  { id: "NR05", channel: "portal", text: "Explain the quantum tea-break ordinance 2099 from company knowledge.", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, honestNoResultOk: true },
+];
+
+export const INVOICE_WAREHOUSE_COMPOUND_QUESTIONS: TargetedQuestion[] = [
+  { id: "IW01", channel: "portal", text: "check invoice INV-02268 and also give me March sales", actor: D, family: "mixed", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
+  { id: "IW02", channel: "portal", text: "Look up INV-02268 and April warehouse sales.", actor: D, family: "mixed", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
+  { id: "IW03", channel: "portal", text: "Invoice INV-02268 status plus March warehouse figures.", actor: D, family: "mixed", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
+  { id: "IW04", channel: "portal", text: "Give me March sales and also check invoice INV-02268.", actor: D, family: "mixed", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
+  { id: "IW05", channel: "portal", text: "check invoice INV-02268 and warehouse sales for March", actor: D, family: "mixed", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
+];
+
 export function questionsForStage(stage: string, ids?: string[]): TargetedQuestion[] {
   const wanted = new Set((ids ?? []).map((id) => id.toUpperCase()));
   const all = [
@@ -152,6 +191,9 @@ export function questionsForStage(stage: string, ids?: string[]): TargetedQuesti
     ...WAREHOUSE_META_QUESTIONS,
     ...MIXED_WAREHOUSE_QUESTIONS,
     ...KNOWLEDGE_RECALL_QUESTIONS,
+    ...KNOWN_DOC_RECALL_QUESTIONS,
+    ...HONEST_NO_RESULT_QUESTIONS,
+    ...INVOICE_WAREHOUSE_COMPOUND_QUESTIONS,
   ];
   if (wanted.size) return all.filter((row) => wanted.has(row.id));
   const key = stage.toLowerCase();
@@ -166,6 +208,9 @@ export function questionsForStage(stage: string, ids?: string[]): TargetedQuesti
   if (key === "warehouse-meta") return WAREHOUSE_META_QUESTIONS;
   if (key === "mixed-warehouse") return MIXED_WAREHOUSE_QUESTIONS;
   if (key === "knowledge-recall") return KNOWLEDGE_RECALL_QUESTIONS;
+  if (key === "known-doc-recall") return KNOWN_DOC_RECALL_QUESTIONS;
+  if (key === "honest-no-result") return HONEST_NO_RESULT_QUESTIONS;
+  if (key === "invoice-warehouse") return INVOICE_WAREHOUSE_COMPOUND_QUESTIONS;
   if (key === "primary") return TARGETED_PRIMARY;
   return [];
 }
