@@ -133,6 +133,9 @@ describe("company tool registry", () => {
     expect(rewriteHistoricalAccountingTool("xero_sales_summary", {}, "What are sales right now?", now).name).toBe(
       "xero_sales_summary",
     );
+    expect(rewriteHistoricalAccountingTool("xero_sales_summary", {}, "Warehouse sales for September.", now).name).toBe(
+      "warehouse_sales_analysis",
+    );
     expect(rewriteHistoricalAccountingTool("xero_get_invoice", { invoiceNumber: "INV-02268" }, "Has INV-02268 been paid?", now).name).toBe(
       "xero_get_invoice",
     );

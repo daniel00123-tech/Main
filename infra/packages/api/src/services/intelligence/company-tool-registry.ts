@@ -278,6 +278,20 @@ export function rewriteHistoricalAccountingTool(
   text: string,
   now = new Date(),
 ): { name: string; arguments: Record<string, unknown> } {
+  if (
+    /\bwarehouse\b/i.test(text) &&
+    name.startsWith("xero_") &&
+    name !== "xero_get_invoice" &&
+    name !== "xero_get_organisation"
+  ) {
+    if (name === "xero_top_customers" || /\b(top|highest-value) customers?\b/i.test(text)) {
+      return { name: "warehouse_customer_analysis", arguments: args };
+    }
+    if (name === "xero_search_invoices" || /\bhow many invoices\b/i.test(text)) {
+      return { name: "warehouse_invoice_analysis", arguments: args };
+    }
+    return { name: "warehouse_sales_analysis", arguments: { ...args, aggregation: args.aggregation ?? "sales_total" } };
+  }
   if (classifyQueryFreshness(text, now) !== "HISTORICAL_ANALYTICAL") {
     return { name, arguments: args };
   }
