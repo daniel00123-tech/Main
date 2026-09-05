@@ -61,6 +61,9 @@ export function scoreTargetedTurn(input: {
         scored.grounded = true;
         scored.firstAnswer = true;
       }
+    } else if (!honest && !retrievalFail && input.question.honestNoResultOk) {
+      scored.defects = [...new Set([...scored.defects, "OFFTOPIC_KNOWLEDGE_HIT"])];
+      scored.perfect = false;
     } else if (honest && !retrievalFail && !input.question.honestNoResultOk) {
       scored.defects = [...new Set([...scored.defects, "KNOWLEDGE_RETRIEVAL_FAILURE"])];
       scored.perfect = false;
