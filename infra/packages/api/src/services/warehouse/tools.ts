@@ -159,7 +159,9 @@ export async function executeWarehouseTool(input: {
   };
   if (input.toolName === "warehouse_sales_analysis") {
     request.aggregation =
-      args.aggregation === "sales_by_month" || args.aggregation === "invoice_count"
+      args.aggregation === "sales_by_month" ||
+      args.aggregation === "invoice_count" ||
+      args.aggregation === "sales_total"
         ? args.aggregation
         : "sales_by_month";
   } else if (input.toolName === "warehouse_invoice_analysis") {

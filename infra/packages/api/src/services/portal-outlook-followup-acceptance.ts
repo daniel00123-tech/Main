@@ -10,13 +10,43 @@ import { sendPortalChatMessage } from "./portal-chat";
 const COMPANY_ID = "co_el";
 const DIRECTOR_EMAILS = ["william@elvexpropertyservices.com", "ella@elvexpropertyservices.com"];
 
-const SEQUENCE = [
-  "show me the latest info email",
-  "what are they asking?",
-  "draft me a reply",
-  "make it shorter",
-  "make it friendlier",
-] as const;
+const SEQUENCES: string[][] = [
+  [
+    "show me the latest info email",
+    "what are they asking?",
+    "draft me a reply",
+    "make it shorter",
+    "make it friendlier",
+  ],
+  [
+    "What is the newest email in the info inbox?",
+    "What do they want from us?",
+    "Write a reply I can send",
+    "Cut that down",
+    "Warm it up a bit",
+  ],
+  [
+    "check the info mailbox for the most recent message",
+    "summarise what they said",
+    "suggest a response",
+    "in fewer words",
+    "more polite please",
+  ],
+  [
+    "look at the latest info inbox email",
+    "what is the email asking for?",
+    "draft something I can copy",
+    "make that brief",
+    "make it warmer",
+  ],
+  [
+    "Show the newest info@ email",
+    "what are they after?",
+    "compose a reply",
+    "shorter please",
+    "friendlier please",
+  ],
+];
 
 function clip(text: string, max = 280): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
@@ -50,33 +80,61 @@ export async function runPortalOutlookFollowupProof(env: Env): Promise<Record<st
     return { ok: false, error: "Director actor inactive", email: row.email };
   }
   const sessionUser = liveActorToSessionUser(actor);
-  const turns: Array<Record<string, unknown>> = [];
-  let conversationId: string | undefined;
+  const sequences: Array<Record<string, unknown>> = [];
   const started = Date.now();
+  let primaryConversationId: string | undefined;
 
-  for (const [index, text] of SEQUENCE.entries()) {
-    const result = await sendPortalChatMessage(env, {
-      companyId: COMPANY_ID,
-      sessionUser,
+  for (const [sequenceIndex, sequence] of SEQUENCES.entries()) {
+    const turns: Array<Record<string, unknown>> = [];
+    let conversationId: string | undefined;
+    for (const [index, text] of sequence.entries()) {
+      const result = await sendPortalChatMessage(env, {
+        companyId: COMPANY_ID,
+        sessionUser,
+        conversationId,
+        text,
+        trafficClass: "TEST",
+        userAgent: "InfraAcceptance/1.0",
+      });
+      conversationId = result.conversation.id;
+      const tools = result.assistantMessage.metadata.toolNames ?? [];
+      turns.push({
+        index: index + 1,
+        text,
+        tools,
+        outlookTools: outlookTools(tools),
+        scope: result.assistantMessage.metadata.scope,
+        terminal: result.assistantMessage.metadata.terminal,
+        permissionDenied: Boolean(result.assistantMessage.metadata.permissionDenied),
+        reply: clip(result.assistantMessage.content),
+      });
+    }
+    if (!primaryConversationId) primaryConversationId = conversationId;
+    const allOutlook = turns.flatMap((turn) => (turn.outlookTools as string[]) ?? []);
+    const listOrSearch = allOutlook.filter((name) => name === "outlook_list_messages" || name === "outlook_search_mailbox");
+    const fetches = allOutlook.filter((name) => name === "outlook_get_message");
+    const writes = allOutlook.filter((name) => /send|draft|create|reply|forward/i.test(name));
+    const laterOutlook = turns.slice(2).flatMap((turn) => (turn.outlookTools as string[]) ?? []);
+    sequences.push({
+      id: sequenceIndex + 1,
       conversationId,
-      text,
-      trafficClass: "TEST",
-      userAgent: "InfraAcceptance/1.0",
-    });
-    conversationId = result.conversation.id;
-    const tools = result.assistantMessage.metadata.toolNames ?? [];
-    turns.push({
-      index: index + 1,
-      text,
-      tools,
-      outlookTools: outlookTools(tools),
-      scope: result.assistantMessage.metadata.scope,
-      terminal: result.assistantMessage.metadata.terminal,
-      permissionDenied: Boolean(result.assistantMessage.metadata.permissionDenied),
-      reply: clip(result.assistantMessage.content),
+      turns,
+      outlookToolCount: allOutlook.length,
+      initialListOrSearch: listOrSearch,
+      fullMessageFetches: fetches,
+      laterOutlookAfterBody: laterOutlook,
+      writes,
+      ok:
+        listOrSearch.length >= 1 &&
+        fetches.length <= 1 &&
+        writes.length === 0 &&
+        laterOutlook.length === 0 &&
+        turns.length === sequence.length,
     });
   }
 
+  const turns = (sequences[0]?.turns as Array<Record<string, unknown>>) ?? [];
+  const conversationId = primaryConversationId;
   const allOutlook = turns.flatMap((turn) => (turn.outlookTools as string[]) ?? []);
   const listOrSearch = allOutlook.filter((name) => name === "outlook_list_messages" || name === "outlook_search_mailbox");
   const fetches = allOutlook.filter((name) => name === "outlook_get_message");
@@ -108,18 +166,16 @@ export async function runPortalOutlookFollowupProof(env: Env): Promise<Record<st
     .all<{ charge: number; tool_name: string; source_client: string }>()
     .catch(() => ({ results: [] }));
 
-  const ok =
-    listOrSearch.length >= 1 &&
-    fetches.length <= 1 &&
-    writes.length === 0 &&
-    laterOutlook.length === 0 &&
-    turns.length === SEQUENCE.length;
+  const ok = sequences.every((row) => row.ok === true);
 
   return {
     ok,
     actor: { email: actor.email, role: actor.role },
     trafficClass: "TEST",
     conversationId,
+    sequences,
+    sequenceCount: sequences.length,
+    passedSequences: sequences.filter((row) => row.ok === true).length,
     turns,
     outlookToolCount: allOutlook.length,
     initialListOrSearch: listOrSearch,
