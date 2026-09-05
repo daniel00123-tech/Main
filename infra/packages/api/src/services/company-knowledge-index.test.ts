@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  knowledgeSearchTokens,
   searchCompanyKnowledgeIndex,
   shouldUseLocalCompanyKnowledgeIndex,
 } from "./company-knowledge-index";
@@ -19,6 +20,11 @@ describe("company knowledge index", () => {
     );
     expect(chunks.length).toBeGreaterThan(0);
     expect(chunks.some((chunk) => /subcontractors must submit invoices/i.test(chunk.text))).toBe(true);
+  });
+
+  it("prefers the distinctive invoice number over the generic INV prefix", () => {
+    expect(knowledgeSearchTokens("INV-02277.pdf")[0]).toBe("02277");
+    expect(knowledgeSearchTokens("INV 02277")[0]).toBe("02277");
   });
 
   it("finds an indexed document by filename token", async () => {

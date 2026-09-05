@@ -1519,6 +1519,28 @@ connectors.post("/api/internal/el-outlook-attachment-ingest", async (c) => {
   }
 });
 
+connectors.post("/api/internal/el-knowledge-search", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const query = typeof body.query === "string" ? body.query.trim() : "";
+    if (!query) return c.json({ error: "query required" }, 400);
+    const { runProductionKnowledgeSearch } = await import("../services/microsoft-acceptance-knowledge-search");
+    return c.json(
+      await runProductionKnowledgeSearch(c.env, {
+        companyId: "co_el",
+        query,
+        limit: typeof body.limit === "number" ? body.limit : 8,
+        actor: "system:el-knowledge-search",
+      }),
+    );
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "EL knowledge search failed" }, 500);
+  }
+});
+
 connectors.post("/api/internal/el-knowledge-ingestion-audit", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
