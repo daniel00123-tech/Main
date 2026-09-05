@@ -13,6 +13,7 @@ import {
   resolvePortalChatAccess,
   sendPortalChatMessage,
 } from "../services/portal-chat";
+import { transcribePortalVoice } from "../services/portal-transcribe";
 
 type AppEnv = { Bindings: Env; Variables: AuthVariables };
 
@@ -191,6 +192,32 @@ routes.post("/api/companies/:slug/chat/conversations/:id/messages/stream", requi
     conversationId: c.req.param("id"),
     text: readMessageText(body),
     userAgent: c.req.header("User-Agent") ?? null,
+  });
+});
+
+routes.post("/api/companies/:slug/chat/transcribe", requireAuth, async (c) => {
+  const ctx = await companyContext(c);
+  if ("error" in ctx) return c.json({ error: ctx.error }, ctx.status);
+  const form = await c.req.formData().catch(() => null);
+  const file = form?.get("audio");
+  if (!(file instanceof File)) return c.json({ error: "Audio is required." }, 400);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const result = await transcribePortalVoice(c.env, {
+    companyId: ctx.company.id,
+    actor: c.get("user").email,
+    bytes,
+    mimeType: file.type || "audio/webm",
+    filename: file.name || "portal-voice.webm",
+  });
+  if (!result.ok) {
+    const status = result.reason === "not_configured" || result.reason === "provider_error" ? 502 : 400;
+    return c.json({ error: "Voice transcription failed. You can still type your message.", reason: result.reason }, status);
+  }
+  return c.json({
+    text: result.text,
+    provider: result.provider,
+    model: result.model,
+    customerChargeCents: 0,
   });
 });
 

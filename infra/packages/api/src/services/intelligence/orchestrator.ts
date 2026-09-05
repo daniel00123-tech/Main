@@ -7,6 +7,7 @@ import {
   loadCompanyRecipes,
   recipeHintsForPrompt,
   recordRecipeOutcome,
+  repairHistoricCurrentPeriodRecipes,
   type RecipeDb,
 } from "./solution-recipes.js";
 import { classifyTurnFailures } from "./failure-telemetry.js";
@@ -48,10 +49,11 @@ import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "
 import { parseCatalogueIntent, verbaliseDocumentCatalogue } from "../document-catalogue.js";
 import { isPeriodCorrection, knowledgeQueryFromText, minimumToolsForText } from "./evidence-plan.js";
 import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
-import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
+import { formatAuthoritativeRuntimePrompt, needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
 import { classifyQueryFreshness } from "../warehouse/freshness.js";
 import {
   GENERIC_RETRY_COPY,
+  HONEST_KNOWLEDGE_NO_RESULT,
   extractFirstMessageId,
   isGenericRetryCopy,
   isSpuriousYearClarify,
@@ -93,7 +95,7 @@ Use web_search only for live public information (weather, public news, public we
 After each tool, classify SUFFICIENT / PARTIAL / INSUFFICIENT / FAILED. If insufficient, try another sensible permitted source (documents, catalogue, mailbox, live Xero, warehouse, or web) before saying you cannot find it.
 Do not repeat a successful tool with the same arguments. Business/private systems outrank public web.
 Clarification is last resort: only ask when multiple interpretations materially change the outcome and tools cannot resolve it.
-If a month is named without a year, use the most recently completed such month in Europe/London. Do not ask which year.
+If a month is named without a year, interpret it against the authoritative Europe/London runtime supplied in this turn: the current open month if it is that month, otherwise the most recently completed such month. Do not ask which year. Never treat recipe hints, prior tests, or example dates as “today”.
 If a public weather or news question omits a city, default to the United Kingdom and call web_search. Do not ask for a location first.
 If authorised recent evidence already contains the facts, synthesise the answer from that evidence. Do not re-ask the user.
 Honour corrections and scope switches. Never invent facts, counts, prices, or URLs.
@@ -509,6 +511,7 @@ async function executeIntelligenceTurn(input: {
   const recipeDb = (input.env as (IntelligenceEnv & { DB?: RecipeDb }) | undefined)?.DB;
   if (agenticPrimary && recipeDb && input.state.companyId) {
     try {
+      await repairHistoricCurrentPeriodRecipes(recipeDb, input.state.companyId);
       recipeHints = recipeHintsForPrompt(await loadCompanyRecipes(recipeDb, input.state.companyId));
     } catch {
       recipeHints = "";
@@ -516,8 +519,10 @@ async function executeIntelligenceTurn(input: {
   }
   const system = [
     SECURITY_AND_PROTOCOL,
+    formatAuthoritativeRuntimePrompt(),
     `Decided scope: ${scoped.scope}. Current document is context, not a mandatory search target.`,
-    `Freshness hint: ${classifyQueryFreshness(input.text)}. Historical completed periods prefer warehouse_*; current/paid-yet prefer live xero_*.`,
+    `Freshness hint: ${classifyQueryFreshness(input.text)}. Historical completed periods prefer warehouse_*; current/open periods and paid-yet prefer live xero_*.`,
+    `If a process or procedure search returns no useful hits, try a bounded synonym query (full scheme name, deduction, verification, payment steps) before concluding there is no internal guidance. Never finish with a blank or placeholder answer.`,
     `Tenant-safe capability catalogue (only tools this user/role/tenant may use):\n${describeToolCatalogue(permitted)}`,
     recipeHints,
   ]
@@ -1014,14 +1019,17 @@ function fallbackFromEvidence(
   if (business) return synthesizeFromToolCalls(toolCalls, question);
   const last = [...toolCalls].reverse().find((call) => call.ok);
   const doc = last ? documentFromToolResult(last) : current;
-  if (doc) {
+  if (doc && !isProcessOrPolicyAsk(question)) {
     return `I have ${doc.title} open. Ask me what you want from it, or name a different file.`;
   }
   const hits = searchHits(toolCalls.find((call) => call.name === "search_company_knowledge")?.data);
   if (hits.length > 1) {
     return "A few documents could match that. Which file did you mean?";
   }
-  return "I couldn't finish a grounded answer from the evidence I retrieved. Try naming the file.";
+  if (isProcessOrPolicyAsk(question)) {
+    return HONEST_KNOWLEDGE_NO_RESULT;
+  }
+  return HONEST_KNOWLEDGE_NO_RESULT;
 }
 
 function documentFromToolResult(result: IntelligenceToolResult): IntelligenceDocumentRef | null {
@@ -1289,6 +1297,12 @@ export function isCompoundBusinessAsk(text: string): boolean {
   if (wantsSalesThenFinanceEmail(text)) return false;
   // Historical analytical windows are one warehouse read, not two live Xero calls.
   if (classifyQueryFreshness(text) === "HISTORICAL_ANALYTICAL") return false;
+  if (
+    classifyQueryFreshness(text) === "UNCERTAIN" &&
+    /\b(last month|previous month|compare|versus|vs\.?|month[- ]over[- ]month)\b/i.test(text)
+  ) {
+    return false;
+  }
   const compare = /\b(compare|versus|vs\.?|better than|month[- ]over[- ]month)\b/i.test(text);
   const twoPeriods =
     /\b(this month|current month|mtd).{0,48}(last month|previous month)\b/i.test(text) ||

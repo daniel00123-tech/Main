@@ -78,6 +78,8 @@ describe("solution recipes", () => {
       "pricing",
     );
     expect(sanitiseRecipeText("Quote INV-02277 at £12 for ella@elvexpropertyservices.com")).not.toMatch(/INV-02277|£12|ella@/i);
+    expect(sanitiseRecipeText("current sales → March 2025 warehouse")).not.toMatch(/March 2025|2025-03/);
+    expect(sanitiseRecipeText("current sales → March 2025 warehouse")).toMatch(/resolved period/);
   });
 
   it("marks empty and failed tool payloads as insufficient", () => {

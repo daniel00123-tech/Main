@@ -3,8 +3,27 @@ import type { IntelligenceToolResult } from "./types.js";
 export const GENERIC_RETRY_COPY = "I need another moment to finish that. Try asking once more.";
 
 export function isGenericRetryCopy(text: string | null | undefined): boolean {
-  return /need another moment|try asking once more|couldn.?t process that request just now/i.test(text ?? "");
+  return /need another moment|try asking once more|couldn.?t process that request just now|couldn.?t complete that just now/i.test(
+    text ?? "",
+  );
 }
+
+export function isUselessNearEmptyAnswer(text: string | null | undefined): boolean {
+  const value = String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!value) return true;
+  if (/^(\.\.\.|…|\.|-)$/.test(value)) return true;
+  if (value.length < 12 && !/[£\d]/.test(value)) return true;
+  if (/^i couldn'?t complete that/i.test(value)) return true;
+  if (/i have the result\. what else/i.test(value)) return true;
+  if (/try naming the file/i.test(value)) return true;
+  if (/^i (don'?t|do not) have (an? )?(answer|result)/i.test(value)) return true;
+  return false;
+}
+
+export const HONEST_KNOWLEDGE_NO_RESULT =
+  "I couldn’t find internal company guidance on that in the indexed knowledge. I won’t invent an internal policy.";
 
 export type ReadTerminalKind =
   | "success"
@@ -371,7 +390,7 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
   }
   if (call.name === "search_company_knowledge" || call.name === "search") {
     const hits = searchHits(call.data);
-    if (!hits.length) return "I couldn’t find any matching documents.";
+    if (!hits.length) return HONEST_KNOWLEDGE_NO_RESULT;
     if (hits.length === 1) {
       const only = hits[0]!;
       return only.snippet ? `${only.title}: ${only.snippet}` : `I found ${only.title}.`;

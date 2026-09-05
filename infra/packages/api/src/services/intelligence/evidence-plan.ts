@@ -2,6 +2,8 @@
  * Internal evidence planning. Never expose subtask names to users.
  */
 
+import { expectedAccountingSource } from "../warehouse/freshness.js";
+
 export type EvidenceSubtask =
   | "finance.metric"
   | "finance.invoice"
@@ -19,7 +21,9 @@ const SEMANTIC_CONTENT_VERB =
 const SEMANTIC_CONTENT_VERB_FLIP =
   /\b(say|mean|require|cover|state).{0,24}(policy|process|procedure|handbook|guidance)\b/i;
 const NAMED_PROCEDURE =
-  /\b(payment process|booking process|remittance|health\s*(?:and|&)\s*safety|lone[- ]working|asbestos|finance admin(?:istration)?(?:\s+(?:guide|knowledge(?: document)?))?|knowledge (?:base|document|file)|admin (?:guide|structure)|subcontractor (payment|booking|form)|profit margin(?: policy)?|sfr?m|srfm)\b/i;
+  /\b(payment process|booking process|remittance|health\s*(?:and|&)\s*safety|lone[- ]working|asbestos|finance admin(?:istration)?(?:\s+(?:guide|knowledge(?: document)?))?|knowledge (?:base|document|file)|admin (?:guide|structure)|subcontractor (payment|booking|form|process|tax)|profit margin(?: policy)?|sfr?m|srfm)\b/i;
+const PROCESS_QUESTION =
+  /\b(tell me about|what can you tell me about|what('s| is| are) (our |the )|how (do|should|does) (we|i)|what's our process|how do we deal with|when should).{0,100}\b(process|procedure|scheme|policy|guidance|deduction|deducted|subcontractors?)\b/i;
 const NAMED_DOCUMENT_CONTENT =
   /\b(the|our|together with the) (?!newest |latest |recent )([a-z0-9][\w &/-]{1,40}) documents?\b/i;
 const MONTH_NAME =
@@ -57,7 +61,12 @@ export function isExclusiveCapabilitySwitch(text: string): boolean {
 
 export function isSemanticKnowledgeAsk(text: string): boolean {
   const value = String(text ?? "");
-  if (isExplicitCatalogueAsk(value) && !SEMANTIC_KNOWLEDGE.test(value) && !NAMED_PROCEDURE.test(value)) {
+  if (
+    isExplicitCatalogueAsk(value) &&
+    !SEMANTIC_KNOWLEDGE.test(value) &&
+    !NAMED_PROCEDURE.test(value) &&
+    !PROCESS_QUESTION.test(value)
+  ) {
     return false;
   }
   return (
@@ -65,6 +74,7 @@ export function isSemanticKnowledgeAsk(text: string): boolean {
     SEMANTIC_CONTENT_VERB.test(value) ||
     SEMANTIC_CONTENT_VERB_FLIP.test(value) ||
     NAMED_PROCEDURE.test(value) ||
+    PROCESS_QUESTION.test(value) ||
     NAMED_DOCUMENT_CONTENT.test(value)
   );
 }
@@ -161,7 +171,15 @@ export function decomposeEvidenceNeeds(text: string): EvidenceSubtask[] {
   } else if (/\b(overdue|outstanding|unpaid)\b/i.test(value)) {
     needs.add("finance.overdue");
   } else if (ACCOUNTING_ASK.test(value) && !EMAIL_ASK.test(value.replace(/\b(invoice|invoices)\b/gi, " "))) {
-    needs.add("finance.metric");
+    if (
+      isSemanticKnowledgeAsk(value) &&
+      /\bsales (process|procedure|policy|guidance)\b/i.test(value) &&
+      !/\b(xero|revenue|invoice|warehouse|overdue|figures?)\b/i.test(value)
+    ) {
+      // "sales process" is a procedure, not a live sales figure.
+    } else {
+      needs.add("finance.metric");
+    }
   } else if (ACCOUNTING_ASK.test(value) && /\b(xero|sales|revenue|warehouse|overdue|customers?)\b/i.test(value)) {
     needs.add("finance.metric");
   }
@@ -189,10 +207,10 @@ export function toolForEvidenceSubtask(subtask: EvidenceSubtask): string {
   }
 }
 
-export function minimumToolsForText(text: string): string[] {
+export function minimumToolsForText(text: string, now = new Date()): string[] {
   const needs = decomposeEvidenceNeeds(text);
   const tools = needs.map(toolForEvidenceSubtask);
-  if (needs.includes("finance.metric") && /\b(this month|right now|current|live)\b/i.test(text) && !/\b(march|april|may|june|july|august|january|february|last month|completed)\b/i.test(text)) {
+  if (needs.includes("finance.metric") && expectedAccountingSource(text, now) === "xero_live") {
     return tools.map((name) => (name === "warehouse_sales_analysis" ? "xero_sales_summary" : name));
   }
   return [...new Set(tools)];

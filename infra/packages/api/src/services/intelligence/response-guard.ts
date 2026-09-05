@@ -1,4 +1,11 @@
-import { classifyReadTerminal, isGenericRetryCopy, looksPermissionDenied, synthesizeFromToolCalls } from "./verbalise-business.js";
+import {
+  classifyReadTerminal,
+  HONEST_KNOWLEDGE_NO_RESULT,
+  isGenericRetryCopy,
+  isUselessNearEmptyAnswer,
+  looksPermissionDenied,
+  synthesizeFromToolCalls,
+} from "./verbalise-business.js";
 import type {
   IntelligenceQualityFlag,
   IntelligenceToolResult,
@@ -50,6 +57,7 @@ export function runResponseQualityGuard(input: {
         "successful_result_not_discarded",
         "not_generic_retry_after_success",
         "not_blank",
+        "not_useless_near_empty",
         "live_claim_has_evidence",
         "xero_mentions_figures",
         "not_contradictory_blank",
@@ -61,19 +69,19 @@ export function runResponseQualityGuard(input: {
     if (hard && fallback && fallback !== text && !isGenericRetryCopy(fallback)) {
       text = fallback;
       repaired = true;
-    } else if (!text || isGenericRetryCopy(text)) {
+    } else if (!text || isGenericRetryCopy(text) || isUselessNearEmptyAnswer(text)) {
       if (input.toolCalls.some((call) => looksPermissionDenied(call))) {
         text = "Your current permissions don’t allow this action.";
         repaired = true;
       } else if (input.toolCalls.some((call) => call.ok)) {
-        text = fallback;
+        text = fallback || HONEST_KNOWLEDGE_NO_RESULT;
         repaired = true;
       }
     }
   }
-  if (!text) {
+  if (!text || isUselessNearEmptyAnswer(text)) {
     text = input.toolCalls.length
-      ? synthesizeFromToolCalls(input.toolCalls, input.question)
+      ? synthesizeFromToolCalls(input.toolCalls, input.question) || HONEST_KNOWLEDGE_NO_RESULT
       : "Can you give me a little more detail so I look in the right place?";
     repaired = true;
   }
@@ -114,9 +122,10 @@ function evaluateChecks(input: {
     check("data_exists_not_no_result", !(okCalls.length > 0 && /couldn'?t find any/i.test(text) && hasPayloadData(okCalls))),
     check("not_wrong_system_email_to_xero", !(outlookOk.length > 0 && xeroOk.length === 0 && /\bxero\b/i.test(text) && !/\b(email|inbox|outlook)\b/i.test(text))),
     check("not_wrong_system_xero_to_knowledge", !(xeroOk.length > 0 && knowledgeOk.length === 0 && /\b(document|file|policy)\b/i.test(text) && !/\b(invoice|sales|xero)\b/i.test(text))),
-    check("successful_result_not_discarded", !(okCalls.length > 0 && (!text || isGenericRetryCopy(text)))),
+    check("successful_result_not_discarded", !(okCalls.length > 0 && (!text || isGenericRetryCopy(text) || isUselessNearEmptyAnswer(text)))),
     check("not_generic_retry_after_success", !(okCalls.length > 0 && isGenericRetryCopy(text))),
     check("not_blank", Boolean(text)),
+    check("not_useless_near_empty", !isUselessNearEmptyAnswer(text)),
     check("permission_uses_access_outcome", denied.length === 0 || looksPermissionDenied(denied[0]!)),
     check("live_claim_has_evidence", !(LIVE_CLAIM.test(text) && okCalls.length === 0 && !input.lastAnswerTopic)),
     check("xero_mentions_figures", !(xeroOk.length > 0 && REACHED_WITHOUT_FIGURES.test(text) && !FIGURE.test(text))),
@@ -132,7 +141,7 @@ function check(id: ResponseGuardCheck["id"], ok: boolean): ResponseGuardCheck {
 function hasPayloadData(calls: IntelligenceToolResult[]): boolean {
   return calls.some((call) => {
     const raw = JSON.stringify(call.data ?? "");
-    return /sales_total|totalSales|messages|invoices|results|documents|subject|invoiceNumber/.test(raw);
+    return /sales_total|totalSales|messages|invoices|results|documents|subject|invoiceNumber|snippet|chunks/.test(raw);
   });
 }
 

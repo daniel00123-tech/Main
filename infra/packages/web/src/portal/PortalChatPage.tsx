@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { displayConversationTitle, groupConversations } from "@infra/shared";
-import { Menu, MessageSquare, Plus, Send, X } from "lucide-react";
+import { Menu, MessageSquare, Mic, Plus, Send, Square, X } from "lucide-react";
 import {
   Button,
   EmptyState,
@@ -20,6 +20,14 @@ import {
   portalChatShellClass,
 } from "./chat-layout";
 import { portalChatPath } from "./portal-home";
+import {
+  browserVoiceSupported,
+  canStartVoice,
+  mergeTranscript,
+  voiceButtonLabel,
+  voiceStatusMessage,
+  type VoiceComposerState,
+} from "./voice-input";
 
 const DRAFT_ID = "draft";
 
@@ -44,6 +52,11 @@ export default function PortalChatPage() {
   const scroller = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const stickToBottom = useRef(true);
+  const [voiceState, setVoiceState] = useState<VoiceComposerState>("idle");
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const cancelledRef = useRef(false);
 
   const messages = active?.messages ?? [];
   const currentDocument = active?.context?.currentDocument ?? null;
@@ -131,6 +144,90 @@ export default function PortalChatPage() {
     setHistoryOpen(false);
     navigate(portalChatPath(company.slug), { replace: false });
     window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  function stopVoiceTracks() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    recorderRef.current = null;
+    chunksRef.current = [];
+  }
+
+  function cancelVoice() {
+    cancelledRef.current = true;
+    try {
+      if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
+    } catch {
+      // ignore
+    }
+    stopVoiceTracks();
+    setVoiceState("idle");
+  }
+
+  async function finishVoice(blob: Blob) {
+    if (!company || cancelledRef.current) {
+      setVoiceState("idle");
+      return;
+    }
+    setVoiceState("processing");
+    try {
+      const result = await api.transcribePortalVoice(company.slug, blob);
+      setDraft((current) => mergeTranscript(current, result.text));
+      setVoiceState("completed");
+      window.setTimeout(() => inputRef.current?.focus(), 0);
+    } catch (err) {
+      const denied = err instanceof Error && /permission/i.test(err.message);
+      setVoiceState(denied ? "permission_denied" : "error");
+    }
+  }
+
+  async function toggleVoice() {
+    if (voiceState === "listening") {
+      cancelledRef.current = false;
+      try {
+        if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
+      } catch {
+        setVoiceState("error");
+      }
+      return;
+    }
+    if (!canStartVoice(voiceState) || busy) return;
+    if (
+      !browserVoiceSupported({
+        mediaDevices: Boolean(navigator.mediaDevices?.getUserMedia),
+        mediaRecorder: typeof MediaRecorder !== "undefined",
+      })
+    ) {
+      setVoiceState("unsupported");
+      return;
+    }
+    cancelledRef.current = false;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const recorder = new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        stopVoiceTracks();
+        if (cancelledRef.current || blob.size === 0) {
+          if (!cancelledRef.current) setVoiceState("idle");
+          return;
+        }
+        void finishVoice(blob);
+      };
+      recorder.start();
+      setVoiceState("listening");
+    } catch (err) {
+      const denied =
+        (err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) ||
+        (err instanceof Error && /permission|notallowed/i.test(err.message));
+      setVoiceState(denied ? "permission_denied" : "unsupported");
+    }
   }
 
   async function send(text = draft) {
@@ -398,9 +495,32 @@ export default function PortalChatPage() {
               }
             }}
           />
-          <Button type="submit" variant="primary" disabled={composerSendDisabled(busy, draft)} aria-label="Send message">
-            <Send size={16} /> {isMobile ? "" : "Send"}
-          </Button>
+          <div className="portal-chat-composer-actions">
+            <Button
+              type="button"
+              variant={voiceState === "listening" ? "primary" : "ghost"}
+              aria-label={voiceButtonLabel(voiceState)}
+              aria-pressed={voiceState === "listening"}
+              className={`portal-chat-mic${voiceState === "listening" ? " is-listening" : ""}`}
+              disabled={busy || voiceState === "processing"}
+              onClick={() => void toggleVoice()}
+            >
+              {voiceState === "listening" ? <Square size={16} /> : <Mic size={16} />}
+            </Button>
+            {voiceState === "listening" ? (
+              <Button type="button" variant="ghost" aria-label="Cancel recording" onClick={cancelVoice}>
+                <X size={16} />
+              </Button>
+            ) : null}
+            <Button type="submit" variant="primary" disabled={composerSendDisabled(busy, draft)} aria-label="Send message">
+              <Send size={16} /> {isMobile ? "" : "Send"}
+            </Button>
+          </div>
+          {voiceStatusMessage(voiceState) ? (
+            <div className="portal-chat-voice-status" role="status" aria-live="polite">
+              {voiceStatusMessage(voiceState)}
+            </div>
+          ) : null}
         </form>
       </section>
     </div>

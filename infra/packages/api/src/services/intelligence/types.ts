@@ -85,6 +85,7 @@ export type ResponseGuardCheck = {
     | "successful_result_not_discarded"
     | "not_generic_retry_after_success"
     | "not_blank"
+    | "not_useless_near_empty"
     | "permission_uses_access_outcome"
     | "live_claim_has_evidence"
     | "xero_mentions_figures"

@@ -22,7 +22,13 @@ export {
 } from "./verbalise-business.js";
 export { clipBusinessToolData } from "./clip-tool-data.js";
 export { verbaliseSystemMeta, isSystemMetaTool, executeSystemMetaTool } from "./system-meta.js";
-export { resolveBusinessPeriod, withResolvedBusinessDates, businessSystemArgs } from "./periods.js";
+export {
+  resolveBusinessPeriod,
+  withResolvedBusinessDates,
+  businessSystemArgs,
+  authoritativeRuntimeContext,
+  formatAuthoritativeRuntimePrompt,
+} from "./periods.js";
 export { enrichDocumentQuery } from "./query-enrichment.js";
 export {
   runIntelligenceTurn,
@@ -58,6 +64,7 @@ export {
   detectRequestedCapabilities,
   rewriteAccountingTool,
   rewriteHistoricalAccountingTool,
+  rewriteLiveAccountingTool,
   wantsMultiCapabilityRead,
 } from "./company-tool-registry.js";
 export { isolateEvidenceForCompany, stampEvidenceTenant } from "./tenant-isolation.js";

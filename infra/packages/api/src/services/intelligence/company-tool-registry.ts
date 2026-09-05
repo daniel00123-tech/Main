@@ -7,7 +7,7 @@
 import { INTELLIGENCE_TOOLS, permittedToolsForConnectors, toolFamilyOf } from "./catalogue.js";
 import { authorizeToolCall, buildAllowedToolCatalogue } from "./tool-auth.js";
 import type { IntelligenceToolSpec } from "./types.js";
-import { classifyQueryFreshness } from "../warehouse/freshness.js";
+import { classifyQueryFreshness, expectedAccountingSource } from "../warehouse/freshness.js";
 import {
   isExclusiveCapabilitySwitch,
   isExplicitCatalogueAsk,
@@ -339,6 +339,21 @@ export function rewriteHistoricalAccountingTool(
   return { name, arguments: args };
 }
 
+export function rewriteLiveAccountingTool(
+  name: string,
+  args: Record<string, unknown>,
+  text: string,
+  now = new Date(),
+): { name: string; arguments: Record<string, unknown> } {
+  if (/\bwarehouse\b/i.test(text)) return { name, arguments: args };
+  if (expectedAccountingSource(text, now) !== "xero_live") return { name, arguments: args };
+  if (!name.startsWith("warehouse_")) return { name, arguments: args };
+  if (name === "warehouse_invoice_analysis") return { name: "xero_search_invoices", arguments: args };
+  if (name === "warehouse_customer_analysis") return { name: "xero_top_customers", arguments: args };
+  if (name === "warehouse_receivables_analysis") return { name: "xero_list_overdue_invoices", arguments: args };
+  return { name: "xero_sales_summary", arguments: args };
+}
+
 export function rewriteAccountingTool(
   name: string,
   args: Record<string, unknown>,
@@ -346,7 +361,8 @@ export function rewriteAccountingTool(
   now = new Date(),
 ): { name: string; arguments: Record<string, unknown> } {
   const exact = rewriteExactAccountingTool(name, args, text);
-  return rewriteHistoricalAccountingTool(exact.name, exact.arguments, text, now);
+  const historical = rewriteHistoricalAccountingTool(exact.name, exact.arguments, text, now);
+  return rewriteLiveAccountingTool(historical.name, historical.arguments, text, now);
 }
 
 export function defaultToolForCapability(capability: PlatformCapability): string | null {

@@ -8,7 +8,7 @@ import type { IntelligenceToolFamily, IntelligenceToolSpec } from "./types.js";
  */
 export const CURRENT_BUSINESS_DATA_PROTOCOL = `Current or private company data is never guessed from world knowledge. This rule is tenant-universal.
 If the answer depends on CURRENT or private company information (mailbox, accounting, CRM, indexed knowledge, file catalogue) that is not already in authorised recent evidence for THIS company, you MUST call the matching INFRA function tool before answering.
-HISTORICAL_ANALYTICAL accounting (trends, monthly series, overdue movement, period comparisons) prefers warehouse_* tools. CURRENT_LIVE_STATE (right now, paid yet, newest invoice) prefers live xero_* tools. If warehouse evidence is stale, degraded, or missing, use live Xero and say so.
+HISTORICAL_ANALYTICAL accounting (completed months, trends, monthly series, overdue movement, period comparisons) prefers warehouse_* tools. CURRENT_LIVE_STATE and CURRENT/OPEN periods (this month, current month, a named month+year that is still open, paid yet, newest invoice) prefer live xero_* tools. If warehouse evidence is stale, degraded, or missing, use live Xero and say so.
 Never use another company's evidence. Never answer live company figures from model memory.
 If authorised recent evidence already contains the requested facts, do not call a business tool — answer from that evidence.
 Named shared inboxes (info, finance, office, shared mailbox) are mailbox tools, never knowledge search and never Xero.
@@ -26,9 +26,9 @@ export const INTELLIGENCE_TOOLS: IntelligenceToolSpec[] = [
   {
     name: "search_company_knowledge",
     description:
-      "Retrieve business policies, procedures, reference data, pricing instructions and indexed document content. Live: no — searches the knowledge index, not Xero or mailboxes. Returns titles, ids, snippets, and source URLs — not full text.",
+      "Retrieve business policies, procedures, finance/tax process guidance, reference data, pricing instructions and indexed document content. Live: no — searches the knowledge index, not Xero or mailboxes. Returns titles, ids, snippets, and source URLs — not full text.",
     whenToUse:
-      "The user wants a policy, procedure, pricing rule, project file, or other document by topic, or no current document is set. First step of document discovery.",
+      "The user wants a policy, procedure, finance process, tax scheme, pricing rule, project file, or other document by topic, or no current document is set. First step of document discovery. If the first query misses, try a close synonym before concluding there is no internal guidance.",
     whenNotToUse:
       "Do not use for follow-ups about the already-open document. Do not use for newest/latest/uploaded file lists — call list_documents. Do not use for live mailbox or Xero figures.",
     live: false,

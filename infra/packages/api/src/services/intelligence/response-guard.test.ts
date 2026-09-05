@@ -22,6 +22,33 @@ describe("response quality guard", () => {
     expect(guarded.checks.every((check) => check.ok || check.id === "tool_success_not_reported_as_failure" || check.id === "successful_result_not_discarded" || check.id === "not_generic_retry_after_success")).toBeTruthy();
   });
 
+  it("repairs a blank or placeholder answer when knowledge evidence exists", () => {
+    const guarded = runResponseQualityGuard({
+      text: "...",
+      question: "What can you tell me about the subcontractor CIS process?",
+      kind: "answer",
+      toolCalls: [
+        {
+          name: "search_company_knowledge",
+          ok: true,
+          latencyMs: 12,
+          data: {
+            results: [
+              {
+                title: "Subcontractor Payment Process",
+                snippet: "Verify the subcontractor and apply the correct labour deduction before payment.",
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(guarded.repaired).toBe(true);
+    expect(guarded.text).toMatch(/Subcontractor Payment Process|deduction/i);
+    expect(guarded.text).not.toMatch(/^\.\.\.$/);
+    expect(guarded.terminal).toBe("ANSWER");
+  });
+
   it("does not show generic retry after a successful Outlook read", () => {
     const guarded = runResponseQualityGuard({
       text: "I need another moment to finish that. Try asking once more.",

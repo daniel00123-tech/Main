@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyQueryFreshness,
   classifyWarehouseRequest,
+  expectedAccountingSource,
   preferredSource,
   warehouseIsFreshEnough,
   warehouseIsStale,
@@ -198,6 +199,11 @@ describe("warehouse freshness policy", () => {
     expect(classifyQueryFreshness("What did last month's sales come to?", now)).toBe("HISTORICAL_ANALYTICAL");
     expect(classifyQueryFreshness("Summarise the last 3 completed months", now)).toBe("HISTORICAL_ANALYTICAL");
     expect(classifyQueryFreshness("What are overdue invoices right now?", now)).toBe("CURRENT_LIVE_STATE");
+    expect(classifyQueryFreshness("What are the sales for this current month?", now)).toBe("CURRENT_LIVE_STATE");
+    expect(classifyQueryFreshness("What are the sales in September 2026?", now)).toBe("CURRENT_LIVE_STATE");
+    expect(classifyQueryFreshness("What were sales in March 2026?", now)).toBe("HISTORICAL_ANALYTICAL");
+    expect(expectedAccountingSource("What are the sales in September 2026?", now)).toBe("xero_live");
+    expect(expectedAccountingSource("What were sales in March 2026?", now)).toBe("xero_warehouse");
     expect(
       classifyWarehouseRequest({
         intentText: "warehouse_sales_analysis",
