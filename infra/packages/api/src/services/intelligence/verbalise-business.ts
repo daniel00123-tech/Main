@@ -276,18 +276,18 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     if (typeof inner.invoiceCount === "number") {
       return `The warehouse has ${inner.invoiceCount} invoices for that period.${suffix}`;
     }
-    if (Array.isArray(inner.invoices)) {
-      const invoices = inner.invoices.filter(isRecord);
-      const range =
-        asString(inner.fromDate) && asString(inner.toDate) ? ` from ${asString(inner.fromDate)} to ${asString(inner.toDate)}` : "";
-      if (!invoices.length) return `The warehouse has no invoices for that period.${suffix}`;
-      return `The warehouse has ${invoices.length} invoices${range}.${suffix}`;
-    }
     if (typeof inner.outstanding === "number") {
       return `Warehouse outstanding receivables are ${formatMoney(inner.outstanding)}.${suffix}`;
     }
     if (typeof inner.overdue === "number") {
       return `Warehouse overdue receivables are ${formatMoney(inner.overdue)}.${suffix}`;
+    }
+    if (Array.isArray(inner.invoices) && call.name === "warehouse_invoice_analysis") {
+      const invoices = inner.invoices.filter(isRecord);
+      const range =
+        asString(inner.fromDate) && asString(inner.toDate) ? ` from ${asString(inner.fromDate)} to ${asString(inner.toDate)}` : "";
+      if (!invoices.length) return `The warehouse has no invoices for that period.${suffix}`;
+      return `The warehouse has ${invoices.length} invoices${range}.${suffix}`;
     }
     if (Array.isArray(inner.customers) && inner.customers.length) {
       const listed = inner.customers

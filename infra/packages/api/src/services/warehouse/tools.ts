@@ -165,7 +165,7 @@ export async function executeWarehouseTool(input: {
         : "sales_by_month";
   } else if (input.toolName === "warehouse_invoice_analysis") {
     request.entity = "invoices";
-    request.aggregation = "invoice_list";
+    request.aggregation = args.aggregation === "invoice_count" ? "invoice_count" : "invoice_list";
   } else if (input.toolName === "warehouse_receivables_analysis") {
     request.aggregation =
       args.aggregation === "outstanding_total" || args.aggregation === "snapshot_series"
