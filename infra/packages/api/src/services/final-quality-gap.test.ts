@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { portalChatErrorStatus } from "../routes/portal-chat";
 import { classifyDailyTraffic, isGenuineCustomerTraffic, looksLikeAutomatedTestPrompt } from "./daily-improvement/traffic";
-import { logicalKnowledgeDocumentKey, mergeKnowledgeSearchHits } from "./company-knowledge-index";
+import { knowledgeHitMatchesQuery, logicalKnowledgeDocumentKey, mergeKnowledgeSearchHits } from "./company-knowledge-index";
 import {
   detectRequestedCapabilities,
   wantsMultiCapabilityRead,
@@ -208,6 +208,13 @@ describe("knowledge logical dedupe", () => {
     expect(logicalKnowledgeDocumentKey({ title: "INV-02277__5b51ab7ca9.pdf" })).toBe(
       logicalKnowledgeDocumentKey({ filename: "INV-02277.pdf" }),
     );
+  });
+
+  it("keeps a named policy hit when the question adds extra natural-language words", () => {
+    const hit = { title: "Health and Safety Policy (2).docx", filename: "Health and Safety Policy (2).docx", snippet: "" };
+    expect(knowledgeHitMatchesQuery(hit, "what does the health and safety policy say about accidents")).toBe(true);
+    expect(knowledgeHitMatchesQuery(hit, "how do we report an accident at work")).toBe(false);
+    expect(knowledgeHitMatchesQuery(hit, "intergalactic onboarding fees zzzxq-99999")).toBe(false);
   });
 
   it("keeps distinct documents", () => {
