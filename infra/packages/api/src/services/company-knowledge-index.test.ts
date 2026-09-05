@@ -337,6 +337,15 @@ describe("company knowledge index", () => {
         text: "Finance admin guide for invoice coding, mailbox handling, and remittance checks. This is the process for invoices.",
         chunk_index: 0,
       },
+      {
+        company_id: "co_el",
+        document_id: 12,
+        filename: "Subcontractor Payment Process.docx",
+        title: "Subcontractor Payment Process.docx",
+        stored_url: null,
+        text: "Engineers submit invoices with a unique job reference before payment is released.",
+        chunk_index: 0,
+      },
     ]);
     const queries = [
       "how do we report an accident at work",

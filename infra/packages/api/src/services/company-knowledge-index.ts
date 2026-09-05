@@ -721,7 +721,7 @@ function scoreKnowledgeCandidate(row: KnowledgeCandidateRow, classified: Classif
   }
   if (highHits > 0 && lowHits > 0) score += 30;
   if (hitMatchesKnowledgeConceptFamily({ title: row.title, filename: row.filename, text: row.text }, classified.original)) {
-    score += 80;
+    score += 180;
   }
   return score;
 }
@@ -763,6 +763,12 @@ export function knowledgeHitMatchesQuery(
       );
     }
     if (family) {
+      if (family.id === "workplace_safety") {
+        return (
+          hitMatchesKnowledgeConceptFamily(hit, query) ||
+          family.documentNeedles.some((needle) => tokenPresent(heading, needle))
+        );
+      }
       const headingHit = classified.highValueTokens.some((token) => tokenPresent(heading, token));
       if (headingHit) return true;
       return (
@@ -790,6 +796,15 @@ function keepScoredCandidate(
   classified: ClassifiedKnowledgeQuery,
 ): boolean {
   if (score <= 0) return false;
+  const family = detectKnowledgeConceptFamily(classified.original);
+  const heading = `${row.title ?? ""} ${row.filename ?? ""}`;
+  if (family?.id === "workplace_safety") {
+    return (
+      hitMatchesKnowledgeConceptFamily({ title: row.title, filename: row.filename, text: row.text }, classified.original) ||
+      family.documentNeedles.some((needle) => tokenPresent(heading, needle)) ||
+      knowledgeHitMatchesQuery({ title: row.title, filename: row.filename, text: row.text }, classified.original)
+    );
+  }
   if (score >= 100) return true;
   return knowledgeHitMatchesQuery(
     { title: row.title, filename: row.filename, text: row.text },
@@ -1007,7 +1022,7 @@ export async function searchCompanyKnowledgeIndex(
       .filter((token) => token.length >= 4 && !isYearToken(token)),
   ]);
   const titleRows = titleNeedles.length
-    ? await fetchKnowledgeHeadingPool(env, input.companyId, titleNeedles, 40)
+    ? await safeKnowledgeRows(() => fetchKnowledgeHeadingPool(env, input.companyId, titleNeedles, 40))
     : [];
 
   const merged = [...headingRows, ...exactRows, ...distinctiveRows, ...broadRows, ...conceptRows, ...titleRows];
