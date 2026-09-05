@@ -69,15 +69,44 @@ export function isSemanticKnowledgeAsk(text: string): boolean {
   );
 }
 
+const FINANCE_WINDOW =
+  /\b((january|february|march|april|may|june|july|august|september|october|november|december)(\s+20\d{2})?|last month|this month|previous month|mtd)\b/gi;
+const FINANCE_METRIC = /\b(sales|revenue|figures|warehouse|xero|overdue|outstanding|top customers?)\b/gi;
+
+function stripFinanceContamination(text: string): string {
+  const cleaned = String(text ?? "")
+    .replace(/\b(give me|show me|what were|what are|tell me)\b/gi, " ")
+    .replace(new RegExp(`(?:${FINANCE_WINDOW.source})\\s+(?:${FINANCE_METRIC.source})`, "gi"), " ")
+    .replace(new RegExp(`(?:${FINANCE_METRIC.source})\\s+(?:${FINANCE_WINDOW.source})`, "gi"), " ")
+    .replace(/\b(warehouse|xero)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || text;
+}
+
 export function knowledgeQueryFromText(text: string): string {
   const value = String(text ?? "").trim();
   const clauses = value.split(/\b(?:and|plus|also|together with|,)\b/i).map((part) => part.trim()).filter(Boolean);
-  const focused = clauses.find((clause) => isSemanticKnowledgeAsk(clause) && !ACCOUNTING_ASK.test(clause) && !EMAIL_ASK.test(clause));
-  return focused || value;
+  const knowledgeClauses = clauses.filter(
+    (clause) => isSemanticKnowledgeAsk(clause) || /\b(policy|procedure|process|handbook|guidance|document|knowledge)\b/i.test(clause),
+  );
+  const focused =
+    knowledgeClauses.find((clause) => !ACCOUNTING_ASK.test(clause) && !EMAIL_ASK.test(clause)) ??
+    knowledgeClauses.find((clause) => isSemanticKnowledgeAsk(clause)) ??
+    knowledgeClauses[0];
+  return stripFinanceContamination(focused || value);
 }
 
 export function isExplicitCatalogueAsk(text: string): boolean {
   return EXPLICIT_CATALOGUE.test(String(text ?? ""));
+}
+
+export function isExplicitInvoiceWarehouseCompound(text: string): boolean {
+  const value = String(text ?? "");
+  if (!/\bINV-\d+\b/i.test(value)) return false;
+  if (!/\b(and|plus|also|together with)\b/i.test(value)) return false;
+  if (!/\b(warehouse|sales|revenue|figures)\b/i.test(value)) return false;
+  return MONTH_NAME.test(value) || /\b(last month|this month|previous month|q[1-4])\b/i.test(value);
 }
 
 export function decomposeEvidenceNeeds(text: string): EvidenceSubtask[] {
@@ -100,7 +129,11 @@ export function decomposeEvidenceNeeds(text: string): EvidenceSubtask[] {
   }
   if (!exclusive && isExplicitCatalogueAsk(value)) needs.add("catalogue.list");
   if (EMAIL_ASK.test(value) && !exclusivePeriod && !exclusiveKnowledge) {
-    if (/\b(what are they asking|what does it say|summaris|summariz|draft|body|actually say)\b/i.test(value)) {
+    if (
+      /\b(what (do|did|are|were) they|they want|they after|what does it say|summaris|summariz|draft|body|actually say|key point|what do i need to do)\b/i.test(
+        value,
+      )
+    ) {
       needs.add("email.body");
     } else if (
       /\b(search|from|containing|look in|quote|PO)\b/i.test(value) ||
@@ -120,6 +153,11 @@ export function decomposeEvidenceNeeds(text: string): EvidenceSubtask[] {
   if (REJECTS_FINANCE.test(value)) return [...needs];
   if (/\bINV-\d+\b/i.test(value) || /\b(find invoice|invoice (id|number))\b/i.test(value)) {
     needs.add("finance.invoice");
+  }
+  if (isExplicitInvoiceWarehouseCompound(value)) {
+    needs.add("finance.metric");
+  } else if (needs.has("finance.invoice")) {
+    // Simple INV- asks stay invoice-only unless an explicit warehouse companion is present.
   } else if (/\b(overdue|outstanding|unpaid)\b/i.test(value)) {
     needs.add("finance.overdue");
   } else if (ACCOUNTING_ASK.test(value) && !EMAIL_ASK.test(value.replace(/\b(invoice|invoices)\b/gi, " "))) {

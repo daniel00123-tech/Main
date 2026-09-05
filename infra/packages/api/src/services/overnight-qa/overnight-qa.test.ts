@@ -9,7 +9,7 @@ import { isCompoundBusinessAsk } from "../intelligence/orchestrator";
 import { WAREHOUSE_TOOL_NAMES } from "../warehouse/standard";
 import { OVERNIGHT_PRIMARY, OVERNIGHT_ALL, FRESH_RETEST_SETS, questionsForStage } from "./bank";
 import { scoreOvernightTurn, scoreChannel } from "./score";
-import { synthesizeToolResult } from "../intelligence/verbalise-business";
+import { synthesizeFromToolCalls, synthesizeToolResult } from "../intelligence/verbalise-business";
 
 const NOW = new Date("2026-09-04T12:00:00.000Z");
 
@@ -183,5 +183,38 @@ describe("warehouse synthesis from nested gateway payloads", () => {
     expect(text).toMatch(/2026-03/);
     expect(text).toMatch(/4,120|4120/);
     expect(text).not.toMatch(/which year/i);
+  });
+
+  it("keeps a grounded warehouse half even when the tool call is marked not ok", () => {
+    const text = synthesizeFromToolCalls(
+      [
+        {
+          name: "warehouse_sales_analysis",
+          ok: false,
+          latencyMs: 10,
+          data: {
+            result: {
+              sales: 4120,
+              fromDate: "2026-03-01",
+              toDate: "2026-03-31",
+              source: "xero_warehouse",
+              warehouse_as_of: "2026-09-04T21:20:43.573Z",
+              completeness_status: "COMPLETE",
+            },
+          },
+          error: "WAREHOUSE_STALE",
+        },
+        {
+          name: "search_company_knowledge",
+          ok: true,
+          latencyMs: 8,
+          data: { results: [{ title: "Lone Working Policy", snippet: "Staff must check in." }] },
+        },
+      ],
+      "Give me March sales and tell me the lone-working policy",
+    );
+    expect(text).toMatch(/4,120|4120/);
+    expect(text).toMatch(/Lone Working/i);
+    expect(text).not.toMatch(/couldn.?t finish the other part/i);
   });
 });

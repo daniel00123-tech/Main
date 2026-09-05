@@ -111,6 +111,24 @@ export function extractFirstMessageId(data: unknown): string {
   return extractOutlookMessages(data).find((message) => message.id)?.id ?? "";
 }
 
+export function warehouseResultGrounded(call: IntelligenceToolResult): boolean {
+  if (!call.name.startsWith("warehouse_")) return false;
+  const inner = unwrapWarehousePayload(call.data);
+  if (inner.fallback === "xero_live" && inner.sales == null && !Array.isArray(inner.months)) return false;
+  const asOf = asString(inner.warehouseAsOf ?? inner.warehouse_as_of);
+  if (!asOf) return false;
+  const months = Array.isArray(inner.months) ? inner.months : [];
+  return (
+    typeof inner.sales === "number" ||
+    typeof inner.invoiceCount === "number" ||
+    typeof inner.outstanding === "number" ||
+    typeof inner.overdue === "number" ||
+    months.length > 0 ||
+    (Array.isArray(inner.invoices) && inner.invoices.length > 0) ||
+    (Array.isArray(inner.customers) && inner.customers.length > 0)
+  );
+}
+
 export function unwrapWarehousePayload(data: unknown): Record<string, unknown> {
   const record = isRecord(data) ? data : {};
   const mid = isRecord(record.result) ? record.result : record;
@@ -161,7 +179,7 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
   if (looksTimeout(call)) {
     return "I need another moment to finish that. Try asking once more.";
   }
-  if (!call.ok) {
+  if (!call.ok && !warehouseResultGrounded(call)) {
     if (/outlook|mailbox|email/i.test(call.name)) return "I couldn’t reach Email just now.";
     if (/^xero_/.test(call.name)) return "I couldn’t reach Xero just now.";
     if (/knowledge|search|fetch|list_documents|get_knowledge/i.test(call.name)) {
@@ -266,7 +284,7 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
       .filter(Boolean)
       .join(", ");
     const suffix = freshness ? ` ${freshness}.` : "";
-    if (inner.fallback === "xero_live") {
+    if (inner.fallback === "xero_live" && !warehouseResultGrounded({ name: call.name, ok: true, latencyMs: 0, data: call.data })) {
       return `The warehouse is not authoritative right now (${asString(inner.reason) || "stale or degraded"}). I should use live Xero for the current figure.`;
     }
     const months = Array.isArray(inner.months) ? inner.months.filter(isRecord) : [];
@@ -397,7 +415,9 @@ export function synthesizeFromToolCalls(
   }
   const pick = (test: (name: string) => boolean) =>
     [...toolCalls].reverse().find((call) => call.ok && test(call.name));
-  const warehouse = pick((name) => name.startsWith("warehouse_"));
+  const warehouse =
+    [...toolCalls].reverse().find((call) => call.name.startsWith("warehouse_") && (call.ok || warehouseResultGrounded(call))) ??
+    null;
   const xero = pick((name) => name.startsWith("xero_"));
   const outlook = pick((name) => /outlook/i.test(name));
   const knowledge = pick((name) => /knowledge|search_document|search$/.test(name));
@@ -408,7 +428,9 @@ export function synthesizeFromToolCalls(
     .filter(Boolean);
   if (parts.length > 1) return parts.join(" ");
   if (parts.length === 1) {
-    const failedOther = toolCalls.some((call) => !call.ok && !looksPermissionDenied(call));
+    const failedOther = toolCalls.some(
+      (call) => !call.ok && !looksPermissionDenied(call) && !warehouseResultGrounded(call),
+    );
     return failedOther ? `${parts[0]} I couldn't finish the other part of that request.` : parts[0];
   }
   const xeroCalls = toolCalls.filter((call) => call.ok && /^xero_/.test(call.name));
@@ -429,7 +451,7 @@ export function classifyReadTerminal(
 ): ReadTerminalKind {
   if (toolCalls.some((call) => looksPermissionDenied(call))) return "permission_denied";
   if (toolCalls.some((call) => looksTimeout(call) && !call.ok)) return "timeout";
-  if (toolCalls.some((call) => !call.ok)) return "upstream_failure";
+  if (toolCalls.some((call) => !call.ok && !warehouseResultGrounded(call))) return "upstream_failure";
   const lastOk = [...toolCalls].reverse().find((call) => call.ok);
   if (lastOk) {
     if (/outlook/i.test(lastOk.name) && extractOutlookMessages(lastOk.data).length === 0) return "no_results";

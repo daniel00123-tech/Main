@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyKnowledgeQuery,
+  compactNormalizedHeading,
+  detectKnowledgeConceptFamily,
+  knowledgeHitMatchesQuery,
   knowledgeSearchTokens,
+  normalizeKnowledgeHeading,
   searchCompanyKnowledgeIndex,
   shouldUseLocalCompanyKnowledgeIndex,
 } from "./company-knowledge-index";
@@ -33,14 +37,18 @@ function knowledgeIndexEnv(rows: KnowledgeRow[]) {
           run: async () => ({ success: true, meta: {} }),
           first: async () => null,
           all: async () => {
-            if (!sql.includes("company_knowledge_chunks")) return { results: [] };
+            if (!sql.includes("company_knowledge_chunks") && !sql.includes("company_knowledge_documents")) {
+              return { results: [] };
+            }
             const companyId = String(binds[0]);
             const limit = Number(binds[binds.length - 1]);
             const likes = binds.slice(1, -1).map(String);
+            const headingQuery = sql.includes("extracted_text") || sql.includes("chunk_index = 0");
+            const stride = headingQuery ? 2 : 5;
             const filtered = rows.filter((row) => {
               if (row.company_id !== companyId) return false;
               return likes.some((like, index) => {
-                const field = index % 5;
+                const field = index % stride;
                 const value =
                   field === 0
                     ? row.filename ?? ""
@@ -304,6 +312,142 @@ describe("company knowledge index", () => {
     expect(hits).toEqual([]);
   });
 
+  it("retrieves Health & Safety for unnamed workplace-accident concept queries", async () => {
+    const env = knowledgeIndexEnv([
+      ...genericInvoiceFlood(40),
+      ...inv02277Chunks.map((row) => ({
+        ...row,
+        text: `${row.text} Davies Emergency Response Group invoice for completed works.`,
+      })),
+      {
+        company_id: "co_el",
+        document_id: 31,
+        filename: "Health and Safety Policy (2).docx",
+        title: "Health and Safety Policy (2).docx",
+        stored_url: null,
+        text: "Report accidents and dangerous occurrences to the responsible person. Gas leaks follow the emergency procedure.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 16,
+        filename: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        title: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        stored_url: null,
+        text: "Finance admin guide for invoice coding, mailbox handling, and remittance checks. This is the process for invoices.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 12,
+        filename: "Subcontractor Payment Process.docx",
+        title: "Subcontractor Payment Process.docx",
+        stored_url: null,
+        text: "Engineers submit invoices with a unique job reference before payment is released.",
+        chunk_index: 0,
+      },
+    ]);
+    const queries = [
+      "how do we report an accident at work",
+      "what is the process if someone has an accident?",
+      "how should workplace accidents be reported?",
+      "what should staff do after an accident at work?",
+      "what is the emergency process for a gas leak?",
+      "how do we report a health and safety incident?",
+      "what should an engineer do if they smell gas?",
+      "what happens if a staff member gets injured on a job?",
+      "who needs to be told about a dangerous occurrence?",
+      "what do we do after someone gets hurt at work?",
+      "how should a suspected gas escape be handled?",
+      "what is the process for a reportable safety incident?",
+      "what should staff do after a workplace injury?",
+      "what happens after a serious site incident?",
+    ];
+    for (const query of queries) {
+      expect(detectKnowledgeConceptFamily(query)?.id, query).toBe("workplace_safety");
+      const hits = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query });
+      expect(hits[0]?.documentId, query).toBe(31);
+      expect(hits.some((hit) => hit.documentId === 18), query).toBe(false);
+      expect(knowledgeHitMatchesQuery({ title: "Health and Safety Policy (2).docx", snippet: "" }, query)).toBe(true);
+      expect(
+        knowledgeHitMatchesQuery(
+          { title: "INV-02277.pdf", snippet: "Davies Emergency Response Group Fulwood Park" },
+          query,
+        ),
+      ).toBe(false);
+    }
+    const invoices = await searchCompanyKnowledgeIndex(env, {
+      companyId: "co_el",
+      query: "What is the process for invoices?",
+    });
+    expect(invoices.length).toBeGreaterThan(0);
+    expect(invoices[0]?.documentId).not.toBe(31);
+    expect(detectKnowledgeConceptFamily("What is the process for invoices?")).toBeNull();
+    expect(detectKnowledgeConceptFamily("INV-02277")).toBeNull();
+  });
+
+  it("normalizes filenames for ranking without rewriting the stored name", () => {
+    expect(normalizeKnowledgeHeading("OnCall_and_Holidays_2026 (1).xlsx")).toBe("on call and holidays 2026");
+    expect(compactNormalizedHeading("OnCall_and_Holidays_2026 (1).xlsx")).toBe("oncallandholidays2026");
+    expect(normalizeKnowledgeHeading("OnCall and Holidays 2026")).toBe("on call and holidays 2026");
+    expect(classifyKnowledgeQuery("OnCall Holidays").tokens.some((row) => row.token === "call")).toBe(true);
+    expect(classifyKnowledgeQuery("holidays 2026").firstStageTokens).toContain("holidays");
+    expect(classifyKnowledgeQuery("holidays 2026").firstStageTokens).not.toContain("2026");
+  });
+
+  it("ranks OnCall holiday filename variants ahead of a year flood", async () => {
+    const env = knowledgeIndexEnv([
+      ...genericInvoiceFlood(20).map((row, index) => ({
+        ...row,
+        filename: `Invoice-2026-${index}.pdf`,
+        title: `Invoice-2026-${index}.pdf`,
+        text: "2026 invoice for completed works.",
+      })),
+      ...inv02277Chunks,
+      {
+        company_id: "co_el",
+        document_id: 47,
+        filename: "OnCall_and_Holidays_2026 (1).xlsx",
+        title: "OnCall_and_Holidays_2026 (1).xlsx",
+        stored_url: null,
+        text: "On-call engineer rota and holiday dates for 2026.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 16,
+        filename: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        title: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        stored_url: null,
+        text: "Finance admin guide for invoice coding, mailbox handling, and remittance checks.",
+        chunk_index: 0,
+      },
+    ]);
+    const queries = [
+      "OnCall_and_Holidays_2026 (1).xlsx",
+      "OnCall and Holidays 2026",
+      "on call holidays",
+      "holidays 2026",
+      "on call rota 2026",
+    ];
+    for (const query of queries) {
+      const hits = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query });
+      expect(hits[0]?.documentId, query).toBe(47);
+      expect(hits[0]?.filename, query).toBe("OnCall_and_Holidays_2026 (1).xlsx");
+    }
+    const invoice = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query: "INV-02277" });
+    expect(invoice[0]?.documentId).toBe(18);
+    const finance = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query: "Finance Admin" });
+    expect(finance[0]?.documentId).toBe(16);
+    const remittance = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query: "remittance" });
+    expect(remittance[0]?.documentId).toBe(16);
+    const empty = await searchCompanyKnowledgeIndex(env, {
+      companyId: "co_el",
+      query: "intergalactic onboarding fees zzzxq-99999",
+    });
+    expect(empty).toEqual([]);
+  });
+
   it("never returns another tenant's documents", async () => {
     const env = knowledgeIndexEnv([
       ...inv02277Chunks,
@@ -340,5 +484,80 @@ describe("company knowledge index", () => {
     expect(ht[0]?.documentId).toBe(99);
     const htInvoice = await searchCompanyKnowledgeIndex(env, { companyId: "co_ht", query: "INV-02277" });
     expect(htInvoice).toEqual([]);
+  });
+
+  it("recalls known process documents across title, alias, and concept wording", async () => {
+    const env = knowledgeIndexEnv([
+      ...genericInvoiceFlood(40),
+      {
+        company_id: "co_el",
+        document_id: 11,
+        filename: "Subcontractor Booking process.docx",
+        title: "Subcontractor Booking process.docx",
+        stored_url: null,
+        text: "SUBCONTRACTOR BOOKING PROCESS. Book jobs in fast and protect client SLAs.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 12,
+        filename: "Subcontractor Payment Process.docx",
+        title: "Subcontractor Payment Process.docx",
+        stored_url: null,
+        text: "Subcontractor Payment & Invoice Submission Process. Every invoice needs a PO.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 16,
+        filename: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        title: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        stored_url: null,
+        text: "Finance administration guide covering supplier setup, mailbox handling, and remittance checks.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 17,
+        filename: "Nationwide Property Assistance Ltd Remittance Advice.pdf",
+        title: "Nationwide Property Assistance Ltd Remittance Advice.pdf",
+        stored_url: null,
+        text: "REMITTANCE ADVICE confirming payment of invoices this period.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 47,
+        filename: "OnCall_and_Holidays_2026 (1).xlsx",
+        title: "OnCall_and_Holidays_2026 (1).xlsx",
+        stored_url: null,
+        text: "# Sheet: On call rota\nEngineer holiday and oncall cover for 2026.",
+        chunk_index: 0,
+      },
+    ]);
+    const cases: Array<[string, number]> = [
+      ["What does the Subcontractor Booking process document say?", 11],
+      ["how do we book subcontractors?", 11],
+      ["booking process", 11],
+      ["What does the Subcontractor Payment Process say?", 12],
+      ["what is the subcontractor payment process?", 12],
+      ["payment process", 12],
+      ["What does the remittance process require?", 17],
+      ["remittance advice", 17],
+      ["what should we do when a remittance arrives?", 17],
+      ["Finance Admin knowledge document", 16],
+      ["finance administration guide", 16],
+      ["what does the finance admin guide say about supplier setup?", 16],
+      ["OnCall and Holidays", 47],
+    ];
+    for (const [query, documentId] of cases) {
+      const hits = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query });
+      expect(hits[0]?.documentId, query).toBe(documentId);
+    }
+    const lone = await searchCompanyKnowledgeIndex(env, {
+      companyId: "co_el",
+      query: "What does the lone-working policy say?",
+    });
+    expect(lone).toEqual([]);
   });
 });

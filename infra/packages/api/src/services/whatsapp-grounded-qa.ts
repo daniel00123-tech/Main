@@ -2,6 +2,7 @@ import type { Env } from "../env";
 import { collectDocumentChunks, type StandardDocumentChunk, type StandardFetchPayload } from "./mcp-knowledge-standard";
 import { generateGroundedCompletion, inspectGroundedQaProvider, type GroundedLlmProvider } from "./whatsapp-llm";
 import { sanitizeWhatsAppSource } from "./whatsapp-compress";
+import { hitMatchesKnowledgeConceptFamily } from "./company-knowledge-index";
 
 export type DocumentClass =
   | "cv_resume"
@@ -90,6 +91,24 @@ const SYNONYMS: Record<string, string[]> = {
   sales: ["selling", "sold"],
   po: ["purchase", "procurement"],
   hs: ["health", "safety"],
+  accident: ["incident", "injury", "health", "safety"],
+  accidents: ["incident", "incidents", "injury", "health", "safety"],
+  incident: ["accident", "health", "safety"],
+  incidents: ["accident", "accidents", "health", "safety"],
+  emergency: ["health", "safety", "incident", "accident"],
+  emergencies: ["health", "safety", "incident", "accident"],
+  injury: ["accident", "incident", "health", "safety"],
+  injuries: ["accident", "incident", "health", "safety"],
+  workplace: ["health", "safety", "work"],
+  leak: ["emergency", "gas", "health", "safety"],
+  leaks: ["emergency", "gas", "health", "safety"],
+  smell: ["gas", "leak", "emergency", "health", "safety"],
+  escape: ["gas", "leak", "emergency", "health", "safety"],
+  hurt: ["injury", "injured", "accident", "incident", "health", "safety"],
+  injured: ["injury", "hurt", "accident", "incident", "health", "safety"],
+  occurrence: ["incident", "accident", "emergency", "health", "safety"],
+  unsafe: ["hazard", "incident", "health", "safety"],
+  reportable: ["incident", "accident", "injury", "health", "safety"],
 };
 
 export type DocumentQaDiagnostics = {
@@ -290,6 +309,7 @@ export function scoreGlobalSearchHit(
   if (context?.currentDocumentId && hit.id && hit.id === context.currentDocumentId) score += 2;
   if (sourceType) score += 0.25;
   score += recency;
+  if (hitMatchesKnowledgeConceptFamily(hit, query)) score += 6;
   return score;
 }
 
@@ -327,10 +347,14 @@ export function rejectWeakSearchHits<T extends { title: string; snippet?: string
     const generic = new Set(["process", "procedure", "policy", "document", "documents"]);
     const distinctive = queryTerms(query).filter((term) => !generic.has(term));
     const processLike = kept.filter((row) => {
-      if (!looksLikeProcessOrPolicyDocument(row.hit)) return false;
-      if (!distinctive.length) return true;
+      if (hitMatchesKnowledgeConceptFamily(row.hit, query)) return true;
       const hay = `${row.hit.title} ${row.hit.snippet ?? ""}`.toLowerCase();
-      return distinctive.some((term) => termMatchesHay(hay, term) || expandTerm(term).some((alt) => termMatchesHay(hay, alt)));
+      const distinctiveHit =
+        distinctive.length > 0 &&
+        distinctive.some((term) => termMatchesHay(hay, term) || expandTerm(term).some((alt) => termMatchesHay(hay, alt)));
+      if (distinctiveHit) return true;
+      if (!looksLikeProcessOrPolicyDocument(row.hit)) return false;
+      return !distinctive.length;
     });
     return processLike.map((row) => row.hit);
   }

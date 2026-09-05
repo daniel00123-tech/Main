@@ -6,6 +6,8 @@ import type { Env } from "../env";
 import { executeRegisteredMcpTool } from "./control-plane";
 import { extractHitList, toStandardSearchPayload, unwrapToolPayload } from "./mcp-knowledge-standard";
 import {
+  hitMatchesKnowledgeConceptFamily,
+  knowledgeConceptExpansionQueries,
   knowledgeHitMatchesQuery,
   mergeKnowledgeSearchHits,
   searchCompanyKnowledgeIndex,
@@ -86,15 +88,60 @@ export async function runProductionKnowledgeSearch(
   }
 
   const actor = input.actor ?? "cmd16c-acceptance";
-  const result = await executeRegisteredMcpTool(env, {
-    mcpId: mcp.id,
-    toolName: "search_company_knowledge",
-    arguments: { query: input.query, limit: input.limit ?? 5 },
-    actorUserId: actor,
-    actorEmail: `${actor}@system`,
-    sourceClient: actor,
-    skipUsageRecording: true,
-  });
+  const mcpQueries = [
+    input.query,
+    ...knowledgeConceptExpansionQueries(input.query).filter((query) => query.toLowerCase() !== input.query.toLowerCase()),
+  ].slice(0, 3);
+
+  let result: Awaited<ReturnType<typeof executeRegisteredMcpTool>> | null = null;
+  const mcpHitsAcc: Array<Record<string, unknown>> = [];
+  for (const mcpQuery of mcpQueries) {
+    const next = await executeRegisteredMcpTool(env, {
+      mcpId: mcp.id,
+      toolName: "search_company_knowledge",
+      arguments: { query: mcpQuery, limit: input.limit ?? 5 },
+      actorUserId: actor,
+      actorEmail: `${actor}@system`,
+      sourceClient: actor,
+      skipUsageRecording: true,
+    });
+    if (!result) result = next;
+    if (next.status !== 200) continue;
+    const payload = (next.data as Record<string, unknown>).result;
+    const standardMcp = toStandardSearchPayload(payload).results;
+    const mcpSource = standardMcp.length
+      ? standardMcp.map((row) => ({ ...row, documentId: row.id, filename: row.title }))
+      : knowledgeSearchHitsFromPayload(payload);
+    mcpHitsAcc.push(...mcpSource.map((row) => {
+      const rec = row as Record<string, unknown>;
+      const meta = rec.metadata && typeof rec.metadata === "object" ? (rec.metadata as Record<string, unknown>) : {};
+      return {
+        title: rec.title ?? rec.filename ?? null,
+        documentId: rec.id ?? rec.documentId ?? rec.document_id ?? null,
+        document_id: rec.id ?? rec.documentId ?? rec.document_id ?? null,
+        filename: rec.filename ?? rec.title ?? null,
+        category: meta.sourceType ?? meta.source_type ?? rec.category ?? null,
+        source: meta.source ?? rec.source ?? "company_mcp",
+        snippet: rec.snippet ?? rec.text ?? "",
+        topic: meta.topic ?? rec.topic ?? null,
+        url: rec.url,
+      };
+    }));
+    if (mcpHitsAcc.some((row) => hitMatchesKnowledgeConceptFamily(row, input.query) || knowledgeHitMatchesQuery(row, input.query))) {
+      break;
+    }
+  }
+  if (!result) {
+    return {
+      ok: false,
+      path: "direct_mcp",
+      query: input.query,
+      hitCount: 0,
+      hits: [],
+      outlookHitCount: 0,
+      error: "MCP search failed",
+    };
+  }
 
   const localHits = await searchCompanyKnowledgeIndex(env, {
     companyId: input.companyId,
@@ -102,7 +149,7 @@ export async function runProductionKnowledgeSearch(
     limit: input.limit ?? 8,
   }).catch(() => []);
 
-  if (result.status !== 200) {
+  if (result.status !== 200 && !mcpHitsAcc.length) {
     if (localHits.length) {
       return {
         ok: true,
@@ -125,31 +172,18 @@ export async function runProductionKnowledgeSearch(
     };
   }
 
-  const payload = (result.data as Record<string, unknown>).result;
-  const standardMcp = toStandardSearchPayload(payload).results;
-  const mcpSource = standardMcp.length
-    ? standardMcp.map((row) => ({ ...row, documentId: row.id, filename: row.title }))
-    : knowledgeSearchHitsFromPayload(payload);
-  const mcpHits = mcpSource.map((row) => {
-    const rec = row as Record<string, unknown>;
-    const meta = rec.metadata && typeof rec.metadata === "object" ? (rec.metadata as Record<string, unknown>) : {};
-    return {
-      title: rec.title ?? rec.filename ?? null,
-      documentId: rec.id ?? rec.documentId ?? rec.document_id ?? null,
-      document_id: rec.id ?? rec.documentId ?? rec.document_id ?? null,
-      filename: rec.filename ?? rec.title ?? null,
-      category: meta.sourceType ?? meta.source_type ?? rec.category ?? null,
-      source: meta.source ?? rec.source ?? "company_mcp",
-      snippet: rec.snippet ?? rec.text ?? "",
-      topic: meta.topic ?? rec.topic ?? null,
-      url: rec.url,
-    };
+  const mcpHits = mcpHitsAcc.filter((row) => {
+    const title = String(row.title ?? row.filename ?? "").trim();
+    const id = row.documentId ?? row.document_id;
+    if (!title && (id == null || id === "")) return false;
+    return (
+      hitMatchesKnowledgeConceptFamily(row, input.query) || knowledgeHitMatchesQuery(row, input.query)
+    );
   });
   const rawHits = mergeKnowledgeSearchHits(localHits, mcpHits).filter((row) => {
     const title = String(row.title ?? row.filename ?? "").trim();
     const id = row.documentId ?? row.document_id;
-    if (!title && (id == null || id === "")) return false;
-    return knowledgeHitMatchesQuery(row, input.query);
+    return Boolean(title || (id != null && id !== ""));
   });
   const hits = summarizeKnowledgeSearchHits(rawHits);
   const outlookHitCount = rawHits.filter((row) => {

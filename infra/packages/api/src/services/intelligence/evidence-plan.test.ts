@@ -51,6 +51,14 @@ describe("evidence plan", () => {
     expect(minimumToolsForText(text)).toEqual(expect.arrayContaining(["warehouse_sales_analysis", "search_company_knowledge"]));
     expect(minimumToolsForText(text)).not.toContain("list_documents");
     expect(knowledgeQueryFromText(text)).toMatch(/admin structure/i);
+    expect(knowledgeQueryFromText(text)).not.toMatch(/warehouse|sales|april/i);
+  });
+
+  it("strips finance language from a compound knowledge query", () => {
+    expect(knowledgeQueryFromText("Give me March sales and tell me the lone-working policy")).toMatch(/lone-working policy/i);
+    expect(knowledgeQueryFromText("Give me March sales and tell me the lone-working policy")).not.toMatch(/march|sales/i);
+    expect(knowledgeQueryFromText("Last month’s sales and what the remittance process requires")).toMatch(/remittance process/i);
+    expect(knowledgeQueryFromText("Last month’s sales and what the remittance process requires")).not.toMatch(/sales|last month/i);
   });
 
   it("does not add finance tools when the user rejects Xero for email", () => {
@@ -78,5 +86,26 @@ describe("evidence plan", () => {
     const text = "SRFM subcontractor form coverage plus live overdue invoices.";
     expect(isSemanticKnowledgeAsk(text)).toBe(true);
     expect(minimumToolsForText(text)).toEqual(expect.arrayContaining(["search_company_knowledge", "xero_list_overdue_invoices"]));
+  });
+
+  it("keeps a simple invoice ask on xero_get_invoice only", () => {
+    expect(minimumToolsForText("check INV-02268")).toEqual(["xero_get_invoice"]);
+    expect(minimumToolsForText("Look up invoice INV-02268")).toEqual(["xero_get_invoice"]);
+  });
+
+  it("plans invoice plus warehouse only for explicit compound sales asks", () => {
+    const text = "check invoice INV-02268 and also give me March sales";
+    expect(minimumToolsForText(text)).toEqual(
+      expect.arrayContaining(["xero_get_invoice", "warehouse_sales_analysis"]),
+    );
+    expect(minimumToolsForText("Look up INV-02268 and April warehouse sales")).toEqual(
+      expect.arrayContaining(["xero_get_invoice", "warehouse_sales_analysis"]),
+    );
+    expect(minimumToolsForText("Customer invoice INV-02268 and the payment process rule")).toEqual(
+      expect.arrayContaining(["xero_get_invoice", "search_company_knowledge"]),
+    );
+    expect(minimumToolsForText("Customer invoice INV-02268 and the payment process rule")).not.toContain(
+      "warehouse_sales_analysis",
+    );
   });
 });
