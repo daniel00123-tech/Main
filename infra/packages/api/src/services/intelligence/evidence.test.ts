@@ -79,6 +79,8 @@ describe("structured evidence", () => {
     });
     expect(emailBodyRequired("what are they asking?")).toBe(true);
     expect(emailBodyRequired("what is the latest email subject?")).toBe(false);
+    expect(emailBodyRequired("What does the Health & Safety Policy say about reporting an accident?")).toBe(false);
+    expect(emailBodyRequired("What does the latest finance email actually say?")).toBe(true);
     expect(emailEvidenceHasBody(listOnly)).toBe(false);
     expect(classifyEvidenceNeed("what are they asking?", state)).toBe("NEEDS_FRESH_DATA");
     expect(classifyEvidenceNeed("what is the latest email subject?", state)).toBe("NEEDS_FRESH_DATA");

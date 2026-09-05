@@ -88,5 +88,6 @@ describe("targeted architectural gates", () => {
     expect(wantsMultiCapabilityRead("What does the health and safety policy say, and what is the latest info email?")).toBe(true);
     expect(emailBodyRequired("What are they asking?")).toBe(true);
     expect(emailBodyRequired("What is the latest email subject?")).toBe(false);
+    expect(emailBodyRequired("What does the Profit Margin Policy say about invoices?")).toBe(false);
   });
 });

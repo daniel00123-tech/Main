@@ -51,6 +51,9 @@ export function emailBodyRequired(text: string): boolean {
   if (/\b(subject|who sent|when (did|was)|latest email subject|newest email subject)\b/i.test(text)) {
     return false;
   }
+  if (/\b(policy|document|handbook|procedure|guidance|knowledge base)\b/i.test(text) && !/\b(email|inbox|mailbox|outlook|message)\b/i.test(text)) {
+    return false;
+  }
   return (
     /\b(what (are|were) they asking|what does .{0,40}(say|said)|what did they (ask|want|say)|summar(y|ise|ize)|draft|reply|respond|full (email|message|body)|the (email|message) (body|content|text)|what are they asking)\b/i.test(
       text,
