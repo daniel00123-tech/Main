@@ -1,6 +1,7 @@
 import type { Env } from "../../env";
 import { collectLiveInventory } from "../overnight-qa/inventory";
-import { backfillRecentCustomerInteractions } from "../daily-improvement/audit";
+import { backfillRecentCustomerInteractions, reconcileWhatsAppHistorical } from "../daily-improvement/audit";
+import { retryFailedOutlookAttachments } from "../outlook-attachment-ingest";
 import { classifyDailyTraffic } from "../daily-improvement/traffic";
 import { runTargetedSlice } from "./runner";
 import { sendTargetedQualityEmail } from "./email";
@@ -31,6 +32,7 @@ export async function reconcileTelemetry(env: Env): Promise<Record<string, unkno
     .bind(since)
     .first<{ n: number }>();
   const backfilled = await backfillRecentCustomerInteractions(env.DB, since, new Date().toISOString());
+  const whatsappHistorical = await reconcileWhatsAppHistorical(env.DB, since, new Date().toISOString());
   const samples = {
     liveCustomer: classifyDailyTraffic({
       trafficClass: "CUSTOMER_REQUEST",
@@ -57,6 +59,7 @@ export async function reconcileTelemetry(env: Env): Promise<Record<string, unkno
     whatsappUsageParents: Number(whatsappUsage?.n ?? 0),
     dailyByClass: daily.results ?? [],
     backfilled,
+    whatsappHistorical,
     classificationSamples: samples,
     note: "TEST rows were not relabelled as customer. Fingerprints apply only to unlabeled historical rows.",
   };
@@ -78,6 +81,36 @@ export async function runTargetedQuality(
   }
   if (stage === "telemetry-reconcile") {
     return { stage, telemetry: await reconcileTelemetry(env) };
+  }
+  if (stage === "mailbox-retry") {
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `UPDATE company_mailbox_registry
+       SET status = 'approved',
+           last_error = CASE
+             WHEN last_error LIKE 'attachment ingest incomplete%' THEN 'DEGRADED: ' || last_error
+             ELSE last_error
+           END,
+           updated_at = ?
+       WHERE company_id = 'co_el'
+         AND status = 'error'
+         AND graph_accessible = 1
+         AND last_error LIKE 'attachment ingest incomplete%'`,
+    )
+      .bind(now)
+      .run();
+    const retry = await retryFailedOutlookAttachments(env, {
+      companyId: "co_el",
+      mailboxAddresses: ["lauren@elvexpropertyservices.com", "michael@elvexpropertyservices.com"],
+      actor: "system:targeted-quality-mailbox-retry",
+      limit: 40,
+    });
+    const registry = await env.DB.prepare(
+      `SELECT mailbox_address, status, last_error, last_messages_scanned, graph_accessible
+       FROM company_mailbox_registry
+       WHERE company_id = 'co_el' AND mailbox_address IN ('lauren@elvexpropertyservices.com','michael@elvexpropertyservices.com')`,
+    ).all();
+    return { stage, retry, registry: registry.results ?? [], sendEmail: false };
   }
   if (stage === "email") {
     const scores = input.scores ?? [];

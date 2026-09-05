@@ -7,6 +7,7 @@ import {
   PortalChatError,
   createPortalConversation,
   getPortalConversation,
+  getPortalConversationWithRetry,
   listPortalConversations,
   renamePortalConversation,
   resolvePortalChatAccess,
@@ -45,6 +46,12 @@ function readMessageText(body: Record<string, unknown>): string {
   return "";
 }
 
+export function portalChatErrorStatus(error: PortalChatError): 400 | 402 | 404 {
+  if (error.status === 402) return 402;
+  if (error.status === 400) return 400;
+  return 404;
+}
+
 async function streamTurn(
   c: { env: Env; executionCtx: ExecutionContext },
   input: Parameters<typeof sendPortalChatMessage>[1],
@@ -70,7 +77,7 @@ async function streamTurn(
         await send("done", result);
       } catch (error) {
         const message = error instanceof PortalChatError ? error.message : "Unable to complete that chat turn";
-        const status = error instanceof PortalChatError ? error.status : 500;
+        const status = error instanceof PortalChatError ? portalChatErrorStatus(error) : 500;
         await send("error", { error: message, status });
       } finally {
         await writer.close();
@@ -109,7 +116,7 @@ routes.post("/api/companies/:slug/chat/conversations", requireAuth, async (c) =>
 routes.get("/api/companies/:slug/chat/conversations/:id", requireAuth, async (c) => {
   const ctx = await companyContext(c);
   if ("error" in ctx) return c.json({ error: ctx.error }, ctx.status);
-  const conversation = await getPortalConversation(c.env.DB, {
+  const conversation = await getPortalConversationWithRetry(c.env.DB, {
     conversationId: c.req.param("id"),
     companyId: ctx.company.id,
     userId: ctx.access.sessionUser.userId,
@@ -148,7 +155,7 @@ routes.post("/api/companies/:slug/chat/conversations/:id/messages", requireAuth,
       }),
     );
   } catch (error) {
-    if (error instanceof PortalChatError) return c.json({ error: error.message }, error.status as 400 | 404);
+    if (error instanceof PortalChatError) return c.json({ error: error.message }, portalChatErrorStatus(error));
     throw error;
   }
 });
@@ -169,7 +176,7 @@ routes.post("/api/companies/:slug/chat/messages", requireAuth, async (c) => {
       }),
     );
   } catch (error) {
-    if (error instanceof PortalChatError) return c.json({ error: error.message }, error.status as 400 | 404);
+    if (error instanceof PortalChatError) return c.json({ error: error.message }, portalChatErrorStatus(error));
     throw error;
   }
 });

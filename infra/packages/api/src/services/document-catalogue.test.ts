@@ -32,6 +32,10 @@ describe("document catalogue intent", () => {
     expect(isCatalogueListingAsk("What was added since yesterday?")).toBe(true);
     expect(isCatalogueListingAsk("Show me the latest ten and tell me what they're about.")).toBe(true);
     expect(isCatalogueListingAsk("Find a document about boilers")).toBe(false);
+    expect(isCatalogueListingAsk("What does the health and safety policy say, and what is the latest info email?")).toBe(
+      false,
+    );
+    expect(isCatalogueListingAsk("What were March sales and what does our payment process say?")).toBe(false);
     expect(isCatalogueListingAsk("How many documents can you see?")).toBe(false);
     expect(isCatalogueListingAsk("Summarise this document")).toBe(false);
   });

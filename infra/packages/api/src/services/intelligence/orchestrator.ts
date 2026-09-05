@@ -21,6 +21,8 @@ import {
   emailBodyRequired,
   emailEvidenceHasBody,
   argsFingerprint,
+  requestScopedToolKey,
+  outlookSearchArgsOverlap,
 } from "./evidence.js";
 import type { IntelligenceCompleter } from "./provider.js";
 import { applyGuardToTurn } from "./response-guard.js";
@@ -37,6 +39,7 @@ import { classifyScope, persistableScope, type ScopeDecision } from "./scope.js"
 import { formatConversationState } from "./state.js";
 import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "./system-meta.js";
 import { parseCatalogueIntent, verbaliseDocumentCatalogue } from "../document-catalogue.js";
+import { isPeriodCorrection, knowledgeQueryFromText, minimumToolsForText } from "./evidence-plan.js";
 import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
 import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
 import { classifyQueryFreshness } from "../warehouse/freshness.js";
@@ -261,7 +264,7 @@ async function executeIntelligenceTurn(input: {
   const runtime = wrapAuthorizedRuntime(input.runtime, authCtx);
   const executedThisTurn = new Map<string, IntelligenceToolResult>();
   const turnReuseKey = (name: string, args: Record<string, unknown>) => {
-    const invoice = String(args.invoiceNumber ?? args.invoiceId ?? "")
+    const invoice = String(args.invoiceNumber ?? args.InvoiceNumber ?? args.invoiceId ?? args.InvoiceID ?? "")
       .trim()
       .toUpperCase();
     if (invoice && name === "xero_get_invoice") return `${name}:${invoice}`;
@@ -326,6 +329,7 @@ async function executeIntelligenceTurn(input: {
     scoped.scope !== "BUSINESS_SYSTEM" &&
     scoped.scope !== "CONTROLLED_ACTION" &&
     scoped.scope !== "CONNECTOR_CAPABILITY" &&
+    !isPeriodCorrection(input.text) &&
     (input.state.userCorrection || (scoped.scope === "COMPANY_KNOWLEDGE" && scoped.clearCurrentDocument))
   ) {
     const priorUser =
@@ -401,7 +405,7 @@ async function executeIntelligenceTurn(input: {
     });
   }
 
-  if (shouldRunDeterministicMeta(scoped)) {
+  if (shouldRunDeterministicMeta(scoped, input.text)) {
     const meta = await runDeterministicMeta(runtime, scoped, input.text, completer, permitted, qualityFlags);
     if (meta) {
       if (input.state.userCorrection && scoped.clearCurrentDocument && meta.toolCalls[0]?.name === input.state.lastSuccessfulTool) {
@@ -452,12 +456,8 @@ async function executeIntelligenceTurn(input: {
       recentEvidence = mergeEvidence(recentEvidence, extractEvidenceFromTools(read.toolCalls));
       workingState.recentEvidence = recentEvidence;
       toolCalls.push(...read.toolCalls);
-      if (read.ok && read.text) deterministicVerbalise = read.text;
-      const warehouseAnswered =
-        read.ok &&
-        read.toolCalls.some((call) => call.ok && call.name.startsWith("warehouse_")) &&
-        classifyQueryFreshness(input.text) === "HISTORICAL_ANALYTICAL";
-      if (!brain.policy.useOpenAi || warehouseAnswered) {
+      if (read.text) deterministicVerbalise = read.text;
+      if (read.text) {
         return finishTurn({
           kind: read.ok ? "answer" : "failed",
           text: read.text,
@@ -1094,7 +1094,7 @@ function prepareToolArguments(
     next = withResolvedBusinessDates(name, next, text);
   }
   if (name === "search_company_knowledge" || name === "search") {
-    next.query = String(next.query ?? next.q ?? "").trim() || text.trim();
+    next.query = String(next.query ?? next.q ?? "").trim() || knowledgeQueryFromText(text);
     return next;
   }
   if (name === "outlook_list_messages" || name === "outlook_search_mailbox" || name === "outlook_get_message") {
@@ -1172,7 +1172,8 @@ function prepareToolArguments(
   return next;
 }
 
-function shouldRunDeterministicMeta(scoped: ScopeDecision): boolean {
+function shouldRunDeterministicMeta(scoped: ScopeDecision, text = ""): boolean {
+  if (wantsMultiCapabilityRead(text)) return false;
   return (
     ((scoped.scope === "SYSTEM_META" || scoped.scope === "CONNECTOR_CAPABILITY") &&
       Boolean(scoped.tool) &&
@@ -1186,7 +1187,9 @@ function isProcessOrPolicyAsk(text: string): boolean {
 }
 
 function shouldRunDeterministicRead(scoped: ScopeDecision, text: string, state?: IntelligenceConversationState): boolean {
-  if (scoped.clarify || !scoped.tool) return false;
+  if (scoped.clarify) return false;
+  if (wantsMultiCapabilityRead(text)) return true;
+  if (!scoped.tool) return false;
   if (state && classifyEvidenceNeed(text, state) === "CAN_ANSWER_FROM_EXISTING_EVIDENCE" && !state.userCorrection) {
     return false;
   }
@@ -1235,16 +1238,33 @@ function wrapAuthorizedRuntime(
   runtime: IntelligenceRuntime,
   ctx: { role?: string | null; companyId?: string | null; connectors: string[]; permittedTools: string[]; channel?: string | null },
 ): IntelligenceRuntime {
+  const cache = new Map<string, IntelligenceToolResult>();
+  const outlookSearches: Array<{ args: Record<string, unknown>; result: IntelligenceToolResult }> = [];
   return {
     async executeTool(call) {
       const auth = authorizeToolCall(ctx, call);
       if (!auth.allowed) return deniedToolResult(call, auth);
+      const key = requestScopedToolKey(ctx.companyId, call.name, call.arguments);
+      const hit = cache.get(key);
+      if (hit?.ok) return { ...hit, latencyMs: 0 };
+      if (call.name === "outlook_search_mailbox") {
+        const prior = outlookSearches.find((row) => row.result.ok && outlookSearchArgsOverlap(row.args, call.arguments));
+        if (prior) return { ...prior.result, latencyMs: 0 };
+      }
       if (call.name === "web_search") {
         const executed = await runtime.executeTool(call).catch(() => null);
         if (!executed || executed.error === "tool_not_permitted") return executePublicWebSearch(call);
+        if (executed.ok) cache.set(key, executed);
         return executed;
       }
-      return runtime.executeTool(call);
+      const executed = await runtime.executeTool(call);
+      if (executed.ok) {
+        cache.set(key, executed);
+        if (call.name === "outlook_search_mailbox") {
+          outlookSearches.push({ args: call.arguments, result: executed });
+        }
+      }
+      return executed;
     },
   };
 }
@@ -1317,16 +1337,32 @@ async function runDeterministicRead(
   if (wantsMultiCapabilityRead(text)) {
     const toolCalls: IntelligenceToolResult[] = [];
     const seen = new Set<string>();
+    const planned = minimumToolsForText(text);
     const capabilityOrder = ["ACCOUNTING", "EMAIL", "CATALOGUE", "KNOWLEDGE", "WEB", "SYSTEM"];
     const requested = detectRequestedCapabilities(text).sort((left, right) => {
       const a = capabilityOrder.findIndex((item) => left.startsWith(item) || left === item);
       const b = capabilityOrder.findIndex((item) => right.startsWith(item) || right === item);
       return (a < 0 ? 99 : a) - (b < 0 ? 99 : b);
     });
-    for (const capability of requested) {
-      const name = defaultToolForCapability(capability);
+    const names = [
+      ...planned,
+      ...requested.map((capability) => defaultToolForCapability(capability)).filter((name): name is string => Boolean(name)),
+    ].sort((left, right) => {
+      const rank = (name: string) => {
+        if (name.startsWith("xero_") || name.startsWith("warehouse_")) return 0;
+        if (name.startsWith("outlook_")) return 1;
+        if (name === "list_documents") return 2;
+        if (/knowledge|search_document|^search$/.test(name)) return 3;
+        return 4;
+      };
+      return rank(left) - rank(right);
+    });
+    for (const name of names) {
       if (!name || seen.has(name) || !INTELLIGENCE_TOOL_NAMES.has(name)) continue;
       if (permitted.length && !permitted.includes(name)) continue;
+      if (name === "list_documents" && planned.includes("search_company_knowledge") && !planned.includes("list_documents")) {
+        continue;
+      }
       seen.add(name);
       const extra =
         name === "outlook_list_messages" && /\bfinance\b/i.test(text)
@@ -1334,10 +1370,11 @@ async function runDeterministicRead(
           : name.startsWith("outlook_")
             ? { limit: 5 }
             : {};
+      const rewritten = rewriteAccountingTool(name, extra, text);
       toolCalls.push(
         await runtime.executeTool({
-          name,
-          arguments: prepareToolArguments(name, extra, text, state, scoped.scope),
+          name: rewritten.name,
+          arguments: prepareToolArguments(rewritten.name, rewritten.arguments, text, state, scoped.scope),
         }),
       );
     }
@@ -1362,7 +1399,7 @@ async function runDeterministicRead(
       };
     }
   }
-  if (emailBodyRequired(text) && !emailEvidenceHasBody(state.recentEvidence)) {
+  if (emailBodyRequired(text) && /outlook/i.test(toolName) && !emailEvidenceHasBody(state.recentEvidence)) {
     const knownId = String(state.recentEvidence?.recentEmail?.id ?? "").trim();
     if (knownId) {
       const fetched = await runtime.executeTool({

@@ -103,10 +103,84 @@ describe("deterministic business and knowledge reads", () => {
       channel: "portal_chat",
     });
     expect(calls[0]?.name).toBe("outlook_list_messages");
+    expect(calls.filter((call) => call.name.startsWith("outlook_"))).toHaveLength(1);
     expect(isGenericRetryCopy(result.text)).toBe(false);
     expect(result.text).toMatch(/Site visit tomorrow/);
     expect(result.userVisibleBrain).toBe("openai");
     expect(result.brainRole).toBe("pa");
+  });
+
+  it("does not let the OpenAI PA brain re-search the same mailbox", async () => {
+    let searches = 0;
+    const { runtime: exec, calls } = runtime((name) => {
+      if (name === "outlook_search_mailbox") {
+        searches += 1;
+        return {
+          mailboxAddress: "info@elvexpropertyservices.com",
+          messages: [{ subject: "Quote request", from: "ops@example.com", receivedDateTime: "2026-09-04T15:41:00Z" }],
+        };
+      }
+      return { messages: [] };
+    });
+    const result = await runIntelligenceTurn({
+      env: {
+        OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
+        OPENAI_BRAIN_ENABLED: "true",
+        OPENAI_BRAIN_MODE: "openai_shadow",
+        OPENAI_BRAIN_COMPANY_IDS: "co_el",
+      },
+      text: "Search the info inbox for anything about a quote request.",
+      state: buildConversationState({
+        userText: "Search the info inbox for anything about a quote request.",
+        companyId: "co_el",
+        connectors: ["conn_outlook_shared"],
+        permittedTools: ["outlook_list_messages", "outlook_search_mailbox", "search_company_knowledge"],
+      }),
+      runtime: exec,
+      completer: async () => ({
+        text: JSON.stringify({ action: "call_tool", name: "outlook_search_mailbox", arguments: { query: "quote" } }),
+        usage: {
+          provider: "openai",
+          model: "gpt-test",
+          latencyMs: 20,
+          promptTokens: 10,
+          completionTokens: 8,
+          estimatedCostUsd: 0,
+        },
+      }),
+      channel: "portal_chat",
+    });
+    expect(searches).toBe(1);
+    expect(calls.filter((call) => call.name === "outlook_search_mailbox")).toHaveLength(1);
+    expect(result.toolCalls.filter((call) => call.name === "outlook_search_mailbox")).toHaveLength(1);
+  });
+
+  it("plans knowledge plus warehouse for a named document mixed with April sales", async () => {
+    const { runtime: exec, calls } = runtime((name) => {
+      if (name === "search_company_knowledge") {
+        return { results: [{ id: "doc_admin", title: "Admin Structure September 2026", snippet: "Office roles." }] };
+      }
+      if (name.startsWith("warehouse_")) {
+        return { sales: 12000, fromDate: "2026-04-01", toDate: "2026-04-30", warehouse_as_of: "2026-09-05", completeness_status: "COMPLETE" };
+      }
+      return { messages: [] };
+    });
+    const result = await runIntelligenceTurn({
+      text: "April warehouse sales together with the admin structure document.",
+      state: buildConversationState({
+        userText: "April warehouse sales together with the admin structure document.",
+        connectors: ["conn_xero", "conn_outlook_shared"],
+        permittedTools: ["warehouse_sales_analysis", "search_company_knowledge", "list_documents"],
+      }),
+      runtime: exec,
+      completer: silentCompleter,
+      channel: "portal",
+    });
+    expect(calls.some((call) => call.name === "search_company_knowledge")).toBe(true);
+    expect(calls.some((call) => call.name === "warehouse_sales_analysis")).toBe(true);
+    expect(calls.some((call) => call.name === "list_documents")).toBe(false);
+    expect(result.text).toMatch(/Admin Structure|£12,000|12000/i);
+    expect(result.text).not.toMatch(/which year/i);
   });
 
   it("does not mask a successful Outlook tool with the generic retry", async () => {
@@ -127,6 +201,33 @@ describe("deterministic business and knowledge reads", () => {
     expect(result.toolCalls[0]?.name).toBe("outlook_list_messages");
     expect(isGenericRetryCopy(result.text)).toBe(false);
     expect(result.text).toMatch(/Invoice pack/);
+  });
+
+  it("uses knowledge search not catalogue for sales plus payment process", async () => {
+    const { runtime: exec, calls } = runtime((name) => {
+      if (name === "search_company_knowledge") {
+        return { results: [{ id: "doc_pay", title: "Subcontractor Payment Process", snippet: "PO number required." }] };
+      }
+      if (name.startsWith("warehouse_")) {
+        return { sales_total: 12000, period: { fromDate: "2026-03-01", toDate: "2026-03-31" }, completeness: "COMPLETE" };
+      }
+      return { messages: [] };
+    });
+    const result = await runIntelligenceTurn({
+      text: "What were March sales and what does our payment process say?",
+      state: buildConversationState({
+        userText: "What were March sales and what does our payment process say?",
+        connectors: ["conn_xero", "conn_outlook_shared"],
+        permittedTools: ["warehouse_sales_analysis", "search_company_knowledge", "list_documents", "xero_sales_summary"],
+      }),
+      runtime: exec,
+      completer: silentCompleter,
+      channel: "portal",
+    });
+    expect(calls.some((call) => call.name === "search_company_knowledge")).toBe(true);
+    expect(calls.some((call) => call.name === "list_documents")).toBe(false);
+    expect(calls.filter((call) => call.name === "search_company_knowledge")).toHaveLength(1);
+    expect(isGenericRetryCopy(result.text)).toBe(false);
   });
 
   it("calls Xero once for sales this month", async () => {

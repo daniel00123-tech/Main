@@ -6,6 +6,8 @@ import {
   shouldReuseSuccessfulTool,
   emailBodyRequired,
   emailEvidenceHasBody,
+  requestScopedToolKey,
+  outlookSearchArgsOverlap,
 } from "./evidence.js";
 import { buildConversationState } from "./state.js";
 
@@ -122,5 +124,22 @@ describe("structured evidence", () => {
     expect(
       shouldReuseSuccessfulTool({ name: "xero_get_invoice", arguments: { invoiceNumber: "INV-02268" } }, evidence),
     ).toBe(true);
+  });
+
+  it("keys request-scoped reuse by company, tool, and identity rather than raw wording", () => {
+    expect(
+      requestScopedToolKey("co_el", "xero_get_invoice", { invoiceNumber: "inv-02268" }),
+    ).toBe(requestScopedToolKey("co_el", "xero_get_invoice", { invoiceId: "INV-02268" }));
+    expect(
+      requestScopedToolKey("co_el", "outlook_search_mailbox", { mailboxAddress: "info@elvexpropertyservices.com", query: "quote request" }),
+    ).toBe(
+      requestScopedToolKey("co_el", "outlook_search_mailbox", { mailboxAddress: "info@elvexpropertyservices.com", query: "quote" }),
+    );
+    expect(
+      outlookSearchArgsOverlap({ mailboxAddress: "info@x", query: "quote request" }, { mailboxAddress: "info@x", query: "quote" }),
+    ).toBe(true);
+    expect(
+      outlookSearchArgsOverlap({ mailboxAddress: "info@x", query: "Davies" }, { mailboxAddress: "info@x", query: "Lewis Street" }),
+    ).toBe(false);
   });
 });

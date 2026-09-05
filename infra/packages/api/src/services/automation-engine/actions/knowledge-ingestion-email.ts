@@ -61,16 +61,18 @@ async function collectMailboxChecks(
       seen.add(address);
       const ingestRow = ingestByAddress.get(address);
       const excludedRow = row.enabled_for_attachment_ingestion !== 1;
-      const ingestFailed = Boolean(ingestRow?.scanFailed);
-      const registryFailed = Boolean(row.last_error) || row.status === "error";
+      const ingestFailed = ingestRow?.scanStatus === "FAILED" || (Boolean(ingestRow?.scanFailed) && ingestRow?.scanStatus !== "DEGRADED" && ingestRow?.scanStatus !== "HEALTHY");
+      const registryFailed = row.status === "error" && !String(row.last_error ?? "").startsWith("DEGRADED");
       const health = mailboxScanHealth({
         excluded: excludedRow,
         scanned: Boolean(ingestRow) || Boolean(row.last_attachment_scan_at),
         scanFailed: ingestFailed || (!ingestRow && registryFailed),
         lastScanAt: row.last_attachment_scan_at,
         graphFailed: row.graph_accessible === 0,
+        failures: Number(ingestRow?.failed ?? 0),
+        fetchFailed: Number(ingestRow?.failed ?? 0) > 0,
       });
-      const failed = !excludedRow && (health === "FAILED" || health === "COVERAGE_GAP" || ingestFailed);
+      const failed = !excludedRow && (health === "FAILED" || health === "COVERAGE_GAP");
       const checked = !excludedRow && !failed && (Boolean(ingestRow) || Boolean(row.last_attachment_scan_at));
       const folders = Array.isArray(ingestRow?.folders)
         ? ingestRow!.folders
@@ -93,6 +95,10 @@ async function collectMailboxChecks(
         excluded: excludedRow,
         checked,
         failed: failed || folders.some((folder) => folder.failed),
+        degraded: health === "DEGRADED",
+        filesFound: ingestRow?.attachmentsDiscovered != null ? Number(ingestRow.attachmentsDiscovered) : Number(ingestRow?.failed ?? 0) + Number(ingestRow?.attachmentsIndexed ?? 0) || null,
+        filesAdded: ingestRow?.attachmentsIndexed != null ? Number(ingestRow.attachmentsIndexed) : null,
+        filesRetrying: Number(ingestRow?.failed ?? 0) || null,
         rawError: excludedRow ? null : row.last_error,
         folders,
       });

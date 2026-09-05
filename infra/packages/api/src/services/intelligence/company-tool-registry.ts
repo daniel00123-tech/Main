@@ -8,6 +8,12 @@ import { INTELLIGENCE_TOOLS, permittedToolsForConnectors, toolFamilyOf } from ".
 import { authorizeToolCall, buildAllowedToolCatalogue } from "./tool-auth.js";
 import type { IntelligenceToolSpec } from "./types.js";
 import { classifyQueryFreshness } from "../warehouse/freshness.js";
+import {
+  isExclusiveCapabilitySwitch,
+  isExplicitCatalogueAsk,
+  isSemanticKnowledgeAsk,
+  minimumToolsForText,
+} from "./evidence-plan.js";
 
 export type PlatformCapability =
   | "EMAIL_SEARCH"
@@ -179,6 +185,8 @@ export function capabilityFamily(capability: PlatformCapability): string {
 }
 
 export function wantsMultiCapabilityRead(text: string): boolean {
+  if (isExclusiveCapabilitySwitch(text)) return false;
+  if (minimumToolsForText(text).length >= 2) return true;
   const families = new Set(detectRequestedCapabilities(text).map(capabilityFamily));
   families.delete("SYSTEM");
   families.delete("WEB");
@@ -203,25 +211,27 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
   const value = String(text ?? "");
   const found = new Set<PlatformCapability>();
   const email =
-    /\b(emails?|inbox|mailbox|outlook|unread mail)\b/i.test(value) ||
-    /\b(newest|latest|recent).{0,20}(emails?|mail|inbox|mailbox)\b/i.test(value);
+    /\b(emails?|emailed|inbox|mailbox|outlook|unread mail|remittance email|customer email)\b/i.test(value) ||
+    /\b(newest|latest|recent|most recent).{0,28}(emails?|mail|inbox|mailbox)\b/i.test(value);
   const mailboxScoped = /\b(inbox|mailbox|outlook|emails?)\b/i.test(value);
   const accountingCore =
     /\b(xero|sales|revenue|overdue|outstanding|p&l|pnl|profit|aged (receivable|payable)|top customers?)\b/i.test(value);
   const invoiceNoun = /\b(invoices?|invoiced)\b/i.test(value);
   const accounting = accountingCore || (invoiceNoun && !mailboxScoped);
-  const catalogue =
-    /\b(newest|latest|recent).{0,24}(file|document|onedrive|sharepoint)\b/i.test(value) ||
-    /\b(list|show).{0,16}(files|documents)\b/i.test(value) ||
-    /\bhow many (files|documents) are indexed\b/i.test(value);
+  const catalogue = isExplicitCatalogueAsk(value);
   const knowledge =
-    /\b(process|procedure|policy|handbook|guidance|how do we|company knowledge|onboarding|health and safety|what does (the|our) .{0,48}(say|mean|require)|find (the )?(document|policy|file) (about|on|for)|in (the|our) (policy|handbook|procedure))\b/i.test(
+    isSemanticKnowledgeAsk(value) ||
+    (/\b(process|procedure|policy|handbook|guidance|how do we|company knowledge|onboarding|health\s*(?:and|&)\s*safety|finance admin(?:istration)?(?:\s+guide)?|knowledge (?:base|document|file|doc)|admin (?:guide|structure)|srfm|what does (the|our) .{0,48}(say|mean|require)|find (the )?(document|policy|file) (about|on|for)|in (the|our) (policy|handbook|procedure))\b/i.test(
       value,
     ) &&
-    !catalogue &&
-    !(email && !/\b(policy|document|handbook|procedure|knowledge|guidance)\b/i.test(value));
+      !(email && !/\b(policy|document|handbook|procedure|knowledge|guidance|guide)\b/i.test(value)));
   const web = /\b(weather|forecast|public holiday|news headline)\b/i.test(value);
-  if (email) found.add(/\b(search|from|containing|about|look in)\b/i.test(value) ? "EMAIL_SEARCH" : "EMAIL_LIST");
+  if (email) {
+    const emailSearch =
+      /\b(search|from|containing|look in)\b/i.test(value) ||
+      /\b((email|inbox|mailbox).{0,24}about|about .{0,24}(email|inbox|mailbox))\b/i.test(value);
+    found.add(emailSearch ? "EMAIL_SEARCH" : "EMAIL_LIST");
+  }
   if (accounting && /\b(INV-|invoice (id|number)|find invoice)\b/i.test(value)) found.add("ACCOUNTING_INVOICE_GET");
   else if (accounting && /\b(overdue|outstanding|unpaid|search invoices|invoices with|po reference)\b/i.test(value)) {
     found.add("ACCOUNTING_INVOICE_SEARCH");
@@ -268,6 +278,20 @@ export function rewriteHistoricalAccountingTool(
   text: string,
   now = new Date(),
 ): { name: string; arguments: Record<string, unknown> } {
+  if (
+    /\bwarehouse\b/i.test(text) &&
+    name.startsWith("xero_") &&
+    name !== "xero_get_invoice" &&
+    name !== "xero_get_organisation"
+  ) {
+    if (name === "xero_top_customers" || /\b(top|highest-value) customers?\b/i.test(text)) {
+      return { name: "warehouse_customer_analysis", arguments: args };
+    }
+    if (name === "xero_search_invoices" || /\bhow many invoices\b/i.test(text)) {
+      return { name: "warehouse_invoice_analysis", arguments: args };
+    }
+    return { name: "warehouse_sales_analysis", arguments: { ...args, aggregation: args.aggregation ?? "sales_total" } };
+  }
   if (classifyQueryFreshness(text, now) !== "HISTORICAL_ANALYTICAL") {
     return { name, arguments: args };
   }

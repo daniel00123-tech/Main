@@ -1,8 +1,8 @@
 import { newId, nowIso } from "../../db/mappers";
-import { CUSTOMER_TRAFFIC_CLASS } from "./constants";
+import { CUSTOMER_TRAFFIC_CLASS, TEST_TRAFFIC_CLASS, type DailyTrafficClass } from "./constants";
 import { evidenceRefsOnly, stripSecrets } from "./redact";
 import { upsertInteraction } from "./store";
-import { classifyDailyTraffic, isGenuineCustomerTraffic, normalisePrompt } from "./traffic";
+import { classifyDailyTraffic, isGenuineCustomerTraffic, looksLikeAutomatedTestPrompt, normalisePrompt } from "./traffic";
 import type { DailyImprovementInteraction } from "./types";
 
 export { isGenuineCustomerTraffic } from "./traffic";
@@ -115,8 +115,18 @@ export async function reclassifyStoredInteractions(
   let updated = 0;
   for (const row of rows.results ?? []) {
     const message = row.user_message ? String(row.user_message) : null;
+    const stored = row.traffic_class ? String(row.traffic_class).toUpperCase() : "";
+    const lockedNonCustomer =
+      stored === "SHADOW" ||
+      stored === "QUALITY" ||
+      stored === "INTERNAL" ||
+      stored === "AUTOMATION" ||
+      stored === "HEALTH" ||
+      stored === "ENGINEERING";
+    const key = normalisePrompt(message);
+    const repeated = key.length >= 16 && (promptCounts.get(key) ?? 0) >= 3;
     let next = classifyDailyTraffic({
-      trafficClass: row.traffic_class ? String(row.traffic_class) : null,
+      trafficClass: lockedNonCustomer ? stored : stored === "CUSTOMER_REQUEST" ? CUSTOMER_TRAFFIC_CLASS : null,
       sourceClient: row.source_client ? String(row.source_client) : null,
       userMessage: message,
       customerChargeCents: row.customer_charge_cents != null ? Number(row.customer_charge_cents) : null,
@@ -124,9 +134,16 @@ export async function reclassifyStoredInteractions(
       providerMode: row.provider_mode ? String(row.provider_mode) : null,
       userId: row.user_id ? String(row.user_id) : null,
     });
-    const key = normalisePrompt(message);
-    if (next === CUSTOMER_TRAFFIC_CLASS && key.length >= 16 && (promptCounts.get(key) ?? 0) >= 3) {
-      next = "TEST";
+    if (stored === TEST_TRAFFIC_CLASS) {
+      const uniqueLiveUser =
+        Boolean(row.user_id) &&
+        !looksLikeAutomatedTestPrompt(message) &&
+        !repeated &&
+        /portal|whatsapp|chatgpt/i.test(String(row.source_client ?? ""));
+      next = uniqueLiveUser ? CUSTOMER_TRAFFIC_CLASS : TEST_TRAFFIC_CLASS;
+    }
+    if (next === CUSTOMER_TRAFFIC_CLASS && repeated) {
+      next = TEST_TRAFFIC_CLASS;
     }
     await db
       .prepare(`UPDATE daily_improvement_interactions SET traffic_class = ? WHERE interaction_id = ?`)
@@ -200,7 +217,7 @@ async function backfillUsageParentsForSource(
       .prepare(
         `SELECT interaction_id, company_id, user_id, source_client, tool_name, action,
                 duration_ms, customer_charge_cents, underlying_cost_cents, correlation_id,
-                recorded_at, metadata
+                recorded_at, metadata_json, actor_email, parent_request_id
          FROM usage_records
          WHERE recorded_at >= ? AND recorded_at < ?
            AND interaction_id IS NOT NULL
@@ -213,7 +230,9 @@ async function backfillUsageParentsForSource(
       .bind(fromIso, toIso, sourceClient, sourceClient)
       .all<Record<string, unknown>>();
     for (const row of rows.results ?? []) {
-      const meta = safeMeta(row.metadata);
+      const meta = safeMeta(row.metadata_json);
+      const classified = classifyHistoricalUsageRow(row, meta);
+      if (classified === null) continue;
       await recordDailyImprovementInteraction(db, {
         interactionId: String(row.interaction_id),
         companyId: String(row.company_id),
@@ -229,9 +248,9 @@ async function backfillUsageParentsForSource(
         correlationId: row.correlation_id ? String(row.correlation_id) : null,
         terminalState: typeof meta.outcome === "string" ? meta.outcome : null,
         userMessage: typeof meta.summary === "string" ? meta.summary : null,
-        trafficClass: typeof meta.trafficClass === "string" ? meta.trafficClass : undefined,
+        trafficClass: classified,
         sourceClient: String(row.source_client ?? ""),
-        actorEmail: typeof meta.actorEmail === "string" ? meta.actorEmail : null,
+        actorEmail: row.actor_email ? String(row.actor_email) : typeof meta.actorEmail === "string" ? meta.actorEmail : null,
         wamid: typeof meta.wamid === "string" ? meta.wamid : null,
       });
       stored += 1;
@@ -240,6 +259,97 @@ async function backfillUsageParentsForSource(
     return stored;
   }
   return stored;
+}
+
+function classifyHistoricalUsageRow(
+  row: Record<string, unknown>,
+  meta: Record<string, unknown>,
+): DailyTrafficClass | null | undefined {
+  const wamid = String(meta.wamid ?? "");
+  const source = String(row.source_client ?? "").toLowerCase();
+  if (
+    meta.isTestConfig === true ||
+    /InfraAcceptance|WhatsAppQA|QualityLoop|e2e-probe|acceptance/i.test(
+      `${meta.userAgent ?? ""} ${meta.trafficClass ?? ""} ${row.actor_email ?? ""} ${row.tool_name ?? ""}`,
+    ) ||
+    looksLikeAutomatedTestPrompt(typeof meta.summary === "string" ? meta.summary : null)
+  ) {
+    return TEST_TRAFFIC_CLASS;
+  }
+  if (/^wamid\.HBg/i.test(wamid)) return CUSTOMER_TRAFFIC_CLASS;
+  if (source === "whatsapp") return null;
+  return undefined;
+}
+
+export async function reconcileWhatsAppHistorical(
+  db: D1Database,
+  fromIso: string,
+  toIso: string,
+): Promise<{
+  totalParents: number;
+  classifiedCustomer: number;
+  classifiedTest: number;
+  ambiguous: number;
+  backfilled: number;
+  remainingLegacy: number;
+}> {
+  const parents = await db
+    .prepare(
+      `SELECT COUNT(DISTINCT interaction_id) AS n
+       FROM usage_records
+       WHERE recorded_at >= ? AND recorded_at < ? AND source_client = 'whatsapp' AND interaction_id IS NOT NULL`,
+    )
+    .bind(fromIso, toIso)
+    .first<{ n: number }>();
+  const inbound = await db
+    .prepare(
+      `SELECT wamid, inbound_text, sender_e164, received_at
+       FROM whatsapp_inbound_events
+       WHERE received_at >= ? AND received_at < ? AND wamid LIKE 'wamid.HBg%'`,
+    )
+    .bind(fromIso, toIso)
+    .all<{ wamid: string; inbound_text: string | null; sender_e164: string | null; received_at: string }>();
+  let classifiedCustomer = 0;
+  let classifiedTest = 0;
+  for (const row of inbound.results ?? []) {
+    const test = looksLikeAutomatedTestPrompt(row.inbound_text);
+    const trafficClass = test ? TEST_TRAFFIC_CLASS : CUSTOMER_TRAFFIC_CLASS;
+    if (test) classifiedTest += 1;
+    else classifiedCustomer += 1;
+    await recordDailyImprovementInteraction(db, {
+      interactionId: row.wamid,
+      companyId: "co_el",
+      channel: "whatsapp",
+      createdAt: row.received_at,
+      userMessage: row.inbound_text,
+      trafficClass,
+      sourceClient: "whatsapp",
+      wamid: row.wamid,
+      actorEmail: null,
+    });
+  }
+  const usageBackfill = await backfillUsageParentsForSource(db, fromIso, toIso, "whatsapp");
+  const daily = await db
+    .prepare(
+      `SELECT COALESCE(traffic_class,'NULL') AS traffic_class, COUNT(*) AS n
+       FROM daily_improvement_interactions
+       WHERE created_at >= ? AND created_at < ? AND channel = 'whatsapp'
+       GROUP BY traffic_class`,
+    )
+    .bind(fromIso, toIso)
+    .all<{ traffic_class: string; n: number }>();
+  const customer = Number(daily.results?.find((row) => row.traffic_class === "CUSTOMER_REQUEST")?.n ?? 0);
+  const test = Number(daily.results?.find((row) => row.traffic_class === "TEST")?.n ?? 0);
+  const totalParents = Number(parents?.n ?? 0);
+  const remainingLegacy = Math.max(0, totalParents - customer - test);
+  return {
+    totalParents,
+    classifiedCustomer: customer,
+    classifiedTest: test,
+    ambiguous: remainingLegacy,
+    backfilled: usageBackfill + classifiedCustomer + classifiedTest,
+    remainingLegacy,
+  };
 }
 
 function safeMeta(raw: unknown): Record<string, unknown> {

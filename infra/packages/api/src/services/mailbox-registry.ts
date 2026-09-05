@@ -354,6 +354,7 @@ export async function markMailboxScanResult(
     success: boolean;
     graphAccessible?: boolean | null;
     error?: string | null;
+    warning?: string | null;
     messagesScanned?: number | null;
   },
 ): Promise<void> {
@@ -381,7 +382,7 @@ export async function markMailboxScanResult(
       input.messagesScanned == null ? null : input.messagesScanned,
       input.messagesScanned == null ? null : input.messagesScanned,
       input.graphAccessible == null ? null : input.graphAccessible ? 1 : 0,
-      input.success ? null : input.error ?? "scan failed",
+      input.success ? input.warning ?? null : input.error ?? "scan failed",
       input.success ? 1 : 0,
       now,
       input.companyId,

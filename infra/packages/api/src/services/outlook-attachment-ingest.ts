@@ -11,7 +11,7 @@ import {
 import type { Env } from "../env";
 import { listMcpEnvironments } from "./control-plane";
 import { nowIso } from "../db/mappers";
-import { recordKnowledgeIngestionEvent } from "./knowledge-ingestion-events";
+import { listFailedMailboxAttachmentEvents, recordKnowledgeIngestionEvent } from "./knowledge-ingestion-events";
 import { discoverKnowledgeIntakeTarget, storeOriginalInKnowledgeIntake } from "./knowledge-intake";
 import { runProductionKnowledgeSearch } from "./microsoft-acceptance-knowledge-search";
 import {
@@ -700,6 +700,15 @@ async function verifyIndexedDocumentRetrievable(
   } catch (err) {
     return { ok: false, hitCount: 0, reason: err instanceof Error ? err.message : "retrieval verify failed" };
   }
+}
+
+export function isMailboxBlockingFailure(code: string | null | undefined): boolean {
+  return (
+    code === "FETCH_FAILED" ||
+    code === "FETCH_TRANSIENT" ||
+    code === "ATTACHMENT_ENUM_FAILED" ||
+    code === "MCP_UNAVAILABLE"
+  );
 }
 
 async function ingestOneAttachment(
@@ -1440,7 +1449,7 @@ export async function ingestApprovedOutlookAttachments(
           counts.attachmentsFetched += 1;
           if (result.storedThisRun) counts.attachmentsStored += 1;
           counts.failed += 1;
-          mailboxFailures += 1;
+          if (isMailboxBlockingFailure(result.failureCode)) mailboxFailures += 1;
         }
         attachmentSummaries.push({
           messageId: message.id,
@@ -1462,10 +1471,10 @@ export async function ingestApprovedOutlookAttachments(
       if (when && (!latestCheckpoint || when > latestCheckpoint)) latestCheckpoint = when;
     }
 
-    const scanOk = mailboxFailures === 0;
+    const scanCompleted = true;
     const health = mailboxScanHealth({
       scanned: true,
-      scanFailed: !scanOk && mailboxFailures === 0 && !provenEmpty,
+      scanFailed: !scanCompleted,
       graphFailed: !graph && Boolean(discoverError),
       fetchFailed: mailboxFailures > 0,
       messagesScanned,
@@ -1475,28 +1484,32 @@ export async function ingestApprovedOutlookAttachments(
     await markMailboxScanResult(env.DB, {
       companyId: input.companyId,
       mailboxAddress: mailbox.mailbox_address,
-      checkpoint: scanOk ? latestCheckpoint : null,
-      success: scanOk,
+      checkpoint: scanCompleted ? latestCheckpoint : null,
+      success: scanCompleted,
       graphAccessible: Boolean(graph),
-      error: scanOk ? null : errorCode || discoverError || `attachment ingest incomplete (${mailboxFailures} failed)`,
+      warning:
+        scanCompleted && mailboxFailures > 0
+          ? `DEGRADED: ${mailboxFailures} attachments will be retried`
+          : null,
+      error: scanCompleted ? null : errorCode || discoverError || "mailbox scan failed",
       messagesScanned,
     });
     mailboxReports.push({
       mailboxAddress: mailbox.mailbox_address,
       mailboxType: mailbox.mailbox_type,
-      ok: scanOk,
+      ok: scanCompleted,
       scanned: true,
-      scanFailed: !scanOk,
+      scanFailed: !scanCompleted,
       scanStatus: health,
       discoverVia,
       graphAccessible: Boolean(graph),
       graphNote: discoverError,
-      errorCode: scanOk ? null : errorCode,
+      errorCode: scanCompleted ? null : errorCode,
       messagesScanned,
       scannedLabel: formatMailboxScanCount({
         health,
         messagesScanned,
-        errorCode: scanOk ? null : errorCode,
+        errorCode: scanCompleted ? null : errorCode,
       }),
       provenEmpty,
       messagesWithAttachments: messages.length,
@@ -1631,4 +1644,115 @@ async function buildNamedPersonReports(
     });
   }
   return reports;
+}
+
+export async function retryFailedOutlookAttachments(
+  env: Env,
+  input: { companyId: string; mailboxAddresses: string[]; actor?: string; limit?: number },
+): Promise<{
+  retried: number;
+  succeeded: number;
+  stillFailed: number;
+  items: Array<{ filename: string | null; mailboxAddress: string | null; status: string; reason: string | null }>;
+}> {
+  const actor = input.actor ?? "system:mailbox-attachment-retry";
+  const mailboxes = await listApprovedAttachmentMailboxes(env.DB, input.companyId);
+  const wanted = new Map(mailboxes.map((row) => [row.mailbox_address.toLowerCase(), row]));
+  const failed = await listFailedMailboxAttachmentEvents(env.DB, {
+    companyId: input.companyId,
+    mailboxAddresses: input.mailboxAddresses,
+    limit: input.limit ?? 80,
+  });
+  const graphByMailbox = new Map<string, { accessToken: string; tenantId: string } | null>();
+  const items: Array<{ filename: string | null; mailboxAddress: string | null; status: string; reason: string | null }> = [];
+  let succeeded = 0;
+  let stillFailed = 0;
+  for (const row of failed) {
+    const address = String(row.mailbox_address ?? "").toLowerCase();
+    const mailbox = wanted.get(address);
+    if (!mailbox) {
+      items.push({ filename: row.filename, mailboxAddress: row.mailbox_address, status: "skipped", reason: "mailbox not approved" });
+      continue;
+    }
+    if (!graphByMailbox.has(address)) {
+      graphByMailbox.set(
+        address,
+        await resolveOutlookGraphAccess(env, { companyId: input.companyId, mailboxAddress: mailbox.mailbox_address }).catch(
+          () => null,
+        ),
+      );
+    }
+    const graph = graphByMailbox.get(address) ?? null;
+    const provider = String(row.provider_item_id ?? "");
+    const [messageId, attachmentId] = provider.includes("|") ? provider.split("|") : [row.parent_message_id ?? provider, ""];
+    if (!messageId) {
+      items.push({ filename: row.filename, mailboxAddress: row.mailbox_address, status: "still_failed", reason: "missing message id" });
+      stillFailed += 1;
+      continue;
+    }
+    const listed = await listAttachmentsForMessage(env, {
+      companyId: input.companyId,
+      mailboxAddress: mailbox.mailbox_address,
+      messageId,
+      actor,
+      graph,
+    });
+    const targets = listed.attachments.filter((item) => !attachmentId || item.id === attachmentId);
+    if (!targets.length) {
+      items.push({
+        filename: row.filename,
+        mailboxAddress: row.mailbox_address,
+        status: "still_failed",
+        reason: listed.via || "attachment not listed",
+      });
+      stillFailed += 1;
+      continue;
+    }
+    for (const attachment of targets) {
+      const message: GraphMailMessageDetail = {
+        id: messageId,
+        subject: row.filename ?? null,
+        bodyPreview: null,
+        from: null,
+        sender: null,
+        toRecipients: [],
+        ccRecipients: [],
+        receivedDateTime: row.source_modified_at ?? null,
+        sentDateTime: null,
+        conversationId: null,
+        internetMessageId: null,
+        hasAttachments: true,
+        webLink: null,
+        parentFolderId: null,
+      };
+      const result = await ingestOneAttachment(env, {
+        companyId: input.companyId,
+        mailbox,
+        message,
+        attachment,
+        actor,
+        graph,
+        tenantId: graph?.tenantId ?? null,
+        recoverExisting: true,
+      });
+      if (result.status === "failed") {
+        stillFailed += 1;
+        items.push({
+          filename: attachment.name ?? row.filename,
+          mailboxAddress: row.mailbox_address,
+          status: "still_failed",
+          reason: result.failureCode ?? result.skipReason,
+        });
+      } else {
+        succeeded += 1;
+        items.push({
+          filename: attachment.name ?? row.filename,
+          mailboxAddress: row.mailbox_address,
+          status: result.status,
+          reason: result.skipReason,
+        });
+      }
+    }
+  }
+  return { retried: failed.length, succeeded, stillFailed, items };
 }
