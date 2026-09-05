@@ -21,6 +21,8 @@ import {
   emailBodyRequired,
   emailEvidenceHasBody,
   argsFingerprint,
+  requestScopedToolKey,
+  outlookSearchArgsOverlap,
 } from "./evidence.js";
 import type { IntelligenceCompleter } from "./provider.js";
 import { applyGuardToTurn } from "./response-guard.js";
@@ -37,7 +39,7 @@ import { classifyScope, persistableScope, type ScopeDecision } from "./scope.js"
 import { formatConversationState } from "./state.js";
 import { advertisedMissingConnector, inventedCount, verbaliseSystemMeta } from "./system-meta.js";
 import { parseCatalogueIntent, verbaliseDocumentCatalogue } from "../document-catalogue.js";
-import { minimumToolsForText } from "./evidence-plan.js";
+import { isPeriodCorrection, knowledgeQueryFromText, minimumToolsForText } from "./evidence-plan.js";
 import { enrichDocumentQuery, previousUserText } from "./query-enrichment.js";
 import { needsBusinessDates, withResolvedBusinessDates } from "./periods.js";
 import { classifyQueryFreshness } from "../warehouse/freshness.js";
@@ -327,6 +329,7 @@ async function executeIntelligenceTurn(input: {
     scoped.scope !== "BUSINESS_SYSTEM" &&
     scoped.scope !== "CONTROLLED_ACTION" &&
     scoped.scope !== "CONNECTOR_CAPABILITY" &&
+    !isPeriodCorrection(input.text) &&
     (input.state.userCorrection || (scoped.scope === "COMPANY_KNOWLEDGE" && scoped.clearCurrentDocument))
   ) {
     const priorUser =
@@ -453,12 +456,8 @@ async function executeIntelligenceTurn(input: {
       recentEvidence = mergeEvidence(recentEvidence, extractEvidenceFromTools(read.toolCalls));
       workingState.recentEvidence = recentEvidence;
       toolCalls.push(...read.toolCalls);
-      if (read.ok && read.text) deterministicVerbalise = read.text;
-      const warehouseAnswered =
-        read.ok &&
-        read.toolCalls.some((call) => call.ok && call.name.startsWith("warehouse_")) &&
-        classifyQueryFreshness(input.text) === "HISTORICAL_ANALYTICAL";
-      if (!brain.policy.useOpenAi || warehouseAnswered || (read.ok && wantsMultiCapabilityRead(input.text))) {
+      if (read.text) deterministicVerbalise = read.text;
+      if (read.text) {
         return finishTurn({
           kind: read.ok ? "answer" : "failed",
           text: read.text,
@@ -1095,7 +1094,7 @@ function prepareToolArguments(
     next = withResolvedBusinessDates(name, next, text);
   }
   if (name === "search_company_knowledge" || name === "search") {
-    next.query = String(next.query ?? next.q ?? "").trim() || text.trim();
+    next.query = String(next.query ?? next.q ?? "").trim() || knowledgeQueryFromText(text);
     return next;
   }
   if (name === "outlook_list_messages" || name === "outlook_search_mailbox" || name === "outlook_get_message") {
@@ -1240,13 +1239,18 @@ function wrapAuthorizedRuntime(
   ctx: { role?: string | null; companyId?: string | null; connectors: string[]; permittedTools: string[]; channel?: string | null },
 ): IntelligenceRuntime {
   const cache = new Map<string, IntelligenceToolResult>();
+  const outlookSearches: Array<{ args: Record<string, unknown>; result: IntelligenceToolResult }> = [];
   return {
     async executeTool(call) {
       const auth = authorizeToolCall(ctx, call);
       if (!auth.allowed) return deniedToolResult(call, auth);
-      const key = `${ctx.companyId ?? ""}:${argsFingerprint(call.name, call.arguments)}`;
+      const key = requestScopedToolKey(ctx.companyId, call.name, call.arguments);
       const hit = cache.get(key);
       if (hit?.ok) return { ...hit, latencyMs: 0 };
+      if (call.name === "outlook_search_mailbox") {
+        const prior = outlookSearches.find((row) => row.result.ok && outlookSearchArgsOverlap(row.args, call.arguments));
+        if (prior) return { ...prior.result, latencyMs: 0 };
+      }
       if (call.name === "web_search") {
         const executed = await runtime.executeTool(call).catch(() => null);
         if (!executed || executed.error === "tool_not_permitted") return executePublicWebSearch(call);
@@ -1254,7 +1258,12 @@ function wrapAuthorizedRuntime(
         return executed;
       }
       const executed = await runtime.executeTool(call);
-      if (executed.ok) cache.set(key, executed);
+      if (executed.ok) {
+        cache.set(key, executed);
+        if (call.name === "outlook_search_mailbox") {
+          outlookSearches.push({ args: call.arguments, result: executed });
+        }
+      }
       return executed;
     },
   };
@@ -1343,7 +1352,7 @@ async function runDeterministicRead(
         if (name.startsWith("xero_") || name.startsWith("warehouse_")) return 0;
         if (name.startsWith("outlook_")) return 1;
         if (name === "list_documents") return 2;
-        if (name.includes("knowledge")) return 3;
+        if (/knowledge|search_document|^search$/.test(name)) return 3;
         return 4;
       };
       return rank(left) - rank(right);
@@ -1390,7 +1399,7 @@ async function runDeterministicRead(
       };
     }
   }
-  if (emailBodyRequired(text) && !emailEvidenceHasBody(state.recentEvidence)) {
+  if (emailBodyRequired(text) && /outlook/i.test(toolName) && !emailEvidenceHasBody(state.recentEvidence)) {
     const knownId = String(state.recentEvidence?.recentEmail?.id ?? "").trim();
     if (knownId) {
       const fetched = await runtime.executeTool({

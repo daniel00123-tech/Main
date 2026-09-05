@@ -51,7 +51,7 @@ export function emailBodyRequired(text: string): boolean {
   if (/\b(subject|who sent|when (did|was)|latest email subject|newest email subject)\b/i.test(text)) {
     return false;
   }
-  if (/\b(policy|document|handbook|procedure|guidance|knowledge base)\b/i.test(text) && !/\b(email|inbox|mailbox|outlook|message)\b/i.test(text)) {
+  if (/\b(policy|document|handbook|procedure|guidance|knowledge base|xero|sales summary|warehouse|overdue|invoice)\b/i.test(text) && !/\b(email|inbox|mailbox|outlook|message)\b/i.test(text)) {
     return false;
   }
   if (
@@ -179,6 +179,47 @@ export function argsFingerprint(name: string, args: Record<string, unknown>): st
     .map((key) => `${key}=${stable(args[key])}`)
     .join("&");
   return `${name}:${keys}`.slice(0, 240);
+}
+
+function distinctiveArgTokens(value: string): string[] {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9@._\s-]+/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 2 && !/^(the|and|for|from|with|about|any|inbox|mailbox|search|please|once)$/.test(token));
+}
+
+export function requestScopedToolKey(companyId: string | null | undefined, name: string, args: Record<string, unknown>): string {
+  const company = String(companyId ?? "");
+  if (name === "xero_get_invoice") {
+    const invoice = String(args.invoiceNumber ?? args.invoiceId ?? args.invoice_id ?? "")
+      .trim()
+      .toUpperCase();
+    if (invoice) return `${company}:${name}:${invoice}`;
+  }
+  if (name === "outlook_search_mailbox") {
+    return `${company}:${name}:${String(args.mailboxAddress ?? "").toLowerCase()}`;
+  }
+  if (name === "outlook_list_messages") {
+    return `${company}:${name}:${String(args.mailboxAddress ?? "").toLowerCase()}:${String(args.limit ?? "")}`;
+  }
+  if (name === "search_company_knowledge" || name === "search") {
+    return `${company}:knowledge:${distinctiveArgTokens(String(args.query ?? "")).sort().join(" ")}`;
+  }
+  if (name.startsWith("warehouse_")) {
+    return `${company}:${name}:${String(args.fromDate ?? "")}:${String(args.toDate ?? "")}:${String(args.aggregation ?? "")}`;
+  }
+  return `${company}:${argsFingerprint(name, args)}`;
+}
+
+export function outlookSearchArgsOverlap(previous: Record<string, unknown>, next: Record<string, unknown>): boolean {
+  const prevMailbox = String(previous.mailboxAddress ?? "").toLowerCase();
+  const nextMailbox = String(next.mailboxAddress ?? "").toLowerCase();
+  if (prevMailbox && nextMailbox && prevMailbox !== nextMailbox) return false;
+  const prevTokens = distinctiveArgTokens(String(previous.query ?? ""));
+  const nextTokens = distinctiveArgTokens(String(next.query ?? ""));
+  if (!prevTokens.length || !nextTokens.length) return true;
+  return nextTokens.some((token) => prevTokens.includes(token));
 }
 
 export function shouldReuseSuccessfulTool(

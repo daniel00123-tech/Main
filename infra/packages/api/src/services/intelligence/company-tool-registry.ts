@@ -8,7 +8,12 @@ import { INTELLIGENCE_TOOLS, permittedToolsForConnectors, toolFamilyOf } from ".
 import { authorizeToolCall, buildAllowedToolCatalogue } from "./tool-auth.js";
 import type { IntelligenceToolSpec } from "./types.js";
 import { classifyQueryFreshness } from "../warehouse/freshness.js";
-import { isExplicitCatalogueAsk, isSemanticKnowledgeAsk, minimumToolsForText } from "./evidence-plan.js";
+import {
+  isExclusiveCapabilitySwitch,
+  isExplicitCatalogueAsk,
+  isSemanticKnowledgeAsk,
+  minimumToolsForText,
+} from "./evidence-plan.js";
 
 export type PlatformCapability =
   | "EMAIL_SEARCH"
@@ -180,6 +185,7 @@ export function capabilityFamily(capability: PlatformCapability): string {
 }
 
 export function wantsMultiCapabilityRead(text: string): boolean {
+  if (isExclusiveCapabilitySwitch(text)) return false;
   if (minimumToolsForText(text).length >= 2) return true;
   const families = new Set(detectRequestedCapabilities(text).map(capabilityFamily));
   families.delete("SYSTEM");
