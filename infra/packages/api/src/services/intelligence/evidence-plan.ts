@@ -27,7 +27,7 @@ const MONTH_NAME =
 const EXPLICIT_CATALOGUE =
   /\b((newest|latest|recent).{0,28}(file|document|pdf|onedrive|sharepoint|indexed file|filename)|list (the )?(newest |recent )?(files|documents)|recent documents|newest document filename|how many (files|documents) are indexed)\b/i;
 const EMAIL_ASK =
-  /\b(emails?|emailed|inbox|mailbox|outlook|unread mail|remittance email|customer email|(the|their) messages?)\b/i;
+  /\b(emails?|emailed|inbox|mailbox|outlook|unread mail|remittance email|customer email|(the|their) messages?|info@|finance@|(latest|newest|most recent) .{0,28}messages?)\b/i;
 const ACCOUNTING_ASK =
   /\b(xero|sales|revenue|overdue|outstanding|p&l|pnl|invoice|aged (receivable|payable)|top customers?|warehouse)\b/i;
 const REJECTS_FINANCE = /\bnot (xero|the ledger|finance)\b/i;

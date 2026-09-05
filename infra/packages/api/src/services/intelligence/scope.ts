@@ -84,7 +84,7 @@ const CONNECTOR =
 const FINANCE =
   /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables|who owes|top customers?|biggest customers?)\b/i;
 const EMAIL =
-  /\b(emails?|emailed|emials|emaills|mailbox|outlook|inbox|any mail|e-mails?|(the|their) messages?)\b/i;
+  /\b(emails?|emailed|emials|emaills|mailbox|outlook|inbox|any mail|e-mails?|(the|their) messages?|info@|finance@|(latest|newest|most recent) .{0,28}messages?)\b/i;
 const WRITE =
   /\b(create (an? )?(invoice|bill|credit)|approve |send(?: this| the)? invoice|delete |void |allocate |raise an invoice|write to|update (the )?(invoice|bill|contact)|credit note)\b/i;
 const FIND =
