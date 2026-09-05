@@ -22,6 +22,7 @@ export function sanitisePublicWebQuery(text: string): string {
     .replace(/\bINV-\d+\b/gi, "")
     .replace(/["“”][^"“”]{80,}["“”]/g, "")
     .replace(/\b(confidential|internal only|do not circulate)\b/gi, "")
+    .replace(/\b(xero|outlook|sharepoint|onedrive|company knowledge|holiday entitlement)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 180);
@@ -87,6 +88,17 @@ export async function executePublicWebSearch(call: IntelligenceToolCall): Promis
         snippet: String(row.Text ?? "").slice(0, 240),
         url: typeof row.FirstURL === "string" ? row.FirstURL : null,
       }));
+    let heading = typeof raw.Heading === "string" ? raw.Heading : "";
+    let abstract = typeof raw.AbstractText === "string" ? raw.AbstractText : "";
+    const citations = results.map((row) => row.url).filter(Boolean);
+    if (/\b(weather|forecast|temperature)\b/i.test(query) && !abstract) {
+      const weather = await fetchPublicWeather(query);
+      if (weather) {
+        heading = heading || weather.heading;
+        abstract = weather.abstract;
+        if (weather.url) citations.unshift(weather.url);
+      }
+    }
     return {
       name: "web_search",
       ok: true,
@@ -95,10 +107,10 @@ export async function executePublicWebSearch(call: IntelligenceToolCall): Promis
         source: "public_web",
         external: true,
         query,
-        heading: typeof raw.Heading === "string" ? raw.Heading : "",
-        abstract: typeof raw.AbstractText === "string" ? raw.AbstractText : "",
+        heading,
+        abstract,
         results,
-        citations: results.map((row) => row.url).filter(Boolean),
+        citations: [...new Set(citations)],
       },
     };
   } catch {
@@ -109,5 +121,32 @@ export async function executePublicWebSearch(call: IntelligenceToolCall): Promis
       data: null,
       error: "timeout",
     };
+  }
+}
+
+async function fetchPublicWeather(query: string): Promise<{ heading: string; abstract: string; url: string } | null> {
+  const place = query.replace(/\b(weather|forecast|temperature|tomorrow|today|like)\b/gi, " ").replace(/\s+/g, " ").trim() || "United Kingdom";
+  const url = `https://wttr.in/${encodeURIComponent(place)}?format=j1`;
+  try {
+    const response = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "INFRA-public-weather/1.0" } });
+    if (!response.ok) return null;
+    const raw = (await response.json()) as {
+      nearest_area?: Array<{ areaName?: Array<{ value?: string }> }>;
+      weather?: Array<{ date?: string; hourly?: Array<{ tempC?: string; weatherDesc?: Array<{ value?: string }> }> }>;
+      current_condition?: Array<{ temp_C?: string; weatherDesc?: Array<{ value?: string }> }>;
+    };
+    const area = raw.nearest_area?.[0]?.areaName?.[0]?.value || place;
+    const tomorrow = raw.weather?.[1] ?? raw.weather?.[0];
+    const hour = tomorrow?.hourly?.[4] ?? tomorrow?.hourly?.[0];
+    const desc = hour?.weatherDesc?.[0]?.value || raw.current_condition?.[0]?.weatherDesc?.[0]?.value;
+    const temp = hour?.tempC || raw.current_condition?.[0]?.temp_C;
+    if (!desc && !temp) return null;
+    return {
+      heading: `${area} public weather`,
+      abstract: [desc, temp ? `${temp}°C` : "", tomorrow?.date ? `for ${tomorrow.date}` : ""].filter(Boolean).join(", "),
+      url: `https://wttr.in/${encodeURIComponent(place)}`,
+    };
+  } catch {
+    return null;
   }
 }

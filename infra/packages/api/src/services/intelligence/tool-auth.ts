@@ -1,6 +1,6 @@
 import { elvexAllowsAction, isElvexRole } from "@infra/shared";
 import { INTELLIGENCE_TOOL_NAMES, permittedToolsForConnectors } from "./catalogue.js";
-import { isPrivateBusinessWebQuery } from "./web-search.js";
+import { isPrivateBusinessWebQuery, sanitisePublicWebQuery } from "./web-search.js";
 import type { IntelligenceToolCall } from "./types.js";
 
 export type ToolAuthContext = {
@@ -45,7 +45,8 @@ export function authorizeToolCall(ctx: ToolAuthContext, call: IntelligenceToolCa
     return { allowed: false, reason: "not_in_preauth_catalogue", capability: capabilityForTool(name) };
   }
   if (name === "web_search") {
-    if (isPrivateBusinessWebQuery(String(call.arguments.query ?? call.arguments.q ?? ""))) {
+    const query = sanitisePublicWebQuery(String(call.arguments.query ?? call.arguments.q ?? ""));
+    if (isPrivateBusinessWebQuery(query)) {
       return { allowed: false, reason: "private_systems_outrank_public_web", capability: "web.public" };
     }
     return { allowed: true, reason: "public_web", capability: "web.public" };
@@ -54,6 +55,15 @@ export function authorizeToolCall(ctx: ToolAuthContext, call: IntelligenceToolCa
 }
 
 export function deniedToolResult(call: IntelligenceToolCall, decision: ToolAuthDecision) {
+  if (decision.reason === "private_systems_outrank_public_web") {
+    return {
+      name: call.name,
+      ok: false as const,
+      latencyMs: 0,
+      data: { error: "private_systems_outrank_public_web", reason: decision.reason },
+      error: "private_systems_outrank_public_web",
+    };
+  }
   return {
     name: call.name,
     ok: false as const,
