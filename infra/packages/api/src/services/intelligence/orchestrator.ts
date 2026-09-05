@@ -2,6 +2,13 @@ import { businessToolForIntent, ELVEX_FINANCE_MAILBOXES, resolveBusinessSystemIn
 import { CURRENT_BUSINESS_DATA_PROTOCOL, describeToolCatalogue, INTELLIGENCE_TOOL_NAMES, SYSTEM_META_TOOLS } from "./catalogue.js";
 import { authorizeToolCall, buildAllowedToolCatalogue, deniedToolResult } from "./tool-auth.js";
 import { executePublicWebSearch, looksLikePublicWebAsk, verbaliseWebSearch, webSearchQuery } from "./web-search.js";
+import {
+  classifyToolSufficiency,
+  loadCompanyRecipes,
+  recipeHintsForPrompt,
+  recordRecipeOutcome,
+  type RecipeDb,
+} from "./solution-recipes.js";
 import { classifyTurnFailures } from "./failure-telemetry.js";
 import { persistEngineeringFailures } from "./dev-failure-queue.js";
 import { isElvexRole } from "@infra/shared";
@@ -67,11 +74,13 @@ import type {
   IntelligenceTurnResult,
 } from "./types.js";
 
-export const MAX_TOOL_ROUNDS = 4;
+export const MAX_TOOL_ROUNDS = 6;
 
 export type { IntelligenceDecision };
 
-const SECURITY_AND_PROTOCOL = `You are INFRA's assistant. Scope first, then tools.
+const SECURITY_AND_PROTOCOL = `You are INFRA's assistant. Deterministic controls, probabilistic intelligence.
+Cloudflare already enforced identity, tenant, RBAC, billing and tool execution. You are the reasoning brain.
+Understand the goal, inspect available context and the tenant-safe capability catalogue, plan dynamically, use only permitted tools, inspect evidence, and recover if the first route is insufficient.
 Current document is context, not a command to always search it.
 ${CURRENT_BUSINESS_DATA_PROTOCOL}
 Conversational turns (thanks, meaning, rephrase, what were we talking about) need no tools.
@@ -81,11 +90,15 @@ Search company knowledge to find or compare documents by meaning.
 Use list_documents for newest/latest/uploaded/recently modified file lists — never substitute semantic search.
 Use Xero or email only when asked and those systems are connected.
 Use web_search only for live public information (weather, public news, public websites). Never for private Xero, emails, SharePoint, or internal procedures.
-After each tool, decide ENOUGH_TO_ANSWER vs NEEDS_MORE_INFORMATION. Compound questions may need a second authorised read (for example this month and last month).
+After each tool, classify SUFFICIENT / PARTIAL / INSUFFICIENT / FAILED. If insufficient, try another sensible permitted source (documents, catalogue, mailbox, live Xero, warehouse, or web) before saying you cannot find it.
 Do not repeat a successful tool with the same arguments. Business/private systems outrank public web.
-Clarify if ambiguous. Honour corrections and scope switches. Never invent facts, counts, or URLs.
+Clarification is last resort: only ask when multiple interpretations materially change the outcome and tools cannot resolve it.
+If a month is named without a year, use the most recently completed such month in Europe/London. Do not ask which year.
+If a public weather or news question omits a city, default to the United Kingdom and call web_search. Do not ask for a location first.
+If authorised recent evidence already contains the facts, synthesise the answer from that evidence. Do not re-ask the user.
+Honour corrections and scope switches. Never invent facts, counts, prices, or URLs.
 No D1, Vectorize, or MCP jargon unless an authorised admin asks a technical ops question.
-Write like a colleague: answer first, short, no question-echo. Include useful structured values in the first answer.
+Write like a colleague: answer the user's actual question first, include important figures, mention material limits, no raw JSON or internal tool names.
 `;
 
 export async function runIntelligenceTurn(input: {
@@ -99,6 +112,7 @@ export async function runIntelligenceTurn(input: {
   waitUntil?: (promise: Promise<unknown>) => void;
 }): Promise<IntelligenceTurnResult> {
   const result = await executeIntelligenceTurn(input);
+  scheduleRecipeLearning(input, result);
   const shadowed = await attachOpenAiShadow(input, result);
   return attachEngineeringFeedback(input, shadowed);
 }
@@ -112,8 +126,14 @@ async function executeIntelligenceTurn(input: {
   buttonHint?: string | null;
   completer?: IntelligenceCompleter;
 }): Promise<IntelligenceTurnResult> {
+  const earlyPolicy = resolveBrainPolicy({
+    env: input.env,
+    companyId: input.state.companyId,
+    channel: input.channel,
+  });
+  const agenticPrimary = earlyPolicy.userVisibleBrain === "openai";
   const routed = routeIntelligenceTurn({ text: input.text, state: input.state, buttonHint: input.buttonHint });
-  if (routed.route === "FAST_LOCAL" && routed.localText) {
+  if (routed.route === "FAST_LOCAL" && routed.localText && (!agenticPrimary || input.buttonHint === "open_source")) {
     const local = emptyResult({
       kind: "fast_path",
       text: routed.localText,
@@ -158,7 +178,7 @@ async function executeIntelligenceTurn(input: {
     });
   }
 
-  if (scoped.scope === "AMBIGUOUS" && scoped.clarify) {
+  if (!agenticPrimary && scoped.scope === "AMBIGUOUS" && scoped.clarify) {
     return emptyResult({
       kind: "clarify",
       text: scoped.clarifyText || "Can you give me a little more detail so I look in the right place?",
@@ -171,7 +191,7 @@ async function executeIntelligenceTurn(input: {
     });
   }
 
-  if (scoped.scope === "RECENT_ENTITY" && scoped.restoreRecentDocument && currentDocument) {
+  if (!agenticPrimary && scoped.scope === "RECENT_ENTITY" && scoped.restoreRecentDocument && currentDocument) {
     return emptyResult({
       kind: "answer",
       text: `I've gone back to ${currentDocument.title}. What do you want from it?`,
@@ -186,7 +206,7 @@ async function executeIntelligenceTurn(input: {
   }
 
   const selectedFollowUp = answerSelectedDocumentFollowUp(input.text, currentDocument);
-  if (selectedFollowUp && scoped.scope === "CURRENT_DOCUMENT") {
+  if (!agenticPrimary && selectedFollowUp && scoped.scope === "CURRENT_DOCUMENT") {
     return emptyResult({
       kind: "answer",
       text: selectedFollowUp,
@@ -200,7 +220,7 @@ async function executeIntelligenceTurn(input: {
     });
   }
 
-  if (scoped.scope === "GENERAL_CONVERSATION" && scoped.noTool && !input.state.userCorrection) {
+  if (!agenticPrimary && scoped.scope === "GENERAL_CONVERSATION" && scoped.noTool && !input.state.userCorrection) {
     return guardedEmpty({
       kind: "answer",
       text: answerGeneralConversation(input.text, input.state, scoped),
@@ -215,6 +235,7 @@ async function executeIntelligenceTurn(input: {
   }
 
   if (
+    !agenticPrimary &&
     classifyEvidenceNeed(input.text, input.state) === "CAN_ANSWER_FROM_EXISTING_EVIDENCE" &&
     !input.state.userCorrection
   ) {
@@ -295,6 +316,7 @@ async function executeIntelligenceTurn(input: {
             payload.toolCalls.some((call) => call.ok && call.name.startsWith("warehouse_")))))
         ? deterministicVerbalise
         : payload.text;
+    const providers = deriveBrainProviders(payload.modelRounds);
     const assembled = finish({
       ...payload,
       text: grounded,
@@ -302,6 +324,8 @@ async function executeIntelligenceTurn(input: {
       brainMode: brain.policy.mode,
       brainRole: brain.policy.role,
       userVisibleBrain: brain.policy.userVisibleBrain,
+      plannerProvider: providers.plannerProvider,
+      synthesisProvider: providers.synthesisProvider,
       sufficiency:
         payload.toolCalls.some((call) => call.ok) &&
         !(
@@ -325,6 +349,7 @@ async function executeIntelligenceTurn(input: {
   };
 
   if (
+    !agenticPrimary &&
     scoped.scope !== "SYSTEM_META" &&
     scoped.scope !== "BUSINESS_SYSTEM" &&
     scoped.scope !== "CONTROLLED_ACTION" &&
@@ -380,7 +405,7 @@ async function executeIntelligenceTurn(input: {
     });
   }
 
-  if (looksLikePublicWebAsk(input.text)) {
+  if (!agenticPrimary && looksLikePublicWebAsk(input.text)) {
     const web = await runtime.executeTool({
       name: "web_search",
       arguments: { query: webSearchQuery(input.text) },
@@ -405,7 +430,7 @@ async function executeIntelligenceTurn(input: {
     });
   }
 
-  if (shouldRunDeterministicMeta(scoped, input.text)) {
+  if (!agenticPrimary && shouldRunDeterministicMeta(scoped, input.text)) {
     const meta = await runDeterministicMeta(runtime, scoped, input.text, completer, permitted, qualityFlags);
     if (meta) {
       if (input.state.userCorrection && scoped.clearCurrentDocument && meta.toolCalls[0]?.name === input.state.lastSuccessfulTool) {
@@ -441,7 +466,7 @@ async function executeIntelligenceTurn(input: {
     }
   }
 
-  if (!isCompoundBusinessAsk(input.text) && shouldRunDeterministicRead(scoped, input.text, workingState)) {
+  if (!agenticPrimary && !isCompoundBusinessAsk(input.text) && shouldRunDeterministicRead(scoped, input.text, workingState)) {
     const read = await runDeterministicRead(runtime, scoped, input.text, workingState, permitted);
     if (read) {
       const doc =
@@ -480,7 +505,24 @@ async function executeIntelligenceTurn(input: {
     }
   }
 
-  const system = `${SECURITY_AND_PROTOCOL}\nDecided scope: ${scoped.scope}. Current document is context, not a mandatory search target.\nTools:\n${describeToolCatalogue(permitted)}`;
+  let recipeHints = "";
+  const recipeDb = (input.env as (IntelligenceEnv & { DB?: RecipeDb }) | undefined)?.DB;
+  if (agenticPrimary && recipeDb && input.state.companyId) {
+    try {
+      recipeHints = recipeHintsForPrompt(await loadCompanyRecipes(recipeDb, input.state.companyId));
+    } catch {
+      recipeHints = "";
+    }
+  }
+  const system = [
+    SECURITY_AND_PROTOCOL,
+    `Decided scope: ${scoped.scope}. Current document is context, not a mandatory search target.`,
+    `Freshness hint: ${classifyQueryFreshness(input.text)}. Historical completed periods prefer warehouse_*; current/paid-yet prefer live xero_*.`,
+    `Tenant-safe capability catalogue (only tools this user/role/tenant may use):\n${describeToolCatalogue(permitted)}`,
+    recipeHints,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     const user = [
@@ -503,8 +545,8 @@ async function executeIntelligenceTurn(input: {
         ? "A deterministic authorised read already executed. Do not call the same tool again. Synthesise from retained evidence unless a second authorised capability is still missing."
         : "",
       round === 0
-        ? "Decide: enough information? If yes, answer or clarify. If not, call one tool."
-        : "Reassess the evidence. Call one more tool only if needed, otherwise synthesise the answer.",
+        ? "What information do you need? Call one permitted tool, or answer if authorised evidence is already enough. Clarification is last resort."
+        : "Reassess evidence sufficiency (SUFFICIENT / PARTIAL / INSUFFICIENT / FAILED). If insufficient, try another permitted route. Otherwise synthesise the customer answer.",
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -543,7 +585,7 @@ async function executeIntelligenceTurn(input: {
     }
 
     let decision = recovered.decision;
-    if (decision.action === "invalid" && !completion.text.trim() && toolCalls.length === 0) {
+    if (!agenticPrimary && decision.action === "invalid" && !completion.text.trim() && toolCalls.length === 0) {
       const bootstrap = await bootstrapRetrieval(runtime, workingState, input.text, input.buttonHint, scoped);
       if (bootstrap) {
         toolCalls.push(bootstrap);
@@ -605,6 +647,10 @@ async function executeIntelligenceTurn(input: {
         transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
         continue;
       }
+      if (call.name === "web_search" && toolCalls.filter((row) => row.name === "web_search").length >= 2) {
+        transcript.push("Public web was already attempted. Synthesise from the external results or state the limitation. Do not call web_search again.");
+        continue;
+      }
       const result = await runtime.executeTool(call);
       executedThisTurn.set(reuseKey, result);
       toolCalls.push(result);
@@ -618,8 +664,15 @@ async function executeIntelligenceTurn(input: {
         if (!evidenceDocumentIds.includes(doc.id)) evidenceDocumentIds.push(doc.id);
       }
       if (looksIrrelevant(result, currentDocument)) qualityFlags.add("irrelevant_result");
-      transcript.push(formatToolTranscript(result));
-      if (shouldStopAfterRead(scoped, result, input.text)) {
+      const sufficiency = classifyToolSufficiency(result);
+      transcript.push(
+        `${formatToolTranscript(result)}\nEvidence sufficiency: ${sufficiency}.${
+          sufficiency === "SUFFICIENT"
+            ? " Synthesise if this answers the question."
+            : " Try another permitted route if one remains; do not stop at the first miss."
+        }`,
+      );
+      if (!agenticPrimary && shouldStopAfterRead(scoped, result, input.text)) {
         return finishTurn({
           kind: result.ok ? "answer" : "failed",
           text: synthesizeToolResult(result, input.text),
@@ -643,6 +696,10 @@ async function executeIntelligenceTurn(input: {
     }
 
     if (decision.action === "clarify") {
+      if (agenticPrimary && round < MAX_TOOL_ROUNDS - 1 && toolCalls.filter((call) => call.ok && classifyToolSufficiency(call) === "SUFFICIENT").length === 0) {
+        transcript.push("Clarification is last resort. Try another permitted evidence route if one remains.");
+        continue;
+      }
       if (
         toolCalls.length === 0 &&
         (shouldForceScopedTool(scoped) || looksLikeSpuriousPeriodClarify(input.text, decision.text))
@@ -776,6 +833,7 @@ async function executeIntelligenceTurn(input: {
   }
 
   if (
+    !agenticPrimary &&
     toolCalls.length === 0 &&
     shouldForceScopedTool(scoped) &&
     (scoped.scope === "BUSINESS_SYSTEM" || isProcessOrPolicyAsk(input.text))
@@ -944,6 +1002,8 @@ function fallbackFromEvidence(
   current: IntelligenceDocumentRef | null,
   question = "",
 ): string {
+  const web = [...toolCalls].reverse().find((call) => call.name === "web_search");
+  if (web) return web.ok ? verbaliseWebSearch(web.data, question) : "I checked public web sources and didn’t get a usable answer. I won’t use company systems for this.";
   const business = toolCalls.find(
     (call) =>
       call.name.startsWith("xero_") ||
@@ -1587,6 +1647,44 @@ function formatToolTranscript(result: IntelligenceToolResult): string {
   return `${result.name} (${result.ok ? "ok" : "error"}, ${result.latencyMs}ms): ${payload.slice(0, 2_400)}`;
 }
 
+function deriveBrainProviders(rounds: IntelligenceModelUsage[]): {
+  plannerProvider: NonNullable<IntelligenceTurnResult["plannerProvider"]>;
+  synthesisProvider: NonNullable<IntelligenceTurnResult["synthesisProvider"]>;
+} {
+  const usable = rounds.filter((row) => row.provider && row.provider !== "none");
+  const first = usable[0] ?? rounds[0];
+  const last = usable.at(-1) ?? rounds.at(-1);
+  return {
+    plannerProvider: first?.provider ?? "none",
+    synthesisProvider: last?.provider ?? "none",
+  };
+}
+
+function scheduleRecipeLearning(
+  input: {
+    env?: IntelligenceEnv;
+    text: string;
+    state: IntelligenceConversationState;
+    waitUntil?: (promise: Promise<unknown>) => void;
+  },
+  result: IntelligenceTurnResult,
+): void {
+  const db = (input.env as (IntelligenceEnv & { DB?: RecipeDb }) | undefined)?.DB;
+  const companyId = input.state.companyId;
+  if (!db || !companyId || result.userVisibleBrain !== "openai") return;
+  const tools = result.toolCalls.map((call) => call.name);
+  if (!tools.length) return;
+  const success = result.kind === "answer" && !result.fallbackUsed && result.toolCalls.some((call) => call.ok);
+  const job = recordRecipeOutcome(db, {
+    companyId,
+    tools,
+    text: input.text,
+    success,
+    sufficiency: result.toolCalls.map(classifyToolSufficiency),
+  }).catch(() => undefined);
+  if (input.waitUntil) input.waitUntil(job);
+}
+
 function emptyResult(
   input: Pick<IntelligenceTurnResult, "kind" | "text" | "confidence" | "offerSearchOther"> & {
     route?: IntelligenceTurnResult["route"];
@@ -1609,6 +1707,8 @@ function emptyResult(
     provider: "none",
     model: null,
     estimatedCostUsd: 0,
+    plannerProvider: "none",
+    synthesisProvider: "none",
     route: input.route ?? "FAST_LOCAL",
     scope: input.scope,
     lastAnswerTopic: input.lastAnswerTopic ?? null,
@@ -1629,9 +1729,12 @@ function finish(
     brainMode?: IntelligenceTurnResult["brainMode"];
     brainRole?: IntelligenceTurnResult["brainRole"];
     userVisibleBrain?: IntelligenceTurnResult["userVisibleBrain"];
+    plannerProvider?: IntelligenceTurnResult["plannerProvider"];
+    synthesisProvider?: IntelligenceTurnResult["synthesisProvider"];
   },
 ): IntelligenceTurnResult {
   const last = input.modelRounds.at(-1);
+  const derived = deriveBrainProviders(input.modelRounds);
   return {
     kind: input.kind,
     text: input.text,
@@ -1659,6 +1762,8 @@ function finish(
     brainMode: input.brainMode,
     brainRole: input.brainRole,
     userVisibleBrain: input.userVisibleBrain,
+    plannerProvider: input.plannerProvider ?? derived.plannerProvider,
+    synthesisProvider: input.synthesisProvider ?? derived.synthesisProvider,
     terminal: input.terminal,
     correlationId: last?.correlationId ?? null,
     guardChecks: input.guardChecks,

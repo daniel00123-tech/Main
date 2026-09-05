@@ -76,6 +76,9 @@ export type WhatsAppIntelligenceAnswer = {
   groundedConfidence?: GroundedConfidence | null;
   groundedScoped?: boolean;
   synthesisProvider?: string | null;
+  plannerProvider?: string | null;
+  brainMode?: string | null;
+  userVisibleBrain?: string | null;
   moreDetailNovel?: boolean;
   repeatedExcerpt?: boolean;
   unsolicitedPii?: boolean;
@@ -256,7 +259,10 @@ export async function executeWhatsAppIntelligence(
     entities: mergeEntityMemory(nextEntities, { lastAnswerText: pii.text, lastUserQuestion: originalText }),
     groundedConfidence: result.confidence,
     groundedScoped: result.toolCalls.some((call) => call.name === "search_document" || call.name === "get_knowledge_document"),
-    synthesisProvider: result.provider,
+    synthesisProvider: result.synthesisProvider ?? result.provider,
+    plannerProvider: result.plannerProvider ?? result.modelRounds[0]?.provider ?? null,
+    brainMode: result.brainMode ?? null,
+    userVisibleBrain: result.userVisibleBrain ?? null,
     moreDetailNovel: input.buttonAction === "more_on_this" || input.buttonAction === "more_detail",
     repeatedExcerpt: false,
     unsolicitedPii: pii.redacted,

@@ -10,6 +10,7 @@ export function actualSourceFromTools(tools: string[], payloadSource?: string | 
   if (tools.some((name) => name.startsWith("outlook_"))) return "outlook";
   if (tools.some((name) => /knowledge|search|fetch|ask_document/.test(name))) return "knowledge";
   if (tools.some((name) => name === "list_documents")) return "catalogue";
+  if (tools.some((name) => name === "web_search")) return "web";
   return tools.length ? tools[0] : null;
 }
 

@@ -73,7 +73,7 @@ describe("deterministic business and knowledge reads", () => {
     expect(result.toolCalls[0]?.ok).toBe(true);
   });
 
-  it("keeps the deterministic Outlook read under the OpenAI PA brain and still synthesises from evidence", async () => {
+  it("lets the OpenAI PA brain plan the Outlook read instead of phrase-forcing it", async () => {
     const { runtime: exec, calls } = runtime(() => ({
       mailboxAddress: "info@elvexpropertyservices.com",
       messages: [
@@ -84,11 +84,12 @@ describe("deterministic business and knowledge reads", () => {
         },
       ],
     }));
+    let round = 0;
     const result = await runIntelligenceTurn({
       env: {
         OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
         OPENAI_BRAIN_ENABLED: "true",
-        OPENAI_BRAIN_MODE: "openai_shadow",
+        OPENAI_BRAIN_MODE: "openai_primary",
         OPENAI_BRAIN_COMPANY_IDS: "co_el",
       },
       text: "What is the newest email in the info inbox?",
@@ -99,11 +100,47 @@ describe("deterministic business and knowledge reads", () => {
         permittedTools: ["outlook_list_messages", "outlook_search_mailbox", "search_company_knowledge"],
       }),
       runtime: exec,
-      completer: silentCompleter,
+      completer: async () => {
+        round += 1;
+        if (round === 1) {
+          return {
+            text: JSON.stringify({ action: "call_tool", name: "outlook_list_messages", arguments: {} }),
+            usage: {
+              provider: "openai",
+              model: "gpt-test",
+              latencyMs: 20,
+              promptTokens: 10,
+              completionTokens: 8,
+              estimatedCostUsd: 0,
+            },
+          };
+        }
+        return {
+          text: JSON.stringify({
+            action: "answer",
+            text: "The newest info email is Site visit tomorrow.",
+            confidence: "strong",
+            offer_search_other: false,
+            cite_source: false,
+          }),
+          usage: {
+            provider: "openai",
+            model: "gpt-test",
+            latencyMs: 18,
+            promptTokens: 12,
+            completionTokens: 10,
+            estimatedCostUsd: 0,
+          },
+        };
+      },
       channel: "portal_chat",
     });
     expect(calls[0]?.name).toBe("outlook_list_messages");
     expect(calls.filter((call) => call.name.startsWith("outlook_"))).toHaveLength(1);
+    expect(result.modelRounds.length).toBeGreaterThan(0);
+    expect(result.plannerProvider).toBe("openai");
+    expect(result.synthesisProvider).toBe("openai");
+    expect(result.brainMode).toBe("openai_primary");
     expect(isGenericRetryCopy(result.text)).toBe(false);
     expect(result.text).toMatch(/Site visit tomorrow/);
     expect(result.userVisibleBrain).toBe("openai");

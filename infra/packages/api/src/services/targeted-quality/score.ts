@@ -15,13 +15,15 @@ export function toOvernightQuestion(question: TargetedQuestion): OvernightQuesti
         ? "knowledge"
         : question.family === "outlook"
           ? "outlook"
-          : question.family === "mixed"
+          : question.family === "mixed" || question.family === "pricing" || question.family === "agentic"
             ? "mixed"
             : question.family === "correction"
               ? "correction"
               : question.family === "followup"
                 ? "followup"
-                : "no_tool",
+                : question.family === "web"
+                  ? "no_tool"
+                  : "no_tool",
     expectedToolPrefix: question.expectedToolPrefix,
     expectedSource: question.expectedSource,
     expectedDeny: question.expectedDeny,

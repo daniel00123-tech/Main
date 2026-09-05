@@ -271,6 +271,8 @@ export type IntelligenceTurnResult = {
   brainMode?: BrainMode;
   brainRole?: BrainChannelRole;
   userVisibleBrain?: BrainProviderName;
+  plannerProvider?: IntelligenceModelUsage["provider"] | "none";
+  synthesisProvider?: IntelligenceModelUsage["provider"] | "none";
   correlationId?: string | null;
   guardChecks?: ResponseGuardCheck[];
   /** Parallel OpenAI evaluation. Never shown to the customer. */

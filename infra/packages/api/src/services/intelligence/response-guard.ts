@@ -43,8 +43,22 @@ export function runResponseQualityGuard(input: {
   let text = input.text.trim();
   let repaired = false;
   if (failed.length) {
+    const hard = failed.some((check) =>
+      [
+        "tool_success_not_reported_as_failure",
+        "data_exists_not_no_result",
+        "successful_result_not_discarded",
+        "not_generic_retry_after_success",
+        "not_blank",
+        "live_claim_has_evidence",
+        "xero_mentions_figures",
+        "not_contradictory_blank",
+        "not_permission_from_payload_words",
+        "permission_uses_access_outcome",
+      ].includes(check.id),
+    );
     const fallback = synthesizeFromToolCalls(input.toolCalls, input.question);
-    if (fallback && fallback !== text && !isGenericRetryCopy(fallback)) {
+    if (hard && fallback && fallback !== text && !isGenericRetryCopy(fallback)) {
       text = fallback;
       repaired = true;
     } else if (!text || isGenericRetryCopy(text)) {

@@ -155,6 +155,7 @@ function plannerCompleter(): IntelligenceCompleter {
   return async (input) => {
     const blob = `${input.system}\n${input.user}`.toLowerCase();
     const user = input.user.toLowerCase();
+    const asked = (user.match(/^user: (.+)$/im)?.[1] ?? user).toLowerCase();
     const pick = (name: string, args: Record<string, unknown> = {}) => ({
       text: JSON.stringify({ action: "call_tool", name, arguments: args }),
       usage: {
@@ -189,24 +190,24 @@ function plannerCompleter(): IntelligenceCompleter {
         },
       };
     }
+    if (/\b(sales|xero|overdue|invoice|revenue|profit|customer)/.test(asked) && /\b(newest|latest).{0,24}(document|file)\b/.test(asked)) {
+      return pick("xero_sales_summary", {});
+    }
     if (
       /\b(newest|latest|recent).{0,24}(document|file)|list the newest|onedrive|sharepoint|how many (files|documents)\b/.test(
-        user,
+        asked,
       )
     ) {
       return pick("list_documents", {});
     }
-    if (/\b(sales|xero|overdue|invoice|revenue|profit|customers)\b/.test(user) && /\b(newest|latest).{0,24}(document|file)\b/.test(user)) {
+    if (/\b(sales|xero|overdue|invoice|revenue|profit|customer)/.test(asked)) {
+      if (/overdue|unpaid/.test(asked)) return pick("xero_list_overdue_invoices", {});
+      if (/top|biggest/.test(asked)) return pick("xero_top_customers", {});
+      if (/p&l|profit and loss/.test(asked)) return pick("xero_profit_and_loss", {});
       return pick("xero_sales_summary", {});
     }
-    if (/\b(sales|xero|overdue|invoice|revenue|profit|customers)\b/.test(user)) {
-      if (/overdue/.test(user)) return pick("xero_list_overdue_invoices", {});
-      if (/top|biggest/.test(user)) return pick("xero_top_customers", {});
-      if (/p&l|profit and loss/.test(user)) return pick("xero_profit_and_loss", {});
-      return pick("xero_sales_summary", {});
-    }
-    if (/\b(policy|process|procedure|knowledge|handbook|onboarding|health and safety)\b/.test(user)) {
-      return pick("search_company_knowledge", { query: user.slice(0, 80) });
+    if (/\b(policy|process|procedure|knowledge|handbook|onboarding|health and safety)\b/.test(asked)) {
+      return pick("search_company_knowledge", { query: asked.slice(0, 80) });
     }
     return {
       text: JSON.stringify({
