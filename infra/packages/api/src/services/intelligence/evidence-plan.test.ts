@@ -67,4 +67,16 @@ describe("evidence plan", () => {
     expect(isExclusiveCapabilitySwitch("I meant August, not September.")).toBe(true);
     expect(minimumToolsForText("I meant August, not September.")).toEqual(["warehouse_sales_analysis"]);
   });
+
+  it("plans knowledge plus email for Health & Safety and last sender", () => {
+    const text = "What does Health & Safety say about gas, and who emailed info last?";
+    expect(isSemanticKnowledgeAsk(text)).toBe(true);
+    expect(minimumToolsForText(text)).toEqual(expect.arrayContaining(["search_company_knowledge", "outlook_list_messages"]));
+  });
+
+  it("plans knowledge plus overdue for SRFM form coverage", () => {
+    const text = "SRFM subcontractor form coverage plus live overdue invoices.";
+    expect(isSemanticKnowledgeAsk(text)).toBe(true);
+    expect(minimumToolsForText(text)).toEqual(expect.arrayContaining(["search_company_knowledge", "xero_list_overdue_invoices"]));
+  });
 });
