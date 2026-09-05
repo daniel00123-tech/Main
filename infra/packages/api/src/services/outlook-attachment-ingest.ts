@@ -677,11 +677,18 @@ async function fetchAttachmentBytes(
   };
 }
 
-async function verifyIndexedDocumentRetrievable(
+export async function verifyIndexedDocumentRetrievable(
   env: Env,
   input: { companyId: string; filename: string; documentId: number; actor: string },
 ): Promise<{ ok: boolean; hitCount: number; reason: string | null }> {
-  const query = input.filename.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() || input.filename;
+  const query =
+    input.filename
+      .replace(/\.[^.]+$/, "")
+      .replace(/[_-]+/g, " ")
+      .replace(/\(\d+\)/g, " ")
+      .replace(/\b(?:19|20)\d{2}\b/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || input.filename;
   try {
     const search = await runProductionKnowledgeSearch(env, {
       companyId: input.companyId,
@@ -693,7 +700,14 @@ async function verifyIndexedDocumentRetrievable(
     const matched = search.hits.some((hit) => {
       const title = (hit.title ?? "").toLowerCase();
       const id = String(hit.documentId ?? "");
-      return id === String(input.documentId) || title.includes(input.filename.toLowerCase()) || title.includes(query.toLowerCase());
+      const filename = input.filename.toLowerCase();
+      const stem = filename.replace(/\.[^.]+$/, "");
+      return (
+        id === String(input.documentId) ||
+        title.includes(filename) ||
+        title.includes(stem) ||
+        (query.length >= 4 && title.includes(query.toLowerCase()))
+      );
     });
     if (!matched) {
       return {
@@ -706,6 +720,121 @@ async function verifyIndexedDocumentRetrievable(
   } catch (err) {
     return { ok: false, hitCount: 0, reason: err instanceof Error ? err.message : "retrieval verify failed" };
   }
+}
+
+export async function verifyExistingIndexedKnowledgeDocument(
+  env: Env,
+  input: { companyId: string; filename: string; actor?: string },
+): Promise<{
+  ok: boolean;
+  documentId: number | null;
+  filename: string | null;
+  title: string | null;
+  chunkCount: number;
+  chunksNonEmpty: boolean;
+  searchableText: boolean;
+  hitCount: number;
+  matched: boolean;
+  markedIndexed: boolean;
+  reason: string | null;
+  hits: Array<{ title: string | null; documentId: string | number | null }>;
+}> {
+  const doc = await env.DB.prepare(
+    `SELECT id, filename, title, chunk_count, LENGTH(TRIM(COALESCE(extracted_text, ''))) AS text_len
+     FROM company_knowledge_documents
+     WHERE company_id = ?
+       AND (
+         LOWER(COALESCE(filename, '')) = LOWER(?)
+         OR LOWER(COALESCE(filename, '')) LIKE ?
+         OR CAST(id AS TEXT) = ?
+       )
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+  )
+    .bind(input.companyId, input.filename, `%${input.filename.toLowerCase()}%`, input.filename)
+    .first<{ id: number; filename: string | null; title: string | null; chunk_count: number; text_len: number }>();
+  if (!doc?.id) {
+    return {
+      ok: false,
+      documentId: null,
+      filename: input.filename,
+      title: null,
+      chunkCount: 0,
+      chunksNonEmpty: false,
+      searchableText: false,
+      hitCount: 0,
+      matched: false,
+      markedIndexed: false,
+      reason: "document not in local knowledge index",
+      hits: [],
+    };
+  }
+  const chunks = await env.DB.prepare(
+    `SELECT chunk_index, LENGTH(TRIM(COALESCE(text, ''))) AS n
+     FROM company_knowledge_chunks
+     WHERE company_id = ? AND document_id = ?
+     ORDER BY chunk_index ASC`,
+  )
+    .bind(input.companyId, doc.id)
+    .all<{ chunk_index: number; n: number }>();
+  const chunkRows = chunks.results ?? [];
+  const chunksNonEmpty = chunkRows.length > 0 && chunkRows.every((row) => Number(row.n ?? 0) > 0);
+  const searchableText = Number(doc.text_len ?? 0) > 0 || chunksNonEmpty;
+  const verified = await verifyIndexedDocumentRetrievable(env, {
+    companyId: input.companyId,
+    filename: doc.filename ?? input.filename,
+    documentId: doc.id,
+    actor: input.actor ?? "system:knowledge-verify",
+  });
+  let markedIndexed = false;
+  if (verified.ok && searchableText) {
+    const prior = await env.DB.prepare(
+      `SELECT provider_item_id, parent_message_id, mailbox_address, stored_item_id, stored_url, content_hash
+       FROM knowledge_ingestion_events
+       WHERE company_id = ? AND LOWER(COALESCE(filename, '')) = LOWER(?)
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+    )
+      .bind(input.companyId, doc.filename ?? input.filename)
+      .first<{
+        provider_item_id: string | null;
+        parent_message_id: string | null;
+        mailbox_address: string | null;
+        stored_item_id: string | null;
+        stored_url: string | null;
+        content_hash: string | null;
+      }>();
+    await recordKnowledgeIngestionEvent(env.DB, {
+      companyId: input.companyId,
+      sourceType: "outlook_attachments",
+      eventType: "indexed",
+      providerItemId: prior?.provider_item_id ?? `local-index:${doc.id}`,
+      parentMessageId: prior?.parent_message_id ?? null,
+      filename: doc.filename,
+      contentHash: prior?.content_hash ?? null,
+      mailboxAddress: prior?.mailbox_address ?? null,
+      chunkCount: doc.chunk_count,
+      extractedAt: nowIso(),
+      indexedAt: nowIso(),
+      storedItemId: prior?.stored_item_id ?? null,
+      storedUrl: prior?.stored_url ?? null,
+    });
+    markedIndexed = true;
+  }
+  return {
+    ok: verified.ok && searchableText,
+    documentId: doc.id,
+    filename: doc.filename,
+    title: doc.title,
+    chunkCount: Number(doc.chunk_count ?? chunkRows.length),
+    chunksNonEmpty,
+    searchableText,
+    hitCount: verified.hitCount,
+    matched: verified.ok,
+    markedIndexed,
+    reason: verified.ok ? null : verified.reason,
+    hits: [],
+  };
 }
 
 export function isMailboxBlockingFailure(code: string | null | undefined): boolean {

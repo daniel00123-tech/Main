@@ -87,4 +87,25 @@ describe("evidence plan", () => {
     expect(isSemanticKnowledgeAsk(text)).toBe(true);
     expect(minimumToolsForText(text)).toEqual(expect.arrayContaining(["search_company_knowledge", "xero_list_overdue_invoices"]));
   });
+
+  it("keeps a simple invoice ask on xero_get_invoice only", () => {
+    expect(minimumToolsForText("check INV-02268")).toEqual(["xero_get_invoice"]);
+    expect(minimumToolsForText("Look up invoice INV-02268")).toEqual(["xero_get_invoice"]);
+  });
+
+  it("plans invoice plus warehouse only for explicit compound sales asks", () => {
+    const text = "check invoice INV-02268 and also give me March sales";
+    expect(minimumToolsForText(text)).toEqual(
+      expect.arrayContaining(["xero_get_invoice", "warehouse_sales_analysis"]),
+    );
+    expect(minimumToolsForText("Look up INV-02268 and April warehouse sales")).toEqual(
+      expect.arrayContaining(["xero_get_invoice", "warehouse_sales_analysis"]),
+    );
+    expect(minimumToolsForText("Customer invoice INV-02268 and the payment process rule")).toEqual(
+      expect.arrayContaining(["xero_get_invoice", "search_company_knowledge"]),
+    );
+    expect(minimumToolsForText("Customer invoice INV-02268 and the payment process rule")).not.toContain(
+      "warehouse_sales_analysis",
+    );
+  });
 });
