@@ -233,26 +233,265 @@ const KNOWLEDGE_SEARCH_STOPWORDS = new Set([
   "said",
 ]);
 
-export function knowledgeSearchTokens(query: string): string[] {
-  const raw = query
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length >= 3 && !KNOWLEDGE_SEARCH_STOPWORDS.has(token));
-  return [...new Set(raw)].sort((left, right) => right.length - left.length || left.localeCompare(right)).slice(0, 6);
+/** Short business prefixes / generic words. Downweighted; excluded from first-stage SQL when a distinctive token exists. */
+const GENERIC_BUSINESS_TOKENS = new Set([
+  "inv",
+  "po",
+  "job",
+  "wo",
+  "so",
+  "ref",
+  "doc",
+  "id",
+  "num",
+  "quote",
+  "order",
+  "file",
+  "pdf",
+  "docx",
+  "xlsx",
+  "csv",
+  "invoice",
+  "invoices",
+  "document",
+  "documents",
+]);
+
+export type KnowledgeTokenClass = "high" | "medium" | "low";
+
+export type ClassifiedKnowledgeToken = {
+  token: string;
+  cls: KnowledgeTokenClass;
+  weight: number;
+};
+
+export type ClassifiedKnowledgeQuery = {
+  original: string;
+  normalized: string;
+  compact: string;
+  references: string[];
+  tokens: ClassifiedKnowledgeToken[];
+  highValueTokens: string[];
+  firstStageTokens: string[];
+  broadTokens: string[];
+};
+
+type KnowledgeCandidateRow = {
+  document_id: number;
+  filename: string | null;
+  title: string | null;
+  stored_url: string | null;
+  external_id: string | null;
+  metadata_json: string | null;
+  text: string;
+  chunk_index: number;
+};
+
+function compactAlnum(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function scoreKnowledgeRow(
-  row: { title: string | null; filename: string | null; text: string },
-  tokens: string[],
-): number {
-  const title = `${row.title ?? ""} ${row.filename ?? ""}`.toLowerCase();
+function sanitizeLikeNeedle(value: string): string {
+  return value.toLowerCase().replace(/[%_]/g, "").trim();
+}
+
+function filenameStem(value: string): string {
+  return value.toLowerCase().replace(/\.[a-z0-9]{2,5}$/i, "");
+}
+
+function classifyRawToken(token: string): KnowledgeTokenClass {
+  if (!token) return "low";
+  if (GENERIC_BUSINESS_TOKENS.has(token) || KNOWLEDGE_SEARCH_STOPWORDS.has(token)) return "low";
+  if (/\d{4,}/.test(token) || /[a-z]/.test(token) && /\d/.test(token)) return "high";
+  if (token.length >= 8) return "high";
+  if (token.length >= 5) return "medium";
+  if (token.length <= 3) return "low";
+  return "medium";
+}
+
+function tokenWeight(cls: KnowledgeTokenClass): number {
+  if (cls === "high") return 5;
+  if (cls === "medium") return 2;
+  return 0.4;
+}
+
+function addUnique(list: string[], value: string): void {
+  const next = sanitizeLikeNeedle(value);
+  if (next.length < 3 || list.includes(next)) return;
+  list.push(next);
+}
+
+export function classifyKnowledgeQuery(query: string): ClassifiedKnowledgeQuery {
+  const original = query.trim();
+  const normalized = original.toLowerCase().replace(/[_/]+/g, "-").replace(/\s+/g, " ").trim();
+  const compact = compactAlnum(original);
+  const references: string[] = [];
+
+  for (const match of normalized.match(/\b[a-z]{1,8}[-][a-z0-9]{3,}\b/g) ?? []) {
+    addUnique(references, match);
+    addUnique(references, compactAlnum(match));
+  }
+  for (const match of compact.match(/[a-z]{2,6}\d{4,}/g) ?? []) {
+    addUnique(references, match);
+    const split = match.match(/^([a-z]{2,6})(\d{4,})$/);
+    if (split?.[1] && split[2]) addUnique(references, `${split[1]}-${split[2]}`);
+  }
+
+  const looseTokens = normalized
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/[\s-]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+
+  const letterTokens = looseTokens.filter((token) => /^[a-z]{2,6}$/.test(token) && !KNOWLEDGE_SEARCH_STOPWORDS.has(token));
+  const digitTokens = looseTokens.filter((token) => /^\d{4,}$/.test(token));
+  for (const prefix of letterTokens) {
+    for (const digits of digitTokens) {
+      addUnique(references, `${prefix}-${digits}`);
+      addUnique(references, `${prefix}${digits}`);
+    }
+  }
+
+  const tokenMap = new Map<string, ClassifiedKnowledgeToken>();
+  const consider = (raw: string) => {
+    const token = sanitizeLikeNeedle(raw);
+    if (token.length < 3 || KNOWLEDGE_SEARCH_STOPWORDS.has(token)) return;
+    const cls = classifyRawToken(token);
+    const existing = tokenMap.get(token);
+    if (!existing || tokenWeight(cls) > existing.weight) {
+      tokenMap.set(token, { token, cls, weight: tokenWeight(cls) });
+    }
+  };
+  for (const token of looseTokens) consider(token);
+  for (const match of compact.match(/[a-z]{2,6}\d{4,}/g) ?? []) {
+    const split = match.match(/^([a-z]{2,6})(\d{4,})$/);
+    if (split?.[1]) consider(split[1]);
+    if (split?.[2]) consider(split[2]);
+  }
+  for (const token of digitTokens) consider(token);
+
+  const tokens = [...tokenMap.values()].sort(
+    (left, right) => right.weight - left.weight || right.token.length - left.token.length || left.token.localeCompare(right.token),
+  );
+  const highValueTokens = tokens.filter((row) => row.cls === "high").map((row) => row.token);
+  const firstStageTokens = highValueTokens.length
+    ? highValueTokens
+    : tokens.filter((row) => row.cls !== "low").map((row) => row.token);
+  const broadTokens = highValueTokens.length
+    ? tokens.filter((row) => row.cls === "medium").map((row) => row.token)
+    : tokens.map((row) => row.token);
+
+  return {
+    original,
+    normalized,
+    compact,
+    references,
+    tokens,
+    highValueTokens,
+    firstStageTokens: firstStageTokens.length ? firstStageTokens : tokens.map((row) => row.token),
+    broadTokens: broadTokens.length ? broadTokens : firstStageTokens,
+  };
+}
+
+export function knowledgeSearchTokens(query: string): string[] {
+  const classified = classifyKnowledgeQuery(query);
+  const ordered = [
+    ...classified.highValueTokens,
+    ...classified.tokens.filter((row) => row.cls !== "high").map((row) => row.token),
+  ];
+  return [...new Set(ordered)].slice(0, 6);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function tokenPresent(haystack: string, token: string): boolean {
+  const needle = sanitizeLikeNeedle(token);
+  if (!needle) return false;
+  const text = haystack.toLowerCase();
+  if (/^\d{4,}$/.test(needle) || (/[a-z]/.test(needle) && /\d/.test(needle))) {
+    return text.includes(needle) || compactAlnum(text).includes(compactAlnum(needle));
+  }
+  return new RegExp(`(^|[^a-z0-9])${escapeRegExp(needle)}([^a-z0-9]|$)`, "i").test(text);
+}
+
+function scoreKnowledgeCandidate(row: KnowledgeCandidateRow, classified: ClassifiedKnowledgeQuery): number {
+  const filename = (row.filename ?? "").toLowerCase();
+  const title = (row.title ?? "").toLowerCase();
+  const heading = `${title} ${filename}`.trim();
+  const stem = filenameStem(filename);
+  const titleStem = filenameStem(title);
+  const compactHeading = compactAlnum(`${title} ${filename}`);
   const text = (row.text ?? "").toLowerCase();
-  return tokens.reduce((score, token) => {
-    if (title.includes(token)) return score + 5;
-    if (text.includes(token)) return score + 1;
-    return score;
-  }, 0);
+  const meta = `${row.external_id ?? ""} ${row.metadata_json ?? ""}`.toLowerCase();
+  const query = classified.normalized;
+  const queryStem = filenameStem(query);
+  let score = 0;
+
+  if (query && (filename === query || title === query || stem === queryStem || titleStem === queryStem)) score += 240;
+  if (query.length >= 4 && (filename.includes(query) || title.includes(query) || stem.includes(queryStem))) score += 140;
+  if (classified.compact.length >= 6 && compactHeading.includes(classified.compact)) score += 120;
+
+  for (const reference of classified.references) {
+    const compactRef = compactAlnum(reference);
+    if (filename.includes(reference) || title.includes(reference) || stem.includes(reference)) score += 160;
+    else if (compactRef.length >= 5 && compactHeading.includes(compactRef)) score += 130;
+    if (text.includes(reference) || (compactRef.length >= 5 && compactAlnum(text).includes(compactRef))) score += 45;
+    if (meta.includes(reference) || (compactRef.length >= 5 && compactAlnum(meta).includes(compactRef))) score += 50;
+  }
+
+  let highHits = 0;
+  let mediumHits = 0;
+  let lowHits = 0;
+  for (const token of classified.tokens) {
+    const inHeading = tokenPresent(heading, token.token);
+    const inBody = tokenPresent(text, token.token) || tokenPresent(meta, token.token);
+    if (inHeading) {
+      score += token.cls === "high" ? 28 * token.weight : 10 * token.weight;
+      if (token.cls === "high") highHits += 1;
+      if (token.cls === "medium") mediumHits += 1;
+      if (token.cls === "low") lowHits += 1;
+    } else if (inBody) {
+      score += token.cls === "high" ? 8 * token.weight : 2 * token.weight;
+      if (token.cls === "high") highHits += 1;
+      if (token.cls === "medium") mediumHits += 1;
+      if (token.cls === "low") lowHits += 1;
+    }
+  }
+  if (highHits > 0 && lowHits > 0) score += 30;
+  return score;
+}
+
+export function knowledgeHitMatchesQuery(
+  hit: { title?: unknown; filename?: unknown; snippet?: unknown; text?: unknown },
+  query: string,
+): boolean {
+  const classified = classifyKnowledgeQuery(query);
+  const haystack = `${hit.title ?? ""} ${hit.filename ?? ""} ${hit.snippet ?? ""} ${hit.text ?? ""}`;
+  if (classified.references.some((reference) => tokenPresent(haystack, reference) || compactAlnum(haystack).includes(compactAlnum(reference)))) {
+    return true;
+  }
+  if (classified.highValueTokens.length) {
+    return classified.highValueTokens.some((token) => tokenPresent(haystack, token));
+  }
+  const medium = classified.tokens.filter((token) => token.cls === "medium");
+  if (medium.length >= 2) {
+    return medium.filter((token) => tokenPresent(haystack, token.token)).length >= 2;
+  }
+  return classified.tokens.some((token) => tokenPresent(haystack, token.token));
+}
+
+function keepScoredCandidate(
+  score: number,
+  row: KnowledgeCandidateRow,
+  classified: ClassifiedKnowledgeQuery,
+): boolean {
+  if (score <= 0) return false;
+  return knowledgeHitMatchesQuery(
+    { title: row.title, filename: row.filename, text: row.text },
+    classified.original,
+  );
 }
 
 export function localKnowledgeHitsToResults(
@@ -281,40 +520,71 @@ export function mergeKnowledgeSearchHits<T extends { id?: string; title?: string
   return merged;
 }
 
+function likeNeedles(values: string[]): string[] {
+  return [...new Set(values.map(sanitizeLikeNeedle).filter((value) => value.length >= 3))].slice(0, 6);
+}
+
+async function fetchKnowledgeCandidatePool(
+  env: Env,
+  companyId: string,
+  needles: string[],
+  limit: number,
+): Promise<KnowledgeCandidateRow[]> {
+  const terms = likeNeedles(needles);
+  if (!terms.length || limit <= 0) return [];
+  const fieldClause = `(
+    LOWER(COALESCE(d.filename, '')) LIKE ?
+    OR LOWER(COALESCE(d.title, '')) LIKE ?
+    OR LOWER(COALESCE(d.external_id, '')) LIKE ?
+    OR LOWER(COALESCE(d.metadata_json, '')) LIKE ?
+    OR LOWER(c.text) LIKE ?
+  )`;
+  const sql = `SELECT d.id AS document_id, d.filename, d.title, d.stored_url, d.external_id, d.metadata_json, c.text, c.chunk_index
+     FROM company_knowledge_chunks c
+     JOIN company_knowledge_documents d ON d.id = c.document_id
+     WHERE d.company_id = ?
+       AND (${terms.map(() => fieldClause).join(" OR ")})
+     LIMIT ?`;
+  const binds: Array<string | number> = [companyId];
+  for (const term of terms) {
+    const like = `%${term}%`;
+    binds.push(like, like, like, like, like);
+  }
+  binds.push(limit);
+  const rows = await env.DB.prepare(sql).bind(...binds).all<KnowledgeCandidateRow>();
+  return rows.results ?? [];
+}
+
 export async function searchCompanyKnowledgeIndex(
   env: Env,
   input: { companyId: string; query: string; limit?: number },
 ): Promise<Array<Record<string, unknown>>> {
   await ensureCompanyKnowledgeIndexSchema(env.DB);
-  const tokens = knowledgeSearchTokens(input.query);
-  if (!tokens.length) return [];
-  const primary = `%${tokens[0]}%`;
-  const secondary = `%${tokens[1] ?? tokens[0]}%`;
-  const rows = await env.DB.prepare(
-    `SELECT d.id AS document_id, d.filename, d.title, d.stored_url, c.text, c.chunk_index
-     FROM company_knowledge_chunks c
-     JOIN company_knowledge_documents d ON d.id = c.document_id
-     WHERE d.company_id = ?
-       AND (
-         LOWER(COALESCE(d.filename, '')) LIKE ? OR LOWER(COALESCE(d.title, '')) LIKE ? OR LOWER(c.text) LIKE ?
-         OR LOWER(COALESCE(d.filename, '')) LIKE ? OR LOWER(COALESCE(d.title, '')) LIKE ? OR LOWER(c.text) LIKE ?
-       )
-     LIMIT 80`,
-  )
-    .bind(input.companyId, primary, primary, primary, secondary, secondary, secondary)
-    .all<{
-      document_id: number;
-      filename: string | null;
-      title: string | null;
-      stored_url: string | null;
-      text: string;
-      chunk_index: number;
-    }>();
+  const classified = classifyKnowledgeQuery(input.query);
+  if (!classified.tokens.length && !classified.references.length) return [];
 
-  const bestByDoc = new Map<number, { row: (typeof rows.results)[number]; score: number }>();
-  for (const row of rows.results ?? []) {
-    const score = scoreKnowledgeRow(row, tokens);
-    if (score <= 0) continue;
+  const exactNeedles = likeNeedles([
+    classified.normalized,
+    filenameStem(classified.normalized),
+    classified.compact,
+    ...classified.references,
+    ...classified.highValueTokens,
+  ]);
+  const distinctiveNeedles = likeNeedles(classified.highValueTokens);
+  const broadNeedles = likeNeedles(classified.broadTokens);
+
+  const exactRows = await fetchKnowledgeCandidatePool(env, input.companyId, exactNeedles, 40);
+  const distinctiveRows = distinctiveNeedles.length
+    ? await fetchKnowledgeCandidatePool(env, input.companyId, distinctiveNeedles, 40)
+    : [];
+  const needBroad = classified.highValueTokens.length === 0;
+  const broadRows = needBroad ? await fetchKnowledgeCandidatePool(env, input.companyId, broadNeedles, 80) : [];
+
+  const merged = [...exactRows, ...distinctiveRows, ...broadRows];
+  const bestByDoc = new Map<number, { row: KnowledgeCandidateRow; score: number }>();
+  for (const row of merged) {
+    const score = scoreKnowledgeCandidate(row, classified);
+    if (!keepScoredCandidate(score, row, classified)) continue;
     const existing = bestByDoc.get(row.document_id);
     if (!existing || score > existing.score) bestByDoc.set(row.document_id, { row, score });
   }

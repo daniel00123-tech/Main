@@ -4,8 +4,8 @@
 
 import type { Env } from "../env";
 import { executeRegisteredMcpTool } from "./control-plane";
-import { extractHitList, unwrapToolPayload } from "./mcp-knowledge-standard";
-import { searchCompanyKnowledgeIndex } from "./company-knowledge-index";
+import { extractHitList, toStandardSearchPayload, unwrapToolPayload } from "./mcp-knowledge-standard";
+import { knowledgeHitMatchesQuery, searchCompanyKnowledgeIndex } from "./company-knowledge-index";
 
 export type KnowledgeSearchHitSummary = {
   title: string | null;
@@ -95,7 +95,7 @@ export async function runProductionKnowledgeSearch(
   const localHits = await searchCompanyKnowledgeIndex(env, {
     companyId: input.companyId,
     query: input.query,
-    limit: input.limit ?? 5,
+    limit: input.limit ?? 8,
   }).catch(() => []);
 
   if (result.status !== 200) {
@@ -122,7 +122,31 @@ export async function runProductionKnowledgeSearch(
   }
 
   const payload = (result.data as Record<string, unknown>).result;
-  const rawHits = [...localHits, ...knowledgeSearchHitsFromPayload(payload)];
+  const standardMcp = toStandardSearchPayload(payload).results;
+  const mcpSource = standardMcp.length
+    ? standardMcp.map((row) => ({ ...row, documentId: row.id, filename: row.title }))
+    : knowledgeSearchHitsFromPayload(payload);
+  const mcpHits = mcpSource.map((row) => {
+    const rec = row as Record<string, unknown>;
+    const meta = rec.metadata && typeof rec.metadata === "object" ? (rec.metadata as Record<string, unknown>) : {};
+    return {
+      title: rec.title ?? rec.filename ?? null,
+      documentId: rec.id ?? rec.documentId ?? rec.document_id ?? null,
+      document_id: rec.id ?? rec.documentId ?? rec.document_id ?? null,
+      filename: rec.filename ?? rec.title ?? null,
+      category: meta.sourceType ?? meta.source_type ?? rec.category ?? null,
+      source: meta.source ?? rec.source ?? "company_mcp",
+      snippet: rec.snippet ?? rec.text ?? "",
+      topic: meta.topic ?? rec.topic ?? null,
+      url: rec.url,
+    };
+  });
+  const rawHits = [...localHits, ...mcpHits].filter((row) => {
+    const title = String(row.title ?? row.filename ?? "").trim();
+    const id = row.documentId ?? row.document_id;
+    if (!title && (id == null || id === "")) return false;
+    return knowledgeHitMatchesQuery(row, input.query);
+  });
   const hits = summarizeKnowledgeSearchHits(rawHits);
   const outlookHitCount = rawHits.filter((row) => {
     const category = String(row.category ?? "");
