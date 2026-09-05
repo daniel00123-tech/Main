@@ -5,7 +5,11 @@
 import type { Env } from "../env";
 import { executeRegisteredMcpTool } from "./control-plane";
 import { extractHitList, toStandardSearchPayload, unwrapToolPayload } from "./mcp-knowledge-standard";
-import { knowledgeHitMatchesQuery, searchCompanyKnowledgeIndex } from "./company-knowledge-index";
+import {
+  knowledgeHitMatchesQuery,
+  mergeKnowledgeSearchHits,
+  searchCompanyKnowledgeIndex,
+} from "./company-knowledge-index";
 
 export type KnowledgeSearchHitSummary = {
   title: string | null;
@@ -141,7 +145,7 @@ export async function runProductionKnowledgeSearch(
       url: rec.url,
     };
   });
-  const rawHits = [...localHits, ...mcpHits].filter((row) => {
+  const rawHits = mergeKnowledgeSearchHits(localHits, mcpHits).filter((row) => {
     const title = String(row.title ?? row.filename ?? "").trim();
     const id = row.documentId ?? row.document_id;
     if (!title && (id == null || id === "")) return false;

@@ -176,14 +176,14 @@ export async function createPortalConversation(
   return { id, companyId: input.companyId, userId: input.userId, title, createdAt: now, updatedAt: now };
 }
 
-async function getPortalConversationWithRetry(
+export async function getPortalConversationWithRetry(
   db: D1Database,
   input: { conversationId: string; companyId: string; userId: string },
 ): Promise<PortalChatConversation | null> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     const found = await getPortalConversation(db, input);
     if (found) return found;
-    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 40 * (attempt + 1)));
+    if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
   }
   return null;
 }
@@ -246,6 +246,7 @@ export async function sendPortalChatMessage(
   if (text.length > 4_000) throw new PortalChatError("Message is too long", 400);
 
   await ensurePortalChatSchema(env.DB);
+  const startedAt = Date.now();
   let createdConversation = false;
   let conversationId = input.conversationId?.trim() || "";
   let conversation: Awaited<ReturnType<typeof getPortalConversation>> = null;
@@ -410,6 +411,10 @@ export async function sendPortalChatMessage(
       providerMode: result.brainMode ?? null,
       trafficClass,
       sourceClient: "portal_chat",
+      userAgent: input.userAgent ?? null,
+      actorEmail: input.sessionUser.email,
+      customerRequestId: interactionId,
+      latencyMs: Date.now() - startedAt,
       customerChargeCents: shouldChargeElCustomerRequest(input.companyId, trafficClass) ? 3 : 0,
     },
   );

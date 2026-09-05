@@ -19,11 +19,11 @@ const SEMANTIC_CONTENT_VERB =
 const SEMANTIC_CONTENT_VERB_FLIP =
   /\b(say|mean|require|cover|state).{0,24}(policy|process|procedure|handbook|guidance)\b/i;
 const NAMED_PROCEDURE =
-  /\b(payment process|booking process|remittance|health and safety|lone[- ]working|asbestos|finance admin|subcontractor (payment|booking)|profit margin policy)\b/i;
+  /\b(payment process|booking process|remittance|health and safety|lone[- ]working|asbestos|finance admin(?:istration)?(?:\s+(?:guide|knowledge(?: document)?))?|knowledge (?:base|document|file)|admin guide|subcontractor (payment|booking)|profit margin policy)\b/i;
 const EXPLICIT_CATALOGUE =
   /\b((newest|latest|recent).{0,28}(file|document|pdf|onedrive|sharepoint|indexed file|filename)|list (the )?(newest |recent )?(files|documents)|recent documents|newest document filename|how many (files|documents) are indexed)\b/i;
 const EMAIL_ASK =
-  /\b(emails?|inbox|mailbox|outlook|unread mail|(the|their) messages?)\b/i;
+  /\b(emails?|inbox|mailbox|outlook|unread mail|remittance email|customer email|(the|their) messages?)\b/i;
 const ACCOUNTING_ASK =
   /\b(xero|sales|revenue|overdue|outstanding|p&l|pnl|invoice|aged (receivable|payable)|top customers?|warehouse)\b/i;
 
@@ -39,7 +39,13 @@ export function isExplicitCatalogueAsk(text: string): boolean {
 export function decomposeEvidenceNeeds(text: string): EvidenceSubtask[] {
   const value = String(text ?? "");
   const needs = new Set<EvidenceSubtask>();
-  if (isSemanticKnowledgeAsk(value)) needs.add("knowledge.semantic");
+  if (
+    isSemanticKnowledgeAsk(value) ||
+    (/\b(polic(?:y|ies)|handbook|procedure|guidance|knowledge (?:base|document|file))\b/i.test(value) &&
+      !isExplicitCatalogueAsk(value))
+  ) {
+    needs.add("knowledge.semantic");
+  }
   if (isExplicitCatalogueAsk(value)) needs.add("catalogue.list");
   if (EMAIL_ASK.test(value)) {
     if (/\b(what are they asking|what does it say|summaris|summariz|draft|body|actually say)\b/i.test(value)) {

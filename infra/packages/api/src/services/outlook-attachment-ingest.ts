@@ -702,6 +702,15 @@ async function verifyIndexedDocumentRetrievable(
   }
 }
 
+export function isMailboxBlockingFailure(code: string | null | undefined): boolean {
+  return (
+    code === "FETCH_FAILED" ||
+    code === "FETCH_TRANSIENT" ||
+    code === "ATTACHMENT_ENUM_FAILED" ||
+    code === "MCP_UNAVAILABLE"
+  );
+}
+
 async function ingestOneAttachment(
   env: Env,
   input: {
@@ -1440,7 +1449,7 @@ export async function ingestApprovedOutlookAttachments(
           counts.attachmentsFetched += 1;
           if (result.storedThisRun) counts.attachmentsStored += 1;
           counts.failed += 1;
-          mailboxFailures += 1;
+          if (isMailboxBlockingFailure(result.failureCode)) mailboxFailures += 1;
         }
         attachmentSummaries.push({
           messageId: message.id,

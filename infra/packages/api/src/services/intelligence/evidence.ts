@@ -54,8 +54,14 @@ export function emailBodyRequired(text: string): boolean {
   if (/\b(policy|document|handbook|procedure|guidance|knowledge base)\b/i.test(text) && !/\b(email|inbox|mailbox|outlook|message)\b/i.test(text)) {
     return false;
   }
+  if (
+    /\b(xero|sales|overdue|revenue|profit|p&l|pnl)\b/i.test(text) &&
+    !/\b(email|inbox|mailbox|outlook|message|they|them|reply|draft|asking)\b/i.test(text)
+  ) {
+    return false;
+  }
   return (
-    /\b(what (are|were) they asking|what does .{0,40}(say|said)|what did they (ask|want|say)|summar(y|ise|ize)|draft|reply|respond|full (email|message|body)|the (email|message) (body|content|text)|what are they asking)\b/i.test(
+    /\b(what (are|were) they asking|what (is|was) (the |this |that )?(email|message) asking|what does .{0,40}(say|said)|what did they (ask|want|say)|summar(?:ise|ize)(?:\s+(that|it|this|the .{0,32}))?|summary of (that|it|this|the (email|message))|draft|reply|respond|full (email|message|body)|the (email|message) (body|content|text)|show (the )?(full )?(body|message)|write a reply)\b/i.test(
       text,
     ) || isDraftOrEdit(text)
   );
@@ -63,7 +69,7 @@ export function emailBodyRequired(text: string): boolean {
 
 export function emailEvidenceHasBody(evidence: StructuredEvidence | null | undefined): boolean {
   const body = String(evidence?.recentEmail?.body ?? "").replace(/\s+/g, " ").trim();
-  return body.length >= 40;
+  return body.length >= 20;
 }
 
 export function classifyEvidenceNeed(
@@ -98,9 +104,12 @@ export function canUseExisting(
 
 export function isDraftOrEdit(text: string): boolean {
   return (
-    /\b(reply|respond|draft|suggest(?:ion)?|what (should|can) (i|we) (say|reply|write)|make (that|it|this|the (reply|draft|email)).{0,28}(short|shorter|brief|simple|friendlier|friendly|warmer|formal|polite|professional|softer)|friendlier|more (friendly|formal|polite|professional)|in fewer words)\b/i.test(
+    /\b(reply|respond|draft|suggest(?:ion)?|what (should|can) (i|we) (say|reply|write)|make (that|it|this|the (reply|draft|email)).{0,28}(short|shorter|brief|simple|friendlier|friendly|warmer|formal|polite|professional|softer|direct)|friendlier|more (friendly|formal|polite|professional|direct)|in fewer words)\b/i.test(
       text,
-    ) || /^(make (that|it) (shorter|friendlier|warmer)|more detail)[.?!]*$/i.test(text.trim())
+    ) ||
+    /^(make (that|it) (shorter|friendlier|warmer|more direct)|more detail|shorter|friendlier|warmer|more direct)[.?!]*$/i.test(
+      text.trim(),
+    )
   );
 }
 
@@ -180,7 +189,13 @@ export function shouldReuseSuccessfulTool(
   if (evidence?.lastSuccessfulCalls?.some((row) => row.name === call.name && row.argsHash === hash)) {
     return true;
   }
-  const invoice = String(call.arguments.invoiceNumber ?? call.arguments.invoiceId ?? "")
+  const invoice = String(
+    call.arguments.invoiceNumber ??
+      call.arguments.InvoiceNumber ??
+      call.arguments.invoiceId ??
+      call.arguments.InvoiceID ??
+      "",
+  )
     .trim()
     .toUpperCase();
   if (

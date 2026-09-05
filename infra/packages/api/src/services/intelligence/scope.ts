@@ -71,7 +71,8 @@ const DISCOURSE =
   /^(hi|hello|hey|hiya|yo|morning|thanks|thank you|cheers|ta|thx|ty)\b|^(how are you|how(?:'s|s) it going)\b|\b(that(?:'s| is) useful|that helps|great thanks|appreciate (it|that)|i don'?t (understand|follow)|what do you mean|why did you ask|can you (give|show) (me )?an example)\b/i;
 const REPHRASE =
   /\b(explain(?: that| this| it| your last answer)? more simply|more simply|make (that|it|this|your last answer|the (reply|draft|email)).{0,24}(shorter|simpler|brief|friendly|friendlier|warmer|formal|polite|professional|softer)|in fewer words|more detail(s)?( on (that|your last|what you said))?|give me more (detail|details|info|information)|say that again|explain again|put (that|it) another way|friendlier|more (friendly|formal|polite))\b/i;
-const SHORT_REPHRASE = /^(more detail|what exactly)[.?!]*$/i;
+const SHORT_REPHRASE =
+  /^(more detail|what exactly|shorter|friendlier|warmer|more direct)( please)?[.?!]*$/i;
 const SHORT_MEMORY = /^(when|who)[.?!]*$/i;
 const MEMORY =
   /\b(what (were|are) we talking about|what did i (just )?ask|what did you (just )?(tell|say)|what were they asking|remind me|which source|last document i asked|the amount again|who sent (that|it|the email))\b/i;
@@ -132,7 +133,7 @@ function isNamedDocumentFind(trimmed: string): boolean {
 }
 
 const PERIOD_FOLLOW =
-  /\b(today|yesterday|(this|last|past|previous)( \d+)? (days?|weeks?|months?|quarters?|years?))\b|\b(what about|how about|and) (this|last|yesterday|today|it)\b|\b(compare|versus|\bvs\.?\b) (them|that|this|last|the)\b/i;
+  /\b(today|yesterday|(this|last|past|previous)( \d+)? (days?|weeks?|months?|quarters?|years?))\b|\b(what about|how about|and) (this|last|yesterday|today|it)\b|\b(compare|versus|\bvs\.?\b) (them|that|this|last|the)\b|\bi meant (last|this|previous) month\b|\bnot this month\b/i;
 
 function isFinancePeriodFollowUp(
   text: string,
@@ -176,7 +177,7 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
 }
 
 function isEmailContentFollowUp(text: string): boolean {
-  return /\b(what (are|were) they asking|what does (it|that|this) say|what did they (ask|want|say)|summar(y|ise|ize) (it|that|this|the (email|message))|draft (a )?(reply|response))\b/i.test(
+  return /\b(what (are|were) they asking|what (is|was) (the |this |that )?(email|message) asking|what does (it|that|this) say|what did they (ask|want|say)|summar(?:ise|ize) (it|that|this|the (email|message))|draft (a |me a )?(reply|response)|what should (we|i) (say|reply|write)|write a reply|respond to (that|it|them))\b/i.test(
     text,
   );
 }
@@ -273,8 +274,11 @@ function detectScopeSwitch(text: string): ScopeSwitch {
   ) {
     return "business";
   }
-  if (/\b(emails?|emials|mailbox|outlook)\b/i.test(text) && /\b(instead|switch|search|check|from|meant)\b/i.test(text)) {
+  if (/\b(emails?|emials|mailbox|outlook)\b/i.test(text) && /\b(instead|switch|search|check|from|meant|look)\b/i.test(text)) {
     return "email";
+  }
+  if (/\b(look at|check) the invoice\b/i.test(text) && !/\b(email|inbox|mailbox|outlook)\b/i.test(text)) {
+    return "business";
   }
   const correctionSpeech =
     /\b(no|nope|nah|sorry|instead|meant|was talking about|i was referring|not (xero|the ledger|finance))\b/i.test(text);
