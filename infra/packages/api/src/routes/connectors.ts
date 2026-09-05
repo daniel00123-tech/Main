@@ -1296,6 +1296,29 @@ connectors.post("/api/internal/el-whatsapp-qa", async (c) => {
   }
 });
 
+connectors.post("/api/internal/targeted-quality", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      stage?: string;
+      ids?: string[];
+      sendEmail?: boolean;
+    };
+    const { runTargetedQuality } = await import("../services/targeted-quality/campaign");
+    return c.json(
+      await runTargetedQuality(c.env, {
+        stage: body.stage,
+        ids: Array.isArray(body.ids) ? body.ids.map(String) : undefined,
+        sendEmail: body.sendEmail === true,
+      }),
+    );
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Targeted quality failed" }, 500);
+  }
+});
+
 connectors.post("/api/internal/overnight-qa", async (c) => {
   if (!(await verifyCmdAcceptanceToken(c))) {
     return c.json({ error: "Invalid or expired acceptance token" }, 403);
@@ -1473,6 +1496,11 @@ connectors.post("/api/internal/el-outlook-attachment-ingest", async (c) => {
     if (companyId !== "co_el") {
       return c.json({ error: "EL attachment ingest is scoped to co_el" }, 403);
     }
+    const mailboxAddresses = Array.isArray(body.mailboxAddresses)
+      ? body.mailboxAddresses.filter((row: unknown): row is string => typeof row === "string")
+      : typeof body.mailboxAddress === "string"
+        ? [body.mailboxAddress]
+        : undefined;
     return c.json(
       await ingestApprovedOutlookAttachments(c.env, {
         companyId,
@@ -1480,6 +1508,7 @@ connectors.post("/api/internal/el-outlook-attachment-ingest", async (c) => {
         windowTo: new Date(typeof body.windowTo === "string" ? body.windowTo : "2026-09-04T17:39:03.388Z"),
         actor: "system:el-outlook-attachment-ingest",
         recoverExisting: body.recoverExisting !== false,
+        mailboxAddresses,
       }),
     );
   } catch (err) {
@@ -1487,6 +1516,28 @@ connectors.post("/api/internal/el-outlook-attachment-ingest", async (c) => {
       { error: err instanceof Error ? err.message : "EL Outlook attachment ingest failed" },
       500,
     );
+  }
+});
+
+connectors.post("/api/internal/el-knowledge-search", async (c) => {
+  if (!(await verifyCmdAcceptanceToken(c))) {
+    return c.json({ error: "Invalid or expired acceptance token" }, 403);
+  }
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const query = typeof body.query === "string" ? body.query.trim() : "";
+    if (!query) return c.json({ error: "query required" }, 400);
+    const { runProductionKnowledgeSearch } = await import("../services/microsoft-acceptance-knowledge-search");
+    return c.json(
+      await runProductionKnowledgeSearch(c.env, {
+        companyId: "co_el",
+        query,
+        limit: typeof body.limit === "number" ? body.limit : 8,
+        actor: "system:el-knowledge-search",
+      }),
+    );
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "EL knowledge search failed" }, 500);
   }
 });
 

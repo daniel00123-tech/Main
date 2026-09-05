@@ -182,6 +182,19 @@ async function backfillPortal(db: D1Database, fromIso: string, toIso: string): P
 
 async function backfillUsageParents(db: D1Database, fromIso: string, toIso: string): Promise<number> {
   let stored = 0;
+  for (const source of ["whatsapp", "chatgpt", "claude", "portal_chat"]) {
+    stored += await backfillUsageParentsForSource(db, fromIso, toIso, source);
+  }
+  return stored;
+}
+
+async function backfillUsageParentsForSource(
+  db: D1Database,
+  fromIso: string,
+  toIso: string,
+  sourceClient: string,
+): Promise<number> {
+  let stored = 0;
   try {
     const rows = await db
       .prepare(
@@ -191,10 +204,13 @@ async function backfillUsageParents(db: D1Database, fromIso: string, toIso: stri
          FROM usage_records
          WHERE recorded_at >= ? AND recorded_at < ?
            AND interaction_id IS NOT NULL
-           AND source_client IN ('whatsapp','portal_chat','chatgpt','claude')
+           AND source_client = ?
+           AND interaction_id NOT IN (
+             SELECT interaction_id FROM daily_improvement_interactions WHERE source_client = ?
+           )
          ORDER BY recorded_at ASC LIMIT 800`,
       )
-      .bind(fromIso, toIso)
+      .bind(fromIso, toIso, sourceClient, sourceClient)
       .all<Record<string, unknown>>();
     for (const row of rows.results ?? []) {
       const meta = safeMeta(row.metadata);

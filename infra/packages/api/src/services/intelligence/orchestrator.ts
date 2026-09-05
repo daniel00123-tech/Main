@@ -18,6 +18,9 @@ import {
   recordSuccessfulCall,
   sanitiseEvidenceForModel,
   shouldReuseSuccessfulTool,
+  emailBodyRequired,
+  emailEvidenceHasBody,
+  argsFingerprint,
 } from "./evidence.js";
 import type { IntelligenceCompleter } from "./provider.js";
 import { applyGuardToTurn } from "./response-guard.js";
@@ -256,6 +259,17 @@ async function executeIntelligenceTurn(input: {
     channel: input.channel ?? null,
   };
   const runtime = wrapAuthorizedRuntime(input.runtime, authCtx);
+  const executedThisTurn = new Map<string, IntelligenceToolResult>();
+  const turnReuseKey = (name: string, args: Record<string, unknown>) => {
+    const invoice = String(args.invoiceNumber ?? args.invoiceId ?? "")
+      .trim()
+      .toUpperCase();
+    if (invoice && name === "xero_get_invoice") return `${name}:${invoice}`;
+    if (/^outlook_(list_messages|search_mailbox)$/.test(name)) {
+      return `${name}:${String(args.mailboxAddress ?? "").toLowerCase()}:${String(args.query ?? "").toLowerCase()}:${String(args.limit ?? "")}`;
+    }
+    return argsFingerprint(name, args);
+  };
   let recentEvidence = stampEvidenceTenant(
     mergeEvidence(input.state.recentEvidence, extractEvidenceFromTools([])),
     input.state.companyId,
@@ -565,7 +579,18 @@ async function executeIntelligenceTurn(input: {
         transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
         continue;
       }
+      const reuseKey = turnReuseKey(call.name, call.arguments);
+      const already =
+        executedThisTurn.get(reuseKey) ??
+        (call.name === "outlook_search_mailbox"
+          ? [...executedThisTurn.entries()].find(([key]) => key.startsWith("outlook_search_mailbox:"))?.[1]
+          : undefined);
+      if (already) {
+        transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
+        continue;
+      }
       const result = await runtime.executeTool(call);
+      executedThisTurn.set(reuseKey, result);
       toolCalls.push(result);
       recentEvidence = recordSuccessfulCall(mergeEvidence(recentEvidence, extractEvidenceFromTools([result])), call, result);
       workingState.recentEvidence = recentEvidence;
@@ -1162,7 +1187,9 @@ function isProcessOrPolicyAsk(text: string): boolean {
 
 function shouldRunDeterministicRead(scoped: ScopeDecision, text: string, state?: IntelligenceConversationState): boolean {
   if (scoped.clarify || !scoped.tool) return false;
-  if (state && classifyEvidenceNeed(text, state) === "CAN_ANSWER_FROM_EXISTING_EVIDENCE") return false;
+  if (state && classifyEvidenceNeed(text, state) === "CAN_ANSWER_FROM_EXISTING_EVIDENCE" && !state.userCorrection) {
+    return false;
+  }
   if (scoped.scope === "BUSINESS_SYSTEM") return true;
   return scoped.scope === "COMPANY_KNOWLEDGE" && scoped.tool === "search_company_knowledge" && isProcessOrPolicyAsk(text);
 }
@@ -1262,12 +1289,15 @@ function mailboxSearchQuery(text: string, args: Record<string, unknown>): string
   if (fromName && !/^(us|me|the|our|info|finance)$/i.test(fromName)) return fromName;
   if (/\bsharon\b/i.test(text)) return "Sharon";
   if (/\b(po|purchase.?order)\b/i.test(text)) return "PO";
-  if (/\binvoice\b/i.test(text)) return "invoice";
+  if (/\binvoice\b/i.test(text) && !emailBodyRequired(text)) return "invoice";
+  if (emailBodyRequired(text) || /^(what|who|how|when|why|summar|draft|reply)\b/i.test(text.trim())) {
+    return "inbox";
+  }
   return text.trim() || "inbox";
 }
 
 function wantsFullEmail(text: string): boolean {
-  return /\b(full|body|what does .{0,40}(say|said))\b/i.test(text);
+  return emailBodyRequired(text);
 }
 
 function wantsSalesThenFinanceEmail(text: string): boolean {
@@ -1312,12 +1342,66 @@ async function runDeterministicRead(
       );
     }
     if (toolCalls.length) {
+      if (emailBodyRequired(text) && !emailEvidenceHasBody(extractEvidenceFromTools(toolCalls))) {
+        const messageId =
+          extractFirstMessageId(toolCalls.find((call) => /outlook/i.test(call.name))?.data) ||
+          String(state.recentEvidence?.recentEmail?.id ?? "");
+        if (messageId) {
+          toolCalls.push(
+            await runtime.executeTool({
+              name: "outlook_get_message",
+              arguments: prepareToolArguments("outlook_get_message", { messageId }, text, state, scoped.scope),
+            }),
+          );
+        }
+      }
       return {
         text: synthesizeFromToolCalls(toolCalls, text),
         toolCalls,
         ok: toolCalls.some((call) => call.ok),
       };
     }
+  }
+  if (emailBodyRequired(text) && !emailEvidenceHasBody(state.recentEvidence)) {
+    const knownId = String(state.recentEvidence?.recentEmail?.id ?? "").trim();
+    if (knownId) {
+      const fetched = await runtime.executeTool({
+        name: "outlook_get_message",
+        arguments: prepareToolArguments(
+          "outlook_get_message",
+          { messageId: knownId },
+          text,
+          state,
+          scoped.scope,
+        ),
+      });
+      return {
+        text: synthesizeFromToolCalls([fetched], text),
+        toolCalls: [fetched],
+        ok: fetched.ok,
+      };
+    }
+    const listed = await runtime.executeTool({
+      name: "outlook_list_messages",
+      arguments: prepareToolArguments("outlook_list_messages", { limit: 5 }, text, state, scoped.scope),
+    });
+    const messageId = extractFirstMessageId(listed.data);
+    if (messageId) {
+      const fetched = await runtime.executeTool({
+        name: "outlook_get_message",
+        arguments: prepareToolArguments("outlook_get_message", { messageId }, text, state, scoped.scope),
+      });
+      return {
+        text: synthesizeFromToolCalls([listed, fetched], text),
+        toolCalls: [listed, fetched],
+        ok: fetched.ok || listed.ok,
+      };
+    }
+    return {
+      text: synthesizeFromToolCalls([listed], text),
+      toolCalls: [listed],
+      ok: listed.ok,
+    };
   }
   const rewritten = rewriteAccountingTool(toolName, {}, text);
   const planned = {
@@ -1330,7 +1414,7 @@ async function runDeterministicRead(
     if (state.recentEvidence?.recentXero?.summary && /^xero_/.test(toolName)) {
       return { text: `Xero: ${state.recentEvidence.recentXero.summary}`, toolCalls: [], ok: true };
     }
-    if (state.recentEvidence?.recentEmail && /outlook/i.test(toolName)) {
+    if (state.recentEvidence?.recentEmail && /outlook/i.test(toolName) && !emailBodyRequired(text)) {
       const email = state.recentEvidence.recentEmail;
       return { text: `The newest email is “${email.subject}” from ${email.from}.`, toolCalls: [], ok: true };
     }

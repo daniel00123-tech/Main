@@ -4,7 +4,7 @@ import { issueMcpAccessToken, recordAccessJti } from "../../auth/mcp-oauth";
 import { executeWhatsAppIntelligence } from "../whatsapp-intelligence";
 import { emptyEntityMemory, type WhatsAppEntityMemory } from "../whatsapp-entities";
 import { listConnectedConnectorIds } from "../whatsapp-capabilities";
-import { sendPortalChatMessage } from "../portal-chat";
+import { PortalChatError, sendPortalChatMessage } from "../portal-chat";
 import { executeWarehouseQuery } from "../warehouse/query";
 import { createD1WarehouseRepository } from "../warehouse/store";
 import { classifyQueryFreshness, expectedAccountingSource } from "../warehouse/freshness";
@@ -222,7 +222,7 @@ export async function runOvernightSlice(
 
   let memory: WhatsAppEntityMemory = emptyEntityMemory();
   let prior: WhatsAppTurn[] = [];
-  let portalConversationId: string | undefined;
+  const portalByUser = new Map<string, string>();
   const sessionFor = (question: OvernightQuestion) => {
     const actor = question.actor === "office_staff" ? office : director;
     if (!actor?.active) return null;
@@ -236,16 +236,41 @@ export async function runOvernightSlice(
     const interactionId = `ova_${question.id}_${Date.now()}`;
 
     if (question.channel === "portal" || (input.stage === "followup" && question.sequence === "email")) {
-      const result = await sendPortalChatMessage(env, {
-        companyId: OVERNIGHT_COMPANY_ID,
-        sessionUser,
-        conversationId: portalConversationId,
-        text: question.text,
-        trafficClass: "TEST",
-        userAgent: "InfraAcceptance/1.0",
-        connectors,
-      });
-      portalConversationId = result.conversation.id;
+      let result;
+      try {
+        result = await sendPortalChatMessage(env, {
+          companyId: OVERNIGHT_COMPANY_ID,
+          sessionUser,
+          conversationId: portalByUser.get(sessionUser.userId),
+          text: question.text,
+          trafficClass: "TEST",
+          userAgent: "InfraAcceptance/1.0",
+          connectors,
+        });
+      } catch (error) {
+        const message = error instanceof PortalChatError ? error.message : String(error);
+        turns.push(
+          scoreOvernightTurn({
+            question,
+            tools: [],
+            reply: message,
+            denied: false,
+            charged: false,
+            latencyMs: Date.now() - started,
+            terminal: "failed",
+          }),
+        );
+        raw.push({
+          id: question.id,
+          tools: [],
+          reply: message.slice(0, 280),
+          conversationId: portalByUser.get(sessionUser.userId) ?? null,
+          harnessError: message,
+        });
+        continue;
+      }
+      portalByUser.set(sessionUser.userId, result.conversation.id);
+      const portalConversationId = result.conversation.id;
       const tools = result.assistantMessage.metadata.toolNames ?? [];
       const charged = await usageCharged(env, interactionId);
       const scored = scoreOvernightTurn({

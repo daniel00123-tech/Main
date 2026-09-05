@@ -83,12 +83,27 @@ export function extractOutlookMessages(data: unknown): Array<{
   return raw
     .filter(isRecord)
     .map((message) => ({
-      id: asString(message.id ?? message.messageId ?? message.emailId ?? message.email_id ?? message.internetMessageId),
+      id: asString(
+        message.id ??
+          message.Id ??
+          message.messageId ??
+          message.MessageId ??
+          message.message_id ??
+          message.emailId ??
+          message.email_id ??
+          message.internetMessageId,
+      ),
       subject: asString(message.subject) || "(no subject)",
       from: outlookFrom(message.from ?? message.sender),
       receivedDateTime: asString(message.receivedDateTime ?? message.received ?? message.date),
       mailboxAddress: mailbox || asString(message.mailboxAddress),
-      body: asString(message.body ?? message.bodyPreview).slice(0, 800),
+      body: asString(message.body ?? message.bodyPreview)
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 800),
     }));
 }
 
@@ -213,7 +228,9 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     const listed = customers
       .slice(0, 5)
       .map((row) => {
-        const name = asString(row.name ?? row.contact ?? row.ContactName) || "Unknown";
+        const name =
+          asString(row.name ?? row.contact ?? row.ContactName) ||
+          "unnamed contact (identity not present on the authorised extract)";
         const total = row.total ?? row.amount ?? row.sales_total;
         return typeof total === "number" || typeof total === "string" ? `${name} ${formatMoney(total)}` : name;
       })
@@ -293,7 +310,12 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
       const listed = inner.customers
         .filter(isRecord)
         .slice(0, 5)
-        .map((row) => `${asString(row.name)} ${formatMoney(row.total)}`)
+        .map((row) => {
+          const name =
+            asString(row.name ?? row.contact ?? row.ContactName) ||
+            "unnamed contact (identity not present on the authorised extract)";
+          return `${name} ${formatMoney(row.total)}`;
+        })
         .join("; ");
       return `Warehouse top customers: ${listed}.${suffix}`;
     }

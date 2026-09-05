@@ -69,6 +69,8 @@ export {
   answerFromExistingEvidence,
   shouldReuseSuccessfulTool,
   sanitiseEvidenceForModel,
+  emailBodyRequired,
+  emailEvidenceHasBody,
 } from "./evidence.js";
 export { runResponseQualityGuard, applyGuardToTurn, classifyResponseTerminal } from "./response-guard.js";
 export { runOpenAiResponses, hasOpenAiApiKey, inspectOpenAiKey, extractOpenAiResponses } from "./openai-responses.js";

@@ -103,7 +103,9 @@ export function renderKnowledgeIngestionReportEmail(data: MicrosoftSyncReportEma
     data.status === "HEALTHY" ? "#86EFAC" : data.status === "FAILED" ? "#FCA5A5" : "#FCD34D";
 
   const listHtml = (lines: string[]) =>
-    lines.map((line) => `<p style="margin:0 0 8px;color:#CBD5E1;">${escapeHtml(line)}</p>`).join("");
+    lines
+      .map((line) => `<p style="margin:0 0 8px;color:#CBD5E1;">${escapeHtml(line).replace(/\n/g, "<br />")}</p>`)
+      .join("");
 
   const html = `<!DOCTYPE html>
 <html lang="en">

@@ -4,6 +4,8 @@ import {
   classifyEvidenceNeed,
   extractEvidenceFromTools,
   shouldReuseSuccessfulTool,
+  emailBodyRequired,
+  emailEvidenceHasBody,
 } from "./evidence.js";
 import { buildConversationState } from "./state.js";
 
@@ -57,5 +59,68 @@ describe("structured evidence", () => {
     expect(shorter && shorter.length < (draft ?? "").length).toBe(true);
     const asking = answerFromExistingEvidence("what were they asking for again?", state);
     expect(asking).toMatch(/leak|availability|survey/i);
+  });
+
+  it("requires a full message body for summarise/draft/asking follow-ups", () => {
+    const listOnly = extractEvidenceFromTools([
+      {
+        ...emailResult,
+        data: {
+          mailboxAddress: "info@elvexpropertyservices.com",
+          messages: [{ id: "msg_1", subject: "Quote", from: "ops@example.com", receivedDateTime: "2026-09-04T09:00:00Z" }],
+        },
+      },
+    ]);
+    const state = buildConversationState({
+      userText: "what are they asking?",
+      lastAnswerTopic: "email",
+      currentBusinessSystem: "email",
+      recentEvidence: listOnly,
+    });
+    expect(emailBodyRequired("what are they asking?")).toBe(true);
+    expect(emailBodyRequired("what is the latest email subject?")).toBe(false);
+    expect(emailBodyRequired("What does the Health & Safety Policy say about reporting an accident?")).toBe(false);
+    expect(emailBodyRequired("What does the latest finance email actually say?")).toBe(true);
+    expect(emailEvidenceHasBody(listOnly)).toBe(false);
+    expect(classifyEvidenceNeed("what are they asking?", state)).toBe("NEEDS_FRESH_DATA");
+    expect(classifyEvidenceNeed("what is the latest email subject?", state)).toBe("NEEDS_FRESH_DATA");
+    const withBody = extractEvidenceFromTools([emailResult]);
+    expect(emailEvidenceHasBody(withBody)).toBe(true);
+    expect(
+      classifyEvidenceNeed(
+        "draft a reply",
+        buildConversationState({
+          userText: "draft a reply",
+          lastAnswerTopic: "email",
+          currentBusinessSystem: "email",
+          recentEvidence: withBody,
+        }),
+      ),
+    ).toBe("CAN_ANSWER_FROM_EXISTING_EVIDENCE");
+    expect(
+      classifyEvidenceNeed(
+        "Who sent the most recent finance mailbox email?",
+        buildConversationState({
+          userText: "Who sent the most recent finance mailbox email?",
+          lastAnswerTopic: "email",
+          currentBusinessSystem: "email",
+          recentEvidence: listOnly,
+        }),
+      ),
+    ).toBe("NEEDS_FRESH_DATA");
+  });
+
+  it("reuses the same invoice identity without an exact args hash", () => {
+    const evidence = extractEvidenceFromTools([
+      {
+        name: "xero_get_invoice",
+        ok: true,
+        latencyMs: 8,
+        data: { invoiceNumber: "INV-02268", Total: 162, Status: "AUTHORISED" },
+      },
+    ]);
+    expect(
+      shouldReuseSuccessfulTool({ name: "xero_get_invoice", arguments: { invoiceNumber: "INV-02268" } }, evidence),
+    ).toBe(true);
   });
 });

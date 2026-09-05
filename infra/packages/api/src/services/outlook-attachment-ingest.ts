@@ -31,15 +31,27 @@ import {
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
 import { executeCompanyMcpOutlookRead } from "./microsoft-outlook-company-mcp";
 import {
+  getMailFolder,
   getMessageAttachmentContent,
-  listMailboxMessages,
+  listMailboxFolderMessages,
+  listMailboxFoldersDeep,
   listMessageAttachments,
   type GraphMailAttachment,
+  type GraphMailFolder,
   type GraphMailMessageDetail,
 } from "./microsoft-outlook-graph";
 import { MicrosoftGraphError } from "./microsoft-graph";
 import { resolveOutlookGraphAccess } from "./outlook-graph-access";
 import { formatMailboxScanCount, mailboxScanHealth, type MailboxScanHealth } from "./mailbox-scan-status";
+import {
+  getMailboxFolderSettings,
+  listEnabledMailboxFolders,
+  markFolderScanResult,
+  resolveApprovedIngestFolders,
+  seedApprovedMailboxFolderPolicies,
+  upsertApprovedMailboxFolder,
+  type ResolvedIngestFolder,
+} from "./mailbox-ingest-folder-policy";
 
 const MAX_MESSAGES_PER_MAILBOX = 200;
 const MAX_RETRIES = 4;
@@ -88,6 +100,17 @@ export type AttachmentIngestCounts = {
   retries: number;
 };
 
+export type MailboxFolderScanReport = {
+  name: string;
+  folderId: string | null;
+  kind: string;
+  checked: boolean;
+  failed: boolean;
+  messagesScanned: number | null;
+  messagesWithAttachments: number;
+  error: string | null;
+};
+
 export type NamedPersonMailboxReport = {
   name: string;
   mailboxAddress: string | null;
@@ -107,6 +130,7 @@ export type NamedPersonMailboxReport = {
   failures: number;
   policy: string;
   excluded: boolean;
+  folders?: MailboxFolderScanReport[];
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -222,6 +246,18 @@ function decodeBase64Bytes(contentBytes: string): ArrayBuffer {
   return binary.buffer;
 }
 
+function filterMessagesInWindow(
+  rows: GraphMailMessageDetail[],
+  windowFrom: Date,
+  windowTo: Date,
+): GraphMailMessageDetail[] {
+  return rows.filter((row) => {
+    if (row["@removed"]) return false;
+    const when = messageTime(row);
+    return when ? timestampInWindow(when, windowFrom, windowTo) : false;
+  });
+}
+
 async function discoverMessagesViaGraph(
   env: Env,
   input: {
@@ -230,6 +266,7 @@ async function discoverMessagesViaGraph(
     windowFrom: Date;
     windowTo: Date;
     actor: string;
+    useFolderCheckpoints?: boolean;
   },
 ): Promise<
   | {
@@ -239,8 +276,10 @@ async function discoverMessagesViaGraph(
       messagesScanned: number;
       tenantId: string;
       accessToken: string;
+      folders: MailboxFolderScanReport[];
+      nextLinkFollowed: boolean;
     }
-  | { ok: false; code: string; message: string }
+  | { ok: false; code: string; message: string; folders?: MailboxFolderScanReport[] }
 > {
   const access = await resolveOutlookGraphAccess(env, {
     companyId: input.companyId,
@@ -248,25 +287,161 @@ async function discoverMessagesViaGraph(
     actor: input.actor,
   });
   if (!access.ok) return access;
-  const listed = await withBoundedRetry(() =>
-    listMailboxMessages(
-      { accessToken: access.accessToken, tenantId: access.tenantId },
-      { mailboxAddress: input.mailboxAddress, top: MAX_MESSAGES_PER_MAILBOX },
-    ),
+  const config = { accessToken: access.accessToken, tenantId: access.tenantId };
+
+  let inbox: GraphMailFolder;
+  try {
+    inbox = await withBoundedRetry(() => getMailFolder(config, input.mailboxAddress, "inbox"));
+  } catch (err) {
+    return {
+      ok: false,
+      code: "GRAPH_INBOX_UNAVAILABLE",
+      message: err instanceof Error ? err.message : "Inbox folder could not be resolved",
+    };
+  }
+
+  const listedFolders = await withBoundedRetry(() => listMailboxFoldersDeep(config, input.mailboxAddress)).catch(
+    () => [inbox],
   );
-  const inWindow = listed.filter((row) => {
-    if (row["@removed"]) return false;
-    const when = messageTime(row);
-    return when ? timestampInWindow(when, input.windowFrom, input.windowTo) : false;
+  const settings = await getMailboxFolderSettings(env.DB, input.companyId, input.mailboxAddress);
+  const enabledPolicies = await listEnabledMailboxFolders(env.DB, input.companyId, input.mailboxAddress);
+  let sent: GraphMailFolder | null = null;
+  let archive: GraphMailFolder | null = null;
+  if (settings.includeSent) {
+    sent = await getMailFolder(config, input.mailboxAddress, "sentitems").catch(() => null);
+  }
+  if (settings.includeArchive) {
+    archive = await getMailFolder(config, input.mailboxAddress, "archive").catch(() => null);
+  }
+  const resolved = resolveApprovedIngestFolders({
+    inbox,
+    listedFolders,
+    enabledPolicies,
+    includeSent: settings.includeSent,
+    includeArchive: settings.includeArchive,
+    sent,
+    archive,
   });
-  const messages = inWindow.filter((row) => Boolean(row.hasAttachments));
+
+  const messagesById = new Map<string, GraphMailMessageDetail>();
+  const folderReports: MailboxFolderScanReport[] = [];
+  let messagesScanned = 0;
+  let nextLinkFollowed = false;
+  let inboxFailed = false;
+
+  const scanFolder = async (folder: ResolvedIngestFolder) => {
+    const folderWindow = input.useFolderCheckpoints
+      ? resolveMailboxIngestWindow({
+          now: input.windowTo,
+          lastCheckpoint: folder.lastCheckpoint,
+          maxLookbackMs: Math.min(
+            MAILBOX_INGEST_MAX_LOOKBACK_MS,
+            Math.max(60_000, input.windowTo.getTime() - input.windowFrom.getTime()),
+          ),
+        })
+      : { windowFrom: input.windowFrom, windowTo: input.windowTo, usedCheckpoint: false };
+    try {
+      const listed = await withBoundedRetry(() =>
+        listMailboxFolderMessages(config, {
+          mailboxAddress: input.mailboxAddress,
+          folderId: folder.folderId,
+          top: 50,
+          receivedAfter: folderWindow.windowFrom.toISOString(),
+          maxItems: MAX_MESSAGES_PER_MAILBOX,
+        }),
+      );
+      const inWindow = filterMessagesInWindow(listed.messages, folderWindow.windowFrom, folderWindow.windowTo);
+      const withAttachments = inWindow.filter((row) => Boolean(row.hasAttachments));
+      for (const message of withAttachments) {
+        if (message.id && !messagesById.has(message.id)) messagesById.set(message.id, message);
+      }
+      messagesScanned += inWindow.length;
+      nextLinkFollowed = nextLinkFollowed || listed.nextLinkFollowed;
+      folderReports.push({
+        name: folder.folderName,
+        folderId: folder.folderId,
+        kind: folder.kind,
+        checked: true,
+        failed: false,
+        messagesScanned: inWindow.length,
+        messagesWithAttachments: withAttachments.length,
+        error: null,
+      });
+      await upsertApprovedMailboxFolder(env.DB, {
+        companyId: input.companyId,
+        mailboxAddress: input.mailboxAddress,
+        folderName: folder.folderName,
+        folderId: folder.folderId,
+        enabled: true,
+        source: folder.source === "always" ? "always" : folder.source,
+      }).catch(() => undefined);
+      await markFolderScanResult(env.DB, {
+        companyId: input.companyId,
+        mailboxAddress: input.mailboxAddress,
+        folderName: folder.folderName,
+        folderId: folder.folderId,
+        checkpoint: inWindow[0] ? messageTime(inWindow[0]) : folder.lastCheckpoint,
+        success: true,
+        messagesScanned: inWindow.length,
+      }).catch(() => undefined);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "folder scan failed";
+      if (folder.kind === "inbox") inboxFailed = true;
+      folderReports.push({
+        name: folder.folderName,
+        folderId: folder.folderId,
+        kind: folder.kind,
+        checked: false,
+        failed: true,
+        messagesScanned: null,
+        messagesWithAttachments: 0,
+        error: message,
+      });
+      await markFolderScanResult(env.DB, {
+        companyId: input.companyId,
+        mailboxAddress: input.mailboxAddress,
+        folderName: folder.folderName,
+        folderId: folder.folderId,
+        success: false,
+        error: message,
+      }).catch(() => undefined);
+    }
+  };
+
+  for (const folder of resolved.folders) {
+    await scanFolder(folder);
+  }
+  for (const missing of resolved.unresolved) {
+    folderReports.push({
+      name: missing.folderName,
+      folderId: null,
+      kind: "user",
+      checked: false,
+      failed: true,
+      messagesScanned: null,
+      messagesWithAttachments: 0,
+      error: missing.reason,
+    });
+  }
+
+  if (inboxFailed && messagesById.size === 0) {
+    return {
+      ok: false,
+      code: "GRAPH_DISCOVER_FAILED",
+      message: folderReports.find((row) => row.kind === "inbox")?.error || "Inbox scan failed",
+      folders: folderReports,
+    };
+  }
+
   return {
     ok: true,
     source: "graph",
-    messages,
-    messagesScanned: inWindow.length,
+    messages: [...messagesById.values()],
+    messagesScanned,
     tenantId: access.tenantId,
     accessToken: access.accessToken,
+    folders: folderReports,
+    nextLinkFollowed,
   };
 }
 
@@ -1069,6 +1244,7 @@ export async function ingestApprovedOutlookAttachments(
     actor?: string;
     recoverExisting?: boolean;
     useMailboxCheckpoints?: boolean;
+    mailboxAddresses?: string[];
   },
 ): Promise<{
   companyId: string;
@@ -1081,9 +1257,14 @@ export async function ingestApprovedOutlookAttachments(
   const actor = input.actor ?? "system:outlook-attachment-ingest";
   await discoverKnowledgeIntakeTarget(env, { companyId: input.companyId, actor }).catch(() => undefined);
   await seedPolicyMailboxes(env.DB, input.companyId);
+  await seedApprovedMailboxFolderPolicies(env.DB, input.companyId);
   const discoveredUsers = await discoverCompanyUserMailboxes(env, input.companyId);
-  const approved = await listApprovedAttachmentMailboxes(env.DB, input.companyId);
-  const excluded = await listExcludedAttachmentMailboxes(env.DB, input.companyId);
+  const approvedAll = await listApprovedAttachmentMailboxes(env.DB, input.companyId);
+  const wanted = (input.mailboxAddresses ?? []).map((row) => row.trim().toLowerCase()).filter(Boolean);
+  const approved = wanted.length
+    ? approvedAll.filter((row) => wanted.includes(row.mailbox_address.toLowerCase()))
+    : approvedAll;
+  const excluded = wanted.length ? [] : await listExcludedAttachmentMailboxes(env.DB, input.companyId);
   const counts = emptyCounts();
   counts.mailboxesEligible = approved.length;
   counts.mailboxesExcluded = excluded.length;
@@ -1115,10 +1296,12 @@ export async function ingestApprovedOutlookAttachments(
       windowFrom: mailboxWindow.windowFrom,
       windowTo: mailboxWindow.windowTo,
       actor,
+      useFolderCheckpoints: input.useMailboxCheckpoints === true,
     }).catch((err: unknown) => ({
       ok: false as const,
       code: "GRAPH_DISCOVER_FAILED",
       message: err instanceof Error ? err.message : "graph discover failed",
+      folders: [] as MailboxFolderScanReport[],
     }));
 
     let messages: GraphMailMessageDetail[] = [];
@@ -1127,6 +1310,8 @@ export async function ingestApprovedOutlookAttachments(
     let discoverError: string | null = null;
     let errorCode: string | null = null;
     let provenEmpty = false;
+    let folderReports: MailboxFolderScanReport[] = [];
+    let nextLinkFollowed = false;
 
     let messagesScanned: number | null = null;
     if (graphDiscover.ok) {
@@ -1135,6 +1320,8 @@ export async function ingestApprovedOutlookAttachments(
       graph = { accessToken: graphDiscover.accessToken, tenantId: graphDiscover.tenantId };
       discoverVia = "graph";
       provenEmpty = graphDiscover.messagesScanned === 0;
+      folderReports = graphDiscover.folders;
+      nextLinkFollowed = graphDiscover.nextLinkFollowed;
     } else {
       const mcpDiscover = await discoverMessagesViaMcp(env, {
         companyId: input.companyId,
@@ -1176,6 +1363,7 @@ export async function ingestApprovedOutlookAttachments(
           error: discoverError,
           errorCode,
           discoverVia: mcpDiscover.ok ? mcpDiscover.via : "none",
+          folders: graphDiscover.folders ?? [],
         });
         continue;
       }
@@ -1314,6 +1502,8 @@ export async function ingestApprovedOutlookAttachments(
       messagesWithAttachments: messages.length,
       attachments: attachmentSummaries,
       failed: mailboxFailures,
+      folders: folderReports,
+      nextLinkFollowed,
     });
   }
 
@@ -1430,6 +1620,7 @@ async function buildNamedPersonReports(
       indexed: scannedAttachments.filter((item) => asRecord(item)?.status === "indexed").length,
       failures: scannedAttachments.filter((item) => asRecord(item)?.status === "failed").length,
       excluded: !included,
+      folders: Array.isArray(scanned?.folders) ? (scanned!.folders as MailboxFolderScanReport[]) : [],
       policy: included
         ? "inherit company default INCLUDE; Portal chat search remains off for personal work mailboxes"
         : user || row

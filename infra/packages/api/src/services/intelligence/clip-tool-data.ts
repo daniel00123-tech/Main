@@ -26,7 +26,16 @@ function slimCustomer(value: unknown): unknown {
 function slimMessage(value: unknown): unknown {
   if (!isRecord(value)) return value;
   return {
-    id: value.id ?? value.messageId ?? value.emailId ?? value.email_id ?? value.internetMessageId ?? null,
+    id:
+      value.id ??
+      value.Id ??
+      value.messageId ??
+      value.MessageId ??
+      value.message_id ??
+      value.emailId ??
+      value.email_id ??
+      value.internetMessageId ??
+      null,
     subject: value.subject ?? null,
     from: value.from ?? value.sender ?? null,
     receivedDateTime: value.receivedDateTime ?? value.received ?? value.date ?? null,

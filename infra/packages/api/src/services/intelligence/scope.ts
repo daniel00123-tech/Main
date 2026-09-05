@@ -80,7 +80,8 @@ const CONNECTOR =
   /\b(what systems? (are )?(connected|linked)|which (live )?systems?|what(?:'s| is) connected|connectors?|(is|are) (xero|sharepoint|drive|email|outlook) (connected|linked)|do (we|i|you) have (xero|sharepoint|drive|email) connected|systems can you (actually )?use)\b/i;
 const FINANCE =
   /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables|who owes|top customers?|biggest customers?)\b/i;
-const EMAIL = /\b(emails?|emailed|emials|emaills|mailbox|outlook|inbox|any mail|e-mails?)\b/i;
+const EMAIL =
+  /\b(emails?|emailed|emials|emaills|mailbox|outlook|inbox|any mail|e-mails?|(the|their) messages?)\b/i;
 const WRITE =
   /\b(create (an? )?(invoice|bill|credit)|approve |send(?: this| the)? invoice|delete |void |allocate |raise an invoice|write to|update (the )?(invoice|bill|contact)|credit note)\b/i;
 const FIND =
@@ -173,15 +174,26 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
   return rewriteAccountingTool(name, {}, text).name;
 }
 
+function isEmailContentFollowUp(text: string): boolean {
+  return /\b(what (are|were) they asking|what does (it|that|this) say|what did they (ask|want|say)|summar(y|ise|ize) (it|that|this|the (email|message))|draft (a )?(reply|response))\b/i.test(
+    text,
+  );
+}
+
 function pickMailboxTool(text: string): string {
   if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text) && !/\b(from|containing|search|find|sharon|po)\b/i.test(text)) {
     return "outlook_list_messages";
   }
-  if (/\bfrom\s+[A-Za-z]{2,}|containing|has \w+ sent|with \w+ in the subject\b/i.test(text)) {
+  if (
+    /\b(search|find|look (for|up)|anything about|containing|from\s+[A-Za-z]{2,}|has \w+ sent|with \w+ in the subject)\b/i.test(text) &&
+    !/\b(newest|latest|last \d|unread|most recent)\b/i.test(text)
+  ) {
     return "outlook_search_mailbox";
   }
-  if (/\b(full|body|what does .{0,40}(say|said))\b/i.test(text)) return "outlook_list_messages";
-  if (/\b(newest|latest|last \d|last five|unread|most recently|arrived today|last 5|who emailed)\b/i.test(text)) {
+  if (isEmailContentFollowUp(text) || /\b(full|body|what does .{0,40}(say|said))\b/i.test(text)) {
+    return "outlook_list_messages";
+  }
+  if (/\b(newest|latest|last \d|last five|unread|most recent(?:ly)?|arrived today|last 5|who emailed|finance mailbox|info (inbox|mailbox))\b/i.test(text)) {
     return "outlook_list_messages";
   }
   return "outlook_search_mailbox";
@@ -201,7 +213,9 @@ function extractFeatures(text: string): ScopeFeatures {
     memoryRecall: MEMORY.test(trimmed) || SHORT_MEMORY.test(trimmed),
     capabilityAsk: CAPABILITY.test(trimmed),
     connectorAsk: CONNECTOR.test(trimmed),
-    financeAsk: FINANCE.test(trimmed),
+    financeAsk:
+      FINANCE.test(trimmed) &&
+      !(/\b(policy|document|handbook|procedure|guidance)\b/i.test(trimmed) && !/\b(xero|invoice|overdue|sales|revenue)\b/i.test(trimmed)),
     emailAsk: EMAIL.test(trimmed) && !CORPUS.test(trimmed),
     writeIntent: WRITE.test(trimmed),
     findDocument: isNamedDocumentFind(trimmed),
@@ -242,21 +256,35 @@ function detectScopeSwitch(text: string): ScopeSwitch {
   if (/\b(whole system|on the system|entire system|the platform)\b/i.test(text)) {
     return "system";
   }
-  if (/\b(i )?meant (the )?(xero|sales|invoices?)\b/i.test(text) && !/\b(email|mailbox|outlook|inbox)\b/i.test(text)) {
+  if (/\b(i )?meant (the )?(xero|sales|invoices?)\b/i.test(text) && !/\b(email|mailbox|outlook|inbox|message)\b/i.test(text)) {
     return "business";
   }
-  if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text)) {
+  if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox|document|file|policy|knowledge)\b/i.test(text)) {
+    if (/\b(document|file|policy|knowledge)\b/i.test(text) && !/\b(email|inbox|mailbox|outlook|message)\b/i.test(text)) {
+      return "company";
+    }
     return "email";
   }
   if (
     (/\bxero\b/i.test(text) || /\b(finance|invoices?|sales figures)\b/i.test(text)) &&
     /\b(switch|instead|use|check|meant)\b/i.test(text) &&
-    !/\b(emails?|mailbox|outlook|inbox)\b/i.test(text)
+    !/\b(emails?|mailbox|outlook|inbox|messages?)\b/i.test(text)
   ) {
     return "business";
   }
   if (/\b(emails?|emials|mailbox|outlook)\b/i.test(text) && /\b(instead|switch|search|check|from|meant)\b/i.test(text)) {
     return "email";
+  }
+  const correctionSpeech =
+    /\b(no|nope|nah|sorry|instead|meant|was talking about|i was referring|not (xero|the ledger|finance))\b/i.test(text);
+  if (correctionSpeech) {
+    if (/\b(inbox|mailbox|outlook|emails?|e-mails?|(the|their) messages?)\b/i.test(text)) return "email";
+    if (/\b(document|file|policy|knowledge|handbook)\b/i.test(text) && !/\b(xero|sales|invoice)\b/i.test(text)) {
+      return "company";
+    }
+    if (/\b(xero|ledger|sales figures|invoices?)\b/i.test(text) && !/\b(email|inbox|mailbox|message)\b/i.test(text)) {
+      return "business";
+    }
   }
   return null;
 }
@@ -673,14 +701,31 @@ export function classifyScope(
   }
 
   if (
-    switchTo === "business" ||
-    financeFollowUp ||
-    (features.financeAsk && (!features.corpusNoun || /\bxero\b/i.test(text)) && (!features.currentLocus || /\bxero\b/i.test(text) || switchTo === "business"))
+    switchTo !== "email" &&
+    switchTo !== "company" &&
+    (switchTo === "business" ||
+      financeFollowUp ||
+      (features.financeAsk &&
+        (!features.corpusNoun || /\bxero\b/i.test(text)) &&
+        (!features.currentLocus || /\bxero\b/i.test(text) || switchTo === "business")))
   ) {
     return decide("BUSINESS_SYSTEM", features, {
       tool: pickBusinessTool(text, state.lastSuccessfulTool),
       lastAnswerTopic: "finance",
       lastUserIntent: "finance",
+    });
+  }
+
+  if (
+    (lastTopic === "email" || state.currentBusinessSystem === "email") &&
+    isEmailContentFollowUp(text) &&
+    !features.financeAsk &&
+    !features.findDocument
+  ) {
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: pickMailboxTool(text),
+      lastAnswerTopic: "email",
+      lastUserIntent: "email_followup",
     });
   }
 

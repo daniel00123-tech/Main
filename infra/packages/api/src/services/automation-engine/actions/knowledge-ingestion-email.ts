@@ -72,14 +72,29 @@ async function collectMailboxChecks(
       });
       const failed = !excludedRow && (health === "FAILED" || health === "COVERAGE_GAP" || ingestFailed);
       const checked = !excludedRow && !failed && (Boolean(ingestRow) || Boolean(row.last_attachment_scan_at));
+      const folders = Array.isArray(ingestRow?.folders)
+        ? ingestRow!.folders
+            .map((item) => {
+              const folder = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
+              const name = typeof folder?.name === "string" ? folder.name : "";
+              if (!name) return null;
+              return {
+                name,
+                checked: folder?.checked === true,
+                failed: folder?.failed === true,
+              };
+            })
+            .filter((item): item is { name: string; checked: boolean; failed: boolean } => Boolean(item))
+        : [];
       checks.push({
         name: row.display_name || row.mailbox_address,
         address: row.mailbox_address,
         approved: !excludedRow,
         excluded: excludedRow,
         checked,
-        failed,
+        failed: failed || folders.some((folder) => folder.failed),
         rawError: excludedRow ? null : row.last_error,
+        folders,
       });
     }
     return checks;

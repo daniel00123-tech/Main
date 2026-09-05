@@ -4,6 +4,9 @@ import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Agent, setGlobalDispatcher } from "undici";
+
+setGlobalDispatcher(new Agent({ headersTimeout: 540_000, bodyTimeout: 540_000 }));
 
 const API = process.env.INFRA_API_BASE || "https://infra-api.daniel-dwyer123.workers.dev";
 const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
