@@ -22,6 +22,38 @@ describe("response quality guard", () => {
     expect(guarded.checks.every((check) => check.ok || check.id === "tool_success_not_reported_as_failure" || check.id === "successful_result_not_discarded" || check.id === "not_generic_retry_after_success")).toBeTruthy();
   });
 
+  it("repairs a title-only knowledge answer when document chunks were fetched", () => {
+    const guarded = runResponseQualityGuard({
+      text: "Across your documents I can see: Subcontractor Payment Process.docx; Subcontractor Booking process.docx.",
+      question: "What can you tell me about the subcontractor CIS process?",
+      kind: "answer",
+      toolCalls: [
+        {
+          name: "get_knowledge_document",
+          ok: true,
+          latencyMs: 20,
+          data: {
+            title: "Subcontractor Payment Process.docx",
+            chunks: [
+              {
+                text: "Every invoice submitted by a subcontractor must include the purchase order. Labour and materials should be shown separately before payment.",
+              },
+            ],
+          },
+        },
+        {
+          name: "search_company_knowledge",
+          ok: true,
+          latencyMs: 12,
+          data: { results: [{ title: "Subcontractor Payment Process.docx" }, { title: "Subcontractor Booking process.docx" }] },
+        },
+      ],
+    });
+    expect(guarded.repaired).toBe(true);
+    expect(guarded.text).toMatch(/Labour and materials|purchase order/i);
+    expect(guarded.text).not.toMatch(/^Across your documents I can see:/i);
+  });
+
   it("repairs a blank or placeholder answer when knowledge evidence exists", () => {
     const guarded = runResponseQualityGuard({
       text: "...",

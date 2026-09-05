@@ -395,6 +395,10 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
       const only = hits[0]!;
       return only.snippet ? `${only.title}: ${only.snippet}` : `I found ${only.title}.`;
     }
+    const withSnippet = hits.find((hit) => hit.snippet);
+    if (withSnippet?.snippet) {
+      return `${withSnippet.title}: ${withSnippet.snippet}`;
+    }
     const titles = hits.slice(0, 3).map((hit) => hit.title);
     return `Across your documents I can see: ${titles.join("; ")}.`;
   }
@@ -439,7 +443,8 @@ export function synthesizeFromToolCalls(
     null;
   const xero = pick((name) => name.startsWith("xero_"));
   const outlook = pick((name) => /outlook/i.test(name));
-  const knowledge = pick((name) => /knowledge|search_document|search$/.test(name));
+  const fetchedDoc = pick((name) => name === "get_knowledge_document" || name === "search_document" || name === "fetch");
+  const knowledge = fetchedDoc ?? pick((name) => /knowledge|search$/.test(name));
   const catalogue = pick((name) => name === "list_documents");
   const parts = [warehouse ?? xero, outlook, knowledge ?? catalogue]
     .filter((call): call is IntelligenceToolResult => Boolean(call))

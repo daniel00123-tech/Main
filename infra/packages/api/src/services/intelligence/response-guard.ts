@@ -58,6 +58,7 @@ export function runResponseQualityGuard(input: {
         "not_generic_retry_after_success",
         "not_blank",
         "not_useless_near_empty",
+        "not_title_list_when_chunks_exist",
         "live_claim_has_evidence",
         "xero_mentions_figures",
         "not_contradictory_blank",
@@ -125,6 +126,7 @@ function evaluateChecks(input: {
     check("successful_result_not_discarded", !(okCalls.length > 0 && (!text || isGenericRetryCopy(text) || isUselessNearEmptyAnswer(text)))),
     check("not_generic_retry_after_success", !(okCalls.length > 0 && isGenericRetryCopy(text))),
     check("not_blank", Boolean(text)),
+    check("not_title_list_when_chunks_exist", !(titleListOnly(text) && hasDocumentChunks(okCalls))),
     check("not_useless_near_empty", !isUselessNearEmptyAnswer(text)),
     check("permission_uses_access_outcome", denied.length === 0 || looksPermissionDenied(denied[0]!)),
     check("live_claim_has_evidence", !(LIVE_CLAIM.test(text) && okCalls.length === 0 && !input.lastAnswerTopic)),
@@ -136,6 +138,18 @@ function evaluateChecks(input: {
 
 function check(id: ResponseGuardCheck["id"], ok: boolean): ResponseGuardCheck {
   return { id, ok };
+}
+
+function titleListOnly(text: string): boolean {
+  return /^across your documents i can see:/i.test(text.trim());
+}
+
+function hasDocumentChunks(calls: IntelligenceToolResult[]): boolean {
+  return calls.some((call) => {
+    if (!/get_knowledge_document|search_document|fetch/.test(call.name)) return false;
+    const raw = JSON.stringify(call.data ?? "");
+    return /"text"\s*:/.test(raw) && raw.length > 80;
+  });
 }
 
 function hasPayloadData(calls: IntelligenceToolResult[]): boolean {
