@@ -179,17 +179,22 @@ export async function indexExtractedDocumentLocally(
   };
 }
 
+export function knowledgeSearchTokens(query: string): string[] {
+  return query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 3)
+    .sort((left, right) => right.length - left.length || left.localeCompare(right))
+    .slice(0, 6);
+}
+
 export async function searchCompanyKnowledgeIndex(
   env: Env,
   input: { companyId: string; query: string; limit?: number },
 ): Promise<Array<Record<string, unknown>>> {
   await ensureCompanyKnowledgeIndexSchema(env.DB);
-  const tokens = input.query
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length >= 3)
-    .slice(0, 6);
+  const tokens = knowledgeSearchTokens(input.query);
   if (!tokens.length) return [];
   const like = `%${tokens[0]}%`;
   const rows = await env.DB.prepare(
