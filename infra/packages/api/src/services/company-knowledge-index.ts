@@ -402,6 +402,20 @@ export function knowledgeSearchTokens(query: string): string[] {
   return [...new Set(ordered)].slice(0, 6);
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function tokenPresent(haystack: string, token: string): boolean {
+  const needle = sanitizeLikeNeedle(token);
+  if (!needle) return false;
+  const text = haystack.toLowerCase();
+  if (/^\d{4,}$/.test(needle) || (/[a-z]/.test(needle) && /\d/.test(needle))) {
+    return text.includes(needle) || compactAlnum(text).includes(compactAlnum(needle));
+  }
+  return new RegExp(`(^|[^a-z0-9])${escapeRegExp(needle)}([^a-z0-9]|$)`, "i").test(text);
+}
+
 function scoreKnowledgeCandidate(row: KnowledgeCandidateRow, classified: ClassifiedKnowledgeQuery): number {
   const filename = (row.filename ?? "").toLowerCase();
   const title = (row.title ?? "").toLowerCase();
@@ -428,22 +442,56 @@ function scoreKnowledgeCandidate(row: KnowledgeCandidateRow, classified: Classif
   }
 
   let highHits = 0;
+  let mediumHits = 0;
   let lowHits = 0;
   for (const token of classified.tokens) {
-    const inHeading = heading.includes(token.token);
-    const inBody = text.includes(token.token) || meta.includes(token.token);
+    const inHeading = tokenPresent(heading, token.token);
+    const inBody = tokenPresent(text, token.token) || tokenPresent(meta, token.token);
     if (inHeading) {
       score += token.cls === "high" ? 28 * token.weight : 10 * token.weight;
       if (token.cls === "high") highHits += 1;
+      if (token.cls === "medium") mediumHits += 1;
       if (token.cls === "low") lowHits += 1;
     } else if (inBody) {
       score += token.cls === "high" ? 8 * token.weight : 2 * token.weight;
       if (token.cls === "high") highHits += 1;
+      if (token.cls === "medium") mediumHits += 1;
       if (token.cls === "low") lowHits += 1;
     }
   }
   if (highHits > 0 && lowHits > 0) score += 30;
   return score;
+}
+
+export function knowledgeHitMatchesQuery(
+  hit: { title?: unknown; filename?: unknown; snippet?: unknown; text?: unknown },
+  query: string,
+): boolean {
+  const classified = classifyKnowledgeQuery(query);
+  const haystack = `${hit.title ?? ""} ${hit.filename ?? ""} ${hit.snippet ?? ""} ${hit.text ?? ""}`;
+  if (classified.references.some((reference) => tokenPresent(haystack, reference) || compactAlnum(haystack).includes(compactAlnum(reference)))) {
+    return true;
+  }
+  if (classified.highValueTokens.length) {
+    return classified.highValueTokens.some((token) => tokenPresent(haystack, token));
+  }
+  const medium = classified.tokens.filter((token) => token.cls === "medium");
+  if (medium.length >= 2) {
+    return medium.filter((token) => tokenPresent(haystack, token.token)).length >= 2;
+  }
+  return classified.tokens.some((token) => tokenPresent(haystack, token.token));
+}
+
+function keepScoredCandidate(
+  score: number,
+  row: KnowledgeCandidateRow,
+  classified: ClassifiedKnowledgeQuery,
+): boolean {
+  if (score <= 0) return false;
+  return knowledgeHitMatchesQuery(
+    { title: row.title, filename: row.filename, text: row.text },
+    classified.original,
+  );
 }
 
 export function localKnowledgeHitsToResults(
@@ -529,14 +577,14 @@ export async function searchCompanyKnowledgeIndex(
   const distinctiveRows = distinctiveNeedles.length
     ? await fetchKnowledgeCandidatePool(env, input.companyId, distinctiveNeedles, 40)
     : [];
-  const needBroad = classified.highValueTokens.length === 0 || exactRows.length + distinctiveRows.length < 8;
+  const needBroad = classified.highValueTokens.length === 0;
   const broadRows = needBroad ? await fetchKnowledgeCandidatePool(env, input.companyId, broadNeedles, 80) : [];
 
   const merged = [...exactRows, ...distinctiveRows, ...broadRows];
   const bestByDoc = new Map<number, { row: KnowledgeCandidateRow; score: number }>();
   for (const row of merged) {
     const score = scoreKnowledgeCandidate(row, classified);
-    if (score <= 0) continue;
+    if (!keepScoredCandidate(score, row, classified)) continue;
     const existing = bestByDoc.get(row.document_id);
     if (!existing || score > existing.score) bestByDoc.set(row.document_id, { row, score });
   }

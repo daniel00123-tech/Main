@@ -213,6 +213,35 @@ describe("company knowledge index", () => {
     expect(hits[0]?.filename).toBe(filename);
   });
 
+  it("ranks Health and Safety ahead of a generic policy document", async () => {
+    const env = knowledgeIndexEnv([
+      {
+        company_id: "co_el",
+        document_id: 10,
+        filename: "Profit Margin Policy.docx",
+        title: "Profit Margin Policy.docx",
+        stored_url: null,
+        text: "A profitable margin is required on every job. This profit policy is not a site document.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 31,
+        filename: "Health and Safety Policy (2).docx",
+        title: "Health and Safety Policy (2).docx",
+        stored_url: null,
+        text: "This health and safety policy statement sets out site responsibilities.",
+        chunk_index: 0,
+      },
+    ]);
+    const hits = await searchCompanyKnowledgeIndex(env, {
+      companyId: "co_el",
+      query: "What is our health and safety policy?",
+    });
+    expect(hits[0]?.documentId).toBe(31);
+    expect(hits.some((hit) => hit.documentId === 10)).toBe(false);
+  });
+
   it("keeps natural-language policy and remittance retrieval", async () => {
     const env = knowledgeIndexEnv([
       ...genericInvoiceFlood(40),
