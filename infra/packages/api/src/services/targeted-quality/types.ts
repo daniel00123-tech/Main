@@ -8,7 +8,10 @@ export type TargetedFamily =
   | "followup"
   | "correction"
   | "portal"
-  | "telemetry";
+  | "telemetry"
+  | "web"
+  | "pricing"
+  | "agentic";
 
 export type TargetedQuestion = {
   id: string;
@@ -17,7 +20,7 @@ export type TargetedQuestion = {
   actor: "director" | "office_staff";
   family: TargetedFamily;
   expectedToolPrefix: string | null;
-  expectedSource: "knowledge" | "outlook" | "catalogue" | "xero_live" | "xero_warehouse" | "none" | null;
+  expectedSource: "knowledge" | "outlook" | "catalogue" | "xero_live" | "xero_warehouse" | "web" | "none" | null;
   expectedDeny: boolean;
   sequence?: string;
   sequenceIndex?: number;

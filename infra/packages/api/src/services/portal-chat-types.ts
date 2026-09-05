@@ -55,6 +55,10 @@ export type PortalChatMessageMetadata = {
   provider?: string | null;
   model?: string | null;
   brainMode?: string | null;
+  userVisibleBrain?: string | null;
+  plannerProvider?: string | null;
+  synthesisProvider?: string | null;
+  estimatedCostUsd?: number | null;
   shadowProvider?: string | null;
   shadowModel?: string | null;
   shadowLatencyMs?: number | null;

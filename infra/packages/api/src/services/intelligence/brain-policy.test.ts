@@ -27,7 +27,8 @@ describe("brain policy", () => {
     };
     expect(resolveBrainPolicy({ env, companyId: "co_caddington" }).useOpenAi).toBe(false);
     expect(resolveBrainPolicy({ env, companyId: "co_ht" }).useOpenAi).toBe(false);
-    expect(resolveBrainPolicy({ env, companyId: "co_el" }).useOpenAi).toBe(true);
+    expect(resolveBrainPolicy({ env, companyId: "co_el" }).useOpenAi).toBe(false);
+    expect(resolveBrainPolicy({ env, companyId: "co_el", channel: "whatsapp" }).useOpenAi).toBe(true);
   });
 
   it("stays off without a key or flag", () => {
@@ -122,6 +123,26 @@ describe("brain policy", () => {
   it("does not promote unlisted Caddington or HT PA/request turns onto OpenAI", () => {
     expect(resolveBrainPolicy({ env: SHADOW_ENV, companyId: "co_caddington", channel: "portal" }).useOpenAi).toBe(false);
     expect(resolveBrainPolicy({ env: SHADOW_ENV, companyId: "co_ht", channel: "whatsapp" }).useOpenAi).toBe(false);
+  });
+
+  it("makes OpenAI primary for EL and Caddington PA/request while unscoped and HT stay Cloudflare", () => {
+    const env = {
+      OPENAI_API_KEY: "sk-test-key-1234567890abcdef",
+      OPENAI_BRAIN_ENABLED: "true",
+      OPENAI_BRAIN_MODE: "openai_primary",
+      OPENAI_BRAIN_COMPANY_IDS: "co_el,co_caddington",
+    };
+    const el = resolveBrainPolicy({ env, companyId: "co_el", channel: "whatsapp" });
+    expect(el.mode).toBe("openai_primary");
+    expect(el.useOpenAi).toBe(true);
+    expect(el.userVisibleBrain).toBe("openai");
+    expect(el.reason).toBe("openai_primary");
+    expect(resolveBrainPolicy({ env, companyId: "co_caddington", channel: "portal" }).mode).toBe("openai_primary");
+    const unscoped = resolveBrainPolicy({ env, companyId: "co_el" });
+    expect(unscoped.useOpenAi).toBe(false);
+    expect(unscoped.userVisibleBrain).toBe("cloudflare");
+    expect(unscoped.mode).toBe("openai_primary");
+    expect(resolveBrainPolicy({ env, companyId: "co_ht", channel: "whatsapp" }).useOpenAi).toBe(false);
   });
 
   it("defaults an unconfigured future tenant to Cloudflare", () => {

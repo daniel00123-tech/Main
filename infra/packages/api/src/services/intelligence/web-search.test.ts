@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPrivateBusinessWebQuery, looksLikePublicWebAsk, verbaliseWebSearch } from "./web-search.js";
+import { isPrivateBusinessWebQuery, looksLikePublicWebAsk, sanitisePublicWebQuery, verbaliseWebSearch } from "./web-search.js";
 
 describe("public web search guards", () => {
   it("routes weather to public web and holiday entitlement to internal knowledge", () => {
@@ -21,5 +21,10 @@ describe("public web search guards", () => {
     );
     expect(text).toMatch(/London|forecast/i);
     expect(text).not.toMatch(/£/);
+  });
+
+  it("strips invoices, mailboxes and long quoted bodies from public queries", () => {
+    expect(sanitisePublicWebQuery("weather tomorrow INV-02277 ella@elvexpropertyservices.com")).toBe("weather tomorrow");
+    expect(sanitisePublicWebQuery(`public fact "${"secret body ".repeat(20)}"`)).not.toMatch(/secret body/);
   });
 });

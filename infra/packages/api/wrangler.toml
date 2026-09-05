@@ -51,16 +51,15 @@ PORTAL_BASE_DOMAIN = "infra-web.pages.dev"
 # WHATSAPP_REGISTRATION_PIN (optional 6-digit Cloud API two-step PIN — wrangler secret put)
 # META_APP_SECRET (X-Hub-Signature-256 — wrangler secret put)
 # OPENAI_API_KEY (optional Whisper + OpenAI reasoning brain — wrangler secret put, never commit)
-# Global mode stays openai_shadow for unscoped/automation traffic.
-# Allowlisted PA / WhatsApp requests use OpenAI as the user-visible brain.
-# EL stays on the allowlist. Caddington PA/request is user-visible OpenAI. HT is omitted.
-# ChatGPT / MCP stay direct tools. Do not set openai_primary here.
+# EL and Caddington conversational traffic uses OpenAI as the primary brain.
+# Unscoped / automation / internal traffic stays Cloudflare (cost + continuity).
+# HT is omitted. ChatGPT / MCP stay direct tools.
 OPENAI_BRAIN_ENABLED = "true"
-OPENAI_BRAIN_MODE = "openai_shadow"
+OPENAI_BRAIN_MODE = "openai_primary"
 OPENAI_BRAIN_COMPANY_IDS = "co_el,co_caddington"
 OPENAI_BRAIN_PA_REQUEST_PRIMARY = "true"
 # Optional per-company override. Unlisted companies stay Cloudflare.
-# OPENAI_BRAIN_COMPANY_MODES = "co_el=openai_shadow,co_caddington=openai_shadow"
+# OPENAI_BRAIN_COMPANY_MODES = "co_el=openai_primary,co_caddington=openai_primary"
 OPENAI_BRAIN_CANARY_PERCENT = "10"
 OPENAI_MODEL_FAST = "gpt-5.6-luna"
 OPENAI_MODEL_DEFAULT = "gpt-5.6-terra"

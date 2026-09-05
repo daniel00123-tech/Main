@@ -22,6 +22,8 @@ describe("targeted quality bank", () => {
     expect(questionsForStage("known-doc-recall")).toHaveLength(20);
     expect(questionsForStage("honest-no-result")).toHaveLength(5);
     expect(questionsForStage("invoice-warehouse")).toHaveLength(5);
+    expect(questionsForStage("openai-primary")).toHaveLength(10);
+    expect(questionsForStage("caddington-openai-primary")).toHaveLength(5);
   });
 });
 

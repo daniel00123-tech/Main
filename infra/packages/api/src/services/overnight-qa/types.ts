@@ -16,7 +16,7 @@ export type OvernightFamily =
   | "no_tool"
   | "routing";
 
-export type ExpectedSource = "xero_warehouse" | "xero_live" | "outlook" | "knowledge" | "catalogue" | "none" | null;
+export type ExpectedSource = "xero_warehouse" | "xero_live" | "outlook" | "knowledge" | "catalogue" | "web" | "none" | null;
 
 export type OvernightQuestion = {
   id: string;

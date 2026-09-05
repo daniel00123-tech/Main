@@ -184,6 +184,27 @@ export const INVOICE_WAREHOUSE_COMPOUND_QUESTIONS: TargetedQuestion[] = [
   { id: "IW05", channel: "portal", text: "check invoice INV-02268 and warehouse sales for March", actor: D, family: "mixed", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
 ];
 
+export const OPENAI_PRIMARY_QUESTIONS: TargetedQuestion[] = [
+  { id: "OP01", channel: "whatsapp", text: "What were our sales in March?", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "OP02", channel: "portal", text: "What's the latest finance email about?", actor: D, family: "outlook", expectedToolPrefix: "outlook_", expectedSource: "outlook", expectedDeny: false, sequence: "op-finance", sequenceIndex: 1 },
+  { id: "OP03", channel: "followup", text: "What are they asking us to do?", actor: D, family: "followup", expectedToolPrefix: "outlook_", expectedSource: "outlook", expectedDeny: false, sequence: "op-finance", sequenceIndex: 2 },
+  { id: "OP04", channel: "portal", text: "What does our Health & Safety policy say if an engineer smells gas?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "OP05", channel: "portal", text: "Find INV-02277 and tell me what it is.", actor: D, family: "mixed", expectedToolPrefix: "xero_get_invoice", expectedSource: "xero_live", expectedDeny: false },
+  { id: "OP06", channel: "portal", text: "Give me March sales and summarise the latest finance email.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "OP07", channel: "portal", text: "What is the subcontractor payment process?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "OP08", channel: "portal", text: "What's the weather tomorrow?", actor: D, family: "web", expectedToolPrefix: "web_search", expectedSource: "web", expectedDeny: false },
+  { id: "OP09", channel: "portal", text: "How would you work out a price for replacing a tap using our available pricing information?", actor: D, family: "pricing", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "OP10", channel: "portal", text: "Find the unicorn fleet carbon offset handbook. If company knowledge has no match, use another permitted business source and say what you found.", actor: D, family: "agentic", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, honestNoResultOk: true },
+];
+
+export const CADDINGTON_OPENAI_PRIMARY_QUESTIONS: TargetedQuestion[] = [
+  { id: "CP01", channel: "portal", text: "What were last month's Xero sales?", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "CP02", channel: "portal", text: "What does the purchase order process say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "CP03", channel: "portal", text: "What's the weather tomorrow?", actor: D, family: "web", expectedToolPrefix: "web_search", expectedSource: "web", expectedDeny: false },
+  { id: "CP04", channel: "portal", text: "Give me last month's sales and summarise the purchase order process.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "CP05", channel: "portal", text: "Find the unicorn fleet carbon offset handbook. If company knowledge has no match, use another permitted business source and say what you found.", actor: D, family: "agentic", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, honestNoResultOk: true },
+];
+
 export function questionsForStage(stage: string, ids?: string[]): TargetedQuestion[] {
   const wanted = new Set((ids ?? []).map((id) => id.toUpperCase()));
   const all = [
@@ -194,6 +215,8 @@ export function questionsForStage(stage: string, ids?: string[]): TargetedQuesti
     ...KNOWN_DOC_RECALL_QUESTIONS,
     ...HONEST_NO_RESULT_QUESTIONS,
     ...INVOICE_WAREHOUSE_COMPOUND_QUESTIONS,
+    ...OPENAI_PRIMARY_QUESTIONS,
+    ...CADDINGTON_OPENAI_PRIMARY_QUESTIONS,
   ];
   if (wanted.size) return all.filter((row) => wanted.has(row.id));
   const key = stage.toLowerCase();
@@ -211,6 +234,8 @@ export function questionsForStage(stage: string, ids?: string[]): TargetedQuesti
   if (key === "known-doc-recall") return KNOWN_DOC_RECALL_QUESTIONS;
   if (key === "honest-no-result") return HONEST_NO_RESULT_QUESTIONS;
   if (key === "invoice-warehouse") return INVOICE_WAREHOUSE_COMPOUND_QUESTIONS;
+  if (key === "openai-primary") return OPENAI_PRIMARY_QUESTIONS;
+  if (key === "caddington-openai-primary") return CADDINGTON_OPENAI_PRIMARY_QUESTIONS;
   if (key === "primary") return TARGETED_PRIMARY;
   return [];
 }

@@ -139,7 +139,7 @@ export interface Env {
   OPENAI_BRAIN_MODE?: string;
   /** Comma-separated company ids explicitly promoted onto the shared OpenAI reasoning provider. Empty = none. */
   OPENAI_BRAIN_COMPANY_IDS?: string;
-  /** Optional per-company mode map: co_el=openai_shadow,co_future=cloudflare */
+  /** Optional per-company mode map: co_el=openai_primary,co_future=cloudflare */
   OPENAI_BRAIN_COMPANY_MODES?: string;
   OPENAI_BRAIN_CANARY_PERCENT?: string;
   /** Default on. Allowlisted PA (Portal Chat) and request (WhatsApp) channels use OpenAI as the user-visible brain. */

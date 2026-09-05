@@ -16,8 +16,19 @@ export function looksLikePublicWebAsk(text: string): boolean {
   return /\bhttps?:\/\//i.test(raw) && /\b(what('s| is) on|summarise|summarize)\b/i.test(raw);
 }
 
+export function sanitisePublicWebQuery(text: string): string {
+  return String(text ?? "")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "")
+    .replace(/\bINV-\d+\b/gi, "")
+    .replace(/["“”][^"“”]{80,}["“”]/g, "")
+    .replace(/\b(confidential|internal only|do not circulate)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+}
+
 export function webSearchQuery(text: string): string {
-  return String(text ?? "").trim().slice(0, 200);
+  return sanitisePublicWebQuery(text);
 }
 
 export function verbaliseWebSearch(data: unknown, question: string): string {
@@ -82,10 +93,12 @@ export async function executePublicWebSearch(call: IntelligenceToolCall): Promis
       latencyMs: Date.now() - started,
       data: {
         source: "public_web",
+        external: true,
         query,
         heading: typeof raw.Heading === "string" ? raw.Heading : "",
         abstract: typeof raw.AbstractText === "string" ? raw.AbstractText : "",
         results,
+        citations: results.map((row) => row.url).filter(Boolean),
       },
     };
   } catch {

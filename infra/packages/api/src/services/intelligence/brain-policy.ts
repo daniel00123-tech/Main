@@ -123,7 +123,7 @@ export function resolveBrainPolicy(input: {
   if (requested === "cloudflare") {
     return deny(companyId, "mode_cloudflare", role);
   }
-  if (isPaOrRequestRole(role) && paRequestPrimaryEnabled(env)) {
+  if (isPaOrRequestRole(role) && (requested === "openai_primary" || paRequestPrimaryEnabled(env))) {
     return {
       mode: requested,
       enabled: true,
@@ -131,10 +131,24 @@ export function resolveBrainPolicy(input: {
       shadow: false,
       fallbackToCloudflare: true,
       companyId,
-      reason: "pa_request_openai_brain",
+      reason: requested === "openai_primary" ? "openai_primary" : "pa_request_openai_brain",
       role,
       designatedBrain: "openai",
       userVisibleBrain: "openai",
+    };
+  }
+  if (role === "automation" || role === "internal") {
+    return {
+      mode: requested,
+      enabled: true,
+      useOpenAi: false,
+      shadow: requested === "openai_shadow" || requested === "openai_canary" || requested === "openai_primary",
+      fallbackToCloudflare: true,
+      companyId,
+      reason: role === "automation" ? "automation_stays_cloudflare" : "unscoped_stays_cloudflare",
+      role,
+      designatedBrain: "openai",
+      userVisibleBrain: "cloudflare",
     };
   }
   if (requested === "openai_canary") {

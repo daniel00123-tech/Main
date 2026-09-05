@@ -12,41 +12,69 @@ import type { OvernightTurnScore } from "../overnight-qa/types";
 
 const DIRECTOR_EMAILS = ["ella@elvexpropertyservices.com", "william@elvexpropertyservices.com"];
 
-async function loadDirector(env: Env) {
+async function loadDirector(env: Env, companyId = TARGETED_COMPANY_ID) {
+  if (companyId === TARGETED_COMPANY_ID) {
+    const row = await env.DB.prepare(
+      `SELECT u.id AS user_id
+       FROM users u
+       JOIN company_memberships m ON m.user_id = u.id
+       WHERE m.company_id = ? AND m.status = 'active' AND u.status = 'active' AND m.role = 'director'
+         AND lower(u.email) IN (?, ?)
+       ORDER BY CASE lower(u.email) WHEN ? THEN 0 ELSE 1 END
+       LIMIT 1`,
+    )
+      .bind(companyId, DIRECTOR_EMAILS[0], DIRECTOR_EMAILS[1], DIRECTOR_EMAILS[0])
+      .first<{ user_id: string }>();
+    if (row) return loadLiveCompanyActor(env.DB, row.user_id, companyId);
+  }
   const row = await env.DB.prepare(
     `SELECT u.id AS user_id
      FROM users u
      JOIN company_memberships m ON m.user_id = u.id
-     WHERE m.company_id = ? AND m.status = 'active' AND u.status = 'active' AND m.role = 'director'
-       AND lower(u.email) IN (?, ?)
-     ORDER BY CASE lower(u.email) WHEN ? THEN 0 ELSE 1 END
+     WHERE m.company_id = ? AND m.status = 'active' AND u.status = 'active'
+       AND m.role IN ('director', 'company_admin', 'admin')
+     ORDER BY CASE m.role WHEN 'director' THEN 0 WHEN 'company_admin' THEN 1 ELSE 2 END, u.email
      LIMIT 1`,
   )
-    .bind(TARGETED_COMPANY_ID, DIRECTOR_EMAILS[0], DIRECTOR_EMAILS[1], DIRECTOR_EMAILS[0])
+    .bind(companyId)
     .first<{ user_id: string }>();
   if (!row) return null;
-  return loadLiveCompanyActor(env.DB, row.user_id, TARGETED_COMPANY_ID);
+  return loadLiveCompanyActor(env.DB, row.user_id, companyId);
 }
 
-async function usageCharged(env: Env, interactionId: string): Promise<boolean> {
+async function usageCharged(env: Env, interactionId: string, companyId = TARGETED_COMPANY_ID): Promise<boolean> {
   const row = await env.DB.prepare(
     `SELECT COALESCE(SUM(customer_charge_cents), 0) AS cents
      FROM usage_records WHERE interaction_id = ? AND company_id = ?`,
   )
-    .bind(interactionId, TARGETED_COMPANY_ID)
+    .bind(interactionId, companyId)
     .first<{ cents: number }>();
   return Number(row?.cents ?? 0) > 0;
 }
 
+function proofFromPortal(result: Awaited<ReturnType<typeof sendPortalChatMessage>>) {
+  const meta = result.assistantMessage.metadata;
+  return {
+    plannerProvider: meta.plannerProvider ?? null,
+    synthesisProvider: meta.synthesisProvider ?? meta.provider ?? null,
+    userVisibleBrain: meta.userVisibleBrain ?? null,
+    brainMode: meta.brainMode ?? null,
+    provider: meta.provider ?? null,
+    model: meta.model ?? null,
+    estimatedCostUsd: meta.estimatedCostUsd ?? null,
+  };
+}
+
 export async function runTargetedSlice(
   env: Env,
-  input: { stage: string; ids?: string[] },
+  input: { stage: string; ids?: string[]; companyId?: string },
 ): Promise<Record<string, unknown>> {
+  const companyId = input.companyId || (input.stage === "caddington-openai-primary" ? "co_caddington" : TARGETED_COMPANY_ID);
   const questions = questionsForStage(input.stage, input.ids);
-  const director = await loadDirector(env);
+  const director = await loadDirector(env, companyId);
   if (!director?.active) throw new Error("Director actor unavailable");
   const sessionUser = liveActorToSessionUser(director);
-  const connectors = await listConnectedConnectorIds(env, TARGETED_COMPANY_ID);
+  const connectors = await listConnectedConnectorIds(env, companyId);
   const turns: OvernightTurnScore[] = [];
   const raw: Array<Record<string, unknown>> = [];
   let memory: WhatsAppEntityMemory = emptyEntityMemory();
@@ -60,7 +88,7 @@ export async function runTargetedSlice(
     if (usePortal) {
       try {
         const result = await sendPortalChatMessage(env, {
-          companyId: TARGETED_COMPANY_ID,
+          companyId,
           sessionUser,
           conversationId: portalByUser.get(`${sessionUser.userId}:${question.sequence ?? question.id}`),
           text: question.text,
@@ -75,18 +103,21 @@ export async function runTargetedSlice(
           tools,
           reply: result.assistantMessage.content,
           denied: Boolean(result.assistantMessage.metadata.permissionDenied),
-          charged: await usageCharged(env, interactionId),
+          charged: await usageCharged(env, interactionId, companyId),
           latencyMs: Date.now() - started,
           terminal: String(result.assistantMessage.metadata.terminal ?? "success"),
         });
         turns.push(scored);
         raw.push({
           id: question.id,
+          channel: question.channel,
           tools,
-          reply: result.assistantMessage.content.slice(0, 280),
+          reply: result.assistantMessage.content.slice(0, 360),
           conversationId: result.conversation.id,
           terminal: scored.terminal,
           defects: scored.defects,
+          latencyMs: Date.now() - started,
+          ...proofFromPortal(result),
         });
       } catch (error) {
         const message = error instanceof PortalChatError ? error.message : String(error);
@@ -106,7 +137,7 @@ export async function runTargetedSlice(
     }
 
     const answer = await executeWhatsAppIntelligence(env, {
-      companyId: TARGETED_COMPANY_ID,
+      companyId,
       sessionUser,
       originalText: question.text,
       memory,
@@ -123,16 +154,40 @@ export async function runTargetedSlice(
       tools,
       reply: answer.reply,
       denied: (answer.intelligence?.toolCalls ?? []).some((call) => /permission/i.test(String(call.error ?? ""))),
-      charged: await usageCharged(env, interactionId),
+      charged: await usageCharged(env, interactionId, companyId),
       latencyMs: Date.now() - started,
       terminal: String(answer.intelligence?.terminal ?? answer.outcome),
     });
     turns.push(scored);
-    raw.push({ id: question.id, tools, reply: answer.reply.slice(0, 280), defects: scored.defects });
+    raw.push({
+      id: question.id,
+      channel: question.channel,
+      tools,
+      reply: answer.reply.slice(0, 360),
+      defects: scored.defects,
+      latencyMs: Date.now() - started,
+      plannerProvider: answer.plannerProvider ?? answer.intelligence?.plannerProvider ?? null,
+      synthesisProvider: answer.synthesisProvider ?? answer.intelligence?.synthesisProvider ?? null,
+      userVisibleBrain: answer.userVisibleBrain ?? answer.intelligence?.userVisibleBrain ?? null,
+      brainMode: answer.brainMode ?? answer.intelligence?.brainMode ?? null,
+      provider: answer.intelligence?.provider ?? null,
+      model: answer.intelligence?.model ?? null,
+      estimatedCostUsd: answer.intelligence?.estimatedCostUsd ?? null,
+      modelRounds: (answer.intelligence?.modelRounds ?? []).map((row) => ({
+        provider: row.provider,
+        model: row.model,
+        latencyMs: row.latencyMs,
+        promptTokens: row.promptTokens,
+        completionTokens: row.completionTokens,
+        estimatedCostUsd: row.estimatedCostUsd,
+        fallbackUsed: row.fallbackUsed,
+      })),
+    });
   }
 
   return {
     stage: input.stage,
+    companyId,
     asked: questions.map((row) => row.id),
     director: director.email,
     turns: raw,
