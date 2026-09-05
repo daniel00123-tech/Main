@@ -27,6 +27,7 @@ import {
   getCompanyKnowledgeDocument,
   hitMatchesKnowledgeConceptFamily,
   knowledgeConceptExpansionQueries,
+  knowledgeHitMatchesQuery,
   localKnowledgeHitsToResults,
   mergeKnowledgeSearchHits,
   searchCompanyKnowledgeIndex,
@@ -186,7 +187,10 @@ export function createPortalChatRuntime(
             limit: 8,
           }).catch(() => []),
         );
-        let merged = mergeKnowledgeSearchHits(localHits, payload.results ?? []);
+        const remoteHits = (payload.results ?? []).filter(
+          (row) => hitMatchesKnowledgeConceptFamily(row, query) || knowledgeHitMatchesQuery(row, query),
+        );
+        let merged = mergeKnowledgeSearchHits(localHits, remoteHits);
         let hits = rejectWeakSearchHits(merged, query, {
           currentDocumentId: input.context.currentDocument?.id,
         }).slice(0, 5);
@@ -215,7 +219,10 @@ export function createPortalChatRuntime(
           );
           if (expanded.ok && !expanded.timedOut && expanded.value?.status === 200) {
             const extra = toStandardSearchPayload(expanded.value.result);
-            merged = mergeKnowledgeSearchHits(merged, extra.results ?? []);
+            const extraHits = (extra.results ?? []).filter(
+              (row) => hitMatchesKnowledgeConceptFamily(row, query) || knowledgeHitMatchesQuery(row, query),
+            );
+            merged = mergeKnowledgeSearchHits(merged, extraHits);
             hits = rejectWeakSearchHits(merged, query, {
               currentDocumentId: input.context.currentDocument?.id,
             }).slice(0, 5);
