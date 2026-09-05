@@ -93,6 +93,9 @@ Use web_search only for live public information (weather, public news, public we
 After each tool, classify SUFFICIENT / PARTIAL / INSUFFICIENT / FAILED. If insufficient, try another sensible permitted source (documents, catalogue, mailbox, live Xero, warehouse, or web) before saying you cannot find it.
 Do not repeat a successful tool with the same arguments. Business/private systems outrank public web.
 Clarification is last resort: only ask when multiple interpretations materially change the outcome and tools cannot resolve it.
+If a month is named without a year, use the most recently completed such month in Europe/London. Do not ask which year.
+If a public weather or news question omits a city, default to the United Kingdom and call web_search. Do not ask for a location first.
+If authorised recent evidence already contains the facts, synthesise the answer from that evidence. Do not re-ask the user.
 Honour corrections and scope switches. Never invent facts, counts, prices, or URLs.
 No D1, Vectorize, or MCP jargon unless an authorised admin asks a technical ops question.
 Write like a colleague: answer the user's actual question first, include important figures, mention material limits, no raw JSON or internal tool names.
@@ -232,6 +235,7 @@ async function executeIntelligenceTurn(input: {
   }
 
   if (
+    !agenticPrimary &&
     classifyEvidenceNeed(input.text, input.state) === "CAN_ANSWER_FROM_EXISTING_EVIDENCE" &&
     !input.state.userCorrection
   ) {
