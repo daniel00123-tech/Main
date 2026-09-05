@@ -172,12 +172,18 @@ export async function runProductionKnowledgeSearch(
     };
   }
 
-  const mcpHits = mcpHitsAcc;
-  const rawHits = mergeKnowledgeSearchHits(localHits, mcpHits).filter((row) => {
+  const mcpHits = mcpHitsAcc.filter((row) => {
     const title = String(row.title ?? row.filename ?? "").trim();
     const id = row.documentId ?? row.document_id;
     if (!title && (id == null || id === "")) return false;
-    return knowledgeHitMatchesQuery(row, input.query);
+    return (
+      hitMatchesKnowledgeConceptFamily(row, input.query) || knowledgeHitMatchesQuery(row, input.query)
+    );
+  });
+  const rawHits = mergeKnowledgeSearchHits(localHits, mcpHits).filter((row) => {
+    const title = String(row.title ?? row.filename ?? "").trim();
+    const id = row.documentId ?? row.document_id;
+    return Boolean(title || (id != null && id !== ""));
   });
   const hits = summarizeKnowledgeSearchHits(rawHits);
   const outlookHitCount = rawHits.filter((row) => {
