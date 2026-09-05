@@ -49,7 +49,7 @@ export function scoreTargetedTurn(input: {
     terminal: input.terminal,
   });
   const honest =
-    /couldn.?t find|no matching|don.?t have (a |that )?(document|policy|source)|no indexed|nothing in (the )?company knowledge|no source exists/i.test(
+    /couldn.?t find|could not find|no matching|don.?t have (a |that )?(document|policy|source)|no indexed|nothing in (the )?company knowledge|no source exists/i.test(
       input.reply,
     );
   const retrievalFail = /couldn.?t reach company knowledge|need another moment/i.test(input.reply);
@@ -61,7 +61,12 @@ export function scoreTargetedTurn(input: {
         scored.grounded = true;
         scored.firstAnswer = true;
       }
-    } else if (!honest && !retrievalFail && input.question.honestNoResultOk) {
+    } else if (
+      !honest &&
+      !retrievalFail &&
+      input.question.honestNoResultOk &&
+      /\.(docx|pdf|xlsx|doc)\b/i.test(input.reply)
+    ) {
       scored.defects = [...new Set([...scored.defects, "OFFTOPIC_KNOWLEDGE_HIT"])];
       scored.perfect = false;
     } else if (honest && !retrievalFail && !input.question.honestNoResultOk) {
