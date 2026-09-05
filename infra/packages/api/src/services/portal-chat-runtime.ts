@@ -25,6 +25,8 @@ import { PORTAL_CHAT_SOURCE_CLIENT, toolStatusLabel, type PortalChatContext, typ
 import { BUSINESS_GATEWAY_TOOL_SET, businessGatewayTimeoutMs } from "./intelligence/business-gateway-tools";
 import {
   getCompanyKnowledgeDocument,
+  hitMatchesKnowledgeConceptFamily,
+  knowledgeConceptExpansionQueries,
   localKnowledgeHitsToResults,
   mergeKnowledgeSearchHits,
   searchCompanyKnowledgeIndex,
@@ -178,10 +180,41 @@ export function createPortalChatRuntime(
             limit: 8,
           }).catch(() => []),
         );
-        const merged = mergeKnowledgeSearchHits(localHits, payload.results ?? []);
-        const hits = rejectWeakSearchHits(merged, query, {
+        let merged = mergeKnowledgeSearchHits(localHits, payload.results ?? []);
+        let hits = rejectWeakSearchHits(merged, query, {
           currentDocumentId: input.context.currentDocument?.id,
         }).slice(0, 5);
+        const expansion = knowledgeConceptExpansionQueries(query).find(
+          (row) => row.toLowerCase() !== query.toLowerCase(),
+        );
+        if (
+          expansion &&
+          !hits.some((hit) => hitMatchesKnowledgeConceptFamily(hit, query))
+        ) {
+          const expanded = await withBoundedTimeout(
+            gateway(env, {
+              actor: { type: "user", user: input.sessionUser, channel: "portal" },
+              companyId: input.companyId,
+              toolName: gatewayName,
+              arguments: { query: expansion },
+              sourceClient: PORTAL_CHAT_SOURCE_CLIENT,
+              interactionId: input.interactionId,
+              parentRequestId: input.interactionId,
+              customerRequestId: input.interactionId,
+              trafficClass: input.trafficClass ?? undefined,
+              waitUntil: input.waitUntil,
+            }),
+            timeoutMs,
+            `portal_chat_${gatewayName}_concept`,
+          );
+          if (expanded.ok && !expanded.timedOut && expanded.value?.status === 200) {
+            const extra = toStandardSearchPayload(expanded.value.result);
+            merged = mergeKnowledgeSearchHits(merged, extra.results ?? []);
+            hits = rejectWeakSearchHits(merged, query, {
+              currentDocumentId: input.context.currentDocument?.id,
+            }).slice(0, 5);
+          }
+        }
         return {
           name: call.name,
           ok: true,

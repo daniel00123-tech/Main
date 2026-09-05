@@ -342,44 +342,63 @@ export async function recordJobIngestionEvent(
   });
 }
 
+export const TERMINAL_ATTACHMENT_FAILURE_CODES = [
+  "EXTRACT_EMPTY_TERMINAL",
+  "UNSUPPORTED_TYPE",
+] as const;
+
+export function isTerminalAttachmentFailure(code: string | null | undefined): boolean {
+  const value = String(code ?? "").trim();
+  return (
+    value === "EXTRACT_EMPTY_TERMINAL" ||
+    value === "UNSUPPORTED_TYPE" ||
+    value === "KNOWLEDGE_EXTRACT_EMPTY"
+  );
+}
+
 export async function listFailedMailboxAttachmentEvents(
   db: D1Database,
-  input: { companyId: string; mailboxAddresses?: string[]; limit?: number },
+  input: {
+    companyId: string;
+    mailboxAddresses?: string[];
+    eventIds?: string[];
+    limit?: number;
+    includeTerminal?: boolean;
+  },
 ): Promise<KnowledgeIngestionEventRow[]> {
   await ensureKnowledgeIngestionEventsSchema(db);
   const addresses = (input.mailboxAddresses ?? []).map((row) => row.trim().toLowerCase()).filter(Boolean);
-  const result = addresses.length
-    ? await db
-        .prepare(
-          `SELECT id, company_id, source_type, event_type, status, provider_item_id, parent_message_id,
-                  filename, content_hash, mailbox_address, mime_type, size_bytes, chunk_count, skip_reason,
-                  failure_code, discovered_at, source_modified_at, indexed_at, stored_at, stored_item_id,
-                  stored_url, retry_count, created_at, metadata_json
-           FROM knowledge_ingestion_events
-           WHERE company_id = ?
-             AND source_type IN ('outlook_attachments', 'outlook_attachment')
-             AND event_type = 'failed'
-             AND lower(IFNULL(mailbox_address,'')) IN (${addresses.map(() => "?").join(",")})
-           ORDER BY created_at DESC
-           LIMIT ?`,
-        )
-        .bind(input.companyId, ...addresses, input.limit ?? 80)
-        .all<KnowledgeIngestionEventRow>()
-    : await db
-        .prepare(
-          `SELECT id, company_id, source_type, event_type, status, provider_item_id, parent_message_id,
-                  filename, content_hash, mailbox_address, mime_type, size_bytes, chunk_count, skip_reason,
-                  failure_code, discovered_at, source_modified_at, indexed_at, stored_at, stored_item_id,
-                  stored_url, retry_count, created_at, metadata_json
-           FROM knowledge_ingestion_events
-           WHERE company_id = ?
-             AND source_type IN ('outlook_attachments', 'outlook_attachment')
-             AND event_type = 'failed'
-           ORDER BY created_at DESC
-           LIMIT ?`,
-        )
-        .bind(input.companyId, input.limit ?? 80)
-        .all<KnowledgeIngestionEventRow>();
+  const eventIds = (input.eventIds ?? []).map((row) => row.trim()).filter(Boolean);
+  const clauses = [
+    "company_id = ?",
+    "source_type IN ('outlook_attachments', 'outlook_attachment')",
+    "event_type = 'failed'",
+  ];
+  const binds: Array<string | number> = [input.companyId];
+  if (addresses.length) {
+    clauses.push(`lower(IFNULL(mailbox_address,'')) IN (${addresses.map(() => "?").join(",")})`);
+    binds.push(...addresses);
+  }
+  if (eventIds.length) {
+    clauses.push(`id IN (${eventIds.map(() => "?").join(",")})`);
+    binds.push(...eventIds);
+  }
+  if (!input.includeTerminal) {
+    clauses.push(`IFNULL(failure_code,'') NOT IN ('EXTRACT_EMPTY_TERMINAL', 'UNSUPPORTED_TYPE')`);
+  }
+  const result = await db
+    .prepare(
+      `SELECT id, company_id, source_type, event_type, status, provider_item_id, parent_message_id,
+              filename, content_hash, mailbox_address, mime_type, size_bytes, chunk_count, skip_reason,
+              failure_code, discovered_at, source_modified_at, indexed_at, stored_at, stored_item_id,
+              stored_url, retry_count, created_at, metadata_json
+       FROM knowledge_ingestion_events
+       WHERE ${clauses.join(" AND ")}
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .bind(...binds, input.limit ?? 80)
+    .all<KnowledgeIngestionEventRow>();
   return result.results ?? [];
 }
 

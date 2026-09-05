@@ -104,6 +104,7 @@ export async function runTargetedQuality(
       mailboxAddresses: ["lauren@elvexpropertyservices.com", "michael@elvexpropertyservices.com"],
       actor: "system:targeted-quality-mailbox-retry",
       limit: 40,
+      eventIds: input.ids,
     });
     const registry = await env.DB.prepare(
       `SELECT mailbox_address, status, last_error, last_messages_scanned, graph_accessible
@@ -111,6 +112,80 @@ export async function runTargetedQuality(
        WHERE company_id = 'co_el' AND mailbox_address IN ('lauren@elvexpropertyservices.com','michael@elvexpropertyservices.com')`,
     ).all();
     return { stage, retry, registry: registry.results ?? [], sendEmail: false };
+  }
+  if (stage === "lauren-retry") {
+    const eventIds = input.ids?.length
+      ? input.ids
+      : [
+          "kie_ad1c14f9-4b6f-4e06-aa64-d8d8e796514f",
+          "kie_0fd55a35-6624-4a66-ad86-83679d40ac0c",
+        ];
+    const before = await env.DB.prepare(
+      `SELECT id, filename, failure_code, skip_reason, stored_item_id, stored_url, created_at, metadata_json
+       FROM knowledge_ingestion_events
+       WHERE company_id = 'co_el' AND id IN (${eventIds.map(() => "?").join(",")})`,
+    )
+      .bind(...eventIds)
+      .all();
+    const retry = await retryFailedOutlookAttachments(env, {
+      companyId: "co_el",
+      mailboxAddresses: ["lauren@elvexpropertyservices.com"],
+      actor: "system:lauren-targeted-retry",
+      eventIds,
+      limit: eventIds.length,
+    });
+    const remaining = await env.DB.prepare(
+      `SELECT COUNT(*) AS n
+       FROM knowledge_ingestion_events e
+       WHERE e.company_id = 'co_el'
+         AND lower(IFNULL(e.mailbox_address,'')) = 'lauren@elvexpropertyservices.com'
+         AND e.event_type = 'failed'
+         AND IFNULL(e.failure_code,'') NOT IN ('EXTRACT_EMPTY_TERMINAL', 'UNSUPPORTED_TYPE')
+         AND NOT EXISTS (
+           SELECT 1 FROM knowledge_ingestion_events x
+           WHERE x.company_id = e.company_id
+             AND x.provider_item_id = e.provider_item_id
+             AND x.event_type = 'indexed'
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM company_knowledge_documents d
+           WHERE d.company_id = 'co_el'
+             AND (
+               LOWER(IFNULL(d.filename,'')) = LOWER(IFNULL(e.filename,''))
+               OR (e.stored_item_id IS NOT NULL AND d.stored_item_id = e.stored_item_id)
+             )
+         )`,
+    ).first<{ n: number }>();
+    const retryableLeft = Number(remaining?.n ?? 0);
+    if (retryableLeft === 0) {
+      await env.DB.prepare(
+        `UPDATE company_mailbox_registry
+         SET last_error = NULL, status = 'approved', updated_at = ?
+         WHERE company_id = 'co_el'
+           AND lower(mailbox_address) = 'lauren@elvexpropertyservices.com'
+           AND (last_error LIKE 'DEGRADED:%' OR last_error LIKE '%attachment ingest incomplete%')`,
+      )
+        .bind(new Date().toISOString())
+        .run();
+    }
+    const registry = await env.DB.prepare(
+      `SELECT mailbox_address, status, last_error, last_messages_scanned, graph_accessible
+       FROM company_mailbox_registry
+       WHERE company_id = 'co_el' AND mailbox_address = 'lauren@elvexpropertyservices.com'`,
+    ).all();
+    return {
+      stage,
+      eventIds,
+      before: before.results ?? [],
+      retry,
+      retryableLeft,
+      registry: registry.results ?? [],
+      sendEmail: false,
+    };
+  }
+  if (stage === "outlook-followup") {
+    const { runPortalOutlookFollowupProof } = await import("../portal-outlook-followup-acceptance");
+    return { stage, proof: await runPortalOutlookFollowupProof(env), sendEmail: false };
   }
   if (stage === "email") {
     const scores = input.scores ?? [];

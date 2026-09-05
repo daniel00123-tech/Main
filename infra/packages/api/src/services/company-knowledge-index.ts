@@ -257,6 +257,64 @@ const GENERIC_BUSINESS_TOKENS = new Set([
   "documents",
 ]);
 
+const WORKPLACE_SAFETY_SIGNALS = new Set([
+  "accident",
+  "accidents",
+  "incident",
+  "incidents",
+  "injury",
+  "injuries",
+  "emergency",
+  "emergencies",
+  "hazard",
+  "hazards",
+  "firstaid",
+]);
+
+export type KnowledgeConceptFamily = {
+  id: "workplace_safety";
+  expansionQueries: string[];
+  documentNeedles: string[];
+  titleAnchors: string[][];
+};
+
+export function detectKnowledgeConceptFamily(query: string): KnowledgeConceptFamily | null {
+  const classified = classifyKnowledgeQuery(query);
+  const tokens = new Set(classified.tokens.map((row) => row.token));
+  for (const part of classified.normalized.split(/[^a-z0-9]+/)) {
+    if (part) tokens.add(part);
+  }
+  const hasGasLeak = tokens.has("gas") && (tokens.has("leak") || tokens.has("leaks") || tokens.has("leaking"));
+  const hasSafetySignal =
+    [...WORKPLACE_SAFETY_SIGNALS].some((signal) => tokens.has(signal)) ||
+    hasGasLeak ||
+    classified.compact.includes("firstaid");
+  if (!hasSafetySignal) return null;
+  return {
+    id: "workplace_safety",
+    expansionQueries: ["health and safety policy", "workplace accident incident emergency"],
+    documentNeedles: ["health", "safety", "incident", "emergency", "accident", "hazard"],
+    titleAnchors: [["health", "safety"], ["accident"], ["incident"], ["emergency"]],
+  };
+}
+
+export function knowledgeConceptExpansionQueries(query: string): string[] {
+  return detectKnowledgeConceptFamily(query)?.expansionQueries ?? [];
+}
+
+export function hitMatchesKnowledgeConceptFamily(
+  hit: { title?: unknown; filename?: unknown; snippet?: unknown; text?: unknown },
+  query: string,
+): boolean {
+  const family = detectKnowledgeConceptFamily(query);
+  if (!family) return false;
+  const heading = `${hit.title ?? ""} ${hit.filename ?? ""}`;
+  const haystack = `${heading} ${hit.snippet ?? ""} ${hit.text ?? ""}`;
+  return family.titleAnchors.some((anchor) =>
+    anchor.every((token) => tokenPresent(heading, token) || tokenPresent(haystack, token)),
+  );
+}
+
 export type KnowledgeTokenClass = "high" | "medium" | "low";
 
 export type ClassifiedKnowledgeToken = {
@@ -460,6 +518,9 @@ function scoreKnowledgeCandidate(row: KnowledgeCandidateRow, classified: Classif
     }
   }
   if (highHits > 0 && lowHits > 0) score += 30;
+  if (hitMatchesKnowledgeConceptFamily({ title: row.title, filename: row.filename, text: row.text }, classified.original)) {
+    score += 80;
+  }
   return score;
 }
 
@@ -475,6 +536,7 @@ export function knowledgeHitMatchesQuery(
   const heading = `${hit.title ?? ""} ${hit.filename ?? ""}`;
   const headingDistinct = classified.tokens.filter((token) => token.cls !== "low" && tokenPresent(heading, token.token));
   if (headingDistinct.length >= 2) return true;
+  if (hitMatchesKnowledgeConceptFamily(hit, query)) return true;
   if (classified.highValueTokens.length) {
     const identifiers = classified.highValueTokens.filter((token) => /\d/.test(token));
     if (identifiers.length) {
@@ -601,24 +663,35 @@ export async function searchCompanyKnowledgeIndex(
   const classified = classifyKnowledgeQuery(input.query);
   if (!classified.tokens.length && !classified.references.length) return [];
 
+  const family = detectKnowledgeConceptFamily(input.query);
   const exactNeedles = likeNeedles([
     classified.normalized,
     filenameStem(classified.normalized),
     classified.compact,
     ...classified.references,
     ...classified.highValueTokens,
+    ...(family?.documentNeedles ?? []),
   ]);
-  const distinctiveNeedles = likeNeedles(classified.highValueTokens);
-  const broadNeedles = likeNeedles(classified.broadTokens);
+  const distinctiveNeedles = likeNeedles([
+    ...classified.highValueTokens,
+    ...(family?.documentNeedles ?? []),
+  ]);
+  const broadNeedles = likeNeedles([
+    ...classified.broadTokens,
+    ...(family?.documentNeedles ?? []),
+  ]);
 
   const exactRows = await fetchKnowledgeCandidatePool(env, input.companyId, exactNeedles, 40);
   const distinctiveRows = distinctiveNeedles.length
     ? await fetchKnowledgeCandidatePool(env, input.companyId, distinctiveNeedles, 40)
     : [];
-  const needBroad = classified.highValueTokens.length === 0;
+  const needBroad = classified.highValueTokens.length === 0 || Boolean(family);
   const broadRows = needBroad ? await fetchKnowledgeCandidatePool(env, input.companyId, broadNeedles, 80) : [];
+  const conceptRows = family
+    ? await fetchKnowledgeCandidatePool(env, input.companyId, likeNeedles(family.documentNeedles), 40)
+    : [];
 
-  const merged = [...exactRows, ...distinctiveRows, ...broadRows];
+  const merged = [...exactRows, ...distinctiveRows, ...broadRows, ...conceptRows];
   const bestByDoc = new Map<number, { row: KnowledgeCandidateRow; score: number }>();
   for (const row of merged) {
     const score = scoreKnowledgeCandidate(row, classified);

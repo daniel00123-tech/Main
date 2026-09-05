@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { classifyActivityKind, timestampInWindow } from "@infra/shared";
-import { knowledgeIngestionEventInWindow, recordKnowledgeIngestionEvent } from "./knowledge-ingestion-events";
+import {
+  isTerminalAttachmentFailure,
+  knowledgeIngestionEventInWindow,
+  recordKnowledgeIngestionEvent,
+} from "./knowledge-ingestion-events";
 
 describe("knowledge ingestion ledger", () => {
   it("records a tenant-scoped event without leaking other companies", async () => {
@@ -97,5 +101,13 @@ describe("knowledge ingestion ledger", () => {
     expect(
       knowledgeIngestionEventInWindow(row, "2026-09-03T17:39:03.388Z", "2026-09-04T17:39:03.388Z"),
     ).toBe(false);
+  });
+
+  it("marks empty extract and unsupported types as terminal so they are not retried forever", () => {
+    expect(isTerminalAttachmentFailure("KNOWLEDGE_EXTRACT_EMPTY")).toBe(true);
+    expect(isTerminalAttachmentFailure("EXTRACT_EMPTY_TERMINAL")).toBe(true);
+    expect(isTerminalAttachmentFailure("UNSUPPORTED_TYPE")).toBe(true);
+    expect(isTerminalAttachmentFailure("KNOWLEDGE_UPLOAD_FAILED")).toBe(false);
+    expect(isTerminalAttachmentFailure("FETCH_TRANSIENT")).toBe(false);
   });
 });
