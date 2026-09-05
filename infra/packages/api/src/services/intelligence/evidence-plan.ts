@@ -129,7 +129,11 @@ export function decomposeEvidenceNeeds(text: string): EvidenceSubtask[] {
   }
   if (!exclusive && isExplicitCatalogueAsk(value)) needs.add("catalogue.list");
   if (EMAIL_ASK.test(value) && !exclusivePeriod && !exclusiveKnowledge) {
-    if (/\b(what are they asking|what does it say|summaris|summariz|draft|body|actually say)\b/i.test(value)) {
+    if (
+      /\b(what (do|did|are|were) they|they want|they after|what does it say|summaris|summariz|draft|body|actually say|key point|what do i need to do)\b/i.test(
+        value,
+      )
+    ) {
       needs.add("email.body");
     } else if (
       /\b(search|from|containing|look in|quote|PO)\b/i.test(value) ||

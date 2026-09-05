@@ -102,6 +102,13 @@ const SYNONYMS: Record<string, string[]> = {
   workplace: ["health", "safety", "work"],
   leak: ["emergency", "gas", "health", "safety"],
   leaks: ["emergency", "gas", "health", "safety"],
+  smell: ["gas", "leak", "emergency", "health", "safety"],
+  escape: ["gas", "leak", "emergency", "health", "safety"],
+  hurt: ["injury", "injured", "accident", "incident", "health", "safety"],
+  injured: ["injury", "hurt", "accident", "incident", "health", "safety"],
+  occurrence: ["incident", "accident", "emergency", "health", "safety"],
+  unsafe: ["hazard", "incident", "health", "safety"],
+  reportable: ["incident", "accident", "injury", "health", "safety"],
 };
 
 export type DocumentQaDiagnostics = {

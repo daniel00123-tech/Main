@@ -60,10 +60,23 @@ export function emailBodyRequired(text: string): boolean {
   ) {
     return false;
   }
+  if (isDraftOrEdit(text)) return true;
   return (
-    /\b(what (are|were) they asking|what (is|was) (the |this |that )?(email|message) asking|what does .{0,40}(say|said)|what did they (ask|want|say)|summar(?:ise|ize)(?:\s+(that|it|this|the .{0,32}))?|summary of (that|it|this|the (email|message))|draft|reply|respond|full (email|message|body)|the (email|message) (body|content|text)|show (the )?(full )?(body|message)|write a reply)\b/i.test(
-      text,
-    ) || isDraftOrEdit(text)
+    /\bwhat (do|did|are|were) they\b/i.test(text) ||
+    /\bthey (want|asking|asked|after|need)\b/i.test(text) ||
+    /\bwhat (is|was) (the |this |that )?(email|message|one) (asking|about|for)\b/i.test(text) ||
+    /\bwhat does .{0,48}(actually )?(say|said)\b/i.test(text) ||
+    /\bwhat(?:'s| is) the (key |main )?(point|ask|request)\b/i.test(text) ||
+    /\bwhat do i need to do\b/i.test(text) ||
+    /\bkey point\b/i.test(text) ||
+    /\bsummar(?:ise|ize)\b/i.test(text) ||
+    /\bsummary of (that|it|this|the (email|message))\b/i.test(text) ||
+    /\bfull (email|message|body)\b/i.test(text) ||
+    /\bfull .{0,32}(email|message|body)\b/i.test(text) ||
+    /\bthe (email|message) (body|content|text)\b/i.test(text) ||
+    /\bshow (the )?(full )?(body|message)\b/i.test(text) ||
+    /\binterpret\b/i.test(text) ||
+    /\b(draft|reply|respond|write a reply)\b/i.test(text)
   );
 }
 
@@ -77,7 +90,7 @@ export function classifyEvidenceNeed(
   state: Pick<IntelligenceConversationState, "recentEvidence" | "lastAnswerText" | "lastAnswerTopic" | "currentBusinessSystem">,
 ): EvidenceNeed {
   const evidence = state.recentEvidence ?? emptyEvidence();
-  if (isFreshListingAsk(text) && !isDraftOrEdit(text)) return "NEEDS_FRESH_DATA";
+  if (isFreshListingAsk(text) && !isDraftOrEdit(text) && !emailBodyRequired(text)) return "NEEDS_FRESH_DATA";
   if (isFreshBusinessSystemAsk(text)) return "NEEDS_FRESH_DATA";
   if (isPeriodCompareMissing(text, evidence.recentXero)) return "NEEDS_FRESH_DATA";
   if (canUseExisting(text, state, evidence)) {
@@ -140,10 +153,12 @@ function isEmailFollowUp(
 ): boolean {
   if (!evidence.recentEmail) return false;
   if (isFreshBusinessSystemAsk(text) && !/\b(email|inbox|outlook|mailbox|reply)\b/i.test(text)) return false;
-  const explicit = /\b(that email|the email|this email|reply|they asking|who sent)\b/i.test(text);
-  const draftOrRecall = isDraftOrEdit(text) || isRecall(text);
-  if (!explicit && !draftOrRecall) return false;
   void state;
+  if (emailBodyRequired(text) || isDraftOrEdit(text) || isRecall(text)) {
+    return true;
+  }
+  const explicit = /\b(that email|the email|this email|reply|they asking|they want|who sent)\b/i.test(text);
+  if (!explicit) return false;
   return !isFreshListingAsk(text);
 }
 

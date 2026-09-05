@@ -338,4 +338,57 @@ describe("deterministic business and knowledge reads", () => {
     expect(down.text).toMatch(/couldn.?t reach Email/i);
     expect(isGenericRetryCopy(down.text)).toBe(false);
   });
+
+  it("fetches the known message body on a content follow-up without relisting", async () => {
+    const { runtime: exec, calls } = runtime((name) => {
+      if (name === "outlook_get_message") {
+        return {
+          id: "msg_known",
+          subject: "Leak detection quote",
+          from: "ops@example.com",
+          receivedDateTime: "2026-09-04T09:00:00Z",
+          body: "Please confirm availability for a leak survey next Tuesday.",
+        };
+      }
+      return {
+        mailboxAddress: "info@elvexpropertyservices.com",
+        messages: [{ id: "msg_other", subject: "Unrelated", from: "other@example.com", receivedDateTime: "2026-09-04T10:00:00Z" }],
+      };
+    });
+    const result = await runIntelligenceTurn({
+      text: "What do they want from us?",
+      state: buildConversationState({
+        userText: "What do they want from us?",
+        lastAnswerTopic: "email",
+        currentBusinessSystem: "email",
+        lastSuccessfulTool: "outlook_list_messages",
+        connectors: ["conn_outlook_shared"],
+        permittedTools: ["outlook_list_messages", "outlook_search_mailbox", "outlook_get_message", "search_company_knowledge"],
+        recentEvidence: {
+          companyId: "co_el",
+          source: "outlook",
+          capturedAt: "2026-09-05T08:00:00.000Z",
+          recentEmail: {
+            id: "msg_known",
+            subject: "Leak detection quote",
+            from: "ops@example.com",
+            receivedDateTime: "2026-09-04T09:00:00Z",
+            mailboxAddress: "info@elvexpropertyservices.com",
+            body: "",
+            toolName: "outlook_list_messages",
+          },
+          recentXero: null,
+          recentDocument: null,
+          recentCatalogueItem: null,
+          lastSuccessfulCalls: [{ name: "outlook_list_messages", argsHash: "outlook_list_messages:", summary: "listed" }],
+        },
+      }),
+      runtime: exec,
+      completer: silentCompleter,
+      channel: "portal",
+    });
+    expect(calls.map((call) => call.name)).toEqual(["outlook_get_message"]);
+    expect(calls[0]?.arguments.messageId ?? calls[0]?.arguments.id).toBe("msg_known");
+    expect(result.text).toMatch(/leak survey|availability/i);
+  });
 });

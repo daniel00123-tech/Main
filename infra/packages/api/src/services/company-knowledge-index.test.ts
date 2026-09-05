@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyKnowledgeQuery,
+  compactNormalizedHeading,
   detectKnowledgeConceptFamily,
   knowledgeHitMatchesQuery,
   knowledgeSearchTokens,
+  normalizeKnowledgeHeading,
   searchCompanyKnowledgeIndex,
   shouldUseLocalCompanyKnowledgeIndex,
 } from "./company-knowledge-index";
@@ -343,6 +345,14 @@ describe("company knowledge index", () => {
       "what should staff do after an accident at work?",
       "what is the emergency process for a gas leak?",
       "how do we report a health and safety incident?",
+      "what should an engineer do if they smell gas?",
+      "what happens if a staff member gets injured on a job?",
+      "who needs to be told about a dangerous occurrence?",
+      "what do we do after someone gets hurt at work?",
+      "how should a suspected gas escape be handled?",
+      "what is the process for a reportable safety incident?",
+      "what should staff do after a workplace injury?",
+      "what happens after a serious site incident?",
     ];
     for (const query of queries) {
       expect(detectKnowledgeConceptFamily(query)?.id, query).toBe("workplace_safety");
@@ -365,6 +375,68 @@ describe("company knowledge index", () => {
     expect(invoices[0]?.documentId).not.toBe(31);
     expect(detectKnowledgeConceptFamily("What is the process for invoices?")).toBeNull();
     expect(detectKnowledgeConceptFamily("INV-02277")).toBeNull();
+  });
+
+  it("normalizes filenames for ranking without rewriting the stored name", () => {
+    expect(normalizeKnowledgeHeading("OnCall_and_Holidays_2026 (1).xlsx")).toBe("on call and holidays 2026");
+    expect(compactNormalizedHeading("OnCall_and_Holidays_2026 (1).xlsx")).toBe("oncallandholidays2026");
+    expect(normalizeKnowledgeHeading("OnCall and Holidays 2026")).toBe("on call and holidays 2026");
+    expect(classifyKnowledgeQuery("OnCall Holidays").tokens.some((row) => row.token === "call")).toBe(true);
+    expect(classifyKnowledgeQuery("holidays 2026").firstStageTokens).toContain("holidays");
+    expect(classifyKnowledgeQuery("holidays 2026").firstStageTokens).not.toContain("2026");
+  });
+
+  it("ranks OnCall holiday filename variants ahead of a year flood", async () => {
+    const env = knowledgeIndexEnv([
+      ...genericInvoiceFlood(20).map((row, index) => ({
+        ...row,
+        filename: `Invoice-2026-${index}.pdf`,
+        title: `Invoice-2026-${index}.pdf`,
+        text: "2026 invoice for completed works.",
+      })),
+      ...inv02277Chunks,
+      {
+        company_id: "co_el",
+        document_id: 47,
+        filename: "OnCall_and_Holidays_2026 (1).xlsx",
+        title: "OnCall_and_Holidays_2026 (1).xlsx",
+        stored_url: null,
+        text: "On-call engineer rota and holiday dates for 2026.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 16,
+        filename: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        title: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        stored_url: null,
+        text: "Finance admin guide for invoice coding, mailbox handling, and remittance checks.",
+        chunk_index: 0,
+      },
+    ]);
+    const queries = [
+      "OnCall_and_Holidays_2026 (1).xlsx",
+      "OnCall and Holidays 2026",
+      "on call holidays",
+      "holidays 2026",
+      "on call rota 2026",
+    ];
+    for (const query of queries) {
+      const hits = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query });
+      expect(hits[0]?.documentId, query).toBe(47);
+      expect(hits[0]?.filename, query).toBe("OnCall_and_Holidays_2026 (1).xlsx");
+    }
+    const invoice = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query: "INV-02277" });
+    expect(invoice[0]?.documentId).toBe(18);
+    const finance = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query: "Finance Admin" });
+    expect(finance[0]?.documentId).toBe(16);
+    const remittance = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query: "remittance" });
+    expect(remittance[0]?.documentId).toBe(16);
+    const empty = await searchCompanyKnowledgeIndex(env, {
+      companyId: "co_el",
+      query: "intergalactic onboarding fees zzzxq-99999",
+    });
+    expect(empty).toEqual([]);
   });
 
   it("never returns another tenant's documents", async () => {

@@ -207,6 +207,18 @@ describe("scope classifier", () => {
       scope: "BUSINESS_SYSTEM",
       tool: "outlook_list_messages",
     });
+    for (const followUp of [
+      "What do they want from us?",
+      "summarise what they said",
+      "what does the email actually say?",
+      "what's the key point?",
+      "what do I need to do?",
+    ]) {
+      expect(classifyScope(followUp, afterEmail), followUp).toMatchObject({
+        scope: "BUSINESS_SYSTEM",
+        tool: "outlook_list_messages",
+      });
+    }
   });
 });
 

@@ -115,6 +115,11 @@ describe("outlook body sufficiency", () => {
     "Summarise that.",
     "Draft me a reply.",
     "What did they want?",
+    "What do they want from us?",
+    "What are they after?",
+    "What does the email actually say?",
+    "What's the key point?",
+    "What do I need to do?",
     "Full email please",
   ])("requires a full body for %s", (text) => {
     expect(emailBodyRequired(text)).toBe(true);
@@ -215,6 +220,9 @@ describe("knowledge logical dedupe", () => {
     expect(knowledgeHitMatchesQuery(hit, "what does the health and safety policy say about accidents")).toBe(true);
     expect(knowledgeHitMatchesQuery(hit, "how do we report an accident at work")).toBe(true);
     expect(knowledgeHitMatchesQuery(hit, "what should staff do after an accident at work?")).toBe(true);
+    expect(knowledgeHitMatchesQuery(hit, "what should an engineer do if they smell gas?")).toBe(true);
+    expect(knowledgeHitMatchesQuery(hit, "who needs to be told about a dangerous occurrence?")).toBe(true);
+    expect(knowledgeHitMatchesQuery(hit, "what do we do after someone gets hurt at work?")).toBe(true);
     expect(knowledgeHitMatchesQuery(hit, "intergalactic onboarding fees zzzxq-99999")).toBe(false);
   });
 
