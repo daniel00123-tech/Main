@@ -181,6 +181,12 @@ describe("scope classifier", () => {
         buildConversationState({ userText: "What is the newest email in the finance inbox?" }),
       ),
     ).toMatchObject({ scope: "BUSINESS_SYSTEM", tool: "outlook_list_messages" });
+    expect(
+      classifyScope(
+        "Check the latest info@ message",
+        buildConversationState({ userText: "Check the latest info@ message" }),
+      ),
+    ).toMatchObject({ scope: "BUSINESS_SYSTEM", tool: "outlook_list_messages" });
     const afterPo = buildConversationState({
       userText: "Give me more detail.",
       lastAnswerTopic: "the PO process",
