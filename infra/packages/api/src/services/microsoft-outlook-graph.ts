@@ -107,15 +107,80 @@ export async function listTenantMailUsers(
   return users.slice(0, top);
 }
 
+export async function followGraphMailPages<T>(
+  fetchPage: (path: string) => Promise<GraphPage<T>>,
+  firstPath: string,
+  options?: { maxPages?: number; maxItems?: number },
+): Promise<{ items: T[]; pages: number; nextLinkFollowed: boolean; truncated: boolean }> {
+  const maxPages = options?.maxPages ?? 8;
+  const maxItems = options?.maxItems ?? 400;
+  const items: T[] = [];
+  let path: string | undefined = firstPath;
+  let pages = 0;
+  while (path && pages < maxPages && items.length < maxItems) {
+    const page = await fetchPage(path);
+    items.push(...(page.value ?? []));
+    path = page["@odata.nextLink"];
+    pages += 1;
+  }
+  return {
+    items: items.slice(0, maxItems),
+    pages,
+    nextLinkFollowed: pages > 1,
+    truncated: Boolean(path) || items.length > maxItems,
+  };
+}
+
+export async function getMailFolder(
+  config: MicrosoftGraphConfig,
+  mailboxAddress: string,
+  folderIdOrWellKnown: string,
+): Promise<GraphMailFolder> {
+  return graphMailRequest<GraphMailFolder>(
+    config,
+    `/users/${encodeURIComponent(mailboxAddress)}/mailFolders/${encodeURIComponent(folderIdOrWellKnown)}?$select=id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount`,
+  );
+}
+
 export async function listMailboxFolders(
   config: MicrosoftGraphConfig,
   mailboxAddress: string,
 ): Promise<GraphMailFolder[]> {
-  const page = await graphMailRequest<GraphPage<GraphMailFolder>>(
-    config,
-    `/users/${encodeURIComponent(mailboxAddress)}/mailFolders?$select=id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount`,
+  const listed = await followGraphMailPages<GraphMailFolder>(
+    (path) => graphMailRequest(config, path),
+    `/users/${encodeURIComponent(mailboxAddress)}/mailFolders?$select=id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount&$top=50`,
+    { maxPages: 6, maxItems: 200 },
   );
-  return page.value ?? [];
+  return listed.items;
+}
+
+export async function listMailboxFoldersDeep(
+  config: MicrosoftGraphConfig,
+  mailboxAddress: string,
+): Promise<GraphMailFolder[]> {
+  const root = await listMailboxFolders(config, mailboxAddress);
+  const extras: GraphMailFolder[] = [];
+  for (const folder of root) {
+    if ((folder.childFolderCount ?? 0) <= 0) continue;
+    try {
+      const children = await followGraphMailPages<GraphMailFolder>(
+        (path) => graphMailRequest(config, path),
+        `/users/${encodeURIComponent(mailboxAddress)}/mailFolders/${encodeURIComponent(folder.id)}/childFolders?$select=id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount&$top=50`,
+        { maxPages: 4, maxItems: 100 },
+      );
+      extras.push(...children.items);
+    } catch {
+      /* child-folder denial must not block Inbox ingest */
+    }
+  }
+  const seen = new Set<string>();
+  const merged: GraphMailFolder[] = [];
+  for (const folder of [...root, ...extras]) {
+    if (!folder.id || seen.has(folder.id)) continue;
+    seen.add(folder.id);
+    merged.push(folder);
+  }
+  return merged;
 }
 
 export async function listMailboxMessages(
@@ -140,6 +205,54 @@ export async function listMailboxMessages(
   const path = `/users/${encodeURIComponent(input.mailboxAddress)}/${folderSegment}/messages?$top=${top}&$orderby=receivedDateTime desc&$select=${select}${input.skip ? `&$skip=${input.skip}` : ""}`;
   const page = await graphMailRequest<GraphPage<GraphMailMessageDetail>>(config, path);
   return page.value ?? [];
+}
+
+export async function listMailboxFolderMessages(
+  config: MicrosoftGraphConfig,
+  input: {
+    mailboxAddress: string;
+    folderId: string;
+    top?: number;
+    receivedAfter?: string | null;
+    maxPages?: number;
+    maxItems?: number;
+  },
+): Promise<{
+  messages: GraphMailMessageDetail[];
+  pages: number;
+  nextLinkFollowed: boolean;
+}> {
+  const top = Math.min(input.top ?? 50, 50);
+  const select =
+    "id,subject,bodyPreview,from,sender,toRecipients,ccRecipients,receivedDateTime,sentDateTime,lastModifiedDateTime,conversationId,internetMessageId,hasAttachments,webLink,parentFolderId";
+  const filter = input.receivedAfter
+    ? `&$filter=${encodeURIComponent(`receivedDateTime ge ${input.receivedAfter}`)}`
+    : "";
+  const firstPath = `/users/${encodeURIComponent(input.mailboxAddress)}/mailFolders/${encodeURIComponent(input.folderId)}/messages?$top=${top}&$orderby=receivedDateTime desc&$select=${select}${filter}`;
+  try {
+    const paged = await followGraphMailPages<GraphMailMessageDetail>(
+      (path) => graphMailRequest(config, path),
+      firstPath,
+      { maxPages: input.maxPages ?? 8, maxItems: input.maxItems ?? 400 },
+    );
+    return {
+      messages: paged.items,
+      pages: paged.pages,
+      nextLinkFollowed: paged.nextLinkFollowed,
+    };
+  } catch (err) {
+    if (!(err instanceof MicrosoftGraphError) || err.status !== 400 || !input.receivedAfter) throw err;
+    const fallback = await followGraphMailPages<GraphMailMessageDetail>(
+      (path) => graphMailRequest(config, path),
+      `/users/${encodeURIComponent(input.mailboxAddress)}/mailFolders/${encodeURIComponent(input.folderId)}/messages?$top=${top}&$orderby=receivedDateTime desc&$select=${select}`,
+      { maxPages: input.maxPages ?? 8, maxItems: input.maxItems ?? 400 },
+    );
+    return {
+      messages: fallback.items,
+      pages: fallback.pages,
+      nextLinkFollowed: fallback.nextLinkFollowed,
+    };
+  }
 }
 
 export async function searchMailboxMessages(

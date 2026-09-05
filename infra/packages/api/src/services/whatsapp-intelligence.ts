@@ -25,6 +25,8 @@ import {
 } from "./intelligence/index";
 import { recordUsageEvent } from "./usage";
 import { collectQualityFlags } from "./intelligence/quality.js";
+import { scheduleDailyImprovementCapture } from "./daily-improvement";
+import { classifyElTraffic, shouldChargeElCustomerRequest } from "./el-customer-billing";
 import {
   COMPANY_KNOWLEDGE_READ_TOOL,
   COMPANY_KNOWLEDGE_SEARCH_TOOL,
@@ -56,29 +58,7 @@ import { FETCH_TIMEOUT_MS, KNOWLEDGE_SEARCH_TIMEOUT_MS, MCP_TIMEOUT_MS, withBoun
 import { isNegativeResultFeedback, looksLikeSearchOtherDocs, type WhatsAppPlan } from "./whatsapp-plan";
 import { softenSearchQuery } from "./whatsapp-intent";
 import type { WhatsAppTurn } from "./whatsapp-context";
-
-const ALLOWED_GATEWAY_TOOLS = new Set([
-  "search",
-  COMPANY_KNOWLEDGE_SEARCH_TOOL,
-  "fetch",
-  COMPANY_KNOWLEDGE_READ_TOOL,
-  "database_summary",
-  "system_health",
-  "xero_search_invoices",
-  "xero_get_organisation",
-  "xero_sales_summary",
-  "xero_profit_and_loss",
-  "xero_get_invoice",
-  "xero_search_contacts",
-  "xero_list_overdue_invoices",
-  "xero_aged_receivables",
-  "xero_top_customers",
-  "outlook_search_mailbox",
-  "outlook_list_messages",
-  "outlook_get_message",
-  "ask_document",
-  "list_documents",
-]);
+import { BUSINESS_GATEWAY_TOOL_SET, businessGatewayTimeoutMs } from "./intelligence/business-gateway-tools";
 
 export type WhatsAppIntelligenceAnswer = {
   reply: string;
@@ -111,6 +91,8 @@ export async function executeWhatsAppIntelligence(
     completer?: IntelligenceCompleter;
     connectors?: string[];
     qualityGuidance?: string | null;
+    trafficClass?: string | null;
+    wamid?: string | null;
   },
 ): Promise<WhatsAppIntelligenceAnswer> {
   const started = Date.now();
@@ -130,6 +112,7 @@ export async function executeWhatsAppIntelligence(
     memory: input.memory,
     fetchCache,
     connectors: input.connectors ?? [],
+    trafficClass: input.trafficClass ?? null,
   });
   const connectors = input.connectors ?? [];
   const membership = input.sessionUser.memberships.find((row) => row.companyId === input.companyId);
@@ -221,6 +204,35 @@ export async function executeWhatsAppIntelligence(
   const pii = redactUnsolicitedPii(polished, input.originalText, documentClass);
   const facts = extractTypedFacts(pii.text, documentClass);
   const malformedExtraction = documentClass === "cv_resume" && Boolean(facts.amount || facts.reference);
+
+  const trafficClass = classifyElTraffic({
+    sourceClient: "whatsapp",
+    actorEmail: input.sessionUser.email,
+    trafficClass: input.trafficClass,
+    wamid: input.wamid,
+  });
+  scheduleDailyImprovementCapture(env, input.waitUntil, {
+    interactionId: input.interactionId,
+    companyId: input.companyId,
+    userId: input.sessionUser.userId,
+    role: membership?.role ?? null,
+    channel: "whatsapp",
+    userMessage: input.originalText,
+    assistantAnswer: pii.text,
+    toolsRequested: result.toolCalls.map((call) => call.name),
+    toolsExecuted: result.toolCalls.filter((call) => call.ok).map((call) => call.name),
+    availableCapabilities: state.permittedTools ?? [],
+    terminalState: result.terminal ?? result.kind,
+    provider: result.provider ?? null,
+    model: result.model ?? null,
+    providerMode: result.brainMode ?? null,
+    trafficClass,
+    sourceClient: "whatsapp",
+    actorEmail: input.sessionUser.email,
+    wamid: input.wamid ?? null,
+    customerChargeCents: shouldChargeElCustomerRequest(input.companyId, trafficClass) ? 3 : 0,
+    latencyMs: Date.now() - started,
+  });
 
   return {
     reply: pii.text,
@@ -769,6 +781,7 @@ function createWhatsAppIntelligenceRuntime(
     memory: WhatsAppEntityMemory;
     fetchCache: Map<string, ReturnType<typeof toStandardFetchPayload>>;
     connectors?: string[];
+    trafficClass?: string | null;
   },
 ): IntelligenceRuntime {
   return {
@@ -784,7 +797,7 @@ function createWhatsAppIntelligenceRuntime(
         return runSearchDocument(env, input, call, started);
       }
       const gatewayName = GATEWAY_TOOL_ALIASES[call.name] ?? call.name;
-      if (!ALLOWED_GATEWAY_TOOLS.has(gatewayName)) {
+      if (!BUSINESS_GATEWAY_TOOL_SET.has(gatewayName)) {
         return {
           name: call.name,
           ok: false,
@@ -799,9 +812,7 @@ function createWhatsAppIntelligenceRuntime(
           ? KNOWLEDGE_SEARCH_TIMEOUT_MS
           : gatewayName === COMPANY_KNOWLEDGE_READ_TOOL || gatewayName === "fetch"
             ? FETCH_TIMEOUT_MS
-            : /^(outlook_|xero_|list_documents)/.test(gatewayName)
-              ? 20_000
-              : MCP_TIMEOUT_MS;
+            : businessGatewayTimeoutMs(gatewayName, MCP_TIMEOUT_MS);
       const fetched = await withBoundedTimeout(
         executeGatewayRequest(env, {
           actor: { type: "user", user: input.sessionUser },
@@ -812,6 +823,7 @@ function createWhatsAppIntelligenceRuntime(
           interactionId: input.interactionId,
           parentRequestId: input.interactionId,
           customerRequestId: input.interactionId,
+          trafficClass: input.trafficClass ?? undefined,
           waitUntil: input.waitUntil,
         }),
         timeoutMs,
@@ -918,6 +930,7 @@ async function runSearchDocument(
     waitUntil?: (promise: Promise<unknown>) => void;
     memory: WhatsAppEntityMemory;
     fetchCache: Map<string, ReturnType<typeof toStandardFetchPayload>>;
+    trafficClass?: string | null;
   },
   call: IntelligenceToolCall,
   started: number,
@@ -941,6 +954,7 @@ async function runSearchDocument(
         interactionId: input.interactionId,
         parentRequestId: input.interactionId,
         customerRequestId: input.interactionId,
+        trafficClass: input.trafficClass ?? undefined,
         waitUntil: input.waitUntil,
       }),
       FETCH_TIMEOUT_MS,

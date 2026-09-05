@@ -9,6 +9,12 @@ import { acquireMicrosoftAppToken, microsoftCredentialStatus } from "./microsoft
 import { loadMicrosoftConnectorBinding, parseStoredMicrosoftCredentialFields } from "./microsoft-credentials";
 import { resolveConnectorCredentialForExecution } from "./connector-credentials";
 import {
+  EL_NATIVE_MICROSOFT_CLIENT_ID,
+  SHARED_INFRA_BUSINESS_CONNECTOR_CLIENT_ID,
+  auditMicrosoftBindingNames,
+  loadMicrosoftTenantIdentity,
+} from "./microsoft-tenant-identity";
+import {
   getMessageAttachmentContent,
   listMailboxMessages,
   listMessageAttachments,
@@ -78,6 +84,8 @@ function summariseMessages(
 export async function probeFreshGraphToken(env: Env, actor: string): Promise<Record<string, unknown>> {
   const status = microsoftCredentialStatus(env);
   const binding = await loadMicrosoftConnectorBinding(env.DB, { companyId: COMPANY_ID });
+  const identity = await loadMicrosoftTenantIdentity(env, env.DB, COMPANY_ID);
+  const bindingNames = auditMicrosoftBindingNames(env);
   const envTenant = String(env.MICROSOFT_TENANT_ID ?? "").trim() || null;
   const envClient = String(env.MICROSOFT_CLIENT_ID ?? "").trim() || null;
   const domainTenant = await discoverEntraTenantIdFromDomain("elvexpropertyservices.com");
@@ -105,11 +113,11 @@ export async function probeFreshGraphToken(env: Env, actor: string): Promise<Rec
     actor,
     bypassCache: true,
   });
-  const domainToken = domainTenant
-    ? await acquireMicrosoftAppToken(env, { tenantId: domainTenant, actor, bypassCache: true })
-    : { ok: false as const, code: "TENANT_UNDISCOVERED", message: "EL domain tenant was not discoverable" };
 
-  const fail = !access.ok ? access : !domainToken.ok ? domainToken : null;
+  const fail = !access.ok ? access : !companyToken.ok ? companyToken : null;
+  const runtimeClient = access.ok
+    ? access.clientId ?? identity?.clientId ?? null
+    : identity?.clientId ?? null;
   return {
     result: access.ok ? "PASS" : "FAIL",
     freshRequest: true,
@@ -117,14 +125,18 @@ export async function probeFreshGraphToken(env: Env, actor: string): Promise<Rec
     platformTenantId: envTenant,
     platformClientId: envClient,
     domainDiscoveredTenantId: domainTenant,
-    companyBindingTenantId: binding?.tenantId ?? null,
-    companyBindingAuthMode: binding?.authMode ?? null,
+    companyBindingTenantId: binding?.tenantId ?? identity?.tenantId ?? null,
+    companyBindingAuthMode: identity ? "tenant_native" : binding?.authMode ?? null,
     companyBindingInstanceId: binding?.instanceId ?? null,
-    storedCompanyClientId: storedClientId,
-    runtimeTenantUsed: access.ok ? access.tenantId : domainTenant,
-    runtimeClientUsed: access.ok ? access.clientId ?? envClient : envClient,
-    authority: `https://login.microsoftonline.com/${access.ok ? access.tenantId : domainTenant ?? envTenant ?? "unknown"}`,
-    tokenEndpoint: `https://login.microsoftonline.com/${access.ok ? access.tenantId : domainTenant ?? envTenant ?? "unknown"}/oauth2/v2.0/token`,
+    storedCompanyClientId: storedClientId ?? identity?.clientId ?? null,
+    runtimeTenantUsed: access.ok ? access.tenantId : identity?.tenantId ?? domainTenant,
+    runtimeClientUsed: runtimeClient,
+    identityDisplayName: identity?.displayName ?? null,
+    identitySecretBinding: identity?.secretBinding ?? null,
+    identitySecretPresent: identity?.secretPresent ?? false,
+    bindingNames,
+    authority: `https://login.microsoftonline.com/${access.ok ? access.tenantId : identity?.tenantId ?? domainTenant ?? envTenant ?? "unknown"}`,
+    tokenEndpoint: `https://login.microsoftonline.com/${access.ok ? access.tenantId : identity?.tenantId ?? domainTenant ?? envTenant ?? "unknown"}/oauth2/v2.0/token`,
     companyTokenCode: companyToken.ok ? "OK" : companyToken.code,
     companyTokenMessage: companyToken.ok ? null : companyToken.message,
     httpStatus: fail && "httpStatus" in fail ? fail.httpStatus ?? null : access.ok ? 200 : null,
@@ -136,11 +148,13 @@ export async function probeFreshGraphToken(env: Env, actor: string): Promise<Rec
     tokenUrl: fail && "tokenUrl" in fail ? fail.tokenUrl ?? null : null,
     source: access.ok ? access.source : "none",
     platformConfigured: status.configured,
-    clientIdMatchesPrevious: envClient === "e5fd0533-ce51-43b8-999c-152f1e268246",
-    tenantMatchesEl: (access.ok ? access.tenantId : domainTenant) === "af32e619-3647-44a2-85d9-1c45457c0e91",
+    clientIdMatchesPrevious: runtimeClient === SHARED_INFRA_BUSINESS_CONNECTOR_CLIENT_ID,
+    clientIdMatchesElNative: runtimeClient === EL_NATIVE_MICROSOFT_CLIENT_ID,
+    tenantMatchesEl: (access.ok ? access.tenantId : identity?.tenantId ?? domainTenant) === "af32e619-3647-44a2-85d9-1c45457c0e91",
     message: access.ok ? "Fresh app-only token acquired" : access.message,
     secretRotated: false,
     microsoftReconnected: false,
+    sharedConnectorFallbackUsed: false,
   };
 }
 

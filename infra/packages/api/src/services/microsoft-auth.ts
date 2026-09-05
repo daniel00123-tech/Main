@@ -11,6 +11,7 @@ import {
   resolveMicrosoftAppCredentials,
   type MicrosoftAppCredentials,
 } from "./microsoft-credentials";
+import { recordMicrosoftTenantIdentityTokenResult } from "./microsoft-tenant-identity";
 
 export type MicrosoftAuthMode = "app_only" | "delegated" | "not_configured";
 
@@ -189,7 +190,17 @@ export async function acquireMicrosoftAppToken(
   env: Env,
   context?: MicrosoftTokenContext & { bypassCache?: boolean },
 ): Promise<
-  | { ok: true; accessToken: string; tenantId: string; expiresAtMs: number; authMode: string; cached?: boolean }
+  | {
+      ok: true;
+      accessToken: string;
+      tenantId: string;
+      expiresAtMs: number;
+      authMode: string;
+      cached?: boolean;
+      clientId?: string;
+      identityKind?: string;
+      displayName?: string;
+    }
   | ({ ok: false; code: string; message: string } & MicrosoftTokenDenialDetail)
 > {
   if (context?.companyId) {
@@ -199,13 +210,37 @@ export async function acquireMicrosoftAppToken(
       actor: context.actor,
     });
     if (!resolved.ok) {
+      if (resolved.code === "MICROSOFT_TENANT_SECRET_MISSING") {
+        await recordMicrosoftTenantIdentityTokenResult(env.DB, context.companyId, {
+          ok: false,
+          error: resolved.message,
+        }).catch(() => undefined);
+      }
       return { ok: false, code: resolved.code, message: resolved.message };
     }
     const token = await requestClientCredentialsToken(resolved.credentials, {
       bypassCache: context.bypassCache,
     });
-    if (!token.ok) return token;
-    return { ...token, authMode: resolved.credentials.authMode };
+    if (resolved.credentials.identityKind === "tenant_native") {
+      await recordMicrosoftTenantIdentityTokenResult(
+        env.DB,
+        context.companyId,
+        token.ok ? { ok: true } : { ok: false, error: token.message },
+      ).catch(() => undefined);
+    }
+    if (!token.ok) {
+      return {
+        ...token,
+        clientId: resolved.credentials.clientId,
+      };
+    }
+    return {
+      ...token,
+      authMode: resolved.credentials.authMode,
+      clientId: resolved.credentials.clientId,
+      identityKind: resolved.credentials.identityKind ?? "connector",
+      displayName: resolved.credentials.displayName,
+    };
   }
 
   const status = microsoftCredentialStatus(env);

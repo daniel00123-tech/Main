@@ -68,42 +68,58 @@ export async function runPortalChatAcceptance(env: Env): Promise<Record<string, 
     companyId: "co_el",
     sessionUser,
     text: "what is the PO process",
+    trafficClass: "TEST",
+    userAgent: "InfraAcceptance/1.0",
   });
   const followUp = await sendPortalChatMessage(env, {
     companyId: "co_el",
     sessionUser,
     conversationId: po.conversation.id,
     text: "give me more detail",
+    trafficClass: "TEST",
+    userAgent: "InfraAcceptance/1.0",
   });
   const recall = await sendPortalChatMessage(env, {
     companyId: "co_el",
     sessionUser,
     conversationId: po.conversation.id,
     text: "what were we talking about?",
+    trafficClass: "TEST",
+    userAgent: "InfraAcceptance/1.0",
   });
   const xero = await sendPortalChatMessage(env, {
     companyId: "co_el",
     sessionUser,
     conversationId: po.conversation.id,
     text: "What are our Xero sales this month?",
+    trafficClass: "TEST",
+    userAgent: "InfraAcceptance/1.0",
   });
   const info = await sendPortalChatMessage(env, {
     companyId: "co_el",
     sessionUser,
     conversationId: po.conversation.id,
     text: "What is the newest email in the info inbox?",
+    trafficClass: "TEST",
+    userAgent: "InfraAcceptance/1.0",
   });
   const finance = await sendPortalChatMessage(env, {
     companyId: "co_el",
     sessionUser,
     conversationId: po.conversation.id,
     text: "What is the newest email in the finance inbox?",
+    trafficClass: "TEST",
+    userAgent: "InfraAcceptance/1.0",
   });
 
   const cookie = `infra_session=${token}`;
   const httpSend = await httpProbe(`${API}/api/companies/el-business/chat/messages`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookie },
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: cookie,
+      "User-Agent": "InfraAcceptance/1.0",
+    },
     body: JSON.stringify({ text: "what is the PO process" }),
   });
   const otherCompany = await env.DB.prepare(
@@ -112,7 +128,11 @@ export async function runPortalChatAcceptance(env: Env): Promise<Record<string, 
   const httpWrongCompany = otherCompany?.slug
     ? await httpProbe(`${API}/api/companies/${otherCompany.slug}/chat/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: cookie },
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: cookie,
+          "User-Agent": "InfraAcceptance/1.0",
+        },
         body: JSON.stringify({ text: "what is the PO process" }),
       })
     : { status: 0, body: "no other company", json: null };

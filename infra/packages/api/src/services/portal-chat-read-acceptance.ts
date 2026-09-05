@@ -73,6 +73,8 @@ export async function runPortalChatReadAcceptance(env: Env): Promise<Record<stri
       sessionUser,
       conversationId,
       text,
+      trafficClass: "TEST",
+      userAgent: "InfraAcceptance/1.0",
     });
     const reply = result.assistantMessage.content;
     const terminal = String(result.assistantMessage.metadata.terminal ?? "other");

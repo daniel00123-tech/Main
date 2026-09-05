@@ -20,6 +20,7 @@ export type GraphDrive = {
   };
   createdBy?: { user?: { displayName?: string; email?: string } };
   quota?: { used?: number; total?: number };
+  sharePointIds?: { siteId?: string; siteUrl?: string; webId?: string };
 };
 
 export type GraphSite = {
@@ -128,6 +129,64 @@ async function graphRequest<T>(
 
 export async function graphGet<T>(config: MicrosoftGraphConfig, path: string): Promise<T> {
   return graphRequest(config, path, { method: "GET" });
+}
+
+/** Public Graph app-role names from a JWT. Never returns the raw token. */
+export function readGraphAppTokenClaims(accessToken: string): {
+  appId: string | null;
+  tenantId: string | null;
+  roles: string[];
+} {
+  try {
+    const part = accessToken.split(".")[1];
+    if (!part) return { appId: null, tenantId: null, roles: [] };
+    const padded = part.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (part.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded)) as Record<string, unknown>;
+    const roles = Array.isArray(payload.roles) ? payload.roles.map((role) => String(role)).sort() : [];
+    const appId =
+      typeof payload.appid === "string"
+        ? payload.appid
+        : typeof payload.azp === "string"
+          ? payload.azp
+          : null;
+    return {
+      appId,
+      tenantId: typeof payload.tid === "string" ? payload.tid : null,
+      roles,
+    };
+  } catch {
+    return { appId: null, tenantId: null, roles: [] };
+  }
+}
+
+export function hostnameFromSharePointUrl(url?: string | null): string | null {
+  if (!url) return null;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (!host.endsWith(".sharepoint.com")) return null;
+    if (host.includes("-my.sharepoint.com") || host.startsWith("my.")) return null;
+    return host;
+  } catch {
+    return null;
+  }
+}
+
+export async function probeGraphPath(
+  config: MicrosoftGraphConfig,
+  path: string,
+): Promise<{ path: string; ok: boolean; status: number | null; requestId: string | null; error: string | null }> {
+  try {
+    await graphGet(config, path);
+    return { path, ok: true, status: 200, requestId: null, error: null };
+  } catch (err) {
+    return {
+      path,
+      ok: false,
+      status: err instanceof MicrosoftGraphError ? err.status : null,
+      requestId: err instanceof MicrosoftGraphError ? err.requestId : null,
+      error: err instanceof Error ? err.message.slice(0, 240) : String(err),
+    };
+  }
 }
 
 export async function graphPost<T>(config: MicrosoftGraphConfig, path: string, body: unknown): Promise<T> {
@@ -266,42 +325,63 @@ export async function probeMicrosoftGraph(config: MicrosoftGraphConfig): Promise
 export async function listAllDrives(config: MicrosoftGraphConfig): Promise<GraphDrive[]> {
   return graphGetAll<GraphDrive>(
     config,
-    "/drives?$select=id,name,driveType,webUrl,owner,createdBy,quota",
+    "/drives?$select=id,name,driveType,webUrl,owner,createdBy,quota,sharePointIds",
   );
 }
 
-export async function listSites(config: MicrosoftGraphConfig, search = "*"): Promise<GraphSite[]> {
+function addUniqueSite(sites: GraphSite[], seen: Set<string>, site?: GraphSite | null): void {
+  if (!site?.id || seen.has(site.id)) return;
+  seen.add(site.id);
+  sites.push(site);
+}
+
+/**
+ * Discover SharePoint sites. `/sites?search=` is often 403 under Sites.Selected;
+ * keep going with /sites/root and hostname lookups instead of failing closed.
+ */
+export async function listSites(
+  config: MicrosoftGraphConfig,
+  search = "*",
+  hostnames: string[] = [],
+): Promise<GraphSite[]> {
   const seen = new Set<string>();
   const sites: GraphSite[] = [];
 
-  const queries = [
-    search,
-    "Communication",
-    "Caddington",
-  ].filter((q, i, arr) => arr.indexOf(q) === i);
+  const queries = [search, "Communication", "Elvex", "Caddington"].filter(
+    (query, index, all) => query && all.indexOf(query) === index,
+  );
 
   for (const query of queries) {
-    const batch = await graphGetAll<GraphSite>(
-      config,
-      `/sites?search=${encodeURIComponent(query)}&$select=id,name,displayName,webUrl`,
-      10,
-    );
-    for (const site of batch) {
-      if (!seen.has(site.id)) {
-        seen.add(site.id);
-        sites.push(site);
-      }
+    try {
+      const batch = await graphGetAll<GraphSite>(
+        config,
+        `/sites?search=${encodeURIComponent(query)}&$select=id,name,displayName,webUrl`,
+        10,
+      );
+      for (const site of batch) addUniqueSite(sites, seen, site);
+    } catch {
+      /* Sites.Selected / tenant policy may deny search while root/hostname still work */
     }
   }
 
-  try {
-    const root = await graphGet<GraphSite>(config, "/sites/root?$select=id,name,displayName,webUrl");
-    if (root?.id && !seen.has(root.id)) {
-      seen.add(root.id);
-      sites.push(root);
+  const directPaths = [
+    "/sites/root?$select=id,name,displayName,webUrl,siteCollection",
+    ...hostnames.flatMap((hostname) => {
+      const host = hostname.trim().toLowerCase();
+      if (!host) return [];
+      return [
+        `/sites/${host}?$select=id,name,displayName,webUrl,siteCollection`,
+        `/sites/${host}:/?$select=id,name,displayName,webUrl,siteCollection`,
+      ];
+    }),
+  ];
+
+  for (const path of directPaths) {
+    try {
+      addUniqueSite(sites, seen, await graphGet<GraphSite>(config, path));
+    } catch {
+      /* try the next well-known path */
     }
-  } catch {
-    /* root site may be unavailable */
   }
 
   return sites;

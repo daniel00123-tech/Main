@@ -56,6 +56,8 @@ export {
   buildTenantToolCatalogue,
   normaliseVendorToolName,
   detectRequestedCapabilities,
+  rewriteAccountingTool,
+  rewriteHistoricalAccountingTool,
   wantsMultiCapabilityRead,
 } from "./company-tool-registry.js";
 export { isolateEvidenceForCompany, stampEvidenceTenant } from "./tenant-isolation.js";
@@ -67,6 +69,8 @@ export {
   answerFromExistingEvidence,
   shouldReuseSuccessfulTool,
   sanitiseEvidenceForModel,
+  emailBodyRequired,
+  emailEvidenceHasBody,
 } from "./evidence.js";
 export { runResponseQualityGuard, applyGuardToTurn, classifyResponseTerminal } from "./response-guard.js";
 export { runOpenAiResponses, hasOpenAiApiKey, inspectOpenAiKey, extractOpenAiResponses } from "./openai-responses.js";

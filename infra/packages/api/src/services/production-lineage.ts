@@ -30,6 +30,8 @@ export const PRODUCTION_SUPERSTACK_CAPABILITIES = [
   "mailbox_scan_failed_semantics",
   "business_data_warehouse",
   "attachment_intake_standard",
+  "microsoft_tenant_native_identity",
+  "microsoft_sync_report_plain_english",
 ] as const;
 
 export type ProductionLineage = {

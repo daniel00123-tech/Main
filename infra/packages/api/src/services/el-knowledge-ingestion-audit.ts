@@ -7,11 +7,10 @@ import {
   ELVEX_FINANCE_MAILBOXES,
   ELVEX_INFO_MAILBOXES,
   automationRecipientEmailOf,
+  buildMicrosoftSyncReportEmailData,
   capKnowledgeList,
-  classifyKnowledgePipelineHealth,
   formatCivilDateLong,
   isValidRecipientEmail,
-  knowledgeIngestionGapWarning,
   renderKnowledgeIngestionReportEmail,
   timestampInWindow,
   zonedCivilParts,
@@ -246,89 +245,34 @@ export async function sendElKnowledgeCorrectedTestEmail(
   }
 
   const listed = capKnowledgeList(input.report.documents);
-  const failures = input.report.documents.filter((item) => item.outcome === "failed");
   const windowFromLabel = formatWindowLabel(input.windowFrom.toISOString());
   const windowToLabel = formatWindowLabel(input.windowTo.toISOString());
-  const outlookMessages = Number(input.ingest?.counts.messagesWithAttachments ?? input.outlook.messagesWithAttachments ?? 0);
-  const legitimateSkips = input.report.documents.filter(
-    (item) => item.outcome === "skipped" || item.outcome === "duplicate",
-  ).length;
-  const pipelineHealth = classifyKnowledgePipelineHealth({
-    jobOk: true,
-    discoveredCount: input.report.discoveredCount,
-    indexedCount: input.report.indexedCount,
-    failedCount: input.report.failedCount,
-    skippedCount: input.report.duplicateCount,
-    legitimateSkipCount: legitimateSkips,
-  });
-  const gapWarning = knowledgeIngestionGapWarning({
-    discoveredCount: input.report.discoveredCount,
-    indexedCount: input.report.indexedCount,
-    failedCount: input.report.failedCount,
-    legitimateSkipCount: legitimateSkips,
-  });
-  const mailboxesScanned =
-    input.ingest?.mailboxes.map((row) => String(row.mailboxAddress ?? "")).filter(Boolean) ??
-    [...ELVEX_INFO_MAILBOXES, ...ELVEX_FINANCE_MAILBOXES];
-  const email = renderKnowledgeIngestionReportEmail({
-    companyDisplayName: company.name,
-    reportDateLabel: "4 September 2026",
-    windowFromLabel,
-    windowToLabel,
-    manual: true,
-    discoveredCount: input.report.discoveredCount,
-    indexedCount: input.report.indexedCount,
-    chunkTotal: input.report.chunkTotal,
-    duplicateCount: input.report.duplicateCount,
-    failedCount: input.report.failedCount,
-    updatedCount: input.report.updatedCount,
-    sourceObservedCount: input.report.sourceObservedCount,
-    missedCount: input.report.missedCount,
-    sourceCounts: input.report.sourceCounts.map((row) => ({ label: row.label, count: row.count })),
-    documents: listed.items.map((item) => ({
-      title: item.title,
-      sourceLabel: item.sourceLabel,
-      indexed: item.indexed,
-      stored: item.stored,
-      chunkCount: item.chunkCount,
-      modifiedAt: item.modifiedAt,
-      url: item.url,
-      location: item.location,
-      mailbox: item.mailbox,
-      parentSubject: item.parentSubject,
-      sender: item.sender,
-      failureReason: item.failureReason,
-    })),
-    failures: failures.map((item) => ({
-      title: item.title,
-      sourceLabel: item.sourceLabel,
-      indexed: item.indexed,
-      chunkCount: item.chunkCount,
-      modifiedAt: item.modifiedAt,
-      url: item.url,
-      location: item.location,
-      mailbox: item.mailbox,
-      parentSubject: item.parentSubject,
-      sender: item.sender,
-      failureReason: item.failureReason,
-    })),
-    omittedDocuments: listed.omitted,
-    portalUrl: `${portalOrigin(env)}/portal/${company.slug}/automations`,
-    subjectOverride: EL_KNOWLEDGE_CORRECTED_SUBJECT,
-    correctionPreamble: `Store-first landing zone is now on the shared INFRA pipeline. Originals are saved before index. One attachment remains one document. Graph landing-zone writes stay blocked if the tenant service principal is missing; originals are still retained via the durable knowledge-store fallback. Portal chat still cannot search personal inboxes. Mailboxes scanned: ${mailboxesScanned.join(", ")}. Messages with attachments: ${outlookMessages}. Stored: ${input.ingest?.counts.attachmentsStored ?? 0}. Indexed this run: ${input.ingest?.counts.attachmentsIndexed ?? input.report.indexedCount}. Deduped: ${input.ingest?.counts.duplicates ?? 0}. Failed: ${input.ingest?.counts.failed ?? input.report.failedCount}.`,
-    mailboxesScanned,
-    messagesWithAttachments: outlookMessages,
-    attachmentsDiscovered: input.ingest?.counts.attachmentsDiscovered ?? input.report.discoveredCount,
-    attachmentsStored: input.ingest?.counts.attachmentsStored ?? 0,
-    attachmentsIndexed: input.ingest?.counts.attachmentsIndexed ?? input.report.indexedCount,
-    attachmentsDeduped: input.ingest?.counts.duplicates ?? 0,
-    attachmentsSkipped: input.ingest?.counts.skipped ?? input.report.duplicateCount,
-    attachmentsSkippedJunk: input.ingest?.counts.skippedJunk ?? 0,
-    attachmentsUnsupported: input.ingest?.counts.unsupported ?? 0,
-    attachmentsFailed: input.ingest?.counts.failed ?? input.report.failedCount,
-    pipelineHealth,
-    gapWarning,
-  });
+  const mailboxChecks = (input.ingest?.registry ?? []).map((row) => ({
+    name: row.display_name || row.mailbox_address,
+    address: row.mailbox_address,
+    approved: row.enabled_for_attachment_ingestion === 1,
+    excluded: row.enabled_for_attachment_ingestion !== 1,
+    checked: !row.last_error && Boolean(row.last_attachment_scan_at),
+    failed: Boolean(row.last_error) || row.status === "error",
+    rawError: row.last_error,
+  }));
+  const email = renderKnowledgeIngestionReportEmail(
+    buildMicrosoftSyncReportEmailData({
+      companyDisplayName: company.name,
+      reportDateLabel: "4 September 2026",
+      windowFromLabel,
+      windowToLabel,
+      manual: true,
+      portalUrl: `${portalOrigin(env)}/portal/${company.slug}/automations`,
+      documents: listed.items,
+      mailboxChecks,
+      onedrive: { configured: true, checked: true, failed: false, newItemCount: input.report.documents.filter((row) => row.sourceKey === "onedrive").length },
+      sharepoint: { configured: true, checked: true, failed: false, newItemCount: input.report.documents.filter((row) => row.sourceKey === "sharepoint").length },
+      chunkTotal: input.report.chunkTotal,
+      omittedDocuments: listed.omitted,
+      subjectOverride: EL_KNOWLEDGE_CORRECTED_SUBJECT,
+    }),
+  );
 
   const delivery = await sendTransactionalEmail(env, env.DB, {
     companyId: COMPANY_ID,

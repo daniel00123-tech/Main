@@ -5,13 +5,16 @@
 
 import type { Env } from "../env";
 import { newId, nowIso } from "../db/mappers";
-import { getCompanyById } from "./control-plane";
+import { getCompanyById, listMcpEnvironments } from "./control-plane";
 import { ELVEX_INFO_MAILBOXES } from "@infra/shared";
 import { acquireMicrosoftAppToken } from "./microsoft-auth";
 import { resolveOutlookGraphAccess } from "./outlook-graph-access";
+import { fetchCompanyMcpConnectorSnapshot } from "./mcp-connector-mirror";
 import {
   ensureDriveFolderByPath,
   graphPost,
+  hostnameFromSharePointUrl,
+  listAllDrives,
   listDriveChildren,
   listSiteDrives,
   listSites,
@@ -260,39 +263,65 @@ export async function discoverKnowledgeIntakeTarget(
   }
 
   try {
-    const sites = await listSites(graph.config, company?.name || "*");
-    const site = preferCompanySite(sites, company?.name ?? null);
-    if (!site?.id) {
+    const mcp = (await listMcpEnvironments(env.DB, input.companyId)).find((item) => item.enabled);
+    const snapshot = mcp ? await fetchCompanyMcpConnectorSnapshot(env, mcp).catch(() => null) : null;
+    const hostnames = [snapshot?.microsoft?.sharePointHostname].filter(
+      (value): value is string => Boolean(value && value.trim()),
+    );
+    const sites = await listSites(graph.config, company?.name || "*", hostnames);
+    let site = preferCompanySite(sites, company?.name ?? null);
+    let drives = site?.id ? await listSiteDrives(graph.config, site.id).catch(() => []) : [];
+    let drive = preferDocumentLibrary(drives);
+
+    if (!drive?.id) {
+      const allDrives = await listAllDrives(graph.config).catch(() => []);
+      drive = preferDocumentLibrary(allDrives);
+      const driveHost = hostnameFromSharePointUrl(drive?.webUrl ?? drive?.sharePointIds?.siteUrl);
+      if (!site?.id && driveHost) {
+        const byHost = await listSites(graph.config, "*", [driveHost]);
+        site = preferCompanySite(byHost, company?.name ?? null) ?? site;
+      }
+      if (!site?.id && drive?.sharePointIds?.siteId) {
+        site = {
+          id: drive.sharePointIds.siteId,
+          name: drive.name,
+          displayName: drive.name,
+          webUrl: drive.webUrl,
+        };
+      }
+    }
+
+    if (!site?.id && !drive?.id) {
       return upsertKnowledgeIntakeTarget(env.DB, input.companyId, {
         status: "unconfigured",
         last_error: "No SharePoint site was discoverable for the knowledge intake library",
-        metadata: { reason: "NO_SHAREPOINT_SITE", siteCount: sites.length },
+        metadata: { reason: "NO_SHAREPOINT_SITE", siteCount: sites.length, hostnames },
       });
     }
-    const drives = await listSiteDrives(graph.config, site.id);
-    const drive = preferDocumentLibrary(drives);
     if (!drive?.id) {
       return upsertKnowledgeIntakeTarget(env.DB, input.companyId, {
         status: "unconfigured",
-        site_id: site.id,
+        site_id: site?.id ?? null,
         last_error: "No SharePoint document library was discoverable",
-        metadata: { reason: "NO_DOCUMENT_LIBRARY", siteId: site.id },
+        metadata: { reason: "NO_DOCUMENT_LIBRARY", siteId: site?.id ?? null },
       });
     }
     const rootFolderId = await ensureDriveFolderByPath(graph.config, drive.id, KNOWLEDGE_INTAKE_ROOT);
     return upsertKnowledgeIntakeTarget(env.DB, input.companyId, {
       provider: "microsoft_365",
-      site_id: site.id,
+      site_id: site?.id ?? drive.sharePointIds?.siteId ?? null,
       drive_id: drive.id,
       root_folder_id: rootFolderId,
       root_folder_path: KNOWLEDGE_INTAKE_ROOT,
-      web_url: drive.webUrl ?? site.webUrl,
+      web_url: drive.webUrl ?? site?.webUrl ?? null,
       status: "ready",
       last_error: null,
       metadata: {
-        siteName: site.displayName ?? site.name,
+        siteName: site?.displayName ?? site?.name,
         driveName: drive.name,
         driveType: drive.driveType,
+        discoveredVia: site?.id ? "site" : "drive",
+        hostnames,
       },
     });
   } catch (err) {

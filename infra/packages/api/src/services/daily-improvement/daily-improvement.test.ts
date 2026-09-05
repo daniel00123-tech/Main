@@ -286,6 +286,25 @@ describe("traffic classification", () => {
     expect(classifyDailyTraffic({ userAgent: "InfraAcceptance/1.0", sourceClient: "portal_chat" })).toBe("TEST");
     expect(
       classifyDailyTraffic({
+        trafficClass: "TEST",
+        userId: "user_ella",
+        actorEmail: "ella@elvexpropertyservices.com",
+        userMessage: "Can you pull last Thursday's site-visit notes for the Bedford job?",
+        sourceClient: "portal_chat",
+      }),
+    ).toBe("TEST");
+    expect(
+      classifyDailyTraffic({
+        trafficClass: "CUSTOMER_REQUEST",
+        userId: "user_ella",
+        actorEmail: "ella@elvexpropertyservices.com",
+        userAgent: "Mozilla/5.0",
+        userMessage: "What are our Xero sales this month?",
+        sourceClient: "portal_chat",
+      }),
+    ).toBe("CUSTOMER_REQUEST");
+    expect(
+      classifyDailyTraffic({
         userMessage: "Can you pull last Thursday's site-visit notes for the Bedford job?",
         sourceClient: "portal_chat",
       }),

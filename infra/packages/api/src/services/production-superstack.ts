@@ -3,7 +3,12 @@
  * A standalone feature branch that dropped a critical surface fails these imports/checks.
  */
 
-import { classifyUsageOutcome, elvexCan, resolveBusinessSystemIntent } from "@infra/shared";
+import {
+  classifyUsageOutcome,
+  elvexCan,
+  friendlyIngestionReason,
+  resolveBusinessSystemIntent,
+} from "@infra/shared";
 import { sendPortalChatMessage } from "./portal-chat";
 import { handleInfraMcpJsonRpc } from "./mcp-gateway";
 import { withXeroReadTools } from "./xero-read-tools";
@@ -35,6 +40,11 @@ import { verifyElMicrosoftServicePrincipal } from "./el-microsoft-sp-verify";
 import { formatMailboxScanCount } from "./mailbox-scan-status";
 import { runElMailboxScanRepair } from "./mailbox-scan-repair";
 import { probeElMailboxLiveAccess } from "./mailbox-live-access";
+import { runElOptionBGraphCutover } from "./el-option-b-cutover";
+import {
+  EL_NATIVE_MICROSOFT_CLIENT_ID,
+  SHARED_INFRA_BUSINESS_CONNECTOR_CLIENT_ID,
+} from "./microsoft-tenant-identity";
 
 export { PRODUCTION_SUPERSTACK_CAPABILITIES };
 
@@ -245,8 +255,27 @@ export function assertProductionSuperstackCapabilities(): {
   if (typeof runElMailboxScanRepair !== "function" || typeof probeElMailboxLiveAccess !== "function") {
     throw new Error("EL mailbox live access / scan repair missing");
   }
+  if (typeof runElOptionBGraphCutover !== "function") {
+    throw new Error("EL Option B Graph cutover missing");
+  }
+  if (EL_NATIVE_MICROSOFT_CLIENT_ID === SHARED_INFRA_BUSINESS_CONNECTOR_CLIENT_ID) {
+    throw new Error("EL native Microsoft app must not be the shared Business Connector");
+  }
+  if (!PRODUCTION_SUPERSTACK_CAPABILITIES.includes("microsoft_tenant_native_identity")) {
+    throw new Error("microsoft_tenant_native_identity capability missing");
+  }
   if (!formatMailboxScanCount({ health: "FAILED", messagesScanned: 0, errorCode: "X" }).includes("SCAN FAILED")) {
     throw new Error("failed mailbox scans must not render as zero");
+  }
+  if (!PRODUCTION_SUPERSTACK_CAPABILITIES.includes("microsoft_sync_report_plain_english")) {
+    throw new Error("microsoft sync report capability missing");
+  }
+  if (
+    friendlyIngestionReason("AADSTS7000229").includes("AADSTS") ||
+    friendlyIngestionReason("ATTACHMENT_ENUM_FAILED").includes("ATTACHMENT_ENUM") ||
+    friendlyIngestionReason("MICROSOFT_TOKEN_DENIED").includes("TOKEN_DENIED")
+  ) {
+    throw new Error("customer Microsoft sync copy must not expose Graph or ingest error codes");
   }
   if (!isWarehouseToolName("warehouse_sales_analysis") || warehouseSlotsPerWeek() !== 37) {
     throw new Error("business data warehouse schedule or tools missing");

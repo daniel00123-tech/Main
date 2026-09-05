@@ -10,6 +10,7 @@ import {
   parseCredentialPayload,
   resolveConnectorCredentialForExecution,
 } from "./connector-credentials";
+import { loadMicrosoftTenantIdentity } from "./microsoft-tenant-identity";
 
 export type MicrosoftAppCredentials = {
   tenantId: string;
@@ -17,6 +18,9 @@ export type MicrosoftAppCredentials = {
   clientSecret: string;
   authMode: MicrosoftConnectorAuthMode;
   credentialSource: "platform" | "company";
+  identityKind?: "tenant_native" | "connector" | "platform";
+  displayName?: string;
+  secretBinding?: string;
 };
 
 export type MicrosoftConnectorBinding = {
@@ -191,6 +195,33 @@ export async function resolveMicrosoftAppCredentials(
   | { ok: true; credentials: MicrosoftAppCredentials; binding: MicrosoftConnectorBinding | null }
   | { ok: false; code: string; message: string }
 > {
+  if (input?.companyId) {
+    const identity = await loadMicrosoftTenantIdentity(env, db, input.companyId);
+    if (identity) {
+      if (!identity.clientSecret) {
+        return {
+          ok: false,
+          code: "MICROSOFT_TENANT_SECRET_MISSING",
+          message: `Tenant-native Microsoft identity is configured for ${input.companyId} (${identity.displayName}, client ${identity.clientId}) but Worker secret binding ${identity.secretBinding} is not set. The shared INFRA Business Connector was not used.`,
+        };
+      }
+      return {
+        ok: true,
+        binding: null,
+        credentials: {
+          tenantId: identity.tenantId,
+          clientId: identity.clientId,
+          clientSecret: identity.clientSecret,
+          authMode: "company_app",
+          credentialSource: "company",
+          identityKind: "tenant_native",
+          displayName: identity.displayName,
+          secretBinding: identity.secretBinding,
+        },
+      };
+    }
+  }
+
   const binding =
     input?.companyId != null
       ? await loadMicrosoftConnectorBinding(db, {

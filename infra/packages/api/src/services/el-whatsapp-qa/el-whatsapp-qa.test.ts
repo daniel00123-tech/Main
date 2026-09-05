@@ -100,7 +100,13 @@ describe("el-business-whatsapp-50-v1 frozen suite", () => {
       const ok =
         expected == null
           ? !tool
-          : Boolean(tool && (tool === expected || tool.startsWith(expected.replace(/_$/, "")) || tool.startsWith(expected)));
+          : Boolean(
+              tool &&
+                (tool === expected ||
+                  tool.startsWith(expected.replace(/_$/, "")) ||
+                  tool.startsWith(expected) ||
+                  (expected === "xero_" && tool.startsWith("warehouse_"))),
+            );
       if (!ok) misses.push(`${question.id} "${question.text}" expected=${expected} got=${got?.scope}/${tool}`);
     }
     expect(misses).toEqual([]);
@@ -113,7 +119,7 @@ describe("el-business-whatsapp-50-v1 frozen suite", () => {
           ? xeroState(question.text)
           : buildConversationState({ userText: question.text });
       const decision = classifyScope(question.text, state);
-      expect(decision.tool, question.id).toMatch(/^xero_/);
+      expect(decision.tool, question.id).toMatch(/^(xero_|warehouse_)/);
       expect(decision.tool, question.id).not.toBe("search_company_knowledge");
       expect(decision.tool, question.id).not.toBe("database_summary");
     }
@@ -262,7 +268,9 @@ describe("EL WhatsApp deterministic campaign behaviours", () => {
     expect(classifyScope("What were we talking about?", xeroState("What were we talking about?")).scope).toBe(
       "GENERAL_CONVERSATION",
     );
-    expect(classifyScope("What about last month?", xeroState("What about last month?")).tool).toMatch(/^xero_/);
+    expect(classifyScope("What about last month?", xeroState("What about last month?")).tool).toMatch(
+      /^(xero_|warehouse_)/,
+    );
     expect(classifyScope("Show me the emails behind that.", xeroState("Show me the emails behind that.")).tool).toMatch(
       /^outlook_/,
     );

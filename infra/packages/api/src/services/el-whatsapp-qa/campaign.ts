@@ -107,6 +107,7 @@ export async function runElWhatsAppQaSlice(env: Env, slice: CampaignSlice = {}):
       priorTurns: [],
       interactionId,
       connectors,
+      trafficClass: "TEST",
     });
     memory = answer.entities;
     const tools = (answer.intelligence?.toolCalls ?? []).map((call) => call.name);

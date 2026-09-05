@@ -83,18 +83,19 @@ describe("knowledge ingestion ledger", () => {
     ).toBe(false);
   });
 
-  it("windows source_observed rows on source time, not ledger write time", () => {
+  it("includes items worked in the reporting window even if the source file is older", () => {
     const row = {
-      source_modified_at: "2026-09-04T15:41:18Z",
-      discovered_at: "2026-09-04T18:41:13.276Z",
-      created_at: "2026-09-04T18:41:13.276Z",
+      source_modified_at: "2026-09-01T15:41:18Z",
+      discovered_at: "2026-09-04T21:42:53.504Z",
+      created_at: "2026-09-04T21:42:53.504Z",
       indexed_at: null,
+      stored_at: "2026-09-04T21:42:54.676Z",
     };
     expect(
-      knowledgeIngestionEventInWindow(row, "2026-09-03T17:39:03.388Z", "2026-09-04T17:39:03.388Z"),
+      knowledgeIngestionEventInWindow(row, "2026-09-04T21:10:00.000Z", "2026-09-04T21:53:00.000Z"),
     ).toBe(true);
     expect(
-      knowledgeIngestionEventInWindow(row, "2026-09-04T17:39:03.388Z", "2026-09-05T07:00:00.000Z"),
+      knowledgeIngestionEventInWindow(row, "2026-09-03T17:39:03.388Z", "2026-09-04T17:39:03.388Z"),
     ).toBe(false);
   });
 });

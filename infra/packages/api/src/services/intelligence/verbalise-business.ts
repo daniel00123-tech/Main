@@ -96,6 +96,28 @@ export function extractFirstMessageId(data: unknown): string {
   return extractOutlookMessages(data).find((message) => message.id)?.id ?? "";
 }
 
+export function unwrapWarehousePayload(data: unknown): Record<string, unknown> {
+  const record = isRecord(data) ? data : {};
+  const mid = isRecord(record.result) ? record.result : record;
+  const inner = isRecord(mid.result) ? { ...mid, ...mid.result } : mid;
+  const evidence = isRecord(inner.evidence) ? inner.evidence : isRecord(record.evidence) ? record.evidence : {};
+  return {
+    ...inner,
+    warehouseAsOf: inner.warehouseAsOf ?? inner.warehouse_as_of ?? evidence.warehouseAsOf,
+    warehouse_as_of: inner.warehouse_as_of ?? inner.warehouseAsOf ?? evidence.warehouseAsOf,
+    completenessStatus: inner.completenessStatus ?? inner.completeness_status ?? evidence.completenessStatus,
+    completeness_status: inner.completeness_status ?? inner.completenessStatus ?? evidence.completenessStatus,
+    fallback: inner.fallback ?? record.fallback ?? evidence.fallback,
+    reason: inner.reason ?? record.reason,
+  };
+}
+
+export function isSpuriousYearClarify(text: string | null | undefined): boolean {
+  return /\b(which year|different year|or an earlier year|20\d{2} or a different year|which (january|february|march|april|may|june|july|august|september|october|november|december))\b/i.test(
+    text ?? "",
+  );
+}
+
 function formatMoney(value: unknown, currency = "GBP"): string {
   const amount = typeof value === "number" ? value : Number(String(value ?? "").replace(/[,£$]/g, ""));
   if (!Number.isFinite(amount)) return String(value ?? "");
@@ -191,7 +213,9 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
     const listed = customers
       .slice(0, 5)
       .map((row) => {
-        const name = asString(row.name ?? row.contact ?? row.ContactName) || "Unknown";
+        const name =
+          asString(row.name ?? row.contact ?? row.ContactName) ||
+          "unnamed contact (identity not present on the authorised extract)";
         const total = row.total ?? row.amount ?? row.sales_total;
         return typeof total === "number" || typeof total === "string" ? `${name} ${formatMoney(total)}` : name;
       })
@@ -217,39 +241,70 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
   }
 
   if (call.name.startsWith("warehouse_")) {
-    const record = isRecord(call.data) ? call.data : {};
-    const inner = isRecord(record.result) ? record.result : record;
-    const asOf = asString(inner.warehouseAsOf ?? record.warehouseAsOf);
-    const freshness = asOf ? ` Warehouse as of ${asOf}.` : "";
-    if (record.fallback === "xero_live" || inner.fallback === "xero_live") {
-      return `The warehouse is not authoritative right now (${asString(record.reason ?? inner.reason) || "stale or degraded"}). I should use live Xero for the current figure.`;
+    const inner = unwrapWarehousePayload(call.data);
+    const asOf = asString(inner.warehouseAsOf ?? inner.warehouse_as_of);
+    const completeness = asString(inner.completenessStatus ?? inner.completeness_status);
+    const freshness = [
+      asOf ? `Warehouse as of ${asOf}` : "",
+      completeness ? `completeness ${completeness}` : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const suffix = freshness ? ` ${freshness}.` : "";
+    if (inner.fallback === "xero_live") {
+      return `The warehouse is not authoritative right now (${asString(inner.reason) || "stale or degraded"}). I should use live Xero for the current figure.`;
     }
-    if (Array.isArray(inner.months)) {
-      const listed = inner.months
-        .filter(isRecord)
+    const months = Array.isArray(inner.months) ? inner.months.filter(isRecord) : [];
+    if (months.length === 1) {
+      const row = months[0]!;
+      const count = typeof row.invoiceCount === "number" ? ` across ${row.invoiceCount} invoices` : "";
+      const partial = /PARTIAL|BACKFILLING/i.test(asString(row.completeness) || completeness)
+        ? " This month is still partial in the warehouse."
+        : "";
+      return `Warehouse sales for ${asString(row.month) || "that month"} are ${formatMoney(row.sales)}${count}.${suffix}${partial}`;
+    }
+    if (months.length) {
+      const listed = months
         .slice(-6)
         .map((row) => `${asString(row.month)} ${formatMoney(row.sales)}`)
         .join("; ");
-      return `Warehouse sales by month: ${listed || "no months in range"}.${freshness}`;
+      return `Warehouse sales by month: ${listed}.${suffix}`;
     }
     if (typeof inner.sales === "number") {
-      return `Warehouse sales for that period are ${formatMoney(inner.sales)}.${freshness}`;
+      const range =
+        asString(inner.fromDate) && asString(inner.toDate) ? ` from ${asString(inner.fromDate)} to ${asString(inner.toDate)}` : "";
+      return `Warehouse sales${range} are ${formatMoney(inner.sales)}.${suffix}`;
+    }
+    if (typeof inner.invoiceCount === "number") {
+      return `The warehouse has ${inner.invoiceCount} invoices for that period.${suffix}`;
     }
     if (typeof inner.outstanding === "number") {
-      return `Warehouse outstanding receivables are ${formatMoney(inner.outstanding)}.${freshness}`;
+      return `Warehouse outstanding receivables are ${formatMoney(inner.outstanding)}.${suffix}`;
     }
     if (typeof inner.overdue === "number") {
-      return `Warehouse overdue receivables are ${formatMoney(inner.overdue)}.${freshness}`;
+      return `Warehouse overdue receivables are ${formatMoney(inner.overdue)}.${suffix}`;
+    }
+    if (Array.isArray(inner.invoices) && call.name === "warehouse_invoice_analysis") {
+      const invoices = inner.invoices.filter(isRecord);
+      const range =
+        asString(inner.fromDate) && asString(inner.toDate) ? ` from ${asString(inner.fromDate)} to ${asString(inner.toDate)}` : "";
+      if (!invoices.length) return `The warehouse has no invoices for that period.${suffix}`;
+      return `The warehouse has ${invoices.length} invoices${range}.${suffix}`;
     }
     if (Array.isArray(inner.customers) && inner.customers.length) {
       const listed = inner.customers
         .filter(isRecord)
         .slice(0, 5)
-        .map((row) => `${asString(row.name)} ${formatMoney(row.total)}`)
+        .map((row) => {
+          const name =
+            asString(row.name ?? row.contact ?? row.ContactName) ||
+            "unnamed contact (identity not present on the authorised extract)";
+          return `${name} ${formatMoney(row.total)}`;
+        })
         .join("; ");
-      return `Warehouse top customers: ${listed}.${freshness}`;
+      return `Warehouse top customers: ${listed}.${suffix}`;
     }
-    return `I retrieved warehouse analytics.${freshness}`;
+    return `I retrieved warehouse analytics.${suffix}`;
   }
 
   if (call.name === "xero_sales_summary" || call.name.startsWith("xero_")) {

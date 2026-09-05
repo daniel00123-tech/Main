@@ -2,6 +2,7 @@ import { businessToolForIntent, resolveBusinessSystemIntent } from "@infra/share
 import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "./types.js";
 import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
 import { isCatalogueListingAsk } from "../document-catalogue.js";
+import { rewriteAccountingTool } from "./company-tool-registry.js";
 
 export type ScopeSwitch =
   | "company"
@@ -79,7 +80,8 @@ const CONNECTOR =
   /\b(what systems? (are )?(connected|linked)|which (live )?systems?|what(?:'s| is) connected|connectors?|(is|are) (xero|sharepoint|drive|email|outlook) (connected|linked)|do (we|i|you) have (xero|sharepoint|drive|email) connected|systems can you (actually )?use)\b/i;
 const FINANCE =
   /\b(sales|revenue|profit|p&l|pnl|overdue|xero|invoice|turnover|aged receivables|who owes|top customers?|biggest customers?)\b/i;
-const EMAIL = /\b(emails?|emailed|emials|emaills|mailbox|outlook|inbox|any mail|e-mails?)\b/i;
+const EMAIL =
+  /\b(emails?|emailed|emials|emaills|mailbox|outlook|inbox|any mail|e-mails?|(the|their) messages?)\b/i;
 const WRITE =
   /\b(create (an? )?(invoice|bill|credit)|approve |send(?: this| the)? invoice|delete |void |allocate |raise an invoice|write to|update (the )?(invoice|bill|contact)|credit note)\b/i;
 const FIND =
@@ -160,13 +162,16 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
       : { ...intent, capability: "xero", connectorDefinitionId: "conn_xero" },
     text,
   );
-  if (mapped?.toolName.startsWith("xero_")) return mapped.toolName;
-  if (/overdue|owes/i.test(text)) return "xero_list_overdue_invoices";
-  if (/p&l|pnl|profit/i.test(text)) return "xero_profit_and_loss";
-  if (/aged/i.test(text)) return "xero_aged_receivables";
-  if (/INV-|\binvoice\b.*\d/i.test(text)) return "xero_get_invoice";
-  if (lastSuccessfulTool && /^xero_/.test(lastSuccessfulTool)) return lastSuccessfulTool;
-  return "xero_sales_summary";
+  let name = mapped?.toolName ?? "";
+  if (!name.startsWith("xero_") && !name.startsWith("warehouse_")) {
+    if (/overdue|owes/i.test(text)) name = "xero_list_overdue_invoices";
+    else if (/p&l|pnl|profit/i.test(text)) name = "xero_profit_and_loss";
+    else if (/aged/i.test(text)) name = "xero_aged_receivables";
+    else if (/INV-|\binvoice\b.*\d/i.test(text)) name = "xero_get_invoice";
+    else if (lastSuccessfulTool && /^(xero_|warehouse_)/.test(lastSuccessfulTool)) name = lastSuccessfulTool;
+    else name = "xero_sales_summary";
+  }
+  return rewriteAccountingTool(name, {}, text).name;
 }
 
 function pickMailboxTool(text: string): string {
@@ -238,21 +243,35 @@ function detectScopeSwitch(text: string): ScopeSwitch {
   if (/\b(whole system|on the system|entire system|the platform)\b/i.test(text)) {
     return "system";
   }
-  if (/\b(i )?meant (the )?(xero|sales|invoices?)\b/i.test(text) && !/\b(email|mailbox|outlook|inbox)\b/i.test(text)) {
+  if (/\b(i )?meant (the )?(xero|sales|invoices?)\b/i.test(text) && !/\b(email|mailbox|outlook|inbox|message)\b/i.test(text)) {
     return "business";
   }
-  if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text)) {
+  if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox|document|file|policy|knowledge)\b/i.test(text)) {
+    if (/\b(document|file|policy|knowledge)\b/i.test(text) && !/\b(email|inbox|mailbox|outlook|message)\b/i.test(text)) {
+      return "company";
+    }
     return "email";
   }
   if (
     (/\bxero\b/i.test(text) || /\b(finance|invoices?|sales figures)\b/i.test(text)) &&
     /\b(switch|instead|use|check|meant)\b/i.test(text) &&
-    !/\b(emails?|mailbox|outlook|inbox)\b/i.test(text)
+    !/\b(emails?|mailbox|outlook|inbox|messages?)\b/i.test(text)
   ) {
     return "business";
   }
   if (/\b(emails?|emials|mailbox|outlook)\b/i.test(text) && /\b(instead|switch|search|check|from|meant)\b/i.test(text)) {
     return "email";
+  }
+  const correctionSpeech =
+    /\b(no|nope|nah|sorry|instead|meant|was talking about|i was referring|not (xero|the ledger|finance))\b/i.test(text);
+  if (correctionSpeech) {
+    if (/\b(inbox|mailbox|outlook|emails?|e-mails?|(the|their) messages?)\b/i.test(text)) return "email";
+    if (/\b(document|file|policy|knowledge|handbook)\b/i.test(text) && !/\b(xero|sales|invoice)\b/i.test(text)) {
+      return "company";
+    }
+    if (/\b(xero|ledger|sales figures|invoices?)\b/i.test(text) && !/\b(email|inbox|mailbox|message)\b/i.test(text)) {
+      return "business";
+    }
   }
   return null;
 }
@@ -669,9 +688,13 @@ export function classifyScope(
   }
 
   if (
-    switchTo === "business" ||
-    financeFollowUp ||
-    (features.financeAsk && (!features.corpusNoun || /\bxero\b/i.test(text)) && (!features.currentLocus || /\bxero\b/i.test(text) || switchTo === "business"))
+    switchTo !== "email" &&
+    switchTo !== "company" &&
+    (switchTo === "business" ||
+      financeFollowUp ||
+      (features.financeAsk &&
+        (!features.corpusNoun || /\bxero\b/i.test(text)) &&
+        (!features.currentLocus || /\bxero\b/i.test(text) || switchTo === "business")))
   ) {
     return decide("BUSINESS_SYSTEM", features, {
       tool: pickBusinessTool(text, state.lastSuccessfulTool),

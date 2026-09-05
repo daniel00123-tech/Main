@@ -325,6 +325,9 @@ describe("EL traffic classification", () => {
 
   it("does not charge test, shadow, quality, internal, automation, or health traffic", () => {
     expect(classifyElTraffic({ userAgent: "InfraAcceptance/1.0" })).toBe("TEST");
+    expect(classifyElTraffic({ sourceClient: "portal_chat", trafficClass: "TEST" })).toBe("TEST");
+    expect(classifyElTraffic({ sourceClient: "whatsapp", trafficClass: "TEST" })).toBe("TEST");
+    expect(shouldChargeElCustomerRequest(EL_COMPANY_ID, classifyElTraffic({ sourceClient: "portal_chat", trafficClass: "TEST" }))).toBe(false);
     expect(classifyElTraffic({ wamid: "wamid.uat.1" })).toBe("TEST");
     expect(classifyElTraffic({ shadow: true })).toBe("SHADOW");
     expect(classifyElTraffic({ sourceClient: "quality_loop" })).toBe("QUALITY");

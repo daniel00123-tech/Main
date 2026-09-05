@@ -1156,6 +1156,7 @@ async function handleWhatsAppInboundMessageInner(
             buttonAction: inboundResolved.buttonAction ?? null,
             connectors,
             qualityGuidance: qualitySystemGuidance(qualityRuntime),
+            wamid: item.wamid,
           });
     const watched = await raceWithWhatsAppWatchdog(work, async (kind, body) => {
       if (kind === "ack") {

@@ -29,9 +29,11 @@ describe("EL Microsoft service principal verify", () => {
     });
 
     const result = await verifyElMicrosoftServicePrincipal({
-      MICROSOFT_CLIENT_ID: EL_GRAPH_APP_ID,
-      MICROSOFT_CLIENT_SECRET: "not-a-real-secret",
+      EL_MS_CLIENT_ID: EL_GRAPH_APP_ID,
+      EL_MS_CLIENT_SECRET: "not-a-real-secret",
       MICROSOFT_TENANT_ID: "11111111-2222-3333-4444-555555555555",
+      MICROSOFT_CLIENT_ID: "e5fd0533-ce51-43b8-999c-152f1e268246",
+      MICROSOFT_CLIENT_SECRET: "shared-secret-must-not-be-used",
       MICROSOFT_MULTITENANT_APP: "true",
     } as never);
 
@@ -40,7 +42,9 @@ describe("EL Microsoft service principal verify", () => {
     expect(String(result.blocker)).toContain("AADSTS7000229");
     expect(JSON.stringify(result)).not.toContain("not-a-real-secret");
     expect((result.bindingAudit as { clientIdMatchesExpected: boolean }).clientIdMatchesExpected).toBe(true);
-    expect((result.bindingAudit as { homeTenantIsElTenant: boolean }).homeTenantIsElTenant).toBe(false);
+    expect((result.bindingAudit as { homeTenantIsElTenant: boolean }).homeTenantIsElTenant).toBe(true);
+    expect((result.bindingAudit as { usedGlobalMicrosoftSecret: boolean }).usedGlobalMicrosoftSecret).toBe(false);
+    expect(JSON.stringify(result)).not.toContain("shared-secret-must-not-be-used");
   });
 
   it("queries the tenant SP directory when token mint succeeds", async () => {
@@ -85,9 +89,11 @@ describe("EL Microsoft service principal verify", () => {
     });
 
     const result = await verifyElMicrosoftServicePrincipal({
-      MICROSOFT_CLIENT_ID: EL_GRAPH_APP_ID,
-      MICROSOFT_CLIENT_SECRET: "not-a-real-secret",
+      EL_MS_CLIENT_ID: EL_GRAPH_APP_ID,
+      EL_MS_CLIENT_SECRET: "not-a-real-secret",
       MICROSOFT_TENANT_ID: "11111111-2222-3333-4444-555555555555",
+      MICROSOFT_CLIENT_ID: "e5fd0533-ce51-43b8-999c-152f1e268246",
+      MICROSOFT_CLIENT_SECRET: "shared-secret-must-not-be-used",
     } as never);
 
     expect(result.tokenMintSucceeded).toBe(true);

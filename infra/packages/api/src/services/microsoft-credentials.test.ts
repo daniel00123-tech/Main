@@ -105,17 +105,63 @@ describe("resolveMicrosoftAppCredentials", () => {
       prepare: () => ({
         bind: () => ({
           first: async () => null,
+          run: async () => ({ success: true }),
         }),
       }),
     } as unknown as D1Database;
 
     const resolved = await resolveMicrosoftAppCredentials(legacyEnv, db, {
-      companyId: "co_el",
+      companyId: "co_new",
     });
 
     expect(resolved.ok).toBe(false);
     if (!resolved.ok) {
       expect(resolved.code).toBe("MICROSOFT_NOT_CONNECTED");
+    }
+  });
+
+  it("resolves co_el to the tenant-native Elvex MCP app and never the shared connector", async () => {
+    const db = {
+      prepare: () => ({
+        bind: () => ({
+          first: async () => null,
+          run: async () => ({ success: true }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const missing = await resolveMicrosoftAppCredentials(legacyEnv, db, { companyId: "co_el" });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) {
+      expect(missing.code).toBe("MICROSOFT_TENANT_SECRET_MISSING");
+    }
+
+    const resolved = await resolveMicrosoftAppCredentials(
+      {
+        ...legacyEnv,
+        EL_MS_CLIENT_SECRET: "el-native-secret",
+        EL_MS_CLIENT_ID: "f8ec6a91-f043-4f63-8800-64135af48c4e",
+        EL_MS_TENANT_ID: "af32e619-3647-44a2-85d9-1c45457c0e91",
+      } as unknown as Env,
+      db,
+      { companyId: "co_el" },
+    );
+    expect(resolved.ok).toBe(true);
+    if (resolved.ok) {
+      expect(resolved.credentials.clientId).toBe("f8ec6a91-f043-4f63-8800-64135af48c4e");
+      expect(resolved.credentials.tenantId).toBe("af32e619-3647-44a2-85d9-1c45457c0e91");
+      expect(resolved.credentials.clientSecret).toBe("el-native-secret");
+      expect(resolved.credentials.identityKind).toBe("tenant_native");
+      expect(resolved.credentials.clientId).not.toBe("e5fd0533-ce51-43b8-999c-152f1e268246");
+      expect(resolved.credentials.clientSecret).not.toBe("client-secret");
+    }
+
+    const caddington = await resolveMicrosoftAppCredentials(legacyEnv, db, {
+      companyId: "co_caddington",
+    });
+    expect(caddington.ok).toBe(false);
+    if (!caddington.ok) {
+      expect(caddington.code).toBe("MICROSOFT_NOT_CONNECTED");
     }
   });
 });

@@ -29,6 +29,7 @@ import {
   shouldChargeElCustomerRequest,
 } from "./el-customer-billing";
 import { scheduleDailyImprovementCapture } from "./daily-improvement";
+import { isNegativeResultFeedback } from "./whatsapp-plan";
 import {
   emptyPortalChatContext,
   titleFromUserText,
@@ -175,6 +176,18 @@ export async function createPortalConversation(
   return { id, companyId: input.companyId, userId: input.userId, title, createdAt: now, updatedAt: now };
 }
 
+async function getPortalConversationWithRetry(
+  db: D1Database,
+  input: { conversationId: string; companyId: string; userId: string },
+): Promise<PortalChatConversation | null> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const found = await getPortalConversation(db, input);
+    if (found) return found;
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 40 * (attempt + 1)));
+  }
+  return null;
+}
+
 export async function getPortalConversation(
   db: D1Database,
   input: { conversationId: string; companyId: string; userId: string },
@@ -224,6 +237,8 @@ export async function sendPortalChatMessage(
     completer?: IntelligenceCompleter;
     executeGateway?: PortalChatGatewayFn;
     connectors?: string[];
+    trafficClass?: string | null;
+    userAgent?: string | null;
   },
 ): Promise<PortalChatTurnResult> {
   const text = input.text.replace(/\s+/g, " ").trim();
@@ -233,6 +248,7 @@ export async function sendPortalChatMessage(
   await ensurePortalChatSchema(env.DB);
   let createdConversation = false;
   let conversationId = input.conversationId?.trim() || "";
+  let conversation: Awaited<ReturnType<typeof getPortalConversation>> = null;
   if (!conversationId) {
     const created = await createPortalConversation(env.DB, {
       companyId: input.companyId,
@@ -241,13 +257,18 @@ export async function sendPortalChatMessage(
     });
     conversationId = created.id;
     createdConversation = true;
+    conversation = {
+      ...created,
+      context: emptyPortalChatContext(),
+      messages: [],
+    };
+  } else {
+    conversation = await getPortalConversationWithRetry(env.DB, {
+      conversationId,
+      companyId: input.companyId,
+      userId: input.sessionUser.userId,
+    });
   }
-
-  const conversation = await getPortalConversation(env.DB, {
-    conversationId,
-    companyId: input.companyId,
-    userId: input.sessionUser.userId,
-  });
   if (!conversation) throw new PortalChatError("Conversation not found", 404);
 
   const userMessage = await insertMessage(env.DB, {
@@ -263,6 +284,8 @@ export async function sendPortalChatMessage(
   const trafficClass = classifyElTraffic({
     sourceClient: "portal_chat",
     actorEmail: input.sessionUser.email,
+    trafficClass: input.trafficClass,
+    userAgent: input.userAgent,
   });
   if (isLiveElBillingEnv(env) && shouldChargeElCustomerRequest(input.companyId, trafficClass)) {
     const settled = await settleElCustomerRequest(env.DB, {
@@ -317,6 +340,7 @@ export async function sendPortalChatMessage(
     lastUserIntent: conversation.context.lastUserIntent,
     lastAnswerText: conversation.context.lastAnswerText,
     recentEvidence: conversation.context.recentEvidence,
+    userCorrection: isNegativeResultFeedback(text),
   });
 
   const runtime = createPortalChatRuntime(env, {
@@ -328,6 +352,7 @@ export async function sendPortalChatMessage(
     waitUntil: input.waitUntil,
     onStatus: input.onStatus,
     executeGateway: input.executeGateway,
+    trafficClass,
   });
 
   let result = await runIntelligenceTurn({

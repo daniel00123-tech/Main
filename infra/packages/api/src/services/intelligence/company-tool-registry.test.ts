@@ -3,6 +3,9 @@ import {
   buildTenantToolCatalogue,
   capabilityForPlatformTool,
   detectRequestedCapabilities,
+  defaultToolForCapability,
+  rewriteExactAccountingTool,
+  rewriteHistoricalAccountingTool,
   normaliseVendorToolName,
   secondRbacAllows,
   standardToolContracts,
@@ -99,8 +102,53 @@ describe("company tool registry", () => {
     expect(detectRequestedCapabilities("Look in the inbox for an invoice PDF")).toContain("EMAIL_SEARCH");
     expect(detectRequestedCapabilities("Look in the inbox for an invoice PDF")).not.toContain("ACCOUNTING_INVOICE_SEARCH");
     expect(wantsMultiCapabilityRead("Look in the inbox for an invoice PDF")).toBe(false);
+    expect(detectRequestedCapabilities("What does the health and safety policy say, and what is the latest info email?")).toEqual(
+      expect.arrayContaining(["KNOWLEDGE_SEARCH", "EMAIL_LIST"]),
+    );
+    expect(detectRequestedCapabilities("What does the health and safety policy say, and what is the latest info email?")).not.toContain(
+      "CATALOGUE_LIST",
+    );
+    expect(wantsMultiCapabilityRead("What does the health and safety policy say, and what is the latest info email?")).toBe(true);
+    expect(wantsMultiCapabilityRead("What were March sales and what does the vehicle policy require?")).toBe(true);
+    expect(defaultToolForCapability("KNOWLEDGE_SEARCH")).toBe("search_company_knowledge");
     expect(detectRequestedCapabilities("Newest document")).toContain("CATALOGUE_LIST");
+    expect(detectRequestedCapabilities("What were sales in March?")).toContain("ACCOUNTING_WAREHOUSE");
+    expect(detectRequestedCapabilities("What are sales right now?")).toContain("ACCOUNTING_SALES");
+    expect(detectRequestedCapabilities("What are sales right now?")).not.toContain("ACCOUNTING_WAREHOUSE");
     expect(capabilityForPlatformTool("outlook_search_mailbox")).toBe("EMAIL_SEARCH");
+    expect(rewriteExactAccountingTool("xero_search_invoices", { query: "INV-02268" }, "Look up invoice INV-02268")).toEqual({
+      name: "xero_get_invoice",
+      arguments: { query: "INV-02268", invoiceNumber: "INV-02268" },
+    });
+    const now = new Date("2026-09-04T12:00:00.000Z");
+    expect(rewriteHistoricalAccountingTool("xero_sales_summary", {}, "What were sales in March?", now).name).toBe(
+      "warehouse_sales_analysis",
+    );
+    expect(rewriteHistoricalAccountingTool("xero_sales_summary", {}, "What are sales right now?", now).name).toBe(
+      "xero_sales_summary",
+    );
+    expect(rewriteHistoricalAccountingTool("xero_get_invoice", { invoiceNumber: "INV-02268" }, "Has INV-02268 been paid?", now).name).toBe(
+      "xero_get_invoice",
+    );
+    expect(
+      rewriteHistoricalAccountingTool("xero_search_invoices", {}, "How many invoices did we raise in April?", now).name,
+    ).toBe("warehouse_invoice_analysis");
+    expect(
+      rewriteHistoricalAccountingTool(
+        "xero_list_overdue_invoices",
+        {},
+        "How has overdue debt moved over the last few months?",
+        now,
+      ).name,
+    ).toBe("warehouse_receivables_analysis");
+    expect(
+      rewriteHistoricalAccountingTool(
+        "xero_top_customers",
+        {},
+        "Who were the highest-value customers over this historical period?",
+        now,
+      ).name,
+    ).toBe("warehouse_customer_analysis");
   });
 
   it("does not register future CRM capabilities until a connector exists", () => {

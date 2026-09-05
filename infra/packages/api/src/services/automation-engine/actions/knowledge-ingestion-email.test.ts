@@ -102,6 +102,9 @@ describe("knowledge ingestion daily email", () => {
       chunkTotal: null,
       duplicateCount: 0,
       failedCount: 0,
+      updatedCount: 0,
+      sourceObservedCount: 0,
+      missedCount: 0,
       sourcesQueried: ["microsoft_index_items"],
       sourcesUnavailable: [],
       scannedSourceTypes: ["onedrive"],
@@ -123,11 +126,12 @@ describe("knowledge ingestion daily email", () => {
       type: "DOCUMENT_ACTIVITY_REPORT",
       recipient: "admin@example.com",
     });
-    expect(String(sent?.subject)).toContain("EL Business Daily Knowledge Activity");
-    expect(String(sent?.subject)).toContain("manual test");
-    expect(String(sent?.bodyText)).toMatch(/MESSAGES SCANNED:\s*11/);
-    expect(String(sent?.bodyText)).toContain("Attachments discovered: 3");
-    expect(String(sent?.bodyText)).toContain("Attachments failed: 3");
+    expect(String(sent?.subject)).toBe("INFRA — EL Business Microsoft Sync Report — Test");
+    expect(String(sent?.bodyText)).toContain(
+      "INFRA checked EL Business Microsoft 365 and knowledge sources this morning.",
+    );
+    expect(String(sent?.bodyText)).toContain("daily 08:00 Europe/London schedule is unchanged");
+    expect(String(sent?.bodyText)).not.toMatch(/AADSTS|ATTACHMENT_ENUM_FAILED|MICROSOFT_TOKEN_DENIED|vectoris|\bMCP\b|\bD1\b/i);
     expect(String(sent?.bodyText)).not.toMatch(/Caddington|co_caddington|HT Business/i);
   });
 
@@ -144,6 +148,9 @@ describe("knowledge ingestion daily email", () => {
       chunkTotal: null,
       duplicateCount: 0,
       failedCount: 0,
+      updatedCount: 0,
+      sourceObservedCount: 0,
+      missedCount: 0,
       sourcesQueried: ["microsoft_index_items"],
       sourcesUnavailable: [],
       scannedSourceTypes: ["onedrive"],

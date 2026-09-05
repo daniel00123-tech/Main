@@ -184,7 +184,9 @@ export function wantsMultiCapabilityRead(text: string): boolean {
   families.delete("WEB");
   if (families.size < 2) return false;
   if (families.has("KNOWLEDGE") && families.has("ACCOUNTING") && families.size === 2) {
-    if (!/\b(xero|invoice|outlook|inbox|mailbox|emails?)\b/i.test(text)) return false;
+    if (!/\b(xero|invoice|outlook|inbox|mailbox|emails?|warehouse|(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|september|oct|october|nov|november|dec|december))\b/i.test(text)) {
+      return false;
+    }
   }
   return (
     /\b(and|then|also|plus)\b/i.test(text) ||
@@ -192,7 +194,8 @@ export function wantsMultiCapabilityRead(text: string): boolean {
     /\?\s+\S/.test(text) ||
     (families.has("EMAIL") && families.has("ACCOUNTING")) ||
     (families.has("EMAIL") && families.has("KNOWLEDGE")) ||
-    (families.has("ACCOUNTING") && families.has("CATALOGUE"))
+    (families.has("ACCOUNTING") && families.has("CATALOGUE")) ||
+    (families.has("ACCOUNTING") && families.has("KNOWLEDGE"))
   );
 }
 
@@ -212,8 +215,9 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
     /\b(list|show).{0,16}(files|documents)\b/i.test(value) ||
     /\bhow many (files|documents) are indexed\b/i.test(value);
   const knowledge =
-    /\b(process|procedure|policy|how do we|company knowledge|onboarding|health and safety)\b/i.test(value) &&
-    !catalogue;
+    /\b(process|procedure|policy|handbook|guidance|how do we|company knowledge|onboarding|health and safety|what does (the|our) .{0,48}(say|mean|require)|find (the )?(document|policy|file) (about|on|for)|in (the|our) (policy|handbook|procedure))\b/i.test(
+      value,
+    ) && !catalogue;
   const web = /\b(weather|forecast|public holiday|news headline)\b/i.test(value);
   if (email) found.add(/\b(search|from|containing|about|look in)\b/i.test(value) ? "EMAIL_SEARCH" : "EMAIL_LIST");
   if (accounting && /\b(INV-|invoice (id|number)|find invoice)\b/i.test(value)) found.add("ACCOUNTING_INVOICE_GET");
@@ -230,6 +234,93 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
   if (knowledge) found.add("KNOWLEDGE_SEARCH");
   if (web) found.add("WEB_PUBLIC");
   return [...found];
+}
+
+export function rewriteExactAccountingTool(
+  name: string,
+  args: Record<string, unknown>,
+  text: string,
+): { name: string; arguments: Record<string, unknown> } {
+  const invoice = String(text ?? "").match(/\bINV-\d+\b/i);
+  if (!invoice) return { name, arguments: args };
+  if (
+    name === "xero_search_invoices" ||
+    name === "xero_sales_summary" ||
+    name === "xero_list_overdue_invoices"
+  ) {
+    if (/\b(outstanding|overdue|top customers|this month|last month)\b/i.test(text) && !/\bINV-\d+\b/i.test(text)) {
+      return { name, arguments: args };
+    }
+    return { name: "xero_get_invoice", arguments: { ...args, invoiceNumber: invoice[0] } };
+  }
+  return { name, arguments: args };
+}
+
+/**
+ * Named completed months and historical windows belong on warehouse_* tools.
+ * Exact live invoice status and current-state asks stay on xero_*.
+ */
+export function rewriteHistoricalAccountingTool(
+  name: string,
+  args: Record<string, unknown>,
+  text: string,
+  now = new Date(),
+): { name: string; arguments: Record<string, unknown> } {
+  if (classifyQueryFreshness(text, now) !== "HISTORICAL_ANALYTICAL") {
+    return { name, arguments: args };
+  }
+  if (
+    name === "xero_get_invoice" ||
+    name === "xero_get_organisation" ||
+    name.startsWith("warehouse_") ||
+    (/\bINV-\d+\b/i.test(text) && !/\bhow many invoices\b/i.test(text))
+  ) {
+    return { name, arguments: args };
+  }
+  if (
+    name === "xero_list_overdue_invoices" ||
+    name === "xero_aged_receivables" ||
+    (name.startsWith("xero_") && /\b(overdue|outstanding|debt).{0,48}(moved|over the last|trend|histor)/i.test(text))
+  ) {
+    return {
+      name: "warehouse_receivables_analysis",
+      arguments: { ...args, aggregation: args.aggregation ?? "overdue_total" },
+    };
+  }
+  if (name === "xero_top_customers" || (name.startsWith("xero_") && /\b(top|highest-value) customers?\b/i.test(text))) {
+    return { name: "warehouse_customer_analysis", arguments: args };
+  }
+  if (name === "xero_search_invoices" || (name.startsWith("xero_") && /\bhow many invoices\b/i.test(text))) {
+    return {
+      name: "warehouse_invoice_analysis",
+      arguments: {
+        ...args,
+        aggregation: /\bhow many invoices\b/i.test(text) ? "invoice_count" : args.aggregation,
+      },
+    };
+  }
+  if (name === "xero_sales_summary") {
+    const aggregation =
+      typeof args.aggregation === "string"
+        ? args.aggregation
+        : /\b(each month|month by month|month[- ]over[- ]month|trend|last \d+|last (three|six|few) months|completed months)\b/i.test(
+            text,
+          )
+          ? "sales_by_month"
+          : "sales_total";
+    return { name: "warehouse_sales_analysis", arguments: { ...args, aggregation } };
+  }
+  return { name, arguments: args };
+}
+
+export function rewriteAccountingTool(
+  name: string,
+  args: Record<string, unknown>,
+  text: string,
+  now = new Date(),
+): { name: string; arguments: Record<string, unknown> } {
+  const exact = rewriteExactAccountingTool(name, args, text);
+  return rewriteHistoricalAccountingTool(exact.name, exact.arguments, text, now);
 }
 
 export function defaultToolForCapability(capability: PlatformCapability): string | null {

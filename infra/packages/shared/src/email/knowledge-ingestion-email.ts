@@ -1,4 +1,8 @@
 import { PLATFORM_EMAIL_NO_REPLY_FOOTER } from "./identity";
+import {
+  microsoftSyncReportSubject,
+  type MicrosoftSyncReportEmailData,
+} from "../automation-engine/microsoft-sync-report";
 
 function escapeHtml(value: string | null | undefined): string {
   return String(value ?? "")
@@ -8,176 +12,85 @@ function escapeHtml(value: string | null | undefined): string {
     .replace(/"/g, "&quot;");
 }
 
-export type KnowledgeIngestionEmailLine = {
-  title: string;
-  sourceLabel: string;
-  indexed: boolean;
-  stored?: boolean;
-  chunkCount: number | null;
-  modifiedAt: string | null;
-  url: string | null;
-  location: string | null;
-  mailbox: string | null;
-  parentSubject: string | null;
-  sender: string | null;
-  failureReason: string | null;
-};
-
-export type KnowledgeIngestionReportTemplateData = {
-  companyDisplayName: string;
-  reportDateLabel: string;
-  windowFromLabel: string;
-  windowToLabel: string;
-  manual: boolean;
-  discoveredCount: number;
-  indexedCount: number;
-  chunkTotal: number | null;
-  duplicateCount: number;
-  failedCount: number;
-  updatedCount?: number;
-  sourceObservedCount?: number;
-  missedCount?: number;
-  sourceCounts: Array<{ label: string; count: number }>;
-  documents: KnowledgeIngestionEmailLine[];
-  failures: KnowledgeIngestionEmailLine[];
-  omittedDocuments: number;
-  portalUrl: string;
-  subjectOverride?: string;
-  correctionPreamble?: string;
-  mailboxesEligible?: number;
-  mailboxesExcluded?: number;
-  mailboxesExcludedNames?: string[];
-  mailboxesScanned?: string[];
-  messagesScanned?: number;
-  messagesWithAttachments?: number;
-  attachmentsDiscovered?: number;
-  attachmentsStored?: number;
-  attachmentsIndexed?: number;
-  attachmentsDeduped?: number;
-  attachmentsSkipped?: number;
-  attachmentsSkippedJunk?: number;
-  attachmentsUnsupported?: number;
-  attachmentsFailed?: number;
-  onedriveIndexed?: number;
-  sharepointIndexed?: number;
-  pipelineHealth?: "healthy" | "degraded" | "failed";
-  gapWarning?: string | null;
-  mailboxHeadline?: string | null;
-  mailboxHealthLines?: Array<{
-    name: string;
-    status: string;
-    scannedLabel: string;
-    attachments?: number;
-    indexed?: number;
-    failed?: number;
-  }>;
-};
-
-function formatKnowledgeLine(item: KnowledgeIngestionEmailLine, index: number): string[] {
-  const lines = [
-    `${index}. ${item.title}`,
-    `   Source: ${item.sourceLabel}`,
-    `   Stored: ${item.stored === false ? "No" : item.stored ? "Yes" : item.indexed ? "Yes" : "Unknown"}`,
-    `   Indexed: ${item.indexed ? "Yes" : "No"}`,
-  ];
-  if (typeof item.chunkCount === "number") lines.push(`   Chunks: ${item.chunkCount}`);
-  if (item.mailbox) lines.push(`   Mailbox: ${item.mailbox}`);
-  if (item.parentSubject) lines.push(`   Email: ${item.parentSubject}`);
-  if (item.sender) lines.push(`   Sender: ${item.sender}`);
-  if (item.location) lines.push(`   Location: ${item.location}`);
-  if (item.modifiedAt) lines.push(`   Modified: ${item.modifiedAt}`);
-  if (item.url) lines.push(`   Link: ${item.url}`);
-  if (item.failureReason) lines.push(`   Reason: ${item.failureReason}`);
-  return lines;
+function formatSyncLine(item: { filename: string; source: string; whenLabel: string | null; message: string }, mark: string): string {
+  const when = item.whenLabel ? ` · ${item.whenLabel}` : "";
+  return `${mark} ${item.filename} · ${item.source}${when} — ${item.message}`;
 }
 
-export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionReportTemplateData) {
-  const title = `${data.companyDisplayName} — Daily Knowledge Activity`;
-  const datePart = data.reportDateLabel;
-  const subject =
-    data.subjectOverride?.trim() ||
-    (data.manual
-      ? `INFRA — ${data.companyDisplayName} Daily Knowledge Activity — ${datePart} (manual test)`
-      : `INFRA — ${data.companyDisplayName} Daily Knowledge Activity — ${datePart}`);
+export function renderKnowledgeIngestionReportEmail(data: MicrosoftSyncReportEmailData) {
+  const title = `${data.companyDisplayName} Microsoft Sync Report`;
+  const subject = microsoftSyncReportSubject(data);
   const footer = PLATFORM_EMAIL_NO_REPLY_FOOTER;
-  const range = `Reporting period: ${data.windowFromLabel} → ${data.windowToLabel}`;
-  const mailboxActivity =
-    (data.messagesScanned ?? 0) > 0 ||
-    (data.messagesWithAttachments ?? 0) > 0 ||
-    (data.attachmentsDiscovered ?? 0) > 0 ||
-    (data.attachmentsFailed ?? 0) > 0 ||
-    (data.attachmentsStored ?? 0) > 0 ||
-    (data.mailboxesEligible ?? 0) > 0;
-  const empty =
-    data.discoveredCount === 0 &&
-    (data.sourceObservedCount ?? 0) === 0 &&
-    (data.missedCount ?? 0) === 0 &&
-    !mailboxActivity;
-  const sourceLines = data.sourceCounts.map((row) => `${row.label}: ${row.count}`);
-  const documentLines = data.documents.flatMap((item, index) => [...formatKnowledgeLine(item, index + 1), ""]);
-  const failureLines = data.failures.map(
-    (item) => `- ${item.title}${item.failureReason ? ` — ${item.failureReason}` : ""}`,
-  );
-  const health = data.pipelineHealth ?? "healthy";
-  const mailboxLines = (data.mailboxesScanned ?? []).map((address) => `   - ${address}`);
-  const mailboxHealthLines = (data.mailboxHealthLines ?? []).map(
-    (row) =>
-      `   - ${row.name}: ${row.status} · scanned ${row.scannedLabel} · attachments ${row.attachments ?? 0} · indexed ${row.indexed ?? 0} · failed ${row.failed ?? 0}`,
-  );
-  const mailboxScanLines = [
-    "MAILBOX SCAN",
-    "",
-    `MAILBOXES ELIGIBLE: ${data.mailboxesEligible ?? (data.mailboxesScanned ?? []).length}`,
-    `MAILBOXES SCANNED: ${(data.mailboxesScanned ?? []).length}`,
-    `MAILBOXES EXCLUDED: ${data.mailboxesExcluded ?? 0}`,
-    ...mailboxLines,
-    ...(data.mailboxesExcludedNames ?? []).map((name) => `   - ${name}: excluded by policy`),
-    data.mailboxHeadline ? `MAILBOX SCAN RESULT: ${data.mailboxHeadline}` : "",
-    ...(mailboxHealthLines.length ? ["PER-MAILBOX HEALTH", "", ...mailboxHealthLines, ""] : []),
-    `MESSAGES SCANNED: ${data.mailboxHeadline?.includes("SCAN FAILED") ? data.mailboxHeadline : data.messagesScanned ?? 0}`,
-    `Email messages with attachments: ${data.messagesWithAttachments ?? 0}`,
-    `Attachments discovered: ${data.attachmentsDiscovered ?? data.discoveredCount}`,
-    `Attachments stored: ${data.attachmentsStored ?? 0}`,
-    `Attachments indexed: ${data.attachmentsIndexed ?? data.indexedCount}`,
-    `Attachments deduped: ${data.attachmentsDeduped ?? 0}`,
-    `Attachments skipped: ${data.attachmentsSkipped ?? data.duplicateCount}`,
-    `Attachments skipped (junk): ${data.attachmentsSkippedJunk ?? 0}`,
-    `Attachments unsupported: ${data.attachmentsUnsupported ?? 0}`,
-    `Attachments failed: ${data.attachmentsFailed ?? data.failedCount}`,
-    `OneDrive files indexed: ${data.onedriveIndexed ?? 0}`,
-    `SharePoint files indexed: ${data.sharepointIndexed ?? 0}`,
+  const opening =
+    `INFRA checked ${data.companyDisplayName} Microsoft 365 and knowledge sources this morning. Here is a simple summary of what was found and what successfully synchronised.`;
+  const approvedMailboxes = data.mailboxChecks.filter((row) => !row.excluded);
+  const excludedNote =
+    data.excludedNames.length > 0
+      ? `${data.excludedNames.join(" and ")} ${data.excludedNames.length === 1 ? "is" : "are"} not included, as requested.`
+      : "";
+
+  const s1 =
+    data.successfullySynchronised.length === 0
+      ? ["None in this reporting period."]
+      : data.successfullySynchronised.map((item) => formatSyncLine(item, "✅"));
+  const s2 =
+    data.foundNotSynchronised.length === 0
+      ? ["None."]
+      : data.foundNotSynchronised.map((item) => formatSyncLine(item, "⚠️"));
+  const s3 = [
+    ...approvedMailboxes.map((row) => row.line),
+    ...(excludedNote ? [excludedNote] : []),
   ];
+  const s6 = data.needsAttention;
+  const technical = [
+    `Window: ${data.windowFromLabel} → ${data.windowToLabel}`,
+    data.runId ? `Run: ${data.runId}` : null,
+    `Sources checked: ${data.sourcesChecked} of ${data.sourcesAttempted} (Outlook mailboxes, OneDrive, SharePoint)`,
+    `Retries queued: ${data.retryCount}`,
+  ].filter((line): line is string => Boolean(line));
 
   const text = [
     "INFRA",
     title,
-    range,
-    data.manual ? "This was a manual test run. The daily schedule is unchanged." : "",
-    data.correctionPreamble ? data.correctionPreamble : "",
+    subject,
+    data.manual ? "This is a test run. The daily 08:00 Europe/London schedule is unchanged." : "",
     "",
-    empty
-      ? `INFRA checked ${data.companyDisplayName} knowledge sources. No new documents were added to the knowledge base during this reporting period.`
-      : [
-          "SUMMARY",
-          "",
-          `New documents discovered: ${data.discoveredCount}`,
-          `Successfully indexed: ${data.indexedCount}`,
-          `Updated / re-indexed: ${data.updatedCount ?? 0}`,
-          `Source activity not indexed: ${data.sourceObservedCount ?? data.missedCount ?? 0}`,
-          `New vector chunks: ${data.chunkTotal == null ? "not recorded" : String(data.chunkTotal)}`,
-          `Duplicates/skipped: ${data.duplicateCount}`,
-          `Failed ingestion: ${data.failedCount}`,
-          "",
-          ...mailboxScanLines,
-          "",
-          ...(sourceLines.length ? ["BY SOURCE", "", ...sourceLines, ""] : []),
-          ...(documentLines.length ? ["NEW KNOWLEDGE", "", ...documentLines] : []),
-          ...(failureLines.length ? ["FAILED / NEEDS ATTENTION", "", ...failureLines, ""] : []),
-        ].join("\n"),
+    opening,
     "",
-    data.gapWarning ? data.gapWarning : "",
-    `Job run: completed. Pipeline health: ${health}.`,
-    "This run completed successfully.",
+    "Microsoft Sync Status",
+    data.status,
+    `Sources checked: ${data.sourcesChecked}`,
+    `New items found: ${data.newItemsFound}`,
+    `Successfully added: ${data.successfullyAdded}`,
+    `Still processing: ${data.stillProcessing}`,
+    `Not synchronised: ${data.notSynchronised}`,
+    "",
+    "S1 Successfully synchronised",
+    ...s1,
+    "",
+    "S2 Found but not synchronised",
+    ...s2,
+    "",
+    "S3 Mailbox check",
+    ...s3,
+    "",
+    "S4 OneDrive / SharePoint",
+    data.onedriveLine,
+    data.sharepointLine,
+    "",
+    "S5 Knowledge base",
+    data.knowledgeSummary,
+    data.knowledgeDetail,
+    "",
+    ...(s6.length
+      ? ["S6 Needs attention", ...s6.map((line) => `⚠️ ${line}`), ""]
+      : []),
+    "S7 Automatic actions",
+    data.automaticActions,
+    data.omittedDocuments > 0 ? `and ${data.omittedDocuments} more items` : "",
+    "",
+    "Technical details",
+    ...technical,
     "",
     `View Infra: ${data.portalUrl}`,
     "",
@@ -186,77 +99,13 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
     .filter((line, index, all) => !(line === "" && all[index - 1] === ""))
     .join("\n");
 
-  const summaryHtml = empty
-    ? `<p style="margin:0 0 16px;color:#CBD5E1;">INFRA checked ${escapeHtml(data.companyDisplayName)} knowledge sources. No new documents were added to the knowledge base during this reporting period.</p>`
-    : `<p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">New documents discovered</p>
-    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.discoveredCount}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Successfully indexed</p>
-    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.indexedCount}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Updated / re-indexed</p>
-    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.updatedCount ?? 0}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Source activity not indexed</p>
-    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.sourceObservedCount ?? data.missedCount ?? 0}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">New vector chunks</p>
-    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.chunkTotal == null ? "Not recorded" : data.chunkTotal}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Duplicates/skipped</p>
-    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.duplicateCount}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Failed ingestion</p>
-    <p style="margin:0 0 16px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.failedCount}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">MAILBOXES ELIGIBLE / SCANNED / EXCLUDED</p>
-    <p style="margin:0 0 12px;font-size:16px;font-weight:600;color:#F5F9FF;">${data.mailboxesEligible ?? (data.mailboxesScanned ?? []).length} / ${(data.mailboxesScanned ?? []).length} / ${data.mailboxesExcluded ?? 0}</p>
-    <p style="margin:0 0 12px;font-size:14px;color:#CBD5E1;">${escapeHtml((data.mailboxesScanned ?? []).join(", ") || "none")}</p>
-    ${
-      (data.mailboxesExcludedNames ?? []).length
-        ? `<p style="margin:0 0 12px;font-size:13px;color:#94A3B8;">${escapeHtml(
-            (data.mailboxesExcludedNames ?? []).map((name) => `${name}: excluded by policy`).join("; "),
-          )}</p>`
-        : ""
-    }
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">MESSAGES SCANNED</p>
-    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.messagesScanned ?? 0}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Email messages with attachments</p>
-    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${data.messagesWithAttachments ?? 0}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Attachments discovered / stored / indexed / deduped / skipped / failed</p>
-    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#F5F9FF;">${data.attachmentsDiscovered ?? data.discoveredCount} / ${data.attachmentsStored ?? 0} / ${data.attachmentsIndexed ?? data.indexedCount} / ${data.attachmentsDeduped ?? 0} / ${data.attachmentsSkipped ?? data.duplicateCount} / ${data.attachmentsFailed ?? data.failedCount}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">Junk skipped / unsupported stored</p>
-    <p style="margin:0 0 12px;font-size:16px;font-weight:600;color:#F5F9FF;">${data.attachmentsSkippedJunk ?? 0} / ${data.attachmentsUnsupported ?? 0}</p>
-    <p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">OneDrive / SharePoint indexed</p>
-    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#F5F9FF;">${data.onedriveIndexed ?? 0} / ${data.sharepointIndexed ?? 0}</p>`;
+  const statusColor =
+    data.status === "HEALTHY" ? "#86EFAC" : data.status === "FAILED" ? "#FCA5A5" : "#FCD34D";
 
-  const sourceHtml = data.sourceCounts
-    .map(
-      (row) =>
-        `<p style="margin:0 0 4px;font-size:13px;color:#94A3B8;">${escapeHtml(row.label)}</p>
-    <p style="margin:0 0 12px;font-size:20px;font-weight:600;color:#F5F9FF;">${row.count}</p>`,
-    )
-    .join("\n    ");
-
-  const documentHtml = data.documents
-    .map((item, index) => {
-      const meta = [
-        `Source: ${escapeHtml(item.sourceLabel)}`,
-        `Stored: ${item.stored === false ? "No" : item.stored ? "Yes" : item.indexed ? "Yes" : "Unknown"}`,
-        `Indexed: ${item.indexed ? "Yes" : "No"}`,
-        typeof item.chunkCount === "number" ? `Chunks: ${item.chunkCount}` : null,
-        item.mailbox ? `Mailbox: ${escapeHtml(item.mailbox)}` : null,
-        item.parentSubject ? `Email: ${escapeHtml(item.parentSubject)}` : null,
-        item.modifiedAt ? `Modified: ${escapeHtml(item.modifiedAt)}` : null,
-        item.url
-          ? `Link: <a href="${escapeHtml(item.url)}" style="color:#93C5FD;">${escapeHtml(item.url)}</a>`
-          : null,
-      ]
-        .filter(Boolean)
-        .join("<br />");
-      return `<p style="margin:0 0 14px;color:#CBD5E1;"><strong style="color:#F5F9FF;">${index + 1}. ${escapeHtml(item.title)}</strong><br />${meta}</p>`;
-    })
-    .join("");
-
-  const failureHtml = data.failures
-    .map(
-      (item) =>
-        `<p style="margin:0 0 8px;color:#FCA5A5;">${escapeHtml(item.title)}${item.failureReason ? ` — ${escapeHtml(item.failureReason)}` : ""}</p>`,
-    )
-    .join("");
+  const listHtml = (lines: string[]) =>
+    lines
+      .map((line) => `<p style="margin:0 0 8px;color:#CBD5E1;">${escapeHtml(line).replace(/\n/g, "<br />")}</p>`)
+      .join("");
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -266,27 +115,42 @@ export function renderKnowledgeIngestionReportEmail(data: KnowledgeIngestionRepo
       <td align="center">
         <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#0B1627;border:1px solid #203047;border-radius:12px;">
           <tr><td style="padding:24px 24px 8px;color:#94A3B8;font-size:13px;letter-spacing:0.04em;">INFRA</td></tr>
-          <tr><td style="padding:0 24px 8px;color:#CBD5E1;font-size:13px;">${escapeHtml(data.companyDisplayName)}</td></tr>
           <tr><td style="padding:0 24px 8px;color:#F5F9FF;font-size:22px;font-weight:700;">${escapeHtml(title)}</td></tr>
-          <tr><td style="padding:0 24px 8px;color:#94A3B8;font-size:14px;">${escapeHtml(range)}</td></tr>
-          ${data.manual ? `<tr><td style="padding:0 24px 16px;color:#93C5FD;font-size:13px;">Manual test run — the daily schedule is unchanged.</td></tr>` : ""}
-          ${data.correctionPreamble ? `<tr><td style="padding:0 24px 16px;color:#CBD5E1;font-size:13px;">${escapeHtml(data.correctionPreamble)}</td></tr>` : ""}
-          <tr><td style="padding:0 24px;">${summaryHtml}</td></tr>
-          ${sourceHtml ? `<tr><td style="padding:0 24px 8px;font-weight:600;color:#F5F9FF;">By source</td></tr><tr><td style="padding:0 24px;">${sourceHtml}</td></tr>` : ""}
-          ${documentHtml ? `<tr><td style="padding:0 24px 8px;font-weight:600;color:#F5F9FF;">New knowledge</td></tr><tr><td style="padding:0 24px;">${documentHtml}</td></tr>` : ""}
           ${
-            data.omittedDocuments > 0
-              ? `<tr><td style="padding:0 24px 12px;color:#94A3B8;">and ${data.omittedDocuments} more</td></tr>`
+            data.manual
+              ? `<tr><td style="padding:0 24px 12px;color:#93C5FD;font-size:13px;">This is a test run. The daily 08:00 Europe/London schedule is unchanged.</td></tr>`
               : ""
           }
-          ${failureHtml ? `<tr><td style="padding:0 24px 8px;font-weight:600;color:#F5F9FF;">Failed / needs attention</td></tr><tr><td style="padding:0 24px;">${failureHtml}</td></tr>` : ""}
+          <tr><td style="padding:0 24px 16px;color:#CBD5E1;font-size:14px;">${escapeHtml(opening)}</td></tr>
+          <tr><td style="padding:0 24px 4px;color:#94A3B8;font-size:13px;">Microsoft Sync Status</td></tr>
+          <tr><td style="padding:0 24px 12px;color:${statusColor};font-size:20px;font-weight:700;">${escapeHtml(data.status)}</td></tr>
+          <tr><td style="padding:0 24px 16px;color:#CBD5E1;font-size:14px;">
+            Sources checked: ${data.sourcesChecked}<br />
+            New items found: ${data.newItemsFound}<br />
+            Successfully added: ${data.successfullyAdded}<br />
+            Still processing: ${data.stillProcessing}<br />
+            Not synchronised: ${data.notSynchronised}
+          </td></tr>
+          <tr><td style="padding:8px 24px 4px;font-weight:600;color:#F5F9FF;">Successfully synchronised</td></tr>
+          <tr><td style="padding:0 24px 12px;">${listHtml(s1)}</td></tr>
+          <tr><td style="padding:8px 24px 4px;font-weight:600;color:#F5F9FF;">Found but not synchronised</td></tr>
+          <tr><td style="padding:0 24px 12px;">${listHtml(s2)}</td></tr>
+          <tr><td style="padding:8px 24px 4px;font-weight:600;color:#F5F9FF;">Mailbox check</td></tr>
+          <tr><td style="padding:0 24px 12px;">${listHtml(s3)}</td></tr>
+          <tr><td style="padding:8px 24px 4px;font-weight:600;color:#F5F9FF;">OneDrive / SharePoint</td></tr>
+          <tr><td style="padding:0 24px 12px;">${listHtml([data.onedriveLine, data.sharepointLine])}</td></tr>
+          <tr><td style="padding:8px 24px 4px;font-weight:600;color:#F5F9FF;">Knowledge base</td></tr>
+          <tr><td style="padding:0 24px 12px;color:#CBD5E1;">${escapeHtml(data.knowledgeSummary)}<br />${escapeHtml(data.knowledgeDetail)}</td></tr>
           ${
-            data.gapWarning
-              ? `<tr><td style="padding:0 24px 12px;color:#FCA5A5;font-weight:600;">${escapeHtml(data.gapWarning)}</td></tr>`
+            s6.length
+              ? `<tr><td style="padding:8px 24px 4px;font-weight:600;color:#F5F9FF;">Needs attention</td></tr>
+          <tr><td style="padding:0 24px 12px;">${listHtml(s6.map((line) => `⚠️ ${line}`))}</td></tr>`
               : ""
           }
-          <tr><td style="padding:8px 24px 8px;color:#CBD5E1;font-size:13px;">Job run: completed. Pipeline health: ${escapeHtml(health)}.</td></tr>
-          <tr><td style="padding:0 24px 16px;color:#94A3B8;font-size:13px;">This run completed successfully.</td></tr>
+          <tr><td style="padding:8px 24px 4px;font-weight:600;color:#F5F9FF;">Automatic actions</td></tr>
+          <tr><td style="padding:0 24px 16px;color:#CBD5E1;">${escapeHtml(data.automaticActions)}</td></tr>
+          <tr><td style="padding:0 24px 4px;color:#94A3B8;font-size:12px;">Technical details</td></tr>
+          <tr><td style="padding:0 24px 16px;color:#94A3B8;font-size:12px;">${technical.map((line) => escapeHtml(line)).join("<br />")}</td></tr>
           <tr><td style="padding:0 24px 8px;"><a href="${escapeHtml(data.portalUrl)}" style="display:inline-block;background:#2F80FF;color:#FFFFFF;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">View Infra</a></td></tr>
           <tr><td style="padding:20px 24px 24px;color:#94A3B8;font-size:12px;">${escapeHtml(footer)}</td></tr>
         </table>
