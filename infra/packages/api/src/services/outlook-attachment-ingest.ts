@@ -13,6 +13,7 @@ import { listMcpEnvironments } from "./control-plane";
 import { nowIso } from "../db/mappers";
 import {
   classifyMailboxAttachmentFailure,
+  isTerminalAttachmentFailure,
   listFailedMailboxAttachmentEvents,
   mailboxFailureLedgerMetadata,
   recordKnowledgeIngestionEvent,
@@ -1752,12 +1753,32 @@ async function buildNamedPersonReports(
 
 export async function retryFailedOutlookAttachments(
   env: Env,
-  input: { companyId: string; mailboxAddresses: string[]; actor?: string; limit?: number; filenames?: string[] },
+  input: {
+    companyId: string;
+    mailboxAddresses: string[];
+    actor?: string;
+    limit?: number;
+    filenames?: string[];
+    eventIds?: string[];
+    includeTerminal?: boolean;
+  },
 ): Promise<{
   retried: number;
   succeeded: number;
   stillFailed: number;
-  items: Array<{ filename: string | null; mailboxAddress: string | null; status: string; reason: string | null }>;
+  terminal: number;
+  items: Array<{
+    eventId?: string;
+    filename: string | null;
+    mailboxAddress: string | null;
+    sourceMessage?: string | null;
+    status: string;
+    reason: string | null;
+    stored?: boolean;
+    extracted?: boolean;
+    indexed?: boolean;
+    chunks?: number;
+  }>;
 }> {
   const actor = input.actor ?? "system:mailbox-attachment-retry";
   const mailboxes = await listApprovedAttachmentMailboxes(env.DB, input.companyId);
@@ -1769,18 +1790,49 @@ export async function retryFailedOutlookAttachments(
     await listFailedMailboxAttachmentEvents(env.DB, {
       companyId: input.companyId,
       mailboxAddresses: input.mailboxAddresses,
+      eventIds: input.eventIds,
+      includeTerminal: input.includeTerminal === true,
       limit: input.limit ?? 80,
     })
-  ).filter((row) => !wantedNames.size || wantedNames.has(String(row.filename ?? "").toLowerCase()));
+  ).filter((row) => {
+    if (input.eventIds?.length) return true;
+    return !wantedNames.size || wantedNames.has(String(row.filename ?? "").toLowerCase());
+  });
   const graphByMailbox = new Map<string, { accessToken: string; tenantId: string } | null>();
-  const items: Array<{ filename: string | null; mailboxAddress: string | null; status: string; reason: string | null }> = [];
+  const items: Array<{
+    eventId?: string;
+    filename: string | null;
+    mailboxAddress: string | null;
+    sourceMessage?: string | null;
+    status: string;
+    reason: string | null;
+    stored?: boolean;
+    extracted?: boolean;
+    indexed?: boolean;
+    chunks?: number;
+  }> = [];
   let succeeded = 0;
   let stillFailed = 0;
+  let terminal = 0;
   for (const row of failed) {
+    let meta: Record<string, unknown> = {};
+    try {
+      meta = row.metadata_json ? (JSON.parse(row.metadata_json) as Record<string, unknown>) : {};
+    } catch {
+      meta = {};
+    }
+    const sourceMessage = typeof meta.subject === "string" ? meta.subject : null;
     const address = String(row.mailbox_address ?? "").toLowerCase();
     const mailbox = wanted.get(address);
     if (!mailbox) {
-      items.push({ filename: row.filename, mailboxAddress: row.mailbox_address, status: "skipped", reason: "mailbox not approved" });
+      items.push({
+        eventId: row.id,
+        filename: row.filename,
+        mailboxAddress: row.mailbox_address,
+        sourceMessage,
+        status: "skipped",
+        reason: "mailbox not approved",
+      });
       continue;
     }
     if (!graphByMailbox.has(address)) {
@@ -1795,7 +1847,14 @@ export async function retryFailedOutlookAttachments(
     const provider = String(row.provider_item_id ?? "");
     const [messageId, attachmentId] = provider.includes("|") ? provider.split("|") : [row.parent_message_id ?? provider, ""];
     if (!messageId) {
-      items.push({ filename: row.filename, mailboxAddress: row.mailbox_address, status: "still_failed", reason: "missing message id" });
+      items.push({
+        eventId: row.id,
+        filename: row.filename,
+        mailboxAddress: row.mailbox_address,
+        sourceMessage,
+        status: "still_failed",
+        reason: "missing message id",
+      });
       stillFailed += 1;
       continue;
     }
@@ -1821,8 +1880,10 @@ export async function retryFailedOutlookAttachments(
     const targets = listed.attachments.filter((item) => !attachmentId || item.id === attachmentId);
     if (!targets.length) {
       items.push({
+        eventId: row.id,
         filename: row.filename,
         mailboxAddress: row.mailbox_address,
+        sourceMessage,
         status: "still_failed",
         reason: listed.via || "attachment not listed",
       });
@@ -1856,24 +1917,76 @@ export async function retryFailedOutlookAttachments(
         tenantId: graph?.tenantId ?? null,
         recoverExisting: true,
       });
-      if (result.status === "failed") {
-        stillFailed += 1;
-        items.push({
+      if (
+        result.status === "failed" &&
+        (isTerminalAttachmentFailure(result.failureCode) ||
+          result.failureCode === "KNOWLEDGE_EXTRACT_EMPTY" ||
+          result.failureCode === "EMPTY_WORKBOOK")
+      ) {
+        await recordKnowledgeIngestionEvent(env.DB, {
+          companyId: input.companyId,
+          sourceType: "outlook_attachments",
+          eventType: "failed",
+          providerItemId: row.provider_item_id,
           filename: attachment.name ?? row.filename,
           mailboxAddress: row.mailbox_address,
+          failureCode: "EXTRACT_EMPTY_TERMINAL",
+          skipReason: result.skipReason ?? "No extractable text",
+          storedAt: row.stored_at,
+          storedItemId: row.stored_item_id,
+          storedUrl: row.stored_url,
+          retryCount: Number(row.retry_count ?? 0) + 1,
+          metadata: {
+            subject: sourceMessage,
+            stop: "EXTRACT_OR_INDEX",
+            pipelineStatus: "STORED_NOT_INDEXED",
+            stopRetry: true,
+            previousFailureCode: result.failureCode,
+          },
+        });
+        terminal += 1;
+        items.push({
+          eventId: row.id,
+          filename: attachment.name ?? row.filename,
+          mailboxAddress: row.mailbox_address,
+          sourceMessage,
+          status: "terminal",
+          reason: result.failureCode ?? result.skipReason,
+          stored: result.stored,
+          extracted: false,
+          indexed: false,
+          chunks: result.chunks,
+        });
+      } else if (result.status === "failed") {
+        stillFailed += 1;
+        items.push({
+          eventId: row.id,
+          filename: attachment.name ?? row.filename,
+          mailboxAddress: row.mailbox_address,
+          sourceMessage,
           status: "still_failed",
           reason: result.failureCode ?? result.skipReason,
+          stored: result.stored,
+          extracted: false,
+          indexed: false,
+          chunks: result.chunks,
         });
       } else {
         succeeded += 1;
         items.push({
+          eventId: row.id,
           filename: attachment.name ?? row.filename,
           mailboxAddress: row.mailbox_address,
+          sourceMessage,
           status: result.status,
           reason: result.skipReason,
+          stored: result.stored,
+          extracted: result.status === "indexed" || result.status === "stored_not_indexed",
+          indexed: result.status === "indexed",
+          chunks: result.chunks,
         });
       }
     }
   }
-  return { retried: failed.length, succeeded, stillFailed, items };
+  return { retried: failed.length, succeeded, stillFailed, terminal, items };
 }

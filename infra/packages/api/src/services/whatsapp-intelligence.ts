@@ -60,6 +60,8 @@ import { softenSearchQuery } from "./whatsapp-intent";
 import type { WhatsAppTurn } from "./whatsapp-context";
 import { BUSINESS_GATEWAY_TOOL_SET, businessGatewayTimeoutMs } from "./intelligence/business-gateway-tools";
 import {
+  hitMatchesKnowledgeConceptFamily,
+  knowledgeConceptExpansionQueries,
   localKnowledgeHitsToResults,
   mergeKnowledgeSearchHits,
   searchCompanyKnowledgeIndex,
@@ -864,9 +866,38 @@ function createWhatsAppIntelligenceRuntime(
             limit: 8,
           }).catch(() => []),
         );
-        const hits = rejectWeakSearchHits(mergeKnowledgeSearchHits(localHits, payload.results), query, {
+        let merged = mergeKnowledgeSearchHits(localHits, payload.results);
+        let hits = rejectWeakSearchHits(merged, query, {
           currentDocumentId: input.memory.lastDocument?.id,
         }).slice(0, 5);
+        const expansion = knowledgeConceptExpansionQueries(query).find(
+          (row) => row.toLowerCase() !== query.toLowerCase(),
+        );
+        if (expansion && !hits.some((hit) => hitMatchesKnowledgeConceptFamily(hit, query))) {
+          const expanded = await withBoundedTimeout(
+            executeGatewayRequest(env, {
+              actor: { type: "user", user: input.sessionUser },
+              companyId: input.companyId,
+              toolName: gatewayName,
+              arguments: { query: expansion },
+              sourceClient: "whatsapp",
+              interactionId: input.interactionId,
+              parentRequestId: input.interactionId,
+              customerRequestId: input.interactionId,
+              trafficClass: input.trafficClass ?? undefined,
+              waitUntil: input.waitUntil,
+            }),
+            timeoutMs,
+            `intelligence_${gatewayName}_concept`,
+          );
+          if (expanded.ok && !expanded.timedOut && expanded.value?.status === 200) {
+            const extra = toStandardSearchPayload(expanded.value.result);
+            merged = mergeKnowledgeSearchHits(merged, extra.results);
+            hits = rejectWeakSearchHits(merged, query, {
+              currentDocumentId: input.memory.lastDocument?.id,
+            }).slice(0, 5);
+          }
+        }
         return {
           name: call.name,
           ok: true,

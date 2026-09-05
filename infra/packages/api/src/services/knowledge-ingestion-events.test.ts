@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyActivityKind, timestampInWindow } from "@infra/shared";
 import {
   classifyMailboxAttachmentFailure,
+  isTerminalAttachmentFailure,
   knowledgeIngestionEventInWindow,
   mailboxFailureLedgerMetadata,
   recordKnowledgeIngestionEvent,
@@ -151,5 +152,14 @@ describe("knowledge ingestion ledger", () => {
       retryable: true,
     });
     expect(ledger.attachmentId).not.toBeFalsy();
+  });
+
+  it("marks confirmed-empty and unsupported types as terminal so they are not retried forever", () => {
+    expect(isTerminalAttachmentFailure("KNOWLEDGE_EXTRACT_EMPTY")).toBe(false);
+    expect(isTerminalAttachmentFailure("EXTRACT_EMPTY_TERMINAL")).toBe(true);
+    expect(isTerminalAttachmentFailure("UNSUPPORTED_TYPE")).toBe(true);
+    expect(isTerminalAttachmentFailure("EMPTY_WORKBOOK")).toBe(true);
+    expect(isTerminalAttachmentFailure("KNOWLEDGE_UPLOAD_FAILED")).toBe(false);
+    expect(isTerminalAttachmentFailure("FETCH_TRANSIENT")).toBe(false);
   });
 });
