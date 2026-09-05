@@ -46,6 +46,41 @@ const SEQUENCES: string[][] = [
     "shorter please",
     "friendlier please",
   ],
+  [
+    "What's the latest message in the info mailbox?",
+    "what do they want?",
+    "draft a reply",
+    "make that shorter",
+    "make it friendlier",
+  ],
+  [
+    "Show me the most recent info inbox email",
+    "what does the email actually say?",
+    "write a reply",
+    "in fewer words",
+    "warmer please",
+  ],
+  [
+    "Get the newest info email",
+    "summarise that",
+    "draft me a reply",
+    "shorter",
+    "friendlier",
+  ],
+  [
+    "What's sitting in the info inbox most recently?",
+    "what's the key point?",
+    "suggest a reply",
+    "make it brief",
+    "make it warmer",
+  ],
+  [
+    "Check the latest info@ message",
+    "what do I need to do?",
+    "compose something I can send",
+    "cut that down",
+    "more friendly please",
+  ],
 ];
 
 function clip(text: string, max = 280): string {
@@ -125,8 +160,8 @@ export async function runPortalOutlookFollowupProof(env: Env): Promise<Record<st
       laterOutlookAfterBody: laterOutlook,
       writes,
       ok:
-        listOrSearch.length >= 1 &&
-        fetches.length <= 1 &&
+        listOrSearch.length === 1 &&
+        fetches.length === 1 &&
         writes.length === 0 &&
         laterOutlook.length === 0 &&
         turns.length === sequence.length,

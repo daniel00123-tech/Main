@@ -571,10 +571,26 @@ async function executeIntelligenceTurn(input: {
       if (scoped.scope === "GENERAL_CONVERSATION") qualityFlags.add("general_conversation_used_tool");
       if (scoped.lastUserIntent === "rephrase") qualityFlags.add("unnecessary_search_after_rephrase");
       const rewritten = rewriteAccountingTool(validated.name, validated.arguments, input.text);
-      const call: IntelligenceToolCall = {
-        name: rewritten.name,
-        arguments: prepareToolArguments(rewritten.name, rewritten.arguments, input.text, workingState, scoped.scope),
-      };
+      const knownEmailId = String(recentEvidence?.recentEmail?.id ?? workingState.recentEvidence?.recentEmail?.id ?? "").trim();
+      const forceOutlookGet =
+        knownEmailId &&
+        emailBodyRequired(input.text) &&
+        /outlook_list_messages|outlook_search_mailbox/.test(rewritten.name);
+      const call: IntelligenceToolCall = forceOutlookGet
+        ? {
+            name: "outlook_get_message",
+            arguments: prepareToolArguments(
+              "outlook_get_message",
+              { messageId: knownEmailId },
+              input.text,
+              workingState,
+              scoped.scope,
+            ),
+          }
+        : {
+            name: rewritten.name,
+            arguments: prepareToolArguments(rewritten.name, rewritten.arguments, input.text, workingState, scoped.scope),
+          };
       if (shouldReuseSuccessfulTool(call, recentEvidence)) {
         transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
         continue;

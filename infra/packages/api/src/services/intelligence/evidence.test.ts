@@ -80,6 +80,13 @@ describe("structured evidence", () => {
       recentEvidence: listOnly,
     });
     expect(emailBodyRequired("what are they asking?")).toBe(true);
+    expect(emailBodyRequired("what do they want?")).toBe(true);
+    expect(emailBodyRequired("what do they want from us?")).toBe(true);
+    expect(emailBodyRequired("what are they after?")).toBe(true);
+    expect(emailBodyRequired("what does the email actually say?")).toBe(true);
+    expect(emailBodyRequired("summarise that")).toBe(true);
+    expect(emailBodyRequired("what's the key point?")).toBe(true);
+    expect(emailBodyRequired("what do I need to do?")).toBe(true);
     expect(emailBodyRequired("what is the latest email subject?")).toBe(false);
     expect(emailBodyRequired("What does the Health & Safety Policy say about reporting an accident?")).toBe(false);
     expect(emailBodyRequired("What does the latest finance email actually say?")).toBe(true);

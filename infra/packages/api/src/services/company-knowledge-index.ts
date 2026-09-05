@@ -264,10 +264,14 @@ const WORKPLACE_SAFETY_SIGNALS = new Set([
   "incidents",
   "injury",
   "injuries",
+  "injured",
+  "hurt",
   "emergency",
   "emergencies",
   "hazard",
   "hazards",
+  "unsafe",
+  "reportable",
   "firstaid",
 ]);
 
@@ -278,23 +282,42 @@ export type KnowledgeConceptFamily = {
   titleAnchors: string[][];
 };
 
+function workplaceSafetyCompoundHits(tokens: Set<string>): boolean {
+  const gasRelated =
+    tokens.has("gas") &&
+    (tokens.has("leak") ||
+      tokens.has("leaks") ||
+      tokens.has("leaking") ||
+      tokens.has("smell") ||
+      tokens.has("escape") ||
+      tokens.has("odour") ||
+      tokens.has("odor"));
+  const dangerousOccurrence = tokens.has("dangerous") && tokens.has("occurrence");
+  const unsafeCondition = tokens.has("unsafe") && (tokens.has("condition") || tokens.has("act") || tokens.has("situation"));
+  const reportable =
+    tokens.has("reportable") && (tokens.has("incident") || tokens.has("accident") || tokens.has("injury") || tokens.has("occurrence"));
+  return gasRelated || dangerousOccurrence || unsafeCondition || reportable;
+}
+
 export function detectKnowledgeConceptFamily(query: string): KnowledgeConceptFamily | null {
   const classified = classifyKnowledgeQuery(query);
   const tokens = new Set(classified.tokens.map((row) => row.token));
   for (const part of classified.normalized.split(/[^a-z0-9]+/)) {
     if (part) tokens.add(part);
   }
-  const hasGasLeak = tokens.has("gas") && (tokens.has("leak") || tokens.has("leaks") || tokens.has("leaking"));
+  for (const part of normalizeKnowledgeHeading(query).split(/\s+/)) {
+    if (part) tokens.add(part);
+  }
   const hasSafetySignal =
     [...WORKPLACE_SAFETY_SIGNALS].some((signal) => tokens.has(signal)) ||
-    hasGasLeak ||
+    workplaceSafetyCompoundHits(tokens) ||
     classified.compact.includes("firstaid");
   if (!hasSafetySignal) return null;
   return {
     id: "workplace_safety",
-    expansionQueries: ["health and safety policy", "workplace accident incident emergency"],
-    documentNeedles: ["health", "safety", "incident", "emergency", "accident", "hazard"],
-    titleAnchors: [["health", "safety"], ["accident"], ["incident"], ["emergency"]],
+    expansionQueries: ["health and safety policy", "workplace accident incident emergency injury"],
+    documentNeedles: ["health", "safety", "incident", "emergency", "accident", "hazard", "injury", "gas"],
+    titleAnchors: [["health", "safety"], ["accident"], ["incident"], ["emergency"], ["injury"], ["occurrence"]],
   };
 }
 
@@ -348,6 +371,36 @@ type KnowledgeCandidateRow = {
 
 function compactAlnum(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** Ranking-only heading/filename form. Does not rewrite stored filenames. */
+export function normalizeKnowledgeHeading(value: string): string {
+  return String(value || "")
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/\s*\(\s*\d+\s*\)\s*/g, " ")
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function compactNormalizedHeading(value: string): string {
+  return normalizeKnowledgeHeading(value).replace(/\s+/g, "");
+}
+
+function headingSearchNeedles(query: string): string[] {
+  const normalized = normalizeKnowledgeHeading(query);
+  const compact = compactNormalizedHeading(query);
+  const underscored = normalized.replace(/\s+/g, "_");
+  const hyphenated = normalized.replace(/\s+/g, "-");
+  return [...new Set([normalized, compact, underscored, hyphenated].filter((item) => item.length >= 4))];
+}
+
+function isYearToken(token: string): boolean {
+  return /^\d{4}$/.test(token);
 }
 
 function sanitizeLikeNeedle(value: string): string {
@@ -422,6 +475,7 @@ export function classifyKnowledgeQuery(query: string): ClassifiedKnowledgeQuery 
     }
   };
   for (const token of looseTokens) consider(token);
+  for (const token of normalizeKnowledgeHeading(original).split(/\s+/)) consider(token);
   for (const match of compact.match(/[a-z]{2,6}\d{4,}/g) ?? []) {
     const split = match.match(/^([a-z]{2,6})(\d{4,})$/);
     if (split?.[1]) consider(split[1]);
@@ -433,10 +487,16 @@ export function classifyKnowledgeQuery(query: string): ClassifiedKnowledgeQuery 
     (left, right) => right.weight - left.weight || right.token.length - left.token.length || left.token.localeCompare(right.token),
   );
   const highValueTokens = tokens.filter((row) => row.cls === "high").map((row) => row.token);
-  const firstStageTokens = highValueTokens.length
-    ? highValueTokens
-    : tokens.filter((row) => row.cls !== "low").map((row) => row.token);
-  const broadTokens = highValueTokens.length
+  const highNonYear = highValueTokens.filter((token) => !isYearToken(token));
+  const mediumTokens = tokens.filter((row) => row.cls === "medium").map((row) => row.token);
+  const firstStageTokens = highNonYear.length
+    ? highNonYear
+    : mediumTokens.length
+      ? mediumTokens
+      : highValueTokens.length
+        ? highValueTokens
+        : tokens.filter((row) => row.cls !== "low").map((row) => row.token);
+  const broadTokens = highNonYear.length
     ? tokens.filter((row) => row.cls === "medium").map((row) => row.token)
     : tokens.map((row) => row.token);
 
@@ -488,9 +548,20 @@ function scoreKnowledgeCandidate(row: KnowledgeCandidateRow, classified: Classif
   const queryStem = filenameStem(query);
   let score = 0;
 
+  const normHeading = normalizeKnowledgeHeading(`${title} ${filename}`);
+  const normQuery = normalizeKnowledgeHeading(classified.original);
+  const compactNormHeading = compactNormalizedHeading(`${title} ${filename}`);
+  const compactNormQuery = compactNormalizedHeading(classified.original);
   if (query && (filename === query || title === query || stem === queryStem || titleStem === queryStem)) score += 240;
+  if (normQuery.length >= 6 && (normHeading === normQuery || normHeading.includes(normQuery))) score += 180;
+  if (compactNormQuery.length >= 8 && compactNormHeading.includes(compactNormQuery)) score += 160;
   if (query.length >= 4 && (filename.includes(query) || title.includes(query) || stem.includes(queryStem))) score += 140;
   if (classified.compact.length >= 6 && compactHeading.includes(classified.compact)) score += 120;
+  for (const token of normQuery.split(/\s+/)) {
+    if (token.length >= 3 && tokenPresent(normHeading, token)) {
+      score += token.length >= 8 || isYearToken(token) ? 36 : 20;
+    }
+  }
 
   for (const reference of classified.references) {
     const compactRef = compactAlnum(reference);
@@ -535,14 +606,30 @@ export function knowledgeHitMatchesQuery(
     return true;
   }
   const heading = `${hit.title ?? ""} ${hit.filename ?? ""}`;
+  const normHeading = normalizeKnowledgeHeading(heading);
+  const normQueryTokens = normalizeKnowledgeHeading(query)
+    .split(/\s+/)
+    .filter((token) => token.length >= 3 && !KNOWLEDGE_SEARCH_STOPWORDS.has(token));
+  const normalizedOverlap = normQueryTokens.filter((token) => tokenPresent(normHeading, token));
+  if (normalizedOverlap.length >= 2) return true;
+  const compactNormQuery = compactNormalizedHeading(query);
+  if (compactNormQuery.length >= 8 && compactNormalizedHeading(heading).includes(compactNormQuery)) return true;
   const headingDistinct = classified.tokens.filter((token) => token.cls !== "low" && tokenPresent(heading, token.token));
   if (headingDistinct.length >= 2) return true;
   if (hitMatchesKnowledgeConceptFamily(hit, query)) return true;
   const family = detectKnowledgeConceptFamily(query);
   if (classified.highValueTokens.length) {
-    const identifiers = classified.highValueTokens.filter((token) => /\d/.test(token));
+    const identifiers = classified.highValueTokens.filter((token) => /\d/.test(token) && !isYearToken(token));
+    const yearTokens = classified.highValueTokens.filter((token) => isYearToken(token));
+    const titleHigh = classified.highValueTokens.filter((token) => !/\d/.test(token));
     if (identifiers.length) {
       return identifiers.some((token) => tokenPresent(haystack, token));
+    }
+    if (titleHigh.length && yearTokens.length) {
+      return (
+        titleHigh.some((token) => tokenPresent(heading, token) || tokenPresent(normHeading, token) || tokenPresent(haystack, token)) &&
+        yearTokens.some((token) => tokenPresent(haystack, token) || tokenPresent(normHeading, token))
+      );
     }
     if (family) {
       const headingHit = classified.highValueTokens.some((token) => tokenPresent(heading, token));
@@ -591,6 +678,7 @@ export function logicalKnowledgeDocumentKey(input: {
   filename?: string | null;
 }): string {
   const heading = filenameStem(String(input.filename || input.title || ""))
+    .replace(/\s*\(\s*\d+\s*\)\s*/g, " ")
     .replace(/__[a-f0-9]{6,}(?=$)/i, "")
     .trim();
   const compact = compactAlnum(heading);
@@ -702,14 +790,17 @@ export async function searchCompanyKnowledgeIndex(
   if (!classified.tokens.length && !classified.references.length) return [];
 
   const family = detectKnowledgeConceptFamily(input.query);
+  const poolHigh = classified.highValueTokens.filter((token) => !isYearToken(token));
   const exactNeedles = likeNeedles([
+    ...headingSearchNeedles(classified.original),
     classified.normalized,
     filenameStem(classified.normalized),
     classified.compact,
+    compactNormalizedHeading(classified.original),
     ...classified.references,
-    ...classified.highValueTokens,
+    ...(poolHigh.length ? poolHigh : classified.highValueTokens),
   ]);
-  const distinctiveNeedles = likeNeedles(classified.highValueTokens);
+  const distinctiveNeedles = likeNeedles(classified.firstStageTokens);
   const broadNeedles = likeNeedles(classified.broadTokens);
 
   const exactRows = await fetchKnowledgeCandidatePool(env, input.companyId, exactNeedles, 40);
@@ -721,8 +812,17 @@ export async function searchCompanyKnowledgeIndex(
   const conceptRows = family
     ? await fetchKnowledgeHeadingPool(env, input.companyId, likeNeedles(family.documentNeedles), 40)
     : [];
+  const titleNeedles = likeNeedles([
+    ...classified.firstStageTokens,
+    ...normalizeKnowledgeHeading(classified.original)
+      .split(/\s+/)
+      .filter((token) => token.length >= 4 && !isYearToken(token)),
+  ]);
+  const titleRows = titleNeedles.length
+    ? await fetchKnowledgeHeadingPool(env, input.companyId, titleNeedles, 40)
+    : [];
 
-  const merged = [...exactRows, ...distinctiveRows, ...broadRows, ...conceptRows];
+  const merged = [...exactRows, ...distinctiveRows, ...broadRows, ...conceptRows, ...titleRows];
   const bestByDoc = new Map<number, { row: KnowledgeCandidateRow; score: number }>();
   for (const row of merged) {
     const score = scoreKnowledgeCandidate(row, classified);

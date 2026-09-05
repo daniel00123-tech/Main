@@ -4,6 +4,7 @@ import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles
 import { isCatalogueListingAsk } from "../document-catalogue.js";
 import { rewriteAccountingTool } from "./company-tool-registry.js";
 import { isPeriodCorrection, isSemanticKnowledgeAsk } from "./evidence-plan.js";
+import { emailBodyRequired } from "./evidence.js";
 
 export type ScopeSwitch =
   | "company"
@@ -177,13 +178,14 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
 }
 
 function isEmailContentFollowUp(text: string): boolean {
-  return /\b(what (are|were) they asking|what (is|was) (the |this |that )?(email|message) asking|what does (it|that|this) say|what did they (ask|want|say)|summar(?:ise|ize) (it|that|this|the (email|message))|draft (a |me a )?(reply|response)|what should (we|i) (say|reply|write)|write a reply|respond to (that|it|them))\b/i.test(
-    text,
-  );
+  return emailBodyRequired(text);
 }
 
 function pickMailboxTool(text: string): string {
   if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text) && !/\b(from|containing|search|find|sharon|po)\b/i.test(text)) {
+    return "outlook_list_messages";
+  }
+  if (isEmailContentFollowUp(text) || /\b(full|body|what does .{0,40}(say|said))\b/i.test(text)) {
     return "outlook_list_messages";
   }
   if (
@@ -191,9 +193,6 @@ function pickMailboxTool(text: string): string {
     !/\b(newest|latest|last \d|unread|most recent)\b/i.test(text)
   ) {
     return "outlook_search_mailbox";
-  }
-  if (isEmailContentFollowUp(text) || /\b(full|body|what does .{0,40}(say|said))\b/i.test(text)) {
-    return "outlook_list_messages";
   }
   if (/\b(newest|latest|last \d|last five|unread|most recent(?:ly)?|arrived today|last 5|who emailed|finance mailbox|info (inbox|mailbox))\b/i.test(text)) {
     return "outlook_list_messages";
