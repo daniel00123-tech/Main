@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { decomposeEvidenceNeeds, isExplicitCatalogueAsk, isSemanticKnowledgeAsk, minimumToolsForText } from "./evidence-plan.js";
+import {
+  decomposeEvidenceNeeds,
+  isExclusiveCapabilitySwitch,
+  isExplicitCatalogueAsk,
+  isPeriodCorrection,
+  isSemanticKnowledgeAsk,
+  knowledgeQueryFromText,
+  minimumToolsForText,
+} from "./evidence-plan.js";
 import { detectRequestedCapabilities, wantsMultiCapabilityRead } from "./company-tool-registry.js";
 import { isCatalogueListingAsk } from "../document-catalogue.js";
 
@@ -33,5 +41,30 @@ describe("evidence plan", () => {
     expect(isSemanticKnowledgeAsk(text)).toBe(true);
     expect(isExplicitCatalogueAsk(text)).toBe(true);
     expect(minimumToolsForText(text)).toEqual(expect.arrayContaining(["search_company_knowledge", "list_documents"]));
+  });
+
+  it("treats a named document mention as knowledge, not catalogue", () => {
+    const text = "April warehouse sales together with the admin structure document.";
+    expect(isSemanticKnowledgeAsk(text)).toBe(true);
+    expect(isExplicitCatalogueAsk(text)).toBe(false);
+    expect(decomposeEvidenceNeeds(text)).toEqual(expect.arrayContaining(["finance.metric", "knowledge.semantic"]));
+    expect(minimumToolsForText(text)).toEqual(expect.arrayContaining(["warehouse_sales_analysis", "search_company_knowledge"]));
+    expect(minimumToolsForText(text)).not.toContain("list_documents");
+    expect(knowledgeQueryFromText(text)).toMatch(/admin structure/i);
+  });
+
+  it("does not add finance tools when the user rejects Xero for email", () => {
+    const text = "Not Xero, the message.";
+    expect(isExclusiveCapabilitySwitch(text)).toBe(true);
+    expect(wantsMultiCapabilityRead(text)).toBe(false);
+    expect(minimumToolsForText(text)).toEqual(["outlook_list_messages"]);
+    expect(minimumToolsForText(text)).not.toContain("warehouse_sales_analysis");
+    expect(minimumToolsForText(text)).not.toContain("xero_sales_summary");
+  });
+
+  it("keeps a month correction on finance, not knowledge", () => {
+    expect(isPeriodCorrection("I meant August, not September.")).toBe(true);
+    expect(isExclusiveCapabilitySwitch("I meant August, not September.")).toBe(true);
+    expect(minimumToolsForText("I meant August, not September.")).toEqual(["warehouse_sales_analysis"]);
   });
 });

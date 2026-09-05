@@ -120,6 +120,18 @@ describe("scope classifier", () => {
     expect(classifyScope("I was talking about the email.", afterXero).tool).toMatch(/^outlook_/);
     expect(classifyScope("Not Xero — the message from them.", afterXero).tool).toMatch(/^outlook_/);
     expect(classifyScope("Sorry, I meant the document.", afterXero).tool).toBe("search_company_knowledge");
+    expect(classifyScope("Not Xero, the message.", afterXero).tool).toMatch(/^outlook_/);
+    const afterWarehouse = buildConversationState({
+      userText: "Warehouse sales for September.",
+      lastAnswerTopic: "finance",
+      currentScope: "BUSINESS_SYSTEM",
+      currentBusinessSystem: "xero",
+      lastSuccessfulTool: "warehouse_sales_analysis",
+    });
+    expect(classifyScope("I meant August, not September.", afterWarehouse)).toMatchObject({
+      scope: "BUSINESS_SYSTEM",
+      tool: "warehouse_sales_analysis",
+    });
   });
 
   it("routes newest/latest file questions to list_documents, not search or index stats", () => {

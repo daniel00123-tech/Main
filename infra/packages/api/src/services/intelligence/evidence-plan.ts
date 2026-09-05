@@ -19,17 +19,61 @@ const SEMANTIC_CONTENT_VERB =
 const SEMANTIC_CONTENT_VERB_FLIP =
   /\b(say|mean|require|cover|state).{0,24}(policy|process|procedure|handbook|guidance)\b/i;
 const NAMED_PROCEDURE =
-  /\b(payment process|booking process|remittance|health and safety|lone[- ]working|asbestos|finance admin|subcontractor (payment|booking)|profit margin policy)\b/i;
+  /\b(payment process|booking process|remittance|health and safety|lone[- ]working|asbestos|finance admin|admin structure|subcontractor (payment|booking)|profit margin|sfr?m)\b/i;
+const NAMED_DOCUMENT_CONTENT =
+  /\b(the|our|together with the) (?!newest |latest |recent )([a-z0-9][\w &/-]{1,40}) documents?\b/i;
+const MONTH_NAME =
+  /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i;
 const EXPLICIT_CATALOGUE =
   /\b((newest|latest|recent).{0,28}(file|document|pdf|onedrive|sharepoint|indexed file|filename)|list (the )?(newest |recent )?(files|documents)|recent documents|newest document filename|how many (files|documents) are indexed)\b/i;
 const EMAIL_ASK =
   /\b(emails?|inbox|mailbox|outlook|unread mail|(the|their) messages?)\b/i;
 const ACCOUNTING_ASK =
   /\b(xero|sales|revenue|overdue|outstanding|p&l|pnl|invoice|aged (receivable|payable)|top customers?|warehouse)\b/i;
+const REJECTS_FINANCE = /\bnot (xero|the ledger|finance)\b/i;
+
+export function isPeriodCorrection(text: string): boolean {
+  const value = String(text ?? "");
+  return (
+    /\b((i )?meant|not)\b/i.test(value) &&
+    MONTH_NAME.test(value) &&
+    !EMAIL_ASK.test(value) &&
+    !/\b(document|file|policy|knowledge|handbook)\b/i.test(value)
+  );
+}
+
+export function isExclusiveCapabilitySwitch(text: string): boolean {
+  const value = String(text ?? "");
+  if (/\b(and|plus|also|together with)\b/i.test(value) && isSemanticKnowledgeAsk(value) && ACCOUNTING_ASK.test(value)) {
+    return false;
+  }
+  return (
+    REJECTS_FINANCE.test(value) ||
+    /\b(i )?meant the (email|emails|message|mailbox|inbox|document|file|policy)\b/i.test(value) ||
+    /\b(no,? check (outlook|the inbox)|check outlook|sorry,? i meant the (email|document|message))\b/i.test(value) ||
+    isPeriodCorrection(value)
+  );
+}
 
 export function isSemanticKnowledgeAsk(text: string): boolean {
   const value = String(text ?? "");
-  return SEMANTIC_KNOWLEDGE.test(value) || SEMANTIC_CONTENT_VERB.test(value) || SEMANTIC_CONTENT_VERB_FLIP.test(value) || NAMED_PROCEDURE.test(value);
+  if (isExplicitCatalogueAsk(value) && !SEMANTIC_KNOWLEDGE.test(value) && !NAMED_PROCEDURE.test(value)) {
+    return false;
+  }
+  return (
+    SEMANTIC_KNOWLEDGE.test(value) ||
+    SEMANTIC_CONTENT_VERB.test(value) ||
+    SEMANTIC_CONTENT_VERB_FLIP.test(value) ||
+    NAMED_PROCEDURE.test(value) ||
+    NAMED_DOCUMENT_CONTENT.test(value)
+  );
+}
+
+export function knowledgeQueryFromText(text: string): string {
+  const value = String(text ?? "").trim();
+  const clauses = value.split(/\b(?:and|plus|also|together with|,)\b/i).map((part) => part.trim()).filter(Boolean);
+  const focused = clauses.find((clause) => isSemanticKnowledgeAsk(clause) && !ACCOUNTING_ASK.test(clause) && !EMAIL_ASK.test(clause));
+  return focused || value;
 }
 
 export function isExplicitCatalogueAsk(text: string): boolean {
@@ -38,10 +82,17 @@ export function isExplicitCatalogueAsk(text: string): boolean {
 
 export function decomposeEvidenceNeeds(text: string): EvidenceSubtask[] {
   const value = String(text ?? "");
+  const exclusive = isExclusiveCapabilitySwitch(value);
+  const exclusiveEmail = exclusive && EMAIL_ASK.test(value);
+  const exclusivePeriod = exclusive && isPeriodCorrection(value);
+  const exclusiveKnowledge =
+    exclusive && /\b(document|file|policy|knowledge|handbook)\b/i.test(value) && !EMAIL_ASK.test(value) && !exclusivePeriod;
   const needs = new Set<EvidenceSubtask>();
-  if (isSemanticKnowledgeAsk(value)) needs.add("knowledge.semantic");
-  if (isExplicitCatalogueAsk(value)) needs.add("catalogue.list");
-  if (EMAIL_ASK.test(value)) {
+  if ((isSemanticKnowledgeAsk(value) && !exclusiveEmail && !exclusivePeriod) || exclusiveKnowledge) {
+    needs.add("knowledge.semantic");
+  }
+  if (!exclusive && isExplicitCatalogueAsk(value)) needs.add("catalogue.list");
+  if (EMAIL_ASK.test(value) && !exclusivePeriod && !exclusiveKnowledge) {
     if (/\b(what are they asking|what does it say|summaris|summariz|draft|body|actually say)\b/i.test(value)) {
       needs.add("email.body");
     } else if (/\b(search|from|containing|about|look in|quote|PO)\b/i.test(value)) {
@@ -50,6 +101,13 @@ export function decomposeEvidenceNeeds(text: string): EvidenceSubtask[] {
       needs.add("email.latest");
     }
   }
+  if (exclusiveEmail) return [...needs];
+  if (exclusivePeriod) {
+    needs.add("finance.metric");
+    return [...needs];
+  }
+  if (exclusiveKnowledge) return [...needs];
+  if (REJECTS_FINANCE.test(value)) return [...needs];
   if (/\bINV-\d+\b/i.test(value) || /\b(find invoice|invoice (id|number))\b/i.test(value)) {
     needs.add("finance.invoice");
   } else if (/\b(overdue|outstanding|unpaid)\b/i.test(value)) {

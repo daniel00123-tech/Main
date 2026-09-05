@@ -3,7 +3,7 @@ import type { IntelligenceConversationState, IntelligenceDocumentRef, Intelligen
 import { distinctiveTopicTokens, titleTokenOverlap, titleTokens } from "./titles.js";
 import { isCatalogueListingAsk } from "../document-catalogue.js";
 import { rewriteAccountingTool } from "./company-tool-registry.js";
-import { isSemanticKnowledgeAsk } from "./evidence-plan.js";
+import { isPeriodCorrection, isSemanticKnowledgeAsk } from "./evidence-plan.js";
 
 export type ScopeSwitch =
   | "company"
@@ -147,7 +147,7 @@ function isFinancePeriodFollowUp(
   if (features.findDocument || features.emailAsk || features.quantityAsk || features.writeIntent || features.capabilityAsk) {
     return false;
   }
-  return features.financeAsk || PERIOD_FOLLOW.test(text);
+  return features.financeAsk || PERIOD_FOLLOW.test(text) || isPeriodCorrection(text);
 }
 
 function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): string {
@@ -258,6 +258,9 @@ function detectScopeSwitch(text: string): ScopeSwitch {
     return "system";
   }
   if (/\b(i )?meant (the )?(xero|sales|invoices?)\b/i.test(text) && !/\b(email|mailbox|outlook|inbox|message)\b/i.test(text)) {
+    return "business";
+  }
+  if (isPeriodCorrection(text)) {
     return "business";
   }
   if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox|document|file|policy|knowledge)\b/i.test(text)) {
