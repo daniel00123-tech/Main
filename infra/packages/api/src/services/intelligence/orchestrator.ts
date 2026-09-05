@@ -580,7 +580,11 @@ async function executeIntelligenceTurn(input: {
         continue;
       }
       const reuseKey = turnReuseKey(call.name, call.arguments);
-      const already = executedThisTurn.get(reuseKey);
+      const already =
+        executedThisTurn.get(reuseKey) ??
+        (call.name === "outlook_search_mailbox"
+          ? [...executedThisTurn.entries()].find(([key]) => key.startsWith("outlook_search_mailbox:"))?.[1]
+          : undefined);
       if (already) {
         transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
         continue;
@@ -1183,7 +1187,9 @@ function isProcessOrPolicyAsk(text: string): boolean {
 
 function shouldRunDeterministicRead(scoped: ScopeDecision, text: string, state?: IntelligenceConversationState): boolean {
   if (scoped.clarify || !scoped.tool) return false;
-  if (state && classifyEvidenceNeed(text, state) === "CAN_ANSWER_FROM_EXISTING_EVIDENCE") return false;
+  if (state && classifyEvidenceNeed(text, state) === "CAN_ANSWER_FROM_EXISTING_EVIDENCE" && !state.userCorrection) {
+    return false;
+  }
   if (scoped.scope === "BUSINESS_SYSTEM") return true;
   return scoped.scope === "COMPANY_KNOWLEDGE" && scoped.tool === "search_company_knowledge" && isProcessOrPolicyAsk(text);
 }

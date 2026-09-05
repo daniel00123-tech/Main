@@ -368,7 +368,15 @@ function sanitiseEmail(email: RecentEmailEvidence): RecentEmailEvidence {
     subject: clip(stripSecretsFromText(email.subject), 180),
     from: clip(email.from, 180),
     body: clip(
-      stripSecretsFromText(email.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()),
+      stripSecretsFromText(
+        email.body
+          .replace(/<style[\s\S]*?<\/style>/gi, " ")
+          .replace(/<script[\s\S]*?<\/script>/gi, " ")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/<[^>]*$/g, " ")
+          .replace(/\s+/g, " ")
+          .trim(),
+      ),
       MAX_BODY,
     ),
     mailboxAddress: clip(email.mailboxAddress, 180),
