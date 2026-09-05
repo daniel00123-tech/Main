@@ -1244,6 +1244,7 @@ export async function ingestApprovedOutlookAttachments(
     actor?: string;
     recoverExisting?: boolean;
     useMailboxCheckpoints?: boolean;
+    mailboxAddresses?: string[];
   },
 ): Promise<{
   companyId: string;
@@ -1258,8 +1259,12 @@ export async function ingestApprovedOutlookAttachments(
   await seedPolicyMailboxes(env.DB, input.companyId);
   await seedApprovedMailboxFolderPolicies(env.DB, input.companyId);
   const discoveredUsers = await discoverCompanyUserMailboxes(env, input.companyId);
-  const approved = await listApprovedAttachmentMailboxes(env.DB, input.companyId);
-  const excluded = await listExcludedAttachmentMailboxes(env.DB, input.companyId);
+  const approvedAll = await listApprovedAttachmentMailboxes(env.DB, input.companyId);
+  const wanted = (input.mailboxAddresses ?? []).map((row) => row.trim().toLowerCase()).filter(Boolean);
+  const approved = wanted.length
+    ? approvedAll.filter((row) => wanted.includes(row.mailbox_address.toLowerCase()))
+    : approvedAll;
+  const excluded = wanted.length ? [] : await listExcludedAttachmentMailboxes(env.DB, input.companyId);
   const counts = emptyCounts();
   counts.mailboxesEligible = approved.length;
   counts.mailboxesExcluded = excluded.length;

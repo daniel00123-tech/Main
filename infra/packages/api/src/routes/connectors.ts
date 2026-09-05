@@ -1496,6 +1496,11 @@ connectors.post("/api/internal/el-outlook-attachment-ingest", async (c) => {
     if (companyId !== "co_el") {
       return c.json({ error: "EL attachment ingest is scoped to co_el" }, 403);
     }
+    const mailboxAddresses = Array.isArray(body.mailboxAddresses)
+      ? body.mailboxAddresses.filter((row: unknown): row is string => typeof row === "string")
+      : typeof body.mailboxAddress === "string"
+        ? [body.mailboxAddress]
+        : undefined;
     return c.json(
       await ingestApprovedOutlookAttachments(c.env, {
         companyId,
@@ -1503,6 +1508,7 @@ connectors.post("/api/internal/el-outlook-attachment-ingest", async (c) => {
         windowTo: new Date(typeof body.windowTo === "string" ? body.windowTo : "2026-09-04T17:39:03.388Z"),
         actor: "system:el-outlook-attachment-ingest",
         recoverExisting: body.recoverExisting !== false,
+        mailboxAddresses,
       }),
     );
   } catch (err) {
