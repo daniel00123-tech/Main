@@ -5,6 +5,12 @@
 
 import { classifyOutlookAttachmentForKnowledge } from "@infra/shared";
 import type { Env } from "../env";
+import {
+  getMailboxFolderSettings,
+  isFolderCoveredByCurrentIngestPolicy,
+  listEnabledMailboxFolders,
+  type MailboxIngestFolderRow,
+} from "./mailbox-ingest-folder-policy";
 import { listCompanyMailboxRegistry } from "./mailbox-registry";
 import {
   EL_NATIVE_MICROSOFT_CLIENT_ID,
@@ -23,6 +29,12 @@ const MICHAEL = "michael@elvexpropertyservices.com";
 const SHARON = "sharon@elvexpropertyservices.com";
 const LAUREN = "lauren@elvexpropertyservices.com";
 const INGEST_DEFAULT_FOLDER = "inbox";
+
+type MailboxIngestCoverage = {
+  includeSent: boolean;
+  includeArchive: boolean;
+  enabledFolders: MailboxIngestFolderRow[];
+};
 
 type GraphUser = {
   id?: string;
@@ -184,10 +196,6 @@ async function listMailboxWideMessages(
   return rows.slice(0, max);
 }
 
-function folderIsInbox(folder: GraphFolder): boolean {
-  return /^inbox$/i.test(folder.displayName || "");
-}
-
 function folderIsWellKnown(folder: GraphFolder): boolean {
   return /^(inbox|archive|sent items|sentitems|deleted items|deleteditems|drafts|junk email|junkemail|conversation history)$/i.test(
     folder.displayName || "",
@@ -269,11 +277,22 @@ function classifyRow(att: GraphAttachment) {
   return { filter, kind, reason, code };
 }
 
+function folderCoveredByPolicy(folder: GraphFolder, coverage: MailboxIngestCoverage): boolean {
+  return isFolderCoveredByCurrentIngestPolicy({
+    folderName: folder.displayName,
+    folderId: folder.id,
+    enabledFolders: coverage.enabledFolders,
+    includeSent: coverage.includeSent,
+    includeArchive: coverage.includeArchive,
+  });
+}
+
 async function inspectMailbox(
   config: MicrosoftGraphConfig,
   mailbox: string,
   folders: GraphFolder[],
   windows: Record<WindowKey, Date>,
+  coverage: MailboxIngestCoverage,
 ) {
   const since30 = windows["30d"].toISOString();
   const folderReports = [];
@@ -281,7 +300,7 @@ async function inspectMailbox(
   for (const folder of folders) {
     const name = folder.displayName || folder.id;
     const wellKnown = folderIsWellKnown(folder);
-    const policyScans = folderIsInbox(folder);
+    const policyScans = folderCoveredByPolicy(folder, coverage);
     if (!wellKnown && (folder.totalItemCount ?? 0) === 0 && !folder.childFolderCount) continue;
     let listed: GraphMessage[] = [];
     try {
@@ -327,7 +346,7 @@ async function inspectMailbox(
     messages.push({
       ...row,
       folderName: folder?.displayName || "mailbox-wide-unlisted-folder",
-      scannedByPolicy: folder ? folderIsInbox(folder) : false,
+      scannedByPolicy: folder ? folderCoveredByPolicy(folder, coverage) : false,
     });
     knownIds.add(row.id);
   }
@@ -337,7 +356,7 @@ async function inspectMailbox(
     messages.push({
       ...row,
       folderName: folder?.displayName || "mailbox-wide-unlisted-folder",
-      scannedByPolicy: folder ? folderIsInbox(folder) : false,
+      scannedByPolicy: folder ? folderCoveredByPolicy(folder, coverage) : false,
     });
     knownIds.add(row.id);
   }
@@ -482,7 +501,8 @@ async function inspectMailbox(
       inboxMessageCap: 200,
       nextLinkFollowed: true,
       moreThanOnePagePossible: nextLinkUsed || mailboxWide.length >= 50,
-      ingestDoesNotFollowNextLink: true,
+      ingestFollowsNextLink: true,
+      ingestDoesNotFollowNextLink: false,
     },
   };
 }
@@ -522,8 +542,24 @@ export async function runElMichaelMailboxForensic(env: Env): Promise<Record<stri
   );
   const windows = { "7d": daysAgo(7), "14d": daysAgo(14), "30d": daysAgo(30) };
 
+  const [michaelSettings, michaelEnabledFolders] = await Promise.all([
+    getMailboxFolderSettings(env.DB, COMPANY_ID, MICHAEL),
+    listEnabledMailboxFolders(env.DB, COMPANY_ID, MICHAEL),
+  ]);
+  const michaelCoverage: MailboxIngestCoverage = {
+    includeSent: michaelSettings.includeSent,
+    includeArchive: michaelSettings.includeArchive,
+    enabledFolders: michaelEnabledFolders,
+  };
+  const approvedFolderNames = [
+    "Inbox",
+    ...michaelEnabledFolders
+      .map((row) => row.folder_name)
+      .filter((name) => !/^inbox$/i.test(name)),
+  ];
+
   const michaelFolders = await listFolders(config, MICHAEL);
-  const michael = await inspectMailbox(config, MICHAEL, michaelFolders, windows);
+  const michael = await inspectMailbox(config, MICHAEL, michaelFolders, windows, michaelCoverage);
 
   const compareInbox = async (address: string) => {
     const since30 = windows["30d"].toISOString();
@@ -538,7 +574,7 @@ export async function runElMichaelMailboxForensic(env: Env): Promise<Record<stri
     };
     return {
       windowCounts: { "7d": countsFor("7d"), "14d": countsFor("14d"), "30d": countsFor("30d") },
-      query: "same Graph list + receivedDateTime filter; production ingest still Inbox-only via listMailboxMessages()",
+      query: "mailbox-wide Graph list for volume comparison only; ingest coverage is per-mailbox approved folders + Inbox",
     };
   };
   const sharon = await compareInbox(SHARON);
@@ -582,13 +618,14 @@ export async function runElMichaelMailboxForensic(env: Env): Promise<Record<stri
     const first = candidatesEligible[0];
     if (!first.scannedByCurrentIngestPolicy) {
       rootCause = "C. FOLDER_NOT_SCANNED";
-      explanation = `A genuine file attachment exists in ${first.folder}, which the current ingest scanner does not cover (Inbox only).`;
+      explanation = `A genuine file attachment exists in ${first.folder}, which is not in this mailbox's approved ingest folder list. Inbox is always scanned; extra folders are opt-in only.`;
     } else if (!inWindow(first.received, windows["7d"])) {
       rootCause = "A. OUTSIDE_SCAN_WINDOW";
       explanation = `A genuine file attachment exists but was received before the current 7-day ingest window (${first.received}).`;
     } else {
       rootCause = "K. OTHER";
-      explanation = "An eligible Inbox attachment exists inside the 7-day window but was not reported by cutover — investigate ingest filtering next.";
+      explanation =
+        "An eligible attachment exists inside an approved ingest folder and the 7-day window. Investigate ingest filtering, duplicate-hash skips, or retrieval — not folder coverage.";
     }
   } else if (michael.referenceAttachments > 0) {
     rootCause = "D. GRAPH_REFERENCE_ATTACHMENT";
@@ -662,16 +699,18 @@ export async function runElMichaelMailboxForensic(env: Env): Promise<Record<stri
     })),
     ingestPolicy: {
       currentFolder: INGEST_DEFAULT_FOLDER,
+      approvedFolders: approvedFolderNames,
       currentWindowDays: 7,
-      sentItemsIncluded: false,
-      archiveIncluded: false,
-      sameQueryAsSharonLauren: true,
-      note: "listMailboxMessages() defaults to mailFolders/inbox, top 200, then client-filters the 7-day window and hasAttachments=true. No nextLink pagination today.",
+      sentItemsIncluded: michaelCoverage.includeSent,
+      archiveIncluded: michaelCoverage.includeArchive,
+      sameQueryAsSharonLauren: false,
+      pagination: "followGraphMailPages / @odata.nextLink",
+      note: "Ingest scans Inbox plus explicitly approved mailbox folders by folder id, follows @odata.nextLink, and keeps Sent Items / Archive off unless enabled for that mailbox.",
     },
     michael,
     comparison: {
       query: "GET /users/{mailbox}/mailFolders/{folder}/messages?$filter=receivedDateTime ge {since}&$orderby=receivedDateTime desc",
-      folderDifference: "Current production ingest uses Inbox only for Michael, Sharon, and Lauren.",
+      folderDifference: `Ingest coverage is per mailbox: Inbox always, plus approved user folders. This mailbox's approved folders: ${approvedFolderNames.join(", ") || "Inbox"}. Sent Items and Archive stay off unless opted in.`,
       sharonMailboxWide: sharon.windowCounts,
       laurenMailboxWide: lauren.windowCounts,
       sharonNote: sharon.query,
@@ -691,9 +730,9 @@ export async function runElMichaelMailboxForensic(env: Env): Promise<Record<stri
             ? "hasAttachmentsFlag" in best && best.hasAttachmentsFlag === false
               ? "Eligible file on an Inbox message where Graph hasAttachments=false"
               : best.scannedByCurrentIngestPolicy && inWindow(best.received, windows["7d"])
-                ? "Eligible file attachment inside current Inbox + 7-day policy"
+                ? "Eligible file attachment inside an approved ingest folder + 7-day window"
                 : !best.scannedByCurrentIngestPolicy
-                  ? `Eligible file, but folder ${best.folder} is not scanned by current ingest`
+                  ? `Eligible file, but folder ${best.folder} is not in the approved ingest folder list`
                   : "Eligible file, but outside the current 7-day window"
             : best.exclusionReason,
         }

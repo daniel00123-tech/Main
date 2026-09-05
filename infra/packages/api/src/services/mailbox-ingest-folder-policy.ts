@@ -139,6 +139,25 @@ export function isArchiveFolder(name: string | null | undefined): boolean {
   return normalizeFolderName(name) === "archive";
 }
 
+export function isFolderCoveredByCurrentIngestPolicy(input: {
+  folderName: string | null | undefined;
+  folderId?: string | null;
+  enabledFolders: Array<{ folder_name: string; folder_id?: string | null }>;
+  includeSent: boolean;
+  includeArchive: boolean;
+}): boolean {
+  if (isInboxFolder(input.folderName)) return true;
+  if (isDefaultExcludedFolder(input.folderName)) return false;
+  if (isSentItemsFolder(input.folderName)) return input.includeSent;
+  if (isArchiveFolder(input.folderName)) return input.includeArchive;
+  const name = normalizeFolderName(input.folderName);
+  const id = (input.folderId ?? "").trim();
+  return input.enabledFolders.some((folder) => {
+    if (folder.folder_id && id && folder.folder_id === id) return true;
+    return normalizeFolderName(folder.folder_name) === name;
+  });
+}
+
 export async function getMailboxFolderSettings(
   db: D1Database,
   companyId: string,

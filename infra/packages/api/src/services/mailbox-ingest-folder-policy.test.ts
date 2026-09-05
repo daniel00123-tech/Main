@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   EL_SEEDED_MAILBOX_FOLDER_APPROVALS,
   isDefaultExcludedFolder,
+  isFolderCoveredByCurrentIngestPolicy,
   resolveApprovedIngestFolders,
   seedApprovedMailboxFolderPolicies,
 } from "./mailbox-ingest-folder-policy";
@@ -78,6 +79,59 @@ describe("mailbox ingest folder policy", () => {
     expect(isDefaultExcludedFolder("Conversation History")).toBe(true);
     expect(isDefaultExcludedFolder("COMPLETED")).toBe(false);
     expect(isDefaultExcludedFolder("Inbox")).toBe(false);
+  });
+
+  it("treats Inbox plus approved user folders as current ingest coverage", () => {
+    const enabled = [
+      { folder_name: "Inbox", folder_id: "inbox-1" },
+      { folder_name: "DAVIES GROUP INVOICES FOR SPREADSHEET", folder_id: "davies-1" },
+      { folder_name: "COMPLETED", folder_id: "completed-1" },
+    ];
+    expect(
+      isFolderCoveredByCurrentIngestPolicy({
+        folderName: "Inbox",
+        folderId: "inbox-1",
+        enabledFolders: enabled,
+        includeSent: false,
+        includeArchive: false,
+      }),
+    ).toBe(true);
+    expect(
+      isFolderCoveredByCurrentIngestPolicy({
+        folderName: "DAVIES GROUP INVOICES FOR SPREADSHEET",
+        folderId: "davies-1",
+        enabledFolders: enabled,
+        includeSent: false,
+        includeArchive: false,
+      }),
+    ).toBe(true);
+    expect(
+      isFolderCoveredByCurrentIngestPolicy({
+        folderName: "COMPLETED",
+        folderId: "completed-1",
+        enabledFolders: enabled,
+        includeSent: false,
+        includeArchive: false,
+      }),
+    ).toBe(true);
+    expect(
+      isFolderCoveredByCurrentIngestPolicy({
+        folderName: "Sent Items",
+        folderId: "sent-1",
+        enabledFolders: enabled,
+        includeSent: false,
+        includeArchive: false,
+      }),
+    ).toBe(false);
+    expect(
+      isFolderCoveredByCurrentIngestPolicy({
+        folderName: "Archive",
+        folderId: "archive-1",
+        enabledFolders: enabled,
+        includeSent: false,
+        includeArchive: false,
+      }),
+    ).toBe(false);
   });
 
   it("does not seed folder approvals for Caddington or HT", async () => {
