@@ -505,16 +505,47 @@ export function localKnowledgeHitsToResults(
   }));
 }
 
-export function mergeKnowledgeSearchHits<T extends { id?: string; title?: string }>(
-  local: T[],
-  remote: T[],
-): T[] {
-  const seen = new Set<string>();
+export function logicalKnowledgeDocumentKey(input: {
+  id?: string | number | null;
+  documentId?: string | number | null;
+  title?: string | null;
+  filename?: string | null;
+}): string {
+  const heading = filenameStem(String(input.filename || input.title || ""))
+    .replace(/__[a-f0-9]{6,}(?=$)/i, "")
+    .trim();
+  const compact = compactAlnum(heading);
+  return compact || String(input.id ?? input.documentId ?? "").toLowerCase();
+}
+
+export function mergeKnowledgeSearchHits<
+  T extends {
+    id?: string;
+    documentId?: string | number | null;
+    title?: string;
+    filename?: string;
+    provenance?: Array<Record<string, unknown>>;
+  },
+>(local: T[], remote: T[]): T[] {
+  const seen = new Map<string, T>();
   const merged: T[] = [];
   for (const hit of [...local, ...remote]) {
-    const key = `${String(hit.id ?? "").toLowerCase()}|${String(hit.title ?? "").toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const logical = logicalKnowledgeDocumentKey(hit);
+    const key = logical || `${String(hit.id ?? hit.documentId ?? "").toLowerCase()}|${String(hit.title ?? "").toLowerCase()}`;
+    const existing = seen.get(key);
+    if (existing) {
+      const extra = {
+        id: hit.id ?? hit.documentId ?? null,
+        title: hit.title ?? null,
+        filename: hit.filename ?? null,
+      };
+      const provenance = Array.isArray(existing.provenance) ? existing.provenance : [];
+      if (!provenance.some((row) => String(row.id ?? "") === String(extra.id ?? "") && String(row.title ?? "") === String(extra.title ?? ""))) {
+        existing.provenance = [...provenance, extra];
+      }
+      continue;
+    }
+    seen.set(key, hit);
     merged.push(hit);
   }
   return merged;

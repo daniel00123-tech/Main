@@ -115,8 +115,18 @@ export async function reclassifyStoredInteractions(
   let updated = 0;
   for (const row of rows.results ?? []) {
     const message = row.user_message ? String(row.user_message) : null;
+    const stored = row.traffic_class ? String(row.traffic_class).toUpperCase() : "";
+    const lockedNonCustomer =
+      stored === "SHADOW" ||
+      stored === "QUALITY" ||
+      stored === "INTERNAL" ||
+      stored === "AUTOMATION" ||
+      stored === "HEALTH" ||
+      stored === "ENGINEERING";
+    const key = normalisePrompt(message);
+    const repeated = key.length >= 16 && (promptCounts.get(key) ?? 0) >= 3;
     let next = classifyDailyTraffic({
-      trafficClass: row.traffic_class ? String(row.traffic_class) : null,
+      trafficClass: lockedNonCustomer ? stored : stored === "CUSTOMER_REQUEST" ? CUSTOMER_TRAFFIC_CLASS : null,
       sourceClient: row.source_client ? String(row.source_client) : null,
       userMessage: message,
       customerChargeCents: row.customer_charge_cents != null ? Number(row.customer_charge_cents) : null,
@@ -124,9 +134,16 @@ export async function reclassifyStoredInteractions(
       providerMode: row.provider_mode ? String(row.provider_mode) : null,
       userId: row.user_id ? String(row.user_id) : null,
     });
-    const key = normalisePrompt(message);
-    if (next === CUSTOMER_TRAFFIC_CLASS && key.length >= 16 && (promptCounts.get(key) ?? 0) >= 3) {
-      next = "TEST";
+    if (stored === TEST_TRAFFIC_CLASS) {
+      const uniqueLiveUser =
+        Boolean(row.user_id) &&
+        !looksLikeAutomatedTestPrompt(message) &&
+        !repeated &&
+        /portal|whatsapp|chatgpt/i.test(String(row.source_client ?? ""));
+      next = uniqueLiveUser ? CUSTOMER_TRAFFIC_CLASS : TEST_TRAFFIC_CLASS;
+    }
+    if (next === CUSTOMER_TRAFFIC_CLASS && repeated) {
+      next = TEST_TRAFFIC_CLASS;
     }
     await db
       .prepare(`UPDATE daily_improvement_interactions SET traffic_class = ? WHERE interaction_id = ?`)

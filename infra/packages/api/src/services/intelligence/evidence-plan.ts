@@ -19,7 +19,7 @@ const SEMANTIC_CONTENT_VERB =
 const SEMANTIC_CONTENT_VERB_FLIP =
   /\b(say|mean|require|cover|state).{0,24}(policy|process|procedure|handbook|guidance)\b/i;
 const NAMED_PROCEDURE =
-  /\b(payment process|booking process|remittance|health and safety|lone[- ]working|asbestos|finance admin|admin structure|subcontractor (payment|booking)|profit margin|sfr?m)\b/i;
+  /\b(payment process|booking process|remittance|health and safety|lone[- ]working|asbestos|finance admin(?:istration)?(?:\s+(?:guide|knowledge(?: document)?))?|knowledge (?:base|document|file)|admin (?:guide|structure)|subcontractor (payment|booking)|profit margin(?: policy)?|sfr?m)\b/i;
 const NAMED_DOCUMENT_CONTENT =
   /\b(the|our|together with the) (?!newest |latest |recent )([a-z0-9][\w &/-]{1,40}) documents?\b/i;
 const MONTH_NAME =
@@ -27,7 +27,7 @@ const MONTH_NAME =
 const EXPLICIT_CATALOGUE =
   /\b((newest|latest|recent).{0,28}(file|document|pdf|onedrive|sharepoint|indexed file|filename)|list (the )?(newest |recent )?(files|documents)|recent documents|newest document filename|how many (files|documents) are indexed)\b/i;
 const EMAIL_ASK =
-  /\b(emails?|inbox|mailbox|outlook|unread mail|(the|their) messages?)\b/i;
+  /\b(emails?|inbox|mailbox|outlook|unread mail|remittance email|customer email|(the|their) messages?)\b/i;
 const ACCOUNTING_ASK =
   /\b(xero|sales|revenue|overdue|outstanding|p&l|pnl|invoice|aged (receivable|payable)|top customers?|warehouse)\b/i;
 const REJECTS_FINANCE = /\bnot (xero|the ledger|finance)\b/i;
@@ -88,7 +88,14 @@ export function decomposeEvidenceNeeds(text: string): EvidenceSubtask[] {
   const exclusiveKnowledge =
     exclusive && /\b(document|file|policy|knowledge|handbook)\b/i.test(value) && !EMAIL_ASK.test(value) && !exclusivePeriod;
   const needs = new Set<EvidenceSubtask>();
-  if ((isSemanticKnowledgeAsk(value) && !exclusiveEmail && !exclusivePeriod) || exclusiveKnowledge) {
+  if (
+    ((isSemanticKnowledgeAsk(value) ||
+      (/\b(polic(?:y|ies)|handbook|procedure|guidance|knowledge (?:base|document|file))\b/i.test(value) &&
+        !isExplicitCatalogueAsk(value))) &&
+      !exclusiveEmail &&
+      !exclusivePeriod) ||
+    exclusiveKnowledge
+  ) {
     needs.add("knowledge.semantic");
   }
   if (!exclusive && isExplicitCatalogueAsk(value)) needs.add("catalogue.list");

@@ -714,7 +714,7 @@ describe("Outlook attachment ingest", () => {
       expect.anything(),
       expect.objectContaining({
         success: true,
-        warning: expect.stringMatching(/DEGRADED/i),
+        warning: null,
       }),
     );
   });

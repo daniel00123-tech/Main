@@ -264,7 +264,7 @@ async function executeIntelligenceTurn(input: {
   const runtime = wrapAuthorizedRuntime(input.runtime, authCtx);
   const executedThisTurn = new Map<string, IntelligenceToolResult>();
   const turnReuseKey = (name: string, args: Record<string, unknown>) => {
-    const invoice = String(args.invoiceNumber ?? args.invoiceId ?? "")
+    const invoice = String(args.invoiceNumber ?? args.InvoiceNumber ?? args.invoiceId ?? args.InvoiceID ?? "")
       .trim()
       .toUpperCase();
     if (invoice && name === "xero_get_invoice") return `${name}:${invoice}`;
@@ -1347,15 +1347,16 @@ async function runDeterministicRead(
     const names = [
       ...planned,
       ...requested.map((capability) => defaultToolForCapability(capability)).filter((name): name is string => Boolean(name)),
-    ];
-    const familyRank = (name: string) => {
-      if (name.startsWith("xero_") || name.startsWith("warehouse_")) return 0;
-      if (name.startsWith("outlook_")) return 1;
-      if (name === "list_documents") return 2;
-      if (/knowledge|search_document|^search$/.test(name)) return 3;
-      return 9;
-    };
-    names.sort((left, right) => familyRank(left) - familyRank(right));
+    ].sort((left, right) => {
+      const rank = (name: string) => {
+        if (name.startsWith("xero_") || name.startsWith("warehouse_")) return 0;
+        if (name.startsWith("outlook_")) return 1;
+        if (name === "list_documents") return 2;
+        if (/knowledge|search_document|^search$/.test(name)) return 3;
+        return 4;
+      };
+      return rank(left) - rank(right);
+    });
     for (const name of names) {
       if (!name || seen.has(name) || !INTELLIGENCE_TOOL_NAMES.has(name)) continue;
       if (permitted.length && !permitted.includes(name)) continue;
