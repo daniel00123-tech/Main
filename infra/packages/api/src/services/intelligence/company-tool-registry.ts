@@ -217,7 +217,9 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
   const knowledge =
     /\b(process|procedure|policy|handbook|guidance|how do we|company knowledge|onboarding|health and safety|what does (the|our) .{0,48}(say|mean|require)|find (the )?(document|policy|file) (about|on|for)|in (the|our) (policy|handbook|procedure))\b/i.test(
       value,
-    ) && !catalogue;
+    ) &&
+    !catalogue &&
+    !(email && !/\b(policy|document|handbook|procedure|knowledge|guidance)\b/i.test(value));
   const web = /\b(weather|forecast|public holiday|news headline)\b/i.test(value);
   if (email) found.add(/\b(search|from|containing|about|look in)\b/i.test(value) ? "EMAIL_SEARCH" : "EMAIL_LIST");
   if (accounting && /\b(INV-|invoice (id|number)|find invoice)\b/i.test(value)) found.add("ACCOUNTING_INVOICE_GET");

@@ -1336,6 +1336,19 @@ async function runDeterministicRead(
       );
     }
     if (toolCalls.length) {
+      if (emailBodyRequired(text) && !emailEvidenceHasBody(extractEvidenceFromTools(toolCalls))) {
+        const messageId =
+          extractFirstMessageId(toolCalls.find((call) => /outlook/i.test(call.name))?.data) ||
+          String(state.recentEvidence?.recentEmail?.id ?? "");
+        if (messageId) {
+          toolCalls.push(
+            await runtime.executeTool({
+              name: "outlook_get_message",
+              arguments: prepareToolArguments("outlook_get_message", { messageId }, text, state, scoped.scope),
+            }),
+          );
+        }
+      }
       return {
         text: synthesizeFromToolCalls(toolCalls, text),
         toolCalls,

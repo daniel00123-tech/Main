@@ -184,7 +184,10 @@ function pickMailboxTool(text: string): string {
   if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text) && !/\b(from|containing|search|find|sharon|po)\b/i.test(text)) {
     return "outlook_list_messages";
   }
-  if (/\bfrom\s+[A-Za-z]{2,}|containing|has \w+ sent|with \w+ in the subject\b/i.test(text)) {
+  if (
+    /\b(search|find|look (for|up)|anything about|containing|from\s+[A-Za-z]{2,}|has \w+ sent|with \w+ in the subject)\b/i.test(text) &&
+    !/\b(newest|latest|last \d|unread|most recent)\b/i.test(text)
+  ) {
     return "outlook_search_mailbox";
   }
   if (isEmailContentFollowUp(text) || /\b(full|body|what does .{0,40}(say|said))\b/i.test(text)) {
@@ -210,7 +213,9 @@ function extractFeatures(text: string): ScopeFeatures {
     memoryRecall: MEMORY.test(trimmed) || SHORT_MEMORY.test(trimmed),
     capabilityAsk: CAPABILITY.test(trimmed),
     connectorAsk: CONNECTOR.test(trimmed),
-    financeAsk: FINANCE.test(trimmed),
+    financeAsk:
+      FINANCE.test(trimmed) &&
+      !(/\b(policy|document|handbook|procedure|guidance)\b/i.test(trimmed) && !/\b(xero|invoice|overdue|sales|revenue)\b/i.test(trimmed)),
     emailAsk: EMAIL.test(trimmed) && !CORPUS.test(trimmed),
     writeIntent: WRITE.test(trimmed),
     findDocument: isNamedDocumentFind(trimmed),

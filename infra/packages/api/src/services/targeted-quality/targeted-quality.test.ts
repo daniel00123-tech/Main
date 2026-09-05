@@ -86,6 +86,11 @@ describe("targeted architectural gates", () => {
       "KNOWLEDGE_SEARCH",
     );
     expect(wantsMultiCapabilityRead("What does the health and safety policy say, and what is the latest info email?")).toBe(true);
+    expect(detectRequestedCapabilities("What does the latest finance email actually say?")).toContain("EMAIL_LIST");
+    expect(detectRequestedCapabilities("What does the latest finance email actually say?")).not.toContain("KNOWLEDGE_SEARCH");
+    expect(classifyScope("What does the Profit Margin Policy say about invoices or job references?", buildConversationState({ userText: "What does the Profit Margin Policy say about invoices or job references?" })).tool).toBe(
+      "search_company_knowledge",
+    );
     expect(emailBodyRequired("What are they asking?")).toBe(true);
     expect(emailBodyRequired("What is the latest email subject?")).toBe(false);
     expect(emailBodyRequired("What does the Profit Margin Policy say about invoices?")).toBe(false);
