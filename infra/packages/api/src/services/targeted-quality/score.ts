@@ -70,6 +70,17 @@ export function scoreTargetedTurn(input: {
       scored.perfect = false;
     }
   }
+  if (input.question.expectedSource === "xero_warehouse" || /\b(warehouse|march|april|last month).{0,40}sales\b/i.test(input.question.text)) {
+    const financePresent = /£\s?[\d,]+|warehouse sales|warehouse as of/i.test(input.reply);
+    if (/couldn.?t finish the other part|couldn.?t complete that just now/i.test(input.reply) && !financePresent) {
+      scored.defects = [...new Set([...scored.defects, "MIXED_FINANCE_DROPPED"])];
+      scored.perfect = false;
+    }
+    if (input.tools.some((name) => name.startsWith("warehouse_")) && !/warehouse as of|as of /i.test(input.reply)) {
+      scored.defects = [...new Set([...scored.defects, "MISSING_WAREHOUSE_AS_OF"])];
+      scored.perfect = false;
+    }
+  }
   if (input.question.family === "mixed") {
     const knowledgeWanted = /policy|knowledge|handbook|document|procedure|guidance|process/i.test(input.question.text);
     if (

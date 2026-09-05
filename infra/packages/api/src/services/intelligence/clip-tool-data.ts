@@ -15,6 +15,19 @@ function slimInvoice(value: unknown): unknown {
   };
 }
 
+function evidenceField(inner: Record<string, unknown>, value: Record<string, unknown>, key: string): unknown {
+  const evidence = isRecord(inner.evidence) ? inner.evidence : isRecord(value.evidence) ? value.evidence : {};
+  return evidence[key];
+}
+
+function evidenceAsOf(inner: Record<string, unknown>, value: Record<string, unknown>): unknown {
+  return evidenceField(inner, value, "warehouseAsOf") ?? evidenceField(inner, value, "warehouse_as_of");
+}
+
+function evidenceCompleteness(inner: Record<string, unknown>, value: Record<string, unknown>): unknown {
+  return evidenceField(inner, value, "completenessStatus") ?? evidenceField(inner, value, "completeness_status");
+}
+
 function slimCustomer(value: unknown): unknown {
   if (!isRecord(value)) return value;
   return {
@@ -143,16 +156,27 @@ export function clipBusinessToolData(value: unknown, toolName = ""): unknown {
       const months = Array.isArray(inner.months) ? inner.months : [];
       const customers = Array.isArray(inner.customers) ? inner.customers : [];
       const invoices = Array.isArray(inner.invoices) ? inner.invoices : [];
+      const asOf = inner.warehouseAsOf ?? inner.warehouse_as_of ?? evidenceAsOf(inner, value);
+      const completeness = inner.completenessStatus ?? inner.completeness_status ?? evidenceCompleteness(inner, value);
+      const fromDate = inner.fromDate ?? inner.period_start ?? null;
+      const toDate = inner.toDate ?? inner.period_end ?? null;
       return {
         source: "xero_warehouse",
-        fromDate: inner.fromDate ?? null,
-        toDate: inner.toDate ?? null,
+        fromDate,
+        toDate,
+        period_start: inner.period_start ?? fromDate,
+        period_end: inner.period_end ?? toDate,
         sales: inner.sales ?? null,
         invoiceCount: inner.invoiceCount ?? null,
+        record_count: inner.record_count ?? inner.invoiceCount ?? months.length ?? null,
         overdue: inner.overdue ?? null,
         outstanding: inner.outstanding ?? null,
-        warehouseAsOf: inner.warehouseAsOf ?? inner.warehouse_as_of ?? null,
-        completenessStatus: inner.completenessStatus ?? inner.completeness_status ?? null,
+        warehouseAsOf: asOf,
+        warehouse_as_of: asOf,
+        completenessStatus: completeness,
+        completeness_status: completeness,
+        partial: inner.partial ?? null,
+        partial_reason: inner.partial_reason ?? null,
         warning: typeof inner.warning === "string" ? inner.warning.slice(0, 240) : null,
         months: months.slice(-12),
         customers: customers.slice(0, 8).map(slimCustomer),

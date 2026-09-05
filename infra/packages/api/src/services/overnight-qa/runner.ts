@@ -51,25 +51,39 @@ function sourceFromPayload(parsed: Record<string, unknown> | null): {
   completeness: string | null;
 } {
   if (!parsed) return { source: null, warehouseAsOf: null, completeness: null };
-  const evidence = (parsed.evidence as Record<string, unknown> | undefined) ?? parsed;
+  const mid = parsed.result && typeof parsed.result === "object" && !Array.isArray(parsed.result)
+    ? { ...parsed, ...(parsed.result as Record<string, unknown>) }
+    : parsed;
+  const inner = mid.result && typeof mid.result === "object" && !Array.isArray(mid.result)
+    ? { ...mid, ...(mid.result as Record<string, unknown>) }
+    : mid;
+  const evidence =
+    (inner.evidence as Record<string, unknown> | undefined) ??
+    (parsed.evidence as Record<string, unknown> | undefined) ??
+    parsed;
+  const asOf =
+    (typeof inner.warehouse_as_of === "string" && inner.warehouse_as_of) ||
+    (typeof inner.warehouseAsOf === "string" && inner.warehouseAsOf) ||
+    (typeof evidence.warehouseAsOf === "string" && evidence.warehouseAsOf) ||
+    (typeof evidence.warehouse_as_of === "string" && evidence.warehouse_as_of) ||
+    null;
+  const completeness =
+    (typeof inner.completeness_status === "string" && inner.completeness_status) ||
+    (typeof inner.completenessStatus === "string" && inner.completenessStatus) ||
+    (typeof evidence.completenessStatus === "string" && evidence.completenessStatus) ||
+    (typeof evidence.completeness_status === "string" && evidence.completeness_status) ||
+    null;
   return {
-    source: typeof parsed.source === "string" ? parsed.source : typeof evidence.source === "string" ? String(evidence.source) : null,
-    warehouseAsOf:
-      typeof parsed.warehouse_as_of === "string"
-        ? parsed.warehouse_as_of
-        : typeof parsed.warehouseAsOf === "string"
-          ? parsed.warehouseAsOf
-          : typeof evidence.warehouseAsOf === "string"
-            ? String(evidence.warehouseAsOf)
+    source:
+      typeof inner.source === "string"
+        ? inner.source
+        : typeof evidence.source === "string"
+          ? String(evidence.source)
+          : typeof parsed.source === "string"
+            ? parsed.source
             : null,
-    completeness:
-      typeof parsed.completeness_status === "string"
-        ? parsed.completeness_status
-        : typeof parsed.completenessStatus === "string"
-          ? parsed.completenessStatus
-          : typeof evidence.completenessStatus === "string"
-            ? String(evidence.completenessStatus)
-            : null,
+    warehouseAsOf: asOf,
+    completeness,
   };
 }
 

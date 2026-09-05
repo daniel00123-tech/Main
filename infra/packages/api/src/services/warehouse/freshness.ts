@@ -44,6 +44,34 @@ function mentionedCompletedMonth(text: string, now: Date): boolean {
   return false;
 }
 
+export function dateRangeIsCompletedHistorical(
+  fromDate?: string | null,
+  toDate?: string | null,
+  now = new Date(),
+): boolean {
+  const end = typeof toDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(toDate) ? toDate : null;
+  const start = typeof fromDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(fromDate) ? fromDate : null;
+  const bound = end ?? start;
+  if (!bound) return false;
+  const parts = getZonedParts(now, WAREHOUSE_TIMEZONE);
+  const currentMonthStart = `${parts.year}-${String(parts.month).padStart(2, "0")}-01`;
+  return bound < currentMonthStart;
+}
+
+export function classifyWarehouseRequest(input: {
+  intentText?: string | null;
+  fromDate?: string | null;
+  toDate?: string | null;
+  now?: Date;
+}): WarehouseFreshnessClass {
+  const now = input.now ?? new Date();
+  const fromText = classifyQueryFreshness(input.intentText ?? "", now);
+  if (fromText === "CURRENT_LIVE_STATE") return fromText;
+  if (fromText === "HISTORICAL_ANALYTICAL") return fromText;
+  if (dateRangeIsCompletedHistorical(input.fromDate, input.toDate, now)) return "HISTORICAL_ANALYTICAL";
+  return fromText;
+}
+
 export function classifyQueryFreshness(text: string, now = new Date()): WarehouseFreshnessClass {
   const value = String(text ?? "").trim();
   if (!value) return "UNCERTAIN";

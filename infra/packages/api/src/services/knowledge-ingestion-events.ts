@@ -342,12 +342,85 @@ export async function recordJobIngestionEvent(
   });
 }
 
+export const MAILBOX_FAILURE_MAX_RETRIES = 5;
+
+const TERMINAL_SKIP_CODES = new Set([
+  "UNSUPPORTED",
+  "UNSUPPORTED_MIME",
+  "UNSUPPORTED_TYPE",
+  "JUNK",
+  "EMPTY_WORKBOOK",
+]);
+const TERMINAL_FAIL_CODES = new Set(["CORRUPT_WORKBOOK", "CORRUPT", "MALFORMED_WORKBOOK"]);
+const TRANSIENT_CODES = new Set([
+  "FETCH_FAILED",
+  "FETCH_TRANSIENT",
+  "ATTACHMENT_ENUM_FAILED",
+  "MCP_UNAVAILABLE",
+  "INDEX_WRITE_FAILED",
+  "NOT_INDEXED",
+  "RETRIEVAL_UNVERIFIED",
+  "KNOWLEDGE_EXTRACT_EMPTY",
+  "KNOWLEDGE_INDEX_WRITE_FAILED",
+]);
+
+export function classifyMailboxAttachmentFailure(code: string | null | undefined): {
+  retryable: boolean;
+  terminal: boolean;
+  eventType: "failed" | "skipped";
+} {
+  const value = String(code ?? "").trim();
+  if (TERMINAL_SKIP_CODES.has(value)) return { retryable: false, terminal: true, eventType: "skipped" };
+  if (TERMINAL_FAIL_CODES.has(value)) return { retryable: false, terminal: true, eventType: "failed" };
+  if (TRANSIENT_CODES.has(value) || !value) return { retryable: true, terminal: false, eventType: "failed" };
+  return { retryable: true, terminal: false, eventType: "failed" };
+}
+
+export function mailboxFailureLedgerMetadata(input: {
+  company?: string;
+  mailbox?: string | null;
+  folder?: string | null;
+  messageId?: string | null;
+  attachmentId?: string | null;
+  filename?: string | null;
+  stage?: string | null;
+  errorClass?: string | null;
+  retryable?: boolean;
+  attemptCount?: number;
+  lastAttempt?: string | null;
+  nextRetry?: string | null;
+  extra?: Record<string, unknown>;
+}): Record<string, unknown> {
+  return {
+    company: input.company ?? null,
+    mailbox: input.mailbox ?? null,
+    folder: input.folder ?? null,
+    messageId: input.messageId ?? null,
+    attachmentId: input.attachmentId ?? null,
+    filename: input.filename ?? null,
+    stage: input.stage ?? null,
+    errorClass: input.errorClass ?? null,
+    retryable: input.retryable ?? true,
+    attemptCount: input.attemptCount ?? 0,
+    lastAttempt: input.lastAttempt ?? nowIso(),
+    nextRetry: input.nextRetry ?? null,
+    ...(input.extra ?? {}),
+  };
+}
+
 export async function listFailedMailboxAttachmentEvents(
   db: D1Database,
   input: { companyId: string; mailboxAddresses?: string[]; limit?: number },
 ): Promise<KnowledgeIngestionEventRow[]> {
   await ensureKnowledgeIngestionEventsSchema(db);
   const addresses = (input.mailboxAddresses ?? []).map((row) => row.trim().toLowerCase()).filter(Boolean);
+  const retryableWhere = `source_type IN ('outlook_attachments', 'outlook_attachment')
+             AND (
+               event_type = 'failed'
+               OR (event_type = 'extracted' AND failure_code IN ('NOT_INDEXED','RETRIEVAL_UNVERIFIED','KNOWLEDGE_EXTRACT_EMPTY'))
+             )
+             AND IFNULL(retry_count, 0) < ${MAILBOX_FAILURE_MAX_RETRIES}
+             AND IFNULL(json_extract(metadata_json, '$.retryable'), 1) != 0`;
   const result = addresses.length
     ? await db
         .prepare(
@@ -357,8 +430,7 @@ export async function listFailedMailboxAttachmentEvents(
                   stored_url, retry_count, created_at, metadata_json
            FROM knowledge_ingestion_events
            WHERE company_id = ?
-             AND source_type IN ('outlook_attachments', 'outlook_attachment')
-             AND event_type = 'failed'
+             AND ${retryableWhere}
              AND lower(IFNULL(mailbox_address,'')) IN (${addresses.map(() => "?").join(",")})
            ORDER BY created_at DESC
            LIMIT ?`,
@@ -373,14 +445,108 @@ export async function listFailedMailboxAttachmentEvents(
                   stored_url, retry_count, created_at, metadata_json
            FROM knowledge_ingestion_events
            WHERE company_id = ?
-             AND source_type IN ('outlook_attachments', 'outlook_attachment')
-             AND event_type = 'failed'
+             AND ${retryableWhere}
            ORDER BY created_at DESC
            LIMIT ?`,
         )
         .bind(input.companyId, input.limit ?? 80)
         .all<KnowledgeIngestionEventRow>();
   return result.results ?? [];
+}
+
+export async function backfillMissingMailboxFailureLedger(
+  db: D1Database,
+  input: { companyId: string; mailboxAddress: string },
+): Promise<{ recovered: number; unrecoverable: number; recoveredIds: string[] }> {
+  await ensureKnowledgeIngestionEventsSchema(db);
+  const mailbox = input.mailboxAddress.trim().toLowerCase();
+  const rows = await db
+    .prepare(
+      `SELECT id, event_type, provider_item_id, parent_message_id, filename, failure_code, skip_reason,
+              retry_count, metadata_json, source_modified_at
+       FROM knowledge_ingestion_events
+       WHERE company_id = ?
+         AND source_type IN ('outlook_attachments', 'outlook_attachment')
+         AND lower(IFNULL(mailbox_address,'')) = ?
+       ORDER BY created_at ASC`,
+    )
+    .bind(input.companyId, mailbox)
+    .all<{
+      id: string;
+      event_type: string;
+      provider_item_id: string | null;
+      parent_message_id: string | null;
+      filename: string | null;
+      failure_code: string | null;
+      skip_reason: string | null;
+      retry_count: number | null;
+      metadata_json: string | null;
+      source_modified_at: string | null;
+    }>();
+  const byProvider = new Map<string, typeof rows.results>();
+  for (const row of rows.results ?? []) {
+    const key = String(row.provider_item_id ?? "").trim();
+    if (!key) continue;
+    const list = byProvider.get(key) ?? [];
+    list.push(row);
+    byProvider.set(key, list);
+  }
+  let recovered = 0;
+  let unrecoverable = 0;
+  const recoveredIds: string[] = [];
+  const terminal = new Set(["failed", "skipped", "indexed", "duplicate"]);
+  for (const [providerItemId, events] of byProvider) {
+    const last = events[events.length - 1];
+    if (!last) continue;
+    if (terminal.has(last.event_type)) continue;
+    if (last.event_type === "extracted" && last.failure_code) {
+      // already visible to retry query
+      continue;
+    }
+    const parts = providerItemId.includes("|") ? providerItemId.split("|") : [last.parent_message_id ?? providerItemId, ""];
+    const messageId = parts[0] || last.parent_message_id;
+    const attachmentId = parts[1] || null;
+    if (!messageId) {
+      unrecoverable += 1;
+      continue;
+    }
+    if (providerItemId.includes("|") && !attachmentId) {
+      unrecoverable += 1;
+      continue;
+    }
+    const id = await recordKnowledgeIngestionEvent(db, {
+      companyId: input.companyId,
+      sourceType: "outlook_attachments",
+      eventType: "failed",
+      providerItemId,
+      parentMessageId: messageId,
+      filename: last.filename,
+      mailboxAddress: input.mailboxAddress,
+      failureCode: last.failure_code ?? "LEGACY_FAILURE_UNLOGGED",
+      skipReason: last.skip_reason ?? "Recovered from incomplete ledger trail",
+      retryCount: last.retry_count ?? 0,
+      sourceModifiedAt: last.source_modified_at,
+      metadata: mailboxFailureLedgerMetadata({
+        company: input.companyId,
+        mailbox: input.mailboxAddress,
+        messageId,
+        attachmentId,
+        filename: last.filename,
+        stage: last.event_type,
+        errorClass: last.failure_code ?? "LEGACY_FAILURE_UNLOGGED",
+        retryable: true,
+        extra: { recovered: true },
+      }),
+    });
+    recovered += 1;
+    recoveredIds.push(id);
+  }
+  for (const row of rows.results ?? []) {
+    if (row.provider_item_id) continue;
+    if (row.event_type === "failed" || row.event_type === "skipped") continue;
+    unrecoverable += 1;
+  }
+  return { recovered, unrecoverable, recoveredIds };
 }
 
 export async function listRecentKnowledgeIntakeEvents(

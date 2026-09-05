@@ -58,6 +58,11 @@ describe("clipBusinessToolData catalogue", () => {
     };
     expect(clipped.source).toBe("xero_warehouse");
     expect(clipped.months[0]).toMatchObject({ month: "2026-03", sales: 4120 });
+    expect(clipped).toMatchObject({
+      warehouse_as_of: "2026-09-04T21:20:43.573Z",
+      period_start: "2026-03-01",
+      period_end: "2026-03-31",
+    });
     expect(clipped).not.toHaveProperty("truncated");
   });
 });

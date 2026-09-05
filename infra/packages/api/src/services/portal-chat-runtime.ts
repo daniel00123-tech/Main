@@ -159,11 +159,17 @@ export function createPortalChatRuntime(
       if (fetched.value.status !== 200 && !knowledgeSearch && !knowledgeRead) {
         const gatewayError =
           "error" in fetched.value && fetched.value.error ? String(fetched.value.error) : "permission_or_tool_error";
+        const payload =
+          "data" in fetched.value && fetched.value.data && typeof fetched.value.data === "object"
+            ? (fetched.value.data as Record<string, unknown>)
+            : "result" in fetched.value
+              ? { result: fetched.value.result }
+              : { status: fetched.value.status, error: gatewayError };
         return {
           name: call.name,
           ok: false,
           latencyMs: Date.now() - started,
-          data: { status: fetched.value.status, error: gatewayError },
+          data: payload,
           error: gatewayError,
         };
       }
@@ -473,7 +479,15 @@ function gatewayArguments(
       ...(invoiceNumber ? { invoiceNumber } : {}),
     };
   }
-  return { ...args };
+  const next = { ...args };
+  if (toolName.startsWith("warehouse_") && inputIntent(context) && !next.query) {
+    next.query = inputIntent(context);
+  }
+  return next;
+}
+
+function inputIntent(context: PortalChatContext): string {
+  return String(context.lastUserIntent ?? "").trim();
 }
 
 function clipToolData(value: unknown, toolName = ""): unknown {

@@ -51,6 +51,14 @@ describe("evidence plan", () => {
     expect(minimumToolsForText(text)).toEqual(expect.arrayContaining(["warehouse_sales_analysis", "search_company_knowledge"]));
     expect(minimumToolsForText(text)).not.toContain("list_documents");
     expect(knowledgeQueryFromText(text)).toMatch(/admin structure/i);
+    expect(knowledgeQueryFromText(text)).not.toMatch(/warehouse|sales|april/i);
+  });
+
+  it("strips finance language from a compound knowledge query", () => {
+    expect(knowledgeQueryFromText("Give me March sales and tell me the lone-working policy")).toMatch(/lone-working policy/i);
+    expect(knowledgeQueryFromText("Give me March sales and tell me the lone-working policy")).not.toMatch(/march|sales/i);
+    expect(knowledgeQueryFromText("Last month’s sales and what the remittance process requires")).toMatch(/remittance process/i);
+    expect(knowledgeQueryFromText("Last month’s sales and what the remittance process requires")).not.toMatch(/sales|last month/i);
   });
 
   it("does not add finance tools when the user rejects Xero for email", () => {

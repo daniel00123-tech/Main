@@ -5,7 +5,7 @@
 
 import { londonDateParts } from "./adapters/xero";
 import { computeWarehouseSalesMetrics } from "./adapters/xero";
-import { buildWarehouseEvidence, canServeWarehouse, classifyQueryFreshness } from "./freshness";
+import { buildWarehouseEvidence, canServeWarehouse, classifyWarehouseRequest } from "./freshness";
 import type { WarehouseRepository } from "./store";
 import {
   WAREHOUSE_XERO_CONNECTOR,
@@ -81,9 +81,16 @@ export async function executeWarehouseQuery(
   now = new Date(),
 ): Promise<WarehouseQueryResult> {
   const validated = validateWarehouseQuery(input);
-  const freshnessClass = input.freshnessClass ?? classifyQueryFreshness(input.intentText ?? "");
+  const freshnessClass =
+    input.freshnessClass ??
+    classifyWarehouseRequest({
+      intentText: input.intentText,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+    });
   const source = await repo.getSource(input.companyId, input.connector ?? WAREHOUSE_XERO_CONNECTOR);
   const health: WarehouseHealth = source?.status ?? "NEVER_SYNCED";
+  const warehouseAsOf = source?.warehouseLastUpdatedAt ?? source?.lastSuccessfulSync ?? null;
   const completenessStatus: WarehouseCompleteness =
     source?.checkpoint?.completeness ??
     (health === "HEALTHY" || health === "COMPLETE"
@@ -101,7 +108,7 @@ export async function executeWarehouseQuery(
     companyId: input.companyId,
     connector: input.connector ?? WAREHOUSE_XERO_CONNECTOR,
     health,
-    warehouseAsOf: source?.warehouseLastUpdatedAt ?? null,
+    warehouseAsOf,
     freshnessClass,
     completenessStatus,
   });
@@ -272,26 +279,85 @@ export async function executeWarehouseQuery(
     };
   }
 
+  const recordCount = warehouseRecordCount(aggregation, payload);
+  const warning = partialRange
+    ? "Warehouse month(s) in this range are still backfilling. Totals are grounded but not complete. Do not treat them as authoritative period sales."
+    : undefined;
   return {
     ok: true,
     customerChargeCents: warehouseChildDebitCents(),
     evidence: { ...evidence, completenessStatus: rangeStatus },
-    result: {
+    result: normalizeWarehouseContract({
       ...payload,
       fromDate,
       toDate,
       source: "xero_warehouse",
-      warehouseAsOf: source?.warehouseLastUpdatedAt,
-      warehouse_as_of: source?.warehouseLastUpdatedAt,
+      warehouseAsOf,
+      warehouse_as_of: warehouseAsOf,
       health,
       completeness_status: rangeStatus,
       completenessStatus: rangeStatus,
+      period_start: fromDate,
+      period_end: toDate,
+      record_count: recordCount,
       partial: partialRange,
-      warning: partialRange
-        ? "Warehouse month(s) in this range are still backfilling. Totals are grounded but not complete. Do not treat them as authoritative period sales."
-        : undefined,
-    },
+      partial_reason: partialRange ? "month_range_incomplete" : undefined,
+      warning,
+    }),
   };
+}
+
+export function normalizeWarehouseContract(payload: Record<string, unknown>): Record<string, unknown> {
+  const fromDate = asOptionalString(payload.fromDate ?? payload.period_start);
+  const toDate = asOptionalString(payload.toDate ?? payload.period_end);
+  const asOf = asOptionalString(payload.warehouse_as_of ?? payload.warehouseAsOf);
+  const completeness = asOptionalString(payload.completeness_status ?? payload.completenessStatus);
+  const partial =
+    payload.partial === true ||
+    completeness === "PARTIAL" ||
+    completeness === "BACKFILLING" ||
+    completeness === "NEVER_SYNCED";
+  return {
+    ...payload,
+    source: "xero_warehouse",
+    warehouseAsOf: asOf,
+    warehouse_as_of: asOf,
+    completenessStatus: completeness,
+    completeness_status: completeness,
+    fromDate,
+    toDate,
+    period_start: fromDate ?? payload.period_start ?? null,
+    period_end: toDate ?? payload.period_end ?? null,
+    record_count:
+      typeof payload.record_count === "number"
+        ? payload.record_count
+        : warehouseRecordCount(undefined, payload),
+    partial,
+    partial_reason: partial
+      ? asOptionalString(payload.partial_reason) ?? asOptionalString(payload.warning) ?? "month_range_incomplete"
+      : payload.partial_reason ?? undefined,
+  };
+}
+
+function asOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function warehouseRecordCount(aggregation: WarehouseAggregation | undefined, payload: Record<string, unknown>): number | null {
+  if (typeof payload.record_count === "number") return payload.record_count;
+  if (typeof payload.invoiceCount === "number") return payload.invoiceCount;
+  if (Array.isArray(payload.months)) {
+    return payload.months.reduce((sum, row) => {
+      const count = row && typeof row === "object" && "invoiceCount" in row ? Number((row as { invoiceCount?: unknown }).invoiceCount) : 0;
+      return sum + (Number.isFinite(count) ? count : 0);
+    }, 0);
+  }
+  if (Array.isArray(payload.invoices)) return payload.invoices.length;
+  if (Array.isArray(payload.customers)) return payload.customers.length;
+  if (Array.isArray(payload.contacts)) return payload.contacts.length;
+  if (Array.isArray(payload.payments)) return payload.payments.length;
+  if (aggregation === "sales_total" && typeof payload.sales === "number") return 1;
+  return null;
 }
 
 function defaultAggregation(input: WarehouseQueryRequest): WarehouseAggregation {
