@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyKnowledgeQuery,
+  detectKnowledgeConceptFamily,
+  knowledgeHitMatchesQuery,
   knowledgeSearchTokens,
   searchCompanyKnowledgeIndex,
   shouldUseLocalCompanyKnowledgeIndex,
@@ -302,6 +304,63 @@ describe("company knowledge index", () => {
       query: "intergalactic onboarding fees zzzxq-99999",
     });
     expect(hits).toEqual([]);
+  });
+
+  it("retrieves Health & Safety for unnamed workplace-accident concept queries", async () => {
+    const env = knowledgeIndexEnv([
+      ...genericInvoiceFlood(40),
+      ...inv02277Chunks.map((row) => ({
+        ...row,
+        text: `${row.text} Davies Emergency Response Group invoice for completed works.`,
+      })),
+      {
+        company_id: "co_el",
+        document_id: 31,
+        filename: "Health and Safety Policy (2).docx",
+        title: "Health and Safety Policy (2).docx",
+        stored_url: null,
+        text: "Report accidents and dangerous occurrences to the responsible person. Gas leaks follow the emergency procedure.",
+        chunk_index: 0,
+      },
+      {
+        company_id: "co_el",
+        document_id: 16,
+        filename: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        title: "Elvex_Finance_Admin_AI_Knowledge_Base.docx",
+        stored_url: null,
+        text: "Finance admin guide for invoice coding, mailbox handling, and remittance checks. This is the process for invoices.",
+        chunk_index: 0,
+      },
+    ]);
+    const queries = [
+      "how do we report an accident at work",
+      "what is the process if someone has an accident?",
+      "how should workplace accidents be reported?",
+      "what should staff do after an accident at work?",
+      "what is the emergency process for a gas leak?",
+      "how do we report a health and safety incident?",
+    ];
+    for (const query of queries) {
+      expect(detectKnowledgeConceptFamily(query)?.id, query).toBe("workplace_safety");
+      const hits = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query });
+      expect(hits[0]?.documentId, query).toBe(31);
+      expect(hits.some((hit) => hit.documentId === 18), query).toBe(false);
+      expect(knowledgeHitMatchesQuery({ title: "Health and Safety Policy (2).docx", snippet: "" }, query)).toBe(true);
+      expect(
+        knowledgeHitMatchesQuery(
+          { title: "INV-02277.pdf", snippet: "Davies Emergency Response Group Fulwood Park" },
+          query,
+        ),
+      ).toBe(false);
+    }
+    const invoices = await searchCompanyKnowledgeIndex(env, {
+      companyId: "co_el",
+      query: "What is the process for invoices?",
+    });
+    expect(invoices.length).toBeGreaterThan(0);
+    expect(invoices[0]?.documentId).not.toBe(31);
+    expect(detectKnowledgeConceptFamily("What is the process for invoices?")).toBeNull();
+    expect(detectKnowledgeConceptFamily("INV-02277")).toBeNull();
   });
 
   it("never returns another tenant's documents", async () => {

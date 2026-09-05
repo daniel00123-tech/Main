@@ -213,7 +213,8 @@ describe("knowledge logical dedupe", () => {
   it("keeps a named policy hit when the question adds extra natural-language words", () => {
     const hit = { title: "Health and Safety Policy (2).docx", filename: "Health and Safety Policy (2).docx", snippet: "" };
     expect(knowledgeHitMatchesQuery(hit, "what does the health and safety policy say about accidents")).toBe(true);
-    expect(knowledgeHitMatchesQuery(hit, "how do we report an accident at work")).toBe(false);
+    expect(knowledgeHitMatchesQuery(hit, "how do we report an accident at work")).toBe(true);
+    expect(knowledgeHitMatchesQuery(hit, "what should staff do after an accident at work?")).toBe(true);
     expect(knowledgeHitMatchesQuery(hit, "intergalactic onboarding fees zzzxq-99999")).toBe(false);
   });
 

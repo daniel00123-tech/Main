@@ -102,19 +102,70 @@ export const TARGETED_PRIMARY: TargetedQuestion[] = [
   { id: "T10", channel: "portal", text: "Telemetry probe: health and safety policy excerpt.", actor: D, family: "telemetry", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
 ];
 
+export const WAREHOUSE_META_QUESTIONS: TargetedQuestion[] = [
+  { id: "WM01", channel: "portal", text: "What were March 2026 warehouse sales?", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "WM02", channel: "portal", text: "April 2026 warehouse sales totals.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "WM03", channel: "portal", text: "Warehouse sales for March.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "WM04", channel: "portal", text: "Completed April warehouse figures.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "WM05", channel: "portal", text: "May warehouse sales if present.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "WM06", channel: "portal", text: "June warehouse sales from the warehouse.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "WM07", channel: "portal", text: "July warehouse sales analysis.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "WM08", channel: "portal", text: "August warehouse sales, even if partial.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "WM09", channel: "portal", text: "Last month’s warehouse sales.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "WM10", channel: "portal", text: "Warehouse invoice count for March 2026.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "WM11", channel: "portal", text: "Warehouse top customers over March.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "WM12", channel: "portal", text: "Warehouse sales by month for March and April 2026.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+];
+
+export const MIXED_WAREHOUSE_QUESTIONS: TargetedQuestion[] = [
+  { id: "MW01", channel: "portal", text: "March warehouse sales and the newest finance email subject.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "MW02", channel: "portal", text: "April warehouse figures plus the latest info inbox subject.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "MW03", channel: "portal", text: "Last month’s warehouse sales and summarise the newest finance email.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "MW04", channel: "portal", text: "Warehouse March sales together with the health and safety accident rule.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "MW05", channel: "portal", text: "Give me March sales and tell me the lone-working policy.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "MW06", channel: "portal", text: "April warehouse sales together with the admin structure document.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "MW07", channel: "portal", text: "Last month’s sales and what the remittance process requires.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "MW08", channel: "portal", text: "March warehouse figures and the subcontractor payment process.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "MW09", channel: "portal", text: "Look up invoice INV-02268 and March warehouse sales.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "MW10", channel: "portal", text: "Warehouse April sales and invoice INV-02268 status.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "MW11", channel: "portal", text: "May warehouse sales if present plus the finance admin procedure.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "MW12", channel: "portal", text: "August warehouse sales, even if partial, and the SRFM supplier form.", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+];
+
+export const KNOWLEDGE_RECALL_QUESTIONS: TargetedQuestion[] = [
+  { id: "KR01", channel: "portal", text: "What does the Health & Safety Policy say about reporting an accident?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KR02", channel: "portal", text: "Is there a Finance Admin knowledge document, and what does it cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KR03", channel: "portal", text: "What does the Subcontractor Payment Process say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KR04", channel: "portal", text: "What does the Subcontractor Booking process document say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KR05", channel: "portal", text: "What does the remittance process require?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KR06", channel: "portal", text: "What does the lone-working policy say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, honestNoResultOk: true },
+  { id: "KR07", channel: "portal", text: "What does Admin Structure September 2026 cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KR08", channel: "portal", text: "What does the SRFM Sub Contractor MASTER document cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KR09", channel: "portal", text: "Search company knowledge for the payment process.", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "KR10", channel: "portal", text: "What does the Finance Admin AI Knowledge Base cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+];
+
 export function questionsForStage(stage: string, ids?: string[]): TargetedQuestion[] {
   const wanted = new Set((ids ?? []).map((id) => id.toUpperCase()));
-  const all = TARGETED_PRIMARY;
+  const all = [
+    ...TARGETED_PRIMARY,
+    ...WAREHOUSE_META_QUESTIONS,
+    ...MIXED_WAREHOUSE_QUESTIONS,
+    ...KNOWLEDGE_RECALL_QUESTIONS,
+  ];
   if (wanted.size) return all.filter((row) => wanted.has(row.id));
   const key = stage.toLowerCase();
-  if (key === "knowledge") return all.filter((row) => row.family === "knowledge" && row.id.startsWith("K"));
-  if (key === "outlook") return all.filter((row) => row.family === "outlook" || row.id === "O05");
-  if (key === "mixed") return all.filter((row) => row.family === "mixed" && row.id.startsWith("M"));
-  if (key === "dedupe") return all.filter((row) => row.id.startsWith("D"));
-  if (key === "correction") return all.filter((row) => /^C1[1-9]$|^C20$/.test(row.id));
-  if (key === "followup") return all.filter((row) => row.family === "followup" || row.family === "correction");
-  if (key === "portal") return all.filter((row) => row.family === "portal");
-  if (key === "telemetry") return all.filter((row) => row.family === "telemetry");
-  if (key === "primary") return all;
+  if (key === "knowledge") return TARGETED_PRIMARY.filter((row) => row.family === "knowledge" && row.id.startsWith("K"));
+  if (key === "outlook") return TARGETED_PRIMARY.filter((row) => row.family === "outlook" || row.id === "O05");
+  if (key === "mixed") return TARGETED_PRIMARY.filter((row) => row.family === "mixed" && row.id.startsWith("M"));
+  if (key === "dedupe") return TARGETED_PRIMARY.filter((row) => row.id.startsWith("D"));
+  if (key === "correction") return TARGETED_PRIMARY.filter((row) => /^C1[1-9]$|^C20$/.test(row.id));
+  if (key === "followup") return TARGETED_PRIMARY.filter((row) => row.family === "followup" || row.family === "correction");
+  if (key === "portal") return TARGETED_PRIMARY.filter((row) => row.family === "portal");
+  if (key === "telemetry") return TARGETED_PRIMARY.filter((row) => row.family === "telemetry");
+  if (key === "warehouse-meta") return WAREHOUSE_META_QUESTIONS;
+  if (key === "mixed-warehouse") return MIXED_WAREHOUSE_QUESTIONS;
+  if (key === "knowledge-recall") return KNOWLEDGE_RECALL_QUESTIONS;
+  if (key === "primary") return TARGETED_PRIMARY;
   return [];
 }

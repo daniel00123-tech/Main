@@ -25,6 +25,8 @@ import { PORTAL_CHAT_SOURCE_CLIENT, toolStatusLabel, type PortalChatContext, typ
 import { BUSINESS_GATEWAY_TOOL_SET, businessGatewayTimeoutMs } from "./intelligence/business-gateway-tools";
 import {
   getCompanyKnowledgeDocument,
+  hitMatchesKnowledgeConceptFamily,
+  knowledgeConceptExpansionQueries,
   localKnowledgeHitsToResults,
   mergeKnowledgeSearchHits,
   searchCompanyKnowledgeIndex,
@@ -159,11 +161,17 @@ export function createPortalChatRuntime(
       if (fetched.value.status !== 200 && !knowledgeSearch && !knowledgeRead) {
         const gatewayError =
           "error" in fetched.value && fetched.value.error ? String(fetched.value.error) : "permission_or_tool_error";
+        const payload =
+          "data" in fetched.value && fetched.value.data && typeof fetched.value.data === "object"
+            ? (fetched.value.data as Record<string, unknown>)
+            : "result" in fetched.value
+              ? { result: fetched.value.result }
+              : { status: fetched.value.status, error: gatewayError };
         return {
           name: call.name,
           ok: false,
           latencyMs: Date.now() - started,
-          data: { status: fetched.value.status, error: gatewayError },
+          data: payload,
           error: gatewayError,
         };
       }
@@ -178,10 +186,41 @@ export function createPortalChatRuntime(
             limit: 8,
           }).catch(() => []),
         );
-        const merged = mergeKnowledgeSearchHits(localHits, payload.results ?? []);
-        const hits = rejectWeakSearchHits(merged, query, {
+        let merged = mergeKnowledgeSearchHits(localHits, payload.results ?? []);
+        let hits = rejectWeakSearchHits(merged, query, {
           currentDocumentId: input.context.currentDocument?.id,
         }).slice(0, 5);
+        const expansion = knowledgeConceptExpansionQueries(query).find(
+          (row) => row.toLowerCase() !== query.toLowerCase(),
+        );
+        if (
+          expansion &&
+          !hits.some((hit) => hitMatchesKnowledgeConceptFamily(hit, query))
+        ) {
+          const expanded = await withBoundedTimeout(
+            gateway(env, {
+              actor: { type: "user", user: input.sessionUser, channel: "portal" },
+              companyId: input.companyId,
+              toolName: gatewayName,
+              arguments: { query: expansion },
+              sourceClient: PORTAL_CHAT_SOURCE_CLIENT,
+              interactionId: input.interactionId,
+              parentRequestId: input.interactionId,
+              customerRequestId: input.interactionId,
+              trafficClass: input.trafficClass ?? undefined,
+              waitUntil: input.waitUntil,
+            }),
+            timeoutMs,
+            `portal_chat_${gatewayName}_concept`,
+          );
+          if (expanded.ok && !expanded.timedOut && expanded.value?.status === 200) {
+            const extra = toStandardSearchPayload(expanded.value.result);
+            merged = mergeKnowledgeSearchHits(merged, extra.results ?? []);
+            hits = rejectWeakSearchHits(merged, query, {
+              currentDocumentId: input.context.currentDocument?.id,
+            }).slice(0, 5);
+          }
+        }
         return {
           name: call.name,
           ok: true,
@@ -473,7 +512,15 @@ function gatewayArguments(
       ...(invoiceNumber ? { invoiceNumber } : {}),
     };
   }
-  return { ...args };
+  const next = { ...args };
+  if (toolName.startsWith("warehouse_") && inputIntent(context) && !next.query) {
+    next.query = inputIntent(context);
+  }
+  return next;
+}
+
+function inputIntent(context: PortalChatContext): string {
+  return String(context.lastUserIntent ?? "").trim();
 }
 
 function clipToolData(value: unknown, toolName = ""): unknown {

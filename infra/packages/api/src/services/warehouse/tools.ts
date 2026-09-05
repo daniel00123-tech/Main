@@ -3,7 +3,7 @@
  * Never expose SQL or D1 credentials.
  */
 
-import { classifyQueryFreshness } from "./freshness";
+import { classifyWarehouseRequest } from "./freshness";
 import { executeWarehouseQuery, type WarehouseQueryRequest } from "./query";
 import { createD1WarehouseRepository, type WarehouseRepository } from "./store";
 import {
@@ -156,11 +156,12 @@ export async function executeWarehouseTool(input: {
     snapshotType: typeof args.snapshotType === "string" ? args.snapshotType : undefined,
     limit: typeof args.limit === "number" ? args.limit : undefined,
     intentText: input.intentText,
-    freshnessClass: classifyQueryFreshness(input.intentText ?? input.toolName),
   };
   if (input.toolName === "warehouse_sales_analysis") {
     request.aggregation =
-      args.aggregation === "sales_by_month" || args.aggregation === "invoice_count"
+      args.aggregation === "sales_by_month" ||
+      args.aggregation === "invoice_count" ||
+      args.aggregation === "sales_total"
         ? args.aggregation
         : "sales_by_month";
   } else if (input.toolName === "warehouse_invoice_analysis") {
@@ -182,6 +183,11 @@ export async function executeWarehouseTool(input: {
         ? (args.aggregation as WarehouseQueryRequest["aggregation"])
         : undefined;
   }
+  request.freshnessClass = classifyWarehouseRequest({
+    intentText: input.intentText ?? input.toolName,
+    fromDate: request.fromDate,
+    toDate: request.toDate,
+  });
   const executed = await executeWarehouseQuery(repo, request);
   const result = {
     ...executed,
