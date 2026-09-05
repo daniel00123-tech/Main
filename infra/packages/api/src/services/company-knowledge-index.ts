@@ -472,7 +472,14 @@ export function knowledgeHitMatchesQuery(
   if (classified.references.some((reference) => tokenPresent(haystack, reference) || compactAlnum(haystack).includes(compactAlnum(reference)))) {
     return true;
   }
+  const heading = `${hit.title ?? ""} ${hit.filename ?? ""}`;
+  const headingDistinct = classified.tokens.filter((token) => token.cls !== "low" && tokenPresent(heading, token.token));
+  if (headingDistinct.length >= 2) return true;
   if (classified.highValueTokens.length) {
+    const identifiers = classified.highValueTokens.filter((token) => /\d/.test(token));
+    if (identifiers.length) {
+      return identifiers.some((token) => tokenPresent(haystack, token));
+    }
     return classified.highValueTokens.some((token) => tokenPresent(haystack, token));
   }
   const medium = classified.tokens.filter((token) => token.cls === "medium");
