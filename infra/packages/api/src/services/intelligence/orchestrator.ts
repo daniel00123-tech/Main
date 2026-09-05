@@ -647,6 +647,10 @@ async function executeIntelligenceTurn(input: {
         transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
         continue;
       }
+      if (call.name === "web_search" && toolCalls.filter((row) => row.name === "web_search").length >= 2) {
+        transcript.push("Public web was already attempted. Synthesise from the external results or state the limitation. Do not call web_search again.");
+        continue;
+      }
       const result = await runtime.executeTool(call);
       executedThisTurn.set(reuseKey, result);
       toolCalls.push(result);
@@ -998,6 +1002,8 @@ function fallbackFromEvidence(
   current: IntelligenceDocumentRef | null,
   question = "",
 ): string {
+  const web = [...toolCalls].reverse().find((call) => call.name === "web_search");
+  if (web) return web.ok ? verbaliseWebSearch(web.data, question) : "I checked public web sources and didn’t get a usable answer. I won’t use company systems for this.";
   const business = toolCalls.find(
     (call) =>
       call.name.startsWith("xero_") ||
