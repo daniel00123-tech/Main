@@ -174,6 +174,12 @@ function pickBusinessTool(text: string, lastSuccessfulTool?: string | null): str
   return rewriteAccountingTool(name, {}, text).name;
 }
 
+function isEmailContentFollowUp(text: string): boolean {
+  return /\b(what (are|were) they asking|what does (it|that|this) say|what did they (ask|want|say)|summar(y|ise|ize) (it|that|this|the (email|message))|draft (a )?(reply|response))\b/i.test(
+    text,
+  );
+}
+
 function pickMailboxTool(text: string): string {
   if (/\b(i )?meant (the )?(email|emails|mailbox|outlook|inbox)\b/i.test(text) && !/\b(from|containing|search|find|sharon|po)\b/i.test(text)) {
     return "outlook_list_messages";
@@ -181,8 +187,10 @@ function pickMailboxTool(text: string): string {
   if (/\bfrom\s+[A-Za-z]{2,}|containing|has \w+ sent|with \w+ in the subject\b/i.test(text)) {
     return "outlook_search_mailbox";
   }
-  if (/\b(full|body|what does .{0,40}(say|said))\b/i.test(text)) return "outlook_list_messages";
-  if (/\b(newest|latest|last \d|last five|unread|most recently|arrived today|last 5|who emailed)\b/i.test(text)) {
+  if (isEmailContentFollowUp(text) || /\b(full|body|what does .{0,40}(say|said))\b/i.test(text)) {
+    return "outlook_list_messages";
+  }
+  if (/\b(newest|latest|last \d|last five|unread|most recent(?:ly)?|arrived today|last 5|who emailed|finance mailbox|info (inbox|mailbox))\b/i.test(text)) {
     return "outlook_list_messages";
   }
   return "outlook_search_mailbox";
@@ -700,6 +708,19 @@ export function classifyScope(
       tool: pickBusinessTool(text, state.lastSuccessfulTool),
       lastAnswerTopic: "finance",
       lastUserIntent: "finance",
+    });
+  }
+
+  if (
+    (lastTopic === "email" || state.currentBusinessSystem === "email") &&
+    isEmailContentFollowUp(text) &&
+    !features.financeAsk &&
+    !features.findDocument
+  ) {
+    return decide("BUSINESS_SYSTEM", features, {
+      tool: pickMailboxTool(text),
+      lastAnswerTopic: "email",
+      lastUserIntent: "email_followup",
     });
   }
 

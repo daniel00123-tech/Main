@@ -185,6 +185,16 @@ describe("scope classifier", () => {
       noTool: true,
       lastUserIntent: "memory",
     });
+    const afterEmail = buildConversationState({
+      userText: "What is the newest email in the info inbox?",
+      lastAnswerTopic: "email",
+      currentBusinessSystem: "email",
+      lastSuccessfulTool: "outlook_list_messages",
+    });
+    expect(classifyScope("What are they asking?", afterEmail)).toMatchObject({
+      scope: "BUSINESS_SYSTEM",
+      tool: "outlook_list_messages",
+    });
   });
 });
 

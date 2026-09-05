@@ -18,6 +18,19 @@ describe("targeted quality bank", () => {
 });
 
 describe("targeted scoring honesty", () => {
+  it("treats a missed indexed-title search as retrieval failure, not an honest no-result", () => {
+    const scored = scoreTargetedTurn({
+      question: TARGETED_PRIMARY.find((row) => row.id === "K03")!,
+      tools: ["search_company_knowledge"],
+      reply: "I couldn’t find any matching documents.",
+      denied: false,
+      charged: false,
+      latencyMs: 800,
+    });
+    expect(scored.perfect).toBe(false);
+    expect(scored.defects).toContain("KNOWLEDGE_RETRIEVAL_FAILURE");
+  });
+
   it("does not treat an honest knowledge no-result as a defect when search ran", () => {
     const scored = scoreTargetedTurn({
       question: TARGETED_PRIMARY.find((row) => row.id === "K10")!,

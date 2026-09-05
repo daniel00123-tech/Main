@@ -62,13 +62,13 @@ export async function runTargetedSlice(
         const result = await sendPortalChatMessage(env, {
           companyId: TARGETED_COMPANY_ID,
           sessionUser,
-          conversationId: portalByUser.get(sessionUser.userId),
+          conversationId: portalByUser.get(`${sessionUser.userId}:${question.sequence ?? question.id}`),
           text: question.text,
           trafficClass: "TEST",
           userAgent: "InfraAcceptance/1.0",
           connectors,
         });
-        portalByUser.set(sessionUser.userId, result.conversation.id);
+        portalByUser.set(`${sessionUser.userId}:${question.sequence ?? question.id}`, result.conversation.id);
         const tools = result.assistantMessage.metadata.toolNames ?? [];
         const scored = scoreTargetedTurn({
           question,

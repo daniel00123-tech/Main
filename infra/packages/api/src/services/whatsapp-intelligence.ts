@@ -59,6 +59,11 @@ import { isNegativeResultFeedback, looksLikeSearchOtherDocs, type WhatsAppPlan }
 import { softenSearchQuery } from "./whatsapp-intent";
 import type { WhatsAppTurn } from "./whatsapp-context";
 import { BUSINESS_GATEWAY_TOOL_SET, businessGatewayTimeoutMs } from "./intelligence/business-gateway-tools";
+import {
+  localKnowledgeHitsToResults,
+  mergeKnowledgeSearchHits,
+  searchCompanyKnowledgeIndex,
+} from "./company-knowledge-index";
 
 export type WhatsAppIntelligenceAnswer = {
   reply: string;
@@ -852,7 +857,14 @@ function createWhatsAppIntelligenceRuntime(
       if (gatewayName === COMPANY_KNOWLEDGE_SEARCH_TOOL || gatewayName === "search") {
         const payload = toStandardSearchPayload(fetched.value.result);
         const query = String(args.query ?? "");
-        const hits = rejectWeakSearchHits(payload.results, query, {
+        const localHits = localKnowledgeHitsToResults(
+          await searchCompanyKnowledgeIndex(env, {
+            companyId: input.companyId,
+            query,
+            limit: 8,
+          }).catch(() => []),
+        );
+        const hits = rejectWeakSearchHits(mergeKnowledgeSearchHits(localHits, payload.results), query, {
           currentDocumentId: input.memory.lastDocument?.id,
         }).slice(0, 5);
         return {

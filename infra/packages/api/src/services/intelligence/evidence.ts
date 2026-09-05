@@ -68,7 +68,7 @@ export function classifyEvidenceNeed(
   state: Pick<IntelligenceConversationState, "recentEvidence" | "lastAnswerText" | "lastAnswerTopic" | "currentBusinessSystem">,
 ): EvidenceNeed {
   const evidence = state.recentEvidence ?? emptyEvidence();
-  if (isFreshListingAsk(text) && !isDraftOrEdit(text) && !isRecall(text)) return "NEEDS_FRESH_DATA";
+  if (isFreshListingAsk(text) && !isDraftOrEdit(text)) return "NEEDS_FRESH_DATA";
   if (isFreshBusinessSystemAsk(text)) return "NEEDS_FRESH_DATA";
   if (isPeriodCompareMissing(text, evidence.recentXero)) return "NEEDS_FRESH_DATA";
   if (canUseExisting(text, state, evidence)) {
@@ -102,13 +102,14 @@ export function isDraftOrEdit(text: string): boolean {
 }
 
 export function isRecall(text: string): boolean {
+  if (isFreshListingAsk(text)) return false;
   return /\b(what were (we|they) (talking about|asking)|what did (they|you|i) (just )?(ask|say|tell)|who sent|what was the subject|remind me|what were we talking about)\b/i.test(
     text,
   );
 }
 
 function isFreshListingAsk(text: string): boolean {
-  return /\b(newest|latest|last \d|unread|most recently|check (in )?(the )?(info |finance )?(inbox|mailbox)|search (the )?(inbox|mailbox|email))\b/i.test(
+  return /\b(newest|latest|last \d|unread|most recent(?:ly)?|check (in )?(the )?(info |finance )?(inbox|mailbox)|search (the )?(inbox|mailbox|email)|finance mailbox|info (inbox|mailbox))\b/i.test(
     text,
   );
 }
@@ -363,7 +364,10 @@ function sanitiseEmail(email: RecentEmailEvidence): RecentEmailEvidence {
     ...email,
     subject: clip(stripSecretsFromText(email.subject), 180),
     from: clip(email.from, 180),
-    body: clip(stripSecretsFromText(email.body), MAX_BODY),
+    body: clip(
+      stripSecretsFromText(email.body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()),
+      MAX_BODY,
+    ),
     mailboxAddress: clip(email.mailboxAddress, 180),
   };
 }

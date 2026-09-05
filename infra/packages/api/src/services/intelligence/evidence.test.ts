@@ -95,6 +95,17 @@ describe("structured evidence", () => {
         }),
       ),
     ).toBe("CAN_ANSWER_FROM_EXISTING_EVIDENCE");
+    expect(
+      classifyEvidenceNeed(
+        "Who sent the most recent finance mailbox email?",
+        buildConversationState({
+          userText: "Who sent the most recent finance mailbox email?",
+          lastAnswerTopic: "email",
+          currentBusinessSystem: "email",
+          recentEvidence: listOnly,
+        }),
+      ),
+    ).toBe("NEEDS_FRESH_DATA");
   });
 
   it("reuses the same invoice identity without an exact args hash", () => {

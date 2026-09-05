@@ -4,14 +4,14 @@ const D = "director" as const;
 
 export const TARGETED_PRIMARY: TargetedQuestion[] = [
   { id: "K01", channel: "portal", text: "What does the Health & Safety Policy say about reporting an accident?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "K02", channel: "portal", text: "Search company knowledge for the vehicle policy and tell me the fuel rule.", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "K02", channel: "portal", text: "What does the Profit Margin Policy say about invoices or job references?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
   { id: "K03", channel: "portal", text: "Is there a Finance Admin knowledge document, and what does it cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "K04", channel: "portal", text: "What onboarding guidance is already indexed?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "K05", channel: "portal", text: "How should a leak be handled according to company documents?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "K06", channel: "portal", text: "What does the staff handbook say about taking holiday?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "K07", channel: "portal", text: "Search indexed knowledge for asbestos.", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "K08", channel: "portal", text: "Which company policy covers lone working?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
-  { id: "K09", channel: "portal", text: "Find indexed guidance about vans.", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "K04", channel: "portal", text: "What does the Subcontractor Booking process document say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "K05", channel: "portal", text: "How should a leak or gas emergency be handled according to the Health and Safety Policy?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "K06", channel: "portal", text: "What does the Subcontractor Payment Process say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "K07", channel: "portal", text: "What does Admin Structure September 2026 cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "K08", channel: "portal", text: "What does the SRFM Sub Contractor MASTER document cover?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
+  { id: "K09", channel: "portal", text: "Search company knowledge for the Finance Admin AI Knowledge Base and summarise it.", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
   { id: "K10", channel: "portal", text: "Is there a documented purchase-order process in company knowledge?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, honestNoResultOk: true },
 
   { id: "O01", channel: "portal", text: "What is the newest subject sitting in the info inbox?", actor: D, family: "outlook", expectedToolPrefix: "outlook_list_messages", expectedSource: "outlook", expectedDeny: false, subjectOnly: true },

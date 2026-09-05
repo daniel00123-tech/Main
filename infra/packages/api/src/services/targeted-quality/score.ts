@@ -54,13 +54,16 @@ export function scoreTargetedTurn(input: {
     );
   const retrievalFail = /couldn.?t reach company knowledge|need another moment/i.test(input.reply);
   if (input.question.family === "knowledge" && input.tools.some((name) => name === "search_company_knowledge")) {
-    if (honest && !retrievalFail) {
+    if (honest && !retrievalFail && input.question.honestNoResultOk) {
       scored.defects = scored.defects.filter((name) => name !== "WRONG_TOOL" && name !== "WRONG_TOOL_FAMILY" && name !== "WRONG_SOURCE");
       if (!scored.defects.length) {
         scored.perfect = true;
         scored.grounded = true;
         scored.firstAnswer = true;
       }
+    } else if (honest && !retrievalFail && !input.question.honestNoResultOk) {
+      scored.defects = [...new Set([...scored.defects, "KNOWLEDGE_RETRIEVAL_FAILURE"])];
+      scored.perfect = false;
     }
     if (retrievalFail) {
       scored.defects = [...new Set([...scored.defects, "KNOWLEDGE_RETRIEVAL_FAILURE"])];

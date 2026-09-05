@@ -23,6 +23,12 @@ import { chunksFromFetchPayload, queryTerms, rejectWeakSearchHits, searchDocumen
 import { FETCH_TIMEOUT_MS, KNOWLEDGE_SEARCH_TIMEOUT_MS, MCP_TIMEOUT_MS, withBoundedTimeout } from "./whatsapp-timeouts";
 import { PORTAL_CHAT_SOURCE_CLIENT, toolStatusLabel, type PortalChatContext, type PortalChatStatusEvent } from "./portal-chat-types";
 import { BUSINESS_GATEWAY_TOOL_SET, businessGatewayTimeoutMs } from "./intelligence/business-gateway-tools";
+import {
+  getCompanyKnowledgeDocument,
+  localKnowledgeHitsToResults,
+  mergeKnowledgeSearchHits,
+  searchCompanyKnowledgeIndex,
+} from "./company-knowledge-index";
 
 export type PortalChatGatewayFn = (
   env: Env,
@@ -92,7 +98,56 @@ export function createPortalChatRuntime(
         `portal_chat_${gatewayName}`,
       );
 
+      const knowledgeSearch = gatewayName === COMPANY_KNOWLEDGE_SEARCH_TOOL || gatewayName === "search";
+      const knowledgeRead = gatewayName === COMPANY_KNOWLEDGE_READ_TOOL || gatewayName === "fetch";
       if (!fetched.ok || fetched.timedOut || !fetched.value) {
+        if (knowledgeSearch || knowledgeRead) {
+          const localFallback = knowledgeSearch
+            ? await searchCompanyKnowledgeIndex(env, {
+                companyId: input.companyId,
+                query: String(args.query ?? ""),
+                limit: 8,
+              }).catch(() => [])
+            : [];
+          if (knowledgeSearch && localFallback.length) {
+            const hits = rejectWeakSearchHits(localKnowledgeHitsToResults(localFallback), String(args.query ?? ""), {
+              currentDocumentId: input.context.currentDocument?.id,
+            }).slice(0, 5);
+            return {
+              name: call.name,
+              ok: true,
+              latencyMs: Date.now() - started,
+              data: {
+                results: hits.map((hit) => ({
+                  id: hit.id,
+                  title: hit.title,
+                  url: firstHttpUrl(hit.url),
+                  snippet: String(hit.snippet ?? "").slice(0, 240),
+                })),
+              },
+            };
+          }
+          if (knowledgeRead) {
+            const localDoc = await getCompanyKnowledgeDocument(env, {
+              companyId: input.companyId,
+              documentId: String(args.id ?? args.documentRef ?? ""),
+            }).catch(() => null);
+            if (localDoc) {
+              return {
+                name: call.name,
+                ok: true,
+                latencyMs: Date.now() - started,
+                data: {
+                  document_id: localDoc.id,
+                  title: localDoc.title,
+                  url: localDoc.url,
+                  source: "knowledge_intake",
+                  chunks: localDoc.chunks,
+                },
+              };
+            }
+          }
+        }
         return {
           name: call.name,
           ok: false,
@@ -101,7 +156,7 @@ export function createPortalChatRuntime(
           error: fetched.timedOut ? "timeout" : "tool_failed",
         };
       }
-      if (fetched.value.status !== 200) {
+      if (fetched.value.status !== 200 && !knowledgeSearch && !knowledgeRead) {
         const gatewayError =
           "error" in fetched.value && fetched.value.error ? String(fetched.value.error) : "permission_or_tool_error";
         return {
@@ -113,10 +168,18 @@ export function createPortalChatRuntime(
         };
       }
 
-      if (gatewayName === COMPANY_KNOWLEDGE_SEARCH_TOOL || gatewayName === "search") {
-        const payload = toStandardSearchPayload(fetched.value.result);
+      if (knowledgeSearch) {
+        const payload = fetched.value.status === 200 ? toStandardSearchPayload(fetched.value.result) : { results: [] };
         const query = String(args.query ?? "");
-        const hits = rejectWeakSearchHits(payload.results, query, {
+        const localHits = localKnowledgeHitsToResults(
+          await searchCompanyKnowledgeIndex(env, {
+            companyId: input.companyId,
+            query,
+            limit: 8,
+          }).catch(() => []),
+        );
+        const merged = mergeKnowledgeSearchHits(localHits, payload.results ?? []);
+        const hits = rejectWeakSearchHits(merged, query, {
           currentDocumentId: input.context.currentDocument?.id,
         }).slice(0, 5);
         return {
@@ -134,9 +197,28 @@ export function createPortalChatRuntime(
         };
       }
 
-      if (gatewayName === COMPANY_KNOWLEDGE_READ_TOOL || gatewayName === "fetch") {
+      if (knowledgeRead) {
         const documentId = String(args.id ?? args.documentRef ?? "");
-        const doc = toStandardFetchPayload(fetched.value.result, documentId);
+        const remoteDoc = fetched.value.status === 200 ? toStandardFetchPayload(fetched.value.result, documentId) : null;
+        const remoteEmpty = !remoteDoc || (!String(remoteDoc.text ?? "").trim() && !(remoteDoc.chunks ?? []).length);
+        if (remoteEmpty) {
+          const localDoc = await getCompanyKnowledgeDocument(env, { companyId: input.companyId, documentId }).catch(() => null);
+          if (localDoc) {
+            return {
+              name: call.name,
+              ok: true,
+              latencyMs: Date.now() - started,
+              data: {
+                document_id: localDoc.id,
+                title: localDoc.title,
+                url: localDoc.url,
+                source: "knowledge_intake",
+                chunks: localDoc.chunks,
+              },
+            };
+          }
+        }
+        const doc = remoteDoc ?? toStandardFetchPayload({}, documentId);
         fetchCache.set(doc.id || documentId, doc);
         const identity = identityFromMetadata(doc.metadata ?? null);
         let url = firstHttpUrl(doc.url);

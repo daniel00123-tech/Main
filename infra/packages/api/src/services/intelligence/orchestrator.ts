@@ -265,6 +265,9 @@ async function executeIntelligenceTurn(input: {
       .trim()
       .toUpperCase();
     if (invoice && name === "xero_get_invoice") return `${name}:${invoice}`;
+    if (/^outlook_(list_messages|search_mailbox)$/.test(name)) {
+      return `${name}:${String(args.mailboxAddress ?? "").toLowerCase()}:${String(args.query ?? "").toLowerCase()}:${String(args.limit ?? "")}`;
+    }
     return argsFingerprint(name, args);
   };
   let recentEvidence = stampEvidenceTenant(
@@ -1280,7 +1283,10 @@ function mailboxSearchQuery(text: string, args: Record<string, unknown>): string
   if (fromName && !/^(us|me|the|our|info|finance)$/i.test(fromName)) return fromName;
   if (/\bsharon\b/i.test(text)) return "Sharon";
   if (/\b(po|purchase.?order)\b/i.test(text)) return "PO";
-  if (/\binvoice\b/i.test(text)) return "invoice";
+  if (/\binvoice\b/i.test(text) && !emailBodyRequired(text)) return "invoice";
+  if (emailBodyRequired(text) || /^(what|who|how|when|why|summar|draft|reply)\b/i.test(text.trim())) {
+    return "inbox";
+  }
   return text.trim() || "inbox";
 }
 
@@ -1337,25 +1343,45 @@ async function runDeterministicRead(
       };
     }
   }
-  if (
-    emailBodyRequired(text) &&
-    state.recentEvidence?.recentEmail?.id &&
-    !emailEvidenceHasBody(state.recentEvidence)
-  ) {
-    const fetched = await runtime.executeTool({
-      name: "outlook_get_message",
-      arguments: prepareToolArguments(
-        "outlook_get_message",
-        { messageId: state.recentEvidence.recentEmail.id },
-        text,
-        state,
-        scoped.scope,
-      ),
+  if (emailBodyRequired(text) && !emailEvidenceHasBody(state.recentEvidence)) {
+    const knownId = String(state.recentEvidence?.recentEmail?.id ?? "").trim();
+    if (knownId) {
+      const fetched = await runtime.executeTool({
+        name: "outlook_get_message",
+        arguments: prepareToolArguments(
+          "outlook_get_message",
+          { messageId: knownId },
+          text,
+          state,
+          scoped.scope,
+        ),
+      });
+      return {
+        text: synthesizeFromToolCalls([fetched], text),
+        toolCalls: [fetched],
+        ok: fetched.ok,
+      };
+    }
+    const listed = await runtime.executeTool({
+      name: "outlook_list_messages",
+      arguments: prepareToolArguments("outlook_list_messages", { limit: 5 }, text, state, scoped.scope),
     });
+    const messageId = extractFirstMessageId(listed.data);
+    if (messageId) {
+      const fetched = await runtime.executeTool({
+        name: "outlook_get_message",
+        arguments: prepareToolArguments("outlook_get_message", { messageId }, text, state, scoped.scope),
+      });
+      return {
+        text: synthesizeFromToolCalls([listed, fetched], text),
+        toolCalls: [listed, fetched],
+        ok: fetched.ok || listed.ok,
+      };
+    }
     return {
-      text: synthesizeFromToolCalls([fetched], text),
-      toolCalls: [fetched],
-      ok: fetched.ok,
+      text: synthesizeFromToolCalls([listed], text),
+      toolCalls: [listed],
+      ok: listed.ok,
     };
   }
   const rewritten = rewriteAccountingTool(toolName, {}, text);
