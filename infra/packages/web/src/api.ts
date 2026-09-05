@@ -188,6 +188,28 @@ async function fetchJson<T>(
   return response.json() as Promise<T>;
 }
 
+async function fetchForm<T>(path: string, form: FormData): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  if (!response.ok) {
+    let message = customerFacingHttpError(response.status);
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // keep fallback
+    }
+    if (response.status === 401 && unauthorizedHandler && authStateGetter() && !path.startsWith("/api/auth/login")) {
+      unauthorizedHandler();
+    }
+    throw new ApiError(message, response.status);
+  }
+  return response.json() as Promise<T>;
+}
+
 export const api = {
   getHealth: () =>
     fetchJson<{ status: string; environment?: string; timestamp?: string }>("/health"),
@@ -460,6 +482,14 @@ export const api = {
         : `/api/companies/${slug}/chat/messages`,
       { method: "POST", body: JSON.stringify({ text: input.text, conversationId: input.conversationId }) },
     ),
+  transcribePortalVoice: (slug: string, audio: Blob) => {
+    const form = new FormData();
+    form.set("audio", audio, audio.type.includes("ogg") ? "portal-voice.ogg" : "portal-voice.webm");
+    return fetchForm<{ text: string; provider: string; model: string; customerChargeCents: number }>(
+      `/api/companies/${slug}/chat/transcribe`,
+      form,
+    );
+  },
   streamPortalChatMessage: (
     slug: string,
     input: {

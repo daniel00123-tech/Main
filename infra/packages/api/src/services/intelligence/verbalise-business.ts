@@ -3,8 +3,27 @@ import type { IntelligenceToolResult } from "./types.js";
 export const GENERIC_RETRY_COPY = "I need another moment to finish that. Try asking once more.";
 
 export function isGenericRetryCopy(text: string | null | undefined): boolean {
-  return /need another moment|try asking once more|couldn.?t process that request just now/i.test(text ?? "");
+  return /need another moment|try asking once more|couldn.?t process that request just now|couldn.?t complete that just now/i.test(
+    text ?? "",
+  );
 }
+
+export function isUselessNearEmptyAnswer(text: string | null | undefined): boolean {
+  const value = String(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!value) return true;
+  if (/^(\.\.\.|…|\.|-)$/.test(value)) return true;
+  if (value.length < 12 && !/[£\d]/.test(value)) return true;
+  if (/^i couldn'?t complete that/i.test(value)) return true;
+  if (/i have the result\. what else/i.test(value)) return true;
+  if (/try naming the file/i.test(value)) return true;
+  if (/^i (don'?t|do not) have (an? )?(answer|result)/i.test(value)) return true;
+  return false;
+}
+
+export const HONEST_KNOWLEDGE_NO_RESULT =
+  "I couldn’t find internal company guidance on that in the indexed knowledge. I won’t invent an internal policy.";
 
 export type ReadTerminalKind =
   | "success"
@@ -371,10 +390,14 @@ export function synthesizeToolResult(call: IntelligenceToolResult, question: str
   }
   if (call.name === "search_company_knowledge" || call.name === "search") {
     const hits = searchHits(call.data);
-    if (!hits.length) return "I couldn’t find any matching documents.";
+    if (!hits.length) return HONEST_KNOWLEDGE_NO_RESULT;
     if (hits.length === 1) {
       const only = hits[0]!;
       return only.snippet ? `${only.title}: ${only.snippet}` : `I found ${only.title}.`;
+    }
+    const withSnippet = hits.find((hit) => hit.snippet);
+    if (withSnippet?.snippet) {
+      return `${withSnippet.title}: ${withSnippet.snippet}`;
     }
     const titles = hits.slice(0, 3).map((hit) => hit.title);
     return `Across your documents I can see: ${titles.join("; ")}.`;
@@ -420,7 +443,8 @@ export function synthesizeFromToolCalls(
     null;
   const xero = pick((name) => name.startsWith("xero_"));
   const outlook = pick((name) => /outlook/i.test(name));
-  const knowledge = pick((name) => /knowledge|search_document|search$/.test(name));
+  const fetchedDoc = pick((name) => name === "get_knowledge_document" || name === "search_document" || name === "fetch");
+  const knowledge = fetchedDoc ?? pick((name) => /knowledge|search$/.test(name));
   const catalogue = pick((name) => name === "list_documents");
   const parts = [warehouse ?? xero, outlook, knowledge ?? catalogue]
     .filter((call): call is IntelligenceToolResult => Boolean(call))

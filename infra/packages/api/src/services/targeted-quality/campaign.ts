@@ -10,6 +10,8 @@ import type { OvernightTurnScore } from "../overnight-qa/types";
 import { TARGETED_PRIMARY } from "./bank";
 import { executeWarehouseTool } from "../warehouse/tools";
 import { createD1WarehouseRepository } from "../warehouse/store";
+import { computeNextWarehouseSlot, describeWarehouseSchedule, warehouseSlotsPerWeek } from "../warehouse/schedule";
+import { londonCivilParts } from "../intelligence/periods";
 import {
   backfillMissingMailboxFailureLedger,
   listFailedMailboxAttachmentEvents,
@@ -352,5 +354,40 @@ async function runWarehouseMeta(env: Env): Promise<Record<string, unknown>> {
       defects,
     });
   }
-  return { stage: "warehouse-meta", turns, asked: cases.map((row) => row.id) };
+  const now = new Date();
+  const civil = londonCivilParts(now);
+  const currentFrom = `${civil.year}-${String(civil.month).padStart(2, "0")}-01`;
+  const currentTo = `${civil.year}-${String(civil.month).padStart(2, "0")}-${String(civil.day).padStart(2, "0")}`;
+  const currentMonth = await executeWarehouseTool({
+    repo,
+    companyId: "co_el",
+    toolName: "warehouse_sales_analysis",
+    arguments: { fromDate: currentFrom, toDate: currentTo, aggregation: "sales_total" },
+    intentText: "current month warehouse sales",
+  });
+  const currentPayload = currentMonth.ok
+    ? ((currentMonth.result.result as Record<string, unknown> | undefined) ?? (currentMonth.result as Record<string, unknown>))
+    : ((currentMonth.result?.result as Record<string, unknown> | undefined) ?? currentMonth.result ?? {});
+  const source = await repo.getSource("co_el", "xero");
+  const next = computeNextWarehouseSlot(now);
+  return {
+    stage: "warehouse-meta",
+    turns,
+    asked: cases.map((row) => row.id),
+    schedule: describeWarehouseSchedule(),
+    slotsPerWeek: warehouseSlotsPerWeek(),
+    lastSuccessfulSync: source?.lastSuccessfulSync ?? null,
+    warehouseAsOf: source?.warehouseLastUpdatedAt ?? source?.lastSuccessfulSync ?? null,
+    nextScheduledSync: next.utcIso,
+    nextScheduledLocal: next.localIso,
+    currentMonthWarehouse: {
+      fromDate: currentFrom,
+      toDate: currentTo,
+      ok: currentMonth.ok,
+      sales: currentPayload.sales ?? currentPayload.sales_total ?? null,
+      record_count: currentPayload.record_count ?? currentPayload.invoice_count ?? null,
+      completeness: currentPayload.completeness_status ?? currentPayload.completenessStatus ?? null,
+      warehouseAsOf: currentPayload.warehouse_as_of ?? currentPayload.warehouseAsOf ?? null,
+    },
+  };
 }

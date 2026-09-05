@@ -197,6 +197,13 @@ export const OPENAI_PRIMARY_QUESTIONS: TargetedQuestion[] = [
   { id: "OP10", channel: "portal", text: "Find the unicorn fleet carbon offset handbook. If company knowledge has no match, use another permitted business source and say what you found.", actor: D, family: "agentic", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, honestNoResultOk: true },
 ];
 
+export const MANUAL_UAT_QUESTIONS: TargetedQuestion[] = [
+  { id: "UAT01", channel: "portal", text: "What are our sales this current month?", actor: D, family: "mixed", expectedToolPrefix: "xero_", expectedSource: "xero_live", expectedDeny: false },
+  { id: "UAT02", channel: "portal", text: "What are sales in September 2026?", actor: D, family: "mixed", expectedToolPrefix: "xero_", expectedSource: "xero_live", expectedDeny: false },
+  { id: "UAT03", channel: "portal", text: "What were sales in March 2026?", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
+  { id: "UAT04", channel: "portal", text: "What can you tell me about the subcontractor CIS process?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false, honestNoResultOk: true },
+];
+
 export const CADDINGTON_OPENAI_PRIMARY_QUESTIONS: TargetedQuestion[] = [
   { id: "CP01", channel: "portal", text: "What were last month's Xero sales?", actor: D, family: "mixed", expectedToolPrefix: "warehouse_", expectedSource: "xero_warehouse", expectedDeny: false },
   { id: "CP02", channel: "portal", text: "What does the purchase order process say?", actor: D, family: "knowledge", expectedToolPrefix: "search_company_knowledge", expectedSource: "knowledge", expectedDeny: false },
@@ -216,6 +223,7 @@ export function questionsForStage(stage: string, ids?: string[]): TargetedQuesti
     ...HONEST_NO_RESULT_QUESTIONS,
     ...INVOICE_WAREHOUSE_COMPOUND_QUESTIONS,
     ...OPENAI_PRIMARY_QUESTIONS,
+    ...MANUAL_UAT_QUESTIONS,
     ...CADDINGTON_OPENAI_PRIMARY_QUESTIONS,
   ];
   if (wanted.size) return all.filter((row) => wanted.has(row.id));
@@ -235,6 +243,7 @@ export function questionsForStage(stage: string, ids?: string[]): TargetedQuesti
   if (key === "honest-no-result") return HONEST_NO_RESULT_QUESTIONS;
   if (key === "invoice-warehouse") return INVOICE_WAREHOUSE_COMPOUND_QUESTIONS;
   if (key === "openai-primary") return OPENAI_PRIMARY_QUESTIONS;
+  if (key === "manual-uat") return MANUAL_UAT_QUESTIONS;
   if (key === "caddington-openai-primary") return CADDINGTON_OPENAI_PRIMARY_QUESTIONS;
   if (key === "primary") return TARGETED_PRIMARY;
   return [];

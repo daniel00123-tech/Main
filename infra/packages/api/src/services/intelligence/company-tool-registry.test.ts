@@ -6,6 +6,8 @@ import {
   defaultToolForCapability,
   rewriteExactAccountingTool,
   rewriteHistoricalAccountingTool,
+  rewriteLiveAccountingTool,
+  rewriteAccountingTool,
   normaliseVendorToolName,
   secondRbacAllows,
   standardToolContracts,
@@ -158,6 +160,18 @@ describe("company tool registry", () => {
         now,
       ).name,
     ).toBe("warehouse_customer_analysis");
+    expect(rewriteLiveAccountingTool("warehouse_sales_analysis", {}, "What are the sales in September 2026?", now).name).toBe(
+      "xero_sales_summary",
+    );
+    expect(rewriteAccountingTool("warehouse_sales_analysis", {}, "What are the sales for this current month?", now).name).toBe(
+      "xero_sales_summary",
+    );
+    expect(rewriteAccountingTool("warehouse_sales_analysis", {}, "What were sales in March 2026?", now).name).toBe(
+      "warehouse_sales_analysis",
+    );
+    expect(rewriteLiveAccountingTool("warehouse_sales_analysis", {}, "Warehouse sales for September.", now).name).toBe(
+      "warehouse_sales_analysis",
+    );
   });
 
   it("does not register future CRM capabilities until a connector exists", () => {

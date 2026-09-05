@@ -30,18 +30,36 @@ const MONTH_NAMES = [
   "december",
 ] as const;
 
-function mentionedCompletedMonth(text: string, now: Date): boolean {
+function mentionedMonthYear(text: string, now: Date): { month: number; year: number } | null {
   const lower = text.toLowerCase();
   const parts = getZonedParts(now, WAREHOUSE_TIMEZONE);
   const yearMatch = lower.match(/\b(20\d{2})\b/);
-  const year = yearMatch ? Number(yearMatch[1]) : parts.year;
   for (let index = 0; index < MONTH_NAMES.length; index += 1) {
     if (!new RegExp(`\\b${MONTH_NAMES[index]}\\b`).test(lower)) continue;
-    const month = index + 1;
-    if (year < parts.year) return true;
-    if (year === parts.year && month < parts.month) return true;
+    return { month: index + 1, year: yearMatch ? Number(yearMatch[1]) : parts.year };
   }
-  return false;
+  return null;
+}
+
+function mentionedCompletedMonth(text: string, now: Date): boolean {
+  const mentioned = mentionedMonthYear(text, now);
+  if (!mentioned) return false;
+  const parts = getZonedParts(now, WAREHOUSE_TIMEZONE);
+  if (mentioned.year < parts.year) return true;
+  return mentioned.year === parts.year && mentioned.month < parts.month;
+}
+
+function mentionedOpenCurrentMonth(text: string, now: Date): boolean {
+  const mentioned = mentionedMonthYear(text, now);
+  if (!mentioned) return false;
+  const parts = getZonedParts(now, WAREHOUSE_TIMEZONE);
+  return mentioned.year === parts.year && mentioned.month === parts.month;
+}
+
+function isCurrentOpenPeriodLanguage(text: string): boolean {
+  return /\b((this|the|our) current month|current month|this month|month[- ]to[- ]date|\bmtd\b|current mtd)\b/i.test(
+    text,
+  );
 }
 
 export function dateRangeIsCompletedHistorical(
@@ -77,11 +95,13 @@ export function classifyQueryFreshness(text: string, now = new Date()): Warehous
   if (!value) return "UNCERTAIN";
 
   const currentLive =
-    /\b(right now|just now|this (second|minute)|has .* been paid( yet)?|paid yet|newest invoice|latest invoice|current status of invoice|invoice \S+ (status|paid))\b/i.test(
+    /\b(right now|just now|this (second|minute)|has .* been paid( yet)?|paid yet|newest invoice|latest invoice|current status of invoice|invoice \S+ (status|paid)|sales today)\b/i.test(
       value,
     ) ||
     /\bwhat are (sales|revenue) right now\b/i.test(value) ||
     /\b(is|has) invoice\b.+\b(paid|voided|authorised|outstanding)\b/i.test(value);
+
+  const currentOpen = isCurrentOpenPeriodLanguage(value) || mentionedOpenCurrentMonth(value, now);
 
   const historical =
     /\b(each month|month by month|month[- ]over[- ]month|over time|trend|trends|last (six|6|three|3|twelve|12) (completed )?months|last (few )?months|last year|previous month|last month|this quarter|same point last|compare .+ (month|quarter|year)|highest-value customers over|proportion of invoiced|end of each month|historical|over this period)\b/i.test(
@@ -90,15 +110,10 @@ export function classifyQueryFreshness(text: string, now = new Date()): Warehous
     /\bhow has (overdue|outstanding|debt|sales) (moved|changed|changed over)\b/i.test(value) ||
     mentionedCompletedMonth(value, now);
 
-  const currentButMaybeFresh =
-    /\b(this month|mtd|month to date|sales today|current mtd)\b/i.test(value) &&
-    !currentLive &&
-    !historical;
-
-  if (currentLive && !historical) return "CURRENT_LIVE_STATE";
-  if (historical && !currentLive) return "HISTORICAL_ANALYTICAL";
-  if (currentButMaybeFresh) return "CURRENT_BUT_WAREHOUSE_FRESH_ENOUGH";
+  if ((currentLive || currentOpen) && !historical) return "CURRENT_LIVE_STATE";
+  if (historical && !currentLive && !currentOpen) return "HISTORICAL_ANALYTICAL";
   if (currentLive && historical) return "UNCERTAIN";
+  if (currentOpen && historical) return "UNCERTAIN";
   return "UNCERTAIN";
 }
 

@@ -49,6 +49,9 @@ export type RouteSufficiency = "SUFFICIENT" | "PARTIAL" | "INSUFFICIENT" | "FAIL
 
 const PRIVATE_RECIPE_CONTENT =
   /INV-\d+|£\s?[\d,]+(?:\.\d{2})?|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\belvex\b|\bcaddington\b|\bht business\b/gi;
+const CONCRETE_NAMED_PERIOD =
+  /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\.?\s+20\d{2}\b/gi;
+const CONCRETE_ISO_PERIOD = /\b20\d{2}-\d{2}(?:-\d{2})?\b/g;
 
 export async function ensureIntelligenceRecipesSchema(db: RecipeDb): Promise<void> {
   await db.prepare(RECIPE_TABLE).run();
@@ -101,6 +104,7 @@ export function recipeHintsForPrompt(recipes: SolutionRecipe[]): string {
   if (!recipes.length) return "";
   return [
     "Optional planning hints from prior successful turns for THIS company only. They are hints, not hard rules. Ignore or update them when context differs.",
+    "These hints must never supply “today” or a current-period date. Use the authoritative runtime datetime for current/open periods.",
     ...recipes.map(
       (recipe) =>
         `- ${recipe.problem_class}: ${sanitiseRecipeText(recipe.successful_strategy)} (capabilities ${recipe.capabilities_used.join(", ") || "none"}; successes ${recipe.success_count})`,
@@ -108,12 +112,38 @@ export function recipeHintsForPrompt(recipes: SolutionRecipe[]): string {
   ].join("\n");
 }
 
+export function recipePersistsHistoricCurrentPeriod(value: string): boolean {
+  const text = String(value ?? "");
+  return (
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\.?\s+20\d{2}\b/i.test(
+      text,
+    ) || /\b20\d{2}-\d{2}(?:-\d{2})?\b/.test(text)
+  );
+}
+
 export function sanitiseRecipeText(value: string): string {
   return String(value ?? "")
     .replace(PRIVATE_RECIPE_CONTENT, "[redacted]")
+    .replace(CONCRETE_NAMED_PERIOD, "the resolved period")
+    .replace(CONCRETE_ISO_PERIOD, "the resolved period")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 280);
+}
+
+export async function repairHistoricCurrentPeriodRecipes(db: RecipeDb, companyId: string): Promise<number> {
+  const recipes = await loadCompanyRecipes(db, companyId, 20);
+  let repaired = 0;
+  for (const recipe of recipes) {
+    const next = sanitiseRecipeText(recipe.successful_strategy);
+    if (next === recipe.successful_strategy) continue;
+    await db
+      .prepare(`UPDATE intelligence_solution_recipes SET successful_strategy = ? WHERE recipe_id = ? AND company_id = ?`)
+      .bind(next, recipe.recipe_id, companyId)
+      .run();
+    repaired += 1;
+  }
+  return repaired;
 }
 
 function parseJsonList(raw: string | null | undefined): string[] {

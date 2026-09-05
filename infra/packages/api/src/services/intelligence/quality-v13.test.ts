@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyScope, detectNamedDocumentSwitch } from "./scope.js";
 import { buildConversationState } from "./state.js";
 import { runIntelligenceTurn } from "./orchestrator.js";
-import { resolveBusinessPeriod, withResolvedBusinessDates } from "./periods.js";
+import { authoritativeRuntimeContext, resolveBusinessPeriod, withResolvedBusinessDates } from "./periods.js";
 import { enrichDocumentQuery } from "./query-enrichment.js";
 import { verbaliseSystemMeta } from "./system-meta.js";
 import { queryTerms, scoreGlobalSearchHit, searchDocument, type DocumentChunk } from "../whatsapp-grounded-qa.js";
@@ -223,6 +223,39 @@ describe("Xero natural periods", () => {
     expect(calls[0]?.name).toBe("warehouse_sales_analysis");
     expect(calls[0]?.arguments.fromDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(calls[0]?.arguments.toDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("uses authoritative runtime for current-month language and overwrites invented historic dates", () => {
+    const now = new Date("2026-09-05T12:00:00.000Z");
+    const runtime = authoritativeRuntimeContext(now);
+    expect(runtime.timezone).toBe("Europe/London");
+    expect(runtime.current_date).toBe("2026-09-05");
+    expect(runtime.current_year).toBe(2026);
+    expect(runtime.current_month).toBe(9);
+    expect(runtime.current_month_name).toBe("September");
+    expect(resolveBusinessPeriod("What are the sales for this current month?", now)).toMatchObject({
+      fromDate: "2026-09-01",
+      toDate: "2026-09-05",
+    });
+    expect(resolveBusinessPeriod("What are the sales in September 2026?", now)).toMatchObject({
+      fromDate: "2026-09-01",
+      toDate: "2026-09-05",
+    });
+    expect(resolveBusinessPeriod("What were sales in March 2026?", now)).toMatchObject({
+      fromDate: "2026-03-01",
+      toDate: "2026-03-31",
+    });
+    expect(
+      withResolvedBusinessDates(
+        "xero_sales_summary",
+        { fromDate: "2025-03-01", toDate: "2025-03-31" },
+        "What are the sales for this current month?",
+        now,
+      ),
+    ).toMatchObject({
+      fromDate: "2026-09-01",
+      toDate: "2026-09-05",
+    });
   });
 
   it("resolves a named completed month to that month, not the current month", () => {

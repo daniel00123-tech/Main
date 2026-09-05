@@ -12,6 +12,15 @@ import { detectRequestedCapabilities, wantsMultiCapabilityRead } from "./company
 import { isCatalogueListingAsk } from "../document-catalogue.js";
 
 describe("evidence plan", () => {
+  it("treats a subcontractor process question as semantic knowledge, not a phrase map", () => {
+    expect(isSemanticKnowledgeAsk("What can you tell me about the subcontractor CIS process?")).toBe(true);
+    expect(isSemanticKnowledgeAsk("How do we deal with CIS for subcontractors?")).toBe(true);
+    expect(isSemanticKnowledgeAsk("When should CIS be deducted?")).toBe(true);
+    expect(minimumToolsForText("What can you tell me about the subcontractor CIS process?")).toEqual([
+      "search_company_knowledge",
+    ]);
+  });
+
   it("keeps semantic knowledge off the catalogue tool", () => {
     const text = "What does the health and safety policy say, and what is the latest info email?";
     expect(isSemanticKnowledgeAsk(text)).toBe(true);

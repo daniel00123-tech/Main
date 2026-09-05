@@ -38,6 +38,60 @@ export function formatCivilDate(date: CivilDate): string {
   return `${date.year}-${pad2(date.month)}-${pad2(date.day)}`;
 }
 
+export type AuthoritativeRuntimeContext = {
+  timezone: string;
+  current_datetime: string;
+  current_date: string;
+  current_year: number;
+  current_month: number;
+  current_month_name: string;
+};
+
+const MONTH_LABELS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+export function authoritativeRuntimeContext(
+  now = new Date(),
+  timeZone = INTELLIGENCE_PERIOD_TZ,
+): AuthoritativeRuntimeContext {
+  const parts = londonCivilParts(now, timeZone);
+  const current_date = formatCivilDate(parts);
+  return {
+    timezone: timeZone,
+    current_datetime: `${current_date}T${pad2(parts.hour)}:${pad2(parts.minute)}:00`,
+    current_date,
+    current_year: parts.year,
+    current_month: parts.month,
+    current_month_name: MONTH_LABELS[parts.month - 1] ?? `month ${parts.month}`,
+  };
+}
+
+export function formatAuthoritativeRuntimePrompt(now = new Date(), timeZone = INTELLIGENCE_PERIOD_TZ): string {
+  const runtime = authoritativeRuntimeContext(now, timeZone);
+  return [
+    `Authoritative runtime (generated at request time, never from recipes or test memory):`,
+    `current_datetime=${runtime.current_datetime}`,
+    `current_date=${runtime.current_date}`,
+    `current_year=${runtime.current_year}`,
+    `current_month=${runtime.current_month} (${runtime.current_month_name})`,
+    `timezone=${runtime.timezone}`,
+    `Temporal priority: (1) explicit date/year in this user request (2) this runtime datetime (3) current conversation (4) retained evidence (5) recipe hints.`,
+    `CURRENT/OPEN financial periods use live xero_* tools. HISTORICAL/CLOSED analytical periods use warehouse_* tools.`,
+  ].join("\n");
+}
+
 export function londonCivilParts(now: Date, timeZone = INTELLIGENCE_PERIOD_TZ): CivilDate & { hour: number; minute: number } {
   const fmt = new Intl.DateTimeFormat("en-GB", {
     timeZone,
@@ -328,7 +382,7 @@ export function resolveBusinessPeriod(
   const explicit = findExplicitPeriod(hay);
   const namedPeriod = /\b(this|last|past|previous|yesterday|today)\s+(week|month|quarter|year|7 days|30 days|90 days)\b/.test(
     hay,
-  ) || /\b(yesterday|last week|last month|last quarter|last year|this week|this month|this quarter|this year|past 7 days|past 30 days|past 90 days)\b/.test(
+  ) || /\b(yesterday|last week|last month|last quarter|last year|this week|this month|this quarter|this year|this current month|current month|month to date|\bmtd\b|past 7 days|past 30 days|past 90 days)\b/.test(
     hay,
   );
 
@@ -366,7 +420,7 @@ export function resolveBusinessPeriod(
   } else if (/\blast week\b/.test(hay)) {
     const prev = addDays(startOfWeek(civil), -7);
     primary = range(prev, endOfWeek(prev), "last week");
-  } else if (/\bthis month\b/.test(hay)) {
+  } else if (/\b(this month|this current month|current month|month to date|\bmtd\b)\b/.test(hay)) {
     primary = range(startOfMonth(civil), civil, "this month");
     pnl = { periods: 1, timeframe: "MONTH" };
   } else if (/\blast month\b/.test(hay)) {
@@ -471,8 +525,6 @@ export function withResolvedBusinessDates(
   now = new Date(),
 ): Record<string, unknown> {
   if (!needsBusinessDates(toolName)) return args;
-  const hasDates = String(args.fromDate ?? "").trim() && String(args.toDate ?? "").trim();
-  if (hasDates) return args;
   if (
     args.unpaidOnly === true ||
     args.outstanding === true ||
