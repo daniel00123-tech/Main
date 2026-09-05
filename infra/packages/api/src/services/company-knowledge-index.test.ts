@@ -309,6 +309,10 @@ describe("company knowledge index", () => {
   it("retrieves Health & Safety for unnamed workplace-accident concept queries", async () => {
     const env = knowledgeIndexEnv([
       ...genericInvoiceFlood(40),
+      ...inv02277Chunks.map((row) => ({
+        ...row,
+        text: `${row.text} Davies Emergency Response Group invoice for completed works.`,
+      })),
       {
         company_id: "co_el",
         document_id: 31,
@@ -340,7 +344,14 @@ describe("company knowledge index", () => {
       expect(detectKnowledgeConceptFamily(query)?.id, query).toBe("workplace_safety");
       const hits = await searchCompanyKnowledgeIndex(env, { companyId: "co_el", query });
       expect(hits[0]?.documentId, query).toBe(31);
+      expect(hits.some((hit) => hit.documentId === 18), query).toBe(false);
       expect(knowledgeHitMatchesQuery({ title: "Health and Safety Policy (2).docx", snippet: "" }, query)).toBe(true);
+      expect(
+        knowledgeHitMatchesQuery(
+          { title: "INV-02277.pdf", snippet: "Davies Emergency Response Group Fulwood Park" },
+          query,
+        ),
+      ).toBe(false);
     }
     const invoices = await searchCompanyKnowledgeIndex(env, {
       companyId: "co_el",

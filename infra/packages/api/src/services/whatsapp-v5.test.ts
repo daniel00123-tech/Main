@@ -350,6 +350,15 @@ describe("WhatsApp V5 buttons, PII, ranking, and model boundary", () => {
     const hit = { id: "hs", title: "Health and Safety Policy (2).docx", snippet: "health and safety policy statement" };
     expect(rejectWeakSearchHits([hit], "how do we report an accident at work").map((row) => row.id)).toEqual(["hs"]);
     expect(rejectWeakSearchHits([hit], "what is the emergency process for a gas leak?").map((row) => row.id)).toEqual(["hs"]);
+    expect(
+      rejectWeakSearchHits(
+        [
+          hit,
+          { id: "inv", title: "INV-02277.pdf", snippet: "Davies Emergency Response Group Fulwood Park" },
+        ],
+        "how do we report an accident at work",
+      ).map((row) => row.id),
+    ).toEqual(["hs"]);
     expect(rejectWeakSearchHits([hit], "What is the process for invoices?")).toEqual([]);
   });
 

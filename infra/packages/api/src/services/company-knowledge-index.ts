@@ -302,6 +302,10 @@ export function knowledgeConceptExpansionQueries(query: string): string[] {
   return detectKnowledgeConceptFamily(query)?.expansionQueries ?? [];
 }
 
+export function looksLikePolicyOrProcedureHeading(heading: string): boolean {
+  return /\b(policy|procedure|guidance|handbook|code of conduct)\b/i.test(heading);
+}
+
 export function hitMatchesKnowledgeConceptFamily(
   hit: { title?: unknown; filename?: unknown; snippet?: unknown; text?: unknown },
   query: string,
@@ -309,10 +313,7 @@ export function hitMatchesKnowledgeConceptFamily(
   const family = detectKnowledgeConceptFamily(query);
   if (!family) return false;
   const heading = `${hit.title ?? ""} ${hit.filename ?? ""}`;
-  const haystack = `${heading} ${hit.snippet ?? ""} ${hit.text ?? ""}`;
-  return family.titleAnchors.some((anchor) =>
-    anchor.every((token) => tokenPresent(heading, token) || tokenPresent(haystack, token)),
-  );
+  return family.titleAnchors.some((anchor) => anchor.every((token) => tokenPresent(heading, token)));
 }
 
 export type KnowledgeTokenClass = "high" | "medium" | "low";
@@ -537,10 +538,19 @@ export function knowledgeHitMatchesQuery(
   const headingDistinct = classified.tokens.filter((token) => token.cls !== "low" && tokenPresent(heading, token.token));
   if (headingDistinct.length >= 2) return true;
   if (hitMatchesKnowledgeConceptFamily(hit, query)) return true;
+  const family = detectKnowledgeConceptFamily(query);
   if (classified.highValueTokens.length) {
     const identifiers = classified.highValueTokens.filter((token) => /\d/.test(token));
     if (identifiers.length) {
       return identifiers.some((token) => tokenPresent(haystack, token));
+    }
+    if (family) {
+      const headingHit = classified.highValueTokens.some((token) => tokenPresent(heading, token));
+      if (headingHit) return true;
+      return (
+        looksLikePolicyOrProcedureHeading(heading) &&
+        classified.highValueTokens.some((token) => tokenPresent(haystack, token))
+      );
     }
     return classified.highValueTokens.some((token) => tokenPresent(haystack, token));
   }
@@ -624,6 +634,34 @@ function likeNeedles(values: string[]): string[] {
   return [...new Set(values.map(sanitizeLikeNeedle).filter((value) => value.length >= 3))].slice(0, 6);
 }
 
+async function fetchKnowledgeHeadingPool(
+  env: Env,
+  companyId: string,
+  needles: string[],
+  limit: number,
+): Promise<KnowledgeCandidateRow[]> {
+  const terms = likeNeedles(needles);
+  if (!terms.length || limit <= 0) return [];
+  const fieldClause = `(
+    LOWER(COALESCE(d.filename, '')) LIKE ?
+    OR LOWER(COALESCE(d.title, '')) LIKE ?
+  )`;
+  const sql = `SELECT d.id AS document_id, d.filename, d.title, d.stored_url, d.external_id, d.metadata_json, COALESCE(c.text, '') AS text, COALESCE(c.chunk_index, 0) AS chunk_index
+     FROM company_knowledge_documents d
+     LEFT JOIN company_knowledge_chunks c ON c.document_id = d.id AND c.chunk_index = 0
+     WHERE d.company_id = ?
+       AND (${terms.map(() => fieldClause).join(" OR ")})
+     LIMIT ?`;
+  const binds: Array<string | number> = [companyId];
+  for (const term of terms) {
+    const like = `%${term}%`;
+    binds.push(like, like);
+  }
+  binds.push(limit);
+  const rows = await env.DB.prepare(sql).bind(...binds).all<KnowledgeCandidateRow>();
+  return rows.results ?? [];
+}
+
 async function fetchKnowledgeCandidatePool(
   env: Env,
   companyId: string,
@@ -670,25 +708,18 @@ export async function searchCompanyKnowledgeIndex(
     classified.compact,
     ...classified.references,
     ...classified.highValueTokens,
-    ...(family?.documentNeedles ?? []),
   ]);
-  const distinctiveNeedles = likeNeedles([
-    ...classified.highValueTokens,
-    ...(family?.documentNeedles ?? []),
-  ]);
-  const broadNeedles = likeNeedles([
-    ...classified.broadTokens,
-    ...(family?.documentNeedles ?? []),
-  ]);
+  const distinctiveNeedles = likeNeedles(classified.highValueTokens);
+  const broadNeedles = likeNeedles(classified.broadTokens);
 
   const exactRows = await fetchKnowledgeCandidatePool(env, input.companyId, exactNeedles, 40);
   const distinctiveRows = distinctiveNeedles.length
     ? await fetchKnowledgeCandidatePool(env, input.companyId, distinctiveNeedles, 40)
     : [];
-  const needBroad = classified.highValueTokens.length === 0 || Boolean(family);
+  const needBroad = classified.highValueTokens.length === 0;
   const broadRows = needBroad ? await fetchKnowledgeCandidatePool(env, input.companyId, broadNeedles, 80) : [];
   const conceptRows = family
-    ? await fetchKnowledgeCandidatePool(env, input.companyId, likeNeedles(family.documentNeedles), 40)
+    ? await fetchKnowledgeHeadingPool(env, input.companyId, likeNeedles(family.documentNeedles), 40)
     : [];
 
   const merged = [...exactRows, ...distinctiveRows, ...broadRows, ...conceptRows];
