@@ -9,8 +9,16 @@ const hoisted = vi.hoisted(() => ({
   markScan: vi.fn(),
   resolveGraph: vi.fn(),
   listMessages: vi.fn(),
+  listFolderMessages: vi.fn(),
+  getFolder: vi.fn(),
+  listFolders: vi.fn(),
   listAttachments: vi.fn(),
   getAttachment: vi.fn(),
+  seedFolders: vi.fn(),
+  folderSettings: vi.fn(),
+  enabledFolders: vi.fn(),
+  markFolder: vi.fn(),
+  upsertFolder: vi.fn(),
   executeOutlook: vi.fn(),
   listMcp: vi.fn(),
   upload: vi.fn(),
@@ -37,6 +45,9 @@ vi.mock("./microsoft-outlook-graph", async () => {
   return {
     ...actual,
     listMailboxMessages: hoisted.listMessages,
+    listMailboxFolderMessages: hoisted.listFolderMessages,
+    getMailFolder: hoisted.getFolder,
+    listMailboxFoldersDeep: hoisted.listFolders,
     listMessageAttachments: hoisted.listAttachments,
     getMessageAttachmentContent: hoisted.getAttachment,
   };
@@ -76,6 +87,20 @@ vi.mock("./knowledge-intake", () => ({
 vi.mock("./microsoft-acceptance-knowledge-search", () => ({
   runProductionKnowledgeSearch: hoisted.search,
 }));
+
+vi.mock("./mailbox-ingest-folder-policy", async () => {
+  const actual = await vi.importActual<typeof import("./mailbox-ingest-folder-policy")>(
+    "./mailbox-ingest-folder-policy",
+  );
+  return {
+    ...actual,
+    seedApprovedMailboxFolderPolicies: hoisted.seedFolders,
+    getMailboxFolderSettings: hoisted.folderSettings,
+    listEnabledMailboxFolders: hoisted.enabledFolders,
+    markFolderScanResult: hoisted.markFolder,
+    upsertApprovedMailboxFolder: hoisted.upsertFolder,
+  };
+});
 
 import {
   ingestApprovedOutlookAttachments,
@@ -159,6 +184,23 @@ describe("Outlook attachment ingest", () => {
       accessToken: "token",
       tenantId: "tenant-el",
       source: "test",
+    });
+    hoisted.seedFolders.mockResolvedValue(undefined);
+    hoisted.folderSettings.mockResolvedValue({ includeSent: false, includeArchive: false });
+    hoisted.enabledFolders.mockResolvedValue([]);
+    hoisted.markFolder.mockResolvedValue(undefined);
+    hoisted.upsertFolder.mockResolvedValue("mfp_1");
+    hoisted.getFolder.mockResolvedValue({ id: "folder-inbox", displayName: "Inbox", childFolderCount: 0, totalItemCount: 3 });
+    hoisted.listFolders.mockResolvedValue([
+      { id: "folder-inbox", displayName: "Inbox", childFolderCount: 0, totalItemCount: 3 },
+    ]);
+    hoisted.listFolderMessages.mockImplementation(async (cfg: unknown, input: { mailboxAddress: string; folderId: string; top?: number }) => {
+      const rows = await hoisted.listMessages(cfg, {
+        mailboxAddress: input.mailboxAddress,
+        folderId: input.folderId,
+        top: input.top,
+      });
+      return { messages: rows, pages: 1, nextLinkFollowed: false };
     });
   });
 
@@ -900,5 +942,102 @@ describe("Outlook attachment ingest", () => {
     });
     expect(incremental.usedCheckpoint).toBe(true);
     expect(incremental.windowFrom.toISOString()).toBe("2026-09-04T13:58:00.000Z");
+  });
+
+  it("scans explicitly approved user folders and follows a >50-message folder page", async () => {
+    hoisted.enabledFolders.mockResolvedValue([
+      {
+        id: "mfp_davies",
+        company_id: "co_el",
+        mailbox_address: "info@elvexpropertyservices.com",
+        folder_id: "folder-davies",
+        folder_name: "DAVIES GROUP INVOICES FOR SPREADSHEET",
+        enabled: 1,
+        source: "seed",
+        last_checkpoint: null,
+      },
+    ]);
+    hoisted.listFolders.mockResolvedValue([
+      { id: "folder-inbox", displayName: "Inbox", childFolderCount: 0, totalItemCount: 3 },
+      { id: "folder-davies", displayName: "DAVIES GROUP INVOICES FOR SPREADSHEET", childFolderCount: 0, totalItemCount: 55 },
+      { id: "folder-sent", displayName: "Sent Items", childFolderCount: 0, totalItemCount: 10 },
+    ]);
+    const pageMessages = Array.from({ length: 55 }, (_, index) => ({
+      id: `msg-page-${index + 1}`,
+      subject: `Invoice ${index + 1}`,
+      hasAttachments: index === 0,
+      receivedDateTime: "2026-09-04T14:18:01Z",
+    }));
+    hoisted.listFolderMessages.mockImplementation(async (_cfg: unknown, input: { folderId: string }) => {
+      if (input.folderId === "folder-davies") {
+        return { messages: pageMessages, pages: 2, nextLinkFollowed: true };
+      }
+      return { messages: [], pages: 1, nextLinkFollowed: false };
+    });
+    hoisted.listAttachments.mockResolvedValue([
+      { id: "att-inv", name: "INV-02277.pdf", contentType: "application/pdf", size: 20_000, isInline: false },
+    ]);
+    hoisted.getAttachment.mockResolvedValue({
+      name: "INV-02277.pdf",
+      contentType: "application/pdf",
+      size: 20_000,
+      contentBytes: pdfBytes,
+    });
+
+    const result = await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-09-03T17:39:03.388Z"),
+        windowTo: new Date("2026-09-04T17:39:03.388Z"),
+      },
+    );
+
+    expect(hoisted.listFolderMessages).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ folderId: "folder-inbox" }),
+    );
+    expect(hoisted.listFolderMessages).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ folderId: "folder-davies" }),
+    );
+    expect(hoisted.listFolderMessages.mock.calls.some((call) => call[1]?.folderId === "folder-sent")).toBe(false);
+    expect(result.counts.messagesScanned).toBe(55);
+    expect(result.mailboxes[0]?.nextLinkFollowed).toBe(true);
+    expect(result.mailboxes[0]?.folders).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Inbox", checked: true, failed: false }),
+        expect.objectContaining({
+          name: "DAVIES GROUP INVOICES FOR SPREADSHEET",
+          checked: true,
+          failed: false,
+          messagesScanned: 55,
+        }),
+      ]),
+    );
+    expect(result.counts.attachmentsIndexed).toBe(1);
+  });
+
+  it("does not auto-enable Sent Items or unapproved user folders", async () => {
+    hoisted.folderSettings.mockResolvedValue({ includeSent: false, includeArchive: false });
+    hoisted.enabledFolders.mockResolvedValue([]);
+    hoisted.listFolders.mockResolvedValue([
+      { id: "folder-inbox", displayName: "Inbox", childFolderCount: 0, totalItemCount: 1 },
+      { id: "folder-sent", displayName: "Sent Items", childFolderCount: 0, totalItemCount: 8 },
+      { id: "folder-custom", displayName: "RANDOM FILING", childFolderCount: 0, totalItemCount: 4 },
+    ]);
+    hoisted.listFolderMessages.mockResolvedValue({ messages: [], pages: 1, nextLinkFollowed: false });
+
+    await ingestApprovedOutlookAttachments(
+      { DB: dbStub() } as never,
+      {
+        companyId: "co_el",
+        windowFrom: new Date("2026-09-03T17:39:03.388Z"),
+        windowTo: new Date("2026-09-04T17:39:03.388Z"),
+      },
+    );
+
+    const folderIds = hoisted.listFolderMessages.mock.calls.map((call) => call[1]?.folderId);
+    expect(folderIds).toEqual(["folder-inbox"]);
   });
 });

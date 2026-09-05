@@ -123,6 +123,62 @@ describe("Microsoft sync report email scenarios", () => {
     expectCustomerSafe(email.html);
   });
 
+  it("lists approved Michael folders instead of a bare mailbox checked line", () => {
+    const mailboxes = HEALTHY_MAILBOXES.map((row) =>
+      row.name === "Michael"
+        ? {
+            ...row,
+            folders: [
+              { name: "Inbox", checked: true, failed: false },
+              { name: "DAVIES GROUP INVOICES FOR SPREADSHEET", checked: true, failed: false },
+              { name: "COMPLETED", checked: true, failed: false },
+            ],
+          }
+        : row,
+    );
+    const { email } = render({
+      ...BASE,
+      documents: [],
+      mailboxChecks: mailboxes,
+      onedrive: HEALTHY_DRIVE,
+      sharepoint: HEALTHY_DRIVE,
+    });
+    expect(email.text).toContain("Michael — Checked:");
+    expect(email.text).toContain("Inbox");
+    expect(email.text).toContain("DAVIES GROUP INVOICES FOR SPREADSHEET");
+    expect(email.text).toContain("COMPLETED");
+    expect(email.text).toContain("Sharon: Checked");
+    expect(email.html).toContain("DAVIES GROUP INVOICES FOR SPREADSHEET");
+    expectCustomerSafe(email.text);
+  });
+
+  it("shows a failed approved folder separately", () => {
+    const mailboxes = HEALTHY_MAILBOXES.map((row) =>
+      row.name === "Michael"
+        ? {
+            ...row,
+            failed: true,
+            folders: [
+              { name: "Inbox", checked: true, failed: false },
+              { name: "COMPLETED", checked: false, failed: true },
+            ],
+          }
+        : row,
+    );
+    const { email } = render({
+      ...BASE,
+      documents: [],
+      mailboxChecks: mailboxes,
+      onedrive: HEALTHY_DRIVE,
+      sharepoint: HEALTHY_DRIVE,
+    });
+    expect(email.text).toContain("Michael — Checked:");
+    expect(email.text).toContain("Inbox");
+    expect(email.text).toContain("Michael — COMPLETED: Could not be fully checked");
+    expect(email.text).not.toContain("AADSTS");
+    expectCustomerSafe(email.text);
+  });
+
   it("2 no new files after a successful source check", () => {
     const { data, email } = render({
       ...BASE,

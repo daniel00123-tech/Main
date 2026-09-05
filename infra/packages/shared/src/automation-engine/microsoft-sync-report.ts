@@ -31,6 +31,12 @@ export const FRIENDLY_INGESTION_REASONS = {
   generic: "INFRA could not finish synchronising this item.",
 } as const;
 
+export type MicrosoftSyncMailboxFolderCheck = {
+  name: string;
+  checked: boolean;
+  failed: boolean;
+};
+
 export type MicrosoftSyncMailboxCheck = {
   name: string;
   address?: string | null;
@@ -39,6 +45,7 @@ export type MicrosoftSyncMailboxCheck = {
   checked: boolean;
   failed: boolean;
   rawError?: string | null;
+  folders?: MicrosoftSyncMailboxFolderCheck[];
 };
 
 export type MicrosoftSyncDriveCheck = {
@@ -215,6 +222,22 @@ export function friendlySourceActivityLine(input: {
 export function friendlyMailboxLine(input: MicrosoftSyncMailboxCheck): string {
   if (input.excluded) {
     return `${input.name}: Not included (by policy).`;
+  }
+  const folders = input.folders ?? [];
+  if (folders.length > 0) {
+    const ok = folders.filter((folder) => folder.checked && !folder.failed);
+    const bad = folders.filter((folder) => folder.failed || !folder.checked);
+    const lines: string[] = [];
+    if (ok.length) {
+      lines.push(`${input.name} — Checked:`);
+      for (const folder of ok) lines.push(folder.name);
+    }
+    for (const folder of bad) {
+      lines.push(
+        `⚠️ ${input.name} — ${folder.name}: Could not be fully checked. ${FRIENDLY_INGESTION_REASONS.sourceNotChecked} INFRA will retry automatically.`,
+      );
+    }
+    if (lines.length) return lines.join("\n");
   }
   if (input.checked && !input.failed) {
     return `✅ ${input.name}: Checked`;
