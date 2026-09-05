@@ -1,6 +1,6 @@
 /** Written by scripts/write-production-lineage.mjs immediately before production deploy. */
 export const GENERATED_PRODUCTION_LINEAGE = {
-  gitSha: "7b47dfbb746a2a691e7022d96d3a2a953dc8eeea",
+  gitSha: "97dcbf3983c61b3573a768f4cda94abf582cde92",
   branch: "cursor/el-openai-primary-8d24",
-  generatedAt: "2026-09-05T12:03:18.933Z",
+  generatedAt: "2026-09-05T12:04:37.112Z",
 } as const;
