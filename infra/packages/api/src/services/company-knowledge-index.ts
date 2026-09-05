@@ -82,8 +82,8 @@ export async function indexExtractedDocumentLocally(
   if (!extracted.text.trim()) {
     return {
       ok: false,
-      code: "KNOWLEDGE_EXTRACT_EMPTY",
-      message: `No extractable text (${extracted.method})`,
+      code: extracted.failureCode ?? "KNOWLEDGE_EXTRACT_EMPTY",
+      message: extracted.failureReason ?? `No extractable text (${extracted.method})`,
     };
   }
   const now = nowIso();

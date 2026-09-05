@@ -12,8 +12,10 @@ import type { Env } from "../env";
 import { listMcpEnvironments } from "./control-plane";
 import { nowIso } from "../db/mappers";
 import {
+  classifyMailboxAttachmentFailure,
   isTerminalAttachmentFailure,
   listFailedMailboxAttachmentEvents,
+  mailboxFailureLedgerMetadata,
   recordKnowledgeIngestionEvent,
 } from "./knowledge-ingestion-events";
 import { discoverKnowledgeIntakeTarget, storeOriginalInKnowledgeIntake } from "./knowledge-intake";
@@ -822,6 +824,7 @@ async function ingestOneAttachment(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "fetch failed";
+    const failureCode = isTransientError(err) ? "FETCH_TRANSIENT" : "FETCH_FAILED";
     await recordKnowledgeIngestionEvent(env.DB, {
       companyId: input.companyId,
       sourceType: "outlook_attachments",
@@ -831,9 +834,20 @@ async function ingestOneAttachment(
       filename: input.attachment.name,
       mailboxAddress: input.mailbox.mailbox_address,
       skipReason: message,
-      failureCode: isTransientError(err) ? "FETCH_TRANSIENT" : "FETCH_FAILED",
+      failureCode,
       sourceModifiedAt: messageTime(input.message),
-      metadata: { subject, from: sender, stop: "FETCH" },
+      metadata: mailboxFailureLedgerMetadata({
+        company: input.companyId,
+        mailbox: input.mailbox.mailbox_address,
+        folder: input.message.parentFolderId ?? null,
+        messageId: input.message.id,
+        attachmentId: input.attachment.id,
+        filename: input.attachment.name,
+        stage: "FETCH",
+        errorClass: failureCode,
+        retryable: true,
+        extra: { subject, from: sender, stop: "FETCH" },
+      }),
     });
     return { status: "failed", chunks: 0, recovered: false, stored: false, storedThisRun: false, skipReason: message, failureCode: "FETCH_FAILED" };
   }
@@ -905,18 +919,31 @@ async function ingestOneAttachment(
     quarantine: filter.classification === "unsafe",
   });
   if (!stored.ok) {
+    const storeClass = classifyMailboxAttachmentFailure(stored.code);
     await recordKnowledgeIngestionEvent(env.DB, {
       companyId: input.companyId,
       sourceType: "outlook_attachments",
-      eventType: "failed",
+      eventType: storeClass.eventType,
       providerItemId,
+      parentMessageId: input.message.id,
       filename: fetched.name,
       contentHash,
       mailboxAddress: input.mailbox.mailbox_address,
       failureCode: stored.code,
       skipReason: stored.message,
       sourceModifiedAt: messageTime(input.message),
-      metadata: { subject, from: sender, pipelineStatus: "FAILED_RETRYABLE", stop: "STORE" },
+      metadata: mailboxFailureLedgerMetadata({
+        company: input.companyId,
+        mailbox: input.mailbox.mailbox_address,
+        folder: input.message.parentFolderId ?? null,
+        messageId: input.message.id,
+        attachmentId: input.attachment.id,
+        filename: fetched.name,
+        stage: "STORE",
+        errorClass: stored.code,
+        retryable: storeClass.retryable,
+        extra: { subject, from: sender, pipelineStatus: storeClass.retryable ? "FAILED_RETRYABLE" : "FAILED_TERMINAL", stop: "STORE" },
+      }),
     });
     return {
       status: "failed",
@@ -997,6 +1024,7 @@ async function ingestOneAttachment(
       sourceType: "outlook_attachments",
       eventType: "failed",
       providerItemId,
+      parentMessageId: input.message.id,
       filename: fetched.name,
       contentHash,
       mailboxAddress: input.mailbox.mailbox_address,
@@ -1006,7 +1034,18 @@ async function ingestOneAttachment(
       storedItemId: stored.storedItemId,
       storedUrl: stored.storedUrl,
       sourceModifiedAt: messageTime(input.message),
-      metadata: { subject, pipelineStatus: "FAILED_RETRYABLE", stop: "INDEX" },
+      metadata: mailboxFailureLedgerMetadata({
+        company: input.companyId,
+        mailbox: input.mailbox.mailbox_address,
+        folder: input.message.parentFolderId ?? null,
+        messageId: input.message.id,
+        attachmentId: input.attachment.id,
+        filename: fetched.name,
+        stage: "INDEX",
+        errorClass: "MCP_UNAVAILABLE",
+        retryable: true,
+        extra: { subject, pipelineStatus: "FAILED_RETRYABLE", stop: "INDEX" },
+      }),
     });
     return {
       status: "failed",
@@ -1074,6 +1113,7 @@ async function ingestOneAttachment(
       sourceType: "outlook_attachments",
       eventType: "failed",
       providerItemId,
+      parentMessageId: input.message.id,
       filename: fetched.name,
       contentHash,
       mailboxAddress: input.mailbox.mailbox_address,
@@ -1083,7 +1123,18 @@ async function ingestOneAttachment(
       storedItemId: stored.storedItemId,
       storedUrl: stored.storedUrl,
       sourceModifiedAt: messageTime(input.message),
-      metadata: { subject, stop: "INDEX", pipelineStatus: "FAILED_RETRYABLE" },
+      metadata: mailboxFailureLedgerMetadata({
+        company: input.companyId,
+        mailbox: input.mailbox.mailbox_address,
+        folder: input.message.parentFolderId ?? null,
+        messageId: input.message.id,
+        attachmentId: input.attachment.id,
+        filename: fetched.name,
+        stage: "INDEX",
+        errorClass: "INDEX_WRITE_FAILED",
+        retryable: true,
+        extra: { subject, stop: "INDEX", pipelineStatus: "FAILED_RETRYABLE" },
+      }),
     });
     return {
       status: "failed",
@@ -1097,11 +1148,13 @@ async function ingestOneAttachment(
   }
 
   if (!upload.ok) {
+    const uploadClass = classifyMailboxAttachmentFailure(upload.code);
     await recordKnowledgeIngestionEvent(env.DB, {
       companyId: input.companyId,
       sourceType: "outlook_attachments",
-      eventType: "failed",
+      eventType: uploadClass.eventType,
       providerItemId,
+      parentMessageId: input.message.id,
       filename: fetched.name,
       contentHash,
       mailboxAddress: input.mailbox.mailbox_address,
@@ -1111,7 +1164,18 @@ async function ingestOneAttachment(
       storedItemId: stored.storedItemId,
       storedUrl: stored.storedUrl,
       sourceModifiedAt: messageTime(input.message),
-      metadata: { subject, stop: "EXTRACT_OR_INDEX", pipelineStatus: "FAILED_RETRYABLE" },
+      metadata: mailboxFailureLedgerMetadata({
+        company: input.companyId,
+        mailbox: input.mailbox.mailbox_address,
+        folder: input.message.parentFolderId ?? null,
+        messageId: input.message.id,
+        attachmentId: input.attachment.id,
+        filename: fetched.name,
+        stage: "EXTRACT_OR_INDEX",
+        errorClass: upload.code,
+        retryable: uploadClass.retryable,
+        extra: { subject, stop: "EXTRACT_OR_INDEX", pipelineStatus: uploadClass.retryable ? "FAILED_RETRYABLE" : "FAILED_TERMINAL" },
+      }),
     });
     return {
       status: "failed",
@@ -1129,7 +1193,7 @@ async function ingestOneAttachment(
     await recordKnowledgeIngestionEvent(env.DB, {
       companyId: input.companyId,
       sourceType: "outlook_attachments",
-      eventType: "extracted",
+      eventType: "failed",
       providerItemId,
       parentMessageId: input.message.id,
       filename: fetched.name,
@@ -1139,18 +1203,31 @@ async function ingestOneAttachment(
       sizeBytes: fetched.bytes.byteLength,
       chunkCount: chunks,
       extractedAt: nowIso(),
+      failureCode: "NOT_INDEXED",
+      skipReason: upload.documentStatus ?? "not indexed",
       storedAt,
       storedItemId: stored.storedItemId,
       storedUrl: stored.storedUrl,
       sourceModifiedAt: messageTime(input.message),
-      metadata: {
-        subject,
-        from: sender,
-        knowledgeDocumentId: upload.documentId,
-        externalId,
-        pipelineStatus: "STORED_NOT_INDEXED",
-        documentStatus: upload.documentStatus ?? null,
-      },
+      metadata: mailboxFailureLedgerMetadata({
+        company: input.companyId,
+        mailbox: input.mailbox.mailbox_address,
+        folder: input.message.parentFolderId ?? null,
+        messageId: input.message.id,
+        attachmentId: input.attachment.id,
+        filename: fetched.name,
+        stage: "INDEX",
+        errorClass: "NOT_INDEXED",
+        retryable: true,
+        extra: {
+          subject,
+          from: sender,
+          knowledgeDocumentId: upload.documentId,
+          externalId,
+          pipelineStatus: "FAILED_RETRYABLE",
+          documentStatus: upload.documentStatus ?? null,
+        },
+      }),
     });
     return {
       status: "failed",
@@ -1173,7 +1250,7 @@ async function ingestOneAttachment(
     await recordKnowledgeIngestionEvent(env.DB, {
       companyId: input.companyId,
       sourceType: "outlook_attachments",
-      eventType: "extracted",
+      eventType: "failed",
       providerItemId,
       parentMessageId: input.message.id,
       filename: fetched.name,
@@ -1181,18 +1258,31 @@ async function ingestOneAttachment(
       mailboxAddress: input.mailbox.mailbox_address,
       chunkCount: chunks,
       extractedAt: nowIso(),
+      failureCode: "RETRIEVAL_UNVERIFIED",
+      skipReason: verified.reason ?? "retrieval verification failed",
       storedAt,
       storedItemId: stored.storedItemId,
       storedUrl: stored.storedUrl,
       sourceModifiedAt: messageTime(input.message),
-      metadata: {
-        subject,
-        from: sender,
-        knowledgeDocumentId: upload.documentId,
-        pipelineStatus: "STORED",
-        retrievalVerified: false,
-        retrievalReason: verified.reason,
-      },
+      metadata: mailboxFailureLedgerMetadata({
+        company: input.companyId,
+        mailbox: input.mailbox.mailbox_address,
+        folder: input.message.parentFolderId ?? null,
+        messageId: input.message.id,
+        attachmentId: input.attachment.id,
+        filename: fetched.name,
+        stage: "VERIFY",
+        errorClass: "RETRIEVAL_UNVERIFIED",
+        retryable: true,
+        extra: {
+          subject,
+          from: sender,
+          knowledgeDocumentId: upload.documentId,
+          pipelineStatus: "FAILED_RETRYABLE",
+          retrievalVerified: false,
+          retrievalReason: verified.reason,
+        },
+      }),
     });
     return {
       status: "failed",
@@ -1412,7 +1502,18 @@ export async function ingestApprovedOutlookAttachments(
           failureCode: "ATTACHMENT_ENUM_FAILED",
           skipReason: `Could not list attachments (${listed.via})`,
           sourceModifiedAt: messageTime(message),
-          metadata: { subject: message.subject, stop: "ENUMERATE" },
+          metadata: mailboxFailureLedgerMetadata({
+            company: input.companyId,
+            mailbox: mailbox.mailbox_address,
+            folder: message.parentFolderId ?? null,
+            messageId: message.id,
+            attachmentId: null,
+            filename: message.subject ? `Attachment on: ${message.subject}` : "Email attachment (name unavailable)",
+            stage: "ENUMERATE",
+            errorClass: "ATTACHMENT_ENUM_FAILED",
+            retryable: true,
+            extra: { subject: message.subject, stop: "ENUMERATE" },
+          }),
         });
         continue;
       }
@@ -1657,7 +1758,9 @@ export async function retryFailedOutlookAttachments(
     mailboxAddresses: string[];
     actor?: string;
     limit?: number;
+    filenames?: string[];
     eventIds?: string[];
+    includeTerminal?: boolean;
   },
 ): Promise<{
   retried: number;
@@ -1680,11 +1783,20 @@ export async function retryFailedOutlookAttachments(
   const actor = input.actor ?? "system:mailbox-attachment-retry";
   const mailboxes = await listApprovedAttachmentMailboxes(env.DB, input.companyId);
   const wanted = new Map(mailboxes.map((row) => [row.mailbox_address.toLowerCase(), row]));
-  const failed = await listFailedMailboxAttachmentEvents(env.DB, {
-    companyId: input.companyId,
-    mailboxAddresses: input.mailboxAddresses,
-    eventIds: input.eventIds,
-    limit: input.limit ?? 80,
+  const wantedNames = new Set(
+    (input.filenames ?? []).map((name) => name.trim().toLowerCase()).filter(Boolean),
+  );
+  const failed = (
+    await listFailedMailboxAttachmentEvents(env.DB, {
+      companyId: input.companyId,
+      mailboxAddresses: input.mailboxAddresses,
+      eventIds: input.eventIds,
+      includeTerminal: input.includeTerminal === true,
+      limit: input.limit ?? 80,
+    })
+  ).filter((row) => {
+    if (input.eventIds?.length) return true;
+    return !wantedNames.size || wantedNames.has(String(row.filename ?? "").toLowerCase());
   });
   const graphByMailbox = new Map<string, { accessToken: string; tenantId: string } | null>();
   const items: Array<{
@@ -1746,6 +1858,18 @@ export async function retryFailedOutlookAttachments(
       stillFailed += 1;
       continue;
     }
+    await recordKnowledgeIngestionEvent(env.DB, {
+      companyId: input.companyId,
+      sourceType: row.source_type || "outlook_attachments",
+      eventType: (row.event_type as "failed") || "failed",
+      providerItemId: row.provider_item_id,
+      parentMessageId: row.parent_message_id,
+      filename: row.filename,
+      mailboxAddress: row.mailbox_address,
+      retryCount: (row.retry_count ?? 0) + 1,
+      failureCode: row.failure_code,
+      skipReason: row.skip_reason,
+    });
     const listed = await listAttachmentsForMessage(env, {
       companyId: input.companyId,
       mailboxAddress: mailbox.mailbox_address,
@@ -1793,7 +1917,12 @@ export async function retryFailedOutlookAttachments(
         tenantId: graph?.tenantId ?? null,
         recoverExisting: true,
       });
-      if (result.status === "failed" && isTerminalAttachmentFailure(result.failureCode)) {
+      if (
+        result.status === "failed" &&
+        (isTerminalAttachmentFailure(result.failureCode) ||
+          result.failureCode === "KNOWLEDGE_EXTRACT_EMPTY" ||
+          result.failureCode === "EMPTY_WORKBOOK")
+      ) {
         await recordKnowledgeIngestionEvent(env.DB, {
           companyId: input.companyId,
           sourceType: "outlook_attachments",

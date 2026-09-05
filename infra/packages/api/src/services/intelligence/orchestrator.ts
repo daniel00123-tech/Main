@@ -1094,7 +1094,12 @@ function prepareToolArguments(
     next = withResolvedBusinessDates(name, next, text);
   }
   if (name === "search_company_knowledge" || name === "search") {
-    next.query = String(next.query ?? next.q ?? "").trim() || knowledgeQueryFromText(text);
+    const incoming = String(next.query ?? next.q ?? text).trim();
+    next.query = knowledgeQueryFromText(incoming);
+    return next;
+  }
+  if (name.startsWith("warehouse_")) {
+    next.query = String(next.query ?? text).trim();
     return next;
   }
   if (name === "outlook_list_messages" || name === "outlook_search_mailbox" || name === "outlook_get_message") {

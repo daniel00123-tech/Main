@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyQueryFreshness,
+  classifyWarehouseRequest,
   preferredSource,
   warehouseIsFreshEnough,
   warehouseIsStale,
@@ -197,6 +198,22 @@ describe("warehouse freshness policy", () => {
     expect(classifyQueryFreshness("What did last month's sales come to?", now)).toBe("HISTORICAL_ANALYTICAL");
     expect(classifyQueryFreshness("Summarise the last 3 completed months", now)).toBe("HISTORICAL_ANALYTICAL");
     expect(classifyQueryFreshness("What are overdue invoices right now?", now)).toBe("CURRENT_LIVE_STATE");
+    expect(
+      classifyWarehouseRequest({
+        intentText: "warehouse_sales_analysis",
+        fromDate: "2026-03-01",
+        toDate: "2026-03-31",
+        now,
+      }),
+    ).toBe("HISTORICAL_ANALYTICAL");
+    expect(
+      classifyWarehouseRequest({
+        intentText: "Has invoice INV-1 been paid yet?",
+        fromDate: "2026-03-01",
+        toDate: "2026-03-31",
+        now,
+      }),
+    ).toBe("CURRENT_LIVE_STATE");
   });
 
   it("prefers live when stale/degraded and warehouse when historical healthy", () => {
@@ -506,6 +523,40 @@ describe("warehouse query + live fallback", () => {
     if (tool.ok) {
       expect(tool.result.evidence).toMatchObject({ source: "xero_warehouse" });
       expect(tool.result.customerChargeCents).toBe(0);
+    }
+  });
+
+  it("serves a completed month with the warehouse contract even when sync is stale and intent is the tool name", async () => {
+    const repo = createMemoryWarehouseRepository();
+    const source = newWarehouseSource({ companyId: WAREHOUSE_EL_COMPANY_ID, connector: WAREHOUSE_XERO_CONNECTOR });
+    source.status = "HEALTHY";
+    source.lastSuccessfulSync = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    source.warehouseLastUpdatedAt = null;
+    source.checkpoint = {
+      mode: "backfill",
+      completeness: "COMPLETE",
+      historyFrom: "2025-04-01",
+      historyTo: "2026-08-31",
+      months: [{ month: "2026-03", status: "COMPLETE", recordsRetrieved: 2 }],
+    };
+    await repo.upsertSource(source);
+    await repo.upsertInvoice(invoice({ invoiceId: "inv_march", invoiceDate: "2026-03-12", total: 250, amountPaid: 250, amountDue: 0, status: "PAID" }));
+    const tool = await executeWarehouseTool({
+      repo,
+      companyId: WAREHOUSE_EL_COMPANY_ID,
+      toolName: "warehouse_sales_analysis",
+      arguments: { fromDate: "2026-03-01", toDate: "2026-03-31", aggregation: "sales_total" },
+      intentText: "warehouse_sales_analysis",
+    });
+    expect(tool.ok).toBe(true);
+    if (tool.ok) {
+      const payload = (tool.result.result ?? tool.result) as Record<string, unknown>;
+      expect(payload.source).toBe("xero_warehouse");
+      expect(payload.warehouse_as_of ?? payload.warehouseAsOf).toBe(source.lastSuccessfulSync);
+      expect(payload.completeness_status ?? payload.completenessStatus).toBeTruthy();
+      expect(payload.period_start).toBe("2026-03-01");
+      expect(payload.period_end).toBe("2026-03-31");
+      expect(payload.fallback).toBeUndefined();
     }
   });
 });

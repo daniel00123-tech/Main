@@ -16,6 +16,9 @@ describe("targeted quality bank", () => {
     expect(questionsForStage("followup").length).toBeGreaterThanOrEqual(10);
     expect(questionsForStage("correction").length).toBeGreaterThanOrEqual(10);
     expect(questionsForStage("dedupe").length).toBeGreaterThanOrEqual(10);
+    expect(questionsForStage("warehouse-meta")).toHaveLength(12);
+    expect(questionsForStage("mixed-warehouse")).toHaveLength(12);
+    expect(questionsForStage("knowledge-recall")).toHaveLength(10);
   });
 });
 

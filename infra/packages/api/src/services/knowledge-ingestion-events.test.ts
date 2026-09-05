@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { classifyActivityKind, timestampInWindow } from "@infra/shared";
 import {
+  classifyMailboxAttachmentFailure,
   isTerminalAttachmentFailure,
   knowledgeIngestionEventInWindow,
+  mailboxFailureLedgerMetadata,
   recordKnowledgeIngestionEvent,
 } from "./knowledge-ingestion-events";
 
@@ -103,10 +105,60 @@ describe("knowledge ingestion ledger", () => {
     ).toBe(false);
   });
 
-  it("marks empty extract and unsupported types as terminal so they are not retried forever", () => {
-    expect(isTerminalAttachmentFailure("KNOWLEDGE_EXTRACT_EMPTY")).toBe(true);
+  it("classifies mailbox failure retry semantics without infinite retries", () => {
+    expect(classifyMailboxAttachmentFailure("FETCH_TRANSIENT")).toEqual({
+      retryable: true,
+      terminal: false,
+      eventType: "failed",
+    });
+    expect(classifyMailboxAttachmentFailure("UNSUPPORTED_MIME")).toEqual({
+      retryable: false,
+      terminal: true,
+      eventType: "skipped",
+    });
+    expect(classifyMailboxAttachmentFailure("CORRUPT_WORKBOOK")).toEqual({
+      retryable: false,
+      terminal: true,
+      eventType: "failed",
+    });
+    expect(classifyMailboxAttachmentFailure("KNOWLEDGE_EXTRACT_EMPTY")).toEqual({
+      retryable: true,
+      terminal: false,
+      eventType: "failed",
+    });
+    expect(classifyMailboxAttachmentFailure("EMPTY_WORKBOOK")).toEqual({
+      retryable: false,
+      terminal: true,
+      eventType: "skipped",
+    });
+    expect(classifyMailboxAttachmentFailure("RETRIEVAL_UNVERIFIED")).toMatchObject({ retryable: true, eventType: "failed" });
+    const ledger = mailboxFailureLedgerMetadata({
+      company: "co_el",
+      mailbox: "michael@elvexpropertyservices.com",
+      messageId: "AAMk-1",
+      attachmentId: "AAMk-att",
+      filename: "quote.pdf",
+      stage: "FETCH",
+      errorClass: "FETCH_FAILED",
+      retryable: true,
+      attemptCount: 1,
+    });
+    expect(ledger).toMatchObject({
+      company: "co_el",
+      mailbox: "michael@elvexpropertyservices.com",
+      messageId: "AAMk-1",
+      attachmentId: "AAMk-att",
+      stage: "FETCH",
+      retryable: true,
+    });
+    expect(ledger.attachmentId).not.toBeFalsy();
+  });
+
+  it("marks confirmed-empty and unsupported types as terminal so they are not retried forever", () => {
+    expect(isTerminalAttachmentFailure("KNOWLEDGE_EXTRACT_EMPTY")).toBe(false);
     expect(isTerminalAttachmentFailure("EXTRACT_EMPTY_TERMINAL")).toBe(true);
     expect(isTerminalAttachmentFailure("UNSUPPORTED_TYPE")).toBe(true);
+    expect(isTerminalAttachmentFailure("EMPTY_WORKBOOK")).toBe(true);
     expect(isTerminalAttachmentFailure("KNOWLEDGE_UPLOAD_FAILED")).toBe(false);
     expect(isTerminalAttachmentFailure("FETCH_TRANSIENT")).toBe(false);
   });

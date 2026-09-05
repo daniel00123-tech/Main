@@ -71,9 +71,15 @@ vi.mock("./microsoft-knowledge-bridge", () => ({
   uploadMicrosoftDocumentToKnowledge: hoisted.upload,
 }));
 
-vi.mock("./knowledge-ingestion-events", () => ({
-  recordKnowledgeIngestionEvent: hoisted.recordEvent,
-}));
+vi.mock("./knowledge-ingestion-events", async () => {
+  const actual = await vi.importActual<typeof import("./knowledge-ingestion-events")>(
+    "./knowledge-ingestion-events",
+  );
+  return {
+    ...actual,
+    recordKnowledgeIngestionEvent: hoisted.recordEvent,
+  };
+});
 
 vi.mock("./knowledge-intake", () => ({
   storeOriginalInKnowledgeIntake: hoisted.store,

@@ -69,11 +69,32 @@ export function isSemanticKnowledgeAsk(text: string): boolean {
   );
 }
 
+const FINANCE_WINDOW =
+  /\b((january|february|march|april|may|june|july|august|september|october|november|december)(\s+20\d{2})?|last month|this month|previous month|mtd)\b/gi;
+const FINANCE_METRIC = /\b(sales|revenue|figures|warehouse|xero|overdue|outstanding|top customers?)\b/gi;
+
+function stripFinanceContamination(text: string): string {
+  const cleaned = String(text ?? "")
+    .replace(/\b(give me|show me|what were|what are|tell me)\b/gi, " ")
+    .replace(new RegExp(`(?:${FINANCE_WINDOW.source})\\s+(?:${FINANCE_METRIC.source})`, "gi"), " ")
+    .replace(new RegExp(`(?:${FINANCE_METRIC.source})\\s+(?:${FINANCE_WINDOW.source})`, "gi"), " ")
+    .replace(/\b(warehouse|xero)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || text;
+}
+
 export function knowledgeQueryFromText(text: string): string {
   const value = String(text ?? "").trim();
   const clauses = value.split(/\b(?:and|plus|also|together with|,)\b/i).map((part) => part.trim()).filter(Boolean);
-  const focused = clauses.find((clause) => isSemanticKnowledgeAsk(clause) && !ACCOUNTING_ASK.test(clause) && !EMAIL_ASK.test(clause));
-  return focused || value;
+  const knowledgeClauses = clauses.filter(
+    (clause) => isSemanticKnowledgeAsk(clause) || /\b(policy|procedure|process|handbook|guidance|document|knowledge)\b/i.test(clause),
+  );
+  const focused =
+    knowledgeClauses.find((clause) => !ACCOUNTING_ASK.test(clause) && !EMAIL_ASK.test(clause)) ??
+    knowledgeClauses.find((clause) => isSemanticKnowledgeAsk(clause)) ??
+    knowledgeClauses[0];
+  return stripFinanceContamination(focused || value);
 }
 
 export function isExplicitCatalogueAsk(text: string): boolean {
