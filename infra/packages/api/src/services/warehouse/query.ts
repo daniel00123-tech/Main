@@ -211,9 +211,22 @@ export async function executeWarehouseQuery(
         asOf: dates.today,
       };
       break;
-    case "top_customers":
-      payload = { customers: metrics.topCustomers, fromDate, toDate };
+    case "top_customers": {
+      const contacts = await repo.listContacts(input.companyId).catch(() => []);
+      const byId = new Map(contacts.map((row) => [row.contactId, row.displayName ?? null]));
+      payload = {
+        customers: metrics.topCustomers.map((row) => ({
+          ...row,
+          name:
+            row.name ||
+            (row.contactId ? byId.get(row.contactId) : null) ||
+            null,
+        })),
+        fromDate,
+        toDate,
+      };
       break;
+    }
     case "kpi_latest":
       payload = { kpi: await repo.latestKpi(input.companyId, input.connector ?? WAREHOUSE_XERO_CONNECTOR) };
       break;

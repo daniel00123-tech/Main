@@ -91,6 +91,16 @@ export function refersToCurrentDocument(text: string): boolean {
   return CURRENT_DOCUMENT_REF.test(text);
 }
 
+export function isSemanticCorrection(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return (
+    (/^(no|nope|nah|sorry)\b/i.test(trimmed) &&
+      /\b(meant|instead|talking about|check|not )\b/i.test(trimmed)) ||
+    /\b(i meant|i was talking about|i was referring|not (xero|the ledger) —|not xero)\b/i.test(trimmed)
+  );
+}
+
 export function isNegativeResultFeedback(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
@@ -98,7 +108,8 @@ export function isNegativeResultFeedback(text: string): boolean {
   return (
     NEGATIVE_RESULT.test(trimmed) ||
     /^(no|nope|nah)[,.]?\s+(that'?s |this is )?(not|wrong)/i.test(trimmed) ||
-    /^(no|nope|nah)[,.]?\s+i meant\b/i.test(trimmed)
+    /^(no|nope|nah)[,.]?\s+i meant\b/i.test(trimmed) ||
+    isSemanticCorrection(trimmed)
   );
 }
 

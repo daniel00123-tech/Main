@@ -18,6 +18,9 @@ import {
   recordSuccessfulCall,
   sanitiseEvidenceForModel,
   shouldReuseSuccessfulTool,
+  emailBodyRequired,
+  emailEvidenceHasBody,
+  argsFingerprint,
 } from "./evidence.js";
 import type { IntelligenceCompleter } from "./provider.js";
 import { applyGuardToTurn } from "./response-guard.js";
@@ -256,6 +259,14 @@ async function executeIntelligenceTurn(input: {
     channel: input.channel ?? null,
   };
   const runtime = wrapAuthorizedRuntime(input.runtime, authCtx);
+  const executedThisTurn = new Map<string, IntelligenceToolResult>();
+  const turnReuseKey = (name: string, args: Record<string, unknown>) => {
+    const invoice = String(args.invoiceNumber ?? args.invoiceId ?? "")
+      .trim()
+      .toUpperCase();
+    if (invoice && name === "xero_get_invoice") return `${name}:${invoice}`;
+    return argsFingerprint(name, args);
+  };
   let recentEvidence = stampEvidenceTenant(
     mergeEvidence(input.state.recentEvidence, extractEvidenceFromTools([])),
     input.state.companyId,
@@ -565,7 +576,14 @@ async function executeIntelligenceTurn(input: {
         transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
         continue;
       }
+      const reuseKey = turnReuseKey(call.name, call.arguments);
+      const already = executedThisTurn.get(reuseKey);
+      if (already) {
+        transcript.push(`Reused authorised ${call.name} result; no duplicate tool call.`);
+        continue;
+      }
       const result = await runtime.executeTool(call);
+      executedThisTurn.set(reuseKey, result);
       toolCalls.push(result);
       recentEvidence = recordSuccessfulCall(mergeEvidence(recentEvidence, extractEvidenceFromTools([result])), call, result);
       workingState.recentEvidence = recentEvidence;
@@ -1267,7 +1285,7 @@ function mailboxSearchQuery(text: string, args: Record<string, unknown>): string
 }
 
 function wantsFullEmail(text: string): boolean {
-  return /\b(full|body|what does .{0,40}(say|said))\b/i.test(text);
+  return emailBodyRequired(text);
 }
 
 function wantsSalesThenFinanceEmail(text: string): boolean {
@@ -1319,6 +1337,27 @@ async function runDeterministicRead(
       };
     }
   }
+  if (
+    emailBodyRequired(text) &&
+    state.recentEvidence?.recentEmail?.id &&
+    !emailEvidenceHasBody(state.recentEvidence)
+  ) {
+    const fetched = await runtime.executeTool({
+      name: "outlook_get_message",
+      arguments: prepareToolArguments(
+        "outlook_get_message",
+        { messageId: state.recentEvidence.recentEmail.id },
+        text,
+        state,
+        scoped.scope,
+      ),
+    });
+    return {
+      text: synthesizeFromToolCalls([fetched], text),
+      toolCalls: [fetched],
+      ok: fetched.ok,
+    };
+  }
   const rewritten = rewriteAccountingTool(toolName, {}, text);
   const planned = {
     name: rewritten.name,
@@ -1330,7 +1369,7 @@ async function runDeterministicRead(
     if (state.recentEvidence?.recentXero?.summary && /^xero_/.test(toolName)) {
       return { text: `Xero: ${state.recentEvidence.recentXero.summary}`, toolCalls: [], ok: true };
     }
-    if (state.recentEvidence?.recentEmail && /outlook/i.test(toolName)) {
+    if (state.recentEvidence?.recentEmail && /outlook/i.test(toolName) && !emailBodyRequired(text)) {
       const email = state.recentEvidence.recentEmail;
       return { text: `The newest email is “${email.subject}” from ${email.from}.`, toolCalls: [], ok: true };
     }

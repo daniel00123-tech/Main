@@ -127,6 +127,16 @@ export function classifyDailyTraffic(input: TrafficClassifyInput): DailyTrafficC
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
   if (explicit === "ENGINEERING") return "ENGINEERING";
+  if (
+    explicit === "TEST" ||
+    explicit === "SHADOW" ||
+    explicit === "QUALITY" ||
+    explicit === "INTERNAL" ||
+    explicit === "AUTOMATION" ||
+    explicit === "HEALTH"
+  ) {
+    return explicit;
+  }
 
   const source = String(input.sourceClient ?? "").toLowerCase();
   if (/daily[_-]?improvement|cursor-engineering|engineering[_-]?queue/.test(source)) {
@@ -134,7 +144,6 @@ export function classifyDailyTraffic(input: TrafficClassifyInput): DailyTrafficC
   }
   if (/shadow/.test(source) || input.toolName === "openai_shadow") return "SHADOW";
 
-  if (looksLikeAutomatedTestPrompt(input.userMessage)) return "TEST";
   if (/InfraAcceptance|WhatsAppQA|ELBillingSuite|QualityLoop|e2e-probe/i.test(input.userAgent ?? "")) {
     return "TEST";
   }
@@ -159,6 +168,12 @@ export function classifyDailyTraffic(input: TrafficClassifyInput): DailyTrafficC
   if (billed !== "CUSTOMER_REQUEST") return billed;
   if (input.quality) return "QUALITY";
   if (input.shadow) return "SHADOW";
+
+  // Live writes always pass an explicit class and usually a user-agent.
+  // Prompt fingerprints only classify unlabeled historical rows.
+  if (explicit === "CUSTOMER_REQUEST") return CUSTOMER_TRAFFIC_CLASS;
+  if (input.userId && input.userAgent) return CUSTOMER_TRAFFIC_CLASS;
+  if (looksLikeAutomatedTestPrompt(input.userMessage)) return "TEST";
   return CUSTOMER_TRAFFIC_CLASS;
 }
 

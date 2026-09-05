@@ -184,7 +184,9 @@ export function wantsMultiCapabilityRead(text: string): boolean {
   families.delete("WEB");
   if (families.size < 2) return false;
   if (families.has("KNOWLEDGE") && families.has("ACCOUNTING") && families.size === 2) {
-    if (!/\b(xero|invoice|outlook|inbox|mailbox|emails?)\b/i.test(text)) return false;
+    if (!/\b(xero|invoice|outlook|inbox|mailbox|emails?|warehouse|(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|september|oct|october|nov|november|dec|december))\b/i.test(text)) {
+      return false;
+    }
   }
   return (
     /\b(and|then|also|plus)\b/i.test(text) ||
@@ -192,7 +194,8 @@ export function wantsMultiCapabilityRead(text: string): boolean {
     /\?\s+\S/.test(text) ||
     (families.has("EMAIL") && families.has("ACCOUNTING")) ||
     (families.has("EMAIL") && families.has("KNOWLEDGE")) ||
-    (families.has("ACCOUNTING") && families.has("CATALOGUE"))
+    (families.has("ACCOUNTING") && families.has("CATALOGUE")) ||
+    (families.has("ACCOUNTING") && families.has("KNOWLEDGE"))
   );
 }
 
@@ -212,8 +215,9 @@ export function detectRequestedCapabilities(text: string): PlatformCapability[] 
     /\b(list|show).{0,16}(files|documents)\b/i.test(value) ||
     /\bhow many (files|documents) are indexed\b/i.test(value);
   const knowledge =
-    /\b(process|procedure|policy|how do we|company knowledge|onboarding|health and safety)\b/i.test(value) &&
-    !catalogue;
+    /\b(process|procedure|policy|handbook|guidance|how do we|company knowledge|onboarding|health and safety|what does (the|our) .{0,48}(say|mean|require)|find (the )?(document|policy|file) (about|on|for)|in (the|our) (policy|handbook|procedure))\b/i.test(
+      value,
+    ) && !catalogue;
   const web = /\b(weather|forecast|public holiday|news headline)\b/i.test(value);
   if (email) found.add(/\b(search|from|containing|about|look in)\b/i.test(value) ? "EMAIL_SEARCH" : "EMAIL_LIST");
   if (accounting && /\b(INV-|invoice (id|number)|find invoice)\b/i.test(value)) found.add("ACCOUNTING_INVOICE_GET");

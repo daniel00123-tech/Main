@@ -41,11 +41,10 @@ export async function auditLastSevenDays(env: Env): Promise<Record<string, unkno
     `SELECT interaction_id, company_id, channel, user_message, assistant_answer, tools_executed, traffic_class, source_client, terminal_state, customer_charge_cents, created_at
      FROM daily_improvement_interactions
      WHERE created_at >= ?
-     ORDER BY created_at ASC LIMIT 500`,
+     ORDER BY created_at ASC LIMIT 2000`,
   )
     .bind(since)
-    .all<Record<string, unknown>>()
-    .catch(() => ({ results: [] as Array<Record<string, unknown>> }));
+    .all<Record<string, unknown>>();
 
   const customerDaily = (daily.results ?? []).filter((row) => {
     const traffic = String(row.traffic_class ?? "CUSTOMER_REQUEST");

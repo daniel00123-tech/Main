@@ -3,6 +3,7 @@ import {
   buildTenantToolCatalogue,
   capabilityForPlatformTool,
   detectRequestedCapabilities,
+  defaultToolForCapability,
   rewriteExactAccountingTool,
   rewriteHistoricalAccountingTool,
   normaliseVendorToolName,
@@ -101,6 +102,15 @@ describe("company tool registry", () => {
     expect(detectRequestedCapabilities("Look in the inbox for an invoice PDF")).toContain("EMAIL_SEARCH");
     expect(detectRequestedCapabilities("Look in the inbox for an invoice PDF")).not.toContain("ACCOUNTING_INVOICE_SEARCH");
     expect(wantsMultiCapabilityRead("Look in the inbox for an invoice PDF")).toBe(false);
+    expect(detectRequestedCapabilities("What does the health and safety policy say, and what is the latest info email?")).toEqual(
+      expect.arrayContaining(["KNOWLEDGE_SEARCH", "EMAIL_LIST"]),
+    );
+    expect(detectRequestedCapabilities("What does the health and safety policy say, and what is the latest info email?")).not.toContain(
+      "CATALOGUE_LIST",
+    );
+    expect(wantsMultiCapabilityRead("What does the health and safety policy say, and what is the latest info email?")).toBe(true);
+    expect(wantsMultiCapabilityRead("What were March sales and what does the vehicle policy require?")).toBe(true);
+    expect(defaultToolForCapability("KNOWLEDGE_SEARCH")).toBe("search_company_knowledge");
     expect(detectRequestedCapabilities("Newest document")).toContain("CATALOGUE_LIST");
     expect(detectRequestedCapabilities("What were sales in March?")).toContain("ACCOUNTING_WAREHOUSE");
     expect(detectRequestedCapabilities("What are sales right now?")).toContain("ACCOUNTING_SALES");
