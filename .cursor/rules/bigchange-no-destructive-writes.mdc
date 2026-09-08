@@ -1,0 +1,18 @@
+---
+description: Never mutate BigChange jobs unless Daniel explicitly asks, and never use JobUpdate to assign
+alwaysApply: true
+---
+
+BigChange JobWatch writes are destructive.
+
+On 8 Sep 2026 an Elvex access check used `JobUpdate` and `JobSchedule` against Sharon-category jobs. `JobUpdate` is a full replace: omitted fields (description, custom notes, duration, category, job ref) were wiped. `JobSchedule` created Scheduled activity on jobs that were only meant to be listed. Affected refs included EL1401, EL1403, EL1730, EL1875, EL1902, EL1956, EL1958, EL1975, EL1989, and completed job EL1045.
+
+Rules:
+
+- Default to read-only: `JobsList`, `Job`, `JobCategories`, `Resources`, invoice/activity reads.
+- Do not call `JobUpdate`, `JobSchedule`, `JobUnschedule`, REST PATCH/PUT on jobs, or any other write unless Daniel explicitly names the job refs and the write (for example "schedule EL1234" or "restore description on EL1730").
+- "Assign jobs" is not permission to `JobUpdate`. That action wipes unspecified fields. Do not use it to set `ResourceId`.
+- Do not `JobSchedule` unless asked to put a job on the diary. Assigning a resource is not scheduling.
+- If a write is required, GET the full job first, change only the requested field via a non-replace API, then GET again to confirm nothing else changed. Stop after the first unexpected field change.
+- Never batch-write jobs to "finish the task".
+- If damage is found, stop writing and report the refs. Do not keep calling `JobUpdate` to fix it unless Daniel asks for a restore.
