@@ -4,6 +4,7 @@ import unittest
 
 from scripts.staff_commission import (
     COMMISSION_TIERS,
+    MAX_JOB_PENALTY,
     MONTHLY_MIN_MARGIN,
     MONTHLY_MIN_PROFIT,
     PENALTY_RATE_PO,
@@ -50,12 +51,12 @@ class SpecExamplesTest(unittest.TestCase):
         self.assertEqual(result.rate, D("0.075"))
         self.assertEqual(result.tier_min_revenue, D("2000"))
 
-    def test_tier2_penalty_example_3000_at_15_percent(self) -> None:
-        # Below 20%: 20% of £3,000 is £600, profit is £450, catch-up −£150
-        result = calculate_job_commission("3000", "450", cost="2550")
-        self.assertEqual(result.commission, D("-150.00"))
+    def test_tier2_penalty_example_3000_at_10_percent(self) -> None:
+        # Below 12.5%: 12.5% of £3,000 is £375, profit is £300, catch-up −£75
+        result = calculate_job_commission("3000", "300", cost="2700")
+        self.assertEqual(result.commission, D("-75.00"))
         self.assertTrue(result.is_penalty)
-        self.assertEqual(result.commission, margin_catchup_penalty(D("3000"), D("450"), D("20")))
+        self.assertEqual(result.commission, margin_catchup_penalty(D("3000"), D("300"), D("12.5")))
 
 
 class RevenueTierBoundaryTest(unittest.TestCase):
@@ -139,11 +140,19 @@ class Tier1MarginBandsTest(unittest.TestCase):
 
 
 class Tier2MarginBandsTest(unittest.TestCase):
-    def test_penalty_just_below_20(self) -> None:
+    def test_penalty_just_below_12_5(self) -> None:
         self.assertEqual(
-            commission("3000", margin="19.99"),
-            margin_catchup_penalty(D("3000"), D("3000") * D("0.1999"), D("20")),
+            commission("3000", margin="12.49"),
+            margin_catchup_penalty(D("3000"), D("3000") * D("0.1249"), D("12.5")),
         )
+
+    def test_12_50_is_5_percent_of_profit_not_penalty(self) -> None:
+        self.assertEqual(commission("3000", margin="12.5"), money(D("3000") * D("0.125") * D("0.05")))
+
+    def test_15_percent_earns_not_a_minus(self) -> None:
+        result = calculate_job_commission("3000", "450", cost="2550")
+        self.assertEqual(result.commission, D("22.50"))
+        self.assertFalse(result.is_penalty)
 
     def test_20_00_is_5_percent_of_profit_not_penalty(self) -> None:
         self.assertEqual(commission("3000", margin="20"), money(D("3000") * D("0.20") * D("0.05")))
@@ -160,18 +169,21 @@ class Tier2MarginBandsTest(unittest.TestCase):
     def test_42_50_steps_to_10_percent(self) -> None:
         self.assertEqual(commission("3000", margin="42.5"), money(D("3000") * D("0.425") * D("0.10")))
 
-    def test_penalty_is_the_profit_shortfall_to_20_percent(self) -> None:
-        result = calculate_job_commission("3000", "450", cost="2550")
-        self.assertEqual(result.commission, D("-150.00"))
-        self.assertEqual(result.commission, margin_catchup_penalty(D("3000"), D("450"), D("20")))
+    def test_penalty_is_the_profit_shortfall_to_12_5_percent(self) -> None:
+        result = calculate_job_commission("3000", "300", cost="2700")
+        self.assertEqual(result.commission, D("-75.00"))
+        self.assertEqual(result.commission, margin_catchup_penalty(D("3000"), D("300"), D("12.5")))
 
 
 class Tier3MarginBandsTest(unittest.TestCase):
-    def test_penalty_just_below_12_5(self) -> None:
+    def test_penalty_just_below_10(self) -> None:
         self.assertEqual(
-            commission("5000", margin="12.49"),
-            margin_catchup_penalty(D("5000"), D("5000") * D("0.1249"), D("12.5")),
+            commission("5000", margin="9.99"),
+            margin_catchup_penalty(D("5000"), D("5000") * D("0.0999"), D("10")),
         )
+
+    def test_10_00_is_5_percent_of_profit_not_penalty(self) -> None:
+        self.assertEqual(commission("5000", margin="10"), money(D("5000") * D("0.10") * D("0.05")))
 
     def test_12_50_is_5_percent_of_profit_not_penalty(self) -> None:
         self.assertEqual(commission("5000", margin="12.5"), money(D("5000") * D("0.125") * D("0.05")))
@@ -201,11 +213,20 @@ class ZeroAndNegativeRevenueTest(unittest.TestCase):
         self.assertEqual(result.commission, D("0.00"))
         self.assertFalse(result.is_penalty)
 
-    def test_loss_catchup_brings_profit_up_to_20_percent_of_the_sale(self) -> None:
-        # £35 sale, −£420 profit: 20% of £35 is £7, so catch-up is £427
+    def test_loss_catchup_is_capped_at_250(self) -> None:
+        # £35 sale, −£420 profit would be −£427 uncapped; per-job minus stops at £250.
         result = calculate_job_commission("35", "-420", cost="455")
-        self.assertEqual(result.commission, D("-427.00"))
+        self.assertEqual(result.commission, D("-250.00"))
         self.assertTrue(result.is_penalty)
+
+    def test_large_job_catchup_is_capped_at_250(self) -> None:
+        result = calculate_job_commission("8000", "0", cost="8000")
+        self.assertEqual(result.commission, D("-250.00"))
+        self.assertEqual(MAX_JOB_PENALTY, D("250"))
+
+    def test_large_po_only_is_capped_at_250(self) -> None:
+        result = calculate_job_commission("0", "-5000", cost="5000")
+        self.assertEqual(result.commission, D("-250.00"))
 
 
 class RunningCommissionAndPenaltiesTest(unittest.TestCase):
@@ -214,16 +235,16 @@ class RunningCommissionAndPenaltiesTest(unittest.TestCase):
             [
                 {"sale": D("1500"), "cost": D("975"), "profit": D("525"), "reference": "JOB1"},  # +26.25
                 {"sale": D("3000"), "cost": D("1950"), "profit": D("1050"), "reference": "JOB2"},  # +78.75
-                {"sale": D("3000"), "cost": D("2550"), "profit": D("450"), "reference": "JOB3"},  # -150.00
+                {"sale": D("3000"), "cost": D("2700"), "profit": D("300"), "reference": "JOB3"},  # -75.00
                 {"sale": D("1500"), "cost": D("750"), "profit": D("750"), "reference": "JOB4"},  # 50% → +75.00
             ]
         )
         amounts = [row["commission"] for row in rows]
-        self.assertEqual(amounts, [D("26.25"), D("78.75"), D("-150.00"), D("75.00")])
-        self.assertEqual(rows[-1]["running_commission"], D("30.00"))
-        self.assertEqual(sum_job_commissions(rows), D("30.00"))
+        self.assertEqual(amounts, [D("26.25"), D("78.75"), D("-75.00"), D("75.00")])
+        self.assertEqual(rows[-1]["running_commission"], D("105.00"))
+        self.assertEqual(sum_job_commissions(rows), D("105.00"))
         # Positive jobs later do not wipe earlier penalties.
-        self.assertEqual(rows[2]["running_commission"], D("-45.00"))
+        self.assertEqual(rows[2]["running_commission"], D("30.00"))
 
     def test_does_not_change_existing_sale_profit_fields(self) -> None:
         original = {"sale": D("1500.00"), "cost": D("975.00"), "profit": D("525.00"), "margin": D("35.0")}
@@ -277,11 +298,11 @@ class JobGroupingTest(unittest.TestCase):
         jobs = attach_job_commissions(
             [
                 {"sale": D("1500"), "cost": D("975"), "profit": D("525")},
-                {"sale": D("3000"), "cost": D("2550"), "profit": D("450")},
+                {"sale": D("3000"), "cost": D("2700"), "profit": D("300")},
             ]
         )
-        combined = calculate_job_commission(D("4500"), D("975"), cost=D("3525")).commission
-        self.assertEqual(sum_job_commissions(jobs), D("-123.75"))
+        combined = calculate_job_commission(D("4500"), D("825"), cost=D("3675")).commission
+        self.assertEqual(sum_job_commissions(jobs), D("-48.75"))
         self.assertNotEqual(sum_job_commissions(jobs), combined)
 
 
@@ -333,8 +354,9 @@ class MonthlyQualificationTest(unittest.TestCase):
         self.assertEqual(PENALTY_RATE_PO, D("0.20"))
         self.assertEqual(len(COMMISSION_TIERS), 3)
         self.assertEqual(COMMISSION_TIERS[0]["penaltyBelowMargin"], D("20"))
-        self.assertEqual(COMMISSION_TIERS[1]["penaltyBelowMargin"], D("20"))
-        self.assertEqual(COMMISSION_TIERS[2]["penaltyBelowMargin"], D("12.5"))
+        self.assertEqual(COMMISSION_TIERS[1]["penaltyBelowMargin"], D("12.5"))
+        self.assertEqual(COMMISSION_TIERS[2]["penaltyBelowMargin"], D("10"))
+        self.assertEqual(MAX_JOB_PENALTY, D("250"))
 
 
 class CentralConfigShapeTest(unittest.TestCase):

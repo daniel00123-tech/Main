@@ -76,7 +76,7 @@ class HtmlReportTest(unittest.TestCase):
         jobs = attach_job_commissions(
             [
                 _job(dt.date(2026, 8, 3), "GR/1", "1500", "525"),
-                _job(dt.date(2026, 8, 4), "GR/2", "3000", "450"),
+                _job(dt.date(2026, 8, 4), "GR/2", "3000", "300"),
             ]
         )
         body = build_html(staff_name="Sharon", month_label="August 2026", job_rows=jobs, anomaly_rows=[])
@@ -87,12 +87,13 @@ class HtmlReportTest(unittest.TestCase):
         self.assertIn("Running profit", body)
         self.assertIn("Running commission", body)
         self.assertIn("£26.25", body)
-        self.assertIn("-£150.00", body)
+        self.assertIn("-£75.00", body)
         self.assertIn("NOT YET QUALIFIED", body)
         self.assertIn("Your current commission is", body)
         self.assertIn(commission_style(D("26.25")), body)
-        self.assertIn(commission_style(D("-150.00")), body)
-        self.assertIn("profit missing to reach the minimum margin", body)
+        self.assertIn(commission_style(D("-75.00")), body)
+        self.assertIn("than £250 on one job", body)
+        self.assertIn("capped at £250", body)
         self.assertIn("under £2,000, margin from 20%", body)
         self.assertNotIn("calculate_job_commission", body)
         # Anomalies are excluded from commission.

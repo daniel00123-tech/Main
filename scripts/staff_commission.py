@@ -17,6 +17,7 @@ ZERO = D("0")
 TWOP = D("0.01")
 
 PENALTY_RATE_PO = D("0.20")  # Option A: 20% of the PO when there is no sale
+MAX_JOB_PENALTY = D("250")  # Per-job commission minus cannot exceed this
 
 MONTHLY_MIN_PROFIT = D("8000")
 MONTHLY_MIN_MARGIN = D("25")
@@ -40,9 +41,9 @@ COMMISSION_TIERS: list[dict[str, Any]] = [
     {
         "minRevenue": D("2000"),
         "maxRevenue": D("4999.99"),
-        "penaltyBelowMargin": D("20"),
+        "penaltyBelowMargin": D("12.5"),
         "bands": [
-            {"minMargin": D("20"), "maxMargin": D("34.99"), "rate": D("0.05")},
+            {"minMargin": D("12.5"), "maxMargin": D("34.99"), "rate": D("0.05")},
             {"minMargin": D("35"), "maxMargin": D("42.49"), "rate": D("0.075")},
             {"minMargin": D("42.5"), "maxMargin": None, "rate": D("0.10")},
         ],
@@ -50,9 +51,9 @@ COMMISSION_TIERS: list[dict[str, Any]] = [
     {
         "minRevenue": D("5000"),
         "maxRevenue": None,
-        "penaltyBelowMargin": D("12.5"),
+        "penaltyBelowMargin": D("10"),
         "bands": [
-            {"minMargin": D("12.5"), "maxMargin": D("19.99"), "rate": D("0.05")},
+            {"minMargin": D("10"), "maxMargin": D("19.99"), "rate": D("0.05")},
             {"minMargin": D("20"), "maxMargin": D("31.99"), "rate": D("0.075")},
             {"minMargin": D("32"), "maxMargin": None, "rate": D("0.10")},
         ],
@@ -64,16 +65,23 @@ def money(value: D) -> D:
     return value.quantize(TWOP, rounding=decimal.ROUND_HALF_UP)
 
 
+def cap_penalty(amount: D) -> D:
+    """A single job cannot lose more than MAX_JOB_PENALTY in commission."""
+    if amount >= 0:
+        return money(amount)
+    return money(max(amount, -MAX_JOB_PENALTY))
+
+
 def po_only_penalty(cost: D) -> D:
-    """No invoice: 20% of the purchase-order value (option A)."""
+    """No invoice: 20% of the purchase-order value (option A), capped."""
     taxable_cost = cost if cost > 0 else ZERO
-    return money(-(taxable_cost * PENALTY_RATE_PO))
+    return cap_penalty(money(-(taxable_cost * PENALTY_RATE_PO)))
 
 
 def margin_catchup_penalty(sale: D, profit: D, floor_percent: D) -> D:
     """Minus equal to the profit missing to reach the tier's minimum margin.
 
-    Example: £705 invoiced at 15% (£106 profit) needs £141 to hit 20%, so −£35.
+    Capped at MAX_JOB_PENALTY. Example: £705 at 15% needs £141 to hit 20%, so −£35.
     """
     if sale <= 0:
         return ZERO
@@ -81,7 +89,7 @@ def margin_catchup_penalty(sale: D, profit: D, floor_percent: D) -> D:
     shortfall = target_profit - profit
     if shortfall <= 0:
         return ZERO
-    return money(-shortfall)
+    return cap_penalty(money(-shortfall))
 
 
 def as_decimal(value: Any) -> D:
@@ -138,9 +146,10 @@ def calculate_job_commission(
     """Commission for one aggregated job.
 
     Below the tier minimum margin, the minus is the profit shortfall to that
-    floor (20% under £5,000, 12.5% at £5,000+). No sale with a purchase order
-    is 20% of the PO. On jobs under £2,000, 20%–29.99% is £0. Positive
-    commission is a percentage of JOB PROFIT. Maximum rate is 10%.
+    floor, capped at £250: 20% under £2,000, 12.5% from £2,000 up to £4,999.99,
+    10% from £5,000. No sale with a purchase order is 20% of the PO, also
+    capped. On jobs under £2,000, 20%–29.99% is £0. Positive commission is a
+    percentage of JOB PROFIT. Maximum rate is 10%.
     """
     sale = as_decimal(revenue)
     job_profit = as_decimal(profit)
