@@ -12,6 +12,7 @@ from scripts.staff_profit_report import (
     build_staff_rows,
     commission_style,
     daily_totals,
+    is_missing_po_anomaly,
     iter_display_rows,
 )
 
@@ -158,6 +159,140 @@ class HtmlReportTest(unittest.TestCase):
         self.assertEqual(main_rows[0]["profit"], D("1050.00"))
         attached = attach_job_commissions(main_rows)
         self.assertEqual(attached[0]["commission"], D("78.75"))
+
+
+def _ok_job(job_id: int, group_id: int, category_id: int = 132264, reference: str = "") -> dict:
+    return {
+        "id": job_id,
+        "categoryId": category_id,
+        "jobGroupId": group_id,
+        "status": "completedOk",
+        "reference": reference or f"EL{job_id}",
+        "actualEndAt": "2026-08-01T12:00:00Z",
+    }
+
+
+def _doc(order_type: str, job_id: int, date: str, amount: str, *, cost: bool = False) -> dict:
+    line = {"LineQuantity": 1, "UnitPrice": "0", "CostPrice": amount} if cost else {
+        "LineQuantity": 1,
+        "UnitPrice": amount,
+        "CostPrice": 0,
+    }
+    return {"OrderType": order_type, "JobId": str(job_id), "DocumentDate": date, "lines": [line]}
+
+
+class MissingPurchaseOrderAnomalyTest(unittest.TestCase):
+    def test_threshold_is_strictly_over_250_with_no_pound_po(self) -> None:
+        self.assertFalse(is_missing_po_anomaly(D("250.00"), D("0")))
+        self.assertTrue(is_missing_po_anomaly(D("250.01"), D("0")))
+        self.assertFalse(is_missing_po_anomaly(D("2350"), D("1.00")))
+        self.assertTrue(is_missing_po_anomaly(D("2350"), D("0.99")))
+
+    def test_prior_month_po_does_not_keep_this_month_sale_on_the_running_table(self) -> None:
+        # GR/455 shape: July first sale attaches July POs; August invoice has £0 PO on the row.
+        jobs = [_ok_job(1, 455, reference="EL1619"), _ok_job(2, 455, reference="EL1664")]
+        docs = [
+            _doc("PurchaseOrder", 1, "2026-07-13", "120", cost=True),
+            _doc("Invoice", 1, "2026-07-17", "220"),
+            _doc("PurchaseOrder", 2, "2026-07-17", "1600", cost=True),
+            _doc("Invoice", 2, "2026-08-04", "2350"),
+        ]
+        main_rows, anomaly_rows = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={455: {"reference": "GR/455"}},
+            category_id=132264,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(main_rows, [])
+        self.assertEqual(len(anomaly_rows), 1)
+        self.assertEqual(anomaly_rows[0]["reference"], "GR/455")
+        self.assertEqual(anomaly_rows[0]["sale"], D("2350.00"))
+        self.assertEqual(anomaly_rows[0]["cost"], D("0.00"))
+        self.assertNotIn("GR/455", [r["reference"] for r in main_rows])
+
+    def test_mixed_group_other_staff_po_does_not_cover_this_staff_sale(self) -> None:
+        # GR/551 shape: Ella has the PO; Sharon's August invoice has no PO.
+        jobs = [
+            _ok_job(10, 551, category_id=132225, reference="EL1767"),
+            _ok_job(11, 551, category_id=132264, reference="EL1769"),
+        ]
+        docs = [
+            _doc("PurchaseOrder", 10, "2026-08-06", "90", cost=True),
+            _doc("Invoice", 10, "2026-08-07", "130"),
+            _doc("Invoice", 11, "2026-08-10", "260"),
+        ]
+        main_rows, anomaly_rows = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={551: {"reference": "GR/551"}},
+            category_id=132264,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(main_rows, [])
+        self.assertEqual(anomaly_rows[0]["reference"], "GR/551")
+        self.assertEqual(anomaly_rows[0]["sale"], D("260.00"))
+
+    def test_sale_under_250_without_po_stays_on_the_running_table(self) -> None:
+        jobs = [_ok_job(3, 409)]
+        docs = [_doc("Invoice", 3, "2026-08-02", "120")]
+        main_rows, anomaly_rows = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={409: {"reference": "GR/409"}},
+            category_id=132264,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(anomaly_rows, [])
+        self.assertEqual(main_rows[0]["sale"], D("120.00"))
+
+    def test_po_of_one_pound_this_month_keeps_the_row_on_the_running_table(self) -> None:
+        jobs = [_ok_job(4, 999)]
+        docs = [
+            _doc("Invoice", 4, "2026-08-12", "800"),
+            _doc("PurchaseOrder", 4, "2026-08-12", "1", cost=True),
+        ]
+        main_rows, anomaly_rows = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={999: {"reference": "GR/999"}},
+            category_id=132264,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(anomaly_rows, [])
+        self.assertEqual(main_rows[0]["cost"], D("1.00"))
+
+    def test_html_omits_anomalies_from_job_table_and_lists_them_below(self) -> None:
+        jobs = attach_job_commissions(
+            [_job(dt.date(2026, 8, 3), "GR/1", "1500", "525")]
+        )
+        anomalies = [
+            {
+                "date": dt.date(2026, 8, 4),
+                "reference": "GR/455",
+                "sale": D("2350.00"),
+                "cost": D("0.00"),
+                "profit": D("2350.00"),
+                "margin": D("100.0"),
+                "reason": "Sale over £250 with no purchase order",
+            }
+        ]
+        body = build_html(
+            staff_name="Sharon",
+            month_label="August 2026",
+            job_rows=jobs,
+            anomaly_rows=anomalies,
+        )
+        job_start = body.find("Sharon’s jobs")
+        anomaly_start = body.find("Anomalies")
+        self.assertGreater(anomaly_start, job_start)
+        self.assertIn("GR/455", body[anomaly_start:])
+        self.assertNotIn("GR/455", body[job_start:anomaly_start])
+        self.assertNotIn("£2,350.00", body[job_start:anomaly_start])
 
 
 if __name__ == "__main__":

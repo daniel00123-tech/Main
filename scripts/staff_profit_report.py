@@ -56,9 +56,20 @@ STAFF = {
 OPEN_BLOCKERS = {"unscheduled", "new"}
 COMPLETED = {"completedOk", "completedWithIssues"}
 ANOMALY_SALE = D("250")
+MIN_PO_AMOUNT = D("1")
 PO_GRACE_DAYS = 10
 FROM_EMAIL = "ella@elvexpropertyservices.com"
 DEFAULT_MAIL_TO = "william@elvexpropertyservices.com"
+
+
+def is_missing_po_anomaly(sale: D, po_cost: D) -> bool:
+    """Sale over £250 with no PO counted on this month's row.
+
+    The PO column on the report is the cost attached this month. A PO that
+    already attached in an earlier month, or a PO on someone else's job in a
+    mixed group, must not keep this row on the running table.
+    """
+    return sale > ANOMALY_SALE and abs(po_cost) < MIN_PO_AMOUNT
 
 
 class ConfigError(RuntimeError):
@@ -425,8 +436,6 @@ def build_staff_rows(
         first_sale = sales_sorted[0][0] if sales_sorted else None
         completed_on = group_completion_date(members)
         cost_trigger = (completed_on + dt.timedelta(days=PO_GRACE_DAYS)) if completed_on else None
-        group_has_po = any(abs(amt) >= D("1") for _, amt, _ in b["pos_any"])
-
         month_sale = money(
             sum((amt for when, amt, _ot in sales_sorted if month_start <= when <= month_end), ZERO)
         )
@@ -445,16 +454,16 @@ def build_staff_rows(
                 attached_dates.append(attach)
         attached_cost = money(attached_cost)
 
-        if month_sale > ANOMALY_SALE and not group_has_po:
+        if is_missing_po_anomaly(month_sale, attached_cost):
             anomaly_rows.append(
                 {
                     "date": min(when for when, amt, _ot in sales_sorted if month_start <= when <= month_end),
                     "reference": label(b),
                     "sale": month_sale,
-                    "cost": ZERO,
-                    "profit": month_sale,
-                    "margin": margin_of(month_sale, month_sale),
-                    "reason": "Sale over £250 with no purchase order on the group",
+                    "cost": attached_cost,
+                    "profit": money(month_sale - attached_cost),
+                    "margin": margin_of(month_sale, money(month_sale - attached_cost)),
+                    "reason": "Sale over £250 with no purchase order",
                 }
             )
             continue
