@@ -8,6 +8,7 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    QUIET,
     build_html,
     build_staff_rows,
     commission_style,
@@ -89,15 +90,17 @@ class HtmlReportTest(unittest.TestCase):
         self.assertIn("£26.25", body)
         self.assertIn("-£75.00", body)
         self.assertIn("NOT YET QUALIFIED", body)
-        self.assertIn("Your current commission is", body)
         self.assertIn(commission_style(D("26.25")), body)
         self.assertIn(commission_style(D("-75.00")), body)
-        self.assertIn("than £250 on one job", body)
-        self.assertIn("capped at £250", body)
-        self.assertIn("under £2,000, margin from 20%", body)
+        self.assertIn(QUIET, body)
+        self.assertNotIn("Day by day", body)
+        self.assertNotIn("Your current commission is", body)
+        self.assertNotIn("A group is included", body)
         self.assertNotIn("calculate_job_commission", body)
-        # Anomalies are excluded from commission.
-        self.assertIn("Not included in the totals or commission above", body)
+        status_at = body.find("STATUS:")
+        table_at = body.find("Invoice date")
+        self.assertGreater(status_at, 0)
+        self.assertGreater(table_at, status_at)
 
     def test_qualified_status_is_green_and_shows_earned(self) -> None:
         jobs = attach_job_commissions(
@@ -312,12 +315,13 @@ class MissingPurchaseOrderAnomalyTest(unittest.TestCase):
             job_rows=jobs,
             anomaly_rows=anomalies,
         )
-        job_start = body.find("Sharon’s jobs")
+        job_start = body.find("Invoice date")
         anomaly_start = body.find("Anomalies")
         self.assertGreater(anomaly_start, job_start)
         self.assertIn("GR/455", body[anomaly_start:])
         self.assertNotIn("GR/455", body[job_start:anomaly_start])
         self.assertNotIn("£2,350.00", body[job_start:anomaly_start])
+        self.assertNotIn("Not included in the totals or commission above", body)
 
 
 class CompleteGroupReportingTest(unittest.TestCase):

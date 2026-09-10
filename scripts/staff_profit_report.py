@@ -608,35 +608,46 @@ def _td_money(value: D, extra: str = "") -> str:
     return f"<td style='{style}'>{gbp(value)}</td>"
 
 
+QUIET = "color:#9aa3ad;font-size:10px;font-weight:400;"
+
+
+def _td_quiet(text: str, extra: str = "") -> str:
+    return f"<td style='white-space:nowrap;{QUIET}{extra}'>{text}</td>"
+
+
+def _th_quiet(label: str) -> str:
+    return f"<th style='font-size:10px;font-weight:500;color:#c5d0dc;'>{label}</th>"
+
+
 def render_job_rows_html(job_rows: list[dict[str, Any]]) -> str:
     html_rows = []
     for row in iter_display_rows(job_rows):
         if row["kind"] == "day_total":
             html_rows.append(
-                "<tr style='background:#eef2f7;font-weight:700;'>"
-                f"<td colspan='2'>{html.escape(row['reference'])}</td>"
+                "<tr style='background:#f4f6f8;'>"
+                f"<td colspan='2' style='{QUIET}'>{html.escape(row['reference'])}</td>"
                 + _td_money(row["sale"])
                 + _td_money(row["cost"])
                 + _td_money(row["profit"])
                 + "<td></td>"
                 + _td_money(row["commission"], commission_style(row["commission"]))
-                + _td_money(row["running_profit"])
-                + _td_money(row["running_commission"], commission_style(row["running_commission"]))
+                + _td_money(row["running_profit"], QUIET)
+                + _td_money(row["running_commission"], QUIET)
                 + "</tr>"
             )
             continue
         ms = "n/a" if row["margin"] is None else f"{row['margin']}%"
         html_rows.append(
             "<tr>"
-            f"<td style='white-space:nowrap'>{row['date'].strftime('%d/%m/%Y')}</td>"
-            f"<td>{html.escape(str(row['reference']))}</td>"
+            + _td_quiet(row["date"].strftime("%d/%m/%Y"))
+            + _td_quiet(html.escape(str(row["reference"])))
             + _td_money(row["sale"])
             + _td_money(row["cost"])
             + _td_money(row["profit"])
             + f"<td style='text-align:right;white-space:nowrap;{margin_style(row['margin'])}'>{ms}</td>"
             + _td_money(row["commission"], commission_style(row["commission"]))
-            + _td_money(row["running_profit"])
-            + _td_money(row["running_commission"], commission_style(row["running_commission"]))
+            + _td_money(row["running_profit"], QUIET)
+            + _td_money(row["running_commission"], QUIET)
             + "</tr>"
         )
     return "".join(html_rows)
@@ -675,22 +686,17 @@ def render_qualification_html(q) -> str:
             f"{html.escape(q.earned_message)}</p>"
         )
     else:
-        extra = (
-            f"<p style='font-size:13px;margin:12px 0 8px;'>{html.escape(q.general_message)}</p>"
-            f"<p style='font-size:13px;margin:0;'>{html.escape(q.detail_message)}</p>"
-        )
+        extra = ""
     min_margin_display = f"{q.min_margin.quantize(D('0.1'))}%"
     return f"""
-    <div style="margin-top:28px;padding:16px;border:1px solid #c5d0dc;border-radius:8px;background:#f7fafc;">
-      <h2 style="color:#1f3a5f;font-size:16px;margin:0 0 12px;">Commission summary</h2>
+    <div style="margin:0 0 20px;padding:16px;border:1px solid #c5d0dc;border-radius:8px;background:#f7fafc;">
       <table cellpadding="6" cellspacing="0" border="0" style="font-size:14px;">
         <tr><td style="padding-right:24px;">Total revenue</td><td style="text-align:right;font-weight:700;">{gbp(q.total_revenue)}</td></tr>
         <tr><td>Total profit</td><td style="text-align:right;font-weight:700;">{gbp(q.total_profit)}</td></tr>
         <tr><td>Overall margin</td><td style="text-align:right;font-weight:700;">{current_margin}</td></tr>
-        <tr><td>Running commission</td><td style="text-align:right;font-weight:700;{commission_style(q.running_commission)}">{gbp(q.running_commission)}</td></tr>
+        <tr><td>Commission</td><td style="text-align:right;font-weight:700;{commission_style(q.running_commission)}">{gbp(q.running_commission)}</td></tr>
       </table>
-      <h3 style="font-size:14px;margin:18px 0 8px;color:#1f3a5f;">Commission qualification</h3>
-      <table cellpadding="4" cellspacing="0" border="0" style="font-size:13px;">
+      <table cellpadding="4" cellspacing="0" border="0" style="font-size:13px;margin-top:12px;">
         <tr><td>Minimum profit required</td><td style="text-align:right;padding-left:24px;">{gbp(q.min_profit)}</td></tr>
         <tr><td>Current profit</td><td style="text-align:right;padding-left:24px;">{gbp(q.total_profit)}</td></tr>
         <tr><td>Remaining</td><td style="text-align:right;padding-left:24px;">{gbp(q.profit_remaining)}</td></tr>
@@ -718,123 +724,78 @@ def build_html(
     total_margin = margin_of(total_sale, total_profit)
     total_commission = sum_job_commissions(job_rows)
     qualification = qualify_month(total_sale, total_profit, total_commission)
-    days = daily_totals(job_rows)
-    n_red = sum(1 for r in job_rows if r["margin"] is not None and r["margin"] < D("20"))
-    n_amber = sum(1 for r in job_rows if r["margin"] is not None and D("20") <= r["margin"] < D("35"))
-    n_green = sum(1 for r in job_rows if r["margin"] is not None and r["margin"] > D("45"))
-    n_na = sum(1 for r in job_rows if r["margin"] is None)
-
     job_body = render_job_rows_html(job_rows)
-    daily_body = render_daily_html(days)
-    anomaly_body = ""
-    for r in anomaly_rows:
-        ms = "n/a" if r["margin"] is None else f"{r['margin']}%"
-        anomaly_body += (
-            "<tr>"
-            f"<td>{r['date'].strftime('%d/%m/%Y')}</td>"
-            f"<td>{html.escape(str(r['reference']))}</td>"
-            f"{_td_money(r['sale'])}{_td_money(r['cost'])}{_td_money(r['profit'])}"
-            f"<td style='text-align:right;{margin_style(r['margin'])}'>{ms}</td>"
-            f"<td>{html.escape(r['reason'])}</td>"
-            "</tr>"
-        )
-    if not anomaly_body:
-        anomaly_body = "<tr><td colspan='7'>None.</td></tr>"
-
     table_wrap = "overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"
     table_css = "border-collapse:collapse;font-size:11px;border-color:#ccc;width:100%;min-width:760px;"
     head = "background:#1f3a5f;color:#fff;"
-    return f"""
-    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:1100px;">
-      <h1 style="color:#1f3a5f;margin-bottom:4px;">{html.escape(staff_name)} — {html.escape(month_label)} commission report</h1>
-      <p style="margin-top:0;font-size:14px;">
-        A group is included in the month its last invoice is dated, and only after every
-        live job is completed. Open or future jobs (scheduled, in progress, unscheduled,
-        new) are left out until they are done. The first job raised on a group owns the
-        whole group, so later jobs count for that person even if another staff member is
-        named on them. Totals include every invoice and purchase order from 1 May 2026.
-        A purchase-order-only group with no sale is not listed. Sale over £250 with no
-        purchase order is listed as an anomaly, not in the totals.
-      </p>
-
-      <table cellpadding="8" cellspacing="0" border="0" style="margin:12px 0 20px;font-size:14px;">
-        <tr>
-          <td style="background:#1f3a5f;color:#fff;padding:10px 14px;"><b>Overall profit</b><br>{gbp(total_profit)}</td>
-          <td style="background:#2e5a8f;color:#fff;padding:10px 14px;"><b>Invoiced</b><br>{gbp(total_sale)}</td>
-          <td style="background:#3d6fa3;color:#fff;padding:10px 14px;"><b>Purchase orders</b><br>{gbp(total_cost)}</td>
-          <td style="background:#4a82b8;color:#fff;padding:10px 14px;"><b>Margin</b><br>{'n/a' if total_margin is None else f'{total_margin}%'}</td>
-          <td style="background:#1b7a4a;color:#fff;padding:10px 14px;"><b>Running commission</b><br>{gbp(total_commission)}</td>
-        </tr>
-      </table>
-
-      <h2 style="color:#1f3a5f;font-size:16px;">Day by day</h2>
-      <div style="{table_wrap}">
-      <table cellpadding="6" cellspacing="0" border="1" style="{table_css}">
-        <thead>
-          <tr style="{head}">
-            <th>Date</th><th>Invoiced</th><th>Purchase orders</th><th>Profit</th>
-            <th>Margin</th><th>Commission</th><th>Running profit</th><th>Running commission</th>
-          </tr>
-        </thead>
-        <tbody>
-          {daily_body or '<tr><td colspan="8">No activity this month.</td></tr>'}
-          <tr style="{head}font-weight:700;">
-            <td>{html.escape(month_label)} total</td>
-            {_td_money(total_sale)}{_td_money(total_cost)}{_td_money(total_profit)}
-            <td style="text-align:right">{'n/a' if total_margin is None else f'{total_margin}%'}</td>
-            {_td_money(total_commission, commission_style(total_commission))}
-            {_td_money(total_profit)}{_td_money(total_commission, commission_style(total_commission))}
-          </tr>
-        </tbody>
-      </table>
-      </div>
-
-      <h2 style="color:#1f3a5f;font-size:16px;margin-top:28px;">{html.escape(staff_name)}’s jobs</h2>
-      <div style="{table_wrap}">
-      <table cellpadding="6" cellspacing="0" border="1" style="{table_css}">
-        <thead>
-          <tr style="{head}">
-            <th>Invoice date</th><th>Group / job</th><th>Invoiced</th><th>Purchase orders</th>
-            <th>Profit</th><th>Margin</th><th>Commission</th><th>Running profit</th><th>Running commission</th>
-          </tr>
-        </thead>
-        <tbody>
-          {job_body}
-          <tr style="{head}font-weight:700;">
-            <td colspan="2">Total — {len(job_rows)} groups/jobs</td>
-            {_td_money(total_sale)}{_td_money(total_cost)}{_td_money(total_profit)}
-            <td style="text-align:right">{'n/a' if total_margin is None else f'{total_margin}%'}</td>
-            {_td_money(total_commission, commission_style(total_commission))}
-            {_td_money(total_profit)}{_td_money(total_commission, commission_style(total_commission))}
-          </tr>
-        </tbody>
-      </table>
-      </div>
-      <p style="font-size:12px;margin-top:14px;">
-        {n_red} red (under 20%), {n_amber} amber (20%–34.9%), {n_green} green (over 45%), {n_na} with no invoice.
-        Commission is calculated once per group/job. Green commission is a job-level earning.
-        Red commission is the profit missing to reach the minimum margin for that job size
-        (20% under £2,000, 12.5% from £2,000 to £4,999.99, 10% from £5,000), never more
-        than £250 on one job. A sale of zero with purchase orders still on the group is
-        20% of the PO, also capped at £250. On jobs under £2,000, margin from 20% up to
-        30% is £0 (neither earned nor penalised).
-        Payment still depends on the monthly qualification below.
-      </p>
-
-      {render_qualification_html(qualification)}
-
-      <h2 style="color:#721c24;font-size:16px;margin-top:28px;">Anomalies — sale over £250 with no purchase order</h2>
-      <p style="font-size:13px;margin-top:0;">Not included in the totals or commission above. Raise a purchase order of £1 or more on the group and it will come into the main report the next day.</p>
+    anomaly_section = ""
+    if anomaly_rows:
+        anomaly_body = ""
+        for r in anomaly_rows:
+            ms = "n/a" if r["margin"] is None else f"{r['margin']}%"
+            anomaly_body += (
+                "<tr>"
+                f"{_td_quiet(r['date'].strftime('%d/%m/%Y'))}"
+                f"{_td_quiet(html.escape(str(r['reference'])))}"
+                f"{_td_money(r['sale'])}{_td_money(r['cost'])}{_td_money(r['profit'])}"
+                f"<td style='text-align:right;{margin_style(r['margin'])}'>{ms}</td>"
+                f"<td>{html.escape(r['reason'])}</td>"
+                "</tr>"
+            )
+        anomaly_section = f"""
+      <h2 style="color:#721c24;font-size:16px;margin-top:28px;">Anomalies</h2>
       <div style="{table_wrap}">
       <table cellpadding="6" cellspacing="0" border="1" style="{table_css}">
         <thead>
           <tr style="background:#721c24;color:#fff;">
-            <th>Invoice date</th><th>Group / job</th><th>Invoiced</th><th>Purchase orders</th><th>Profit</th><th>Margin</th><th>Why</th>
+            {_th_quiet("Invoice date")}{_th_quiet("Group / job")}
+            <th>Invoiced</th><th>Purchase orders</th><th>Profit</th><th>Margin</th><th>Why</th>
           </tr>
         </thead>
         <tbody>{anomaly_body}</tbody>
       </table>
       </div>
+        """
+
+    return f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:1100px;">
+      <h1 style="color:#1f3a5f;margin-bottom:12px;">{html.escape(staff_name)} — {html.escape(month_label)} commission report</h1>
+
+      <table cellpadding="8" cellspacing="0" border="0" style="margin:0 0 16px;font-size:14px;">
+        <tr>
+          <td style="background:#1f3a5f;color:#fff;padding:10px 14px;"><b>Overall profit</b><br>{gbp(total_profit)}</td>
+          <td style="background:#2e5a8f;color:#fff;padding:10px 14px;"><b>Invoiced</b><br>{gbp(total_sale)}</td>
+          <td style="background:#3d6fa3;color:#fff;padding:10px 14px;"><b>Purchase orders</b><br>{gbp(total_cost)}</td>
+          <td style="background:#4a82b8;color:#fff;padding:10px 14px;"><b>Margin</b><br>{'n/a' if total_margin is None else f'{total_margin}%'}</td>
+          <td style="background:#1b7a4a;color:#fff;padding:10px 14px;"><b>Commission</b><br>{gbp(total_commission)}</td>
+        </tr>
+      </table>
+
+      {render_qualification_html(qualification)}
+
+      <div style="{table_wrap}">
+      <table cellpadding="6" cellspacing="0" border="1" style="{table_css}">
+        <thead>
+          <tr style="{head}">
+            {_th_quiet("Invoice date")}{_th_quiet("Group / job")}
+            <th>Invoiced</th><th>Purchase orders</th>
+            <th>Profit</th><th>Margin</th><th>Commission</th>
+            {_th_quiet("Running profit")}{_th_quiet("Running commission")}
+          </tr>
+        </thead>
+        <tbody>
+          {job_body}
+          <tr style="{head}font-weight:700;">
+            <td colspan="2" style="font-size:10px;font-weight:500;color:#c5d0dc;">Total — {len(job_rows)} groups/jobs</td>
+            {_td_money(total_sale)}{_td_money(total_cost)}{_td_money(total_profit)}
+            <td style="text-align:right">{'n/a' if total_margin is None else f'{total_margin}%'}</td>
+            {_td_money(total_commission, commission_style(total_commission))}
+            {_td_money(total_profit, QUIET)}{_td_money(total_commission, QUIET)}
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      {anomaly_section}
     </div>
     """
 
