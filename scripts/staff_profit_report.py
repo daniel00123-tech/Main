@@ -813,10 +813,10 @@ def build_html(
       <p style="font-size:12px;margin-top:14px;">
         {n_red} red (under 20%), {n_amber} amber (20%–34.9%), {n_green} green (over 45%), {n_na} with no invoice.
         Commission is calculated once per group/job. Green commission is a job-level earning.
-        Red commission is a penalty of 10% of sales plus 20% of purchase orders when the job
-        is a loss or below the minimum margin for its revenue tier — including a sale of
-        zero with purchase orders still on the group. On jobs under £2,000, margin from 20%
-        up to 30% is £0 (neither earned nor penalised); the minus starts below 20%.
+        Red commission is the profit missing to reach the minimum margin for that job size
+        (20% under £5,000, 12.5% from £5,000). A sale of zero with purchase orders still
+        on the group is 20% of the PO. On jobs under £2,000, margin from 20% up to 30% is
+        £0 (neither earned nor penalised).
         Payment still depends on the monthly qualification below.
       </p>
 

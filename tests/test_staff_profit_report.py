@@ -87,12 +87,12 @@ class HtmlReportTest(unittest.TestCase):
         self.assertIn("Running profit", body)
         self.assertIn("Running commission", body)
         self.assertIn("£26.25", body)
-        self.assertIn("-£810.00", body)
+        self.assertIn("-£150.00", body)
         self.assertIn("NOT YET QUALIFIED", body)
         self.assertIn("Your current commission is", body)
         self.assertIn(commission_style(D("26.25")), body)
-        self.assertIn(commission_style(D("-810.00")), body)
-        self.assertIn("10% of sales plus 20% of purchase orders", body)
+        self.assertIn(commission_style(D("-150.00")), body)
+        self.assertIn("profit missing to reach the minimum margin", body)
         self.assertIn("under £2,000, margin from 20%", body)
         self.assertNotIn("calculate_job_commission", body)
         # Anomalies are excluded from commission.
@@ -441,7 +441,7 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(september_main[0]["cost"], D("889.00"))
         self.assertEqual(september_main[0]["profit"], D("-89.00"))
         attached = attach_job_commissions(september_main)
-        self.assertEqual(attached[0]["commission"], D("-257.80"))
+        self.assertEqual(attached[0]["commission"], D("-249.00"))
 
     def test_sharon_first_job_takes_ellas_later_po(self) -> None:
         jobs = [

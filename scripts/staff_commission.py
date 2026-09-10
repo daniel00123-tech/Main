@@ -16,8 +16,7 @@ D = decimal.Decimal
 ZERO = D("0")
 TWOP = D("0.01")
 
-PENALTY_RATE_SALE = D("0.10")  # 10% of job revenue on a loss or below-min margin
-PENALTY_RATE_PO = D("0.20")  # 20% of job purchase orders on a loss or below-min margin
+PENALTY_RATE_PO = D("0.20")  # Option A: 20% of the PO when there is no sale
 
 MONTHLY_MIN_PROFIT = D("8000")
 MONTHLY_MIN_MARGIN = D("25")
@@ -65,14 +64,24 @@ def money(value: D) -> D:
     return value.quantize(TWOP, rounding=decimal.ROUND_HALF_UP)
 
 
-def penalty_commission(sale: D, cost: D) -> D:
-    """Negative adjustment: 10% of sales plus 20% of purchase orders.
-
-    A missing sales figure still penalises the PO; a missing PO still penalises the sale.
-    """
-    taxable_sale = sale if sale > 0 else ZERO
+def po_only_penalty(cost: D) -> D:
+    """No invoice: 20% of the purchase-order value (option A)."""
     taxable_cost = cost if cost > 0 else ZERO
-    return money(-(taxable_sale * PENALTY_RATE_SALE + taxable_cost * PENALTY_RATE_PO))
+    return money(-(taxable_cost * PENALTY_RATE_PO))
+
+
+def margin_catchup_penalty(sale: D, profit: D, floor_percent: D) -> D:
+    """Minus equal to the profit missing to reach the tier's minimum margin.
+
+    Example: £705 invoiced at 15% (£106 profit) needs £141 to hit 20%, so −£35.
+    """
+    if sale <= 0:
+        return ZERO
+    target_profit = sale * (floor_percent / D("100"))
+    shortfall = target_profit - profit
+    if shortfall <= 0:
+        return ZERO
+    return money(-shortfall)
 
 
 def as_decimal(value: Any) -> D:
@@ -128,10 +137,10 @@ def calculate_job_commission(
 ) -> JobCommission:
     """Commission for one aggregated job.
 
-    Below the tier penalty floor, or on a loss (including PO-only jobs with no
-    sale), commission is a penalty of 10% of sales plus 20% of purchase orders.
-    On jobs under £2,000, 20%–29.99% margin is neither earned nor penalised (£0).
-    Positive commission is a percentage of JOB PROFIT. Maximum rate is 10%.
+    Below the tier minimum margin, the minus is the profit shortfall to that
+    floor (20% under £5,000, 12.5% at £5,000+). No sale with a purchase order
+    is 20% of the PO. On jobs under £2,000, 20%–29.99% is £0. Positive
+    commission is a percentage of JOB PROFIT. Maximum rate is 10%.
     """
     sale = as_decimal(revenue)
     job_profit = as_decimal(profit)
@@ -144,12 +153,18 @@ def calculate_job_commission(
     no_sale = sale <= 0
     is_loss = job_profit < 0
     below_floor = margin is not None and margin < floor
-    if (no_sale and job_cost > 0) or ((not no_sale) and (is_loss or below_floor)):
+    if no_sale and job_cost > 0:
+        deducted = po_only_penalty(job_cost)
+    elif (not no_sale) and (is_loss or below_floor):
+        deducted = margin_catchup_penalty(sale, job_profit, floor)
+    else:
+        deducted = None
+    if deducted is not None:
         return JobCommission(
             revenue=money(sale),
             profit=money(job_profit),
             margin=margin,
-            commission=penalty_commission(sale, job_cost),
+            commission=deducted,
             is_penalty=True,
             rate=None,
             tier_min_revenue=as_decimal(tier["minRevenue"]),
