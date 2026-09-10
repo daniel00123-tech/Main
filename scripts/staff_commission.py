@@ -16,7 +16,8 @@ D = decimal.Decimal
 ZERO = D("0")
 TWOP = D("0.01")
 
-PENALTY_RATE = D("0.05")  # 5% of job revenue when below the tier minimum margin
+PENALTY_RATE_SALE = D("0.10")  # 10% of job revenue on a loss or below-min margin
+PENALTY_RATE_PO = D("0.20")  # 20% of job purchase orders on a loss or below-min margin
 
 MONTHLY_MIN_PROFIT = D("8000")
 MONTHLY_MIN_MARGIN = D("25")
@@ -61,6 +62,16 @@ COMMISSION_TIERS: list[dict[str, Any]] = [
 
 def money(value: D) -> D:
     return value.quantize(TWOP, rounding=decimal.ROUND_HALF_UP)
+
+
+def penalty_commission(sale: D, cost: D) -> D:
+    """Negative adjustment: 10% of sales plus 20% of purchase orders.
+
+    A missing sales figure still penalises the PO; a missing PO still penalises the sale.
+    """
+    taxable_sale = sale if sale > 0 else ZERO
+    taxable_cost = cost if cost > 0 else ZERO
+    return money(-(taxable_sale * PENALTY_RATE_SALE + taxable_cost * PENALTY_RATE_PO))
 
 
 def as_decimal(value: Any) -> D:
@@ -111,44 +122,45 @@ def calculate_job_commission(
     revenue: Any,
     profit: Any,
     *,
+    cost: Any = None,
     tiers: list[dict[str, Any]] | None = None,
 ) -> JobCommission:
     """Commission for one aggregated job.
 
-    Penalty (below the tier minimum margin) is 5% of JOB REVENUE, not profit.
+    Below the tier minimum margin, or on a loss (including PO-only jobs with no
+    sale), commission is a penalty of 10% of sales plus 20% of purchase orders.
     Positive commission is a percentage of JOB PROFIT. Maximum rate is 10%.
-    Revenue of zero yields £0.00 (no penalty on a zero-sale cost-only row).
     """
     sale = as_decimal(revenue)
     job_profit = as_decimal(profit)
+    job_cost = as_decimal(cost) if cost is not None else (sale - job_profit)
     scheme = tiers if tiers is not None else COMMISSION_TIERS
-    if sale <= 0:
-        # Zero-sale (cost-only) or net-credit jobs: no commission and no penalty.
-        tier = select_tier(ZERO, scheme)
-        return JobCommission(
-            revenue=money(sale),
-            profit=money(job_profit),
-            margin=exact_margin_percent(sale, job_profit),
-            commission=ZERO,
-            is_penalty=False,
-            rate=None,
-            tier_min_revenue=as_decimal(tier["minRevenue"]),
-            penalty_below_margin=as_decimal(tier["penaltyBelowMargin"]),
-        )
-
-    tier = select_tier(sale, scheme)
-    margin = exact_margin_percent(sale, job_profit)
-    assert margin is not None
+    tier = select_tier(sale if sale > 0 else ZERO, scheme)
     floor = as_decimal(tier["penaltyBelowMargin"])
-    if margin < floor:
-        commission = money(sale * -PENALTY_RATE)
+    margin = exact_margin_percent(sale, job_profit)
+
+    no_sale = sale <= 0
+    is_loss = job_profit < 0
+    below_floor = margin is not None and margin < floor
+    if (no_sale and job_cost > 0) or ((not no_sale) and (is_loss or below_floor)):
         return JobCommission(
             revenue=money(sale),
             profit=money(job_profit),
             margin=margin,
-            commission=commission,
+            commission=penalty_commission(sale, job_cost),
             is_penalty=True,
-            rate=-PENALTY_RATE,
+            rate=None,
+            tier_min_revenue=as_decimal(tier["minRevenue"]),
+            penalty_below_margin=floor,
+        )
+    if no_sale:
+        return JobCommission(
+            revenue=money(sale),
+            profit=money(job_profit),
+            margin=margin,
+            commission=ZERO,
+            is_penalty=False,
+            rate=None,
             tier_min_revenue=as_decimal(tier["minRevenue"]),
             penalty_below_margin=floor,
         )
@@ -181,7 +193,7 @@ def attach_job_commissions(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     running_commission = ZERO
     attached: list[dict[str, Any]] = []
     for row in rows:
-        result = calculate_job_commission(row["sale"], row["profit"])
+        result = calculate_job_commission(row["sale"], row["profit"], cost=row.get("cost"))
         running_profit += row["profit"]
         running_commission += result.commission
         attached.append(

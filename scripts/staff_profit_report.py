@@ -53,11 +53,9 @@ STAFF = {
     "lauren": {"name": "Lauren", "category_id": 132263},
 }
 
-OPEN_BLOCKERS = {"unscheduled", "new"}
 COMPLETED = {"completedOk", "completedWithIssues"}
 ANOMALY_SALE = D("250")
 MIN_PO_AMOUNT = D("1")
-PO_GRACE_DAYS = 10
 BEGINNING_OF_TIME = dt.date(2026, 5, 1)
 FROM_EMAIL = "ella@elvexpropertyservices.com"
 DEFAULT_MAIL_TO = "william@elvexpropertyservices.com"
@@ -78,6 +76,24 @@ def group_fully_invoiced(members: list[dict[str, Any]], invoiced_job_ids: set[in
     if not live:
         return False
     return all(int(m["id"]) in invoiced_job_ids for m in live)
+
+
+def group_all_jobs_completed(members: list[dict[str, Any]]) -> bool:
+    """True when every live job is completed (not scheduled, open, or future)."""
+    live = live_jobs(members)
+    if not live:
+        return False
+    return all((m.get("status") or "") in COMPLETED for m in live)
+
+
+def group_ready_to_report(members: list[dict[str, Any]]) -> bool:
+    """A group is reported only after every live job is completed.
+
+    Open or future jobs (scheduled, in progress, unscheduled, new) hold the group
+    back. A later invoice still controls which month it appears in. Follow-on jobs
+    that are purchase-order only do not have to be invoiced themselves.
+    """
+    return group_all_jobs_completed(members)
 
 
 class ConfigError(RuntimeError):
@@ -261,16 +277,41 @@ def fetch_group_refs(token: str, group_ids: list[int]) -> dict[int, dict[str, An
     return out
 
 
-def group_completion_date(members: list[dict[str, Any]]) -> dt.date | None:
-    live = [m for m in members if (m.get("status") or "") != "cancelled"]
-    if not live or any((m.get("status") or "") not in COMPLETED for m in live):
+def parse_iso_datetime(value: Any) -> dt.datetime | None:
+    if not value:
         return None
-    dates = []
-    for m in live:
-        d = london_date_from_iso(m.get("actualEndAt")) or london_date_from_iso(m.get("statusModifiedAt"))
-        if d:
-            dates.append(d)
-    return max(dates) if dates else None
+    text = str(value).strip().replace("Z", "+00:00")
+    try:
+        parsed = dt.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
+
+
+def job_raised_sort_key(job: dict[str, Any]) -> tuple[dt.datetime, int]:
+    """Earliest raised job first. BigChange job ids increase as jobs are created."""
+    job_id_n = int(job.get("id") or 0)
+    parsed = parse_iso_datetime(job.get("createdAt"))
+    if parsed is None:
+        parsed = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc) + dt.timedelta(microseconds=max(job_id_n, 0))
+    return (parsed, job_id_n)
+
+
+def first_raised_job(members: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not members:
+        return None
+    return min(members, key=job_raised_sort_key)
+
+
+def group_owner_category_id(members: list[dict[str, Any]]) -> int | None:
+    """The first job raised on a group owns every later job on that group."""
+    first = first_raised_job(members)
+    if not first:
+        return None
+    cid = first.get("categoryId")
+    return int(cid) if cid not in (None, "") else None
 
 
 def graph_token() -> str:
@@ -366,6 +407,9 @@ def build_staff_rows(
     for j in jobs:
         if j.get("jobGroupId"):
             by_group[int(j["jobGroupId"])].append(j)
+    group_owner: dict[int, int | None] = {
+        gid: group_owner_category_id(members) for gid, members in by_group.items()
+    }
 
     buckets: dict[str, dict[str, Any]] = {}
 
@@ -403,27 +447,30 @@ def build_staff_rows(
         job = jobs_by_id[jid]
         gid = int(job["jobGroupId"]) if job.get("jobGroupId") else None
         if gid:
+            if group_owner.get(gid) != category_id:
+                continue
             ensure_jid = jid if jid in staff_ids else (by_group[gid][0]["id"] if by_group[gid] else jid)
             b = ensure_bucket(int(ensure_jid))
+            counts_for_staff = True
         elif jid in staff_ids:
             b = ensure_bucket(jid)
+            counts_for_staff = True
         else:
             continue
-        staff_job = jid in staff_ids
         if order_type in {"Invoice", "CreditNote"}:
             b["invoiced_jobs"].add(jid)
-            if staff_job:
+            if counts_for_staff:
                 b["sales"].append((when, amount, order_type))
         elif order_type == "PurchaseOrder":
             b["pos_any"].append((when, amount, jid))
-            if staff_job:
+            if counts_for_staff:
                 b["pos_staff"].append((when, amount, jid))
 
     staff_buckets = []
     for b in buckets.values():
         members = b["members"]
         if b["gid"]:
-            if not any(m.get("categoryId") == category_id for m in members):
+            if group_owner.get(int(b["gid"])) != category_id:
                 continue
         else:
             if b["jid"] not in staff_ids:
@@ -443,27 +490,17 @@ def build_staff_rows(
 
     for b in staff_buckets:
         members = b["members"] or []
-        if any((m.get("status") or "") in OPEN_BLOCKERS for m in members):
+        if not group_ready_to_report(members):
             continue
 
         sales_sorted = sorted(b["sales"], key=lambda x: x[0])
         last_sale = sales_sorted[-1][0] if sales_sorted else None
-        completed_on = group_completion_date(members)
-        cost_trigger = (completed_on + dt.timedelta(days=PO_GRACE_DAYS)) if completed_on else None
-        fully_invoiced = group_fully_invoiced(members, b["invoiced_jobs"])
+        if last_sale is None or last_sale < month_start or last_sale > month_end:
+            continue
 
-        # Full group totals from 1 May 2026, not the current month slice.
         total_sale = money(sum((amt for _when, amt, _ot in sales_sorted), ZERO))
         total_cost = money(sum((amt for _when, amt, _jid in b["pos_staff"]), ZERO))
-
-        if fully_invoiced and last_sale is not None:
-            if last_sale < month_start or last_sale > month_end:
-                continue
-            row_date = last_sale
-        elif total_sale == 0 and total_cost != 0 and cost_trigger and month_start <= cost_trigger <= month_end:
-            row_date = cost_trigger
-        else:
-            continue
+        row_date = last_sale
 
         if is_missing_po_anomaly(total_sale, total_cost):
             anomaly_rows.append(
@@ -711,9 +748,13 @@ def build_html(
     <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:1100px;">
       <h1 style="color:#1f3a5f;margin-bottom:4px;">{html.escape(staff_name)} — {html.escape(month_label)} commission report</h1>
       <p style="margin-top:0;font-size:14px;">
-        A group is included in the month its last job is invoiced, with every invoice and purchase
-        order from 1 May 2026. Groups with an unscheduled or new job are left out. Sale over £250
-        with no purchase order is listed as an anomaly, not in the totals.
+        A group is included in the month its last invoice is dated, and only after every
+        live job is completed. Open or future jobs (scheduled, in progress, unscheduled,
+        new) are left out until they are done. The first job raised on a group owns the
+        whole group, so later jobs count for that person even if another staff member is
+        named on them. Totals include every invoice and purchase order from 1 May 2026.
+        A purchase-order-only group with no sale is not listed. Sale over £250 with no
+        purchase order is listed as an anomaly, not in the totals.
       </p>
 
       <table cellpadding="8" cellspacing="0" border="0" style="margin:12px 0 20px;font-size:14px;">
@@ -771,7 +812,10 @@ def build_html(
       </div>
       <p style="font-size:12px;margin-top:14px;">
         {n_red} red (under 20%), {n_amber} amber (20%–34.9%), {n_green} green (over 45%), {n_na} with no invoice.
-        Commission is calculated once per group/job. Green commission is a job-level earning; red is a margin penalty.
+        Commission is calculated once per group/job. Green commission is a job-level earning.
+        Red commission is a penalty of 10% of sales plus 20% of purchase orders when the job
+        is a loss or below the minimum margin for its revenue tier — including a sale of
+        zero with purchase orders still on the group.
         Payment still depends on the monthly qualification below.
       </p>
 

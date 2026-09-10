@@ -87,11 +87,12 @@ class HtmlReportTest(unittest.TestCase):
         self.assertIn("Running profit", body)
         self.assertIn("Running commission", body)
         self.assertIn("£26.25", body)
-        self.assertIn("-£150.00", body)
+        self.assertIn("-£810.00", body)
         self.assertIn("NOT YET QUALIFIED", body)
         self.assertIn("Your current commission is", body)
         self.assertIn(commission_style(D("26.25")), body)
-        self.assertIn(commission_style(D("-150.00")), body)
+        self.assertIn(commission_style(D("-810.00")), body)
+        self.assertIn("10% of sales plus 20% of purchase orders", body)
         self.assertNotIn("calculate_job_commission", body)
         # Anomalies are excluded from commission.
         self.assertIn("Not included in the totals or commission above", body)
@@ -162,13 +163,21 @@ class HtmlReportTest(unittest.TestCase):
         self.assertEqual(attached[0]["commission"], D("78.75"))
 
 
-def _ok_job(job_id: int, group_id: int, category_id: int = 132264, reference: str = "") -> dict:
+def _ok_job(
+    job_id: int,
+    group_id: int,
+    category_id: int = 132264,
+    reference: str = "",
+    status: str = "completedOk",
+    created_at: str = "2026-07-01T12:00:00Z",
+) -> dict:
     return {
         "id": job_id,
         "categoryId": category_id,
         "jobGroupId": group_id,
-        "status": "completedOk",
+        "status": status,
         "reference": reference or f"EL{job_id}",
+        "createdAt": created_at,
         "actualEndAt": "2026-08-01T12:00:00Z",
     }
 
@@ -214,18 +223,18 @@ class MissingPurchaseOrderAnomalyTest(unittest.TestCase):
         self.assertEqual(main_rows[0]["cost"], D("1720.00"))
         self.assertEqual(main_rows[0]["profit"], D("850.00"))
 
-    def test_mixed_group_other_staff_po_does_not_cover_this_staff_sale(self) -> None:
-        # GR/551 shape: Ella has the PO; Sharon's August invoice has no PO.
+    def test_mixed_group_follows_the_first_job_owner_not_the_named_category(self) -> None:
+        # First job is Ella, so the whole group including Sharon's later invoice is Ella's.
         jobs = [
-            _ok_job(10, 551, category_id=132225, reference="EL1767"),
-            _ok_job(11, 551, category_id=132264, reference="EL1769"),
+            _ok_job(10, 551, category_id=132225, reference="EL1767", created_at="2026-08-06T09:00:00Z"),
+            _ok_job(11, 551, category_id=132264, reference="EL1769", created_at="2026-08-10T09:00:00Z"),
         ]
         docs = [
             _doc("PurchaseOrder", 10, "2026-08-06", "90", cost=True),
             _doc("Invoice", 10, "2026-08-07", "130"),
             _doc("Invoice", 11, "2026-08-10", "260"),
         ]
-        main_rows, anomaly_rows = build_staff_rows(
+        sharon_main, sharon_anom = build_staff_rows(
             jobs=jobs,
             docs=docs,
             group_refs={551: {"reference": "GR/551"}},
@@ -233,9 +242,21 @@ class MissingPurchaseOrderAnomalyTest(unittest.TestCase):
             month_start=dt.date(2026, 8, 1),
             month_end=dt.date(2026, 8, 31),
         )
-        self.assertEqual(main_rows, [])
-        self.assertEqual(anomaly_rows[0]["reference"], "GR/551")
-        self.assertEqual(anomaly_rows[0]["sale"], D("260.00"))
+        self.assertEqual(sharon_main, [])
+        self.assertEqual(sharon_anom, [])
+
+        ella_main, ella_anom = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={551: {"reference": "GR/551"}},
+            category_id=132225,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(ella_anom, [])
+        self.assertEqual(ella_main[0]["reference"], "GR/551")
+        self.assertEqual(ella_main[0]["sale"], D("390.00"))
+        self.assertEqual(ella_main[0]["cost"], D("90.00"))
 
     def test_sale_under_250_without_po_stays_on_the_running_table(self) -> None:
         jobs = [_ok_job(3, 409)]
@@ -336,23 +357,121 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(july_main, [])
         self.assertEqual(july_anom, [])
 
-    def test_group_is_held_until_every_live_job_has_an_invoice(self) -> None:
-        jobs = [_ok_job(1, 50, reference="EL1"), _ok_job(2, 50, reference="EL2")]
+    def test_group_is_held_until_every_live_job_is_completed(self) -> None:
+        """GR/482: a scheduled future job must keep the whole group off the report."""
+        jobs = [
+            _ok_job(1691, 482, reference="EL1691", status="completedOk"),
+            _ok_job(1703, 482, reference="EL1703", status="completedWithIssues"),
+            _ok_job(1801, 482, reference="EL1801", status="scheduled"),
+        ]
         docs = [
-            _doc("PurchaseOrder", 1, "2026-07-03", "80", cost=True),
-            _doc("Invoice", 1, "2026-07-07", "120"),
-            _doc("PurchaseOrder", 2, "2026-07-20", "60", cost=True),
+            _doc("Invoice", 1691, "2026-07-22", "560"),
+            _doc("PurchaseOrder", 1691, "2026-07-21", "350", cost=True),
+            _doc("Invoice", 1703, "2026-08-10", "35"),
+            _doc("PurchaseOrder", 1703, "2026-08-10", "455", cost=True),
         ]
         main_rows, anomaly_rows = build_staff_rows(
             jobs=jobs,
             docs=docs,
-            group_refs={50: {"reference": "GR/50"}},
+            group_refs={482: {"reference": "GR/482"}},
             category_id=132264,
             month_start=dt.date(2026, 8, 1),
             month_end=dt.date(2026, 8, 31),
         )
         self.assertEqual(main_rows, [])
         self.assertEqual(anomaly_rows, [])
+
+    def test_po_only_group_is_not_reported_until_there_is_an_invoice(self) -> None:
+        """GR/429 August: £664 of POs and no sale must not appear as a minus-profit row."""
+        jobs = [
+            _ok_job(1784, 429, reference="EL1784"),
+            _ok_job(1977, 429, reference="EL1977"),
+        ]
+        docs = [
+            _doc("PurchaseOrder", 1784, "2026-08-10", "664", cost=True),
+        ]
+        august_main, august_anom = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={429: {"reference": "GR/429"}},
+            category_id=132264,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(august_main, [])
+        self.assertEqual(august_anom, [])
+
+    def test_last_invoice_month_includes_earlier_pos_even_if_one_job_was_never_invoiced(self) -> None:
+        """GR/429: once the group is complete, September takes the full sale and PO history."""
+        jobs = [
+            _ok_job(1589, 429, reference="EL1589", created_at="2026-07-01T09:00:00Z"),
+            _ok_job(1651, 429, reference="EL1651", created_at="2026-07-20T09:00:00Z"),
+            _ok_job(1784, 429, reference="EL1784", created_at="2026-08-10T09:00:00Z"),
+        ]
+        docs = [
+            _doc("Invoice", 1589, "2026-07-10", "120"),
+            _doc("PurchaseOrder", 1589, "2026-07-10", "75", cost=True),
+            _doc("Invoice", 1651, "2026-09-04", "680"),
+            _doc("PurchaseOrder", 1651, "2026-07-20", "150", cost=True),
+            _doc("PurchaseOrder", 1784, "2026-08-10", "664", cost=True),
+        ]
+        august_main, _ = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={429: {"reference": "GR/429"}},
+            category_id=132264,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(august_main, [])
+
+        september_main, september_anom = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={429: {"reference": "GR/429"}},
+            category_id=132264,
+            month_start=dt.date(2026, 9, 1),
+            month_end=dt.date(2026, 9, 30),
+        )
+        self.assertEqual(september_anom, [])
+        self.assertEqual(len(september_main), 1)
+        self.assertEqual(september_main[0]["date"], dt.date(2026, 9, 4))
+        self.assertEqual(september_main[0]["sale"], D("800.00"))
+        self.assertEqual(september_main[0]["cost"], D("889.00"))
+        self.assertEqual(september_main[0]["profit"], D("-89.00"))
+        attached = attach_job_commissions(september_main)
+        self.assertEqual(attached[0]["commission"], D("-257.80"))
+
+    def test_sharon_first_job_takes_ellas_later_po(self) -> None:
+        jobs = [
+            _ok_job(1, 88, category_id=132264, reference="EL1", created_at="2026-08-01T09:00:00Z"),
+            _ok_job(2, 88, category_id=132225, reference="EL2", created_at="2026-08-08T09:00:00Z"),
+        ]
+        docs = [
+            _doc("Invoice", 1, "2026-08-03", "500"),
+            _doc("PurchaseOrder", 2, "2026-08-08", "200", cost=True),
+        ]
+        sharon_main, sharon_anom = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={88: {"reference": "GR/88"}},
+            category_id=132264,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(sharon_anom, [])
+        self.assertEqual(sharon_main[0]["sale"], D("500.00"))
+        self.assertEqual(sharon_main[0]["cost"], D("200.00"))
+        ella_main, ella_anom = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={88: {"reference": "GR/88"}},
+            category_id=132225,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(ella_main, [])
+        self.assertEqual(ella_anom, [])
 
     def test_documents_before_1_may_2026_are_ignored(self) -> None:
         jobs = [_ok_job(9, 12)]
