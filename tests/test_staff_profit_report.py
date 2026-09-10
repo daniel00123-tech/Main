@@ -8,7 +8,7 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
-    QUIET,
+    RUN_EDGE,
     build_html,
     build_staff_rows,
     commission_style,
@@ -82,23 +82,23 @@ class HtmlReportTest(unittest.TestCase):
         )
         body = build_html(staff_name="Sharon", month_label="August 2026", job_rows=jobs, anomaly_rows=[])
         self.assertIn("commission report", body)
-        self.assertIn("Invoice date", body)
+        self.assertIn(">Date</th>", body)
         self.assertIn("Group / job", body)
         self.assertIn("Commission", body)
-        self.assertIn("Running profit", body)
-        self.assertIn("Running commission", body)
+        self.assertIn("Run profit", body)
+        self.assertIn("Run comm.", body)
         self.assertIn("£26.25", body)
         self.assertIn("-£75.00", body)
         self.assertIn("NOT YET QUALIFIED", body)
         self.assertIn(commission_style(D("26.25")), body)
         self.assertIn(commission_style(D("-75.00")), body)
-        self.assertIn(QUIET, body)
+        self.assertIn(RUN_EDGE, body)
         self.assertNotIn("Day by day", body)
         self.assertNotIn("Your current commission is", body)
         self.assertNotIn("A group is included", body)
         self.assertNotIn("calculate_job_commission", body)
         status_at = body.find("STATUS:")
-        table_at = body.find("Invoice date")
+        table_at = body.find("Run profit")
         self.assertGreater(status_at, 0)
         self.assertGreater(table_at, status_at)
 
@@ -315,7 +315,7 @@ class MissingPurchaseOrderAnomalyTest(unittest.TestCase):
             job_rows=jobs,
             anomaly_rows=anomalies,
         )
-        job_start = body.find("Invoice date")
+        job_start = body.find("Run profit")
         anomaly_start = body.find("Anomalies")
         self.assertGreater(anomaly_start, job_start)
         self.assertIn("GR/455", body[anomaly_start:])

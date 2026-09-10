@@ -608,15 +608,15 @@ def _td_money(value: D, extra: str = "") -> str:
     return f"<td style='{style}'>{gbp(value)}</td>"
 
 
-QUIET = "color:#9aa3ad;font-size:10px;font-weight:400;"
+QUIET = "color:#4a5560;font-size:10px;font-weight:400;"
+RUN_EDGE = "border-left:2px solid #c5d0dc;padding-left:10px;"
 
 
-def _td_quiet(text: str, extra: str = "") -> str:
-    return f"<td style='white-space:nowrap;{QUIET}{extra}'>{text}</td>"
-
-
-def _th_quiet(label: str) -> str:
-    return f"<th style='font-size:10px;font-weight:500;color:#c5d0dc;'>{label}</th>"
+def _th_run(label: str, extra: str = "") -> str:
+    return (
+        f"<th style='font-size:10px;font-weight:500;color:#dce3eb;{extra}'>"
+        f"{label}</th>"
+    )
 
 
 def render_job_rows_html(job_rows: list[dict[str, Any]]) -> str:
@@ -625,13 +625,13 @@ def render_job_rows_html(job_rows: list[dict[str, Any]]) -> str:
         if row["kind"] == "day_total":
             html_rows.append(
                 "<tr style='background:#f4f6f8;'>"
-                f"<td colspan='2' style='{QUIET}'>{html.escape(row['reference'])}</td>"
+                f"<td colspan='2' style='color:#555;font-size:11px;'>{html.escape(row['reference'])}</td>"
                 + _td_money(row["sale"])
                 + _td_money(row["cost"])
                 + _td_money(row["profit"])
                 + "<td></td>"
                 + _td_money(row["commission"], commission_style(row["commission"]))
-                + _td_money(row["running_profit"], QUIET)
+                + _td_money(row["running_profit"], f"{QUIET}{RUN_EDGE}")
                 + _td_money(row["running_commission"], QUIET)
                 + "</tr>"
             )
@@ -639,14 +639,14 @@ def render_job_rows_html(job_rows: list[dict[str, Any]]) -> str:
         ms = "n/a" if row["margin"] is None else f"{row['margin']}%"
         html_rows.append(
             "<tr>"
-            + _td_quiet(row["date"].strftime("%d/%m/%Y"))
-            + _td_quiet(html.escape(str(row["reference"])))
+            f"<td style='white-space:nowrap;'>{row['date'].strftime('%d/%m/%Y')}</td>"
+            f"<td style='white-space:nowrap;'>{html.escape(str(row['reference']))}</td>"
             + _td_money(row["sale"])
             + _td_money(row["cost"])
             + _td_money(row["profit"])
             + f"<td style='text-align:right;white-space:nowrap;{margin_style(row['margin'])}'>{ms}</td>"
             + _td_money(row["commission"], commission_style(row["commission"]))
-            + _td_money(row["running_profit"], QUIET)
+            + _td_money(row["running_profit"], f"{QUIET}{RUN_EDGE}")
             + _td_money(row["running_commission"], QUIET)
             + "</tr>"
         )
@@ -672,6 +672,17 @@ def render_daily_html(days: list[dict[str, Any]]) -> str:
     return "".join(parts)
 
 
+def _score_row(label: str, value: str, extra_value: str = "", top: bool = False) -> str:
+    pad = "12px" if top else "7px"
+    return (
+        "<tr>"
+        f"<td style='padding:{pad} 16px 7px 0;font-size:14px;color:#333;'>{html.escape(label)}</td>"
+        f"<td align='right' width='160' style='padding:{pad} 0 7px 0;white-space:nowrap;"
+        f"font-weight:700;font-size:14px;text-align:right;{extra_value}'>{value}</td>"
+        "</tr>"
+    )
+
+
 def render_qualification_html(q) -> str:
     if q.qualified:
         status_bg = "#d4edda"
@@ -690,18 +701,16 @@ def render_qualification_html(q) -> str:
     min_margin_display = f"{q.min_margin.quantize(D('0.1'))}%"
     return f"""
     <div style="margin:0 0 20px;padding:16px;border:1px solid #c5d0dc;border-radius:8px;background:#f7fafc;">
-      <table cellpadding="6" cellspacing="0" border="0" style="font-size:14px;">
-        <tr><td style="padding-right:24px;">Total revenue</td><td style="text-align:right;font-weight:700;">{gbp(q.total_revenue)}</td></tr>
-        <tr><td>Total profit</td><td style="text-align:right;font-weight:700;">{gbp(q.total_profit)}</td></tr>
-        <tr><td>Overall margin</td><td style="text-align:right;font-weight:700;">{current_margin}</td></tr>
-        <tr><td>Commission</td><td style="text-align:right;font-weight:700;{commission_style(q.running_commission)}">{gbp(q.running_commission)}</td></tr>
-      </table>
-      <table cellpadding="4" cellspacing="0" border="0" style="font-size:13px;margin-top:12px;">
-        <tr><td>Minimum profit required</td><td style="text-align:right;padding-left:24px;">{gbp(q.min_profit)}</td></tr>
-        <tr><td>Current profit</td><td style="text-align:right;padding-left:24px;">{gbp(q.total_profit)}</td></tr>
-        <tr><td>Remaining</td><td style="text-align:right;padding-left:24px;">{gbp(q.profit_remaining)}</td></tr>
-        <tr><td style="padding-top:8px;">Minimum margin required</td><td style="text-align:right;padding-left:24px;padding-top:8px;">{min_margin_display}</td></tr>
-        <tr><td>Current margin</td><td style="text-align:right;padding-left:24px;">{current_margin}</td></tr>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        {_score_row("Total revenue", gbp(q.total_revenue))}
+        {_score_row("Total profit", gbp(q.total_profit))}
+        {_score_row("Overall margin", current_margin)}
+        {_score_row("Commission", gbp(q.running_commission), commission_style(q.running_commission))}
+        {_score_row("Minimum profit required", gbp(q.min_profit), top=True)}
+        {_score_row("Current profit", gbp(q.total_profit))}
+        {_score_row("Remaining", gbp(q.profit_remaining))}
+        {_score_row("Minimum margin required", min_margin_display)}
+        {_score_row("Current margin", current_margin)}
       </table>
       <p style="margin:14px 0 0;padding:10px 12px;background:{status_bg};color:{status_fg};font-weight:700;font-size:15px;display:inline-block;">
         STATUS: {html.escape(q.status)}
@@ -735,8 +744,8 @@ def build_html(
             ms = "n/a" if r["margin"] is None else f"{r['margin']}%"
             anomaly_body += (
                 "<tr>"
-                f"{_td_quiet(r['date'].strftime('%d/%m/%Y'))}"
-                f"{_td_quiet(html.escape(str(r['reference'])))}"
+                f"<td style='white-space:nowrap;'>{r['date'].strftime('%d/%m/%Y')}</td>"
+                f"<td style='white-space:nowrap;'>{html.escape(str(r['reference']))}</td>"
                 f"{_td_money(r['sale'])}{_td_money(r['cost'])}{_td_money(r['profit'])}"
                 f"<td style='text-align:right;{margin_style(r['margin'])}'>{ms}</td>"
                 f"<td>{html.escape(r['reason'])}</td>"
@@ -748,7 +757,7 @@ def build_html(
       <table cellpadding="6" cellspacing="0" border="1" style="{table_css}">
         <thead>
           <tr style="background:#721c24;color:#fff;">
-            {_th_quiet("Invoice date")}{_th_quiet("Group / job")}
+            <th>Date</th><th>Group / job</th>
             <th>Invoiced</th><th>Purchase orders</th><th>Profit</th><th>Margin</th><th>Why</th>
           </tr>
         </thead>
@@ -757,17 +766,26 @@ def build_html(
       </div>
         """
 
+    tile_lab = "padding:8px 8px 4px 8px;color:#fff;font-size:11px;line-height:1.2;"
+    tile_val = "padding:0 8px 10px 8px;color:#fff;font-size:16px;font-weight:700;white-space:nowrap;"
     return f"""
     <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:1100px;">
       <h1 style="color:#1f3a5f;margin-bottom:12px;">{html.escape(staff_name)} — {html.escape(month_label)} commission report</h1>
 
-      <table cellpadding="8" cellspacing="0" border="0" style="margin:0 0 16px;font-size:14px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px;">
         <tr>
-          <td style="background:#1f3a5f;color:#fff;padding:10px 14px;"><b>Overall profit</b><br>{gbp(total_profit)}</td>
-          <td style="background:#2e5a8f;color:#fff;padding:10px 14px;"><b>Invoiced</b><br>{gbp(total_sale)}</td>
-          <td style="background:#3d6fa3;color:#fff;padding:10px 14px;"><b>Purchase orders</b><br>{gbp(total_cost)}</td>
-          <td style="background:#4a82b8;color:#fff;padding:10px 14px;"><b>Margin</b><br>{'n/a' if total_margin is None else f'{total_margin}%'}</td>
-          <td style="background:#1b7a4a;color:#fff;padding:10px 14px;"><b>Commission</b><br>{gbp(total_commission)}</td>
+          <td width="20%" style="background:#1f3a5f;{tile_lab}">Overall profit</td>
+          <td width="20%" style="background:#2e5a8f;{tile_lab}">Invoiced</td>
+          <td width="20%" style="background:#3d6fa3;{tile_lab}">Purchase orders</td>
+          <td width="20%" style="background:#4a82b8;{tile_lab}">Margin</td>
+          <td width="20%" style="background:#1b7a4a;{tile_lab}">Commission</td>
+        </tr>
+        <tr>
+          <td width="20%" style="background:#1f3a5f;{tile_val}">{gbp(total_profit)}</td>
+          <td width="20%" style="background:#2e5a8f;{tile_val}">{gbp(total_sale)}</td>
+          <td width="20%" style="background:#3d6fa3;{tile_val}">{gbp(total_cost)}</td>
+          <td width="20%" style="background:#4a82b8;{tile_val}">{'n/a' if total_margin is None else f'{total_margin}%'}</td>
+          <td width="20%" style="background:#1b7a4a;{tile_val}">{gbp(total_commission)}</td>
         </tr>
       </table>
 
@@ -777,20 +795,23 @@ def build_html(
       <table cellpadding="6" cellspacing="0" border="1" style="{table_css}">
         <thead>
           <tr style="{head}">
-            {_th_quiet("Invoice date")}{_th_quiet("Group / job")}
+            <th>Date</th>
+            <th>Group / job</th>
             <th>Invoiced</th><th>Purchase orders</th>
             <th>Profit</th><th>Margin</th><th>Commission</th>
-            {_th_quiet("Running profit")}{_th_quiet("Running commission")}
+            {_th_run("Run profit", RUN_EDGE + "border-left-color:#fff;")}
+            {_th_run("Run comm.")}
           </tr>
         </thead>
         <tbody>
           {job_body}
           <tr style="{head}font-weight:700;">
-            <td colspan="2" style="font-size:10px;font-weight:500;color:#c5d0dc;">Total — {len(job_rows)} groups/jobs</td>
+            <td colspan="2">Total — {len(job_rows)} groups/jobs</td>
             {_td_money(total_sale)}{_td_money(total_cost)}{_td_money(total_profit)}
             <td style="text-align:right">{'n/a' if total_margin is None else f'{total_margin}%'}</td>
             {_td_money(total_commission, commission_style(total_commission))}
-            {_td_money(total_profit, QUIET)}{_td_money(total_commission, QUIET)}
+            {_td_money(total_profit, f"{QUIET}{RUN_EDGE}border-left-color:#fff;")}
+            {_td_money(total_commission, QUIET)}
           </tr>
         </tbody>
       </table>
