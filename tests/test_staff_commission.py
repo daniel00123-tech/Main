@@ -235,7 +235,8 @@ class HtmlLayoutTest(unittest.TestCase):
             ]
         )
         body = build_html("Sharon", month_title(today), rows, [])
-        self.assertIn("Sharon — September 2026 commission report", body)
+        self.assertIn("Sharon — September 2026", body)
+        self.assertIn("commission report", body)
         self.assertIn("font-family:Arial", body)
         self.assertIn("#1f3a5f", body)
         self.assertIn("#2e5a8f", body)
@@ -244,8 +245,10 @@ class HtmlLayoutTest(unittest.TestCase):
         self.assertIn("#1b7a4a", body)
         self.assertIn("Overall profit", body)
         self.assertIn("white-space:nowrap", body)
+        self.assertNotIn("table-layout:fixed", body)
+        self.assertIn("line-height:26px", body)
         self.assertIn("Minimum profit required", body)
-        self.assertIn("NOT YET QUALIFIED", body)
+        self.assertIn("NOT&nbsp;YET&nbsp;QUALIFIED", body)
         self.assertIn("Group / job", body)
         self.assertIn("Run profit", body)
         self.assertIn("Run comm.", body)
@@ -256,6 +259,8 @@ class HtmlLayoutTest(unittest.TestCase):
         self.assertNotIn("flex", body.lower())
         self.assertNotIn("Below 20%", body)
         self.assertLess(body.find("Overall profit"), body.find("£600.00"))
+        self.assertLess(body.find("Overall profit"), body.find("Invoiced"))
+        self.assertLess(body.find("£600.00"), body.find("Invoiced"))
 
     def test_qualified_shows_earned_and_anomalies(self) -> None:
         rows = attach_commissions(
@@ -281,7 +286,7 @@ class HtmlLayoutTest(unittest.TestCase):
             }
         ]
         body = build_html("Sharon", "September 2026", rows, anomalies)
-        self.assertIn("COMMISSION QUALIFIED", body)
+        self.assertIn("COMMISSION&nbsp;QUALIFIED", body)
         self.assertIn("Commission Earned:", body)
         self.assertIn("Anomalies", body)
         self.assertIn("GR/99", body)

@@ -228,6 +228,9 @@ def _run_cell(text: str) -> str:
 
 
 def _scorecard(totals: dict[str, Any]) -> str:
+    """One coloured tile per metric. Label row then figure row, stacked so
+    mobile clients cannot squeeze five nowrap amounts onto one overlapping line.
+    """
     figures = (
         money(totals["profit"]),
         money(totals["sale"]),
@@ -235,20 +238,30 @@ def _scorecard(totals: dict[str, Any]) -> str:
         display_margin(totals["margin"]),
         money_signed(totals["commission"]),
     )
-    labels = "".join(
-        f'<td width="20%" style="background:{colour};color:#ffffff;padding:10px 8px 4px 8px;'
-        f'font-size:12px;font-weight:bold;text-align:center;">{html.escape(label)}</td>'
-        for colour, label in zip(TILE_COLOURS, TILE_LABELS)
-    )
-    values = "".join(
-        f'<td width="20%" style="background:{colour};color:#ffffff;padding:4px 8px 12px 8px;'
-        f'font-size:18px;font-weight:bold;text-align:center;white-space:nowrap;">{html.escape(figure)}</td>'
-        for colour, figure in zip(TILE_COLOURS, figures)
-    )
+    tiles = []
+    for colour, label, figure in zip(TILE_COLOURS, TILE_LABELS, figures):
+        tiles.append(
+            "<tr>"
+            f'<td style="background:{colour};padding:0;border:0;">'
+            '<table width="100%" cellpadding="0" cellspacing="0" '
+            'style="border-collapse:collapse;width:100%;">'
+            "<tr>"
+            f'<td style="background:{colour};color:#ffffff;padding:10px 12px 2px 12px;'
+            f'font-size:12px;font-weight:bold;line-height:16px;">{html.escape(label)}</td>'
+            "</tr>"
+            "<tr>"
+            f'<td style="background:{colour};color:#ffffff;padding:2px 12px 12px 12px;'
+            f'font-size:20px;font-weight:bold;line-height:24px;white-space:nowrap;">'
+            f"{html.escape(figure)}</td>"
+            "</tr>"
+            "</table>"
+            "</td>"
+            "</tr>"
+        )
     return (
         '<table width="100%" cellpadding="0" cellspacing="0" '
-        'style="border-collapse:collapse;width:100%;table-layout:fixed;">'
-        f"<tr>{labels}</tr><tr>{values}</tr></table>"
+        'style="border-collapse:collapse;width:100%;">'
+        f"{''.join(tiles)}</table>"
     )
 
 
@@ -289,8 +302,8 @@ def _qualification_box(totals: dict[str, Any]) -> str:
         'style="border-collapse:collapse;width:100%;margin-top:16px;border:1px solid #d0d7de;background:#f8fafc;">'
         f"{''.join(rows)}"
         '<tr><td colspan="2" style="padding:12px 10px;text-align:center;">'
-        f'<span style="display:inline-block;background:{badge_bg};color:#ffffff;padding:6px 14px;'
-        f'font-weight:bold;letter-spacing:0.4px;">{html.escape(status)}</span></td></tr>'
+        f'<span style="background:{badge_bg};color:#ffffff;padding:6px 14px;'
+        f'font-weight:bold;">{html.escape(status).replace(" ", "&nbsp;")}</span></td></tr>'
         f"{earned}"
         "</table>"
     )
@@ -425,12 +438,20 @@ def _anomalies_table(anomalies: list[dict[str, Any]]) -> str:
 
 def build_html(staff_name: str, month_label: str, rows: list[dict[str, Any]], anomalies: list[dict[str, Any]]) -> str:
     totals = month_totals(rows)
+    title = (
+        f"{html.escape(staff_name)} — {html.escape(month_label)}"
+        "<br>commission report"
+    )
     return f"""<!DOCTYPE html>
 <html>
 <body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;margin:0;padding:12px;">
-<h1 style="font-family:Arial,Helvetica,sans-serif;font-size:20px;margin:0 0 14px 0;color:#111;">
-{html.escape(staff_name)} — {html.escape(month_label)} commission report
-</h1>
+<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;margin:0 0 16px 0;">
+<tr>
+<td style="font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:26px;font-weight:bold;color:#111;padding:0 0 4px 0;">
+{title}
+</td>
+</tr>
+</table>
 {_scorecard(totals)}
 {_qualification_box(totals)}
 {_jobs_table(rows, totals)}
