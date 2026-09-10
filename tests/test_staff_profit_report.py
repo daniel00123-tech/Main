@@ -189,8 +189,8 @@ class MissingPurchaseOrderAnomalyTest(unittest.TestCase):
         self.assertFalse(is_missing_po_anomaly(D("2350"), D("1.00")))
         self.assertTrue(is_missing_po_anomaly(D("2350"), D("0.99")))
 
-    def test_prior_month_po_does_not_keep_this_month_sale_on_the_running_table(self) -> None:
-        # GR/455 shape: July first sale attaches July POs; August invoice has £0 PO on the row.
+    def test_prior_month_po_is_included_when_the_last_job_is_invoiced_this_month(self) -> None:
+        # GR/455 shape: July invoices/POs plus the final August invoice — one complete group.
         jobs = [_ok_job(1, 455, reference="EL1619"), _ok_job(2, 455, reference="EL1664")]
         docs = [
             _doc("PurchaseOrder", 1, "2026-07-13", "120", cost=True),
@@ -206,12 +206,13 @@ class MissingPurchaseOrderAnomalyTest(unittest.TestCase):
             month_start=dt.date(2026, 8, 1),
             month_end=dt.date(2026, 8, 31),
         )
-        self.assertEqual(main_rows, [])
-        self.assertEqual(len(anomaly_rows), 1)
-        self.assertEqual(anomaly_rows[0]["reference"], "GR/455")
-        self.assertEqual(anomaly_rows[0]["sale"], D("2350.00"))
-        self.assertEqual(anomaly_rows[0]["cost"], D("0.00"))
-        self.assertNotIn("GR/455", [r["reference"] for r in main_rows])
+        self.assertEqual(anomaly_rows, [])
+        self.assertEqual(len(main_rows), 1)
+        self.assertEqual(main_rows[0]["reference"], "GR/455")
+        self.assertEqual(main_rows[0]["date"], dt.date(2026, 8, 4))
+        self.assertEqual(main_rows[0]["sale"], D("2570.00"))
+        self.assertEqual(main_rows[0]["cost"], D("1720.00"))
+        self.assertEqual(main_rows[0]["profit"], D("850.00"))
 
     def test_mixed_group_other_staff_po_does_not_cover_this_staff_sale(self) -> None:
         # GR/551 shape: Ella has the PO; Sharon's August invoice has no PO.
@@ -294,6 +295,83 @@ class MissingPurchaseOrderAnomalyTest(unittest.TestCase):
         self.assertIn("GR/455", body[anomaly_start:])
         self.assertNotIn("GR/455", body[job_start:anomaly_start])
         self.assertNotIn("£2,350.00", body[job_start:anomaly_start])
+
+
+class CompleteGroupReportingTest(unittest.TestCase):
+    def test_gr409_reports_full_july_and_august_totals_on_the_last_invoice_date(self) -> None:
+        jobs = [
+            _ok_job(192707210, 409, reference="EL1549"),
+            _ok_job(193986828, 409, reference="EL1666"),
+        ]
+        docs = [
+            _doc("PurchaseOrder", 192707210, "2026-07-03", "80", cost=True),
+            _doc("Invoice", 192707210, "2026-07-07", "120"),
+            _doc("PurchaseOrder", 193986828, "2026-07-20", "60", cost=True),
+            _doc("Invoice", 193986828, "2026-08-02", "120"),
+        ]
+        august_main, august_anom = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={409: {"reference": "GR/409"}},
+            category_id=132264,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(august_anom, [])
+        self.assertEqual(len(august_main), 1)
+        self.assertEqual(august_main[0]["reference"], "GR/409")
+        self.assertEqual(august_main[0]["date"], dt.date(2026, 8, 2))
+        self.assertEqual(august_main[0]["sale"], D("240.00"))
+        self.assertEqual(august_main[0]["cost"], D("140.00"))
+        self.assertEqual(august_main[0]["profit"], D("100.00"))
+
+        july_main, july_anom = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={409: {"reference": "GR/409"}},
+            category_id=132264,
+            month_start=dt.date(2026, 7, 1),
+            month_end=dt.date(2026, 7, 31),
+        )
+        self.assertEqual(july_main, [])
+        self.assertEqual(july_anom, [])
+
+    def test_group_is_held_until_every_live_job_has_an_invoice(self) -> None:
+        jobs = [_ok_job(1, 50, reference="EL1"), _ok_job(2, 50, reference="EL2")]
+        docs = [
+            _doc("PurchaseOrder", 1, "2026-07-03", "80", cost=True),
+            _doc("Invoice", 1, "2026-07-07", "120"),
+            _doc("PurchaseOrder", 2, "2026-07-20", "60", cost=True),
+        ]
+        main_rows, anomaly_rows = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={50: {"reference": "GR/50"}},
+            category_id=132264,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(main_rows, [])
+        self.assertEqual(anomaly_rows, [])
+
+    def test_documents_before_1_may_2026_are_ignored(self) -> None:
+        jobs = [_ok_job(9, 12)]
+        docs = [
+            _doc("Invoice", 9, "2026-04-30", "500"),
+            _doc("PurchaseOrder", 9, "2026-04-30", "200", cost=True),
+            _doc("Invoice", 9, "2026-08-10", "120"),
+        ]
+        main_rows, anomaly_rows = build_staff_rows(
+            jobs=jobs,
+            docs=docs,
+            group_refs={12: {"reference": "GR/12"}},
+            category_id=132264,
+            month_start=dt.date(2026, 8, 1),
+            month_end=dt.date(2026, 8, 31),
+        )
+        self.assertEqual(anomaly_rows, [])
+        self.assertEqual(main_rows[0]["sale"], D("120.00"))
+        self.assertEqual(main_rows[0]["cost"], D("0.00"))
 
 
 if __name__ == "__main__":

@@ -58,18 +58,26 @@ COMPLETED = {"completedOk", "completedWithIssues"}
 ANOMALY_SALE = D("250")
 MIN_PO_AMOUNT = D("1")
 PO_GRACE_DAYS = 10
+BEGINNING_OF_TIME = dt.date(2026, 5, 1)
 FROM_EMAIL = "ella@elvexpropertyservices.com"
 DEFAULT_MAIL_TO = "william@elvexpropertyservices.com"
 
 
 def is_missing_po_anomaly(sale: D, po_cost: D) -> bool:
-    """Sale over £250 with no PO counted on this month's row.
-
-    The PO column on the report is the cost attached this month. A PO that
-    already attached in an earlier month, or a PO on someone else's job in a
-    mixed group, must not keep this row on the running table.
-    """
+    """Sale over £250 with no PO of £1+ on the completed group."""
     return sale > ANOMALY_SALE and abs(po_cost) < MIN_PO_AMOUNT
+
+
+def live_jobs(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [m for m in members if (m.get("status") or "") != "cancelled"]
+
+
+def group_fully_invoiced(members: list[dict[str, Any]], invoiced_job_ids: set[int]) -> bool:
+    """True when every live job in the group has at least one invoice or credit."""
+    live = live_jobs(members)
+    if not live:
+        return False
+    return all(int(m["id"]) in invoiced_job_ids for m in live)
 
 
 class ConfigError(RuntimeError):
@@ -348,7 +356,10 @@ def build_staff_rows(
     month_start: dt.date,
     month_end: dt.date,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Existing inclusion / grouping / profit maths. Commission is added later."""
+    """One row per completed Group/Job, in the month the last job is invoiced.
+
+    Sale and PO totals are the full group from 1 May 2026, not a single month slice.
+    """
     jobs_by_id = {int(j["id"]): j for j in jobs}
     staff_ids = {int(j["id"]) for j in jobs if j.get("categoryId") == category_id}
     by_group: dict[int, list[dict[str, Any]]] = defaultdict(list)
@@ -372,6 +383,7 @@ def build_staff_rows(
                 "sales": [],
                 "pos_staff": [],
                 "pos_any": [],
+                "invoiced_jobs": set(),
             }
         return buckets[key]
 
@@ -385,7 +397,7 @@ def build_staff_rows(
         if not jid or jid not in jobs_by_id:
             continue
         when = doc_date(doc)
-        if not when:
+        if not when or when < BEGINNING_OF_TIME:
             continue
         amount = doc_amount(doc)
         job = jobs_by_id[jid]
@@ -398,12 +410,14 @@ def build_staff_rows(
         else:
             continue
         staff_job = jid in staff_ids
-        if order_type == "PurchaseOrder":
+        if order_type in {"Invoice", "CreditNote"}:
+            b["invoiced_jobs"].add(jid)
+            if staff_job:
+                b["sales"].append((when, amount, order_type))
+        elif order_type == "PurchaseOrder":
             b["pos_any"].append((when, amount, jid))
             if staff_job:
                 b["pos_staff"].append((when, amount, jid))
-        elif staff_job:
-            b["sales"].append((when, amount, order_type))
 
     staff_buckets = []
     for b in buckets.values():
@@ -433,65 +447,51 @@ def build_staff_rows(
             continue
 
         sales_sorted = sorted(b["sales"], key=lambda x: x[0])
-        first_sale = sales_sorted[0][0] if sales_sorted else None
+        last_sale = sales_sorted[-1][0] if sales_sorted else None
         completed_on = group_completion_date(members)
         cost_trigger = (completed_on + dt.timedelta(days=PO_GRACE_DAYS)) if completed_on else None
-        month_sale = money(
-            sum((amt for when, amt, _ot in sales_sorted if month_start <= when <= month_end), ZERO)
-        )
+        fully_invoiced = group_fully_invoiced(members, b["invoiced_jobs"])
 
-        attached_cost = ZERO
-        attached_dates: list[dt.date] = []
-        for when, amt, _jid in b["pos_staff"]:
-            if first_sale:
-                attach = max(first_sale, when)
-            elif cost_trigger:
-                attach = max(cost_trigger, when)
-            else:
+        # Full group totals from 1 May 2026, not the current month slice.
+        total_sale = money(sum((amt for _when, amt, _ot in sales_sorted), ZERO))
+        total_cost = money(sum((amt for _when, amt, _jid in b["pos_staff"]), ZERO))
+
+        if fully_invoiced and last_sale is not None:
+            if last_sale < month_start or last_sale > month_end:
                 continue
-            if month_start <= attach <= month_end:
-                attached_cost += amt
-                attached_dates.append(attach)
-        attached_cost = money(attached_cost)
+            row_date = last_sale
+        elif total_sale == 0 and total_cost != 0 and cost_trigger and month_start <= cost_trigger <= month_end:
+            row_date = cost_trigger
+        else:
+            continue
 
-        if is_missing_po_anomaly(month_sale, attached_cost):
+        if is_missing_po_anomaly(total_sale, total_cost):
             anomaly_rows.append(
                 {
-                    "date": min(when for when, amt, _ot in sales_sorted if month_start <= when <= month_end),
+                    "date": row_date,
                     "reference": label(b),
-                    "sale": month_sale,
-                    "cost": attached_cost,
-                    "profit": money(month_sale - attached_cost),
-                    "margin": margin_of(month_sale, money(month_sale - attached_cost)),
+                    "sale": total_sale,
+                    "cost": total_cost,
+                    "profit": money(total_sale - total_cost),
+                    "margin": margin_of(total_sale, money(total_sale - total_cost)),
                     "reason": "Sale over £250 with no purchase order",
                 }
             )
             continue
 
-        if month_sale == 0 and attached_cost == 0:
-            continue
-        if month_sale == 0 and attached_cost != 0 and not cost_trigger:
+        if total_sale == 0 and total_cost == 0:
             continue
 
-        row_date = None
-        month_sale_dates = [when for when, amt, _ot in sales_sorted if month_start <= when <= month_end]
-        if month_sale_dates:
-            row_date = min(month_sale_dates)
-        elif attached_dates:
-            row_date = min(attached_dates)
-        if not row_date:
-            continue
-
-        profit = money(month_sale - attached_cost)
+        profit = money(total_sale - total_cost)
         main_rows.append(
             {
                 "key": b["key"],
                 "date": row_date,
                 "reference": label(b),
-                "sale": month_sale,
-                "cost": attached_cost,
+                "sale": total_sale,
+                "cost": total_cost,
                 "profit": profit,
-                "margin": margin_of(month_sale, profit),
+                "margin": margin_of(total_sale, profit),
             }
         )
 
@@ -711,8 +711,9 @@ def build_html(
     <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:1100px;">
       <h1 style="color:#1f3a5f;margin-bottom:4px;">{html.escape(staff_name)} — {html.escape(month_label)} commission report</h1>
       <p style="margin-top:0;font-size:14px;">
-        Groups with an unscheduled or new job are left out. Sale over £250 with no purchase order
-        is listed as an anomaly, not in the totals.
+        A group is included in the month its last job is invoiced, with every invoice and purchase
+        order from 1 May 2026. Groups with an unscheduled or new job are left out. Sale over £250
+        with no purchase order is listed as an anomaly, not in the totals.
       </p>
 
       <table cellpadding="8" cellspacing="0" border="0" style="margin:12px 0 20px;font-size:14px;">
@@ -798,7 +799,7 @@ def load_report_data(
     month_end: dt.date,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     token = rest_token()
-    created_from = dt.date(month_start.year, 1, 1)
+    created_from = BEGINNING_OF_TIME
     created_to = max(month_end, dt.datetime.now(LONDON).date())
     jobs = fetch_jobs(token, created_from, created_to)
     docs = legacy(
