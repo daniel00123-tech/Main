@@ -815,7 +815,8 @@ def build_html(
         Commission is calculated once per group/job. Green commission is a job-level earning.
         Red commission is a penalty of 10% of sales plus 20% of purchase orders when the job
         is a loss or below the minimum margin for its revenue tier — including a sale of
-        zero with purchase orders still on the group.
+        zero with purchase orders still on the group. On jobs under £2,000, margin from 20%
+        up to 30% is £0 (neither earned nor penalised); the minus starts below 20%.
         Payment still depends on the monthly qualification below.
       </p>
 

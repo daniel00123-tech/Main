@@ -84,11 +84,29 @@ class RevenueTierBoundaryTest(unittest.TestCase):
 
 
 class Tier1MarginBandsTest(unittest.TestCase):
-    def test_penalty_just_below_30(self) -> None:
+    def test_penalty_just_below_20(self) -> None:
         self.assertEqual(
-            commission("1500", margin="29.99"),
-            penalty_commission(D("1500"), D("1500") - D("1500") * D("0.2999")),
+            commission("1500", margin="19.99"),
+            penalty_commission(D("1500"), D("1500") - D("1500") * D("0.1999")),
         )
+
+    def test_20_00_to_29_99_is_zero_commission(self) -> None:
+        result_low = calculate_job_commission("1500", D("1500") * D("0.20"))
+        result_high = calculate_job_commission("1500", D("1500") * D("0.2999"))
+        self.assertEqual(result_low.commission, D("0.00"))
+        self.assertEqual(result_high.commission, D("0.00"))
+        self.assertFalse(result_low.is_penalty)
+        self.assertFalse(result_high.is_penalty)
+        self.assertEqual(result_low.rate, D("0"))
+        self.assertEqual(result_high.rate, D("0"))
+
+    def test_gr545_at_20_3_percent_is_zero_not_a_penalty(self) -> None:
+        # £155 sale, £123.50 PO, £31.50 profit, 20.3% — under £2,000 dead band.
+        result = calculate_job_commission("155", "31.50", cost="123.50")
+        self.assertEqual(result.commission, D("0.00"))
+        self.assertFalse(result.is_penalty)
+        self.assertGreaterEqual(result.margin, D("20"))
+        self.assertLess(result.margin, D("30"))
 
     def test_30_00_is_5_percent_of_profit_not_penalty(self) -> None:
         self.assertEqual(commission("1500", margin="30"), money(D("1500") * D("0.30") * D("0.05")))
@@ -307,7 +325,7 @@ class MonthlyQualificationTest(unittest.TestCase):
         self.assertEqual(PENALTY_RATE_SALE, D("0.10"))
         self.assertEqual(PENALTY_RATE_PO, D("0.20"))
         self.assertEqual(len(COMMISSION_TIERS), 3)
-        self.assertEqual(COMMISSION_TIERS[0]["penaltyBelowMargin"], D("30"))
+        self.assertEqual(COMMISSION_TIERS[0]["penaltyBelowMargin"], D("20"))
         self.assertEqual(COMMISSION_TIERS[1]["penaltyBelowMargin"], D("20"))
         self.assertEqual(COMMISSION_TIERS[2]["penaltyBelowMargin"], D("12.5"))
 

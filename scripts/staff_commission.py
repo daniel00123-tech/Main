@@ -30,8 +30,9 @@ COMMISSION_TIERS: list[dict[str, Any]] = [
     {
         "minRevenue": D("0"),
         "maxRevenue": D("1999.99"),
-        "penaltyBelowMargin": D("30"),
+        "penaltyBelowMargin": D("20"),
         "bands": [
+            {"minMargin": D("20"), "maxMargin": D("29.99"), "rate": D("0")},
             {"minMargin": D("30"), "maxMargin": D("41.99"), "rate": D("0.05")},
             {"minMargin": D("42"), "maxMargin": D("49.99"), "rate": D("0.075")},
             {"minMargin": D("50"), "maxMargin": None, "rate": D("0.10")},
@@ -127,8 +128,9 @@ def calculate_job_commission(
 ) -> JobCommission:
     """Commission for one aggregated job.
 
-    Below the tier minimum margin, or on a loss (including PO-only jobs with no
+    Below the tier penalty floor, or on a loss (including PO-only jobs with no
     sale), commission is a penalty of 10% of sales plus 20% of purchase orders.
+    On jobs under £2,000, 20%–29.99% margin is neither earned nor penalised (£0).
     Positive commission is a percentage of JOB PROFIT. Maximum rate is 10%.
     """
     sale = as_decimal(revenue)

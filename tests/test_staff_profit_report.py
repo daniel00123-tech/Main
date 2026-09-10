@@ -93,6 +93,7 @@ class HtmlReportTest(unittest.TestCase):
         self.assertIn(commission_style(D("26.25")), body)
         self.assertIn(commission_style(D("-810.00")), body)
         self.assertIn("10% of sales plus 20% of purchase orders", body)
+        self.assertIn("under £2,000, margin from 20%", body)
         self.assertNotIn("calculate_job_commission", body)
         # Anomalies are excluded from commission.
         self.assertIn("Not included in the totals or commission above", body)
