@@ -32,4 +32,14 @@ python3 scripts/dandara_appointment_confirmations.py
 
 Supply `FIXFLO_API_KEY`, `FIXFLO_BASE_URL`, `BIGCHANGE_AUTH_MODE`, `BIGCHANGE_BASE_URL`, `BIGCHANGE_API_KEY`, `BIGCHANGE_USERNAME`, and `BIGCHANGE_PASSWORD` as environment variables. Credentials are never stored in the repository.
 
+## Elvex daily GR/ group job profit
+
+Daily read-only report of GR/ groups invoiced yesterday (Europe/London). The email is the results table plus a short totals block — no method notes or job-id commentary above the table.
+
+```sh
+python3 scripts/elvex_daily_group_profit.py
+```
+
+Supply BigChange JobWatch credentials and Microsoft Graph `MS_TENANT_ID`, `MS_CLIENT_ID`, and `MS_CLIENT_SECRET` as environment variables. The script never writes to BigChange.
+
 Each run writes `artifacts/dandara-confirmation-candidates.csv`, `artifacts/dandara-confirmation-results.json`, and `artifacts/dandara-confirmation-state.json`. The state and existing FixFlo comments prevent duplicate confirmations for the same issue and appointment date. Set `DRY_RUN=true` to perform all read and eligibility checks without posting comments or changing state.
