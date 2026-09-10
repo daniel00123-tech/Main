@@ -80,6 +80,7 @@ class HtmlReportTest(unittest.TestCase):
             ]
         )
         body = build_html(staff_name="Sharon", month_label="August 2026", job_rows=jobs, anomaly_rows=[])
+        self.assertIn("commission report", body)
         self.assertIn("Invoice date", body)
         self.assertIn("Group / job", body)
         self.assertIn("Commission", body)

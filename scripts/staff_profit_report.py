@@ -709,10 +709,10 @@ def build_html(
     head = "background:#1f3a5f;color:#fff;"
     return f"""
     <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:1100px;">
-      <h1 style="color:#1f3a5f;margin-bottom:4px;">{html.escape(staff_name)} — {html.escape(month_label)}</h1>
+      <h1 style="color:#1f3a5f;margin-bottom:4px;">{html.escape(staff_name)} — {html.escape(month_label)} commission report</h1>
       <p style="margin-top:0;font-size:14px;">
-        Invoice-date profit report with job-level commission. Groups with an unscheduled or new job
-        are left out. Sale over £250 with no purchase order is listed as an anomaly, not in the totals.
+        Groups with an unscheduled or new job are left out. Sale over £250 with no purchase order
+        is listed as an anomaly, not in the totals.
       </p>
 
       <table cellpadding="8" cellspacing="0" border="0" style="margin:12px 0 20px;font-size:14px;">
@@ -836,7 +836,7 @@ def load_report_data(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Staff profit and commission report")
+    parser = argparse.ArgumentParser(description="Staff commission report")
     parser.add_argument("--staff", choices=sorted(STAFF), default="sharon")
     parser.add_argument("--year", type=int, default=2026)
     parser.add_argument("--month", type=int, default=8)
@@ -880,12 +880,12 @@ def main(argv: list[str] | None = None) -> int:
         handle.write(
             "<!doctype html><html><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width, initial-scale=1'>"
-            f"<title>{staff['name']} {month_label}</title></head>"
+            f"<title>{staff['name']} {month_label} commission report</title></head>"
             "<body style='margin:24px;background:#fff;'>" + html_body + "</body></html>"
         )
     print("wrote", out_path)
     if args.send:
-        subject = f"{staff['name']} — {month_label} — profit and commission"
+        subject = f"{staff['name']} — {month_label} — commission report"
         try:
             send_graph_mail(subject, html_body, args.to)
         except Exception:
