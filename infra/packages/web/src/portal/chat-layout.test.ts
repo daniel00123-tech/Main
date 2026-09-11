@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   composerInputLocked,
   composerSendDisabled,
+  emptyStatePrompts,
   followUpHints,
   isEmptyChatState,
   linkifyChatText,
@@ -32,6 +33,8 @@ describe("portal chat layout", () => {
     expect(isEmptyChatState(1, 0)).toBe(false);
     expect(followUpHints({ permissionDenied: true })).toEqual([]);
     expect(followUpHints({ controlledAction: true })[0]).toMatch(/approvals/i);
+    expect(emptyStatePrompts("Elvex")[0]).toContain("Elvex");
+    expect(emptyStatePrompts()).toContain("What connected systems can I access?");
     expect(PORTAL_CHAT_VISIBLE_BEFORE_SCROLL).toBe(5);
   });
 

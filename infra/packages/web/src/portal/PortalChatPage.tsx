@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { displayConversationTitle, groupConversations } from "@infra/shared";
-import { Menu, MessageSquare, Plus, Send, X } from "lucide-react";
+import { ChevronLeft, Menu, MessageSquare, PanelLeftOpen, Plus, Send, Sparkles, X } from "lucide-react";
 import {
   Button,
   EmptyState,
@@ -14,6 +14,7 @@ import { api, type PortalChatConversation, type PortalChatMessage, type PortalCh
 import { usePortalCompany } from "./usePortalCompany";
 import {
   composerSendDisabled,
+  emptyStatePrompts,
   followUpHints,
   linkifyChatText,
   portalChatLayout,
@@ -35,7 +36,7 @@ export default function PortalChatPage() {
   const [active, setActive] = useState<PortalChatConversation | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ label: string; tool?: string | null } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(!isMobile);
   const [renameId, setRenameId] = useState<string | null>(null);
@@ -49,6 +50,7 @@ export default function PortalChatPage() {
   const currentDocument = active?.context?.currentDocument ?? null;
   const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
   const grouped = useMemo(() => groupConversations(conversations), [conversations]);
+  const starterPrompts = useMemo(() => emptyStatePrompts(company?.name), [company?.name]);
 
   async function refreshList(slug: string) {
     const response = await api.listPortalConversations(slug);
@@ -119,7 +121,7 @@ export default function PortalChatPage() {
     if (!company) return;
     setDrafting(false);
     setActiveId(id);
-    setHistoryOpen(false);
+    if (isMobile) setHistoryOpen(false);
     navigate(portalChatPath(company.slug, id));
   }
 
@@ -128,7 +130,7 @@ export default function PortalChatPage() {
     setDrafting(true);
     setActiveId(DRAFT_ID);
     setActive(null);
-    setHistoryOpen(false);
+    if (isMobile) setHistoryOpen(false);
     navigate(portalChatPath(company.slug), { replace: false });
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -150,7 +152,7 @@ export default function PortalChatPage() {
     };
     setDraft("");
     setBusy(true);
-    setStatus("Thinking…");
+    setStatus({ label: "Thinking…" });
     stickToBottom.current = true;
     setActive((current) =>
       current
@@ -171,7 +173,7 @@ export default function PortalChatPage() {
       const result = await api.streamPortalChatMessage(company.slug, {
         conversationId,
         text: trimmed,
-        onStatus: (event) => setStatus(event.label),
+        onStatus: (event) => setStatus(event),
       });
       applyTurn(result);
     } catch (err) {
@@ -242,10 +244,20 @@ export default function PortalChatPage() {
   const sidebar = (
     <aside className="portal-chat-sidebar" aria-label="Recent chats">
       <div className="portal-chat-sidebar-head">
-        <strong>Chats</strong>
-        <Button type="button" size="sm" variant="primary" aria-label="Start a new chat" onClick={startNewChat}>
-          <Plus size={16} /> New chat
-        </Button>
+        <div>
+          <strong>Chats</strong>
+          <span>Shared company memory</span>
+        </div>
+        <div className="portal-chat-sidebar-actions">
+          <Button type="button" size="sm" variant="primary" aria-label="Start a new chat" onClick={startNewChat}>
+            <Plus size={16} /> New
+          </Button>
+          {!isMobile ? (
+            <Button type="button" size="sm" variant="ghost" aria-label="Collapse chat history" onClick={() => setHistoryOpen(false)}>
+              <ChevronLeft size={16} />
+            </Button>
+          ) : null}
+        </div>
       </div>
       {conversations.length === 0 ? (
         <EmptyState title="No chats yet" description="Start a conversation with INFRA for this company." />
@@ -334,6 +346,17 @@ export default function PortalChatPage() {
       {!isMobile ? sidebar : null}
 
       <section className="portal-chat-main" aria-label="Active chat">
+        <div className="portal-chat-main-head">
+          <div className="portal-chat-title-block">
+            <span className="portal-chat-eyebrow">INFRA chat</span>
+            <strong>{drafting ? `New chat with ${company.name}` : active?.title ?? `Chat with ${company.name}`}</strong>
+          </div>
+          {!isMobile && !historyOpen ? (
+            <Button type="button" variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}>
+              <PanelLeftOpen size={16} /> History
+            </Button>
+          ) : null}
+        </div>
         {loadError ? <ErrorState title="Chat error" description={loadError} onRetry={() => setLoadError(null)} /> : null}
         <div
           className="portal-chat-transcript"
@@ -344,17 +367,33 @@ export default function PortalChatPage() {
           }}
         >
           {messages.length === 0 && !busy ? (
-            <EmptyState
-              icon={<MessageSquare size={28} />}
-              title="Ask INFRA"
-              description="Search files, check connected systems you can access, or pick up a previous chat."
-            />
+            <div className="portal-chat-hero">
+              <div className="portal-chat-orb" aria-hidden="true">
+                <Sparkles size={28} />
+              </div>
+              <span className="portal-chat-hero-kicker">Company-aware assistant</span>
+              <h1>What should we work out for {company.name}?</h1>
+              <p>
+                Ask INFRA to search files, check connected read-only systems, explain what you can access, or continue a
+                previous thread.
+              </p>
+              <div className="portal-chat-starters" aria-label="Suggested prompts">
+                {starterPrompts.map((prompt) => (
+                  <button key={prompt} type="button" className="portal-chat-starter" onClick={() => void send(prompt)}>
+                    <MessageSquare size={16} />
+                    <span>{prompt}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : (
             messages.map((message) => <ChatBubble key={message.id} message={message} companySlug={company.slug} />)
           )}
           {busy ? (
             <div className="portal-chat-status" role="status" aria-live="polite">
-              {status || "Thinking…"}
+              <span className="portal-chat-status-dot" aria-hidden="true" />
+              <span>{status?.label || "Thinking…"}</span>
+              {status?.tool ? <code>{status.tool}</code> : null}
             </div>
           ) : null}
         </div>
@@ -382,13 +421,17 @@ export default function PortalChatPage() {
             void send();
           }}
         >
+          <div className="portal-chat-composer-label">
+            <span>Message INFRA</span>
+            <span>Shift+Enter for a new line</span>
+          </div>
           <textarea
             ref={inputRef}
             className="input portal-chat-input"
-            rows={isMobile ? 2 : 3}
+            rows={isMobile ? 2 : 4}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="Message INFRA…"
+            placeholder="Ask about files, Xero, inboxes, approvals, or what you can access…"
             aria-label="Message INFRA"
             disabled={false}
             onKeyDown={(event) => {
@@ -410,6 +453,8 @@ export default function PortalChatPage() {
 function ChatBubble({ message, companySlug }: { message: PortalChatMessage; companySlug: string }) {
   const parts = linkifyChatText(message.content);
   const sources = message.metadata.sources?.filter((source) => source.url) ?? [];
+  const tools = message.metadata.toolNames ?? [];
+  const terminal = message.metadata.terminal ? terminalLabel(message.metadata.terminal) : null;
   return (
     <article className={`portal-chat-bubble portal-chat-bubble--${message.role}`}>
       <div className="portal-chat-bubble-body">
@@ -424,7 +469,7 @@ function ChatBubble({ message, companySlug }: { message: PortalChatMessage; comp
         )}
       </div>
       {message.metadata.permissionDenied ? (
-        <p className="portal-chat-note">This was blocked by your company permissions.</p>
+        <p className="portal-chat-note portal-chat-note--denied">This was blocked by your company permissions.</p>
       ) : null}
       {message.metadata.controlledAction ? (
         <p className="portal-chat-note">
@@ -432,7 +477,7 @@ function ChatBubble({ message, companySlug }: { message: PortalChatMessage; comp
         </p>
       ) : null}
       {sources.length ? (
-        <ul className="portal-chat-sources">
+        <ul className="portal-chat-sources" aria-label="Sources">
           {sources.map((source) => (
             <li key={source.id}>
               {source.url ? (
@@ -446,6 +491,29 @@ function ChatBubble({ message, companySlug }: { message: PortalChatMessage; comp
           ))}
         </ul>
       ) : null}
+      {message.role === "assistant" && (terminal || tools.length > 0) ? (
+        <div className="portal-chat-message-meta" aria-label="Response status">
+          {terminal ? <span className="portal-chat-meta-chip">{terminal}</span> : null}
+          {tools.slice(0, 3).map((tool) => (
+            <span key={tool} className="portal-chat-meta-chip">
+              {toolLabel(tool)}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </article>
   );
+}
+
+function toolLabel(tool: string): string {
+  if (/^xero_/i.test(tool)) return "Xero";
+  if (/outlook|mailbox|email/i.test(tool)) return "Email";
+  if (/document|knowledge|search/i.test(tool)) return "Files";
+  return tool.replace(/_/g, " ");
+}
+
+function terminalLabel(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
