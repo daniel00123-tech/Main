@@ -1,0 +1,621 @@
+{
+  "counts": {
+    "non_btr": 72,
+    "eligible_no_slot_or_other": 1,
+    "ready_to_allocate": 33,
+    "contractor_excluded": 4,
+    "ppm_review": 0
+  },
+  "ready_to_allocate": [
+    {
+      "ref": "JOB276484",
+      "site": "The Point",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDA_Point _Tech - Eric Wilson",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": "PO sent and awaiting date"
+    },
+    {
+      "ref": "JOB276884",
+      "site": "The Point",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDA_Point _Tech - Eric Wilson",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": "PO sent and awaiting date"
+    },
+    {
+      "ref": "JOB277700~1",
+      "site": "U&A / Unity & Armouries",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDUA_U&A_TechSup Martin Parry",
+      "proposed_date": "2026-07-10",
+      "confidence": "High",
+      "flag": "Quote to be approved "
+    },
+    {
+      "ref": "JOB277961",
+      "site": "Chapel Wharf",
+      "role": "Tech",
+      "type": "Appliance (White goods) Call Out",
+      "proposed_resource": "UDC_Chapel_CT Craig Preece",
+      "proposed_date": "2026-07-10",
+      "confidence": "High",
+      "flag": "BTR - GM Feedback"
+    },
+    {
+      "ref": "JOB278566~1",
+      "site": "Chapel Wharf",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDC_Chapel_CT Craig Preece",
+      "proposed_date": "2026-07-10",
+      "confidence": "High",
+      "flag": "BTR - GM Feedback"
+    },
+    {
+      "ref": "DLFF277704~1",
+      "site": "Chapel Wharf",
+      "role": "Tech",
+      "type": "DL - Tech Job from FixFlo",
+      "proposed_resource": "UDC_Chapel_CT Craig Preece",
+      "proposed_date": "2026-07-10",
+      "confidence": "High",
+      "flag": "BTR - GM Feedback"
+    },
+    {
+      "ref": "DLFF275603~1",
+      "site": "Chapel Wharf",
+      "role": "Tech",
+      "type": "DL - Tech Job from FixFlo",
+      "proposed_resource": "UDC_Chapel_CT Craig Preece",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": "BTR - GM Feedback"
+    },
+    {
+      "ref": "JOB279785",
+      "site": "Chapel Wharf",
+      "role": "Tech",
+      "type": "Gas Boiler Call Out",
+      "proposed_resource": "UDC_Chapel_CT Craig Preece",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": "BTR - GM Feedback"
+    },
+    {
+      "ref": "DLFF277975~1",
+      "site": "Chapel Wharf",
+      "role": "Tech",
+      "type": "DL - Tech Job from FixFlo",
+      "proposed_resource": "UDC_Chapel_CT Craig Preece",
+      "proposed_date": "2026-07-10",
+      "confidence": "High",
+      "flag": "BTR - GM Feedback"
+    },
+    {
+      "ref": "JOB279967",
+      "site": "The Point",
+      "role": "Tech",
+      "type": "Sprinkler Works",
+      "proposed_resource": "UDA_Point _Tech - Eric Wilson",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": "PO sent and awaiting date"
+    },
+    {
+      "ref": "JOB277609~2",
+      "site": "Leodis Square",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "proposed_date": "2026-07-10",
+      "confidence": "Low",
+      "flag": null
+    },
+    {
+      "ref": "DLFF284758",
+      "site": "The Point",
+      "role": "Tech",
+      "type": "DL - Tech Job from FixFlo",
+      "proposed_resource": "UDA_Point _Tech - Eric Wilson",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "DLFF284759",
+      "site": "Chapel Wharf",
+      "role": "Tech",
+      "type": "DL - Tech Job from FixFlo",
+      "proposed_resource": "UDC_Chapel_CT Craig Preece",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "DLFF284760",
+      "site": "The Point",
+      "role": "Tech",
+      "type": "DL - Tech Job from FixFlo",
+      "proposed_resource": "UDA_Point _Tech - Eric Wilson",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "JOB278370~1",
+      "site": "Leodis Square",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "proposed_date": "2026-07-10",
+      "confidence": "Low",
+      "flag": null
+    },
+    {
+      "ref": "JOB284765",
+      "site": "Leodis Square",
+      "role": "Tech",
+      "type": "Plumbing Call Out",
+      "proposed_resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "EOT284781~2",
+      "site": "Leodis Square",
+      "role": "Tech",
+      "type": "EOT - Beautification Paint & Repair Works",
+      "proposed_resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "proposed_date": "2026-07-10",
+      "confidence": "High",
+      "flag": null
+    },
+    {
+      "ref": "JOB284791",
+      "site": "Granary Quay",
+      "role": "HK",
+      "type": "Cleaning Call Out",
+      "proposed_resource": "UDGQ_Granary_HKSup Stephanie McQuaid",
+      "proposed_date": "2026-07-13",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "JOB273410~4",
+      "site": "Leodis Square",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "proposed_date": "2026-07-10",
+      "confidence": "Low",
+      "flag": null
+    },
+    {
+      "ref": "DLFF284797",
+      "site": "The Point",
+      "role": "Tech",
+      "type": "DL - Tech Job from FixFlo",
+      "proposed_resource": "UDA_Point _Tech - Eric Wilson",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "JOB284798",
+      "site": "Granary Quay",
+      "role": "HK",
+      "type": "Cleaning Call Out",
+      "proposed_resource": "UDGQ_Granary_HKSup Stephanie McQuaid",
+      "proposed_date": "2026-07-13",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "JOB284799",
+      "site": "Granary Quay",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDGQ_Granary_Tech Mark Taylor",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "DLFF284800",
+      "site": "The Point",
+      "role": "Tech",
+      "type": "DL - Tech Job from FixFlo",
+      "proposed_resource": "UDA_Point _Tech - Eric Wilson",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "JOB284802",
+      "site": "Leodis Square",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "proposed_date": "2026-07-10",
+      "confidence": "High",
+      "flag": null
+    },
+    {
+      "ref": "JOB284803",
+      "site": "Leodis Square",
+      "role": "Tech",
+      "type": "Gas Boiler Call Out",
+      "proposed_resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "JOB284804",
+      "site": "Leodis Square",
+      "role": "Tech",
+      "type": "Plumbing Call Out",
+      "proposed_resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "proposed_date": "2026-07-10",
+      "confidence": "High",
+      "flag": null
+    },
+    {
+      "ref": "JOB284805",
+      "site": "Granary Quay",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDGQ_Granary_Tech Mark Taylor",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "DLFF284806",
+      "site": "Granary Quay",
+      "role": "Tech",
+      "type": "DL - Tech Job from FixFlo",
+      "proposed_resource": "UDGQ_Granary_Tech Mark Taylor",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "JOB284808",
+      "site": "Leodis Square",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "proposed_date": "2026-07-10",
+      "confidence": "High",
+      "flag": null
+    },
+    {
+      "ref": "JOB279661~2",
+      "site": "Leodis Square",
+      "role": "Tech",
+      "type": "Building Call Out",
+      "proposed_resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    },
+    {
+      "ref": "DLFF284810",
+      "site": "Leodis Square",
+      "role": "HK",
+      "type": "DL - Tech Job from FixFlo",
+      "proposed_resource": "UDL_Leodis_HKSup Rita Jakubauskiene",
+      "proposed_date": "2026-07-13",
+      "confidence": "Low",
+      "flag": null
+    },
+    {
+      "ref": "DLFF284818",
+      "site": "Granary Quay",
+      "role": "Tech",
+      "type": "DL - Tech Job from FixFlo",
+      "proposed_resource": "UDGQ_Granary_Tech Mark Taylor",
+      "proposed_date": "2026-07-10",
+      "confidence": "Low",
+      "flag": null
+    },
+    {
+      "ref": "JOB284819",
+      "site": "U&A / Unity & Armouries",
+      "role": "Tech",
+      "type": "Plumbing Call Out",
+      "proposed_resource": "UDUA_U&A_TechSup Martin Parry",
+      "proposed_date": "2026-07-10",
+      "confidence": "Medium",
+      "flag": null
+    }
+  ],
+  "contractor_excluded": [
+    {
+      "ref": "JOB277904",
+      "site": "Aston Place",
+      "type": "PPM - EM (Flick Test) & FA (Bell Test) A",
+      "flag": "Sent to Aquilo ",
+      "reason": "Excluded wording found: aquilo, sent to aquilo"
+    },
+    {
+      "ref": "JOB272421~3",
+      "site": "Leodis Square",
+      "type": "Building Call Out",
+      "flag": "BTR - Contractor Required",
+      "reason": "Excluded wording found: btr - contractor required, contracto"
+    },
+    {
+      "ref": "JOB280388~1",
+      "site": "Chapel Wharf",
+      "type": "Building Call Out",
+      "flag": "BTR - Contractor Required",
+      "reason": "Excluded wording found: btr - contractor required, contracto"
+    },
+    {
+      "ref": "JOB282782",
+      "site": "The Point",
+      "type": "Pest Control",
+      "flag": "Sent to Aquilo ",
+      "reason": "Excluded wording found: aquilo, sent to aquilo"
+    }
+  ],
+  "ppm_review": [],
+  "eligible_no_slot": [
+    {
+      "ref": "JOB274501",
+      "site": "Baltic Yard",
+      "role": "Tech",
+      "reason": "No suitable active site-based resource found for required role"
+    }
+  ],
+  "non_ppm_incomplete": [
+    {
+      "ref": "GRANQ247638",
+      "site": "The Point",
+      "resource": "UDA_Point _Tech - Eric Wilson",
+      "resource_id": 454701,
+      "planned": "2026-07-09",
+      "planned_start": "2026-07-09 16:00:00",
+      "status": "Sent",
+      "type": "BTR - Bins Out",
+      "is_ppm": false,
+      "job_id": 183150149
+    },
+    {
+      "ref": "JOB282913",
+      "site": "The Point",
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "planned": "2026-07-09",
+      "planned_start": "2026-07-09 08:00:00",
+      "status": "Sent",
+      "type": "Building Call Out",
+      "is_ppm": false,
+      "job_id": 193036497
+    },
+    {
+      "ref": "JOB282658",
+      "site": "The Point",
+      "resource": "UDA_Point_Tech Bradley Tice",
+      "resource_id": 402162,
+      "planned": "2026-07-09",
+      "planned_start": "2026-07-09 10:30:00",
+      "status": "Sent",
+      "type": "Building Call Out",
+      "is_ppm": false,
+      "job_id": 192966442
+    },
+    {
+      "ref": "DLFF278603",
+      "site": "Chapel Wharf",
+      "resource": "UDC_Chapel_Tech Charlie Lewtas ",
+      "resource_id": 428247,
+      "planned": "2026-07-09",
+      "planned_start": "2026-07-09 10:30:00",
+      "status": "Sent",
+      "type": "EOT - End Of Tenancy Inspection",
+      "is_ppm": false,
+      "job_id": 192332982
+    },
+    {
+      "ref": "JOB278609",
+      "site": "Chapel Wharf",
+      "resource": "UDC_Chapel_Tech Charlie Lewtas ",
+      "resource_id": 428247,
+      "planned": "2026-07-09",
+      "planned_start": "2026-07-09 14:00:00",
+      "status": "Sent",
+      "type": "Building Call Out",
+      "is_ppm": false,
+      "job_id": 192336372
+    },
+    {
+      "ref": "JOB278174",
+      "site": "Chapel Wharf",
+      "resource": "UDC_Chapel_Tech Charlie Lewtas ",
+      "resource_id": 428247,
+      "planned": "2026-07-09",
+      "planned_start": "2026-07-09 16:30:00",
+      "status": "Sent",
+      "type": "Plumbing Call Out",
+      "is_ppm": false,
+      "job_id": 192147643
+    },
+    {
+      "ref": "JOB282501",
+      "site": "Chapel Wharf",
+      "resource": "UDC_Chapel_Tech Charlie Lewtas ",
+      "resource_id": 428247,
+      "planned": "2026-07-09",
+      "planned_start": "2026-07-09 17:00:00",
+      "status": "Sent",
+      "type": "Electrical  Call Out",
+      "is_ppm": false,
+      "job_id": 192902521
+    },
+    {
+      "ref": "GRANQ174093",
+      "site": "Granary Quay",
+      "resource": "UDGQ_Granary_Tech Mark Taylor",
+      "resource_id": 455127,
+      "planned": "2026-06-15",
+      "planned_start": "2026-06-15 13:00:00",
+      "status": "Sent",
+      "type": "GRANQ - Sprinkler testing - Weekly BTR ",
+      "is_ppm": false,
+      "job_id": 169926115
+    }
+  ],
+  "anomalies_old_unalloc": [
+    {
+      "ref": "JOB274501",
+      "site": "Baltic Yard",
+      "age_days": 28,
+      "type": "Pest Control",
+      "flag": "PO to be sent"
+    }
+  ],
+  "anomalies_old_incomplete": [
+    {
+      "ref": "JOB274702",
+      "site": "The Point",
+      "resource": "UDA_Point _Tech - Eric Wilson",
+      "resource_id": 454701,
+      "planned": "2026-06-16",
+      "planned_start": "2026-06-16 08:00:00",
+      "status": "Sent",
+      "type": "PPM - EM (Flick Test) A",
+      "is_ppm": true,
+      "job_id": 190849121
+    },
+    {
+      "ref": "DL204229",
+      "site": "Chapel Wharf",
+      "resource": "UDC_Chapel_Tech Aamir Ali",
+      "resource_id": 435758,
+      "planned": "2026-06-17",
+      "planned_start": "2026-06-17 11:00:00",
+      "status": "Sent",
+      "type": "PPM - Daily External Inspection BTR",
+      "is_ppm": true,
+      "job_id": 174046689
+    },
+    {
+      "ref": "DL131472",
+      "site": "Chapel Wharf",
+      "resource": "UDC_Chapel_Tech David Camilleri",
+      "resource_id": 460517,
+      "planned": "2026-06-16",
+      "planned_start": "2026-06-16 10:00:00",
+      "status": "Sent",
+      "type": "PPM - Daily External Inspection BTR",
+      "is_ppm": true,
+      "job_id": 163712575
+    },
+    {
+      "ref": "DL275473",
+      "site": "Chapel Wharf",
+      "resource": "UDC_Chapel_Tech David Camilleri",
+      "resource_id": 460517,
+      "planned": "2026-06-16",
+      "planned_start": "2026-06-16 10:00:00",
+      "status": "Sent",
+      "type": "PPM - Daily External Inspection BTR",
+      "is_ppm": true,
+      "job_id": 191105110
+    },
+    {
+      "ref": "PPM276120",
+      "site": "Chapel Wharf",
+      "resource": "UDC_Chapel_Tech David Camilleri",
+      "resource_id": 460517,
+      "planned": "2026-06-18",
+      "planned_start": "2026-06-18 09:00:00",
+      "status": "Sent",
+      "type": "PPM - Chapel - FA Testing - Chapman",
+      "is_ppm": true,
+      "job_id": 191300062
+    },
+    {
+      "ref": "GRANQ174093",
+      "site": "Granary Quay",
+      "resource": "UDGQ_Granary_Tech Mark Taylor",
+      "resource_id": 455127,
+      "planned": "2026-06-15",
+      "planned_start": "2026-06-15 13:00:00",
+      "status": "Sent",
+      "type": "GRANQ - Sprinkler testing - Weekly BTR ",
+      "is_ppm": false,
+      "job_id": 169926115
+    },
+    {
+      "ref": "DL260677",
+      "site": "Leodis Square",
+      "resource": "UDL_Leodis_Caretaker Gary Arundale",
+      "resource_id": 423690,
+      "planned": "2026-06-12",
+      "planned_start": "2026-06-12 08:00:00",
+      "status": "Sent",
+      "type": "PPM - Daily Internal Inspection BTR",
+      "is_ppm": true,
+      "job_id": 185937933
+    },
+    {
+      "ref": "PPM204567",
+      "site": "Leodis Square",
+      "resource": "UDL_Leodis_Tech Andrew Parchment ",
+      "resource_id": 454297,
+      "planned": "2026-06-15",
+      "planned_start": "2026-06-15 15:00:00",
+      "status": "Sent",
+      "type": "PPM - Leodis - Rotate Wheelie Bins",
+      "is_ppm": true,
+      "job_id": 174063827
+    },
+    {
+      "ref": "PPM204409",
+      "site": "Leodis Square",
+      "resource": "UDL_Leodis_Tech Andrew Parchment ",
+      "resource_id": 454297,
+      "planned": "2026-06-15",
+      "planned_start": "2026-06-15 16:00:00",
+      "status": "Sent",
+      "type": "PPM - Leodis - Litter Picking",
+      "is_ppm": true,
+      "job_id": 174061996
+    },
+    {
+      "ref": "PPM204462",
+      "site": "Leodis Square",
+      "resource": "UDL_Leodis_Tech Andrew Parchment ",
+      "resource_id": 454297,
+      "planned": "2026-06-15",
+      "planned_start": "2026-06-15 16:00:00",
+      "status": "Sent",
+      "type": "PPM - Leodis - Empty External Bins",
+      "is_ppm": true,
+      "job_id": 174062352
+    },
+    {
+      "ref": "PPM276650",
+      "site": "U&A / Unity & Armouries",
+      "resource": "UDUA_U&A_TechSup Martin Parry",
+      "resource_id": 402167,
+      "planned": "2026-06-22",
+      "planned_start": "2026-06-22 08:00:00",
+      "status": "Sent",
+      "type": "PPM - AOV Testing - Bi Annual ",
+      "is_ppm": true,
+      "job_id": 191383598
+    }
+  ]
+}

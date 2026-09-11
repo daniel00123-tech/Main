@@ -1,0 +1,105 @@
+{
+  "mode": "recommendation_only",
+  "working_hours": {
+    "start": "08:00",
+    "end": "17:00",
+    "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+    "source": "ResourceDetail.ResourceWorkingHours via API (minutes from midnight); fallback to these defaults when not set"
+  },
+  "duration_minutes": {
+    "min": 60,
+    "max": 540,
+    "increments": [60, 90, 120, 180, 240, 300, 360, 420, 480, 540]
+  },
+  "sites": {
+    "Aston Place": ["aston"],
+    "Botanica": ["botanica"],
+    "Baltic Yard": ["baltic"],
+    "Chapel Wharf": ["chapel"],
+    "Leodis Square": ["leodis"],
+    "Granary Quay": ["granary"],
+    "Forbes Place": ["forbes"],
+    "The Point": ["point"],
+    "U&A / Unity & Armouries": ["u&a", "u & a", "unity", "armouries", "udap", "udua"]
+  },
+  "roles": {
+    "Tech": ["tech", "sontech", "techsup", "caretaker"],
+    "CT": ["ct", "caretaker"],
+    "HK": ["hk", "hks", "hksup"]
+  },
+  "cleaning_role": "HK",
+  "maintenance_roles": ["Tech", "CT"],
+  "contractor_exclusions": [
+    "sent to aquilo",
+    "send to aquilo",
+    "aquilo",
+    "sent to contractor",
+    "send to contractor",
+    "contractor required",
+    "contractor needed",
+    "subcontractor required",
+    "sub-contractor required",
+    "specialist contractor required",
+    "external contractor",
+    "external supplier",
+    "awaiting contractor",
+    "contractor instructed",
+    "quote required from contractor",
+    "passed to contractor",
+    "escalated to contractor",
+    "btr - contractor required"
+  ],
+  "resource_exclusions": [
+    "left",
+    "do not use",
+    "never started",
+    "garden leave",
+    "temp",
+    "z_dlm",
+    "zz.",
+    "cover",
+    "handyman cover",
+    "aquilo support",
+    "generic tech",
+    "ppm"
+  ],
+  "active_resource_field": {
+    "name": "Resource4Schedule",
+    "active_value": 1,
+    "note": "Only resources with Resource4Schedule=1 are active for JobWatch scheduling. Value 0 means inactive (e.g. left the business)."
+  },
+  "ppm_review": {
+    "note": "PPM jobs (Type or Ref starting with PPM) require review. Only weekly/monthly/daily inspection-style PPM work should be allocated to site Tech/CT diaries. Heavy mechanical, fire, AOV, and sprinkler PPM work should normally be subcontracted unless clearly a weekly or monthly check.",
+    "tech_diary_allow_phrases": [
+      "daily external inspection",
+      "daily internal inspection",
+      "monthly operational",
+      "6 monthly visual inspection",
+      "weekly check",
+      "monthly inspection",
+      "weekly inspection",
+      "monthly check"
+    ],
+    "frequency_terms": ["weekly", "monthly", "daily", "6 monthly"],
+    "inspection_terms": ["inspection", "check", "walk", "operational", "visual"],
+    "heavy_specialist_terms": [
+      "fire curtain",
+      "sprinkler",
+      "wet riser",
+      "dry riser",
+      "annual pressure",
+      "aov",
+      "em (flick",
+      "flick test",
+      "fa (bell",
+      "bell test",
+      "full duration",
+      "fire alarm",
+      "emergency lighting",
+      "door entry testing",
+      "macerator",
+      "waste pump",
+      "mechanical"
+    ]
+  }
+}

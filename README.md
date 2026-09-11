@@ -12,6 +12,26 @@ Run with the required BigChange, Freshdesk, and SMTP configuration supplied as e
 python3 scripts/bigchange_kpi_report.py
 ```
 
+## BigChange BTR Job Allocation (Test / Recommendation Mode)
+
+Build-to-Rent job allocation automation for unscheduled Fixflo jobs. Runs in **recommendation-only mode** — no BigChange writes until an administrator explicitly approves live mode.
+
+Test credentials and rules are stored in:
+
+- `.env` — API credentials (gitignored; copy from `.env.example`)
+- `automation-memory/bigchange-test-env.json` — test environment metadata (not live)
+- `automation-memory/btr-allocation-rules.json` — site, role, and exclusion rules
+
+```sh
+cp .env.example .env
+# Fill in test credentials, then:
+python3 scripts/bigchange_btr_allocation.py
+python3 scripts/bigchange_btr_allocation.py --list-candidates
+python3 scripts/bigchange_btr_allocation.py --job-ref DLFF277975~1
+```
+
+Output is written to `reports/btr-candidate-allocation-test.md`.
+
 ## BigChange TEMP Invoice Nominal Correction
 
 Hourly automation entry point for correcting unsynchronised TEMP sales invoice line nominal codes:
