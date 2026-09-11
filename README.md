@@ -43,3 +43,11 @@ python3 scripts/elvex_daily_group_profit.py
 Supply BigChange JobWatch credentials and Microsoft Graph `MS_TENANT_ID`, `MS_CLIENT_ID`, and `MS_CLIENT_SECRET` as environment variables. The script never writes to BigChange.
 
 Each run writes `artifacts/dandara-confirmation-candidates.csv`, `artifacts/dandara-confirmation-results.json`, and `artifacts/dandara-confirmation-state.json`. The state and existing FixFlo comments prevent duplicate confirmations for the same issue and appointment date. Set `DRY_RUN=true` to perform all read and eligibility checks without posting comments or changing state.
+
+## Staff monthly commission report
+
+Read-only current-month commission email for one staff member (change only `STAFF_NAME`). Known category IDs: Sharon `132264`, Ella `132225`, Lauren `132263`. Groups appear in the month of their last invoice; totals use full history from 1 May 2026. The script never writes to BigChange.
+
+```sh
+STAFF_NAME=Sharon python3 scripts/staff_commission.py
+```
