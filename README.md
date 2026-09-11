@@ -6,7 +6,9 @@ Job KPIs are grouped by BigChange job category staff owner and limited to jobs f
 
 Freshdesk open tickets are fetched with pagination, spam/deleted tickets are ignored, owners are matched back to BigChange staff rows, and unmatched tickets are counted without creating orphan dashboard rows.
 
-Run with the required BigChange, Freshdesk, and SMTP configuration supplied as environment variables:
+These automations are technical reference for BigChange, Freshdesk and FixFlo/Fixflow integrations. They must not be pointed at Nirvana, Aquilo or Urban Maintenance. Supply credentials only for Caddington, HT Business or EL Business; the scripts fail closed if former-company names or email domains appear in credential or destination environment variables.
+
+Run with the required BigChange, Freshdesk, and SMTP configuration supplied as environment variables (see `.env.example` for names only — never commit live secrets):
 
 ```sh
 python3 scripts/bigchange_kpi_report.py
