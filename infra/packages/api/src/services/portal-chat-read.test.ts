@@ -113,13 +113,19 @@ function memoryDb() {
   return db as unknown as D1Database & { conversations: Row[]; messages: Row[] };
 }
 
-function actor(role: "director" | "office_staff"): SessionUser {
+function actor(role: "director" | "office_staff", companyId = "co_el"): SessionUser {
+  const domain =
+    companyId === "co_caddington"
+      ? "caddington.test"
+      : companyId === "co_ht"
+        ? "ht.test"
+        : "elvexpropertyservices.com";
   return {
-    userId: role === "director" ? "user_ella" : "user_sharon",
-    email: role === "director" ? "ella@elvexpropertyservices.com" : "sharon@elvexpropertyservices.com",
+    userId: `${companyId}_${role}`,
+    email: `${role}@${domain}`,
     displayName: role,
     isPlatformAdmin: false,
-    memberships: [{ companyId: "co_el", role }],
+    memberships: [{ companyId, role }],
   };
 }
 
@@ -232,6 +238,60 @@ beforeEach(() => {
 });
 
 describe("portal chat automated read acceptance", () => {
+  it("runs the shared chat path for Caddington and HT connector mixes", async () => {
+    const caddingtonDb = memoryDb();
+    const caddington = actor("director", "co_caddington");
+    const caddingtonXero = await sendPortalChatMessage({ DB: caddingtonDb } as Env, {
+      companyId: "co_caddington",
+      sessionUser: caddington,
+      text: "What are our Xero sales this month?",
+      connectors: ["conn_xero", "conn_google_drive"],
+      executeGateway: gatewayFor("director"),
+    });
+    expect(caddingtonXero.assistantMessage.metadata.toolNames?.some((name) => name.startsWith("xero_"))).toBe(true);
+    expect(caddingtonXero.assistantMessage.content).toMatch(/4,554|4554|Xero/i);
+
+    const caddingtonKnowledge = await sendPortalChatMessage({ DB: caddingtonDb } as Env, {
+      companyId: "co_caddington",
+      sessionUser: caddington,
+      conversationId: caddingtonXero.conversation.id,
+      text: "Search company files for the purchase order process.",
+      connectors: ["conn_xero", "conn_google_drive"],
+      executeGateway: gatewayFor("director"),
+    });
+    expect(caddingtonKnowledge.assistantMessage.metadata.toolNames?.some((name) => /knowledge|document|search/.test(name))).toBe(true);
+    expect(isGenericRetryCopy(caddingtonKnowledge.assistantMessage.content)).toBe(false);
+
+    const htDb = memoryDb();
+    const ht = actor("director", "co_ht");
+    const htGatewayCalls: string[] = [];
+    const htGateway = async (_env: Env, input: { toolName: string; arguments: Record<string, unknown>; sourceClient?: string }) => {
+      htGatewayCalls.push(input.toolName);
+      return gatewayFor("director")(_env, input);
+    };
+    const htDocs = await sendPortalChatMessage({ DB: htDb } as Env, {
+      companyId: "co_ht",
+      sessionUser: ht,
+      text: "What is the newest document?",
+      connectors: ["conn_sharepoint"],
+      executeGateway: htGateway,
+    });
+    expect(htDocs.assistantMessage.metadata.toolNames).toContain("list_documents");
+    expect(htDocs.assistantMessage.content).toMatch(/Elvex Jobs|document/i);
+
+    const htNoXero = await sendPortalChatMessage({ DB: htDb } as Env, {
+      companyId: "co_ht",
+      sessionUser: ht,
+      conversationId: htDocs.conversation.id,
+      text: "Tell me our Xero sales this month.",
+      connectors: ["conn_sharepoint"],
+      executeGateway: htGateway,
+    });
+    expect(htNoXero.assistantMessage.metadata.permissionDenied).toBe(true);
+    expect(htGatewayCalls.some((name) => name.startsWith("xero_"))).not.toBe(true);
+    expect(htNoXero.assistantMessage.content).not.toMatch(/4,554|4554/);
+  });
+
   it("runs 50+ director and office_staff turns without generic retry on successful reads", async () => {
     const tallies = {
       success: 0,

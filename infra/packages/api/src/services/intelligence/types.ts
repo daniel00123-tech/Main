@@ -20,7 +20,7 @@ export type BrainMode = "cloudflare" | "openai_shadow" | "openai_canary" | "open
 /** User-facing product role for the reasoning brain. Chatbot is never an INFRA-hosted brain. */
 export type BrainChannelRole = "pa" | "request" | "chatbot" | "automation" | "internal";
 
-export type BrainProviderName = "cloudflare" | "openai";
+export type BrainProviderName = "cloudflare" | "openai" | "xai";
 
 export type IntelligenceChannel = "whatsapp" | "portal" | "portal_chat" | "chatgpt" | "mcp" | "api";
 
@@ -225,7 +225,7 @@ export type ShadowEvalRecord = {
 };
 
 export type IntelligenceModelUsage = {
-  provider: "workers-ai" | "openai" | "none";
+  provider: "workers-ai" | "openai" | "xai" | "none";
   model: string | null;
   latencyMs: number;
   promptTokens: number | null;
@@ -316,6 +316,11 @@ export type IntelligenceEnv = {
   OPENAI_MODEL_FAST?: string;
   OPENAI_MODEL_DEFAULT?: string;
   OPENAI_MODEL_REASONING?: string;
+  XAI_API_KEY?: string;
+  XAI_BASE_URL?: string;
+  XAI_MODEL_DEFAULT?: string;
+  /** Placeholder only. xAI is registered but not selected by production policy yet. */
+  XAI_BRAIN_ENABLED?: string;
   WHATSAPP_GROUNDED_MODEL?: string;
   INTELLIGENCE_FALLBACK_MODEL?: string;
   INTELLIGENCE_ESCALATE_MODEL?: string;

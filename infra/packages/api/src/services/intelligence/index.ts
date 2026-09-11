@@ -42,6 +42,13 @@ export {
 } from "./provider.js";
 export { createReasoningCompleter, createOpenAiCompleter } from "./brain.js";
 export {
+  createReasoningProviderRegistry,
+  resolveReasoningProvider,
+  reasoningProviderNames,
+  createXaiCompleter,
+} from "./provider-registry.js";
+export { DEFAULT_XAI_TEXT_MODEL, hasXaiApiKey, inspectXaiConfig, resolveXaiModel, runXaiResponses } from "./xai-responses.js";
+export {
   resolveBrainPolicy,
   classifyBrainChannelRole,
   isPaOrRequestRole,

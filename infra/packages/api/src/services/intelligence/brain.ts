@@ -1,11 +1,16 @@
 import { createCloudflareCompleter } from "./provider.js";
-import { isTrueProviderFailure, runOpenAiResponses } from "./openai-responses.js";
 import { resolveBrainPolicy, type BrainDecision } from "./brain-policy.js";
-import { stripSecretsFromText } from "./evidence.js";
+import {
+  createOpenAiCompleter,
+  createReasoningProviderRegistry,
+  resolveReasoningProvider,
+  type ReasoningProviderName,
+} from "./provider-registry.js";
 import type { IntelligenceCompleter } from "./provider.js";
 import type { IntelligenceEnv } from "./types.js";
 
-export type ReasoningProviderName = "cloudflare" | "openai";
+export type { ReasoningProviderName };
+export { createOpenAiCompleter };
 
 /**
  * Shared control plane stays in runIntelligenceTurn.
@@ -24,44 +29,17 @@ export function createReasoningCompleter(input: {
   if (!policy.useOpenAi) {
     return { completer: cloudflare, policy, provider: "cloudflare" };
   }
+  const registry = createReasoningProviderRegistry({
+    env,
+    fallback: cloudflare,
+    correlationId: input.correlationId,
+    userText: input.userText,
+  });
+  const selected = resolveReasoningProvider(registry, policy.userVisibleBrain);
   return {
-    completer: createOpenAiCompleter(env, cloudflare, input.correlationId, input.userText),
+    completer: selected.completer,
     policy,
-    provider: "openai",
-  };
-}
-
-export function createOpenAiCompleter(
-  env: IntelligenceEnv,
-  fallback: IntelligenceCompleter,
-  correlationId?: string,
-  userText?: string,
-): IntelligenceCompleter {
-  return async (input) => {
-    const openai = await runOpenAiResponses(env, {
-      system: stripSecretsFromText(input.system),
-      user: stripSecretsFromText(input.user),
-      permittedTools: input.permittedTools,
-      mode: input.mode,
-      correlationId,
-      userText,
-    });
-    if (openai.text || openai.toolCalls?.length || openai.structured) {
-      return {
-        text: openai.text,
-        usage: openai.usage,
-        toolCalls: openai.toolCalls,
-        structured: openai.structured,
-      };
-    }
-    if (!isTrueProviderFailure(openai.failure)) {
-      return { text: openai.text, usage: openai.usage, toolCalls: openai.toolCalls, structured: openai.structured };
-    }
-    const cloudflare = await fallback(input);
-    return {
-      ...cloudflare,
-      usage: { ...cloudflare.usage, fallbackUsed: true, correlationId: correlationId ?? cloudflare.usage.correlationId },
-    };
+    provider: selected.name,
   };
 }
 

@@ -99,6 +99,10 @@ export type PortalChatMessage = {
     permissionDenied?: boolean;
     controlledAction?: boolean;
     citeSource?: boolean;
+    terminal?: string | null;
+    provider?: string | null;
+    model?: string | null;
+    brainMode?: string | null;
   };
 };
 

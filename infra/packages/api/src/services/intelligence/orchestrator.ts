@@ -1241,7 +1241,18 @@ async function runDeterministicRead(
 ): Promise<{ text: string; toolCalls: IntelligenceToolResult[]; ok: boolean } | null> {
   const toolName = scoped.tool;
   if (!toolName || !INTELLIGENCE_TOOL_NAMES.has(toolName)) return null;
-  void permitted;
+  if (permitted.length && !permitted.includes(toolName) && !SYSTEM_META_TOOLS.has(toolName)) {
+    return {
+      text: "I don't have permission to read that for you.",
+      toolCalls: [
+        deniedToolResult(
+          { name: toolName, arguments: {} },
+          { allowed: false, reason: "not_in_preauth_catalogue", capability: null },
+        ),
+      ],
+      ok: false,
+    };
+  }
   if (wantsMultiCapabilityRead(text)) {
     const toolCalls: IntelligenceToolResult[] = [];
     const seen = new Set<string>();

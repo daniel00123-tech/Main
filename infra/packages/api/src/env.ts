@@ -135,6 +135,11 @@ export interface Env {
   OPENAI_MODEL_FAST?: string;
   OPENAI_MODEL_DEFAULT?: string;
   OPENAI_MODEL_REASONING?: string;
+  /** xAI Grok placeholder config. Registered for adapter readiness; not selected by production policy yet. */
+  XAI_API_KEY?: string;
+  XAI_BASE_URL?: string;
+  XAI_MODEL_DEFAULT?: string;
+  XAI_BRAIN_ENABLED?: string;
   /** Optional Workers AI / OpenAI text model for document-grounded WhatsApp answers. */
   WHATSAPP_GROUNDED_MODEL?: string;
   /** Optional Workers AI fallback for Conversational Intelligence V1.1. */

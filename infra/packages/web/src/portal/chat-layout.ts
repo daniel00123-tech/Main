@@ -49,6 +49,17 @@ export function followUpHints(input: {
   return ["What can you help with?", "Search company files"];
 }
 
+export function emptyStatePrompts(companyName?: string | null): string[] {
+  const name = String(companyName ?? "").trim();
+  const companyPrefix = name ? ` for ${name}` : "";
+  return [
+    `Search company files${companyPrefix}`,
+    "What connected systems can I access?",
+    "Show me the newest document",
+    "What can you help with?",
+  ];
+}
+
 export function linkifyChatText(text: string): Array<{ type: "text" | "link"; value: string }> {
   const parts: Array<{ type: "text" | "link"; value: string }> = [];
   const matcher = /https?:\/\/[^\s)]+/gi;
