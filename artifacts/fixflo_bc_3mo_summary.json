@@ -1,0 +1,25 @@
+{
+  "report_date": "2026-06-30",
+  "window_start": "2026-04-01",
+  "window_end": "2026-06-30",
+  "fixflo_open_in_window": 621,
+  "fixflo_job_completed_in_window": 252,
+  "need_fixflo_close_bc_completed": 133,
+  "need_close_with_job": 129,
+  "need_close_without_job": 4,
+  "fixflo_open_bc_not_completed": 249,
+  "fixflo_open_not_in_bc": 239,
+  "fixflo_uninvoiced_job_completed": 25,
+  "need_close_by_status": {
+    "JobAwarded": 9,
+    "AwaitingJobCompletion": 120,
+    "Reported": 3,
+    "QuotesAwaitingReview": 1
+  },
+  "need_close_by_agency": {
+    "?": 133
+  },
+  "uninvoiced_by_agency": {
+    "?": 25
+  }
+}
