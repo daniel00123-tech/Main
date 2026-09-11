@@ -46,7 +46,7 @@ function readMessageText(body: Record<string, unknown>): string {
 }
 
 async function streamTurn(
-  c: { env: Env; executionCtx: ExecutionContext },
+  c: { env: Env; executionCtx: { waitUntil(promise: Promise<unknown>): void } },
   input: Parameters<typeof sendPortalChatMessage>[1],
 ): Promise<Response> {
   const { readable, writable } = new TransformStream();
