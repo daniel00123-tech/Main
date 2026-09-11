@@ -2,3 +2,5 @@ reports/
 .env
 .env.*
 __pycache__/
+prototype/**/node_modules/
+prototype/**/.playwright-videos/
