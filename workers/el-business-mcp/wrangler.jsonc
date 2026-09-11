@@ -1,0 +1,14 @@
+{
+  "name": "el-business-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-08-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "EL_BUSINESS_DATA",
+      "database_name": "el-business-data",
+      "database_id": "df4c2b7c-62f6-42a6-9e26-59e7836fd1a7"
+    }
+  ]
+}
