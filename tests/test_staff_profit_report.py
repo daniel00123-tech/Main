@@ -8,11 +8,14 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
     build_html,
     build_staff_rows,
     commission_style,
     daily_totals,
+    graph_mail_payload,
     is_missing_po_anomaly,
     iter_display_rows,
 )
@@ -497,6 +500,41 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class LaurenReportWiringTest(unittest.TestCase):
+    def test_lauren_html_uses_stepped_minus_not_uk_catchup(self) -> None:
+        jobs = attach_job_commissions(
+            [_job(dt.date(2026, 9, 4), "GR/1", "705", "106", cost="599")],
+            profile="lauren",
+        )
+        self.assertEqual(jobs[0]["commission"], D("-5.00"))
+        body = build_html(
+            staff_name="Lauren",
+            month_label="September 2026",
+            job_rows=jobs,
+            anomaly_rows=[],
+        )
+        self.assertIn("Lauren — September 2026 commission report", body)
+        self.assertIn("-£5.00", body)
+        self.assertNotIn("-£35.00", body)
+
+    def test_email_always_has_to_and_cc_william(self) -> None:
+        payload = graph_mail_payload(
+            "Lauren — September 2026 — commission report",
+            "<p>x</p>",
+            DEFAULT_MAIL_TO,
+            DEFAULT_MAIL_CC,
+        )
+        self.assertEqual(
+            payload["message"]["toRecipients"][0]["emailAddress"]["address"],
+            "william@elvexpropertyservices.com",
+        )
+        self.assertEqual(
+            payload["message"]["ccRecipients"][0]["emailAddress"]["address"],
+            "william@elvexpropertyservices.com",
+        )
+        self.assertTrue(payload["saveToSentItems"])
 
 
 if __name__ == "__main__":
