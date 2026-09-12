@@ -1,6 +1,8 @@
 import datetime as dt
 import decimal
+import json
 import unittest
+from unittest.mock import MagicMock, patch
 
 from scripts.staff_commission import (
     attach_job_commissions,
@@ -8,13 +10,20 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
+    LONDON,
     RUN_EDGE,
     build_html,
     build_staff_rows,
     commission_style,
+    current_report_month,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    parse_args,
+    resolve_staff,
+    send_graph_mail,
 )
 
 
@@ -97,6 +106,13 @@ class HtmlReportTest(unittest.TestCase):
         self.assertNotIn("Your current commission is", body)
         self.assertNotIn("A group is included", body)
         self.assertNotIn("calculate_job_commission", body)
+        self.assertIn("Overall profit", body)
+        self.assertIn("background:#1f3a5f", body)
+        self.assertIn("background:#2e5a8f", body)
+        self.assertIn("background:#3d6fa3", body)
+        self.assertIn("background:#4a82b8", body)
+        self.assertIn("background:#1b7a4a", body)
+        self.assertLess(body.find("Overall profit"), body.find("£825.00"))
         status_at = body.find("STATUS:")
         table_at = body.find("Run profit")
         self.assertGreater(status_at, 0)
@@ -497,6 +513,55 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class StaffResolutionTest(unittest.TestCase):
+    def test_known_names_use_fixed_category_ids(self) -> None:
+        self.assertEqual(resolve_staff("Sharon")["category_id"], 132264)
+        self.assertEqual(resolve_staff("ella")["name"], "Ella")
+        self.assertEqual(resolve_staff("Lauren")["category_id"], 132263)
+
+    def test_unknown_name_looks_up_category_id_and_does_not_guess(self) -> None:
+        staff = resolve_staff("Daniel", lookup_fn=lambda _name: 999001)
+        self.assertEqual(staff, {"name": "Daniel", "category_id": 999001})
+        with self.assertRaises(Exception):
+            resolve_staff("")
+
+
+class CurrentMonthDefaultTest(unittest.TestCase):
+    def test_defaults_to_current_london_month_and_sharon(self) -> None:
+        today = dt.datetime.now(LONDON).date()
+        args = parse_args([])
+        self.assertEqual(args.staff, "Sharon")
+        self.assertEqual(args.year, today.year)
+        self.assertEqual(args.month, today.month)
+        self.assertEqual(current_report_month(), (today.year, today.month))
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+
+
+class GraphMailTest(unittest.TestCase):
+    def test_always_emails_ella_and_ccs_william(self) -> None:
+        with patch("scripts.staff_profit_report.graph_token", return_value="tok"), patch(
+            "urllib.request.urlopen"
+        ) as urlopen:
+            resp = MagicMock()
+            resp.status = 202
+            resp.read.return_value = b""
+            resp.__enter__.return_value = resp
+            urlopen.return_value = resp
+            send_graph_mail("Sharon — September 2026 — commission report", "<p>x</p>")
+            req = urlopen.call_args[0][0]
+            payload = json.loads(req.data)
+            self.assertEqual(
+                payload["message"]["toRecipients"][0]["emailAddress"]["address"],
+                "ella@elvexpropertyservices.com",
+            )
+            self.assertEqual(
+                payload["message"]["ccRecipients"][0]["emailAddress"]["address"],
+                "william@elvexpropertyservices.com",
+            )
+            self.assertTrue(payload["saveToSentItems"])
 
 
 if __name__ == "__main__":
