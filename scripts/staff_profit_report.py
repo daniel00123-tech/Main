@@ -47,18 +47,23 @@ D = decimal.Decimal
 ZERO = D("0")
 LONDON = ZoneInfo("Europe/London")
 
+# Change only this name (or STAFF_NAME) for another staff automation.
+STAFF_NAME = os.environ.get("STAFF_NAME", "Sharon")
+
 STAFF = {
     "sharon": {"name": "Sharon", "category_id": 132264},
     "ella": {"name": "Ella", "category_id": 132225},
     "lauren": {"name": "Lauren", "category_id": 132263},
 }
 
+FROM_EMAIL = "ella@elvexpropertyservices.com"
+DEFAULT_MAIL_TO = "ella@elvexpropertyservices.com"
+DEFAULT_MAIL_CC = "william@elvexpropertyservices.com"
+
 COMPLETED = {"completedOk", "completedWithIssues"}
 ANOMALY_SALE = D("250")
 MIN_PO_AMOUNT = D("1")
 BEGINNING_OF_TIME = dt.date(2026, 5, 1)
-FROM_EMAIL = "ella@elvexpropertyservices.com"
-DEFAULT_MAIL_TO = "william@elvexpropertyservices.com"
 
 
 def is_missing_po_anomaly(sale: D, po_cost: D) -> bool:
@@ -314,6 +319,76 @@ def group_owner_category_id(members: list[dict[str, Any]]) -> int | None:
     return int(cid) if cid not in (None, "") else None
 
 
+def _category_label(row: dict[str, Any]) -> str:
+    for key in ("name", "label", "JobCategoryName", "CategoryName", "Name"):
+        val = row.get(key)
+        if val not in (None, ""):
+            return str(val).strip()
+    return ""
+
+
+def _category_numeric_id(row: dict[str, Any]) -> int | None:
+    for key in ("id", "Id", "jobCategoryId", "JobCategoryId", "CategoryId"):
+        val = row.get(key)
+        if val not in (None, ""):
+            return int(val)
+    return None
+
+
+def _rows_from_legacy_categories(result: Any) -> list[dict[str, Any]]:
+    if isinstance(result, list):
+        return [row for row in result if isinstance(row, dict)]
+    if not isinstance(result, dict):
+        return []
+    for key in ("JobCategoriesList", "Categories", "items", "List"):
+        value = result.get(key)
+        if isinstance(value, list):
+            return [row for row in value if isinstance(row, dict)]
+    if _category_numeric_id(result) is not None:
+        return [result]
+    return []
+
+
+def lookup_category_id(name: str) -> int:
+    """Resolve a staff name to a BigChange job category id. Never guess."""
+    target = name.strip().lower()
+    if not target:
+        raise ConfigError("Staff name is required")
+    rows: list[dict[str, Any]] = []
+    try:
+        body = rest_get(rest_token(), "/v1/jobCategories?pageNumber=1&pageSize=1000")
+        if isinstance(body, dict):
+            rows = [row for row in (body.get("items") or []) if isinstance(row, dict)]
+    except Exception:
+        rows = []
+    if not rows:
+        rows = _rows_from_legacy_categories(legacy("JobCategories"))
+    matches: list[int] = []
+    for row in rows:
+        if _category_label(row).lower() == target:
+            cid = _category_numeric_id(row)
+            if cid is not None:
+                matches.append(cid)
+    unique = sorted(set(matches))
+    if len(unique) == 1:
+        return unique[0]
+    if len(unique) > 1:
+        raise ConfigError(f"Multiple BigChange job categories named {name!r}: {unique}")
+    raise ConfigError(f"No BigChange job category named {name!r}")
+
+
+def resolve_staff(name: str, *, lookup_fn: Any = None) -> dict[str, Any]:
+    """Known category ids first; otherwise look the id up. Do not guess."""
+    display = str(name or "").strip()
+    if not display:
+        raise ConfigError("Staff name is required")
+    known = STAFF.get(display.lower())
+    if known:
+        return dict(known)
+    finder = lookup_fn if lookup_fn is not None else lookup_category_id
+    return {"name": display, "category_id": int(finder(display))}
+
+
 def graph_token() -> str:
     tenant = (
         os.environ.get("MS_TENANT_ID")
@@ -357,13 +432,19 @@ def graph_token() -> str:
     return token
 
 
-def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
+def send_graph_mail(
+    subject: str,
+    html_body: str,
+    to_email: str = DEFAULT_MAIL_TO,
+    cc_email: str = DEFAULT_MAIL_CC,
+) -> None:
     token = graph_token()
     payload = {
         "message": {
             "subject": subject,
             "body": {"contentType": "HTML", "content": html_body},
             "toRecipients": [{"emailAddress": {"address": to_email}}],
+            "ccRecipients": [{"emailAddress": {"address": cc_email}}],
         },
         "saveToSentItems": True,
     }
@@ -864,20 +945,28 @@ def load_report_data(
     )
 
 
+def current_report_month(today: dt.date | None = None) -> tuple[int, int]:
+    """Current Europe/London calendar month only."""
+    when = today if today is not None else dt.datetime.now(LONDON).date()
+    return when.year, when.month
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    year, month = current_report_month()
     parser = argparse.ArgumentParser(description="Staff commission report")
-    parser.add_argument("--staff", choices=sorted(STAFF), default="sharon")
-    parser.add_argument("--year", type=int, default=2026)
-    parser.add_argument("--month", type=int, default=8)
+    parser.add_argument("--staff", default=STAFF_NAME)
+    parser.add_argument("--year", type=int, default=year)
+    parser.add_argument("--month", type=int, default=month)
     parser.add_argument("--send", action="store_true", help="Email the report")
     parser.add_argument("--to", default=os.environ.get("STAFF_PROFIT_MAIL_TO", DEFAULT_MAIL_TO))
+    parser.add_argument("--cc", default=os.environ.get("STAFF_PROFIT_MAIL_CC", DEFAULT_MAIL_CC))
     parser.add_argument("--out", default="")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    staff = STAFF[args.staff]
+    staff = resolve_staff(args.staff)
     month_start, month_end = month_bounds(args.year, args.month)
     month_label = month_start.strftime("%B %Y")
     main_rows, anomaly_rows = load_report_data(staff["category_id"], month_start, month_end)
@@ -916,10 +1005,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.send:
         subject = f"{staff['name']} — {month_label} — commission report"
         try:
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, args.cc)
         except Exception:
             time.sleep(2)
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, args.cc)
     return 0
 
 
