@@ -44,19 +44,19 @@ export function followUpHints(input: {
   if (input.permissionDenied) return [];
   if (input.controlledAction) return ["Open approvals to review this request"];
   if (input.hasDocument) {
-    return ["Where did that come from?", "Summarise this document", "Search other files"];
+    return ["Show the source trail", "Summarise this document", "Search related company files"];
   }
-  return ["What can you help with?", "Search company files"];
+  return ["What systems can you use?", "Check the info@ inbox today", "Search company files"];
 }
 
 export function emptyStatePrompts(companyName?: string | null): string[] {
   const name = String(companyName ?? "").trim();
   const companyPrefix = name ? ` for ${name}` : "";
   return [
-    `Search company files${companyPrefix}`,
+    "Check the info@ inbox today and flag anything urgent",
+    `Search company files${companyPrefix} for the latest quote or job pack`,
+    "Check Xero for overdue invoices and draft the next action",
     "What connected systems can I access?",
-    "Show me the newest document",
-    "What can you help with?",
   ];
 }
 

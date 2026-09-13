@@ -45,6 +45,11 @@ type NavItem = {
   badgeCount?: number;
 };
 
+export type PortalShellOutletContext = {
+  openMobileNav: () => void;
+  isMobile: boolean;
+};
+
 const ALL_NAV: NavItem[] = [
   { path: "chat", label: "Chat", icon: <MessageSquare size={18} />, section: "overview" },
   { path: "dashboard", label: "Overview", icon: <LayoutDashboard size={18} />, section: "overview" },
@@ -206,23 +211,25 @@ function PortalShellInner() {
         onClick={() => setMobileOpen(false)}
         aria-hidden={!mobileOpen}
       />
-      <div className="mobile-topbar">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
-          aria-expanded={mobileOpen}
-          aria-controls="portal-company-navigation"
-          onClick={() => setMobileOpen((open) => !open)}
-        >
-          <Menu size={18} />
-        </Button>
-        <PortalCompanyHomeLink company={company} className="portal-company-home-link--topbar" />
-        <div className="mobile-topbar-actions">
-          <PortalNotificationBell variant="header" />
+      {!isChatRoute ? (
+        <div className="mobile-topbar">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={mobileOpen}
+            aria-controls="portal-company-navigation"
+            onClick={() => setMobileOpen((open) => !open)}
+          >
+            <Menu size={18} />
+          </Button>
+          <PortalCompanyHomeLink company={company} className="portal-company-home-link--topbar" />
+          <div className="mobile-topbar-actions">
+            <PortalNotificationBell variant="header" />
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <aside
         id="portal-company-navigation"
@@ -357,7 +364,7 @@ function PortalShellInner() {
       </aside>
 
       <main className="main">
-        <Outlet />
+        <Outlet context={{ openMobileNav: () => setMobileOpen(true), isMobile } satisfies PortalShellOutletContext} />
       </main>
       <ToastHost />
     </div>
