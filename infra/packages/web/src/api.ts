@@ -64,6 +64,51 @@ export interface RolePresetResponse {
   deniedByDefault: ToolAction[];
 }
 
+export interface AdminRecurringBillingCompany {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  currency: string;
+  billingMode: string;
+  stripeCustomerId: string | null;
+  paymentMethodReady: boolean;
+  paymentMethod: {
+    id: string | null;
+    brand: string | null;
+    last4: string | null;
+    expMonth: number | null;
+    expYear: number | null;
+    status: string | null;
+  };
+}
+
+export interface AdminRecurringCharge {
+  id: string;
+  companyId: string;
+  companyName: string;
+  companySlug: string;
+  stripeSubscriptionId: string | null;
+  amountCents: number;
+  currency: string;
+  interval: "daily" | "weekly" | "monthly" | "yearly";
+  description: string;
+  status: string;
+  failureReason: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  canceledBy: string | null;
+  canceledAt: string | null;
+  lastInvoiceId: string | null;
+  lastInvoiceStatus: string | null;
+  lastInvoiceAt: string | null;
+  paymentMethod: {
+    brand: string | null;
+    last4: string | null;
+  };
+}
+
 export interface CompanyUsageResponse {
   companyId: string;
   summary: UsageSummary;
@@ -1074,6 +1119,29 @@ export const api = {
         lowBalance: boolean;
       }>;
     }>("/api/billing/overview"),
+  getRecurringCharges: () =>
+    fetchJson<{
+      stripeConfigured: boolean;
+      stripeMode: string;
+      companies: AdminRecurringBillingCompany[];
+      charges: AdminRecurringCharge[];
+    }>("/api/billing/recurring-charges"),
+  createRecurringCharge: (input: {
+    companyId: string;
+    amountCents: number;
+    currency?: string;
+    interval: "daily" | "weekly" | "monthly" | "yearly";
+    description: string;
+  }) =>
+    fetchJson<{ charge: AdminRecurringCharge }>("/api/billing/recurring-charges", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  cancelRecurringCharge: (id: string) =>
+    fetchJson<{ charge: AdminRecurringCharge }>(
+      `/api/billing/recurring-charges/${encodeURIComponent(id)}/cancel`,
+      { method: "POST", body: "{}" },
+    ),
   createTopUp: (slug: string, amountCents: number) =>
     fetchJson<Record<string, unknown>>(`/api/companies/${slug}/wallet/top-up`, {
       method: "POST",
