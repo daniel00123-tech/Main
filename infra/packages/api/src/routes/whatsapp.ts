@@ -5,11 +5,13 @@ import { tryWhatsAppEarlyVisible, tryWhatsAppFastLane } from "../services/whatsa
 import { stampWhatsAppLifecycle } from "../services/whatsapp-lifecycle";
 import {
   enqueueWhatsAppInbound,
+  markWhatsAppAutoRepliesPaused,
   parseWhatsAppInboundMessages,
   persistWhatsAppInboundEvent,
   processWhatsAppInboundJob,
   verifyWhatsAppHubChallenge,
   verifyWhatsAppSignature,
+  whatsappAutoRepliesPaused,
   whatsappVerifyConfigured,
   type WhatsAppInboundMessage,
 } from "../services/whatsapp-webhook";
@@ -75,6 +77,33 @@ routes.post("/api/webhooks/whatsapp", async (c) => {
   }
 
   const inbound = parseWhatsAppInboundMessages(safeParse(rawBody));
+  if (whatsappAutoRepliesPaused(c.env)) {
+    const stored = await persistWhatsAppInboundEvent(c.env, {
+      rawBody: rawBody || "{}",
+      signatureValid: signature.valid,
+      signatureConfigured: signature.configured,
+      webhookStatus: 200,
+    });
+    if (!stored.duplicate) {
+      await markWhatsAppAutoRepliesPaused(c.env, stored.eventId).catch(() => undefined);
+    }
+    return c.json(
+      {
+        ok: true,
+        accepted: true,
+        queued: false,
+        persisted: stored.persisted,
+        persistError: stored.error,
+        duplicate: stored.duplicate,
+        fastLaneSent: 0,
+        earlyVisibleSent: 0,
+        autoRepliesPaused: true,
+        verifyConfigured: whatsappVerifyConfigured(c.env),
+      },
+      200,
+    );
+  }
+
   let fastLaneSent = 0;
   let earlyVisibleSent = 0;
   const visible: Array<{ wamid: string; terminal: boolean; clarify: boolean }> = [];

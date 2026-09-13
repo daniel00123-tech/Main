@@ -73,7 +73,9 @@ EL_MICROSOFT_APP_DISPLAY_NAME = "INFRA - Elvex MCP"
 WHATSAPP_PHONE_NUMBER_ID = "1338434179351224"
 WHATSAPP_BUSINESS_ACCOUNT_ID = "1629422285251338"
 # Production pause for +44 7466 227958 / 1338434179351224 while Elvex PA owns replies.
-# Re-enable INFRA WhatsApp auto-replies by setting this back to "true" and redeploying infra-api.
+# Re-enable INFRA WhatsApp auto-replies by setting WHATSAPP_AUTO_REPLIES_PAUSED to "false",
+# setting WHATSAPP_OUTBOUND_AI_ENABLED back to "true", then redeploying infra-api.
+WHATSAPP_AUTO_REPLIES_PAUSED = "true"
 WHATSAPP_OUTBOUND_AI_ENABLED = "false"
 
 # Same-account Worker MCP access (workers.dev public fetch returns CF 1042)

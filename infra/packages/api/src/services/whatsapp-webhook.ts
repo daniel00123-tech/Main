@@ -51,6 +51,10 @@ export function whatsappOutboundAiEnabled(env: Env): boolean {
   return outboundAiEnabled(env);
 }
 
+export function whatsappAutoRepliesPaused(env: Env): boolean {
+  return String(env.WHATSAPP_AUTO_REPLIES_PAUSED ?? "").trim().toLowerCase() === "true";
+}
+
 export function hasWhatsAppInboundQueue(env: Env): boolean {
   return typeof env.WHATSAPP_INBOUND_QUEUE !== "undefined" && env.WHATSAPP_INBOUND_QUEUE !== null;
 }
@@ -284,6 +288,7 @@ export async function enqueueWhatsAppInbound(
   message: WhatsAppInboundMessage,
   options?: { delaySeconds?: number },
 ): Promise<boolean> {
+  if (whatsappAutoRepliesPaused(env)) return false;
   const queue =
     message.kind === "whatsapp_watchdog" && hasWhatsAppWatchdogQueue(env)
       ? env.WHATSAPP_WATCHDOG_QUEUE
@@ -302,6 +307,13 @@ export async function processWhatsAppInboundJob(
   message: WhatsAppInboundMessage,
   options?: { deadLetter?: boolean; waitUntil?: (promise: Promise<unknown>) => void },
 ): Promise<void> {
+  if (whatsappAutoRepliesPaused(env)) {
+    if (message.kind === "whatsapp_inbound") {
+      await markWhatsAppAutoRepliesPaused(env, message.eventId).catch(() => undefined);
+    }
+    return;
+  }
+
   if (message.kind === "whatsapp_watchdog") {
     const { recoverStuckWhatsAppTurn, applyWhatsAppWatchdogStage } = await import("./whatsapp-reaper");
     if (
@@ -431,6 +443,23 @@ export async function processWhatsAppInboundJob(
      WHERE id = ?`,
   )
     .bind(nowIso(), lastFound, lastUserId, lastCompanyId, message.eventId)
+    .run();
+}
+
+export async function markWhatsAppAutoRepliesPaused(env: Env, eventId: string): Promise<void> {
+  if (!eventId) return;
+  await ensureWhatsAppInboundTable(env);
+  await env.DB.prepare(
+    `UPDATE whatsapp_inbound_events
+     SET processed = 1,
+         error = 'AUTO_REPLIES_PAUSED',
+         processed_at = COALESCE(processed_at, ?),
+         lifecycle_state = COALESCE(lifecycle_state, 'auto_replies_paused'),
+         terminal_state = COALESCE(terminal_state, 'auto_replies_paused'),
+         last_error = COALESCE(last_error, 'auto_replies_paused')
+     WHERE id = ? AND processed = 0`,
+  )
+    .bind(nowIso(), eventId)
     .run();
 }
 

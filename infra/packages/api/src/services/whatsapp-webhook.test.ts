@@ -4,6 +4,7 @@ import {
   parseWhatsAppInboundMessages,
   verifyWhatsAppHubChallenge,
   verifyWhatsAppSignature,
+  whatsappAutoRepliesPaused,
   whatsappOutboundAiEnabled,
   WHATSAPP_WEBHOOK_PATH,
 } from "./whatsapp-webhook";
@@ -161,5 +162,12 @@ describe("WhatsApp inbound parse and outbound gate", () => {
         }),
       ),
     ).toBe(true);
+  });
+
+  it("pauses auto-replies only when the operational pause flag is explicitly true", () => {
+    expect(whatsappAutoRepliesPaused(env())).toBe(false);
+    expect(whatsappAutoRepliesPaused(env({ WHATSAPP_AUTO_REPLIES_PAUSED: "false" }))).toBe(false);
+    expect(whatsappAutoRepliesPaused(env({ WHATSAPP_AUTO_REPLIES_PAUSED: "true" }))).toBe(true);
+    expect(whatsappAutoRepliesPaused(env({ WHATSAPP_AUTO_REPLIES_PAUSED: " TRUE " }))).toBe(true);
   });
 });

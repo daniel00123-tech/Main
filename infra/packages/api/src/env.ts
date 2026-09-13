@@ -126,6 +126,8 @@ export interface Env {
   WHATSAPP_META_PROBE_KEY?: string;
   /** Meta app secret — used for X-Hub-Signature-256 */
   META_APP_SECRET?: string;
+  /** Operational pause: accept WhatsApp webhooks but do not auto-reply or enqueue processing. */
+  WHATSAPP_AUTO_REPLIES_PAUSED?: string;
   /** Explicit outbound AI flag. Default off even if send credentials exist. */
   WHATSAPP_OUTBOUND_AI_ENABLED?: string;
   /** Cloudflare Workers AI binding — preferred WhatsApp voice transcription. */
