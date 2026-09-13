@@ -685,6 +685,80 @@ phase3.get("/api/billing/overview", requireAuth, requirePlatformAdmin, async (c)
   });
 });
 
+phase3.get("/api/billing/recurring-charges", requireAuth, requirePlatformAdmin, async (c) => {
+  const { listRecurringBillingCompanies, listCompanyRecurringCharges } = await import(
+    "../services/company-recurring-billing"
+  );
+  const [companies, charges] = await Promise.all([
+    listRecurringBillingCompanies(c.env.DB),
+    listCompanyRecurringCharges(c.env.DB),
+  ]);
+  return c.json({
+    stripeConfigured: stripePaymentsAllowed(c.env),
+    stripeMode: getStripeMode(c.env),
+    companies,
+    charges,
+  });
+});
+
+phase3.post("/api/billing/recurring-charges", requireAuth, requirePlatformAdmin, async (c) => {
+  const body = await c.req.json<{
+    companyId?: string;
+    amountCents?: number;
+    currency?: string;
+    interval?: "daily" | "weekly" | "monthly" | "yearly";
+    description?: string;
+  }>();
+  if (!body.companyId) return c.json({ error: "companyId is required" }, 400);
+  if (!body.interval) return c.json({ error: "interval is required" }, 400);
+  if (!body.description?.trim()) return c.json({ error: "description is required" }, 400);
+
+  const { createCompanyRecurringCharge } = await import("../services/company-recurring-billing");
+  const result = await createCompanyRecurringCharge(c.env, {
+    companyId: body.companyId,
+    amountCents: Number(body.amountCents ?? 0),
+    currency: body.currency ?? "GBP",
+    interval: body.interval,
+    description: body.description,
+    createdBy: c.get("user").email,
+  });
+  if (!result.ok) {
+    const status =
+      result.code === "STRIPE_NOT_CONFIGURED"
+        ? 503
+        : result.code === "COMPANY_NOT_FOUND" || result.code === "CHARGE_NOT_FOUND"
+          ? 404
+          : 400;
+    return c.json({ error: result.error, code: result.code }, status);
+  }
+  return c.json({ charge: result.value }, 201);
+});
+
+phase3.post(
+  "/api/billing/recurring-charges/:id/cancel",
+  requireAuth,
+  requirePlatformAdmin,
+  async (c) => {
+    const { cancelCompanyRecurringCharge } = await import(
+      "../services/company-recurring-billing"
+    );
+    const result = await cancelCompanyRecurringCharge(c.env, {
+      chargeId: c.req.param("id"),
+      actorEmail: c.get("user").email,
+    });
+    if (!result.ok) {
+      const status =
+        result.code === "STRIPE_NOT_CONFIGURED"
+          ? 503
+          : result.code === "CHARGE_NOT_FOUND"
+            ? 404
+            : 400;
+      return c.json({ error: result.error, code: result.code }, status);
+    }
+    return c.json({ charge: result.value });
+  },
+);
+
 phase3.get("/api/pricing/rules", requireAuth, async (c) => {
   const companyId = c.req.query("companyId");
   if (companyId && !userHasCompanyAccess(c.get("user"), companyId)) {
