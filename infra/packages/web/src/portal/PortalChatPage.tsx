@@ -628,7 +628,11 @@ export default function PortalChatPage() {
               rows={isMobile ? 1 : 3}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Ask INFRA to check the inbox, search files, review Xero, or prepare an approval…"
+              placeholder={
+                isMobile
+                  ? "Ask INFRA anything..."
+                  : "Ask INFRA to check the inbox, search files, review Xero, or prepare an approval…"
+              }
               aria-label="Message INFRA"
               disabled={false}
               onKeyDown={(event) => {
