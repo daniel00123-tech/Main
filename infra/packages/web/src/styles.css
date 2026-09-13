@@ -4652,3 +4652,827 @@ body,
     padding-inline: var(--s-4);
   }
 }
+
+/* Portal chat product redesign. Keeps the existing brain/API while replacing the admin chrome. */
+.portal-shell.portal-shell--chat {
+  --sidebar-w: 204px;
+  background: #07111f;
+}
+
+.portal-shell.portal-shell--chat .main {
+  background: #eef3fb;
+}
+
+.portal-chat {
+  --portal-chat-bg: #eef3fb;
+  --portal-chat-panel: rgba(255, 255, 255, 0.92);
+  --portal-chat-panel-solid: #ffffff;
+  --portal-chat-panel-soft: #f7f9fd;
+  --portal-chat-text: #111827;
+  --portal-chat-muted: #667085;
+  --portal-chat-subtle: #9aa4b2;
+  --portal-chat-line: #dde5f1;
+  --portal-chat-blue: #246bfe;
+  --portal-chat-blue-2: #5aa3ff;
+  --portal-chat-blue-soft: rgba(36, 107, 254, 0.1);
+  --portal-chat-green: #12b76a;
+  grid-template-columns: 320px minmax(0, 1fr);
+  background:
+    radial-gradient(1000px 460px at 58% -18%, rgba(36, 107, 254, 0.14), transparent 58%),
+    linear-gradient(180deg, #f8fbff 0%, var(--portal-chat-bg) 46%);
+  color: var(--portal-chat-text);
+}
+
+.portal-chat--tablet {
+  grid-template-columns: 286px minmax(0, 1fr);
+}
+
+.portal-chat-sidebar {
+  padding: 18px 14px;
+  border-right: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 8px 0 34px rgba(15, 23, 42, 0.04);
+}
+
+.portal-chat-sidebar-head {
+  padding: 2px 4px 8px;
+}
+
+.portal-chat-sidebar-head strong {
+  font-size: 1rem;
+  letter-spacing: -0.04em;
+}
+
+.portal-chat-sidebar-actions .button-primary {
+  border-radius: 999px;
+  box-shadow: 0 8px 18px rgba(36, 107, 254, 0.2);
+}
+
+.portal-chat-search,
+.portal-chat-filter-tabs {
+  border-color: var(--portal-chat-line);
+  background: rgba(247, 249, 253, 0.9);
+}
+
+.portal-chat-filter-tabs {
+  border-radius: 16px;
+}
+
+.portal-chat-filter-tabs button {
+  border-radius: 12px;
+}
+
+.portal-chat-history-item {
+  min-height: 74px;
+  padding: 12px;
+  border-radius: 18px;
+}
+
+.portal-chat-history-title {
+  letter-spacing: -0.01em;
+}
+
+.portal-chat-history-item.is-active,
+.portal-chat-history-item:hover,
+.portal-chat-history-item:focus-visible {
+  background: linear-gradient(135deg, rgba(36, 107, 254, 0.12), rgba(90, 163, 255, 0.08));
+  border-color: rgba(36, 107, 254, 0.16);
+  box-shadow: inset 3px 0 0 var(--portal-chat-blue);
+}
+
+.portal-chat-main {
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  background:
+    radial-gradient(900px 380px at 50% -16%, rgba(36, 107, 254, 0.12), transparent 58%),
+    radial-gradient(620px 300px at 92% 6%, rgba(94, 234, 212, 0.08), transparent 62%),
+    linear-gradient(180deg, #fbfdff 0%, var(--portal-chat-bg) 58%);
+}
+
+.portal-chat-main-head {
+  min-height: 76px;
+  padding: 14px clamp(20px, 4vw, 48px);
+  border-bottom: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(22px);
+}
+
+.portal-chat-title-block {
+  gap: 1px;
+}
+
+.portal-chat-eyebrow,
+.portal-chat-hero-kicker,
+.portal-chat-composer-context,
+.portal-chat-bubble-meta {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+.portal-chat-eyebrow,
+.portal-chat-hero-kicker {
+  text-transform: uppercase;
+  font-weight: 800;
+  color: var(--portal-chat-blue);
+}
+
+.portal-chat-title-block strong {
+  color: var(--portal-chat-text);
+  font-size: var(--text-lg);
+  letter-spacing: -0.04em;
+}
+
+.portal-chat-headline-meta {
+  color: var(--portal-chat-muted);
+  font-size: var(--text-xs);
+}
+
+.portal-chat-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.portal-chat-head-actions .button {
+  border-radius: 999px;
+}
+
+.portal-chat-transcript {
+  padding: clamp(22px, 4vw, 42px) clamp(18px, 6vw, 72px);
+  gap: 14px;
+}
+
+.portal-chat-hero {
+  align-self: center;
+  width: min(900px, 100%);
+  padding: clamp(18px, 4vw, 40px) 0;
+  gap: 18px;
+  text-align: left;
+}
+
+.portal-chat-hero-copy {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  width: min(760px, 100%);
+}
+
+.portal-chat-orb {
+  width: 56px;
+  height: 56px;
+  border-radius: 20px;
+  box-shadow: 0 18px 46px rgba(36, 107, 254, 0.22);
+}
+
+.portal-chat-hero h1 {
+  max-width: 780px;
+  color: var(--portal-chat-text);
+  font-size: clamp(2.35rem, 6vw, 4.9rem);
+  line-height: 0.94;
+  letter-spacing: -0.075em;
+}
+
+.portal-chat-hero p {
+  max-width: 680px;
+  color: var(--portal-chat-muted);
+  font-size: clamp(1rem, 2vw, 1.22rem);
+}
+
+.portal-chat-connection-panel {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.portal-chat-connection-panel-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.portal-chat-connection-panel-head div {
+  display: grid;
+  gap: 2px;
+}
+
+.portal-chat-connection-panel-head span {
+  color: var(--portal-chat-muted);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.portal-chat-connection-panel-head strong {
+  color: var(--portal-chat-text);
+  font-size: var(--text-lg);
+  letter-spacing: -0.04em;
+}
+
+.portal-chat-connection-panel-head a,
+.portal-chat-composer-context a {
+  color: var(--portal-chat-blue);
+  font-size: var(--text-sm);
+  font-weight: 750;
+}
+
+.portal-chat-connection-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.portal-chat-connection-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  min-height: 154px;
+  padding: 14px;
+  border: 1px solid var(--portal-chat-line);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.portal-chat-connection-card.is-connected {
+  border-color: rgba(18, 183, 106, 0.22);
+}
+
+.portal-chat-connection-card.is-attention {
+  border-color: rgba(251, 191, 36, 0.42);
+  background: rgba(255, 251, 235, 0.82);
+}
+
+.portal-chat-connection-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: var(--portal-chat-blue);
+  background: var(--portal-chat-blue-soft);
+}
+
+.portal-chat-connection-copy {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.portal-chat-connection-copy > div {
+  display: grid;
+  gap: 1px;
+}
+
+.portal-chat-connection-copy strong {
+  line-height: 1.15;
+}
+
+.portal-chat-connection-copy span {
+  color: var(--portal-chat-green);
+  font-size: var(--text-xs);
+  font-weight: 800;
+}
+
+.portal-chat-connection-card.is-available .portal-chat-connection-copy span,
+.portal-chat-connection-card.is-attention .portal-chat-connection-copy span {
+  color: #b54708;
+}
+
+.portal-chat-connection-copy p {
+  margin: 0;
+  color: var(--portal-chat-muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.portal-chat-connection-card > a,
+.portal-chat-connection-card > button {
+  grid-column: 1 / -1;
+  align-self: end;
+  width: fit-content;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(36, 107, 254, 0.16);
+  border-radius: 999px;
+  background: var(--portal-chat-blue-soft);
+  color: var(--portal-chat-blue);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.portal-chat-connection-card > button:hover,
+.portal-chat-connection-card > a:hover,
+.portal-chat-starter:hover,
+.portal-chat-starter:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(36, 107, 254, 0.34);
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(36, 107, 254, 0.13);
+}
+
+.portal-chat-starters {
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.portal-chat-starter {
+  min-height: 68px;
+  align-items: center;
+  border-color: var(--portal-chat-line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--portal-chat-text);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+}
+
+.portal-chat-starter svg {
+  color: var(--portal-chat-blue);
+  flex: 0 0 auto;
+}
+
+.portal-chat-hero-cards {
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.portal-chat-capability-card {
+  min-height: 124px;
+  border-color: var(--portal-chat-line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+}
+
+.portal-chat-capability-card--muted {
+  background: rgba(247, 249, 253, 0.64);
+}
+
+.portal-chat-bubble {
+  display: grid;
+  gap: 8px;
+  max-width: min(780px, 92%);
+  padding: 13px 15px;
+  border-radius: 24px;
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.08);
+}
+
+.portal-chat-bubble-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.74);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.portal-chat-bubble--assistant .portal-chat-bubble-meta {
+  color: var(--portal-chat-muted);
+}
+
+.portal-chat-bubble--user {
+  background: linear-gradient(135deg, var(--portal-chat-blue), var(--portal-chat-blue-2));
+  border-bottom-right-radius: 10px;
+}
+
+.portal-chat-bubble--assistant {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(17, 24, 39, 0.08);
+  border-bottom-left-radius: 10px;
+}
+
+.portal-chat-activity,
+.portal-chat-status {
+  border-color: rgba(17, 24, 39, 0.08);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.portal-chat-activity-step strong {
+  color: var(--portal-chat-text);
+}
+
+.portal-chat-followups {
+  padding: 0 clamp(18px, 6vw, 72px) 8px;
+}
+
+.portal-chat-chip {
+  border-radius: 999px;
+}
+
+.portal-chat-composer {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 12px clamp(18px, 6vw, 72px) max(20px, env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(238, 243, 251, 0), rgba(238, 243, 251, 0.96) 24%);
+}
+
+.portal-chat-composer-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(880px, 100%);
+  margin: 0 auto;
+  color: var(--portal-chat-muted);
+  letter-spacing: normal;
+}
+
+.portal-chat-composer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.portal-chat-status-dot-static {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.13);
+  flex: 0 0 auto;
+}
+
+.portal-chat-status-dot-static.is-ready {
+  background: var(--portal-chat-green);
+  box-shadow: 0 0 0 4px rgba(18, 183, 106, 0.13);
+}
+
+.portal-chat-composer-box {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: end;
+  gap: 8px;
+  width: min(880px, 100%);
+  margin: 0 auto;
+  padding: 8px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 20px 58px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.portal-chat-input {
+  min-height: 48px;
+  max-height: 150px;
+  padding: 13px 14px;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.portal-chat-input:focus {
+  box-shadow: none;
+}
+
+.portal-chat-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+  color: var(--portal-chat-muted);
+}
+
+.portal-chat-composer-tools span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--portal-chat-panel-soft);
+}
+
+.portal-chat-composer-box .button {
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 999px;
+  box-shadow: 0 10px 22px rgba(36, 107, 254, 0.24);
+}
+
+.portal-chat-mobile-title,
+.portal-chat-mobile-actions {
+  display: flex;
+  align-items: center;
+}
+
+.portal-chat-mobile-title {
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.portal-chat-mobile-title > div {
+  display: grid;
+  min-width: 0;
+  line-height: 1.1;
+}
+
+.portal-chat-mobile-title span {
+  color: var(--portal-chat-muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portal-chat-mobile-title strong {
+  overflow: hidden;
+  color: var(--portal-chat-text);
+  font-size: 0.95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portal-chat-mobile-actions {
+  gap: 2px;
+}
+
+.portal-chat-mobile-actions .notification-bell-trigger,
+.portal-chat-mobile-actions .button {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+@media (max-width: 900px) {
+  .portal-shell.portal-shell--chat,
+  .portal-shell.portal-shell--chat.nav-collapsed {
+    grid-template-areas: "main";
+  }
+
+  .portal-shell.portal-shell--chat .mobile-topbar {
+    display: none !important;
+  }
+
+  .portal-shell.portal-shell--chat .main {
+    min-height: 100dvh;
+  }
+}
+
+@media (max-width: 1100px) {
+  .portal-chat-connection-rail,
+  .portal-chat-hero-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .portal-chat {
+    --portal-chat-bg: #081423;
+    --portal-chat-panel: rgba(18, 31, 51, 0.86);
+    --portal-chat-panel-solid: #101d31;
+    --portal-chat-panel-soft: rgba(255, 255, 255, 0.06);
+    --portal-chat-text: #f8fafc;
+    --portal-chat-muted: #aab6c8;
+    --portal-chat-subtle: #7c8aa0;
+    --portal-chat-line: rgba(255, 255, 255, 0.09);
+    grid-template-columns: 1fr;
+    background:
+      radial-gradient(560px 260px at 50% -10%, rgba(36, 107, 254, 0.34), transparent 60%),
+      linear-gradient(180deg, #0b1829 0%, #081423 58%);
+  }
+
+  .portal-chat:not(.portal-chat--history-open) {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-chat-mobile-bar {
+    display: flex;
+    min-height: 66px;
+    padding: max(8px, env(safe-area-inset-top)) 10px 8px;
+    border-bottom: 1px solid var(--portal-chat-line);
+    background: rgba(8, 20, 35, 0.88);
+    color: var(--portal-chat-text);
+    backdrop-filter: blur(24px);
+  }
+
+  .portal-chat-mobile-bar .button {
+    color: var(--portal-chat-text);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.07);
+    border-radius: 999px;
+  }
+
+  .portal-chat-mobile-actions .notification-bell-trigger {
+    color: var(--portal-chat-text);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.07);
+    border-radius: 999px;
+  }
+
+  .portal-chat-mobile-actions .notification-panel {
+    position: fixed;
+    top: 74px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+  }
+
+  .portal-chat-history-drawer {
+    inset: 66px 0 0;
+    z-index: 8;
+    background: rgba(8, 20, 35, 0.98);
+  }
+
+  .portal-chat-sidebar {
+    padding: 14px;
+    background: rgba(10, 24, 41, 0.98);
+    color: var(--portal-chat-text);
+  }
+
+  .portal-chat-sidebar .empty-state {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--portal-chat-line);
+  }
+
+  .portal-chat-search,
+  .portal-chat-filter-tabs,
+  .portal-chat-history-item {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--portal-chat-line);
+    color: var(--portal-chat-text);
+  }
+
+  .portal-chat-main {
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    background:
+      radial-gradient(520px 240px at 50% -8%, rgba(36, 107, 254, 0.28), transparent 60%),
+      linear-gradient(180deg, #0b1829 0%, #081423 58%);
+  }
+
+  .portal-chat-main-head {
+    display: none;
+  }
+
+  .portal-chat-transcript {
+    padding: 18px 14px 12px;
+    gap: 12px;
+  }
+
+  .portal-chat-hero {
+    align-self: stretch;
+    justify-self: stretch;
+    padding: 12px 0 6px;
+    gap: 16px;
+  }
+
+  .portal-chat-hero-copy {
+    gap: 10px;
+  }
+
+  .portal-chat-orb {
+    width: 50px;
+    height: 50px;
+    border-radius: 18px;
+  }
+
+  .portal-chat-hero h1 {
+    font-size: clamp(2.35rem, 13vw, 3.7rem);
+    line-height: 0.94;
+  }
+
+  .portal-chat-hero p {
+    font-size: 0.98rem;
+  }
+
+  .portal-chat-connection-panel-head strong {
+    color: var(--portal-chat-text);
+    font-size: 1rem;
+  }
+
+  .portal-chat-connection-rail {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .portal-chat-connection-card {
+    grid-template-columns: auto 1fr auto;
+    min-height: 0;
+    padding: 12px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: none;
+  }
+
+  .portal-chat-connection-card > a,
+  .portal-chat-connection-card > button {
+    grid-column: auto;
+    align-self: center;
+    background: rgba(36, 107, 254, 0.18);
+  }
+
+  .portal-chat-starters,
+  .portal-chat-hero-cards {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .portal-chat-starter,
+  .portal-chat-capability-card,
+  .portal-chat-bubble--assistant,
+  .portal-chat-activity,
+  .portal-chat-status {
+    background: rgba(255, 255, 255, 0.065);
+    border-color: var(--portal-chat-line);
+    color: var(--portal-chat-text);
+    box-shadow: none;
+  }
+
+  .portal-chat-capability-card {
+    min-height: 0;
+  }
+
+  .portal-chat-bubble {
+    max-width: 94%;
+  }
+
+  .portal-chat-bubble--user {
+    box-shadow: 0 12px 28px rgba(36, 107, 254, 0.24);
+  }
+
+  .portal-chat-bubble--assistant .portal-chat-bubble-meta,
+  .portal-chat-markdown code,
+  .portal-chat-note,
+  .portal-chat-sources,
+  .portal-chat-email-summary > p {
+    color: var(--portal-chat-muted);
+  }
+
+  .portal-chat-markdown code,
+  .portal-chat-sources li,
+  .portal-chat-meta-chip,
+  .portal-chat-activity--compact .portal-chat-activity-step {
+    border-color: var(--portal-chat-line);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .portal-chat-followups {
+    padding: 0 14px 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .portal-chat-chip {
+    flex: 0 0 auto;
+    min-height: 36px;
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--portal-chat-line);
+    color: var(--portal-chat-text);
+    box-shadow: none;
+  }
+
+  .portal-chat-composer {
+    padding: 8px 10px max(10px, env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, rgba(8, 20, 35, 0), rgba(8, 20, 35, 0.98) 18%);
+  }
+
+  .portal-chat-composer-context {
+    padding: 0 4px;
+    color: var(--portal-chat-muted);
+    font-size: 0.74rem;
+  }
+
+  .portal-chat-composer-context a {
+    white-space: nowrap;
+  }
+
+  .portal-chat-composer-box {
+    grid-template-columns: 1fr auto;
+    padding: 7px;
+    border-color: rgba(255, 255, 255, 0.1);
+    border-radius: 26px;
+    background: rgba(16, 29, 49, 0.96);
+    box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+  }
+
+  .portal-chat-input {
+    min-height: 42px;
+    padding: 10px 12px;
+    color: var(--portal-chat-text);
+  }
+
+  .portal-chat-input::placeholder {
+    color: rgba(170, 182, 200, 0.72);
+  }
+
+  .portal-chat-composer-tools {
+    display: none;
+  }
+
+  .portal-chat-composer-box .button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

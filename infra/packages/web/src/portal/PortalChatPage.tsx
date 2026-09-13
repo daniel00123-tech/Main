@@ -1,7 +1,33 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { displayConversationTitle, groupConversations } from "@infra/shared";
-import { Bot, ChevronLeft, Menu, MessageSquare, PanelLeftOpen, Plus, Search, Send, Sparkles, X } from "lucide-react";
+import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import {
+  CONNECTOR_CATALOGUE,
+  connectorOverviewDescription,
+  deriveConnectorCustomerHealth,
+  displayConversationTitle,
+  groupConversations,
+  isCustomerConnectedConnector,
+  type CompanyOverview,
+} from "@infra/shared";
+import {
+  Bot,
+  ChevronLeft,
+  CircleDashed,
+  FileSearch,
+  Inbox,
+  Landmark,
+  Menu,
+  MessageSquare,
+  PanelLeftOpen,
+  Paperclip,
+  Plus,
+  Search,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  X,
+  Zap,
+} from "lucide-react";
 import {
   Button,
   EmptyState,
@@ -20,6 +46,9 @@ import {
   portalChatShellClass,
 } from "./chat-layout";
 import { portalChatPath } from "./portal-home";
+import { PortalNotificationBell } from "./PortalNotificationBell";
+import { InfraBrand } from "../components/InfraBrand";
+import type { PortalShellOutletContext } from "./PortalShell";
 import {
   SafeMarkdown,
   extractEmailSummaryRows,
@@ -33,10 +62,21 @@ import {
 const DRAFT_ID = "draft";
 type HistoryFilter = "all" | "tools";
 
+type ConnectorHighlight = {
+  key: "mail" | "files" | "xero" | "mcp";
+  label: string;
+  detail: string;
+  href: string;
+  status: "connected" | "attention" | "available";
+  statusLabel: string;
+  prompt: string;
+};
+
 export default function PortalChatPage() {
-  const { company, loading, error } = usePortalCompany();
+  const { company, overview, loading, error } = usePortalCompany();
   const { conversationId: routeConversationId } = useParams();
   const navigate = useNavigate();
+  const shellChrome = useOutletContext<PortalShellOutletContext>();
   const isMobile = useMediaQuery("(max-width: 767px)");
   const isTablet = useMediaQuery("(max-width: 1099px)");
   const layout = portalChatLayout(isMobile ? 390 : isTablet ? 900 : 1280);
@@ -100,6 +140,13 @@ export default function PortalChatPage() {
   }, [historyFilter, historyQuery, visibleConversations]);
   const grouped = useMemo(() => groupConversations(filteredConversations), [filteredConversations]);
   const starterPrompts = useMemo(() => emptyStatePrompts(company?.name), [company?.name]);
+  const connectorHighlights = useMemo(
+    () => buildConnectorHighlights(overview, company?.slug ?? ""),
+    [overview, company?.slug],
+  );
+  const connectedConnectorCount = connectorHighlights.filter((item) => item.status === "connected").length;
+  const attentionConnectorCount = connectorHighlights.filter((item) => item.status === "attention").length;
+  const firstDisconnectedConnector = connectorHighlights.find((item) => item.status !== "connected");
 
   async function refreshList(slug: string) {
     const response = await api.listPortalConversations(slug);
@@ -416,17 +463,36 @@ export default function PortalChatPage() {
             type="button"
             variant="ghost"
             size="sm"
-            aria-label={historyOpen ? "Close chat history" : "Open chat history"}
-            aria-expanded={historyOpen}
-            aria-controls="portal-chat-history-drawer"
-            onClick={() => setHistoryOpen((open) => !open)}
+            aria-label="Open portal navigation"
+            aria-controls="portal-company-navigation"
+            onClick={() => shellChrome.openMobileNav()}
           >
-            {historyOpen ? <X size={18} /> : <Menu size={18} />}
+            <Menu size={18} />
           </Button>
-          <strong>{drafting ? "New chat" : active?.title ?? "Chat"}</strong>
-          <Button type="button" variant="ghost" size="sm" aria-label="Start a new chat" onClick={startNewChat}>
-            <Plus size={18} />
-          </Button>
+          <div className="portal-chat-mobile-title">
+            <InfraBrand compact size={26} />
+            <div>
+              <span>{company.name}</span>
+              <strong>{historyOpen ? "Chats" : drafting ? "New chat" : active?.title ?? "Chat"}</strong>
+            </div>
+          </div>
+          <div className="portal-chat-mobile-actions">
+            <PortalNotificationBell variant="header" />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={historyOpen ? "Close chat history" : "Open chat history"}
+              aria-expanded={historyOpen}
+              aria-controls="portal-chat-history-drawer"
+              onClick={() => setHistoryOpen((open) => !open)}
+            >
+              {historyOpen ? <X size={18} /> : <PanelLeftOpen size={18} />}
+            </Button>
+            <Button type="button" variant="ghost" size="sm" aria-label="Start a new chat" onClick={startNewChat}>
+              <Plus size={18} />
+            </Button>
+          </div>
         </div>
       ) : null}
 
@@ -440,14 +506,23 @@ export default function PortalChatPage() {
       <section className="portal-chat-main" aria-label="Active chat">
         <div className="portal-chat-main-head">
           <div className="portal-chat-title-block">
-            <span className="portal-chat-eyebrow">INFRA chat</span>
+            <span className="portal-chat-eyebrow">INFRA workspace</span>
             <strong>{drafting ? `New chat with ${company.name}` : active?.title ?? `Chat with ${company.name}`}</strong>
+            <span className="portal-chat-headline-meta">
+              {connectedConnectorCount} connected system{connectedConnectorCount === 1 ? "" : "s"}
+              {attentionConnectorCount ? ` · ${attentionConnectorCount} needs review` : " · approvals protected"}
+            </span>
           </div>
-          {!isMobile && !historyOpen ? (
-            <Button type="button" variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}>
-              <PanelLeftOpen size={16} /> History
-            </Button>
-          ) : null}
+          <div className="portal-chat-head-actions">
+            <Link className="button button-secondary button-small" to={`/portal/${company.slug}/connectors`}>
+              <Zap size={16} /> Connections
+            </Link>
+            {!isMobile && !historyOpen ? (
+              <Button type="button" variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}>
+                <PanelLeftOpen size={16} /> History
+              </Button>
+            ) : null}
+          </div>
         </div>
         {loadError ? <ErrorState title="Chat error" description={loadError} onRetry={() => setLoadError(null)} /> : null}
         <div
@@ -460,33 +535,44 @@ export default function PortalChatPage() {
         >
           {messages.length === 0 && !busy ? (
             <div className="portal-chat-hero">
-              <div className="portal-chat-orb" aria-hidden="true">
-                <Sparkles size={28} />
+              <div className="portal-chat-hero-copy">
+                <div className="portal-chat-orb" aria-hidden="true">
+                  <Sparkles size={28} />
+                </div>
+                <span className="portal-chat-hero-kicker">Company-aware AI for {company.name}</span>
+                <h1>Ask INFRA to check, find, and prepare the next step.</h1>
+                <p>
+                  Search approved files, read connected mailboxes and finance systems, or ask INFRA to draft a safe action
+                  plan for approval before anything changes.
+                </p>
               </div>
-              <span className="portal-chat-hero-kicker">Company-aware assistant</span>
-              <h1>What should we work out for {company.name}?</h1>
-              <p>
-                Ask INFRA to search files, check connected read-only systems, explain what you can access, or continue a
-                previous thread.
-              </p>
+
+              <ConnectorRail items={connectorHighlights} onPrompt={(prompt) => void send(prompt)} />
+
               <div className="portal-chat-starters" aria-label="Suggested prompts">
-                {starterPrompts.map((prompt) => (
+                {starterPrompts.map((prompt, index) => (
                   <button key={prompt} type="button" className="portal-chat-starter" onClick={() => void send(prompt)}>
-                    <MessageSquare size={16} />
+                    {starterIcon(index)}
                     <span>{prompt}</span>
                   </button>
                 ))}
               </div>
+
               <div className="portal-chat-hero-cards" aria-label="Ways to work with INFRA">
                 <div className="portal-chat-capability-card">
                   <MessageSquare size={18} />
-                  <strong>Chat with connected context</strong>
-                  <span>Ask questions across approved files, mailboxes, accounting, and company tools.</span>
+                  <strong>Ask once, use every permitted source</strong>
+                  <span>INFRA keeps RBAC, citations, and tool activity visible while it works through the request.</span>
+                </div>
+                <div className="portal-chat-capability-card">
+                  <ShieldCheck size={18} />
+                  <strong>Writes stay approval-first</strong>
+                  <span>Xero or mailbox actions become approval tasks when a connected automation can safely continue.</span>
                 </div>
                 <div className="portal-chat-capability-card portal-chat-capability-card--muted">
                   <Bot size={18} />
-                  <strong>Task agents are next</strong>
-                  <span>Future sidebar bots can attach APIs from the UI without backend-only wiring.</span>
+                  <strong>Task agents</strong>
+                  <span>Reusable assistants can be enabled from Automations as backend capability becomes available.</span>
                 </div>
               </div>
             </div>
@@ -521,29 +607,48 @@ export default function PortalChatPage() {
             void send();
           }}
         >
-          <div className="portal-chat-composer-label">
-            <span>Message INFRA</span>
-            <span>Shift+Enter for a new line</span>
+          <div className="portal-chat-composer-context">
+            <div className="portal-chat-composer-status">
+              <span className={`portal-chat-status-dot-static${firstDisconnectedConnector ? "" : " is-ready"}`} aria-hidden="true" />
+              <span>
+                {firstDisconnectedConnector
+                  ? `${firstDisconnectedConnector.label} not connected`
+                  : `${connectedConnectorCount} systems ready`}
+              </span>
+            </div>
+            <Link to={`/portal/${company.slug}/connectors`}>
+              {firstDisconnectedConnector ? `Connect ${firstDisconnectedConnector.label}` : "Manage connections"}
+            </Link>
           </div>
-          <textarea
-            ref={inputRef}
-            className="input portal-chat-input"
-            rows={isMobile ? 2 : 4}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Ask about files, Xero, inboxes, approvals, or what you can access…"
-            aria-label="Message INFRA"
-            disabled={false}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                if (!composerSendDisabled(busy, draft)) void send();
-              }
-            }}
-          />
-          <Button type="submit" variant="primary" disabled={composerSendDisabled(busy, draft)} aria-label="Send message">
-            <Send size={16} /> {isMobile ? "" : "Send"}
-          </Button>
+          <div className="portal-chat-composer-box">
+            <textarea
+              ref={inputRef}
+              className="input portal-chat-input"
+              rows={isMobile ? 1 : 3}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Ask INFRA to check the inbox, search files, review Xero, or prepare an approval…"
+              aria-label="Message INFRA"
+              disabled={false}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  if (!composerSendDisabled(busy, draft)) void send();
+                }
+              }}
+            />
+            <div className="portal-chat-composer-tools" aria-label="Composer context">
+              <span title="Attachments are handled through connected file sources">
+                <Paperclip size={16} aria-hidden="true" />
+              </span>
+              <span title="Writes require confirmation and approvals">
+                <ShieldCheck size={16} aria-hidden="true" />
+              </span>
+            </div>
+            <Button type="submit" variant="primary" disabled={composerSendDisabled(busy, draft)} aria-label="Send message">
+              <Send size={16} /> {isMobile ? "" : "Send"}
+            </Button>
+          </div>
         </form>
       </section>
     </div>
@@ -558,6 +663,10 @@ function ChatBubble({ message, companySlug }: { message: PortalChatMessage; comp
   const completedSteps = message.role === "assistant" ? finalActivitySteps([], tools, message.metadata.terminal) : [];
   return (
     <article className={`portal-chat-bubble portal-chat-bubble--${message.role}`}>
+      <div className="portal-chat-bubble-meta">
+        <span>{message.role === "assistant" ? "INFRA" : "You"}</span>
+        {message.role === "assistant" && tools.length ? <span>{tools.length} tool step{tools.length === 1 ? "" : "s"}</span> : null}
+      </div>
       <div className="portal-chat-bubble-body">
         {emailRows.length ? <EmailSummaryCards rows={emailRows} intro={emailIntro(message.content)} /> : <SafeMarkdown text={message.content} />}
       </div>
@@ -646,6 +755,152 @@ function emailIntro(content: string): string | null {
     .map((item) => item.trim())
     .find((item) => item && !/^[-*]\s/.test(item) && !/^\*\*(subject|from|received):\*\*/i.test(item));
   return line ? line.replace(/:$/, "") : null;
+}
+
+function ConnectorRail({
+  items,
+  onPrompt,
+}: {
+  items: ConnectorHighlight[];
+  onPrompt: (prompt: string) => void;
+}) {
+  return (
+    <div className="portal-chat-connection-panel" aria-label="Connected systems">
+      <div className="portal-chat-connection-panel-head">
+        <div>
+          <span>Connected context</span>
+          <strong>Bring systems into the conversation</strong>
+        </div>
+        <Link to={items.find((item) => item.href.endsWith("/connectors"))?.href ?? items[0]?.href ?? "#"}>View all</Link>
+      </div>
+      <div className="portal-chat-connection-rail">
+        {items.map((item) => (
+          <article key={item.key} className={`portal-chat-connection-card is-${item.status}`}>
+            <div className="portal-chat-connection-icon">{connectorIcon(item.key)}</div>
+            <div className="portal-chat-connection-copy">
+              <div>
+                <strong>{item.label}</strong>
+                <span>{item.statusLabel}</span>
+              </div>
+              <p>{item.detail}</p>
+            </div>
+            {item.status === "connected" ? (
+              <button type="button" onClick={() => onPrompt(item.prompt)}>
+                Ask
+              </button>
+            ) : (
+              <Link to={item.href}>Connect</Link>
+            )}
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function buildConnectorHighlights(
+  overview: CompanyOverview | null,
+  companySlug: string,
+): ConnectorHighlight[] {
+  const base = companySlug ? `/portal/${companySlug}` : "/portal";
+  return [
+    connectorHighlight({
+      key: "mail",
+      label: "Mail",
+      slugs: ["outlook-shared-mailbox", "microsoft-365"],
+      overview,
+      href: `${base}/microsoft-365`,
+      connectedDetail: "Read selected shared mailboxes such as info@ through Microsoft 365.",
+      disconnectedDetail: "Connect Microsoft 365 mailboxes to ask what arrived today.",
+      prompt: "Check the info@ inbox today and show anything urgent.",
+    }),
+    connectorHighlight({
+      key: "files",
+      label: "Files",
+      slugs: ["sharepoint", "onedrive", "google-drive", "microsoft-365"],
+      overview,
+      href: `${base}/connectors`,
+      connectedDetail: "Search approved SharePoint, OneDrive, Drive, and knowledge sources.",
+      disconnectedDetail: "Add a document source so INFRA can search company files.",
+      prompt: "Search company files for the latest quote or job pack.",
+    }),
+    connectorHighlight({
+      key: "xero",
+      label: "Xero",
+      slugs: ["xero"],
+      overview,
+      href: `${base}/connectors`,
+      connectedDetail: "Read finance context and prepare approval-first accounting actions.",
+      disconnectedDetail: "Connect Xero to answer account, invoice, and payment questions.",
+      prompt: "Check Xero for overdue invoices and summarise the highest priority items.",
+    }),
+    connectorHighlight({
+      key: "mcp",
+      label: "Company MCP",
+      slugs: [],
+      overview,
+      href: `${base}/ai-connections`,
+      connectedDetail: "Company tools are available through the INFRA MCP gateway.",
+      disconnectedDetail: "Enable AI access so approved tools can be used from chat.",
+      prompt: "What connected systems and tools can I access?",
+      connectedOverride: Boolean(overview?.mcpEnvironments?.length || overview?.readyForUse),
+    }),
+  ];
+}
+
+function connectorHighlight(input: {
+  key: ConnectorHighlight["key"];
+  label: string;
+  slugs: string[];
+  overview: CompanyOverview | null;
+  href: string;
+  connectedDetail: string;
+  disconnectedDetail: string;
+  prompt: string;
+  connectedOverride?: boolean;
+}): ConnectorHighlight {
+  const definitions = CONNECTOR_CATALOGUE.filter((item) => input.slugs.includes(item.slug));
+  const definitionIds = new Set(definitions.map((item) => item.id));
+  const instances = input.overview?.connectorInstances.filter((instance) => definitionIds.has(instance.connectorDefinitionId)) ?? [];
+  const connected = input.connectedOverride || instances.some(isCustomerConnectedConnector);
+  const attention = instances.some((instance) => {
+    const health = deriveConnectorCustomerHealth(instance);
+    return health.label === "Attention needed" || health.label === "Error";
+  });
+  const status: ConnectorHighlight["status"] = connected ? (attention ? "attention" : "connected") : "available";
+  const healthLabel = instances.find(isCustomerConnectedConnector)
+    ? deriveConnectorCustomerHealth(instances.find(isCustomerConnectedConnector)!).label
+    : null;
+  return {
+    key: input.key,
+    label: input.label,
+    href: input.href,
+    prompt: input.prompt,
+    status,
+    statusLabel: connected ? (attention ? "Needs review" : healthLabel ?? "Connected") : "Connect",
+    detail: connected
+      ? input.connectedDetail
+      : definitions[0]
+        ? connectorOverviewDescription(definitions[0].id)
+        : input.disconnectedDetail,
+  };
+}
+
+function connectorIcon(key: ConnectorHighlight["key"]) {
+  if (key === "mail") return <Inbox size={18} />;
+  if (key === "files") return <FileSearch size={18} />;
+  if (key === "xero") return <Landmark size={18} />;
+  return <Zap size={18} />;
+}
+
+function starterIcon(index: number) {
+  const icons = [
+    <Inbox key="inbox" size={18} />,
+    <FileSearch key="files" size={18} />,
+    <Landmark key="xero" size={18} />,
+    <CircleDashed key="access" size={18} />,
+  ];
+  return icons[index % icons.length];
 }
 
 function terminalLabel(value: string): string {
