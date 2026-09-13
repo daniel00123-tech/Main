@@ -209,6 +209,7 @@ export default function PortalChatPage() {
 
   useEffect(() => {
     const el = scroller.current;
+    if (messages.length === 0 && !busy) return;
     if (!el || !stickToBottom.current) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages.length, status, busy]);
