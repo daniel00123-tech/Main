@@ -4826,9 +4826,9 @@ body,
 .portal-chat-hero h1 {
   max-width: 780px;
   color: var(--portal-chat-text);
-  font-size: clamp(2.35rem, 6vw, 4.9rem);
-  line-height: 0.94;
-  letter-spacing: -0.075em;
+  font-size: clamp(2.25rem, 4.7vw, 3.95rem);
+  line-height: 0.98;
+  letter-spacing: -0.048em;
 }
 
 .portal-chat-hero p {
@@ -4887,7 +4887,7 @@ body,
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 10px;
-  min-height: 154px;
+  min-height: 132px;
   padding: 14px;
   border: 1px solid var(--portal-chat-line);
   border-radius: 24px;
@@ -5339,8 +5339,9 @@ body,
   }
 
   .portal-chat-hero h1 {
-    font-size: clamp(2.35rem, 13vw, 3.7rem);
-    line-height: 0.94;
+    font-size: clamp(2.15rem, 11.5vw, 3.2rem);
+    line-height: 1;
+    letter-spacing: -0.045em;
   }
 
   .portal-chat-hero p {
