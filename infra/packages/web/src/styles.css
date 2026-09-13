@@ -5250,8 +5250,8 @@ body,
 
   .portal-chat-mobile-bar {
     display: flex;
-    min-height: 66px;
-    padding: max(8px, env(safe-area-inset-top)) 10px 8px;
+    min-height: 70px;
+    padding: max(10px, env(safe-area-inset-top)) 12px 10px;
     border-bottom: 1px solid var(--portal-chat-line);
     background: rgba(8, 20, 35, 0.88);
     color: var(--portal-chat-text);
@@ -5280,8 +5280,18 @@ body,
     width: auto;
   }
 
+  .portal-chat-mobile-title span {
+    font-size: 0.72rem;
+    line-height: 1.2;
+  }
+
+  .portal-chat-mobile-title strong {
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
   .portal-chat-history-drawer {
-    inset: 66px 0 0;
+    inset: 70px 0 0;
     z-index: 8;
     background: rgba(8, 20, 35, 0.98);
   }
@@ -5317,8 +5327,8 @@ body,
   }
 
   .portal-chat-transcript {
-    padding: 18px 14px 12px;
-    gap: 12px;
+    padding: 20px 16px 18px;
+    gap: 16px;
   }
 
   .portal-chat-hero {
@@ -5359,18 +5369,36 @@ body,
   }
 
   .portal-chat-connection-card {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 1fr;
+    gap: 12px;
     min-height: 0;
-    padding: 12px;
-    border-radius: 20px;
+    padding: 15px;
+    border-radius: 22px;
     background: rgba(255, 255, 255, 0.06);
     box-shadow: none;
   }
 
+  .portal-chat-connection-copy strong {
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .portal-chat-connection-copy span {
+    font-size: 0.78rem;
+  }
+
+  .portal-chat-connection-copy p {
+    font-size: 0.94rem;
+    line-height: 1.5;
+  }
+
   .portal-chat-connection-card > a,
   .portal-chat-connection-card > button {
-    grid-column: auto;
-    align-self: center;
+    grid-column: 1 / -1;
+    align-self: end;
+    justify-self: start;
+    min-height: 36px;
+    padding-inline: 14px;
     background: rgba(36, 107, 254, 0.18);
   }
 
@@ -5396,11 +5424,37 @@ body,
   }
 
   .portal-chat-bubble {
-    max-width: 94%;
+    max-width: calc(100% - 10px);
+    padding: 18px 20px;
+    gap: 10px;
+    border-radius: 26px;
+    font-size: 1rem;
+    line-height: 1.58;
   }
 
   .portal-chat-bubble--user {
     box-shadow: 0 12px 28px rgba(36, 107, 254, 0.24);
+  }
+
+  .portal-chat-bubble-meta {
+    font-size: 0.76rem;
+    line-height: 1.25;
+  }
+
+  .portal-chat-activity,
+  .portal-chat-status {
+    padding: 12px 14px;
+    font-size: 0.94rem;
+    line-height: 1.45;
+  }
+
+  .portal-chat-activity-step {
+    gap: 9px;
+  }
+
+  .portal-chat-activity-step small {
+    font-size: 0.82rem;
+    line-height: 1.35;
   }
 
   .portal-chat-bubble--assistant .portal-chat-bubble-meta,
@@ -5420,7 +5474,7 @@ body,
   }
 
   .portal-chat-followups {
-    padding: 0 14px 6px;
+    padding: 0 16px 8px;
     flex-wrap: nowrap;
     overflow-x: auto;
   }
@@ -5435,37 +5489,43 @@ body,
   }
 
   .portal-chat-composer {
-    padding: 8px 10px max(10px, env(safe-area-inset-bottom));
+    gap: 10px;
+    padding: 10px 12px max(14px, env(safe-area-inset-bottom));
     background: linear-gradient(180deg, rgba(8, 20, 35, 0), rgba(8, 20, 35, 0.98) 18%);
   }
 
   .portal-chat-composer-context {
     padding: 0 4px;
     color: var(--portal-chat-muted);
-    font-size: 0.74rem;
+    font-size: 0.82rem;
+    line-height: 1.35;
   }
 
   .portal-chat-composer-context a {
     white-space: nowrap;
+    font-size: 0.82rem;
   }
 
   .portal-chat-composer-box {
     grid-template-columns: 1fr auto;
-    padding: 7px;
+    padding: 8px;
     border-color: rgba(255, 255, 255, 0.1);
-    border-radius: 26px;
+    border-radius: 30px;
     background: rgba(16, 29, 49, 0.96);
     box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
   }
 
   .portal-chat-input {
-    min-height: 42px;
-    padding: 10px 12px;
+    min-height: 54px;
+    padding: 14px 15px;
     color: var(--portal-chat-text);
+    font-size: 1rem;
+    line-height: 1.35;
   }
 
   .portal-chat-input::placeholder {
     color: rgba(170, 182, 200, 0.72);
+    line-height: 1.35;
   }
 
   .portal-chat-composer-tools {
@@ -5473,7 +5533,7 @@ body,
   }
 
   .portal-chat-composer-box .button {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 52px;
+    min-height: 52px;
   }
 }
