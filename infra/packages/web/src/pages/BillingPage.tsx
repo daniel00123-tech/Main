@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Download, Plus } from "lucide-react";
+import { CreditCard, Download, Plus } from "lucide-react";
 import { api } from "../api";
 import { useAdminScope } from "../context/AdminScopeContext";
 import {
@@ -34,6 +34,32 @@ import {
 type BalanceRow = Awaited<ReturnType<typeof api.getBillingBalances>>[number];
 type Summary = Awaited<ReturnType<typeof api.getBillingSummary>>;
 type LedgerRow = Awaited<ReturnType<typeof api.getBillingLedger>>[number];
+type RecurringBillingCompany = Awaited<ReturnType<typeof api.getRecurringCharges>>["companies"][number];
+type RecurringCharge = Awaited<ReturnType<typeof api.getRecurringCharges>>["charges"][number];
+type RecurringInterval = RecurringCharge["interval"];
+
+const ACTIVE_RECURRING_STATUSES = new Set(["active", "trialing", "past_due", "unpaid", "incomplete"]);
+
+function formatCard(company: RecurringBillingCompany | null): string {
+  if (!company?.paymentMethodReady) return "No saved card";
+  const brand = company.paymentMethod.brand ?? "Card";
+  const last4 = company.paymentMethod.last4 ? `•••• ${company.paymentMethod.last4}` : "saved";
+  return `${brand} ${last4}`;
+}
+
+function humanInterval(interval: RecurringInterval): string {
+  if (interval === "daily") return "Daily";
+  if (interval === "weekly") return "Weekly";
+  if (interval === "yearly") return "Yearly";
+  return "Monthly";
+}
+
+function humanChargeStatus(status: string): string {
+  return status
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
 export default function BillingPage() {
   const navigate = useNavigate();
@@ -42,6 +68,9 @@ export default function BillingPage() {
   const [rows, setRows] = useState<BalanceRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
+  const [recurringCompanies, setRecurringCompanies] = useState<RecurringBillingCompany[]>([]);
+  const [recurringCharges, setRecurringCharges] = useState<RecurringCharge[]>([]);
+  const [recurringStripeConfigured, setRecurringStripeConfigured] = useState<boolean | null>(null);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(
     searchParams.get("company") ?? null,
   );
@@ -59,11 +88,34 @@ export default function BillingPage() {
     reason: "",
     internalNote: "",
   });
+  const [recurringBusy, setRecurringBusy] = useState(false);
+  const [cancelingChargeId, setCancelingChargeId] = useState<string | null>(null);
+  const [recurringForm, setRecurringForm] = useState<{
+    companyId: string;
+    amountPounds: string;
+    currency: string;
+    interval: RecurringInterval;
+    description: string;
+  }>({
+    companyId: "",
+    amountPounds: "50",
+    currency: "GBP",
+    interval: "monthly",
+    description: "",
+  });
   const [ledgerLimit, setLedgerLimit] = useState(25);
 
   const selectedRow = useMemo(
     () => rows.find((r) => r.companySlug === selectedSlug) ?? null,
     [rows, selectedSlug],
+  );
+  const selectedRecurringCompany = useMemo(
+    () => recurringCompanies.find((company) => company.id === recurringForm.companyId) ?? null,
+    [recurringCompanies, recurringForm.companyId],
+  );
+  const activeRecurringCharges = useMemo(
+    () => recurringCharges.filter((charge) => ACTIVE_RECURRING_STATUSES.has(charge.status)),
+    [recurringCharges],
   );
 
   const loadLedger = useCallback(
@@ -105,9 +157,22 @@ export default function BillingPage() {
         api.getBillingSummary(),
         api.getGatewayHealth().catch(() => null),
       ]);
+      const recurring = await api.getRecurringCharges();
       setRows(balances);
       setSummary(billingSummary);
       setStripeConfigured(gateway ? Boolean(gateway.stripeConfigured) : null);
+      setRecurringStripeConfigured(recurring.stripeConfigured);
+      setRecurringCompanies(recurring.companies);
+      setRecurringCharges(recurring.charges);
+      setRecurringForm((current) => ({
+        ...current,
+        companyId:
+          current.companyId && recurring.companies.some((company) => company.id === current.companyId)
+            ? current.companyId
+            : recurring.companies.find((company) => company.paymentMethodReady)?.id ??
+              recurring.companies[0]?.id ??
+              "",
+      }));
       const slug =
         (scopeCompanySlug &&
         balances.some((b) => b.companySlug === scopeCompanySlug)
@@ -200,6 +265,54 @@ export default function BillingPage() {
     }
   }
 
+  async function submitRecurringCharge(event: FormEvent) {
+    event.preventDefault();
+    const pounds = Number(recurringForm.amountPounds);
+    if (!recurringForm.companyId) {
+      toast("Select a company", "error");
+      return;
+    }
+    if (!Number.isFinite(pounds) || pounds <= 0) {
+      toast("Enter a valid recurring amount", "error");
+      return;
+    }
+    if (!recurringForm.description.trim()) {
+      toast("Description is required", "error");
+      return;
+    }
+    setRecurringBusy(true);
+    try {
+      await api.createRecurringCharge({
+        companyId: recurringForm.companyId,
+        amountCents: Math.round(pounds * 100),
+        currency: recurringForm.currency,
+        interval: recurringForm.interval,
+        description: recurringForm.description.trim(),
+      });
+      toast("Recurring company charge created");
+      setRecurringForm((current) => ({ ...current, description: "" }));
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Unable to create recurring charge", "error");
+    } finally {
+      setRecurringBusy(false);
+    }
+  }
+
+  async function cancelRecurringCharge(charge: RecurringCharge) {
+    if (!window.confirm(`Cancel recurring charge for ${charge.companyName}?`)) return;
+    setCancelingChargeId(charge.id);
+    try {
+      await api.cancelRecurringCharge(charge.id);
+      toast("Recurring charge canceled");
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Unable to cancel recurring charge", "error");
+    } finally {
+      setCancelingChargeId(null);
+    }
+  }
+
   if (loading) return <LoadingState label="Loading billing…" />;
   if (error) {
     return (
@@ -271,6 +384,191 @@ export default function BillingPage() {
         a single pooled amount — usage draws from total available credit. Promotional-first
         consumption is not applied separately in the current accounting model.
       </Notice>
+
+      <SectionCard
+        title="Recurring company charges"
+        description="Create blanket SaaS subscriptions for individual companies using their saved Stripe payment method."
+        className="mt-6"
+      >
+        {recurringStripeConfigured === false ? (
+          <Notice tone="warning">
+            Stripe recurring billing is not configured. Add Stripe Worker secrets before creating
+            live recurring charges.
+          </Notice>
+        ) : null}
+
+        <div className="grid grid-2" style={{ alignItems: "start", marginTop: 12 }}>
+          <form onSubmit={(event) => void submitRecurringCharge(event)} className="stack">
+            <label className="field">
+              <span>Company</span>
+              <select
+                value={recurringForm.companyId}
+                onChange={(e) =>
+                  setRecurringForm((form) => ({ ...form, companyId: e.target.value }))
+                }
+                required
+              >
+                <option value="" disabled>
+                  Select company
+                </option>
+                {recurringCompanies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name} · {company.paymentMethodReady ? formatCard(company) : "no card on file"}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {selectedRecurringCompany ? (
+              selectedRecurringCompany.paymentMethodReady ? (
+                <Notice tone="success">
+                  <strong>{selectedRecurringCompany.name}</strong> will be charged via{" "}
+                  {formatCard(selectedRecurringCompany)}.
+                </Notice>
+              ) : (
+                <Notice tone="warning">
+                  <strong>{selectedRecurringCompany.name}</strong> has no saved card on file.
+                  Ask the company to add a payment method in the portal before creating a recurring
+                  charge.
+                </Notice>
+              )
+            ) : null}
+
+            <div className="grid grid-2" style={{ gap: 12 }}>
+              <label className="field">
+                <span>Amount (£)</span>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={recurringForm.amountPounds}
+                  onChange={(e) =>
+                    setRecurringForm((form) => ({ ...form, amountPounds: e.target.value }))
+                  }
+                  required
+                />
+              </label>
+              <label className="field">
+                <span>Frequency</span>
+                <select
+                  value={recurringForm.interval}
+                  onChange={(e) =>
+                    setRecurringForm((form) => ({
+                      ...form,
+                      interval: e.target.value as RecurringInterval,
+                    }))
+                  }
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </label>
+            </div>
+
+            <label className="field">
+              <span>Currency</span>
+              <select
+                value={recurringForm.currency}
+                onChange={(e) =>
+                  setRecurringForm((form) => ({ ...form, currency: e.target.value }))
+                }
+              >
+                <option value="GBP">GBP</option>
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Description of charge</span>
+              <textarea
+                rows={3}
+                value={recurringForm.description}
+                onChange={(e) =>
+                  setRecurringForm((form) => ({ ...form, description: e.target.value }))
+                }
+                placeholder="e.g. EL Business agent bot monthly subscription"
+                required
+              />
+            </label>
+
+            <Button
+              type="submit"
+              variant="primary"
+              loading={recurringBusy}
+              disabled={!recurringForm.companyId || recurringStripeConfigured === false}
+            >
+              <CreditCard size={14} /> Create recurring charge
+            </Button>
+          </form>
+
+          <div>
+            <div className="card-header-row" style={{ marginBottom: 12 }}>
+              <div>
+                <h3 className="section-title">Active recurring charges</h3>
+                <p className="muted small" style={{ margin: "4px 0 0" }}>
+                  Stripe subscriptions created by platform administrators.
+                </p>
+              </div>
+            </div>
+            {activeRecurringCharges.length === 0 ? (
+              <EmptyState
+                title="No active recurring charges"
+                description="Create a recurring company charge to start a Stripe subscription."
+              />
+            ) : (
+              <div className="table-wrap">
+                <table className="table compact">
+                  <thead>
+                    <tr>
+                      <th>Company</th>
+                      <th>Description</th>
+                      <th className="num">Amount</th>
+                      <th>Frequency</th>
+                      <th>Status</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeRecurringCharges.map((charge) => (
+                      <tr key={charge.id}>
+                        <td>
+                          <Link to={`/companies/${charge.companySlug}?tab=billing`}>
+                            {charge.companyName}
+                          </Link>
+                          <div className="muted small">{charge.paymentMethod.brand ?? "Card"} {charge.paymentMethod.last4 ? `•••• ${charge.paymentMethod.last4}` : ""}</div>
+                        </td>
+                        <td>
+                          <div className="ledger-row-primary">{charge.description}</div>
+                          <div className="ledger-row-meta">
+                            {charge.stripeSubscriptionId ?? "Stripe subscription pending"}
+                          </div>
+                        </td>
+                        <td className="num">{formatCurrency(charge.amountCents, charge.currency)}</td>
+                        <td>{humanInterval(charge.interval)}</td>
+                        <td>
+                          <StatusBadge status={charge.status} label={humanChargeStatus(charge.status)} />
+                        </td>
+                        <td className="num">
+                          <Button
+                            type="button"
+                            variant="danger"
+                            size="sm"
+                            loading={cancelingChargeId === charge.id}
+                            onClick={() => void cancelRecurringCharge(charge)}
+                          >
+                            Cancel
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </SectionCard>
 
       {rows.length === 0 ? (
         <EmptyState
