@@ -1009,6 +1009,24 @@ export async function processStripeWebhookEvent(
       await markWebhookProcessed(env.DB, input.stripeEventId);
       return { processed: true, duplicate: false, message: "payment failure recorded" };
     }
+
+    if (
+      input.eventType === "invoice.paid" ||
+      input.eventType === "invoice.payment_failed" ||
+      input.eventType === "customer.subscription.deleted" ||
+      input.eventType === "customer.subscription.updated"
+    ) {
+      const { processRecurringCompanyBillingWebhook } = await import(
+        "./company-recurring-billing"
+      );
+      const result = await processRecurringCompanyBillingWebhook(env, {
+        stripeEventId: input.stripeEventId,
+        eventType: input.eventType,
+        payload: input.payload,
+      });
+      await markWebhookProcessed(env.DB, input.stripeEventId);
+      return result;
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await markWebhookProcessed(env.DB, input.stripeEventId, message);
