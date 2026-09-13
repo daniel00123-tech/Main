@@ -8,13 +8,23 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
+    STAFF_NAME,
+    ConfigError,
     build_html,
     build_staff_rows,
     commission_style,
+    current_london_date,
     daily_totals,
+    graph_mail_payload,
     is_missing_po_anomaly,
     iter_display_rows,
+    lookup_staff_category,
+    main,
+    parse_args,
+    resolve_staff,
 )
 
 
@@ -497,6 +507,89 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class StaffResolutionAndMailTest(unittest.TestCase):
+    def test_known_staff_use_mapped_category_ids(self) -> None:
+        self.assertEqual(STAFF_NAME, "Sharon")
+        self.assertEqual(resolve_staff("Sharon")["category_id"], 132264)
+        self.assertEqual(resolve_staff("Ella")["category_id"], 132225)
+        self.assertEqual(resolve_staff("Lauren")["category_id"], 132263)
+
+    def test_unknown_staff_uses_looked_up_category_id(self) -> None:
+        categories = [
+            {"Name": "Daniel", "JobCategoryId": 199001},
+            {"label": "Sharon", "id": 132264},
+        ]
+        found = resolve_staff("Daniel", categories=categories)
+        self.assertEqual(found["name"], "Daniel")
+        self.assertEqual(found["category_id"], 199001)
+
+    def test_unknown_staff_does_not_guess_when_missing_or_ambiguous(self) -> None:
+        with self.assertRaises(ConfigError):
+            lookup_staff_category("Pat", categories=[{"Name": "Sharon", "id": 132264}])
+        with self.assertRaises(ConfigError):
+            lookup_staff_category(
+                "Sam",
+                categories=[
+                    {"Name": "Sam", "id": 1},
+                    {"JobCategoryName": "Sam", "CategoryId": 2},
+                ],
+            )
+
+    def test_email_is_always_to_ella_and_cc_william(self) -> None:
+        self.assertEqual(DEFAULT_MAIL_TO, "ella@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
+        payload = graph_mail_payload(
+            "Sharon — September 2026 — commission report",
+            "<p>ok</p>",
+            DEFAULT_MAIL_TO,
+            DEFAULT_MAIL_CC,
+        )
+        self.assertEqual(
+            payload["message"]["toRecipients"][0]["emailAddress"]["address"],
+            "ella@elvexpropertyservices.com",
+        )
+        self.assertEqual(
+            payload["message"]["ccRecipients"][0]["emailAddress"]["address"],
+            "william@elvexpropertyservices.com",
+        )
+        self.assertTrue(payload["saveToSentItems"])
+
+    def test_cli_defaults_to_staff_name_and_current_london_month(self) -> None:
+        today = current_london_date()
+        args = parse_args([])
+        self.assertEqual(args.staff, "Sharon")
+        self.assertEqual(args.month, today.month)
+        self.assertEqual(args.year, today.year)
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+
+    def test_send_refuses_a_month_that_is_not_the_current_london_month(self) -> None:
+        today = current_london_date()
+        past_month = 5 if (today.year, today.month) != (2026, 5) else 6
+        with self.assertRaises(ConfigError):
+            main(["--staff", "Sharon", "--year", "2026", "--month", str(past_month), "--send"])
+
+
+class ScorecardLayoutTest(unittest.TestCase):
+    def test_scorecard_is_five_equal_columns_labels_then_figures(self) -> None:
+        jobs = attach_job_commissions([_job(dt.date(2026, 9, 1), "GR/1", "1500", "525")])
+        body = build_html(
+            staff_name="Sharon",
+            month_label="September 2026",
+            job_rows=jobs,
+            anomaly_rows=[],
+        )
+        self.assertIn("Sharon — September 2026 commission report", body)
+        self.assertIn('width="20%"', body)
+        self.assertIn("Overall profit", body)
+        self.assertIn("white-space:nowrap", body)
+        label_row = body.find("Overall profit")
+        figure_row = body.find("£525.00", label_row)
+        self.assertGreater(label_row, 0)
+        self.assertGreater(figure_row, label_row)
+        self.assertLess(body.find("</tr>", label_row), figure_row)
 
 
 if __name__ == "__main__":
