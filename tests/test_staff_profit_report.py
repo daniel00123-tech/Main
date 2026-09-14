@@ -8,13 +8,22 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
+    DEFAULT_STAFF_NAME,
+    LONDON,
     RUN_EDGE,
     build_html,
     build_staff_rows,
     commission_style,
+    current_report_bounds,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    match_category_id,
+    parse_args,
+    requested_month_is_current,
+    resolve_staff,
 )
 
 
@@ -323,6 +332,20 @@ class MissingPurchaseOrderAnomalyTest(unittest.TestCase):
         self.assertNotIn("£2,350.00", body[job_start:anomaly_start])
         self.assertNotIn("Not included in the totals or commission above", body)
 
+    def test_scorecard_is_five_equal_columns_labels_then_figures(self) -> None:
+        jobs = attach_job_commissions([_job(dt.date(2026, 9, 3), "GR/1", "1500", "525")])
+        body = build_html(staff_name="Sharon", month_label="September 2026", job_rows=jobs, anomaly_rows=[])
+        self.assertLess(body.find("Overall profit"), body.find("£525.00"))
+        self.assertIn('width="20%"', body)
+        self.assertIn("#1f3a5f", body)
+        self.assertIn("#2e5a8f", body)
+        self.assertIn("#3d6fa3", body)
+        self.assertIn("#4a82b8", body)
+        self.assertIn("#1b7a4a", body)
+        self.assertIn("white-space:nowrap", body)
+        self.assertNotIn("display:flex", body)
+        self.assertNotIn("display: flex", body)
+
 
 class CompleteGroupReportingTest(unittest.TestCase):
     def test_gr409_reports_full_july_and_august_totals_on_the_last_invoice_date(self) -> None:
@@ -497,6 +520,42 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class CurrentMonthAndStaffResolutionTest(unittest.TestCase):
+    def test_report_bounds_are_the_current_london_calendar_month_only(self) -> None:
+        start, end = current_report_bounds(dt.date(2026, 9, 14))
+        self.assertEqual(start, dt.date(2026, 9, 1))
+        self.assertEqual(end, dt.date(2026, 9, 30))
+        self.assertTrue(requested_month_is_current(2026, 9, dt.date(2026, 9, 14)))
+        self.assertFalse(requested_month_is_current(2026, 8, dt.date(2026, 9, 14)))
+
+    def test_cli_defaults_to_sharon_and_current_london_month(self) -> None:
+        args = parse_args([])
+        today = dt.datetime.now(LONDON).date()
+        self.assertEqual(args.staff, DEFAULT_STAFF_NAME)
+        self.assertEqual(args.year, today.year)
+        self.assertEqual(args.month, today.month)
+        self.assertEqual(DEFAULT_MAIL_TO, "ella@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
+
+    def test_known_staff_use_mapped_category_ids(self) -> None:
+        self.assertEqual(resolve_staff("Sharon"), {"name": "Sharon", "category_id": 132264})
+        self.assertEqual(resolve_staff("ella"), {"name": "Ella", "category_id": 132225})
+        self.assertEqual(resolve_staff("LAUREN"), {"name": "Lauren", "category_id": 132263})
+
+    def test_unknown_staff_category_is_exact_lookup_not_a_guess(self) -> None:
+        items = [
+            {"Name": "Sharon", "Id": 132264},
+            {"Name": "Daniel", "JobCategoryId": 199001},
+        ]
+        self.assertEqual(match_category_id("Daniel", items), 199001)
+        with self.assertRaises(RuntimeError):
+            match_category_id("Dani", items)
+        with self.assertRaises(RuntimeError):
+            match_category_id("Unknown", items)
+        with self.assertRaises(RuntimeError):
+            match_category_id("Daniel", items + [{"name": "Daniel", "id": 199002}])
 
 
 if __name__ == "__main__":
