@@ -58,7 +58,9 @@ ANOMALY_SALE = D("250")
 MIN_PO_AMOUNT = D("1")
 BEGINNING_OF_TIME = dt.date(2026, 5, 1)
 FROM_EMAIL = "ella@elvexpropertyservices.com"
-DEFAULT_MAIL_TO = "william@elvexpropertyservices.com"
+DEFAULT_MAIL_TO = "ella@elvexpropertyservices.com"
+DEFAULT_MAIL_CC = "william@elvexpropertyservices.com"
+DEFAULT_STAFF_NAME = "Sharon"
 
 
 def is_missing_po_anomaly(sale: D, po_cost: D) -> bool:
@@ -357,13 +359,19 @@ def graph_token() -> str:
     return token
 
 
-def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
+def send_graph_mail(
+    subject: str,
+    html_body: str,
+    to_email: str = DEFAULT_MAIL_TO,
+    cc_email: str = DEFAULT_MAIL_CC,
+) -> None:
     token = graph_token()
     payload = {
         "message": {
             "subject": subject,
             "body": {"contentType": "HTML", "content": html_body},
             "toRecipients": [{"emailAddress": {"address": to_email}}],
+            "ccRecipients": [{"emailAddress": {"address": cc_email}}],
         },
         "saveToSentItems": True,
     }
@@ -383,9 +391,98 @@ def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
         raise RuntimeError(f"sendMail {exc.code}: {exc.read().decode()[:800]}") from exc
 
 
+def current_london_month() -> tuple[int, int]:
+    today = dt.datetime.now(LONDON).date()
+    return today.year, today.month
+
+
 def month_bounds(year: int, month: int) -> tuple[dt.date, dt.date]:
     last = calendar.monthrange(year, month)[1]
     return dt.date(year, month, 1), dt.date(year, month, last)
+
+
+def staff_lookup_key(name: str) -> str:
+    return " ".join(str(name or "").strip().lower().split())
+
+
+def category_label(row: dict[str, Any]) -> str:
+    for key in ("label", "name", "JobCategoryName", "CategoryName", "Name", "title"):
+        val = row.get(key)
+        if val not in (None, ""):
+            return str(val).strip()
+    return ""
+
+
+def category_id_from_row(row: dict[str, Any]) -> int | None:
+    for key in ("id", "Id", "JobCategoryId", "CategoryId", "jobCategoryId"):
+        val = row.get(key)
+        if val in (None, ""):
+            continue
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def unwrap_category_rows(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, dict)]
+    if isinstance(value, dict):
+        items = value.get("items")
+        if isinstance(items, list):
+            return [row for row in items if isinstance(row, dict)]
+        rows: list[dict[str, Any]] = []
+        for nested in value.values():
+            if isinstance(nested, list):
+                rows.extend(row for row in nested if isinstance(row, dict))
+        if rows:
+            return rows
+    return []
+
+
+def fetch_job_categories() -> list[dict[str, Any]]:
+    """Read-only lookup of BigChange job categories. Never guess an id."""
+    try:
+        token = rest_token()
+        body = rest_get(token, "/v1/jobCategories?pageNumber=1&pageSize=1000")
+        rows = unwrap_category_rows(body)
+        if rows:
+            return rows
+    except Exception:
+        pass
+    return unwrap_category_rows(legacy("JobCategories"))
+
+
+def resolve_staff(
+    name: str,
+    *,
+    categories: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Known names use the fixed ids. Anyone else is looked up exactly."""
+    key = staff_lookup_key(name)
+    if not key:
+        raise ConfigError("Staff name is required")
+    known = STAFF.get(key)
+    if known:
+        return {"name": known["name"], "category_id": int(known["category_id"])}
+    rows = categories if categories is not None else fetch_job_categories()
+    matches: list[tuple[str, int]] = []
+    seen: set[int] = set()
+    for row in rows:
+        label = category_label(row)
+        if staff_lookup_key(label) != key:
+            continue
+        cid = category_id_from_row(row)
+        if cid is None or cid in seen:
+            continue
+        seen.add(cid)
+        matches.append((label, cid))
+    if len(matches) == 1:
+        return {"name": matches[0][0], "category_id": matches[0][1]}
+    if not matches:
+        raise ConfigError(f"No BigChange job category id for staff {name!r}")
+    raise ConfigError(f"Multiple BigChange job categories match staff {name!r}")
 
 
 def build_staff_rows(
@@ -865,19 +962,25 @@ def load_report_data(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    year, month = current_london_month()
     parser = argparse.ArgumentParser(description="Staff commission report")
-    parser.add_argument("--staff", choices=sorted(STAFF), default="sharon")
-    parser.add_argument("--year", type=int, default=2026)
-    parser.add_argument("--month", type=int, default=8)
+    parser.add_argument(
+        "--staff",
+        default=os.environ.get("STAFF_NAME", DEFAULT_STAFF_NAME),
+        help="Staff display name. Known ids: Sharon, Ella, Lauren. Others are looked up.",
+    )
+    parser.add_argument("--year", type=int, default=year)
+    parser.add_argument("--month", type=int, default=month)
     parser.add_argument("--send", action="store_true", help="Email the report")
     parser.add_argument("--to", default=os.environ.get("STAFF_PROFIT_MAIL_TO", DEFAULT_MAIL_TO))
+    parser.add_argument("--cc", default=os.environ.get("STAFF_PROFIT_MAIL_CC", DEFAULT_MAIL_CC))
     parser.add_argument("--out", default="")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    staff = STAFF[args.staff]
+    staff = resolve_staff(args.staff)
     month_start, month_end = month_bounds(args.year, args.month)
     month_label = month_start.strftime("%B %Y")
     main_rows, anomaly_rows = load_report_data(staff["category_id"], month_start, month_end)
@@ -916,10 +1019,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.send:
         subject = f"{staff['name']} — {month_label} — commission report"
         try:
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, args.cc)
         except Exception:
             time.sleep(2)
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, args.cc)
     return 0
 
 
