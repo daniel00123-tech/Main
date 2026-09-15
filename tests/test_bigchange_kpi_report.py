@@ -11,6 +11,7 @@ from scripts.bigchange_kpi_report import (
     code_is_success,
     match_staff_name,
     name_key,
+    render_html,
     save_baseline,
     should_exclude_category,
     validate_report,
@@ -157,6 +158,35 @@ class BaselineTest(unittest.TestCase):
         self.assertEqual(baseline["total_amber_kpis"], 1)
         self.assertNotIn("freshdesk_ticket_count", baseline["staff"][0])
         self.assertNotIn("overall_score", baseline["staff"][0])
+
+    def test_dashboard_uses_installed_sans_and_real_bold_weights(self) -> None:
+        html = render_html(
+            {
+                "run_timestamp": "2026-09-15T07:00:00+00:00",
+                "report_date": "2026-09-15",
+                "job_lookback_start": "2025-09-15",
+                "month_name": "September",
+                "staff_rows": [
+                    {
+                        "staff_name": "Amy Bradley",
+                        "metrics": {
+                            "unallocated_jobs": {"count": 0, "oldest_age_days": 0, "status": "green"},
+                            "historic_jobs": {"count": 0, "oldest_age_days": 0, "status": "green"},
+                            "uninvoiced_jobs": {"count": 0, "oldest_age_days": 0, "status": "green"},
+                            "unactioned_jobs": {"count": 0, "oldest_age_days": 0, "status": "green"},
+                        },
+                        "current_month_sales_display": "GBP 0.00",
+                        "total_open_workload": 0,
+                    }
+                ],
+                "total_red_kpis": 0,
+                "total_amber_kpis": 0,
+            }
+        )
+
+        self.assertIn("Liberation Sans", html)
+        self.assertNotIn("font-weight: 900", html)
+        self.assertNotIn("letter-spacing: -0.", html)
 
 
 class FakeBigChangeClient:

@@ -845,7 +845,11 @@ def render_html(report: dict[str, Any]) -> str:
       --red: #ef4d5d;
       --line: rgba(148, 163, 184, 0.22);
     }}
-    * {{ box-sizing: border-box; }}
+    * {{
+      box-sizing: border-box;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }}
     body {{
       margin: 0;
       background:
@@ -853,7 +857,8 @@ def render_html(report: dict[str, Any]) -> str:
         radial-gradient(circle at 90% 5%, rgba(239, 77, 93, 0.12), transparent 28rem),
         var(--bg);
       color: var(--text);
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: "Liberation Sans", "Noto Sans", Arial, Helvetica, sans-serif;
+      letter-spacing: 0;
       padding: 34px;
     }}
     .dashboard {{
@@ -890,7 +895,7 @@ def render_html(report: dict[str, Any]) -> str:
     h1 {{
       margin: 0;
       font-size: 24px;
-      letter-spacing: -0.03em;
+      letter-spacing: 0.02em;
       line-height: 1.1;
       text-transform: uppercase;
     }}
@@ -951,7 +956,7 @@ def render_html(report: dict[str, Any]) -> str:
       display: block;
       margin-top: 8px;
       font-size: 30px;
-      letter-spacing: -0.04em;
+      letter-spacing: 0;
     }}
     table {{
       width: 100%;
@@ -984,7 +989,7 @@ def render_html(report: dict[str, Any]) -> str:
     tr:last-child td {{ border-bottom: none; }}
     .rank {{
       color: #e2e8f0;
-      font-weight: 900;
+      font-weight: 700;
       font-size: 18px;
     }}
     .staff {{
@@ -1003,7 +1008,7 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     .person strong {{
       font-size: 18px;
-      letter-spacing: -0.02em;
+      letter-spacing: 0;
     }}
     .person span {{
       color: var(--muted);
@@ -1018,7 +1023,7 @@ def render_html(report: dict[str, Any]) -> str:
       justify-content: center;
       color: #fff;
       font-size: 12px;
-      font-weight: 900;
+      font-weight: 700;
       box-shadow: 0 0 18px rgba(255, 255, 255, 0.12);
     }}
     .avatar-0 {{ background: #7c3aed; }}
@@ -1038,7 +1043,7 @@ def render_html(report: dict[str, Any]) -> str:
     .sales-value strong {{
       color: #f8fafc;
       font-size: 20px;
-      letter-spacing: -0.04em;
+      letter-spacing: 0;
     }}
     .sales-value span {{
       color: var(--muted);
@@ -1063,8 +1068,8 @@ def render_html(report: dict[str, Any]) -> str:
     .circle span {{
       font-size: 24px;
       line-height: 1;
-      font-weight: 900;
-      letter-spacing: -0.05em;
+      font-weight: 700;
+      letter-spacing: 0;
     }}
     .green .circle {{
       border: 3px dotted var(--green);
@@ -1196,16 +1201,19 @@ def render_png(html_content: str, html_path: Path, png_path: Path, row_count: in
     with tempfile.TemporaryDirectory(prefix="bigchange-chrome-") as profile_dir:
         cmd = [
             chrome,
-            "--headless=new",
+            "--headless",
             "--no-sandbox",
             "--disable-gpu",
+            "--disable-lcd-text",
+            "--font-render-hinting=none",
+            "--force-device-scale-factor=1",
             "--hide-scrollbars",
             f"--user-data-dir={profile_dir}",
             f"--window-size=1740,{height}",
             f"--screenshot={png_path}",
             html_path.resolve().as_uri(),
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90)
 
 
 def mailbox_address(email_value: str, display_name: str = "") -> Address:
