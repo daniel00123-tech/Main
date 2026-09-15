@@ -1,6 +1,9 @@
 import datetime as dt
 import decimal
+import json
 import unittest
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from scripts.staff_commission import (
     attach_job_commissions,
@@ -8,13 +11,20 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
+    ConfigError,
     build_html,
     build_staff_rows,
     commission_style,
+    current_london_month,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    parse_args,
+    resolve_staff,
+    send_graph_mail,
 )
 
 
@@ -497,6 +507,75 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class StaffResolutionAndMailTest(unittest.TestCase):
+    def test_known_staff_use_fixed_category_ids(self) -> None:
+        self.assertEqual(resolve_staff("Sharon")["category_id"], 132264)
+        self.assertEqual(resolve_staff("ella")["category_id"], 132225)
+        self.assertEqual(resolve_staff("LAUREN")["category_id"], 132263)
+        self.assertEqual(resolve_staff("Sharon")["name"], "Sharon")
+
+    def test_unknown_staff_uses_exact_category_lookup_only(self) -> None:
+        categories = [
+            {"id": 111, "name": "Daniel"},
+            {"Id": 222, "JobCategoryName": "Daniel Dwyer"},
+        ]
+        staff = resolve_staff("Daniel", categories=categories)
+        self.assertEqual(staff["category_id"], 111)
+        self.assertEqual(staff["name"], "Daniel")
+        with self.assertRaises(ConfigError):
+            resolve_staff("Dani", categories=categories)
+        with self.assertRaises(ConfigError):
+            resolve_staff("Unknown", categories=categories)
+
+    def test_parse_args_defaults_to_current_london_month_and_fixed_mail(self) -> None:
+        year, month = current_london_month()
+        today = dt.datetime.now(ZoneInfo("Europe/London")).date()
+        self.assertEqual((year, month), (today.year, today.month))
+        args = parse_args([])
+        self.assertEqual(args.year, today.year)
+        self.assertEqual(args.month, today.month)
+        self.assertEqual(args.staff, "Sharon")
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+        self.assertEqual(args.to, "ella@elvexpropertyservices.com")
+        self.assertEqual(args.cc, "william@elvexpropertyservices.com")
+
+    def test_send_graph_mail_always_includes_to_ella_and_cc_william(self) -> None:
+        captured: dict = {}
+
+        class Resp:
+            status = 202
+
+            def read(self) -> bytes:
+                return b""
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def fake_urlopen(req, timeout=60):
+            captured["url"] = req.full_url
+            captured["body"] = json.loads(req.data)
+            return Resp()
+
+        with patch("scripts.staff_profit_report.graph_token", return_value="tok"):
+            with patch("scripts.staff_profit_report.urllib.request.urlopen", fake_urlopen):
+                send_graph_mail("Sharon — September 2026 — commission report", "<p>ok</p>")
+        message = captured["body"]["message"]
+        self.assertEqual(
+            message["toRecipients"][0]["emailAddress"]["address"],
+            "ella@elvexpropertyservices.com",
+        )
+        self.assertEqual(
+            message["ccRecipients"][0]["emailAddress"]["address"],
+            "william@elvexpropertyservices.com",
+        )
+        self.assertTrue(captured["body"]["saveToSentItems"])
+        self.assertIn("ella%40elvexpropertyservices.com", captured["url"])
 
 
 if __name__ == "__main__":
