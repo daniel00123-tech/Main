@@ -1,6 +1,10 @@
 import datetime as dt
 import decimal
+import json
+import os
 import unittest
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from scripts.staff_commission import (
     attach_job_commissions,
@@ -8,13 +12,23 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
+    DEFAULT_STAFF_NAME,
     RUN_EDGE,
+    ConfigError,
+    assert_current_month_for_send,
     build_html,
     build_staff_rows,
     commission_style,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    known_staff,
+    parse_args,
+    resolve_staff,
+    send_graph_mail,
+    staff_from_categories,
 )
 
 
@@ -110,6 +124,21 @@ class HtmlReportTest(unittest.TestCase):
         self.assertIn("COMMISSION QUALIFIED", body)
         self.assertIn("Commission Earned:", body)
         self.assertIn("#d4edda", body)
+
+    def test_scorecard_is_five_equal_columns_with_labels_then_figures(self) -> None:
+        jobs = attach_job_commissions([_job(dt.date(2026, 9, 1), "GR/1", "1500", "525")])
+        body = build_html(staff_name="Sharon", month_label="September 2026", job_rows=jobs, anomaly_rows=[])
+        self.assertIn("width=\"20%\"", body)
+        for colour in ("#1f3a5f", "#2e5a8f", "#3d6fa3", "#4a82b8", "#1b7a4a"):
+            self.assertIn(colour, body)
+        labels_at = body.find("Overall profit")
+        figures_at = body.find("£525.00")
+        invoiced_label = body.find("Invoiced")
+        self.assertGreater(labels_at, 0)
+        self.assertGreater(invoiced_label, labels_at)
+        self.assertGreater(figures_at, invoiced_label)
+        self.assertIn("white-space:nowrap", body)
+        self.assertIn("width='160'", body)
 
     def test_duplicate_group_keys_are_not_created_by_row_builder(self) -> None:
         jobs = [
@@ -322,6 +351,76 @@ class MissingPurchaseOrderAnomalyTest(unittest.TestCase):
         self.assertNotIn("GR/455", body[job_start:anomaly_start])
         self.assertNotIn("£2,350.00", body[job_start:anomaly_start])
         self.assertNotIn("Not included in the totals or commission above", body)
+
+
+class StaffResolutionAndCliTest(unittest.TestCase):
+    def test_known_staff_ids_are_not_guessed(self) -> None:
+        self.assertEqual(DEFAULT_STAFF_NAME, "Sharon")
+        self.assertEqual(known_staff("Sharon"), {"name": "Sharon", "category_id": 132264})
+        self.assertEqual(known_staff("ella"), {"name": "Ella", "category_id": 132225})
+        self.assertEqual(known_staff("Lauren"), {"name": "Lauren", "category_id": 132263})
+        self.assertIsNone(known_staff("Pat"))
+
+    def test_unknown_staff_uses_exact_category_lookup(self) -> None:
+        categories = [
+            {"Id": 111, "Name": "Pat"},
+            {"id": 222, "label": "Sam Jones"},
+        ]
+        self.assertEqual(
+            resolve_staff("Pat", categories),
+            {"name": "Pat", "category_id": 111},
+        )
+        with self.assertRaises(ConfigError):
+            staff_from_categories("Pa", categories)
+        with self.assertRaises(ConfigError):
+            staff_from_categories("Unknown", categories)
+
+    def test_parse_args_defaults_to_current_london_month_and_mail_list(self) -> None:
+        today = dt.datetime.now(ZoneInfo("Europe/London")).date()
+        with patch.dict(os.environ, {"STAFF_NAME": "Sharon"}, clear=False):
+            args = parse_args([])
+        self.assertEqual(args.staff, "Sharon")
+        self.assertEqual(args.year, today.year)
+        self.assertEqual(args.month, today.month)
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+        self.assertEqual(DEFAULT_MAIL_TO, "ella@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
+
+    def test_refuses_to_email_a_past_month(self) -> None:
+        today = dt.datetime.now(ZoneInfo("Europe/London")).date()
+        with self.assertRaises(ConfigError):
+            assert_current_month_for_send(2026, 8 if today.month != 8 else 7)
+        assert_current_month_for_send(today.year, today.month)
+
+    def test_send_graph_mail_always_includes_to_and_cc(self) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeResp:
+            status = 202
+
+            def read(self) -> bytes:
+                return b""
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def fake_urlopen(req, timeout=60):
+            captured["url"] = req.full_url
+            captured["payload"] = json.loads(req.data.decode())
+            return FakeResp()
+
+        with patch("scripts.staff_profit_report.graph_token", return_value="token"):
+            with patch("scripts.staff_profit_report.urllib.request.urlopen", side_effect=fake_urlopen):
+                send_graph_mail("Sharon — September 2026 — commission report", "<p>ok</p>")
+        message = captured["payload"]["message"]
+        self.assertTrue(captured["payload"]["saveToSentItems"])
+        self.assertEqual(message["toRecipients"][0]["emailAddress"]["address"], DEFAULT_MAIL_TO)
+        self.assertEqual(message["ccRecipients"][0]["emailAddress"]["address"], DEFAULT_MAIL_CC)
+        self.assertIn("ella%40elvexpropertyservices.com/sendMail", captured["url"])
 
 
 class CompleteGroupReportingTest(unittest.TestCase):
