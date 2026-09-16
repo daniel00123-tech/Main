@@ -33,6 +33,7 @@ try:
         qualify_month,
         sum_job_commissions,
     )
+    from scripts.staff_labor import labor_for_bucket
 except ImportError:  # python3 scripts/staff_profit_report.py
     from staff_commission import (  # type: ignore
         attach_job_commissions,
@@ -41,6 +42,7 @@ except ImportError:  # python3 scripts/staff_profit_report.py
         qualify_month,
         sum_job_commissions,
     )
+    from staff_labor import labor_for_bucket  # type: ignore
 
 
 D = decimal.Decimal
@@ -499,34 +501,39 @@ def build_staff_rows(
             continue
 
         total_sale = money(sum((amt for _when, amt, _ot in sales_sorted), ZERO))
-        total_cost = money(sum((amt for _when, amt, _jid in b["pos_staff"]), ZERO))
+        total_po = money(sum((amt for _when, amt, _jid in b["pos_staff"]), ZERO))
+        total_labor = labor_for_bucket(members)
         row_date = last_sale
 
-        if is_missing_po_anomaly(total_sale, total_cost):
+        if is_missing_po_anomaly(total_sale, total_po):
             anomaly_rows.append(
                 {
                     "date": row_date,
                     "reference": label(b),
                     "sale": total_sale,
-                    "cost": total_cost,
-                    "profit": money(total_sale - total_cost),
-                    "margin": margin_of(total_sale, money(total_sale - total_cost)),
+                    "cost": total_po,
+                    "labor": total_labor,
+                    "profit": money(total_sale - total_po - total_labor),
+                    "margin": margin_of(
+                        total_sale, money(total_sale - total_po - total_labor)
+                    ),
                     "reason": "Sale over £250 with no purchase order",
                 }
             )
             continue
 
-        if total_sale == 0 and total_cost == 0:
+        if total_sale == 0 and total_po == 0 and total_labor == 0:
             continue
 
-        profit = money(total_sale - total_cost)
+        profit = money(total_sale - total_po - total_labor)
         main_rows.append(
             {
                 "key": b["key"],
                 "date": row_date,
                 "reference": label(b),
                 "sale": total_sale,
-                "cost": total_cost,
+                "cost": total_po,
+                "labor": total_labor,
                 "profit": profit,
                 "margin": margin_of(total_sale, profit),
             }
@@ -541,6 +548,7 @@ def day_subtotal(day: dt.date, jobs: list[dict[str, Any]]) -> dict[str, Any]:
     """Date subtotal: sum stored job figures. Do not rerun the commission engine."""
     sale = money(sum((r["sale"] for r in jobs), ZERO))
     cost = money(sum((r["cost"] for r in jobs), ZERO))
+    labor = money(sum((r.get("labor", ZERO) for r in jobs), ZERO))
     profit = money(sum((r["profit"] for r in jobs), ZERO))
     return {
         "kind": "day_total",
@@ -548,6 +556,7 @@ def day_subtotal(day: dt.date, jobs: list[dict[str, Any]]) -> dict[str, Any]:
         "reference": f"{day.strftime('%d/%m/%Y')} total",
         "sale": sale,
         "cost": cost,
+        "labor": labor,
         "profit": profit,
         "margin": None,
         "commission": sum_job_commissions(jobs),
@@ -584,7 +593,8 @@ def daily_totals(job_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         jobs = by_day[day]
         sale = money(sum((r["sale"] for r in jobs), ZERO))
         cost = money(sum((r["cost"] for r in jobs), ZERO))
-        profit = money(sale - cost)
+        labor = money(sum((r.get("labor", ZERO) for r in jobs), ZERO))
+        profit = money(sum((r["profit"] for r in jobs), ZERO))
         commission = sum_job_commissions(jobs)
         running_profit += profit
         running_commission += commission
@@ -593,6 +603,7 @@ def daily_totals(job_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "date": day,
                 "sale": sale,
                 "cost": cost,
+                "labor": labor,
                 "profit": profit,
                 "margin": margin_of(sale, profit),
                 "commission": commission,
@@ -628,6 +639,7 @@ def render_job_rows_html(job_rows: list[dict[str, Any]]) -> str:
                 f"<td colspan='2' style='color:#555;font-size:11px;'>{html.escape(row['reference'])}</td>"
                 + _td_money(row["sale"])
                 + _td_money(row["cost"])
+                + _td_money(row.get("labor", ZERO))
                 + _td_money(row["profit"])
                 + "<td></td>"
                 + _td_money(row["commission"], commission_style(row["commission"]))
@@ -643,6 +655,7 @@ def render_job_rows_html(job_rows: list[dict[str, Any]]) -> str:
             f"<td style='white-space:nowrap;'>{html.escape(str(row['reference']))}</td>"
             + _td_money(row["sale"])
             + _td_money(row["cost"])
+            + _td_money(row.get("labor", ZERO))
             + _td_money(row["profit"])
             + f"<td style='text-align:right;white-space:nowrap;{margin_style(row['margin'])}'>{ms}</td>"
             + _td_money(row["commission"], commission_style(row["commission"]))
@@ -662,6 +675,7 @@ def render_daily_html(days: list[dict[str, Any]]) -> str:
             f"<td style='white-space:nowrap'>{row['date'].strftime('%d/%m/%Y')}</td>"
             + _td_money(row["sale"])
             + _td_money(row["cost"])
+            + _td_money(row.get("labor", ZERO))
             + _td_money(row["profit"])
             + f"<td style='text-align:right;white-space:nowrap;{margin_style(row['margin'])}'>{ms}</td>"
             + _td_money(row["commission"], commission_style(row["commission"]))
@@ -728,14 +742,15 @@ def build_html(
     anomaly_rows: list[dict[str, Any]],
 ) -> str:
     total_sale = money(sum((r["sale"] for r in job_rows), ZERO))
-    total_cost = money(sum((r["cost"] for r in job_rows), ZERO))
-    total_profit = money(total_sale - total_cost)
+    total_po = money(sum((r["cost"] for r in job_rows), ZERO))
+    total_labor = money(sum((r.get("labor", ZERO) for r in job_rows), ZERO))
+    total_profit = money(sum((r["profit"] for r in job_rows), ZERO))
     total_margin = margin_of(total_sale, total_profit)
     total_commission = sum_job_commissions(job_rows)
     qualification = qualify_month(total_sale, total_profit, total_commission)
     job_body = render_job_rows_html(job_rows)
     table_wrap = "overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"
-    table_css = "border-collapse:collapse;font-size:11px;border-color:#ccc;width:100%;min-width:760px;"
+    table_css = "border-collapse:collapse;font-size:11px;border-color:#ccc;width:100%;min-width:880px;"
     head = "background:#1f3a5f;color:#fff;"
     anomaly_section = ""
     if anomaly_rows:
@@ -746,7 +761,7 @@ def build_html(
                 "<tr>"
                 f"<td style='white-space:nowrap;'>{r['date'].strftime('%d/%m/%Y')}</td>"
                 f"<td style='white-space:nowrap;'>{html.escape(str(r['reference']))}</td>"
-                f"{_td_money(r['sale'])}{_td_money(r['cost'])}{_td_money(r['profit'])}"
+                f"{_td_money(r['sale'])}{_td_money(r['cost'])}{_td_money(r.get('labor', ZERO))}{_td_money(r['profit'])}"
                 f"<td style='text-align:right;{margin_style(r['margin'])}'>{ms}</td>"
                 f"<td>{html.escape(r['reason'])}</td>"
                 "</tr>"
@@ -758,7 +773,7 @@ def build_html(
         <thead>
           <tr style="background:#721c24;color:#fff;">
             <th>Date</th><th>Group / job</th>
-            <th>Invoiced</th><th>Purchase orders</th><th>Profit</th><th>Margin</th><th>Why</th>
+            <th>Invoiced</th><th>Purchase orders</th><th>Labor</th><th>Profit</th><th>Margin</th><th>Why</th>
           </tr>
         </thead>
         <tbody>{anomaly_body}</tbody>
@@ -774,18 +789,20 @@ def build_html(
 
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px;">
         <tr>
-          <td width="20%" style="background:#1f3a5f;{tile_lab}">Overall profit</td>
-          <td width="20%" style="background:#2e5a8f;{tile_lab}">Invoiced</td>
-          <td width="20%" style="background:#3d6fa3;{tile_lab}">Purchase orders</td>
-          <td width="20%" style="background:#4a82b8;{tile_lab}">Margin</td>
-          <td width="20%" style="background:#1b7a4a;{tile_lab}">Commission</td>
+          <td width="16.666%" style="background:#1f3a5f;{tile_lab}">Overall profit</td>
+          <td width="16.666%" style="background:#2e5a8f;{tile_lab}">Invoiced</td>
+          <td width="16.666%" style="background:#3d6fa3;{tile_lab}">Purchase orders</td>
+          <td width="16.666%" style="background:#5a7fa8;{tile_lab}">Labor</td>
+          <td width="16.666%" style="background:#4a82b8;{tile_lab}">Margin</td>
+          <td width="16.666%" style="background:#1b7a4a;{tile_lab}">Commission</td>
         </tr>
         <tr>
-          <td width="20%" style="background:#1f3a5f;{tile_val}">{gbp(total_profit)}</td>
-          <td width="20%" style="background:#2e5a8f;{tile_val}">{gbp(total_sale)}</td>
-          <td width="20%" style="background:#3d6fa3;{tile_val}">{gbp(total_cost)}</td>
-          <td width="20%" style="background:#4a82b8;{tile_val}">{'n/a' if total_margin is None else f'{total_margin}%'}</td>
-          <td width="20%" style="background:#1b7a4a;{tile_val}">{gbp(total_commission)}</td>
+          <td width="16.666%" style="background:#1f3a5f;{tile_val}">{gbp(total_profit)}</td>
+          <td width="16.666%" style="background:#2e5a8f;{tile_val}">{gbp(total_sale)}</td>
+          <td width="16.666%" style="background:#3d6fa3;{tile_val}">{gbp(total_po)}</td>
+          <td width="16.666%" style="background:#5a7fa8;{tile_val}">{gbp(total_labor)}</td>
+          <td width="16.666%" style="background:#4a82b8;{tile_val}">{'n/a' if total_margin is None else f'{total_margin}%'}</td>
+          <td width="16.666%" style="background:#1b7a4a;{tile_val}">{gbp(total_commission)}</td>
         </tr>
       </table>
 
@@ -797,7 +814,7 @@ def build_html(
           <tr style="{head}">
             <th>Date</th>
             <th>Group / job</th>
-            <th>Invoiced</th><th>Purchase orders</th>
+            <th>Invoiced</th><th>Purchase orders</th><th>Labor</th>
             <th>Profit</th><th>Margin</th><th>Commission</th>
             {_th_run("Run profit", RUN_EDGE + "border-left-color:#fff;")}
             {_th_run("Run comm.")}
@@ -807,7 +824,7 @@ def build_html(
           {job_body}
           <tr style="{head}font-weight:700;">
             <td colspan="2">Total — {len(job_rows)} groups/jobs</td>
-            {_td_money(total_sale)}{_td_money(total_cost)}{_td_money(total_profit)}
+            {_td_money(total_sale)}{_td_money(total_po)}{_td_money(total_labor)}{_td_money(total_profit)}
             <td style="text-align:right">{'n/a' if total_margin is None else f'{total_margin}%'}</td>
             {_td_money(total_commission, commission_style(total_commission))}
             {_td_money(total_profit, f"{QUIET}{RUN_EDGE}border-left-color:#fff;")}
