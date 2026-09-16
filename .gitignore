@@ -1,4 +1,7 @@
-reports/
-.env
-.env.*
 __pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.env.local
+reports/
+.env.*
