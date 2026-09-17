@@ -224,14 +224,18 @@ def main(argv: list[str] | None = None) -> int:
                 f"{prefix}{pack['staff']['name']} — {pack['month_label']} — "
                 f"{COMPANY_NAME} commission"
             )
+            send_settings = settings
+            if settings.go_live:
+                send_settings = replace(settings, to_email=pack["staff"]["email"])
             send_preview_email(
-                settings=settings,
+                settings=send_settings,
                 subject=subject,
                 html_body=pack["body_html"],
                 attachment_html=pack["full_html"],
                 attachment_name=path.name,
             )
             summary["emailed"] = True
+            summary["emailed_to"] = send_settings.to_email
     print(json.dumps({"history_anchor": str(HISTORY_ANCHOR), "packs": summaries}, indent=2))
     return 0
 

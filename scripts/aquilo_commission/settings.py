@@ -23,6 +23,8 @@ MONTHLY_MIN_MARGIN_MESSAGE = D("40")  # Scorecard coaching figure only.
 DEFAULT_BASE_URL = "https://webservice.bigchange.com/v01/services.ashx"
 DEFAULT_CACHE_DIR = Path("/tmp/aquilo_commission")
 
+AQUILO_STAFF_DOMAIN = "aquilofacilities.co.uk"
+
 # Preview inboxes only until go-live. Real AM addresses are never used unless
 # AQUILO_COMMISSION_GO_LIVE=1 is set explicitly.
 PREVIEW_TO_ALLOWLIST = frozenset({"daniel.dwyer123@gmail.com"})
@@ -57,15 +59,39 @@ ESSENTIALZ_PO_NEEDLES = (
 )
 
 STAFF = {
-    "isabel": {"name": "Isabel Strong", "category_id": 79691, "key": "isabel"},
-    "laura": {"name": "Laura Menegon", "category_id": 129522, "key": "laura"},
-    "amy": {"name": "Amy Bradley", "category_id": 79850, "key": "amy"},
+    "isabel": {
+        "name": "Isabel Strong",
+        "category_id": 79691,
+        "key": "isabel",
+        "email": "isabel.strong@aquilofacilities.co.uk",
+    },
+    "laura": {
+        "name": "Laura Menegon",
+        "category_id": 129522,
+        "key": "laura",
+        "email": "laura.menegon@aquilofacilities.co.uk",
+    },
+    "amy": {
+        "name": "Amy Bradley",
+        "category_id": 79850,
+        "key": "amy",
+        "email": "amy.bradley@aquilofacilities.co.uk",
+    },
 }
 STAFF_BY_CATEGORY = {meta["category_id"]: meta for meta in STAFF.values()}
+GO_LIVE_TO_ALLOWLIST = frozenset(meta["email"] for meta in STAFF.values())
 
 
 class ConfigError(RuntimeError):
     pass
+
+
+def staff_mailbox(full_name: str) -> str:
+    """firstname.lastname@aquilofacilities.co.uk — used only after go-live."""
+    parts = [part for part in full_name.strip().split() if part]
+    if len(parts) < 2:
+        raise ConfigError(f"Cannot build an Aquilo mailbox from {full_name!r}")
+    return f"{parts[0].lower()}.{parts[-1].lower()}@{AQUILO_STAFF_DOMAIN}"
 
 
 def _clean(value: str) -> str:

@@ -12,6 +12,7 @@ from email.utils import getaddresses
 
 from .render import GROKBOT_CID, grokbot_bytes
 from .settings import (
+    GO_LIVE_TO_ALLOWLIST,
     PREVIEW_CC_ALLOWLIST,
     PREVIEW_TO_ALLOWLIST,
     AquiloSettings,
@@ -33,7 +34,12 @@ def assert_preview_recipients(settings: AquiloSettings) -> tuple[list[str], list
     cc_list = parse_addresses(settings.cc_email) if settings.cc_email else []
     if settings.go_live:
         if not to_list:
-            raise ConfigError("Go-live send requires SMTP_TO_EMAIL")
+            raise ConfigError("Go-live send requires the account manager mailbox")
+        bad_live = [addr for addr in to_list if addr not in GO_LIVE_TO_ALLOWLIST]
+        if bad_live:
+            raise ConfigError(
+                "Go-live packs may only go to the Aquilo account-manager mailboxes."
+            )
         return to_list, cc_list
     bad_to = [addr for addr in to_list if addr not in PREVIEW_TO_ALLOWLIST]
     bad_cc = [addr for addr in cc_list if addr not in PREVIEW_CC_ALLOWLIST]

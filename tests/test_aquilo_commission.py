@@ -51,10 +51,13 @@ from scripts.aquilo_commission.render import (
     qualify_rows,
 )
 from scripts.aquilo_commission.settings import (
+    GO_LIVE_TO_ALLOWLIST,
     LABOUR_RATE,
     PREVIEW_TO_ALLOWLIST,
+    STAFF,
     AquiloSettings,
     ConfigError,
+    staff_mailbox,
 )
 from scripts.aquilo_commission.util import money
 
@@ -769,6 +772,35 @@ class HtmlAndEmailGuardTest(unittest.TestCase):
         blocked = AquiloSettings(**{**settings.__dict__, "to_email": "isabel@example.com"})
         with self.assertRaises(ConfigError):
             assert_preview_recipients(blocked)
+        live_preview = AquiloSettings(
+            **{**settings.__dict__, "to_email": "isabel.strong@aquilofacilities.co.uk"}
+        )
+        with self.assertRaises(ConfigError):
+            assert_preview_recipients(live_preview)
+        live = AquiloSettings(
+            **{
+                **settings.__dict__,
+                "to_email": "isabel.strong@aquilofacilities.co.uk",
+                "cc_email": "",
+                "go_live": True,
+            }
+        )
+        to_live, cc_live = assert_preview_recipients(live)
+        self.assertEqual(to_live, ["isabel.strong@aquilofacilities.co.uk"])
+        self.assertEqual(cc_live, [])
+        self.assertEqual(staff_mailbox("Isabel Strong"), "isabel.strong@aquilofacilities.co.uk")
+        self.assertEqual(staff_mailbox("Laura Menegon"), "laura.menegon@aquilofacilities.co.uk")
+        self.assertEqual(staff_mailbox("Amy Bradley"), "amy.bradley@aquilofacilities.co.uk")
+        for meta in STAFF.values():
+            self.assertEqual(meta["email"], staff_mailbox(meta["name"]))
+        self.assertEqual(
+            GO_LIVE_TO_ALLOWLIST,
+            {
+                "isabel.strong@aquilofacilities.co.uk",
+                "laura.menegon@aquilofacilities.co.uk",
+                "amy.bradley@aquilofacilities.co.uk",
+            },
+        )
 
 
 class FinanceWindowTest(unittest.TestCase):

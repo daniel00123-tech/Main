@@ -124,4 +124,4 @@ Read-only JobWatch rebuild of Aquilo account-manager scorecards (Isabel Strong, 
 python3 -m scripts.aquilo_commission --send
 ```
 
-Labour is planned hours at £37.50/h. Commission is 3% / 4% / 5% of job profit with a progressive −£30 cap, and payable commission stays £0 until month profit reaches £11,000. Preview emails go to the configured preview inbox with the full HTML attached; set `AQUILO_COMMISSION_GO_LIVE=1` only when sending to staff. The script never writes to BigChange.
+Labour is planned hours at £37.50/h. Commission is 3% / 4% / 5% of job profit with a progressive −£30 cap (−£5 if the job is invoiced under £150). Payable commission stays £0 until month profit reaches £11,000. The pack is visuals-first (scorecard, centred status, Grokbot tip, and a random cheesy quote of the day). Preview emails go to the configured preview inbox; set `AQUILO_COMMISSION_GO_LIVE=1` only when each pack should go to `firstname.lastname@aquilofacilities.co.uk`. The script never writes to BigChange.
