@@ -7,6 +7,8 @@ from scripts.aquilo_commission.commission import (
     COMMISSION_TIERS,
     MAX_JOB_PENALTY,
     MONTHLY_MIN_PROFIT,
+    SMALL_JOB_MAX_PENALTY,
+    SMALL_JOB_SALE,
     attach_job_commissions,
     calculate_job_commission,
     progressive_relief,
@@ -135,11 +137,11 @@ class PenaltyTest(unittest.TestCase):
         result = calculate_job_commission("8000", "0", cost="8000")
         self.assertEqual(result.commission, D("-30.00"))
 
-    def test_po_only_uses_20_percent_then_relief_and_cap(self) -> None:
+    def test_po_only_uses_20_percent_then_the_small_job_cap(self) -> None:
         result = calculate_job_commission("0", "-664", cost="664")
         self.assertTrue(result.is_penalty)
         self.assertEqual(result.raw_penalty, D("132.80"))
-        self.assertEqual(result.commission, D("-30.00"))
+        self.assertEqual(result.commission, D("-5.00"))
 
     def test_no_sale_no_cost_is_zero(self) -> None:
         result = calculate_job_commission("0", "0", cost="0")
@@ -163,6 +165,23 @@ class PenaltyTest(unittest.TestCase):
     def test_below_tier_floor_is_penalty(self) -> None:
         result = calculate_job_commission("3000", "300", cost="2700")
         self.assertTrue(result.is_penalty)
+        self.assertEqual(result.commission, D("-30.00"))
+
+    def test_jobs_under_150_are_capped_at_5(self) -> None:
+        self.assertEqual(SMALL_JOB_SALE, D("150"))
+        self.assertEqual(SMALL_JOB_MAX_PENALTY, D("5"))
+        # £140 sale, £20 profit (14.3%) is £8 short of the 20% floor — cap −£5.
+        result = calculate_job_commission("140", "20", cost="120")
+        self.assertTrue(result.is_penalty)
+        self.assertEqual(result.raw_penalty, D("8.00"))
+        self.assertEqual(result.commission, D("-5.00"))
+        tenner = calculate_job_commission("100", "10", cost="90")
+        self.assertEqual(tenner.commission, D("-5.00"))
+        just_under = calculate_job_commission("149.99", "0", cost="149.99")
+        self.assertEqual(just_under.commission, D("-5.00"))
+
+    def test_sale_of_150_keeps_the_30_cap(self) -> None:
+        result = calculate_job_commission("150", "0", cost="150")
         self.assertEqual(result.commission, D("-30.00"))
 
 

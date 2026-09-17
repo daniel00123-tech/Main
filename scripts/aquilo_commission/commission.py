@@ -16,6 +16,8 @@ ZERO = D("0")
 
 PENALTY_RATE_PO = D("0.20")
 MAX_JOB_PENALTY = D("30")
+SMALL_JOB_SALE = D("150")
+SMALL_JOB_MAX_PENALTY = D("5")
 MONTHLY_MIN_PROFIT = D("11000")
 MONTHLY_MIN_MARGIN_MESSAGE = D("25")
 
@@ -75,25 +77,34 @@ def select_band(margin: D, bands: list[dict[str, Any]]) -> dict[str, Any] | None
     return max(eligible, key=lambda band: as_decimal(band["minMargin"]))
 
 
-def progressive_relief(raw: D) -> D:
+def max_penalty_for(sale: D) -> D:
+    """Jobs invoiced under £150 cannot be fined more than £5."""
+    if sale < SMALL_JOB_SALE:
+        return SMALL_JOB_MAX_PENALTY
+    return MAX_JOB_PENALTY
+
+
+def progressive_relief(raw: D, *, sale: D | None = None) -> D:
     """Turn a positive RAW shortfall into the actual deduction.
 
-    first £30 @ 100%, next £30 @ 50%, remainder @ 25%, then hard-cap £30.
+    first £30 @ 100%, next £30 @ 50%, remainder @ 25%, then the job cap
+    (£5 under £150 sale, otherwise £30).
     """
     if raw <= 0:
         return ZERO
+    cap = max_penalty_for(sale if sale is not None else SMALL_JOB_SALE)
     first = min(raw, D("30"))
     rest = raw - first
     second = min(rest, D("30"))
     remainder = rest - second
     actual = first + (second * D("0.50")) + (remainder * D("0.25"))
-    return money(min(actual, MAX_JOB_PENALTY))
+    return money(min(actual, cap))
 
 
-def cap_penalty(amount: D) -> D:
+def cap_penalty(amount: D, *, sale: D = ZERO) -> D:
     if amount >= 0:
         return money(amount)
-    return money(max(amount, -MAX_JOB_PENALTY))
+    return money(max(amount, -max_penalty_for(sale)))
 
 
 @dataclass(frozen=True)
@@ -136,7 +147,7 @@ def calculate_job_commission(
         raw = money(shortfall) if shortfall > 0 else ZERO
 
     if raw > 0:
-        deducted = cap_penalty(-progressive_relief(raw))
+        deducted = cap_penalty(-progressive_relief(raw, sale=sale), sale=sale)
         return JobCommission(
             revenue=money(sale),
             profit=money(job_profit),
