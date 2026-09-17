@@ -30,6 +30,7 @@ try:
         attach_job_commissions,
         gbp,
         money,
+        profile_for_staff,
         qualify_month,
         sum_job_commissions,
     )
@@ -38,6 +39,7 @@ except ImportError:  # python3 scripts/staff_profit_report.py
         attach_job_commissions,
         gbp,
         money,
+        profile_for_staff,
         qualify_month,
         sum_job_commissions,
     )
@@ -59,6 +61,7 @@ MIN_PO_AMOUNT = D("1")
 BEGINNING_OF_TIME = dt.date(2026, 5, 1)
 FROM_EMAIL = "ella@elvexpropertyservices.com"
 DEFAULT_MAIL_TO = "william@elvexpropertyservices.com"
+DEFAULT_MAIL_CC = "william@elvexpropertyservices.com"
 
 
 def is_missing_po_anomaly(sale: D, po_cost: D) -> bool:
@@ -357,16 +360,32 @@ def graph_token() -> str:
     return token
 
 
-def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
-    token = graph_token()
-    payload = {
+def graph_mail_payload(
+    subject: str,
+    html_body: str,
+    to_email: str,
+    cc_email: str | None = None,
+) -> dict[str, Any]:
+    cc = cc_email or DEFAULT_MAIL_CC
+    return {
         "message": {
             "subject": subject,
             "body": {"contentType": "HTML", "content": html_body},
             "toRecipients": [{"emailAddress": {"address": to_email}}],
+            "ccRecipients": [{"emailAddress": {"address": cc}}],
         },
         "saveToSentItems": True,
     }
+
+
+def send_graph_mail(
+    subject: str,
+    html_body: str,
+    to_email: str,
+    cc_email: str | None = None,
+) -> None:
+    token = graph_token()
+    payload = graph_mail_payload(subject, html_body, to_email, cc_email)
     raw = json.dumps(payload).encode()
     req = urllib.request.Request(
         f"https://graph.microsoft.com/v1.0/users/{urllib.parse.quote(FROM_EMAIL)}/sendMail",
@@ -864,13 +883,20 @@ def load_report_data(
     )
 
 
+def current_london_month() -> tuple[int, int]:
+    today = dt.datetime.now(LONDON).date()
+    return today.year, today.month
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Staff commission report")
+    year, month = current_london_month()
     parser.add_argument("--staff", choices=sorted(STAFF), default="sharon")
-    parser.add_argument("--year", type=int, default=2026)
-    parser.add_argument("--month", type=int, default=8)
+    parser.add_argument("--year", type=int, default=year)
+    parser.add_argument("--month", type=int, default=month)
     parser.add_argument("--send", action="store_true", help="Email the report")
     parser.add_argument("--to", default=os.environ.get("STAFF_PROFIT_MAIL_TO", DEFAULT_MAIL_TO))
+    parser.add_argument("--cc", default=os.environ.get("STAFF_PROFIT_MAIL_CC", DEFAULT_MAIL_CC))
     parser.add_argument("--out", default="")
     return parser.parse_args(argv)
 
@@ -878,10 +904,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     staff = STAFF[args.staff]
+    profile = profile_for_staff(staff["name"])
     month_start, month_end = month_bounds(args.year, args.month)
     month_label = month_start.strftime("%B %Y")
     main_rows, anomaly_rows = load_report_data(staff["category_id"], month_start, month_end)
-    job_rows = attach_job_commissions(main_rows)
+    job_rows = attach_job_commissions(main_rows, profile=profile)
     html_body = build_html(
         staff_name=staff["name"],
         month_label=month_label,
@@ -916,10 +943,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.send:
         subject = f"{staff['name']} — {month_label} — commission report"
         try:
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, cc_email=args.cc)
         except Exception:
             time.sleep(2)
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, cc_email=args.cc)
     return 0
 
 
