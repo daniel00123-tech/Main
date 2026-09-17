@@ -115,3 +115,13 @@ python3 scripts/elvex_daily_group_profit.py
 Supply BigChange JobWatch credentials and Microsoft Graph `MS_TENANT_ID`, `MS_CLIENT_ID`, and `MS_CLIENT_SECRET` as environment variables. The script never writes to BigChange.
 
 Each run writes `artifacts/dandara-confirmation-candidates.csv`, `artifacts/dandara-confirmation-results.json`, and `artifacts/dandara-confirmation-state.json`. The state and existing FixFlo comments prevent duplicate confirmations for the same issue and appointment date. Set `DRY_RUN=true` to perform all read and eligibility checks without posting comments or changing state.
+
+## Aquilo staff commission packs
+
+Read-only JobWatch rebuild of Aquilo account-manager scorecards (Isabel Strong, Laura Menegon, Amy Bradley). Isolated from other companies: use `AQUILO_*` credentials or `AQUILO_ENV_FILE`, never mix caches or logins.
+
+```sh
+python3 -m scripts.aquilo_commission --send
+```
+
+Labour is planned hours at £37.50/h. Commission is 3% / 4% / 5% of job profit with a progressive −£30 cap, and payable commission stays £0 until month profit reaches £11,000. Preview emails go to the configured preview inbox with the full HTML attached; set `AQUILO_COMMISSION_GO_LIVE=1` only when sending to staff. The script never writes to BigChange.
