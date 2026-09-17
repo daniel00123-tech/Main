@@ -1,6 +1,9 @@
 import datetime as dt
 import decimal
+import json
 import unittest
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from scripts.staff_commission import (
     attach_job_commissions,
@@ -8,6 +11,8 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
     build_html,
     build_staff_rows,
@@ -15,6 +20,10 @@ from scripts.staff_profit_report import (
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    parse_args,
+    refuse_past_month_send,
+    resolve_staff,
+    send_graph_mail,
 )
 
 
@@ -97,6 +106,11 @@ class HtmlReportTest(unittest.TestCase):
         self.assertNotIn("Your current commission is", body)
         self.assertNotIn("A group is included", body)
         self.assertNotIn("calculate_job_commission", body)
+        self.assertIn('width="20%"', body)
+        self.assertLess(body.find("Overall profit"), body.find("£525.00"))
+        self.assertIn("Purchase orders", body)
+        self.assertNotIn("display:flex", body)
+        self.assertNotIn("display: flex", body)
         status_at = body.find("STATUS:")
         table_at = body.find("Run profit")
         self.assertGreater(status_at, 0)
@@ -497,6 +511,92 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class ResolveStaffTest(unittest.TestCase):
+    def test_known_names_use_fixed_ids(self) -> None:
+        self.assertEqual(resolve_staff("Sharon")["category_id"], 132264)
+        self.assertEqual(resolve_staff("ella")["category_id"], 132225)
+        self.assertEqual(resolve_staff("LAUREN")["name"], "Lauren")
+        self.assertEqual(resolve_staff("Lauren")["category_id"], 132263)
+
+    def test_unknown_name_is_looked_up_exactly(self) -> None:
+        categories = [
+            {"id": 999001, "name": "Pat"},
+            {"Id": 999002, "JobCategoryName": "Sam"},
+        ]
+        staff = resolve_staff("Pat", categories=categories)
+        self.assertEqual(staff["category_id"], 999001)
+        self.assertEqual(staff["name"], "Pat")
+
+    def test_unknown_name_does_not_guess_a_partial_match(self) -> None:
+        categories = [{"id": 132264, "name": "Sharon Extra"}]
+        with self.assertRaises(Exception):
+            resolve_staff("Sharon Extra Person", categories=categories)
+        with self.assertRaises(Exception):
+            resolve_staff("Unknown Person", categories=categories)
+
+
+class CliDefaultsTest(unittest.TestCase):
+    def test_defaults_are_current_london_month_and_ella_to_william_cc(self) -> None:
+        today = dt.datetime.now(ZoneInfo("Europe/London")).date()
+        args = parse_args([])
+        self.assertEqual(args.year, today.year)
+        self.assertEqual(args.month, today.month)
+        self.assertEqual(args.staff, "Sharon")
+        self.assertEqual(args.to, "ella@elvexpropertyservices.com")
+        self.assertEqual(args.cc, "william@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_TO, "ella@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
+
+    def test_refuses_to_email_a_past_month(self) -> None:
+        today = dt.datetime.now(ZoneInfo("Europe/London")).date()
+        past = dt.date(today.year, today.month, 1) - dt.timedelta(days=1)
+        past = past.replace(day=1)
+        with self.assertRaises(SystemExit):
+            refuse_past_month_send(past)
+
+
+class GraphMailPayloadTest(unittest.TestCase):
+    def test_send_mail_is_to_ella_cc_william_and_saves_sent_items(self) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeResp:
+            status = 202
+
+            def read(self) -> bytes:
+                return b""
+
+            def __enter__(self) -> "FakeResp":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+        def fake_urlopen(req: object, timeout: int = 0) -> FakeResp:
+            captured["url"] = getattr(req, "full_url", "")
+            captured["body"] = json.loads(req.data.decode())
+            return FakeResp()
+
+        with patch("scripts.staff_profit_report.graph_token", return_value="token"):
+            with patch("scripts.staff_profit_report.urllib.request.urlopen", side_effect=fake_urlopen):
+                send_graph_mail(
+                    "Sharon — September 2026 — commission report",
+                    "<p>ok</p>",
+                    DEFAULT_MAIL_TO,
+                    DEFAULT_MAIL_CC,
+                )
+        payload = captured["body"]
+        self.assertEqual(
+            payload["message"]["toRecipients"][0]["emailAddress"]["address"],
+            "ella@elvexpropertyservices.com",
+        )
+        self.assertEqual(
+            payload["message"]["ccRecipients"][0]["emailAddress"]["address"],
+            "william@elvexpropertyservices.com",
+        )
+        self.assertTrue(payload["saveToSentItems"])
+        self.assertIn("ella%40elvexpropertyservices.com", str(captured["url"]))
 
 
 if __name__ == "__main__":
