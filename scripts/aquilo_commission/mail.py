@@ -69,9 +69,9 @@ def send_preview_email(
     root.attach(alt)
     alt.attach(MIMEText(html_body, "html", "utf-8"))
 
-    icon = MIMEImage(grokbot_bytes(), _subtype="png")
+    icon = MIMEImage(grokbot_bytes(), _subtype="jpeg")
     icon.add_header("Content-ID", f"<{GROKBOT_CID}>")
-    icon.add_header("Content-Disposition", "inline", filename="grokbot.png")
+    icon.add_header("Content-Disposition", "inline", filename="grokbot.jpg")
     root.attach(icon)
 
     attachment = MIMEApplication(attachment_html.encode("utf-8"), _subtype="html")

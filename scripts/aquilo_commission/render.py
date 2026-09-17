@@ -16,6 +16,7 @@ ZERO = D("0")
 
 GROKBOT_CID = "grokbot-icon"
 GROKBOT_PATH = Path(__file__).resolve().parent / "assets" / "grokbot.png"
+GROKBOT_MIME = "image/jpeg"
 
 QUIET = "color:#5b6775;font-size:11px;font-weight:400;"
 HEAD = "background:#1f3a5f;color:#fff;"
@@ -34,7 +35,7 @@ def grokbot_src(*, inline_email: bool) -> str:
         return f"cid:{GROKBOT_CID}"
     raw = grokbot_bytes()
     encoded = base64.b64encode(raw).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    return f"data:{GROKBOT_MIME};base64,{encoded}"
 
 
 def margin_style(margin: D | None) -> str:

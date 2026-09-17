@@ -634,6 +634,7 @@ class HtmlAndEmailGuardTest(unittest.TestCase):
         self.assertNotIn("grid-template", body)
         self.assertTrue(GROKBOT_PATH.is_file())
         self.assertIn(f"cid:{GROKBOT_CID}", email)
+        self.assertTrue(GROKBOT_PATH.read_bytes()[:3] == b"\xff\xd8\xff")
         self.assertIn("GR/18358", email)
         self.assertIn("Your jobs this month", email)
         self.assertIn("Hi Isabel", email)
