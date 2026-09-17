@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import datetime as dt
 import html
 from pathlib import Path
 from typing import Any
@@ -163,7 +164,7 @@ def render_qualification(q: MonthlyQualification) -> str:
         status_bg, status_fg, lead = (
             "#fff6dc",
             "#7a5b00",
-            "Payable commission stays at £0.00 until month profit reaches the gate.",
+            "Payable commission stays at £0.00 until month profit reaches £11,000.",
         )
     coach = ""
     if q.coach_line:
@@ -193,7 +194,7 @@ def render_qualification(q: MonthlyQualification) -> str:
             {_kv("Still to go", gbp(q.profit_remaining))}
             {_kv("Running commission (shown on jobs)", gbp(q.running_commission))}
             {_kv("Payable commission", gbp(q.payable_commission))}
-            {_kv("Target margin (coaching only — does not gate)", format_margin(q.min_margin_message))}
+            {_kv("Target margin (for coaching)", format_margin(q.min_margin_message))}
           </table>
           <p style="margin:8px 0 0;padding:12px 14px;background:{status_bg};color:{status_fg};font-weight:700;font-size:15px;line-height:1.4;">
             Status: {html.escape(q.status)}
@@ -205,11 +206,69 @@ def render_qualification(q: MonthlyQualification) -> str:
     """
 
 
+DAY = "background:#eef2f6;color:#4a5560;font-size:11px;font-weight:600;"
+
+
+def day_subtotal(day: dt.date, jobs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Sum stored job figures for one invoice day. Do not rerun commission."""
+    sale = money(sum((r["sale"] for r in jobs), ZERO))
+    cost = money(sum((r["cost"] for r in jobs), ZERO))
+    labour = money(sum((r.get("labour") or ZERO for r in jobs), ZERO))
+    profit = money(sum((r["profit"] for r in jobs), ZERO))
+    label = f"{day.strftime('%d/%m/%Y')} · {len(jobs)} job{'s' if len(jobs) != 1 else ''}"
+    return {
+        "kind": "day_total",
+        "date": day,
+        "reference": label,
+        "sale": sale,
+        "cost": cost,
+        "labour": labour,
+        "profit": profit,
+        "margin": (profit / sale * D("100")) if sale != 0 else None,
+        "commission": sum_job_commissions(jobs),
+        "running_profit": jobs[-1]["running_profit"],
+        "running_commission": jobs[-1]["running_commission"],
+    }
+
+
+def iter_display_rows(job_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    last_day: dt.date | None = None
+    day_jobs: list[dict[str, Any]] = []
+    for row in job_rows:
+        if last_day is not None and row["date"] != last_day:
+            rows.append(day_subtotal(last_day, day_jobs))
+            day_jobs = []
+        rows.append({**row, "kind": "job"})
+        day_jobs.append(row)
+        last_day = row["date"]
+    if last_day is not None and day_jobs:
+        rows.append(day_subtotal(last_day, day_jobs))
+    return rows
+
+
 def render_job_table(job_rows: list[dict[str, Any]]) -> str:
     if not job_rows:
         return "<p style='margin:0 0 28px;font-size:15px;line-height:1.6;color:#243040;'>No qualifying groups in this month.</p>"
     body = []
-    for row in job_rows:
+    for row in iter_display_rows(job_rows):
+        if row["kind"] == "day_total":
+            ms = format_margin(row.get("margin"))
+            body.append(
+                "<tr style='background:#eef2f6;'>"
+                + _td(html.escape(str(row["reference"])), DAY, align="left")
+                + _td("Day total", DAY, align="left")
+                + _td_money(row["sale"], DAY)
+                + _td_money(row["cost"], DAY)
+                + _td_money(row.get("labour") or ZERO, DAY)
+                + _td_money(row["profit"], DAY)
+                + _td(ms, DAY, align="right")
+                + _td_money(row["commission"], DAY)
+                + _td_money(row["running_profit"], DAY)
+                + _td_money(row["running_commission"], DAY)
+                + "</tr>"
+            )
+            continue
         ms = format_margin(row.get("margin"))
         body.append(
             "<tr>"
@@ -251,8 +310,8 @@ def render_job_table(job_rows: list[dict[str, Any]]) -> str:
         <td>
           <p style="margin:0 0 8px;font-size:18px;line-height:1.4;font-weight:700;color:{NAVY};">Your jobs this month</p>
           <p style="margin:0 0 14px;{COPY}">
-            One row per job group, in invoice-date order. Labour is planned hours at {gbp(LABOUR_RATE)}/h.
-            Commission is calculated on the group, never on a line or a subtotal.
+            One row per job group, in invoice-date order, with a smaller day total under each date.
+            Labour is planned hours at {gbp(LABOUR_RATE)}/h. Commission is calculated on the group, never on a line or a day total.
           </p>
         </td>
       </tr>

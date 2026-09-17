@@ -42,6 +42,8 @@ from scripts.aquilo_commission.render import (
     GROKBOT_PATH,
     build_email_body,
     build_full_html,
+    day_subtotal,
+    iter_display_rows,
     qualify_rows,
 )
 from scripts.aquilo_commission.settings import (
@@ -639,6 +641,62 @@ class HtmlAndEmailGuardTest(unittest.TestCase):
         self.assertIn("Your jobs this month", email)
         self.assertIn("Hi Isabel", email)
         self.assertNotIn("The full job table is attached so the email client cannot clip", email)
+        self.assertNotIn("does not gate", body.lower())
+        self.assertNotIn("the gate", body.lower())
+        self.assertIn("Day total", body)
+        self.assertIn("03/09/2026 · 1 job", body)
+
+    def test_day_summary_sums_jobs_and_does_not_recalculate_commission(self) -> None:
+        jobs = attach_job_commissions(
+            [
+                {
+                    "date": dt.date(2026, 9, 3),
+                    "reference": "GR/1",
+                    "sale": D("1500"),
+                    "cost": D("975"),
+                    "labour": D("0"),
+                    "profit": D("525"),
+                },
+                {
+                    "date": dt.date(2026, 9, 3),
+                    "reference": "GR/2",
+                    "sale": D("3000"),
+                    "cost": D("2700"),
+                    "labour": D("0"),
+                    "profit": D("300"),
+                },
+                {
+                    "date": dt.date(2026, 9, 4),
+                    "reference": "GR/3",
+                    "sale": D("3000"),
+                    "cost": D("2700"),
+                    "labour": D("0"),
+                    "profit": D("300"),
+                },
+            ]
+        )
+        display = iter_display_rows(jobs)
+        kinds = [row["kind"] for row in display]
+        self.assertEqual(kinds, ["job", "job", "day_total", "job", "day_total"])
+        day1 = display[2]
+        self.assertEqual(day1["sale"], D("4500.00"))
+        self.assertEqual(day1["labour"], D("0.00"))
+        self.assertEqual(day1["profit"], D("825.00"))
+        self.assertEqual(day1["commission"], D("-14.25"))
+        self.assertEqual(day1["commission"], sum_job_commissions(jobs[:2]))
+        self.assertNotEqual(day1["commission"], calculate_job_commission(D("4500"), D("825")).commission)
+        self.assertIn("2 jobs", day_subtotal(dt.date(2026, 9, 3), jobs[:2])["reference"])
+        html_body = build_full_html(
+            staff_name="Amy Bradley",
+            month_label="September 2026",
+            job_rows=jobs,
+            anomaly_rows=[],
+            review_rows=[],
+            qualification=qualify_rows(jobs),
+        )
+        self.assertIn("03/09/2026 · 2 jobs", html_body)
+        self.assertIn("04/09/2026 · 1 job", html_body)
+        self.assertIn("Day total", html_body)
 
     def test_commission_is_not_recalculated_on_month_total(self) -> None:
         rows = attach_job_commissions(
