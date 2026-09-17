@@ -6,6 +6,7 @@ import argparse
 import datetime as dt
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,7 @@ from .jobwatch import (
     resource_group_map,
 )
 from .mail import send_preview_email
-from .render import build_email_body, build_full_html, qualify_rows
+from .render import build_email_body, build_full_html, pick_quote, qualify_rows
 from .settings import (
     COMPANY_NAME,
     HISTORY_ANCHOR,
@@ -98,6 +99,7 @@ def build_month_packs(
         )
         job_rows = attach_job_commissions(main_rows)
         qualification = qualify_rows(job_rows)
+        quote = pick_quote()
         full_html = build_full_html(
             staff_name=meta["name"],
             month_label=month_label,
@@ -106,6 +108,7 @@ def build_month_packs(
             review_rows=review_rows,
             qualification=qualification,
             preview=preview,
+            quote=quote,
         )
         body_html = build_email_body(
             staff_name=meta["name"],
@@ -116,6 +119,7 @@ def build_month_packs(
             anomaly_rows=anomaly_rows,
             review_rows=review_rows,
             preview=preview,
+            quote=quote,
         )
         packs[key] = {
             "staff": meta,
@@ -164,6 +168,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--year", type=int, default=0)
     parser.add_argument("--month", type=int, default=0)
     parser.add_argument("--send", action="store_true", help="Email preview packs (one per staff)")
+    parser.add_argument("--no-cc", action="store_true", help="Send to SMTP_TO_EMAIL only (no Nirvana CC)")
     parser.add_argument("--out-dir", default="reports/aquilo")
     return parser.parse_args(argv)
 
@@ -183,6 +188,8 @@ def selected_staff(raw: str) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     settings = load_settings()
+    if args.no_cc:
+        settings = replace(settings, cc_email="")
     today = dt.datetime.now(LONDON).date()
     if args.year and args.month:
         month_start = dt.date(args.year, args.month, 1)

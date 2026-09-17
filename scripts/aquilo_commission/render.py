@@ -5,11 +5,12 @@ from __future__ import annotations
 import base64
 import datetime as dt
 import html
+import random
 from pathlib import Path
 from typing import Any
 
 from .commission import MonthlyQualification, qualify_month, sum_job_commissions
-from .settings import COMPANY_NAME, LABOUR_RATE
+from .settings import COMPANY_NAME
 from .util import format_margin, gbp, money
 
 D = __import__("decimal").Decimal
@@ -25,6 +26,30 @@ TABLE_CSS = "border-collapse:collapse;font-size:12px;border-color:#d5dde6;width:
 CELL = "padding:8px 10px;border:1px solid #d5dde6;"
 NAVY = "#1f3a5f"
 COPY = "font-size:16px;line-height:1.6;color:#243040;"
+
+GROKBOT_QUOTES = (
+    "Small jobs done well turn into a month you can be proud of.",
+    "Progress is profit you have not booked yet — keep going.",
+    "One clean finish today is worth more than ten almosts.",
+    "You do not have to do it all at once. You do have to keep moving.",
+    "The next good job is the one that unlocks the month.",
+    "Steady work compounds. So does a kind word to yourself.",
+    "Show up, tidy the details, and the numbers follow.",
+    "You are closer than yesterday. That is enough for today.",
+    "A quiet win still counts. Log it and go again.",
+    "Protect the margin, look after the customer, look after you.",
+    "Done is a better feeling than perfect sitting in the draft pile.",
+    "Your future self is already thanking you for the next completed job.",
+    "Keep the standard high. The month will catch up.",
+    "Courage is sending the invoice and starting the next one.",
+    "You have solved harder weeks than this. This one is yours too.",
+)
+
+
+def pick_quote(rng: random.Random | None = None) -> str:
+    """A fresh affirmation each send — not tied to a fixed calendar day."""
+    picker = rng if rng is not None else random.SystemRandom()
+    return picker.choice(GROKBOT_QUOTES)
 
 
 def grokbot_bytes() -> bytes:
@@ -157,7 +182,21 @@ def _kv(label: str, value: str, *, first: bool = False) -> str:
     )
 
 
-def render_qualification(q: MonthlyQualification) -> str:
+def _grokbot_card(title: str, body: str, icon_src: str) -> str:
+    return f"""
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef4fb;border:1px solid #d5e2f0;">
+      <tr>
+        <td valign="top" style="padding:14px 12px 14px 14px;width:44px;">{grokbot_img(icon_src, size=36)}</td>
+        <td valign="middle" style="padding:14px 16px 14px 4px;">
+          <p style="margin:0 0 6px;font-size:12px;letter-spacing:0.06em;color:{NAVY};text-transform:uppercase;font-weight:700;">{html.escape(title)}</p>
+          <p style="margin:0;font-size:15px;line-height:1.55;color:#243040;">{html.escape(body)}</p>
+        </td>
+      </tr>
+    </table>
+    """
+
+
+def render_qualification(q: MonthlyQualification, *, icon_src: str, quote: str) -> str:
     if q.qualified:
         status_bg, status_fg, lead = "#e5f6ea", "#155724", "You have unlocked payable commission for this month."
     else:
@@ -170,16 +209,7 @@ def render_qualification(q: MonthlyQualification) -> str:
     if q.coach_line:
         coach = f"""
         <tr>
-          <td colspan="2" style="padding:16px 0 0;">
-            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef4fb;border:1px solid #d5e2f0;">
-              <tr>
-                <td style="padding:14px 16px;">
-                  <p style="margin:0 0 6px;font-size:12px;letter-spacing:0.06em;color:{NAVY};text-transform:uppercase;font-weight:700;">Grokbot tip</p>
-                  <p style="margin:0;font-size:15px;line-height:1.55;color:#243040;">{html.escape(q.coach_line)}</p>
-                </td>
-              </tr>
-            </table>
-          </td>
+          <td style="padding:16px 0 0;">{_grokbot_card("Grokbot tip", q.coach_line, icon_src)}</td>
         </tr>
         """
     return f"""
@@ -194,12 +224,17 @@ def render_qualification(q: MonthlyQualification) -> str:
             {_kv("Still to go", gbp(q.profit_remaining))}
             {_kv("Running commission (shown on jobs)", gbp(q.running_commission))}
             {_kv("Payable commission", gbp(q.payable_commission))}
-            {_kv("Target margin (for coaching)", format_margin(q.min_margin_message))}
+            {_kv("Target margin", format_margin(q.min_margin_message))}
           </table>
-          <p style="margin:8px 0 0;padding:12px 14px;background:{status_bg};color:{status_fg};font-weight:700;font-size:15px;line-height:1.4;">
+          <p style="margin:8px 0 0;padding:14px 16px;background:{status_bg};color:{status_fg};font-weight:700;font-size:15px;line-height:1.4;text-align:center;">
             Status: {html.escape(q.status)}
           </p>
-          <table width="100%" cellpadding="0" cellspacing="0" border="0">{coach}</table>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            {coach}
+            <tr>
+              <td style="padding:12px 0 0;">{_grokbot_card("Grokbot quote of the day", quote, icon_src)}</td>
+            </tr>
+          </table>
         </td>
       </tr>
     </table>
@@ -308,11 +343,7 @@ def render_job_table(job_rows: list[dict[str, Any]]) -> str:
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;">
       <tr>
         <td>
-          <p style="margin:0 0 8px;font-size:18px;line-height:1.4;font-weight:700;color:{NAVY};">Your jobs this month</p>
-          <p style="margin:0 0 14px;{COPY}">
-            One row per job group, in invoice-date order, with a smaller day total under each date.
-            Labour is planned hours at {gbp(LABOUR_RATE)}/h. Commission is calculated on the group, never on a line or a day total.
-          </p>
+          <p style="margin:0 0 14px;font-size:18px;line-height:1.4;font-weight:700;color:{NAVY};">Your jobs this month</p>
         </td>
       </tr>
     </table>
@@ -347,8 +378,7 @@ def render_anomaly_table(rows: list[dict[str, Any]]) -> str:
             + "</tr>"
         )
     return f"""
-    <p style="margin:0 0 8px;font-size:18px;line-height:1.4;font-weight:700;color:#721c24;">Anomalies left out of totals</p>
-    <p style="margin:0 0 14px;{COPY}">These groups invoiced more than £250 with no purchase order. Labour is not treated as a PO.</p>
+    <p style="margin:0 0 14px;font-size:18px;line-height:1.4;font-weight:700;color:#721c24;">Anomalies left out of totals</p>
     <table cellpadding="0" cellspacing="0" border="1" style="{TABLE_CSS}margin:0 0 28px;">
       <thead>
         <tr>
@@ -378,8 +408,7 @@ def render_review_table(rows: list[dict[str, Any]]) -> str:
             + "</tr>"
         )
     return f"""
-    <p style="margin:0 0 8px;font-size:18px;line-height:1.4;font-weight:700;color:#856404;">Worth a second look</p>
-    <p style="margin:0 0 14px;{COPY}">Flagged groups only — they still sit in the main table above.</p>
+    <p style="margin:0 0 14px;font-size:18px;line-height:1.4;font-weight:700;color:#856404;">Worth a second look</p>
     <table cellpadding="0" cellspacing="0" border="1" style="{TABLE_CSS}margin:0 0 28px;">
       <thead>
         <tr>
@@ -402,8 +431,10 @@ def render_report(
     qualification: MonthlyQualification,
     preview: bool = True,
     inline_email: bool = False,
+    quote: str | None = None,
 ) -> str:
     icon_src = grokbot_src(inline_email=inline_email)
+    quote_text = quote or pick_quote()
     preview_note = (
         "<p style='margin:0 0 20px;padding:12px 14px;background:#eef4fb;border:1px solid #d5e2f0;"
         "font-size:14px;line-height:1.55;color:#1f3a5f;'>"
@@ -414,12 +445,8 @@ def render_report(
     )
     greeting = f"""
       <p style="margin:0 0 12px;font-size:22px;line-height:1.4;font-weight:700;color:{NAVY};">Hi {html.escape(first_name)},</p>
-      <p style="margin:0 0 12px;{COPY}">
+      <p style="margin:0 0 24px;{COPY}">
         Here is your {html.escape(month_label)} {html.escape(COMPANY_NAME)} commission pack.
-        The scorecard is the month in one view. The job table underneath is the full story, and a copy is attached if you want to keep it.
-      </p>
-      <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#5b6775;">
-        Payroll Labour uses planned hours at {gbp(LABOUR_RATE)}/h, not timesheets. Quotes are ignored.
       </p>
     """
     signoff = """
@@ -445,7 +472,7 @@ def render_report(
               {greeting}
               {preview_note}
               {render_scorecard(staff_name=staff_name, month_label=month_label, qualification=qualification, icon_src=icon_src)}
-              {render_qualification(qualification)}
+              {render_qualification(qualification, icon_src=icon_src, quote=quote_text)}
               {render_job_table(job_rows)}
               {render_anomaly_table(anomaly_rows)}
               {render_review_table(review_rows)}
@@ -470,6 +497,7 @@ def build_full_html(
     review_rows: list[dict[str, Any]],
     qualification: MonthlyQualification,
     preview: bool = True,
+    quote: str | None = None,
 ) -> str:
     first = staff_name.split()[0] if staff_name.strip() else staff_name
     return render_report(
@@ -482,6 +510,7 @@ def build_full_html(
         qualification=qualification,
         preview=preview,
         inline_email=False,
+        quote=quote,
     )
 
 
@@ -495,6 +524,7 @@ def build_email_body(
     anomaly_rows: list[dict[str, Any]] | None = None,
     review_rows: list[dict[str, Any]] | None = None,
     preview: bool = True,
+    quote: str | None = None,
 ) -> str:
     """Full pack in the email body: greeting, Grokbot scorecard, then the job table."""
     return render_report(
@@ -507,6 +537,7 @@ def build_email_body(
         qualification=qualification,
         preview=preview,
         inline_email=True,
+        quote=quote,
     )
 
 

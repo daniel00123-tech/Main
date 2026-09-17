@@ -42,10 +42,12 @@ from scripts.aquilo_commission.mail import assert_preview_recipients
 from scripts.aquilo_commission.render import (
     GROKBOT_CID,
     GROKBOT_PATH,
+    GROKBOT_QUOTES,
     build_email_body,
     build_full_html,
     day_subtotal,
     iter_display_rows,
+    pick_quote,
     qualify_rows,
 )
 from scripts.aquilo_commission.settings import (
@@ -644,7 +646,11 @@ class HtmlAndEmailGuardTest(unittest.TestCase):
         self.assertNotIn("Labor", body)
         self.assertIn("Aquilo", body)
         self.assertIn("Isabel Strong", body)
-        self.assertIn("£37.50/h", body)
+        self.assertNotIn("£37.50", body)
+        self.assertNotIn("37.50", body)
+        self.assertIn("40.0%", body)
+        self.assertIn("Grokbot quote of the day", body)
+        self.assertIn("text-align:center", body)
         self.assertIn("NOT YET QUALIFIED", body)
         self.assertIn("Run profit", body)
         self.assertIn("Run comm", body)
@@ -660,6 +666,10 @@ class HtmlAndEmailGuardTest(unittest.TestCase):
         self.assertIn("Your jobs this month", email)
         self.assertIn("Hi Isabel", email)
         self.assertNotIn("The full job table is attached so the email client cannot clip", email)
+        quote = pick_quote(rng=__import__("random").Random(7))
+        self.assertIn(quote, GROKBOT_QUOTES)
+        other = pick_quote(rng=__import__("random").Random(11))
+        self.assertIn(other, GROKBOT_QUOTES)
         self.assertNotIn("does not gate", body.lower())
         self.assertNotIn("the gate", body.lower())
         self.assertIn("Day total", body)

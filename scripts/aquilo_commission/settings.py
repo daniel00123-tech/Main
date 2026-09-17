@@ -19,7 +19,7 @@ LABOUR_RATE = D("37.50")
 ANOMALY_SALE = D("250")
 MIN_PO_AMOUNT = D("1")
 MONTHLY_MIN_PROFIT = D("11000")
-MONTHLY_MIN_MARGIN_MESSAGE = D("25")  # Scorecard messaging only; does not gate.
+MONTHLY_MIN_MARGIN_MESSAGE = D("40")  # Scorecard coaching figure only.
 DEFAULT_BASE_URL = "https://webservice.bigchange.com/v01/services.ashx"
 DEFAULT_CACHE_DIR = Path("/tmp/aquilo_commission")
 
