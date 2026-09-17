@@ -8,16 +8,21 @@ from unittest.mock import patch
 
 from scripts.bigchange_kpi_report import (
     FRESHDESK_METRIC,
+    ConfigError,
     calculate_freshdesk_metrics,
     calculate_sales,
     calculate_score,
     code_is_success,
+    email_subject,
     is_open_freshdesk_ticket,
     match_staff_name,
     name_key,
+    report_context_for_company,
+    report_title,
     save_baseline,
     should_exclude_category,
     status_ids_from_choices,
+    validate_report_recipients,
     validate_report,
 )
 
@@ -50,6 +55,35 @@ class BigChangeApiTest(unittest.TestCase):
         self.assertTrue(code_is_success({"Code": 0}))
         self.assertTrue(code_is_success({"Code": "0"}))
         self.assertFalse(code_is_success({"Code": 1}))
+
+
+class RecipientGuardTest(unittest.TestCase):
+    def test_nirvana_report_rejects_urban_to_address(self) -> None:
+        context = report_context_for_company("nirvana")
+
+        with self.assertRaisesRegex(ConfigError, "Refusing to send Nirvana KPI report"):
+            validate_report_recipients(context, "urban@nirvana-maintenance.co.uk")
+
+    def test_nirvana_report_requires_approved_to_address(self) -> None:
+        context = report_context_for_company("nirvana")
+
+        with self.assertRaisesRegex(ConfigError, "Nirvana KPI reports may only use approved"):
+            validate_report_recipients(context, "ops@nirvana-maintenance.co.uk")
+
+        validate_report_recipients(
+            context,
+            "core@nirvana-maintenance.co.uk",
+            "daniel.dwyer@nirvana-group.co.uk,btr@nirvana-maintenance.co.uk",
+        )
+
+    def test_urban_report_allows_urban_to_address(self) -> None:
+        validate_report_recipients(report_context_for_company("urban"), "urban@nirvana-maintenance.co.uk")
+
+    def test_company_context_brands_report_and_email_subject(self) -> None:
+        context = report_context_for_company("nirvana")
+
+        self.assertEqual(report_title(context), "Nirvana BigChange KPI Overview")
+        self.assertEqual(email_subject(context), "Nirvana Daily KPI Overview Report")
 
 
 class SalesAttributionTest(unittest.TestCase):

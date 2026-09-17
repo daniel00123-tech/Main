@@ -24,6 +24,7 @@ import urllib.request
 from collections import defaultdict
 from email import encoders
 from email.headerregistry import Address
+from email.utils import getaddresses
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -60,6 +61,37 @@ ACTIONED_FIELDS = ("Actioned", "IsActioned", "JobActioned", "HasBeenActioned")
 ACTIVITY_DATE_FIELDS = ("JobClientStatusDate", "ClientStatusDate", "ActivityDate", "Created", "DateCreated")
 INVOICE_OWNER_FIELDS = ("JobClientStatusOwner", "ClientStatusOwner", "Owner", "CreatedBy", "UserName", "Name")
 DECIMAL_ZERO = decimal.Decimal("0")
+COMPANY_CONTEXTS: dict[str, dict[str, Any]] = {
+    "aquilo": {
+        "display_name": "Aquilo",
+        "allowed_to_emails": set(),
+    },
+    "nirvana": {
+        "display_name": "Nirvana",
+        "allowed_to_emails": {"core@nirvana-maintenance.co.uk"},
+    },
+    "urban": {
+        "display_name": "Urban",
+        "allowed_to_emails": {"urban@nirvana-maintenance.co.uk"},
+    },
+}
+COMPANY_ALIASES = {
+    "aquilo": "aquilo",
+    "nirvana": "nirvana",
+    "nirvanamaintenance": "nirvana",
+    "nirvanagroup": "nirvana",
+    "urban": "urban",
+    "urbanmaintenance": "urban",
+}
+AUTOMATION_COMPANY_BY_ID = {
+    "af615988-797c-4d3c-b1b6-7edb144b8456": "nirvana",
+    "a20bd074-6fe2-49fc-9acf-32ecff2719cc": "urban",
+}
+REPORT_COMPANY_ENV_NAMES = ("KPI_COMPANY", "KPI_REPORT_COMPANY", "REPORT_COMPANY")
+AUTOMATION_ID_ENV_NAMES = ("CURSOR_AUTOMATION_ID", "CURSOR_AGENT_AUTOMATION_ID", "AUTOMATION_ID")
+AUTOMATION_NAME_ENV_NAMES = ("CURSOR_AUTOMATION_NAME", "CURSOR_AGENT_NAME", "AUTOMATION_NAME")
+NIRVANA_APPROVED_TO_EMAIL = "core@nirvana-maintenance.co.uk"
+URBAN_EMAIL = "urban@nirvana-maintenance.co.uk"
 
 
 class ConfigError(RuntimeError):
@@ -144,6 +176,119 @@ def normalized_text(value: str) -> str:
 
 def compact_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def normalize_company_key(value: str) -> str:
+    compacted = compact_key(value)
+    return COMPANY_ALIASES.get(compacted, compacted)
+
+
+def report_context_for_company(company: str) -> dict[str, Any]:
+    key = normalize_company_key(company)
+    if key not in COMPANY_CONTEXTS:
+        allowed = ", ".join(sorted(COMPANY_CONTEXTS))
+        raise ConfigError(f"KPI_COMPANY must be one of {allowed}; got {company!r}")
+    context = COMPANY_CONTEXTS[key]
+    return {
+        "key": key,
+        "display_name": context["display_name"],
+        "allowed_to_emails": set(context["allowed_to_emails"]),
+    }
+
+
+def detect_company_from_text(value: str) -> str | None:
+    tokens = set(normalized_text(value).split())
+    for company in ("nirvana", "urban", "aquilo"):
+        if company in tokens:
+            return company
+    return None
+
+
+def resolve_report_context() -> dict[str, Any]:
+    for env_name in REPORT_COMPANY_ENV_NAMES:
+        value = optional_env(env_name).strip()
+        if value:
+            return report_context_for_company(value)
+
+    for env_name in AUTOMATION_ID_ENV_NAMES:
+        automation_id = optional_env(env_name).strip().lower()
+        company = AUTOMATION_COMPANY_BY_ID.get(automation_id)
+        if company:
+            return report_context_for_company(company)
+
+    for env_name in AUTOMATION_NAME_ENV_NAMES:
+        company = detect_company_from_text(optional_env(env_name))
+        if company:
+            return report_context_for_company(company)
+
+    return report_context_for_company("aquilo")
+
+
+def company_display_name(report_context: dict[str, Any]) -> str:
+    return clean_name(report_context.get("display_name")) or "Aquilo"
+
+
+def report_title(report_context: dict[str, Any]) -> str:
+    return f"{company_display_name(report_context)} BigChange KPI Overview"
+
+
+def email_subject(report_context: dict[str, Any]) -> str:
+    return f"{company_display_name(report_context)} Daily KPI Overview Report"
+
+
+def parse_recipient_addresses(value: str) -> list[str]:
+    return [
+        address.strip().lower()
+        for _display_name, address in getaddresses([value])
+        if address and "@" in address
+    ]
+
+
+def is_clearly_urban_recipient(value: str) -> bool:
+    text = value.lower()
+    return URBAN_EMAIL in text or "urban" in normalized_text(text).split()
+
+
+def validate_report_recipients(report_context: dict[str, Any], to_email: str, cc_email: str = "") -> None:
+    company = report_context["key"]
+    display_name = company_display_name(report_context)
+    to_addresses = parse_recipient_addresses(to_email)
+    if not to_addresses:
+        raise ConfigError("SMTP_TO_EMAIL must contain a valid email address")
+
+    cc_addresses = parse_recipient_addresses(cc_email)
+    if company == "nirvana":
+        recipient_values = [to_email, cc_email, *to_addresses, *cc_addresses]
+        if any(is_clearly_urban_recipient(value) for value in recipient_values):
+            raise ConfigError(
+                "Refusing to send Nirvana KPI report to an Urban recipient; "
+                f"set SMTP_TO_EMAIL={NIRVANA_APPROVED_TO_EMAIL} and remove any urban@ recipients."
+            )
+
+    allowed_to_emails = set(report_context.get("allowed_to_emails", set()))
+    if allowed_to_emails and (len(to_addresses) != 1 or to_addresses[0] not in allowed_to_emails):
+        allowed = ", ".join(sorted(allowed_to_emails))
+        raise ConfigError(
+            f"{display_name} KPI reports may only use approved SMTP_TO_EMAIL values: {allowed}; "
+            f"got {to_email!r}."
+        )
+
+
+def build_email_settings(report_context: dict[str, Any] | None = None) -> dict[str, Any]:
+    context = report_context or resolve_report_context()
+    settings = {
+        "report_context": context,
+        "smtp_host": required_env("SMTP_HOST"),
+        "smtp_port": int(required_env("SMTP_PORT")),
+        "smtp_username": required_env("SMTP_USERNAME"),
+        "smtp_password": required_env("SMTP_PASSWORD"),
+        "from_email": required_env("SMTP_FROM_EMAIL").strip(),
+        "from_name": optional_env("SMTP_FROM_NAME"),
+        "to_email": required_env("SMTP_TO_EMAIL").strip(),
+        "cc_email": optional_env("SMTP_CC_EMAIL").strip(),
+    }
+    validate_report_recipients(context, settings["to_email"], settings["cc_email"])
+    return settings
 
 
 def name_key(value: str) -> str:
@@ -1111,7 +1256,9 @@ def avatar_class(name: str) -> str:
     return f"avatar-{sum(ord(ch) for ch in name) % 8}"
 
 
-def render_html(report: dict[str, Any]) -> str:
+def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = None) -> str:
+    context = report_context or resolve_report_context()
+    title = html.escape(report_title(context))
     rows_html = []
     for idx, row in enumerate(report["staff_rows"], start=1):
         staff = html.escape(row["staff_name"])
@@ -1157,7 +1304,7 @@ def render_html(report: dict[str, Any]) -> str:
 <html>
 <head>
   <meta charset="utf-8">
-  <title>BigChange KPI Overview</title>
+  <title>{title}</title>
   <style>
     :root {{
       --bg: #07111f;
@@ -1540,7 +1687,7 @@ def render_html(report: dict[str, Any]) -> str:
       <div class="brand">
         <div class="brand-mark"></div>
         <div>
-          <h1>Aquilo BigChange KPI Overview</h1>
+          <h1>{title}</h1>
           <div class="sub">Generated {report_date} - jobs from {job_lookback_start} onwards, grouped by job category staff owner</div>
         </div>
       </div>
@@ -1653,40 +1800,34 @@ def mailbox_address(email_value: str, display_name: str = "") -> Address:
     return Address(display_name=display_name, username=username, domain=domain)
 
 
-def send_email(png_path: Path) -> None:
-    smtp_host = required_env("SMTP_HOST")
-    smtp_port = int(required_env("SMTP_PORT"))
-    smtp_username = required_env("SMTP_USERNAME")
-    smtp_password = required_env("SMTP_PASSWORD")
-    from_email = required_env("SMTP_FROM_EMAIL").strip()
-    from_name = optional_env("SMTP_FROM_NAME")
-    to_email = required_env("SMTP_TO_EMAIL").strip()
-    cc_email = optional_env("SMTP_CC_EMAIL").strip()
-
-    subject = "Daily KPI Overview Report"
+def send_email(png_path: Path, email_settings: dict[str, Any] | None = None) -> None:
+    settings = email_settings or build_email_settings()
+    report_context = settings["report_context"]
+    company_name = company_display_name(report_context)
+    subject = email_subject(report_context)
     root = MIMEMultipart("related")
     root["Subject"] = subject
-    root["From"] = str(mailbox_address(from_email, from_name))
-    root["To"] = to_email
-    recipients = [to_email]
-    if cc_email:
-        root["Cc"] = cc_email
-        recipients.extend([addr.strip() for addr in cc_email.split(",") if addr.strip()])
+    root["From"] = str(mailbox_address(settings["from_email"], settings["from_name"]))
+    root["To"] = settings["to_email"]
+    recipients = parse_recipient_addresses(settings["to_email"])
+    if settings["cc_email"]:
+        root["Cc"] = settings["cc_email"]
+        recipients.extend(parse_recipient_addresses(settings["cc_email"]))
 
     alt = MIMEMultipart("alternative")
     root.attach(alt)
 
-    text_body = """Dear Team,
+    text_body = f"""Dear Team,
 
-Please see attached KPIs for today to work on. Reds and yellows need to be cleared down as soon as possible. Please let me know if you need any support.
+Please see attached {company_name} KPIs for today to work on. Reds and yellows need to be cleared down as soon as possible. Please let me know if you need any support.
 
 Thank you.
 
 Kind regards,
 Daniel Dwyer
 """
-    html_body = """<p>Dear Team,</p>
-<p>Please see attached KPIs for today to work on. Reds and yellows need to be cleared down as soon as possible. Please let me know if you need any support.</p>
+    html_body = f"""<p>Dear Team,</p>
+<p>Please see attached {html.escape(company_name)} KPIs for today to work on. Reds and yellows need to be cleared down as soon as possible. Please let me know if you need any support.</p>
 <p><img src="cid:kpi-dashboard" alt="BigChange KPI dashboard" style="max-width: 100%; height: auto;"></p>
 <p>Thank you.</p>
 <p>Kind regards,<br>Daniel Dwyer</p>"""
@@ -1702,19 +1843,21 @@ Daniel Dwyer
     root.attach(attachment)
 
     # The only attachment is the dashboard PNG; JSON and HTML stay on disk only.
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=120) as smtp:
+    with smtplib.SMTP(settings["smtp_host"], settings["smtp_port"], timeout=120) as smtp:
         smtp.starttls()
-        smtp.login(smtp_username, smtp_password)
-        smtp.sendmail(from_email, recipients, root.as_string())
+        smtp.login(settings["smtp_username"], settings["smtp_password"])
+        smtp.sendmail(settings["from_email"], recipients, root.as_string())
 
 
 def main() -> int:
     try:
+        report_context = resolve_report_context()
+        email_settings = build_email_settings(report_context)
         client = BigChangeClient()
         freshdesk_client = FreshdeskClient()
         report = build_report(client, freshdesk_client)
         validate_report(report)
-        html_content = render_html(report)
+        html_content = render_html(report, report_context)
         reports_dir = Path("reports")
         html_path = reports_dir / "bigchange-kpi-dashboard.html"
         png_path = reports_dir / "bigchange-kpi-dashboard.png"
@@ -1723,23 +1866,23 @@ def main() -> int:
         save_baseline(report, baseline_path)
         email_status = "sent"
         exit_code = 0
+        email_error = ""
         try:
-            send_email(png_path)
-        except Exception:
+            send_email(png_path, email_settings)
+        except Exception as exc:
             email_status = "failed"
+            email_error = str(exc)
             exit_code = 1
-        print(
-            json.dumps(
-                {
-                    "staff_rows_included": len(report["staff_rows"]),
-                    "total_red_kpis": report["total_red_kpis"],
-                    "total_amber_kpis": report["total_amber_kpis"],
-                    "email": email_status,
-                    "unmatched_freshdesk_ticket_count": report["unmatched_freshdesk_ticket_count"],
-                },
-                sort_keys=True,
-            )
-        )
+        result = {
+            "staff_rows_included": len(report["staff_rows"]),
+            "total_red_kpis": report["total_red_kpis"],
+            "total_amber_kpis": report["total_amber_kpis"],
+            "email": email_status,
+            "unmatched_freshdesk_ticket_count": report["unmatched_freshdesk_ticket_count"],
+        }
+        if email_error:
+            result["email_error"] = email_error
+        print(json.dumps(result, sort_keys=True))
         return exit_code
     except Exception as exc:
         print(
@@ -1749,6 +1892,7 @@ def main() -> int:
                     "total_red_kpis": 0,
                     "total_amber_kpis": 0,
                     "email": "failed",
+                    "error": str(exc),
                     "unmatched_freshdesk_ticket_count": 0,
                 },
                 sort_keys=True,
