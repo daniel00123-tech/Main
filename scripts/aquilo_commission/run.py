@@ -112,7 +112,9 @@ def build_month_packs(
             month_label=month_label,
             first_name=first_name(meta["name"]),
             qualification=qualification,
-            job_count=len(job_rows),
+            job_rows=job_rows,
+            anomaly_rows=anomaly_rows,
+            review_rows=review_rows,
             preview=preview,
         )
         packs[key] = {

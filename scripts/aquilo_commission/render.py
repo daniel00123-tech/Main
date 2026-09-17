@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import datetime as dt
+import base64
 import html
+from pathlib import Path
 from typing import Any
 
 from .commission import MonthlyQualification, qualify_month, sum_job_commissions
@@ -13,10 +14,27 @@ from .util import format_margin, gbp, money
 D = __import__("decimal").Decimal
 ZERO = D("0")
 
-QUIET = "color:#4a5560;font-size:10px;font-weight:400;"
+GROKBOT_CID = "grokbot-icon"
+GROKBOT_PATH = Path(__file__).resolve().parent / "assets" / "grokbot.png"
+
+QUIET = "color:#5b6775;font-size:11px;font-weight:400;"
 HEAD = "background:#1f3a5f;color:#fff;"
-TABLE_CSS = "border-collapse:collapse;font-size:12px;border-color:#ccc;width:100%;"
-CELL = "padding:6px;border:1px solid #ccc;"
+TABLE_CSS = "border-collapse:collapse;font-size:12px;border-color:#d5dde6;width:100%;"
+CELL = "padding:8px 10px;border:1px solid #d5dde6;"
+NAVY = "#1f3a5f"
+COPY = "font-size:16px;line-height:1.6;color:#243040;"
+
+
+def grokbot_bytes() -> bytes:
+    return GROKBOT_PATH.read_bytes()
+
+
+def grokbot_src(*, inline_email: bool) -> str:
+    if inline_email:
+        return f"cid:{GROKBOT_CID}"
+    raw = grokbot_bytes()
+    encoded = base64.b64encode(raw).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
 
 
 def margin_style(margin: D | None) -> str:
@@ -53,46 +71,142 @@ def _th(label: str, extra: str = "") -> str:
 
 def _tile(label: str, value: str, bg: str) -> str:
     return (
-        f"<td width='16%' style='background:{bg};padding:8px 10px;color:#fff;vertical-align:top;'>"
-        f"<div style='font-size:11px;line-height:1.2;'>{html.escape(label)}</div>"
-        f"<div style='font-size:16px;font-weight:700;padding-top:4px;white-space:nowrap;'>{value}</div>"
+        f"<td width='32%' bgcolor='{bg}' style='background:{bg};padding:16px 14px;"
+        f"color:#fff;vertical-align:top;border-radius:4px;'>"
+        f"<p style='margin:0 0 8px;font-size:12px;line-height:1.4;letter-spacing:0.02em;'>"
+        f"{html.escape(label)}</p>"
+        f"<p style='margin:0;font-size:20px;line-height:1.3;font-weight:700;'>{value}</p>"
         f"</td>"
+    )
+
+
+def _gutter() -> str:
+    return "<td width='8' style='width:8px;font-size:8px;line-height:8px;'>&nbsp;</td>"
+
+
+def _row_gap() -> str:
+    return "<tr><td colspan='5' style='height:8px;font-size:8px;line-height:8px;'>&nbsp;</td></tr>"
+
+
+def grokbot_img(src: str, size: int = 56) -> str:
+    return (
+        f"<img src='{html.escape(src, quote=True)}' width='{size}' height='{size}' "
+        f"alt='Grokbot' style='display:block;width:{size}px;height:{size}px;border:0;' />"
+    )
+
+
+def render_scorecard(
+    *,
+    staff_name: str,
+    month_label: str,
+    qualification: MonthlyQualification,
+    icon_src: str,
+) -> str:
+    tiles = [
+        ("Overall profit", gbp(qualification.total_profit), "#1f3a5f"),
+        ("Invoiced", gbp(qualification.total_revenue), "#2e5a8f"),
+        ("Purchase orders", gbp(qualification.total_po), "#3d6fa3"),
+        ("Labour", gbp(qualification.total_labour), "#4a82b8"),
+        ("Margin", format_margin(qualification.overall_margin), "#3b6d99"),
+        ("Commission", gbp(qualification.payable_commission), "#1b7a4a"),
+    ]
+    top = tiles[:3]
+    bottom = tiles[3:]
+    return f"""
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px;border:1px solid #d5dde6;background:#ffffff;">
+      <tr>
+        <td bgcolor="{NAVY}" style="background:{NAVY};padding:18px 20px;">
+          <table cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td valign="middle" style="padding-right:14px;">{grokbot_img(icon_src)}</td>
+              <td valign="middle">
+                <p style="margin:0 0 4px;font-size:12px;letter-spacing:0.08em;color:#d7e3f2;text-transform:uppercase;">Grokbot scorecard</p>
+                <p style="margin:0 0 4px;font-size:20px;line-height:1.3;font-weight:700;color:#ffffff;">{html.escape(staff_name)}</p>
+                <p style="margin:0;font-size:14px;line-height:1.4;color:#d7e3f2;">{html.escape(COMPANY_NAME)} · {html.escape(month_label)}</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:16px 16px 18px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              {_tile(*top[0])}{_gutter()}{_tile(*top[1])}{_gutter()}{_tile(*top[2])}
+            </tr>
+            {_row_gap()}
+            <tr>
+              {_tile(*bottom[0])}{_gutter()}{_tile(*bottom[1])}{_gutter()}{_tile(*bottom[2])}
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    """
+
+
+def _kv(label: str, value: str, *, first: bool = False) -> str:
+    pad = "0 0 12px" if first else "0 0 12px"
+    return (
+        "<tr>"
+        f"<td valign='top' style='padding:{pad};font-size:15px;line-height:1.5;color:#5b6775;width:48%;'>{html.escape(label)}</td>"
+        f"<td valign='top' style='padding:{pad};font-size:15px;line-height:1.5;font-weight:700;color:#1a2433;text-align:right;'>{value}</td>"
+        "</tr>"
     )
 
 
 def render_qualification(q: MonthlyQualification) -> str:
     if q.qualified:
-        status_bg, status_fg = "#d4edda", "#155724"
+        status_bg, status_fg, lead = "#e5f6ea", "#155724", "You have unlocked payable commission for this month."
     else:
-        status_bg, status_fg = "#fff3cd", "#856404"
-    current_margin = format_margin(q.overall_margin)
+        status_bg, status_fg, lead = (
+            "#fff6dc",
+            "#7a5b00",
+            "Payable commission stays at £0.00 until month profit reaches the gate.",
+        )
     coach = ""
     if q.coach_line:
-        coach = (
-            f"<p style='margin:12px 0 0;font-size:13px;color:#333;'>{html.escape(q.coach_line)}</p>"
-        )
-    payable_note = (
-        f"Payable commission: {gbp(q.payable_commission)}"
-        if q.qualified
-        else f"Running commission {gbp(q.running_commission)} is shown, but payable commission is £0.00 until unlocked."
-    )
+        coach = f"""
+        <tr>
+          <td colspan="2" style="padding:16px 0 0;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef4fb;border:1px solid #d5e2f0;">
+              <tr>
+                <td style="padding:14px 16px;">
+                  <p style="margin:0 0 6px;font-size:12px;letter-spacing:0.06em;color:{NAVY};text-transform:uppercase;font-weight:700;">Grokbot tip</p>
+                  <p style="margin:0;font-size:15px;line-height:1.55;color:#243040;">{html.escape(q.coach_line)}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        """
     return f"""
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;border:1px solid #c5d0dc;background:#f7fafc;">
-      <tr><td style="padding:14px 16px;">
-        <p style="margin:0 0 8px;font-weight:700;color:#1f3a5f;">Monthly qualification</p>
-        <p style="margin:0 0 4px;">Minimum profit {gbp(q.min_profit)} (no sales gate). Target margin {format_margin(q.min_margin_message)} is shown for coaching only and does not gate payment.</p>
-        <p style="margin:0 0 4px;">Current profit {gbp(q.total_profit)}. Remaining {gbp(q.profit_remaining)}.</p>
-        <p style="margin:0 0 8px;">{html.escape(payable_note)}</p>
-        <p style="margin:0;padding:8px 10px;background:{status_bg};color:{status_fg};font-weight:700;display:inline-block;">
-          STATUS: {html.escape(q.status)}
-        </p>
-        {coach}
-      </td></tr>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 32px;">
+      <tr>
+        <td>
+          <p style="margin:0 0 8px;font-size:18px;line-height:1.4;font-weight:700;color:{NAVY};">How you stand this month</p>
+          <p style="margin:0 0 16px;{COPY}">{html.escape(lead)}</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            {_kv("Minimum profit to unlock payment", gbp(q.min_profit), first=True)}
+            {_kv("Your profit so far", gbp(q.total_profit))}
+            {_kv("Still to go", gbp(q.profit_remaining))}
+            {_kv("Running commission (shown on jobs)", gbp(q.running_commission))}
+            {_kv("Payable commission", gbp(q.payable_commission))}
+            {_kv("Target margin (coaching only — does not gate)", format_margin(q.min_margin_message))}
+          </table>
+          <p style="margin:8px 0 0;padding:12px 14px;background:{status_bg};color:{status_fg};font-weight:700;font-size:15px;line-height:1.4;">
+            Status: {html.escape(q.status)}
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0">{coach}</table>
+        </td>
+      </tr>
     </table>
     """
 
 
 def render_job_table(job_rows: list[dict[str, Any]]) -> str:
+    if not job_rows:
+        return "<p style='margin:0 0 28px;font-size:15px;line-height:1.6;color:#243040;'>No qualifying groups in this month.</p>"
     body = []
     for row in job_rows:
         ms = format_margin(row.get("margin"))
@@ -131,7 +245,18 @@ def render_job_table(job_rows: list[dict[str, Any]]) -> str:
         + "</tr>"
     )
     return f"""
-    <table cellpadding="0" cellspacing="0" border="1" style="{TABLE_CSS}">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;">
+      <tr>
+        <td>
+          <p style="margin:0 0 8px;font-size:18px;line-height:1.4;font-weight:700;color:{NAVY};">Your jobs this month</p>
+          <p style="margin:0 0 14px;{COPY}">
+            One row per job group, in invoice-date order. Labour is planned hours at {gbp(LABOUR_RATE)}/h.
+            Commission is calculated on the group, never on a line or a subtotal.
+          </p>
+        </td>
+      </tr>
+    </table>
+    <table cellpadding="0" cellspacing="0" border="1" style="{TABLE_CSS}margin:0 0 28px;">
       <thead>
         <tr>
           {_th("Date")}{_th("Group/job")}{_th("Invoiced")}{_th("Purchase orders")}
@@ -162,8 +287,9 @@ def render_anomaly_table(rows: list[dict[str, Any]]) -> str:
             + "</tr>"
         )
     return f"""
-    <h2 style="color:#721c24;font-size:16px;margin:24px 0 8px;">Anomalies (excluded from totals and commission)</h2>
-    <table cellpadding="0" cellspacing="0" border="1" style="{TABLE_CSS}">
+    <p style="margin:0 0 8px;font-size:18px;line-height:1.4;font-weight:700;color:#721c24;">Anomalies left out of totals</p>
+    <p style="margin:0 0 14px;{COPY}">These groups invoiced more than £250 with no purchase order. Labour is not treated as a PO.</p>
+    <table cellpadding="0" cellspacing="0" border="1" style="{TABLE_CSS}margin:0 0 28px;">
       <thead>
         <tr>
           {_th("Date")}{_th("Group/job")}{_th("Invoiced")}{_th("Purchase orders")}
@@ -192,8 +318,9 @@ def render_review_table(rows: list[dict[str, Any]]) -> str:
             + "</tr>"
         )
     return f"""
-    <h2 style="color:#856404;font-size:16px;margin:24px 0 8px;">Highlighted for review</h2>
-    <table cellpadding="0" cellspacing="0" border="1" style="{TABLE_CSS}">
+    <p style="margin:0 0 8px;font-size:18px;line-height:1.4;font-weight:700;color:#856404;">Worth a second look</p>
+    <p style="margin:0 0 14px;{COPY}">Flagged groups only — they still sit in the main table above.</p>
+    <table cellpadding="0" cellspacing="0" border="1" style="{TABLE_CSS}margin:0 0 28px;">
       <thead>
         <tr>
           {_th("Date")}{_th("Group/job")}{_th("Invoiced")}{_th("Profit")}{_th("Margin")}{_th("Flag")}
@@ -202,6 +329,76 @@ def render_review_table(rows: list[dict[str, Any]]) -> str:
       <tbody>{''.join(body)}</tbody>
     </table>
     """
+
+
+def render_report(
+    *,
+    staff_name: str,
+    month_label: str,
+    first_name: str,
+    job_rows: list[dict[str, Any]],
+    anomaly_rows: list[dict[str, Any]],
+    review_rows: list[dict[str, Any]],
+    qualification: MonthlyQualification,
+    preview: bool = True,
+    inline_email: bool = False,
+) -> str:
+    icon_src = grokbot_src(inline_email=inline_email)
+    preview_note = (
+        "<p style='margin:0 0 20px;padding:12px 14px;background:#eef4fb;border:1px solid #d5e2f0;"
+        "font-size:14px;line-height:1.55;color:#1f3a5f;'>"
+        "This is a preview pack. It has not been sent to the account manager."
+        "</p>"
+        if preview
+        else ""
+    )
+    greeting = f"""
+      <p style="margin:0 0 12px;font-size:22px;line-height:1.4;font-weight:700;color:{NAVY};">Hi {html.escape(first_name)},</p>
+      <p style="margin:0 0 12px;{COPY}">
+        Here is your {html.escape(month_label)} {html.escape(COMPANY_NAME)} commission pack.
+        The scorecard is the month in one view. The job table underneath is the full story, and a copy is attached if you want to keep it.
+      </p>
+      <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#5b6775;">
+        Payroll Labour uses planned hours at {gbp(LABOUR_RATE)}/h, not timesheets. Quotes are ignored.
+      </p>
+    """
+    signoff = """
+      <p style="margin:8px 0 0;font-size:16px;line-height:1.6;color:#243040;">
+        Kind regards,<br>
+        Daniel Dwyer
+      </p>
+    """
+    return f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(staff_name)} {html.escape(month_label)} Aquilo commission</title>
+</head>
+<body style="margin:0;padding:0;background:#e8eef5;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e8eef5;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+        <table width="680" cellpadding="0" cellspacing="0" border="0" style="width:680px;max-width:680px;background:#ffffff;">
+          <tr>
+            <td style="padding:28px 28px 32px;">
+              {greeting}
+              {preview_note}
+              {render_scorecard(staff_name=staff_name, month_label=month_label, qualification=qualification, icon_src=icon_src)}
+              {render_qualification(qualification)}
+              {render_job_table(job_rows)}
+              {render_anomaly_table(anomaly_rows)}
+              {render_review_table(review_rows)}
+              {signoff}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
 
 
 def build_full_html(
@@ -214,42 +411,18 @@ def build_full_html(
     qualification: MonthlyQualification,
     preview: bool = True,
 ) -> str:
-    total_sale = qualification.total_revenue
-    total_po = qualification.total_po
-    total_labour = qualification.total_labour
-    total_profit = qualification.total_profit
-    total_margin = qualification.overall_margin
-    commission = qualification.payable_commission
-    preview_note = " Preview pack — not sent to the account manager." if preview else ""
-    return f"""<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>{html.escape(staff_name)} {html.escape(month_label)} Aquilo commission</title>
-</head>
-<body style="margin:0;padding:20px;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#222;">
-  <h1 style="color:#1f3a5f;margin:0 0 6px;">{html.escape(staff_name)} — {html.escape(COMPANY_NAME)} — {html.escape(month_label)}</h1>
-  <p style="margin:0 0 16px;color:#4a5560;font-size:13px;">
-    Payroll Labour uses planned hours at {gbp(LABOUR_RATE)}/h (not timesheets).
-    Commission is one calculation per job group. Quotes are ignored.{preview_note}
-  </p>
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px;">
-    <tr>
-      {_tile("Overall profit", gbp(total_profit), "#1f3a5f")}
-      {_tile("Invoiced", gbp(total_sale), "#2e5a8f")}
-      {_tile("Purchase orders", gbp(total_po), "#3d6fa3")}
-      {_tile("Labour", gbp(total_labour), "#4a82b8")}
-      {_tile("Margin", format_margin(total_margin), "#3b6d99")}
-      {_tile("Commission", gbp(commission), "#1b7a4a")}
-    </tr>
-  </table>
-  {render_qualification(qualification)}
-  {render_job_table(job_rows) if job_rows else "<p>No qualifying groups in this month.</p>"}
-  {render_anomaly_table(anomaly_rows)}
-  {render_review_table(review_rows)}
-</body>
-</html>
-"""
+    first = staff_name.split()[0] if staff_name.strip() else staff_name
+    return render_report(
+        staff_name=staff_name,
+        month_label=month_label,
+        first_name=first,
+        job_rows=job_rows,
+        anomaly_rows=anomaly_rows,
+        review_rows=review_rows,
+        qualification=qualification,
+        preview=preview,
+        inline_email=False,
+    )
 
 
 def build_email_body(
@@ -258,34 +431,23 @@ def build_email_body(
     month_label: str,
     first_name: str,
     qualification: MonthlyQualification,
-    job_count: int,
+    job_rows: list[dict[str, Any]],
+    anomaly_rows: list[dict[str, Any]] | None = None,
+    review_rows: list[dict[str, Any]] | None = None,
     preview: bool = True,
 ) -> str:
-    """Compact scorecard for the email body. Full table goes in the attachment."""
-    preview_line = "<p><em>This is a preview pack. It has not been sent to the account manager.</em></p>" if preview else ""
-    return f"""
-    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;">
-      <p>Hi {html.escape(first_name)},</p>
-      <p>Please find your {html.escape(month_label)} {html.escape(COMPANY_NAME)} commission scorecard below.
-      The full job table is attached so the email client cannot clip the larger packs.</p>
-      {preview_line}
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0;">
-        <tr>
-          {_tile("Overall profit", gbp(qualification.total_profit), "#1f3a5f")}
-          {_tile("Invoiced", gbp(qualification.total_revenue), "#2e5a8f")}
-          {_tile("Purchase orders", gbp(qualification.total_po), "#3d6fa3")}
-        </tr>
-        <tr>
-          {_tile("Labour", gbp(qualification.total_labour), "#4a82b8")}
-          {_tile("Margin", format_margin(qualification.overall_margin), "#3b6d99")}
-          {_tile("Commission", gbp(qualification.payable_commission), "#1b7a4a")}
-        </tr>
-      </table>
-      {render_qualification(qualification)}
-      <p style="font-size:13px;color:#4a5560;">Qualifying groups/jobs in the attached table: {job_count}.</p>
-      <p>Kind regards,<br>Daniel Dwyer</p>
-    </div>
-    """
+    """Full pack in the email body: greeting, Grokbot scorecard, then the job table."""
+    return render_report(
+        staff_name=staff_name,
+        month_label=month_label,
+        first_name=first_name,
+        job_rows=job_rows,
+        anomaly_rows=anomaly_rows or [],
+        review_rows=review_rows or [],
+        qualification=qualification,
+        preview=preview,
+        inline_email=True,
+    )
 
 
 def qualify_rows(job_rows: list[dict[str, Any]]) -> MonthlyQualification:

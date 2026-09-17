@@ -5,10 +5,12 @@ from __future__ import annotations
 import smtplib
 from email.headerregistry import Address
 from email.mime.application import MIMEApplication
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import getaddresses
 
+from .render import GROKBOT_CID, grokbot_bytes
 from .settings import (
     PREVIEW_CC_ALLOWLIST,
     PREVIEW_TO_ALLOWLIST,
@@ -54,7 +56,7 @@ def send_preview_email(
     attachment_name: str,
 ) -> None:
     to_list, cc_list = assert_preview_recipients(settings)
-    root = MIMEMultipart()
+    root = MIMEMultipart("related")
     root["Subject"] = subject
     root["From"] = str(mailbox_address(settings.from_email, settings.from_name))
     root["To"] = ", ".join(to_list)
@@ -62,10 +64,20 @@ def send_preview_email(
     if cc_list:
         root["Cc"] = ", ".join(cc_list)
         recipients.extend(cc_list)
-    root.attach(MIMEText(html_body, "html", "utf-8"))
+
+    alt = MIMEMultipart("alternative")
+    root.attach(alt)
+    alt.attach(MIMEText(html_body, "html", "utf-8"))
+
+    icon = MIMEImage(grokbot_bytes(), _subtype="png")
+    icon.add_header("Content-ID", f"<{GROKBOT_CID}>")
+    icon.add_header("Content-Disposition", "inline", filename="grokbot.png")
+    root.attach(icon)
+
     attachment = MIMEApplication(attachment_html.encode("utf-8"), _subtype="html")
     attachment.add_header("Content-Disposition", "attachment", filename=attachment_name)
     root.attach(attachment)
+
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=120) as smtp:
         smtp.starttls()
         smtp.login(settings.smtp_username, settings.smtp_password)

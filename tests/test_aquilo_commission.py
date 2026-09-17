@@ -37,7 +37,13 @@ from scripts.aquilo_commission.labour import (
     work_hours,
 )
 from scripts.aquilo_commission.mail import assert_preview_recipients
-from scripts.aquilo_commission.render import build_full_html, qualify_rows
+from scripts.aquilo_commission.render import (
+    GROKBOT_CID,
+    GROKBOT_PATH,
+    build_email_body,
+    build_full_html,
+    qualify_rows,
+)
 from scripts.aquilo_commission.settings import (
     LABOUR_RATE,
     PREVIEW_TO_ALLOWLIST,
@@ -605,6 +611,14 @@ class HtmlAndEmailGuardTest(unittest.TestCase):
             qualification=q,
             preview=True,
         )
+        email = build_email_body(
+            staff_name="Isabel Strong",
+            month_label="September 2026",
+            first_name="Isabel",
+            qualification=q,
+            job_rows=rows,
+            preview=True,
+        )
         self.assertIn("Labour", body)
         self.assertNotIn("Labor", body)
         self.assertIn("Aquilo", body)
@@ -613,8 +627,17 @@ class HtmlAndEmailGuardTest(unittest.TestCase):
         self.assertIn("NOT YET QUALIFIED", body)
         self.assertIn("Run profit", body)
         self.assertIn("Run comm", body)
+        self.assertIn("Grokbot scorecard", body)
+        self.assertIn("Your jobs this month", body)
+        self.assertIn("GR/18358", body)
         self.assertNotIn("flex", body)
         self.assertNotIn("grid-template", body)
+        self.assertTrue(GROKBOT_PATH.is_file())
+        self.assertIn(f"cid:{GROKBOT_CID}", email)
+        self.assertIn("GR/18358", email)
+        self.assertIn("Your jobs this month", email)
+        self.assertIn("Hi Isabel", email)
+        self.assertNotIn("The full job table is attached so the email client cannot clip", email)
 
     def test_commission_is_not_recalculated_on_month_total(self) -> None:
         rows = attach_job_commissions(
