@@ -47,6 +47,31 @@ function formatCard(company: RecurringBillingCompany | null): string {
   return `${brand} ${last4}`;
 }
 
+function formatBillingMode(company: RecurringBillingCompany): string {
+  return company.billingMode === "live" ? "live billing" : "test billing";
+}
+
+function portalPaymentMethodPath(company: RecurringBillingCompany): string {
+  return `/portal/${company.slug}/billing?tab=payment`;
+}
+
+function recurringCompanyReadinessWarnings(
+  company: RecurringBillingCompany | null,
+  stripeMode: string | null,
+): string[] {
+  if (!company) return [];
+  const warnings: string[] = [];
+  if (stripeMode === "live" && company.billingMode !== "live") {
+    warnings.push(
+      "Company billing mode is test. Live recurring card charges are blocked until this company is switched to live billing.",
+    );
+  }
+  if (!company.paymentMethodReady) {
+    warnings.push("No saved payment method is on file. Add a card in the company portal first.");
+  }
+  return warnings;
+}
+
 function humanInterval(interval: RecurringInterval): string {
   if (interval === "daily") return "Daily";
   if (interval === "weekly") return "Weekly";
@@ -71,6 +96,7 @@ export default function BillingPage() {
   const [recurringCompanies, setRecurringCompanies] = useState<RecurringBillingCompany[]>([]);
   const [recurringCharges, setRecurringCharges] = useState<RecurringCharge[]>([]);
   const [recurringStripeConfigured, setRecurringStripeConfigured] = useState<boolean | null>(null);
+  const [recurringStripeMode, setRecurringStripeMode] = useState<string | null>(null);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(
     searchParams.get("company") ?? null,
   );
@@ -117,6 +143,13 @@ export default function BillingPage() {
     () => recurringCharges.filter((charge) => ACTIVE_RECURRING_STATUSES.has(charge.status)),
     [recurringCharges],
   );
+  const selectedRecurringWarnings = useMemo(
+    () => recurringCompanyReadinessWarnings(selectedRecurringCompany, recurringStripeMode),
+    [selectedRecurringCompany, recurringStripeMode],
+  );
+  const canCreateRecurringCharge = Boolean(recurringForm.companyId) &&
+    recurringStripeConfigured !== false &&
+    selectedRecurringWarnings.length === 0;
 
   const loadLedger = useCallback(
     async (companyId?: string) => {
@@ -162,6 +195,7 @@ export default function BillingPage() {
       setSummary(billingSummary);
       setStripeConfigured(gateway ? Boolean(gateway.stripeConfigured) : null);
       setRecurringStripeConfigured(recurring.stripeConfigured);
+      setRecurringStripeMode(recurring.stripeMode ?? null);
       setRecurringCompanies(recurring.companies);
       setRecurringCharges(recurring.charges);
       setRecurringForm((current) => ({
@@ -278,6 +312,14 @@ export default function BillingPage() {
     }
     if (!recurringForm.description.trim()) {
       toast("Description is required", "error");
+      return;
+    }
+    const readinessWarnings = recurringCompanyReadinessWarnings(
+      selectedRecurringCompany,
+      recurringStripeMode,
+    );
+    if (readinessWarnings.length > 0) {
+      toast(readinessWarnings.join(" "), "error");
       return;
     }
     setRecurringBusy(true);
@@ -413,23 +455,37 @@ export default function BillingPage() {
                 </option>
                 {recurringCompanies.map((company) => (
                   <option key={company.id} value={company.id}>
-                    {company.name} · {company.paymentMethodReady ? formatCard(company) : "no card on file"}
+                    {company.name} · {formatBillingMode(company)} ·{" "}
+                    {company.paymentMethodReady ? formatCard(company) : "no card on file"}
                   </option>
                 ))}
               </select>
             </label>
 
             {selectedRecurringCompany ? (
-              selectedRecurringCompany.paymentMethodReady ? (
+              selectedRecurringWarnings.length === 0 ? (
                 <Notice tone="success">
-                  <strong>{selectedRecurringCompany.name}</strong> will be charged via{" "}
+                  <strong>{selectedRecurringCompany.name}</strong> is on{" "}
+                  {formatBillingMode(selectedRecurringCompany)} and will be charged via{" "}
                   {formatCard(selectedRecurringCompany)}.
                 </Notice>
               ) : (
                 <Notice tone="warning">
-                  <strong>{selectedRecurringCompany.name}</strong> has no saved card on file.
-                  Ask the company to add a payment method in the portal before creating a recurring
-                  charge.
+                  <strong>{selectedRecurringCompany.name}</strong> is not ready for a recurring
+                  live charge.
+                  <ul style={{ margin: "8px 0 0 20px", padding: 0 }}>
+                    {selectedRecurringWarnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                  {!selectedRecurringCompany.paymentMethodReady ? (
+                    <p style={{ margin: "8px 0 0" }}>
+                      Card-add path:{" "}
+                      <Link to={portalPaymentMethodPath(selectedRecurringCompany)}>
+                        {portalPaymentMethodPath(selectedRecurringCompany)}
+                      </Link>
+                    </p>
+                  ) : null}
                 </Notice>
               )
             ) : null}
@@ -496,7 +552,7 @@ export default function BillingPage() {
               type="submit"
               variant="primary"
               loading={recurringBusy}
-              disabled={!recurringForm.companyId || recurringStripeConfigured === false}
+              disabled={!canCreateRecurringCharge}
             >
               <CreditCard size={14} /> Create recurring charge
             </Button>
