@@ -1,6 +1,8 @@
 import datetime as dt
 import decimal
+import os
 import unittest
+from unittest.mock import patch
 
 from scripts.staff_commission import (
     attach_job_commissions,
@@ -8,13 +10,22 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
+    ConfigError,
     build_html,
     build_staff_rows,
     commission_style,
     daily_totals,
+    graph_mail_payload,
+    is_current_report_month,
     is_missing_po_anomaly,
     iter_display_rows,
+    match_category_id,
+    parse_args,
+    refuse_non_current_month_send,
+    resolve_staff,
 )
 
 
@@ -497,6 +508,77 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class StaffResolutionAndSendGateTest(unittest.TestCase):
+    def test_known_staff_use_fixed_category_ids(self) -> None:
+        self.assertEqual(resolve_staff("Sharon")["category_id"], 132264)
+        self.assertEqual(resolve_staff("sharon")["name"], "Sharon")
+        self.assertEqual(resolve_staff("Ella")["category_id"], 132225)
+        self.assertEqual(resolve_staff("Lauren")["category_id"], 132263)
+
+    def test_unknown_staff_matches_exact_category_name_and_does_not_guess(self) -> None:
+        categories = [
+            {"id": 111, "name": "Daniel"},
+            {"JobCategoryId": "222", "JobCategoryName": "Pat"},
+        ]
+        self.assertEqual(match_category_id(categories, "Pat"), 222)
+        with self.assertRaises(ConfigError):
+            match_category_id(categories, "P")
+        with self.assertRaises(ConfigError):
+            match_category_id(categories, "Unknown")
+
+    def test_cli_defaults_to_current_london_month_and_required_mail(self) -> None:
+        env = {key: value for key, value in os.environ.items() if key != "STAFF_NAME"}
+        with patch.dict(os.environ, env, clear=True):
+            args = parse_args([], now=dt.date(2026, 9, 18))
+        self.assertEqual(args.year, 2026)
+        self.assertEqual(args.month, 9)
+        self.assertEqual(args.staff, "Sharon")
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+        self.assertEqual(DEFAULT_MAIL_TO, "ella@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
+
+    def test_send_is_refused_for_a_past_month(self) -> None:
+        today = dt.date(2026, 9, 18)
+        self.assertTrue(is_current_report_month(2026, 9, today))
+        self.assertFalse(is_current_report_month(2026, 8, today))
+        refuse_non_current_month_send(2026, 9, send=True, now=today)
+        with self.assertRaises(ConfigError):
+            refuse_non_current_month_send(2026, 8, send=True, now=today)
+        refuse_non_current_month_send(2026, 8, send=False, now=today)
+
+    def test_graph_payload_always_includes_ella_to_and_william_cc(self) -> None:
+        payload = graph_mail_payload("Sharon — September 2026 — commission report", "<p>x</p>", DEFAULT_MAIL_TO, DEFAULT_MAIL_CC)
+        self.assertTrue(payload["saveToSentItems"])
+        self.assertEqual(
+            payload["message"]["toRecipients"][0]["emailAddress"]["address"],
+            "ella@elvexpropertyservices.com",
+        )
+        self.assertEqual(
+            payload["message"]["ccRecipients"][0]["emailAddress"]["address"],
+            "william@elvexpropertyservices.com",
+        )
+
+
+class ScorecardLayoutTest(unittest.TestCase):
+    def test_scorecard_is_five_equal_columns_with_labels_then_figures(self) -> None:
+        jobs = attach_job_commissions([_job(dt.date(2026, 9, 1), "GR/1", "1500", "525")])
+        body = build_html(staff_name="Sharon", month_label="September 2026", job_rows=jobs, anomaly_rows=[])
+        self.assertIn("Sharon — September 2026 commission report", body)
+        self.assertIn("width=\"20%\"", body)
+        self.assertIn("Overall profit", body)
+        self.assertIn("#1f3a5f", body)
+        self.assertIn("#2e5a8f", body)
+        self.assertIn("#3d6fa3", body)
+        self.assertIn("#4a82b8", body)
+        self.assertIn("#1b7a4a", body)
+        self.assertIn("white-space:nowrap", body)
+        label_row = body.find("Overall profit")
+        figure_row = body.find("£525.00")
+        self.assertGreater(figure_row, label_row)
+        self.assertNotIn("display:flex", body)
 
 
 if __name__ == "__main__":
