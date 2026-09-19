@@ -3,18 +3,25 @@ import decimal
 import unittest
 
 from scripts.staff_commission import (
+    LAUREN_PROFILE,
     attach_job_commissions,
     calculate_job_commission,
+    profile_for_staff,
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
     build_html,
     build_staff_rows,
     commission_style,
+    current_london_month,
     daily_totals,
+    graph_mail_payload,
     is_missing_po_anomaly,
     iter_display_rows,
+    parse_args,
 )
 
 
@@ -447,6 +454,9 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(september_main[0]["profit"], D("-89.00"))
         attached = attach_job_commissions(september_main)
         self.assertEqual(attached[0]["commission"], D("-249.00"))
+        lauren_attached = attach_job_commissions(september_main, profile=profile_for_staff("Lauren"))
+        self.assertEqual(lauren_attached[0]["commission"], D("-5.00"))
+        self.assertEqual(profile_for_staff("Lauren"), LAUREN_PROFILE)
 
     def test_sharon_first_job_takes_ellas_later_po(self) -> None:
         jobs = [
@@ -497,6 +507,31 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+
+class ReportDefaultsTest(unittest.TestCase):
+    def test_args_default_to_current_london_month_and_william_to_cc(self) -> None:
+        year, month = current_london_month()
+        args = parse_args([])
+        self.assertEqual(args.year, year)
+        self.assertEqual(args.month, month)
+        self.assertEqual(DEFAULT_MAIL_TO, "william@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+
+    def test_graph_mail_always_includes_to_and_cc(self) -> None:
+        payload = graph_mail_payload("Subject", "<p>Hi</p>", DEFAULT_MAIL_TO)
+        self.assertTrue(payload["saveToSentItems"])
+        self.assertEqual(
+            payload["message"]["toRecipients"][0]["emailAddress"]["address"],
+            DEFAULT_MAIL_TO,
+        )
+        self.assertEqual(
+            payload["message"]["ccRecipients"][0]["emailAddress"]["address"],
+            DEFAULT_MAIL_CC,
+        )
 
 
 if __name__ == "__main__":
