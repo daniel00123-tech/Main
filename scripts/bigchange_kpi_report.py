@@ -24,12 +24,16 @@ import urllib.request
 from collections import defaultdict
 from email import encoders
 from email.headerregistry import Address
-from email.utils import getaddresses
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import getaddresses
 from pathlib import Path
 from typing import Any
+
+
+NIRVANA_APPROVED_TO_EMAIL = "core@nirvana-maintenance.co.uk"
+URBAN_EMAIL = "urban@nirvana-maintenance.co.uk"
 
 
 JOB_KPI_ORDER = [
@@ -38,8 +42,7 @@ JOB_KPI_ORDER = [
     ("uninvoiced_jobs", "Uninvoiced Jobs"),
     ("unactioned_jobs", "Unactioned Jobs"),
 ]
-FRESHDESK_METRIC = ("open_freshdesk_tickets", "Open Freshdesk Tickets")
-KPI_ORDER = JOB_KPI_ORDER + [FRESHDESK_METRIC]
+KPI_ORDER = JOB_KPI_ORDER
 
 SALES_ORDER_TYPES = {"invoice", "salesinvoice", "si"}
 EXCLUDED_CATEGORY_NAMES = {"btr compliance", "btr reactive", "john bennett", "ryan barrett"}
@@ -47,8 +50,6 @@ EXCLUDED_STATUS_IDS = {10, 12, 13, 14}
 COMPLETED_STATUS_IDS = {12, 13}
 UNALLOCATED_STATUS_IDS = {1, 3}
 OPEN_NOT_STARTED_STATUS_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11}
-OPEN_FRESHDESK_STATUS_NAMES = {"open", "pending", "waiting on customer", "waiting on third party"}
-DEFAULT_FRESHDESK_OPEN_STATUS_IDS = {2, 3}
 LOCAL_NAME_ALIASES = {
     "amy b": "amy bradley",
     "dan dwyer": "daniel dwyer",
@@ -61,37 +62,6 @@ ACTIONED_FIELDS = ("Actioned", "IsActioned", "JobActioned", "HasBeenActioned")
 ACTIVITY_DATE_FIELDS = ("JobClientStatusDate", "ClientStatusDate", "ActivityDate", "Created", "DateCreated")
 INVOICE_OWNER_FIELDS = ("JobClientStatusOwner", "ClientStatusOwner", "Owner", "CreatedBy", "UserName", "Name")
 DECIMAL_ZERO = decimal.Decimal("0")
-COMPANY_CONTEXTS: dict[str, dict[str, Any]] = {
-    "aquilo": {
-        "display_name": "Aquilo",
-        "allowed_to_emails": set(),
-    },
-    "nirvana": {
-        "display_name": "Nirvana",
-        "allowed_to_emails": {"core@nirvana-maintenance.co.uk"},
-    },
-    "urban": {
-        "display_name": "Urban",
-        "allowed_to_emails": {"urban@nirvana-maintenance.co.uk"},
-    },
-}
-COMPANY_ALIASES = {
-    "aquilo": "aquilo",
-    "nirvana": "nirvana",
-    "nirvanamaintenance": "nirvana",
-    "nirvanagroup": "nirvana",
-    "urban": "urban",
-    "urbanmaintenance": "urban",
-}
-AUTOMATION_COMPANY_BY_ID = {
-    "af615988-797c-4d3c-b1b6-7edb144b8456": "nirvana",
-    "a20bd074-6fe2-49fc-9acf-32ecff2719cc": "urban",
-}
-REPORT_COMPANY_ENV_NAMES = ("KPI_COMPANY", "KPI_REPORT_COMPANY", "REPORT_COMPANY")
-AUTOMATION_ID_ENV_NAMES = ("CURSOR_AUTOMATION_ID", "CURSOR_AGENT_AUTOMATION_ID", "AUTOMATION_ID")
-AUTOMATION_NAME_ENV_NAMES = ("CURSOR_AUTOMATION_NAME", "CURSOR_AGENT_NAME", "AUTOMATION_NAME")
-NIRVANA_APPROVED_TO_EMAIL = "core@nirvana-maintenance.co.uk"
-URBAN_EMAIL = "urban@nirvana-maintenance.co.uk"
 
 
 class ConfigError(RuntimeError):
@@ -176,119 +146,6 @@ def normalized_text(value: str) -> str:
 
 def compact_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
-
-
-def normalize_company_key(value: str) -> str:
-    compacted = compact_key(value)
-    return COMPANY_ALIASES.get(compacted, compacted)
-
-
-def report_context_for_company(company: str) -> dict[str, Any]:
-    key = normalize_company_key(company)
-    if key not in COMPANY_CONTEXTS:
-        allowed = ", ".join(sorted(COMPANY_CONTEXTS))
-        raise ConfigError(f"KPI_COMPANY must be one of {allowed}; got {company!r}")
-    context = COMPANY_CONTEXTS[key]
-    return {
-        "key": key,
-        "display_name": context["display_name"],
-        "allowed_to_emails": set(context["allowed_to_emails"]),
-    }
-
-
-def detect_company_from_text(value: str) -> str | None:
-    tokens = set(normalized_text(value).split())
-    for company in ("nirvana", "urban", "aquilo"):
-        if company in tokens:
-            return company
-    return None
-
-
-def resolve_report_context() -> dict[str, Any]:
-    for env_name in REPORT_COMPANY_ENV_NAMES:
-        value = optional_env(env_name).strip()
-        if value:
-            return report_context_for_company(value)
-
-    for env_name in AUTOMATION_ID_ENV_NAMES:
-        automation_id = optional_env(env_name).strip().lower()
-        company = AUTOMATION_COMPANY_BY_ID.get(automation_id)
-        if company:
-            return report_context_for_company(company)
-
-    for env_name in AUTOMATION_NAME_ENV_NAMES:
-        company = detect_company_from_text(optional_env(env_name))
-        if company:
-            return report_context_for_company(company)
-
-    return report_context_for_company("aquilo")
-
-
-def company_display_name(report_context: dict[str, Any]) -> str:
-    return clean_name(report_context.get("display_name")) or "Aquilo"
-
-
-def report_title(report_context: dict[str, Any]) -> str:
-    return f"{company_display_name(report_context)} BigChange KPI Overview"
-
-
-def email_subject(report_context: dict[str, Any]) -> str:
-    return f"{company_display_name(report_context)} Daily KPI Overview Report"
-
-
-def parse_recipient_addresses(value: str) -> list[str]:
-    return [
-        address.strip().lower()
-        for _display_name, address in getaddresses([value])
-        if address and "@" in address
-    ]
-
-
-def is_clearly_urban_recipient(value: str) -> bool:
-    text = value.lower()
-    return URBAN_EMAIL in text or "urban" in normalized_text(text).split()
-
-
-def validate_report_recipients(report_context: dict[str, Any], to_email: str, cc_email: str = "") -> None:
-    company = report_context["key"]
-    display_name = company_display_name(report_context)
-    to_addresses = parse_recipient_addresses(to_email)
-    if not to_addresses:
-        raise ConfigError("SMTP_TO_EMAIL must contain a valid email address")
-
-    cc_addresses = parse_recipient_addresses(cc_email)
-    if company == "nirvana":
-        recipient_values = [to_email, cc_email, *to_addresses, *cc_addresses]
-        if any(is_clearly_urban_recipient(value) for value in recipient_values):
-            raise ConfigError(
-                "Refusing to send Nirvana KPI report to an Urban recipient; "
-                f"set SMTP_TO_EMAIL={NIRVANA_APPROVED_TO_EMAIL} and remove any urban@ recipients."
-            )
-
-    allowed_to_emails = set(report_context.get("allowed_to_emails", set()))
-    if allowed_to_emails and (len(to_addresses) != 1 or to_addresses[0] not in allowed_to_emails):
-        allowed = ", ".join(sorted(allowed_to_emails))
-        raise ConfigError(
-            f"{display_name} KPI reports may only use approved SMTP_TO_EMAIL values: {allowed}; "
-            f"got {to_email!r}."
-        )
-
-
-def build_email_settings(report_context: dict[str, Any] | None = None) -> dict[str, Any]:
-    context = report_context or resolve_report_context()
-    settings = {
-        "report_context": context,
-        "smtp_host": required_env("SMTP_HOST"),
-        "smtp_port": int(required_env("SMTP_PORT")),
-        "smtp_username": required_env("SMTP_USERNAME"),
-        "smtp_password": required_env("SMTP_PASSWORD"),
-        "from_email": required_env("SMTP_FROM_EMAIL").strip(),
-        "from_name": optional_env("SMTP_FROM_NAME"),
-        "to_email": required_env("SMTP_TO_EMAIL").strip(),
-        "cc_email": optional_env("SMTP_CC_EMAIL").strip(),
-    }
-    validate_report_recipients(context, settings["to_email"], settings["cc_email"])
-    return settings
 
 
 def name_key(value: str) -> str:
@@ -603,214 +460,6 @@ class BigChangeClient:
             return []
         return self.result_rows(payload)
 
-
-class FreshdeskClient:
-    def __init__(self) -> None:
-        subdomain = required_env("FRESHDESK_SUBDOMAIN").strip().rstrip("/")
-        if not subdomain.startswith(("http://", "https://")):
-            subdomain = f"https://{subdomain}"
-        self.base_url = subdomain
-        api_key = required_env("FRESHDESK_API_KEY")
-        token = base64.b64encode(f"{api_key}:X".encode("utf-8")).decode("ascii")
-        self.headers = {
-            "Authorization": f"Basic {token}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        }
-        self._agent_cache: dict[int, str] = {}
-        self._contact_cache: dict[int, str] = {}
-
-    def get_json(
-        self,
-        path: str,
-        params: dict[str, Any] | None = None,
-        timeout: int = 60,
-        attempts: int = 3,
-    ) -> Any:
-        url = f"{self.base_url}{path}"
-        if params:
-            query = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None and v != ""})
-            if query:
-                url = f"{url}?{query}"
-        req = urllib.request.Request(url, headers=self.headers)
-        last_error: Exception | None = None
-        for attempt in range(attempts):
-            try:
-                with urllib.request.urlopen(req, timeout=timeout) as response:
-                    return json.loads(response.read().decode("utf-8-sig"))
-            except urllib.error.HTTPError as exc:
-                last_error = exc
-                retryable = exc.code == 429 or 500 <= exc.code < 600
-                if not retryable or attempt == attempts - 1:
-                    break
-                retry_after = as_int(exc.headers.get("Retry-After"), default=None)
-                time.sleep(float(retry_after if retry_after is not None else 2**attempt))
-            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-                last_error = exc
-                if attempt == attempts - 1:
-                    break
-                time.sleep(2**attempt)
-        raise RuntimeError(f"Freshdesk request failed for {path}: {type(last_error).__name__}")
-
-    def open_status_ids(self) -> set[int]:
-        configured = optional_env("FRESHDESK_OPEN_STATUS_IDS").strip()
-        if configured:
-            status_ids = {
-                parsed
-                for parsed in (as_int(part.strip(), default=None) for part in configured.split(","))
-                if parsed is not None
-            }
-            if status_ids:
-                return status_ids
-        try:
-            fields = self.get_json("/api/v2/ticket_fields", timeout=30)
-        except RuntimeError:
-            return set(DEFAULT_FRESHDESK_OPEN_STATUS_IDS)
-        for field in fields if isinstance(fields, list) else []:
-            field_name = normalized_text(clean_name(first_present(field, ("name", "label", "default_label"))))
-            if field_name != "status":
-                continue
-            status_ids = status_ids_from_choices(field.get("choices"))
-            if status_ids:
-                return status_ids
-        return set(DEFAULT_FRESHDESK_OPEN_STATUS_IDS)
-
-    def list_open_tickets(self, page_size: int = 100) -> list[dict[str, Any]]:
-        open_status_ids = self.open_status_ids()
-        tickets: list[dict[str, Any]] = []
-        page = 1
-        while True:
-            batch = self.get_json(
-                "/api/v2/tickets",
-                {"include": "requester", "per_page": page_size, "page": page},
-                timeout=60,
-            )
-            if not isinstance(batch, list):
-                raise RuntimeError("Freshdesk tickets response was not a list")
-            for ticket in batch:
-                if is_open_freshdesk_ticket(ticket, open_status_ids):
-                    tickets.append(ticket)
-            if len(batch) < page_size:
-                return tickets
-            page += 1
-            if page > 300:
-                raise RuntimeError("Freshdesk ticket pagination exceeded safety limit")
-
-    def agent_name(self, agent_id: Any) -> str:
-        parsed = as_int(agent_id)
-        if parsed is None:
-            return ""
-        if parsed not in self._agent_cache:
-            try:
-                payload = self.get_json(f"/api/v2/agents/{parsed}", timeout=30)
-            except RuntimeError:
-                self._agent_cache[parsed] = ""
-            else:
-                contact = payload.get("contact") if isinstance(payload, dict) else None
-                self._agent_cache[parsed] = clean_name(
-                    first_present(payload, ("name", "email")) if isinstance(payload, dict) else ""
-                ) or clean_name(first_present(contact, ("name", "email")) if isinstance(contact, dict) else "")
-        return self._agent_cache[parsed]
-
-    def contact_name(self, contact_id: Any) -> str:
-        parsed = as_int(contact_id)
-        if parsed is None:
-            return ""
-        if parsed not in self._contact_cache:
-            try:
-                payload = self.get_json(f"/api/v2/contacts/{parsed}", timeout=30)
-            except RuntimeError:
-                self._contact_cache[parsed] = ""
-            else:
-                self._contact_cache[parsed] = clean_name(
-                    first_present(payload, ("name", "email")) if isinstance(payload, dict) else ""
-                )
-        return self._contact_cache[parsed]
-
-
-def status_ids_from_choices(choices: Any) -> set[int]:
-    status_ids: set[int] = set()
-    if isinstance(choices, dict):
-        iterable = choices.items()
-    elif isinstance(choices, list):
-        iterable = enumerate(choices)
-    else:
-        return status_ids
-    for key, value in iterable:
-        status_id: int | None = None
-        label = ""
-        if isinstance(value, dict):
-            status_id = as_int(first_present(value, ("id", "value", "key")), default=None)
-            label = choice_label(first_present(value, ("label", "name", "value")))
-        else:
-            key_id = as_int(key, default=None)
-            value_id = as_int(value, default=None)
-            if key_id is not None:
-                status_id = key_id
-                label = choice_label(value)
-            elif value_id is not None:
-                status_id = value_id
-                label = choice_label(key)
-        if status_id is not None and normalized_text(label) in OPEN_FRESHDESK_STATUS_NAMES:
-            status_ids.add(status_id)
-    return status_ids
-
-
-def choice_label(value: Any) -> str:
-    if isinstance(value, (list, tuple)):
-        for item in value:
-            if as_int(item, default=None) is not None:
-                continue
-            label = choice_label(item)
-            if label:
-                return label
-        return ""
-    if isinstance(value, dict):
-        return choice_label(first_present(value, ("label", "name", "value")))
-    return clean_name(value)
-
-
-def is_open_freshdesk_ticket(ticket: dict[str, Any], open_status_ids: set[int]) -> bool:
-    if not isinstance(ticket, dict):
-        return False
-    if as_bool_truthy(first_present(ticket, ("deleted", "is_deleted"))):
-        return False
-    if as_bool_truthy(first_present(ticket, ("spam", "is_spam"))):
-        return False
-    status_id = as_int(ticket.get("status"))
-    if status_id in open_status_ids:
-        return True
-    status_label = normalized_text(clean_name(first_present(ticket, ("status_name", "status_label", "status_text"))))
-    return status_label in OPEN_FRESHDESK_STATUS_NAMES
-
-
-def as_bool_truthy(value: Any) -> bool:
-    if value in (None, ""):
-        return False
-    text = str(value).strip().lower()
-    return text in {"1", "true", "yes", "y"}
-
-
-def freshdesk_ticket_owner(client: FreshdeskClient, ticket: dict[str, Any]) -> str:
-    responder = first_present(ticket, ("responder_id", "agent_id", "assigned_agent_id"))
-    owner = client.agent_name(responder)
-    if owner:
-        return owner
-
-    requester = first_present(ticket, ("requester_id", "contact_id"))
-    owner = client.contact_name(requester)
-    if owner:
-        return owner
-
-    embedded_requester = ticket.get("requester")
-    if isinstance(embedded_requester, dict):
-        owner = clean_name(first_present(embedded_requester, ("name", "email")))
-        if owner:
-            return owner
-
-    return clean_name(first_present(ticket, ("responder_name", "agent_name", "requester_name", "name", "email")))
-
-
 def item_age_days(item_date: dt.datetime | None, today: dt.date) -> int:
     if item_date is None:
         return 0
@@ -933,46 +582,6 @@ def calculate_sales(
         sales[matched_staff] += net
     return dict(sales)
 
-
-def calculate_freshdesk_metrics(
-    client: FreshdeskClient,
-    staff_names: set[str],
-    today: dt.date,
-) -> tuple[dict[str, list[dt.datetime | None]], list[dict[str, Any]], list[dict[str, Any]]]:
-    staff_by_key = {name_key(name): name for name in staff_names if name_key(name)}
-    grouped: dict[str, list[dt.datetime | None]] = defaultdict(list)
-    unmatched: list[dict[str, Any]] = []
-    critical: list[dict[str, Any]] = []
-    for ticket in client.list_open_tickets():
-        created_at = parse_date(first_present(ticket, ("created_at", "created", "created_date")))
-        age_days = item_age_days(created_at, today) if created_at else 0
-        owner = freshdesk_ticket_owner(client, ticket)
-        matched_staff = match_staff_name(owner, staff_by_key)
-        if age_days > 30:
-            critical.append({"id": ticket.get("id"), "owner": owner, "oldest_age_days": age_days})
-        if not matched_staff:
-            unmatched.append({"id": ticket.get("id"), "owner": owner, "oldest_age_days": age_days})
-            continue
-        grouped[matched_staff].append(created_at)
-    return dict(grouped), unmatched, critical
-
-
-def calculate_score(metrics: dict[str, dict[str, Any]]) -> int:
-    red_count = sum(1 for metric in metrics.values() if metric["status"] == "red")
-    amber_count = sum(1 for metric in metrics.values() if metric["status"] == "amber")
-    open_workload = sum(int(metric["count"]) for metric in metrics.values())
-    score = 100 - red_count * 20 - amber_count * 10 - open_workload
-    return max(1, min(100, score))
-
-
-def score_status(score: int) -> str:
-    if score >= 70:
-        return "green"
-    if score >= 40:
-        return "amber"
-    return "red"
-
-
 def invoice_created_owner(document: dict[str, Any], activity_cache: dict[str, list[dict[str, Any]]]) -> str:
     job_id = document_job_id(document)
     if not job_id:
@@ -1023,7 +632,7 @@ def resolve_document_creator(invoice: dict[str, Any], web_users: dict[str, str])
     return creator
 
 
-def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> dict[str, Any]:
+def build_report(client: BigChangeClient) -> dict[str, Any]:
     now = dt.datetime.now(dt.timezone.utc)
     today = dt.date.today()
     tomorrow = today + dt.timedelta(days=1)
@@ -1113,9 +722,6 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
     add_items(grouped, staff_names, unactioned_rows, "unactioned_jobs", STATUS_DATE_FIELDS, today)
 
     sales = calculate_sales(client, staff_names, month_start, month_end)
-    freshdesk_grouped, unmatched_freshdesk_tickets, critical_freshdesk_tickets = calculate_freshdesk_metrics(
-        freshdesk_client, staff_names, today
-    )
 
     staff_rows: list[dict[str, Any]] = []
     for staff in sorted(staff_names):
@@ -1130,38 +736,23 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
                 "oldest_age_days": age_days,
                 "status": severity_for(count, age_days),
             }
-        freshdesk_dates = freshdesk_grouped.get(staff, [])
-        freshdesk_count = len(freshdesk_dates)
-        oldest_freshdesk_date = min((date for date in freshdesk_dates if date is not None), default=None)
-        freshdesk_age_days = item_age_days(oldest_freshdesk_date, today) if oldest_freshdesk_date else 0
-        metrics[FRESHDESK_METRIC[0]] = {
-            "count": freshdesk_count,
-            "oldest_age_days": freshdesk_age_days,
-            "status": severity_for(freshdesk_count, freshdesk_age_days),
-        }
         red_count = sum(1 for metric in metrics.values() if metric["status"] == "red")
         amber_count = sum(1 for metric in metrics.values() if metric["status"] == "amber")
         total_open_workload = sum(metric["count"] for metric in metrics.values())
-        overall_score = calculate_score(metrics)
         staff_rows.append(
             {
                 "staff_name": staff,
                 "metrics": metrics,
                 "current_month_sales": float(sales.get(staff, DECIMAL_ZERO)),
                 "current_month_sales_display": format_currency(sales.get(staff, DECIMAL_ZERO)),
-                "freshdesk_ticket_count": freshdesk_count,
                 "red_kpis": red_count,
                 "amber_kpis": amber_count,
                 "total_open_workload": total_open_workload,
-                "overall_score": overall_score,
-                "score_status": score_status(overall_score),
-                "escalated": red_count > 5 or overall_score < 40,
             }
         )
 
     staff_rows.sort(
         key=lambda row: (
-            -row["overall_score"],
             row["red_kpis"],
             row["amber_kpis"],
             row["total_open_workload"],
@@ -1176,13 +767,6 @@ def build_report(client: BigChangeClient, freshdesk_client: FreshdeskClient) -> 
         "staff_rows": staff_rows,
         "total_red_kpis": sum(row["red_kpis"] for row in staff_rows),
         "total_amber_kpis": sum(row["amber_kpis"] for row in staff_rows),
-        "unmatched_freshdesk_ticket_count": len(unmatched_freshdesk_tickets),
-        "unmatched_freshdesk_tickets": unmatched_freshdesk_tickets,
-        "critical_freshdesk_ticket_count": len(critical_freshdesk_tickets),
-        "critical_freshdesk_oldest_age_days": max(
-            (int(ticket["oldest_age_days"]) for ticket in critical_freshdesk_tickets),
-            default=0,
-        ),
     }
 
 
@@ -1211,38 +795,6 @@ def render_sales(value: str) -> str:
         "</div>"
     )
 
-
-def render_score(score: int, status: str) -> str:
-    return (
-        f'<div class="score {html.escape(status)}">'
-        f'<div class="score-circle"><span>{int(score)}</span></div>'
-        '<div class="age">/ 100</div>'
-        "</div>"
-    )
-
-
-def render_unmatched_freshdesk_log(report: dict[str, Any]) -> str:
-    tickets = report.get("unmatched_freshdesk_tickets", [])
-    count = int(report.get("unmatched_freshdesk_ticket_count", 0))
-    if not count:
-        return '<section class="notes"><span>Unmatched Freshdesk tickets logged: 0</span></section>'
-
-    items = []
-    for ticket in tickets[:8]:
-        ticket_id = html.escape(clean_name(ticket.get("id")) or "unknown")
-        owner = html.escape(clean_name(ticket.get("owner")) or "No owner")
-        age = int(ticket.get("oldest_age_days") or 0)
-        items.append(f"<li>#{ticket_id} - {owner} - {age} days old</li>")
-    remaining = count - len(items)
-    more = f"<li>+{remaining} more unmatched tickets</li>" if remaining > 0 else ""
-    return (
-        '<section class="notes unmatched-log">'
-        f"<strong>Unmatched Freshdesk tickets logged: {count}</strong>"
-        f"<ul>{''.join(items)}{more}</ul>"
-        "</section>"
-    )
-
-
 def initials(name: str) -> str:
     parts = normalized_text(name).split()
     if not parts:
@@ -1256,27 +808,23 @@ def avatar_class(name: str) -> str:
     return f"avatar-{sum(ord(ch) for ch in name) % 8}"
 
 
-def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = None) -> str:
-    context = report_context or resolve_report_context()
-    title = html.escape(report_title(context))
+def render_html(report: dict[str, Any]) -> str:
     rows_html = []
     for idx, row in enumerate(report["staff_rows"], start=1):
         staff = html.escape(row["staff_name"])
-        row_class = ' class="escalated"' if row.get("escalated") else ""
-        escalation_icon = '<span class="escalation-icon">!</span>' if row.get("escalated") else ""
         cells = [
             f'<td class="rank">#{idx}</td>',
             '<td class="staff">'
+            '<div class="staff-inner">'
             f'<div class="avatar {avatar_class(row["staff_name"])}">{html.escape(initials(row["staff_name"]))}</div>'
-            f'<div class="person"><strong>{staff}{escalation_icon}</strong><span>Staff owner</span></div>'
+            f'<div class="person"><strong>{staff}</strong><span>Staff owner</span></div>'
+            "</div>"
             "</td>",
         ]
         for metric_key, _label in JOB_KPI_ORDER:
             cells.append(f"<td>{render_metric(row['metrics'][metric_key])}</td>")
         cells.append(f"<td>{render_sales(row['current_month_sales_display'])}</td>")
-        cells.append(f"<td>{render_metric(row['metrics'][FRESHDESK_METRIC[0]])}</td>")
-        cells.append(f"<td>{render_score(row['overall_score'], row['score_status'])}</td>")
-        rows_html.append(f"<tr{row_class}>{''.join(cells)}</tr>")
+        rows_html.append(f"<tr>{''.join(cells)}</tr>")
 
     generated = html.escape(report["run_timestamp"])
     report_date = html.escape(report["report_date"])
@@ -1287,24 +835,11 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
         metric_key: sum(row["metrics"][metric_key]["count"] for row in report["staff_rows"])
         for metric_key, _label in KPI_ORDER
     }
-    critical_warning = ""
-    if int(report.get("critical_freshdesk_ticket_count", 0)):
-        critical_warning = (
-            '<section class="critical-warning">'
-            '<div class="warning-icon">!</div>'
-            "<div>"
-            "<strong>Critical Aged Tickets</strong>"
-            f'<span>{int(report["critical_freshdesk_ticket_count"])} open Freshdesk tickets are over 30 days old; '
-            f'oldest is {int(report["critical_freshdesk_oldest_age_days"])} days old.</span>'
-            "</div>"
-            "</section>"
-        )
-    unmatched_note = render_unmatched_freshdesk_log(report)
     return f"""<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>{title}</title>
+  <title>BigChange KPI Overview</title>
   <style>
     :root {{
       --bg: #07111f;
@@ -1317,7 +852,11 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
       --red: #ef4d5d;
       --line: rgba(148, 163, 184, 0.22);
     }}
-    * {{ box-sizing: border-box; }}
+    * {{
+      box-sizing: border-box;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }}
     body {{
       margin: 0;
       background:
@@ -1325,7 +864,8 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
         radial-gradient(circle at 90% 5%, rgba(239, 77, 93, 0.12), transparent 28rem),
         var(--bg);
       color: var(--text);
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: "Liberation Sans", "Noto Sans", Arial, Helvetica, sans-serif;
+      letter-spacing: 0;
       padding: 34px;
     }}
     .dashboard {{
@@ -1362,7 +902,7 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
     h1 {{
       margin: 0;
       font-size: 24px;
-      letter-spacing: -0.03em;
+      letter-spacing: 0.02em;
       line-height: 1.1;
       text-transform: uppercase;
     }}
@@ -1398,56 +938,9 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
     }}
     .badge.red strong {{ color: var(--red); }}
     .badge.amber strong {{ color: var(--amber); }}
-    .critical-warning {{
-      margin: 18px 24px 0;
-      padding: 16px 18px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      border: 1px solid rgba(239, 77, 93, 0.55);
-      border-radius: 18px;
-      background: linear-gradient(90deg, rgba(239, 77, 93, 0.20), rgba(239, 77, 93, 0.06));
-      box-shadow: 0 0 28px rgba(239, 77, 93, 0.16);
-    }}
-    .critical-warning strong,
-    .critical-warning span {{
-      display: block;
-    }}
-    .critical-warning strong {{
-      color: #fff1f2;
-      font-size: 18px;
-      letter-spacing: -0.02em;
-    }}
-    .critical-warning span {{
-      margin-top: 4px;
-      color: #fecdd3;
-      font-size: 13px;
-    }}
-    .warning-icon,
-    .escalation-icon {{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-      background: var(--red);
-      color: #fff;
-      font-weight: 900;
-      box-shadow: 0 0 20px rgba(239, 77, 93, 0.45);
-    }}
-    .warning-icon {{
-      width: 34px;
-      height: 34px;
-    }}
-    .escalation-icon {{
-      width: 20px;
-      height: 20px;
-      margin-left: 8px;
-      font-size: 12px;
-      vertical-align: middle;
-    }}
     .total-cards {{
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 14px;
       padding: 18px 24px;
       border-bottom: 1px solid var(--line);
@@ -1470,7 +963,7 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
       display: block;
       margin-top: 8px;
       font-size: 30px;
-      letter-spacing: -0.04em;
+      letter-spacing: 0;
     }}
     table {{
       width: 100%;
@@ -1492,9 +985,7 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
     }}
     th:nth-child(1), td:nth-child(1) {{ width: 72px; }}
     th:nth-child(2), td:nth-child(2) {{ width: 292px; }}
-    th:nth-child(7), td:nth-child(7) {{ width: 178px; }}
-    th:nth-child(8), td:nth-child(8) {{ width: 178px; }}
-    th:nth-child(9), td:nth-child(9) {{ width: 150px; }}
+    th:nth-child(7), td:nth-child(7) {{ width: 190px; }}
     td {{
       padding: 14px 10px;
       border-bottom: 1px solid var(--line);
@@ -1503,31 +994,17 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
     }}
     tr:nth-child(even) td {{ background: rgba(255, 255, 255, 0.025); }}
     tr:last-child td {{ border-bottom: none; }}
-    tr.escalated td {{
-      border-top: 1px solid rgba(239, 77, 93, 0.62);
-      border-bottom: 1px solid rgba(239, 77, 93, 0.62);
-      animation: pulse-border 1.8s ease-in-out infinite;
-    }}
-    tr.escalated td:first-child {{
-      border-left: 1px solid rgba(239, 77, 93, 0.62);
-    }}
-    tr.escalated td:last-child {{
-      border-right: 1px solid rgba(239, 77, 93, 0.62);
-    }}
-    @keyframes pulse-border {{
-      0%, 100% {{ box-shadow: inset 0 0 0 rgba(239, 77, 93, 0); }}
-      50% {{ box-shadow: inset 0 0 26px rgba(239, 77, 93, 0.18); }}
-    }}
     .rank {{
       color: #e2e8f0;
-      font-weight: 900;
+      font-weight: 700;
       font-size: 18px;
     }}
     .staff {{
       text-align: left;
       padding-left: 12px;
     }}
-    .staff, .person {{
+    .staff-inner,
+    .person {{
       display: flex;
       align-items: center;
       gap: 12px;
@@ -1539,7 +1016,7 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
     }}
     .person strong {{
       font-size: 18px;
-      letter-spacing: -0.02em;
+      letter-spacing: 0;
     }}
     .person span {{
       color: var(--muted);
@@ -1554,7 +1031,7 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
       justify-content: center;
       color: #fff;
       font-size: 12px;
-      font-weight: 900;
+      font-weight: 700;
       box-shadow: 0 0 18px rgba(255, 255, 255, 0.12);
     }}
     .avatar-0 {{ background: #7c3aed; }}
@@ -1574,21 +1051,19 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
     .sales-value strong {{
       color: #f8fafc;
       font-size: 20px;
-      letter-spacing: -0.04em;
+      letter-spacing: 0;
     }}
     .sales-value span {{
       color: var(--muted);
       font-size: 12px;
     }}
-    .metric,
-    .score {{
+    .metric {{
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 6px;
     }}
-    .circle,
-    .score-circle {{
+    .circle {{
       width: 66px;
       height: 66px;
       border-radius: 50%;
@@ -1598,12 +1073,11 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
       background: rgba(255, 255, 255, 0.045);
       box-shadow: inset 0 0 22px rgba(255, 255, 255, 0.05), 0 0 18px rgba(0, 0, 0, 0.18);
     }}
-    .circle span,
-    .score-circle span {{
+    .circle span {{
       font-size: 24px;
       line-height: 1;
-      font-weight: 900;
-      letter-spacing: -0.05em;
+      font-weight: 700;
+      letter-spacing: 0;
     }}
     .green .circle {{
       border: 3px dotted var(--green);
@@ -1617,22 +1091,6 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
       border: 3px solid var(--red);
       color: var(--red);
     }}
-    .score-circle {{
-      width: 76px;
-      height: 76px;
-    }}
-    .green .score-circle {{
-      border: 3px dotted var(--green);
-      color: var(--green);
-    }}
-    .amber .score-circle {{
-      border: 3px solid var(--amber);
-      color: var(--amber);
-    }}
-    .red .score-circle {{
-      border: 3px solid var(--red);
-      color: var(--red);
-    }}
     .age {{
       color: var(--muted);
       font-size: 12px;
@@ -1643,33 +1101,6 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
       color: var(--muted);
       font-size: 12px;
       border-top: 1px solid var(--line);
-    }}
-    .notes {{
-      padding: 14px 24px;
-      border-top: 1px solid var(--line);
-      color: var(--muted);
-      font-size: 12px;
-      background: rgba(255, 255, 255, 0.018);
-    }}
-    .unmatched-log strong {{
-      display: block;
-      color: #e2e8f0;
-      margin-bottom: 8px;
-      font-size: 13px;
-    }}
-    .unmatched-log ul {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px 16px;
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }}
-    .unmatched-log li {{
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: rgba(148, 163, 184, 0.08);
-      border: 1px solid rgba(148, 163, 184, 0.14);
     }}
     @media (max-width: 900px) {{
       body {{ padding: 12px; }}
@@ -1687,7 +1118,7 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
       <div class="brand">
         <div class="brand-mark"></div>
         <div>
-          <h1>{title}</h1>
+          <h1>BigChange KPI Overview</h1>
           <div class="sub">Generated {report_date} - jobs from {job_lookback_start} onwards, grouped by job category staff owner</div>
         </div>
       </div>
@@ -1697,13 +1128,11 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
         <div class="badge"><strong>{total_workload}</strong><span>Open items</span></div>
       </div>
     </header>
-    {critical_warning}
     <section class="total-cards">
       <div class="total-card"><span>Unallocated jobs</span><strong>{totals["unallocated_jobs"]}</strong></div>
       <div class="total-card"><span>Historic jobs</span><strong>{totals["historic_jobs"]}</strong></div>
       <div class="total-card"><span>Uninvoiced jobs</span><strong>{totals["uninvoiced_jobs"]}</strong></div>
       <div class="total-card"><span>Unactioned jobs</span><strong>{totals["unactioned_jobs"]}</strong></div>
-      <div class="total-card"><span>Open Freshdesk tickets</span><strong>{totals["open_freshdesk_tickets"]}</strong></div>
     </section>
     <section class="table-wrap">
     <table>
@@ -1716,8 +1145,6 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
           <th>Uninvoiced Jobs</th>
           <th>Unactioned Jobs</th>
           <th>{month_name} sales</th>
-          <th>Open Freshdesk Tickets</th>
-          <th>Overall Score / 100</th>
         </tr>
       </thead>
       <tbody>
@@ -1725,7 +1152,6 @@ def render_html(report: dict[str, Any], report_context: dict[str, Any] | None = 
       </tbody>
     </table>
     </section>
-    {unmatched_note}
     <footer>Generated {generated}. Green dotted circles are clear or under 10 days old; amber is 10-30 days; red is over 30 days.</footer>
   </main>
 </body>
@@ -1746,8 +1172,6 @@ def save_baseline(report: dict[str, Any], path: Path) -> None:
                     metric_key: row["metrics"][metric_key]["oldest_age_days"] for metric_key, _ in KPI_ORDER
                 },
                 "current_month_sales": row["current_month_sales"],
-                "freshdesk_ticket_count": row["freshdesk_ticket_count"],
-                "overall_score": row["overall_score"],
             }
         )
     baseline = {
@@ -1755,6 +1179,8 @@ def save_baseline(report: dict[str, Any], path: Path) -> None:
         "report_date": report["report_date"],
         "job_lookback_start": report["job_lookback_start"],
         "staff": baseline_rows,
+        "total_red_kpis": int(report.get("total_red_kpis", 0)),
+        "total_amber_kpis": int(report.get("total_amber_kpis", 0)),
     }
     path.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -1783,9 +1209,12 @@ def render_png(html_content: str, html_path: Path, png_path: Path, row_count: in
     with tempfile.TemporaryDirectory(prefix="bigchange-chrome-") as profile_dir:
         cmd = [
             chrome,
-            "--headless=new",
+            "--headless",
             "--no-sandbox",
             "--disable-gpu",
+            "--disable-lcd-text",
+            "--font-render-hinting=none",
+            "--force-device-scale-factor=1",
             "--hide-scrollbars",
             f"--user-data-dir={profile_dir}",
             f"--window-size=1740,{height}",
@@ -1800,34 +1229,74 @@ def mailbox_address(email_value: str, display_name: str = "") -> Address:
     return Address(display_name=display_name, username=username, domain=domain)
 
 
-def send_email(png_path: Path, email_settings: dict[str, Any] | None = None) -> None:
-    settings = email_settings or build_email_settings()
-    report_context = settings["report_context"]
-    company_name = company_display_name(report_context)
-    subject = email_subject(report_context)
+def parse_recipient_addresses(value: str) -> list[str]:
+    return [
+        address.strip().lower()
+        for _display_name, address in getaddresses([value])
+        if address and "@" in address
+    ]
+
+
+def is_clearly_urban_recipient(value: str) -> bool:
+    text = value.lower()
+    return URBAN_EMAIL in text or "urban" in normalized_text(text).split()
+
+
+def validate_report_recipients(to_email: str, cc_email: str = "") -> None:
+    to_addresses = parse_recipient_addresses(to_email)
+    if not to_addresses:
+        raise ConfigError("SMTP_TO_EMAIL must contain a valid email address")
+
+    cc_addresses = parse_recipient_addresses(cc_email)
+    recipient_values = [to_email, cc_email, *to_addresses, *cc_addresses]
+    if any(is_clearly_urban_recipient(value) for value in recipient_values):
+        raise ConfigError(
+            "Refusing to send Nirvana KPI report to an Urban recipient; "
+            f"set SMTP_TO_EMAIL={NIRVANA_APPROVED_TO_EMAIL} and remove any urban@ recipients."
+        )
+
+    if len(to_addresses) != 1 or to_addresses[0] != NIRVANA_APPROVED_TO_EMAIL:
+        raise ConfigError(
+            f"Nirvana KPI reports may only use approved SMTP_TO_EMAIL values: {NIRVANA_APPROVED_TO_EMAIL}; "
+            f"got {to_email!r}."
+        )
+
+
+def send_email(png_path: Path) -> None:
+    smtp_host = required_env("SMTP_HOST")
+    smtp_port = int(required_env("SMTP_PORT"))
+    smtp_username = required_env("SMTP_USERNAME")
+    smtp_password = required_env("SMTP_PASSWORD")
+    from_email = required_env("SMTP_FROM_EMAIL").strip()
+    from_name = optional_env("SMTP_FROM_NAME")
+    to_email = required_env("SMTP_TO_EMAIL").strip()
+    cc_email = optional_env("SMTP_CC_EMAIL").strip()
+    validate_report_recipients(to_email, cc_email)
+
+    subject = "Daily KPI Overview Report"
     root = MIMEMultipart("related")
     root["Subject"] = subject
-    root["From"] = str(mailbox_address(settings["from_email"], settings["from_name"]))
-    root["To"] = settings["to_email"]
-    recipients = parse_recipient_addresses(settings["to_email"])
-    if settings["cc_email"]:
-        root["Cc"] = settings["cc_email"]
-        recipients.extend(parse_recipient_addresses(settings["cc_email"]))
+    root["From"] = str(mailbox_address(from_email, from_name))
+    root["To"] = to_email
+    recipients = parse_recipient_addresses(to_email)
+    if cc_email:
+        root["Cc"] = cc_email
+        recipients.extend(parse_recipient_addresses(cc_email))
 
     alt = MIMEMultipart("alternative")
     root.attach(alt)
 
-    text_body = f"""Dear Team,
+    text_body = """Dear Team,
 
-Please see attached {company_name} KPIs for today to work on. Reds and yellows need to be cleared down as soon as possible. Please let me know if you need any support.
+Please see attached KPIs for today to work on. Reds and yellows need to be cleared down as soon as possible. Please let me know if you need any support.
 
 Thank you.
 
 Kind regards,
 Daniel Dwyer
 """
-    html_body = f"""<p>Dear Team,</p>
-<p>Please see attached {html.escape(company_name)} KPIs for today to work on. Reds and yellows need to be cleared down as soon as possible. Please let me know if you need any support.</p>
+    html_body = """<p>Dear Team,</p>
+<p>Please see attached KPIs for today to work on. Reds and yellows need to be cleared down as soon as possible. Please let me know if you need any support.</p>
 <p><img src="cid:kpi-dashboard" alt="BigChange KPI dashboard" style="max-width: 100%; height: auto;"></p>
 <p>Thank you.</p>
 <p>Kind regards,<br>Daniel Dwyer</p>"""
@@ -1843,21 +1312,22 @@ Daniel Dwyer
     root.attach(attachment)
 
     # The only attachment is the dashboard PNG; JSON and HTML stay on disk only.
-    with smtplib.SMTP(settings["smtp_host"], settings["smtp_port"], timeout=120) as smtp:
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=120) as smtp:
         smtp.starttls()
-        smtp.login(settings["smtp_username"], settings["smtp_password"])
-        smtp.sendmail(settings["from_email"], recipients, root.as_string())
+        smtp.login(smtp_username, smtp_password)
+        smtp.sendmail(from_email, recipients, root.as_string())
 
 
 def main() -> int:
     try:
-        report_context = resolve_report_context()
-        email_settings = build_email_settings(report_context)
+        validate_report_recipients(
+            required_env("SMTP_TO_EMAIL").strip(),
+            optional_env("SMTP_CC_EMAIL").strip(),
+        )
         client = BigChangeClient()
-        freshdesk_client = FreshdeskClient()
-        report = build_report(client, freshdesk_client)
+        report = build_report(client)
         validate_report(report)
-        html_content = render_html(report, report_context)
+        html_content = render_html(report)
         reports_dir = Path("reports")
         html_path = reports_dir / "bigchange-kpi-dashboard.html"
         png_path = reports_dir / "bigchange-kpi-dashboard.png"
@@ -1866,23 +1336,22 @@ def main() -> int:
         save_baseline(report, baseline_path)
         email_status = "sent"
         exit_code = 0
-        email_error = ""
         try:
-            send_email(png_path, email_settings)
-        except Exception as exc:
+            send_email(png_path)
+        except Exception:
             email_status = "failed"
-            email_error = str(exc)
             exit_code = 1
-        result = {
-            "staff_rows_included": len(report["staff_rows"]),
-            "total_red_kpis": report["total_red_kpis"],
-            "total_amber_kpis": report["total_amber_kpis"],
-            "email": email_status,
-            "unmatched_freshdesk_ticket_count": report["unmatched_freshdesk_ticket_count"],
-        }
-        if email_error:
-            result["email_error"] = email_error
-        print(json.dumps(result, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "staff_rows_included": len(report["staff_rows"]),
+                    "total_red_kpis": report["total_red_kpis"],
+                    "total_amber_kpis": report["total_amber_kpis"],
+                    "email": email_status,
+                },
+                sort_keys=True,
+            )
+        )
         return exit_code
     except Exception as exc:
         print(
@@ -1892,8 +1361,6 @@ def main() -> int:
                     "total_red_kpis": 0,
                     "total_amber_kpis": 0,
                     "email": "failed",
-                    "error": str(exc),
-                    "unmatched_freshdesk_ticket_count": 0,
                 },
                 sort_keys=True,
             ),
