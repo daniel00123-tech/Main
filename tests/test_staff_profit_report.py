@@ -1,6 +1,9 @@
 import datetime as dt
 import decimal
+import json
+import os
 import unittest
+from unittest.mock import patch
 
 from scripts.staff_commission import (
     attach_job_commissions,
@@ -8,13 +11,22 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
+    ConfigError,
+    assert_current_report_month,
     build_html,
     build_staff_rows,
     commission_style,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    lookup_category_id,
+    main,
+    parse_args,
+    resolve_staff,
+    send_graph_mail,
 )
 
 
@@ -497,6 +509,123 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class StaffResolutionAndMailTest(unittest.TestCase):
+    def test_known_staff_use_fixed_category_ids(self) -> None:
+        self.assertEqual(resolve_staff("Sharon")["category_id"], 132264)
+        self.assertEqual(resolve_staff("ella")["category_id"], 132225)
+        self.assertEqual(resolve_staff("LAUREN")["category_id"], 132263)
+        self.assertEqual(resolve_staff("Sharon")["name"], "Sharon")
+
+    def test_known_staff_does_not_call_bigchange(self) -> None:
+        with patch("scripts.staff_profit_report.lookup_category_id") as lookup:
+            resolve_staff("Sharon")
+            lookup.assert_not_called()
+
+    def test_unknown_staff_looks_up_exact_category_name(self) -> None:
+        with patch(
+            "scripts.staff_profit_report.rest_get",
+            return_value={"items": [{"id": 999001, "name": "Alex"}]},
+        ) as rest:
+            staff = resolve_staff("Alex", token="t")
+        rest.assert_called()
+        self.assertEqual(staff["category_id"], 999001)
+        self.assertEqual(staff["name"], "Alex")
+
+    def test_unknown_staff_does_not_guess_or_fuzzy_match(self) -> None:
+        payload = {
+            "items": [
+                {"id": 132264, "name": "Sharon"},
+                {"id": 1, "name": "Sharon B"},
+            ]
+        }
+        with patch("scripts.staff_profit_report.rest_get", return_value=payload):
+            with self.assertRaises(ConfigError):
+                lookup_category_id("Shar", token="t")
+            with self.assertRaises(ConfigError):
+                lookup_category_id("Sharon B.", token="t")
+
+    def test_parse_args_defaults_to_current_london_month_and_fixed_recipients(self) -> None:
+        with patch.dict(os.environ):
+            for key in ("STAFF_NAME", "STAFF_PROFIT_MAIL_TO", "STAFF_PROFIT_MAIL_CC"):
+                os.environ.pop(key, None)
+            with patch("scripts.staff_profit_report.current_london_month", return_value=(2026, 9)):
+                args = parse_args([])
+        self.assertEqual(args.year, 2026)
+        self.assertEqual(args.month, 9)
+        self.assertEqual(args.staff, "Sharon")
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+        self.assertEqual(DEFAULT_MAIL_TO, "ella@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
+
+    def test_main_refuses_a_past_month(self) -> None:
+        with self.assertRaises(ConfigError) as ctx:
+            main(["--year", "2025", "--month", "8"])
+        self.assertIn("refused August 2025", str(ctx.exception))
+
+    def test_send_graph_mail_includes_to_ella_and_cc_william(self) -> None:
+        captured: dict[str, object] = {}
+
+        class _Resp:
+            status = 202
+
+            def read(self) -> bytes:
+                return b""
+
+            def __enter__(self) -> "_Resp":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+        def fake_urlopen(req, timeout=60):  # noqa: ANN001
+            captured["url"] = req.full_url
+            captured["payload"] = json.loads(req.data.decode())
+            return _Resp()
+
+        with patch("scripts.staff_profit_report.graph_token", return_value="tok"):
+            with patch("scripts.staff_profit_report.urllib.request.urlopen", side_effect=fake_urlopen):
+                send_graph_mail("Sharon — September 2026 — commission report", "<p>ok</p>")
+        message = captured["payload"]["message"]
+        self.assertTrue(captured["payload"]["saveToSentItems"])
+        self.assertEqual(
+            message["toRecipients"][0]["emailAddress"]["address"],
+            "ella@elvexpropertyservices.com",
+        )
+        self.assertEqual(
+            message["ccRecipients"][0]["emailAddress"]["address"],
+            "william@elvexpropertyservices.com",
+        )
+
+    def test_scorecard_is_five_equal_columns_labels_then_figures(self) -> None:
+        jobs = attach_job_commissions([_job(dt.date(2026, 9, 3), "GR/1", "1500", "525")])
+        body = build_html(
+            staff_name="Sharon",
+            month_label="September 2026",
+            job_rows=jobs,
+            anomaly_rows=[],
+        )
+        labels_at = body.find("Overall profit")
+        figures_at = body.find("£525.00")
+        self.assertGreater(labels_at, 0)
+        self.assertGreater(figures_at, labels_at)
+        self.assertIn('width="20%"', body)
+        self.assertIn("background:#1f3a5f", body)
+        self.assertIn("background:#2e5a8f", body)
+        self.assertIn("background:#3d6fa3", body)
+        self.assertIn("background:#4a82b8", body)
+        self.assertIn("background:#1b7a4a", body)
+        self.assertIn("white-space:nowrap", body)
+        self.assertNotIn("display:flex", body)
+        self.assertNotIn("display: flex", body)
+
+    def test_current_month_assertion_allows_today(self) -> None:
+        with patch("scripts.staff_profit_report.current_london_month", return_value=(2026, 9)):
+            assert_current_report_month(2026, 9)
+            with self.assertRaises(ConfigError):
+                assert_current_report_month(2026, 8)
 
 
 if __name__ == "__main__":
