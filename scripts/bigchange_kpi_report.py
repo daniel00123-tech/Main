@@ -849,8 +849,6 @@ def render_html(report: dict[str, Any]) -> str:
     }}
     * {{
       box-sizing: border-box;
-      -webkit-font-smoothing: antialiased;
-      text-rendering: geometricPrecision;
     }}
     body {{
       margin: 0;
@@ -861,6 +859,7 @@ def render_html(report: dict[str, Any]) -> str:
       color: var(--text);
       font-family: "Liberation Sans", "DejaVu Sans", "Noto Sans", Arial, Helvetica, sans-serif;
       letter-spacing: 0;
+      word-spacing: 0.16em;
       padding: 34px;
     }}
     .dashboard {{
@@ -929,7 +928,8 @@ def render_html(report: dict[str, Any]) -> str:
       color: var(--muted);
       font-size: 12px;
       text-transform: uppercase;
-      letter-spacing: 0.11em;
+      letter-spacing: 0.04em;
+      word-spacing: 0.18em;
     }}
     .badge.red strong {{ color: var(--red); }}
     .badge.amber strong {{ color: var(--amber); }}
@@ -951,7 +951,8 @@ def render_html(report: dict[str, Any]) -> str:
       display: block;
       color: var(--muted);
       font-size: 12px;
-      letter-spacing: 0.10em;
+      letter-spacing: 0.04em;
+      word-spacing: 0.18em;
       text-transform: uppercase;
     }}
     .total-card strong {{
@@ -972,7 +973,8 @@ def render_html(report: dict[str, Any]) -> str:
       color: #cbd5e1;
       font-size: 13px;
       text-transform: uppercase;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.04em;
+      word-spacing: 0.2em;
       font-weight: 700;
       padding: 16px 10px;
       border-bottom: 1px solid var(--line);

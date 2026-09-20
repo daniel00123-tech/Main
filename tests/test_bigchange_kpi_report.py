@@ -185,8 +185,10 @@ class BaselineTest(unittest.TestCase):
         )
 
         self.assertIn("Liberation Sans", html)
+        self.assertIn("word-spacing: 0.16em", html)
         self.assertNotIn("font-weight: 900", html)
         self.assertNotIn("letter-spacing: -0.", html)
+        self.assertNotIn("text-rendering: geometricPrecision", html)
 
 
 class FakeBigChangeClient:
