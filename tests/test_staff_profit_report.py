@@ -1,6 +1,8 @@
 import datetime as dt
 import decimal
+import json
 import unittest
+from unittest.mock import patch
 
 from scripts.staff_commission import (
     attach_job_commissions,
@@ -8,13 +10,23 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
+    ConfigError,
+    PastMonthError,
+    assert_send_month_is_current,
     build_html,
     build_staff_rows,
     commission_style,
+    current_london_month_bounds,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    lookup_staff_category,
+    parse_args,
+    resolve_staff,
+    send_graph_mail,
 )
 
 
@@ -497,6 +509,83 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class StaffResolutionAndMailTest(unittest.TestCase):
+    def test_known_staff_uses_fixed_category_ids(self) -> None:
+        self.assertEqual(resolve_staff("Sharon")["category_id"], 132264)
+        self.assertEqual(resolve_staff("ella")["category_id"], 132225)
+        self.assertEqual(resolve_staff("LAUREN")["name"], "Lauren")
+        self.assertEqual(resolve_staff("Lauren")["category_id"], 132263)
+
+    def test_unknown_staff_looks_up_exact_category_and_does_not_guess(self) -> None:
+        categories = [
+            {"id": 111, "name": "Pat"},
+            {"id": 222, "name": "Patricia"},
+        ]
+        found = resolve_staff("Pat", categories=categories)
+        self.assertEqual(found, {"name": "Pat", "category_id": 111})
+        with self.assertRaises(ConfigError):
+            resolve_staff("Patt", categories=categories)
+        with self.assertRaises(ConfigError):
+            lookup_staff_category("Patri", categories)
+
+    def test_cli_defaults_to_current_london_month_and_fixed_mail_recipients(self) -> None:
+        args = parse_args([])
+        start, end = current_london_month_bounds()
+        self.assertEqual(args.year, start.year)
+        self.assertEqual(args.month, start.month)
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+        self.assertEqual(DEFAULT_MAIL_TO, "ella@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
+        self.assertFalse(args.send)
+
+    def test_send_refuses_a_past_month(self) -> None:
+        today = dt.date(2026, 9, 20)
+        august_start, august_end = dt.date(2026, 8, 1), dt.date(2026, 8, 31)
+        with self.assertRaises(PastMonthError):
+            assert_send_month_is_current(august_start, august_end, today=today)
+        assert_send_month_is_current(dt.date(2026, 9, 1), dt.date(2026, 9, 30), today=today)
+
+    def test_graph_mail_saves_to_sent_items_and_ccs_william(self) -> None:
+        captured: dict = {}
+
+        class FakeResp:
+            status = 202
+
+            def read(self) -> bytes:
+                return b""
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+        def fake_urlopen(req, timeout=60):
+            captured["url"] = req.full_url
+            captured["body"] = json.loads(req.data.decode())
+            return FakeResp()
+
+        with patch("scripts.staff_profit_report.graph_token", return_value="tok"):
+            with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                send_graph_mail(
+                    "Sharon — September 2026 — commission report",
+                    "<p>ok</p>",
+                    DEFAULT_MAIL_TO,
+                    DEFAULT_MAIL_CC,
+                )
+        self.assertTrue(captured["body"]["saveToSentItems"])
+        self.assertEqual(
+            captured["body"]["message"]["toRecipients"][0]["emailAddress"]["address"],
+            "ella@elvexpropertyservices.com",
+        )
+        self.assertEqual(
+            captured["body"]["message"]["ccRecipients"][0]["emailAddress"]["address"],
+            "william@elvexpropertyservices.com",
+        )
+        self.assertIn("users/ella%40elvexpropertyservices.com/sendMail", captured["url"])
 
 
 if __name__ == "__main__":
