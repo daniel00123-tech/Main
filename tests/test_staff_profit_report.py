@@ -1,6 +1,10 @@
 import datetime as dt
 import decimal
+import json
+import os
 import unittest
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from scripts.staff_commission import (
     attach_job_commissions,
@@ -8,13 +12,23 @@ from scripts.staff_commission import (
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
+    DEFAULT_STAFF_NAME,
     RUN_EDGE,
+    ConfigError,
+    PastMonthError,
     build_html,
     build_staff_rows,
     commission_style,
     daily_totals,
+    ensure_current_month_for_send,
     is_missing_po_anomaly,
     iter_display_rows,
+    match_category_id,
+    parse_args,
+    resolve_staff,
+    send_graph_mail,
 )
 
 
@@ -101,6 +115,14 @@ class HtmlReportTest(unittest.TestCase):
         table_at = body.find("Run profit")
         self.assertGreater(status_at, 0)
         self.assertGreater(table_at, status_at)
+        self.assertIn("Overall profit", body)
+        self.assertIn("white-space:nowrap", body)
+        self.assertIn("background:#1f3a5f;", body)
+        self.assertIn("background:#2e5a8f;", body)
+        self.assertIn("background:#3d6fa3;", body)
+        self.assertIn("background:#4a82b8;", body)
+        self.assertIn("background:#1b7a4a;", body)
+        self.assertNotIn("display:flex", body)
 
     def test_qualified_status_is_green_and_shows_earned(self) -> None:
         jobs = attach_job_commissions(
@@ -497,6 +519,88 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class StaffResolutionAndMailTest(unittest.TestCase):
+    def test_known_staff_ids_are_not_guessed(self) -> None:
+        self.assertEqual(resolve_staff("Sharon")["category_id"], 132264)
+        self.assertEqual(resolve_staff("ella")["name"], "Ella")
+        self.assertEqual(resolve_staff("LAUREN")["category_id"], 132263)
+
+    def test_unknown_staff_uses_exact_category_lookup(self) -> None:
+        rows = [
+            {"Name": "Pat", "Id": "140001"},
+            {"label": "Jamie", "id": 140002},
+        ]
+        self.assertEqual(match_category_id("Pat", rows), 140001)
+        self.assertEqual(match_category_id("jamie", rows), 140002)
+        with self.assertRaises(ConfigError):
+            match_category_id("Sam", rows)
+        with self.assertRaises(ConfigError):
+            match_category_id("Pat", rows + [{"Name": "Pat", "Id": "140099"}])
+
+    def test_cli_defaults_to_current_london_month_and_fixed_recipients(self) -> None:
+        london = dt.datetime.now(ZoneInfo("Europe/London")).date()
+        filtered = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in {"STAFF_NAME", "STAFF_PROFIT_MAIL_TO", "STAFF_PROFIT_MAIL_CC"}
+        }
+        with patch.dict(os.environ, filtered, clear=True):
+            args = parse_args([])
+        self.assertEqual(args.staff, DEFAULT_STAFF_NAME)
+        self.assertEqual(args.year, london.year)
+        self.assertEqual(args.month, london.month)
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+        self.assertEqual(args.to, "ella@elvexpropertyservices.com")
+        self.assertEqual(args.cc, "william@elvexpropertyservices.com")
+
+    def test_sending_a_past_month_is_refused(self) -> None:
+        today = dt.date(2026, 9, 21)
+        with self.assertRaises(PastMonthError):
+            ensure_current_month_for_send(2026, 8, today)
+        ensure_current_month_for_send(2026, 9, today)
+
+    def test_graph_mail_sends_to_ella_cc_william_and_saves_sent_items(self) -> None:
+        captured: dict[str, object] = {}
+
+        class _Resp:
+            status = 202
+
+            def read(self) -> bytes:
+                return b""
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def fake_urlopen(req, timeout=60):
+            captured["url"] = req.full_url
+            captured["payload"] = json.loads(req.data.decode())
+            return _Resp()
+
+        with patch("scripts.staff_profit_report.graph_token", return_value="token"):
+            with patch("scripts.staff_profit_report.urllib.request.urlopen", side_effect=fake_urlopen):
+                send_graph_mail(
+                    "Sharon — September 2026 — commission report",
+                    "<p>ok</p>",
+                    DEFAULT_MAIL_TO,
+                    DEFAULT_MAIL_CC,
+                )
+        self.assertIn("/users/ella%40elvexpropertyservices.com/sendMail", captured["url"])
+        payload = captured["payload"]
+        self.assertTrue(payload["saveToSentItems"])
+        self.assertEqual(
+            payload["message"]["toRecipients"][0]["emailAddress"]["address"],
+            "ella@elvexpropertyservices.com",
+        )
+        self.assertEqual(
+            payload["message"]["ccRecipients"][0]["emailAddress"]["address"],
+            "william@elvexpropertyservices.com",
+        )
 
 
 if __name__ == "__main__":
