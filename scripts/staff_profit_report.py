@@ -58,7 +58,120 @@ ANOMALY_SALE = D("250")
 MIN_PO_AMOUNT = D("1")
 BEGINNING_OF_TIME = dt.date(2026, 5, 1)
 FROM_EMAIL = "ella@elvexpropertyservices.com"
-DEFAULT_MAIL_TO = "william@elvexpropertyservices.com"
+DEFAULT_MAIL_TO = "ella@elvexpropertyservices.com"
+DEFAULT_MAIL_CC = "william@elvexpropertyservices.com"
+DEFAULT_STAFF_NAME = "Sharon"
+
+
+class PastMonthError(RuntimeError):
+    pass
+
+
+class ConfigError(RuntimeError):
+    pass
+
+
+def current_london_date() -> dt.date:
+    return dt.datetime.now(LONDON).date()
+
+
+def report_month_is_current(year: int, month: int, today: dt.date | None = None) -> bool:
+    now = today or current_london_date()
+    return year == now.year and month == now.month
+
+
+def ensure_current_month_for_send(year: int, month: int, today: dt.date | None = None) -> None:
+    """Refuse emailing a month that is not the current Europe/London calendar month."""
+    if report_month_is_current(year, month, today):
+        return
+    now = today or current_london_date()
+    raise PastMonthError(
+        f"Refusing to email a past month. Requested {year}-{month:02d}; "
+        f"current London month is {now.year}-{now.month:02d}."
+    )
+
+
+def _category_label(row: dict[str, Any]) -> str:
+    for key in ("label", "name", "Name", "JobCategoryName", "CategoryName"):
+        val = row.get(key)
+        if val not in (None, ""):
+            return str(val).strip()
+    return ""
+
+
+def _category_numeric_id(row: dict[str, Any]) -> int | None:
+    for key in ("id", "Id", "ID", "categoryId", "CategoryId", "JobCategoryId"):
+        val = row.get(key)
+        if val in (None, ""):
+            continue
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _rows_from_category_payload(body: Any) -> list[dict[str, Any]]:
+    if isinstance(body, list):
+        return [row for row in body if isinstance(row, dict)]
+    if not isinstance(body, dict):
+        return []
+    for key in ("items", "Items", "JobCategories", "Categories", "Result"):
+        val = body.get(key)
+        if isinstance(val, list):
+            return [row for row in val if isinstance(row, dict)]
+        if isinstance(val, dict):
+            nested = _rows_from_category_payload(val)
+            if nested:
+                return nested
+    for val in body.values():
+        if isinstance(val, list) and val and isinstance(val[0], dict):
+            return [row for row in val if isinstance(row, dict)]
+    return []
+
+
+def match_category_id(staff_name: str, rows: list[dict[str, Any]]) -> int:
+    """Exact name match against BigChange job categories. Never guess."""
+    wanted = staff_name.strip().casefold()
+    if not wanted:
+        raise ConfigError("Staff name is required")
+    found: list[int] = []
+    for row in rows:
+        if _category_label(row).casefold() != wanted:
+            continue
+        cid = _category_numeric_id(row)
+        if cid is not None:
+            found.append(cid)
+    unique = sorted(set(found))
+    if len(unique) == 1:
+        return unique[0]
+    if not unique:
+        raise ConfigError(f"No BigChange job category id for staff name {staff_name!r}")
+    raise ConfigError(f"Ambiguous BigChange job category ids for staff name {staff_name!r}: {unique}")
+
+
+def lookup_category_id(staff_name: str, *, token: str | None = None) -> int:
+    rows: list[dict[str, Any]] = []
+    try:
+        tok = token or rest_token()
+        body = rest_get(tok, "/v1/jobCategories?pageNumber=1&pageSize=1000")
+        rows = _rows_from_category_payload(body)
+    except Exception:
+        rows = []
+    if not rows:
+        rows = _rows_from_category_payload(legacy("JobCategories"))
+    return match_category_id(staff_name, rows)
+
+
+def resolve_staff(name: str, *, token: str | None = None) -> dict[str, Any]:
+    """Known IDs first. Unknown names are looked up exactly, never guessed."""
+    cleaned = (name or "").strip()
+    if not cleaned:
+        raise ConfigError("Staff name is required")
+    known = STAFF.get(cleaned.casefold())
+    if known:
+        return {"name": known["name"], "category_id": int(known["category_id"])}
+    return {"name": cleaned, "category_id": lookup_category_id(cleaned, token=token)}
 
 
 def is_missing_po_anomaly(sale: D, po_cost: D) -> bool:
@@ -94,10 +207,6 @@ def group_ready_to_report(members: list[dict[str, Any]]) -> bool:
     that are purchase-order only do not have to be invoiced themselves.
     """
     return group_all_jobs_completed(members)
-
-
-class ConfigError(RuntimeError):
-    pass
 
 
 def required_env(name: str) -> str:
@@ -357,9 +466,14 @@ def graph_token() -> str:
     return token
 
 
-def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
+def send_graph_mail(
+    subject: str,
+    html_body: str,
+    to_email: str,
+    cc_email: str | None = None,
+) -> None:
     token = graph_token()
-    payload = {
+    payload: dict[str, Any] = {
         "message": {
             "subject": subject,
             "body": {"contentType": "HTML", "content": html_body},
@@ -367,6 +481,8 @@ def send_graph_mail(subject: str, html_body: str, to_email: str) -> None:
         },
         "saveToSentItems": True,
     }
+    if cc_email:
+        payload["message"]["ccRecipients"] = [{"emailAddress": {"address": cc_email}}]
     raw = json.dumps(payload).encode()
     req = urllib.request.Request(
         f"https://graph.microsoft.com/v1.0/users/{urllib.parse.quote(FROM_EMAIL)}/sendMail",
@@ -865,19 +981,27 @@ def load_report_data(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    today = current_london_date()
     parser = argparse.ArgumentParser(description="Staff commission report")
-    parser.add_argument("--staff", choices=sorted(STAFF), default="sharon")
-    parser.add_argument("--year", type=int, default=2026)
-    parser.add_argument("--month", type=int, default=8)
+    parser.add_argument(
+        "--staff",
+        default=os.environ.get("STAFF_NAME", DEFAULT_STAFF_NAME),
+        help="Staff display name. Change only this for another automation.",
+    )
+    parser.add_argument("--year", type=int, default=today.year)
+    parser.add_argument("--month", type=int, default=today.month)
     parser.add_argument("--send", action="store_true", help="Email the report")
     parser.add_argument("--to", default=os.environ.get("STAFF_PROFIT_MAIL_TO", DEFAULT_MAIL_TO))
+    parser.add_argument("--cc", default=os.environ.get("STAFF_PROFIT_MAIL_CC", DEFAULT_MAIL_CC))
     parser.add_argument("--out", default="")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    staff = STAFF[args.staff]
+    if args.send:
+        ensure_current_month_for_send(args.year, args.month)
+    staff = resolve_staff(args.staff)
     month_start, month_end = month_bounds(args.year, args.month)
     month_label = month_start.strftime("%B %Y")
     main_rows, anomaly_rows = load_report_data(staff["category_id"], month_start, month_end)
@@ -889,22 +1013,26 @@ def main(argv: list[str] | None = None) -> int:
         anomaly_rows=anomaly_rows,
     )
     total_sale = money(sum((r["sale"] for r in job_rows), ZERO))
+    total_cost = money(sum((r["cost"] for r in job_rows), ZERO))
     total_profit = money(sum((r["profit"] for r in job_rows), ZERO))
     total_commission = sum_job_commissions(job_rows)
     q = qualify_month(total_sale, total_profit, total_commission)
     print(
         {
             "staff": staff["name"],
+            "category_id": staff["category_id"],
             "month": month_label,
             "rows": len(job_rows),
             "sale": str(total_sale),
+            "cost": str(total_cost),
             "profit": str(total_profit),
             "commission": str(total_commission),
             "status": q.status,
             "anomalies": len(anomaly_rows),
         }
     )
-    out_path = args.out or f"/tmp/{args.staff}_{month_start.strftime('%Y_%m')}_commission.html"
+    slug = staff["name"].strip().casefold().replace(" ", "_") or "staff"
+    out_path = args.out or f"/tmp/{slug}_{month_start.strftime('%Y_%m')}_commission.html"
     with open(out_path, "w") as handle:
         handle.write(
             "<!doctype html><html><head><meta charset='utf-8'>"
@@ -916,10 +1044,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.send:
         subject = f"{staff['name']} — {month_label} — commission report"
         try:
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, args.cc)
         except Exception:
             time.sleep(2)
-            send_graph_mail(subject, html_body, args.to)
+            send_graph_mail(subject, html_body, args.to, args.cc)
     return 0
 
 
