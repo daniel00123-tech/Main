@@ -56,6 +56,54 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(query["IncludeCustomFields"], "true")
         self.assertEqual(query["Unactioned"], "1")
 
+    def test_timeout_is_retried_then_wrapped(self) -> None:
+        config = make_config()
+        calls = {"count": 0}
+
+        def fake_urlopen(req: object, timeout: float) -> FakeResponse:
+            calls["count"] += 1
+            raise TimeoutError("timed out")
+
+        with (
+            patch("bigchange_actioner.client.request.urlopen", fake_urlopen),
+            patch("bigchange_actioner.client.time.sleep") as sleep,
+        ):
+            with self.assertRaises(BigChangeApiError) as context:
+                BigChangeClient(config, timeout=12.0, attempts=3).list_jobs(
+                    start="2026-05-01",
+                    end="2026-05-16",
+                    page=0,
+                    page_size=500,
+                )
+
+        self.assertIn("timed out", str(context.exception).lower())
+        self.assertEqual(calls["count"], 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_retries_timeout_then_succeeds(self) -> None:
+        config = make_config()
+        calls = {"count": 0}
+
+        def fake_urlopen(req: object, timeout: float) -> FakeResponse:
+            calls["count"] += 1
+            if calls["count"] < 2:
+                raise TimeoutError("timed out")
+            return FakeResponse({"Code": 0, "Result": "No results"})
+
+        with (
+            patch("bigchange_actioner.client.request.urlopen", fake_urlopen),
+            patch("bigchange_actioner.client.time.sleep"),
+        ):
+            jobs = BigChangeClient(config, timeout=12.0, attempts=3).list_jobs(
+                start="2026-05-01",
+                end="2026-05-16",
+                page=0,
+                page_size=500,
+            )
+
+        self.assertEqual(jobs, [])
+        self.assertEqual(calls["count"], 2)
+
     def test_api_error_code_raises_without_exposing_credentials(self) -> None:
         config = make_config()
 
