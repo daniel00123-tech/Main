@@ -3,18 +3,25 @@ import decimal
 import unittest
 
 from scripts.staff_commission import (
+    LAUREN_PROFILE,
     attach_job_commissions,
     calculate_job_commission,
+    get_staff_profile,
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
+    DEFAULT_MAIL_CC,
+    DEFAULT_MAIL_TO,
     RUN_EDGE,
     build_html,
     build_staff_rows,
     commission_style,
+    current_london_month,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    parse_args,
+    resolve_staff,
 )
 
 
@@ -497,6 +504,34 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class LaurenReportProfileTest(unittest.TestCase):
+    def test_known_lauren_uses_category_and_stepped_profile(self) -> None:
+        staff = resolve_staff("Lauren")
+        self.assertEqual(staff["category_id"], 132263)
+        self.assertEqual(staff["name"], "Lauren")
+        self.assertIs(get_staff_profile(staff["key"]), LAUREN_PROFILE)
+
+    def test_html_uses_lauren_commission_not_uk_rates(self) -> None:
+        jobs = attach_job_commissions(
+            [_job(dt.date(2026, 9, 3), "GR/1", "1500", "525")],
+            profile=LAUREN_PROFILE,
+        )
+        body = build_html(staff_name="Lauren", month_label="September 2026", job_rows=jobs, anomaly_rows=[])
+        self.assertIn("Lauren — September 2026 commission report", body)
+        self.assertIn("£5.25", body)
+        self.assertNotIn("£26.25", body)
+
+    def test_cli_defaults_to_current_london_month_and_william_to_cc(self) -> None:
+        year, month = current_london_month()
+        args = parse_args([])
+        self.assertEqual(args.year, year)
+        self.assertEqual(args.month, month)
+        self.assertEqual(args.to, DEFAULT_MAIL_TO)
+        self.assertEqual(args.cc, DEFAULT_MAIL_CC)
+        self.assertEqual(DEFAULT_MAIL_TO, "william@elvexpropertyservices.com")
+        self.assertEqual(DEFAULT_MAIL_CC, "william@elvexpropertyservices.com")
 
 
 if __name__ == "__main__":
