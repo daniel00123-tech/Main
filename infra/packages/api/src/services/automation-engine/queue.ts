@@ -3,6 +3,7 @@
  */
 
 import type { Env } from "../../env";
+import { infraPublicApiBase } from "../public-urls";
 import { nowIso } from "../../db/mappers";
 import { executeAutomationRun } from "./executor";
 
@@ -44,7 +45,7 @@ export async function processAutomationRunJob(
 }
 
 export async function kickAutomationRunProcessor(env: Env, runId: string, companyId: string, automationId: string): Promise<void> {
-  const base = (env.INFRA_PUBLIC_API_URL ?? "https://infra-api.daniel-dwyer123.workers.dev").replace(/\/$/, "");
+  const base = infraPublicApiBase(env);
   await fetch(`${base}/api/internal/automation/process-run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

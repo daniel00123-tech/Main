@@ -76,7 +76,7 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
 > = {
   get_action_plan: {
     description:
-      "Fetch a server-side action plan by plan_id. Use after planning a financial action — do not reconstruct plans from conversation text.",
+      "Fetch a server-side Xero financial action plan by plan_id. Xero Action Engine only — not email. Use after planning a financial action — do not reconstruct plans from conversation text.",
     inputSchema: {
       type: "object",
       properties: {
@@ -88,7 +88,7 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
   },
   confirm_action_plan: {
     description:
-      "Confirm a previously created action plan for execution. Requires plan_id and confirmationToken returned at plan creation. INFRA re-validates permissions and live source state before executing.",
+      "Confirm a previously created Xero financial action plan. Requires plan_id and confirmationToken. Confirmation is mandatory before any write. This does not send Outlook mail and must not be used to bypass confirmation.",
     inputSchema: {
       type: "object",
       properties: {
@@ -135,7 +135,7 @@ export const ACTION_CONTROL_TOOL_SCHEMAS: Record<
   },
   execute_action_plan: {
     description:
-      "Execute a confirmed action plan via the INFRA Action Engine. Draft invoice plans require confirm_action_plan first; separate portal approval is not required for DRAFT sales invoices.",
+      "Execute a confirmed Xero financial action plan via the INFRA Action Engine. confirm_action_plan is required first. This does not send Outlook mail. Draft invoice plans do not need a separate portal approval.",
     inputSchema: {
       type: "object",
       properties: {

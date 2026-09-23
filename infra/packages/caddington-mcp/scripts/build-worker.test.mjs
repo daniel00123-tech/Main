@@ -82,4 +82,15 @@ describe("build-worker idempotency", () => {
     expect(worker.includes('action: "existing"')).toBe(true);
     expect(worker.includes("SELECT id FROM knowledge_documents WHERE external_id = ?")).toBe(true);
   });
+
+  it("requests and returns genuine Drive webViewLink fields", async () => {
+    const { execFileSync } = await import("node:child_process");
+    execFileSync("node", ["scripts/build-worker.mjs"], { cwd: pkgRoot, stdio: "pipe" });
+    const worker = fs.readFileSync(path.join(pkgRoot, "dist/worker.js"), "utf8");
+    expect(worker).toContain("webViewLink,webContentLink");
+    expect(worker).toContain("webViewLink: file2.webViewLink");
+    expect(worker).toContain("/admin/knowledge/backfill-provider-urls");
+    expect(worker).toContain("firstHttpUrlFromDriveMeta");
+    expect(worker).toContain("webViewLink: parsedMeta.webViewLink");
+  });
 });

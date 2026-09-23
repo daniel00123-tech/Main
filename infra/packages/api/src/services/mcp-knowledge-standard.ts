@@ -117,12 +117,20 @@ export type StandardSearchPayload = {
   results: StandardSearchResult[];
 };
 
+export type StandardDocumentChunk = {
+  id?: string;
+  text: string;
+  heading?: string;
+  index?: number;
+};
+
 export type StandardFetchPayload = {
   id: string;
   title: string;
   text: string;
   url: string;
   metadata?: Record<string, unknown>;
+  chunks?: StandardDocumentChunk[];
 };
 
 export function sanitizeStandardSearchArguments(
@@ -150,7 +158,9 @@ export function sanitizeStandardFetchArguments(
         ? args.documentId.trim()
         : typeof args.document_id === "string"
           ? args.document_id.trim()
-          : "";
+          : typeof args.documentRef === "string"
+            ? args.documentRef.trim()
+            : "";
   if (!id) {
     return { error: "fetch requires a non-empty arguments.id string" };
   }
@@ -167,6 +177,24 @@ export function mapFetchArgumentsForCompanyMcp(id: string): Record<string, unkno
   return { documentRef: id, id };
 }
 
+const PROVIDER_URL_KEYS = [
+  "url",
+  "sourceUrl",
+  "source_url",
+  "webUrl",
+  "web_url",
+  "webViewLink",
+  "web_view_link",
+  "webContentLink",
+  "web_content_link",
+  "webLink",
+  "web_link",
+  "alternateLink",
+  "alternate_link",
+  "canonicalUrl",
+  "canonical_url",
+] as const;
+
 export function firstHttpUrl(...candidates: unknown[]): string {
   for (const candidate of candidates) {
     if (typeof candidate !== "string") continue;
@@ -178,6 +206,57 @@ export function firstHttpUrl(...candidates: unknown[]): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Parse a JSON object that company MCPs often store as a string (D1 metadata). */
+export function parseMaybeJsonRecord(value: unknown): Record<string, unknown> | undefined {
+  if (isRecord(value)) return value;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{")) return undefined;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function urlFromRecordFields(source: Record<string, unknown> | undefined): string {
+  if (!source) return "";
+  return firstHttpUrl(...PROVIDER_URL_KEYS.map((key) => source[key]));
+}
+
+/**
+ * Collect a genuine provider HTTPS URL. Never constructs Drive/SharePoint links
+ * from file IDs — only copies http(s) fields the provider already returned.
+ */
+export function collectProviderHttpUrl(...sources: unknown[]): string {
+  for (const source of sources) {
+    if (typeof source === "string") {
+      const direct = firstHttpUrl(source);
+      if (direct) return direct;
+      const parsed = parseMaybeJsonRecord(source);
+      const fromParsed = urlFromRecordFields(parsed);
+      if (fromParsed) return fromParsed;
+      continue;
+    }
+    if (!isRecord(source)) continue;
+    const direct = urlFromRecordFields(source);
+    if (direct) return direct;
+    const nested = [
+      parseMaybeJsonRecord(source.metadata),
+      parseMaybeJsonRecord(source.provenance),
+      parseMaybeJsonRecord(source.document),
+      isRecord(source.document) ? parseMaybeJsonRecord(source.document.metadata) : undefined,
+      isRecord(source.provenance) ? parseMaybeJsonRecord(source.provenance.metadata) : undefined,
+    ];
+    for (const item of nested) {
+      const url = urlFromRecordFields(item);
+      if (url) return url;
+    }
+  }
+  return "";
 }
 
 export function unwrapToolPayload(payload: unknown, depth = 0): unknown {
@@ -247,18 +326,27 @@ function pickSnippet(hit: Record<string, unknown>): string | undefined {
 }
 
 function pickTitle(hit: Record<string, unknown>, fallback = "Untitled document"): string {
+  const nestedFile = isRecord(hit.file) ? hit.file : undefined;
   return (
     asNonEmptyString(
       hit.title ??
         hit.name ??
         hit.filename ??
+        hit.fileName ??
+        hit.file_name ??
+        hit.displayName ??
+        hit.display_name ??
         hit.documentTitle ??
-        hit.document_title,
+        hit.document_title ??
+        nestedFile?.name ??
+        nestedFile?.title ??
+        nestedFile?.filename,
     ) || fallback
   );
 }
 
 function pickId(hit: Record<string, unknown>, fallback = ""): string {
+  const nestedFile = isRecord(hit.file) ? hit.file : undefined;
   return (
     asIdString(hit.id) ||
     asIdString(hit.externalId) ||
@@ -267,6 +355,10 @@ function pickId(hit: Record<string, unknown>, fallback = ""): string {
     asIdString(hit.document_id) ||
     asIdString(hit.docId) ||
     asIdString(hit.doc_id) ||
+    asIdString(hit.fileId) ||
+    asIdString(hit.file_id) ||
+    asIdString(nestedFile?.id) ||
+    asIdString(nestedFile?.externalId) ||
     fallback
   );
 }
@@ -288,18 +380,25 @@ function provenanceMetadata(
     "document_id",
     "externalId",
     "external_id",
+    "driveFileId",
+    "drive_file_id",
     "modifiedAt",
     "modified_at",
     "updatedAt",
     "updated_at",
+    "webViewLink",
+    "webContentLink",
+    "webUrl",
+    "web_url",
   ] as const;
   for (const key of keys) {
     if (source[key] != null && source[key] !== "") {
       metadata[key] = source[key];
     }
   }
-  if (isRecord(source.metadata)) {
-    for (const [key, value] of Object.entries(source.metadata)) {
+  const nestedMetadata = parseMaybeJsonRecord(source.metadata);
+  if (nestedMetadata) {
+    for (const [key, value] of Object.entries(nestedMetadata)) {
       if (value != null && value !== "" && metadata[key] == null) {
         metadata[key] = value;
       }
@@ -326,19 +425,15 @@ export function extractHitList(payload: unknown): Record<string, unknown>[] {
 export function toStandardSearchPayload(payload: unknown): StandardSearchPayload {
   const results: StandardSearchResult[] = [];
   for (const hit of extractHitList(payload)) {
+    const parsedHitMetadata = parseMaybeJsonRecord(hit.metadata);
+    if (parsedHitMetadata) hit.metadata = parsedHitMetadata;
     const title = pickTitle(hit);
-    const id = pickId(hit, title);
+    const id = pickId(hit, title !== "Untitled document" ? title : "");
     if (!id) continue;
-    const url = firstHttpUrl(
-      hit.url,
-      hit.sourceUrl,
-      hit.source_url,
-      hit.webViewLink,
-      hit.web_view_link,
-      hit.canonicalUrl,
-      hit.canonical_url,
-    );
+    const explicitEmptyChunks = Array.isArray(hit.chunks) && hit.chunks.length === 0;
     const snippet = pickSnippet(hit);
+    if (explicitEmptyChunks && !snippet) continue;
+    const url = collectProviderHttpUrl(hit, parsedHitMetadata, hit.provenance);
     const metadata = provenanceMetadata(hit);
     const result: StandardSearchResult = { id, title, url };
     if (snippet) result.snippet = snippet;
@@ -348,23 +443,76 @@ export function toStandardSearchPayload(payload: unknown): StandardSearchPayload
   return { results };
 }
 
+export function collectDocumentChunks(
+  payload: unknown,
+  documentId?: string,
+): StandardDocumentChunk[] {
+  const unwrapped = unwrapToolPayload(payload);
+  const nestedRaw = isRecord(unwrapped) ? unwrapped.document : undefined;
+  const nested = parseMaybeJsonRecord(nestedRaw) ?? (isRecord(nestedRaw) ? nestedRaw : {});
+  const doc = isRecord(unwrapped) ? { ...unwrapped, ...nested } : {};
+  const rawChunks = Array.isArray(doc.chunks)
+    ? doc.chunks
+    : isRecord(unwrapped) && Array.isArray(unwrapped.chunks)
+      ? unwrapped.chunks
+      : [];
+  const id = documentId || pickId(doc) || "document";
+  const chunks: StandardDocumentChunk[] = [];
+  rawChunks.forEach((chunk, index) => {
+    if (typeof chunk === "string") {
+      const text = chunk.trim();
+      if (text) chunks.push({ id: `${id}:c${index}`, text, index });
+      return;
+    }
+    if (!isRecord(chunk)) return;
+    const text = asNonEmptyString(
+      chunk.text ?? chunk.content ?? chunk.excerpt ?? chunk.body ?? chunk.page_content ?? chunk.pageContent,
+    );
+    if (!text) return;
+    const heading = asNonEmptyString(chunk.heading ?? chunk.title ?? chunk.section);
+    const chunkId = asNonEmptyString(chunk.id ?? chunk.chunk_id ?? chunk.chunkId) || `${id}:c${index}`;
+    chunks.push({
+      id: chunkId,
+      text,
+      heading: heading || undefined,
+      index: typeof chunk.index === "number" ? chunk.index : index,
+    });
+  });
+  return chunks;
+}
+
 function collectDocumentText(doc: Record<string, unknown>): string {
   const direct = asNonEmptyString(
-    doc.text ?? doc.content ?? doc.body ?? doc.fullText ?? doc.full_text,
+    doc.text ??
+      doc.content ??
+      doc.body ??
+      doc.fullText ??
+      doc.full_text ??
+      doc.extractedText ??
+      doc.extracted_text ??
+      doc.markdown ??
+      doc.html ??
+      doc.ocrText ??
+      doc.ocr_text ??
+      doc.page_content ??
+      doc.pageContent,
   );
-  if (direct) return direct;
 
   if (Array.isArray(doc.chunks)) {
     const joined = doc.chunks
       .map((chunk) => {
         if (typeof chunk === "string") return chunk;
         if (!isRecord(chunk)) return "";
-        return asNonEmptyString(chunk.text ?? chunk.content ?? chunk.excerpt);
+        return asNonEmptyString(
+          chunk.text ?? chunk.content ?? chunk.excerpt ?? chunk.page_content ?? chunk.pageContent,
+        );
       })
       .filter(Boolean)
       .join("\n\n");
-    if (joined) return joined;
+    if (joined && joined.length >= (direct?.length ?? 0)) return joined;
   }
+
+  if (direct) return direct;
 
   if (Array.isArray(doc.pages)) {
     const joined = doc.pages
@@ -387,38 +535,37 @@ export function toStandardFetchPayload(
   requestedId: string,
 ): StandardFetchPayload {
   const unwrapped = unwrapToolPayload(payload);
-  const nested = isRecord(unwrapped) && isRecord(unwrapped.document)
-    ? unwrapped.document
-    : {};
+  const nestedRaw = isRecord(unwrapped) ? unwrapped.document : undefined;
+  const nested = parseMaybeJsonRecord(nestedRaw) ?? (isRecord(nestedRaw) ? nestedRaw : {});
   const doc = isRecord(unwrapped) ? { ...unwrapped, ...nested } : {};
+  const parsedDocMetadata = parseMaybeJsonRecord(doc.metadata);
+  if (parsedDocMetadata) doc.metadata = parsedDocMetadata;
 
   const id =
     requestedId ||
     pickId(doc) ||
     pickId(nested);
-  const title = pickTitle(doc, "Untitled document");
+  const title = pickTitle(doc, requestedId && /[.][a-z0-9]{2,8}$/i.test(requestedId) ? requestedId : "Untitled document");
   const text = collectDocumentText(doc);
-  const url = firstHttpUrl(
-    doc.url,
-    doc.sourceUrl,
-    doc.source_url,
-    doc.webViewLink,
-    doc.web_view_link,
-    doc.canonicalUrl,
-    doc.canonical_url,
-    nested.url,
-    nested.sourceUrl,
-    isRecord(unwrapped) ? unwrapped.url : undefined,
-    isRecord(unwrapped) ? unwrapped.sourceUrl : undefined,
+  const url = collectProviderHttpUrl(
+    doc,
+    nested,
+    unwrapped,
+    parsedDocMetadata,
+    isRecord(unwrapped) ? unwrapped.metadata : undefined,
+    isRecord(unwrapped) ? unwrapped.provenance : undefined,
   );
   const metadata = provenanceMetadata({
     ...(isRecord(unwrapped) ? unwrapped : {}),
     ...nested,
     ...doc,
+    ...(parsedDocMetadata ?? {}),
   });
 
+  const chunks = collectDocumentChunks(payload, id);
   const result: StandardFetchPayload = { id, title, text, url };
   if (metadata) result.metadata = metadata;
+  if (chunks.length) result.chunks = chunks;
   return result;
 }
 

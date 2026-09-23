@@ -1,14 +1,15 @@
-import type { CompanyEmailConfig, TransactionalEmailType } from "@infra/shared";
-import { isTransactionalEmailType } from "@infra/shared";
 import {
-  getCompanyEmailConfig,
-  normaliseSenderAddress,
-  senderMatchesAllowlist,
-} from "./company-config";
+  PLATFORM_EMAIL_FROM_ADDRESS,
+  isTransactionalEmailType,
+  type TransactionalEmailType,
+} from "@infra/shared";
+import type { Env } from "../../env";
+import { normaliseSenderAddress } from "./company-config";
+import { resolvePlatformEmailIdentity } from "./platform-identity";
 
 export type ResolvedSender = {
   companyId: string;
-  provider: CompanyEmailConfig["provider"];
+  provider: "cloudflare";
   fromEmail: string;
   fromDisplayName: string;
   allowedTypes: TransactionalEmailType[];
@@ -23,46 +24,46 @@ export class EmailSenderError extends Error {
   }
 }
 
-export async function resolveApprovedSender(
-  db: D1Database,
+export function resolveApprovedSender(
+  env: Pick<Env, "EMAIL_FROM_NAME" | "EMAIL_FROM_ADDRESS" | "EMAIL_FROM"> | undefined,
   input: {
     companyId: string;
     emailType: string;
     requestedFrom?: string | null;
   },
-): Promise<ResolvedSender> {
+): ResolvedSender {
   if (!isTransactionalEmailType(input.emailType)) {
     throw new EmailSenderError("EMAIL_TYPE_NOT_ALLOWED", "Email type is not allowlisted.");
   }
 
-  const config = await getCompanyEmailConfig(db, input.companyId);
-  if (!config) {
-    throw new EmailSenderError(
-      "EMAIL_NOT_CONFIGURED",
-      "Transactional email is not configured for this company.",
-    );
-  }
-  if (!config.enabled) {
-    throw new EmailSenderError("EMAIL_DISABLED", "Transactional email is disabled for this company.");
-  }
-  if (!config.allowedTypes.includes(input.emailType)) {
-    throw new EmailSenderError(
-      "EMAIL_TYPE_NOT_ALLOWED",
-      "This email type is not enabled for the company sender.",
-    );
-  }
-  if (!senderMatchesAllowlist(config, input.requestedFrom)) {
+  const identity = resolvePlatformEmailIdentity(env);
+  if (
+    input.requestedFrom &&
+    normaliseSenderAddress(input.requestedFrom) !== normaliseSenderAddress(identity.address)
+  ) {
     throw new EmailSenderError(
       "SENDER_NOT_ALLOWED",
-      "Requested sender is not approved for this company.",
+      "Requested sender is not the Infra platform sender.",
     );
   }
 
   return {
-    companyId: config.companyId,
-    provider: config.provider,
-    fromEmail: config.senderAddress.trim(),
-    fromDisplayName: config.senderDisplayName.trim(),
-    allowedTypes: config.allowedTypes,
+    companyId: input.companyId,
+    provider: "cloudflare",
+    fromEmail: identity.address,
+    fromDisplayName: identity.name,
+    allowedTypes: [
+      "PASSWORD_RESET",
+      "USER_INVITATION",
+      "TEST_EMAIL",
+      "XERO_SALES_REPORT",
+      "DOCUMENT_ACTIVITY_REPORT",
+    ],
   };
+}
+
+export function platformSenderAddress(
+  env?: Pick<Env, "EMAIL_FROM_NAME" | "EMAIL_FROM_ADDRESS" | "EMAIL_FROM">,
+): string {
+  return resolvePlatformEmailIdentity(env).address || PLATFORM_EMAIL_FROM_ADDRESS;
 }

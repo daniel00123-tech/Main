@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { InfraBrand } from "../components/InfraBrand";
 
 export default function PasswordSetupPage() {
   const [searchParams] = useSearchParams();
@@ -66,7 +67,7 @@ export default function PasswordSetupPage() {
     return (
       <div className="login-page">
         <div className="login-card">
-          <div className="brand">INFRA</div>
+          <InfraBrand showStack size={36} />
           <p className="muted">Validating secure setup link…</p>
         </div>
       </div>
@@ -77,7 +78,7 @@ export default function PasswordSetupPage() {
     return (
       <div className="login-page">
         <div className="login-card">
-          <div className="brand">INFRA</div>
+          <InfraBrand showStack size={36} />
           <h1>Password setup unavailable</h1>
           <p className="error-text">{error}</p>
           <p className="muted">
@@ -97,10 +98,11 @@ export default function PasswordSetupPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="brand">INFRA</div>
-        <div className="brand-sub">
-          {isReset ? "Password reset" : "Set your password"}
-        </div>
+        <InfraBrand
+          showStack
+          context={isReset ? "Password reset" : "Set your password"}
+          size={36}
+        />
         <h1>{isReset ? "Set a new password" : "Set your password"}</h1>
         <p className="muted">
           {isReset ? "Choose a new password for " : "Create a password for "}
@@ -140,6 +142,8 @@ export default function PasswordSetupPage() {
 
         <p className="login-footer muted">
           Already set your password? <Link to="/portal/login">Sign in</Link>
+          {" · "}
+          <Link to="/privacy">Privacy Policy</Link>
         </p>
       </div>
     </div>

@@ -98,7 +98,7 @@ function normalizeMcpAuthToken(value: string | undefined): string {
   return String(value ?? "").trim().replace(/^Bearer\s+/i, "");
 }
 
-const DEFAULT_INFRA_API = "https://infra-api.daniel-dwyer123.workers.dev";
+const DEFAULT_INFRA_API = "https://api.infrastack.app";
 const DEFAULT_MCP_ID = "mcp_caddington_primary";
 
 export async function fetchInfraXeroContext(env: CaddingtonMcpEnv): Promise<

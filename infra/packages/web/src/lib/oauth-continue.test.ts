@@ -8,7 +8,15 @@ describe("safeOauthContinueUrl", () => {
     );
     expect(
       safeOauthContinueUrl("https://app.infrastack.app/oauth/authorize?client_id=x"),
-    ).toContain("/oauth/authorize");
+    ).toBe("/oauth/authorize?client_id=x");
+    expect(
+      safeOauthContinueUrl(
+        "https://infra-api.daniel-dwyer123.workers.dev/oauth/authorize?client_id=x&state=s",
+      ),
+    ).toBe("/oauth/authorize?client_id=x&state=s");
+    expect(
+      safeOauthContinueUrl("https://api.infrastack.app/oauth/authorize?client_id=x"),
+    ).toBe("/oauth/authorize?client_id=x");
     expect(safeOauthContinueUrl("https://evil.example/oauth/authorize")).toBeNull();
     expect(safeOauthContinueUrl("https://app.infrastack.app/portal")).toBeNull();
     expect(

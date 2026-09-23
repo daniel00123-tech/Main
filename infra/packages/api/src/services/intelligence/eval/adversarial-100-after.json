@@ -1,0 +1,132 @@
+{
+  "phase": "after",
+  "version": "adversarial-100-v1",
+  "transport": "OFFLINE",
+  "summary": {
+    "cases": 100,
+    "avgScore": 99.2,
+    "goodPct": 100,
+    "acceptablePct": 0,
+    "poorPct": 0,
+    "unusablePct": 0,
+    "invented": 0,
+    "assistantLikePct": 100,
+    "groundedPct": 100,
+    "avgLatencyMs": 8,
+    "clusters": {
+      "CENTRAL": 0,
+      "CADDINGTON-DATA": 0,
+      "ELVEX-DATA": 0,
+      "RBAC": 0,
+      "SEARCH/INDEX": 0,
+      "MODEL": 0,
+      "TRANSPORT": 0
+    },
+    "bands": {
+      "GOOD": 100,
+      "ACCEPTABLE": 0,
+      "POOR": 0,
+      "UNUSABLE": 0
+    }
+  },
+  "perTenant": {
+    "caddington": {
+      "cases": 50,
+      "avgScore": 99.4,
+      "goodPct": 100,
+      "acceptablePct": 0,
+      "poorPct": 0,
+      "unusablePct": 0,
+      "invented": 0,
+      "assistantLikePct": 100,
+      "groundedPct": 100,
+      "avgLatencyMs": 7,
+      "clusters": {
+        "CENTRAL": 0,
+        "CADDINGTON-DATA": 0,
+        "ELVEX-DATA": 0,
+        "RBAC": 0,
+        "SEARCH/INDEX": 0,
+        "MODEL": 0,
+        "TRANSPORT": 0
+      },
+      "bands": {
+        "GOOD": 50,
+        "ACCEPTABLE": 0,
+        "POOR": 0,
+        "UNUSABLE": 0
+      }
+    },
+    "elvex": {
+      "cases": 50,
+      "avgScore": 99,
+      "goodPct": 100,
+      "acceptablePct": 0,
+      "poorPct": 0,
+      "unusablePct": 0,
+      "invented": 0,
+      "assistantLikePct": 100,
+      "groundedPct": 100,
+      "avgLatencyMs": 9,
+      "clusters": {
+        "CENTRAL": 0,
+        "CADDINGTON-DATA": 0,
+        "ELVEX-DATA": 0,
+        "RBAC": 0,
+        "SEARCH/INDEX": 0,
+        "MODEL": 0,
+        "TRANSPORT": 0
+      },
+      "bands": {
+        "GOOD": 50,
+        "ACCEPTABLE": 0,
+        "POOR": 0,
+        "UNUSABLE": 0
+      }
+    }
+  },
+  "tenants": [
+    {
+      "tenant": "caddington",
+      "companyId": "co_caddington",
+      "companySlug": "caddington",
+      "role": "admin",
+      "whatsappAuthorised": true,
+      "elAuthGap": false,
+      "notes": [
+        "offline profile"
+      ],
+      "adapter": {
+        "tenant": "caddington",
+        "companySlug": "caddington",
+        "primary": "staff handbook",
+        "alt": "health and safety policy",
+        "unknown": "north yard induction pack",
+        "invoice": "INV-003",
+        "mailbox": "delivery notes",
+        "source": "fallback"
+      }
+    },
+    {
+      "tenant": "elvex",
+      "companyId": "co_elvex",
+      "companySlug": "elvex",
+      "role": "admin",
+      "whatsappAuthorised": false,
+      "elAuthGap": false,
+      "notes": [
+        "offline profile"
+      ],
+      "adapter": {
+        "tenant": "elvex",
+        "companySlug": "elvex",
+        "primary": "service agreement",
+        "alt": "site inspection report",
+        "unknown": "flood risk note",
+        "invoice": "INV-110",
+        "mailbox": "permits",
+        "source": "fallback"
+      }
+    }
+  ]
+}

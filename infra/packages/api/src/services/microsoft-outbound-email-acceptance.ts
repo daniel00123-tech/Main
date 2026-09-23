@@ -5,6 +5,7 @@
 import type { Env } from "../env";
 import { createPasswordSetupToken, findValidSetupToken, consumeSetupToken } from "../auth/password-setup";
 import { getUserByEmail, updateUserPassword } from "../auth/users";
+import { acceptPendingInvitationsAfterOnboarding } from "./invitations";
 import { verifyPassword } from "../auth/password";
 import { nowIso } from "../db/mappers";
 import { renderPasswordResetEmail, queueEmail } from "./email-outbox";
@@ -40,7 +41,7 @@ export async function runOutboundEmailV1Acceptance(env: Env): Promise<Record<str
 
   let applicationDeniedSenderBlocked = false;
   try {
-    await resolveApprovedSender(env.DB, {
+    await resolveApprovedSender(env, {
       companyId: PILOT_COMPANY_ID,
       emailType: "PASSWORD_RESET",
       requestedFrom: DENIED_MAILBOX,
@@ -158,6 +159,10 @@ export async function runPasswordResetEmailAcceptance(env: Env): Promise<Record<
   if (tokenRecord) {
     await updateUserPassword(env.DB, user.id, acceptancePassword);
     await consumeSetupToken(env.DB, tokenRecord.id);
+    await acceptPendingInvitationsAfterOnboarding(env.DB, user.id, {
+      actor: user.email,
+      reason: "password_setup_completed",
+    });
   }
   const reuseAllowed = (await findValidSetupToken(env.DB, token)) !== null;
 

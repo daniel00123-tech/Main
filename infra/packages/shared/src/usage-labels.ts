@@ -38,6 +38,7 @@ const TOOL_LABELS: Record<string, string> = {
   xero_list_accounts: "Search Xero accounts",
   plan_xero_draft_invoice: "Prepare draft Xero invoice",
   search_company_knowledge: "Search company knowledge",
+  ask_document: "Ask a selected document",
   system_health: "System health check",
 };
 

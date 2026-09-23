@@ -24,7 +24,13 @@ import { buildCapabilitySnapshot } from "./capability-snapshot";
 import { buildKnowledgeSources } from "./knowledge-sources";
 import { classifyLedgerCredit } from "./wallet-credits";
 import { evaluateApprovalRequirement } from "./approvals";
-import { resolveCompanyMcpToolName } from "./mcp-knowledge-standard";
+import {
+  mapFetchArgumentsForCompanyMcp,
+  resolveCompanyMcpToolName,
+  sanitizeStandardFetchArguments,
+  toStandardFetchPayload,
+  toStandardSearchPayload,
+} from "./mcp-knowledge-standard";
 import { redactSecretFields } from "./secrets";
 
 export async function listCompanies(
@@ -903,6 +909,8 @@ const READ_ONLY_DEFAULT_TOOLS = [
   ...XERO_READ_MCP_TOOLS,
 ] as const;
 
+const ELVEX_EMAIL_READ_TOOLS = ["search_elvex_email", "get_elvex_email"] as const;
+
 export async function executeRegisteredMcpTool(
   env: Env,
   input: {
@@ -992,6 +1000,17 @@ export async function executeRegisteredMcpTool(
 
   try {
     let forwardArgs = input.arguments ?? {};
+    if (companyToolName === "get_knowledge_document") {
+      const sanitized = sanitizeStandardFetchArguments(forwardArgs);
+      if (!("error" in sanitized)) {
+        forwardArgs = {
+          ...mapFetchArgumentsForCompanyMcp(sanitized.id),
+          ...(typeof forwardArgs.title === "string" && forwardArgs.title.trim()
+            ? { title: forwardArgs.title.trim() }
+            : {}),
+        };
+      }
+    }
     let internalHeaders: Record<string, string> | undefined;
     if (isXeroToolName(input.toolName)) {
       const prepared = await prepareXeroMcpExecution({
@@ -1079,13 +1098,52 @@ export async function executeRegisteredMcpTool(
       },
     });
 
-    let parsedText: unknown = execution.textContent;
+    let parsedText: unknown = execution.textContent ?? execution.result;
     if (execution.textContent) {
       try {
         parsedText = JSON.parse(execution.textContent);
       } catch {
         parsedText = execution.textContent;
       }
+    }
+
+    if (companyToolName === "search_company_knowledge") {
+      parsedText = toStandardSearchPayload(parsedText);
+    } else if (companyToolName === "get_knowledge_document") {
+      const requestedId =
+        typeof forwardArgs.id === "string"
+          ? forwardArgs.id
+          : typeof forwardArgs.documentRef === "string"
+            ? String(forwardArgs.documentRef)
+            : "";
+      let fetched = toStandardFetchPayload(parsedText, requestedId);
+      const empty = !fetched.text && !(fetched.chunks?.length);
+      const retryTitle =
+        empty && typeof forwardArgs.title === "string" ? forwardArgs.title.trim() : "";
+      if (empty && retryTitle && retryTitle !== requestedId) {
+        const retry = await callMcpTool(env, {
+          endpointUrl: mcp.endpointUrl,
+          authSecretRef: mcp.authSecretRef,
+          serviceBindingRef: mcp.serviceBindingRef,
+          toolName: companyToolName,
+          arguments: mapFetchArgumentsForCompanyMcp(retryTitle),
+          internalHeaders,
+        });
+        const retryBody = retry.textContent
+          ? (() => {
+              try {
+                return JSON.parse(retry.textContent);
+              } catch {
+                return retry.textContent;
+              }
+            })()
+          : retry.result;
+        const retried = toStandardFetchPayload(retryBody, requestedId || retryTitle);
+        if (retried.text || retried.chunks?.length) {
+          fetched = { ...retried, id: requestedId || retried.id };
+        }
+      }
+      parsedText = fetched;
     }
 
     return {
@@ -1237,6 +1295,18 @@ export async function ensureDefaultToolAllowlist(
       )
       .bind(id, companyId, mcpEnvironmentId, toolName, now, now)
       .run();
+  }
+  if (companyId === "co_el") {
+    for (const toolName of ELVEX_EMAIL_READ_TOOLS) {
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO mcp_tool_allowlist
+            (id, company_id, mcp_environment_id, tool_name, risk_class, enabled, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'low_risk', 1, ?, ?)`,
+        )
+        .bind(newId("allow"), companyId, mcpEnvironmentId, toolName, now, now)
+        .run();
+    }
   }
   await ensureXeroToolActionMaps(db, mcpEnvironmentId);
 }

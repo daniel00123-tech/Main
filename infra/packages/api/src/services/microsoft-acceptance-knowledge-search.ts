@@ -176,7 +176,7 @@ export async function runGatewayKnowledgeSearch(
     .bind(svcId, input.companyId, tokenHash, token.slice(0, 12), scopes, mcp.id, nowIso(), nowIso())
     .run();
 
-  const base = (env.INFRA_PUBLIC_API_URL ?? "https://infra-api.daniel-dwyer123.workers.dev").replace(
+  const base = (env.INFRA_PUBLIC_API_URL ?? "https://api.infrastack.app").replace(
     /\/$/,
     "",
   );

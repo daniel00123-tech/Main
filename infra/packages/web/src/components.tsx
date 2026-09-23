@@ -46,7 +46,7 @@ export function PageHeader({
   className = "",
 }: {
   title: string;
-  description?: string;
+  description?: ReactNode;
   /** @deprecated use description */
   subtitle?: string;
   breadcrumb?: Array<{ label: string; to?: string }>;
@@ -97,7 +97,7 @@ export function SectionCard({
   className = "",
 }: {
   title?: string;
-  description?: string;
+  description?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -250,8 +250,8 @@ export function Button({
   return (
     <button
       className={`button button-${v}${size === "sm" ? " button-small" : ""} ${className}`.trim()}
-      disabled={props.disabled || loading}
       {...props}
+      disabled={Boolean(props.disabled || loading)}
     >
       {loading ? "Working…" : children}
     </button>
@@ -375,14 +375,9 @@ export function Tabs({
 
 export function LoadingState({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="loading-state" aria-busy="true">
-      <div className="stack" style={{ maxWidth: 360, margin: "0 auto", gap: 12 }}>
-        <div className="skeleton" style={{ height: 28, width: "60%", margin: "0 auto" }} />
-        <div className="skeleton" style={{ height: 14, width: "90%", margin: "0 auto" }} />
-        <div className="skeleton" style={{ height: 14, width: "75%", margin: "0 auto" }} />
-        <div className="skeleton" style={{ height: 72, marginTop: 8 }} />
-      </div>
-      <p style={{ marginTop: 16 }}>{label}</p>
+    <div className="loading-state" aria-busy="true" role="status">
+      <div className="loading-brand-pulse" aria-hidden />
+      <p className="muted">{label}</p>
     </div>
   );
 }
@@ -392,14 +387,16 @@ export function EmptyState({
   title,
   description,
   action,
+  tone = "neutral",
 }: {
   icon?: ReactNode;
   title: string;
   description?: string;
   action?: ReactNode;
+  tone?: "neutral" | "good";
 }) {
   return (
-    <div className="empty-state">
+    <div className={`empty-state${tone === "good" ? " empty-state-good" : ""}`}>
       {icon ? <div style={{ marginBottom: 12, color: "var(--text-muted)" }}>{icon}</div> : null}
       <h3>{title}</h3>
       {description ? <p>{description}</p> : null}
@@ -941,6 +938,90 @@ export function MobileRecordCard({
     >
       {children}
     </Tag>
+  );
+}
+
+/** Standard mobile/summary card: title, context, status, metric, time, optional actions. */
+export function DataCard({
+  title,
+  subtitle,
+  status,
+  metric,
+  timestamp,
+  onClick,
+  actions,
+  children,
+  className = "",
+}: {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  status?: ReactNode;
+  metric?: ReactNode;
+  timestamp?: ReactNode;
+  onClick?: () => void;
+  actions?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <MobileRecordCard onClick={onClick} className={`data-card ${className}`.trim()}>
+      <div className="data-card-head">
+        <div className="data-card-identity">
+          <div className="mobile-record-title">{title}</div>
+          {subtitle ? <div className="muted small">{subtitle}</div> : null}
+        </div>
+        {status ? <div className="data-card-status">{status}</div> : null}
+      </div>
+      {(metric || timestamp) && (
+        <div className="data-card-metrics">
+          {metric ? <div className="data-card-metric">{metric}</div> : null}
+          {timestamp ? <div className="muted small">{timestamp}</div> : null}
+        </div>
+      )}
+      {children}
+      {actions ? <div className="mobile-record-actions">{actions}</div> : null}
+    </MobileRecordCard>
+  );
+}
+
+export function HelpHint({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <span className="help-hint">
+      <button type="button" className="help-hint-btn" aria-label={label} title={label}>
+        <Info size={14} aria-hidden />
+      </button>
+      <span className="help-hint-pop" role="tooltip">
+        {children}
+      </span>
+    </span>
+  );
+}
+
+export function RatioBar({
+  left,
+  right,
+  leftLabel,
+  rightLabel,
+}: {
+  left: number;
+  right: number;
+  leftLabel?: string;
+  rightLabel?: string;
+}) {
+  const total = Math.max(left + right, 1);
+  return (
+    <div className="ratio-bar" aria-hidden>
+      <div className="ratio-bar-track">
+        <span className="ratio-bar-left" style={{ width: `${(left / total) * 100}%` }} />
+        <span className="ratio-bar-right" style={{ width: `${(right / total) * 100}%` }} />
+      </div>
+      {leftLabel || rightLabel ? (
+        <div className="ratio-bar-legend">
+          <span>{leftLabel}</span>
+          <span>{rightLabel}</span>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

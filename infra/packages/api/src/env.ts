@@ -1,6 +1,8 @@
 export interface Env {
   DB: D1Database;
   ENVIRONMENT: string;
+  /** Official Cloudflare Worker version metadata. Present after wrangler deploy. */
+  CF_VERSION_METADATA?: { id?: string; tag?: string; timestamp?: string };
   SESSION_SECRET: string;
   ALLOWED_ORIGINS: string;
   COOKIE_CROSS_ORIGIN?: string;
@@ -16,12 +18,28 @@ export interface Env {
   EL_BUSINESS_MCP?: Fetcher;
   /** Stripe secrets — set via wrangler secret put when ready */
   STRIPE_SECRET_KEY?: string;
+  /** Signing secret for the existing workers.dev Stripe webhook. */
   STRIPE_WEBHOOK_SECRET?: string;
-  /** Public API base URL for gateway/MCP endpoints returned to clients (no trailing slash) */
+  /**
+   * Signing secret for the canonical api.infrastack.app Stripe webhook.
+   * Optional during cutover so both endpoints can verify.
+   */
+  STRIPE_WEBHOOK_SECRET_INFRASTACK?: string;
+  /**
+   * Public API base URL for generated links, OAuth defaults, and Microsoft Graph
+   * notification URLs (no trailing slash). There is no MICROSOFT_GRAPH_NOTIFICATION_URL secret.
+   */
   INFRA_PUBLIC_API_URL?: string;
-  /** Portal host domain for subdomain routing, e.g. infra-web.pages.dev */
+  /** Public MCP hostname (no trailing slash). Canonical: https://mcp.infrastack.app */
+  INFRA_PUBLIC_MCP_URL?: string;
+  /** Canonical customer/admin portal origin, e.g. https://app.infrastack.app */
+  PORTAL_PUBLIC_ORIGIN?: string;
+  /** Portal host domain for legacy company subdomains, e.g. infra-web.pages.dev */
   PORTAL_BASE_DOMAIN?: string;
-  /** Portal cookie domain for first-party session sharing across subdomains, e.g. .infra-web.pages.dev */
+  /**
+   * Optional cookie Domain for legacy pages.dev company subdomains only.
+   * Do not set .infrastack.app — app.infrastack.app uses host-only cookies.
+   */
   PORTAL_COOKIE_DOMAIN?: string;
   /** Envelope-encryption wrapping key for connector credentials. Never store in D1. */
   INFRA_CREDENTIAL_WRAPPING_KEY?: string;
@@ -29,9 +47,28 @@ export interface Env {
   /** Xero app credentials — Worker secrets only. Never store in D1. */
   XERO_CLIENT_ID?: string;
   XERO_CLIENT_SECRET?: string;
-  /** Optional email delivery via Resend */
+  /** Optional email delivery via Resend (dev fallback only) */
   RESEND_API_KEY?: string;
+  /** Legacy combined From header. Prefer EMAIL_FROM_NAME + EMAIL_FROM_ADDRESS. */
   EMAIL_FROM?: string;
+  EMAIL_FROM_NAME?: string;
+  EMAIL_FROM_ADDRESS?: string;
+  /** Cloudflare Email Service Workers binding */
+  EMAIL?: {
+    send(input: {
+      to: string | string[];
+      from: string | { name?: string; email?: string; address?: string };
+      replyTo?: string | { name?: string; email?: string; address?: string };
+      subject: string;
+      html?: string;
+      text?: string;
+    }): Promise<{ messageId?: string }>;
+  };
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  CLOUDFLARE_API_TOKEN?: string;
+  EMAIL_SENDING_API_TOKEN?: string;
+  /** Optional one-shot live email test gate. Unset in normal production. */
+  EMAIL_LIVE_TEST_KEY?: string;
   /** Feature flag — auto top-up execution (test mode only until operator approval) */
   AUTO_TOPUP_EXECUTION_ENABLED?: string;
   /** Microsoft 365 app registration — Worker secrets only */
@@ -48,12 +85,55 @@ export interface Env {
   /** Azure AI Document Intelligence — OCR fallback for requires_ocr documents */
   AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT?: string;
   AZURE_DOCUMENT_INTELLIGENCE_KEY?: string;
+  /** Optional OCR quality threshold (default 40 substantive characters). */
+  AZURE_OCR_MIN_SUBSTANTIVE_CHARS?: string;
   AZURE_OCR_MAX_PAGES?: string;
   AZURE_OCR_MAX_BYTES?: string;
+  /** Quality auditor sample rate 0–1. Default 1. Does not block user responses. */
+  QUALITY_AUDIT_SAMPLE_RATE?: string;
   /** Cloudflare Queue for Microsoft file ingestion (one file per message) */
   MICROSOFT_KNOWLEDGE_QUEUE?: Queue<import("./services/microsoft-queue").MicrosoftFileJobMessage>;
   /** Cloudflare Queue for automation run execution */
   AUTOMATION_RUN_QUEUE?: Queue<import("./services/automation-engine/queue").AutomationRunMessage>;
+  /** Cloudflare Queue for inbound WhatsApp webhook processing */
+  WHATSAPP_INBOUND_QUEUE?: Queue<import("./services/whatsapp-webhook").WhatsAppInboundMessage>;
+  /** Independent WhatsApp watchdog — delayed 5s/10s/30s, separate from the inbound consumer */
+  WHATSAPP_WATCHDOG_QUEUE?: Queue<import("./services/whatsapp-webhook").WhatsAppInboundMessage>;
+  /** Meta WhatsApp Cloud API — webhook verify token (secret) */
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN?: string;
+  /** WhatsApp Cloud API phone number ID */
+  WHATSAPP_PHONE_NUMBER_ID?: string;
+  /** WhatsApp Business Account ID */
+  WHATSAPP_BUSINESS_ACCOUNT_ID?: string;
+  /** WhatsApp Cloud API access token — required before outbound send */
+  WHATSAPP_ACCESS_TOKEN?: string;
+  /**
+   * Optional 6-digit WhatsApp Cloud API two-step / registration PIN.
+   * Required by POST /{PHONE_NUMBER_ID}/register. Never guess this value.
+   */
+  WHATSAPP_REGISTRATION_PIN?: string;
+  /** Optional one-shot inspect/register gate. Unset in normal production. */
+  WHATSAPP_META_PROBE_KEY?: string;
+  /** Optional persist-inclusive adversarial eval gate. Unset after UAT. */
+  ADVERSARIAL_EVAL_KEY?: string;
+  /** Meta app secret — used for X-Hub-Signature-256 */
+  META_APP_SECRET?: string;
+  /** Explicit outbound AI flag. Default off even if send credentials exist. */
+  WHATSAPP_OUTBOUND_AI_ENABLED?: string;
+  /** Cloudflare Workers AI binding — preferred WhatsApp voice transcription. */
+  AI?: { run: (model: string, inputs: Record<string, unknown>) => Promise<unknown> };
+  /** Optional OpenAI Whisper / grounded-QA fallback. Set via wrangler secret put — never commit. */
+  OPENAI_API_KEY?: string;
+  /** Optional Workers AI / OpenAI text model for document-grounded WhatsApp answers. */
+  WHATSAPP_GROUNDED_MODEL?: string;
+  /** Optional Workers AI fallback for Conversational Intelligence V1.1. */
+  INTELLIGENCE_FALLBACK_MODEL?: string;
+  /** Optional second-tier Workers AI model. Off unless live bench shows benefit. */
+  INTELLIGENCE_ESCALATE_MODEL?: string;
+  /** Set to "1" only during gated UAT shadow eval. Never sends shadow answers. */
+  INTELLIGENCE_SHADOW_EVAL?: string;
+  /** Comma-separated Workers AI model ids for offline shadow compare. */
+  INTELLIGENCE_SHADOW_MODELS?: string;
   /** Safe send UAT — requires XERO_SEND_UAT_MODE=true simultaneously */
   XERO_SEND_UAT_MODE?: string;
   XERO_SEND_TEST_RECIPIENT?: string;
@@ -72,13 +152,8 @@ export function isOriginAllowed(origin: string | undefined, allowedOrigins: stri
   if (allowedOrigins.includes(origin)) return true;
   try {
     const { hostname, protocol } = new URL(origin);
+    // Temporary company-subdomain fallback on Pages. Not a production wildcard.
     if (protocol === "https:" && hostname.endsWith(".infra-web.pages.dev")) {
-      return true;
-    }
-    if (
-      protocol === "https:" &&
-      (hostname === "app.infrastack.app" || hostname.endsWith(".infrastack.app"))
-    ) {
       return true;
     }
   } catch {

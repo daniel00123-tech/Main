@@ -3,9 +3,11 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAdminScope } from "../context/AdminScopeContext";
 import {
+  DataCard,
   EmptyState,
   ErrorState,
   LoadingState,
+  MobileRecordList,
   PageHeader,
   SectionCard,
   StatusBadge,
@@ -48,10 +50,29 @@ export default function ConnectorOversightPage() {
         {visibleRows.length === 0 ? (
           <EmptyState
             title="No connector instances"
-            description="New companies start with an empty catalogue. Nothing is copied from another tenant."
+            description="This page lists company connections. It is empty until a company connects a system."
           />
         ) : (
-          <div className="table-wrap">
+          <>
+          <div className="mobile-cards">
+            <MobileRecordList>
+              {visibleRows.map((row) => (
+                <DataCard
+                  key={row.connectorInstanceId}
+                  title={row.name}
+                  subtitle={row.companyName}
+                  status={<StatusBadge status={row.authStatus} />}
+                  metric={row.syncHealth}
+                  timestamp={row.lastSyncAt ?? "No successful sync yet"}
+                >
+                  {row.lastErrorMessage ? (
+                    <p className="muted small" style={{ margin: "8px 0 0" }}>{row.lastErrorMessage}</p>
+                  ) : null}
+                </DataCard>
+              ))}
+            </MobileRecordList>
+          </div>
+          <div className="desktop-table table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -87,6 +108,7 @@ export default function ConnectorOversightPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </SectionCard>
     </>

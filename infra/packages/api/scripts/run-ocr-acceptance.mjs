@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const API = "https://infra-api.daniel-dwyer123.workers.dev";
+const API = process.env.INFRA_API_URL ?? "https://api.infrastack.app";
 const apiDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const token = `ocr_v1_${randomBytes(24).toString("hex")}`;

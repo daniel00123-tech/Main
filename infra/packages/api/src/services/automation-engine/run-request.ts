@@ -189,9 +189,8 @@ async function afterCreate(
     : false;
 
   if (!enqueued) {
-    // The automation-runs queue is not bound in production. Public
-    // workers.dev self-fetch is blocked (Cloudflare 1042), so process
-    // in-request through the same executor the queue consumer uses.
+    // Queue binding is the production path. Tests and unbound Workers
+    // still process in-request so behaviour stays deterministic.
     await processAutomationRunJob(env, message);
   }
 }

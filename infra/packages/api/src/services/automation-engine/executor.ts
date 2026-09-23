@@ -18,6 +18,7 @@ import { executeAutomationAction } from "./actions/index";
 import { AutomationActionError } from "./actions/errors";
 import { recordAutomationExecutionMetering } from "./metering";
 import type { AutomationRunMessage } from "./queue";
+import { logInfraEvent } from "../observability/structured-log";
 
 export class AutomationExecutionError extends Error {
   constructor(
@@ -178,6 +179,16 @@ export async function executeAutomationRun(env: Env, message: AutomationRunMessa
         actionResult.result.meteringRecordedByGateway === true,
       initiatedBy: run.initiatedBy,
     });
+    logInfraEvent({
+      event: "automation.run_completed",
+      companyId: message.companyId,
+      actor: run.initiatedBy,
+      automationId: automation.id,
+      runId: run.id,
+      durationMs,
+      status: "completed",
+      retryCount: run.attempt,
+    });
   } catch (err) {
     const completedAt = nowIso();
     const durationMs = Date.now() - startMs;
@@ -238,6 +249,20 @@ export async function executeAutomationRun(env: Env, message: AutomationRunMessa
         attempt: run.attempt,
         retryable,
       },
+    });
+
+    logInfraEvent({
+      level: "error",
+      event: "automation.run_failed",
+      companyId: message.companyId,
+      actor: run.initiatedBy,
+      automationId: automation.id,
+      runId: run.id,
+      durationMs,
+      status: "failed",
+      retryCount: run.attempt,
+      errorCategory: errorCode,
+      message: messageText.slice(0, 180),
     });
 
     await recordAutomationEvent(env.DB, {
