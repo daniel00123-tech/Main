@@ -1,0 +1,21 @@
+{
+  "name": "INFRA",
+  "install": "bash infra/scripts/cloud-agent-install.sh",
+  "start": "bash infra/scripts/cloud-agent-start.sh",
+  "terminals": [
+    {
+      "name": "infra-api",
+      "command": "cd infra/packages/api && WRANGLER_SEND_METRICS=false CI=1 npm run dev",
+      "description": "INFRA control-plane API (wrangler dev, local D1) on http://localhost:8787"
+    },
+    {
+      "name": "infra-web",
+      "command": "cd infra/packages/web && npm run dev -- --host",
+      "description": "INFRA admin + portal (Vite) on http://localhost:5173; proxies /api and /health to the API"
+    }
+  ],
+  "ports": [
+    { "name": "infra-web", "port": 5173 },
+    { "name": "infra-api", "port": 8787 }
+  ]
+}
