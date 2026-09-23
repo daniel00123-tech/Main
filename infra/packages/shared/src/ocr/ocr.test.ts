@@ -3,6 +3,7 @@ import {
   isOcrSupportedMimeType,
   presentCustomerOcrStatus,
   presentOperatorOcrStatus,
+  resolveExtractionOperatorState,
   shouldInvokeOcr,
 } from "./types";
 
@@ -39,5 +40,32 @@ describe("OCR customer wording", () => {
   it("keeps operator wording technical", () => {
     expect(presentOperatorOcrStatus("ocr_limit_exceeded")).toBe("OCR page limit exceeded");
     expect(presentOperatorOcrStatus("requires_ocr")).toBe("Requires OCR");
+  });
+});
+
+describe("extraction operator states", () => {
+  it("maps native success, OCR success, failed, unsupported, and not-available", () => {
+    expect(resolveExtractionOperatorState({ extractionQuality: "good" })).toBe("native_text_success");
+    expect(resolveExtractionOperatorState({ ocrStatus: "ocr_completed" })).toBe("ocr_success");
+    expect(resolveExtractionOperatorState({ ocrStatus: "ocr_failed" })).toBe("ocr_failed");
+    expect(
+      resolveExtractionOperatorState({
+        requiresOcr: true,
+        mimeType: "application/vnd.ms-excel",
+      }),
+    ).toBe("unsupported");
+    expect(
+      resolveExtractionOperatorState({
+        requiresOcr: true,
+        fallbackOutcome: "ocr_not_available",
+        azureConfigured: false,
+      }),
+    ).toBe("ocr_not_available");
+    expect(
+      resolveExtractionOperatorState({
+        extractionQuality: "heading_only",
+        azureConfigured: true,
+      }),
+    ).toBe("low_text_warning");
   });
 });

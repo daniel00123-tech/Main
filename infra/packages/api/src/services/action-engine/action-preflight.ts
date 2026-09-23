@@ -6,7 +6,8 @@ import {
 import type { Env } from "../../env";
 import { FINANCIAL_WRITES_ENABLED } from "../approvals";
 import { getCompanyById, getConnectorInstance } from "../control-plane";
-import { evaluateActionPermission } from "./permission-engine";
+import { evaluateUnifiedActionPermission } from "./unified-permission";
+import { actionWriteFlags } from "./plan-permission";
 import { isPlanStale } from "./action-engine";
 import { revalidateXeroPlanTargets } from "./xero-planner";
 
@@ -133,23 +134,22 @@ export async function runActionPreflight(
         detail: missing.length ? `missing: ${missing.join(", ")}` : "ready",
       });
 
-      const permission = evaluateActionPermission({
+      const permission = await evaluateUnifiedActionPermission(env.DB, {
         action: plan.requestedAction,
         riskClass: plan.riskClass,
+        companyId: plan.companyId,
         companyStatus: company?.status ?? "active",
         connectorConnected: connected,
         connectorAuthStatus: instance.authStatus ?? "unknown",
         grantedScopes: scopes,
         requiredScopes: required,
-        flags: {
-          financialWritesEnabled: FINANCIAL_WRITES_ENABLED,
-          writesEnabled: FINANCIAL_WRITES_ENABLED,
-        },
+        flags: actionWriteFlags(env, plan.requestedAction),
+        skipRoleCheck: true,
       });
       checks.push({
         name: "permission_decision",
         ok: Boolean(permission.allowed || input.dryRun),
-        detail: permission.reasonCode,
+        detail: permission.denialCode ?? permission.reasonCode,
       });
     }
   }

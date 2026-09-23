@@ -57,6 +57,8 @@ export interface Env {
   /** Safe send UAT — requires XERO_SEND_UAT_MODE=true simultaneously */
   XERO_SEND_UAT_MODE?: string;
   XERO_SEND_TEST_RECIPIENT?: string;
+  /** Explicit operator enable for void/delete. Default off. */
+  DESTRUCTIVE_WRITES_ENABLED?: string;
   [key: string]: unknown;
 }
 

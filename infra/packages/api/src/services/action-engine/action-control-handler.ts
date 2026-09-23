@@ -10,7 +10,13 @@ import {
   markPlanStale,
   planTargetsReady,
 } from "./action-engine";
-import { evaluateActionPermission } from "./permission-engine";
+import { evaluateUnifiedActionPermission } from "./unified-permission";
+import {
+  actionWriteFlags,
+  isHardPlanDenial,
+  planPermissionDeniedResponse,
+} from "./plan-permission";
+import { getConnectorInstance } from "../control-plane";
 import {
   planXeroCreditInvoices,
   planXeroDraftInvoice,
@@ -244,6 +250,24 @@ export async function executeActionControlTool(
       }
     }
 
+    if (plan.connectorInstanceId) {
+      const confirmInstance = await getConnectorInstance(env.DB, plan.connectorInstanceId);
+      const confirmPermission = await evaluateUnifiedActionPermission(env.DB, {
+        action: plan.requestedAction,
+        riskClass: plan.riskClass,
+        companyId: input.companyId,
+        companyStatus: "active",
+        connectorConnected: Boolean(confirmInstance && confirmInstance.authStatus === "connected"),
+        connectorAuthStatus: confirmInstance?.authStatus ?? "unknown",
+        grantedScopes: confirmInstance ? grantedScopes(confirmInstance) : [],
+        flags: actionWriteFlags(env, plan.requestedAction),
+        ...permissionActorContext(input.actor, input.companyId),
+      });
+      if (isHardPlanDenial(confirmPermission)) {
+        return planPermissionDeniedResponse(confirmPermission, plan.requestedAction);
+      }
+    }
+
     const result = await confirmActionPlan(env.DB, {
       companyId: input.companyId,
       planId,
@@ -309,9 +333,11 @@ export async function executeActionControlTool(
       ? input.arguments.invoiceNumbers.map(String)
       : [];
     const contract = xeroToolContract("xero_create_credit_note");
-    const permission = evaluateActionPermission({
-      action: contract?.action ?? "xero.credit_notes.create",
+    const requestedAction = contract?.action ?? "xero.credit_notes.create";
+    const permission = await evaluateUnifiedActionPermission(env.DB, {
+      action: requestedAction,
       riskClass: "financial_action",
+      companyId: input.companyId,
       companyStatus: "active",
       connectorConnected: true,
       connectorAuthStatus: instance.authStatus ?? "unknown",
@@ -319,9 +345,12 @@ export async function executeActionControlTool(
       requiredScopes: missingScopesForTier(grantedScopes(instance), "write").length
         ? missingScopesForTier(grantedScopes(instance), "write")
         : undefined,
-      flags: { financialWritesEnabled: FINANCIAL_WRITES_ENABLED, writesEnabled: FINANCIAL_WRITES_ENABLED },
+      flags: actionWriteFlags(env, requestedAction),
       ...permissionActorContext(input.actor, input.companyId),
     });
+    if (isHardPlanDenial(permission)) {
+      return planPermissionDeniedResponse(permission, requestedAction);
+    }
     const planned = await planXeroCreditInvoices({
       env,
       companyId: input.companyId,
@@ -332,7 +361,7 @@ export async function executeActionControlTool(
     const { plan, confirmationToken } = await createActionPlan(env.DB, {
       companyId: input.companyId,
       connectorInstanceId: instance.id,
-      requestedAction: "xero.credit_notes.create",
+      requestedAction,
       idempotencyKey: input.arguments.idempotencyKey ? String(input.arguments.idempotencyKey) : null,
       actor,
       sourceClient: input.sourceClient,
@@ -358,17 +387,22 @@ export async function executeActionControlTool(
 
   if (input.toolName === "plan_xero_draft_invoice") {
     const contract = xeroToolContract("xero_create_draft_invoice");
-    const permission = evaluateActionPermission({
-      action: contract?.action ?? "xero.invoices.create",
+    const requestedAction = contract?.action ?? "xero.invoices.create";
+    const permission = await evaluateUnifiedActionPermission(env.DB, {
+      action: requestedAction,
       riskClass: "financial_action",
+      companyId: input.companyId,
       companyStatus: "active",
       connectorConnected: true,
       connectorAuthStatus: instance.authStatus ?? "unknown",
       grantedScopes: grantedScopes(instance),
       requiredScopes: [...XERO_SCOPES_DRAFT_INVOICE],
-      flags: { financialWritesEnabled: FINANCIAL_WRITES_ENABLED, writesEnabled: FINANCIAL_WRITES_ENABLED },
+      flags: actionWriteFlags(env, requestedAction),
       ...permissionActorContext(input.actor, input.companyId),
     });
+    if (isHardPlanDenial(permission)) {
+      return planPermissionDeniedResponse(permission, requestedAction);
+    }
     const planned = await planXeroDraftInvoice({
       env,
       companyId: input.companyId,
@@ -399,7 +433,7 @@ export async function executeActionControlTool(
     const { plan, confirmationToken } = await createActionPlan(env.DB, {
       companyId: input.companyId,
       connectorInstanceId: instance.id,
-      requestedAction: "xero.invoices.create",
+      requestedAction,
       idempotencyKey: input.arguments.idempotencyKey ? String(input.arguments.idempotencyKey) : null,
       actor,
       sourceClient: input.sourceClient,
@@ -425,16 +459,20 @@ export async function executeActionControlTool(
   }
 
   if (input.toolName === "plan_xero_remittance_allocation") {
-    const permission = evaluateActionPermission({
+    const permission = await evaluateUnifiedActionPermission(env.DB, {
       action: "xero.payments.allocate",
       riskClass: "financial_action",
+      companyId: input.companyId,
       companyStatus: "active",
       connectorConnected: true,
       connectorAuthStatus: instance.authStatus ?? "unknown",
       grantedScopes: grantedScopes(instance),
-      flags: { financialWritesEnabled: FINANCIAL_WRITES_ENABLED, writesEnabled: FINANCIAL_WRITES_ENABLED },
+      flags: actionWriteFlags(env, "xero.payments.allocate"),
       ...permissionActorContext(input.actor, input.companyId),
     });
+    if (isHardPlanDenial(permission)) {
+      return planPermissionDeniedResponse(permission, "xero.payments.allocate");
+    }
     const planned = await planXeroRemittanceAllocation({
       env,
       companyId: input.companyId,
@@ -497,17 +535,21 @@ export async function executeActionControlTool(
     },
     requiredScopes?: string[],
   ) {
-    const permission = evaluateActionPermission({
+    const permission = await evaluateUnifiedActionPermission(env.DB, {
       action: requestedAction,
       riskClass,
+      companyId: input.companyId,
       companyStatus: "active",
       connectorConnected: true,
       connectorAuthStatus: instance!.authStatus ?? "unknown",
       grantedScopes: grantedScopes(instance!),
       requiredScopes,
-      flags: { financialWritesEnabled: FINANCIAL_WRITES_ENABLED, writesEnabled: FINANCIAL_WRITES_ENABLED },
+      flags: actionWriteFlags(env, requestedAction),
       ...permissionActorContext(input.actor, input.companyId),
     });
+    if (isHardPlanDenial(permission)) {
+      return planPermissionDeniedResponse(permission, requestedAction);
+    }
     const { plan, confirmationToken } = await createActionPlan(env.DB, {
       companyId: input.companyId,
       connectorInstanceId: instance!.id,

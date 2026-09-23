@@ -31,52 +31,69 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <div className="brand-block" style={{ padding: 0 }}>
-          <div className="brand-mark">IN</div>
-          <div className="brand-text">
-            <span className="brand-name">INFRA</span>
-            <span className="brand-context">Admin Control Panel</span>
+    <div className="login-page login-page-admin">
+      <div className="login-admin-shell">
+        <section className="login-admin-form-pane">
+          <div className="login-card">
+            <div className="brand-block" style={{ padding: 0 }}>
+              <div className="brand-mark">IN</div>
+              <div className="brand-text">
+                <span className="brand-name">INFRA</span>
+                <span className="brand-context">Admin Control Panel</span>
+              </div>
+            </div>
+            <h1>Sign in</h1>
+            <p className="muted">
+              Access the INFRA Admin Control Panel to manage companies, integrations, and access.
+            </p>
+            {successMessage ? <p className="info-banner">{successMessage}</p> : null}
+            <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
+              <label>
+                Email
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <p className="login-form-meta">
+                <Link to="/forgot-password">Forgot password?</Link>
+              </p>
+              {error ? <p className="error-text">{error}</p> : null}
+              <button className="button button-primary" type="submit" disabled={loading}>
+                {loading ? "Signing in…" : "Sign in"}
+              </button>
+            </form>
+            <p className="muted small" style={{ marginTop: 20 }}>
+              Company users: <Link to="/portal/login">sign in to your company portal</Link>
+            </p>
           </div>
-        </div>
-        <h1>Sign in</h1>
-        <p className="muted">
-          Access the INFRA Admin Control Panel to manage companies, integrations, and access.
-        </p>
-        {successMessage ? <p className="info-banner">{successMessage}</p> : null}
-        <form className="login-form" onSubmit={(e) => void handleSubmit(e)}>
-          <label>
-            Email
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="username"
-              required
+        </section>
+        <aside className="login-admin-visual-pane" aria-label="INFRA platform architecture">
+          <div className="login-admin-visual-frame">
+            <img
+              className="login-admin-visual"
+              src="/images/infra-login-visual.webp"
+              alt="INFRA architecture: AI models connect through MCP gateways to the INFRA core, then to Xero, Microsoft 365, Google Drive, and other business systems."
+              width={1333}
+              height={2000}
+              decoding="async"
+              fetchPriority="high"
             />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </label>
-          <p className="login-form-meta">
-            <Link to="/forgot-password">Forgot password?</Link>
-          </p>
-          {error ? <p className="error-text">{error}</p> : null}
-          <button className="button button-primary" type="submit" disabled={loading}>
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-        <p className="muted small" style={{ marginTop: 20 }}>
-          Company users: <Link to="/portal/login">sign in to your company portal</Link>
-        </p>
+          </div>
+        </aside>
       </div>
     </div>
   );

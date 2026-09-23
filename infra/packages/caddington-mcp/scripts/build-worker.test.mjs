@@ -81,5 +81,7 @@ describe("build-worker idempotency", () => {
     const worker = fs.readFileSync(path.join(pkgRoot, "dist/worker.js"), "utf8");
     expect(worker.includes('action: "existing"')).toBe(true);
     expect(worker.includes("SELECT id FROM knowledge_documents WHERE external_id = ?")).toBe(true);
+    expect(worker.includes("substantiveCharacterCount < 80 && pageCount >= 2")).toBe(false);
+    expect(worker.includes("substantiveCharacterCount < 80")).toBe(true);
   });
 });

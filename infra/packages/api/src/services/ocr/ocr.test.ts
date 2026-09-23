@@ -5,6 +5,7 @@ import {
 } from "@infra/shared";
 import { AzureDocumentIntelligenceOcrProvider, AzureOcrError } from "./azure-document-intelligence";
 import { applyOcrFallbackIfRequired } from "./knowledge-ocr";
+import { isOcrBackfillCandidate } from "./backfill";
 import { assessOcrTextQuality, estimatePdfPageCount, ocrDocument, sha256Hex } from "./service";
 import type { OcrProvider } from "./types";
 
@@ -91,7 +92,7 @@ function mockProvider(overrides: Partial<OcrProvider> & { analyze?: OcrProvider[
     async analyze() {
       provider.calls += 1;
       return {
-        text: "Coal Search report describing site constraints and borehole findings.",
+        text: "Coal Search report describing site constraints, borehole findings, and the recorded mineral workings across the inspected parcel.",
         pageCount: 2,
         durationMs: 12,
       };
@@ -173,7 +174,7 @@ describe("OCR quality and limits", () => {
 
   it("assesses substantive OCR text as sufficient", () => {
     const quality = assessOcrTextQuality(
-      "Investment opportunity at Arnold Crescent including rental yield and purchase price.",
+      "Investment opportunity at Arnold Crescent including rental yield, purchase price, and the recorded tenancy terms for the dwelling.",
       1,
     );
     expect(quality.sufficient).toBe(true);
@@ -282,6 +283,56 @@ describe("Azure provider retries and redaction", () => {
   });
 });
 
+describe("OCR unavailable state", () => {
+  it("does not mark metadata-only documents as indexed when Azure is not configured", async () => {
+    const result = await applyOcrFallbackIfRequired(
+      { DB: memoryDb().db } as never,
+      { id: "mcp_caddington_primary", companyId: "co_caddington", endpointUrl: "https://example" } as never,
+      {
+        companyId: "co_caddington",
+        documentId: 54,
+        requiresOcr: true,
+        extractionQuality: "heading_only",
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.indexed).toBe(false);
+      expect(result.extractionState).toBe("ocr_not_available");
+      expect(result.documentStatus).toBe("requires_ocr");
+    }
+  });
+});
+
+describe("OCR failed state", () => {
+  it("does not treat failed OCR as successfully indexed", async () => {
+    const provider = mockProvider({
+      async analyze() {
+        return { text: "# Page 1", pageCount: 1, durationMs: 4 };
+      },
+    });
+    const result = await applyOcrFallbackIfRequired(
+      { DB: memoryDb().db } as never,
+      { id: "mcp_caddington_primary", companyId: "co_caddington" } as never,
+      {
+        companyId: "co_caddington",
+        documentId: 54,
+        requiresOcr: true,
+        bytes: sampleBytes,
+        mimeType: "application/pdf",
+        title: "Coal Search",
+        provider,
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.indexed).toBe(false);
+      expect(result.extractionState).toBe("ocr_failed");
+      expect(result.documentStatus).toBe("ocr_failed");
+    }
+  });
+});
+
 describe("OCR fallback orchestration", () => {
   it("does not invoke Azure when extraction is already good", async () => {
     const provider = mockProvider();
@@ -301,6 +352,7 @@ describe("OCR fallback orchestration", () => {
     if (result.ok) {
       expect(result.requiresOcr).toBe(false);
       expect(result.indexed).toBe(true);
+      expect(result.extractionState).toBe("native_text_success");
     }
     expect(provider.calls).toBe(0);
   });
@@ -324,6 +376,43 @@ describe("OCR fallback orchestration", () => {
     expect(merged.itemKind).toBe("mail_attachment");
     expect(merged.sourceType).toBe("outlook_shared");
     expect(merged.ocrStatus).toBe("ocr_completed");
+  });
+});
+
+describe("OCR backfill candidate selection", () => {
+  it("selects requires_ocr and ocr_not_available documents only", () => {
+    expect(
+      isOcrBackfillCandidate({
+        status: "requires_ocr",
+        metadata: { fallbackOutcome: "ocr_not_available" },
+      }).candidate,
+    ).toBe(true);
+    expect(
+      isOcrBackfillCandidate({
+        status: "indexed",
+        metadata: { ocrStatus: "ocr_completed", extractionQuality: "good" },
+      }).candidate,
+    ).toBe(false);
+    expect(
+      isOcrBackfillCandidate({
+        status: "indexed",
+        metadata: { extractionQuality: "good" },
+      }).candidate,
+    ).toBe(false);
+  });
+
+  it("is idempotent for an already OCR-indexed document", () => {
+    const first = isOcrBackfillCandidate({
+      status: "indexed",
+      metadata: { ocrStatus: "ocr_completed" },
+    });
+    const second = isOcrBackfillCandidate({
+      status: "indexed",
+      metadata: { ocrStatus: "ocr_completed" },
+    });
+    expect(first.candidate).toBe(false);
+    expect(second.candidate).toBe(false);
+    expect(first.reason).toBe("already_ocr_indexed");
   });
 });
 

@@ -95,6 +95,19 @@ Integrated with existing extraction status:
 | `ocr_failed` | Provider or quality failure |
 | `ocr_limit_exceeded` | Page/size guard blocked Azure |
 
+Operator-facing `extractionState` (metadata, not a second index):
+
+| State | Meaning |
+|--------|---------|
+| `native_text_success` | Native extract produced searchable page text |
+| `ocr_success` | Azure OCR produced searchable page text |
+| `low_text_warning` | Native extract is poor / heading-only and OCR has not succeeded |
+| `ocr_failed` | OCR attempted and failed or hit a limit |
+| `ocr_not_available` | OCR required but Azure is not configured |
+| `unsupported` | MIME type is not an OCR V1 input |
+
+A failed or unavailable OCR document is **not** marked successfully indexed if only filename/metadata was captured.
+
 Customer wording (never Azure/model/API names):
 
 - Processing document text
@@ -118,6 +131,7 @@ API:
 
 - `GET /api/platform/operations/health` (knowledge metrics)
 - `POST /api/internal/ocr/acceptance` (cmd13 token)
+- `POST /api/internal/ocr/backfill` (cmd13 token; default documents 54 and 71; optional `{ documentIds, dryRun }`)
 
 Audit events (no document text):
 
@@ -144,6 +158,8 @@ npx wrangler secret put AZURE_DOCUMENT_INTELLIGENCE_KEY
 
 ## Known limitations
 
+- Single-page PDFs with fewer than 80 substantive characters now require OCR (same threshold as multi-page). Normal text PDFs are unchanged.
+- Targeted backfill reprocesses only likely OCR candidates (default Coal Search id 54 and Arnold Crescent id 71). It never creates a second knowledge document.
 - Google Drive `requires_ocr` PDFs are not mass-processed. Future Drive OCR can use the same INFRA service; V1 automatic path is Microsoft ingestion + targeted reprocess.
 - OCR is not billed to customers in V1; pages are metered for operator cost accounting only.
 - No tables, invoices, forms, handwriting-specific, or multi-provider OCR.
