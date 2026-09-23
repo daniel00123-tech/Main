@@ -113,7 +113,7 @@ import {
   getAiUserConnection,
   isAiChannelEnabled,
   oauthIssuer,
-  revokeRefreshTokensForUser,
+  revokeHumanOauthGrant,
   setAiChannelEnabled,
 } from "../auth/mcp-oauth";
 import { registerCommand6Routes } from "./command6";
@@ -1595,7 +1595,7 @@ phase3.post(
     }
     const clientType = c.req.param("clientType");
     const user = c.get("user");
-    await revokeRefreshTokensForUser(c.env.DB, user.userId, company.id);
+    await revokeHumanOauthGrant(c.env.DB, user.userId, company.id);
     await c.env.DB.prepare(
       `UPDATE ai_user_connections
        SET status = 'revoked', updated_at = ?
@@ -1631,6 +1631,8 @@ phase3.post(
         "disabled",
       );
     }
+    const { revokeHumanOauthForCompany } = await import("../auth/mcp-oauth");
+    await revokeHumanOauthForCompany(c.env.DB, company.id, clientType);
     await c.env.DB.prepare(
       `UPDATE ai_client_connections
        SET status = 'ready_to_connect', service_identity_id = NULL, updated_at = ?

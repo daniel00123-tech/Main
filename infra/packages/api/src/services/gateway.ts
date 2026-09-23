@@ -6,6 +6,7 @@ import {
   isAccessJtiRevoked,
   isInfraServiceToken,
   looksLikeJwt,
+  touchAiUserConnection,
   verifyMcpAccessToken,
 } from "../auth/mcp-oauth";
 import {
@@ -140,10 +141,24 @@ async function pickCompanyMcp(
   return list.find((item) => item.enabled) ?? list[0] ?? null;
 }
 
+const HUMAN_AI_IDENTITY_TYPES = new Set(["chatgpt", "claude"]);
+
+/** ChatGPT / OpenAI MCP clients must never be treated as machine service callers. */
+export function looksLikeChatgptHumanClient(request: Request): boolean {
+  const ua = (request.headers.get("User-Agent") ?? "").toLowerCase();
+  const origin = (request.headers.get("Origin") ?? "").toLowerCase();
+  return (
+    /chatgpt|openai|gptbot|oai-mcp|chatgpt-mcp/.test(ua) ||
+    origin.includes("chatgpt.com") ||
+    origin.includes("chat.openai.com")
+  );
+}
+
 export async function resolveGatewayActor(
   env: Env,
   request: Request,
   sessionUser: SessionUser | null,
+  options?: { mcpFacade?: boolean },
 ): Promise<GatewayActor | { error: string; status: 401 | 403 }> {
   const token = extractServiceCredential(request);
   if (token) {
@@ -181,7 +196,19 @@ export async function resolveGatewayActor(
     if (identity.status !== "active") {
       return { error: "Service identity is disabled", status: 403 };
     }
+    const humanAiIdentity = HUMAN_AI_IDENTITY_TYPES.has(identity.identityType);
+    if (options?.mcpFacade && (humanAiIdentity || looksLikeChatgptHumanClient(request))) {
+      return {
+        error:
+          "Human ChatGPT connections must use INFRA OAuth. A company service token is not a user login.",
+        status: 401,
+      };
+    }
     return { type: "service", identity };
+  }
+
+  if (options?.mcpFacade) {
+    return { error: "Authentication required", status: 401 };
   }
 
   if (sessionUser) {
@@ -276,6 +303,39 @@ export async function executeGatewayRequest(
         : input.actor.channel ?? "infra-gateway"),
     input.actor.type === "user" ? "portal" : "service",
   );
+
+  const humanServiceMasquerade =
+    input.actor.type === "service" &&
+    HUMAN_AI_IDENTITY_TYPES.has(input.actor.identity.identityType);
+  if (
+    humanServiceMasquerade ||
+    ((sourceClient === "chatgpt" || sourceClient === "claude") &&
+      (input.actor.type !== "user" || !input.actor.user.userId))
+  ) {
+    await recordAuditEvent(env.DB, {
+      companyId: input.companyId,
+      eventType: "permission.denied",
+      actor: actorLabel,
+      resourceType: "gateway",
+      resourceId: input.toolName,
+      detail: {
+        stage: "mcp_facade.auth_failed",
+        billingStatus: "AUTH_DENIED",
+        correlationId,
+        requestId,
+        sourceClient,
+        actorType: input.actor.type,
+        reason: "human_oauth_required",
+      },
+    });
+    return {
+      status: 401 as const,
+      error:
+        "Human ChatGPT connections must use INFRA OAuth. A company service token is not a user login.",
+      correlationId,
+      requestId,
+    };
+  }
 
   await recordAuditEvent(env.DB, {
     companyId: input.companyId,
@@ -863,6 +923,18 @@ export async function executeGatewayRequest(
     action,
     input.toolName,
   );
+  if (
+    input.actor.type === "user" &&
+    (sourceClient === "chatgpt" || sourceClient === "claude")
+  ) {
+    await touchAiUserConnection(
+      env.DB,
+      input.companyId,
+      actorId,
+      sourceClient,
+    ).catch(() => undefined);
+  }
+
   const usage = await recordUsageEvent(env.DB, {
     companyId: input.companyId,
     userId: input.actor.type === "user" ? actorId : null,
