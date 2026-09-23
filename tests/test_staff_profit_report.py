@@ -5,16 +5,20 @@ import unittest
 from scripts.staff_commission import (
     attach_job_commissions,
     calculate_job_commission,
+    profile_for,
     sum_job_commissions,
 )
 from scripts.staff_profit_report import (
     RUN_EDGE,
+    STAFF,
     build_html,
     build_staff_rows,
     commission_style,
+    current_report_month,
     daily_totals,
     is_missing_po_anomaly,
     iter_display_rows,
+    resolve_staff,
 )
 
 
@@ -447,6 +451,8 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(september_main[0]["profit"], D("-89.00"))
         attached = attach_job_commissions(september_main)
         self.assertEqual(attached[0]["commission"], D("-249.00"))
+        lauren_attached = attach_job_commissions(september_main, profile=profile_for("Lauren"))
+        self.assertEqual(lauren_attached[0]["commission"], D("-5.00"))
 
     def test_sharon_first_job_takes_ellas_later_po(self) -> None:
         jobs = [
@@ -497,6 +503,21 @@ class CompleteGroupReportingTest(unittest.TestCase):
         self.assertEqual(anomaly_rows, [])
         self.assertEqual(main_rows[0]["sale"], D("120.00"))
         self.assertEqual(main_rows[0]["cost"], D("0.00"))
+
+
+class StaffResolutionTest(unittest.TestCase):
+    def test_known_staff_ids_are_not_guessed(self) -> None:
+        self.assertEqual(STAFF["sharon"]["category_id"], 132264)
+        self.assertEqual(STAFF["ella"]["category_id"], 132225)
+        self.assertEqual(STAFF["lauren"]["category_id"], 132263)
+        self.assertEqual(resolve_staff("Lauren")["category_id"], 132263)
+        self.assertEqual(resolve_staff("Sharon")["name"], "Sharon")
+
+    def test_current_report_month_is_london_calendar_month(self) -> None:
+        from zoneinfo import ZoneInfo
+
+        today = dt.datetime.now(ZoneInfo("Europe/London")).date()
+        self.assertEqual(current_report_month(), (today.year, today.month))
 
 
 if __name__ == "__main__":
