@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CompanyRole } from "@infra/shared";
 import { api } from "../api";
 import { humaniseActionLabel } from "@infra/shared";
@@ -62,6 +62,8 @@ export function PermissionsEditor({
   const [overrides, setOverrides] = useState<
     Array<{ role: string; action: string; effect: "allow" | "deny" }>
   >([]);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["finance", "approvals", "xero"]));
+  const [permissionQuery, setPermissionQuery] = useState("");
 
   const editableRoles = roles.filter((r) => r.role !== "company_admin");
   const rolePreset = roles.find((r) => r.role === selectedRole);
@@ -150,6 +152,40 @@ export function PermissionsEditor({
   }
 
   const groups = rolePreset ? groupPermissions(rolePreset.allowedActions, rolePreset.deniedByDefault) : [];
+  const visibleGroups = useMemo(() => {
+    const q = permissionQuery.trim().toLowerCase();
+    if (!q) return groups;
+    return groups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (item) =>
+            item.label.toLowerCase().includes(q) ||
+            item.action.toLowerCase().includes(q) ||
+            group.label.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [groups, permissionQuery]);
+
+  function toggleGroup(id: string) {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllInGroup(group: (typeof groups)[number], allowed: boolean) {
+    setDraft((prev) => {
+      const next = new Map(prev);
+      for (const item of group.items) {
+        if (!item.platformBlocked) next.set(item.action, allowed);
+      }
+      return next;
+    });
+  }
 
   return (
     <SectionCard
@@ -193,6 +229,15 @@ export function PermissionsEditor({
             ))}
           </select>
         </label>
+        <label className="muted small">
+          Search
+          <input
+            className="input"
+            value={permissionQuery}
+            onChange={(e) => setPermissionQuery(e.target.value)}
+            placeholder="Filter permissions…"
+          />
+        </label>
       </div>
       {loading ? <LoadingState label="Loading permissions…" /> : null}
       {error ? <p className="error-text">{error}</p> : null}
@@ -202,10 +247,36 @@ export function PermissionsEditor({
             <span>Capability</span>
             <span>{rolePreset.displayName}</span>
           </div>
-          {groups.map((group) => (
+          {visibleGroups.map((group) => {
+            const open = openGroups.has(group.id) || Boolean(permissionQuery.trim());
+            const enabledCount = group.items.filter((item) => draft.get(item.action) ?? item.allowed).length;
+            const highRisk = /write|void|payment|delete|admin|user/i.test(group.label + group.id);
+            return (
             <div key={group.id} className="permission-group">
-              <h4 className="permission-group-title">{group.label}</h4>
-              {group.items.map((item) => {
+              <div className="permission-group-head">
+                <button
+                  type="button"
+                  className="nav-section-toggle"
+                  aria-expanded={open}
+                  onClick={() => toggleGroup(group.id)}
+                >
+                  <h4 className="permission-group-title" style={{ margin: 0 }}>
+                    {group.label}
+                    {highRisk ? <span className="high-risk-flag"> High risk</span> : null}
+                  </h4>
+                  <span className="muted small">{enabledCount}/{group.items.length} allowed</span>
+                </button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => selectAllInGroup(group, true)}
+                >
+                  Select all
+                </Button>
+              </div>
+              {open
+                ? group.items.map((item) => {
                 const presetAllowed = rolePreset?.allowedActions.includes(item.action as never) ?? item.allowed;
                 const current = draft.get(item.action) ?? item.allowed;
                 const isOverride = current !== presetAllowed;
@@ -215,16 +286,16 @@ export function PermissionsEditor({
                     {item.label}
                     {isOverride ? (
                       <span className="muted small" style={{ display: "block" }}>
-                        Company override ({current ? "allowed" : "denied"}) — preset: {presetAllowed ? "allowed" : "denied"}
+                        Changed for this company
                       </span>
                     ) : (
                       <span className="muted small" style={{ display: "block" }}>
-                        Inherited from role preset
+                        Role default
                       </span>
                     )}
                     {item.platformBlocked ? (
-                      <span className="muted small" style={{ display: "block" }}>
-                        Platform restricted — cannot be enabled
+                      <span className="high-risk-flag" style={{ display: "block" }}>
+                        Restricted — cannot be enabled
                       </span>
                     ) : null}
                   </span>
@@ -242,9 +313,11 @@ export function PermissionsEditor({
                     }}
                   />
                 </label>
-              );})}
+              );})
+                : null}
             </div>
-          ))}
+            );
+          })}
           <details className="advanced-block">
             <summary>Advanced — technical action strings</summary>
             <p className="mono small">

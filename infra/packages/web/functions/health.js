@@ -1,4 +1,4 @@
-const API_ORIGIN = "https://infra-api.daniel-dwyer123.workers.dev";
+import { API_ORIGIN } from "./_lib/urls.js";
 
 export async function onRequest() {
   return fetch(`${API_ORIGIN}/health`);

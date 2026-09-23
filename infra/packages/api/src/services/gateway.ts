@@ -1,4 +1,18 @@
-import type { ToolAction } from "@infra/shared";
+import {
+  ELVEX_INFO_MAILBOXES,
+  actionForProtectedCapability,
+  isElvexCompany,
+  resolveElvexConfiguredMailbox,
+  type StructuredCapabilityDenial,
+  type ToolAction,
+} from "@infra/shared";
+import {
+  evaluateKnowledgeBusinessSystemPreflight,
+  mapExecutionOutcome,
+  resolveProtectedCapability,
+  structuredPermissionDenial,
+  xeroResultLooksEmpty,
+} from "./capability-access";
 import type { Env } from "../env";
 import type { SessionUser } from "../auth/session";
 import { liveActorToSessionUser, loadLiveCompanyActor } from "../auth/live-identity";
@@ -6,6 +20,7 @@ import {
   isAccessJtiRevoked,
   isInfraServiceToken,
   looksLikeJwt,
+  touchAiUserConnection,
   verifyMcpAccessToken,
 } from "../auth/mcp-oauth";
 import {
@@ -53,6 +68,7 @@ import {
   resolveInteractionIds,
 } from "./interactions";
 import { sanitizeCustomerError } from "./secrets";
+import { scheduleQualityAudit } from "./quality-auditor";
 import {
   isXeroToolName,
   isXeroWriteToolName,
@@ -62,6 +78,12 @@ import {
 import { executeXeroReadToolOnInfra } from "./xero-read-execution";
 import { isOutlookReadTool, outlookActionForTool } from "./microsoft-outlook-tools";
 import { executeOutlookReadTool } from "./microsoft-outlook-read";
+import {
+  executeElvexXeroReadViaElMcp,
+  shouldExecuteElvexXeroViaElMcp,
+} from "./elvex-xero-el-mcp";
+import { executeAskDocument, isAskDocumentTool } from "./ask-document";
+import { isListCompanyDocumentsTool, listCompanyDocuments } from "./document-catalogue";
 
 export type GatewayActor =
   | {
@@ -93,13 +115,20 @@ async function resolveToolAction(
     };
   }
 
-  if (toolName === "search_company_knowledge" || toolName === "search") {
+  if (
+    toolName === "search_company_knowledge" ||
+    toolName === "search" ||
+    toolName === "search_elvex_files"
+  ) {
     return { action: "knowledge.search", riskClass: "low_risk" };
   }
   if (
     toolName === "get_knowledge_document" ||
     toolName === "fetch" ||
-    toolName === "database_summary"
+    toolName === "get_elvex_file" ||
+    toolName === "database_summary" ||
+    toolName === "ask_document" ||
+    toolName === "list_company_documents"
   ) {
     return { action: "knowledge.read", riskClass: "low_risk" };
   }
@@ -140,10 +169,24 @@ async function pickCompanyMcp(
   return list.find((item) => item.enabled) ?? list[0] ?? null;
 }
 
+const HUMAN_AI_IDENTITY_TYPES = new Set(["chatgpt", "claude"]);
+
+/** ChatGPT / OpenAI MCP clients must never be treated as machine service callers. */
+export function looksLikeChatgptHumanClient(request: Request): boolean {
+  const ua = (request.headers.get("User-Agent") ?? "").toLowerCase();
+  const origin = (request.headers.get("Origin") ?? "").toLowerCase();
+  return (
+    /chatgpt|openai|gptbot|oai-mcp|chatgpt-mcp/.test(ua) ||
+    origin.includes("chatgpt.com") ||
+    origin.includes("chat.openai.com")
+  );
+}
+
 export async function resolveGatewayActor(
   env: Env,
   request: Request,
   sessionUser: SessionUser | null,
+  options?: { mcpFacade?: boolean },
 ): Promise<GatewayActor | { error: string; status: 401 | 403 }> {
   const token = extractServiceCredential(request);
   if (token) {
@@ -181,7 +224,19 @@ export async function resolveGatewayActor(
     if (identity.status !== "active") {
       return { error: "Service identity is disabled", status: 403 };
     }
+    const humanAiIdentity = HUMAN_AI_IDENTITY_TYPES.has(identity.identityType);
+    if (options?.mcpFacade && (humanAiIdentity || looksLikeChatgptHumanClient(request))) {
+      return {
+        error:
+          "Human ChatGPT connections must use INFRA OAuth. A company service token is not a user login.",
+        status: 401,
+      };
+    }
     return { type: "service", identity };
+  }
+
+  if (options?.mcpFacade) {
+    return { error: "Authentication required", status: 401 };
   }
 
   if (sessionUser) {
@@ -246,6 +301,7 @@ export async function executeGatewayRequest(
     interactionId?: string | null;
     parentRequestId?: string | null;
     mcpSessionId?: string | null;
+    waitUntil?: (promise: Promise<unknown>) => void;
   },
 ) {
   const correlationId = newId("corr");
@@ -276,6 +332,39 @@ export async function executeGatewayRequest(
         : input.actor.channel ?? "infra-gateway"),
     input.actor.type === "user" ? "portal" : "service",
   );
+
+  const humanServiceMasquerade =
+    input.actor.type === "service" &&
+    HUMAN_AI_IDENTITY_TYPES.has(input.actor.identity.identityType);
+  if (
+    humanServiceMasquerade ||
+    ((sourceClient === "chatgpt" || sourceClient === "claude") &&
+      (input.actor.type !== "user" || !input.actor.user.userId))
+  ) {
+    await recordAuditEvent(env.DB, {
+      companyId: input.companyId,
+      eventType: "permission.denied",
+      actor: actorLabel,
+      resourceType: "gateway",
+      resourceId: input.toolName,
+      detail: {
+        stage: "mcp_facade.auth_failed",
+        billingStatus: "AUTH_DENIED",
+        correlationId,
+        requestId,
+        sourceClient,
+        actorType: input.actor.type,
+        reason: "human_oauth_required",
+      },
+    });
+    return {
+      status: 401 as const,
+      error:
+        "Human ChatGPT connections must use INFRA OAuth. A company service token is not a user login.",
+      correlationId,
+      requestId,
+    };
+  }
 
   await recordAuditEvent(env.DB, {
     companyId: input.companyId,
@@ -425,33 +514,35 @@ export async function executeGatewayRequest(
         code: "ACTION_ENGINE_REQUIRED",
       };
     }
-    const prepared = await prepareXeroMcpExecution({
-      env,
-      companyId: input.companyId,
-      toolName: input.toolName,
-    });
-    if (!prepared.ok) {
-      await recordAuditEvent(env.DB, {
+    if (!shouldExecuteElvexXeroViaElMcp(input.companyId, input.toolName)) {
+      const prepared = await prepareXeroMcpExecution({
+        env,
         companyId: input.companyId,
-        eventType: "mcp.execution_failed",
-        actor: actorLabel,
-        resourceType: "gateway",
-        resourceId: input.toolName,
-        detail: {
+        toolName: input.toolName,
+      });
+      if (!prepared.ok) {
+        await recordAuditEvent(env.DB, {
+          companyId: input.companyId,
+          eventType: "mcp.execution_failed",
+          actor: actorLabel,
+          resourceType: "gateway",
+          resourceId: input.toolName,
+          detail: {
+            correlationId,
+            requestId,
+            provider: "xero",
+            billed: false,
+            inventsData: false,
+            code: prepared.body.code,
+          },
+        });
+        return {
+          status: prepared.status,
+          error: prepared.body.error,
           correlationId,
           requestId,
-          provider: "xero",
-          billed: false,
-          inventsData: false,
-          code: prepared.body.code,
-        },
-      });
-      return {
-        status: prepared.status,
-        error: prepared.body.error,
-        correlationId,
-        requestId,
-      };
+        };
+      }
     }
   }
 
@@ -474,11 +565,94 @@ export async function executeGatewayRequest(
   }
 
   await ensureDefaultToolAllowlist(env.DB, mcp.companyId, mcp.id);
-  const { action, riskClass } = await resolveToolAction(
+
+  let knowledgePreflight: Awaited<ReturnType<typeof evaluateKnowledgeBusinessSystemPreflight>> = {
+    kind: "knowledge",
+  };
+  if (input.actor.type === "user") {
+    knowledgePreflight = await evaluateKnowledgeBusinessSystemPreflight(
+      env.DB,
+      input.actor.user,
+      input.companyId,
+      input.toolName,
+      input.arguments,
+    );
+    if (knowledgePreflight.kind === "not_connected" || knowledgePreflight.kind === "no_business_tool") {
+      await recordAuditEvent(env.DB, {
+        companyId: input.companyId,
+        eventType: "mcp.execution_failed",
+        actor: actorLabel,
+        resourceType: "gateway",
+        resourceId: input.toolName,
+        detail: {
+          correlationId,
+          requestId,
+          reason: knowledgePreflight.kind,
+          capability: knowledgePreflight.capability,
+          billed: false,
+        },
+      });
+      return {
+        status: 409 as const,
+        error: knowledgePreflight.message,
+        correlationId,
+        requestId,
+        accessOutcome: knowledgePreflight.kind === "not_connected" ? "not_connected" : "technical_failure",
+      };
+    }
+    if (knowledgePreflight.kind === "reroute") {
+      input.toolName = knowledgePreflight.toolName;
+      input.arguments = { ...(input.arguments ?? {}), ...knowledgePreflight.arguments };
+      if (isXeroToolName(input.toolName) && !isXeroWriteToolName(input.toolName)) {
+        const prepared = await prepareXeroMcpExecution({
+          env,
+          companyId: input.companyId,
+          toolName: input.toolName,
+        });
+        if (!prepared.ok) {
+          const mapped = mapExecutionOutcome({
+            capability: knowledgePreflight.capability,
+            connected: prepared.code !== "CONNECTOR_NOT_CONNECTED",
+            httpStatus: prepared.status,
+            error: prepared.body.error,
+            code: prepared.code,
+          });
+          await recordAuditEvent(env.DB, {
+            companyId: input.companyId,
+            eventType: "mcp.execution_failed",
+            actor: actorLabel,
+            resourceType: "gateway",
+            resourceId: input.toolName,
+            detail: {
+              correlationId,
+              requestId,
+              provider: "xero",
+              billed: false,
+              inventsData: false,
+              code: prepared.body.code,
+              reroutedFromKnowledge: true,
+            },
+          });
+          return {
+            status: prepared.status,
+            error: mapped?.message ?? prepared.body.error,
+            correlationId,
+            requestId,
+            accessOutcome: mapped?.outcome,
+          };
+        }
+      }
+    }
+  }
+
+  let { action, riskClass } = await resolveToolAction(
     env.DB,
     mcp.id,
     input.toolName,
   );
+  if (knowledgePreflight.kind === "permission_denied") {
+    action = actionForProtectedCapability(knowledgePreflight.capability);
+  }
 
   await persistInteraction(env.DB, {
     id: interaction.interactionId,
@@ -494,6 +668,18 @@ export async function executeGatewayRequest(
 
   let permissionAllowed = false;
   let permissionReason: string | undefined;
+  let permissionRole: string | null = null;
+
+  if (isOutlookReadTool(input.toolName) && isElvexCompany({ id: input.companyId })) {
+    const rawMailbox =
+      typeof input.arguments?.mailboxAddress === "string"
+        ? input.arguments.mailboxAddress
+        : typeof input.arguments?.mailbox === "string"
+          ? input.arguments.mailbox
+          : null;
+    const resolvedMailbox = resolveElvexConfiguredMailbox(rawMailbox) ?? ELVEX_INFO_MAILBOXES[0];
+    input.arguments = { ...(input.arguments ?? {}), mailboxAddress: resolvedMailbox };
+  }
 
   if (input.actor.type === "user") {
     const mailbox =
@@ -511,6 +697,7 @@ export async function executeGatewayRequest(
     );
     permissionAllowed = decision.allowed;
     permissionReason = decision.reason;
+    permissionRole = decision.role;
   } else {
     const decision = await evaluateServiceActionPermission(
       env.DB,
@@ -519,6 +706,44 @@ export async function executeGatewayRequest(
     );
     permissionAllowed = decision.allowed;
     permissionReason = decision.reason;
+  }
+
+  const mailboxForCapability =
+    typeof input.arguments?.mailboxAddress === "string"
+      ? input.arguments.mailboxAddress
+      : typeof input.arguments?.mailbox === "string"
+        ? input.arguments.mailbox
+        : null;
+  const queryForCapability =
+    typeof input.arguments?.query === "string" ? input.arguments.query : null;
+  let protectedCapability = resolveProtectedCapability({
+    action,
+    toolName: input.toolName,
+    mailboxAddress: mailboxForCapability,
+    query: queryForCapability,
+  });
+
+  if (knowledgePreflight.kind === "permission_denied") {
+    permissionAllowed = false;
+    permissionReason = knowledgePreflight.denial.message;
+    permissionRole = knowledgePreflight.denial.userRole;
+    protectedCapability = knowledgePreflight.capability;
+  }
+
+  let permissionDenial: StructuredCapabilityDenial | undefined;
+  if (!permissionAllowed && protectedCapability) {
+    permissionDenial = await structuredPermissionDenial(env.DB, {
+      companyId: input.companyId,
+      capability: protectedCapability,
+      role: permissionRole,
+    });
+    permissionReason = permissionDenial.message;
+  } else if (!permissionAllowed) {
+    permissionDenial = undefined;
+    permissionReason =
+      permissionReason && !/elvex role|rbac|403|mcp denied/i.test(permissionReason)
+        ? permissionReason
+        : "Your current permissions don’t allow this action.";
   }
 
   if (!permissionAllowed) {
@@ -534,6 +759,11 @@ export async function executeGatewayRequest(
         toolName: input.toolName,
         reason: permissionReason,
         riskClass,
+        capability: protectedCapability,
+        connected: permissionDenial?.connected ?? null,
+        userAllowed: false,
+        userRole: permissionRole,
+        result: "permission_denied",
       },
     });
 
@@ -570,49 +800,59 @@ export async function executeGatewayRequest(
       )
       .run();
 
-    const connectorInstanceId = await resolveConnectorInstanceId(
-      env.DB,
-      input.companyId,
-      action,
-      input.toolName,
-    );
-    await recordUsageEvent(env.DB, {
-      companyId: input.companyId,
-      userId: input.actor.type === "user" ? actorId : null,
-      actorEmail: actorLabel,
-      resourceType: "gateway",
-      resourceId: input.toolName,
-      mcpEnvironmentId: mcp.id,
-      connectorInstanceId,
-      toolName: input.toolName,
-      action,
-      riskClass,
-      success: false,
-      durationMs: Date.now() - started,
-      sourceClient,
-      correlationId,
-      requestId,
-      interactionId: interaction.interactionId,
-      parentRequestId: interaction.parentRequestId,
-      mcpSessionId: interaction.mcpSessionId,
-      metadata: {
-        denied: true,
-        billingStatus: "denied",
-        actorType: input.actor.type,
-        membershipId:
-          input.actor.type === "user" ? input.actor.membershipId ?? null : null,
-        reason: permissionReason,
-      },
-      settlementStatus: "denied",
-    });
+    try {
+      const connectorInstanceId = await resolveConnectorInstanceId(
+        env.DB,
+        input.companyId,
+        action,
+        input.toolName,
+      );
+      await recordUsageEvent(env.DB, {
+        companyId: input.companyId,
+        userId: input.actor.type === "user" ? actorId : null,
+        actorEmail: actorLabel,
+        resourceType: "gateway",
+        resourceId: input.toolName,
+        mcpEnvironmentId: mcp.id,
+        connectorInstanceId,
+        toolName: input.toolName,
+        action,
+        riskClass,
+        success: false,
+        durationMs: Date.now() - started,
+        sourceClient,
+        correlationId,
+        requestId,
+        interactionId: interaction.interactionId,
+        parentRequestId: interaction.parentRequestId,
+        mcpSessionId: interaction.mcpSessionId,
+        metadata: {
+          denied: true,
+          billingStatus: "denied",
+          actorType: input.actor.type,
+          membershipId:
+            input.actor.type === "user" ? input.actor.membershipId ?? null : null,
+          reason: permissionReason,
+          capability: protectedCapability,
+          connected: permissionDenial?.connected ?? null,
+          result: "permission_denied",
+        },
+        settlementStatus: "denied",
+      });
+    } catch {
+      // Denial must still return permission_denied even if usage insert fails.
+    }
 
+    scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
     return {
       status: 403 as const,
-      error: permissionReason ?? "Permission denied",
+      error: permissionReason ?? "Your current permissions don’t allow this action.",
       correlationId,
       requestId,
       action,
       riskClass,
+      accessOutcome: "permission_denied" as const,
+      permissionDenial,
     };
   }
 
@@ -745,13 +985,73 @@ export async function executeGatewayRequest(
 
   const balanceBefore = await getWalletBalance(env.DB, input.companyId);
 
-  const execution = isOutlookReadTool(input.toolName)
+  const execution = isListCompanyDocumentsTool(input.toolName)
+    ? await (async () => {
+        const catalogue = await listCompanyDocuments(env, {
+          companyId: input.companyId,
+          text: String(input.arguments?.query ?? ""),
+          sort:
+            input.arguments?.sort === "newest" ||
+            input.arguments?.sort === "latest" ||
+            input.arguments?.sort === "indexed"
+              ? input.arguments.sort
+              : undefined,
+          source:
+            input.arguments?.source === "onedrive" ||
+            input.arguments?.source === "sharepoint" ||
+            input.arguments?.source === "drive" ||
+            input.arguments?.source === "all"
+              ? input.arguments.source
+              : undefined,
+          limit: typeof input.arguments?.limit === "number" ? input.arguments.limit : undefined,
+        });
+        return {
+          status: 200 as const,
+          data: {
+            correlationId,
+            mcpId: mcp.id,
+            companyId: input.companyId,
+            toolName: input.toolName,
+            latencyMs: Date.now() - started,
+            authConfigured: true,
+            riskClass,
+            result: catalogue,
+          },
+        };
+      })()
+    : isAskDocumentTool(input.toolName)
+    ? await (async () => {
+        const asked = await executeAskDocument(env, {
+          companyId: input.companyId,
+          arguments: input.arguments ?? {},
+          actor: actorLabel,
+          actorUserId: actorId,
+        });
+        if (!asked.ok) {
+          return { status: asked.status, error: asked.message, code: asked.code } as const;
+        }
+        return {
+          status: 200 as const,
+          data: {
+            correlationId,
+            mcpId: mcp.id,
+            companyId: input.companyId,
+            toolName: input.toolName,
+            latencyMs: Date.now() - started,
+            authConfigured: true,
+            riskClass,
+            result: asked.result,
+          },
+        };
+      })()
+    : isOutlookReadTool(input.toolName)
     ? await (async () => {
         const outlook = await executeOutlookReadTool(env, {
           companyId: input.companyId,
           toolName: input.toolName,
           arguments: input.arguments ?? {},
           actor: actorLabel,
+          actorUserId: actorId,
         });
         if (!outlook.ok) {
           return { status: outlook.status, error: outlook.message, code: outlook.code } as const;
@@ -770,13 +1070,13 @@ export async function executeGatewayRequest(
           },
         };
       })()
-    : isXeroToolName(input.toolName) && !isXeroWriteToolName(input.toolName)
+    : shouldExecuteElvexXeroViaElMcp(input.companyId, input.toolName)
       ? await (async () => {
-          const xero = await executeXeroReadToolOnInfra(env, {
+          const xero = await executeElvexXeroReadViaElMcp(env, {
             companyId: input.companyId,
+            mcp,
             toolName: input.toolName,
             arguments: input.arguments,
-            actor: actorLabel,
           });
           if (!xero.ok) {
             return {
@@ -794,6 +1094,51 @@ export async function executeGatewayRequest(
               latencyMs: xero.latencyMs,
               authConfigured: true,
               riskClass,
+              result: xero.result,
+              executionPath: "el-business-mcp",
+              elToolName: xero.elToolName,
+            },
+          };
+        })()
+    : isXeroToolName(input.toolName) && !isXeroWriteToolName(input.toolName)
+      ? await (async () => {
+          const xero = await executeXeroReadToolOnInfra(env, {
+            companyId: input.companyId,
+            toolName: input.toolName,
+            arguments: input.arguments,
+            actor: actorLabel,
+            actorUserId: actorId,
+          });
+          if (!xero.ok) {
+            const mapped = mapExecutionOutcome({
+              capability: "xero",
+              connected: (xero.code ?? "") !== "CONNECTOR_NOT_CONNECTED",
+              httpStatus: xero.status,
+              error: xero.error,
+              code: xero.code,
+            });
+            return {
+              status: xero.status,
+              error: mapped?.message ?? xero.error,
+              code: xero.code,
+              accessOutcome: mapped?.outcome,
+            } as const;
+          }
+          const empty = xeroResultLooksEmpty(xero.result);
+          return {
+            status: 200 as const,
+            data: {
+              correlationId,
+              mcpId: mcp.id,
+              companyId: input.companyId,
+              toolName: input.toolName,
+              latencyMs: xero.latencyMs,
+              authConfigured: true,
+              riskClass,
+              accessOutcome: empty ? "empty_result" : "allowed",
+              message: empty
+                ? "No matching Xero records were found for that period."
+                : undefined,
               result: xero.result,
             },
           };
@@ -824,6 +1169,8 @@ export async function executeGatewayRequest(
       requestId,
       success,
       latencyMs,
+      errorCode: !success && "code" in execution ? execution.code : undefined,
+      error: !success && "error" in execution ? execution.error : undefined,
     },
   });
 
@@ -857,70 +1204,104 @@ export async function executeGatewayRequest(
   let ledgerEntryId: string | null = null;
   let settlementStatus = "zero_charge";
 
-  const connectorInstanceId = await resolveConnectorInstanceId(
-    env.DB,
-    input.companyId,
-    action,
-    input.toolName,
-  );
-  const usage = await recordUsageEvent(env.DB, {
-    companyId: input.companyId,
-    userId: input.actor.type === "user" ? actorId : null,
-    actorEmail: actorLabel,
-    resourceType: "gateway",
-    resourceId: input.toolName,
-    mcpEnvironmentId: mcp.id,
-    connectorInstanceId,
-    toolName: input.toolName,
-    action,
-    riskClass,
-    success,
-    durationMs: latencyMs,
-    sourceClient,
-    correlationId,
-    requestId,
-    interactionId: interaction.interactionId,
-    parentRequestId: interaction.parentRequestId,
-    mcpSessionId: interaction.mcpSessionId,
-    charge,
-    metadata: {
-      pricingLabel: charge.pricingLabel,
-      isTestConfig: charge.isTestConfig,
-      actorType: input.actor.type,
-      membershipId:
-        input.actor.type === "user" ? input.actor.membershipId ?? null : null,
-      balanceBeforeCents: balanceBefore.balanceCents,
-      interactionId: interaction.interactionId,
-      interactionSourcedFrom: interaction.sourcedFrom,
-    },
-    settlementStatus:
-      decideTestBilling({
-        toolName: input.toolName,
-        action,
-        success,
-        httpStatus: execution.status,
-        ruleBillable: charge.billable,
-        chargeOnFailure: pricing?.chargeOnFailure ?? false,
-      }).customerBillable && charge.customerChargeCents
-        ? "unsettled"
-        : "zero_charge",
-  });
-  usageRecordId = usage.id;
-  await refreshInteractionTotals(env.DB, interaction.interactionId);
+  let connectorInstanceId: string | null = null;
+  try {
+    connectorInstanceId = await resolveConnectorInstanceId(
+      env.DB,
+      input.companyId,
+      action,
+      input.toolName,
+    );
+  } catch {
+    connectorInstanceId = null;
+  }
+  if (
+    input.actor.type === "user" &&
+    (sourceClient === "chatgpt" || sourceClient === "claude")
+  ) {
+    await touchAiUserConnection(
+      env.DB,
+      input.companyId,
+      actorId,
+      sourceClient,
+    ).catch(() => undefined);
+  }
 
-  await recordAuditEvent(env.DB, {
-    companyId: input.companyId,
-    eventType: "company.accessed",
-    actor: actorLabel,
-    resourceType: "usage",
-    resourceId: usage.id,
-    detail: {
-      stage: "usage.recorded",
+  try {
+    const usage = await recordUsageEvent(env.DB, {
+      companyId: input.companyId,
+      userId: input.actor.type === "user" ? actorId : null,
+      actorEmail: actorLabel,
+      resourceType: "gateway",
+      resourceId: input.toolName,
+      mcpEnvironmentId: mcp.id,
+      connectorInstanceId,
+      toolName: input.toolName,
+      action,
+      riskClass,
+      success,
+      durationMs: latencyMs,
+      sourceClient,
       correlationId,
       requestId,
-      alreadyExists: usage.alreadyExists,
-    },
-  });
+      interactionId: interaction.interactionId,
+      parentRequestId: interaction.parentRequestId,
+      mcpSessionId: interaction.mcpSessionId,
+      charge,
+      metadata: {
+        pricingLabel: charge.pricingLabel,
+        isTestConfig: charge.isTestConfig,
+        actorType: input.actor.type,
+        membershipId:
+          input.actor.type === "user" ? input.actor.membershipId ?? null : null,
+        balanceBeforeCents: balanceBefore.balanceCents,
+        interactionId: interaction.interactionId,
+        interactionSourcedFrom: interaction.sourcedFrom,
+      },
+      settlementStatus:
+        decideTestBilling({
+          toolName: input.toolName,
+          action,
+          success,
+          httpStatus: execution.status,
+          ruleBillable: charge.billable,
+          chargeOnFailure: pricing?.chargeOnFailure ?? false,
+        }).customerBillable && charge.customerChargeCents
+          ? "unsettled"
+          : "zero_charge",
+    });
+    usageRecordId = usage.id;
+    await refreshInteractionTotals(env.DB, interaction.interactionId);
+    scheduleQualityAudit(env, input.waitUntil, interaction.interactionId);
+
+    await recordAuditEvent(env.DB, {
+      companyId: input.companyId,
+      eventType: "company.accessed",
+      actor: actorLabel,
+      resourceType: "usage",
+      resourceId: usage.id,
+      detail: {
+        stage: "usage.recorded",
+        correlationId,
+        requestId,
+        alreadyExists: usage.alreadyExists,
+      },
+    });
+  } catch {
+    await recordAuditEvent(env.DB, {
+      companyId: input.companyId,
+      eventType: "company.accessed",
+      actor: actorLabel,
+      resourceType: "usage",
+      resourceId: input.toolName,
+      detail: {
+        stage: "usage.record_failed",
+        correlationId,
+        requestId,
+        toolName: input.toolName,
+      },
+    }).catch(() => undefined);
+  }
 
   const billing = decideTestBilling({
     toolName: input.toolName,
@@ -934,7 +1315,8 @@ export async function executeGatewayRequest(
   if (
     billing.customerBillable &&
     charge.customerChargeCents &&
-    charge.customerChargeCents > 0
+    charge.customerChargeCents > 0 &&
+    usageRecordId
   ) {
     const latestWallet = await getWalletBalance(env.DB, input.companyId);
     if (latestWallet.balanceCents < charge.customerChargeCents) {
@@ -944,7 +1326,7 @@ export async function executeGatewayRequest(
         eventType: "permission.denied",
         actor: actorLabel,
         resourceType: "billing",
-        resourceId: usage.id,
+        resourceId: usageRecordId,
         detail: {
           stage: "billing.debit_skipped_insufficient_credit",
           correlationId,
@@ -967,7 +1349,7 @@ export async function executeGatewayRequest(
           entryType: "usage_debit",
           amountCents: -chargeCents,
           referenceType: "usage",
-          referenceId: usage.id,
+          referenceId: usageRecordId,
           description: `${humanSource(sourceClient)} · ${humanAction(action)}`,
           metadata: {
             correlationId,
@@ -987,7 +1369,7 @@ export async function executeGatewayRequest(
         }
         ledgerEntryId = ledger.entry.id;
         settlementStatus = "settled";
-        await markUsageSettled(env.DB, usage.id, ledger.entry.id);
+        await markUsageSettled(env.DB, usageRecordId, ledger.entry.id);
 
         await recordAuditEvent(env.DB, {
           companyId: input.companyId,
@@ -1013,7 +1395,7 @@ export async function executeGatewayRequest(
           eventType: "permission.denied",
           actor: actorLabel,
           resourceType: "billing",
-          resourceId: usage.id,
+          resourceId: usageRecordId,
           detail: {
             stage:
               message === "INSUFFICIENT_CREDIT"
@@ -1116,13 +1498,23 @@ export async function executeGatewayRequest(
   }
 
   if (!success) {
+    const mapped = mapExecutionOutcome({
+      capability: protectedCapability,
+      connected: protectedCapability ? true : null,
+      httpStatus: execution.status,
+      error: "error" in execution ? String(execution.error) : null,
+      code: "code" in execution ? String(execution.code ?? "") : null,
+    });
     return {
       status: execution.status,
-      error: "error" in execution ? execution.error : "Gateway execution failed",
+      error:
+        mapped?.message ??
+        ("error" in execution ? execution.error : "Gateway execution failed"),
       correlationId,
       requestId,
       action,
       riskClass,
+      accessOutcome: mapped?.outcome,
     };
   }
 
@@ -1149,6 +1541,7 @@ export async function executeGatewayRequest(
     correlationId,
     gatewayRequestId,
     requestId,
+    interactionId: interaction.interactionId,
     companyId: input.companyId,
     mcpId: mcp.id,
     toolName: input.toolName,
@@ -1181,6 +1574,8 @@ function humanSource(source: string): string {
     chatgpt: "ChatGPT",
     claude: "Claude",
     whatsapp: "WhatsApp",
+    portal: "Portal",
+    portal_chat: "Company chat",
   };
   return map[source] ?? source;
 }

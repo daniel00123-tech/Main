@@ -101,6 +101,8 @@ export function clientKindLabel(kind: string | null | undefined): string {
       return "ChatGPT";
     case "claude":
       return "Claude";
+    case "whatsapp":
+      return "WhatsApp";
     case "service":
       return "Service identity";
     case "internal":

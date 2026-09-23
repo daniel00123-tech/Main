@@ -1,5 +1,7 @@
 import {
+  AZURE_READ_USD_PER_PAGE,
   DEFAULT_MAX_OCR_BYTES,
+  DEFAULT_MAX_OCR_JOB_ATTEMPTS,
   DEFAULT_MAX_OCR_PAGES_PER_DOCUMENT,
   OCR_API_VERSION,
   OCR_MODEL_ID,
@@ -7,6 +9,12 @@ import {
   isOcrSupportedMimeType,
   type OcrStatus,
 } from "@infra/shared";
+
+export function estimateAzureReadCostUsd(pageCount: number | null | undefined): number {
+  const pages = Number(pageCount ?? 0);
+  if (!Number.isFinite(pages) || pages <= 0) return 0;
+  return Math.round(pages * AZURE_READ_USD_PER_PAGE * 10000) / 10000;
+}
 import { newId, nowIso } from "../../db/mappers";
 import { recordAuditEvent } from "../control-plane";
 import { recordUsageEvent } from "../usage";
@@ -185,6 +193,22 @@ export async function ocrDocument(
       pageCount: existing.ocr_page_count,
       contentFingerprint: fingerprint,
       message: "OCR already completed for this document version",
+    };
+  }
+
+  if (
+    existing &&
+    existing.ocr_status === "ocr_failed" &&
+    existing.ocr_attempt_count >= DEFAULT_MAX_OCR_JOB_ATTEMPTS
+  ) {
+    return {
+      status: "ocr_failed",
+      providerCalled: false,
+      attemptCount: existing.ocr_attempt_count,
+      failureCategory: existing.ocr_failure_category ?? "PROVIDER",
+      contentFingerprint: fingerprint,
+      pageCount: existing.ocr_page_count,
+      message: "OCR retry limit reached for this document version",
     };
   }
 
@@ -382,7 +406,11 @@ export async function ocrDocument(
         unit: "pages",
         success: false,
         durationMs: analyzed.durationMs,
-        metadata: { provider: OCR_PROVIDER_ID, model: OCR_MODEL_ID },
+        metadata: {
+          provider: OCR_PROVIDER_ID,
+          model: OCR_MODEL_ID,
+          estimatedUsd: estimateAzureReadCostUsd(analyzed.pageCount),
+        },
       });
       return {
         status: "ocr_failed",
@@ -425,7 +453,12 @@ export async function ocrDocument(
       unit: "pages",
       success: true,
       durationMs: analyzed.durationMs,
-      metadata: { provider: OCR_PROVIDER_ID, model: OCR_MODEL_ID, apiVersion: OCR_API_VERSION },
+      metadata: {
+        provider: OCR_PROVIDER_ID,
+        model: OCR_MODEL_ID,
+        apiVersion: OCR_API_VERSION,
+        estimatedUsd: estimateAzureReadCostUsd(analyzed.pageCount),
+      },
     });
 
     return {

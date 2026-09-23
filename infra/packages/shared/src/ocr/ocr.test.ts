@@ -39,5 +39,8 @@ describe("OCR customer wording", () => {
   it("keeps operator wording technical", () => {
     expect(presentOperatorOcrStatus("ocr_limit_exceeded")).toBe("OCR page limit exceeded");
     expect(presentOperatorOcrStatus("requires_ocr")).toBe("Requires OCR");
+    expect(presentOperatorOcrStatus("native_text_success")).toBe("OCR not required");
+    expect(presentOperatorOcrStatus("low_text_warning")).toBe("Requires OCR");
+    expect(presentOperatorOcrStatus("unsupported")).toBe("Document type not supported");
   });
 });

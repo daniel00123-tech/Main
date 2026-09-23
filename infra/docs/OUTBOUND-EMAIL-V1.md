@@ -1,129 +1,84 @@
-# INFRA Outbound Transactional Email V1
+# INFRA Outbound Transactional Email
 
-Reusable, tenant-scoped transactional email for the company portal. Caddington Holdings is the first production tenant.
+All INFRA-generated customer email is sent as:
+
+**Infra &lt;noreply@infrastack.app&gt;**
+
+Tenants cannot replace this sender in V1. Company names still appear in the subject and body.
+
+## Canonical identity
+
+| Field | Value |
+|---|---|
+| Display name | Infra |
+| Address | noreply@infrastack.app |
+| Header | `Infra <noreply@infrastack.app>` |
+| Reply-To | `noreply@infrastack.app` (unmonitored) |
+
+Environment (infra-api):
+
+- `EMAIL_FROM_NAME=Infra`
+- `EMAIL_FROM_ADDRESS=noreply@infrastack.app`
+
+Reserved future aliases (not monitored, no inbound routing in this version):
+
+- `support@infrastack.app`
+- `billing@infrastack.app`
+- `admin@infrastack.app`
 
 ## Architecture
 
 ```
-Application route (password reset, invitation, admin test)
+Application route (invite, reset, automation report, admin test)
         |
         v
 sendTransactionalEmail({ companyId, type, recipient, subject, body })
         |
-        +-- Sender resolver (approved company sender only)
+        +-- Platform sender resolver (always Infra <noreply@infrastack.app>)
         +-- Template renderer (@infra/shared)
-        +-- Provider adapter
-        |       +-- Microsoft Graph sendMail (production)
-        |       +-- Resend (development fallback when provider=resend)
-        +-- email_outbox delivery record
-        +-- audit events (company scoped)
+        +-- Cloudflare Email Service (Workers EMAIL binding, REST fallback)
+        +-- Resend only when RESEND_API_KEY is set (development)
+        +-- email_outbox + company-scoped audit (no bodies in audit, no tokens)
 ```
 
-Callers never supply a `from` address. The service resolves the approved sender from `company_email_config`.
+Microsoft Graph `sendMail` is no longer used for product email. It remains only for Microsoft connector Mail.Send probes.
 
-## Company configuration
+Stripe receipts and invoices continue to come from Stripe.
 
-Table: `company_email_config`
-
-| Field | Purpose |
-|-------|---------|
-| `company_id` | Tenant isolation |
-| `provider` | `microsoft365` or `resend` |
-| `sender_address` | Approved From address |
-| `sender_display_name` | Display name |
-| `enabled` | Master switch |
-| `allowed_types_json` | Allowlisted transactional types |
-| `health_status` | `healthy`, `permission_required`, etc. |
-
-Caddington seed (`0033_outbound_transactional_email.sql`):
-
-- Sender: `admin@CaddingtonHoldings.co.uk`
-- Display name: Caddington Holdings
-- Types: `PASSWORD_RESET`, `USER_INVITATION`, `TEST_EMAIL`
-
-HeatTech, Elvex, and future tenants require their own explicit configuration. They do not inherit Caddington's sender.
-
-## Allowlisted email types (V1)
+## Allowlisted types
 
 - `PASSWORD_RESET`
 - `USER_INVITATION`
-- `TEST_EMAIL` (company admins / platform admins only)
+- `TEST_EMAIL`
+- `XERO_SALES_REPORT`
+- `DOCUMENT_ACTIVITY_REPORT`
 
-Future types (`AUTOMATION_ALERT`, `CONNECTOR_ALERT`, etc.) are reserved but rejected until activated.
+Reserved, not sendable: `AUTOMATION_ALERT`, `CONNECTOR_ALERT`, `APPROVAL_REQUEST`, `BILLING_ALERT`, `SECURITY_ALERT`, `REPORT_READY`.
 
-## Microsoft Graph implementation
+## Customer links
 
-- Endpoint: `POST /v1.0/users/{senderUPN}/sendMail`
-- Permission: **Mail.Send (Application)** — admin consent required
-- Uses existing client-credentials token flow (`acquireMicrosoftAppToken`)
-- Does **not** add or use Mail.Read
-- Handles 401 / 403 / 429 / 5xx with bounded retry
+Auth and portal links use `https://app.infrastack.app`. Do not put `pages.dev` in customer-facing email.
 
-### Sender restriction (Exchange)
+## Cloudflare Email Sending
 
-Mail.Send (Application) is tenant-wide by default. Restrict outbound sending with **Exchange RBAC for Applications**:
+Preferred provider. Domain onboarding (dashboard):
 
-1. Mail-enabled security group: approved sender mailboxes only (includes `admin@CaddingtonHoldings.co.uk`)
-2. Assign **Application Mail.Send** to the INFRA app with a management scope limited to that group
+1. Cloudflare dashboard → **Compute** → **Email Service** → **Email Sending**
+2. **Onboard Domain** → choose **infrastack.app**
+3. Confirm DNS records on `cf-bounce.infrastack.app` (MX, SPF, DKIM) and `_dmarc.infrastack.app`
+4. **Add records and onboard**
 
-See `exchangeMailSendRbacGuide()` in `packages/api/src/services/email/providers/microsoft-graph.ts` for exact steps.
+Wrangler binding:
 
-## Password reset flow
+```toml
+[[send_email]]
+name = "EMAIL"
+```
 
-1. `POST /api/auth/password-reset/request` with email
-2. Rate limit (IP + email bucket)
-3. Generic response regardless of account existence
-4. Resolve company from portal Origin subdomain + membership, else first company with email config
-5. Create hashed single-use token (existing `password_setup_tokens`)
-6. `sendTransactionalEmail` with `PASSWORD_RESET` template
-7. Audit: `email.password_reset_requested`, `email.send_started`, `email.sent` / `email.failed`
+## Failure handling
 
-Tokens are never written to audit metadata or delivery records.
+Send failure does not roll back user creation or automation report generation. `email_outbox` stores status, provider, message id, failure category, recipient, type, company, and timestamps. Retry count increments once per attempt. No infinite retry loop.
 
-## User invitation flow
+## Observability
 
-Existing invitation routes call `queueEmail` → `sendTransactionalEmail` with `USER_INVITATION` when `companyId` is present.
-
-## Rate limiting
-
-Password reset: 8 requests / 15 min per IP, 4 / 15 min per email address. Exceeded limits return the same generic success message.
-
-## Audit / delivery
-
-`email_outbox` stores metadata only (no tokens). Statuses: `sending`, `sent`, `failed`.
-
-Audit events: `email.send_started`, `email.sent`, `email.failed`, `email.password_reset_requested`.
-
-## API endpoints
-
-| Route | Purpose |
-|-------|---------|
-| `GET /api/companies/:slug/email/config` | Read-only transactional email status (company admin) |
-| `POST /api/companies/:slug/email/test` | Safe TEST_EMAIL to approved recipient |
-
-## Operational troubleshooting
-
-| Symptom | Likely cause |
-|---------|----------------|
-| `permission_required` health | Mail.Send not consented or Exchange scope missing |
-| `EMAIL_NOT_CONFIGURED` | No `company_email_config` row for tenant |
-| `SENDER_NOT_ALLOWED` | Attempt to override From (blocked) |
-| HTTP 403 from Graph | Application Mail.Send RBAC scope excludes mailbox |
-
-## Future extension points
-
-- Automation Engine typed notifications (internal service call only)
-- Additional providers (customer-owned SMTP, dedicated transactional provider)
-- Branding configuration (logo, colours) — not in V1
-
-## Manual Microsoft step (Caddington V1)
-
-Classification until Daniel completes Entra + Exchange steps and a real password-reset email is received:
-
-**READY_FOR_MICROSOFT_PERMISSION**
-
-1. Entra → App registrations → INFRA Microsoft 365 Connector → API permissions → Microsoft Graph → **Application** → add **Mail.Send** (do not add Mail.Read) → Grant admin consent
-2. Exchange Online → ensure `admin@CaddingtonHoldings.co.uk` is in the INFRA approved mailboxes security group
-3. Exchange Online → assign **Application Mail.Send** to the app scoped to that group (see guide in code)
-4. Run `POST /api/companies/caddington-holdings/email/test` with `{ "recipient": "morghan@morghan.com" }` once
-5. Run intentional password reset acceptance for Morghan
+Audit events: `email.send_started`, `email.sent`, `email.failed`. Detail includes type, recipient domain, provider, and failure category. Bodies and secrets are not logged.

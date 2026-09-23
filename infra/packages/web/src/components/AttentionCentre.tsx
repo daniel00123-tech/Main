@@ -99,16 +99,17 @@ export default function AttentionCentre({
                       {meta.label}
                     </span>
                     <strong className="attention-centre-item-title">{item.title}</strong>
-                    {item.companyName ? (
-                      <span className="muted small attention-centre-item-company">{item.companyName}</span>
-                    ) : null}
+                    <span className="muted small attention-centre-item-company">
+                      {item.companyName ?? "Platform"}
+                    </span>
                   </div>
+                  <p className="small" style={{ margin: "6px 0 0" }}>{item.detail}</p>
+                  <p className="muted small" style={{ margin: "4px 0 0" }}>
+                    {item.recommendedAction ?? "Open the linked page to investigate."}
+                  </p>
                   {expanded ? (
                     <div className="attention-centre-item-detail">
-                      <p className="small">{item.detail}</p>
-                      {item.recommendedAction ? (
-                        <p className="muted small">{item.recommendedAction}</p>
-                      ) : null}
+                      <p className="muted small">This item stays visible until it is resolved{item.severity === "critical" ? " and cannot be dismissed" : ""}.</p>
                     </div>
                   ) : null}
                 </div>
@@ -135,7 +136,7 @@ export default function AttentionCentre({
                   ) : null}
                   {item.href ? (
                     <Link to={item.href} className="button button-small button-secondary">
-                      Review
+                      Investigate
                     </Link>
                   ) : null}
                   {item.severity !== "critical" && onDismiss ? (

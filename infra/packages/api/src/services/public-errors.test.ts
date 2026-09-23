@@ -33,5 +33,38 @@ describe("publicToolErrorMessage", () => {
     expect(
       publicToolErrorMessage(403, "Permission denied: knowledge.search").message,
     ).toBe("Permission denied: knowledge.search");
+    expect(publicToolErrorMessage(403, "Elvex role does not grant xero.sales.read").code).toBe(
+      "permission_denied",
+    );
+    expect(
+      publicToolErrorMessage(
+        403,
+        "Xero is connected for EL Business, but your Office Staff permissions don’t allow you to view Xero financial data.",
+      ).code,
+    ).toBe("permission_denied");
+  });
+
+  it("maps Outlook connector failures to safe reconnect or retry copy", () => {
+    expect(publicToolErrorMessage(403, "Mail.Read (Application) admin consent").message).toBe(
+      "Outlook needs reconnecting",
+    );
+    expect(publicToolErrorMessage(429, "OUTLOOK_RATE_LIMITED").message).toBe(
+      "Microsoft temporarily rejected the request",
+    );
+    expect(publicToolErrorMessage(404, "Mailbox source not found").message).toBe(
+      "Outlook mailbox is not available",
+    );
+  });
+
+  it("keeps tool-not-exposed, permission, and Xero upstream copy distinct", () => {
+    expect(publicToolErrorMessage(404, "TOOL_NOT_EXPOSED").message).toBe(
+      "This capability isn’t available through this connection yet.",
+    );
+    expect(publicToolErrorMessage(403, "Your current permissions don’t allow access.").message).toBe(
+      "Your current permissions don’t allow access.",
+    );
+    expect(publicToolErrorMessage(502, "I couldn’t reach Xero just now.").message).toBe(
+      "I couldn’t reach Xero just now.",
+    );
   });
 });

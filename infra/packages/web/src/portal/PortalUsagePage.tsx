@@ -191,6 +191,7 @@ export default function PortalUsagePage() {
           <option value="chatgpt">ChatGPT</option>
           <option value="claude">Claude</option>
           <option value="portal">Portal</option>
+          <option value="portal_chat">Company chat</option>
         </Select>
         <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All results</option>

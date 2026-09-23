@@ -105,7 +105,7 @@ describe("xero month-to-date sales email", () => {
     });
 
     const result = await executeXeroMonthToDateSalesEmail(
-      { PORTAL_BASE_DOMAIN: "infra-web.pages.dev" } as never,
+      { PORTAL_PUBLIC_ORIGIN: "https://app.infrastack.app" } as never,
       ctx,
     );
     expect(result.summary).toBe("Sales report sent");

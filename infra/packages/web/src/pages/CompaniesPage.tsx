@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Building2, Plus } from "lucide-react";
 import type { CreateCompanyInput } from "@infra/shared";
-import { DEFAULT_TEST_OPENING_CREDIT_CENTS, validateCompanySlug } from "@infra/shared";
+import {
+  DEFAULT_TEST_OPENING_CREDIT_CENTS,
+  INFRA_PORTAL_ORIGIN,
+  LEGACY_PORTAL_BASE_DOMAIN,
+  validateCompanySlug,
+} from "@infra/shared";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { useAdminScope } from "../context/AdminScopeContext";
@@ -58,6 +63,7 @@ const INITIAL_FORM = {
   currency: "GBP",
   adminEmail: "",
   adminDisplayName: "",
+  adminMobile: "",
 };
 
 function slugify(value: string): string {
@@ -231,6 +237,9 @@ export default function CompaniesPage() {
       if (form.adminEmail.trim() && !form.adminDisplayName.trim()) {
         return "Admin display name is required when inviting an admin";
       }
+      if (form.adminEmail.trim() && !form.adminMobile.trim()) {
+        return "Admin mobile number is required when inviting a new admin (E.164, e.g. +447700900123)";
+      }
     }
     return null;
   }
@@ -284,6 +293,7 @@ export default function CompaniesPage() {
       currency: form.currency || "GBP",
       adminEmail: form.adminEmail.trim() || null,
       adminDisplayName: form.adminDisplayName.trim() || null,
+      adminMobile: form.adminMobile.trim() || null,
     };
 
     setSubmitting(true);
@@ -563,41 +573,28 @@ export default function CompaniesPage() {
                     {company.name}
                   </Link>
                   {company.needsAttention ? (
-                    <div className="warning-text small">Needs attention</div>
+                    <div className="warning-text small">
+                      {company.walletLowBalance
+                        ? "Low credit — review billing"
+                        : "Needs attention"}
+                    </div>
                   ) : null}
                 </div>
                 <StatusBadge status={company.status} />
               </div>
               <dl className="mobile-record-meta">
                 <div>
-                  <dt>Wallet</dt>
+                  <dt>Billing</dt>
                   <dd>
                     {formatCharge(company.walletBalanceCents)}
                     {company.walletLowBalance ? " · Low" : ""}
                   </dd>
                 </div>
                 <div>
-                  <dt>Usage (mo)</dt>
-                  <dd>{formatNumber(company.usageThisMonth)}</dd>
-                </div>
-                <div>
-                  <dt>Last active</dt>
-                  <dd>{formatRelativeTime(company.lastActivityAt)}</dd>
-                </div>
-                <div>
-                  <dt>Systems</dt>
+                  <dt>Connectors</dt>
                   <dd>
-                    {company.connectedConnectors}/{company.connectorCount}
-                  </dd>
-                </div>
-                <div>
-                  <dt>AI gateway</dt>
-                  <dd>
-                    {company.mcpStatus ? (
-                      <StatusBadge status={company.mcpStatus} />
-                    ) : (
-                      "None"
-                    )}
+                    {company.connectedConnectors} connected
+                    {company.mcpStatus ? ` · ${company.mcpStatus}` : ""}
                   </dd>
                 </div>
               </dl>
@@ -607,12 +604,6 @@ export default function CompaniesPage() {
                   className="button button-secondary button-small"
                 >
                   Open
-                </Link>
-                <Link
-                  to={`/portal/${company.slug}/dashboard`}
-                  className="button button-secondary button-small"
-                >
-                  Portal
                 </Link>
               </div>
             </MobileRecordCard>
@@ -822,10 +813,16 @@ export default function CompaniesPage() {
                   <div className="muted small">Portal path</div>
                   <code className="mono">/portal/{effectiveSlug || "…"}/dashboard</code>
                   <div className="muted small" style={{ marginTop: 8 }}>
-                    Hostname
+                    Portal URL
                   </div>
                   <code className="mono">
-                    {effectiveSubdomain || "…"}.infra-web.pages.dev
+                    {INFRA_PORTAL_ORIGIN}/portal/{effectiveSlug || "…"}/dashboard
+                  </code>
+                  <div className="muted small" style={{ marginTop: 8 }}>
+                    Legacy hostname (temporary)
+                  </div>
+                  <code className="mono">
+                    {effectiveSubdomain || "…"}.{LEGACY_PORTAL_BASE_DOMAIN}
                   </code>
                 </div>
               </div>
@@ -875,6 +872,14 @@ export default function CompaniesPage() {
                     onChange={(e) => updateField("adminDisplayName", e.target.value)}
                   />
                 </label>
+                <label>
+                  Admin mobile
+                  <input
+                    value={form.adminMobile}
+                    onChange={(e) => updateField("adminMobile", e.target.value)}
+                    placeholder="+447700900123"
+                  />
+                </label>
               </div>
             ) : null}
 
@@ -894,8 +899,13 @@ export default function CompaniesPage() {
                 <ReviewRow label="Telephone" value={form.telephone.trim() || "—"} />
                 <ReviewRow label="Slug" value={effectiveSlug || "—"} mono />
                 <ReviewRow
-                  label="Portal subdomain"
-                  value={`${effectiveSubdomain || "—"}.infra-web.pages.dev`}
+                  label="Portal URL"
+                  value={`${INFRA_PORTAL_ORIGIN}/portal/${effectiveSlug || "—"}/dashboard`}
+                  mono
+                />
+                <ReviewRow
+                  label="Legacy hostname"
+                  value={`${effectiveSubdomain || "—"}.${LEGACY_PORTAL_BASE_DOMAIN}`}
                   mono
                 />
                 <ReviewRow
@@ -910,7 +920,7 @@ export default function CompaniesPage() {
                   label="Admin invite"
                   value={
                     form.adminEmail.trim()
-                      ? `${form.adminDisplayName.trim() || "Admin"} <${form.adminEmail.trim()}>`
+                      ? `${form.adminDisplayName.trim() || "Admin"} <${form.adminEmail.trim()}> ${form.adminMobile.trim() || ""}`.trim()
                       : "Skipped"
                   }
                 />

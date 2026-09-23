@@ -1,6 +1,7 @@
 import { FormEvent, useId, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { InfraBrand } from "../components/InfraBrand";
 import { safeOauthContinueUrl } from "../lib/oauth-continue";
 
 export default function PortalLoginPage() {
@@ -49,8 +50,7 @@ export default function PortalLoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="brand">INFRA</div>
-        <div className="brand-sub">Company portal</div>
+        <InfraBrand showStack context="Company portal" size={36} />
 
         <h1>Sign in</h1>
         <p className="login-intro">Sign in to your company portal.</p>
@@ -107,6 +107,9 @@ export default function PortalLoginPage() {
             {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
+        <p className="muted small legal-footer-link">
+          <Link to="/privacy">Privacy Policy</Link>
+        </p>
       </div>
     </div>
   );

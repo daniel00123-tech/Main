@@ -253,6 +253,13 @@ export async function resolveMicrosoftAppCredentials(
   }
 
   if (authMode === "platform_legacy" || (!authMode && platformMicrosoftConfigured(env))) {
+    if (input?.companyId && !binding) {
+      return {
+        ok: false,
+        code: "MICROSOFT_NOT_CONNECTED",
+        message: "Microsoft 365 is not connected for this company. Complete onboarding in the portal.",
+      };
+    }
     const platform = platformMicrosoftCredentials(env);
     if (!platform) {
       return {

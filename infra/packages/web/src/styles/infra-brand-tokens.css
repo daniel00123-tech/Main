@@ -1,0 +1,22 @@
+/* Approved Infra brand tokens. Semantic app variables map to these. */
+
+:root {
+  --infra-navy-950: #07111f;
+  --infra-navy-900: #0b1627;
+  --infra-surface: #0f1c2e;
+  --infra-surface-raised: #142239;
+  --infra-surface-hover: #1a2b45;
+  --infra-border: #203047;
+  --infra-border-strong: #2a3d58;
+  --infra-blue: #2f80ff;
+  --infra-blue-hover: #4d93ff;
+  --infra-cyan: #22d3ee;
+  --infra-text: #f5f9ff;
+  --infra-text-secondary: #cbd5e1;
+  --infra-text-muted: #94a3b8;
+  --infra-white: #ffffff;
+  --infra-accent-gradient: linear-gradient(135deg, #2f80ff 0%, #22d3ee 100%);
+  --infra-radius-sm: 8px;
+  --infra-radius-md: 12px;
+  --infra-radius-lg: 16px;
+}

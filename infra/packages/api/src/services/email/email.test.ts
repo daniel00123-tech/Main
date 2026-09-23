@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
+  PLATFORM_EMAIL_FROM_ADDRESS,
   isTransactionalEmailType,
   renderPasswordResetEmail,
 } from "@infra/shared";
@@ -16,13 +17,13 @@ describe("transactional email security", () => {
     expect(isTransactionalEmailType("DOCUMENT_ACTIVITY_REPORT")).toBe(true);
   });
 
-  it("enforces approved sender allowlist", () => {
+  it("keeps company-config allowlist matching for stored rows", () => {
     const config = {
-      senderAddress: "admin@CaddingtonHoldings.co.uk",
+      senderAddress: PLATFORM_EMAIL_FROM_ADDRESS,
       allowedTypes: [],
       companyId: "co_caddington",
     } as import("@infra/shared").CompanyEmailConfig;
-    expect(senderMatchesAllowlist(config, "admin@CaddingtonHoldings.co.uk")).toBe(true);
+    expect(senderMatchesAllowlist(config, PLATFORM_EMAIL_FROM_ADDRESS)).toBe(true);
     expect(senderMatchesAllowlist(config, "attacker@evil.com")).toBe(false);
   });
 
@@ -32,54 +33,27 @@ describe("transactional email security", () => {
 });
 
 describe("resolveApprovedSender", () => {
-  const db = {
-    prepare: vi.fn(),
-  } as unknown as D1Database;
-
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
-  it("rejects arbitrary sender override attempts", async () => {
-    vi.mocked(db.prepare).mockReturnValue({
-      bind: () => ({
-        first: async () => ({
-          id: "cec_1",
-          company_id: "co_caddington",
-          provider: "microsoft365",
-          sender_address: "admin@CaddingtonHoldings.co.uk",
-          sender_display_name: "Caddington Holdings",
-          enabled: 1,
-          allowed_types_json: '["PASSWORD_RESET"]',
-          health_status: "permission_required",
-          last_sent_at: null,
-          last_error_category: null,
-          created_at: "2026-01-01T00:00:00.000Z",
-          updated_at: "2026-01-01T00:00:00.000Z",
-        }),
-      }),
-    } as never);
-
-    await expect(
-      resolveApprovedSender(db, {
+  it("rejects arbitrary sender override attempts", () => {
+    try {
+      resolveApprovedSender(undefined, {
         companyId: "co_caddington",
         emailType: "PASSWORD_RESET",
         requestedFrom: "other@example.com",
-      }),
-    ).rejects.toMatchObject({ code: "SENDER_NOT_ALLOWED" });
+      });
+      expect.fail("expected sender override to be rejected");
+    } catch (err) {
+      expect(err).toMatchObject({ code: "SENDER_NOT_ALLOWED" });
+    }
   });
 
-  it("rejects when company has no configuration", async () => {
-    vi.mocked(db.prepare).mockReturnValue({
-      bind: () => ({ first: async () => null }),
-    } as never);
-
-    await expect(
-      resolveApprovedSender(db, {
-        companyId: "co_ht",
-        emailType: "PASSWORD_RESET",
-      }),
-    ).rejects.toMatchObject({ code: "EMAIL_NOT_CONFIGURED" });
+  it("uses the Infra platform sender for every tenant", () => {
+    const sender = resolveApprovedSender(undefined, {
+      companyId: "co_ht",
+      emailType: "PASSWORD_RESET",
+    });
+    expect(sender.fromEmail).toBe(PLATFORM_EMAIL_FROM_ADDRESS);
+    expect(sender.fromDisplayName).toBe("Infra");
+    expect(sender.provider).toBe("cloudflare");
   });
 });
 
@@ -87,10 +61,11 @@ describe("password reset template", () => {
   it("does not embed token in subject", () => {
     const rendered = renderPasswordResetEmail({
       companyDisplayName: "Caddington Holdings",
-      resetUrl: "https://example.com/setup-password?token=secret-token-value",
+      resetUrl: "https://app.infrastack.app/setup-password?token=secret-token-value",
       expiresLabel: "in 1 hour",
     });
     expect(rendered.subject).not.toContain("secret-token-value");
+    expect(rendered.text).toContain("Replies to this address are not monitored");
   });
 });
 
@@ -108,6 +83,10 @@ describe("microsoft outbound permission guide", () => {
 });
 
 describe("sendTransactionalEmail audit safety", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("records delivery without token-like secrets in audit detail", async () => {
     const runCalls: Array<{ sql: string; binds: unknown[] }> = [];
     const db = {
@@ -123,22 +102,6 @@ describe("sendTransactionalEmail audit safety", () => {
             return { success: true };
           },
           async first() {
-            if (sql.includes("company_email_config")) {
-              return {
-                id: "cec_1",
-                company_id: "co_caddington",
-                provider: "resend",
-                sender_address: "admin@CaddingtonHoldings.co.uk",
-                sender_display_name: "Caddington Holdings",
-                enabled: 1,
-                allowed_types_json: '["PASSWORD_RESET"]',
-                health_status: "healthy",
-                last_sent_at: null,
-                last_error_category: null,
-                created_at: "2026-01-01T00:00:00.000Z",
-                updated_at: "2026-01-01T00:00:00.000Z",
-              };
-            }
             return null;
           },
         };
@@ -146,13 +109,10 @@ describe("sendTransactionalEmail audit safety", () => {
     } as unknown as D1Database;
 
     const env = {
-      RESEND_API_KEY: "re_test",
-      EMAIL_FROM: "INFRA <noreply@test.local>",
+      EMAIL: {
+        send: vi.fn(async () => ({ messageId: "cf_msg_123" })),
+      },
     } as never;
-
-    global.fetch = vi.fn(async () =>
-      Response.json({ id: "msg_123" }, { status: 200 }),
-    ) as never;
 
     const result = await sendTransactionalEmail(env, db, {
       companyId: "co_caddington",
@@ -165,8 +125,11 @@ describe("sendTransactionalEmail audit safety", () => {
     });
 
     expect(result.sent).toBe(true);
+    expect(result.provider).toBe("cloudflare");
     const insert = runCalls.find((call) => call.sql.includes("INSERT INTO email_outbox"));
+    expect(JSON.stringify(insert?.binds ?? [])).toContain(PLATFORM_EMAIL_FROM_ADDRESS);
     expect(JSON.stringify(insert?.binds ?? [])).not.toContain("token=");
+    expect(JSON.stringify(insert?.binds ?? [])).not.toContain("CaddingtonHoldings");
   });
 });
 

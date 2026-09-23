@@ -11,6 +11,7 @@ import {
 } from "./schedule";
 import { claimDueAutomation, findActiveAutomationRun, listDueAutomations } from "./store";
 import { requestAutomationRun } from "./run-request";
+import { shouldSkipCompanyAutomationTick } from "../observability/runaway-limits";
 
 export type AutomationSchedulerResult = {
   scanned: number;
@@ -36,9 +37,14 @@ export async function runAutomationScheduler(
     errors: [],
   };
 
+  const claimedByCompany = new Map<string, number>();
+
   for (const automation of due) {
     try {
       if (!automation.schedule || automation.triggerType !== "schedule") continue;
+      if (shouldSkipCompanyAutomationTick(claimedByCompany.get(automation.companyId) ?? 0)) {
+        continue;
+      }
 
       const slotUtc =
         automation.nextRunAt ??
@@ -74,6 +80,10 @@ export async function runAutomationScheduler(
       }
 
       result.claimed++;
+      claimedByCompany.set(
+        automation.companyId,
+        (claimedByCompany.get(automation.companyId) ?? 0) + 1,
+      );
 
       const requested = await requestAutomationRun(env, {
         companyId: automation.companyId,

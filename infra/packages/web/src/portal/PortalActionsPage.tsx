@@ -40,6 +40,7 @@ import {
 } from "../lib/format";
 import { PortalPageBody, PortalPageHeader, SegmentedControl } from "./components";
 import { usePortalCompany } from "./usePortalCompany";
+import { filterCustomerActions } from "../lib/customer-visibility";
 
 type DryRunReport = {
   readyToExecute?: boolean;
@@ -124,13 +125,13 @@ export default function PortalActionsPage() {
     setPlansError(null);
     try {
       const response = await api.listCompanyActions(company.slug);
-      setPlans(response.plans);
+      setPlans(filterCustomerActions(response.plans, Boolean(user?.isPlatformAdmin)));
     } catch (err) {
       setPlansError(err instanceof Error ? err.message : "Unable to load actions");
     } finally {
       setPlansLoading(false);
     }
-  }, [company]);
+  }, [company, user?.isPlatformAdmin]);
 
   useEffect(() => {
     void loadPlans();
@@ -251,98 +252,77 @@ export default function PortalActionsPage() {
       <h3 style={{ marginTop: 0 }}>{planTitle(selected)}</h3>
       <KeyValue label="Status" value={<StatusBadge status={selected.status} label={humanActionStatus(selected.status)} />} />
       <KeyValue label="Requested by" value={humanActor(selected.actor)} />
-      <KeyValue label="Source" value={humanClient(selected.sourceClient)} />
-      <KeyValue label="System" value={systemLabel(selected)} />
       <KeyValue label="When" value={formatRelativeTime(selected.createdAt)} />
-      {selected.financialImpact?.totalAmount != null ? (
-        <KeyValue
-          label="Amount"
-          value={formatActionAmount(
-            selected.financialImpact.totalAmount,
-            selected.financialImpact.currencyCode ?? "GBP",
-          )}
-        />
-      ) : null}
-      {selected.targets[0]?.proposedState?.documentKind ? (
-        <KeyValue label="Document type" value={String(selected.targets[0].proposedState.documentKind)} />
-      ) : null}
-      {selected.targets[0]?.currentState?.status != null ? (
-        <KeyValue label="Current state" value={String(selected.targets[0].currentState.status)} />
-      ) : null}
-      {selected.targets[0]?.proposedState?.resultingStatus != null ? (
-        <KeyValue label="Resulting state" value={String(selected.targets[0].proposedState.resultingStatus)} />
-      ) : null}
-      {(selected.targets[0]?.proposedState as { warning?: string })?.warning ? (
-        <KeyValue label="Warning" value={String((selected.targets[0]?.proposedState as { warning?: string }).warning)} />
-      ) : null}
 
       <SectionCard title="What will happen">
-        <p style={{ margin: 0 }}>{selected.summary}</p>
-        {dryRun?.headline ? <p className="muted" style={{ marginTop: "0.5rem" }}>{dryRun.headline}</p> : null}
+        <p style={{ margin: 0 }}>{planWhatWillHappen(selected)}</p>
+        {dryRun?.headline ? (
+          <p className="muted" style={{ marginTop: "0.5rem" }}>
+            {dryRun.headline}
+          </p>
+        ) : null}
       </SectionCard>
 
-      <SectionCard title="Timeline">
-        <ol className="action-timeline" style={{ margin: 0, paddingLeft: "1.25rem" }}>
-          <li>Requested — {formatRelativeTime(selected.createdAt)} by {humanActor(selected.actor)}</li>
-          {selected.confirmationStatus === "confirmed" || selected.confirmationStatus === "not_required" ? (
-            <li>Confirmed — {humanConfirmationStatus(selected.confirmationStatus)}</li>
-          ) : selected.confirmationStatus === "awaiting" ? (
-            <li>Awaiting confirmation</li>
-          ) : null}
-          {selected.approvalStatus === "pending" ? (
-            <li>Approval requested — {humanApprovalStatus(selected.approvalStatus)}</li>
-          ) : selected.approvalStatus === "approved" ? (
-            <li>Approved</li>
-          ) : selected.approvalStatus === "denied" ? (
-            <li>Rejected</li>
-          ) : null}
-          {selected.status === "executing" ? <li>Processing started</li> : null}
-          {execution?.xeroResourceId ? <li>Xero updated — {execution.humanReference ?? execution.xeroResourceId}</li> : null}
-          {selected.status === "completed" ? <li>Completed — read-back verified</li> : null}
-          {selected.status === "failed" || selected.status === "partial_failure" ? (
-            <li>Failed — {execution?.errorMessage ?? "See error details"}</li>
-          ) : null}
-          {selected.status === "expired" ? <li>Expired</li> : null}
-        </ol>
+      <SectionCard title="Why approval is required">
+        <p style={{ margin: 0 }}>
+          {selected.riskClass === "delete" || selected.requestedAction.includes("void")
+            ? "This changes or voids an accounting record and cannot be undone from Infra."
+            : selected.requestedAction.includes("payment")
+              ? "This records a payment in Xero and should be checked before it is posted."
+              : "Infra is waiting for approval before it continues this accounting change."}
+        </p>
       </SectionCard>
 
-      <KeyValue label="Confirmation" value={humanConfirmationStatus(selected.confirmationStatus)} />
-      <KeyValue label="Approval" value={humanApprovalStatus(selected.approvalStatus)} />
-      <KeyValue label="Risk" value={humanRiskClass(selected.riskClass)} />
-
-      {dryRun?.headline ? <KeyValue label="Readiness" value={dryRun.headline} /> : null}
-      {dryRun?.organisation ? <KeyValue label="Organisation" value={dryRun.organisation} /> : null}
-      {execution?.humanReference ? <KeyValue label="Result reference" value={execution.humanReference} /> : null}
-      {execution?.errorMessage ? <KeyValue label="Error" value={execution.errorMessage} /> : null}
-
-      {selected.status === "failed" || !planIsConfirmable(selected) ? (
-        planFailureDisplayReason(selected) ? (
-          <Notice tone="danger">
-            Failed — {planFailureDisplayReason(selected)}
+      <SectionCard title="Financial impact">
+        {selected.financialImpact?.totalAmount != null ? (
+          <p style={{ margin: 0 }}>
+            {formatActionAmount(
+              selected.financialImpact.totalAmount,
+              selected.financialImpact.currencyCode ?? "GBP",
+            )}
+            {planCustomerLabel(selected) ? ` · ${planCustomerLabel(selected)}` : ""}
+          </p>
+        ) : (
+          <p className="muted" style={{ margin: 0 }}>
+            No amount is attached to this request.
+          </p>
+        )}
+        {(selected.targets[0]?.proposedState as { warning?: string })?.warning ? (
+          <Notice tone="warning">
+            {String((selected.targets[0]?.proposedState as { warning?: string }).warning)}
           </Notice>
-        ) : null
+        ) : null}
+      </SectionCard>
+
+      {execution?.errorMessage || planFailureDisplayReason(selected) ? (
+        <Notice tone="danger">
+          {planFailureDisplayReason(selected) ?? execution?.errorMessage}
+        </Notice>
       ) : null}
 
       <div className="action-detail-actions">
         {planIsConfirmable(selected) && canApprove ? (
           <Button type="button" variant="primary" loading={busy === "confirm"} onClick={() => void confirm(selected)}>
-            Confirm action
+            Confirm
           </Button>
         ) : null}
         {planIsApprovable(selected) && canApprove ? (
           <>
             <Button type="button" variant="primary" loading={busy === "approve"} onClick={() => void approve(selected)}>
               {selected.riskClass === "delete" || selected.requestedAction.includes("void")
-                ? "Approve void action"
+                ? "Approve void"
                 : selected.requestedAction.includes("payment")
-                  ? `Approve payment action${selected.financialImpact?.totalAmount != null ? ` (${formatActionAmount(selected.financialImpact.totalAmount, selected.financialImpact.currencyCode ?? "GBP")})` : ""}`
-                  : "Approve action"}
+                  ? `Approve payment${selected.financialImpact?.totalAmount != null ? ` (${formatActionAmount(selected.financialImpact.totalAmount, selected.financialImpact.currencyCode ?? "GBP")})` : ""}`
+                  : "Approve"}
             </Button>
             <Button type="button" variant="danger" onClick={() => setRejectOpen(true)}>
               Reject
             </Button>
           </>
         ) : null}
+        <Button type="button" variant="ghost" onClick={() => setSelectedId(null)}>
+          Back
+        </Button>
         {selected.actor === user?.email && selected.status === "awaiting_approval" ? (
           <p className="muted" style={{ marginTop: "0.5rem" }}>
             You cannot approve your own request — another director or admin must approve.
@@ -351,10 +331,27 @@ export default function PortalActionsPage() {
       </div>
 
       <AdvancedDetails label="Technical details">
+        <KeyValue label="System" value={systemLabel(selected)} />
+        <KeyValue label="Requested from" value={humanClient(selected.sourceClient)} />
+        <KeyValue label="Confirmation" value={humanConfirmationStatus(selected.confirmationStatus)} />
+        <KeyValue label="Approval" value={humanApprovalStatus(selected.approvalStatus)} />
+        <KeyValue label="Risk class" value={humanRiskClass(selected.riskClass)} />
+        {dryRun?.organisation ? <KeyValue label="Organisation" value={dryRun.organisation} /> : null}
+        {execution?.humanReference ? <KeyValue label="Result reference" value={execution.humanReference} /> : null}
+        {selected.targets[0]?.proposedState?.documentKind ? (
+          <KeyValue label="Document type" value={String(selected.targets[0].proposedState.documentKind)} />
+        ) : null}
+        {selected.targets[0]?.currentState?.status != null ? (
+          <KeyValue label="Current state" value={String(selected.targets[0].currentState.status)} />
+        ) : null}
+        {selected.targets[0]?.proposedState?.resultingStatus != null ? (
+          <KeyValue label="Resulting state" value={String(selected.targets[0].proposedState.resultingStatus)} />
+        ) : null}
         <KeyValue label="Plan ID" value={selected.id} mono />
         <KeyValue label="Action code" value={selected.requestedAction} mono />
-        {selected.expiresAt ? <KeyValue label="Expires" value={formatRelativeTime(selected.expiresAt)} /> : null}
         {execution?.id ? <KeyValue label="Execution ID" value={execution.id} mono /> : null}
+        {execution?.xeroResourceId ? <KeyValue label="Xero resource" value={execution.xeroResourceId} mono /> : null}
+        {selected.expiresAt ? <KeyValue label="Expires" value={formatRelativeTime(selected.expiresAt)} /> : null}
       </AdvancedDetails>
     </>
   ) : null;

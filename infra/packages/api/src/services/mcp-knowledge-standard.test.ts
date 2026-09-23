@@ -10,6 +10,7 @@ import {
   resolveCompanyMcpToolName,
   sanitizeStandardFetchArguments,
   sanitizeStandardSearchArguments,
+  collectProviderHttpUrl,
   toStandardFetchPayload,
   toStandardSearchPayload,
   withStandardKnowledgeTools,
@@ -149,6 +150,9 @@ describe("Company Knowledge response adaptors", () => {
 
   it("does not invent citation URLs", () => {
     expect(firstHttpUrl("drive:file/abc", "not-a-url")).toBe("");
+    expect(firstHttpUrl("webUrl-missing", { not: "a string" }, "https://onedrive.live.com/redir")).toBe(
+      "https://onedrive.live.com/redir",
+    );
     const payload = toStandardSearchPayload({
       results: [
         {
@@ -160,6 +164,80 @@ describe("Company Knowledge response adaptors", () => {
       ],
     });
     expect(payload.results[0]?.url).toBe("");
+  });
+
+  it("preserves a Drive webViewLink and does not invent one from driveFileId", () => {
+    const withLink = toStandardSearchPayload({
+      results: [
+        {
+          id: "gdrive-1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk",
+          title: "CV 2015 1",
+          webViewLink: "https://docs.google.com/document/d/1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk/edit",
+          metadata: { source: "google_drive", driveFileId: "1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk" },
+        },
+      ],
+    });
+    expect(withLink.results[0]?.url).toBe(
+      "https://docs.google.com/document/d/1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk/edit",
+    );
+
+    const noLink = toStandardSearchPayload({
+      results: [
+        {
+          id: "gdrive-1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk",
+          title: "CV 2015 1",
+          metadata: { source: "google_drive", driveFileId: "1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk" },
+        },
+      ],
+    });
+    expect(noLink.results[0]?.url).toBe("");
+    expect(collectProviderHttpUrl({ driveFileId: "1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk" })).toBe("");
+  });
+
+  it("parses company-MCP metadata JSON strings on fetch", () => {
+    const fetched = toStandardFetchPayload(
+      {
+        document: {
+          id: 670,
+          external_id: "gdrive-1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk",
+          title: "CV 2015 1",
+          metadata: JSON.stringify({
+            source: "google_drive",
+            driveFileId: "1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk",
+            webViewLink: "https://docs.google.com/document/d/1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk/edit?usp=drivesdk",
+          }),
+        },
+        chunks: [{ content: "Curriculum vitae covering 2015." }],
+      },
+      "gdrive-1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk",
+    );
+    expect(fetched.url).toBe(
+      "https://docs.google.com/document/d/1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk/edit?usp=drivesdk",
+    );
+    expect(fetched.metadata?.driveFileId).toBe("1Wf0GFolzcLKJXBwc5jLMWzfglD84k5_CLTlsaxcQJfk");
+  });
+
+  it("keeps Microsoft web_url / webUrl on search and fetch", () => {
+    const search = toStandardSearchPayload({
+      results: [
+        {
+          id: "item_coal_1",
+          title: "Coal Search.pdf",
+          web_url: "https://contoso.sharepoint.com/sites/docs/CoalSearch.pdf",
+        },
+      ],
+    });
+    expect(search.results[0]?.url).toBe("https://contoso.sharepoint.com/sites/docs/CoalSearch.pdf");
+    const fetched = toStandardFetchPayload(
+      {
+        id: "item_coal_1",
+        title: "Coal Search.pdf",
+        text: "Coal search extract",
+        metadata: { webUrl: "https://contoso.sharepoint.com/sites/docs/CoalSearch.pdf" },
+      },
+      "item_coal_1",
+    );
+    expect(fetched.url).toBe("https://contoso.sharepoint.com/sites/docs/CoalSearch.pdf");
   });
 
   it("unwraps MCP content wrappers from the company knowledge layer", () => {
@@ -185,6 +263,53 @@ describe("Company Knowledge response adaptors", () => {
       "doc_chunks",
     );
     expect(fetched.text).toBe("Part one.\n\nPart two.");
+    expect(fetched.chunks?.map((chunk) => chunk.text)).toEqual(["Part one.", "Part two."]);
+  });
+
+  it("unwraps EL MCP files[] search hits", () => {
+    const search = toStandardSearchPayload({
+      files: [
+        {
+          fileId: "gdrive-staff-handbook",
+          file: { name: "Staff Handbook.pdf" },
+          snippet: "Annual leave is 28 days.",
+        },
+      ],
+    });
+    expect(search.results[0]?.id).toBe("gdrive-staff-handbook");
+    expect(search.results[0]?.title).toBe("Staff Handbook.pdf");
+  });
+
+  it("maps EL MCP file/page_content fetch into id/title/text/chunks", () => {
+    const fetched = toStandardFetchPayload(
+      {
+        file: { id: "gdrive-staff-handbook", name: "Staff Handbook.pdf" },
+        chunks: [{ page_content: "Employees receive 28 days of annual leave." }],
+      },
+      "gdrive-staff-handbook",
+    );
+    expect(fetched.id).toBe("gdrive-staff-handbook");
+    expect(fetched.title).toBe("Staff Handbook.pdf");
+    expect(fetched.text).toContain("28 days of annual leave");
+    expect(fetched.chunks?.[0]?.text).toContain("28 days");
+  });
+
+  it("accepts documentRef on fetch and skips empty-chunk search hits", () => {
+    expect(sanitizeStandardFetchArguments({ documentRef: "doc_el_1" })).toEqual({
+      id: "doc_el_1",
+    });
+    const search = toStandardSearchPayload({
+      results: [
+        { id: "empty_el", title: "Untitled document", chunks: [] },
+        {
+          documentId: 41,
+          filename: "Site inspection report.docx",
+          snippet: "Inspection of the roof covering.",
+        },
+      ],
+    });
+    expect(search.results.map((item) => item.id)).toEqual(["41"]);
+    expect(search.results[0]?.title).toBe("Site inspection report.docx");
   });
 
   it("wraps standard results as a single MCP text content item plus structuredContent", () => {

@@ -176,6 +176,7 @@ export async function runMicrosoftOcrV1Acceptance(env: Env): Promise<Record<stri
         beforeStatus: coalBefore?.status ?? null,
         afterStatus: coalAfter?.status ?? null,
         ocrStatus: coalAfter?.metadata.ocrStatus ?? null,
+        applyStatus: coalOcr.ok ? coalOcr.documentStatus ?? null : coalOcr.code,
         indexed: coalOcr.ok ? coalOcr.indexed : false,
         searchHits: coalSearch.hitCount,
         provenance: {
@@ -188,6 +189,7 @@ export async function runMicrosoftOcrV1Acceptance(env: Env): Promise<Record<stri
         beforeStatus: arnoldBefore?.status ?? null,
         afterStatus: arnoldAfter?.status ?? null,
         ocrStatus: arnoldAfter?.metadata.ocrStatus ?? null,
+        applyStatus: arnoldOcr.ok ? arnoldOcr.documentStatus ?? null : arnoldOcr.code,
         indexed: arnoldOcr.ok ? arnoldOcr.indexed : false,
         searchHits: arnoldSearch.hitCount,
         test1Hits: test1Search.hitCount,

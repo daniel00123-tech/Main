@@ -1,0 +1,272 @@
+import { buildConversationState } from "../state.js";
+import type { IntelligenceConversationState, IntelligenceDocumentRef, IntelligenceScope } from "../types.js";
+
+export type ScopeEvalCase = {
+  id: string;
+  text: string;
+  intendedScope: IntelligenceScope;
+  intendedTool: string | null;
+  clarify?: boolean;
+  state?: IntelligenceConversationState;
+};
+
+const DOC: IntelligenceDocumentRef = {
+  id: "doc_open",
+  title: "Open file",
+  url: "https://docs.example.test/open",
+};
+const PREV: IntelligenceDocumentRef = {
+  id: "doc_prev",
+  title: "Earlier file",
+  url: "https://docs.example.test/prev",
+};
+
+function withDoc(text: string, extra?: Partial<IntelligenceConversationState>): IntelligenceConversationState {
+  return buildConversationState({
+    userText: text,
+    currentDocument: DOC,
+    recentDocuments: [PREV],
+    lastAnswerTopic: extra?.lastAnswerTopic ?? "document",
+    lastAnswerText: extra?.lastAnswerText ?? "The open file covers the requested point.",
+    lastUserIntent: extra?.lastUserIntent ?? "current_document",
+    currentScope: extra?.currentScope ?? "CURRENT_DOCUMENT",
+    lastSuccessfulTool: extra?.lastSuccessfulTool,
+    currentBusinessSystem: extra?.currentBusinessSystem,
+    userCorrection: extra?.userCorrection,
+    connectors: ["conn_microsoft_365", "conn_xero", "conn_google_drive"],
+    companyId: "co_eval",
+    companyName: "Eval Co",
+    role: "admin",
+  });
+}
+
+function bare(text: string, extra?: Partial<IntelligenceConversationState>): IntelligenceConversationState {
+  return buildConversationState({
+    userText: text,
+    lastAnswerTopic: extra?.lastAnswerTopic,
+    lastAnswerText: extra?.lastAnswerText,
+    currentScope: extra?.currentScope,
+    userCorrection: extra?.userCorrection,
+    lastSuccessfulTool: extra?.lastSuccessfulTool,
+    currentBusinessSystem: extra?.currentBusinessSystem,
+    connectors: ["conn_microsoft_365", "conn_xero", "conn_google_drive"],
+    companyId: "co_eval",
+    role: "member",
+  });
+}
+
+type Seed = {
+  text: string;
+  scope: IntelligenceScope;
+  tool: string | null;
+  clarify?: boolean;
+  withDoc?: boolean;
+  lastTopic?: string;
+  correction?: boolean;
+  currentScope?: IntelligenceConversationState["currentScope"];
+  lastSuccessfulTool?: string;
+  currentBusinessSystem?: string;
+};
+
+const SEEDS: Seed[] = [
+  { text: "How many documents are indexed?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "What's the total number of files we have indexed?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "Give me a count of indexed items", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "How many files sit on the platform?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "Is there a company-wide document total?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "How large is the indexed library?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "How many files are there on the system?", scope: "SYSTEM_META", tool: "get_document_index_stats", withDoc: true },
+  { text: "Don't look in this file — what's the system document count?", scope: "SYSTEM_META", tool: "get_document_index_stats", withDoc: true },
+  { text: "Across the whole system, how many documents exist?", scope: "SYSTEM_META", tool: "get_document_index_stats", withDoc: true },
+  { text: "Where are most of them from?", scope: "SYSTEM_META", tool: "get_document_index_stats", lastTopic: "index_stats" },
+  { text: "How many from SharePoint?", scope: "SYSTEM_META", tool: "get_document_index_stats", lastTopic: "index_stats" },
+  { text: "Break that down by source", scope: "SYSTEM_META", tool: "get_document_index_stats", lastTopic: "index_stats" },
+  { text: "And by file type?", scope: "SYSTEM_META", tool: "get_document_index_stats", lastTopic: "index_stats" },
+  { text: "When did the index last sync?", scope: "SYSTEM_META", tool: "get_recent_sync_status" },
+  { text: "How fresh is the document index?", scope: "SYSTEM_META", tool: "get_recent_sync_status" },
+  { text: "What automations are running?", scope: "SYSTEM_META", tool: "get_active_automations" },
+  { text: "Any scheduled reports?", scope: "SYSTEM_META", tool: "get_active_automations" },
+  { text: "How many users have access?", scope: "SYSTEM_META", tool: "get_company_system_summary" },
+  { text: "Which companies can I see?", scope: "SYSTEM_META", tool: "get_company_system_summary" },
+  { text: "Are any connectors unhealthy?", scope: "SYSTEM_META", tool: "get_company_system_summary" },
+  { text: "What's our WhatsApp volume looking like?", scope: "SYSTEM_META", tool: "get_company_system_summary" },
+  { text: "How many files mention vans?", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "How many documents talk about fuel cards?", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Count files that contain site surveys", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "How many times does this document mention vans?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "In this file, how often is fuel mentioned?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "Does this document cover personal use?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "What exactly did I do in that role?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "Summarise the main rules here", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "What about fuel?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "Hi there", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "Thanks, that's useful", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "How are you today?", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "I don't understand", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "What do you mean?", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "Explain your last answer more simply", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "Make that shorter", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "Say that again", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "Why did you ask that?", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "What were we talking about before that?", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "What did I just ask?", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "Remind me what you told me", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "Can you give me an example?", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "What can you do?", scope: "CONNECTOR_CAPABILITY", tool: "get_user_capabilities" },
+  { text: "What data can you access?", scope: "CONNECTOR_CAPABILITY", tool: "get_user_capabilities" },
+  { text: "What else can you help with?", scope: "CONNECTOR_CAPABILITY", tool: "get_user_capabilities" },
+  { text: "What systems are connected?", scope: "CONNECTOR_CAPABILITY", tool: "get_connector_status" },
+  { text: "Which systems do you currently have?", scope: "CONNECTOR_CAPABILITY", tool: "get_connector_status" },
+  { text: "Is Xero connected?", scope: "CONNECTOR_CAPABILITY", tool: "get_connector_status" },
+  { text: "Find the vehicle use policy", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Look up a staff profile from 2014", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Have we got a site survey PDF?", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Search everywhere for coal reports", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "No, I mean across all documents", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true, correction: true },
+  { text: "I meant the whole system", scope: "SYSTEM_META", tool: "get_document_index_stats", withDoc: true, correction: true },
+  { text: "Forget this file and search the library", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Only this file please", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "Go back to the previous document", scope: "RECENT_ENTITY", tool: "get_knowledge_document", withDoc: true },
+  { text: "Return to the earlier file", scope: "RECENT_ENTITY", tool: "get_knowledge_document", withDoc: true },
+  { text: "What were sales this month?", scope: "BUSINESS_SYSTEM", tool: "xero_sales_summary" },
+  { text: "Who owes us money?", scope: "BUSINESS_SYSTEM", tool: "xero_list_overdue_invoices" },
+  { text: "Show the P&L", scope: "BUSINESS_SYSTEM", tool: "xero_profit_and_loss" },
+  { text: "Check Xero instead of this file", scope: "BUSINESS_SYSTEM", tool: "xero_sales_summary", withDoc: true },
+  { text: "Search the shared mailbox", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox" },
+  { text: "Any unread in Outlook?", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox" },
+  { text: "Create an invoice for that", scope: "CONTROLLED_ACTION", tool: null },
+  { text: "Send this invoice now", scope: "CONTROLLED_ACTION", tool: null },
+  { text: "How many are there?", scope: "AMBIGUOUS", tool: null, clarify: true },
+  { text: "What's the policy?", scope: "AMBIGUOUS", tool: null, clarify: true },
+  { text: "Open that file", scope: "AMBIGUOUS", tool: null, clarify: true },
+  { text: "How many are there?", scope: "SYSTEM_META", tool: "get_document_index_stats", lastTopic: "index_stats" },
+  { text: "what do you mean by personal use", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "thanks", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "Could you tell me the inventory of our stored files?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "What's in the corpus, numerically?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "Give me totals for Drive versus SharePoint", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "Do we have more SharePoint or Drive files?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "How many PDFs are indexed?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "I need a stocktake of indexed records", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "What's the volume of stored documents?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "Are we talking dozens or hundreds of files?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "How many items has the company indexed overall?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "Leave this CV — I want the company file total", scope: "SYSTEM_META", tool: "get_document_index_stats", withDoc: true },
+  { text: "Stay on this file and tell me the return rule", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "In it, who signs off damage?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "Does the current document mention marketing?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "Find another policy like this one", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Broaden to other documents", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Search the whole library for vehicle rules", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Cheers", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "That helps", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "Put it another way", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "In fewer words", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "What did you just say?", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "Which source was that from?", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "What else are you able to do for us?", scope: "CONNECTOR_CAPABILITY", tool: "get_user_capabilities" },
+  { text: "Which live systems can you actually use?", scope: "CONNECTOR_CAPABILITY", tool: "get_connector_status" },
+  { text: "Do you have email connected?", scope: "CONNECTOR_CAPABILITY", tool: "get_connector_status" },
+  { text: "Show overdue invoices", scope: "BUSINESS_SYSTEM", tool: "xero_list_overdue_invoices", withDoc: true },
+  { text: "Xero sales please", scope: "BUSINESS_SYSTEM", tool: "xero_sales_summary", withDoc: true },
+  { text: "Look in emails instead", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox", withDoc: true },
+  { text: "Approve that invoice", scope: "CONTROLLED_ACTION", tool: null },
+  { text: "The other one", scope: "AMBIGUOUS", tool: null, clarify: true },
+  { text: "Find the document", scope: "AMBIGUOUS", tool: null, clarify: true },
+  { text: "How many files mention skip hire?", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "How many times does this document mention skip hire?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "I meant all documents, not this one", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true, correction: true },
+  { text: "Wrong — I wanted the system total", scope: "SYSTEM_META", tool: "get_document_index_stats", withDoc: true, correction: true },
+  { text: "Morning", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "Appreciate that", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "Can you show me an example of how you answer?", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "What's connected right now, not what could be?", scope: "CONNECTOR_CAPABILITY", tool: "get_connector_status" },
+  { text: "What information are you allowed to read?", scope: "CONNECTOR_CAPABILITY", tool: "get_user_capabilities" },
+  { text: "List active automations only", scope: "SYSTEM_META", tool: "get_active_automations" },
+  { text: "When was knowledge last updated?", scope: "SYSTEM_META", tool: "get_recent_sync_status" },
+  { text: "Give me a company system snapshot", scope: "SYSTEM_META", tool: "get_company_system_summary" },
+  { text: "How many people are on this tenant?", scope: "SYSTEM_META", tool: "get_company_system_summary" },
+  { text: "Pull up the rental agreement if we have it", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Open the 2015 staff profile", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Did we ever sponsor a cricket team — search the files", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Compare last year's skip quotes in the library", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Inside this file, what happens if someone leaves?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "Just this document — any mention of marketing?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "The last one we had open, not this", scope: "RECENT_ENTITY", tool: "get_knowledge_document", withDoc: true },
+  { text: "How many are there?", scope: "AMBIGUOUS", tool: null, clarify: true },
+  { text: "and the total?", scope: "AMBIGUOUS", tool: null, clarify: true },
+  { text: "and the total?", scope: "SYSTEM_META", tool: "get_document_index_stats", lastTopic: "index_stats" },
+  { text: "Delete that contact in Xero", scope: "CONTROLLED_ACTION", tool: null },
+  { text: "Raise an invoice for Elvex", scope: "CONTROLLED_ACTION", tool: null },
+  { text: "I'm after a headcount of stored files, not a search", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "Numerically, what does the index hold?", scope: "SYSTEM_META", tool: "get_document_index_stats" },
+  { text: "If I ignore this open file, what's the company document count?", scope: "SYSTEM_META", tool: "get_document_index_stats", withDoc: true },
+  { text: "Search all files for anything about vans", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Keep to this file: any vans?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "Hello", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "ta", scope: "GENERAL_CONVERSATION", tool: null },
+  { text: "Explain again", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "I don't follow your last point", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "What can I ask you?", scope: "CONNECTOR_CAPABILITY", tool: "get_user_capabilities" },
+  { text: "Who are you?", scope: "CONNECTOR_CAPABILITY", tool: "get_user_capabilities" },
+  { text: "Is SharePoint actually linked?", scope: "CONNECTOR_CAPABILITY", tool: "get_connector_status" },
+  { text: "Aged receivables please", scope: "BUSINESS_SYSTEM", tool: "xero_aged_receivables" },
+  { text: "Any mail about invoices?", scope: "BUSINESS_SYSTEM", tool: "outlook_search_mailbox" },
+  { text: "Open the vehicle handbook", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Pull up the site inspection notes", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Switch to the rental agreement", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Show the skip-hire quote", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "Go to the onboarding pack", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge", withDoc: true },
+  { text: "What about him?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "When was that?", scope: "CURRENT_DOCUMENT", tool: "search_document", withDoc: true },
+  { text: "And the amount again?", scope: "GENERAL_CONVERSATION", tool: null, withDoc: true },
+  { text: "Find North Yard", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Open Merrow Pack", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  { text: "Show Lydney crane", scope: "COMPANY_KNOWLEDGE", tool: "search_company_knowledge" },
+  {
+    text: "What about last month?",
+    scope: "BUSINESS_SYSTEM",
+    tool: "xero_sales_summary",
+    lastTopic: "finance",
+    currentScope: "BUSINESS_SYSTEM",
+    currentBusinessSystem: "xero",
+    lastSuccessfulTool: "xero_sales_summary",
+  },
+  {
+    text: "And yesterday?",
+    scope: "BUSINESS_SYSTEM",
+    tool: "xero_sales_summary",
+    lastTopic: "finance",
+    currentScope: "BUSINESS_SYSTEM",
+    currentBusinessSystem: "xero",
+    lastSuccessfulTool: "xero_sales_summary",
+  },
+];
+
+export function scopeEvaluationCases(): ScopeEvalCase[] {
+  return SEEDS.map((seed, index) => {
+    const state = seed.withDoc
+      ? withDoc(seed.text, {
+          lastAnswerTopic: seed.lastTopic,
+          userCorrection: seed.correction,
+          currentScope: seed.currentScope ?? (seed.lastTopic === "index_stats" ? "SYSTEM_META" : undefined),
+          lastSuccessfulTool: seed.lastSuccessfulTool,
+          currentBusinessSystem: seed.currentBusinessSystem,
+        })
+      : bare(seed.text, {
+          lastAnswerTopic: seed.lastTopic,
+          userCorrection: seed.correction,
+          currentScope: seed.currentScope ?? (seed.lastTopic === "index_stats" ? "SYSTEM_META" : undefined),
+          lastSuccessfulTool: seed.lastSuccessfulTool,
+          currentBusinessSystem: seed.currentBusinessSystem,
+        });
+    return {
+      id: `sc-${String(index + 1).padStart(3, "0")}`,
+      text: seed.text,
+      intendedScope: seed.scope,
+      intendedTool: seed.tool,
+      clarify: seed.clarify,
+      state,
+    };
+  });
+}

@@ -32,7 +32,15 @@ export const STRIPE_LIVE_MODE_ALLOWED = true;
 const WEBHOOK_TOLERANCE_SECONDS = 300;
 
 export function isStripeConfigured(env: Env): boolean {
-  return Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET);
+  return Boolean(env.STRIPE_SECRET_KEY && stripeWebhookSecrets(env).length > 0);
+}
+
+/** Legacy + canonical webhook signing secrets. Empty values are ignored. */
+export function stripeWebhookSecrets(env: Env): string[] {
+  const secrets = [env.STRIPE_WEBHOOK_SECRET, env.STRIPE_WEBHOOK_SECRET_INFRASTACK]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  return [...new Set(secrets)];
 }
 
 export function getStripeMode(env: Env): StripeMode {
@@ -1017,7 +1025,8 @@ export async function verifyStripeWebhookSignature(
   payload: string,
   signatureHeader: string | null,
 ): Promise<boolean> {
-  if (!env.STRIPE_WEBHOOK_SECRET || !signatureHeader) return false;
+  const secrets = stripeWebhookSecrets(env);
+  if (secrets.length === 0 || !signatureHeader) return false;
 
   const parts = Object.fromEntries(
     signatureHeader.split(",").map((part) => {
@@ -1035,23 +1044,36 @@ export async function verifyStripeWebhookSignature(
   if (Math.abs(now - ts) > WEBHOOK_TOLERANCE_SECONDS) return false;
 
   const signedPayload = `${timestamp}.${payload}`;
+  for (const secret of secrets) {
+    if (await stripeSignatureMatches(secret, signedPayload, signature)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function stripeSignatureMatches(
+  secret: string,
+  signedPayload: string,
+  signature: string,
+): Promise<boolean> {
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(env.STRIPE_WEBHOOK_SECRET),
+    new TextEncoder().encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const mac = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(signedPayload),
-  );
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedPayload));
   const expected = Array.from(new Uint8Array(mac))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-
-  return expected === signature;
+  if (expected.length !== signature.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < expected.length; i += 1) {
+    mismatch |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+  }
+  return mismatch === 0;
 }
 
 export type StripePaymentMethodSummary = {

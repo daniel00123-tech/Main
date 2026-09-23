@@ -101,6 +101,17 @@ describe("permission service", () => {
     ).toBe(true);
   });
 
+  it("allows finance_team Xero sales summary and top customers", async () => {
+    const finance: SessionUser = {
+      ...william,
+      memberships: [{ companyId: "co_el", role: "finance_team" }],
+    };
+    expect((await evaluateActionPermission(mockDb, finance, "co_el", "xero.sales.summary" as never)).allowed).toBe(true);
+    expect((await evaluateActionPermission(mockDb, finance, "co_el", "xero.top_customers" as never)).allowed).toBe(true);
+    expect((await evaluateActionPermission(mockDb, finance, "co_el", "xero.invoices.search")).allowed).toBe(true);
+    expect((await evaluateActionPermission(mockDb, william, "co_el", "xero.sales.summary" as never)).allowed).toBe(false);
+  });
+
   it("denies finance mailbox for office_staff", async () => {
     const decision = await evaluateActionPermission(
       mockDb,
@@ -110,5 +121,21 @@ describe("permission service", () => {
       { mailboxAddress: "finance@elvexpropertyservices.com" },
     );
     expect(decision.allowed).toBe(false);
+  });
+
+  it("keeps office_staff info mailbox allowed and admin/payments denied", async () => {
+    expect(
+      (
+        await evaluateActionPermission(mockDb, william, "co_el", "outlook.search" as never, {
+          mailboxAddress: "info@elvexpropertyservices.com",
+        })
+      ).allowed,
+    ).toBe(true);
+    expect((await evaluateActionPermission(mockDb, william, "co_el", "admin.users.manage" as never)).allowed).toBe(
+      false,
+    );
+    expect(
+      (await evaluateActionPermission(mockDb, william, "co_el", "xero.payments.allocate")).allowed,
+    ).toBe(false);
   });
 });
